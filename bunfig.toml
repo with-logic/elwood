@@ -7,4 +7,6 @@
 coverage = true
 coverageThreshold = 1.0
 coverageReporter = ["text", "lcov"]
+coverageSkipTestFiles = true
+coveragePathIgnorePatterns = ["tests/**"]
 preload = ["./tests/helpers/preload.ts"]
