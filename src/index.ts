@@ -1,10 +1,46 @@
 /**
- * Project entry module.
- * Implements PRD §0 until the product definition adds concrete behavior.
+ * Public package entrypoint.
+ * Implements PRD §5.
  */
 
-export const projectName = "elwood";
-
-export function describeProject(): string {
-  return `${projectName} is specified by PRD.md`;
-}
+export type {
+  AskUserQuestionInput,
+  BashInput,
+  ClaudeHookEvent,
+  ClaudeHookEventFor,
+  ClaudeHookEventName,
+  ClaudeHookHandlers,
+  ClaudeHookResult,
+  EditInput,
+  PreToolUseResult,
+  WriteInput,
+} from "./claude/hooks.ts";
+export { claudeHookEventNames } from "./claude/hooks.ts";
+export {
+  resetClaudeSessionSeamsForTests,
+  resumeClaude,
+  setHookBridgeFactoryForTests,
+  startClaude,
+} from "./claude/session.ts";
+export { ElwoodError, elwoodError } from "./core/errors.ts";
+export type {
+  ClaudePermissionMode,
+  ClaudeSession,
+  ClaudeSettingsOverrides,
+  ClaudeToolRule,
+  ElwoodEventHandler,
+  ElwoodEventMap,
+  ElwoodEventName,
+  ElwoodSessionStatus,
+  HookErrorEvent,
+  ResumeClaudeOptions,
+  StartClaudeOptions,
+  TerminalSize,
+  Unsubscribe,
+} from "./core/types.ts";
+export {
+  resetRuntimeSeamsForTests,
+  setCommandRunnerForTests,
+  setPlatformForTests,
+  setPtyFactoryForTests,
+} from "./runtime/seams.ts";

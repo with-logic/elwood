@@ -1,0 +1,125 @@
+/**
+ * Public library types shared across Elwood adapters.
+ * Implements PRD §5 and §9.
+ */
+
+import type {
+  ClaudeHookEvent,
+  ClaudeHookEventFor,
+  ClaudeHookEventName,
+  ClaudeHookHandlers,
+  ClaudeHookResult,
+  ClaudeHookResultFor,
+} from "../claude/hooks.ts";
+
+export type TerminalSize = {
+  readonly cols: number;
+  readonly rows: number;
+};
+
+export type ElwoodSessionStatus =
+  | "starting"
+  | "running"
+  | "ready"
+  | "stopped"
+  | "exited"
+  | "killed"
+  | "torn_down";
+
+export type ClaudePermissionMode =
+  | "default"
+  | "acceptEdits"
+  | "plan"
+  | "auto"
+  | "dontAsk"
+  | "bypassPermissions";
+
+export type ClaudeToolRule = string;
+export type ClaudeSettingsOverrides = Readonly<Record<string, unknown>>;
+
+export type StartClaudeOptions = {
+  readonly cwd: string;
+  readonly stateDir?: string;
+  readonly name?: string;
+  readonly initialSize?: TerminalSize;
+  readonly hooks?: ClaudeHookHandlers;
+  readonly permissionMode?: ClaudePermissionMode;
+  readonly allowedTools?: readonly ClaudeToolRule[];
+  readonly disallowedTools?: readonly ClaudeToolRule[];
+  readonly settingsOverrides?: ClaudeSettingsOverrides;
+  readonly hookTimeoutMs?: number;
+  readonly metadata?: Readonly<Record<string, unknown>>;
+  readonly strictVersionCheck?: boolean;
+};
+
+export type ResumeClaudeOptions = {
+  readonly elwoodSessionId: string;
+  readonly cwd?: string;
+  readonly stateDir?: string;
+  readonly hooks?: ClaudeHookHandlers;
+  readonly initialSize?: TerminalSize;
+  readonly hookTimeoutMs?: number;
+  readonly strictVersionCheck?: boolean;
+};
+
+export type HookErrorEvent = {
+  readonly elwoodSessionId: string;
+  readonly hookEventName: ClaudeHookEventName | "Unknown";
+  readonly category:
+    | "timeout"
+    | "handler_error"
+    | "invalid_input"
+    | "invalid_response"
+    | "bridge_error";
+  readonly message: string;
+  readonly timeoutMs?: number;
+};
+
+export type ElwoodEventMap = {
+  readonly "terminal:data": { readonly elwoodSessionId: string; readonly data: string };
+  readonly "terminal:exit": {
+    readonly elwoodSessionId: string;
+    readonly exitCode: number;
+    readonly signal?: number;
+  };
+  readonly status: {
+    readonly elwoodSessionId: string;
+    readonly status: ElwoodSessionStatus;
+  };
+  readonly hook: ClaudeHookEvent;
+  readonly hookError: HookErrorEvent;
+} & {
+  readonly [K in `hook:${ClaudeHookEventName}`]: K extends `hook:${infer N}`
+    ? N extends ClaudeHookEventName
+      ? ClaudeHookEventFor<N>
+      : never
+    : never;
+};
+
+export type ElwoodEventName = keyof ElwoodEventMap;
+
+export type ElwoodEventHandler<E extends ElwoodEventName> = (
+  event: ElwoodEventMap[E],
+) => E extends `hook:${infer K}`
+  ? K extends ClaudeHookEventName
+    ? ClaudeHookResultFor<K> | Promise<ClaudeHookResultFor<K>>
+    : ClaudeHookResult | Promise<ClaudeHookResult>
+  : void;
+
+export type Unsubscribe = () => void;
+
+export interface ClaudeSession {
+  readonly elwoodSessionId: string;
+  readonly cwd: string;
+  readonly status: ElwoodSessionStatus;
+
+  on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): Unsubscribe;
+  off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void;
+
+  sendPrompt(prompt: string): Promise<void>;
+  sendKeys(input: string | Uint8Array): Promise<void>;
+  resize(size: TerminalSize): Promise<void>;
+  stop(): Promise<void>;
+  kill(): Promise<void>;
+  teardown(): Promise<void>;
+}

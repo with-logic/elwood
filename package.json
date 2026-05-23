@@ -12,11 +12,16 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "check": "bun run typecheck && bun run lint && bun test"
+    "check": "bun run typecheck && bun run lint && bun test",
+    "dev:app": "bun run src/app/dev.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.15",
     "@types/bun": "latest",
+    "@types/node": "^25.9.1",
     "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0"
   }
 }

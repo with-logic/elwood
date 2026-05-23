@@ -13,6 +13,17 @@ bun run check
 The full check runs TypeScript, Biome, and Bun tests with 100% line and function
 coverage.
 
+## Local Test App
+
+```sh
+bun run dev:app -- --cwd /path/to/project
+bun run dev:app -- --cwd /path/to/project --resume <elwoodSessionId>
+```
+
+The test app streams Claude's live PTY output to stdout, logs hook/status/error
+events to stderr, and sends stdin chunks as prompts. Use `/resize 120x40` on
+stdin to resize the underlying PTY during a run.
+
 ## Working Model
 
 - Update `PRD.md` first for behavior that a user, API consumer, or second
