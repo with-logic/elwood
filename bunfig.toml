@@ -1,0 +1,10 @@
+# Bun test configuration.
+#
+# Coverage is a hard gate: Bun applies `coverageThreshold` to both line and
+# function coverage. Keep this at 1.0 so every implementation change has tests
+# from the first commit.
+[test]
+coverage = true
+coverageThreshold = 1.0
+coverageReporter = ["text", "lcov"]
+preload = ["./tests/helpers/preload.ts"]

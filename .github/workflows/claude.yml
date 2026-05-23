@@ -1,0 +1,116 @@
+# Claude Code PR review + mention responder.
+#
+# On PR open, posts a review grounded in CLAUDE.md and
+# .github/pr-review-prompt.md. On @claude mentions in PR comments, review
+# comments, or submitted reviews, lets Claude respond directly.
+#
+# Required secret:
+#   - ANTHROPIC_API_KEY
+name: Claude Code
+
+on:
+  pull_request:
+    types: [opened]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  claude-review-pr:
+    name: "Claude: Review new PR"
+    if: github.event_name == 'pull_request' && github.event.action == 'opened'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Read PR review prompt
+        id: read-prompt
+        run: |
+          {
+            echo 'prompt<<EOF'
+            cat .github/pr-review-prompt.md
+            echo
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run Claude Code - Review PR
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: ${{ steps.read-prompt.outputs.prompt }}
+          path_to_bun_executable: ~/.bun/bin/bun
+          track_progress: "true"
+          claude_args: |
+            --model claude-sonnet-4-6
+            --allowedTools Bash,View,WebFetch,WebSearch,Glob,Grep
+
+  claude-mention:
+    name: "Claude: Respond to mention"
+    if: |
+      (github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' &&
+        contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' &&
+        contains(github.event.review.body, '@claude'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Resolve PR head
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+        run: |
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          gh pr view "$PR_NUMBER" --repo "$GH_REPO" \
+            --json headRepository,headRefName \
+            --jq '"repo=\(.headRepository.nameWithOwner)\nref=\(.headRefName)"' >> "$GITHUB_OUTPUT"
+
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.pr.outputs.repo }}
+          ref: ${{ steps.pr.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Run Claude Code - Respond
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          path_to_bun_executable: ~/.bun/bin/bun
+          claude_args: |
+            --model claude-sonnet-4-6
+            --allowedTools Bash,Read,View,Edit,Write,MultiEdit,WebFetch,WebSearch,Glob,Grep
