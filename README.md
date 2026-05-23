@@ -10,8 +10,8 @@ bun install
 bun run check
 ```
 
-The full check runs TypeScript, Biome, and Bun tests with 100% line and function
-coverage.
+The full check runs TypeScript, Biome, the 200-line file limit check, and Bun
+tests with 100% line and function coverage.
 
 ## Local Test App
 

@@ -42,7 +42,7 @@ describe("local test app", () => {
     };
     const id = await runTestApp(
       ["--cwd", "/tmp/project"],
-      { stdin: chunks(["hello\nworld", "/resize 100x20"]), stdout, stderr },
+      { stdin: chunks(["hello\nworld", Buffer.from("/resize 100x20")]), stdout, stderr },
       runtime,
     );
     session.emit("terminal:data", { elwoodSessionId: "s1", data: "screen" });
@@ -97,7 +97,9 @@ describe("local test app", () => {
   });
 });
 
-async function* chunks(values: readonly string[]): AsyncIterable<string> {
+async function* chunks(
+  values: readonly (string | Uint8Array)[],
+): AsyncIterable<string | Uint8Array> {
   for (const value of values) {
     await Promise.resolve();
     yield value;

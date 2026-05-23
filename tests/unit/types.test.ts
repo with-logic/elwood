@@ -4,7 +4,14 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type { AskUserQuestionInput, ClaudeHookEvent, ClaudeHookHandlers } from "../../src/index.ts";
+import type {
+  AskUserQuestionInput,
+  ClaudeBackgroundTask,
+  ClaudeHookEvent,
+  ClaudeHookEventFor,
+  ClaudeHookHandlers,
+  ClaudeSessionCron,
+} from "../../src/index.ts";
 
 describe("public hook types", () => {
   test("C-HOOK-08 C-HRESP-04 hook names narrow valid response types", () => {
@@ -49,5 +56,95 @@ describe("public hook types", () => {
 
     expect(typeof handlers.PreToolUse).toBe("function");
     expect(unknownTool.tool_input.raw).toBe(true);
+  });
+
+  test("C-HOOK-08 documented lifecycle payload fields are typed for consumers", () => {
+    const handlers = {
+      Stop: (event) => {
+        const message: string | undefined = event.last_assistant_message;
+        const tasks: readonly ClaudeBackgroundTask[] | undefined = event.background_tasks;
+        const crons: readonly ClaudeSessionCron[] | undefined = event.session_crons;
+        const firstCommand: string | undefined = tasks?.[0]?.command;
+        return (message ?? firstCommand ?? crons?.[0]?.prompt === undefined)
+          ? undefined
+          : { decision: "block", reason: "not done" };
+      },
+      SubagentStop: (event) => {
+        const message: string | undefined = event.last_assistant_message;
+        const transcript: string = event.agent_transcript_path;
+        return message === transcript ? { decision: "block", reason: "unexpected" } : undefined;
+      },
+      StopFailure: (event) => {
+        const message: string | undefined = event.last_assistant_message;
+        const error: string = event.error;
+        return message === error ? { additionalContext: "failed" } : undefined;
+      },
+      Notification: (event) => {
+        const message: string = event.message;
+        const notificationType: string = event.notification_type;
+        return message === notificationType ? undefined : undefined;
+      },
+      PostCompact: (event) => {
+        const summary: string = event.compact_summary;
+        return { additionalContext: summary };
+      },
+    } satisfies ClaudeHookHandlers;
+
+    const stopEvent = {
+      hook_event_name: "Stop",
+      session_id: "claude-1",
+      cwd: "/tmp/project",
+      last_assistant_message: "Done",
+      background_tasks: [
+        { id: "task-1", type: "shell", status: "running", command: "tail -f log" },
+      ],
+      session_crons: [{ id: "cron-1", schedule: "0 * * * *", recurring: true, prompt: "check" }],
+    } satisfies ClaudeHookEventFor<"Stop">;
+
+    expect(typeof handlers.Stop).toBe("function");
+    expect(stopEvent.last_assistant_message).toBe("Done");
+  });
+
+  test("C-HOOK-08 documented non-tool payload fields are typed for consumers", () => {
+    const events = [
+      {
+        hook_event_name: "InstructionsLoaded",
+        session_id: "claude-1",
+        cwd: "/tmp/project",
+        file_path: "/tmp/project/CLAUDE.md",
+        memory_type: "Project",
+        load_reason: "session_start",
+      } satisfies ClaudeHookEventFor<"InstructionsLoaded">,
+      {
+        hook_event_name: "TaskCreated",
+        session_id: "claude-1",
+        cwd: "/tmp/project",
+        task_id: "task-1",
+        task_subject: "Implement feature",
+      } satisfies ClaudeHookEventFor<"TaskCreated">,
+      {
+        hook_event_name: "FileChanged",
+        session_id: "claude-1",
+        cwd: "/tmp/project",
+        file_path: "/tmp/project/.env",
+        event: "change",
+      } satisfies ClaudeHookEventFor<"FileChanged">,
+      {
+        hook_event_name: "Elicitation",
+        session_id: "claude-1",
+        cwd: "/tmp/project",
+        mcp_server_name: "server",
+        message: "Authenticate",
+        mode: "url",
+        url: "https://example.com",
+      } satisfies ClaudeHookEventFor<"Elicitation">,
+    ] satisfies readonly ClaudeHookEvent[];
+
+    expect(events.map((event) => event.hook_event_name)).toEqual([
+      "InstructionsLoaded",
+      "TaskCreated",
+      "FileChanged",
+      "Elicitation",
+    ]);
   });
 });

@@ -29,5 +29,5 @@ bun install
 bun run check
 ```
 
-`bun run check` runs typecheck, Biome, and the full test suite with 100% line and
-function coverage.
+`bun run check` runs typecheck, Biome, the 200-line file limit check, and the
+full test suite with 100% line and function coverage.

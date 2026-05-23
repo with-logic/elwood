@@ -39,11 +39,13 @@ match. Do not leave a PRD change unimplemented across a commit.
 - Lint and format: Biome 2, configured in `biome.json`.
 - Tests: `bun test`, with 100% line and function coverage required by
   `bunfig.toml`.
+- File size: `bun run check:lines`, with every checked code file capped at 200
+  lines.
 
 ## Organization Conventions
 
 1. Keep files under 200 lines. Split early when a file starts collecting
-   unrelated concerns.
+   unrelated concerns; `bun run check:lines` enforces this for code files.
 2. Group related files into directories instead of filename prefixes. Prefer
    `feature/index.ts`, `feature/render.ts`, and `feature/types.ts` over
    `feature-render.ts` and `feature-types.ts`.

@@ -24,7 +24,7 @@ export type TestAppArgs = {
 };
 
 export type TestAppIo = {
-  readonly stdin: AsyncIterable<string>;
+  readonly stdin: AsyncIterable<string | Uint8Array>;
   readonly stdout: { write(chunk: string): unknown };
   readonly stderr: { write(chunk: string): unknown };
 };
@@ -111,15 +111,23 @@ function wireSessionToTestApp(session: ClaudeSession, io: TestAppIo): void {
   );
 }
 
-async function pumpPrompts(session: ClaudeSession, stdin: AsyncIterable<string>): Promise<void> {
+async function pumpPrompts(
+  session: ClaudeSession,
+  stdin: AsyncIterable<string | Uint8Array>,
+): Promise<void> {
   for await (const chunk of stdin) {
-    const resize = parseResizeCommand(chunk);
+    const input = normalizeInputChunk(chunk);
+    const resize = parseResizeCommand(input);
     if (resize) {
       await session.resize(resize);
     } else {
-      await session.sendPrompt(chunk);
+      await session.sendPrompt(input);
     }
   }
+}
+
+function normalizeInputChunk(chunk: string | Uint8Array): string {
+  return typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
 }
 
 function parseResizeCommand(input: string): TerminalSize | null {
