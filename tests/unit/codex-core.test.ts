@@ -45,6 +45,7 @@ describe("Codex core helpers", () => {
     expect(command).toContain("--profile");
     expect(command).toContain("--ask-for-approval");
     expect(command).toContain("model=");
+    expect(command.lastIndexOf("hookTrust")).toBeGreaterThan(command.indexOf("model="));
     expect(command).toContain("resume");
     expect(
       buildCodexShellCommand(record, { cwd }, { supportsHookTrustBypass: false }),

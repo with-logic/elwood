@@ -71,6 +71,7 @@ function fakeSession(): SharedSession {
     elwoodSessionId: "s1",
     cwd: "/tmp/project",
     status: "running",
+    warnings: [],
     on: () => () => {},
     sendPrompt: () => Promise.resolve(),
     sendMessage: () => Promise.resolve(),

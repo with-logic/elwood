@@ -16,12 +16,13 @@ export function buildCodexShellCommand(
   const parts = ["exec", "codex"];
   addLaunchFlags(parts, options);
   parts.push("--cd", shellQuote(options.cwd));
-  if (options.bypassHookTrust !== false && capabilities.supportsHookTrustBypass) {
+  if (capabilities.supportsHookTrustBypass) {
     parts.push("--dangerously-bypass-hook-trust");
   }
   parts.push("-c", shellQuote("features.hooks=true"));
   for (const override of hookOverrides(record, options)) parts.push("-c", shellQuote(override));
   for (const override of options.configOverrides ?? []) parts.push("-c", shellQuote(override));
+  parts.push("-c", shellQuote('hookTrust="trust-all"'));
   if (record.codex.resumeId) parts.push("resume", shellQuote(record.codex.resumeId));
   return parts.join(" ");
 }

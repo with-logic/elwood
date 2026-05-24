@@ -10,10 +10,11 @@ export const minimumCodexVersion = "0.124.0";
 export type CodexCliCapabilities = { readonly supportsHookTrustBypass: boolean };
 let cachedCapabilities: CodexCliCapabilities | undefined;
 
-export function preflightCodex(strictVersionCheck: boolean): void {
+export function preflightCodex(strictVersionCheck: boolean, autoupdate = false): void {
   if (currentPlatform() !== "darwin") {
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
+  if (autoupdate) runCodexUpdate();
   const result = currentCommandRunner()("codex", ["--version"]);
   if (result.status === null || result.error?.code === "ENOENT") {
     throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");
@@ -32,6 +33,14 @@ export function preflightCodex(strictVersionCheck: boolean): void {
       `Codex CLI ${minimumCodexVersion} or newer is required for Elwood hooks.`,
       { version, minimumCodexVersion },
     );
+  }
+}
+
+function runCodexUpdate(): void {
+  const shell = process.env["SHELL"] ?? "/bin/zsh";
+  const result = currentCommandRunner()(shell, ["-l", "-i", "-c", "codex update"]);
+  if (result.status !== 0) {
+    throw elwoodError("codex_update_failed", "`codex update` failed.", { stderr: result.stderr });
   }
 }
 

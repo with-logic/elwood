@@ -6,10 +6,10 @@
 import type { ClaudeHookEvent } from "../claude/hooks.ts";
 import type { CodexHookEvent } from "../codex/hooks.ts";
 import type { CodexTranscriptEvent } from "../codex/transcript.ts";
-import type { ElwoodSessionStatus, HookErrorEvent } from "./types.ts";
+import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "./types.ts";
 
 export type ElwoodAgentKind = "claude" | "codex";
-export type ElwoodActivitySource = "hook" | "transcript" | "lifecycle";
+export type ElwoodActivitySource = "hook" | "transcript" | "terminal" | "lifecycle";
 export type ElwoodActivityKind =
   | "status"
   | "terminal_exit"
@@ -20,6 +20,8 @@ export type ElwoodActivityKind =
   | "tool_result"
   | "web_search"
   | "notification"
+  | "warning"
+  | "startup_prompt"
   | "hook"
   | "hook_error";
 
@@ -104,6 +106,33 @@ export function activityFromHookError(
     label: `${event.hookEventName}:${event.category}`,
     text: event.message,
     raw: event,
+  };
+}
+
+export function activityFromWarning(event: ElwoodWarningEvent): ElwoodActivityEvent {
+  return {
+    elwoodSessionId: event.elwoodSessionId,
+    agent: event.agent,
+    source: event.source,
+    kind: "warning",
+    label: event.code,
+    text: event.message,
+    raw: event,
+  };
+}
+
+export function activityFromStartupPrompt(
+  elwoodSessionId: string,
+  label: string,
+  input: string,
+): ElwoodActivityEvent {
+  return {
+    elwoodSessionId,
+    agent: "codex",
+    source: "terminal",
+    kind: "startup_prompt",
+    label,
+    text: `Detected Codex ${label} prompt; sent ${input}.`,
   };
 }
 

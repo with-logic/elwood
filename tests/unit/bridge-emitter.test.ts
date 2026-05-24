@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { createConnection } from "node:net";
 import { join } from "node:path";
 import { HookBridgeServer } from "../../src/bridge/server.ts";
 import { isClaudeHookResult } from "../../src/bridge/validate.ts";
@@ -43,6 +44,24 @@ describe("bridge and emitter edges", () => {
     );
     await expect(server.start()).rejects.toBeInstanceOf(Error);
     await server.stop();
+  });
+
+  test("bridge stop destroys open hook sockets", async () => {
+    const root = tempDirForUnit();
+    const socketPath = join(root, "open-hook.sock");
+    const server = new HookBridgeServer(
+      socketPath,
+      "token",
+      async () => ({ exitCode: 0, stdout: "", stderr: "" }),
+      () => {},
+    );
+    await server.start();
+    const socket = createConnection(socketPath);
+    await new Promise<void>((resolve) => socket.once("connect", resolve));
+    const closed = new Promise<void>((resolve) => socket.once("close", () => resolve()));
+    await server.stop();
+    await closed;
+    expect(socket.destroyed).toBe(true);
   });
 
   test("C-HOOK-06 validates hook results by event semantics", () => {

@@ -20,25 +20,54 @@ describe("CodexSession startup and terminal control", () => {
     expect(session.elwoodSessionId.length).toBeGreaterThan(0);
     expect(session.cwd).toBe(cwd);
     expect(session.status).toBe("running");
+    expect(ptys[0]!.size).toEqual({ cols: 189, rows: 48 });
+    expect(session.terminal.size).toEqual({ cols: 189, rows: 48 });
     expect(command).toContain("exec codex");
     expect(command).toContain("--cd");
     expect(command).toContain("--model");
     expect(command).toContain("--sandbox");
     expect(command).toContain("--dangerously-bypass-hook-trust");
+    expect(command).toContain("hookTrust");
     expect(command).toContain("hooks.Stop");
     expect(existsSync(join(cwd, ".elwood", ".gitignore"))).toBe(true);
   });
 
-  test("C-CODEX-06 omits hook trust bypass when unsupported or opted out", async () => {
+  test("C-CODEX-06 trusts hooks through the TUI prompt when bypass is unsupported", async () => {
     const cwd = tempDir();
     installFakes({ supportsHookTrustBypass: false });
     await startCodex({ cwd });
     expect(ptys[0]!.options.args.join(" ")).not.toContain("--dangerously-bypass-hook-trust");
-    resetFakes();
-    const secondCwd = tempDir();
+    ptys[0]!.emitData("Hooks need review\r\n  1. Review hooks\r\n› 2. Trust all and continue");
+    await flushTerminal();
+    expect(ptys[0]!.writes).toEqual(["2"]);
+  });
+
+  test("C-CODEX skips Codex TUI update prompts", async () => {
+    const cwd = tempDir();
     installFakes();
-    await startCodex({ cwd: secondCwd, bypassHookTrust: false });
-    expect(ptys[0]!.options.args.join(" ")).not.toContain("--dangerously-bypass-hook-trust");
+    await startCodex({ cwd });
+    ptys[0]!.emitData("Update available\r\n  1. Update now\r\n  2. Continue without updating");
+    await flushTerminal();
+    expect(ptys[0]!.writes).toEqual(["2"]);
+  });
+
+  test("C-API-14 C-CODEX-09 emits typed Codex MCP startup warnings", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startCodex({ cwd });
+    const warnings: string[] = [];
+    const activity: string[] = [];
+    session.on("warning", (event) => warnings.push(event.code));
+    session.on("activity", (event) => activity.push(event.kind));
+    ptys[0]!.emitData(
+      "The linear MCP server is not logged in. Run `codex mcp login linear`.\nMCP startup incomplete (failed: linear)",
+    );
+    ptys[0]!.emitData("MCP startup incomplete (failed: linear)");
+    await flushTerminal();
+    expect(warnings).toEqual(["mcp_server_not_logged_in", "mcp_startup_incomplete"]);
+    expect(session.warnings[0]).toMatchObject({ mcpServerName: "linear" });
+    expect(session.warnings[1]).toMatchObject({ recoveryCommands: ["codex mcp login linear"] });
+    expect(activity).toContain("warning");
   });
 
   test("C-API-11 sends multiline prompts through bracketed paste", async () => {
@@ -52,6 +81,7 @@ describe("CodexSession startup and terminal control", () => {
     session.on("terminal:exit", (event) => exits.push(event.exitCode));
     session.on("activity", (event) => activity.push(event.kind));
     ptys[0]!.emitData("screen");
+    await flushTerminal();
     await session.sendPrompt("hello\nworld");
     await session.sendMessage("again");
     await session.sendKeys(new Uint8Array([120]));
@@ -112,3 +142,7 @@ describe("CodexSession startup and terminal control", () => {
     expect(activity).toContain("reasoning");
   });
 });
+
+function flushTerminal(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 25));
+}

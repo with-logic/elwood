@@ -29,6 +29,15 @@ Useful CLI capabilities for Elwood:
   generated Elwood hooks run for one invocation without requiring a persisted
   trust prompt. Elwood must detect support before passing it because other Codex
   versions reject unknown flags.
+- Codex can also render interactive trust and update prompts before the session
+  is usable. Elwood should select `Trust all and continue` for hook prompts, and
+  skip TUI update prompts because API-level `autoupdate` runs `codex update`
+  before launch when requested. Detection should use Elwood's headless xterm.js
+  screen snapshot, not raw ANSI/PTY byte parsing.
+- Codex may print non-fatal environment warnings before the session is ready,
+  such as MCP servers that are not logged in. Elwood should preserve raw
+  terminal output and also project recognized warnings into typed `warning`
+  events with remediation commands.
 
 ## Resume Implications
 

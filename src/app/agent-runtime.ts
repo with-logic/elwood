@@ -15,6 +15,7 @@ import {
   claudeHookEventNames,
   codexHookEventNames,
   type ElwoodActivityEvent,
+  type ElwoodWarningEvent,
   type ResumeClaudeOptions,
   type ResumeCodexOptions,
   resumeClaude,
@@ -41,6 +42,8 @@ export type CommonEventMap = {
   };
   readonly status: { readonly elwoodSessionId: string; readonly status: string };
   readonly activity: ElwoodActivityEvent;
+  readonly warning: ElwoodWarningEvent;
+  readonly hook: AgentHookEvent;
   readonly hookError: {
     readonly elwoodSessionId: string;
     readonly hookEventName: string;
@@ -56,6 +59,7 @@ export type SharedSession = Pick<
   | "elwoodSessionId"
   | "cwd"
   | "status"
+  | "warnings"
   | "sendPrompt"
   | "sendMessage"
   | "sendKeys"

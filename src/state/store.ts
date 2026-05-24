@@ -6,7 +6,7 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { elwoodError } from "../core/errors.ts";
-import type { ElwoodSessionStatus, TerminalSize } from "../core/types.ts";
+import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
 
 export type SessionRecord = {
   readonly schemaVersion: 1;
@@ -14,6 +14,7 @@ export type SessionRecord = {
   readonly adapter: "claude" | "codex";
   readonly cwd: string;
   readonly metadata: Readonly<Record<string, unknown>>;
+  readonly warnings: readonly ElwoodWarningEvent[];
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly status: ElwoodSessionStatus;
@@ -54,6 +55,7 @@ export function createSessionRecord(input: {
     adapter,
     cwd: resolve(input.cwd),
     metadata: input.metadata ?? {},
+    warnings: [],
     createdAt: now,
     updatedAt: now,
     status: "starting",
@@ -90,7 +92,7 @@ export function readSessionRecord(stateDir: string, id: string): SessionRecord {
     if (parsed.schemaVersion !== 1 || parsed.elwoodSessionId !== id) {
       throw elwoodError("state_corrupt", `Session state is invalid for ${id}`);
     }
-    return parsed;
+    return { ...parsed, warnings: parsed.warnings ?? [] };
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
       throw elwoodError("state_not_found", `No Elwood session found for ${id}`);
@@ -118,8 +120,27 @@ export function updateSessionResumeId(
   };
 }
 
+export function appendSessionWarning(
+  record: SessionRecord,
+  warning: ElwoodWarningEvent,
+): SessionRecord {
+  if (record.warnings.some((existing) => warningKey(existing) === warningKey(warning)))
+    return record;
+  return {
+    ...record,
+    warnings: [...record.warnings, warning],
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function removeSessionDir(record: SessionRecord): void {
   rmSync(record.paths.sessionDir, { recursive: true, force: true });
+}
+
+function warningKey(warning: ElwoodWarningEvent): string {
+  const server =
+    "mcpServerName" in warning ? warning.mcpServerName : warning.failedServers.join(",");
+  return `${warning.code}:${server}`;
 }
 
 function recordPath(dir: string): string {

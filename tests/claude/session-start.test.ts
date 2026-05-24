@@ -19,7 +19,10 @@ describe("ClaudeSession startup and terminal control", () => {
     expect(session.elwoodSessionId.length).toBeGreaterThan(0);
     expect(session.cwd).toBe(cwd);
     expect(session.status).toBe("running");
+    expect(session.warnings).toEqual([]);
     expect(ptys[0]!.options.cwd).toBe(cwd);
+    expect(ptys[0]!.size).toEqual({ cols: 189, rows: 48 });
+    expect(session.terminal.size).toEqual({ cols: 189, rows: 48 });
     const sessionDir = join(cwd, ".elwood", "sessions", session.elwoodSessionId);
     expect(existsSync(join(cwd, ".elwood", ".gitignore"))).toBe(true);
     expect(readFileSync(join(sessionDir, "claude-settings.json"), "utf8")).toContain(
@@ -65,6 +68,7 @@ describe("ClaudeSession startup and terminal control", () => {
     session.on("activity", (event) => activity.push(event.kind));
     session.off("terminal:data", () => {});
     ptys[0]!.emitData("abc");
+    await flushTerminal();
     unsubscribe();
     ptys[0]!.emitData("ignored");
     await session.sendKeys("x");
@@ -76,3 +80,7 @@ describe("ClaudeSession startup and terminal control", () => {
     expect(activity).toContain("terminal_exit");
   });
 });
+
+function flushTerminal(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 5));
+}

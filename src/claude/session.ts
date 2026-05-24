@@ -1,7 +1,4 @@
-/**
- * ClaudeSession implementation coordinating PTY, state, and hook dispatch.
- * Implements PRD §5, §6, §8, and §9.
- */
+/** ClaudeSession implementation coordinating PTY, state, and hook dispatch. Implements PRD §5, §6, §8, and §9. */
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -28,6 +25,7 @@ import {
   type SessionRecord,
   writeSessionRecord,
 } from "../state/store.ts";
+import { attachPtyTerminal } from "../terminal/headless.ts";
 import { buildClaudeShellCommand, shellLaunch } from "./command.ts";
 import { isBlock, requestHook } from "./hook-dispatch.ts";
 import type { ClaudeHookEvent } from "./hooks.ts";
@@ -36,7 +34,7 @@ import { serializeHookResult } from "./serialize.ts";
 import { ClaudeSessionImpl, type HookBridge } from "./session-instance.ts";
 import { generateClaudeSettings } from "./settings.ts";
 
-const defaultSize: TerminalSize = { cols: 120, rows: 40 };
+const defaultSize: TerminalSize = { cols: 189, rows: 48 };
 
 type HookBridgeFactory = (
   socketPath: string,
@@ -59,7 +57,7 @@ export function resetClaudeSessionSeamsForTests(): void {
 }
 
 export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSession> {
-  preflightClaude(options.strictVersionCheck ?? false);
+  preflightClaude(options.strictVersionCheck ?? false, options.autoupdate ?? false);
   const stateDir = options.stateDir ?? defaultStateDir(options.cwd);
   prepareStateDir(stateDir);
   const record = createSessionRecord({
@@ -80,6 +78,7 @@ export async function resumeClaude(options: ResumeClaudeOptions): Promise<Claude
   if (record.adapter !== "claude") {
     throw elwoodError("adapter_mismatch", "Cannot resume a non-Claude session as Claude.");
   }
+  preflightClaude(options.strictVersionCheck ?? false, options.autoupdate ?? false);
   const size = options.initialSize ?? record.terminalSize;
   const resumedRecord =
     options.initialSize === undefined ? record : { ...record, terminalSize: options.initialSize };
@@ -99,7 +98,6 @@ async function startFromRecord(
   record: SessionRecord,
   options: StartClaudeOptions,
 ): Promise<ClaudeSessionImpl> {
-  preflightClaude(options.strictVersionCheck ?? false);
   mkdirSync(record.paths.sessionDir, { recursive: true });
   const token = randomUUID();
   writeRuntimeFiles(record, token, options);
@@ -138,10 +136,12 @@ async function startFromRecord(
     });
   }
   const pty = spawnClaudePty(record, options);
-  session = new ClaudeSessionImpl(record, pty, bridge, emitter);
-  pty.onData((data) =>
-    emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data }),
+  const terminal = attachPtyTerminal(
+    options.initialSize ?? record.terminalSize ?? defaultSize,
+    pty,
+    (data) => emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data }),
   );
+  session = new ClaudeSessionImpl(record, pty, terminal, bridge, emitter);
   pty.onExit((exit) => {
     emitter.emit("terminal:exit", { elwoodSessionId: record.elwoodSessionId, ...exit });
     emitter.emit(

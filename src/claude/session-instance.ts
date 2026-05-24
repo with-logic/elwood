@@ -10,6 +10,7 @@ import type {
   ElwoodEventHandler,
   ElwoodEventName,
   ElwoodSessionStatus,
+  ElwoodWarningEvent,
   TerminalSize,
 } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
@@ -20,6 +21,7 @@ import {
   updateSessionStatus,
   writeSessionRecord,
 } from "../state/store.ts";
+import type { ElwoodTerminal } from "../terminal/headless.ts";
 
 export type HookBridge = {
   readonly start: () => Promise<void>;
@@ -29,13 +31,21 @@ export type HookBridge = {
 export class ClaudeSessionImpl implements ClaudeSession {
   private record: SessionRecord;
   private readonly pty: PtyProcess;
+  readonly terminal: ElwoodTerminal;
   private readonly bridge: HookBridge;
   private readonly emitter: TypedEmitter;
   private currentStatus: ElwoodSessionStatus = "starting";
 
-  constructor(record: SessionRecord, pty: PtyProcess, bridge: HookBridge, emitter: TypedEmitter) {
+  constructor(
+    record: SessionRecord,
+    pty: PtyProcess,
+    terminal: ElwoodTerminal,
+    bridge: HookBridge,
+    emitter: TypedEmitter,
+  ) {
     this.record = record;
     this.pty = pty;
+    this.terminal = terminal;
     this.bridge = bridge;
     this.emitter = emitter;
   }
@@ -52,6 +62,10 @@ export class ClaudeSessionImpl implements ClaudeSession {
     return this.currentStatus;
   }
 
+  get warnings(): readonly ElwoodWarningEvent[] {
+    return this.record.warnings;
+  }
+
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>) {
     return this.emitter.on(event, handler);
   }
@@ -62,7 +76,7 @@ export class ClaudeSessionImpl implements ClaudeSession {
 
   sendPrompt(prompt: string): Promise<void> {
     this.ensureRunning();
-    this.pty.write(`\u001b[200~${prompt}\u001b[201~\r`);
+    this.terminal.sendInput(`\u001b[200~${prompt}\u001b[201~\r`);
     return Promise.resolve();
   }
 
@@ -72,12 +86,13 @@ export class ClaudeSessionImpl implements ClaudeSession {
 
   sendKeys(input: string | Uint8Array): Promise<void> {
     this.ensureRunning();
-    this.pty.write(input);
+    this.terminal.sendInput(input);
     return Promise.resolve();
   }
 
   resize(size: TerminalSize): Promise<void> {
     this.ensureRunning();
+    this.terminal.resize(size);
     this.pty.resize(size);
     this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.currentStatus));
     return Promise.resolve();
@@ -86,17 +101,20 @@ export class ClaudeSessionImpl implements ClaudeSession {
   async stop(): Promise<void> {
     this.pty.kill("SIGTERM");
     await this.bridge.stop();
+    this.terminal.dispose();
     this.setStatus("stopped");
   }
 
   async kill(): Promise<void> {
     this.pty.kill("SIGKILL");
     await this.bridge.stop();
+    this.terminal.dispose();
     this.setStatus("killed");
   }
 
   async teardown(): Promise<void> {
     await this.bridge.stop();
+    this.terminal.dispose();
     removeSessionDir(this.record);
     this.currentStatus = "torn_down";
     this.emitter.emit("status", { elwoodSessionId: this.elwoodSessionId, status: "torn_down" });

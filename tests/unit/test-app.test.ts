@@ -25,12 +25,12 @@ describe("local test app", () => {
       cwd: "/tmp/project",
       stateDir: "/tmp/state",
       resumeSessionId: "e1",
-      size: { cols: 120, rows: 40 },
+      size: { cols: 189, rows: 48 },
     });
     expect(parseTestAppArgs(["--agent", "codex", "--cwd", "/tmp/project"]).agent).toBe("codex");
     expect(parseTestAppArgs(["--cwd", "/tmp/project", "--size", "bad"]).size).toEqual({
-      cols: 120,
-      rows: 40,
+      cols: 189,
+      rows: 48,
     });
   });
 
@@ -59,6 +59,7 @@ describe("local test app", () => {
       kind: "web_search",
       label: "search",
     });
+    session.emit("warning", { code: "mcp_server_not_logged_in" } as never);
     session.emit("hookError", {
       elwoodSessionId: "s1",
       hookEventName: "Stop",
@@ -72,6 +73,7 @@ describe("local test app", () => {
     expect(stderr.text).toContain("[terminal] exit 0");
     expect(stderr.text).toContain("[status] ready");
     expect(stderr.text).toContain("[activity] web_search search");
+    expect(stderr.text).toContain("[warning] mcp_server_not_logged_in");
     expect(stderr.text).toContain("[hookError] Stop timeout");
   });
 
@@ -144,6 +146,7 @@ class FakeSession implements SharedSession {
   readonly elwoodSessionId = "s1";
   readonly cwd = "/tmp/project";
   readonly status = "running";
+  readonly warnings = [];
   readonly prompts: string[] = [];
   readonly sizes: { readonly cols: number; readonly rows: number }[] = [];
   private readonly handlers = new Map<CommonEventName, CommonEventHandler<CommonEventName>[]>();
@@ -183,10 +186,6 @@ class FakeSession implements SharedSession {
 
   resize(size: { readonly cols: number; readonly rows: number }): Promise<void> {
     this.sizes.push(size);
-    return Promise.resolve();
-  }
-
-  stop(): Promise<void> {
     return Promise.resolve();
   }
 

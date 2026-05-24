@@ -6,10 +6,12 @@
 import type { ElwoodActivityEvent } from "../core/activity.ts";
 import type {
   ElwoodSessionStatus,
+  ElwoodWarningEvent,
   HookErrorEvent,
   TerminalSize,
   Unsubscribe,
 } from "../core/types.ts";
+import type { ElwoodTerminal } from "../terminal/headless.ts";
 import type {
   CodexHookEvent,
   CodexHookEventFor,
@@ -33,7 +35,7 @@ export type StartCodexOptions = {
   readonly sandbox?: CodexSandboxMode;
   readonly approvalPolicy?: CodexApprovalPolicy;
   readonly configOverrides?: readonly string[];
-  readonly bypassHookTrust?: boolean;
+  readonly autoupdate?: boolean;
   readonly hookTimeoutMs?: number;
   readonly metadata?: Readonly<Record<string, unknown>>;
   readonly strictVersionCheck?: boolean;
@@ -45,6 +47,7 @@ export type ResumeCodexOptions = {
   readonly stateDir?: string;
   readonly hooks?: CodexHookHandlers;
   readonly initialSize?: TerminalSize;
+  readonly autoupdate?: boolean;
   readonly hookTimeoutMs?: number;
   readonly strictVersionCheck?: boolean;
 };
@@ -58,6 +61,7 @@ export type CodexEventMap = {
   };
   readonly status: { readonly elwoodSessionId: string; readonly status: ElwoodSessionStatus };
   readonly activity: ElwoodActivityEvent;
+  readonly warning: ElwoodWarningEvent;
   readonly hook: CodexHookEvent;
   readonly "codex:transcript": CodexTranscriptEvent;
   readonly hookError: HookErrorEvent;
@@ -83,6 +87,8 @@ export interface CodexSession {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;
+  readonly warnings: readonly ElwoodWarningEvent[];
+  readonly terminal: ElwoodTerminal;
 
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): Unsubscribe;
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void;

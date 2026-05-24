@@ -96,9 +96,12 @@ CLIs.
 **PTY session.** The pseudoterminal process and byte streams that make the CLI
 believe it is running in an interactive terminal.
 
-**Terminal renderer.** Optional UI component, such as xterm.js, that renders PTY
-bytes and sends input bytes back. A renderer is not required for headless
-operation.
+**Headless terminal.** Elwood-owned xterm.js terminal instance that renders PTY
+output into a screen model and emits terminal input back to the PTY. This model
+is required even when no UI is shown.
+
+**Terminal renderer.** Optional parent-app UI component, such as browser
+xterm.js, that renders the same live PTY stream for users.
 
 **Hook bridge.** Elwood-owned command installed into agent hook settings. The
 agent invokes it for hook events; it forwards hook input to the owning Elwood
@@ -121,9 +124,11 @@ Elwood has three conceptual layers:
 3. **Public library layer.** Exposes TypeScript APIs and typed events to parent
    applications.
 
-The PTY layer is required. xterm.js is not required by the core library. The
-test app should use xterm.js to validate render fidelity, but Elwood's core
-contract is raw terminal input/output plus resize.
+The PTY layer and a headless xterm.js terminal model are required. Elwood MUST
+write PTY output through the headless terminal before inspecting visible TUI
+state, warnings, or startup prompts. Elwood MUST send `sendPrompt` and
+`sendKeys` input through the headless terminal input path so parent app input,
+programmatic prompts, and low-level keys share one terminal control mechanism.
 
 ### 4.2 macOS shell behavior
 
@@ -162,13 +167,15 @@ the Elwood session metadata directory, then launches Codex with session-scoped
 hook event. User, project, managed, and system Codex config must still merge
 through Codex's normal precedence rules.
 
-Codex hook trust is a Codex security feature, and the exact CLI flags for hook
-trust may vary across Codex versions. Because Elwood's generated hook commands
-are ephemeral and session-owned, `startCodex` should bypass hook trust by default
-when the installed Codex CLI advertises an invocation-scoped bypass flag. Elwood
-MUST omit that flag when the installed CLI does not support it, so startup does
-not fail on Codex versions without the flag. Callers may opt out when they want
-Codex to enforce normal hook trust prompts even if the bypass flag exists.
+Codex hook trust is a Codex security feature, but Elwood is not useful without
+trusted hooks. Elwood MUST always allow Codex hooks to run. It should use
+`hookTrust="trust-all"` in its session-scoped Codex config and should also use
+Codex's invocation-scoped hook-trust bypass flag when the installed CLI
+advertises it. If Codex still shows an interactive `Hooks need review` prompt,
+Elwood MUST select `Trust all and continue` through PTY input. Prompt detection
+MUST operate on raw PTY output, including ANSI-styled and cursor-addressed
+full-screen output where menu text may arrive as `2.Skip` rather than as
+line-oriented `2. Skip` text.
 
 ## 5. Public TypeScript API
 
@@ -188,6 +195,7 @@ type StartClaudeOptions = {
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];
   readonly settingsOverrides?: ClaudeSettingsOverrides;
+  readonly autoupdate?: boolean;
   readonly hookTimeoutMs?: number;
   readonly metadata?: Readonly<Record<string, unknown>>;
 };
@@ -197,7 +205,8 @@ declare function startClaude(options: StartClaudeOptions): Promise<ClaudeSession
 
 `cwd` is the working directory where Claude should start. `stateDir` overrides
 the default Elwood state directory. `hooks` registers launch-time handlers before
-Claude starts.
+Claude starts. When `autoupdate` is true, Elwood runs `claude update` from the
+user's login shell before spawning Claude.
 
 ### 5.2 Resuming Claude
 
@@ -208,6 +217,7 @@ type ResumeClaudeOptions = {
   readonly stateDir?: string;
   readonly hooks?: ClaudeHookHandlers;
   readonly initialSize?: TerminalSize;
+  readonly autoupdate?: boolean;
   readonly hookTimeoutMs?: number;
 };
 
@@ -229,6 +239,7 @@ interface ClaudeSession {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;
+  readonly terminal: ElwoodTerminal;
 
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): Unsubscribe;
   off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void;
@@ -261,6 +272,17 @@ is busy, Elwood writes the input immediately, matching human terminal behavior.
 
 `sendKeys` is the low-level escape hatch for raw terminal input.
 
+If `initialSize` is omitted, Elwood MUST default the terminal to 189 columns by
+48 rows. Parent apps with a visible terminal should still pass and maintain the
+visual xterm size explicitly.
+
+`terminal` exposes the session's headless xterm.js terminal handle. The handle
+MUST expose the underlying headless xterm instance, current size, and a snapshot
+API with visible lines, joined visible text, and cursor position. Parent apps may
+use this handle for diagnostics or to bridge Elwood's terminal state into their
+own renderer, while `terminal:data` remains the live raw stream for browser
+renderers.
+
 `stop` attempts graceful process termination while preserving Elwood metadata for
 resume. `kill` force-terminates the process. `teardown` removes Elwood-owned
 state for the session and must not remove Claude-owned transcripts, auth, or
@@ -275,9 +297,12 @@ Required event families:
 - `terminal:data`: raw PTY output bytes/string for live rendering.
 - `terminal:exit`: PTY process exit.
 - `status`: session lifecycle/status changes.
+- `warning`: typed non-fatal adapter or environment issues observed during the
+  session, such as Codex MCP startup warnings.
 - `activity`: adapter-neutral live events for common observability, including
   lifecycle changes, user messages, assistant messages, reasoning, tool calls,
-  tool results, web search, notifications, generic hooks, and hook errors.
+  tool results, web search, notifications, warnings, startup prompt automation,
+  generic hooks, and hook errors.
 - `hook`: every Claude hook event after parsing and validation.
 - `codex:transcript`: live, best-effort Codex transcript observations for
   activity that Codex does not expose as hook events.
@@ -289,11 +314,15 @@ adapters. Every activity event includes:
 
 - `elwoodSessionId`
 - `agent`: `claude` or `codex`
-- `source`: `hook`, `transcript`, or `lifecycle`
+- `source`: `hook`, `transcript`, `terminal`, or `lifecycle`
 - `kind`: normalized event kind
 - `label`: short display label
 - optional `text`
 - optional `raw` in-memory source payload
+
+When Elwood detects and answers an interactive startup prompt on behalf of the
+parent app, it MUST emit an activity event with `source: "terminal"`,
+`kind: "startup_prompt"`, a stable label, and text describing the key sent.
 
 Hook-specific events remain the source of truth for event-specific decisions,
 typed control responses, and adapter-specific payloads.
@@ -323,7 +352,7 @@ type StartCodexOptions = {
   readonly sandbox?: "read-only" | "workspace-write" | "danger-full-access";
   readonly approvalPolicy?: "untrusted" | "on-request" | "never";
   readonly configOverrides?: readonly string[];
-  readonly bypassHookTrust?: boolean;
+  readonly autoupdate?: boolean;
   readonly hookTimeoutMs?: number;
   readonly metadata?: Readonly<Record<string, unknown>>;
 };
@@ -335,6 +364,13 @@ declare function startCodex(options: StartCodexOptions): Promise<CodexSession>;
 `--config` after Elwood's generated hook config so callers can intentionally
 override Codex behavior. Callers own TOML correctness for these raw overrides;
 Elwood shell-quotes each override but does not parse or rewrite its TOML value.
+Elwood's generated `hookTrust="trust-all"` override is reserved and applied
+after caller config overrides because trusted hooks are required for Elwood to
+function.
+When `autoupdate` is true, Elwood runs `codex update` from the user's login
+shell before spawning Codex. If Codex later shows an interactive update prompt
+inside the TUI, Elwood skips that prompt through PTY input, including Codex's
+cursor-addressed update screen.
 
 ### 5.6 Resuming Codex
 
@@ -345,6 +381,7 @@ type ResumeCodexOptions = {
   readonly stateDir?: string;
   readonly hooks?: CodexHookHandlers;
   readonly initialSize?: TerminalSize;
+  readonly autoupdate?: boolean;
   readonly hookTimeoutMs?: number;
 };
 
@@ -370,6 +407,41 @@ default behavior must be fail-closed.
 subscription, `sendPrompt`, `sendMessage`, `sendKeys`, `resize`, `stop`, `kill`, and
 `teardown`. Prompt submission and raw input semantics are the same as Claude:
 Elwood writes to the PTY as a human would.
+
+Both `ClaudeSession` and `CodexSession` expose `warnings`, a live in-memory
+snapshot of typed non-fatal issues observed by Elwood. Warnings are also emitted
+as `warning` events and projected into the adapter-neutral `activity` stream.
+The MVP warning contract is:
+
+```ts
+type ElwoodWarningEvent =
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "codex";
+      readonly source: "terminal";
+      readonly code: "mcp_server_not_logged_in";
+      readonly severity: "warning";
+      readonly message: string;
+      readonly mcpServerName: string;
+      readonly recoveryCommand: string;
+      readonly raw: string;
+    }
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "codex";
+      readonly source: "terminal";
+      readonly code: "mcp_startup_incomplete";
+      readonly severity: "warning";
+      readonly message: string;
+      readonly failedServers: readonly string[];
+      readonly recoveryCommands: readonly string[];
+      readonly raw: string;
+    };
+```
+
+Warnings are persisted in Elwood session metadata for resume-time inspection,
+but they are not a durable audit log. Repeated observations of the same warning
+should update the session snapshot without emitting duplicate warning events.
 
 `CodexSession` also emits `codex:transcript` when it can observe new items from
 Codex's own JSONL transcript. Parent apps may use this live-only event to render
@@ -475,8 +547,9 @@ The `Stop` hook is the canonical signal that a Claude turn completed and the
 session is ready for the next prompt. If a `Stop` handler blocks stopping and
 returns feedback to Claude, Elwood must not mark the session ready.
 
-Terminal/TUI parsing may be used for diagnostics or UI hints, but not as the
-source of truth for readiness.
+The headless terminal screen model may be used for startup automation,
+environment warnings, diagnostics, or UI hints, but not as the source of truth
+for readiness.
 
 ## 7. Claude Tool And Permission Policy
 
@@ -573,6 +646,7 @@ parent app restarts. Required fields include:
 - caller-provided metadata;
 - created/updated timestamps;
 - status;
+- warnings;
 - Claude or Codex resume metadata needed internally;
 - generated settings/config path when the adapter uses one;
 - hook bridge routing metadata;
@@ -677,10 +751,12 @@ Initial required error names:
 | `unsupported_platform` | The current OS is not supported by the implementation. |
 | `claude_not_found` | `claude` could not be resolved or spawned. |
 | `claude_start_failed` | Claude started but exited or failed before the session was usable. |
+| `claude_update_failed` | `claude update` failed before session startup. |
 | `claude_not_authenticated` | Startup output or status indicates Claude is not authenticated. |
 | `claude_version_unsupported` | Installed Claude version lacks required features. |
 | `codex_not_found` | `codex` could not be resolved or spawned. |
 | `codex_start_failed` | Codex started but exited or failed before the session was usable. |
+| `codex_update_failed` | `codex update` failed before session startup. |
 | `codex_not_authenticated` | Startup output or status indicates Codex is not authenticated. |
 | `codex_version_unsupported` | Installed Codex version lacks required features. |
 | `state_not_found` | A requested Elwood session record does not exist. |
@@ -712,8 +788,20 @@ The test app must:
 - show a chronological live hook/event log with event name, timestamp, payload
   summary, handler result summary, and whether Claude received no decision,
   allow, deny, block, context, or another response;
+- show rich structured debugger entries for hooks, unified activity events,
+  warnings, hook errors, lifecycle status, terminal exits, and startup/runtime
+  errors;
+- provide an inspector for each debugger entry that exposes the raw structured
+  payload as formatted JSON so developers can validate typed fields without
+  reading terminal escape output;
+- visually delineate debugger entries by event kind and severity with compact
+  labels, color, timestamps, and searchable/filterable categories;
 - support a manual smoke test where a developer can have a conversation with
-  Claude or Codex and visibly confirm hook coverage.
+  Claude or Codex and visibly confirm hook coverage;
+- hard-exit immediately on SIGINT/SIGTERM or a terminal Ctrl-C byte so
+  `bun run dev:web` cannot remain alive after Ctrl-C. The web dev app may put
+  stdin in raw mode because it is a local debugging server and must prioritize
+  reliable termination over interactive shell niceties.
 
 The test app must not become required for library consumers.
 
@@ -763,6 +851,9 @@ Each criterion has:
 | C-API-11 | §5.7 | `CodexSession` exposes the same terminal control and lifecycle methods as `ClaudeSession`. |
 | C-API-12 | §5.4 | Claude and Codex sessions emit adapter-neutral `activity` events for common lifecycle, message, tool, transcript, and hook-error observations. |
 | C-API-13 | §5.3 | Claude and Codex sessions expose `sendMessage` as the adapter-neutral message submission API. |
+| C-API-14 | §5.7 | Sessions expose a typed `warnings` snapshot and emit typed `warning` events for non-fatal environment issues. |
+| C-API-15 | §5.3 | Sessions expose a typed headless xterm terminal handle with snapshot and underlying xterm access. |
+| C-API-16 | §5.1 | Omitted `initialSize` defaults to a 189 column by 48 row terminal. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 
@@ -771,9 +862,10 @@ Each criterion has:
 | C-PTY-01 | §4.1 | Claude runs inside a real PTY rather than a plain pipe subprocess. |
 | C-PTY-02 | §4.2 | The launched process sees environment from the user's normal interactive macOS shell startup. |
 | C-PTY-03 | §4.1 | Raw PTY output is emitted through `terminal:data` for live rendering. |
-| C-PTY-04 | §5.3 | `sendKeys` writes raw bytes/input to the PTY. |
-| C-PTY-05 | §5.3 | `resize({ cols, rows })` resizes the underlying PTY and affects the running TUI. |
+| C-PTY-04 | §5.3 | `sendKeys` writes through the headless xterm input path, which emits PTY input. |
+| C-PTY-05 | §5.3 | `resize({ cols, rows })` resizes both the underlying PTY and the headless terminal model. |
 | C-PTY-06 | §9.4 | Process exit emits a terminal/process exit event and updates session status. |
+| C-PTY-07 | §4.1 | Cursor-addressed PTY output renders into the headless xterm snapshot before startup prompt detection runs. |
 
 #### C-CLAUDE: Claude Startup And Settings (§4, §7, §9)
 
@@ -785,6 +877,7 @@ Each criterion has:
 | C-CLAUDE-04 | §9.2 | Startup checks Claude Code version and fails with `claude_version_unsupported` when below the configured minimum. |
 | C-CLAUDE-05 | §10 | Missing `claude` fails with `claude_not_found` and a useful message. |
 | C-CLAUDE-06 | §10 | An immediately failing or unusable Claude process fails with `claude_start_failed` or a more specific typed error. |
+| C-CLAUDE-07 | §5.1 | `autoupdate: true` runs `claude update` before spawning Claude. |
 
 #### C-CODEX: Codex Startup And Config (§4, §7A, §9)
 
@@ -795,8 +888,10 @@ Each criterion has:
 | C-CODEX-03 | §5.5 | `model`, `profile`, `sandbox`, `approvalPolicy`, and `configOverrides` options are reflected in Codex launch policy. |
 | C-CODEX-04 | §9.2 | Startup checks Codex CLI version and fails with `codex_version_unsupported` when below the configured minimum. |
 | C-CODEX-05 | §10 | Missing `codex` fails with `codex_not_found` and a useful message. |
-| C-CODEX-06 | §4.4 | Generated Codex hook config uses Codex's hook-trust bypass flag only when supported, and callers can opt out. |
+| C-CODEX-06 | §4.4 | Codex hooks are always trusted by `hookTrust="trust-all"`, bypass flag when supported, or answering the TUI trust prompt. |
 | C-CODEX-07 | §5.6 | `resumeCodex` fails explicitly when Elwood has not persisted a Codex resume id. |
+| C-CODEX-08 | §5.5 | `autoupdate: true` runs `codex update` before spawning Codex. |
+| C-CODEX-09 | §5.7 | Codex MCP startup warnings are parsed from terminal output into typed warning events with server names and recovery commands. |
 
 #### C-HOOK: Hook Bridge Coverage And Semantics (§6)
 
@@ -880,6 +975,9 @@ Each criterion has:
 | C-APP-05 | §11 | The test app shows a chronological live hook/event log. |
 | C-APP-06 | §11 | The event log summarizes handler result semantics: no decision, allow, deny, block, context, or error. |
 | C-APP-07 | §11 | The test app can resize the terminal and the Claude TUI responds. |
+| C-APP-08 | §11 | The web dev app hard-exits on SIGINT/SIGTERM and on stdin Ctrl-C bytes, including terminal modes where Ctrl-C is not delivered as SIGINT. |
+| C-APP-09 | §11 | The web dev app emits structured debugger entries for hooks, activity, warnings, hook errors, lifecycle status, terminal exits, and runtime errors. |
+| C-APP-10 | §11 | The web dev app renders filterable, visually delineated debugger rows with a formatted JSON detail inspector. |
 
 ## 14. Open Implementation Notes
 

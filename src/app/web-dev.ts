@@ -17,11 +17,22 @@ import {
 } from "./agent-runtime.ts";
 import { clientScript, renderHtml } from "./web-assets.ts";
 import {
+  activityEvent,
+  hookErrorEvent,
+  hookEvent,
+  runtimeErrorEvent,
+  sessionEvent,
+  statusEvent,
+  terminalExitEvent,
+  warningEvent,
+} from "./web-events.ts";
+import {
   type ClientMessage,
   parseClientMessage,
   type ServerMessage,
   sizeFrom,
 } from "./web-messages.ts";
+import { installHardShutdown } from "./web-shutdown.ts";
 
 const require = createRequire(import.meta.url);
 const appPort = Number(process.env["ELWOOD_DEV_PORT"] ?? 4317);
@@ -30,7 +41,7 @@ let session: SharedSession | null = null;
 const server = createServer(handleHttp);
 const sockets = new Set<WebSocket>();
 const wss = new WebSocketServer({ server });
-
+installHardShutdown();
 wss.on("connection", (socket) => {
   sockets.add(socket);
   socket.on("close", () => sockets.delete(socket));
@@ -81,16 +92,16 @@ async function handleClientMessage(socket: WebSocket, raw: string): Promise<void
     } else if (message.type === "resize") {
       await currentSession().resize(sizeFrom(message));
     } else if (message.type === "kill") {
-      await currentSession().kill();
+      const active = currentSession();
+      await active.kill();
+      if (session === active) session = null;
     } else {
       await currentSession().teardown();
       session = null;
     }
   } catch (error) {
-    sendSocket(socket, {
-      type: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
+    const message = error instanceof Error ? error.message : String(error);
+    sendSocket(socket, { type: "event", entry: runtimeErrorEvent(message, errorPayload(error)) });
   }
 }
 
@@ -114,29 +125,39 @@ async function startOrResume(
     cwd: session.cwd,
     status: session.status,
   });
+  broadcast({
+    type: "event",
+    entry: sessionEvent({
+      id: session.elwoodSessionId,
+      cwd: session.cwd,
+      status: session.status,
+    }),
+  });
 }
 
 function wireSession(active: SharedSession): void {
   active.on("terminal:data", (event) => broadcast({ type: "terminal", data: event.data }));
   active.on("terminal:exit", (event) =>
-    broadcast({ type: "log", level: "info", text: `terminal exit ${event.exitCode}` }),
+    broadcast({ type: "event", entry: terminalExitEvent(event) }),
   );
-  active.on("status", (event) => broadcast({ type: "status", status: event.status }));
-  active.on("activity", (event) =>
-    broadcast({ type: "log", level: "info", text: `activity ${event.kind} ${event.label}` }),
-  );
+  active.on("status", (event) => {
+    broadcast({ type: "status", status: event.status });
+    broadcast({ type: "event", entry: statusEvent(event) });
+  });
+  active.on("activity", (event) => broadcast({ type: "event", entry: activityEvent(event) }));
+  active.on("warning", (event) => broadcast({ type: "event", entry: warningEvent(event) }));
+  active.on("hook", (event) => broadcast({ type: "event", entry: hookEvent(event) }));
   active.on("hookError", (event) =>
     broadcast({
-      type: "log",
-      level: "error",
-      text: `hookError ${event.hookEventName}: ${event.category} ${event.message}`,
+      type: "event",
+      entry: hookErrorEvent(event),
     }),
   );
 }
 
 function loggingHooks(agent: AgentKind) {
   return createLiveHookHandlers(agent, {
-    write: (text) => broadcast({ type: "log", level: "info", text: text.trimEnd() }),
+    write: () => undefined,
   });
 }
 
@@ -155,6 +176,11 @@ function sendSocket(socket: WebSocket, message: ServerMessage): void {
   if (socket.readyState === socket.OPEN) {
     socket.send(JSON.stringify(message));
   }
+}
+
+function errorPayload(error: unknown): Readonly<Record<string, unknown>> {
+  if (!(error instanceof Error)) return { value: String(error) };
+  return { name: error.name, message: error.message, stack: error.stack };
 }
 
 function sendFile(response: ServerResponse, contentType: string, path: string): void {

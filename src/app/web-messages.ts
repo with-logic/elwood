@@ -22,9 +22,34 @@ export type ClientMessage =
   | { readonly type: "kill" }
   | { readonly type: "teardown" };
 
+export type DebugEventLevel = "info" | "success" | "warn" | "error";
+export type DebugEventKind =
+  | "session"
+  | "status"
+  | "hook"
+  | "activity"
+  | "warning"
+  | "hookError"
+  | "terminal"
+  | "error"
+  | "log";
+
+export type DebugEventEntry = {
+  readonly id: string;
+  readonly timestamp: string;
+  readonly kind: DebugEventKind;
+  readonly level: DebugEventLevel;
+  readonly badge: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly tags?: readonly string[];
+  readonly raw?: unknown;
+};
+
 export type ServerMessage =
   | { readonly type: "terminal"; readonly data: string }
-  | { readonly type: "log"; readonly level: "info" | "error"; readonly text: string }
+  | { readonly type: "log"; readonly level: "info" | "warn" | "error"; readonly text: string }
+  | { readonly type: "event"; readonly entry: DebugEventEntry }
   | { readonly type: "session"; readonly id: string; readonly cwd: string; readonly status: string }
   | { readonly type: "status"; readonly status: string }
   | { readonly type: "error"; readonly message: string };

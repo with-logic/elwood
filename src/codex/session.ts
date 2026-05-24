@@ -1,18 +1,13 @@
-/**
- * CodexSession implementation coordinating PTY, state, and hook dispatch.
- * Implements PRD §5.5, §5.6, §5.7, §7A, §8, and §9.
- */
+/** CodexSession implementation coordinating PTY, state, and hook dispatch. Implements PRD §5.5, §5.6, §5.7, §7A, §8, and §9. */
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { bridgeScriptSource } from "../bridge/script.ts";
 import { HookBridgeServer } from "../bridge/server.ts";
 import * as activity from "../core/activity.ts";
+import { activityFromStartupPrompt } from "../core/activity.ts";
 import { elwoodError } from "../core/errors.ts";
 import type { TerminalSize } from "../core/types.ts";
 import { TypedEmitter } from "../events/emitter.ts";
-import type { PtyProcess } from "../pty/types.ts";
-import { currentPtyFactory } from "../runtime/seams.ts";
 import {
   createSessionRecord,
   defaultStateDir,
@@ -21,24 +16,25 @@ import {
   type SessionRecord,
   writeSessionRecord,
 } from "../state/store.ts";
-import { buildCodexShellCommand } from "./command.ts";
+import { attachPtyTerminal } from "../terminal/headless.ts";
 import { isCodexBlock, requestCodexHook } from "./hook-dispatch.ts";
 import type { CodexHookEvent } from "./hooks.ts";
 import * as preflight from "./preflight.ts";
+import { spawnCodexPty } from "./pty.ts";
 import { serializeCodexHookResult } from "./serialize.ts";
+import { registerInitialHooks } from "./session-hooks.ts";
 import { type CodexHookBridge, CodexSessionImpl } from "./session-instance.ts";
 import type {
-  CodexEventHandler,
   CodexEventMap,
-  CodexEventName,
   CodexSession,
   ResumeCodexOptions,
   StartCodexOptions,
 } from "./session-types.ts";
+import { CodexStartupPromptResponder } from "./startup-prompts.ts";
 import { CodexTranscriptWatcher } from "./transcript.ts";
 import { isCodexHookEvent } from "./validate.ts";
 
-const defaultSize: TerminalSize = { cols: 120, rows: 40 };
+const defaultSize: TerminalSize = { cols: 189, rows: 48 };
 
 type HookBridgeFactory = (
   socketPath: string,
@@ -62,7 +58,7 @@ export function resetCodexSessionSeamsForTests(): void {
 }
 
 export async function startCodex(options: StartCodexOptions): Promise<CodexSession> {
-  preflight.preflightCodex(options.strictVersionCheck ?? false);
+  preflight.preflightCodex(options.strictVersionCheck ?? false, options.autoupdate ?? false);
   const stateDir = options.stateDir ?? defaultStateDir(options.cwd);
   prepareStateDir(stateDir);
   const record = createSessionRecord({
@@ -87,6 +83,7 @@ export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSes
   if (!record.codex.resumeId) {
     throw elwoodError("resume_unavailable", "Cannot resume Codex without a Codex session id.");
   }
+  preflight.preflightCodex(options.strictVersionCheck ?? false, options.autoupdate ?? false);
   const size = options.initialSize ?? record.terminalSize;
   return await startFromRecord(record, {
     cwd: options.cwd ?? record.cwd,
@@ -104,7 +101,6 @@ async function startFromRecord(
   record: SessionRecord,
   options: StartCodexOptions,
 ): Promise<CodexSessionImpl> {
-  preflight.preflightCodex(options.strictVersionCheck ?? false);
   mkdirSync(record.paths.sessionDir, { recursive: true });
   const token = randomUUID();
   writeFileSync(record.paths.bridgeScriptPath, bridgeScriptSource(record.paths.socketPath, token));
@@ -133,10 +129,24 @@ async function startFromRecord(
     });
   }
   const pty = spawnCodexPty(record, options);
-  session = new CodexSessionImpl(record, pty, bridge, emitter, transcriptWatcher);
-  pty.onData((data) =>
-    emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data }),
+  const promptResponder = new CodexStartupPromptResponder(record.elwoodSessionId);
+  const terminal = attachPtyTerminal(
+    options.initialSize ?? record.terminalSize ?? defaultSize,
+    pty,
+    (data, renderedTerminal) => {
+      const result = promptResponder.handle(renderedTerminal.snapshot().text, (input) =>
+        renderedTerminal.sendInput(input),
+      );
+      session?.recordWarnings(result.warnings);
+      for (const automation of result.automations)
+        emitter.emit(
+          "activity",
+          activityFromStartupPrompt(record.elwoodSessionId, automation.prompt, automation.input),
+        );
+      emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
+    },
   );
+  session = new CodexSessionImpl(record, pty, terminal, bridge, emitter, transcriptWatcher);
   pty.onExit((exit) => {
     emitter.emit("terminal:exit", { elwoodSessionId: record.elwoodSessionId, ...exit });
     emitter.emit(
@@ -169,32 +179,4 @@ async function dispatchHook(
   );
   if (event.hook_event_name === "Stop" && !isCodexBlock(result)) session?.markReady();
   return serializeCodexHookResult(event.hook_event_name, result);
-}
-
-function spawnCodexPty(record: SessionRecord, options: StartCodexOptions): PtyProcess {
-  const shell = process.env["SHELL"] ?? "/bin/zsh";
-  const capabilities = preflight.detectCodexCliCapabilities();
-  try {
-    return currentPtyFactory()({
-      command: shell,
-      args: ["-l", "-i", "-c", buildCodexShellCommand(record, options, capabilities)],
-      cwd: resolve(options.cwd),
-      env: { ...process.env, ELWOOD_SESSION_ID: record.elwoodSessionId },
-      size: options.initialSize ?? record.terminalSize ?? defaultSize,
-    });
-  } catch (error) {
-    throw elwoodError("pty_start_failed", "Could not start Codex PTY.", {
-      cause: error instanceof Error ? error.message : String(error),
-    });
-  }
-}
-
-function registerInitialHooks(
-  emitter: TypedEmitter<CodexEventMap>,
-  handlers: StartCodexOptions["hooks"],
-): void {
-  if (!handlers) return;
-  for (const [name, handler] of Object.entries(handlers)) {
-    emitter.listen(`hook:${name}` as CodexEventName, handler as CodexEventHandler<CodexEventName>);
-  }
 }

@@ -4,7 +4,7 @@
  */
 
 import { existsSync, unlinkSync } from "node:fs";
-import { createServer, type Server } from "node:net";
+import { createServer, type Server, type Socket } from "node:net";
 import type { HookErrorEvent } from "../core/types.ts";
 import type { BridgeProcessResult } from "./types.ts";
 import { isClaudeHookEvent } from "./validate.ts";
@@ -20,6 +20,7 @@ export class HookBridgeServer {
   private readonly onError: HookErrorSink;
   private readonly isHookInput: HookInputValidator;
   private server: Server | null = null;
+  private readonly sockets = new Set<Socket>();
 
   constructor(
     socketPath: string,
@@ -38,8 +39,10 @@ export class HookBridgeServer {
   async start(): Promise<void> {
     if (existsSync(this.socketPath)) unlinkSync(this.socketPath);
     this.server = createServer((socket) => {
+      this.sockets.add(socket);
       let data = "";
       let responded = false;
+      socket.on("close", () => this.sockets.delete(socket));
       const respond = async () => {
         if (responded) return;
         responded = true;
@@ -76,7 +79,9 @@ export class HookBridgeServer {
     const server = this.server;
     this.server = null;
     if (!server) return;
+    for (const socket of this.sockets) socket.destroy();
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    this.sockets.clear();
     if (existsSync(this.socketPath)) unlinkSync(this.socketPath);
   }
 

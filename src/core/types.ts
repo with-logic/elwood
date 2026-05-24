@@ -12,6 +12,7 @@ import type {
   ClaudeHookResultFor,
 } from "../claude/hooks.ts";
 import type { CodexHookEventName } from "../codex/hook-names.ts";
+import type { ElwoodTerminal } from "../terminal/headless.ts";
 import type { ElwoodActivityEvent } from "./activity.ts";
 
 export type TerminalSize = {
@@ -49,6 +50,7 @@ export type StartClaudeOptions = {
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];
   readonly settingsOverrides?: ClaudeSettingsOverrides;
+  readonly autoupdate?: boolean;
   readonly hookTimeoutMs?: number;
   readonly metadata?: Readonly<Record<string, unknown>>;
   readonly strictVersionCheck?: boolean;
@@ -60,6 +62,7 @@ export type ResumeClaudeOptions = {
   readonly stateDir?: string;
   readonly hooks?: ClaudeHookHandlers;
   readonly initialSize?: TerminalSize;
+  readonly autoupdate?: boolean;
   readonly hookTimeoutMs?: number;
   readonly strictVersionCheck?: boolean;
 };
@@ -77,6 +80,30 @@ export type HookErrorEvent = {
   readonly timeoutMs?: number;
 };
 
+export type ElwoodWarningEvent =
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "codex";
+      readonly source: "terminal";
+      readonly code: "mcp_server_not_logged_in";
+      readonly severity: "warning";
+      readonly message: string;
+      readonly mcpServerName: string;
+      readonly recoveryCommand: string;
+      readonly raw: string;
+    }
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "codex";
+      readonly source: "terminal";
+      readonly code: "mcp_startup_incomplete";
+      readonly severity: "warning";
+      readonly message: string;
+      readonly failedServers: readonly string[];
+      readonly recoveryCommands: readonly string[];
+      readonly raw: string;
+    };
+
 export type ElwoodEventMap = {
   readonly "terminal:data": { readonly elwoodSessionId: string; readonly data: string };
   readonly "terminal:exit": {
@@ -89,6 +116,7 @@ export type ElwoodEventMap = {
     readonly status: ElwoodSessionStatus;
   };
   readonly activity: ElwoodActivityEvent;
+  readonly warning: ElwoodWarningEvent;
   readonly hook: ClaudeHookEvent;
   readonly hookError: HookErrorEvent;
 } & {
@@ -115,6 +143,8 @@ export interface ClaudeSession {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;
+  readonly warnings: readonly ElwoodWarningEvent[];
+  readonly terminal: ElwoodTerminal;
 
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): Unsubscribe;
   off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void;

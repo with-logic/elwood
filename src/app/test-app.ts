@@ -54,7 +54,7 @@ export function parseTestAppArgs(argv: readonly string[]): TestAppArgs {
   const cwd = readOption(argv, "--cwd") ?? process.cwd();
   const stateDir = readOption(argv, "--state-dir");
   const resumeSessionId = readOption(argv, "--resume");
-  const size = parseSize(readOption(argv, "--size") ?? "120x40");
+  const size = parseSize(readOption(argv, "--size") ?? "189x48");
   return {
     agent,
     cwd,
@@ -73,6 +73,7 @@ function wireSessionToTestApp(session: SharedSession, io: TestAppIo): void {
   session.on("activity", (event) =>
     io.stderr.write(formatEventLog("activity", event.kind, event.label)),
   );
+  session.on("warning", (event) => io.stderr.write(formatEventLog("warning", event.code)));
   session.on("hookError", (event) =>
     io.stderr.write(formatEventLog("hookError", event.hookEventName, event.category)),
   );
@@ -105,7 +106,7 @@ function parseResizeCommand(input: string): TerminalSize | null {
 
 function parseSize(value: string): TerminalSize {
   const match = /^(\d+)x(\d+)$/.exec(value);
-  if (!match) return { cols: 120, rows: 40 };
+  if (!match) return { cols: 189, rows: 48 };
   return { cols: Number(match[1]), rows: Number(match[2]) };
 }
 

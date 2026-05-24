@@ -8,10 +8,11 @@ import { currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 
 export const minimumClaudeVersion = "2.1.144";
 
-export function preflightClaude(strictVersionCheck: boolean): void {
+export function preflightClaude(strictVersionCheck: boolean, autoupdate = false): void {
   if (currentPlatform() !== "darwin") {
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
+  if (autoupdate) runClaudeUpdate();
   const result = currentCommandRunner()("claude", ["--version"]);
   if (result.error?.code === "ENOENT") {
     throw elwoodError("claude_not_found", "`claude` was not found on PATH.");
@@ -37,6 +38,16 @@ export function preflightClaude(strictVersionCheck: boolean): void {
         required: minimumClaudeVersion,
       },
     );
+  }
+}
+
+function runClaudeUpdate(): void {
+  const shell = process.env["SHELL"] ?? "/bin/zsh";
+  const result = currentCommandRunner()(shell, ["-l", "-i", "-c", "claude update"]);
+  if (result.status !== 0) {
+    throw elwoodError("claude_update_failed", "`claude update` failed.", {
+      stderr: result.stderr,
+    });
   }
 }
 

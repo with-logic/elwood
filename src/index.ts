@@ -93,6 +93,7 @@ export type {
   ElwoodEventMap,
   ElwoodEventName,
   ElwoodSessionStatus,
+  ElwoodWarningEvent,
   HookErrorEvent,
   ResumeClaudeOptions,
   StartClaudeOptions,
@@ -105,3 +106,4 @@ export {
   setPlatformForTests,
   setPtyFactoryForTests,
 } from "./runtime/seams.ts";
+export type { ElwoodTerminal, TerminalSnapshot, XtermTerminal } from "./terminal/headless.ts";

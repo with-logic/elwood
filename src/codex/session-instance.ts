@@ -3,18 +3,20 @@
  * Implements PRD §5.7, §7A, §8, and §9.
  */
 
-import { activityFromStatus } from "../core/activity.ts";
+import { activityFromStatus, activityFromWarning } from "../core/activity.ts";
 import { elwoodError } from "../core/errors.ts";
-import type { ElwoodSessionStatus, TerminalSize } from "../core/types.ts";
+import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import {
+  appendSessionWarning,
   removeSessionDir,
   type SessionRecord,
   updateSessionResumeId,
   updateSessionStatus,
   writeSessionRecord,
 } from "../state/store.ts";
+import type { ElwoodTerminal } from "../terminal/headless.ts";
 import type {
   CodexEventHandler,
   CodexEventMap,
@@ -33,6 +35,7 @@ const terminalStatuses = new Set<ElwoodSessionStatus>(["stopped", "killed", "tor
 export class CodexSessionImpl implements CodexSession {
   private record: SessionRecord;
   private readonly pty: PtyProcess;
+  readonly terminal: ElwoodTerminal;
   private readonly bridge: CodexHookBridge;
   private readonly emitter: TypedEmitter<CodexEventMap>;
   private readonly transcriptWatcher: CodexTranscriptWatcher | undefined;
@@ -41,12 +44,14 @@ export class CodexSessionImpl implements CodexSession {
   constructor(
     record: SessionRecord,
     pty: PtyProcess,
+    terminal: ElwoodTerminal,
     bridge: CodexHookBridge,
     emitter: TypedEmitter<CodexEventMap>,
     transcriptWatcher?: CodexTranscriptWatcher,
   ) {
     this.record = record;
     this.pty = pty;
+    this.terminal = terminal;
     this.bridge = bridge;
     this.emitter = emitter;
     this.transcriptWatcher = transcriptWatcher;
@@ -64,6 +69,10 @@ export class CodexSessionImpl implements CodexSession {
     return this.currentStatus;
   }
 
+  get warnings(): readonly ElwoodWarningEvent[] {
+    return this.record.warnings;
+  }
+
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {
     return this.emitter.on(event, handler);
   }
@@ -74,7 +83,7 @@ export class CodexSessionImpl implements CodexSession {
 
   sendPrompt(prompt: string): Promise<void> {
     this.ensureRunning();
-    this.pty.write(`\u001b[200~${prompt}\u001b[201~\r`);
+    this.terminal.sendInput(`\u001b[200~${prompt}\u001b[201~\r`);
     return Promise.resolve();
   }
 
@@ -84,12 +93,13 @@ export class CodexSessionImpl implements CodexSession {
 
   sendKeys(input: string | Uint8Array): Promise<void> {
     this.ensureRunning();
-    this.pty.write(input);
+    this.terminal.sendInput(input);
     return Promise.resolve();
   }
 
   resize(size: TerminalSize): Promise<void> {
     this.ensureRunning();
+    this.terminal.resize(size);
     this.pty.resize(size);
     this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.currentStatus));
     return Promise.resolve();
@@ -100,6 +110,7 @@ export class CodexSessionImpl implements CodexSession {
     await this.bridge.stop();
     this.transcriptWatcher?.flush();
     this.transcriptWatcher?.stop();
+    this.terminal.dispose();
     this.setStatus("stopped");
   }
 
@@ -108,6 +119,7 @@ export class CodexSessionImpl implements CodexSession {
     await this.bridge.stop();
     this.transcriptWatcher?.flush();
     this.transcriptWatcher?.stop();
+    this.terminal.dispose();
     this.setStatus("killed");
   }
 
@@ -115,6 +127,7 @@ export class CodexSessionImpl implements CodexSession {
     await this.bridge.stop();
     this.transcriptWatcher?.flush();
     this.transcriptWatcher?.stop();
+    this.terminal.dispose();
     removeSessionDir(this.record);
     this.currentStatus = "torn_down";
     this.emitter.emit("status", { elwoodSessionId: this.elwoodSessionId, status: "torn_down" });
@@ -139,6 +152,17 @@ export class CodexSessionImpl implements CodexSession {
 
   observeTranscript(path?: string | null): void {
     if (path) this.transcriptWatcher?.observe(path);
+  }
+
+  recordWarnings(warnings: readonly ElwoodWarningEvent[]): void {
+    for (const warning of warnings) {
+      const updated = appendSessionWarning(this.record, warning);
+      if (updated !== this.record) {
+        this.persist(updated);
+        this.emitter.emit("warning", warning);
+        this.emitter.emit("activity", activityFromWarning(warning));
+      }
+    }
   }
 
   private ensureRunning(): void {
