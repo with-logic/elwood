@@ -3,13 +3,8 @@
  * Implements PRD §6.4.
  */
 
+import type { BridgeProcessResult } from "../bridge/types.ts";
 import type { ClaudeHookEventName, ClaudeHookResult } from "./hooks.ts";
-
-export type BridgeProcessResult = {
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-};
 
 export function serializeHookResult(
   eventName: ClaudeHookEventName,

@@ -1,7 +1,8 @@
 # Elwood
 
-Elwood is a spec-driven TypeScript project. `PRD.md` is the source of truth for
-observable behavior; implementation and tests derive from it.
+Elwood is a spec-driven TypeScript library for wrapping interactive agentic CLI
+tools in real PTY sessions. `PRD.md` is the source of truth for observable
+behavior; implementation and tests derive from it.
 
 ## Development
 
@@ -17,16 +18,40 @@ tests with 100% line and function coverage.
 
 ```sh
 bun run dev:app -- --cwd /path/to/project
+bun run dev:app -- --agent codex --cwd /path/to/project
 bun run dev:app -- --cwd /path/to/project --resume <elwoodSessionId>
 bun run dev:web
 ```
 
-The test app streams Claude's live PTY output to stdout, logs hook/status/error
-events to stderr, and sends stdin chunks as prompts. Use `/resize 120x40` on
-stdin to resize the underlying PTY during a run.
+The terminal test app streams the selected agent's live PTY output to stdout,
+logs hook/status/error events to stderr, and sends stdin chunks as prompts. Use
+`/resize 120x40` on stdin to resize the underlying PTY during a run. Supported
+agents are `claude` and `codex`; Claude remains the default.
 
 `dev:web` starts a browser-based app at `http://localhost:4317` with xterm.js
-rendering Claude on the left and Elwood hook/status logs on the right.
+rendering the selected agent on the left and Elwood hook/status logs on the
+right.
+
+## Unified Agent Loop
+
+Claude and Codex expose the same basic control shape for parent apps that want
+to send messages and render a live event log.
+
+```ts
+import { startCodex } from "elwood";
+
+const session = await startCodex({ cwd: process.cwd() });
+
+session.on("activity", (event) => {
+  console.log(event.agent, event.kind, event.label, event.text ?? "");
+});
+
+await session.sendMessage("Search the web and summarize what changed.");
+```
+
+Use adapter-specific hook handlers when the parent app needs to approve, deny,
+block, or otherwise control a specific agent hook. Use `activity` for the common
+live observation stream.
 
 ## Working Model
 

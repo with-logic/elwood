@@ -11,6 +11,7 @@ import type {
   ClaudeHookEventFor,
   ClaudeHookHandlers,
   ClaudeSessionCron,
+  CodexHookHandlers,
 } from "../../src/index.ts";
 
 describe("public hook types", () => {
@@ -56,6 +57,26 @@ describe("public hook types", () => {
 
     expect(typeof handlers.PreToolUse).toBe("function");
     expect(unknownTool.tool_input.raw).toBe(true);
+  });
+
+  test("C-HOOK-14 Codex known tool inputs narrow by tool name", () => {
+    const handlers = {
+      PreToolUse: (event) => {
+        if (event.tool_name === "Bash") {
+          const command: string = event.tool_input.command;
+          return { permissionDecision: "deny", permissionDecisionReason: command };
+        }
+        if (event.tool_name === "apply_patch") {
+          const command: string = event.tool_input.command;
+          return { permissionDecision: "allow", updatedInput: { command } };
+        }
+        // @ts-expect-error Unknown Codex tools do not guarantee command input.
+        const command: string = event.tool_input.command;
+        return command ? { additionalContext: command } : undefined;
+      },
+    } satisfies CodexHookHandlers;
+
+    expect(typeof handlers.PreToolUse).toBe("function");
   });
 
   test("C-HOOK-08 documented lifecycle payload fields are typed for consumers", () => {

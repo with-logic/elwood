@@ -32,6 +32,10 @@ export function renderHtml(cwd: string): string {
       <div id="terminal"></div>
       <aside>
         <form id="start">
+          <select name="agent">
+            <option value="claude">Claude</option>
+            <option value="codex">Codex</option>
+          </select>
           <input name="cwd" value="${cwd}" />
           <input name="resume" placeholder="resume elwoodSessionId" />
           <div class="row">
@@ -86,6 +90,7 @@ document.getElementById("start").addEventListener("submit", (event) => {
   const form = new FormData(event.currentTarget);
   send({
     type: "start",
+    agent: String(form.get("agent") || "claude"),
     cwd: String(form.get("cwd") || "."),
     resumeSessionId: String(form.get("resume") || "") || undefined,
     cols: terminal.cols,

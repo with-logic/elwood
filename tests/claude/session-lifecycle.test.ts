@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { resumeClaude, startClaude } from "../../src/index.ts";
+import { createSessionRecord, prepareStateDir, writeSessionRecord } from "../../src/state/store.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -22,6 +23,22 @@ describe("ClaudeSession lifecycle", () => {
     expect(resumed.elwoodSessionId).toBe(session.elwoodSessionId);
     expect(ptys).toHaveLength(2);
     expect(ptys[1]!.size).toEqual({ cols: 44, rows: 12 });
+  });
+
+  test("C-STATE-10 rejects Codex records during Claude resume", async () => {
+    const cwd = tempDir();
+    const stateDir = join(cwd, ".elwood");
+    prepareStateDir(stateDir);
+    const record = createSessionRecord({
+      stateDir,
+      cwd,
+      id: "codex-record",
+      adapter: "codex",
+    });
+    writeSessionRecord(record);
+    await expect(
+      resumeClaude({ cwd, elwoodSessionId: record.elwoodSessionId }),
+    ).rejects.toMatchObject({ code: "adapter_mismatch" });
   });
 
   test("C-STATE-05 C-STATE-06 keeps prompts, terminal data, and hook payloads live-only", async () => {

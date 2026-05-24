@@ -3,9 +3,9 @@
  * Implements PRD §6 and §10.
  */
 
-import type { ClaudeHookEvent } from "../index.ts";
+import type { AgentHookEvent } from "./agent-runtime.ts";
 
-export function summarizeHookEvent(event: ClaudeHookEvent): string {
+export function summarizeHookEvent(event: AgentHookEvent): string {
   if (event.hook_event_name === "Stop" && event.last_assistant_message) {
     return `hook Stop: ${truncate(event.last_assistant_message)}`;
   }
@@ -19,7 +19,10 @@ export function summarizeHookEvent(event: ClaudeHookEvent): string {
     return `hook Notification ${event.notification_type}: ${truncate(event.message)}`;
   }
   if (event.hook_event_name === "PostCompact") {
-    return `hook PostCompact: ${truncate(event.compact_summary)}`;
+    // Claude carries compact_summary; Codex carries trigger for the same hook name.
+    return "compact_summary" in event
+      ? `hook PostCompact: ${truncate(event.compact_summary)}`
+      : `hook PostCompact: ${truncate(event.trigger)}`;
   }
   return `hook ${event.hook_event_name}`;
 }

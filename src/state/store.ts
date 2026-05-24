@@ -11,13 +11,14 @@ import type { ElwoodSessionStatus, TerminalSize } from "../core/types.ts";
 export type SessionRecord = {
   readonly schemaVersion: 1;
   readonly elwoodSessionId: string;
-  readonly adapter: "claude";
+  readonly adapter: "claude" | "codex";
   readonly cwd: string;
   readonly metadata: Readonly<Record<string, unknown>>;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly status: ElwoodSessionStatus;
   readonly claude: { readonly resumeId?: string; readonly name?: string };
+  readonly codex: { readonly resumeId?: string; readonly name?: string };
   readonly paths: {
     readonly sessionDir: string;
     readonly settingsPath: string;
@@ -39,25 +40,28 @@ export function createSessionRecord(input: {
   readonly stateDir: string;
   readonly cwd: string;
   readonly id: string;
+  readonly adapter?: "claude" | "codex";
   readonly metadata?: Readonly<Record<string, unknown>>;
   readonly size?: TerminalSize;
   readonly name?: string;
 }): SessionRecord {
   const dir = sessionDir(input.stateDir, input.id);
   const now = new Date().toISOString();
+  const adapter = input.adapter ?? "claude";
   return {
     schemaVersion: 1,
     elwoodSessionId: input.id,
-    adapter: "claude",
+    adapter,
     cwd: resolve(input.cwd),
     metadata: input.metadata ?? {},
     createdAt: now,
     updatedAt: now,
     status: "starting",
-    claude: input.name === undefined ? {} : { name: input.name },
+    claude: adapter === "claude" && input.name !== undefined ? { name: input.name } : {},
+    codex: adapter === "codex" && input.name !== undefined ? { name: input.name } : {},
     paths: {
       sessionDir: dir,
-      settingsPath: join(dir, "claude-settings.json"),
+      settingsPath: join(dir, `${adapter}-settings.json`),
       bridgeScriptPath: join(dir, "hook-bridge.mjs"),
       socketPath: join(dir, "hook.sock"),
     },
@@ -100,6 +104,18 @@ export function updateSessionStatus(
   status: ElwoodSessionStatus,
 ): SessionRecord {
   return { ...record, status, updatedAt: new Date().toISOString() };
+}
+
+export function updateSessionResumeId(
+  record: SessionRecord,
+  adapter: "claude" | "codex",
+  resumeId: string,
+): SessionRecord {
+  return {
+    ...record,
+    [adapter]: { ...record[adapter], resumeId },
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 export function removeSessionDir(record: SessionRecord): void {

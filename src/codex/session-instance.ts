@@ -1,43 +1,55 @@
 /**
- * In-memory Claude session object exposed to callers.
- * Implements PRD §4.1, §5, §6, §7, and §8.
+ * In-memory Codex session object exposed to callers.
+ * Implements PRD §5.7, §7A, §8, and §9.
  */
 
 import { activityFromStatus } from "../core/activity.ts";
 import { elwoodError } from "../core/errors.ts";
-import type {
-  ClaudeSession,
-  ElwoodEventHandler,
-  ElwoodEventName,
-  ElwoodSessionStatus,
-  TerminalSize,
-} from "../core/types.ts";
+import type { ElwoodSessionStatus, TerminalSize } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import {
   removeSessionDir,
   type SessionRecord,
+  updateSessionResumeId,
   updateSessionStatus,
   writeSessionRecord,
 } from "../state/store.ts";
+import type {
+  CodexEventHandler,
+  CodexEventMap,
+  CodexEventName,
+  CodexSession,
+} from "./session-types.ts";
+import type { CodexTranscriptWatcher } from "./transcript.ts";
 
-export type HookBridge = {
+export type CodexHookBridge = {
   readonly start: () => Promise<void>;
   readonly stop: () => Promise<void>;
 };
 
-export class ClaudeSessionImpl implements ClaudeSession {
+const terminalStatuses = new Set<ElwoodSessionStatus>(["stopped", "killed", "torn_down"]);
+
+export class CodexSessionImpl implements CodexSession {
   private record: SessionRecord;
   private readonly pty: PtyProcess;
-  private readonly bridge: HookBridge;
-  private readonly emitter: TypedEmitter;
+  private readonly bridge: CodexHookBridge;
+  private readonly emitter: TypedEmitter<CodexEventMap>;
+  private readonly transcriptWatcher: CodexTranscriptWatcher | undefined;
   private currentStatus: ElwoodSessionStatus = "starting";
 
-  constructor(record: SessionRecord, pty: PtyProcess, bridge: HookBridge, emitter: TypedEmitter) {
+  constructor(
+    record: SessionRecord,
+    pty: PtyProcess,
+    bridge: CodexHookBridge,
+    emitter: TypedEmitter<CodexEventMap>,
+    transcriptWatcher?: CodexTranscriptWatcher,
+  ) {
     this.record = record;
     this.pty = pty;
     this.bridge = bridge;
     this.emitter = emitter;
+    this.transcriptWatcher = transcriptWatcher;
   }
 
   get elwoodSessionId(): string {
@@ -52,11 +64,11 @@ export class ClaudeSessionImpl implements ClaudeSession {
     return this.currentStatus;
   }
 
-  on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>) {
+  on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {
     return this.emitter.on(event, handler);
   }
 
-  off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void {
+  off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void {
     this.emitter.off(event, handler);
   }
 
@@ -86,21 +98,27 @@ export class ClaudeSessionImpl implements ClaudeSession {
   async stop(): Promise<void> {
     this.pty.kill("SIGTERM");
     await this.bridge.stop();
+    this.transcriptWatcher?.flush();
+    this.transcriptWatcher?.stop();
     this.setStatus("stopped");
   }
 
   async kill(): Promise<void> {
     this.pty.kill("SIGKILL");
     await this.bridge.stop();
+    this.transcriptWatcher?.flush();
+    this.transcriptWatcher?.stop();
     this.setStatus("killed");
   }
 
   async teardown(): Promise<void> {
     await this.bridge.stop();
+    this.transcriptWatcher?.flush();
+    this.transcriptWatcher?.stop();
     removeSessionDir(this.record);
     this.currentStatus = "torn_down";
     this.emitter.emit("status", { elwoodSessionId: this.elwoodSessionId, status: "torn_down" });
-    this.emitter.emit("activity", activityFromStatus("claude", this.elwoodSessionId, "torn_down"));
+    this.emitter.emit("activity", activityFromStatus("codex", this.elwoodSessionId, "torn_down"));
   }
 
   markRunning(): void {
@@ -115,13 +133,17 @@ export class ClaudeSessionImpl implements ClaudeSession {
     this.setStatus("exited");
   }
 
+  rememberCodexSessionId(sessionId: string): void {
+    this.persist(updateSessionResumeId(this.record, "codex", sessionId));
+  }
+
+  observeTranscript(path?: string | null): void {
+    if (path) this.transcriptWatcher?.observe(path);
+  }
+
   private ensureRunning(): void {
-    if (
-      this.currentStatus === "stopped" ||
-      this.currentStatus === "killed" ||
-      this.currentStatus === "torn_down"
-    ) {
-      throw elwoodError("session_not_running", "Claude session is not running.");
+    if (terminalStatuses.has(this.currentStatus)) {
+      throw elwoodError("session_not_running", "Codex session is not running.");
     }
   }
 
@@ -129,7 +151,7 @@ export class ClaudeSessionImpl implements ClaudeSession {
     this.currentStatus = status;
     this.persist(updateSessionStatus(this.record, status));
     this.emitter.emit("status", { elwoodSessionId: this.elwoodSessionId, status });
-    this.emitter.emit("activity", activityFromStatus("claude", this.elwoodSessionId, status));
+    this.emitter.emit("activity", activityFromStatus("codex", this.elwoodSessionId, status));
   }
 
   private persist(record: SessionRecord): void {

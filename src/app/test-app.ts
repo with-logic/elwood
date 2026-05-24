@@ -3,20 +3,24 @@
  * Implements PRD §11.
  */
 
+import type { TerminalSize } from "../index.ts";
 import {
-  type ClaudeHookEvent,
-  type ClaudeHookHandlers,
-  type ClaudeHookResult,
-  type ClaudeSession,
-  claudeHookEventNames,
-  type ResumeClaudeOptions,
-  resumeClaude,
-  type StartClaudeOptions,
-  startClaude,
-  type TerminalSize,
-} from "../index.ts";
+  type AgentKind,
+  type AgentRuntime,
+  createLiveHookHandlers,
+  defaultAgentRuntime,
+  parseAgentKind,
+  type SharedSession,
+  startAgentSession,
+} from "./agent-runtime.ts";
+
+export {
+  createLiveHookHandlers,
+  summarizeHookResult,
+} from "./agent-runtime.ts";
 
 export type TestAppArgs = {
+  readonly agent: AgentKind;
   readonly cwd: string;
   readonly stateDir?: string;
   readonly resumeSessionId?: string;
@@ -29,12 +33,8 @@ export type TestAppIo = {
   readonly stderr: { write(chunk: string): unknown };
 };
 
-export type TestAppRuntime = {
-  readonly startClaude: (options: StartClaudeOptions) => Promise<ClaudeSession>;
-  readonly resumeClaude: (options: ResumeClaudeOptions) => Promise<ClaudeSession>;
-};
-
-export const defaultTestAppRuntime: TestAppRuntime = { startClaude, resumeClaude };
+export type TestAppRuntime = AgentRuntime;
+export const defaultTestAppRuntime: TestAppRuntime = defaultAgentRuntime;
 
 export async function runTestApp(
   argv: readonly string[],
@@ -42,33 +42,21 @@ export async function runTestApp(
   runtime: TestAppRuntime = defaultTestAppRuntime,
 ): Promise<string> {
   const args = parseTestAppArgs(argv);
-  const hooks = createLiveHookHandlers(io.stderr);
-  const session =
-    args.resumeSessionId === undefined
-      ? await runtime.startClaude({
-          cwd: args.cwd,
-          ...(args.stateDir === undefined ? {} : { stateDir: args.stateDir }),
-          initialSize: args.size,
-          hooks,
-        })
-      : await runtime.resumeClaude({
-          elwoodSessionId: args.resumeSessionId,
-          cwd: args.cwd,
-          ...(args.stateDir === undefined ? {} : { stateDir: args.stateDir }),
-          initialSize: args.size,
-          hooks,
-        });
+  const hooks = createLiveHookHandlers(args.agent, io.stderr);
+  const session = await startAgentSession({ ...args, hooks }, runtime);
   wireSessionToTestApp(session, io);
   await pumpPrompts(session, io.stdin);
   return session.elwoodSessionId;
 }
 
 export function parseTestAppArgs(argv: readonly string[]): TestAppArgs {
+  const agent = parseAgentKind(readOption(argv, "--agent"));
   const cwd = readOption(argv, "--cwd") ?? process.cwd();
   const stateDir = readOption(argv, "--state-dir");
   const resumeSessionId = readOption(argv, "--resume");
   const size = parseSize(readOption(argv, "--size") ?? "120x40");
   return {
+    agent,
     cwd,
     ...(stateDir === undefined ? {} : { stateDir }),
     ...(resumeSessionId === undefined ? {} : { resumeSessionId }),
@@ -76,43 +64,22 @@ export function parseTestAppArgs(argv: readonly string[]): TestAppArgs {
   };
 }
 
-export function summarizeHookResult(result: ClaudeHookResult): string {
-  if (result === undefined) return "no decision";
-  if ("permissionDecision" in result) return result.permissionDecision;
-  if ("behavior" in result) return result.behavior;
-  if ("decision" in result) return result.decision;
-  if ("additionalContext" in result) return "context";
-  if ("action" in result) return result.action;
-  if ("retry" in result) return "retry";
-  if ("worktreePath" in result) return "worktree";
-  return "no decision";
-}
-
-export function createLiveHookHandlers(log: { write(chunk: string): unknown }): ClaudeHookHandlers {
-  const handler = (event: ClaudeHookEvent): ClaudeHookResult => {
-    log.write(formatEventLog("hook", event.hook_event_name, "no decision"));
-    return undefined;
-  };
-  const handlers: Partial<Record<(typeof claudeHookEventNames)[number], typeof handler>> = {};
-  for (const name of claudeHookEventNames) {
-    handlers[name] = handler;
-  }
-  return handlers as ClaudeHookHandlers;
-}
-
-function wireSessionToTestApp(session: ClaudeSession, io: TestAppIo): void {
+function wireSessionToTestApp(session: SharedSession, io: TestAppIo): void {
   session.on("terminal:data", (event) => io.stdout.write(event.data));
   session.on("terminal:exit", (event) =>
     io.stderr.write(formatEventLog("terminal", "exit", String(event.exitCode))),
   );
   session.on("status", (event) => io.stderr.write(formatEventLog("status", event.status)));
+  session.on("activity", (event) =>
+    io.stderr.write(formatEventLog("activity", event.kind, event.label)),
+  );
   session.on("hookError", (event) =>
     io.stderr.write(formatEventLog("hookError", event.hookEventName, event.category)),
   );
 }
 
 async function pumpPrompts(
-  session: ClaudeSession,
+  session: SharedSession,
   stdin: AsyncIterable<string | Uint8Array>,
 ): Promise<void> {
   for await (const chunk of stdin) {

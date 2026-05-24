@@ -11,6 +11,8 @@ import type {
   ClaudeHookResult,
   ClaudeHookResultFor,
 } from "../claude/hooks.ts";
+import type { CodexHookEventName } from "../codex/hook-names.ts";
+import type { ElwoodActivityEvent } from "./activity.ts";
 
 export type TerminalSize = {
   readonly cols: number;
@@ -64,7 +66,7 @@ export type ResumeClaudeOptions = {
 
 export type HookErrorEvent = {
   readonly elwoodSessionId: string;
-  readonly hookEventName: ClaudeHookEventName | "Unknown";
+  readonly hookEventName: ClaudeHookEventName | CodexHookEventName | "Unknown";
   readonly category:
     | "timeout"
     | "handler_error"
@@ -86,6 +88,7 @@ export type ElwoodEventMap = {
     readonly elwoodSessionId: string;
     readonly status: ElwoodSessionStatus;
   };
+  readonly activity: ElwoodActivityEvent;
   readonly hook: ClaudeHookEvent;
   readonly hookError: HookErrorEvent;
 } & {
@@ -117,6 +120,7 @@ export interface ClaudeSession {
   off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void;
 
   sendPrompt(prompt: string): Promise<void>;
+  sendMessage(message: string): Promise<void>;
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): Promise<void>;
   stop(): Promise<void>;

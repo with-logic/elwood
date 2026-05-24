@@ -3,30 +3,27 @@
  * Implements PRD §5.4.
  */
 
-import type {
-  ElwoodEventHandler,
-  ElwoodEventMap,
-  ElwoodEventName,
-  Unsubscribe,
-} from "../core/types.ts";
+import type { ElwoodEventMap, Unsubscribe } from "../core/types.ts";
 
 type Handler = (event: unknown) => unknown;
+type EventKey<M> = Extract<keyof M, string>;
+type HandlerFor<M, E extends EventKey<M>> = (event: M[E]) => unknown;
 
-export class TypedEmitter {
-  private readonly handlers: Map<ElwoodEventName, Set<Handler>>;
+export class TypedEmitter<M extends Record<string, unknown> = ElwoodEventMap> {
+  private readonly handlers: Map<EventKey<M>, Set<Handler>>;
 
   constructor() {
     this.handlers = new Map();
   }
 
-  on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): Unsubscribe {
+  on<E extends EventKey<M>>(event: E, handler: HandlerFor<M, E>): Unsubscribe {
     this.listen(event, handler);
     return () => {
       this.off(event, handler);
     };
   }
 
-  listen<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void {
+  listen<E extends EventKey<M>>(event: E, handler: HandlerFor<M, E>): void {
     let set = this.handlers.get(event);
     if (!set) {
       set = new Set<Handler>();
@@ -35,11 +32,11 @@ export class TypedEmitter {
     set.add(handler as Handler);
   }
 
-  off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void {
+  off<E extends EventKey<M>>(event: E, handler: HandlerFor<M, E>): void {
     this.handlers.get(event)?.delete(handler as Handler);
   }
 
-  emit<E extends ElwoodEventName>(event: E, payload: ElwoodEventMap[E]): void {
+  emit<E extends EventKey<M>>(event: E, payload: M[E]): void {
     const set = this.handlers.get(event);
     if (!set) return;
     for (const handler of set) {
@@ -47,7 +44,7 @@ export class TypedEmitter {
     }
   }
 
-  async request<E extends ElwoodEventName>(event: E, payload: ElwoodEventMap[E]): Promise<unknown> {
+  async request<E extends EventKey<M>>(event: E, payload: M[E]): Promise<unknown> {
     const set = this.handlers.get(event);
     if (!set) return undefined;
     for (const handler of set) {

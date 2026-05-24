@@ -5,25 +5,34 @@
 
 import { existsSync, unlinkSync } from "node:fs";
 import { createServer, type Server } from "node:net";
-import type { BridgeProcessResult } from "../claude/serialize.ts";
 import type { HookErrorEvent } from "../core/types.ts";
+import type { BridgeProcessResult } from "./types.ts";
 import { isClaudeHookEvent } from "./validate.ts";
 
 export type HookDispatcher = (input: unknown) => Promise<BridgeProcessResult>;
 export type HookErrorSink = (event: Omit<HookErrorEvent, "elwoodSessionId">) => void;
+export type HookInputValidator = (input: unknown) => boolean;
 
 export class HookBridgeServer {
   private readonly socketPath: string;
   private readonly token: string;
   private readonly dispatch: HookDispatcher;
   private readonly onError: HookErrorSink;
+  private readonly isHookInput: HookInputValidator;
   private server: Server | null = null;
 
-  constructor(socketPath: string, token: string, dispatch: HookDispatcher, onError: HookErrorSink) {
+  constructor(
+    socketPath: string,
+    token: string,
+    dispatch: HookDispatcher,
+    onError: HookErrorSink,
+    isHookInput: HookInputValidator = isClaudeHookEvent,
+  ) {
     this.socketPath = socketPath;
     this.token = token;
     this.dispatch = dispatch;
     this.onError = onError;
+    this.isHookInput = isHookInput;
   }
 
   async start(): Promise<void> {
@@ -75,7 +84,7 @@ export class HookBridgeServer {
     const parsed = parseBridgeMessage(data);
     if (!parsed || parsed.token !== this.token) return noDecision();
     const hookInput = parseHookInput(parsed.input);
-    if (!isClaudeHookEvent(hookInput)) {
+    if (!this.isHookInput(hookInput)) {
       this.onError({
         hookEventName: "Unknown",
         category: "invalid_input",

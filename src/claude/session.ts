@@ -2,12 +2,12 @@
  * ClaudeSession implementation coordinating PTY, state, and hook dispatch.
  * Implements PRD §5, §6, §8, and §9.
  */
-
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { bridgeScriptSource } from "../bridge/script.ts";
 import { HookBridgeServer } from "../bridge/server.ts";
+import * as activity from "../core/activity.ts";
 import { elwoodError } from "../core/errors.ts";
 import type {
   ClaudeSession,
@@ -77,6 +77,9 @@ export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSe
 export async function resumeClaude(options: ResumeClaudeOptions): Promise<ClaudeSession> {
   const stateDir = options.stateDir ?? defaultStateDir(options.cwd ?? process.cwd());
   const record = readSessionRecord(stateDir, options.elwoodSessionId);
+  if (record.adapter !== "claude") {
+    throw elwoodError("adapter_mismatch", "Cannot resume a non-Claude session as Claude.");
+  }
   const size = options.initialSize ?? record.terminalSize;
   const resumedRecord =
     options.initialSize === undefined ? record : { ...record, terminalSize: options.initialSize };
@@ -109,6 +112,7 @@ async function startFromRecord(
     async (input) => {
       const event = input as ClaudeHookEvent;
       emitter.emit("hook", event);
+      emitter.emit("activity", activity.activityFromHook("claude", record.elwoodSessionId, event));
       const result = await requestHook(
         emitter,
         event,
@@ -120,7 +124,11 @@ async function startFromRecord(
       }
       return serializeHookResult(event.hook_event_name, result);
     },
-    (event) => emitter.emit("hookError", { elwoodSessionId: record.elwoodSessionId, ...event }),
+    (event) => {
+      const hookError = { elwoodSessionId: record.elwoodSessionId, ...event };
+      emitter.emit("hookError", hookError);
+      emitter.emit("activity", activity.activityFromHookError("claude", hookError));
+    },
   );
   try {
     await bridge.start();
@@ -136,6 +144,10 @@ async function startFromRecord(
   );
   pty.onExit((exit) => {
     emitter.emit("terminal:exit", { elwoodSessionId: record.elwoodSessionId, ...exit });
+    emitter.emit(
+      "activity",
+      activity.activityFromTerminalExit("claude", record.elwoodSessionId, exit.exitCode),
+    );
     session?.markExited();
   });
   session.markRunning();

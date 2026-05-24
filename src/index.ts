@@ -42,6 +42,47 @@ export {
   setHookBridgeFactoryForTests,
   startClaude,
 } from "./claude/session.ts";
+export type {
+  CodexCommandToolInput,
+  CodexCommonHookFields,
+  CodexGenericToolInput,
+  CodexHookEvent,
+  CodexHookEventFor,
+  CodexHookEventName,
+  CodexHookHandlers,
+  CodexHookResult,
+  CodexKnownToolName,
+  CodexPermissionMode,
+  CodexToolEventFields,
+  CodexUnknownToolName,
+} from "./codex/hooks.ts";
+export { codexHookEventNames } from "./codex/hooks.ts";
+export {
+  resetCodexSessionSeamsForTests,
+  resumeCodex,
+  setCodexHookBridgeFactoryForTests,
+  startCodex,
+} from "./codex/session.ts";
+export type {
+  CodexApprovalPolicy,
+  CodexEventHandler,
+  CodexEventMap,
+  CodexEventName,
+  CodexSandboxMode,
+  CodexSession,
+  ResumeCodexOptions,
+  StartCodexOptions,
+} from "./codex/session-types.ts";
+export type {
+  CodexTranscriptEvent,
+  CodexTranscriptSummary,
+} from "./codex/transcript.ts";
+export type {
+  ElwoodActivityEvent,
+  ElwoodActivityKind,
+  ElwoodActivitySource,
+  ElwoodAgentKind,
+} from "./core/activity.ts";
 export { ElwoodError, elwoodError } from "./core/errors.ts";
 export type {
   ClaudePermissionMode,

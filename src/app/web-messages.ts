@@ -4,10 +4,12 @@
  */
 
 import type { TerminalSize } from "../index.ts";
+import type { AgentKind } from "./agent-runtime.ts";
 
 export type ClientMessage =
   | {
       readonly type: "start";
+      readonly agent?: AgentKind;
       readonly cwd: string;
       readonly stateDir?: string;
       readonly resumeSessionId?: string;

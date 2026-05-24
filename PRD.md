@@ -6,6 +6,7 @@ Status: Draft specification, ready for implementation planning
 Platform: macOS for MVP
 Primary surface: TypeScript library
 First adapter: Claude Code CLI
+Second adapter: OpenAI Codex CLI
 
 This document specifies Elwood in enough detail that an engineer can implement
 the first version without losing product intent. Anything observable by a
@@ -20,19 +21,21 @@ choices are left open where they do not change the public contract.
 Elwood lets an application control an agentic coding CLI that is running in its
 native interactive terminal mode, without forcing a human to operate the TUI.
 
-The first supported tool is Claude Code. Elwood starts `claude` inside a real
-pseudoterminal, configured so Claude sees the same kind of interactive shell
-session it would see if the user opened Terminal.app and ran `claude` manually.
-Elwood then controls the session by writing terminal input, and observes Claude
-primarily through Claude Code hooks routed over local IPC.
+The first supported tool is Claude Code. The second supported tool is OpenAI
+Codex CLI. Elwood starts the selected agent inside a real pseudoterminal,
+configured so the agent sees the same kind of interactive shell session it would
+see if the user opened Terminal.app and ran the CLI manually. Elwood then
+controls the session by writing terminal input, and observes the agent primarily
+through tool-specific hooks routed over local IPC.
 
-The core premise is deliberate: Claude should not know it is running in a
-special wrapper. Elwood does not replace Claude Code with print mode, the Agent
-SDK, or a custom protocol. It runs the real interactive TUI and wraps it.
+The core premise is deliberate: the agent should not know it is running in a
+special wrapper. Elwood does not replace Claude Code or Codex with print mode,
+non-interactive mode, SDKs, or custom protocols. It runs the real interactive
+TUI and wraps it.
 
 Parent applications can use Elwood headlessly, or attach a terminal renderer
 such as xterm.js to show the live session. A likely parent app is a local
-Tauri-style desktop app that manages many Claude sessions, renders their status,
+Tauri-style desktop app that manages many agent sessions, renders their status,
 and lets a user inspect the actual terminal when needed.
 
 ## 2. Goals And Non-Goals
@@ -40,16 +43,20 @@ and lets a user inspect the actual terminal when needed.
 ### 2.1 Goals
 
 - Provide a TypeScript library for starting, controlling, stopping, killing,
-  resuming, and tearing down interactive Claude Code sessions.
-- Run Claude in a real PTY so its TUI behaves as it would in a normal terminal.
+  resuming, and tearing down interactive Claude Code and Codex CLI sessions.
+- Run each agent in a real PTY so its TUI behaves as it would in a normal
+  terminal.
 - Start Claude from the user's normal macOS interactive login shell environment,
   including startup files such as `~/.zshrc` when that is what Terminal.app
   would load.
-- Route every Claude Code hook event through Elwood via a generated
+- Route every Claude Code and Codex hook event through Elwood via a generated
   per-session hook bridge.
 - Expose every hook event to the parent app with strong TypeScript types.
 - Let parent hook handlers return event-specific, strongly typed responses that
   map to Claude Code's hook output protocol.
+- Provide a unified agent-control surface where callers can send messages and
+  observe a rich chronological activity stream without branching on the
+  underlying adapter for common chat-loop workflows.
 - Fail open when no hook handler exists, a handler times out, or a handler
   fails at runtime.
 - Send prompts through terminal input exactly as a human would, including
@@ -62,28 +69,29 @@ and lets a user inspect the actual terminal when needed.
 ### 2.2 Non-Goals
 
 - Windows or Linux support in the MVP.
-- Non-Claude adapters in the MVP. The architecture should allow future
-  adapters, but only Claude Code must work initially.
+- Additional non-Claude/non-Codex adapters in the MVP.
 - Using Claude Code print mode (`claude -p`) as the primary control mechanism.
 - Cloud execution, remote hosts, or multi-machine session sync.
 - Full visual parsing of Claude's TUI as the source of truth.
-- Installing, updating, or authenticating Claude Code. Elwood assumes `claude`
-  is installed, on `PATH`, and already authenticated.
+- Installing, updating, or authenticating Claude Code or Codex. Elwood assumes
+  `claude`/`codex` is installed, on `PATH`, and already authenticated.
 - A first-class multi-session manager. Parent apps own orchestration across
   many sessions.
 - Durable audit logging of terminal or hook activity.
 
 ## 3. Terminology
 
-**Elwood session.** One wrapped interactive agent CLI process. In the MVP, one
-`ClaudeSession` equals one main `claude` process.
+**Elwood session.** One wrapped interactive agent CLI process. One
+`ClaudeSession` equals one main `claude` process. One `CodexSession` equals one
+main `codex` process.
 
 **Elwood session ID.** Stable opaque identifier generated by Elwood and exposed
 to callers as `elwoodSessionId`. Callers use this ID to resume or tear down a
 session. Claude's own session ID is internal metadata.
 
 **Agent adapter.** Tool-specific implementation layer. The MVP adapter is
-`claude`. Future adapters might support other TUI-based agentic CLIs.
+`claude` and `codex`. Future adapters might support other TUI-based agentic
+CLIs.
 
 **PTY session.** The pseudoterminal process and byte streams that make the CLI
 believe it is running in an interactive terminal.
@@ -92,9 +100,9 @@ believe it is running in an interactive terminal.
 bytes and sends input bytes back. A renderer is not required for headless
 operation.
 
-**Hook bridge.** Elwood-owned command installed into Claude hook settings. Claude
-invokes it for hook events; it forwards hook input to the owning Elwood runtime
-over local IPC and returns the runtime's response to Claude.
+**Hook bridge.** Elwood-owned command installed into agent hook settings. The
+agent invokes it for hook events; it forwards hook input to the owning Elwood
+runtime over local IPC and returns the runtime's response to the agent.
 
 **Parent app.** The application embedding Elwood, commonly a Tauri or Electron
 desktop app.
@@ -105,10 +113,11 @@ desktop app.
 
 Elwood has three conceptual layers:
 
-1. **PTY layer.** Starts and owns the shell/Claude process, terminal input,
+1. **PTY layer.** Starts and owns the shell/agent process, terminal input,
    terminal output, resize, graceful stop, force kill, and process status.
-2. **Agent adapter layer.** Adds tool-specific startup, generated settings,
-   hook bridge, session metadata, and resume behavior. MVP: Claude Code.
+2. **Agent adapter layer.** Adds tool-specific startup, generated config,
+   hook bridge, session metadata, and resume behavior. MVP adapters: Claude Code
+   and Codex CLI.
 3. **Public library layer.** Exposes TypeScript APIs and typed events to parent
    applications.
 
@@ -119,13 +128,13 @@ contract is raw terminal input/output plus resize.
 ### 4.2 macOS shell behavior
 
 On macOS, Elwood MUST start the PTY in the user's configured shell in a way that
-matches the effective environment of opening Terminal.app and running `claude`.
+matches the effective environment of opening Terminal.app and running the agent.
 The implementation should use the user's login shell and interactive/login flags
 appropriate for that shell. For the common zsh case, this is expected to behave
 like an interactive login shell and load the user's normal startup files.
 
 Elwood MUST provide diagnostics or tests proving that environment variables from
-the user's shell startup are visible to the launched Claude process.
+the user's shell startup are visible to the launched agent process.
 
 ### 4.3 Claude settings behavior
 
@@ -141,6 +150,25 @@ object containing only Elwood's necessary overrides:
 Elwood launches Claude with Claude Code's `--settings <file-or-json>` mechanism
 and relies on Claude Code's native settings merge precedence. Omitted keys in
 Elwood's generated settings must leave user, project, and local settings intact.
+
+### 4.4 Codex configuration behavior
+
+Elwood MUST NOT mutate `.codex/config.toml`, `.codex/hooks.json`,
+`~/.codex/config.toml`, or `~/.codex/hooks.json` by default.
+
+For each Codex session, Elwood generates only Elwood-owned runtime files under
+the Elwood session metadata directory, then launches Codex with session-scoped
+`--config` overrides that install hook bridge handlers for every supported Codex
+hook event. User, project, managed, and system Codex config must still merge
+through Codex's normal precedence rules.
+
+Codex hook trust is a Codex security feature, and the exact CLI flags for hook
+trust may vary across Codex versions. Because Elwood's generated hook commands
+are ephemeral and session-owned, `startCodex` should bypass hook trust by default
+when the installed Codex CLI advertises an invocation-scoped bypass flag. Elwood
+MUST omit that flag when the installed CLI does not support it, so startup does
+not fail on Codex versions without the flag. Callers may opt out when they want
+Codex to enforce normal hook trust prompts even if the bypass flag exists.
 
 ## 5. Public TypeScript API
 
@@ -190,6 +218,10 @@ Resume uses Elwood's durable session metadata to relaunch or reattach the
 wrapped Claude session through Claude Code's own resume mechanism. Callers should
 not need Claude's session ID.
 
+`resumeClaude` must verify that the persisted Elwood session record belongs to
+the Claude adapter before launching. Passing a Codex session ID to `resumeClaude`
+must fail with a typed error instead of launching a Claude process.
+
 ### 5.3 ClaudeSession
 
 ```ts
@@ -202,6 +234,7 @@ interface ClaudeSession {
   off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void;
 
   sendPrompt(prompt: string): Promise<void>;
+  sendMessage(message: string): Promise<void>;
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): Promise<void>;
 
@@ -216,6 +249,12 @@ human typed or pasted it into Claude and pressed Enter. It MUST support
 multi-line prompts. The implementation should use bracketed paste or an
 equivalent robust terminal-input strategy so newline characters are entered as
 prompt content rather than premature submissions.
+
+`sendMessage` is the adapter-neutral alias for the common chat-loop operation.
+For Claude it has the same behavior as `sendPrompt`. Parent apps that only need
+to send a user message and wait for activity/status should prefer
+`sendMessage`. In the MVP, `sendMessage` and `sendPrompt` are strict aliases
+for both Claude and Codex.
 
 `sendPrompt` does not gate on readiness. If a caller sends a prompt while Claude
 is busy, Elwood writes the input immediately, matching human terminal behavior.
@@ -236,8 +275,28 @@ Required event families:
 - `terminal:data`: raw PTY output bytes/string for live rendering.
 - `terminal:exit`: PTY process exit.
 - `status`: session lifecycle/status changes.
+- `activity`: adapter-neutral live events for common observability, including
+  lifecycle changes, user messages, assistant messages, reasoning, tool calls,
+  tool results, web search, notifications, generic hooks, and hook errors.
 - `hook`: every Claude hook event after parsing and validation.
+- `codex:transcript`: live, best-effort Codex transcript observations for
+  activity that Codex does not expose as hook events.
 - `hookError`: hook bridge or parent-handler errors that failed open.
+
+`activity` is the preferred event for parent apps that want a simple unified
+"send message, observe what happened, send another message" loop across
+adapters. Every activity event includes:
+
+- `elwoodSessionId`
+- `agent`: `claude` or `codex`
+- `source`: `hook`, `transcript`, or `lifecycle`
+- `kind`: normalized event kind
+- `label`: short display label
+- optional `text`
+- optional `raw` in-memory source payload
+
+Hook-specific events remain the source of truth for event-specific decisions,
+typed control responses, and adapter-specific payloads.
 
 Elwood may provide convenience registration by hook name:
 
@@ -249,6 +308,75 @@ session.on("hook:PreToolUse", async (event) => {
 
 The exact naming may vary, but the type system MUST narrow event payload and
 valid response shape by hook event name.
+
+### 5.5 Starting Codex
+
+```ts
+type StartCodexOptions = {
+  readonly cwd: string;
+  readonly stateDir?: string;
+  readonly name?: string;
+  readonly initialSize?: TerminalSize;
+  readonly hooks?: CodexHookHandlers;
+  readonly model?: string;
+  readonly profile?: string;
+  readonly sandbox?: "read-only" | "workspace-write" | "danger-full-access";
+  readonly approvalPolicy?: "untrusted" | "on-request" | "never";
+  readonly configOverrides?: readonly string[];
+  readonly bypassHookTrust?: boolean;
+  readonly hookTimeoutMs?: number;
+  readonly metadata?: Readonly<Record<string, unknown>>;
+};
+
+declare function startCodex(options: StartCodexOptions): Promise<CodexSession>;
+```
+
+`configOverrides` contains raw Codex `key=value` overrides passed through
+`--config` after Elwood's generated hook config so callers can intentionally
+override Codex behavior. Callers own TOML correctness for these raw overrides;
+Elwood shell-quotes each override but does not parse or rewrite its TOML value.
+
+### 5.6 Resuming Codex
+
+```ts
+type ResumeCodexOptions = {
+  readonly elwoodSessionId: string;
+  readonly cwd?: string;
+  readonly stateDir?: string;
+  readonly hooks?: CodexHookHandlers;
+  readonly initialSize?: TerminalSize;
+  readonly hookTimeoutMs?: number;
+};
+
+declare function resumeCodex(options: ResumeCodexOptions): Promise<CodexSession>;
+```
+
+Resume uses Elwood's durable session metadata to relaunch `codex resume` with
+Codex's internal session id when Elwood has observed it through hooks.
+
+`resumeCodex` must verify that the persisted Elwood session record belongs to
+the Codex adapter before launching. Passing a Claude session ID to `resumeCodex`
+must fail with a typed error.
+
+If Elwood has not observed and persisted Codex's internal session id,
+`resumeCodex` must fail explicitly. It must not silently launch a fresh Codex
+conversation under the existing Elwood session ID. Future implementations may
+offer an explicit caller opt-in fallback such as `codex resume --last`, but the
+default behavior must be fail-closed.
+
+### 5.7 CodexSession
+
+`CodexSession` exposes the same control surface as `ClaudeSession`: typed event
+subscription, `sendPrompt`, `sendMessage`, `sendKeys`, `resize`, `stop`, `kill`, and
+`teardown`. Prompt submission and raw input semantics are the same as Claude:
+Elwood writes to the PTY as a human would.
+
+`CodexSession` also emits `codex:transcript` when it can observe new items from
+Codex's own JSONL transcript. Parent apps may use this live-only event to render
+thinking/status phases, assistant messages, web search calls, and other
+transcript activity that is not currently represented as a Codex hook. Those
+same observations are also projected into the adapter-neutral `activity` event
+stream.
 
 ## 6. Claude Hook Bridge
 
@@ -366,6 +494,60 @@ complementary:
 `PreToolUse` handler to answer it programmatically by returning an allowed
 decision with updated input containing answers.
 
+## 7A. Codex Hook Bridge And Policy
+
+### 7A.1 Required hook coverage
+
+Elwood MUST configure a hook bridge for every documented Codex hook event,
+including at minimum:
+
+- `SessionStart`
+- `SubagentStart`
+- `PreToolUse`
+- `PermissionRequest`
+- `PostToolUse`
+- `PreCompact`
+- `PostCompact`
+- `UserPromptSubmit`
+- `SubagentStop`
+- `Stop`
+
+### 7A.2 Typed hook responses
+
+Elwood MUST model Codex hook inputs and outputs as discriminated TypeScript
+unions.
+
+- `hook_event_name` narrows the event payload.
+- For tool events, `tool_name` narrows known tool inputs for `Bash` and
+  `apply_patch`; MCP and future tools use a safe extensibility path.
+- `PreToolUse` may deny, allow a rewritten input, or add context according to
+  Codex's current supported response shapes.
+- `PermissionRequest` may allow or deny only. Future-only fields such as
+  updated input, updated permissions, and interrupts must be unrepresentable.
+  Serialized output must put `behavior` and optional `message` directly in the
+  event-specific output object with `hookEventName`.
+- `Stop` and `SubagentStop` may block completion with a continuation reason.
+- Observe-only or unsupported response states must be rejected by the type system
+  and runtime validation. Parent handlers must return `undefined` for no
+  decision; an empty object is invalid and must fail open with `hookError`.
+
+### 7A.3 Readiness
+
+For Codex, `Stop` is the canonical signal that a turn completed. If a `Stop`
+handler returns a continuation/blocking decision, Elwood must not mark the
+session ready.
+
+### 7A.4 Non-Hook Transcript Activity
+
+Current Codex hooks do not cover every TUI-visible activity. Reasoning/status
+updates and non-shell/non-MCP tools such as web search can appear in Codex's TUI
+and transcript without triggering `PreToolUse` or `PostToolUse`.
+
+Elwood must document this limitation and provide a live-only transcript
+observation event. The event may summarize transcript item kind, label, and text,
+and may include the raw item for immediate in-memory rendering. Elwood must not
+persist raw transcript items or derived prompt/tool content in Elwood state.
+
 ## 8. State And Persistence
 
 ### 8.1 State directory
@@ -386,13 +568,13 @@ parent app restarts. Required fields include:
 
 - schema version;
 - `elwoodSessionId`;
-- adapter kind (`claude`);
+- adapter kind (`claude` or `codex`);
 - original `cwd`;
 - caller-provided metadata;
 - created/updated timestamps;
 - status;
-- Claude resume metadata needed internally;
-- generated settings path;
+- Claude or Codex resume metadata needed internally;
+- generated settings/config path when the adapter uses one;
 - hook bridge routing metadata;
 - terminal size when known;
 - Elwood-owned runtime file paths.
@@ -414,9 +596,9 @@ core state must not become a transcript store.
 Runtime files needed for resume/debugging are kept by default after `stop`.
 
 `teardown` removes all Elwood-owned traces for that session, including session
-metadata, generated settings, bridge route records, sockets, and temporary files.
-It must not remove Claude-owned global transcripts/auth state or project/user
-settings that Elwood did not create.
+metadata, generated settings/config, bridge route records, sockets, and
+temporary files. It must not remove agent-owned global transcripts/auth state or
+project/user settings that Elwood did not create.
 
 ## 9. Process Lifecycle
 
@@ -434,16 +616,33 @@ settings that Elwood did not create.
 8. Launch `claude` from that shell with generated settings and session env.
 9. Return a `ClaudeSession` object once the process and bridge are ready.
 
+`startCodex` performs the analogous startup sequence for Codex:
+
+1. Resolve `cwd` and state directory.
+2. Preflight platform support.
+3. Preflight `codex` availability and version.
+4. Create an Elwood session record.
+5. Generate session-scoped hook bridge runtime files.
+6. Start the local hook IPC endpoint.
+7. Spawn the user's shell in a PTY.
+8. Launch `codex` from that shell with generated `--config` hook overrides and
+   session env.
+9. Return a `CodexSession` object once the process and bridge are ready.
+
 ### 9.2 Compatibility checks
 
 Elwood MUST check the installed Claude Code version during startup. It must
 document a minimum supported version once implementation selects the first
 Claude feature baseline.
 
-If the installed version is below the minimum, startup fails with a typed error
-that names the required version and feature. If the version cannot be parsed,
-Elwood warns and continues by default, with an option for callers to make this
-fatal.
+Elwood MUST check the installed Codex CLI version during `startCodex`. The
+minimum Codex baseline is the first release Elwood validates for stable hooks and
+interactive resume support.
+
+If the installed agent version is below the minimum, startup fails with a typed
+error that names the required version and feature. If the version cannot be
+parsed, Elwood warns and continues by default, with an option for callers to make
+this fatal.
 
 ### 9.3 Resume
 
@@ -452,10 +651,17 @@ the same logical Claude conversation using Claude Code's resume mechanism.
 
 Resume must restore hook routing, generated settings, state metadata, and PTY
 control. Resume must not require callers to know Claude's internal session ID.
+Resume must reject session records owned by another adapter.
+
+`resumeCodex` loads the Elwood session record and starts a new wrapper around the
+same logical Codex conversation using `codex resume <SESSION_ID>` when Elwood has
+observed and persisted Codex's session id. Resume must reject session records
+owned by another adapter and must fail explicitly when the Codex resume id is not
+available.
 
 ### 9.4 Exit
 
-When the Claude process exits, Elwood emits terminal/process exit events and
+When the agent process exits, Elwood emits terminal/process exit events and
 updates session metadata. It keeps metadata and generated files unless teardown
 is requested.
 
@@ -473,8 +679,14 @@ Initial required error names:
 | `claude_start_failed` | Claude started but exited or failed before the session was usable. |
 | `claude_not_authenticated` | Startup output or status indicates Claude is not authenticated. |
 | `claude_version_unsupported` | Installed Claude version lacks required features. |
+| `codex_not_found` | `codex` could not be resolved or spawned. |
+| `codex_start_failed` | Codex started but exited or failed before the session was usable. |
+| `codex_not_authenticated` | Startup output or status indicates Codex is not authenticated. |
+| `codex_version_unsupported` | Installed Codex version lacks required features. |
 | `state_not_found` | A requested Elwood session record does not exist. |
 | `state_corrupt` | A session record exists but cannot be parsed or validated. |
+| `adapter_mismatch` | A resume request targeted a session record owned by another adapter. |
+| `resume_unavailable` | A resume request cannot be completed from available session metadata. |
 | `pty_start_failed` | PTY or shell startup failed. |
 | `hook_bridge_failed` | The hook bridge or IPC endpoint could not be initialized. |
 | `session_not_running` | Operation requires a running process but the session is stopped. |
@@ -490,7 +702,7 @@ product's primary surface, but it is required for manual acceptance testing.
 
 The test app must:
 
-- start a Claude session for a selected `cwd`;
+- start a Claude or Codex session for a selected `cwd`;
 - resume a saved Elwood session ID;
 - render the live PTY session with xterm.js or an equivalent terminal renderer;
 - send prompts, including multi-line prompts;
@@ -501,7 +713,7 @@ The test app must:
   summary, handler result summary, and whether Claude received no decision,
   allow, deny, block, context, or another response;
 - support a manual smoke test where a developer can have a conversation with
-  Claude and visibly confirm hook coverage.
+  Claude or Codex and visibly confirm hook coverage.
 
 The test app must not become required for library consumers.
 
@@ -546,6 +758,11 @@ Each criterion has:
 | C-API-06 | §5.3 | `sendPrompt` supports multi-line prompt text as one submitted user prompt. |
 | C-API-07 | §5.3 | Calling `sendPrompt` while Claude is busy writes input immediately rather than rejecting or queueing by default. |
 | C-API-08 | §5.4 | Consumers can subscribe and unsubscribe from typed session events. |
+| C-API-09 | §5.5 | `startCodex({ cwd })` returns a `CodexSession` with a stable non-empty `elwoodSessionId`. |
+| C-API-10 | §5.6 | `resumeCodex({ elwoodSessionId })` resumes using Elwood metadata without requiring a Codex session ID from the caller. |
+| C-API-11 | §5.7 | `CodexSession` exposes the same terminal control and lifecycle methods as `ClaudeSession`. |
+| C-API-12 | §5.4 | Claude and Codex sessions emit adapter-neutral `activity` events for common lifecycle, message, tool, transcript, and hook-error observations. |
+| C-API-13 | §5.3 | Claude and Codex sessions expose `sendMessage` as the adapter-neutral message submission API. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 
@@ -569,6 +786,18 @@ Each criterion has:
 | C-CLAUDE-05 | §10 | Missing `claude` fails with `claude_not_found` and a useful message. |
 | C-CLAUDE-06 | §10 | An immediately failing or unusable Claude process fails with `claude_start_failed` or a more specific typed error. |
 
+#### C-CODEX: Codex Startup And Config (§4, §7A, §9)
+
+| ID | Section | Criterion |
+|---|---:|---|
+| C-CODEX-01 | §4.4 | Elwood does not mutate `.codex/config.toml`, `.codex/hooks.json`, or user Codex config during normal startup. |
+| C-CODEX-02 | §4.4 | Elwood launches Codex with session-scoped hook config passed through `--config` overrides. |
+| C-CODEX-03 | §5.5 | `model`, `profile`, `sandbox`, `approvalPolicy`, and `configOverrides` options are reflected in Codex launch policy. |
+| C-CODEX-04 | §9.2 | Startup checks Codex CLI version and fails with `codex_version_unsupported` when below the configured minimum. |
+| C-CODEX-05 | §10 | Missing `codex` fails with `codex_not_found` and a useful message. |
+| C-CODEX-06 | §4.4 | Generated Codex hook config uses Codex's hook-trust bypass flag only when supported, and callers can opt out. |
+| C-CODEX-07 | §5.6 | `resumeCodex` fails explicitly when Elwood has not persisted a Codex resume id. |
+
 #### C-HOOK: Hook Bridge Coverage And Semantics (§6)
 
 | ID | Section | Criterion |
@@ -584,6 +813,10 @@ Each criterion has:
 | C-HOOK-09 | §6.4 | Known Claude built-in tool names narrow `tool_input` types at compile time. |
 | C-HOOK-10 | §6.4 | Unknown or MCP tool names are represented through a safe extensibility path. |
 | C-HOOK-11 | §6.5 | `Stop` marks the session ready only when the Stop event is not blocked. |
+| C-HOOK-12 | §7A.1 | Generated Codex config includes bridge handlers for every supported Codex hook event. |
+| C-HOOK-13 | §7A.2 | Codex hook IPC input is runtime-validated before dispatch to parent handlers. |
+| C-HOOK-14 | §7A.2 | Codex `hook_event_name` narrows valid handler response types at compile time. |
+| C-HOOK-15 | §7A.3 | Codex `Stop` marks the session ready only when the Stop event is not blocked. |
 
 #### C-HRESP: Hook Response Mapping (§6, §7)
 
@@ -595,6 +828,10 @@ Each criterion has:
 | C-HRESP-04 | §6.4 | Observe-only events such as `Notification` cannot return blocking decisions through the public type API. |
 | C-HRESP-05 | §6.4 | `Elicitation` and `ElicitationResult` support typed accept/decline/cancel response shapes. |
 | C-HRESP-06 | §6.4 | Hook responses serialize to Claude-compatible JSON or no-output results. |
+| C-HRESP-07 | §7A.2 | Codex `PreToolUse` handlers can deny, allow rewritten input, or add context according to Codex's schema. |
+| C-HRESP-08 | §7A.2 | Codex `PermissionRequest` handlers can allow or deny and cannot return future-only invalid fields. |
+| C-HRESP-09 | §7A.2 | Codex `Stop` and `SubagentStop` handlers can request continuation with a reason. |
+| C-HRESP-10 | §7A.2 | Codex hook responses serialize to Codex-compatible JSON or no-output results. |
 
 #### C-STATE: State And Resume (§8, §9)
 
@@ -609,6 +846,7 @@ Each criterion has:
 | C-STATE-07 | §8.4 | `stop()` preserves session metadata and generated files. |
 | C-STATE-08 | §8.4 | `teardown()` removes Elwood-owned session metadata and generated files. |
 | C-STATE-09 | §8.4 | `teardown()` does not remove Claude-owned auth, transcripts, or user/project settings. |
+| C-STATE-10 | §5.2, §5.6 | Resume APIs reject session records whose persisted adapter does not match the requested adapter. |
 
 #### C-LIFE: Lifecycle Controls (§5, §9)
 

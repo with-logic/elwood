@@ -9,16 +9,13 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { type WebSocket, WebSocketServer } from "ws";
 import {
-  type ClaudeHookEvent,
-  type ClaudeHookHandlers,
-  type ClaudeHookResult,
-  type ClaudeSession,
-  claudeHookEventNames,
-  resumeClaude,
-  startClaude,
-} from "../index.ts";
+  type AgentKind,
+  createLiveHookHandlers,
+  parseAgentKind,
+  type SharedSession,
+  startAgentSession,
+} from "./agent-runtime.ts";
 import { clientScript, renderHtml } from "./web-assets.ts";
-import { summarizeHookEvent } from "./web-log.ts";
 import {
   type ClientMessage,
   parseClientMessage,
@@ -29,7 +26,7 @@ import {
 const require = createRequire(import.meta.url);
 const appPort = Number(process.env["ELWOOD_DEV_PORT"] ?? 4317);
 
-let session: ClaudeSession | null = null;
+let session: SharedSession | null = null;
 const server = createServer(handleHttp);
 const sockets = new Set<WebSocket>();
 const wss = new WebSocketServer({ server });
@@ -101,21 +98,15 @@ async function startOrResume(
   message: Extract<ClientMessage, { readonly type: "start" }>,
 ): Promise<void> {
   const size = sizeFrom(message);
-  session =
-    message.resumeSessionId === undefined
-      ? await startClaude({
-          cwd: message.cwd,
-          initialSize: size,
-          hooks: loggingHooks(),
-          ...(message.stateDir === undefined ? {} : { stateDir: message.stateDir }),
-        })
-      : await resumeClaude({
-          elwoodSessionId: message.resumeSessionId,
-          cwd: message.cwd,
-          initialSize: size,
-          hooks: loggingHooks(),
-          ...(message.stateDir === undefined ? {} : { stateDir: message.stateDir }),
-        });
+  const agent = parseAgentKind(message.agent);
+  session = await startAgentSession({
+    agent,
+    cwd: message.cwd,
+    size,
+    hooks: loggingHooks(agent),
+    ...(message.stateDir === undefined ? {} : { stateDir: message.stateDir }),
+    ...(message.resumeSessionId === undefined ? {} : { resumeSessionId: message.resumeSessionId }),
+  });
   wireSession(session);
   broadcast({
     type: "session",
@@ -125,12 +116,15 @@ async function startOrResume(
   });
 }
 
-function wireSession(active: ClaudeSession): void {
+function wireSession(active: SharedSession): void {
   active.on("terminal:data", (event) => broadcast({ type: "terminal", data: event.data }));
   active.on("terminal:exit", (event) =>
     broadcast({ type: "log", level: "info", text: `terminal exit ${event.exitCode}` }),
   );
   active.on("status", (event) => broadcast({ type: "status", status: event.status }));
+  active.on("activity", (event) =>
+    broadcast({ type: "log", level: "info", text: `activity ${event.kind} ${event.label}` }),
+  );
   active.on("hookError", (event) =>
     broadcast({
       type: "log",
@@ -140,21 +134,14 @@ function wireSession(active: ClaudeSession): void {
   );
 }
 
-function loggingHooks(): ClaudeHookHandlers {
-  const handlers: Partial<
-    Record<(typeof claudeHookEventNames)[number], (event: ClaudeHookEvent) => ClaudeHookResult>
-  > = {};
-  for (const name of claudeHookEventNames) {
-    handlers[name] = (event) => {
-      broadcast({ type: "log", level: "info", text: summarizeHookEvent(event) });
-      return undefined;
-    };
-  }
-  return handlers as ClaudeHookHandlers;
+function loggingHooks(agent: AgentKind) {
+  return createLiveHookHandlers(agent, {
+    write: (text) => broadcast({ type: "log", level: "info", text: text.trimEnd() }),
+  });
 }
 
-function currentSession(): ClaudeSession {
-  if (!session) throw new Error("No Claude session is running.");
+function currentSession(): SharedSession {
+  if (!session) throw new Error("No Elwood session is running.");
   return session;
 }
 

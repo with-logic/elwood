@@ -44,7 +44,11 @@ describe("ClaudeSession startup and terminal control", () => {
     installFakes();
     const session = await startClaude({ cwd });
     await session.sendPrompt("hello\nworld");
-    expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\nworld\u001b[201~\r"]);
+    await session.sendMessage("again");
+    expect(ptys[0]!.writes).toEqual([
+      "\u001b[200~hello\nworld\u001b[201~\r",
+      "\u001b[200~again\u001b[201~\r",
+    ]);
   });
 
   test("C-PTY-03 emits terminal data and supports raw keys and resize", async () => {
@@ -52,19 +56,23 @@ describe("ClaudeSession startup and terminal control", () => {
     installFakes();
     const session = await startClaude({ cwd });
     const seen: string[] = [];
+    const activity: string[] = [];
     const offPtyData = ptys[0]!.onData(() => {});
     const offPtyExit = ptys[0]!.onExit(() => {});
     offPtyData();
     offPtyExit();
     const unsubscribe = session.on("terminal:data", (event) => seen.push(event.data));
+    session.on("activity", (event) => activity.push(event.kind));
     session.off("terminal:data", () => {});
     ptys[0]!.emitData("abc");
     unsubscribe();
     ptys[0]!.emitData("ignored");
     await session.sendKeys("x");
     await session.resize({ cols: 80, rows: 24 });
+    ptys[0]!.emitExit({ exitCode: 7 });
     expect(seen).toEqual(["abc"]);
     expect(ptys[0]!.writes).toEqual(["x"]);
     expect(ptys[0]!.size).toEqual({ cols: 80, rows: 24 });
+    expect(activity).toContain("terminal_exit");
   });
 });
