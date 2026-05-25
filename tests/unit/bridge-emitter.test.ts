@@ -64,6 +64,44 @@ describe("bridge and emitter edges", () => {
     expect(socket.destroyed).toBe(true);
   });
 
+  test("C-HOOK-16 bridge waits for a complete framed request", async () => {
+    const root = tempDirForUnit();
+    const socketPath = join(root, "split-hook.sock");
+    let dispatched = 0;
+    const server = new HookBridgeServer(
+      socketPath,
+      "token",
+      async () => {
+        await Promise.resolve();
+        dispatched += 1;
+        return { exitCode: 0, stdout: "ok", stderr: "" };
+      },
+      () => {},
+    );
+    await server.start();
+    const socket = createConnection(socketPath);
+    await new Promise<void>((resolve) => socket.once("connect", resolve));
+    let response = "";
+    const ended = new Promise<void>((resolve) => socket.once("end", resolve));
+    socket.on("data", (chunk) => {
+      response += chunk.toString("utf8");
+    });
+    const input = JSON.stringify({
+      hook_event_name: "Stop",
+      session_id: "claude-1",
+      cwd: "/tmp/project",
+    });
+    const payload = JSON.stringify({ token: "token", input });
+    socket.write(payload.slice(0, 10));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(dispatched).toBe(0);
+    socket.write(`${payload.slice(10)}\n`);
+    await ended;
+    await server.stop();
+    expect(dispatched).toBe(1);
+    expect(JSON.parse(response)).toEqual({ exitCode: 0, stdout: "ok", stderr: "" });
+  });
+
   test("C-HOOK-06 validates hook results by event semantics", () => {
     expect(isClaudeHookResult("PreToolUse", null)).toBe(false);
     expect(isClaudeHookResult("PreToolUse", { permissionDecision: "allow" })).toBe(true);
@@ -84,6 +122,7 @@ describe("bridge and emitter edges", () => {
     expect(isClaudeHookResult("SessionStart", { other: true })).toBe(false);
     expect(isClaudeHookResult("SessionStart", { watchPaths: [".env"] })).toBe(true);
     expect(isClaudeHookResult("SessionStart", { watchPaths: [1] })).toBe(false);
+    expect(isClaudeHookResult("SessionEnd", { additionalContext: "too late" })).toBe(false);
   });
 
   test("event emitter handles empty emissions and explicit off", async () => {

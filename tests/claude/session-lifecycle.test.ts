@@ -18,11 +18,22 @@ describe("ClaudeSession lifecycle", () => {
     const stateDir = join(tempDir(), "state");
     installFakes();
     const session = await startClaude({ cwd, stateDir, initialSize: { cols: 44, rows: 12 } });
+    await ptys[0]!.dispatchHook(
+      session.elwoodSessionId,
+      {
+        hook_event_name: "SessionStart",
+        session_id: "claude-resume-id",
+        cwd,
+        source: "startup",
+      },
+      stateDir,
+    );
     await session.stop();
     const resumed = await resumeClaude({ cwd, stateDir, elwoodSessionId: session.elwoodSessionId });
     expect(resumed.elwoodSessionId).toBe(session.elwoodSessionId);
     expect(ptys).toHaveLength(2);
     expect(ptys[1]!.size).toEqual({ cols: 44, rows: 12 });
+    expect(ptys[1]!.options.args.join(" ")).toContain("--resume 'claude-resume-id'");
   });
 
   test("C-STATE-10 rejects Codex records during Claude resume", async () => {
@@ -39,6 +50,15 @@ describe("ClaudeSession lifecycle", () => {
     await expect(
       resumeClaude({ cwd, elwoodSessionId: record.elwoodSessionId }),
     ).rejects.toMatchObject({ code: "adapter_mismatch" });
+  });
+
+  test("C-STATE-02 rejects Claude resume before Claude publishes a session id", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    await expect(
+      resumeClaude({ cwd, elwoodSessionId: session.elwoodSessionId }),
+    ).rejects.toMatchObject({ code: "resume_unavailable" });
   });
 
   test("C-STATE-05 C-STATE-06 keeps prompts, terminal data, and hook payloads live-only", async () => {

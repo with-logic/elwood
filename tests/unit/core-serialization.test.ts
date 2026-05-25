@@ -19,7 +19,14 @@ import {
   setCommandRunnerForTests,
   setPlatformForTests,
 } from "../../src/runtime/seams.ts";
-import { defaultStateDir, readSessionRecord, sessionDir } from "../../src/state/store.ts";
+import { assertStartupUsable } from "../../src/runtime/startup.ts";
+import {
+  createSessionRecord,
+  defaultStateDir,
+  readSessionRecord,
+  removeSessionDir,
+  sessionDir,
+} from "../../src/state/store.ts";
 
 describe("serialization", () => {
   test("C-HRESP variants serialize to Claude-compatible output", () => {
@@ -68,6 +75,17 @@ describe("preflight", () => {
     expect(typeof currentPlatform()).toBe("string");
     expect(currentCommandRunner()("bun", ["--version"]).stdout.length).toBeGreaterThan(0);
   });
+
+  test("startup readiness detects authentication failures", async () => {
+    await expect(
+      assertStartupUsable({
+        adapter: "codex",
+        exit: undefined,
+        output: "not logged in",
+        waitMs: 0,
+      }),
+    ).rejects.toMatchObject({ code: "codex_not_authenticated" });
+  });
 });
 
 describe("settings and command construction", () => {
@@ -79,7 +97,7 @@ describe("settings and command construction", () => {
       name: "demo",
     });
     expect(command).toContain("--permission-mode");
-    expect(command).toContain("--tools");
+    expect(command).toContain("--allowedTools");
     expect(command).toContain("--name");
     expect(shellLaunch("/bin/zsh", command).args).toContain("-c");
     const settings = generateClaudeSettings({
@@ -90,7 +108,8 @@ describe("settings and command construction", () => {
         settingsOverrides: { permissions: { allow: ["Read"] } },
       },
     });
-    expect(JSON.stringify(settings)).toContain("AskUserQuestion");
+    expect(JSON.stringify(settings)).toContain("bridge.mjs");
+    expect(JSON.stringify(settings)).toContain("Read");
   });
 });
 
@@ -104,5 +123,16 @@ describe("state store", () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "session.json"), '{"schemaVersion":2,"elwoodSessionId":"bad"}');
     expect(() => readSessionRecord(root, "bad")).toThrow(ElwoodError);
+    const corruptDir = sessionDir(root, "corrupt");
+    mkdirSync(corruptDir, { recursive: true });
+    writeFileSync(join(corruptDir, "session.json"), "{");
+    expect(() => readSessionRecord(root, "corrupt")).toThrow(ElwoodError);
+    const record = createSessionRecord({ stateDir: root, cwd: root, id: "null-path" });
+    expect(() =>
+      removeSessionDir({
+        ...record,
+        paths: { ...record.paths, sessionDir: "\0" },
+      }),
+    ).toThrow(ElwoodError);
   });
 });

@@ -106,7 +106,7 @@ export class CodexSessionImpl implements CodexSession {
   }
 
   async stop(): Promise<void> {
-    this.pty.kill("SIGTERM");
+    await this.terminate("SIGTERM");
     await this.bridge.stop();
     this.transcriptWatcher?.flush();
     this.transcriptWatcher?.stop();
@@ -115,7 +115,7 @@ export class CodexSessionImpl implements CodexSession {
   }
 
   async kill(): Promise<void> {
-    this.pty.kill("SIGKILL");
+    await this.terminate("SIGKILL");
     await this.bridge.stop();
     this.transcriptWatcher?.flush();
     this.transcriptWatcher?.stop();
@@ -124,6 +124,7 @@ export class CodexSessionImpl implements CodexSession {
   }
 
   async teardown(): Promise<void> {
+    await this.terminate("SIGKILL");
     await this.bridge.stop();
     this.transcriptWatcher?.flush();
     this.transcriptWatcher?.stop();
@@ -181,5 +182,19 @@ export class CodexSessionImpl implements CodexSession {
   private persist(record: SessionRecord): void {
     this.record = record;
     writeSessionRecord(record);
+  }
+
+  private async terminate(signal: string): Promise<void> {
+    await new Promise<void>((resolve) => {
+      const unsubscribe = this.pty.onExit(() => {
+        unsubscribe();
+        resolve();
+      });
+      this.pty.kill(signal);
+      setTimeout(() => {
+        unsubscribe();
+        resolve();
+      }, 50);
+    });
   }
 }

@@ -6,6 +6,7 @@
 import type { ClaudeHookEvent } from "../claude/hooks.ts";
 import type { CodexHookEvent } from "../codex/hooks.ts";
 import type { CodexTranscriptEvent } from "../codex/transcript.ts";
+import { hookResultLabel, transcriptActivityKind } from "./hook-result.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "./types.ts";
 
 export type ElwoodAgentKind = "claude" | "codex";
@@ -23,6 +24,7 @@ export type ElwoodActivityKind =
   | "warning"
   | "startup_prompt"
   | "hook"
+  | "hook_result"
   | "hook_error";
 
 export type ElwoodActivityEvent = {
@@ -109,6 +111,23 @@ export function activityFromHookError(
   };
 }
 
+export function activityFromHookResult(
+  agent: ElwoodAgentKind,
+  elwoodSessionId: string,
+  hookEventName: string,
+  result: unknown,
+  failedOpen: boolean,
+): ElwoodActivityEvent {
+  return {
+    elwoodSessionId,
+    agent,
+    source: "hook",
+    kind: "hook_result",
+    label: hookResultLabel(result, failedOpen),
+    raw: { hookEventName, result, failedOpen },
+  };
+}
+
 export function activityFromWarning(event: ElwoodWarningEvent): ElwoodActivityEvent {
   return {
     elwoodSessionId: event.elwoodSessionId,
@@ -141,7 +160,7 @@ export function activityFromCodexTranscript(event: CodexTranscriptEvent): Elwood
     elwoodSessionId: event.elwoodSessionId,
     agent: "codex",
     source: "transcript",
-    kind: transcriptKind(event.summary.kind),
+    kind: transcriptActivityKind(event.summary.kind) as ElwoodActivityKind,
     label: event.summary.label,
     ...(event.summary.text === undefined ? {} : { text: event.summary.text }),
     raw: event.item,
@@ -159,19 +178,6 @@ function withText(
 
 function toolName(event: ClaudeHookEvent | CodexHookEvent): string {
   return stringValue(record(event)["tool_name"]) ?? event.hook_event_name;
-}
-
-function transcriptKind(kind: string): ElwoodActivityKind {
-  if (kind === "message") return "assistant_message";
-  if (
-    kind === "tool_call" ||
-    kind === "tool_result" ||
-    kind === "reasoning" ||
-    kind === "web_search"
-  ) {
-    return kind;
-  }
-  return "hook";
 }
 
 function record(value: object): Record<string, unknown> {

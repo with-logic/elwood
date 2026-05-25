@@ -49,10 +49,11 @@ function isPreToolUseResult(
   value: Readonly<Record<string, unknown>>,
 ): boolean {
   if (eventName !== "PreToolUse") return false;
+  if ("additionalContext" in value) return typeof value["additionalContext"] === "string";
   if (value["permissionDecision"] === "deny") {
     return typeof value["permissionDecisionReason"] === "string";
   }
-  return value["permissionDecision"] === "allow" && "updatedInput" in value;
+  return value["permissionDecision"] === "allow";
 }
 
 function isPermissionRequestResult(
@@ -102,7 +103,7 @@ function hasCommonFields(record: Readonly<Record<string, unknown>>): boolean {
     names.has(record["hook_event_name"]) &&
     typeof record["session_id"] === "string" &&
     typeof record["cwd"] === "string" &&
-    typeof record["model"] === "string"
+    optionalString(record["model"])
   );
 }
 

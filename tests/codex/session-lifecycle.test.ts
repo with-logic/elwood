@@ -6,16 +6,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-  ElwoodError,
-  resumeCodex,
-  setCodexHookBridgeFactoryForTests,
-  setCommandRunnerForTests,
-  setPtyFactoryForTests,
-  startCodex,
-} from "../../src/index.ts";
+import { setCodexHookBridgeFactoryForTests } from "../../src/codex/session.ts";
+import { ElwoodError, resumeCodex, startCodex } from "../../src/index.ts";
+import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { createSessionRecord, prepareStateDir, writeSessionRecord } from "../../src/state/store.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { FakePty, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -122,6 +117,23 @@ describe("CodexSession lifecycle", () => {
     }));
     await expect(startCodex({ cwd: tempDir() })).rejects.toMatchObject({
       code: "hook_bridge_failed",
+    });
+  });
+
+  test("C-ERR Codex exits during startup with a typed error", async () => {
+    installFakes();
+    setPtyFactoryForTests((options) => {
+      const pty = new FakePty(options);
+      ptys.push(pty);
+      const timer = setInterval(() => {
+        if (pty.exitHandlers.length === 0) return;
+        clearInterval(timer);
+        pty.emitExit({ exitCode: 12, signal: 15 });
+      }, 0);
+      return pty;
+    });
+    await expect(startCodex({ cwd: tempDir() })).rejects.toMatchObject({
+      code: "codex_start_failed",
     });
   });
 });

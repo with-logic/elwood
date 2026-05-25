@@ -1,15 +1,15 @@
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resetCodexSessionSeamsForTests } from "../../src/codex/session.ts";
+import type { TerminalSize } from "../../src/index.ts";
+import type { PtyExit, PtyProcess, PtySpawnOptions } from "../../src/pty/types.ts";
 import {
-  resetCodexSessionSeamsForTests,
   resetRuntimeSeamsForTests,
   setCommandRunnerForTests,
   setPlatformForTests,
   setPtyFactoryForTests,
-  type TerminalSize,
-} from "../../src/index.ts";
-import type { PtyExit, PtyProcess, PtySpawnOptions } from "../../src/pty/types.ts";
+} from "../../src/runtime/seams.ts";
 
 export const ptys: FakePty[] = [];
 
@@ -120,7 +120,7 @@ export class FakePty implements PtyProcess {
       });
       client.on("end", () => resolve(JSON.parse(response)));
       client.on("connect", () => {
-        client.write(payload);
+        client.write(`${payload}\n`);
       });
     });
   }

@@ -26,8 +26,9 @@ describe("ClaudeSession startup and terminal control", () => {
     const sessionDir = join(cwd, ".elwood", "sessions", session.elwoodSessionId);
     expect(existsSync(join(cwd, ".elwood", ".gitignore"))).toBe(true);
     expect(readFileSync(join(sessionDir, "claude-settings.json"), "utf8")).toContain(
-      "AskUserQuestion",
+      "hook-bridge.mjs",
     );
+    expect(ptys[0]!.options.args.join(" ")).toContain("--disallowedTools 'AskUserQuestion'");
     expect(ptys[0]!.options.args).toContain("-l");
     expect(ptys[0]!.options.args).toContain("-i");
   });

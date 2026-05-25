@@ -182,7 +182,7 @@ describe("Codex core helpers", () => {
         agent_transcript_path: null,
       }),
     ).toBe(true);
-    expect(isCodexHookResult("PreToolUse", { permissionDecision: "allow" })).toBe(false);
+    expect(isCodexHookResult("PreToolUse", { permissionDecision: "allow" })).toBe(true);
     expect(isCodexHookResult("PreToolUse", { continue: false })).toBe(false);
     expect(
       isCodexHookResult("PreToolUse", {

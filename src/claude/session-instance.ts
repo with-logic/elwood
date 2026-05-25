@@ -18,6 +18,7 @@ import type { PtyProcess } from "../pty/types.ts";
 import {
   removeSessionDir,
   type SessionRecord,
+  updateSessionResumeId,
   updateSessionStatus,
   writeSessionRecord,
 } from "../state/store.ts";
@@ -99,20 +100,21 @@ export class ClaudeSessionImpl implements ClaudeSession {
   }
 
   async stop(): Promise<void> {
-    this.pty.kill("SIGTERM");
+    await this.terminate("SIGTERM");
     await this.bridge.stop();
     this.terminal.dispose();
     this.setStatus("stopped");
   }
 
   async kill(): Promise<void> {
-    this.pty.kill("SIGKILL");
+    await this.terminate("SIGKILL");
     await this.bridge.stop();
     this.terminal.dispose();
     this.setStatus("killed");
   }
 
   async teardown(): Promise<void> {
+    await this.terminate("SIGKILL");
     await this.bridge.stop();
     this.terminal.dispose();
     removeSessionDir(this.record);
@@ -131,6 +133,10 @@ export class ClaudeSessionImpl implements ClaudeSession {
 
   markExited(): void {
     this.setStatus("exited");
+  }
+
+  rememberClaudeSessionId(sessionId: string): void {
+    this.persist(updateSessionResumeId(this.record, "claude", sessionId));
   }
 
   private ensureRunning(): void {
@@ -153,5 +159,19 @@ export class ClaudeSessionImpl implements ClaudeSession {
   private persist(record: SessionRecord): void {
     this.record = record;
     writeSessionRecord(record);
+  }
+
+  private async terminate(signal: string): Promise<void> {
+    await new Promise<void>((resolve) => {
+      const unsubscribe = this.pty.onExit(() => {
+        unsubscribe();
+        resolve();
+      });
+      this.pty.kill(signal);
+      setTimeout(() => {
+        unsubscribe();
+        resolve();
+      }, 50);
+    });
   }
 }

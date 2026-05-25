@@ -75,7 +75,7 @@ export type CodexCommonResult = {
 
 export type CodexPreToolUseResult =
   | { readonly permissionDecision: "deny"; readonly permissionDecisionReason: string }
-  | { readonly permissionDecision: "allow"; readonly updatedInput: unknown }
+  | { readonly permissionDecision: "allow"; readonly updatedInput?: unknown }
   | { readonly additionalContext: string }
   | { readonly decision: "block"; readonly reason: string };
 

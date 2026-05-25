@@ -7,9 +7,23 @@ import { describe, expect, mock, test } from "bun:test";
 import { statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { currentPtyFactory, resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
+import { loginShellCommand } from "../../src/runtime/shell.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
 describe("node PTY adapter", () => {
+  test("C-PTY-02 interactive login shell sources zsh startup files", () => {
+    const home = tempDirForUnit();
+    writeFileSync(join(home, ".zshrc"), "export ELWOOD_SHELL_PROBE=from_zshrc\n");
+    const result = Bun.spawnSync({
+      cmd: ["/bin/zsh", ...loginShellCommand("printf $ELWOOD_SHELL_PROBE")],
+      env: { ...process.env, HOME: home, ZDOTDIR: home },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.toString()).toBe("from_zshrc");
+  });
+
   test("C-PTY-01 wraps a real pseudoterminal process", async () => {
     const calls: string[] = [];
     mock.module("node-pty", () => ({

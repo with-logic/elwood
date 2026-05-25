@@ -14,7 +14,7 @@ import {
 } from "../../src/runtime/seams.ts";
 
 describe("CLI autoupdate preflight", () => {
-  test("C-CLAUDE-07 runs claude update before version checks", () => {
+  test("C-CLAUDE-07 runs claude update before spawning", () => {
     const commands: string[] = [];
     setPlatformForTests("darwin");
     setCommandRunnerForTests((command, args) => {

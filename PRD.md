@@ -149,12 +149,14 @@ For each Claude session, Elwood generates a session-scoped settings file or JSON
 object containing only Elwood's necessary overrides:
 
 - hook bridge handlers for every Claude hook event;
-- any requested tool or permission policy;
 - any session-specific environment/settings required for routing.
 
 Elwood launches Claude with Claude Code's `--settings <file-or-json>` mechanism
 and relies on Claude Code's native settings merge precedence. Omitted keys in
 Elwood's generated settings must leave user, project, and local settings intact.
+Requested permission mode and allowed/disallowed tool policy may be supplied as
+Claude CLI flags instead of generated settings when Claude exposes a stable flag
+for that policy.
 
 ### 4.4 Codex configuration behavior
 
@@ -197,6 +199,7 @@ type StartClaudeOptions = {
   readonly settingsOverrides?: ClaudeSettingsOverrides;
   readonly autoupdate?: boolean;
   readonly hookTimeoutMs?: number;
+  readonly strictVersionCheck?: boolean;
   readonly metadata?: Readonly<Record<string, unknown>>;
 };
 
@@ -206,7 +209,8 @@ declare function startClaude(options: StartClaudeOptions): Promise<ClaudeSession
 `cwd` is the working directory where Claude should start. `stateDir` overrides
 the default Elwood state directory. `hooks` registers launch-time handlers before
 Claude starts. When `autoupdate` is true, Elwood runs `claude update` from the
-user's login shell before spawning Claude.
+user's login shell before spawning Claude. `strictVersionCheck` makes
+unparseable Claude versions fatal instead of warning-and-continuing.
 
 ### 5.2 Resuming Claude
 
@@ -219,6 +223,7 @@ type ResumeClaudeOptions = {
   readonly initialSize?: TerminalSize;
   readonly autoupdate?: boolean;
   readonly hookTimeoutMs?: number;
+  readonly strictVersionCheck?: boolean;
 };
 
 declare function resumeClaude(options: ResumeClaudeOptions): Promise<ClaudeSession>;
@@ -231,6 +236,10 @@ not need Claude's session ID.
 `resumeClaude` must verify that the persisted Elwood session record belongs to
 the Claude adapter before launching. Passing a Codex session ID to `resumeClaude`
 must fail with a typed error instead of launching a Claude process.
+If Elwood has not observed and persisted Claude Code's internal session id from
+`SessionStart`, `resumeClaude` must fail explicitly with `resume_unavailable`.
+It must not silently launch a fresh Claude conversation under the same Elwood
+session ID.
 
 ### 5.3 ClaudeSession
 
@@ -302,7 +311,7 @@ Required event families:
 - `activity`: adapter-neutral live events for common observability, including
   lifecycle changes, user messages, assistant messages, reasoning, tool calls,
   tool results, web search, notifications, warnings, startup prompt automation,
-  generic hooks, and hook errors.
+  generic hooks, hook results, and hook errors.
 - `hook`: every Claude hook event after parsing and validation.
 - `codex:transcript`: live, best-effort Codex transcript observations for
   activity that Codex does not expose as hook events.
@@ -320,9 +329,19 @@ adapters. Every activity event includes:
 - optional `text`
 - optional `raw` in-memory source payload
 
+`raw` is live-only but intentionally not redacted. Parent applications that
+subscribe to activity events should treat `raw` as potentially containing user
+prompts, tool inputs, tool outputs, and hook payload details.
+
 When Elwood detects and answers an interactive startup prompt on behalf of the
 parent app, it MUST emit an activity event with `source: "terminal"`,
 `kind: "startup_prompt"`, a stable label, and text describing the key sent.
+Every hook dispatch must also emit an adapter-neutral hook-result activity after
+parent handlers run. The result activity must include the hook event name,
+whether the dispatch failed open, and the raw in-memory result payload when
+present. Handler timeouts, invalid responses, thrown handlers, and bridge errors
+must emit both `hookError` and an adapter-neutral `activity` with
+`kind: "hook_error"`.
 
 Hook-specific events remain the source of truth for event-specific decisions,
 typed control responses, and adapter-specific payloads.
@@ -354,6 +373,7 @@ type StartCodexOptions = {
   readonly configOverrides?: readonly string[];
   readonly autoupdate?: boolean;
   readonly hookTimeoutMs?: number;
+  readonly strictVersionCheck?: boolean;
   readonly metadata?: Readonly<Record<string, unknown>>;
 };
 
@@ -370,7 +390,8 @@ function.
 When `autoupdate` is true, Elwood runs `codex update` from the user's login
 shell before spawning Codex. If Codex later shows an interactive update prompt
 inside the TUI, Elwood skips that prompt through PTY input, including Codex's
-cursor-addressed update screen.
+cursor-addressed update screen. `strictVersionCheck` makes unparseable Codex
+versions fatal instead of warning-and-continuing.
 
 ### 5.6 Resuming Codex
 
@@ -383,6 +404,7 @@ type ResumeCodexOptions = {
   readonly initialSize?: TerminalSize;
   readonly autoupdate?: boolean;
   readonly hookTimeoutMs?: number;
+  readonly strictVersionCheck?: boolean;
 };
 
 declare function resumeCodex(options: ResumeCodexOptions): Promise<CodexSession>;
@@ -487,8 +509,9 @@ by the installed Claude Code version, including at minimum:
 - `Elicitation`
 - `ElicitationResult`
 
-If a future Claude version adds events, Elwood should expose them through an
-unknown-but-safe event path until first-class types are added.
+If a future Claude version adds events, the MVP may reject them as invalid hook
+input and fail open until first-class types are added. Elwood should add an
+unknown-but-safe event path before promising forward-compatible hook handling.
 
 ### 6.2 Routing
 
@@ -501,6 +524,9 @@ session-scoped. A Unix domain socket is the preferred initial design on macOS.
 The bridge must authenticate or validate that it is talking to the expected
 local Elwood runtime, for example through an unguessable per-session token stored
 in the generated settings/environment.
+Bridge request framing must wait for a complete request before dispatching. A
+partial JSON chunk must not be interpreted as a complete hook invocation, and a
+malformed complete request must fail open with a typed hook error.
 
 ### 6.3 Fail-open behavior
 
@@ -508,6 +534,9 @@ The hook bridge is fail-open by default.
 
 If no parent handler is registered for a hook event, Elwood returns the same
 observable result Claude would receive if no hook existed.
+
+If the bridge cannot identify a hook event name from malformed input, Elwood
+emits `hookError.hookEventName: "Unknown"` and fails open.
 
 If a handler times out, throws, rejects, disconnects, or returns an invalid
 runtime value, Elwood returns no decision to Claude and emits `hookError` to the
@@ -593,8 +622,8 @@ unions.
 - `hook_event_name` narrows the event payload.
 - For tool events, `tool_name` narrows known tool inputs for `Bash` and
   `apply_patch`; MCP and future tools use a safe extensibility path.
-- `PreToolUse` may deny, allow a rewritten input, or add context according to
-  Codex's current supported response shapes.
+- `PreToolUse` may deny, allow, allow a rewritten input, or add context
+  according to Codex's current supported response shapes.
 - `PermissionRequest` may allow or deny only. Future-only fields such as
   updated input, updated permissions, and interrupts must be unrepresentable.
   Serialized output must put `behavior` and optional `message` directly in the
@@ -718,6 +747,10 @@ error that names the required version and feature. If the version cannot be
 parsed, Elwood warns and continues by default, with an option for callers to make
 this fatal.
 
+Version checks and optional `claude update` / `codex update` commands must run
+through the same user login shell resolution path used for the launched agent so
+PATH and shell startup behavior match a normal Terminal.app session.
+
 ### 9.3 Resume
 
 `resumeClaude` loads the Elwood session record and starts a new wrapper around
@@ -725,7 +758,8 @@ the same logical Claude conversation using Claude Code's resume mechanism.
 
 Resume must restore hook routing, generated settings, state metadata, and PTY
 control. Resume must not require callers to know Claude's internal session ID.
-Resume must reject session records owned by another adapter.
+Resume must reject session records owned by another adapter and must fail
+explicitly when the Claude resume id is not available.
 
 `resumeCodex` loads the Elwood session record and starts a new wrapper around the
 same logical Codex conversation using `codex resume <SESSION_ID>` when Elwood has
@@ -854,6 +888,7 @@ Each criterion has:
 | C-API-14 | §5.7 | Sessions expose a typed `warnings` snapshot and emit typed `warning` events for non-fatal environment issues. |
 | C-API-15 | §5.3 | Sessions expose a typed headless xterm terminal handle with snapshot and underlying xterm access. |
 | C-API-16 | §5.1 | Omitted `initialSize` defaults to a 189 column by 48 row terminal. |
+| C-API-17 | §5.4 | Hook dispatch emits adapter-neutral hook-result activity, and hook failures also appear in the activity stream. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 
@@ -878,6 +913,7 @@ Each criterion has:
 | C-CLAUDE-05 | §10 | Missing `claude` fails with `claude_not_found` and a useful message. |
 | C-CLAUDE-06 | §10 | An immediately failing or unusable Claude process fails with `claude_start_failed` or a more specific typed error. |
 | C-CLAUDE-07 | §5.1 | `autoupdate: true` runs `claude update` before spawning Claude. |
+| C-CLAUDE-08 | §5.2 | `resumeClaude` fails explicitly when Elwood has not persisted a Claude resume id. |
 
 #### C-CODEX: Codex Startup And Config (§4, §7A, §9)
 
@@ -912,6 +948,7 @@ Each criterion has:
 | C-HOOK-13 | §7A.2 | Codex hook IPC input is runtime-validated before dispatch to parent handlers. |
 | C-HOOK-14 | §7A.2 | Codex `hook_event_name` narrows valid handler response types at compile time. |
 | C-HOOK-15 | §7A.3 | Codex `Stop` marks the session ready only when the Stop event is not blocked. |
+| C-HOOK-16 | §6.2 | Hook IPC waits for a complete framed request before dispatching and fails open on malformed complete requests. |
 
 #### C-HRESP: Hook Response Mapping (§6, §7)
 
@@ -923,7 +960,7 @@ Each criterion has:
 | C-HRESP-04 | §6.4 | Observe-only events such as `Notification` cannot return blocking decisions through the public type API. |
 | C-HRESP-05 | §6.4 | `Elicitation` and `ElicitationResult` support typed accept/decline/cancel response shapes. |
 | C-HRESP-06 | §6.4 | Hook responses serialize to Claude-compatible JSON or no-output results. |
-| C-HRESP-07 | §7A.2 | Codex `PreToolUse` handlers can deny, allow rewritten input, or add context according to Codex's schema. |
+| C-HRESP-07 | §7A.2 | Codex `PreToolUse` handlers can deny, allow, allow with rewritten input, or add context according to Codex's schema. |
 | C-HRESP-08 | §7A.2 | Codex `PermissionRequest` handlers can allow or deny and cannot return future-only invalid fields. |
 | C-HRESP-09 | §7A.2 | Codex `Stop` and `SubagentStop` handlers can request continuation with a reason. |
 | C-HRESP-10 | §7A.2 | Codex hook responses serialize to Codex-compatible JSON or no-output results. |

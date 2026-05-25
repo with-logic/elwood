@@ -4,15 +4,14 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { setHookBridgeFactoryForTests } from "../../src/claude/session.ts";
+import { ElwoodError, startClaude } from "../../src/index.ts";
 import {
-  ElwoodError,
   setCommandRunnerForTests,
-  setHookBridgeFactoryForTests,
   setPlatformForTests,
   setPtyFactoryForTests,
-  startClaude,
-} from "../../src/index.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+} from "../../src/runtime/seams.ts";
+import { FakePty, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -97,6 +96,22 @@ describe("ClaudeSession errors", () => {
     await expect(startClaude({ cwd: tempDir() })).rejects.toMatchObject({
       code: "pty_start_failed",
     });
+  });
+
+  test("C-ERR-01 startup exits stop local resources", async () => {
+    const cwd = tempDir();
+    installFakes();
+    setPtyFactoryForTests((options) => {
+      const pty = new FakePty(options);
+      ptys.push(pty);
+      const timer = setInterval(() => {
+        if (pty.exitHandlers.length === 0) return;
+        clearInterval(timer);
+        pty.emitExit({ exitCode: 12, signal: 15 });
+      }, 0);
+      return pty;
+    });
+    await expect(startClaude({ cwd })).rejects.toMatchObject({ code: "claude_start_failed" });
   });
 
   test("C-ERR-06 hook bridge startup failure is typed", async () => {

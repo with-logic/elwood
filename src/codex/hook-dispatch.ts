@@ -3,18 +3,24 @@
  * Implements PRD §7A.
  */
 
+import { activityFromHookError } from "../core/activity.ts";
 import type { HookErrorEvent } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { CodexHookEvent, CodexHookResult } from "./hooks.ts";
 import type { CodexEventMap } from "./session-types.ts";
 import { isCodexHookResult } from "./validate.ts";
 
+export type CodexHookDispatchOutcome = {
+  readonly result: CodexHookResult;
+  readonly failedOpen: boolean;
+};
+
 export async function requestCodexHook(
   emitter: TypedEmitter<CodexEventMap>,
   event: CodexHookEvent,
   timeoutMs: number,
   elwoodSessionId: string,
-): Promise<CodexHookResult> {
+): Promise<CodexHookDispatchOutcome> {
   try {
     const result = await withTimeout(
       (
@@ -29,9 +35,9 @@ export async function requestCodexHook(
         category: "invalid_response",
         message: "Hook handler returned an invalid response for this event.",
       });
-      return undefined;
+      return { result: undefined, failedOpen: true };
     }
-    return result;
+    return { result, failedOpen: false };
   } catch (error) {
     emitError(emitter, {
       elwoodSessionId,
@@ -40,7 +46,7 @@ export async function requestCodexHook(
       message: error instanceof Error ? error.message : "Hook handler failed",
       timeoutMs,
     });
-    return undefined;
+    return { result: undefined, failedOpen: true };
   }
 }
 
@@ -50,6 +56,7 @@ export function isCodexBlock(result: CodexHookResult): boolean {
 
 function emitError(emitter: TypedEmitter<CodexEventMap>, event: HookErrorEvent): void {
   emitter.emit("hookError", event);
+  emitter.emit("activity", activityFromHookError("codex", event));
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {

@@ -11,6 +11,26 @@ import {
 } from "../claude/hooks.ts";
 
 const names = new Set<string>(claudeHookEventNames);
+const contextResultEvents = new Set<string>([
+  "SessionStart",
+  "Setup",
+  "InstructionsLoaded",
+  "UserPromptSubmit",
+  "UserPromptExpansion",
+  "PostToolUse",
+  "PostToolUseFailure",
+  "PostToolBatch",
+  "SubagentStart",
+  "TaskCreated",
+  "TaskCompleted",
+  "StopFailure",
+  "TeammateIdle",
+  "ConfigChange",
+  "CwdChanged",
+  "FileChanged",
+  "PreCompact",
+  "PostCompact",
+]);
 
 export function isClaudeHookEvent(value: unknown): value is ClaudeHookEvent {
   if (!value || typeof value !== "object") return false;
@@ -40,7 +60,7 @@ export function isClaudeHookResult(
   }
   if ("action" in value) return isElicitationResult(eventName, value);
   if ("decision" in value) return isBlockResult(eventName, value);
-  if (eventName === "Notification") return false;
+  if (!contextResultEvents.has(eventName)) return false;
   return isContextResult(value);
 }
 

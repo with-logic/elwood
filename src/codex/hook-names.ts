@@ -30,7 +30,7 @@ export type CodexCommonHookFields = {
   readonly transcript_path?: string | null;
   readonly cwd: string;
   readonly hook_event_name: CodexHookEventName;
-  readonly model: string;
+  readonly model?: string;
   readonly permission_mode?: CodexPermissionMode;
 };
 

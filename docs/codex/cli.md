@@ -28,7 +28,8 @@ Useful CLI capabilities for Elwood:
 - Some Codex versions expose `--dangerously-bypass-hook-trust`, which lets
   generated Elwood hooks run for one invocation without requiring a persisted
   trust prompt. Elwood must detect support before passing it because other Codex
-  versions reject unknown flags.
+  versions reject unknown flags. Detection is cached for the lifetime of the
+  Elwood process.
 - Codex can also render interactive trust and update prompts before the session
   is usable. Elwood should select `Trust all and continue` for hook prompts, and
   skip TUI update prompts because API-level `autoupdate` runs `codex update`
@@ -43,8 +44,11 @@ Useful CLI capabilities for Elwood:
 
 Codex stores transcripts locally under Codex-owned state. Elwood should persist
 only the Codex session id needed to call `codex resume <SESSION_ID>`. If that id
-has not arrived through hooks yet, Elwood may fall back to `codex resume --last`
-only when the caller explicitly accepts that behavior.
+has not arrived through hooks yet, Elwood fails with `resume_unavailable`.
+Elwood must not silently fall back to `codex resume --last` because that can
+attach the caller's Elwood session id to the wrong Codex conversation. A future
+API may add an explicit opt-in fallback, but it is not part of the current
+contract.
 
 ## Shell Implications
 

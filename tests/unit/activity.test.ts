@@ -8,6 +8,7 @@ import {
   activityFromCodexTranscript,
   activityFromHook,
   activityFromHookError,
+  activityFromHookResult,
   activityFromStatus,
   activityFromTerminalExit,
 } from "../../src/core/activity.ts";
@@ -98,5 +99,38 @@ describe("Elwood activity events", () => {
     });
     expect(activityFromStatus("claude", "elwood-3", "ready").label).toBe("ready");
     expect(activityFromTerminalExit("claude", "elwood-3", 0).kind).toBe("terminal_exit");
+  });
+
+  test("C-API-12 maps hook result labels for known response variants", () => {
+    expect(
+      activityFromHookResult(
+        "claude",
+        "elwood-5",
+        "SessionStart",
+        {
+          additionalContext: "ctx",
+        },
+        false,
+      ).label,
+    ).toBe("context");
+    expect(
+      activityFromHookResult("claude", "elwood-5", "Elicitation", { action: "accept" }, false)
+        .label,
+    ).toBe("accept");
+    expect(
+      activityFromHookResult("claude", "elwood-5", "PermissionDenied", { retry: true }, false)
+        .label,
+    ).toBe("retry");
+    expect(
+      activityFromHookResult(
+        "claude",
+        "elwood-5",
+        "WorktreeCreate",
+        {
+          worktreePath: "/tmp/work",
+        },
+        false,
+      ).label,
+    ).toBe("worktree");
   });
 });

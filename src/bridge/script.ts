@@ -28,7 +28,7 @@ client.on("error", () => {
 });
 
 client.on("connect", () => {
-  client.write(JSON.stringify({ token, input: inputText }));
+  client.write(JSON.stringify({ token, input: inputText }) + "\\n");
 });
 
 client.on("end", () => {

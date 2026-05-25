@@ -36,12 +36,7 @@ export type {
   WriteInput,
 } from "./claude/hooks.ts";
 export { claudeHookEventNames } from "./claude/hooks.ts";
-export {
-  resetClaudeSessionSeamsForTests,
-  resumeClaude,
-  setHookBridgeFactoryForTests,
-  startClaude,
-} from "./claude/session.ts";
+export { resumeClaude, startClaude } from "./claude/session.ts";
 export type {
   CodexCommandToolInput,
   CodexCommonHookFields,
@@ -57,12 +52,7 @@ export type {
   CodexUnknownToolName,
 } from "./codex/hooks.ts";
 export { codexHookEventNames } from "./codex/hooks.ts";
-export {
-  resetCodexSessionSeamsForTests,
-  resumeCodex,
-  setCodexHookBridgeFactoryForTests,
-  startCodex,
-} from "./codex/session.ts";
+export { resumeCodex, startCodex } from "./codex/session.ts";
 export type {
   CodexApprovalPolicy,
   CodexEventHandler,
@@ -100,10 +90,4 @@ export type {
   TerminalSize,
   Unsubscribe,
 } from "./core/types.ts";
-export {
-  resetRuntimeSeamsForTests,
-  setCommandRunnerForTests,
-  setPlatformForTests,
-  setPtyFactoryForTests,
-} from "./runtime/seams.ts";
 export type { ElwoodTerminal, TerminalSnapshot, XtermTerminal } from "./terminal/headless.ts";

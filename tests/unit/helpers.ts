@@ -15,6 +15,8 @@ export async function sendBridge(socketPath: string, payload: string): Promise<s
       data += chunk.toString("utf8");
     });
     client.on("end", () => resolve(data));
-    client.on("connect", () => client.write(payload));
+    client.on("connect", () => {
+      client.write(`${payload}\n`);
+    });
   });
 }

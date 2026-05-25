@@ -14,6 +14,13 @@ bun run check
 The full check runs TypeScript, Biome, the 200-line file limit check, and Bun
 tests with 100% line and function coverage.
 
+## Supported CLI Baselines
+
+Elwood currently validates against Claude Code `2.1.144` or newer and Codex CLI
+`0.124.0` or newer. By default an unparseable CLI version warns and continues;
+pass `strictVersionCheck: true` to fail closed when the version cannot be
+parsed.
+
 ## Local Test App
 
 ```sh

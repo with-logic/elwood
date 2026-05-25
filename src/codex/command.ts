@@ -13,7 +13,9 @@ export function buildCodexShellCommand(
   options: StartCodexOptions,
   capabilities: CodexCliCapabilities = { supportsHookTrustBypass: true },
 ): string {
-  const parts = ["exec", "codex"];
+  const parts = record.codex.resumeId
+    ? ["exec", "codex", "resume", shellQuote(record.codex.resumeId)]
+    : ["exec", "codex"];
   addLaunchFlags(parts, options);
   parts.push("--cd", shellQuote(options.cwd));
   if (capabilities.supportsHookTrustBypass) {
@@ -23,7 +25,6 @@ export function buildCodexShellCommand(
   for (const override of hookOverrides(record, options)) parts.push("-c", shellQuote(override));
   for (const override of options.configOverrides ?? []) parts.push("-c", shellQuote(override));
   parts.push("-c", shellQuote('hookTrust="trust-all"'));
-  if (record.codex.resumeId) parts.push("resume", shellQuote(record.codex.resumeId));
   return parts.join(" ");
 }
 

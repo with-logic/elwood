@@ -5,6 +5,7 @@
 
 import { elwoodError } from "../core/errors.ts";
 import { currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
+import { loginShellCommand, userShell } from "../runtime/shell.ts";
 
 export const minimumCodexVersion = "0.124.0";
 export type CodexCliCapabilities = { readonly supportsHookTrustBypass: boolean };
@@ -14,12 +15,15 @@ export function preflightCodex(strictVersionCheck: boolean, autoupdate = false):
   if (currentPlatform() !== "darwin") {
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
-  if (autoupdate) runCodexUpdate();
-  const result = currentCommandRunner()("codex", ["--version"]);
-  if (result.status === null || result.error?.code === "ENOENT") {
+  const result = currentCommandRunner()(userShell(), loginShellCommand("codex --version"));
+  if (result.status === null || result.error?.code === "ENOENT" || result.status === 127) {
     throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");
   }
-  if (result.status !== 0) throw elwoodError("codex_not_found", "`codex --version` failed.");
+  if (result.status !== 0) {
+    throw elwoodError("codex_start_failed", "`codex --version` failed.", {
+      stderr: result.stderr,
+    });
+  }
   const version = parseCodexVersion(result.stdout);
   if (!version) {
     if (strictVersionCheck) {
@@ -34,11 +38,11 @@ export function preflightCodex(strictVersionCheck: boolean, autoupdate = false):
       { version, minimumCodexVersion },
     );
   }
+  if (autoupdate) runCodexUpdate();
 }
 
 function runCodexUpdate(): void {
-  const shell = process.env["SHELL"] ?? "/bin/zsh";
-  const result = currentCommandRunner()(shell, ["-l", "-i", "-c", "codex update"]);
+  const result = currentCommandRunner()(userShell(), loginShellCommand("codex update"));
   if (result.status !== 0) {
     throw elwoodError("codex_update_failed", "`codex update` failed.", { stderr: result.stderr });
   }
@@ -50,8 +54,7 @@ export function parseCodexVersion(output: string): string | null {
 
 export function detectCodexCliCapabilities(): CodexCliCapabilities {
   if (cachedCapabilities) return cachedCapabilities;
-  const shell = process.env["SHELL"] ?? "/bin/zsh";
-  const result = currentCommandRunner()(shell, ["-l", "-i", "-c", "codex --help"]);
+  const result = currentCommandRunner()(userShell(), loginShellCommand("codex --help"));
   const help = `${result.stdout}\n${result.stderr}`;
   cachedCapabilities = {
     supportsHookTrustBypass: help.includes("--dangerously-bypass-hook-trust"),
@@ -64,11 +67,16 @@ export function resetCodexPreflightCacheForTests(): void {
 }
 
 function compareVersions(left: string, right: string): number {
-  const a = left.split(".").map(Number);
-  const b = right.split(".").map(Number);
+  const a = left.split(".").map(toVersionPart);
+  const b = right.split(".").map(toVersionPart);
   for (let index = 0; index < 3; index += 1) {
     const diff = (a[index] ?? 0) - (b[index] ?? 0);
     if (diff !== 0) return diff;
   }
   return 0;
+}
+
+function toVersionPart(part: string): number {
+  const parsed = Number.parseInt(part, 10);
+  return Number.isFinite(parsed) ? parsed : 0;
 }

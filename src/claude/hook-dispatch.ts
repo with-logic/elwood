@@ -4,40 +4,46 @@
  */
 
 import { isClaudeHookResult } from "../bridge/validate.ts";
-import type { ElwoodEventName } from "../core/types.ts";
+import { activityFromHookError } from "../core/activity.ts";
+import type { ElwoodEventName, HookErrorEvent } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { ClaudeHookEvent, ClaudeHookResult } from "./hooks.ts";
+
+export type HookDispatchOutcome = {
+  readonly result: ClaudeHookResult;
+  readonly failedOpen: boolean;
+};
 
 export async function requestHook(
   emitter: TypedEmitter,
   event: ClaudeHookEvent,
   timeoutMs: number,
   elwoodSessionId: string,
-): Promise<ClaudeHookResult> {
+): Promise<HookDispatchOutcome> {
   try {
     const result = await withTimeout(
       emitter.request(`hook:${event.hook_event_name}` as ElwoodEventName, event),
       timeoutMs,
     );
     if (!isClaudeHookResult(event.hook_event_name, result)) {
-      emitter.emit("hookError", {
+      emitHookError(emitter, {
         elwoodSessionId,
         hookEventName: event.hook_event_name,
         category: "invalid_response",
         message: "Hook handler returned an invalid response for this event.",
       });
-      return undefined;
+      return { result: undefined, failedOpen: true };
     }
-    return result;
+    return { result, failedOpen: false };
   } catch (error) {
-    emitter.emit("hookError", {
+    emitHookError(emitter, {
       elwoodSessionId,
       hookEventName: event.hook_event_name,
       category: error instanceof Error && error.message === "timeout" ? "timeout" : "handler_error",
       message: error instanceof Error ? error.message : "Hook handler failed",
       timeoutMs,
     });
-    return undefined;
+    return { result: undefined, failedOpen: true };
   }
 }
 
@@ -55,4 +61,9 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
   } finally {
     if (timeout) clearTimeout(timeout);
   }
+}
+
+function emitHookError(emitter: TypedEmitter, event: HookErrorEvent): void {
+  emitter.emit("hookError", event);
+  emitter.emit("activity", activityFromHookError("claude", event));
 }

@@ -8,6 +8,8 @@ import { activityFromStartupPrompt } from "../core/activity.ts";
 import { elwoodError } from "../core/errors.ts";
 import type { TerminalSize } from "../core/types.ts";
 import { TypedEmitter } from "../events/emitter.ts";
+import type { PtyExit } from "../pty/types.ts";
+import { assertStartupUsable } from "../runtime/startup.ts";
 import {
   createSessionRecord,
   defaultStateDir,
@@ -17,12 +19,9 @@ import {
   writeSessionRecord,
 } from "../state/store.ts";
 import { attachPtyTerminal } from "../terminal/headless.ts";
-import { isCodexBlock, requestCodexHook } from "./hook-dispatch.ts";
-import type { CodexHookEvent } from "./hooks.ts";
 import * as preflight from "./preflight.ts";
 import { spawnCodexPty } from "./pty.ts";
-import { serializeCodexHookResult } from "./serialize.ts";
-import { registerInitialHooks } from "./session-hooks.ts";
+import { dispatchHook, registerInitialHooks } from "./session-hooks.ts";
 import { type CodexHookBridge, CodexSessionImpl } from "./session-instance.ts";
 import type {
   CodexEventMap,
@@ -85,7 +84,10 @@ export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSes
   }
   preflight.preflightCodex(options.strictVersionCheck ?? false, options.autoupdate ?? false);
   const size = options.initialSize ?? record.terminalSize;
-  return await startFromRecord(record, {
+  const resumedRecord =
+    options.initialSize === undefined ? record : { ...record, terminalSize: options.initialSize };
+  writeSessionRecord(resumedRecord);
+  return await startFromRecord(resumedRecord, {
     cwd: options.cwd ?? record.cwd,
     stateDir,
     ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
@@ -129,11 +131,14 @@ async function startFromRecord(
     });
   }
   const pty = spawnCodexPty(record, options);
+  let startupOutput = "";
+  let startupExit: PtyExit | undefined;
   const promptResponder = new CodexStartupPromptResponder(record.elwoodSessionId);
   const terminal = attachPtyTerminal(
     options.initialSize ?? record.terminalSize ?? defaultSize,
     pty,
     (data, renderedTerminal) => {
+      startupOutput += data;
       const result = promptResponder.handle(renderedTerminal.snapshot().text, (input) =>
         renderedTerminal.sendInput(input),
       );
@@ -148,6 +153,7 @@ async function startFromRecord(
   );
   session = new CodexSessionImpl(record, pty, terminal, bridge, emitter, transcriptWatcher);
   pty.onExit((exit) => {
+    startupExit = exit;
     emitter.emit("terminal:exit", { elwoodSessionId: record.elwoodSessionId, ...exit });
     emitter.emit(
       "activity",
@@ -155,28 +161,19 @@ async function startFromRecord(
     );
     session?.markExited();
   });
+  try {
+    await assertStartupUsable({
+      adapter: "codex",
+      exit: () => startupExit,
+      output: () => startupOutput,
+    });
+  } catch (error) {
+    pty.kill("SIGTERM");
+    await bridge.stop();
+    transcriptWatcher.stop();
+    terminal.dispose();
+    throw error;
+  }
   session.markRunning();
   return session;
-}
-
-async function dispatchHook(
-  input: unknown,
-  emitter: TypedEmitter<CodexEventMap>,
-  options: StartCodexOptions,
-  record: SessionRecord,
-  session?: CodexSessionImpl,
-) {
-  const event = input as CodexHookEvent;
-  session?.observeTranscript(event.transcript_path);
-  if (event.hook_event_name === "SessionStart") session?.rememberCodexSessionId(event.session_id);
-  emitter.emit("hook", event);
-  emitter.emit("activity", activity.activityFromHook("codex", record.elwoodSessionId, event));
-  const result = await requestCodexHook(
-    emitter,
-    event,
-    options.hookTimeoutMs ?? 25_000,
-    record.elwoodSessionId,
-  );
-  if (event.hook_event_name === "Stop" && !isCodexBlock(result)) session?.markReady();
-  return serializeCodexHookResult(event.hook_event_name, result);
 }

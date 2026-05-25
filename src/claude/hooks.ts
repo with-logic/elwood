@@ -90,6 +90,7 @@ export type ClaudeContextHookEventName = Exclude<
   | "PermissionDenied"
   | "PermissionRequest"
   | "PreToolUse"
+  | "SessionEnd"
   | "Stop"
   | "SubagentStop"
   | "WorktreeCreate"

@@ -46,15 +46,15 @@ export class HookBridgeServer {
       const respond = async () => {
         if (responded) return;
         responded = true;
-        const result = await this.handle(data);
+        const result = await this.handleSafely(data);
         socket.write(JSON.stringify(result));
         socket.end();
       };
-      socket.on("data", async (chunk) => {
+      socket.on("data", (chunk) => {
         data += chunk.toString("utf8");
-        await respond();
+        if (data.includes("\n") || parseBridgeMessage(data)) void respond();
       });
-      socket.on("end", respond);
+      socket.on("end", () => void respond());
     });
     await new Promise<void>((resolve, reject) => {
       const server = this.server;
@@ -83,6 +83,19 @@ export class HookBridgeServer {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     this.sockets.clear();
     if (existsSync(this.socketPath)) unlinkSync(this.socketPath);
+  }
+
+  private async handleSafely(data: string): Promise<BridgeProcessResult> {
+    try {
+      return await this.handle(data);
+    } catch (error) {
+      this.onError({
+        hookEventName: "Unknown",
+        category: "bridge_error",
+        message: error instanceof Error ? error.message : "Hook bridge failed",
+      });
+      return noDecision();
+    }
   }
 
   private async handle(data: string): Promise<BridgeProcessResult> {

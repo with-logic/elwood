@@ -5,7 +5,7 @@
 
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { elwoodError } from "../core/errors.ts";
+import { ElwoodError, elwoodError } from "../core/errors.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
 
 export type SessionRecord = {
@@ -97,7 +97,10 @@ export function readSessionRecord(stateDir: string, id: string): SessionRecord {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
       throw elwoodError("state_not_found", `No Elwood session found for ${id}`);
     }
-    throw error;
+    if (error instanceof ElwoodError) throw error;
+    throw elwoodError("state_corrupt", `Session state is corrupt for ${id}`, {
+      cause: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -134,7 +137,14 @@ export function appendSessionWarning(
 }
 
 export function removeSessionDir(record: SessionRecord): void {
-  rmSync(record.paths.sessionDir, { recursive: true, force: true });
+  try {
+    rmSync(record.paths.sessionDir, { recursive: true, force: true });
+  } catch (error) {
+    throw elwoodError("teardown_failed", "Could not remove Elwood session files.", {
+      cause: error instanceof Error ? error.message : String(error),
+      sessionDir: record.paths.sessionDir,
+    });
+  }
 }
 
 function warningKey(warning: ElwoodWarningEvent): string {
