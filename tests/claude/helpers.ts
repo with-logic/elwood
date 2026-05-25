@@ -10,6 +10,7 @@ import {
   setPlatformForTests,
   setPtyFactoryForTests,
 } from "../../src/runtime/seams.ts";
+import { resetStartupWaitMsForTests, setStartupWaitMsForTests } from "../../src/runtime/startup.ts";
 
 export const ptys: FakePty[] = [];
 
@@ -18,6 +19,7 @@ const versionOk = () => ({ status: 0, stdout: "2.1.144\n", stderr: "" });
 export function installFakes(): void {
   setPlatformForTests("darwin");
   setCommandRunnerForTests(versionOk);
+  setStartupWaitMsForTests(25);
   setPtyFactoryForTests((options) => {
     const pty = new FakePty(options);
     ptys.push(pty);
@@ -27,6 +29,7 @@ export function installFakes(): void {
 
 export function resetFakes(): void {
   resetRuntimeSeamsForTests();
+  resetStartupWaitMsForTests();
   resetClaudeSessionSeamsForTests();
   ptys.length = 0;
 }

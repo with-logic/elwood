@@ -4,8 +4,8 @@
  */
 
 import { resolve } from "node:path";
+import { defaultTerminalSize } from "../core/defaults.ts";
 import { elwoodError } from "../core/errors.ts";
-import type { TerminalSize } from "../core/types.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import { currentPtyFactory } from "../runtime/seams.ts";
 import { loginShellCommand, userShell } from "../runtime/shell.ts";
@@ -13,8 +13,6 @@ import type { SessionRecord } from "../state/store.ts";
 import { buildCodexShellCommand } from "./command.ts";
 import * as preflight from "./preflight.ts";
 import type { StartCodexOptions } from "./session-types.ts";
-
-const defaultSize: TerminalSize = { cols: 189, rows: 48 };
 
 export function spawnCodexPty(record: SessionRecord, options: StartCodexOptions): PtyProcess {
   const capabilities = preflight.detectCodexCliCapabilities();
@@ -24,7 +22,7 @@ export function spawnCodexPty(record: SessionRecord, options: StartCodexOptions)
       args: loginShellCommand(buildCodexShellCommand(record, options, capabilities)),
       cwd: resolve(options.cwd),
       env: { ...process.env, ELWOOD_SESSION_ID: record.elwoodSessionId },
-      size: options.initialSize ?? record.terminalSize ?? defaultSize,
+      size: options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
     });
   } catch (error) {
     throw elwoodError("pty_start_failed", "Could not start Codex PTY.", {

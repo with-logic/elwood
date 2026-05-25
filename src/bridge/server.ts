@@ -52,7 +52,7 @@ export class HookBridgeServer {
       };
       socket.on("data", (chunk) => {
         data += chunk.toString("utf8");
-        if (data.includes("\n") || parseBridgeMessage(data)) void respond();
+        if (data.includes("\n")) void respond();
       });
       socket.on("end", () => void respond());
     });
@@ -100,7 +100,15 @@ export class HookBridgeServer {
 
   private async handle(data: string): Promise<BridgeProcessResult> {
     const parsed = parseBridgeMessage(data);
-    if (!parsed || parsed.token !== this.token) return noDecision();
+    if (!parsed) {
+      this.onError({
+        hookEventName: "Unknown",
+        category: "invalid_input",
+        message: "Malformed hook bridge request",
+      });
+      return noDecision();
+    }
+    if (parsed.token !== this.token) return noDecision();
     const hookInput = parseHookInput(parsed.input);
     if (!this.isHookInput(hookInput)) {
       this.onError({

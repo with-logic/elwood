@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { startClaude } from "../../src/index.ts";
+import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -41,6 +42,14 @@ describe("ClaudeSession startup and terminal control", () => {
     installFakes();
     await startClaude({ cwd });
     expect(readFileSync(settingsPath, "utf8")).toBe('{"permissions":{"allow":["Read"]}}\n');
+  });
+
+  test("C-ERR-07 version warnings are captured when non-strict parsing fails", async () => {
+    const cwd = tempDir();
+    installFakes();
+    setCommandRunnerForTests(() => ({ status: 0, stdout: "unknown build", stderr: "" }));
+    const session = await startClaude({ cwd });
+    expect(session.warnings).toMatchObject([{ code: "version_unparseable", agent: "claude" }]);
   });
 
   test("C-API-06 sends multiline prompts through bracketed paste", async () => {

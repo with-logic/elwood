@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { HookBridgeServer } from "../bridge/server.ts";
 import * as activity from "../core/activity.ts";
+import { defaultTerminalSize } from "../core/defaults.ts";
 import { elwoodError } from "../core/errors.ts";
 import type {
   ClaudeSession,
@@ -14,6 +15,7 @@ import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { assertStartupUsable } from "../runtime/startup.ts";
 import {
+  appendSessionWarning,
   createSessionRecord,
   defaultStateDir,
   prepareStateDir,
@@ -29,7 +31,7 @@ import { serializeHookResult } from "./serialize.ts";
 import { ClaudeSessionImpl, type HookBridge } from "./session-instance.ts";
 import { registerInitialHooks, spawnClaudePty, writeRuntimeFiles } from "./session-runtime.ts";
 
-const defaultSize: TerminalSize = { cols: 189, rows: 48 };
+const defaultSize: TerminalSize = defaultTerminalSize;
 
 type HookBridgeFactory = (
   socketPath: string,
@@ -52,10 +54,10 @@ export function resetClaudeSessionSeamsForTests(): void {
 }
 
 export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSession> {
-  preflightClaude(options.strictVersionCheck ?? false, options.autoupdate ?? false);
+  const warning = preflightClaude(options.strictVersionCheck ?? false, options.autoupdate ?? false);
   const stateDir = options.stateDir ?? defaultStateDir(options.cwd);
-  prepareStateDir(stateDir);
-  const record = createSessionRecord({
+  prepareStateDir(stateDir, { gitignore: options.stateDir === undefined });
+  const createdRecord = createSessionRecord({
     stateDir,
     cwd: options.cwd,
     id: randomUUID(),
@@ -63,6 +65,13 @@ export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSe
     size: options.initialSize ?? defaultSize,
     ...(options.name === undefined ? {} : { name: options.name }),
   });
+  const record =
+    warning === undefined
+      ? createdRecord
+      : appendSessionWarning(createdRecord, {
+          elwoodSessionId: createdRecord.elwoodSessionId,
+          ...warning,
+        });
   writeSessionRecord(record);
   return await startFromRecord(record, options);
 }
@@ -76,10 +85,16 @@ export async function resumeClaude(options: ResumeClaudeOptions): Promise<Claude
   if (!record.claude.resumeId) {
     throw elwoodError("resume_unavailable", "Cannot resume Claude without a Claude session id.");
   }
-  preflightClaude(options.strictVersionCheck ?? false, options.autoupdate ?? false);
-  const size = options.initialSize ?? record.terminalSize;
+  const warning = preflightClaude(options.strictVersionCheck ?? false, options.autoupdate ?? false);
+  const checkedRecord =
+    warning === undefined
+      ? record
+      : appendSessionWarning(record, { elwoodSessionId: record.elwoodSessionId, ...warning });
+  const size = options.initialSize ?? checkedRecord.terminalSize;
   const resumedRecord =
-    options.initialSize === undefined ? record : { ...record, terminalSize: options.initialSize };
+    options.initialSize === undefined
+      ? checkedRecord
+      : { ...checkedRecord, terminalSize: options.initialSize };
   writeSessionRecord(resumedRecord);
   return await startFromRecord(resumedRecord, {
     cwd: options.cwd ?? record.cwd,

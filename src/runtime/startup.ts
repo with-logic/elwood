@@ -8,6 +8,15 @@ import type { PtyExit } from "../pty/types.ts";
 
 export type StartupAdapter = "claude" | "codex";
 type StartupValue<T> = T | (() => T);
+let startupWaitMs = 500;
+
+export function setStartupWaitMsForTests(value: number): void {
+  startupWaitMs = value;
+}
+
+export function resetStartupWaitMsForTests(): void {
+  startupWaitMs = 500;
+}
 
 export async function assertStartupUsable(input: {
   readonly adapter: StartupAdapter;
@@ -15,7 +24,7 @@ export async function assertStartupUsable(input: {
   readonly output: StartupValue<string>;
   readonly waitMs?: number;
 }): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, input.waitMs ?? 25));
+  await new Promise((resolve) => setTimeout(resolve, input.waitMs ?? startupWaitMs));
   const exit = readStartupValue(input.exit);
   if (exit) {
     throw elwoodError(`${input.adapter}_start_failed`, `${input.adapter} exited during startup.`, {

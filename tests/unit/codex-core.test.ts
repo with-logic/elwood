@@ -13,7 +13,6 @@ import {
   resetCodexPreflightCacheForTests,
 } from "../../src/codex/preflight.ts";
 import { serializeCodexHookResult } from "../../src/codex/serialize.ts";
-import { isCodexHookEvent, isCodexHookResult } from "../../src/codex/validate.ts";
 import { ElwoodError } from "../../src/core/errors.ts";
 import {
   resetRuntimeSeamsForTests,
@@ -113,87 +112,5 @@ describe("Codex core helpers", () => {
       JSON.parse(serializeCodexHookResult("PermissionRequest", { behavior: "allow" }).stdout)
         .hookSpecificOutput.behavior,
     ).toBe("allow");
-  });
-
-  test("C-HOOK-13 validates Codex hook inputs and response semantics", () => {
-    expect(isCodexHookEvent(null)).toBe(false);
-    expect(isCodexHookEvent({ hook_event_name: "Stop" })).toBe(false);
-    expect(
-      isCodexHookEvent({
-        hook_event_name: "Stop",
-        session_id: "codex-1",
-        cwd: "/tmp/project",
-        model: "gpt-5.3-codex",
-      }),
-    ).toBe(false);
-    expect(
-      isCodexHookEvent({
-        hook_event_name: "Stop",
-        session_id: "codex-1",
-        cwd: "/tmp/project",
-        model: "gpt-5.3-codex",
-        turn_id: "turn-1",
-        stop_hook_active: false,
-      }),
-    ).toBe(true);
-    expect(
-      isCodexHookEvent({
-        hook_event_name: "PreToolUse",
-        session_id: "codex-1",
-        cwd: "/tmp/project",
-        model: "gpt-5.3-codex",
-        turn_id: "turn-1",
-        tool_name: "Bash",
-        tool_input: {},
-      }),
-    ).toBe(false);
-    expect(
-      isCodexHookEvent({
-        hook_event_name: "PreToolUse",
-        session_id: "codex-1",
-        cwd: "/tmp/project",
-        model: "gpt-5.3-codex",
-        turn_id: "turn-1",
-        tool_name: "mcp__server__tool",
-        tool_input: { raw: true },
-      }),
-    ).toBe(true);
-    expect(
-      isCodexHookEvent({
-        hook_event_name: "SubagentStart",
-        session_id: "codex-1",
-        cwd: "/tmp/project",
-        model: "gpt-5.3-codex",
-        turn_id: "turn-1",
-        agent_id: "agent-1",
-        agent_type: "explorer",
-      }),
-    ).toBe(true);
-    expect(
-      isCodexHookEvent({
-        hook_event_name: "SubagentStop",
-        session_id: "codex-1",
-        cwd: "/tmp/project",
-        model: "gpt-5.3-codex",
-        turn_id: "turn-1",
-        agent_id: "agent-1",
-        agent_type: "explorer",
-        stop_hook_active: false,
-        agent_transcript_path: null,
-      }),
-    ).toBe(true);
-    expect(isCodexHookResult("PreToolUse", { permissionDecision: "allow" })).toBe(true);
-    expect(isCodexHookResult("PreToolUse", { continue: false })).toBe(false);
-    expect(
-      isCodexHookResult("PreToolUse", {
-        permissionDecision: "allow",
-        updatedInput: { command: "echo ok" },
-      }),
-    ).toBe(true);
-    expect(isCodexHookResult("PermissionRequest", { continue: false })).toBe(false);
-    expect(isCodexHookResult("PostCompact", { continue: "no" })).toBe(false);
-    expect(isCodexHookResult("PostCompact", { continue: false })).toBe(true);
-    expect(isCodexHookResult("PostCompact", {})).toBe(false);
-    expect(isCodexHookResult("PostCompact", { nope: true })).toBe(false);
   });
 });

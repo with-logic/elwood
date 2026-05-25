@@ -32,7 +32,7 @@ describe("bridge and emitter edges", () => {
     await server.stop();
     expect(JSON.parse(response)).toEqual({ exitCode: 0, stdout: "", stderr: "" });
     expect(JSON.parse(invalidHook)).toEqual({ exitCode: 0, stdout: "", stderr: "" });
-    expect(errors).toEqual(["invalid_input"]);
+    expect(errors).toEqual(["invalid_input", "invalid_input"]);
   });
 
   test("C-ERR-06 bridge start rejects when its socket cannot be created", async () => {
@@ -111,6 +111,7 @@ describe("bridge and emitter edges", () => {
     expect(isClaudeHookResult("PermissionDenied", { retry: true })).toBe(true);
     expect(isClaudeHookResult("PermissionDenied", { retry: false })).toBe(false);
     expect(isClaudeHookResult("WorktreeCreate", { worktreePath: "/tmp/w" })).toBe(true);
+    expect(isClaudeHookResult("WorktreeRemove", { worktreePath: "/tmp/w" })).toBe(false);
     expect(isClaudeHookResult("Stop", { worktreePath: "/tmp/w" })).toBe(false);
     expect(isClaudeHookResult("Elicitation", { action: "accept" })).toBe(true);
     expect(isClaudeHookResult("Stop", { action: "accept" })).toBe(false);
@@ -123,6 +124,11 @@ describe("bridge and emitter edges", () => {
     expect(isClaudeHookResult("SessionStart", { watchPaths: [".env"] })).toBe(true);
     expect(isClaudeHookResult("SessionStart", { watchPaths: [1] })).toBe(false);
     expect(isClaudeHookResult("SessionEnd", { additionalContext: "too late" })).toBe(false);
+    expect(isClaudeHookResult("TaskCreated", { continue: false })).toBe(true);
+    expect(isClaudeHookResult("TaskCreated", { continue: false, stopReason: "wait" })).toBe(true);
+    expect(isClaudeHookResult("TaskCreated", { continue: true })).toBe(false);
+    expect(isClaudeHookResult("PostToolUse", { additionalContext: "recorded" })).toBe(true);
+    expect(isClaudeHookResult("PostToolUse", { extra: "bad" })).toBe(false);
   });
 
   test("event emitter handles empty emissions and explicit off", async () => {

@@ -14,8 +14,8 @@
     "format": "biome format --write .",
     "check:lines": "bun run scripts/check-lines.ts",
     "check": "bun run typecheck && bun run lint && bun run check:lines && bun test",
-    "dev:app": "exec node --no-warnings src/app/dev.ts",
-    "dev:web": "exec node --no-warnings src/app/web-dev.ts"
+    "dev:app": "exec bun src/app/dev.ts",
+    "dev:web": "exec bun src/app/web-dev.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.15",

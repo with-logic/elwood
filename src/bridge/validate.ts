@@ -3,45 +3,24 @@
  * Implements PRD §6.4.
  */
 
-import {
-  type ClaudeHookEvent,
-  type ClaudeHookEventName,
-  type ClaudeHookResult,
-  claudeHookEventNames,
-} from "../claude/hooks.ts";
+import type { ClaudeHookEventName, ClaudeHookResult } from "../claude/hooks.ts";
+import { isClaudeHookInput } from "../claude/validate-input.ts";
 
-const names = new Set<string>(claudeHookEventNames);
-const contextResultEvents = new Set<string>([
-  "SessionStart",
-  "Setup",
-  "InstructionsLoaded",
+const contextResultEvents = new Set<string>(["SessionStart", "Setup", "SubagentStart"]);
+const blockResultEvents = new Set<string>([
   "UserPromptSubmit",
   "UserPromptExpansion",
   "PostToolUse",
   "PostToolUseFailure",
   "PostToolBatch",
-  "SubagentStart",
-  "TaskCreated",
-  "TaskCompleted",
-  "StopFailure",
-  "TeammateIdle",
+  "Stop",
+  "SubagentStop",
   "ConfigChange",
-  "CwdChanged",
-  "FileChanged",
   "PreCompact",
-  "PostCompact",
 ]);
+const continueFalseEvents = new Set<string>(["TeammateIdle", "TaskCreated", "TaskCompleted"]);
 
-export function isClaudeHookEvent(value: unknown): value is ClaudeHookEvent {
-  if (!value || typeof value !== "object") return false;
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record["hook_event_name"] === "string" &&
-    names.has(record["hook_event_name"]) &&
-    typeof record["session_id"] === "string" &&
-    typeof record["cwd"] === "string"
-  );
-}
+export const isClaudeHookEvent = isClaudeHookInput;
 
 export function isClaudeHookResult(
   eventName: ClaudeHookEventName,
@@ -53,13 +32,12 @@ export function isClaudeHookResult(
   if ("behavior" in value) return isPermissionRequestResult(eventName, value);
   if ("retry" in value) return eventName === "PermissionDenied" && value["retry"] === true;
   if ("worktreePath" in value) {
-    return (
-      (eventName === "WorktreeCreate" || eventName === "WorktreeRemove") &&
-      typeof value["worktreePath"] === "string"
-    );
+    return eventName === "WorktreeCreate" && typeof value["worktreePath"] === "string";
   }
   if ("action" in value) return isElicitationResult(eventName, value);
   if ("decision" in value) return isBlockResult(eventName, value);
+  if ("continue" in value) return isContinueFalseResult(eventName, value);
+  if (eventName === "PostToolUse") return isPostToolUseResult(value);
   if (!contextResultEvents.has(eventName)) return false;
   return isContextResult(value);
 }
@@ -98,10 +76,32 @@ function isBlockResult(
   value: Readonly<Record<string, unknown>>,
 ): boolean {
   return (
-    (eventName === "Stop" || eventName === "SubagentStop") &&
+    blockResultEvents.has(eventName) &&
     value["decision"] === "block" &&
     typeof value["reason"] === "string" &&
     optionalString(value["additionalContext"])
+  );
+}
+
+function isContinueFalseResult(
+  eventName: ClaudeHookEventName,
+  value: Readonly<Record<string, unknown>>,
+): boolean {
+  return (
+    continueFalseEvents.has(eventName) &&
+    value["continue"] === false &&
+    optionalString(value["stopReason"])
+  );
+}
+
+function isPostToolUseResult(value: Readonly<Record<string, unknown>>): boolean {
+  const keys = Object.keys(value);
+  return (
+    keys.length > 0 &&
+    optionalString(value["additionalContext"]) &&
+    keys.every((key) =>
+      ["additionalContext", "updatedToolOutput", "updatedMCPToolOutput"].includes(key),
+    )
   );
 }
 

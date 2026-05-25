@@ -4,7 +4,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
+import { nodePtyFactory } from "../pty/node.ts";
 import type { PtyFactory } from "../pty/types.ts";
 
 export type CommandResult = {
@@ -19,10 +19,9 @@ export type CommandRunner = (command: string, args: readonly string[]) => Comman
 let ptyFactory: PtyFactory | null = null;
 let commandRunner: CommandRunner = realCommandRunner;
 let platform: string = process.platform;
-const require = createRequire(import.meta.url);
 
 export function currentPtyFactory(): PtyFactory {
-  return ptyFactory ?? realPtyFactory;
+  return ptyFactory ?? nodePtyFactory;
 }
 
 export function currentCommandRunner(): CommandRunner {
@@ -61,34 +60,3 @@ function realCommandRunner(command: string, args: readonly string[]): CommandRes
     ...(error === undefined ? {} : { error }),
   };
 }
-
-const realPtyFactory: PtyFactory = (options) => {
-  const nodePty = require("node-pty") as typeof import("node-pty");
-  const pty = nodePty.spawn(options.command, [...options.args], {
-    name: "xterm-256color",
-    cols: options.size.cols,
-    rows: options.size.rows,
-    cwd: options.cwd,
-    env: { ...options.env },
-  });
-  return {
-    pid: pty.pid,
-    onData(handler) {
-      const disposable = pty.onData(handler);
-      return () => disposable.dispose();
-    },
-    onExit(handler) {
-      const disposable = pty.onExit((event) => handler(event));
-      return () => disposable.dispose();
-    },
-    write(data) {
-      pty.write(typeof data === "string" ? data : Buffer.from(data).toString("utf8"));
-    },
-    resize(size) {
-      pty.resize(size.cols, size.rows);
-    },
-    kill(signal = "SIGTERM") {
-      pty.kill(signal);
-    },
-  };
-};

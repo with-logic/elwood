@@ -4,16 +4,24 @@
  */
 
 import { elwoodError } from "../core/errors.ts";
+import type { ElwoodWarningEvent } from "../core/types.ts";
 import { currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { loginShellCommand, userShell } from "../runtime/shell.ts";
 
 export const minimumClaudeVersion = "2.1.144";
+export type ClaudePreflightWarning = Omit<
+  Extract<ElwoodWarningEvent, { readonly code: "version_unparseable" }>,
+  "elwoodSessionId"
+>;
 
-export function preflightClaude(strictVersionCheck: boolean, autoupdate = false): void {
+export function preflightClaude(
+  strictVersionCheck: boolean,
+  autoupdate = false,
+): ClaudePreflightWarning | undefined {
   if (currentPlatform() !== "darwin") {
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
-  const result = currentCommandRunner()(userShell(), loginShellCommand("claude --version"));
+  let result = currentCommandRunner()(userShell(), loginShellCommand("claude --version"));
   if (result.error?.code === "ENOENT" || result.status === 127) {
     throw elwoodError("claude_not_found", "`claude` was not found on PATH.");
   }
@@ -22,12 +30,16 @@ export function preflightClaude(strictVersionCheck: boolean, autoupdate = false)
       stderr: result.stderr,
     });
   }
+  if (autoupdate) {
+    runClaudeUpdate();
+    result = currentCommandRunner()(userShell(), loginShellCommand("claude --version"));
+  }
   const version = parseVersion(result.stdout);
   if (!version) {
     if (strictVersionCheck) {
       throw elwoodError("claude_version_unsupported", "Could not parse Claude Code version.");
     }
-    return;
+    return versionWarning("claude", result.stdout);
   }
   if (compareVersions(version, minimumClaudeVersion) < 0) {
     throw elwoodError(
@@ -39,7 +51,7 @@ export function preflightClaude(strictVersionCheck: boolean, autoupdate = false)
       },
     );
   }
-  if (autoupdate) runClaudeUpdate();
+  return undefined;
 }
 
 function runClaudeUpdate(): void {
@@ -69,4 +81,15 @@ export function compareVersions(left: string, right: string): number {
 function toVersionPart(part: string): number {
   const parsed = Number.parseInt(part, 10);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function versionWarning(agent: "claude", output: string): ClaudePreflightWarning {
+  return {
+    agent,
+    source: "lifecycle",
+    code: "version_unparseable",
+    severity: "warning",
+    message: "Could not parse Claude Code version; compatibility was not verified.",
+    raw: output,
+  };
 }

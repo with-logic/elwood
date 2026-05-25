@@ -83,6 +83,15 @@ export type HookErrorEvent = {
 export type ElwoodWarningEvent =
   | {
       readonly elwoodSessionId: string;
+      readonly agent: "claude" | "codex";
+      readonly source: "lifecycle";
+      readonly code: "version_unparseable";
+      readonly severity: "warning";
+      readonly message: string;
+      readonly raw: string;
+    }
+  | {
+      readonly elwoodSessionId: string;
       readonly agent: "codex";
       readonly source: "terminal";
       readonly code: "mcp_server_not_logged_in";

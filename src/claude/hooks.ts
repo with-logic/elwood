@@ -76,6 +76,14 @@ export type ContextResult = {
   readonly initialUserMessage?: string;
   readonly watchPaths?: readonly string[];
 };
+export type ContinueFalseResult = { readonly continue: false; readonly stopReason?: string };
+export type PostToolUseResult =
+  | TopLevelBlockResult
+  | {
+      readonly additionalContext?: string;
+      readonly updatedToolOutput?: unknown;
+      readonly updatedMCPToolOutput?: unknown;
+    };
 export type ElicitationResult = {
   readonly action: "accept" | "decline" | "cancel";
   readonly content?: Readonly<Record<string, unknown>>;
@@ -86,42 +94,73 @@ export type ClaudeContextHookEventName = Exclude<
   ClaudeHookEventName,
   | "Elicitation"
   | "ElicitationResult"
+  | "ConfigChange"
+  | "CwdChanged"
+  | "FileChanged"
+  | "InstructionsLoaded"
   | "Notification"
   | "PermissionDenied"
   | "PermissionRequest"
+  | "PostCompact"
+  | "PostToolUse"
+  | "PostToolUseFailure"
+  | "PostToolBatch"
+  | "PreCompact"
   | "PreToolUse"
   | "SessionEnd"
+  | "StopFailure"
   | "Stop"
   | "SubagentStop"
+  | "TaskCompleted"
+  | "TaskCreated"
+  | "TeammateIdle"
+  | "UserPromptExpansion"
+  | "UserPromptSubmit"
   | "WorktreeCreate"
   | "WorktreeRemove"
 >;
 
+export type ClaudeTopLevelBlockHookEventName =
+  | "UserPromptSubmit"
+  | "UserPromptExpansion"
+  | "PostToolUseFailure"
+  | "PostToolBatch"
+  | "Stop"
+  | "SubagentStop"
+  | "ConfigChange"
+  | "PreCompact";
+
+export type ClaudeContinueFalseHookEventName = "TeammateIdle" | "TaskCreated" | "TaskCompleted";
+
 export type ClaudeHookResultFor<K extends ClaudeHookEventName> = K extends "PreToolUse"
-  ? PreToolUseResult | ContextResult | undefined
+  ? PreToolUseResult | undefined
   : K extends "PermissionRequest"
     ? PermissionRequestResult | undefined
     : K extends "PermissionDenied"
       ? PermissionDeniedResult | undefined
-      : K extends "Stop" | "SubagentStop"
-        ? TopLevelBlockResult | ContextResult | undefined
-        : K extends "Elicitation" | "ElicitationResult"
-          ? ElicitationResult | undefined
-          : K extends "WorktreeCreate" | "WorktreeRemove"
-            ? WorktreeCreateResult | undefined
-            : K extends "Notification"
-              ? undefined
-              : K extends ClaudeContextHookEventName
-                ? ContextResult | undefined
-                : ClaudeHookResult;
+      : K extends "PostToolUse"
+        ? PostToolUseResult | undefined
+        : K extends ClaudeTopLevelBlockHookEventName
+          ? TopLevelBlockResult | undefined
+          : K extends ClaudeContinueFalseHookEventName
+            ? ContinueFalseResult | undefined
+            : K extends "Elicitation" | "ElicitationResult"
+              ? ElicitationResult | undefined
+              : K extends "WorktreeCreate"
+                ? WorktreeCreateResult | undefined
+                : K extends ClaudeContextHookEventName
+                  ? ContextResult | undefined
+                  : undefined;
 
 export type ClaudeHookResult =
   | undefined
   | PreToolUseResult
   | TopLevelBlockResult
+  | ContinueFalseResult
   | PermissionRequestResult
   | PermissionDeniedResult
   | ContextResult
+  | PostToolUseResult
   | ElicitationResult
   | WorktreeCreateResult;
 

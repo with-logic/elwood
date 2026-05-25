@@ -124,9 +124,9 @@ function mcpStartupWarning(
 }
 
 function warningKey(warning: ElwoodWarningEvent): string {
-  const server =
-    "mcpServerName" in warning ? warning.mcpServerName : warning.failedServers.join(",");
-  return `${warning.code}:${server}`;
+  if (warning.code === "version_unparseable") return `${warning.code}:${warning.agent}`;
+  if ("mcpServerName" in warning) return `${warning.code}:${warning.mcpServerName}`;
+  return `${warning.code}:${warning.failedServers.join(",")}`;
 }
 
 function hasNumberedOption(text: string, number: string, pattern: RegExp): boolean {

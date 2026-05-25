@@ -19,6 +19,7 @@ export function serializeHookResult(
   if ("action" in result)
     return jsonOutput({ hookSpecificOutput: { hookEventName: eventName, ...result } });
   if ("decision" in result) return jsonOutput(topLevel(eventName, result));
+  if ("continue" in result) return jsonOutput(result);
   return jsonOutput({ hookSpecificOutput: { hookEventName: eventName, ...result } });
 }
 
@@ -59,7 +60,6 @@ function topLevel(
   };
 }
 
-function worktree(eventName: string, path: string): BridgeProcessResult {
-  if (eventName === "WorktreeCreate") return { exitCode: 0, stdout: `${path}\n`, stderr: "" };
-  return jsonOutput({ hookSpecificOutput: { hookEventName: eventName, worktreePath: path } });
+function worktree(_eventName: string, path: string): BridgeProcessResult {
+  return { exitCode: 0, stdout: `${path}\n`, stderr: "" };
 }

@@ -4,18 +4,26 @@
  */
 
 import { elwoodError } from "../core/errors.ts";
+import type { ElwoodWarningEvent } from "../core/types.ts";
 import { currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { loginShellCommand, userShell } from "../runtime/shell.ts";
 
 export const minimumCodexVersion = "0.124.0";
 export type CodexCliCapabilities = { readonly supportsHookTrustBypass: boolean };
+export type CodexPreflightWarning = Omit<
+  Extract<ElwoodWarningEvent, { readonly code: "version_unparseable" }>,
+  "elwoodSessionId"
+>;
 let cachedCapabilities: CodexCliCapabilities | undefined;
 
-export function preflightCodex(strictVersionCheck: boolean, autoupdate = false): void {
+export function preflightCodex(
+  strictVersionCheck: boolean,
+  autoupdate = false,
+): CodexPreflightWarning | undefined {
   if (currentPlatform() !== "darwin") {
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
-  const result = currentCommandRunner()(userShell(), loginShellCommand("codex --version"));
+  let result = currentCommandRunner()(userShell(), loginShellCommand("codex --version"));
   if (result.status === null || result.error?.code === "ENOENT" || result.status === 127) {
     throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");
   }
@@ -24,12 +32,16 @@ export function preflightCodex(strictVersionCheck: boolean, autoupdate = false):
       stderr: result.stderr,
     });
   }
+  if (autoupdate) {
+    runCodexUpdate();
+    result = currentCommandRunner()(userShell(), loginShellCommand("codex --version"));
+  }
   const version = parseCodexVersion(result.stdout);
   if (!version) {
     if (strictVersionCheck) {
       throw elwoodError("codex_version_unsupported", "Could not parse Codex CLI version.");
     }
-    return;
+    return versionWarning(result.stdout);
   }
   if (compareVersions(version, minimumCodexVersion) < 0) {
     throw elwoodError(
@@ -38,7 +50,7 @@ export function preflightCodex(strictVersionCheck: boolean, autoupdate = false):
       { version, minimumCodexVersion },
     );
   }
-  if (autoupdate) runCodexUpdate();
+  return undefined;
 }
 
 function runCodexUpdate(): void {
@@ -79,4 +91,15 @@ function compareVersions(left: string, right: string): number {
 function toVersionPart(part: string): number {
   const parsed = Number.parseInt(part, 10);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function versionWarning(output: string): CodexPreflightWarning {
+  return {
+    agent: "codex",
+    source: "lifecycle",
+    code: "version_unparseable",
+    severity: "warning",
+    message: "Could not parse Codex CLI version; compatibility was not verified.",
+    raw: output,
+  };
 }

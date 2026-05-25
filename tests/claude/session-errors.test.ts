@@ -64,6 +64,8 @@ describe("ClaudeSession errors", () => {
       hook_event_name: "Notification",
       session_id: "claude-1",
       cwd,
+      message: "notice",
+      notification_type: "info",
     });
     expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
     expect(errors).toEqual(["invalid_response"]);

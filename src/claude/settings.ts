@@ -16,12 +16,11 @@ export type GeneratedSettingsInput = {
 export function generateClaudeSettings(
   input: GeneratedSettingsInput,
 ): Readonly<Record<string, unknown>> {
+  const permissions = permissionsFrom(input.options.settingsOverrides);
   return {
     ...input.options.settingsOverrides,
     hooks: generateHooks(input.bridgeScriptPath, input.timeoutSeconds),
-    permissions: {
-      ...permissionsFrom(input.options.settingsOverrides),
-    },
+    ...(Object.keys(permissions).length === 0 ? {} : { permissions }),
   };
 }
 

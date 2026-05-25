@@ -6,6 +6,7 @@
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { bridgeScriptSource } from "../bridge/script.ts";
+import { defaultTerminalSize } from "../core/defaults.ts";
 import { elwoodError } from "../core/errors.ts";
 import type { ElwoodEventHandler, ElwoodEventName, StartClaudeOptions } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
@@ -44,7 +45,7 @@ export function spawnClaudePty(record: SessionRecord, options: StartClaudeOption
         ...process.env,
         ELWOOD_SESSION_ID: record.elwoodSessionId,
       },
-      size: options.initialSize ?? record.terminalSize ?? { cols: 189, rows: 48 },
+      size: options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
     });
   } catch (error) {
     throw elwoodError("pty_start_failed", "Could not start Claude PTY.", {

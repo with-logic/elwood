@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { startCodex } from "../../src/index.ts";
+import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -40,6 +41,18 @@ describe("CodexSession startup and terminal control", () => {
     ptys[0]!.emitData("Hooks need review\r\n  1. Review hooks\r\n› 2. Trust all and continue");
     await flushTerminal();
     expect(ptys[0]!.writes).toEqual(["2"]);
+  });
+
+  test("C-ERR-07 version warnings are captured when non-strict parsing fails", async () => {
+    const cwd = tempDir();
+    installFakes();
+    setCommandRunnerForTests((_command, args) =>
+      args.join(" ").includes("--help")
+        ? { status: 0, stdout: "--dangerously-bypass-hook-trust", stderr: "" }
+        : { status: 0, stdout: "unknown build", stderr: "" },
+    );
+    const session = await startCodex({ cwd });
+    expect(session.warnings).toMatchObject([{ code: "version_unparseable", agent: "codex" }]);
   });
 
   test("C-CODEX skips Codex TUI update prompts", async () => {

@@ -51,7 +51,11 @@ export async function requestCodexHook(
 }
 
 export function isCodexBlock(result: CodexHookResult): boolean {
-  return Boolean(result && "decision" in result && result.decision === "block");
+  return Boolean(
+    result &&
+      (("decision" in result && result.decision === "block") ||
+        ("continue" in result && result.continue === false)),
+  );
 }
 
 function emitError(emitter: TypedEmitter<CodexEventMap>, event: HookErrorEvent): void {

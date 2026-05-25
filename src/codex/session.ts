@@ -5,12 +5,14 @@ import { bridgeScriptSource } from "../bridge/script.ts";
 import { HookBridgeServer } from "../bridge/server.ts";
 import * as activity from "../core/activity.ts";
 import { activityFromStartupPrompt } from "../core/activity.ts";
+import { defaultTerminalSize } from "../core/defaults.ts";
 import { elwoodError } from "../core/errors.ts";
 import type { TerminalSize } from "../core/types.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { assertStartupUsable } from "../runtime/startup.ts";
 import {
+  appendSessionWarning,
   createSessionRecord,
   defaultStateDir,
   prepareStateDir,
@@ -33,7 +35,7 @@ import { CodexStartupPromptResponder } from "./startup-prompts.ts";
 import { CodexTranscriptWatcher } from "./transcript.ts";
 import { isCodexHookEvent } from "./validate.ts";
 
-const defaultSize: TerminalSize = { cols: 189, rows: 48 };
+const defaultSize: TerminalSize = defaultTerminalSize;
 
 type HookBridgeFactory = (
   socketPath: string,
@@ -57,10 +59,13 @@ export function resetCodexSessionSeamsForTests(): void {
 }
 
 export async function startCodex(options: StartCodexOptions): Promise<CodexSession> {
-  preflight.preflightCodex(options.strictVersionCheck ?? false, options.autoupdate ?? false);
+  const warning = preflight.preflightCodex(
+    options.strictVersionCheck ?? false,
+    options.autoupdate ?? false,
+  );
   const stateDir = options.stateDir ?? defaultStateDir(options.cwd);
-  prepareStateDir(stateDir);
-  const record = createSessionRecord({
+  prepareStateDir(stateDir, { gitignore: options.stateDir === undefined });
+  const createdRecord = createSessionRecord({
     stateDir,
     cwd: options.cwd,
     id: randomUUID(),
@@ -69,6 +74,13 @@ export async function startCodex(options: StartCodexOptions): Promise<CodexSessi
     size: options.initialSize ?? defaultSize,
     ...(options.name === undefined ? {} : { name: options.name }),
   });
+  const record =
+    warning === undefined
+      ? createdRecord
+      : appendSessionWarning(createdRecord, {
+          elwoodSessionId: createdRecord.elwoodSessionId,
+          ...warning,
+        });
   writeSessionRecord(record);
   return await startFromRecord(record, options);
 }
@@ -82,10 +94,19 @@ export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSes
   if (!record.codex.resumeId) {
     throw elwoodError("resume_unavailable", "Cannot resume Codex without a Codex session id.");
   }
-  preflight.preflightCodex(options.strictVersionCheck ?? false, options.autoupdate ?? false);
-  const size = options.initialSize ?? record.terminalSize;
+  const warning = preflight.preflightCodex(
+    options.strictVersionCheck ?? false,
+    options.autoupdate ?? false,
+  );
+  const checkedRecord =
+    warning === undefined
+      ? record
+      : appendSessionWarning(record, { elwoodSessionId: record.elwoodSessionId, ...warning });
+  const size = options.initialSize ?? checkedRecord.terminalSize;
   const resumedRecord =
-    options.initialSize === undefined ? record : { ...record, terminalSize: options.initialSize };
+    options.initialSize === undefined
+      ? checkedRecord
+      : { ...checkedRecord, terminalSize: options.initialSize };
   writeSessionRecord(resumedRecord);
   return await startFromRecord(resumedRecord, {
     cwd: options.cwd ?? record.cwd,

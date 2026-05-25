@@ -54,6 +54,19 @@ describe("CodexSession hook handling", () => {
     expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
   });
 
+  test("C-HRESP-07 serializes Codex PreToolUse additional context", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startCodex({
+      cwd,
+      hooks: { PreToolUse: () => ({ additionalContext: "Prefer safe shell commands." }) },
+    });
+    const result = await ptys[0]!.dispatchHook(session.elwoodSessionId, toolEvent(cwd));
+    expect(JSON.parse(result.stdout).hookSpecificOutput.additionalContext).toBe(
+      "Prefer safe shell commands.",
+    );
+  });
+
   test("C-HRESP-08 serializes Codex PermissionRequest decisions", async () => {
     const cwd = tempDir();
     installFakes();

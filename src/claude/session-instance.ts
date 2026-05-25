@@ -117,10 +117,8 @@ export class ClaudeSessionImpl implements ClaudeSession {
     await this.terminate("SIGKILL");
     await this.bridge.stop();
     this.terminal.dispose();
+    this.setStatus("torn_down");
     removeSessionDir(this.record);
-    this.currentStatus = "torn_down";
-    this.emitter.emit("status", { elwoodSessionId: this.elwoodSessionId, status: "torn_down" });
-    this.emitter.emit("activity", activityFromStatus("claude", this.elwoodSessionId, "torn_down"));
   }
 
   markRunning(): void {

@@ -50,6 +50,7 @@ export function renderHtml(cwd: string): string {
           <button class="filter" type="button" data-filter="activity">Activity</button>
           <button class="filter" type="button" data-filter="warning">Warnings</button>
           <button class="filter" type="button" data-filter="hookError">Hook Errors</button>
+          <button class="filter" type="button" data-filter="error">Errors</button>
           <button class="filter" type="button" data-filter="terminal">Terminal</button>
         </nav>
         <section class="event-list" id="events" aria-label="Event timeline"></section>

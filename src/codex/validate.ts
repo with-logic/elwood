@@ -39,6 +39,8 @@ export function isCodexHookResult(
   if (value === undefined) return true;
   if (!isRecord(value)) return false;
   if ("permissionDecision" in value) return isPreToolUseResult(eventName, value);
+  if (eventName === "PreToolUse" && "additionalContext" in value)
+    return isPreToolUseResult(eventName, value);
   if ("behavior" in value) return isPermissionRequestResult(eventName, value);
   if ("decision" in value) return isBlockResult(eventName, value);
   return isCommonResult(eventName, value);
@@ -49,11 +51,31 @@ function isPreToolUseResult(
   value: Readonly<Record<string, unknown>>,
 ): boolean {
   if (eventName !== "PreToolUse") return false;
-  if ("additionalContext" in value) return typeof value["additionalContext"] === "string";
-  if (value["permissionDecision"] === "deny") {
-    return typeof value["permissionDecisionReason"] === "string";
+  if (
+    !keysAre(value, [
+      "permissionDecision",
+      "permissionDecisionReason",
+      "updatedInput",
+      "additionalContext",
+    ])
+  ) {
+    return false;
   }
-  return value["permissionDecision"] === "allow";
+  if ("additionalContext" in value && !("permissionDecision" in value)) {
+    return Object.keys(value).length === 1 && typeof value["additionalContext"] === "string";
+  }
+  if (value["permissionDecision"] === "deny") {
+    return (
+      typeof value["permissionDecisionReason"] === "string" &&
+      !("updatedInput" in value) &&
+      !("additionalContext" in value)
+    );
+  }
+  return (
+    value["permissionDecision"] === "allow" &&
+    !("permissionDecisionReason" in value) &&
+    !("additionalContext" in value)
+  );
 }
 
 function isPermissionRequestResult(
@@ -72,7 +94,7 @@ function isBlockResult(
   value: Readonly<Record<string, unknown>>,
 ): boolean {
   return (
-    isOneOf(eventName, ["PreToolUse", "PostToolUse", "UserPromptSubmit", "SubagentStop", "Stop"]) &&
+    isOneOf(eventName, ["PostToolUse", "UserPromptSubmit", "SubagentStop", "Stop"]) &&
     value["decision"] === "block" &&
     typeof value["reason"] === "string" &&
     optionalString(value["additionalContext"])
@@ -87,14 +109,16 @@ function isCommonResult(
   const keys = Object.keys(value);
   if (keys.length === 0) return false;
   return (
-    keys.every((key) =>
-      ["continue", "stopReason", "systemMessage", "additionalContext"].includes(key),
-    ) &&
+    keysAre(value, ["continue", "stopReason", "systemMessage", "additionalContext"]) &&
     optionalBoolean(value["continue"]) &&
     optionalString(value["stopReason"]) &&
     optionalString(value["systemMessage"]) &&
     optionalString(value["additionalContext"])
   );
+}
+
+function keysAre(value: Readonly<Record<string, unknown>>, allowed: readonly string[]): boolean {
+  return Object.keys(value).every((key) => allowed.includes(key));
 }
 
 function hasCommonFields(record: Readonly<Record<string, unknown>>): boolean {

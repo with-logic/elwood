@@ -24,6 +24,8 @@ describe("public hook types", () => {
     const invalid = {
       // @ts-expect-error Notification is observe-only and cannot block Claude.
       Notification: () => ({ decision: "block", reason: "not allowed" }),
+      // @ts-expect-error Stop must block with a reason or return no decision.
+      Stop: () => ({ additionalContext: "not enough" }),
     } satisfies ClaudeHookHandlers;
 
     expect(typeof handlers.Stop).toBe("function");
@@ -98,7 +100,7 @@ describe("public hook types", () => {
       StopFailure: (event) => {
         const message: string | undefined = event.last_assistant_message;
         const error: string = event.error;
-        return message === error ? { additionalContext: "failed" } : undefined;
+        return message === error ? undefined : undefined;
       },
       Notification: (event) => {
         const message: string = event.message;
@@ -107,7 +109,7 @@ describe("public hook types", () => {
       },
       PostCompact: (event) => {
         const summary: string = event.compact_summary;
-        return { additionalContext: summary };
+        return summary ? undefined : undefined;
       },
     } satisfies ClaudeHookHandlers;
 

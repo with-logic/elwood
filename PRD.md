@@ -207,10 +207,12 @@ declare function startClaude(options: StartClaudeOptions): Promise<ClaudeSession
 ```
 
 `cwd` is the working directory where Claude should start. `stateDir` overrides
-the default Elwood state directory. `hooks` registers launch-time handlers before
-Claude starts. When `autoupdate` is true, Elwood runs `claude update` from the
-user's login shell before spawning Claude. `strictVersionCheck` makes
-unparseable Claude versions fatal instead of warning-and-continuing.
+the default Elwood state directory. `name` is stored in Elwood metadata and, for
+Claude, is forwarded to Claude's documented `--name` flag. `hooks` registers
+launch-time handlers before Claude starts. When `autoupdate` is true, Elwood
+runs `claude update` from the user's login shell before spawning Claude and
+rechecks the version after the update. `strictVersionCheck` makes unparseable
+Claude versions fatal instead of warning-and-continuing.
 
 ### 5.2 Resuming Claude
 
@@ -388,10 +390,11 @@ Elwood's generated `hookTrust="trust-all"` override is reserved and applied
 after caller config overrides because trusted hooks are required for Elwood to
 function.
 When `autoupdate` is true, Elwood runs `codex update` from the user's login
-shell before spawning Codex. If Codex later shows an interactive update prompt
-inside the TUI, Elwood skips that prompt through PTY input, including Codex's
-cursor-addressed update screen. `strictVersionCheck` makes unparseable Codex
-versions fatal instead of warning-and-continuing.
+shell before spawning Codex and rechecks the version after the update. If Codex
+later shows an interactive update prompt inside the TUI, Elwood skips that
+prompt through PTY input, including Codex's cursor-addressed update screen.
+`strictVersionCheck` makes unparseable Codex versions fatal instead of
+warning-and-continuing.
 
 ### 5.6 Resuming Codex
 
@@ -437,6 +440,15 @@ The MVP warning contract is:
 
 ```ts
 type ElwoodWarningEvent =
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "claude" | "codex";
+      readonly source: "lifecycle";
+      readonly code: "version_unparseable";
+      readonly severity: "warning";
+      readonly message: string;
+      readonly raw: string;
+    }
   | {
       readonly elwoodSessionId: string;
       readonly agent: "codex";
@@ -516,8 +528,8 @@ unknown-but-safe event path before promising forward-compatible hook handling.
 ### 6.2 Routing
 
 Each launched Claude process receives an Elwood session identifier in its
-environment. The hook bridge reads that identifier and uses it to route hook
-invocations to the owning Elwood runtime over local IPC.
+environment as `ELWOOD_SESSION_ID`. The hook bridge reads that identifier and
+uses it to route hook invocations to the owning Elwood runtime over local IPC.
 
 The IPC transport is an implementation detail, but it MUST be local-only and
 session-scoped. A Unix domain socket is the preferred initial design on macOS.
@@ -660,8 +672,11 @@ By default, Elwood stores session metadata under:
 <cwd>/.elwood/
 ```
 
-Callers may override this with `stateDir`. When Elwood initializes project-local
-state, it should ensure `.elwood/` is ignored by git when safe to do so.
+Callers may override this with `stateDir`. When Elwood initializes the default
+project-local state directory, it should create `.elwood/.gitignore` when that
+file does not already exist. Elwood MUST NOT overwrite an existing gitignore
+file and MUST NOT create gitignore files in caller-provided custom state
+directories unless a future explicit option asks it to.
 
 ### 8.2 Session record
 
@@ -742,14 +757,23 @@ Elwood MUST check the installed Codex CLI version during `startCodex`. The
 minimum Codex baseline is the first release Elwood validates for stable hooks and
 interactive resume support.
 
-If the installed agent version is below the minimum, startup fails with a typed
-error that names the required version and feature. If the version cannot be
-parsed, Elwood warns and continues by default, with an option for callers to make
-this fatal.
+If `autoupdate` is true, Elwood first verifies that the CLI exists, then runs
+the adapter's update command, then reads the version again before enforcing the
+minimum version. If the installed agent version is below the minimum after that
+optional update step, startup fails with a typed error that names the required
+version and feature. If the version cannot be parsed, Elwood records a typed
+`version_unparseable` warning and continues by default, with an option for
+callers to make this fatal.
 
 Version checks and optional `claude update` / `codex update` commands must run
 through the same user login shell resolution path used for the launched agent so
 PATH and shell startup behavior match a normal Terminal.app session.
+
+After spawning the PTY, Elwood waits briefly for immediate process exits or
+known authentication/startup failure banners before reporting the session as
+running. The default wait must be long enough to catch typical local CLI startup
+failures without turning `startClaude` or `startCodex` into a readiness wait for
+the first agent prompt.
 
 ### 9.3 Resume
 
@@ -914,6 +938,7 @@ Each criterion has:
 | C-CLAUDE-06 | §10 | An immediately failing or unusable Claude process fails with `claude_start_failed` or a more specific typed error. |
 | C-CLAUDE-07 | §5.1 | `autoupdate: true` runs `claude update` before spawning Claude. |
 | C-CLAUDE-08 | §5.2 | `resumeClaude` fails explicitly when Elwood has not persisted a Claude resume id. |
+| C-CLAUDE-09 | §9.2 | `autoupdate: true` rechecks the Claude version after running `claude update`. |
 
 #### C-CODEX: Codex Startup And Config (§4, §7A, §9)
 
@@ -928,6 +953,7 @@ Each criterion has:
 | C-CODEX-07 | §5.6 | `resumeCodex` fails explicitly when Elwood has not persisted a Codex resume id. |
 | C-CODEX-08 | §5.5 | `autoupdate: true` runs `codex update` before spawning Codex. |
 | C-CODEX-09 | §5.7 | Codex MCP startup warnings are parsed from terminal output into typed warning events with server names and recovery commands. |
+| C-CODEX-10 | §9.2 | `autoupdate: true` rechecks the Codex version after running `codex update`. |
 
 #### C-HOOK: Hook Bridge Coverage And Semantics (§6)
 
@@ -949,6 +975,7 @@ Each criterion has:
 | C-HOOK-14 | §7A.2 | Codex `hook_event_name` narrows valid handler response types at compile time. |
 | C-HOOK-15 | §7A.3 | Codex `Stop` marks the session ready only when the Stop event is not blocked. |
 | C-HOOK-16 | §6.2 | Hook IPC waits for a complete framed request before dispatching and fails open on malformed complete requests. |
+| C-HOOK-17 | §6.4 | Claude hook IPC input validates event-specific payload fields and known tool input schemas before dispatch. |
 
 #### C-HRESP: Hook Response Mapping (§6, §7)
 
@@ -979,6 +1006,7 @@ Each criterion has:
 | C-STATE-08 | §8.4 | `teardown()` removes Elwood-owned session metadata and generated files. |
 | C-STATE-09 | §8.4 | `teardown()` does not remove Claude-owned auth, transcripts, or user/project settings. |
 | C-STATE-10 | §5.2, §5.6 | Resume APIs reject session records whose persisted adapter does not match the requested adapter. |
+| C-STATE-11 | §8.1 | Elwood does not overwrite an existing `.elwood/.gitignore` or create gitignore files in custom `stateDir` directories. |
 
 #### C-LIFE: Lifecycle Controls (§5, §9)
 
@@ -1000,6 +1028,7 @@ Each criterion has:
 | C-ERR-04 | §10 | Corrupt state fails with `state_corrupt`. |
 | C-ERR-05 | §10 | PTY startup failure fails with `pty_start_failed`. |
 | C-ERR-06 | §10 | Hook IPC initialization failure fails with `hook_bridge_failed`. |
+| C-ERR-07 | §9.2 | Unparseable non-strict CLI versions produce a typed `version_unparseable` warning. |
 
 #### C-APP: Local Test App (§11)
 

@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildClaudeShellCommand, shellLaunch } from "../../src/claude/command.ts";
@@ -23,6 +23,7 @@ import { assertStartupUsable } from "../../src/runtime/startup.ts";
 import {
   createSessionRecord,
   defaultStateDir,
+  prepareStateDir,
   readSessionRecord,
   removeSessionDir,
   sessionDir,
@@ -51,9 +52,7 @@ describe("serialization", () => {
     expect(serializeHookResult("WorktreeCreate", { worktreePath: "/tmp/w" }).stdout).toBe(
       "/tmp/w\n",
     );
-    expect(serializeHookResult("WorktreeRemove", { worktreePath: "/tmp/w" }).stdout).toContain(
-      "worktreePath",
-    );
+    expect(serializeHookResult("TaskCreated", { continue: false }).stdout).toContain("continue");
   });
 });
 
@@ -110,6 +109,12 @@ describe("settings and command construction", () => {
     });
     expect(JSON.stringify(settings)).toContain("bridge.mjs");
     expect(JSON.stringify(settings)).toContain("Read");
+    const minimalSettings = generateClaudeSettings({
+      bridgeScriptPath: "/tmp/bridge.mjs",
+      timeoutSeconds: 3,
+      options: {},
+    });
+    expect("permissions" in minimalSettings).toBe(false);
   });
 });
 
@@ -134,5 +139,19 @@ describe("state store", () => {
         paths: { ...record.paths, sessionDir: "\0" },
       }),
     ).toThrow(ElwoodError);
+  });
+
+  test("C-STATE-11 custom state directories do not receive or overwrite gitignore files", () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-state-"));
+    const projectState = join(root, ".elwood");
+    prepareStateDir(projectState, { gitignore: true });
+    expect(readFileSync(join(projectState, ".gitignore"), "utf8")).toBe("*\n");
+    writeFileSync(join(projectState, ".gitignore"), "!keep\n");
+    prepareStateDir(projectState, { gitignore: true });
+    expect(readFileSync(join(projectState, ".gitignore"), "utf8")).toBe("!keep\n");
+
+    const customState = join(root, "custom-state");
+    prepareStateDir(customState);
+    expect(existsSync(join(customState, ".gitignore"))).toBe(false);
   });
 });

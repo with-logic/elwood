@@ -3,7 +3,7 @@
  * Implements PRD §8.
  */
 
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { ElwoodError, elwoodError } from "../core/errors.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
@@ -71,9 +71,15 @@ export function createSessionRecord(input: {
   };
 }
 
-export function prepareStateDir(stateDir: string): void {
+export function prepareStateDir(
+  stateDir: string,
+  options: { readonly gitignore?: boolean } = {},
+): void {
   mkdirSync(stateDir, { recursive: true });
-  writeFileSync(join(stateDir, ".gitignore"), "*\n", { flag: "w" });
+  const gitignorePath = join(stateDir, ".gitignore");
+  if (options.gitignore === true && !existsSync(gitignorePath)) {
+    writeFileSync(gitignorePath, "*\n");
+  }
   mkdirSync(join(stateDir, "sessions"), { recursive: true });
 }
 
@@ -148,9 +154,9 @@ export function removeSessionDir(record: SessionRecord): void {
 }
 
 function warningKey(warning: ElwoodWarningEvent): string {
-  const server =
-    "mcpServerName" in warning ? warning.mcpServerName : warning.failedServers.join(",");
-  return `${warning.code}:${server}`;
+  if (warning.code === "version_unparseable") return `${warning.code}:${warning.agent}`;
+  if ("mcpServerName" in warning) return `${warning.code}:${warning.mcpServerName}`;
+  return `${warning.code}:${warning.failedServers.join(",")}`;
 }
 
 function recordPath(dir: string): string {
