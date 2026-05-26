@@ -32,7 +32,7 @@ export const nodePtyFactory: PtyFactory = (options: PtySpawnOptions): PtyProcess
       return () => disposable.dispose();
     },
     write(data) {
-      pty.write(typeof data === "string" ? data : Buffer.from(data).toString("utf8"));
+      pty.write(typeof data === "string" ? data : Buffer.from(data));
     },
     resize(size: TerminalSize) {
       pty.resize(size.cols, size.rows);

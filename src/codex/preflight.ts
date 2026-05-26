@@ -5,7 +5,7 @@
 
 import { elwoodError } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
-import { currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
+import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { loginShellCommand, userShell } from "../runtime/shell.ts";
 
 export const minimumCodexVersion = "0.124.0";
@@ -23,18 +23,10 @@ export function preflightCodex(
   if (currentPlatform() !== "darwin") {
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
-  let result = currentCommandRunner()(userShell(), loginShellCommand("codex --version"));
-  if (result.status === null || result.error?.code === "ENOENT" || result.status === 127) {
-    throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");
-  }
-  if (result.status !== 0) {
-    throw elwoodError("codex_start_failed", "`codex --version` failed.", {
-      stderr: result.stderr,
-    });
-  }
+  let result = readCodexVersion();
   if (autoupdate) {
     runCodexUpdate();
-    result = currentCommandRunner()(userShell(), loginShellCommand("codex --version"));
+    result = readCodexVersion();
   }
   const version = parseCodexVersion(result.stdout);
   if (!version) {
@@ -58,6 +50,19 @@ function runCodexUpdate(): void {
   if (result.status !== 0) {
     throw elwoodError("codex_update_failed", "`codex update` failed.", { stderr: result.stderr });
   }
+}
+
+function readCodexVersion(): CommandResult {
+  const result = currentCommandRunner()(userShell(), loginShellCommand("codex --version"));
+  if (result.status === null || result.error?.code === "ENOENT" || result.status === 127) {
+    throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");
+  }
+  if (result.status !== 0) {
+    throw elwoodError("codex_start_failed", "`codex --version` failed.", {
+      stderr: result.stderr,
+    });
+  }
+  return result;
 }
 
 export function parseCodexVersion(output: string): string | null {

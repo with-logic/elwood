@@ -1,7 +1,4 @@
-/**
- * Browser-based local Elwood dev app.
- * Runs under Node because node-pty's native addon is not reliable under Bun.
- */
+/** Browser-based local Elwood dev app. Implements PRD §11. */
 
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -91,10 +88,8 @@ async function handleClientMessage(socket: WebSocket, raw: string): Promise<void
       await currentSession().sendKeys(message.value);
     } else if (message.type === "resize") {
       await currentSession().resize(sizeFrom(message));
-    } else if (message.type === "kill") {
-      const active = currentSession();
-      await active.kill();
-      if (session === active) session = null;
+    } else if (message.type === "stop" || message.type === "kill") {
+      await closeActive(message.type);
     } else {
       await currentSession().teardown();
       session = null;
@@ -103,6 +98,12 @@ async function handleClientMessage(socket: WebSocket, raw: string): Promise<void
     const message = error instanceof Error ? error.message : String(error);
     sendSocket(socket, { type: "event", entry: runtimeErrorEvent(message, errorPayload(error)) });
   }
+}
+
+async function closeActive(action: "stop" | "kill"): Promise<void> {
+  const active = currentSession();
+  await active[action]();
+  if (session === active) session = null;
 }
 
 async function startOrResume(

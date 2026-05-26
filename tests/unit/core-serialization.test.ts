@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildClaudeShellCommand, shellLaunch } from "../../src/claude/command.ts";
+import { claudeHookEventNames } from "../../src/claude/hooks.ts";
 import { minimumClaudeVersion, parseVersion, preflightClaude } from "../../src/claude/preflight.ts";
 import { serializeHookResult } from "../../src/claude/serialize.ts";
 import { generateClaudeSettings } from "../../src/claude/settings.ts";
@@ -27,13 +28,15 @@ import {
   readSessionRecord,
   removeSessionDir,
   sessionDir,
+  writeSessionRecord,
 } from "../../src/state/store.ts";
 
 describe("serialization", () => {
-  test("C-HRESP variants serialize to Claude-compatible output", () => {
-    expect(serializeHookResult("PermissionRequest", { behavior: "allow" }).stdout).toContain(
-      "decision",
+  test("C-HRESP-06 variants serialize to Claude-compatible output", () => {
+    const permission = JSON.parse(
+      serializeHookResult("PermissionRequest", { behavior: "allow" }).stdout,
     );
+    expect(permission.hookSpecificOutput.decision.behavior).toBe("allow");
     expect(serializeHookResult("PermissionDenied", { retry: true }).stdout).toContain("retry");
     expect(serializeHookResult("Elicitation", { action: "decline" }).stdout).toContain("decline");
     expect(
@@ -84,11 +87,19 @@ describe("preflight", () => {
         waitMs: 0,
       }),
     ).rejects.toMatchObject({ code: "codex_not_authenticated" });
+    await expect(
+      assertStartupUsable({
+        adapter: "codex",
+        exit: undefined,
+        output: "The linear MCP server is not logged in.",
+        waitMs: 0,
+      }),
+    ).resolves.toBeUndefined();
   });
 });
 
 describe("settings and command construction", () => {
-  test("C-CLAUDE launch policy is reflected in generated command/settings", () => {
+  test("C-CLAUDE-03 C-HOOK-01 launch policy and all hooks are generated", () => {
     const command = buildClaudeShellCommand("/tmp/settings.json", {
       cwd: "/tmp/project",
       permissionMode: "plan",
@@ -109,6 +120,9 @@ describe("settings and command construction", () => {
     });
     expect(JSON.stringify(settings)).toContain("bridge.mjs");
     expect(JSON.stringify(settings)).toContain("Read");
+    expect(Object.keys(settings["hooks"] as Record<string, unknown>).sort()).toEqual(
+      [...claudeHookEventNames].sort(),
+    );
     const minimalSettings = generateClaudeSettings({
       bridgeScriptPath: "/tmp/bridge.mjs",
       timeoutSeconds: 3,
@@ -133,6 +147,8 @@ describe("state store", () => {
     writeFileSync(join(corruptDir, "session.json"), "{");
     expect(() => readSessionRecord(root, "corrupt")).toThrow(ElwoodError);
     const record = createSessionRecord({ stateDir: root, cwd: root, id: "null-path" });
+    writeSessionRecord({ ...record, paths: { ...record.paths, socketPath: "/tmp/foreign.sock" } });
+    expect(() => readSessionRecord(root, record.elwoodSessionId)).toThrow(ElwoodError);
     expect(() =>
       removeSessionDir({
         ...record,

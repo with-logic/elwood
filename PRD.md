@@ -158,6 +158,13 @@ Requested permission mode and allowed/disallowed tool policy may be supplied as
 Claude CLI flags instead of generated settings when Claude exposes a stable flag
 for that policy.
 
+Decision note: Claude currently advertises both camelCase and kebab-case aliases
+for tool-policy flags, but Claude's bundled docs and older CLI references name
+`--allowedTools` and `--disallowedTools`. Elwood uses those documented camelCase
+flags to maximize compatibility. The tool rule list is encoded as one
+comma-separated flag value because current `claude --help` explicitly accepts
+comma-separated or space-separated tool lists.
+
 ### 4.4 Codex configuration behavior
 
 Elwood MUST NOT mutate `.codex/config.toml`, `.codex/hooks.json`,
@@ -166,8 +173,15 @@ Elwood MUST NOT mutate `.codex/config.toml`, `.codex/hooks.json`,
 For each Codex session, Elwood generates only Elwood-owned runtime files under
 the Elwood session metadata directory, then launches Codex with session-scoped
 `--config` overrides that install hook bridge handlers for every supported Codex
-hook event. User, project, managed, and system Codex config must still merge
-through Codex's normal precedence rules.
+hook event. Elwood reserves `features.hooks=true` and `hookTrust="trust-all"`
+as session-scoped Codex overrides because Codex hooks must be enabled and trusted
+for Elwood to function. User, project, managed, and system Codex config must
+still merge through Codex's normal precedence rules.
+
+Decision note: `features.hooks=true` is treated as Elwood-owned configuration,
+not caller configuration. Without it, some Codex versions can parse hook config
+without running hooks, which would make Elwood observe less than the parent app
+expects.
 
 Codex hook trust is a Codex security feature, but Elwood is not useful without
 trusted hooks. Elwood MUST always allow Codex hooks to run. It should use
@@ -212,7 +226,9 @@ Claude, is forwarded to Claude's documented `--name` flag. `hooks` registers
 launch-time handlers before Claude starts. When `autoupdate` is true, Elwood
 runs `claude update` from the user's login shell before spawning Claude and
 rechecks the version after the update. `strictVersionCheck` makes unparseable
-Claude versions fatal instead of warning-and-continuing.
+Claude versions fatal instead of warning-and-continuing. `permissionMode`
+accepts Claude's documented launch values: `default`, `acceptEdits`, `plan`,
+`auto`, `dontAsk`, and `bypassPermissions`.
 
 ### 5.2 Resuming Claude
 
@@ -281,7 +297,13 @@ for both Claude and Codex.
 `sendPrompt` does not gate on readiness. If a caller sends a prompt while Claude
 is busy, Elwood writes the input immediately, matching human terminal behavior.
 
-`sendKeys` is the low-level escape hatch for raw terminal input.
+`sendKeys` is the low-level escape hatch for raw terminal input. String input
+flows through the headless xterm input path so terminal semantics match visual
+input. `Uint8Array` input is written to the PTY as bytes instead of being decoded
+as UTF-8, because callers use this overload for raw escape/binary input.
+
+`ElwoodSessionStatus` values are `starting`, `running`, `ready`, `stopped`,
+`exited`, `killed`, and `torn_down`.
 
 If `initialSize` is omitted, Elwood MUST default the terminal to 189 columns by
 48 rows. Parent apps with a visible terminal should still pass and maintain the
@@ -295,9 +317,11 @@ own renderer, while `terminal:data` remains the live raw stream for browser
 renderers.
 
 `stop` attempts graceful process termination while preserving Elwood metadata for
-resume. `kill` force-terminates the process. `teardown` removes Elwood-owned
-state for the session and must not remove Claude-owned transcripts, auth, or
-project/user settings that Elwood did not create.
+resume. It should wait for process exit for a bounded grace period, then escalate
+to force termination so callers do not get a terminal status while the process is
+still indefinitely alive. `kill` force-terminates the process. `teardown` removes
+Elwood-owned state for the session and must not remove Claude-owned transcripts,
+auth, or project/user settings that Elwood did not create.
 
 ### 5.4 Events
 
@@ -344,6 +368,9 @@ whether the dispatch failed open, and the raw in-memory result payload when
 present. Handler timeouts, invalid responses, thrown handlers, and bridge errors
 must emit both `hookError` and an adapter-neutral `activity` with
 `kind: "hook_error"`.
+
+`HookErrorEvent.category` values are `timeout`, `handler_error`,
+`invalid_input`, `invalid_response`, and `bridge_error`.
 
 Hook-specific events remain the source of truth for event-specific decisions,
 typed control responses, and adapter-specific payloads.
@@ -482,7 +509,8 @@ Codex's own JSONL transcript. Parent apps may use this live-only event to render
 thinking/status phases, assistant messages, web search calls, and other
 transcript activity that is not currently represented as a Codex hook. Those
 same observations are also projected into the adapter-neutral `activity` event
-stream.
+stream. `CodexTranscriptSummary.kind` values are `message`, `tool_call`,
+`tool_result`, `reasoning`, `web_search`, and `other`.
 
 ## 6. Claude Hook Bridge
 
@@ -638,12 +666,19 @@ unions.
   according to Codex's current supported response shapes.
 - `PermissionRequest` may allow or deny only. Future-only fields such as
   updated input, updated permissions, and interrupts must be unrepresentable.
-  Serialized output must put `behavior` and optional `message` directly in the
-  event-specific output object with `hookEventName`.
+  Serialized output must put `behavior` and optional `message` inside the
+  event-specific `decision` object with `hookEventName`.
 - `Stop` and `SubagentStop` may block completion with a continuation reason.
 - Observe-only or unsupported response states must be rejected by the type system
   and runtime validation. Parent handlers must return `undefined` for no
   decision; an empty object is invalid and must fail open with `hookError`.
+
+Decision note: Codex `PreToolUse` and `PermissionRequest` both produce
+event-specific JSON under `hookSpecificOutput`, but they do not use the same
+inner shape. `PreToolUse` uses fields such as `permissionDecision` directly
+beside `hookEventName`; `PermissionRequest` nests `{ behavior, message? }` under
+`decision`. Elwood mirrors the current Codex hook protocol instead of normalizing
+these shapes on the wire.
 
 ### 7A.3 Readiness
 

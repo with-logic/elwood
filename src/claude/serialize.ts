@@ -4,7 +4,7 @@
  */
 
 import type { BridgeProcessResult } from "../bridge/types.ts";
-import type { ClaudeHookEventName, ClaudeHookResult } from "./hooks.ts";
+import type { ClaudeHookEventName, ClaudeHookResult, PermissionRequestResult } from "./hooks.ts";
 
 export function serializeHookResult(
   eventName: ClaudeHookEventName,
@@ -31,10 +31,7 @@ function preToolUse(eventName: string, result: Exclude<ClaudeHookResult, void>):
   return { hookSpecificOutput: { hookEventName: eventName, ...result } };
 }
 
-function permissionRequest(
-  eventName: string,
-  result: { readonly behavior: "allow" | "deny" },
-): unknown {
+function permissionRequest(eventName: string, result: PermissionRequestResult): unknown {
   return { hookSpecificOutput: { hookEventName: eventName, decision: result } };
 }
 

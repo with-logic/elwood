@@ -180,20 +180,16 @@ class FakeSession implements SharedSession {
     return this.sendPrompt(message);
   }
 
-  sendKeys(): Promise<void> {
-    return Promise.resolve();
-  }
+  sendKeys = () => Promise.resolve();
 
   resize(size: { readonly cols: number; readonly rows: number }): Promise<void> {
     this.sizes.push(size);
     return Promise.resolve();
   }
 
-  kill(): Promise<void> {
-    return Promise.resolve();
-  }
+  stop = () => Promise.resolve();
 
-  teardown(): Promise<void> {
-    return Promise.resolve();
-  }
+  kill = () => Promise.resolve();
+
+  teardown = () => Promise.resolve();
 }

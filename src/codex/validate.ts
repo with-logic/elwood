@@ -84,6 +84,7 @@ function isPermissionRequestResult(
 ): boolean {
   return (
     eventName === "PermissionRequest" &&
+    keysAre(value, ["behavior", "message"]) &&
     isOneOf(value["behavior"], ["allow", "deny"]) &&
     optionalString(value["message"])
   );
@@ -105,7 +106,8 @@ function isCommonResult(
   eventName: CodexHookEventName,
   value: Readonly<Record<string, unknown>>,
 ): boolean {
-  if (eventName === "PermissionRequest" || eventName === "PreToolUse") return false;
+  if (!isOneOf(eventName, ["PostToolUse", "UserPromptSubmit", "SubagentStop", "Stop"]))
+    return false;
   const keys = Object.keys(value);
   if (keys.length === 0) return false;
   return (

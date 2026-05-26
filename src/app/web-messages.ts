@@ -19,6 +19,7 @@ export type ClientMessage =
   | { readonly type: "prompt"; readonly value: string }
   | { readonly type: "keys"; readonly value: string }
   | { readonly type: "resize"; readonly cols: number; readonly rows: number }
+  | { readonly type: "stop" }
   | { readonly type: "kill" }
   | { readonly type: "teardown" };
 

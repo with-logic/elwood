@@ -78,7 +78,7 @@ describe("CodexSession hook handling", () => {
       ...toolEvent(cwd),
       hook_event_name: "PermissionRequest",
     });
-    expect(JSON.parse(result.stdout).hookSpecificOutput).toMatchObject({
+    expect(JSON.parse(result.stdout).hookSpecificOutput.decision).toMatchObject({
       behavior: "deny",
       message: "blocked",
     });

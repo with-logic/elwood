@@ -77,6 +77,7 @@ function fakeSession(): SharedSession {
     sendMessage: () => Promise.resolve(),
     sendKeys: () => Promise.resolve(),
     resize: () => Promise.resolve(),
+    stop: () => Promise.resolve(),
     kill: () => Promise.resolve(),
     teardown: () => Promise.resolve(),
   };

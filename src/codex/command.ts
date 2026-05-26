@@ -40,7 +40,7 @@ function addLaunchFlags(parts: string[], options: StartCodexOptions): void {
 function hookOverrides(record: SessionRecord, options: StartCodexOptions): string[] {
   const timeout = Math.ceil((options.hookTimeoutMs ?? 25_000) / 1000);
   return codexHookEventNames.map((eventName) => {
-    const command = `${process.execPath} ${record.paths.bridgeScriptPath}`;
+    const command = `${shellQuote(process.execPath)} ${shellQuote(record.paths.bridgeScriptPath)}`;
     const hook = `{type="command",command=${tomlString(command)},timeout=${timeout}}`;
     const group = `{matcher=${tomlString(matcherFor(eventName))},hooks=[${hook}]}`;
     return `hooks.${eventName}=[${group}]`;

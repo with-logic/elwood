@@ -105,8 +105,12 @@ describe("bridge and emitter edges", () => {
   test("C-HOOK-06 validates hook results by event semantics", () => {
     expect(isClaudeHookResult("PreToolUse", null)).toBe(false);
     expect(isClaudeHookResult("PreToolUse", { permissionDecision: "allow" })).toBe(true);
+    expect(isClaudeHookResult("PreToolUse", { permissionDecision: "allow", extra: true })).toBe(
+      false,
+    );
     expect(isClaudeHookResult("Stop", { permissionDecision: "allow" })).toBe(false);
     expect(isClaudeHookResult("PermissionRequest", { behavior: "deny" })).toBe(true);
+    expect(isClaudeHookResult("PermissionRequest", { behavior: "deny", extra: true })).toBe(false);
     expect(isClaudeHookResult("Stop", { behavior: "deny" })).toBe(false);
     expect(isClaudeHookResult("PermissionDenied", { retry: true })).toBe(true);
     expect(isClaudeHookResult("PermissionDenied", { retry: false })).toBe(false);

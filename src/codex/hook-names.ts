@@ -18,7 +18,12 @@ export const codexHookEventNames = [
 
 export type CodexHookEventName = (typeof codexHookEventNames)[number];
 
-export type CodexPermissionMode = string;
+export type CodexPermissionMode =
+  | "default"
+  | "acceptEdits"
+  | "plan"
+  | "dontAsk"
+  | "bypassPermissions";
 
 export type CodexCommonHookFields = {
   readonly session_id: string;

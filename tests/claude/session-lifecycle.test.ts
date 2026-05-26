@@ -4,7 +4,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { resumeClaude, startClaude } from "../../src/index.ts";
 import { createSessionRecord, prepareStateDir, writeSessionRecord } from "../../src/state/store.ts";
@@ -83,8 +83,11 @@ describe("ClaudeSession lifecycle", () => {
     expect(persisted).not.toContain("SECRET_HOOK");
   });
 
-  test("C-LIFE-02 C-LIFE-03 C-STATE-07 C-STATE-08 lifecycle controls state", async () => {
+  test("C-LIFE-02 C-LIFE-03 C-STATE-07 C-STATE-08 C-STATE-09 lifecycle controls state", async () => {
     const cwd = tempDir();
+    mkdirSync(join(cwd, ".claude"), { recursive: true });
+    const claudeSettings = join(cwd, ".claude", "settings.local.json");
+    writeFileSync(claudeSettings, '{"permissions":{"allow":["Read"]}}\n');
     installFakes();
     const session = await startClaude({ cwd });
     const exits: number[] = [];
@@ -98,6 +101,7 @@ describe("ClaudeSession lifecycle", () => {
     await session.teardown();
     expect(session.status).toBe("torn_down");
     expect(existsSync(dir)).toBe(false);
+    expect(readFileSync(claudeSettings, "utf8")).toContain("Read");
   });
 
   test("C-PTY-06 process exit updates session status", async () => {

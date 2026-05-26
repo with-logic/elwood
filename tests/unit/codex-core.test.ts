@@ -46,6 +46,7 @@ describe("Codex core helpers", () => {
     expect(command).toContain("model=");
     expect(command.lastIndexOf("hookTrust")).toBeGreaterThan(command.indexOf("model="));
     expect(command).toContain("resume");
+    expect(command).toContain("command=\"'");
     expect(
       buildCodexShellCommand(record, { cwd }, { supportsHookTrustBypass: false }),
     ).not.toContain("--dangerously-bypass-hook-trust");
@@ -89,11 +90,11 @@ describe("Codex core helpers", () => {
   });
 
   test("C-HRESP-10 serializes Codex hook response variants", () => {
-    expect(serializeCodexHookResult("PostCompact", { continue: false }).stdout).toContain(
+    expect(serializeCodexHookResult("PostToolUse", { continue: false }).stdout).toContain(
       "continue",
     );
     expect(
-      serializeCodexHookResult("PostCompact", { additionalContext: "compacted" }).stdout,
+      serializeCodexHookResult("PostToolUse", { additionalContext: "compacted" }).stdout,
     ).toContain("additionalContext");
     expect(
       serializeCodexHookResult("PreToolUse", {
@@ -110,7 +111,7 @@ describe("Codex core helpers", () => {
     ).toContain("again");
     expect(
       JSON.parse(serializeCodexHookResult("PermissionRequest", { behavior: "allow" }).stdout)
-        .hookSpecificOutput.behavior,
+        .hookSpecificOutput.decision.behavior,
     ).toBe("allow");
   });
 });

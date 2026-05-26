@@ -30,7 +30,7 @@ function permissionRequest(
   eventName: string,
   result: { readonly behavior: "allow" | "deny"; readonly message?: string },
 ): unknown {
-  return { hookSpecificOutput: { hookEventName: eventName, ...result } };
+  return { hookSpecificOutput: { hookEventName: eventName, decision: result } };
 }
 
 function block(

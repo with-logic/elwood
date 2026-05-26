@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { join, resolve } from "node:path";
 import { ElwoodError, elwoodError } from "../core/errors.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
+import { validateSessionRecord } from "./validate.ts";
 
 export type SessionRecord = {
   readonly schemaVersion: 1;
@@ -94,11 +95,15 @@ export function writeSessionRecord(record: SessionRecord): void {
 export function readSessionRecord(stateDir: string, id: string): SessionRecord {
   const dir = sessionDir(stateDir, id);
   try {
-    const parsed = JSON.parse(readFileSync(recordPath(dir), "utf8")) as SessionRecord;
-    if (parsed.schemaVersion !== 1 || parsed.elwoodSessionId !== id) {
+    const parsed = validateSessionRecord(
+      JSON.parse(readFileSync(recordPath(dir), "utf8")),
+      stateDir,
+      id,
+    );
+    if (!parsed) {
       throw elwoodError("state_corrupt", `Session state is invalid for ${id}`);
     }
-    return { ...parsed, warnings: parsed.warnings ?? [] };
+    return parsed;
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
       throw elwoodError("state_not_found", `No Elwood session found for ${id}`);

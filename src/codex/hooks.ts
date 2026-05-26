@@ -98,7 +98,7 @@ export type CodexHookResultFor<K extends CodexHookEventName> = K extends "PreToo
       ? CodexBlockResult | CodexCommonResult | undefined
       : K extends "UserPromptSubmit" | "Stop" | "SubagentStop"
         ? CodexBlockResult | CodexCommonResult | undefined
-        : CodexCommonResult | undefined;
+        : undefined;
 
 export type CodexHookResult = {
   [K in CodexHookEventName]: CodexHookResultFor<K>;

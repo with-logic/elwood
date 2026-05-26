@@ -40,6 +40,11 @@ describe("CLI autoupdate preflight", () => {
       return { status: 0, stdout: outputs.shift() ?? "2.1.144", stderr: "" };
     });
     expect(() => preflightClaude(false, true)).not.toThrow();
+    setCommandRunnerForTests((_command, args) => {
+      if (args.join(" ").includes("claude update")) return { status: 0, stdout: "", stderr: "" };
+      return { status: 127, stdout: "", stderr: "missing" };
+    });
+    expect(() => preflightClaude(false, true)).toThrow(ElwoodError);
     resetRuntimeSeamsForTests();
   });
 
@@ -62,6 +67,11 @@ describe("CLI autoupdate preflight", () => {
       return { status: 0, stdout: outputs.shift() ?? "codex-cli 0.132.0", stderr: "" };
     });
     expect(() => preflightCodex(false, true)).not.toThrow();
+    setCommandRunnerForTests((_command, args) => {
+      if (args.join(" ").includes("codex update")) return { status: 0, stdout: "", stderr: "" };
+      return { status: 127, stdout: "", stderr: "missing" };
+    });
+    expect(() => preflightCodex(false, true)).toThrow(ElwoodError);
     resetRuntimeSeamsForTests();
   });
 });

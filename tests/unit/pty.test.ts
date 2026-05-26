@@ -8,6 +8,7 @@ import { statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { currentPtyFactory, resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { loginShellCommand } from "../../src/runtime/shell.ts";
+import { terminatePty } from "../../src/runtime/terminate.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
 describe("node PTY adapter", () => {
@@ -96,5 +97,29 @@ describe("node PTY adapter", () => {
     offRuntimeData();
     offRuntimeExit();
     expect(runtimePty.pid).toBe(42);
+  });
+
+  test("C-LIFE-02 graceful termination escalates when the process does not exit", async () => {
+    const signals: string[] = [];
+    let exitHandler: (() => void) | undefined;
+    await terminatePty(
+      {
+        pid: 1,
+        onData: () => () => {},
+        onExit: (handler) => {
+          exitHandler = () => handler({ exitCode: 0 });
+          return () => {};
+        },
+        write: () => {},
+        resize: () => {},
+        kill: (signal) => {
+          signals.push(signal ?? "SIGTERM");
+          if (signal === "SIGKILL") exitHandler?.();
+        },
+      },
+      "SIGTERM",
+      { gracefulMs: 0, forceMs: 10 },
+    );
+    expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
   });
 });

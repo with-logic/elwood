@@ -13,13 +13,15 @@ import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 
 describe("Codex startup prompt responder", () => {
   test("C-API-15 exposes a controllable headless terminal handle", async () => {
-    const inputs: string[] = [];
+    const inputs: Array<string | Uint8Array> = [];
     const terminal = createHeadlessTerminal({ cols: 20, rows: 4 }, (input) => inputs.push(input));
+    const bytes = new Uint8Array([0xff, 0x00]);
     expect(terminal.size).toEqual({ cols: 20, rows: 4 });
     terminal.sendInput("x");
+    terminal.sendInput(bytes);
     terminal.resize({ cols: 30, rows: 5 });
     await terminal.writeOutput(new Uint8Array([65, 66]));
-    expect(inputs).toEqual(["x"]);
+    expect(inputs).toEqual(["x", bytes]);
     expect(terminal.size).toEqual({ cols: 30, rows: 5 });
     expect(terminal.snapshot().text).toContain("AB");
     terminal.dispose();
@@ -56,7 +58,7 @@ describe("Codex startup prompt responder", () => {
     expect(writes).toEqual(["2"]);
   });
 
-  test("C-CODEX skips cursor-addressed xterm-rendered update prompts", async () => {
+  test("C-PTY-07 C-CODEX skips cursor-addressed xterm-rendered update prompts", async () => {
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder();
     const terminal = createHeadlessTerminal({ cols: 90, rows: 12 }, () => {});

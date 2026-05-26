@@ -70,8 +70,10 @@ describe("Codex hook validation", () => {
       }),
     ).toBe(false);
     expect(isCodexHookResult("PermissionRequest", { continue: false })).toBe(false);
+    expect(isCodexHookResult("PermissionRequest", { behavior: "allow", extra: true })).toBe(false);
     expect(isCodexHookResult("PostCompact", { continue: "no" })).toBe(false);
-    expect(isCodexHookResult("PostCompact", { continue: false })).toBe(true);
+    expect(isCodexHookResult("PostCompact", { continue: false })).toBe(false);
+    expect(isCodexHookResult("PostToolUse", { continue: false })).toBe(true);
     expect(isCodexHookResult("PostCompact", {})).toBe(false);
     expect(isCodexHookResult("PostCompact", { nope: true })).toBe(false);
   });

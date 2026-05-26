@@ -8,6 +8,7 @@ import { elwoodError } from "../core/errors.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyProcess } from "../pty/types.ts";
+import { terminatePty } from "../runtime/terminate.ts";
 import {
   appendSessionWarning,
   removeSessionDir,
@@ -146,6 +147,7 @@ export class CodexSessionImpl implements CodexSession {
   }
 
   rememberCodexSessionId(sessionId: string): void {
+    if (this.record.codex.resumeId) return;
     this.persist(updateSessionResumeId(this.record, "codex", sessionId));
   }
 
@@ -182,17 +184,7 @@ export class CodexSessionImpl implements CodexSession {
     writeSessionRecord(record);
   }
 
-  private async terminate(signal: string): Promise<void> {
-    await new Promise<void>((resolve) => {
-      const unsubscribe = this.pty.onExit(() => {
-        unsubscribe();
-        resolve();
-      });
-      this.pty.kill(signal);
-      setTimeout(() => {
-        unsubscribe();
-        resolve();
-      }, 50);
-    });
+  private async terminate(signal: "SIGTERM" | "SIGKILL"): Promise<void> {
+    await terminatePty(this.pty, signal);
   }
 }

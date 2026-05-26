@@ -48,6 +48,13 @@ function isPreToolUseResult(
 ): boolean {
   return (
     eventName === "PreToolUse" &&
+    keysAre(value, [
+      "permissionDecision",
+      "permissionDecisionReason",
+      "updatedInput",
+      "updatedPermissions",
+      "additionalContext",
+    ]) &&
     isOneOf(value["permissionDecision"], ["allow", "deny", "ask", "defer"]) &&
     optionalString(value["permissionDecisionReason"]) &&
     optionalString(value["additionalContext"])
@@ -58,7 +65,14 @@ function isPermissionRequestResult(
   eventName: ClaudeHookEventName,
   value: Readonly<Record<string, unknown>>,
 ): boolean {
-  return eventName === "PermissionRequest" && isOneOf(value["behavior"], ["allow", "deny"]);
+  return (
+    eventName === "PermissionRequest" &&
+    keysAre(value, ["behavior", "updatedInput", "updatedPermissions", "message", "interrupt"]) &&
+    isOneOf(value["behavior"], ["allow", "deny"]) &&
+    optionalString(value["message"]) &&
+    optionalBoolean(value["interrupt"]) &&
+    optionalArray(value["updatedPermissions"])
+  );
 }
 
 function isElicitationResult(
@@ -67,6 +81,7 @@ function isElicitationResult(
 ): boolean {
   return (
     (eventName === "Elicitation" || eventName === "ElicitationResult") &&
+    keysAre(value, ["action", "content"]) &&
     isOneOf(value["action"], ["accept", "decline", "cancel"])
   );
 }
@@ -77,6 +92,7 @@ function isBlockResult(
 ): boolean {
   return (
     blockResultEvents.has(eventName) &&
+    keysAre(value, ["decision", "reason", "additionalContext"]) &&
     value["decision"] === "block" &&
     typeof value["reason"] === "string" &&
     optionalString(value["additionalContext"])
@@ -89,9 +105,14 @@ function isContinueFalseResult(
 ): boolean {
   return (
     continueFalseEvents.has(eventName) &&
+    keysAre(value, ["continue", "stopReason"]) &&
     value["continue"] === false &&
     optionalString(value["stopReason"])
   );
+}
+
+function keysAre(value: Readonly<Record<string, unknown>>, allowed: readonly string[]): boolean {
+  return Object.keys(value).every((key) => allowed.includes(key));
 }
 
 function isPostToolUseResult(value: Readonly<Record<string, unknown>>): boolean {
@@ -135,6 +156,14 @@ function optionalStringArray(value: unknown): boolean {
     value === undefined ||
     (Array.isArray(value) && value.every((entry) => typeof entry === "string"))
   );
+}
+
+function optionalBoolean(value: unknown): boolean {
+  return value === undefined || typeof value === "boolean";
+}
+
+function optionalArray(value: unknown): boolean {
+  return value === undefined || Array.isArray(value);
 }
 
 function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {

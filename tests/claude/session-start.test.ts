@@ -13,7 +13,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 afterEach(resetFakes);
 
 describe("ClaudeSession startup and terminal control", () => {
-  test("C-API-01 starts a Claude session with generated state and settings", async () => {
+  test("C-API-01 C-API-16 starts with generated state and default terminal size", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd, disallowedTools: ["AskUserQuestion"] });
@@ -52,7 +52,7 @@ describe("ClaudeSession startup and terminal control", () => {
     expect(session.warnings).toMatchObject([{ code: "version_unparseable", agent: "claude" }]);
   });
 
-  test("C-API-06 sends multiline prompts through bracketed paste", async () => {
+  test("C-API-06 C-API-13 sends multiline prompts and adapter-neutral messages", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
@@ -64,7 +64,7 @@ describe("ClaudeSession startup and terminal control", () => {
     ]);
   });
 
-  test("C-PTY-03 emits terminal data and supports raw keys and resize", async () => {
+  test("C-PTY-03 C-PTY-04 C-PTY-05 emits terminal data, raw keys, and resize", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });

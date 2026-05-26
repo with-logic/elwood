@@ -29,6 +29,8 @@ describe("browser dev app helpers", () => {
     expect(clientScript()).toContain("new Terminal");
     expect(clientScript()).toContain("agent:");
     expect(clientScript()).toContain('send({ type: "resize"');
+    expect(clientScript()).toContain('send({ type: "stop"');
+    expect(clientScript()).toContain('send({ type: "teardown"');
   });
 
   test("C-APP-10 renders structured debugger controls", () => {
@@ -37,11 +39,13 @@ describe("browser dev app helpers", () => {
     expect(html).toContain('id="detail-json"');
     expect(html).toContain('data-filter="hook"');
     expect(clientScript()).toContain('if (message.type === "event") addEvent(message.entry)');
+    expect(clientScript()).toContain("(entry.tags || []).includes(activeFilter)");
     expect(clientScript()).toContain("function renderDetail");
   });
 
   test("C-APP-08 parses client messages and terminal sizes", () => {
     expect(parseClientMessage('{"type":"kill"}')).toEqual({ type: "kill" });
+    expect(parseClientMessage('{"type":"stop"}')).toEqual({ type: "stop" });
     expect(parseClientMessage('{"type":"start","agent":"codex","cwd":"."}')).toMatchObject({
       agent: "codex",
     });

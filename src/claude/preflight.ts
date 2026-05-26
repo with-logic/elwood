@@ -5,7 +5,7 @@
 
 import { elwoodError } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
-import { currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
+import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { loginShellCommand, userShell } from "../runtime/shell.ts";
 
 export const minimumClaudeVersion = "2.1.144";
@@ -21,18 +21,10 @@ export function preflightClaude(
   if (currentPlatform() !== "darwin") {
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
-  let result = currentCommandRunner()(userShell(), loginShellCommand("claude --version"));
-  if (result.error?.code === "ENOENT" || result.status === 127) {
-    throw elwoodError("claude_not_found", "`claude` was not found on PATH.");
-  }
-  if (result.status !== 0) {
-    throw elwoodError("claude_start_failed", "`claude --version` failed.", {
-      stderr: result.stderr,
-    });
-  }
+  let result = readClaudeVersion();
   if (autoupdate) {
     runClaudeUpdate();
-    result = currentCommandRunner()(userShell(), loginShellCommand("claude --version"));
+    result = readClaudeVersion();
   }
   const version = parseVersion(result.stdout);
   if (!version) {
@@ -61,6 +53,19 @@ function runClaudeUpdate(): void {
       stderr: result.stderr,
     });
   }
+}
+
+function readClaudeVersion(): CommandResult {
+  const result = currentCommandRunner()(userShell(), loginShellCommand("claude --version"));
+  if (result.error?.code === "ENOENT" || result.status === 127) {
+    throw elwoodError("claude_not_found", "`claude` was not found on PATH.");
+  }
+  if (result.status !== 0) {
+    throw elwoodError("claude_start_failed", "`claude --version` failed.", {
+      stderr: result.stderr,
+    });
+  }
+  return result;
 }
 
 export function parseVersion(output: string): string | null {

@@ -55,8 +55,8 @@ Codex accepts event-specific JSON output. Important shapes for Elwood:
 - `PreToolUse` can deny a supported tool call with `permissionDecision: "deny"`
   and a reason, add additional context, or allow a rewritten tool input.
 - `PermissionRequest` can decide `allow` or `deny` with `{ hookSpecificOutput:
-  { hookEventName, behavior, message? } }`. It must not return updated input or
-  permission edits.
+  { hookEventName, decision: { behavior, message? } } }`. It must not return
+  updated input or permission edits.
 - `PostToolUse` can block normal processing of a completed tool result with
   feedback, but it cannot undo tool side effects.
 - `UserPromptSubmit` can add additional context or block the prompt.

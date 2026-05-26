@@ -71,6 +71,12 @@ document.getElementById("prompt").addEventListener("submit", (event) => {
 document.getElementById("kill").addEventListener("click", () => {
   if (sessionActive) send({ type: "kill" });
 });
+document.getElementById("stop").addEventListener("click", () => {
+  if (sessionActive) send({ type: "stop" });
+});
+document.getElementById("teardown").addEventListener("click", () => {
+  if (sessionActive) send({ type: "teardown" });
+});
 document.getElementById("copy-json").addEventListener("click", () => {
   if (navigator.clipboard) void navigator.clipboard.writeText(detailJson.textContent || "");
 });
@@ -98,7 +104,10 @@ function addEvent(entry) {
 }
 
 function renderEvents() {
-  const rows = events.filter((entry) => activeFilter === "all" || entry.kind === activeFilter);
+  const rows = events.filter(
+    (entry) =>
+      activeFilter === "all" || entry.kind === activeFilter || (entry.tags || []).includes(activeFilter),
+  );
   list.replaceChildren(...rows.map(eventRow));
   list.scrollTop = list.scrollHeight;
   if (rows.length && !rows.some((entry) => entry.id === selectedId)) selectEvent(rows[rows.length - 1]);

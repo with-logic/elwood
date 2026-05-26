@@ -30,7 +30,7 @@ export interface ElwoodTerminal {
 
 export function createHeadlessTerminal(
   size: TerminalSize,
-  onInput: (input: string) => void,
+  onInput: (input: string | Uint8Array) => void,
 ): ElwoodTerminal {
   return new HeadlessTerminal(size, onInput);
 }
@@ -50,9 +50,11 @@ export function attachPtyTerminal(
 class HeadlessTerminal implements ElwoodTerminal {
   readonly xterm: XtermTerminal;
   private currentSize: TerminalSize;
+  private readonly onInput: (input: string | Uint8Array) => void;
 
-  constructor(size: TerminalSize, onInput: (input: string) => void) {
+  constructor(size: TerminalSize, onInput: (input: string | Uint8Array) => void) {
     this.currentSize = size;
+    this.onInput = onInput;
     this.xterm = new xtermHeadless.Terminal({
       allowProposedApi: true,
       cols: size.cols,
@@ -70,7 +72,11 @@ class HeadlessTerminal implements ElwoodTerminal {
   }
 
   sendInput(input: string | Uint8Array): void {
-    this.xterm.input(typeof input === "string" ? input : Buffer.from(input).toString("utf8"));
+    if (typeof input === "string") {
+      this.xterm.input(input);
+      return;
+    }
+    this.onInput(input);
   }
 
   resize(size: TerminalSize): void {

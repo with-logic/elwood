@@ -64,6 +64,7 @@ export type SharedSession = Pick<
   | "sendMessage"
   | "sendKeys"
   | "resize"
+  | "stop"
   | "kill"
   | "teardown"
 > & {

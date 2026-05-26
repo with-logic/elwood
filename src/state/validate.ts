@@ -1,0 +1,83 @@
+/**
+ * Runtime validation for persisted Elwood session records.
+ * Implements PRD §8.2 and §10.
+ */
+
+import { join } from "node:path";
+import type { ElwoodSessionStatus, TerminalSize } from "../core/types.ts";
+import type { SessionRecord } from "./store.ts";
+
+const statuses = new Set<ElwoodSessionStatus>([
+  "starting",
+  "running",
+  "ready",
+  "stopped",
+  "exited",
+  "killed",
+  "torn_down",
+]);
+
+export function validateSessionRecord(
+  value: unknown,
+  stateDir: string,
+  id: string,
+): SessionRecord | null {
+  if (!isRecord(value)) return null;
+  const adapter = value["adapter"];
+  if (value["schemaVersion"] !== 1 || value["elwoodSessionId"] !== id) return null;
+  if (adapter !== "claude" && adapter !== "codex") return null;
+  if (!(isString(value["cwd"]) && isRecord(value["metadata"]))) return null;
+  if (!(isString(value["createdAt"]) && isString(value["updatedAt"]))) return null;
+  if (!(isStatus(value["status"]) && isWarningArray(value["warnings"]))) return null;
+  if (!(isAdapterState(value["claude"]) && isAdapterState(value["codex"]))) return null;
+  if (!isTerminalSize(value["terminalSize"])) return null;
+  if (!hasExpectedPaths(value["paths"], stateDir, id, adapter)) return null;
+  return value as SessionRecord;
+}
+
+function hasExpectedPaths(
+  value: unknown,
+  stateDir: string,
+  id: string,
+  adapter: "claude" | "codex",
+): boolean {
+  if (!isRecord(value)) return false;
+  const dir = join(stateDir, "sessions", id);
+  return (
+    value["sessionDir"] === dir &&
+    value["settingsPath"] === join(dir, `${adapter}-settings.json`) &&
+    value["bridgeScriptPath"] === join(dir, "hook-bridge.mjs") &&
+    value["socketPath"] === join(dir, "hook.sock")
+  );
+}
+
+function isAdapterState(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return optionalString(value["resumeId"]) && optionalString(value["name"]);
+}
+
+function isTerminalSize(value: unknown): value is TerminalSize | undefined {
+  if (value === undefined) return true;
+  if (!isRecord(value)) return false;
+  return Number.isInteger(value["cols"]) && Number.isInteger(value["rows"]);
+}
+
+function isWarningArray(value: unknown): boolean {
+  return Array.isArray(value) && value.every(isRecord);
+}
+
+function isStatus(value: unknown): value is ElwoodSessionStatus {
+  return typeof value === "string" && statuses.has(value as ElwoodSessionStatus);
+}
+
+function optionalString(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}

@@ -40,7 +40,9 @@ export function renderHtml(cwd: string): string {
           <input name="cwd" value="${safeCwd}" aria-label="Working directory" />
           <div class="row">
             <button type="submit">Start</button>
+            <button type="button" id="stop">Stop</button>
             <button class="danger" type="button" id="kill">Kill</button>
+            <button class="danger" type="button" id="teardown">Teardown</button>
           </div>
           <div class="muted" id="session"></div>
         </form>
