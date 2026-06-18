@@ -122,6 +122,19 @@ activities, warnings, startup automation, status changes, and raw event payloads
 The script is still invoked through Bun, but the browser dev server process runs
 under Node so `node-pty` can own a real interactive PTY reliably.
 
+## Minimal Runnable Example
+
+For the smallest real usage sample, run `examples/minimal.ts`:
+
+```sh
+bun examples/minimal.ts --agent codex --cwd . --prompt "Summarize this repo in one paragraph."
+```
+
+The example starts Claude or Codex, subscribes to `activity`, `warning`, and
+`hookError`, sends one message, then stops the session. It imports from local
+source while the package is private; published consumers should import the same
+symbols from `elwood`.
+
 ## Quick Start: Claude
 
 ```ts
