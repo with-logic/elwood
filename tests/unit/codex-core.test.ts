@@ -94,12 +94,9 @@ describe("Codex core helpers", () => {
   });
 
   test("C-HRESP-10 serializes Codex hook response variants", () => {
-    expect(serializeCodexHookResult("PostToolUse", { continue: false }).stdout).toContain(
-      "continue",
-    );
     expect(
-      serializeCodexHookResult("PostToolUse", { additionalContext: "compacted" }).stdout,
-    ).toContain("additionalContext");
+      serializeCodexHookResult("Stop", { continue: false, stopReason: "run tests" }).stdout,
+    ).toContain("continue");
     expect(
       serializeCodexHookResult("PreToolUse", {
         permissionDecision: "allow",

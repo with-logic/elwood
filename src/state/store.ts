@@ -3,10 +3,17 @@
  * Implements PRD §8.
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { ElwoodError, elwoodError } from "../core/errors.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
+import {
+  newBridgeToken,
+  safeSessionDir,
+  secureMkdir,
+  writePrivateFile,
+  writePrivateFileAtomic,
+} from "./files.ts";
 import { validateSessionRecord } from "./validate.ts";
 
 export type SessionRecord = {
@@ -27,6 +34,7 @@ export type SessionRecord = {
     readonly bridgeScriptPath: string;
     readonly socketPath: string;
   };
+  readonly bridgeToken: string;
   readonly terminalSize?: TerminalSize;
 };
 
@@ -35,7 +43,7 @@ export function defaultStateDir(cwd: string): string {
 }
 
 export function sessionDir(stateDir: string, id: string): string {
-  return join(resolve(stateDir), "sessions", id);
+  return safeSessionDir(stateDir, id);
 }
 
 export function createSessionRecord(input: {
@@ -46,6 +54,7 @@ export function createSessionRecord(input: {
   readonly metadata?: Readonly<Record<string, unknown>>;
   readonly size?: TerminalSize;
   readonly name?: string;
+  readonly bridgeToken?: string;
 }): SessionRecord {
   const dir = sessionDir(input.stateDir, input.id);
   const now = new Date().toISOString();
@@ -68,6 +77,7 @@ export function createSessionRecord(input: {
       bridgeScriptPath: join(dir, "hook-bridge.mjs"),
       socketPath: join(dir, "hook.sock"),
     },
+    bridgeToken: input.bridgeToken ?? newBridgeToken(),
     ...(input.size === undefined ? {} : { terminalSize: input.size }),
   };
 }
@@ -77,20 +87,19 @@ export function prepareStateDir(
   options: { readonly gitignore?: boolean } = {},
 ): void {
   const root = resolve(stateDir);
-  mkdirSync(root, { recursive: true });
+  secureMkdir(root);
   const gitignorePath = join(root, ".gitignore");
   if (options.gitignore === true && !existsSync(gitignorePath)) {
-    writeFileSync(gitignorePath, "*\n");
+    writePrivateFile(gitignorePath, "*\n");
   }
-  mkdirSync(join(root, "sessions"), { recursive: true });
+  secureMkdir(join(root, "sessions"));
 }
 
 export function writeSessionRecord(record: SessionRecord): void {
-  mkdirSync(record.paths.sessionDir, { recursive: true });
-  const path = recordPath(record.paths.sessionDir);
-  const tmp = `${path}.tmp-${process.pid}`;
-  writeFileSync(tmp, `${JSON.stringify(record, null, 2)}\n`);
-  renameSync(tmp, path);
+  writePrivateFileAtomic(
+    recordPath(record.paths.sessionDir),
+    `${JSON.stringify(record, null, 2)}\n`,
+  );
 }
 
 export function readSessionRecord(stateDir: string, id: string): SessionRecord {

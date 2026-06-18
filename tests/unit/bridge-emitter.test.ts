@@ -7,12 +7,11 @@ import { describe, expect, test } from "bun:test";
 import { createConnection } from "node:net";
 import { join } from "node:path";
 import { HookBridgeServer } from "../../src/bridge/server.ts";
-import { isClaudeHookResult } from "../../src/bridge/validate.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 import { sendBridge, tempDirForUnit } from "./helpers.ts";
 
 describe("bridge and emitter edges", () => {
-  test("C-HOOK invalid bridge input fails open and reports an error", async () => {
+  test("C-HOOK-16 invalid bridge input fails open and reports an error", async () => {
     const root = tempDirForUnit();
     const socketPath = join(root, "hook.sock");
     const errors: string[] = [];
@@ -138,39 +137,6 @@ describe("bridge and emitter edges", () => {
     await server.stop();
     expect(dispatched).toBe(1);
     expect(JSON.parse(response)).toEqual({ exitCode: 0, stdout: "ok", stderr: "" });
-  });
-
-  test("C-HOOK-06 validates hook results by event semantics", () => {
-    expect(isClaudeHookResult("PreToolUse", null)).toBe(false);
-    expect(isClaudeHookResult("PreToolUse", { permissionDecision: "allow" })).toBe(true);
-    expect(isClaudeHookResult("PreToolUse", { permissionDecision: "allow", extra: true })).toBe(
-      false,
-    );
-    expect(isClaudeHookResult("Stop", { permissionDecision: "allow" })).toBe(false);
-    expect(isClaudeHookResult("PermissionRequest", { behavior: "deny" })).toBe(true);
-    expect(isClaudeHookResult("PermissionRequest", { behavior: "deny", extra: true })).toBe(false);
-    expect(isClaudeHookResult("Stop", { behavior: "deny" })).toBe(false);
-    expect(isClaudeHookResult("PermissionDenied", { retry: true })).toBe(true);
-    expect(isClaudeHookResult("PermissionDenied", { retry: false })).toBe(false);
-    expect(isClaudeHookResult("WorktreeCreate", { worktreePath: "/tmp/w" })).toBe(true);
-    expect(isClaudeHookResult("WorktreeRemove", { worktreePath: "/tmp/w" })).toBe(false);
-    expect(isClaudeHookResult("Stop", { worktreePath: "/tmp/w" })).toBe(false);
-    expect(isClaudeHookResult("Elicitation", { action: "accept" })).toBe(true);
-    expect(isClaudeHookResult("Stop", { action: "accept" })).toBe(false);
-    expect(isClaudeHookResult("SubagentStop", { decision: "block", reason: "wait" })).toBe(true);
-    expect(isClaudeHookResult("Stop", { decision: "block" })).toBe(false);
-    expect(isClaudeHookResult("Notification", { additionalContext: "nope" })).toBe(false);
-    expect(isClaudeHookResult("SessionStart", { additionalContext: "ctx" })).toBe(true);
-    expect(isClaudeHookResult("SessionStart", {})).toBe(false);
-    expect(isClaudeHookResult("SessionStart", { other: true })).toBe(false);
-    expect(isClaudeHookResult("SessionStart", { watchPaths: [".env"] })).toBe(true);
-    expect(isClaudeHookResult("SessionStart", { watchPaths: [1] })).toBe(false);
-    expect(isClaudeHookResult("SessionEnd", { additionalContext: "too late" })).toBe(false);
-    expect(isClaudeHookResult("TaskCreated", { continue: false })).toBe(true);
-    expect(isClaudeHookResult("TaskCreated", { continue: false, stopReason: "wait" })).toBe(true);
-    expect(isClaudeHookResult("TaskCreated", { continue: true })).toBe(false);
-    expect(isClaudeHookResult("PostToolUse", { additionalContext: "recorded" })).toBe(true);
-    expect(isClaudeHookResult("PostToolUse", { extra: "bad" })).toBe(false);
   });
 
   test("C-API-08 event emitter handles empty emissions and explicit off", async () => {

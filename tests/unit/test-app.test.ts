@@ -121,7 +121,7 @@ describe("local test app", () => {
     expect(summarizeHookResult({ action: "cancel" })).toBe("cancel");
     expect(summarizeHookResult({ retry: true })).toBe("retry");
     expect(summarizeHookResult({ worktreePath: "/tmp/w" })).toBe("worktree");
-    expect(summarizeHookResult({ stopReason: "done" })).toBe("no decision");
+    expect(summarizeHookResult({ continue: false, stopReason: "done" })).toBe("no decision");
   });
 });
 

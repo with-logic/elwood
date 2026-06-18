@@ -4,7 +4,7 @@
  */
 
 import type { CodexCommonHookFields, CodexHookEventName, CodexTurnFields } from "./hook-names.ts";
-import type { CodexToolEventFields } from "./tool-types.ts";
+import type { CodexGenericToolInput, CodexToolEventFields } from "./tool-types.ts";
 
 export type {
   CodexCommonHookFields,
@@ -66,16 +66,9 @@ export type CodexHookEventFor<K extends CodexHookEventName> = CodexHookEvent ext
     : never
   : never;
 
-export type CodexCommonResult = {
-  readonly continue?: true | false;
-  readonly stopReason?: string;
-  readonly systemMessage?: string;
-  readonly additionalContext?: string;
-};
-
 export type CodexPreToolUseResult =
   | { readonly permissionDecision: "deny"; readonly permissionDecisionReason: string }
-  | { readonly permissionDecision: "allow"; readonly updatedInput?: unknown }
+  | { readonly permissionDecision: "allow"; readonly updatedInput?: CodexGenericToolInput }
   | { readonly additionalContext: string };
 
 export type CodexPermissionRequestResult = {
@@ -89,16 +82,20 @@ export type CodexBlockResult = {
   readonly additionalContext?: string;
 };
 
+export type CodexStopResult = {
+  readonly continue: false;
+  readonly stopReason: string;
+  readonly additionalContext?: string;
+};
+
 /** Return undefined for no decision; empty objects are invalid and fail open. */
 export type CodexHookResultFor<K extends CodexHookEventName> = K extends "PreToolUse"
   ? CodexPreToolUseResult | undefined
   : K extends "PermissionRequest"
     ? CodexPermissionRequestResult | undefined
-    : K extends "PostToolUse"
-      ? CodexBlockResult | CodexCommonResult | undefined
-      : K extends "UserPromptSubmit" | "Stop" | "SubagentStop"
-        ? CodexBlockResult | CodexCommonResult | undefined
-        : undefined;
+    : K extends "Stop" | "SubagentStop"
+      ? CodexBlockResult | CodexStopResult | undefined
+      : undefined;
 
 export type CodexHookResult = {
   [K in CodexHookEventName]: CodexHookResultFor<K>;

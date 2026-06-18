@@ -21,6 +21,7 @@ export type ElwoodActivityKind =
   | "tool_call"
   | "tool_result"
   | "web_search"
+  | "other"
   | "notification"
   | "warning"
   | "startup_prompt"
@@ -175,7 +176,7 @@ export function activityFromCodexTranscript(event: CodexTranscriptEvent): Elwood
     elwoodSessionId: event.elwoodSessionId,
     agent: "codex",
     source: "transcript",
-    kind: transcriptActivityKind(event.summary.kind) as ElwoodActivityKind,
+    kind: transcriptActivityKind(event.summary.kind),
     label: event.summary.label,
     ...(event.summary.text === undefined ? {} : { text: event.summary.text }),
     ...transcriptActivityMeta(event),

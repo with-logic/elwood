@@ -4,16 +4,30 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { isCodexHookEvent, isCodexHookResult } from "../../src/codex/validate.ts";
+import {
+  isCodexHookEvent,
+  isCodexHookResult,
+  normalizeCodexHookEvent,
+} from "../../src/codex/validate.ts";
 
 describe("Codex hook validation", () => {
   test("C-HOOK-13 validates Codex hook input schemas", () => {
     expect(isCodexHookEvent(null)).toBe(false);
     expect(isCodexHookEvent({ hook_event_name: "Stop" })).toBe(false);
+    expect(isCodexHookEvent(base("Unknown", { turn_id: "turn-1" }))).toBe(false);
     expect(isCodexHookEvent(base("Stop"))).toBe(false);
     expect(isCodexHookEvent(base("Stop", { turn_id: "turn-1", stop_hook_active: false }))).toBe(
       true,
     );
+    expect(
+      isCodexHookEvent(
+        base("Stop", {
+          turn_id: "turn-1",
+          stop_hook_active: false,
+          permission_mode: "invalid",
+        }),
+      ),
+    ).toBe(false);
     expect(
       isCodexHookEvent(
         base("PreToolUse", { turn_id: "turn-1", tool_name: "Bash", tool_input: {} }),
@@ -29,6 +43,15 @@ describe("Codex hook validation", () => {
       ),
     ).toBe(true);
     expect(isCodexHookEvent(base("SubagentStart", subagent()))).toBe(true);
+    const rawTool = base("PreToolUse", {
+      turn_id: "turn-1",
+      tool_name: "web_search",
+      tool_input: { query: "docs" },
+    });
+    expect(isCodexHookEvent(rawTool)).toBe(true);
+    if (!isCodexHookEvent(rawTool)) throw new Error("expected Codex hook event");
+    const normalized = normalizeCodexHookEvent(rawTool);
+    expect("tool_name" in normalized && normalized.tool_name).toBe("unknown:web_search");
     expect(
       isCodexHookEvent(
         base("SubagentStop", {
@@ -49,6 +72,12 @@ describe("Codex hook validation", () => {
         updatedInput: { command: "echo ok" },
       }),
     ).toBe(true);
+    expect(
+      isCodexHookResult("PreToolUse", {
+        permissionDecision: "allow",
+        updatedInput: 42,
+      }),
+    ).toBe(false);
     expect(isCodexHookResult("PreToolUse", { additionalContext: "context" })).toBe(true);
     expect(
       isCodexHookResult("PreToolUse", {
@@ -73,7 +102,10 @@ describe("Codex hook validation", () => {
     expect(isCodexHookResult("PermissionRequest", { behavior: "allow", extra: true })).toBe(false);
     expect(isCodexHookResult("PostCompact", { continue: "no" })).toBe(false);
     expect(isCodexHookResult("PostCompact", { continue: false })).toBe(false);
-    expect(isCodexHookResult("PostToolUse", { continue: false })).toBe(true);
+    expect(isCodexHookResult("PostToolUse", { continue: false })).toBe(false);
+    expect(isCodexHookResult("UserPromptSubmit", { systemMessage: "seen" })).toBe(false);
+    expect(isCodexHookResult("Stop", { continue: false })).toBe(false);
+    expect(isCodexHookResult("Stop", { continue: false, stopReason: "wait" })).toBe(true);
     expect(isCodexHookResult("PostCompact", {})).toBe(false);
     expect(isCodexHookResult("PostCompact", { nope: true })).toBe(false);
   });

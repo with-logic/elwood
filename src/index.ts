@@ -73,6 +73,7 @@ export type {
   ElwoodActivitySource,
   ElwoodAgentKind,
 } from "./core/activity.ts";
+export type { ElwoodErrorName } from "./core/errors.ts";
 export { ElwoodError, elwoodError } from "./core/errors.ts";
 export type {
   ClaudePermissionMode,

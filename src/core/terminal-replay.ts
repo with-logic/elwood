@@ -21,9 +21,9 @@ export class TerminalReplayBuffer {
 
   push(data: string): void {
     this.chunks.push(data);
-    this.size += data.length;
+    this.size += Buffer.byteLength(data);
     while (this.size > this.maxBytes && this.chunks.length > 1) {
-      this.size -= this.chunks.shift()?.length ?? 0;
+      this.size -= Buffer.byteLength(this.chunks.shift() ?? "");
     }
   }
 

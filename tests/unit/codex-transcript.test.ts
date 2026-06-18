@@ -10,7 +10,7 @@ import { CodexTranscriptWatcher, summarizeTranscriptItem } from "../../src/codex
 import { tempDirForUnit } from "./helpers.ts";
 
 describe("Codex transcript observation", () => {
-  test("C-HOOK live transcript watcher emits only new JSONL items", () => {
+  test("C-API-12 live transcript watcher emits only new JSONL items", () => {
     const path = join(tempDirForUnit(), "codex.jsonl");
     const events: unknown[] = [];
     writeFileSync(path, `${JSON.stringify(line("response_item", { type: "message" }))}\n`);
@@ -36,7 +36,7 @@ describe("Codex transcript observation", () => {
     );
   });
 
-  test("C-HOOK transcript summaries cover Codex-visible activity", () => {
+  test("C-API-12 transcript summaries cover Codex-visible activity", () => {
     expect(summary({ type: "function_call", name: "exec_command" })).toMatchObject({
       kind: "tool_call",
       label: "exec_command",

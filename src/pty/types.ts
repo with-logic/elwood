@@ -23,7 +23,7 @@ export interface PtyProcess {
   onData(handler: (data: string) => void): () => void;
   onExit(handler: (exit: PtyExit) => void): () => void;
   write(data: string | Uint8Array): void;
-  resize(size: TerminalSize): void;
+  resize(size: TerminalSize): "resized" | "closed";
   kill(signal?: string): void;
 }
 

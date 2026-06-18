@@ -52,12 +52,12 @@ function isPreToolUseResult(
       "permissionDecision",
       "permissionDecisionReason",
       "updatedInput",
-      "updatedPermissions",
       "additionalContext",
     ]) &&
     isOneOf(value["permissionDecision"], ["allow", "deny", "ask", "defer"]) &&
     optionalString(value["permissionDecisionReason"]) &&
-    optionalString(value["additionalContext"])
+    optionalString(value["additionalContext"]) &&
+    optionalRecord(value["updatedInput"])
   );
 }
 
@@ -71,7 +71,8 @@ function isPermissionRequestResult(
     isOneOf(value["behavior"], ["allow", "deny"]) &&
     optionalString(value["message"]) &&
     optionalBoolean(value["interrupt"]) &&
-    optionalArray(value["updatedPermissions"])
+    optionalArray(value["updatedPermissions"]) &&
+    optionalRecord(value["updatedInput"])
   );
 }
 
@@ -128,7 +129,6 @@ function isPostToolUseResult(value: Readonly<Record<string, unknown>>): boolean 
 
 function isContextResult(value: Readonly<Record<string, unknown>>): boolean {
   const keys = Object.keys(value);
-  if (keys.length === 0) return false;
   if (
     keys.some(
       (key) => key !== "additionalContext" && key !== "initialUserMessage" && key !== "watchPaths",
@@ -164,6 +164,10 @@ function optionalBoolean(value: unknown): boolean {
 
 function optionalArray(value: unknown): boolean {
   return value === undefined || Array.isArray(value);
+}
+
+function optionalRecord(value: unknown): boolean {
+  return value === undefined || isRecord(value);
 }
 
 function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {

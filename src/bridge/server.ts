@@ -16,6 +16,7 @@ export type HookInputValidator = (input: unknown) => boolean;
 export class HookBridgeServer {
   private readonly socketPath: string;
   private readonly token: string;
+  private readonly elwoodSessionId: string | undefined;
   private readonly dispatch: HookDispatcher;
   private readonly onError: HookErrorSink;
   private readonly isHookInput: HookInputValidator;
@@ -28,12 +29,14 @@ export class HookBridgeServer {
     dispatch: HookDispatcher,
     onError: HookErrorSink,
     isHookInput: HookInputValidator = isClaudeHookEvent,
+    elwoodSessionId?: string,
   ) {
     this.socketPath = socketPath;
     this.token = token;
     this.dispatch = dispatch;
     this.onError = onError;
     this.isHookInput = isHookInput;
+    this.elwoodSessionId = elwoodSessionId;
   }
 
   async start(): Promise<void> {
@@ -100,7 +103,7 @@ export class HookBridgeServer {
 
   private async handle(data: string): Promise<BridgeProcessResult> {
     const parsed = parseBridgeMessage(data);
-    if (!parsed) {
+    if (parsed.kind === "malformed") {
       this.onError({
         hookEventName: "Unknown",
         category: "invalid_input",
@@ -108,7 +111,11 @@ export class HookBridgeServer {
       });
       return noDecision();
     }
+    if (parsed.kind === "unauthenticated") return noDecision();
     if (parsed.token !== this.token) return noDecision();
+    if (this.elwoodSessionId && parsed.elwoodSessionId !== this.elwoodSessionId) {
+      return noDecision();
+    }
     const hookInput = parseHookInput(parsed.input);
     if (!this.isHookInput(hookInput)) {
       this.onError({
@@ -122,17 +129,37 @@ export class HookBridgeServer {
   }
 }
 
-function parseBridgeMessage(
-  data: string,
-): { readonly token: string; readonly input: string } | null {
-  try {
-    const parsed = JSON.parse(data) as { readonly token?: unknown; readonly input?: unknown };
-    if (typeof parsed.token === "string" && typeof parsed.input === "string") {
-      return { token: parsed.token, input: parsed.input };
+type BridgeMessage =
+  | {
+      readonly kind: "ok";
+      readonly token: string;
+      readonly elwoodSessionId?: string;
+      readonly input: string;
     }
-    return null;
+  | { readonly kind: "unauthenticated" }
+  | { readonly kind: "malformed" };
+
+function parseBridgeMessage(data: string): BridgeMessage {
+  try {
+    const parsed = JSON.parse(data) as {
+      readonly token?: unknown;
+      readonly elwoodSessionId?: unknown;
+      readonly input?: unknown;
+    };
+    if (parsed.token === undefined) return { kind: "unauthenticated" };
+    if (typeof parsed.token === "string" && typeof parsed.input === "string") {
+      return {
+        kind: "ok",
+        token: parsed.token,
+        input: parsed.input,
+        ...(typeof parsed.elwoodSessionId === "string"
+          ? { elwoodSessionId: parsed.elwoodSessionId }
+          : {}),
+      };
+    }
+    return { kind: "malformed" };
   } catch {
-    return null;
+    return { kind: "malformed" };
   }
 }
 

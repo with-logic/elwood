@@ -5,6 +5,7 @@
 
 import { join, resolve } from "node:path";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
+import { safeSessionDir } from "./files.ts";
 import type { SessionRecord } from "./store.ts";
 
 const statuses = new Set<ElwoodSessionStatus>([
@@ -26,6 +27,7 @@ export function validateSessionRecord(
   const adapter = value["adapter"];
   if (value["schemaVersion"] !== 1 || value["elwoodSessionId"] !== id) return null;
   if (adapter !== "claude" && adapter !== "codex") return null;
+  if (!isString(value["bridgeToken"])) return null;
   if (!(isString(value["cwd"]) && isRecord(value["metadata"]))) return null;
   if (!(isString(value["createdAt"]) && isString(value["updatedAt"]))) return null;
   if (!(isStatus(value["status"]) && isWarningArray(value["warnings"]))) return null;
@@ -42,7 +44,7 @@ function hasExpectedPaths(
   adapter: "claude" | "codex",
 ): boolean {
   if (!isRecord(value)) return false;
-  const dir = join(resolve(stateDir), "sessions", id);
+  const dir = safeSessionDir(resolve(stateDir), id);
   return (
     value["sessionDir"] === dir &&
     value["settingsPath"] === join(dir, `${adapter}-settings.json`) &&

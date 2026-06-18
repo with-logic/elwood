@@ -3,8 +3,10 @@
  * Implements PRD §4.2.
  */
 
+import { userInfo } from "node:os";
+
 export function userShell(): string {
-  return process.env["SHELL"] ?? "/bin/zsh";
+  return userInfo().shell || "/bin/zsh";
 }
 
 export function loginShellCommand(command: string): readonly string[] {

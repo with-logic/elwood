@@ -3,7 +3,6 @@
  * Implements PRD §4, §6, and §9.
  */
 
-import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { bridgeScriptSource } from "../bridge/script.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
@@ -13,6 +12,7 @@ import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import { currentPtyFactory } from "../runtime/seams.ts";
 import { userShell } from "../runtime/shell.ts";
+import { writePrivateFile } from "../state/files.ts";
 import type { SessionRecord } from "../state/store.ts";
 import { buildClaudeShellCommand, shellLaunch } from "./command.ts";
 import { generateClaudeSettings } from "./settings.ts";
@@ -22,13 +22,16 @@ export function writeRuntimeFiles(
   token: string,
   options: StartClaudeOptions,
 ): void {
-  writeFileSync(record.paths.bridgeScriptPath, bridgeScriptSource(record.paths.socketPath, token));
+  writePrivateFile(
+    record.paths.bridgeScriptPath,
+    bridgeScriptSource(record.paths.socketPath, token),
+  );
   const settings = generateClaudeSettings({
     bridgeScriptPath: record.paths.bridgeScriptPath,
     options,
     timeoutSeconds: Math.ceil((options.hookTimeoutMs ?? 25_000) / 1000),
   });
-  writeFileSync(record.paths.settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+  writePrivateFile(record.paths.settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
 }
 
 export function spawnClaudePty(record: SessionRecord, options: StartClaudeOptions): PtyProcess {

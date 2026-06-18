@@ -8,6 +8,7 @@ export function bridgeScriptSource(socketPath: string, token: string): string {
 
 const socketPath = ${JSON.stringify(socketPath)};
 const token = ${JSON.stringify(token)};
+const elwoodSessionId = process.env.ELWOOD_SESSION_ID ?? "";
 
 async function readStdin() {
   let data = "";
@@ -41,7 +42,7 @@ client.on("error", () => {
 });
 
 client.on("connect", () => {
-  client.end(JSON.stringify({ token, input: inputText }) + "\\n");
+  client.end(JSON.stringify({ token, elwoodSessionId, input: inputText }) + "\\n");
 });
 
 client.on("end", finish);

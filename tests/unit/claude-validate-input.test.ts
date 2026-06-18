@@ -14,13 +14,13 @@ describe("Claude hook input validation", () => {
     expect(isClaudeHookEvent(base("Stop", { stop_hook_active: false }))).toBe(true);
     expect(isClaudeHookEvent(base("Stop", { stop_hook_active: "no" }))).toBe(false);
     expect(isClaudeHookEvent(base("SessionStart", { source: "startup" }))).toBe(true);
-    expect(isClaudeHookEvent(base("Setup", { trigger: "manual" }))).toBe(true);
-    expect(isClaudeHookEvent(base("InstructionsLoaded", { file_path: "/tmp/CLAUDE.md" }))).toBe(
-      true,
-    );
+    expect(isClaudeHookEvent(base("Setup", { trigger: "init" }))).toBe(true);
+    expect(isClaudeHookEvent(base("Setup", { trigger: "manual" }))).toBe(false);
+    expect(isClaudeHookEvent(base("InstructionsLoaded", instructions()))).toBe(true);
     expect(isClaudeHookEvent(base("UserPromptSubmit", { prompt: "hello" }))).toBe(true);
-    expect(isClaudeHookEvent(base("UserPromptExpansion", { prompt: "/test" }))).toBe(true);
+    expect(isClaudeHookEvent(base("UserPromptExpansion", expansion()))).toBe(true);
     expect(isClaudeHookEvent(base("PostToolBatch", { tool_calls: [] }))).toBe(true);
+    expect(isClaudeHookEvent(base("PostToolBatch", { tool_calls: [batchToolCall()] }))).toBe(true);
     expect(
       isClaudeHookEvent(base("Notification", { message: "msg", notification_type: "info" })),
     ).toBe(true);
@@ -34,7 +34,10 @@ describe("Claude hook input validation", () => {
     );
     expect(isClaudeHookEvent(base("ConfigChange", { source: "local" }))).toBe(true);
     expect(isClaudeHookEvent(base("CwdChanged", { old_cwd: "/a", new_cwd: "/b" }))).toBe(true);
-    expect(isClaudeHookEvent(base("FileChanged", { file_path: "/a", event: "modify" }))).toBe(true);
+    expect(isClaudeHookEvent(base("FileChanged", { file_path: "/a", event: "change" }))).toBe(true);
+    expect(isClaudeHookEvent(base("FileChanged", { file_path: "/a", event: "rename" }))).toBe(
+      false,
+    );
     expect(isClaudeHookEvent(base("WorktreeCreate", { name: "feature" }))).toBe(true);
     expect(isClaudeHookEvent(base("WorktreeRemove", { worktree_path: "/tmp/w" }))).toBe(true);
     expect(
@@ -53,6 +56,16 @@ describe("Claude hook input validation", () => {
   test("C-HOOK-07 C-HOOK-17 validates tool hook inputs by known tool schema", () => {
     expect(isClaudeHookEvent(tool("Agent", { prompt: "do it" }))).toBe(true);
     expect(isClaudeHookEvent(tool("AskUserQuestion", { questions: [] }))).toBe(true);
+    expect(
+      isClaudeHookEvent(
+        tool("AskUserQuestion", {
+          questions: [{ question: "Q?", header: "Choice", options: [{ label: "A" }] }],
+        }),
+      ),
+    ).toBe(true);
+    expect(isClaudeHookEvent(tool("AskUserQuestion", { questions: [{ question: "Q?" }] }))).toBe(
+      false,
+    );
     expect(isClaudeHookEvent(tool("Bash", { command: "echo ok" }))).toBe(true);
     expect(
       isClaudeHookEvent(tool("Edit", { file_path: "a.ts", old_string: "a", new_string: "b" })),
@@ -106,12 +119,28 @@ function compact() {
   return { trigger: "manual", compact_summary: "sum" };
 }
 
+function expansion() {
+  return { expansion_type: "slash_command", command_name: "test", prompt: "/test" };
+}
+
+function instructions() {
+  return {
+    file_path: "/tmp/CLAUDE.md",
+    memory_type: "Project",
+    load_reason: "session_start",
+  };
+}
+
 function response() {
   return { tool_response: "ok" };
 }
 
 function denied() {
   return { tool_use_id: "tool-1", reason: "no" };
+}
+
+function batchToolCall() {
+  return { tool_name: "Bash", tool_input: { command: "echo ok" }, tool_response: "ok" };
 }
 
 function tool(

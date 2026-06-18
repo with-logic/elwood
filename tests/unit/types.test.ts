@@ -11,7 +11,9 @@ import type {
   ClaudeHookEventFor,
   ClaudeHookHandlers,
   ClaudeSessionCron,
+  CodexHookEvent,
   CodexHookHandlers,
+  PreToolUseResult,
 } from "../../src/index.ts";
 
 describe("public hook types", () => {
@@ -57,7 +59,14 @@ describe("public hook types", () => {
       tool_input: { raw: true },
     } satisfies ClaudeHookEvent;
 
+    const invalidUpdatedInput = {
+      permissionDecision: "allow",
+      // @ts-expect-error updatedInput must be a tool-input object, not a scalar.
+      updatedInput: 42,
+    } satisfies PreToolUseResult;
+
     expect(typeof handlers.PreToolUse).toBe("function");
+    expect(typeof invalidUpdatedInput).toBe("object");
     expect(unknownTool.tool_input.raw).toBe(true);
   });
 
@@ -78,7 +87,25 @@ describe("public hook types", () => {
       },
     } satisfies CodexHookHandlers;
 
+    const invalid = {
+      // @ts-expect-error PostToolUse is observe-only in the Codex API.
+      PostToolUse: () => ({ decision: "block", reason: "unsupported" }),
+      PreToolUse: () => undefined,
+    } satisfies CodexHookHandlers;
+
+    const rawFutureTool = {
+      hook_event_name: "PreToolUse",
+      session_id: "codex-1",
+      cwd: "/tmp/project",
+      turn_id: "turn-1",
+      // @ts-expect-error Raw future tool names are normalized to unknown:<name>.
+      tool_name: "web_search",
+      tool_input: {},
+    } satisfies CodexHookEvent;
+
     expect(typeof handlers.PreToolUse).toBe("function");
+    expect(typeof invalid.PostToolUse).toBe("function");
+    expect(rawFutureTool.tool_name).toBe("web_search");
   });
 
   test("C-HOOK-08 documented lifecycle payload fields are typed for consumers", () => {

@@ -4,6 +4,7 @@
  */
 
 import type { ClaudeCommonHookFields } from "./hook-names.ts";
+import type { PermissionUpdate } from "./permissions.ts";
 
 export type BashInput = {
   readonly command: string;
@@ -41,10 +42,12 @@ export type AgentInput = {
   readonly subagent_type?: string;
   readonly model?: string;
 };
+export type SimplePromptInput = { readonly prompt?: string; readonly description?: string };
+export type IdInput = { readonly id: string };
 export type ExitPlanModeInput = {
   readonly allowedPrompts?: readonly string[];
   readonly plan?: string;
-  readonly filePath?: string;
+  readonly planFilePath?: string;
 };
 
 export type AskUserQuestionInput = {
@@ -61,15 +64,42 @@ export type KnownClaudeToolName =
   | "Agent"
   | "AskUserQuestion"
   | "Bash"
+  | "CronCreate"
+  | "CronDelete"
+  | "CronList"
   | "Edit"
+  | "EnterPlanMode"
+  | "EnterWorktree"
   | "ExitPlanMode"
+  | "ExitWorktree"
   | "Glob"
   | "Grep"
   | "LS"
+  | "ListMcpResourcesTool"
+  | "LSP"
+  | "Monitor"
   | "MultiEdit"
   | "NotebookEdit"
+  | "PowerShell"
+  | "PushNotification"
   | "Read"
+  | "ReadMcpResourceTool"
+  | "RemoteTrigger"
+  | "ScheduleWakeup"
+  | "SendMessage"
+  | "ShareOnboardingGuide"
+  | "Skill"
+  | "TaskCreate"
+  | "TaskGet"
+  | "TaskList"
+  | "TaskOutput"
+  | "TaskStop"
+  | "TaskUpdate"
+  | "TeamCreate"
+  | "TeamDelete"
   | "TodoWrite"
+  | "ToolSearch"
+  | "WaitForMcpServers"
   | "WebFetch"
   | "WebSearch"
   | "Write";
@@ -81,10 +111,19 @@ export type ClaudeToolInputByName =
   | { readonly tool_name: "Agent"; readonly tool_input: AgentInput }
   | { readonly tool_name: "AskUserQuestion"; readonly tool_input: AskUserQuestionInput }
   | { readonly tool_name: "Bash"; readonly tool_input: BashInput }
+  | {
+      readonly tool_name: "CronDelete" | "TaskGet" | "TaskOutput" | "TaskStop";
+      readonly tool_input: IdInput;
+    }
   | { readonly tool_name: "Edit"; readonly tool_input: EditInput }
   | { readonly tool_name: "ExitPlanMode"; readonly tool_input: ExitPlanModeInput }
   | { readonly tool_name: "Glob"; readonly tool_input: GlobInput }
   | { readonly tool_name: "Grep"; readonly tool_input: GrepInput }
+  | { readonly tool_name: "PowerShell"; readonly tool_input: BashInput }
+  | {
+      readonly tool_name: "SendMessage" | "Skill" | "TaskCreate";
+      readonly tool_input: SimplePromptInput;
+    }
   | { readonly tool_name: "Read"; readonly tool_input: ReadInput }
   | { readonly tool_name: "WebFetch"; readonly tool_input: WebFetchInput }
   | { readonly tool_name: "WebSearch"; readonly tool_input: WebSearchInput }
@@ -97,15 +136,25 @@ type GenericKnownToolName = Exclude<
   | "Agent"
   | "AskUserQuestion"
   | "Bash"
+  | "CronDelete"
   | "Edit"
   | "ExitPlanMode"
   | "Glob"
   | "Grep"
+  | "PowerShell"
   | "Read"
+  | "SendMessage"
+  | "Skill"
+  | "TaskCreate"
+  | "TaskGet"
+  | "TaskOutput"
+  | "TaskStop"
   | "WebFetch"
   | "WebSearch"
   | "Write"
 >;
+
+export type ClaudeToolInputUpdate = Partial<ClaudeToolInputByName["tool_input"]>;
 
 export type ToolHookEventName =
   | "PermissionDenied"
@@ -143,33 +192,3 @@ export type ClaudeToolEventForName<E extends ToolHookEventName> = ClaudeCommonHo
 export type ClaudeToolEvent = {
   readonly [E in ToolHookEventName]: ClaudeToolEventForName<E>;
 }[ToolHookEventName];
-
-export type PermissionRuleBehavior = "allow" | "deny" | "ask";
-export type PermissionUpdateDestination =
-  | "session"
-  | "localSettings"
-  | "projectSettings"
-  | "userSettings";
-
-export type PermissionRule = {
-  readonly toolName: string;
-  readonly ruleContent?: string;
-};
-
-export type PermissionUpdate =
-  | {
-      readonly type: "addRules" | "replaceRules" | "removeRules";
-      readonly rules: readonly PermissionRule[];
-      readonly behavior: PermissionRuleBehavior;
-      readonly destination: PermissionUpdateDestination;
-    }
-  | {
-      readonly type: "setMode";
-      readonly mode: import("./hook-names.ts").ClaudeHookPermissionMode;
-      readonly destination: PermissionUpdateDestination;
-    }
-  | {
-      readonly type: "addDirectories" | "removeDirectories";
-      readonly directories: readonly string[];
-      readonly destination: PermissionUpdateDestination;
-    };

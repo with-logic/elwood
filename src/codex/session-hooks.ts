@@ -16,6 +16,7 @@ import type {
   CodexEventName,
   StartCodexOptions,
 } from "./session-types.ts";
+import { normalizeCodexHookEvent } from "./validate.ts";
 
 export function registerInitialHooks(
   emitter: TypedEmitter<CodexEventMap>,
@@ -34,7 +35,7 @@ export async function dispatchHook(
   record: SessionRecord,
   session?: CodexSessionImpl,
 ) {
-  const event = input as CodexHookEvent;
+  const event = normalizeCodexHookEvent(input as CodexHookEvent);
   session?.observeTranscript(event.transcript_path);
   if (event.hook_event_name === "SessionStart") session?.rememberCodexSessionId(event.session_id);
   emitter.emit("hook", event);

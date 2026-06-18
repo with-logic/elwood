@@ -25,7 +25,7 @@ describe("ClaudeSession hook handling", () => {
       prompt: "hi",
     });
     expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
-    expect(results[0]).toMatchObject({ hookEventName: "UserPromptSubmit", failedOpen: true });
+    expect(results[0]).toMatchObject({ hookEventName: "UserPromptSubmit", failedOpen: false });
     const statuses: string[] = [];
     const offStatus = session.on("status", (event) => statuses.push(event.status));
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
@@ -139,7 +139,7 @@ describe("ClaudeSession hook handling", () => {
       hooks: {
         PreToolUse: () => ({
           permissionDecision: "allow",
-          updatedInput: { answers: [{ questionId: "q1", answer: "yes" }] },
+          updatedInput: { answers: { "Proceed?": "yes" } },
         }),
       },
     });
@@ -148,9 +148,13 @@ describe("ClaudeSession hook handling", () => {
       session_id: "claude-1",
       cwd,
       tool_name: "AskUserQuestion",
-      tool_input: { questions: [{ id: "q1", prompt: "Proceed?" }] },
+      tool_input: {
+        questions: [{ question: "Proceed?", header: "Proceed", options: [{ label: "yes" }] }],
+      },
     });
-    expect(JSON.parse(result.stdout).hookSpecificOutput.updatedInput.answers[0].answer).toBe("yes");
+    expect(JSON.parse(result.stdout).hookSpecificOutput.updatedInput.answers["Proceed?"]).toBe(
+      "yes",
+    );
   });
 
   test("C-HRESP-05 serializes typed Elicitation response shapes", async () => {

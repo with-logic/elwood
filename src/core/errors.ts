@@ -22,6 +22,7 @@ export type ElwoodErrorName =
   | "pty_start_failed"
   | "hook_bridge_failed"
   | "session_not_running"
+  | "termination_failed"
   | "teardown_failed";
 
 export class ElwoodError extends Error {

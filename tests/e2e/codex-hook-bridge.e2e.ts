@@ -39,8 +39,8 @@ test("C-E2E-03 real Codex bridge handles typed hook responses", {
         ? { additionalContext: "tool context" }
         : { permissionDecision: "allow", updatedInput: { command: "echo updated" } },
     PermissionRequest: () => ({ behavior: "deny", message: "blocked" }),
-    PostToolUse: () => ({ decision: "block", reason: "bad output", additionalContext: "retry" }),
-    UserPromptSubmit: () => ({ systemMessage: "seen", additionalContext: "prompt context" }),
+    PostToolUse: () => undefined,
+    UserPromptSubmit: () => undefined,
     SubagentStart: () => undefined,
     SubagentStop: () => ({ decision: "block", reason: "subagent blocked" }),
     PostCompact: () => undefined,
@@ -89,17 +89,21 @@ test("C-E2E-03 real Codex bridge handles typed hook responses", {
       ["hookSpecificOutput", "decision", "message"],
       "blocked",
     );
-    await expectCodex(
-      session,
-      codexToolEvent(base, "PostToolUse", "echo ok"),
-      ["decision"],
-      "block",
+    assert.deepEqual(
+      await invokeHookBridge(
+        project,
+        session.elwoodSessionId,
+        codexToolEvent(base, "PostToolUse", "echo ok"),
+      ),
+      { status: 0, stdout: "", stderr: "" },
     );
-    await expectCodex(
-      session,
-      { ...base, hook_event_name: "UserPromptSubmit", prompt: "hello" },
-      ["systemMessage"],
-      "seen",
+    assert.deepEqual(
+      await invokeHookBridge(project, session.elwoodSessionId, {
+        ...base,
+        hook_event_name: "UserPromptSubmit",
+        prompt: "hello",
+      }),
+      { status: 0, stdout: "", stderr: "" },
     );
     await expectCodex(
       session,

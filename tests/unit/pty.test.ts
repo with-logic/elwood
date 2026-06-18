@@ -117,7 +117,7 @@ describe("node PTY adapter", () => {
           return () => {};
         },
         write: () => {},
-        resize: () => {},
+        resize: () => "resized",
         kill: (signal) => {
           signals.push(signal ?? "SIGTERM");
           if (signal === "SIGKILL") exitHandler?.();
@@ -127,5 +127,36 @@ describe("node PTY adapter", () => {
       { gracefulMs: 0, forceMs: 10 },
     );
     expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
+  });
+
+  test("C-LIFE-02 termination reports failure when no exit is observed", async () => {
+    await expect(
+      terminatePty(
+        {
+          pid: 1,
+          onData: () => () => {},
+          onExit: () => () => {},
+          write: () => {},
+          resize: () => "resized",
+          kill: () => {},
+        },
+        "SIGTERM",
+        { gracefulMs: 0, forceMs: 0 },
+      ),
+    ).rejects.toMatchObject({ code: "termination_failed" });
+    await expect(
+      terminatePty(
+        {
+          pid: 1,
+          onData: () => () => {},
+          onExit: () => () => {},
+          write: () => {},
+          resize: () => "resized",
+          kill: () => {},
+        },
+        "SIGKILL",
+        { gracefulMs: 0, forceMs: 0 },
+      ),
+    ).rejects.toMatchObject({ code: "termination_failed" });
   });
 });

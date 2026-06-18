@@ -18,7 +18,7 @@ export function hookResultLabel(result: unknown, failedOpen: boolean): string {
   return "response";
 }
 
-export function transcriptActivityKind(kind: string): string {
+export function transcriptActivityKind(kind: string): ElwoodActivityKind {
   if (kind === "message") return "assistant_message";
   if (
     kind === "tool_call" ||
@@ -28,5 +28,7 @@ export function transcriptActivityKind(kind: string): string {
   ) {
     return kind;
   }
-  return "hook";
+  return "other";
 }
+
+import type { ElwoodActivityKind } from "./activity.ts";

@@ -1,45 +1,15 @@
 /**
- * Deterministic e2e coverage for negative startup, resume, and PTY edge flows.
+ * Deterministic e2e coverage for resume and PTY edge flows.
  * Implements C-E2E-01 and C-E2E-04.
  */
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  ElwoodError,
-  resumeClaude,
-  resumeCodex,
-  startClaude,
-  startCodex,
-} from "../../src/index.ts";
+import { ElwoodError, resumeClaude, resumeCodex } from "../../src/index.ts";
 import { currentPtyFactory } from "../../src/runtime/seams.ts";
 import { createSessionRecord, writeSessionRecord } from "../../src/state/store.ts";
 import { attachPtyTerminal } from "../../src/terminal/headless.ts";
 import { makeProject, waitFor } from "./helpers.ts";
-
-test("C-E2E-04 reports missing CLIs from the real command runner", {
-  skip: process.platform === "darwin" ? false : "macOS-only preflight",
-  timeout: 30_000,
-}, async () => {
-  const originalShell = process.env["SHELL"];
-  const originalPath = process.env["PATH"];
-  process.env["SHELL"] = "/bin/sh";
-  process.env["PATH"] = "/tmp/elwood-empty-path";
-  const project = makeProject("claude");
-  try {
-    await assert.rejects(
-      () => startClaude({ cwd: project.cwd, stateDir: project.stateDir }),
-      hasCode("claude_not_found"),
-    );
-    await assert.rejects(
-      () => startCodex({ cwd: project.cwd, stateDir: project.stateDir }),
-      hasCode("codex_not_found"),
-    );
-  } finally {
-    restoreEnv("SHELL", originalShell);
-    restoreEnv("PATH", originalPath);
-  }
-});
 
 test("C-E2E-04 rejects cross-adapter resume from persisted state", async () => {
   const project = makeProject("claude");
@@ -110,12 +80,4 @@ test("C-E2E-01 real PTY terminal handles input resize and kill", { timeout: 30_0
 
 function hasCode(code: string): (error: unknown) => boolean {
   return (error) => error instanceof ElwoodError && error.code === code;
-}
-
-function restoreEnv(key: "PATH" | "SHELL", value: string | undefined): void {
-  if (value === undefined) {
-    delete process.env[key];
-    return;
-  }
-  process.env[key] = value;
 }

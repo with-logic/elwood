@@ -292,6 +292,9 @@ const resumed = await resumeClaude({
 ```
 
 Resume uses Elwood metadata plus the underlying agent's own resume mechanism.
+If the parent app resumes from a different process working directory, pass the
+original `cwd` or the same explicit `stateDir`; id-only resume discovers the
+project-local state store from the current process working directory.
 If Elwood never observed the adapter's internal session id, resume fails with
 `resume_unavailable` instead of silently starting a fresh conversation.
 

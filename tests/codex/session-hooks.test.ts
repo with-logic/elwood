@@ -22,7 +22,7 @@ describe("CodexSession hook handling", () => {
     });
     const result = await ptys[0]!.dispatchHook(session.elwoodSessionId, stopEvent(cwd));
     expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
-    expect(results[0]).toMatchObject({ hookEventName: "Stop", failedOpen: true });
+    expect(results[0]).toMatchObject({ hookEventName: "Stop", failedOpen: false });
     expect(session.status).toBe("ready");
     expect(statuses).toEqual(["ready"]);
   });
@@ -106,7 +106,7 @@ describe("CodexSession hook handling", () => {
     expect(errors).toEqual(["invalid_response"]);
   });
 
-  test("C-HOOK Codex hook errors fail open on timeout and thrown errors", async () => {
+  test("C-HOOK-04 C-HOOK-05 Codex hook errors fail open on timeout and thrown errors", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startCodex({

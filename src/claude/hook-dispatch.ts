@@ -24,7 +24,7 @@ export async function requestHook(
     const hookName = `hook:${event.hook_event_name}` as ElwoodEventName;
     const hasListener = emitter.hasListeners(hookName);
     const result = await withTimeout(emitter.request(hookName, event), timeoutMs);
-    if (!hasListener) return { result: undefined, failedOpen: true };
+    if (!hasListener) return { result: undefined, failedOpen: false };
     if (!isClaudeHookResult(event.hook_event_name, result)) {
       emitHookError(emitter, {
         elwoodSessionId,

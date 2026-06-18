@@ -3,6 +3,7 @@
  * Implements PRD §5.3 and §9.4.
  */
 
+import { elwoodError } from "../core/errors.ts";
 import type { PtyProcess } from "../pty/types.ts";
 
 type TerminationTimeouts = { readonly gracefulMs: number; readonly forceMs: number };
@@ -16,7 +17,11 @@ export async function terminatePty(
   const timeoutMs = signal === "SIGTERM" ? timeouts.gracefulMs : timeouts.forceMs;
   const exited = await waitForExitAfterSignal(pty, signal, timeoutMs);
   if (!exited && signal === "SIGTERM") {
-    await waitForExitAfterSignal(pty, "SIGKILL", timeouts.forceMs);
+    if (await waitForExitAfterSignal(pty, "SIGKILL", timeouts.forceMs)) return;
+    throw elwoodError("termination_failed", "PTY did not exit after SIGKILL.");
+  }
+  if (!exited) {
+    throw elwoodError("termination_failed", `PTY did not exit after ${signal}.`);
   }
 }
 

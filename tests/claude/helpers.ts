@@ -67,8 +67,9 @@ export class FakePty implements PtyProcess {
     this.writes.push(typeof data === "string" ? data : Buffer.from(data).toString("utf8"));
   }
 
-  resize(size: TerminalSize): void {
+  resize(size: TerminalSize): "resized" {
     this.size = size;
+    return "resized";
   }
 
   kill(): void {
@@ -87,13 +88,16 @@ export class FakePty implements PtyProcess {
     const { socketPath, token } = this.readBridge(elwoodSessionId, stateDir);
     return await this.dispatchRaw(
       socketPath,
-      JSON.stringify({ token, input: JSON.stringify(input) }),
+      JSON.stringify({ token, elwoodSessionId, input: JSON.stringify(input) }),
     );
   }
 
   async dispatchMalformedHook(elwoodSessionId: string, stateDir?: string) {
     const { socketPath, token } = this.readBridge(elwoodSessionId, stateDir);
-    return await this.dispatchRaw(socketPath, JSON.stringify({ token, input: "not-json" }));
+    return await this.dispatchRaw(
+      socketPath,
+      JSON.stringify({ token, elwoodSessionId, input: "not-json" }),
+    );
   }
 
   private readBridge(elwoodSessionId: string, stateDir?: string) {

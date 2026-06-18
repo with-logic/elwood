@@ -3,10 +3,14 @@
  * Implements PRD §7A.2.
  */
 
-import type { CodexHookEvent, CodexHookEventName, CodexHookResult } from "./hooks.ts";
-import { codexHookEventNames } from "./hooks.ts";
+import type { CodexHookEvent } from "./hooks.ts";
 
-const names = new Set<string>(codexHookEventNames);
+export { isCodexHookResult } from "./validate-result.ts";
+
+export function normalizeCodexHookEvent(event: CodexHookEvent): CodexHookEvent {
+  if (!("tool_name" in event) || isPublicToolName(event.tool_name)) return event;
+  return { ...event, tool_name: `unknown:${event.tool_name}` } as CodexHookEvent;
+}
 
 export function isCodexHookEvent(value: unknown): value is CodexHookEvent {
   if (!value || typeof value !== "object") return false;
@@ -15,121 +19,38 @@ export function isCodexHookEvent(value: unknown): value is CodexHookEvent {
   const eventName = record["hook_event_name"];
   if (eventName === "SessionStart") return typeof record["source"] === "string";
   if (!hasTurnFields(record)) return false;
-  if (eventName === "SubagentStart") return hasSubagentFields(record);
-  if (isToolEventName(eventName)) return hasToolFields(record);
-  if (eventName === "PreCompact" || eventName === "PostCompact") {
-    return typeof record["trigger"] === "string";
+  switch (eventName) {
+    case "SubagentStart":
+      return hasSubagentFields(record);
+    case "PreToolUse":
+    case "PermissionRequest":
+    case "PostToolUse":
+      return hasToolFields(record);
+    case "PreCompact":
+    case "PostCompact":
+      return typeof record["trigger"] === "string";
+    case "UserPromptSubmit":
+      return typeof record["prompt"] === "string";
+    case "SubagentStop":
+      return (
+        hasSubagentFields(record) &&
+        hasStopFields(record) &&
+        optionalNullableString(record["agent_transcript_path"])
+      );
+    case "Stop":
+      return hasStopFields(record);
+    default:
+      return false;
   }
-  if (eventName === "UserPromptSubmit") return typeof record["prompt"] === "string";
-  if (eventName === "SubagentStop") {
-    return (
-      hasSubagentFields(record) &&
-      hasStopFields(record) &&
-      optionalNullableString(record["agent_transcript_path"])
-    );
-  }
-  if (eventName === "Stop") return hasStopFields(record);
-  return false;
-}
-
-export function isCodexHookResult(
-  eventName: CodexHookEventName,
-  value: unknown,
-): value is CodexHookResult {
-  if (value === undefined) return true;
-  if (!isRecord(value)) return false;
-  if ("permissionDecision" in value) return isPreToolUseResult(eventName, value);
-  if (eventName === "PreToolUse" && "additionalContext" in value)
-    return isPreToolUseResult(eventName, value);
-  if ("behavior" in value) return isPermissionRequestResult(eventName, value);
-  if ("decision" in value) return isBlockResult(eventName, value);
-  return isCommonResult(eventName, value);
-}
-
-function isPreToolUseResult(
-  eventName: CodexHookEventName,
-  value: Readonly<Record<string, unknown>>,
-): boolean {
-  if (eventName !== "PreToolUse") return false;
-  if (
-    !keysAre(value, [
-      "permissionDecision",
-      "permissionDecisionReason",
-      "updatedInput",
-      "additionalContext",
-    ])
-  ) {
-    return false;
-  }
-  if ("additionalContext" in value && !("permissionDecision" in value)) {
-    return Object.keys(value).length === 1 && typeof value["additionalContext"] === "string";
-  }
-  if (value["permissionDecision"] === "deny") {
-    return (
-      typeof value["permissionDecisionReason"] === "string" &&
-      !("updatedInput" in value) &&
-      !("additionalContext" in value)
-    );
-  }
-  return (
-    value["permissionDecision"] === "allow" &&
-    !("permissionDecisionReason" in value) &&
-    !("additionalContext" in value)
-  );
-}
-
-function isPermissionRequestResult(
-  eventName: CodexHookEventName,
-  value: Readonly<Record<string, unknown>>,
-): boolean {
-  return (
-    eventName === "PermissionRequest" &&
-    keysAre(value, ["behavior", "message"]) &&
-    isOneOf(value["behavior"], ["allow", "deny"]) &&
-    optionalString(value["message"])
-  );
-}
-
-function isBlockResult(
-  eventName: CodexHookEventName,
-  value: Readonly<Record<string, unknown>>,
-): boolean {
-  return (
-    isOneOf(eventName, ["PostToolUse", "UserPromptSubmit", "SubagentStop", "Stop"]) &&
-    value["decision"] === "block" &&
-    typeof value["reason"] === "string" &&
-    optionalString(value["additionalContext"])
-  );
-}
-
-function isCommonResult(
-  eventName: CodexHookEventName,
-  value: Readonly<Record<string, unknown>>,
-): boolean {
-  if (!isOneOf(eventName, ["PostToolUse", "UserPromptSubmit", "SubagentStop", "Stop"]))
-    return false;
-  const keys = Object.keys(value);
-  if (keys.length === 0) return false;
-  return (
-    keysAre(value, ["continue", "stopReason", "systemMessage", "additionalContext"]) &&
-    optionalBoolean(value["continue"]) &&
-    optionalString(value["stopReason"]) &&
-    optionalString(value["systemMessage"]) &&
-    optionalString(value["additionalContext"])
-  );
-}
-
-function keysAre(value: Readonly<Record<string, unknown>>, allowed: readonly string[]): boolean {
-  return Object.keys(value).every((key) => allowed.includes(key));
 }
 
 function hasCommonFields(record: Readonly<Record<string, unknown>>): boolean {
   return (
     typeof record["hook_event_name"] === "string" &&
-    names.has(record["hook_event_name"]) &&
     typeof record["session_id"] === "string" &&
     typeof record["cwd"] === "string" &&
-    optionalString(record["model"])
+    optionalString(record["model"]) &&
+    optionalPermissionMode(record["permission_mode"])
   );
 }
 
@@ -158,12 +79,12 @@ function hasToolFields(record: Readonly<Record<string, unknown>>): boolean {
     : true;
 }
 
-function isToolEventName(value: unknown): boolean {
-  return isOneOf(value, ["PreToolUse", "PermissionRequest", "PostToolUse"]);
-}
-
 function isKnownCommandTool(value: string): boolean {
   return value === "Bash" || value === "apply_patch";
+}
+
+function isPublicToolName(value: string): boolean {
+  return isKnownCommandTool(value) || value.startsWith("mcp__") || value.startsWith("unknown:");
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -178,8 +99,11 @@ function optionalNullableString(value: unknown): boolean {
   return value === undefined || value === null || typeof value === "string";
 }
 
-function optionalBoolean(value: unknown): boolean {
-  return value === undefined || typeof value === "boolean";
+function optionalPermissionMode(value: unknown): boolean {
+  return (
+    value === undefined ||
+    isOneOf(value, ["default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"])
+  );
 }
 
 function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {

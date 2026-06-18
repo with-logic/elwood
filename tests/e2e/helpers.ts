@@ -141,7 +141,10 @@ export async function invokeHookBridge(
 ): Promise<{ readonly status: number | null; readonly stdout: string; readonly stderr: string }> {
   const bridgePath = join(project.sessionDir(elwoodSessionId), "hook-bridge.mjs");
   return await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [bridgePath], { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [bridgePath], {
+      env: { ...process.env, ELWOOD_SESSION_ID: elwoodSessionId },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     let stdout = "";
     let stderr = "";
     const timeout = setTimeout(() => {

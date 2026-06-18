@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { ElwoodError } from "../../src/core/errors.ts";
@@ -20,34 +20,39 @@ import {
 } from "../../src/state/store.ts";
 
 describe("state store", () => {
-  test("C-ERR-03 C-ERR-04 C-STATE error paths are typed", () => {
+  test("C-ERR-03 C-ERR-04 state error paths are typed", () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-state-"));
     expect(defaultStateDir(root)).toBe(join(root, ".elwood"));
     expect(sessionDir(root, "missing")).toBe(join(root, "sessions", "missing"));
     expect(sessionDir("relative-state", "missing")).toBe(
       join(resolve("relative-state"), "sessions", "missing"),
     );
-    expect(() => readSessionRecord(root, "missing")).toThrow(ElwoodError);
+    expect(elwoodCode(() => sessionDir(root, "../escape"))).toBe("state_corrupt");
+    expect(elwoodCode(() => readSessionRecord(root, "missing"))).toBe("state_not_found");
     const dir = sessionDir(root, "bad");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "session.json"), '{"schemaVersion":2,"elwoodSessionId":"bad"}');
-    expect(() => readSessionRecord(root, "bad")).toThrow(ElwoodError);
+    expect(elwoodCode(() => readSessionRecord(root, "bad"))).toBe("state_corrupt");
     const corruptDir = sessionDir(root, "corrupt");
     mkdirSync(corruptDir, { recursive: true });
     writeFileSync(join(corruptDir, "session.json"), "{");
-    expect(() => readSessionRecord(root, "corrupt")).toThrow(ElwoodError);
+    expect(elwoodCode(() => readSessionRecord(root, "corrupt"))).toBe("state_corrupt");
     const invalidWarning = createSessionRecord({ stateDir: root, cwd: root, id: "bad-warning" });
     writeSessionRecord({
       ...invalidWarning,
       warnings: [{ code: "mcp_server_not_logged_in", severity: "warning" } as never],
     });
-    expect(() => readSessionRecord(root, invalidWarning.elwoodSessionId)).toThrow(ElwoodError);
+    expect(elwoodCode(() => readSessionRecord(root, invalidWarning.elwoodSessionId))).toBe(
+      "state_corrupt",
+    );
     const record = createSessionRecord({ stateDir: root, cwd: root, id: "null-path" });
     writeSessionRecord({ ...record, paths: { ...record.paths, socketPath: "/tmp/foreign.sock" } });
-    expect(() => readSessionRecord(root, record.elwoodSessionId)).toThrow(ElwoodError);
-    expect(() =>
-      removeSessionDir({ ...record, paths: { ...record.paths, sessionDir: "\0" } }),
-    ).toThrow(ElwoodError);
+    expect(elwoodCode(() => readSessionRecord(root, record.elwoodSessionId))).toBe("state_corrupt");
+    expect(
+      elwoodCode(() =>
+        removeSessionDir({ ...record, paths: { ...record.paths, sessionDir: "\0" } }),
+      ),
+    ).toBe("teardown_failed");
   });
 
   test("C-STATE-03 C-STATE-11 custom state directories do not receive or overwrite gitignore files", () => {
@@ -60,6 +65,8 @@ describe("state store", () => {
     expect(readFileSync(join(record.paths.sessionDir, "session.json"), "utf8")).toContain(
       record.elwoodSessionId,
     );
+    expect(statSync(record.paths.sessionDir).mode & 0o777).toBe(0o700);
+    expect(statSync(join(record.paths.sessionDir, "session.json")).mode & 0o777).toBe(0o600);
     writeFileSync(join(projectState, ".gitignore"), "!keep\n");
     prepareStateDir(projectState, { gitignore: true });
     expect(readFileSync(join(projectState, ".gitignore"), "utf8")).toBe("!keep\n");
@@ -130,3 +137,13 @@ describe("state store", () => {
     expect(() => readSessionRecord(root, unknown.elwoodSessionId)).toThrow(ElwoodError);
   });
 });
+
+function elwoodCode(callback: () => unknown): string {
+  try {
+    callback();
+  } catch (error) {
+    if (error instanceof ElwoodError) return error.code;
+    throw error;
+  }
+  throw new Error("Expected ElwoodError");
+}

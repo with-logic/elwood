@@ -29,7 +29,7 @@ export async function requestCodexHook(
     };
     const hasListener = requestable.hasListeners(hookName);
     const result = await withTimeout(requestable.request(hookName, event), timeoutMs);
-    if (!hasListener) return { result: undefined, failedOpen: true };
+    if (!hasListener) return { result: undefined, failedOpen: false };
     if (!isCodexHookResult(event.hook_event_name, result)) {
       emitError(emitter, {
         elwoodSessionId,

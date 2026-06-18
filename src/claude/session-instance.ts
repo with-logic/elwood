@@ -76,9 +76,9 @@ export class ClaudeSessionImpl implements ClaudeSession {
   }
 
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>) {
-    const unsubscribe = this.emitter.on(event, handler);
     if (event === "terminal:data") this.terminalReplay.replay(handler as never);
     this.replayWarnings(event, handler);
+    const unsubscribe = this.emitter.on(event, handler);
     return unsubscribe;
   }
 
@@ -104,8 +104,8 @@ export class ClaudeSessionImpl implements ClaudeSession {
 
   resize(size: TerminalSize): Promise<void> {
     this.ensureRunning();
+    if (this.pty.resize(size) === "closed") return Promise.resolve();
     this.terminal.resize(size);
-    this.pty.resize(size);
     this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.currentStatus));
     return Promise.resolve();
   }

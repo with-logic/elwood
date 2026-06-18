@@ -50,7 +50,7 @@ describe("Codex startup prompt responder", () => {
     expect(writes).toEqual(["1\r"]);
   });
 
-  test("C-CODEX skips recognized update prompts", () => {
+  test("C-CODEX-12 skips recognized update prompts", () => {
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder();
     responder.handle("Update available\n  1. Update now", (input) => writes.push(input));
@@ -60,7 +60,7 @@ describe("Codex startup prompt responder", () => {
     expect(writes).toEqual(["2"]);
   });
 
-  test("C-CODEX skips current Codex release update prompts", () => {
+  test("C-CODEX-12 skips current Codex release update prompts", () => {
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder();
     responder.handle("Update available! 0.132.0 -> 0.133.0\n\n› 1. Update now", (input) =>
@@ -70,7 +70,7 @@ describe("Codex startup prompt responder", () => {
     expect(writes).toEqual(["2"]);
   });
 
-  test("C-PTY-07 C-CODEX skips cursor-addressed xterm-rendered update prompts", async () => {
+  test("C-PTY-07 C-CODEX-12 skips cursor-addressed xterm-rendered update prompts", async () => {
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder();
     const terminal = createHeadlessTerminal({ cols: 90, rows: 12 }, () => {});
@@ -86,7 +86,7 @@ describe("Codex startup prompt responder", () => {
     expect(writes).toEqual(["2"]);
   });
 
-  test("C-CODEX skips concatenated Codex release update prompts", () => {
+  test("C-CODEX-12 skips concatenated Codex release update prompts", () => {
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder();
     responder.handle(

@@ -72,7 +72,7 @@ describe("CodexSession lifecycle", () => {
     expect(persisted).not.toContain("SECRET_HOOK");
   });
 
-  test("C-LIFE Codex kill and teardown update state", async () => {
+  test("C-LIFE-03 C-STATE-08 Codex kill and teardown update state", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startCodex({ cwd });
@@ -101,7 +101,7 @@ describe("CodexSession lifecycle", () => {
     await expect(startCodex({ cwd: tempDir() })).rejects.toBeInstanceOf(ElwoodError);
   });
 
-  test("C-ERR Codex startup failures are typed", async () => {
+  test("C-ERR-05 C-ERR-06 Codex startup failures are typed", async () => {
     installFakes();
     setPtyFactoryForTests(() => {
       throw new Error("pty failed");
@@ -120,7 +120,7 @@ describe("CodexSession lifecycle", () => {
     });
   });
 
-  test("C-ERR Codex exits during startup with a typed error", async () => {
+  test("C-CODEX-13 Codex exits during startup with a typed error", async () => {
     installFakes();
     setPtyFactoryForTests((options) => {
       const pty = new FakePty(options);

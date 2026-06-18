@@ -25,11 +25,11 @@ export function isClaudeHookInput(value: unknown): value is ClaudeHookEvent {
   }
   if (toolEvents.has(eventName)) return hasToolEventFields(eventName, value);
   if (eventName === "SessionStart") return typeof value["source"] === "string";
-  if (eventName === "Setup") return typeof value["trigger"] === "string";
-  if (eventName === "InstructionsLoaded") return typeof value["file_path"] === "string";
+  if (eventName === "Setup") return isOneOf(value["trigger"], ["init", "maintenance"]);
+  if (eventName === "InstructionsLoaded") return hasInstructionsLoaded(value);
   if (eventName === "UserPromptSubmit") return typeof value["prompt"] === "string";
-  if (eventName === "UserPromptExpansion") return typeof value["prompt"] === "string";
-  if (eventName === "PostToolBatch") return Array.isArray(value["tool_calls"]);
+  if (eventName === "UserPromptExpansion") return hasUserPromptExpansion(value);
+  if (eventName === "PostToolBatch") return hasPostToolBatch(value["tool_calls"]);
   if (eventName === "Notification") return hasStrings(value, ["message", "notification_type"]);
   if (eventName === "SubagentStart") return hasStrings(value, ["agent_id", "agent_type"]);
   if (eventName === "SubagentStop")
@@ -41,11 +41,16 @@ export function isClaudeHookInput(value: unknown): value is ClaudeHookEvent {
   if (eventName === "TeammateIdle") return hasStrings(value, ["teammate_name", "team_name"]);
   if (eventName === "ConfigChange") return typeof value["source"] === "string";
   if (eventName === "CwdChanged") return hasStrings(value, ["old_cwd", "new_cwd"]);
-  if (eventName === "FileChanged") return hasStrings(value, ["file_path", "event"]);
+  if (eventName === "FileChanged")
+    return hasStrings(value, ["file_path"]) && isOneOf(value["event"], ["change", "add", "unlink"]);
   if (eventName === "WorktreeCreate") return typeof value["name"] === "string";
   if (eventName === "WorktreeRemove") return typeof value["worktree_path"] === "string";
-  if (eventName === "PreCompact") return hasStrings(value, ["trigger", "custom_instructions"]);
-  if (eventName === "PostCompact") return hasStrings(value, ["trigger", "compact_summary"]);
+  if (eventName === "PreCompact")
+    return (
+      isOneOf(value["trigger"], ["manual", "auto"]) && hasStrings(value, ["custom_instructions"])
+    );
+  if (eventName === "PostCompact")
+    return isOneOf(value["trigger"], ["manual", "auto"]) && hasStrings(value, ["compact_summary"]);
   if (eventName === "SessionEnd") return typeof value["reason"] === "string";
   if (eventName === "Elicitation") return hasStrings(value, ["mcp_server_name", "message"]);
   if (eventName === "ElicitationResult") return hasStrings(value, ["mcp_server_name", "action"]);
@@ -73,7 +78,7 @@ function hasToolSpecificEventFields(
 function isToolInput(toolName: string, input: unknown): boolean {
   if (!isRecord(input)) return false;
   if (toolName === "Agent") return typeof input["prompt"] === "string";
-  if (toolName === "AskUserQuestion") return Array.isArray(input["questions"]);
+  if (toolName === "AskUserQuestion") return isAskUserQuestionInput(input);
   if (toolName === "Bash") return typeof input["command"] === "string";
   if (toolName === "Edit") return hasStrings(input, ["file_path", "old_string", "new_string"]);
   if (toolName === "ExitPlanMode") return true;
@@ -86,12 +91,67 @@ function isToolInput(toolName: string, input: unknown): boolean {
   return true;
 }
 
+function hasInstructionsLoaded(value: Readonly<Record<string, unknown>>): boolean {
+  return (
+    hasStrings(value, ["file_path"]) &&
+    isOneOf(value["memory_type"], ["User", "Project", "Local", "Managed"]) &&
+    isOneOf(value["load_reason"], [
+      "session_start",
+      "nested_traversal",
+      "path_glob_match",
+      "include",
+      "compact",
+    ])
+  );
+}
+
+function hasUserPromptExpansion(value: Readonly<Record<string, unknown>>): boolean {
+  return (
+    hasStrings(value, ["prompt", "command_name"]) &&
+    isOneOf(value["expansion_type"], ["slash_command", "mcp_prompt"])
+  );
+}
+
+function hasPostToolBatch(value: unknown): boolean {
+  return (
+    Array.isArray(value) && value.every((item) => isRecord(item) && hasToolEventFields("", item))
+  );
+}
+
+function isAskUserQuestionInput(input: Readonly<Record<string, unknown>>): boolean {
+  return Array.isArray(input["questions"]) && input["questions"].every(isQuestion);
+}
+
+function isQuestion(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasStrings(value, ["question", "header"]) &&
+    Array.isArray(value["options"]) &&
+    value["options"].every(isQuestionOption) &&
+    optionalBoolean(value["multiSelect"])
+  );
+}
+
+function isQuestionOption(value: unknown): boolean {
+  return (
+    isRecord(value) && typeof value["label"] === "string" && optionalString(value["description"])
+  );
+}
+
 function hasStrings(value: Readonly<Record<string, unknown>>, keys: readonly string[]): boolean {
   return keys.every((key) => typeof value[key] === "string");
 }
 
 function optionalBoolean(value: unknown): boolean {
   return value === undefined || typeof value === "boolean";
+}
+
+function optionalString(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
+}
+
+function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {
+  return typeof value === "string" && (allowed as readonly string[]).includes(value);
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {

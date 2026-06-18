@@ -87,7 +87,7 @@ describe("Elwood activity events", () => {
       summary: { kind: "other", label: "unknown" },
     });
     expect(toolResult).toMatchObject({ kind: "tool_result", label: "Read" });
-    expect(unknown).toMatchObject({ kind: "hook", label: "unknown" });
+    expect(unknown).toMatchObject({ kind: "other", label: "unknown" });
   });
 
   test("C-API-12 maps transcript metadata and lifecycle events", () => {

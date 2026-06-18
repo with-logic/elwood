@@ -23,7 +23,6 @@ const hookTrustPattern = /Trust\s*all\s*and\s*continue/i;
 export class CodexStartupPromptResponder {
   private buffer: string;
   private readonly elwoodSessionId: string;
-  private readonly seenWarnings = new Set<string>();
   private readonly workspaceTrust: WorkspaceTrustResponder;
   private trustedHooks: boolean;
   private skippedUpdate: boolean;
@@ -42,32 +41,22 @@ export class CodexStartupPromptResponder {
     const trust = this.workspaceTrust.handle(this.buffer, write);
     if (trust) automations.push(trust);
     if (!this.trustedHooks && /Hooks need review/i.test(this.buffer)) {
-      if (hasNumberedOption(this.buffer, "2", hookTrustPattern)) {
-        write("2");
-        automations.push({ prompt: "hook_trust", input: "2" });
+      const option = findNumberedOption(this.buffer, hookTrustPattern);
+      if (option) {
+        write(option);
+        automations.push({ prompt: "hook_trust", input: option });
         this.trustedHooks = true;
       }
     }
     if (!this.skippedUpdate && /update/i.test(this.buffer)) {
-      if (hasNumberedOption(this.buffer, "2", updateOptionPattern)) {
-        write("2");
-        automations.push({ prompt: "update", input: "2" });
+      const option = findNumberedOption(this.buffer, updateOptionPattern);
+      if (option) {
+        write(option);
+        automations.push({ prompt: "update", input: option });
         this.skippedUpdate = true;
       }
     }
-    return { warnings: this.newWarnings(), automations };
-  }
-
-  private newWarnings(): readonly ElwoodWarningEvent[] {
-    const warnings: ElwoodWarningEvent[] = [];
-    for (const warning of codexWarningsFromText(this.buffer, this.elwoodSessionId)) {
-      const key = warningKey(warning);
-      if (!this.seenWarnings.has(key)) {
-        this.seenWarnings.add(key);
-        warnings.push(warning);
-      }
-    }
-    return warnings;
+    return { warnings: codexWarningsFromText(this.buffer, this.elwoodSessionId), automations };
   }
 }
 
@@ -126,18 +115,6 @@ function mcpStartupWarning(
     recoveryCommands: failedServers.map((server) => `codex mcp login ${server}`),
     raw,
   };
-}
-
-function warningKey(warning: ElwoodWarningEvent): string {
-  if (warning.code === "version_unparseable") return `${warning.code}:${warning.agent}`;
-  if ("mcpServerName" in warning) return `${warning.code}:${warning.mcpServerName}`;
-  return `${warning.code}:${warning.failedServers.join(",")}`;
-}
-
-function hasNumberedOption(text: string, number: string, pattern: RegExp): boolean {
-  return numberedOptions(text).some(
-    (option) => option.number === number && pattern.test(option.label),
-  );
 }
 
 function numberedOptions(

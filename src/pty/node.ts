@@ -37,8 +37,10 @@ export const nodePtyFactory: PtyFactory = (options: PtySpawnOptions): PtyProcess
     resize(size: TerminalSize) {
       try {
         pty.resize(size.cols, size.rows);
+        return "resized";
       } catch (error) {
-        if (!isClosedPtyError(error)) throw error;
+        if (isClosedPtyError(error)) return "closed";
+        throw error;
       }
     },
     kill(signal = "SIGTERM") {

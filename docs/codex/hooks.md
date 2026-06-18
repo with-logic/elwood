@@ -57,13 +57,11 @@ Codex accepts event-specific JSON output. Important shapes for Elwood:
 - `PermissionRequest` can decide `allow` or `deny` with `{ hookSpecificOutput:
   { hookEventName, decision: { behavior, message? } } }`. It must not return
   updated input or permission edits.
-- `PostToolUse` can block normal processing of a completed tool result with
-  feedback, but it cannot undo tool side effects.
-- `UserPromptSubmit` can add additional context or block the prompt.
 - `Stop` and `SubagentStop` can return `decision: "block"` with a reason to ask
   Codex to continue instead of marking the turn done.
-- Common lifecycle responses may include `systemMessage`, and some events support
-  `continue: false` with a stop reason.
+- `PostToolUse`, `UserPromptSubmit`, `SubagentStart`, `PreCompact`, and
+  `PostCompact` are observe-only in Elwood until Codex documents a stable
+  response contract for them.
 
 Elwood should fail open when parent handlers are missing, time out, throw, or
 return an invalid response for the event.

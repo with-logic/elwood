@@ -1,7 +1,5 @@
 /** ClaudeSession implementation coordinating PTY, state, and hook dispatch. Implements PRD §5, §6, §8, and §9. */
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import { HookBridgeServer } from "../bridge/server.ts";
 import * as activity from "../core/activity.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
 import { elwoodError } from "../core/errors.ts";
@@ -12,6 +10,7 @@ import { WorkspaceTrustResponder } from "../core/workspace-trust.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { assertStartupUsable } from "../runtime/startup.ts";
+import { secureMkdir } from "../state/files.ts";
 import {
   appendSessionWarning,
   createSessionRecord,
@@ -26,27 +25,18 @@ import { isBlock, requestHook } from "./hook-dispatch.ts";
 import type { ClaudeHookEvent } from "./hooks.ts";
 import { preflightClaude } from "./preflight.ts";
 import { serializeHookResult } from "./serialize.ts";
-import { ClaudeSessionImpl, type HookBridge } from "./session-instance.ts";
+import {
+  currentClaudeHookBridgeFactory,
+  resetClaudeHookBridgeFactoryForTests,
+  setHookBridgeFactoryForTests,
+} from "./session-bridge.ts";
+import { ClaudeSessionImpl } from "./session-instance.ts";
 import { registerInitialHooks, spawnClaudePty, writeRuntimeFiles } from "./session-runtime.ts";
 
-type HookBridgeFactory = (
-  socketPath: string,
-  token: string,
-  dispatch: ConstructorParameters<typeof HookBridgeServer>[2],
-  onError: ConstructorParameters<typeof HookBridgeServer>[3],
-) => HookBridge;
-
-const realHookBridgeFactory: HookBridgeFactory = (socketPath, token, dispatch, onError) =>
-  new HookBridgeServer(socketPath, token, dispatch, onError);
-
-let hookBridgeFactory = realHookBridgeFactory;
-
-export function setHookBridgeFactoryForTests(factory: HookBridgeFactory): void {
-  hookBridgeFactory = factory;
-}
+export { setHookBridgeFactoryForTests };
 
 export function resetClaudeSessionSeamsForTests(): void {
-  hookBridgeFactory = realHookBridgeFactory;
+  resetClaudeHookBridgeFactoryForTests();
 }
 
 export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSession> {
@@ -106,15 +96,15 @@ export async function resumeClaude(options: ResumeClaudeOptions): Promise<Claude
 }
 
 async function startFromRecord(record: SessionRecord, options: StartClaudeOptions) {
-  mkdirSync(record.paths.sessionDir, { recursive: true });
-  const token = randomUUID();
-  writeRuntimeFiles(record, token, options);
+  secureMkdir(record.paths.sessionDir);
+  writeRuntimeFiles(record, record.bridgeToken, options);
   const emitter = new TypedEmitter();
   registerInitialHooks(emitter, options.hooks);
   let session: ClaudeSessionImpl | undefined;
-  const bridge = hookBridgeFactory(
+  const bridge = currentClaudeHookBridgeFactory()(
     record.paths.socketPath,
-    token,
+    record.bridgeToken,
+    record.elwoodSessionId,
     async (input) => {
       const event = input as ClaudeHookEvent;
       if (event.hook_event_name === "SessionStart")
@@ -155,7 +145,13 @@ async function startFromRecord(record: SessionRecord, options: StartClaudeOption
       cause: error instanceof Error ? error.message : String(error),
     });
   }
-  const pty = spawnClaudePty(record, options);
+  let pty: ReturnType<typeof spawnClaudePty>;
+  try {
+    pty = spawnClaudePty(record, options);
+  } catch (error) {
+    await bridge.stop();
+    throw error;
+  }
   let startupOutput = "";
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);

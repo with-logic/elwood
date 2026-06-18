@@ -41,10 +41,11 @@ export function attachPtyTerminal(
   pty: PtyProcess,
   onRendered: (data: string, terminal: ElwoodTerminal) => void,
 ): ElwoodTerminal {
-  const terminal = createHeadlessTerminal(size, (input) => pty.write(input));
-  pty.onData((data) => {
+  const terminal = new HeadlessTerminal(size, (input) => pty.write(input));
+  const unsubscribe = pty.onData((data) => {
     void terminal.writeOutput(data).then(() => onRendered(data, terminal));
   });
+  terminal.onDispose(unsubscribe);
   return terminal;
 }
 
@@ -53,6 +54,8 @@ class HeadlessTerminal implements ElwoodTerminal {
   private currentSize: TerminalSize;
   private writeQueue = Promise.resolve();
   private readonly onInput: (input: string | Uint8Array) => void;
+  private readonly disposers: Array<() => void> = [];
+  private disposed = false;
 
   constructor(size: TerminalSize, onInput: (input: string | Uint8Array) => void) {
     this.currentSize = size;
@@ -70,6 +73,7 @@ class HeadlessTerminal implements ElwoodTerminal {
   }
 
   writeOutput(data: string | Uint8Array): Promise<void> {
+    if (this.disposed) return Promise.resolve();
     const write = this.writeQueue.then(
       () => new Promise<void>((resolve) => this.xterm.write(data, resolve)),
     );
@@ -111,6 +115,13 @@ class HeadlessTerminal implements ElwoodTerminal {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    for (const dispose of this.disposers.splice(0)) dispose();
     this.xterm.dispose();
+  }
+
+  onDispose(dispose: () => void): void {
+    this.disposers.push(dispose);
   }
 }

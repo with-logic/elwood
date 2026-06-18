@@ -1,8 +1,6 @@
 /** CodexSession implementation coordinating PTY, state, and hook dispatch. Implements PRD §5.5, §5.6, §5.7, §7A, §8, and §9. */
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
 import { bridgeScriptSource } from "../bridge/script.ts";
-import { HookBridgeServer } from "../bridge/server.ts";
 import * as activity from "../core/activity.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
 import { elwoodError } from "../core/errors.ts";
@@ -11,6 +9,7 @@ import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { assertStartupUsable } from "../runtime/startup.ts";
+import { secureMkdir, writePrivateFile } from "../state/files.ts";
 import {
   appendSessionWarning,
   createSessionRecord,
@@ -23,8 +22,13 @@ import {
 import { attachPtyTerminal } from "../terminal/headless.ts";
 import * as preflight from "./preflight.ts";
 import { spawnCodexPty } from "./pty.ts";
+import {
+  currentCodexHookBridgeFactory,
+  resetCodexSessionSeamsForTests,
+  setCodexHookBridgeFactoryForTests,
+} from "./session-bridge.ts";
 import { dispatchHook, registerInitialHooks } from "./session-hooks.ts";
-import { type CodexHookBridge, CodexSessionImpl } from "./session-instance.ts";
+import { CodexSessionImpl } from "./session-instance.ts";
 import type {
   CodexEventMap,
   CodexSession,
@@ -33,24 +37,8 @@ import type {
 } from "./session-types.ts";
 import { CodexStartupPromptResponder } from "./startup-prompts.ts";
 import { CodexTranscriptWatcher } from "./transcript.ts";
-import { isCodexHookEvent } from "./validate.ts";
 
-type HookBridgeFactory = (
-  socketPath: string,
-  token: string,
-  dispatch: ConstructorParameters<typeof HookBridgeServer>[2],
-  onError: ConstructorParameters<typeof HookBridgeServer>[3],
-) => CodexHookBridge;
-const realHookBridgeFactory: HookBridgeFactory = (socketPath, token, dispatch, onError) =>
-  new HookBridgeServer(socketPath, token, dispatch, onError, isCodexHookEvent);
-let hookBridgeFactory = realHookBridgeFactory;
-export function setCodexHookBridgeFactoryForTests(factory: HookBridgeFactory): void {
-  hookBridgeFactory = factory;
-}
-export function resetCodexSessionSeamsForTests(): void {
-  hookBridgeFactory = realHookBridgeFactory;
-  preflight.resetCodexPreflightCacheForTests();
-}
+export { resetCodexSessionSeamsForTests, setCodexHookBridgeFactoryForTests };
 export async function startCodex(options: StartCodexOptions): Promise<CodexSession> {
   const warning = preflight.preflightCodex(
     options.strictVersionCheck ?? false,
@@ -113,9 +101,11 @@ export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSes
   });
 }
 async function startFromRecord(record: SessionRecord, options: StartCodexOptions) {
-  mkdirSync(record.paths.sessionDir, { recursive: true });
-  const token = randomUUID();
-  writeFileSync(record.paths.bridgeScriptPath, bridgeScriptSource(record.paths.socketPath, token));
+  secureMkdir(record.paths.sessionDir);
+  writePrivateFile(
+    record.paths.bridgeScriptPath,
+    bridgeScriptSource(record.paths.socketPath, record.bridgeToken),
+  );
   const emitter = new TypedEmitter<CodexEventMap>();
   registerInitialHooks(emitter, options.hooks);
   const transcriptWatcher = new CodexTranscriptWatcher(record.elwoodSessionId, (event) => {
@@ -123,9 +113,10 @@ async function startFromRecord(record: SessionRecord, options: StartCodexOptions
     emitter.emit("activity", activity.activityFromCodexTranscript(event));
   });
   let session: CodexSessionImpl | undefined;
-  const bridge = hookBridgeFactory(
+  const bridge = currentCodexHookBridgeFactory()(
     record.paths.socketPath,
-    token,
+    record.bridgeToken,
+    record.elwoodSessionId,
     async (input) => dispatchHook(input, emitter, options, record, session),
     (event) => {
       const hookError = { elwoodSessionId: record.elwoodSessionId, ...event };
@@ -140,7 +131,13 @@ async function startFromRecord(record: SessionRecord, options: StartCodexOptions
       cause: error instanceof Error ? error.message : String(error),
     });
   }
-  const pty = spawnCodexPty(record, options);
+  let pty: ReturnType<typeof spawnCodexPty>;
+  try {
+    pty = spawnCodexPty(record, options);
+  } catch (error) {
+    await bridge.stop();
+    throw error;
+  }
   let startupOutput = "";
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);

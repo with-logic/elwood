@@ -77,7 +77,7 @@ describe("CodexSession startup and terminal control", () => {
     expect(replayedActivity).toEqual(["warning"]);
   });
 
-  test("C-CODEX skips Codex TUI update prompts", async () => {
+  test("C-CODEX-12 skips Codex TUI update prompts", async () => {
     const cwd = tempDir();
     installFakes();
     await startCodex({ cwd });
@@ -143,7 +143,7 @@ describe("CodexSession startup and terminal control", () => {
     );
   });
 
-  test("C-HOOK Codex bridge errors and explicit listener removal are observable", async () => {
+  test("C-HOOK-02 C-HOOK-05 Codex bridge errors and listener removal are observable", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startCodex({ cwd });
@@ -159,7 +159,7 @@ describe("CodexSession startup and terminal control", () => {
     expect(errors).toEqual(["invalid_input"]);
   });
 
-  test("C-HOOK Codex transcript activity is emitted live", async () => {
+  test("C-API-12 Codex transcript activity is emitted live", async () => {
     const cwd = tempDir();
     const transcript = join(cwd, "codex.jsonl");
     installFakes();

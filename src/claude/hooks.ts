@@ -23,9 +23,16 @@ export {
   claudeHookEventNames,
 } from "./hook-names.ts";
 export type {
+  PermissionRule,
+  PermissionRuleBehavior,
+  PermissionUpdate,
+  PermissionUpdateDestination,
+} from "./permissions.ts";
+export type {
   AgentInput,
   AskUserQuestionInput,
   BashInput,
+  ClaudeToolInputUpdate,
   EditInput,
   ExitPlanModeInput,
   FileInput,
@@ -33,10 +40,6 @@ export type {
   GlobInput,
   GrepInput,
   KnownClaudeToolName,
-  PermissionRule,
-  PermissionRuleBehavior,
-  PermissionUpdate,
-  PermissionUpdateDestination,
   ReadInput,
   ToolHookEventName,
   UnknownClaudeToolName,
@@ -47,12 +50,13 @@ export type {
 
 import type { ClaudeHookEventFor } from "./hook-events.ts";
 import type { ClaudeHookEventName } from "./hook-names.ts";
-import type { PermissionUpdate } from "./tool-types.ts";
+import type { PermissionUpdate } from "./permissions.ts";
+import type { ClaudeToolInputUpdate } from "./tool-types.ts";
 
 export type PreToolUseResult = {
   readonly permissionDecision: "allow" | "deny" | "ask" | "defer";
   readonly permissionDecisionReason?: string;
-  readonly updatedInput?: unknown;
+  readonly updatedInput?: ClaudeToolInputUpdate;
   readonly additionalContext?: string;
 };
 
@@ -64,7 +68,7 @@ export type TopLevelBlockResult = {
 
 export type PermissionRequestResult = {
   readonly behavior: "allow" | "deny";
-  readonly updatedInput?: unknown;
+  readonly updatedInput?: ClaudeToolInputUpdate;
   readonly updatedPermissions?: readonly PermissionUpdate[];
   readonly message?: string;
   readonly interrupt?: boolean;

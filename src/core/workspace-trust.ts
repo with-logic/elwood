@@ -24,13 +24,32 @@ export class WorkspaceTrustResponder {
     if (!this.enabled || this.trusted || !workspaceTrustPromptVisible(screenText, this.agent)) {
       return undefined;
     }
-    write("1\r");
+    const option = findTrustOption(screenText);
+    if (!option) return undefined;
+    write(`${option}\r`);
     this.trusted = true;
-    return { prompt: "workspace_trust", input: "1" };
+    return { prompt: "workspace_trust", input: option };
   }
 }
 
 export function workspaceTrustPromptVisible(text: string, agent: ElwoodAgentKind): boolean {
   if (agent === "claude") return /trust this folder/i.test(text);
   return /Do you trust the contents of this directory/i.test(text);
+}
+
+function findTrustOption(text: string): string | null {
+  return (
+    numberedOptions(text).find((option) => trustOptionPattern.test(option.label))?.number ?? null
+  );
+}
+
+const trustOptionPattern = /^(?!.*\b(no|without|not|quit|cancel)\b).*\b(yes|trust|continue)\b/i;
+
+function numberedOptions(
+  text: string,
+): readonly { readonly number: string; readonly label: string }[] {
+  return text.split("\n").flatMap((line) => {
+    const matches = line.matchAll(/(?:^|[\s›>])(\d+)[.)]\s*(.+?)(?=\s*\d+[.)]\s*|$)/g);
+    return [...matches].map((match) => ({ number: match[1]!, label: match[2]!.trim() }));
+  });
 }

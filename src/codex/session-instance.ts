@@ -77,13 +77,13 @@ export class CodexSessionImpl implements CodexSession {
   }
 
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {
-    const unsubscribe = this.emitter.on(event, handler);
     if (event === "terminal:data") this.terminalReplay.replay(handler as never);
     replayWarningSnapshots(
       this.record.warnings,
       event as string,
       handler as (event: never) => void,
     );
+    const unsubscribe = this.emitter.on(event, handler);
     return unsubscribe;
   }
 
@@ -109,8 +109,8 @@ export class CodexSessionImpl implements CodexSession {
 
   resize(size: TerminalSize): Promise<void> {
     this.ensureRunning();
+    if (this.pty.resize(size) === "closed") return Promise.resolve();
     this.terminal.resize(size);
-    this.pty.resize(size);
     this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.currentStatus));
     return Promise.resolve();
   }
