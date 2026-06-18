@@ -181,7 +181,9 @@ still merge through Codex's normal precedence rules.
 Decision note: `features.hooks=true` is treated as Elwood-owned configuration,
 not caller configuration. Without it, some Codex versions can parse hook config
 without running hooks, which would make Elwood observe less than the parent app
-expects.
+expects. Elwood-owned hook command overrides may be emitted before caller
+`configOverrides`, but reserved enablement/trust overrides MUST be emitted after
+caller overrides so callers cannot accidentally disable the bridge.
 
 Codex hook trust is a Codex security feature, but Elwood is not useful without
 trusted hooks. Elwood MUST always allow Codex hooks to run. It should use
@@ -212,6 +214,7 @@ type StartClaudeOptions = {
   readonly disallowedTools?: readonly ClaudeToolRule[];
   readonly settingsOverrides?: ClaudeSettingsOverrides;
   readonly autoupdate?: boolean;
+  readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
   readonly strictVersionCheck?: boolean;
   readonly metadata?: Readonly<Record<string, unknown>>;
@@ -230,6 +233,13 @@ Claude versions fatal instead of warning-and-continuing. `permissionMode`
 accepts Claude's documented launch values: `default`, `acceptEdits`, `plan`,
 `auto`, `dontAsk`, and `bypassPermissions`.
 
+`autotrust` is an opt-in convenience for embedded/headless parent apps.
+When true, Elwood detects Claude's first-party workspace trust prompt in the
+rendered terminal and chooses the trust/continue option through PTY input. The
+default is false because trusting a workspace is a security-sensitive decision.
+When Elwood answers the prompt, the session emits adapter-neutral
+`startup_prompt` activity with label `workspace_trust`.
+
 ### 5.2 Resuming Claude
 
 ```ts
@@ -240,6 +250,7 @@ type ResumeClaudeOptions = {
   readonly hooks?: ClaudeHookHandlers;
   readonly initialSize?: TerminalSize;
   readonly autoupdate?: boolean;
+  readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
   readonly strictVersionCheck?: boolean;
 };
@@ -258,6 +269,12 @@ If Elwood has not observed and persisted Claude Code's internal session id from
 `SessionStart`, `resumeClaude` must fail explicitly with `resume_unavailable`.
 It must not silently launch a fresh Claude conversation under the same Elwood
 session ID.
+
+Decision note: MVP resume restores the Elwood wrapper, hook routing, terminal
+size, metadata, and the agent's internal conversation resume id. Adapter launch
+policy such as model, approval mode, and caller config overrides is intentionally
+not persisted as durable Elwood state yet; future versions may add explicit
+resume launch-policy options instead of silently replaying stale policy.
 
 ### 5.3 ClaudeSession
 
@@ -314,7 +331,21 @@ MUST expose the underlying headless xterm instance, current size, and a snapshot
 API with visible lines, joined visible text, and cursor position. Parent apps may
 use this handle for diagnostics or to bridge Elwood's terminal state into their
 own renderer, while `terminal:data` remains the live raw stream for browser
-renderers.
+renderers. The handle also exposes terminal-control methods used internally
+(`sendInput`, `writeOutput`, `resize`, `settled`, and `dispose`); callers should
+prefer the session-level `sendPrompt`, `sendMessage`, `sendKeys`, `resize`,
+`stop`, `kill`, and `teardown` APIs unless they are building advanced terminal
+integrations. Consumers that need diagnostics may await `terminal.settled()` and
+read `terminal.snapshot()`, but visual terminal renderers SHOULD render the raw
+`terminal:data` byte stream instead of repainting from snapshots.
+Because parent apps often attach listeners after `startClaude` or `startCodex`
+resolves, sessions MUST maintain a bounded live-only replay buffer of raw PTY
+output emitted during the current process lifetime. New `terminal:data`
+subscribers receive that buffer immediately, then receive future live chunks.
+This replay buffer MUST NOT be written to Elwood session state. Parent apps that
+embed their own visual xterm.js instance should feed it the replayed and live
+`terminal:data` chunks; Elwood does not require sharing the same JavaScript
+terminal object between Node and the browser.
 
 `stop` attempts graceful process termination while preserving Elwood metadata for
 resume. It should wait for process exit for a bounded grace period, then escalate
@@ -331,6 +362,12 @@ Required event families:
 
 - `terminal:data`: raw PTY output bytes/string for live rendering.
 - `terminal:exit`: PTY process exit.
+
+`resize` should update both terminal models while the process is alive. If the
+native PTY reports that its file descriptor is already closed during a resize
+race with process exit, Elwood should treat that resize as a no-op and rely on
+the normal exit event to update lifecycle status. Other native PTY resize errors
+must still surface.
 - `status`: session lifecycle/status changes.
 - `warning`: typed non-fatal adapter or environment issues observed during the
   session, such as Codex MCP startup warnings.
@@ -353,11 +390,25 @@ adapters. Every activity event includes:
 - `kind`: normalized event kind
 - `label`: short display label
 - optional `text`
+- optional normalized metadata fields:
+  - `hookEventName`
+  - `turnId`
+  - `toolName`
+  - `toolUseId`
+  - `status`
+  - `exitCode`
+  - `failedOpen`
+  - `transcriptPath`
 - optional `raw` in-memory source payload
 
 `raw` is live-only but intentionally not redacted. Parent applications that
 subscribe to activity events should treat `raw` as potentially containing user
 prompts, tool inputs, tool outputs, and hook payload details.
+
+Parent apps should not need `raw` for common timeline rendering. Elwood MUST
+populate the normalized metadata fields whenever those values are present in the
+source hook, transcript item, or lifecycle event. Adapter-specific `raw` remains
+available for deep debugging and unsupported future payloads.
 
 When Elwood detects and answers an interactive startup prompt on behalf of the
 parent app, it MUST emit an activity event with `source: "terminal"`,
@@ -401,6 +452,7 @@ type StartCodexOptions = {
   readonly approvalPolicy?: "untrusted" | "on-request" | "never";
   readonly configOverrides?: readonly string[];
   readonly autoupdate?: boolean;
+  readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
   readonly strictVersionCheck?: boolean;
   readonly metadata?: Readonly<Record<string, unknown>>;
@@ -409,19 +461,29 @@ type StartCodexOptions = {
 declare function startCodex(options: StartCodexOptions): Promise<CodexSession>;
 ```
 
+Elwood sets the PTY working directory and also passes Codex `--cd <cwd>` so
+Codex's own session state and the shell's current directory agree.
+
 `configOverrides` contains raw Codex `key=value` overrides passed through
-`--config` after Elwood's generated hook config so callers can intentionally
-override Codex behavior. Callers own TOML correctness for these raw overrides;
-Elwood shell-quotes each override but does not parse or rewrite its TOML value.
-Elwood's generated `hookTrust="trust-all"` override is reserved and applied
-after caller config overrides because trusted hooks are required for Elwood to
-function.
+`--config` after Elwood's generated hook command config so callers can
+intentionally override non-reserved Codex behavior. Callers own TOML correctness
+for these raw overrides; Elwood shell-quotes each override but does not parse or
+rewrite its TOML value. Elwood's generated `features.hooks=true` and
+`hookTrust="trust-all"` overrides are reserved and applied after caller config
+overrides because enabled, trusted hooks are required for Elwood to function.
 When `autoupdate` is true, Elwood runs `codex update` from the user's login
 shell before spawning Codex and rechecks the version after the update. If Codex
 later shows an interactive update prompt inside the TUI, Elwood skips that
 prompt through PTY input, including Codex's cursor-addressed update screen.
 `strictVersionCheck` makes unparseable Codex versions fatal instead of
 warning-and-continuing.
+
+`autotrust` is an opt-in convenience for embedded/headless parent apps.
+When true, Elwood detects Codex's first-party directory trust prompt in the
+rendered terminal and chooses the trust/continue option through PTY input. The
+default is false because trusting a workspace is a security-sensitive decision.
+When Elwood answers the prompt, the session emits adapter-neutral
+`startup_prompt` activity with label `workspace_trust`.
 
 ### 5.6 Resuming Codex
 
@@ -433,6 +495,7 @@ type ResumeCodexOptions = {
   readonly hooks?: CodexHookHandlers;
   readonly initialSize?: TerminalSize;
   readonly autoupdate?: boolean;
+  readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
   readonly strictVersionCheck?: boolean;
 };
@@ -503,6 +566,13 @@ type ElwoodWarningEvent =
 Warnings are persisted in Elwood session metadata for resume-time inspection,
 but they are not a durable audit log. Repeated observations of the same warning
 should update the session snapshot without emitting duplicate warning events.
+Warning `raw` fields are a narrow exception to the no-raw-content rule: they may
+persist short environment diagnostics needed to explain or recover from startup
+issues, but they must not contain prompts, terminal transcripts, hook payloads,
+or conversation content.
+For `mcp_startup_incomplete`, `recoveryCommands` are derived from the failed MCP
+server names as `codex mcp login <server>`. If Codex later emits richer recovery
+metadata, Elwood may prefer the CLI-provided command.
 
 `CodexSession` also emits `codex:transcript` when it can observe new items from
 Codex's own JSONL transcript. Parent apps may use this live-only event to render
@@ -567,6 +637,9 @@ in the generated settings/environment.
 Bridge request framing must wait for a complete request before dispatching. A
 partial JSON chunk must not be interpreted as a complete hook invocation, and a
 malformed complete request must fail open with a typed hook error.
+A request with a missing or mismatched session token must also fail open without
+dispatching to parent handlers. Token mismatches are treated as unauthenticated
+local IPC noise, not as hook handler failures.
 
 ### 6.3 Fail-open behavior
 
@@ -707,7 +780,9 @@ By default, Elwood stores session metadata under:
 <cwd>/.elwood/
 ```
 
-Callers may override this with `stateDir`. When Elwood initializes the default
+Callers may override this with `stateDir`. Relative `stateDir` values MUST be
+resolved to absolute paths before state is written or read, so equivalent path
+spellings address the same session store. When Elwood initializes the default
 project-local state directory, it should create `.elwood/.gitignore` when that
 file does not already exist. Elwood MUST NOT overwrite an existing gitignore
 file and MUST NOT create gitignore files in caller-provided custom state
@@ -733,6 +808,8 @@ parent app restarts. Required fields include:
 - Elwood-owned runtime file paths.
 
 State writes MUST be atomic. Crash recovery is a product requirement.
+Path fields are validated against the configured `stateDir`; session records are
+not intended to be portable across unrelated state directories.
 
 ### 8.3 What must not be persisted by default
 
@@ -808,7 +885,9 @@ After spawning the PTY, Elwood waits briefly for immediate process exits or
 known authentication/startup failure banners before reporting the session as
 running. The default wait must be long enough to catch typical local CLI startup
 failures without turning `startClaude` or `startCodex` into a readiness wait for
-the first agent prompt.
+the first agent prompt. Authentication banner matching is best-effort and should
+cover the common `not authenticated`, `login required`, `authentication failed`,
+and non-MCP `not logged in` forms.
 
 ### 9.3 Resume
 
@@ -819,12 +898,18 @@ Resume must restore hook routing, generated settings, state metadata, and PTY
 control. Resume must not require callers to know Claude's internal session ID.
 Resume must reject session records owned by another adapter and must fail
 explicitly when the Claude resume id is not available.
+Resume does not replay adapter launch-policy options from the original start in
+the MVP; the resumed agent uses the agent's own conversation state plus current
+Elwood wrapper defaults.
 
 `resumeCodex` loads the Elwood session record and starts a new wrapper around the
 same logical Codex conversation using `codex resume <SESSION_ID>` when Elwood has
 observed and persisted Codex's session id. Resume must reject session records
 owned by another adapter and must fail explicitly when the Codex resume id is not
 available.
+Resume does not replay adapter launch-policy options from the original start in
+the MVP; the resumed agent uses the agent's own conversation state plus current
+Elwood wrapper defaults.
 
 ### 9.4 Exit
 
@@ -869,6 +954,11 @@ from the hook bridge path.
 The repository should include a small local developer test app. It is not the
 product's primary surface, but it is required for manual acceptance testing.
 
+The browser dev app should be launched with `bun run dev:web`, but its
+PTY-owning process SHOULD run under Node when using `node-pty`, because the
+native PTY binding may not emit data correctly under Bun. Bun remains the
+package script runner and test runner.
+
 The test app must:
 
 - start a Claude or Codex session for a selected `cwd`;
@@ -891,14 +981,41 @@ The test app must:
   labels, color, timestamps, and searchable/filterable categories;
 - support a manual smoke test where a developer can have a conversation with
   Claude or Codex and visibly confirm hook coverage;
-- hard-exit immediately on SIGINT/SIGTERM or a terminal Ctrl-C byte so
-  `bun run dev:web` cannot remain alive after Ctrl-C. The web dev app may put
-  stdin in raw mode because it is a local debugging server and must prioritize
-  reliable termination over interactive shell niceties.
+- clean up its HTTP server, WebSocket server, active Elwood session, and child
+  process tree on SIGTERM/SIGHUP and job-control signals such as SIGTTIN. On
+  SIGINT/Ctrl-C, it MUST immediately SIGKILL descendant processes and itself
+  without waiting for graceful cleanup. The `dev:web` package script should run
+  the web server under a small process supervisor so terminal Ctrl-C can kill the
+  entire spawned process group even if the app-level handler or an agent child is
+  wedged. The web dev app must not read from stdin for shutdown handling because
+  terminal reads can suspend the job instead of killing it. When a browser
+  session starts or resumes, the PTY mirror should render only raw replayed and
+  live `terminal:data` chunks in its visual xterm.js instance so startup TUI
+  bytes remain visible without clearing or rewriting the visual terminal from a
+  headless snapshot.
 
 The test app must not become required for library consumers.
 
-## 12. Implementation Latitude
+## 12. End-To-End Testing
+
+The repository should provide `bun run test:e2e` as a separate, opt-in quality
+gate for slow and potentially paid real-agent testing. The e2e suite MUST run
+the public TypeScript library API against real local CLI processes and real
+PTYs, minimizing mocks and seams. It should verify the critical library flows
+for each installed/authenticated supported adapter: start, terminal output,
+raw input, prompt/message submission, hook observation, activity observation,
+resize, stop, resume when the adapter reports a resume id, kill/teardown, and
+Elwood-owned state cleanup.
+
+`test:e2e` may skip an adapter when its CLI is not installed or cannot pass a
+basic version/authentication preflight, but it should not use fake PTYs, fake
+hook bridges, or fake agent processes for the adapter flows it does run. Because
+the suite depends on local auth, network, model availability, and user-installed
+CLIs, it is intentionally separate from `bun run check`. E2E coverage should be
+reported separately and made as high as practical; unit/conformance tests remain
+responsible for hard-to-force error paths and 100% default coverage.
+
+## 13. Implementation Latitude
 
 The following are implementation choices unless they affect the public behavior
 above:
@@ -911,13 +1028,13 @@ above:
   contract is met by supported hosts.
 - Internal storage filenames under `.elwood/`.
 
-## 13. Conformance
+## 14. Conformance
 
 This section defines what it means for an Elwood implementation to satisfy this
 PRD. Every criterion below should have one or more tests. Test names should
 include the criterion ID.
 
-### 13.1 Criteria Structure
+### 14.1 Criteria Structure
 
 Each criterion has:
 
@@ -925,7 +1042,7 @@ Each criterion has:
 - a reference to the section it validates;
 - a concrete externally observable behavior.
 
-### 13.2 Criteria
+### 14.2 Criteria
 
 #### C-API: Public API (§5)
 
@@ -942,12 +1059,13 @@ Each criterion has:
 | C-API-09 | §5.5 | `startCodex({ cwd })` returns a `CodexSession` with a stable non-empty `elwoodSessionId`. |
 | C-API-10 | §5.6 | `resumeCodex({ elwoodSessionId })` resumes using Elwood metadata without requiring a Codex session ID from the caller. |
 | C-API-11 | §5.7 | `CodexSession` exposes the same terminal control and lifecycle methods as `ClaudeSession`. |
-| C-API-12 | §5.4 | Claude and Codex sessions emit adapter-neutral `activity` events for common lifecycle, message, tool, transcript, and hook-error observations. |
+| C-API-12 | §5.4 | Claude and Codex sessions emit adapter-neutral `activity` events for common lifecycle, message, tool, transcript, and hook-error observations, with normalized metadata for common timeline rendering. |
 | C-API-13 | §5.3 | Claude and Codex sessions expose `sendMessage` as the adapter-neutral message submission API. |
 | C-API-14 | §5.7 | Sessions expose a typed `warnings` snapshot and emit typed `warning` events for non-fatal environment issues. |
 | C-API-15 | §5.3 | Sessions expose a typed headless xterm terminal handle with snapshot and underlying xterm access. |
 | C-API-16 | §5.1 | Omitted `initialSize` defaults to a 189 column by 48 row terminal. |
 | C-API-17 | §5.4 | Hook dispatch emits adapter-neutral hook-result activity, and hook failures also appear in the activity stream. |
+| C-API-18 | §5.1 | Claude and Codex start/resume options expose `autotrust` for opt-in workspace trust prompt automation. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 
@@ -955,9 +1073,9 @@ Each criterion has:
 |---|---:|---|
 | C-PTY-01 | §4.1 | Claude runs inside a real PTY rather than a plain pipe subprocess. |
 | C-PTY-02 | §4.2 | The launched process sees environment from the user's normal interactive macOS shell startup. |
-| C-PTY-03 | §4.1 | Raw PTY output is emitted through `terminal:data` for live rendering. |
+| C-PTY-03 | §4.1 | Raw PTY output is emitted through `terminal:data` for live rendering, and late subscribers receive a bounded live-only replay of earlier process-lifetime PTY output. |
 | C-PTY-04 | §5.3 | `sendKeys` writes through the headless xterm input path, which emits PTY input. |
-| C-PTY-05 | §5.3 | `resize({ cols, rows })` resizes both the underlying PTY and the headless terminal model. |
+| C-PTY-05 | §5.3 | `resize({ cols, rows })` resizes both the underlying PTY and the headless terminal model, while closed-fd resize races during process exit are ignored. |
 | C-PTY-06 | §9.4 | Process exit emits a terminal/process exit event and updates session status. |
 | C-PTY-07 | §4.1 | Cursor-addressed PTY output renders into the headless xterm snapshot before startup prompt detection runs. |
 
@@ -974,6 +1092,7 @@ Each criterion has:
 | C-CLAUDE-07 | §5.1 | `autoupdate: true` runs `claude update` before spawning Claude. |
 | C-CLAUDE-08 | §5.2 | `resumeClaude` fails explicitly when Elwood has not persisted a Claude resume id. |
 | C-CLAUDE-09 | §9.2 | `autoupdate: true` rechecks the Claude version after running `claude update`. |
+| C-CLAUDE-10 | §5.1 | `autotrust: true` answers Claude's workspace trust prompt through PTY input and emits `startup_prompt` activity. |
 
 #### C-CODEX: Codex Startup And Config (§4, §7A, §9)
 
@@ -989,6 +1108,7 @@ Each criterion has:
 | C-CODEX-08 | §5.5 | `autoupdate: true` runs `codex update` before spawning Codex. |
 | C-CODEX-09 | §5.7 | Codex MCP startup warnings are parsed from terminal output into typed warning events with server names and recovery commands. |
 | C-CODEX-10 | §9.2 | `autoupdate: true` rechecks the Codex version after running `codex update`. |
+| C-CODEX-11 | §5.5 | `autotrust: true` answers Codex's directory trust prompt through PTY input and emits `startup_prompt` activity. |
 
 #### C-HOOK: Hook Bridge Coverage And Semantics (§6)
 
@@ -1076,11 +1196,20 @@ Each criterion has:
 | C-APP-05 | §11 | The test app shows a chronological live hook/event log. |
 | C-APP-06 | §11 | The event log summarizes handler result semantics: no decision, allow, deny, block, context, or error. |
 | C-APP-07 | §11 | The test app can resize the terminal and the Claude TUI responds. |
-| C-APP-08 | §11 | The web dev app hard-exits on SIGINT/SIGTERM and on stdin Ctrl-C bytes, including terminal modes where Ctrl-C is not delivered as SIGINT. |
+| C-APP-08 | §11 | The web dev app immediately force-kills itself and child processes on SIGINT, and cleans up owned resources and child processes on SIGTERM/SIGHUP/job-control signals without reading from stdin. |
 | C-APP-09 | §11 | The web dev app emits structured debugger entries for hooks, activity, warnings, hook errors, lifecycle status, terminal exits, and runtime errors. |
 | C-APP-10 | §11 | The web dev app renders filterable, visually delineated debugger rows with a formatted JSON detail inspector. |
 
-## 14. Open Implementation Notes
+#### C-E2E: Real Adapter Flows (§12)
+
+| ID | Section | Criterion |
+|---|---:|---|
+| C-E2E-01 | §12 | `bun run test:e2e` runs real public API session flows outside the default `bun run check` gate. |
+| C-E2E-02 | §12 | Claude e2e coverage starts a real Claude PTY, observes terminal data, sends input/message text, observes hooks/activity, resizes, stops, resumes when possible, and tears down Elwood-owned state. |
+| C-E2E-03 | §12 | Codex e2e coverage starts a real Codex PTY, observes terminal data, sends input/message text, observes hooks/activity/transcript where available, resizes, stops, resumes when possible, and tears down Elwood-owned state. |
+| C-E2E-04 | §12 | Real adapter e2e tests skip only for local prerequisite failures such as a missing CLI; they do not replace adapter flows with fake PTYs, fake CLIs, or fake hook bridges. |
+
+## 15. Open Implementation Notes
 
 - The preferred PTY implementation is still to be selected. The public behavior
   requires a real PTY; the library choice is not part of this PRD.

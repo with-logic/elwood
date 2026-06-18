@@ -147,6 +147,7 @@ class FakeSession implements SharedSession {
   readonly cwd = "/tmp/project";
   readonly status = "running";
   readonly warnings = [];
+  readonly terminal = fakeTerminal() as never;
   readonly prompts: string[] = [];
   readonly sizes: { readonly cols: number; readonly rows: number }[] = [];
   private readonly handlers = new Map<CommonEventName, CommonEventHandler<CommonEventName>[]>();
@@ -192,4 +193,8 @@ class FakeSession implements SharedSession {
   kill = () => Promise.resolve();
 
   teardown = () => Promise.resolve();
+}
+
+function fakeTerminal() {
+  return { snapshot: () => ({ text: "screen" }), settled: () => Promise.resolve() };
 }

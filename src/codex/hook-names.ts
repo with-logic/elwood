@@ -22,6 +22,7 @@ export type CodexPermissionMode =
   | "default"
   | "acceptEdits"
   | "plan"
+  | "auto"
   | "dontAsk"
   | "bypassPermissions";
 

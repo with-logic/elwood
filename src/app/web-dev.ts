@@ -1,5 +1,4 @@
 /** Browser-based local Elwood dev app. Implements PRD §11. */
-
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
@@ -13,16 +12,8 @@ import {
   startAgentSession,
 } from "./agent-runtime.ts";
 import { clientScript, renderHtml } from "./web-assets.ts";
-import {
-  activityEvent,
-  hookErrorEvent,
-  hookEvent,
-  runtimeErrorEvent,
-  sessionEvent,
-  statusEvent,
-  terminalExitEvent,
-  warningEvent,
-} from "./web-events.ts";
+import { closeWebDevResources } from "./web-cleanup.ts";
+import * as events from "./web-events.ts";
 import {
   type ClientMessage,
   parseClientMessage,
@@ -38,7 +29,7 @@ let session: SharedSession | null = null;
 const server = createServer(handleHttp);
 const sockets = new Set<WebSocket>();
 const wss = new WebSocketServer({ server });
-installHardShutdown();
+installHardShutdown({ cleanup: shutdownOwnedResources });
 wss.on("connection", (socket) => {
   sockets.add(socket);
   socket.on("close", () => sockets.delete(socket));
@@ -96,7 +87,10 @@ async function handleClientMessage(socket: WebSocket, raw: string): Promise<void
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    sendSocket(socket, { type: "event", entry: runtimeErrorEvent(message, errorPayload(error)) });
+    sendSocket(socket, {
+      type: "event",
+      entry: events.runtimeErrorEvent(message, errorPayload(error)),
+    });
   }
 }
 
@@ -128,7 +122,7 @@ async function startOrResume(
   });
   broadcast({
     type: "event",
-    entry: sessionEvent({
+    entry: events.sessionEvent({
       id: session.elwoodSessionId,
       cwd: session.cwd,
       status: session.status,
@@ -138,22 +132,15 @@ async function startOrResume(
 
 function wireSession(active: SharedSession): void {
   active.on("terminal:data", (event) => broadcast({ type: "terminal", data: event.data }));
-  active.on("terminal:exit", (event) =>
-    broadcast({ type: "event", entry: terminalExitEvent(event) }),
-  );
+  active.on("terminal:exit", (event) => broadcastEvent(events.terminalExitEvent(event)));
   active.on("status", (event) => {
     broadcast({ type: "status", status: event.status });
-    broadcast({ type: "event", entry: statusEvent(event) });
+    broadcastEvent(events.statusEvent(event));
   });
-  active.on("activity", (event) => broadcast({ type: "event", entry: activityEvent(event) }));
-  active.on("warning", (event) => broadcast({ type: "event", entry: warningEvent(event) }));
-  active.on("hook", (event) => broadcast({ type: "event", entry: hookEvent(event) }));
-  active.on("hookError", (event) =>
-    broadcast({
-      type: "event",
-      entry: hookErrorEvent(event),
-    }),
-  );
+  active.on("activity", (event) => broadcastEvent(events.activityEvent(event)));
+  active.on("warning", (event) => broadcastEvent(events.warningEvent(event)));
+  active.on("hook", (event) => broadcastEvent(events.hookEvent(event)));
+  active.on("hookError", (event) => broadcastEvent(events.hookErrorEvent(event)));
 }
 
 function loggingHooks(agent: AgentKind) {
@@ -167,10 +154,20 @@ function currentSession(): SharedSession {
   return session;
 }
 
+async function shutdownOwnedResources(): Promise<void> {
+  const active = session;
+  session = null;
+  await closeWebDevResources({ server, wss, sockets, session: active });
+}
+
 function broadcast(message: ServerMessage): void {
   for (const socket of sockets) {
     sendSocket(socket, message);
   }
+}
+
+function broadcastEvent(entry: Extract<ServerMessage, { readonly type: "event" }>["entry"]): void {
+  broadcast({ type: "event", entry });
 }
 
 function sendSocket(socket: WebSocket, message: ServerMessage): void {

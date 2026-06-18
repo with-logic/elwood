@@ -30,7 +30,7 @@ implementation disagree with the PRD, the PRD wins.
 
 ## Why Elwood
 
-Agentic CLIs are becoming rich terminal apps. They use full-screen TUIs,
+Agentic CLIs are usually rich terminal apps. They use full-screen TUIs,
 keyboard shortcuts, permission prompts, hook protocols, transcript files, and
 tool-specific state. That makes simple `spawn()` wrappers brittle.
 
@@ -84,6 +84,16 @@ bun run check
 - `scripts/check-lines.ts`
 - `bun test` with 100% line and function coverage
 
+Slow real-agent e2e tests are separate:
+
+```sh
+bun run test:e2e
+```
+
+`test:e2e` starts real local Claude/Codex CLI sessions when the matching CLI is
+installed and authenticated. It can use network/model quota, so it is not part
+of `bun run check`.
+
 Source and test files under `src/`, `tests/`, and `scripts/` must stay at or
 below 200 lines.
 
@@ -109,6 +119,9 @@ bun run dev:web
 and a structured event timeline on the right. Use it to inspect hooks,
 activities, warnings, startup automation, status changes, and raw event payloads.
 
+The script is still invoked through Bun, but the browser dev server process runs
+under Node so `node-pty` can own a real interactive PTY reliably.
+
 ## Quick Start: Claude
 
 ```ts
@@ -117,6 +130,7 @@ import { startClaude } from "elwood";
 const claude = await startClaude({
   cwd: "/path/to/project",
   disallowedTools: ["AskUserQuestion"],
+  autotrust: true,
   hooks: {
     PreToolUse(event) {
       if (event.tool_name === "Bash" && event.tool_input.command.includes("rm -rf")) {
@@ -145,7 +159,9 @@ await claude.sendMessage("Implement the next PRD slice.");
 
 Claude launches through the user's interactive login shell with generated
 session-scoped settings passed via `--settings`. Elwood does not mutate
-`.claude/settings.local.json` by default.
+`.claude/settings.local.json` by default. `autotrust: true` lets embedded apps
+answer Claude's workspace trust prompt through the PTY; leave it false when a
+human should make that security decision.
 
 ## Quick Start: Codex
 
@@ -156,6 +172,7 @@ const codex = await startCodex({
   cwd: "/path/to/project",
   model: "gpt-5.3-codex",
   approvalPolicy: "never",
+  autotrust: true,
   hooks: {
     PermissionRequest(event) {
       if (event.tool_name === "Bash") {
@@ -182,7 +199,9 @@ await codex.sendMessage("Search the web and compare the latest options.");
 Codex uses session-scoped `-c` overrides for hooks. Elwood reserves
 `features.hooks=true` and `hookTrust="trust-all"` because Elwood is not useful if
 the bridge hooks do not run. If Codex still shows a hook-review prompt, Elwood
-answers it through the PTY.
+answers it through the PTY. `autotrust: true` lets embedded apps answer Codex's
+directory trust prompt through the PTY; leave it false when a human should make
+that security decision.
 
 ## Common Session API
 
@@ -249,6 +268,11 @@ Core event families:
 | `status` | Session status change. |
 | `codex:transcript` | Codex-only best-effort transcript observations for TUI-visible activity not covered by hooks. |
 
+`activity` events include normalized fields for common timeline rendering:
+`hookEventName`, `turnId`, `toolName`, `toolUseId`, `status`, `exitCode`,
+`failedOpen`, and `transcriptPath` when Elwood can derive them. `raw` remains
+available for deep inspection, but typical UI timelines should not need it.
+
 Hook handlers should return `undefined` for "no decision". Empty objects are
 invalid for Codex hook results and fail open with `hookError`.
 
@@ -296,6 +320,9 @@ Elwood is deliberately live-first:
   current `claude --help` documents comma or space-separated lists.
 - **Codex hook enablement:** Elwood reserves `features.hooks=true` and
   `hookTrust="trust-all"` because the library is not useful unless hooks run.
+- **Workspace trust:** `autotrust` is an explicit opt-in because answering
+  Claude/Codex workspace trust prompts changes the security posture of the
+  launched agent.
 - **Codex `PermissionRequest`:** The wire response nests `{ behavior, message? }`
   under `hookSpecificOutput.decision`; `PreToolUse` uses direct event-specific
   fields. Elwood mirrors Codex's protocol rather than normalizing the wire shape.

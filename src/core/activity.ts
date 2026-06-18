@@ -6,6 +6,7 @@
 import type { ClaudeHookEvent } from "../claude/hooks.ts";
 import type { CodexHookEvent } from "../codex/hooks.ts";
 import type { CodexTranscriptEvent } from "../codex/transcript.ts";
+import { hookActivityBase, record, stringValue, transcriptActivityMeta } from "./activity-meta.ts";
 import { hookResultLabel, transcriptActivityKind } from "./hook-result.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "./types.ts";
 
@@ -34,6 +35,14 @@ export type ElwoodActivityEvent = {
   readonly kind: ElwoodActivityKind;
   readonly label: string;
   readonly text?: string;
+  readonly hookEventName?: string;
+  readonly turnId?: string;
+  readonly toolName?: string;
+  readonly toolUseId?: string;
+  readonly status?: ElwoodSessionStatus;
+  readonly exitCode?: number;
+  readonly failedOpen?: boolean;
+  readonly transcriptPath?: string;
   readonly raw?: unknown;
 };
 
@@ -48,6 +57,7 @@ export function activityFromStatus(
     source: "lifecycle",
     kind: "status",
     label: status,
+    status,
   };
 }
 
@@ -62,6 +72,7 @@ export function activityFromTerminalExit(
     source: "lifecycle",
     kind: "terminal_exit",
     label: `${exitCode}`,
+    exitCode,
   };
 }
 
@@ -70,7 +81,7 @@ export function activityFromHook(
   elwoodSessionId: string,
   event: ClaudeHookEvent | CodexHookEvent,
 ): ElwoodActivityEvent {
-  const base = { elwoodSessionId, agent, source: "hook" as const, raw: event };
+  const base = hookActivityBase(agent, elwoodSessionId, event);
   if (event.hook_event_name === "UserPromptSubmit") {
     return withText(base, "user_message", "user", event.prompt);
   }
@@ -78,10 +89,10 @@ export function activityFromHook(
     return withText(base, "notification", event.notification_type, event.message);
   }
   if (event.hook_event_name === "PreToolUse" || event.hook_event_name === "PermissionRequest") {
-    return { ...base, kind: "tool_call", label: toolName(event) };
+    return { ...base, kind: "tool_call", label: base.toolName ?? event.hook_event_name };
   }
   if (event.hook_event_name === "PostToolUse" || event.hook_event_name === "PostToolBatch") {
-    return { ...base, kind: "tool_result", label: toolName(event) };
+    return { ...base, kind: "tool_result", label: base.toolName ?? event.hook_event_name };
   }
   if (
     event.hook_event_name === "Stop" ||
@@ -107,6 +118,7 @@ export function activityFromHookError(
     kind: "hook_error",
     label: `${event.hookEventName}:${event.category}`,
     text: event.message,
+    hookEventName: event.hookEventName,
     raw: event,
   };
 }
@@ -124,6 +136,8 @@ export function activityFromHookResult(
     source: "hook",
     kind: "hook_result",
     label: hookResultLabel(result, failedOpen),
+    hookEventName,
+    failedOpen,
     raw: { hookEventName, result, failedOpen },
   };
 }
@@ -141,17 +155,18 @@ export function activityFromWarning(event: ElwoodWarningEvent): ElwoodActivityEv
 }
 
 export function activityFromStartupPrompt(
+  agent: ElwoodAgentKind,
   elwoodSessionId: string,
   label: string,
   input: string,
 ): ElwoodActivityEvent {
   return {
     elwoodSessionId,
-    agent: "codex",
+    agent,
     source: "terminal",
     kind: "startup_prompt",
     label,
-    text: `Detected Codex ${label} prompt; sent ${input}.`,
+    text: `Detected ${agent} ${label} prompt; sent ${input}.`,
   };
 }
 
@@ -163,27 +178,16 @@ export function activityFromCodexTranscript(event: CodexTranscriptEvent): Elwood
     kind: transcriptActivityKind(event.summary.kind) as ElwoodActivityKind,
     label: event.summary.label,
     ...(event.summary.text === undefined ? {} : { text: event.summary.text }),
+    ...transcriptActivityMeta(event),
     raw: event.item,
   };
 }
 
 function withText(
-  base: Pick<ElwoodActivityEvent, "elwoodSessionId" | "agent" | "source" | "raw">,
+  base: Omit<ElwoodActivityEvent, "kind" | "label" | "text">,
   kind: ElwoodActivityKind,
   label: string,
   text: string,
 ): ElwoodActivityEvent {
   return { ...base, kind, label, text };
-}
-
-function toolName(event: ClaudeHookEvent | CodexHookEvent): string {
-  return stringValue(record(event)["tool_name"]) ?? event.hook_event_name;
-}
-
-function record(value: object): Record<string, unknown> {
-  return value as Record<string, unknown>;
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
 }

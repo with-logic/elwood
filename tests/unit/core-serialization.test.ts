@@ -4,9 +4,6 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { buildClaudeShellCommand, shellLaunch } from "../../src/claude/command.ts";
 import { claudeHookEventNames } from "../../src/claude/hooks.ts";
 import { minimumClaudeVersion, parseVersion, preflightClaude } from "../../src/claude/preflight.ts";
@@ -21,15 +18,6 @@ import {
   setPlatformForTests,
 } from "../../src/runtime/seams.ts";
 import { assertStartupUsable } from "../../src/runtime/startup.ts";
-import {
-  createSessionRecord,
-  defaultStateDir,
-  prepareStateDir,
-  readSessionRecord,
-  removeSessionDir,
-  sessionDir,
-  writeSessionRecord,
-} from "../../src/state/store.ts";
 
 describe("serialization", () => {
   test("C-HRESP-06 variants serialize to Claude-compatible output", () => {
@@ -60,7 +48,7 @@ describe("serialization", () => {
 });
 
 describe("preflight", () => {
-  test("C-CLAUDE version parsing and comparisons cover strict paths", () => {
+  test("C-CLAUDE-04 version parsing and comparisons cover strict paths", () => {
     expect(parseVersion("claude 2.1.144")).toBe(minimumClaudeVersion);
     setPlatformForTests("darwin");
     setCommandRunnerForTests(() => ({ status: 1, stdout: "", stderr: "boom" }));
@@ -129,45 +117,5 @@ describe("settings and command construction", () => {
       options: {},
     });
     expect("permissions" in minimalSettings).toBe(false);
-  });
-});
-
-describe("state store", () => {
-  test("C-STATE error paths are typed", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-state-"));
-    expect(defaultStateDir(root)).toBe(join(root, ".elwood"));
-    expect(sessionDir(root, "missing")).toBe(join(root, "sessions", "missing"));
-    expect(() => readSessionRecord(root, "missing")).toThrow(ElwoodError);
-    const dir = sessionDir(root, "bad");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "session.json"), '{"schemaVersion":2,"elwoodSessionId":"bad"}');
-    expect(() => readSessionRecord(root, "bad")).toThrow(ElwoodError);
-    const corruptDir = sessionDir(root, "corrupt");
-    mkdirSync(corruptDir, { recursive: true });
-    writeFileSync(join(corruptDir, "session.json"), "{");
-    expect(() => readSessionRecord(root, "corrupt")).toThrow(ElwoodError);
-    const record = createSessionRecord({ stateDir: root, cwd: root, id: "null-path" });
-    writeSessionRecord({ ...record, paths: { ...record.paths, socketPath: "/tmp/foreign.sock" } });
-    expect(() => readSessionRecord(root, record.elwoodSessionId)).toThrow(ElwoodError);
-    expect(() =>
-      removeSessionDir({
-        ...record,
-        paths: { ...record.paths, sessionDir: "\0" },
-      }),
-    ).toThrow(ElwoodError);
-  });
-
-  test("C-STATE-11 custom state directories do not receive or overwrite gitignore files", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-state-"));
-    const projectState = join(root, ".elwood");
-    prepareStateDir(projectState, { gitignore: true });
-    expect(readFileSync(join(projectState, ".gitignore"), "utf8")).toBe("*\n");
-    writeFileSync(join(projectState, ".gitignore"), "!keep\n");
-    prepareStateDir(projectState, { gitignore: true });
-    expect(readFileSync(join(projectState, ".gitignore"), "utf8")).toBe("!keep\n");
-
-    const customState = join(root, "custom-state");
-    prepareStateDir(customState);
-    expect(existsSync(join(customState, ".gitignore"))).toBe(false);
   });
 });

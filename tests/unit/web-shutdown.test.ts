@@ -4,49 +4,122 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { forceKill, installHardShutdown, isCtrlC } from "../../src/app/web-shutdown.ts";
+import { spawn, spawnSync } from "node:child_process";
+import {
+  installHardShutdown,
+  killProcessTreeSync,
+  runShutdown,
+} from "../../src/app/web-shutdown.ts";
 
 describe("web dev app hard shutdown", () => {
-  test("C-APP-08 registers SIGINT and SIGTERM hard exits", () => {
+  test("C-APP-08 registers exit and job-control signals without reading stdin", async () => {
     const process = new FakeProcess();
-    const input = new FakeInput();
-    installHardShutdown(process, input);
-    expect(input.events).toEqual(["data"]);
-    expect([...process.handlers.keys()]).toEqual(["SIGINT", "SIGTERM"]);
-    expect(input.rawModes).toEqual([true]);
-    expect(input.resumed).toBe(true);
-    expect(() => process.handlers.get("SIGINT")?.()).toThrow("exit 130");
-    expect(input.rawModes).toEqual([true, false]);
+    const cleaned: string[] = [];
+    const killTreeCalls: [number, boolean][] = [];
+    installHardShutdown({
+      processLike: process,
+      killTree: (pid, includeRoot) => killTreeCalls.push([pid, includeRoot]),
+      cleanup: () => {
+        cleaned.push("async");
+      },
+      cleanupSync: () => {
+        cleaned.push("sync");
+      },
+    });
+    expect([...process.handlers.keys()]).toEqual([
+      "SIGINT",
+      "SIGTERM",
+      "SIGHUP",
+      "SIGTSTP",
+      "SIGTTIN",
+      "SIGTTOU",
+      "exit",
+    ]);
+    expect(() => process.handlers.get("SIGINT")?.()).toThrow("exit 137");
     expect(process.kills).toEqual([{ pid: 1234, signal: "SIGKILL" }]);
+    expect(cleaned).toEqual([]);
+    const ttyProcess = new FakeProcess();
+    installHardShutdown({
+      processLike: ttyProcess,
+      killTree: (pid, includeRoot) => killTreeCalls.push([pid, includeRoot]),
+      cleanup: () => {
+        cleaned.push("async");
+      },
+      cleanupSync: () => {
+        cleaned.push("sync");
+      },
+    });
+    ttyProcess.handlers.get("SIGTTIN")?.();
+    await ttyProcess.exited;
+    ttyProcess.handlers.get("exit")?.();
+    expect(ttyProcess.exitCode).toBe(130);
+    expect(cleaned).toEqual(["async", "sync"]);
+    expect(killTreeCalls).toContainEqual([1234, false]);
+  });
+
+  test("C-APP-08 exits with signal-specific codes", async () => {
     const termProcess = new FakeProcess();
-    installHardShutdown(termProcess, new FakeInput(false));
-    expect(() => termProcess.handlers.get("SIGTERM")?.()).toThrow("exit 143");
+    installHardShutdown({ processLike: termProcess, killTree: () => undefined });
+    termProcess.handlers.get("SIGTERM")?.();
+    await termProcess.exited;
+    termProcess.handlers.get("exit")?.();
+    expect(termProcess.exitCode).toBe(143);
+    const hupProcess = new FakeProcess();
+    installHardShutdown({ processLike: hupProcess, killTree: () => undefined });
+    hupProcess.handlers.get("SIGHUP")?.();
+    await hupProcess.exited;
+    expect(hupProcess.exitCode).toBe(129);
+    const onceProcess = new FakeOnceProcess();
+    installHardShutdown({ processLike: onceProcess, killTree: () => undefined });
+    expect(onceProcess.handlers.has("SIGINT")).toBe(true);
   });
 
-  test("C-APP-08 hard exits when Ctrl-C arrives as stdin bytes", () => {
+  test("C-APP-08 hard-kill fallback fires when cleanup hangs", async () => {
     const process = new FakeProcess();
-    const input = new FakeInput();
-    installHardShutdown(process, input);
-    expect(() => input.handler?.(new Uint8Array([3]))).toThrow("exit 130");
-    expect(input.rawModes).toEqual([true, false]);
-    expect(() => input.handler?.("x\u0003")).toThrow("exit 130");
-  });
-
-  test("C-APP-08 falls back to exit after SIGKILL attempts", () => {
-    const process = new FakeProcess();
-    expect(() => forceKill(process, 143)).toThrow("exit 143");
+    const killTreeCalls: [number, boolean][] = [];
+    void runShutdown({
+      processLike: process,
+      cleanup: () => new Promise(() => undefined),
+      code: 143,
+      hardKillMs: 1,
+      killTree: (pid, includeRoot) => killTreeCalls.push([pid, includeRoot]),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(killTreeCalls).toEqual([[1234, false]]);
     expect(process.kills).toEqual([{ pid: 1234, signal: "SIGKILL" }]);
-    expect(isCtrlC("abc")).toBe(false);
-    expect(isCtrlC(new Uint8Array([1, 2]))).toBe(false);
+  });
+
+  test("C-APP-08 process tree cleanup kills real descendants", async () => {
+    const child = spawn("sh", ["-c", "sleep 10 & wait"], { stdio: "ignore" });
+    expect(child.pid).toBeNumber();
+    await waitForChild(child.pid!);
+    killProcessTreeSync(child.pid!, true);
+    const result = await new Promise<{ readonly signal: string | null }>((resolve) => {
+      child.once("exit", (_code, signal) => resolve({ signal }));
+    });
+    expect(result.signal).toBe("SIGKILL");
+    killProcessTreeSync(999_999_999, true);
   });
 });
+
+async function waitForChild(pid: number): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (spawnSync("pgrep", ["-P", String(pid)]).status === 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
 
 class FakeProcess {
   readonly pid = 1234;
   readonly handlers = new Map<string, () => void>();
   readonly kills: { readonly pid: number; readonly signal: string }[] = [];
+  exitCode = 0;
+  private resolveExit: (() => void) | undefined;
+  readonly exited = new Promise<void>((resolve) => {
+    this.resolveExit = resolve;
+  });
 
-  once(signal: "SIGINT" | "SIGTERM", handler: () => void): void {
+  on(signal: string, handler: () => void): void {
     this.handlers.set(signal, handler);
   }
 
@@ -55,31 +128,23 @@ class FakeProcess {
   }
 
   exit(code: number): never {
+    this.exitCode = code;
+    this.resolveExit?.();
     throw new Error(`exit ${code}`);
   }
 }
 
-class FakeInput {
-  readonly isTTY: boolean;
-  readonly rawModes: boolean[] = [];
-  readonly events: string[] = [];
-  resumed = false;
-  handler?: (chunk: string | Uint8Array) => void;
+class FakeOnceProcess {
+  readonly pid = 1234;
+  readonly handlers = new Map<string, () => void>();
 
-  constructor(isTTY = true) {
-    this.isTTY = isTTY;
+  once(signal: string, handler: () => void): void {
+    this.handlers.set(signal, handler);
   }
 
-  setRawMode(enabled: boolean): void {
-    this.rawModes.push(enabled);
-  }
+  kill(): void {}
 
-  on(event: "data", handler: (chunk: string | Uint8Array) => void): void {
-    this.events.push(event);
-    this.handler = handler;
-  }
-
-  resume(): void {
-    this.resumed = true;
+  exit(): never {
+    throw new Error("exit");
   }
 }

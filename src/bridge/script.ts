@@ -18,9 +18,22 @@ async function readStdin() {
 const inputText = await readStdin();
 const client = net.createConnection({ path: socketPath });
 let response = "";
+let finished = false;
+
+function finish() {
+  if (finished) return;
+  try {
+    const parsed = JSON.parse(response || "{}");
+    finished = true;
+    if (parsed.stdout) process.stdout.write(parsed.stdout);
+    if (parsed.stderr) process.stderr.write(parsed.stderr);
+    process.exit(typeof parsed.exitCode === "number" ? parsed.exitCode : 0);
+  } catch {}
+}
 
 client.on("data", (chunk) => {
   response += chunk.toString("utf8");
+  finish();
 });
 
 client.on("error", () => {
@@ -28,18 +41,10 @@ client.on("error", () => {
 });
 
 client.on("connect", () => {
-  client.write(JSON.stringify({ token, input: inputText }) + "\\n");
+  client.end(JSON.stringify({ token, input: inputText }) + "\\n");
 });
 
-client.on("end", () => {
-  try {
-    const parsed = JSON.parse(response || "{}");
-    if (parsed.stdout) process.stdout.write(parsed.stdout);
-    if (parsed.stderr) process.stderr.write(parsed.stderr);
-    process.exit(typeof parsed.exitCode === "number" ? parsed.exitCode : 0);
-  } catch {
-    process.exit(0);
-  }
-});
+client.on("end", finish);
+client.on("close", finish);
 `;
 }

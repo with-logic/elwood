@@ -4,9 +4,10 @@
  */
 
 import type { ElwoodWarningEvent } from "../core/types.ts";
+import { WorkspaceTrustResponder } from "../core/workspace-trust.ts";
 
 export type CodexStartupPromptAutomation = {
-  readonly prompt: "hook_trust" | "update";
+  readonly prompt: "hook_trust" | "update" | "workspace_trust";
   readonly input: string;
 };
 
@@ -23,12 +24,14 @@ export class CodexStartupPromptResponder {
   private buffer: string;
   private readonly elwoodSessionId: string;
   private readonly seenWarnings = new Set<string>();
+  private readonly workspaceTrust: WorkspaceTrustResponder;
   private trustedHooks: boolean;
   private skippedUpdate: boolean;
 
-  constructor(elwoodSessionId = "") {
+  constructor(elwoodSessionId = "", autotrust = false) {
     this.elwoodSessionId = elwoodSessionId;
     this.buffer = "";
+    this.workspaceTrust = new WorkspaceTrustResponder("codex", autotrust);
     this.trustedHooks = false;
     this.skippedUpdate = false;
   }
@@ -36,6 +39,8 @@ export class CodexStartupPromptResponder {
   handle(screenText: string, write: (input: string) => void): CodexStartupPromptResult {
     const automations: CodexStartupPromptAutomation[] = [];
     this.buffer = `${this.buffer}\n${screenText}`.slice(-maxBufferLength);
+    const trust = this.workspaceTrust.handle(this.buffer, write);
+    if (trust) automations.push(trust);
     if (!this.trustedHooks && /Hooks need review/i.test(this.buffer)) {
       if (hasNumberedOption(this.buffer, "2", hookTrustPattern)) {
         write("2");

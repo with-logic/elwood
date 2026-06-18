@@ -13,7 +13,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 afterEach(resetFakes);
 
 describe("ClaudeSession startup and terminal control", () => {
-  test("C-API-01 C-API-16 starts with generated state and default terminal size", async () => {
+  test("C-API-01 C-CLAUDE-02 C-LIFE-01 C-LIFE-05 C-STATE-01 C-API-16 starts with generated state and default terminal size", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd, disallowedTools: ["AskUserQuestion"] });
@@ -32,6 +32,7 @@ describe("ClaudeSession startup and terminal control", () => {
     expect(ptys[0]!.options.args.join(" ")).toContain("--disallowedTools 'AskUserQuestion'");
     expect(ptys[0]!.options.args).toContain("-l");
     expect(ptys[0]!.options.args).toContain("-i");
+    expect(ptys).toHaveLength(1);
   });
 
   test("C-CLAUDE-01 preserves project-local Claude settings", async () => {
@@ -44,15 +45,35 @@ describe("ClaudeSession startup and terminal control", () => {
     expect(readFileSync(settingsPath, "utf8")).toBe('{"permissions":{"allow":["Read"]}}\n');
   });
 
+  test("C-CLAUDE-10 autotrust answers Claude workspace prompts", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd, autotrust: true });
+    const activity: string[] = [];
+    session.on("activity", (event) => activity.push(`${event.kind}:${event.label}`));
+    ptys[0]!.emitData(
+      "Quick safety check: Is this a project you created or one you trust?\r\n1. Yes, I trust this folder",
+    );
+    await flushTerminal();
+    expect(ptys[0]!.writes).toEqual(["1\r"]);
+    expect(activity).toContain("startup_prompt:workspace_trust");
+  });
+
   test("C-ERR-07 version warnings are captured when non-strict parsing fails", async () => {
     const cwd = tempDir();
     installFakes();
     setCommandRunnerForTests(() => ({ status: 0, stdout: "unknown build", stderr: "" }));
     const session = await startClaude({ cwd });
+    const replayedWarnings: string[] = [];
+    const replayedActivity: string[] = [];
+    session.on("warning", (event) => replayedWarnings.push(event.code));
+    session.on("activity", (event) => replayedActivity.push(event.kind));
     expect(session.warnings).toMatchObject([{ code: "version_unparseable", agent: "claude" }]);
+    expect(replayedWarnings).toEqual(["version_unparseable"]);
+    expect(replayedActivity).toEqual(["warning"]);
   });
 
-  test("C-API-06 C-API-13 sends multiline prompts and adapter-neutral messages", async () => {
+  test("C-API-05 C-API-06 C-API-07 C-API-13 sends multiline prompts and adapter-neutral messages", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
@@ -74,6 +95,8 @@ describe("ClaudeSession startup and terminal control", () => {
     const offPtyExit = ptys[0]!.onExit(() => {});
     offPtyData();
     offPtyExit();
+    ptys[0]!.emitData("early");
+    await flushTerminal();
     const unsubscribe = session.on("terminal:data", (event) => seen.push(event.data));
     session.on("activity", (event) => activity.push(event.kind));
     session.off("terminal:data", () => {});
@@ -84,7 +107,7 @@ describe("ClaudeSession startup and terminal control", () => {
     await session.sendKeys("x");
     await session.resize({ cols: 80, rows: 24 });
     ptys[0]!.emitExit({ exitCode: 7 });
-    expect(seen).toEqual(["abc"]);
+    expect(seen).toEqual(["early", "abc"]);
     expect(ptys[0]!.writes).toEqual(["x"]);
     expect(ptys[0]!.size).toEqual({ cols: 80, rows: 24 });
     expect(activity).toContain("terminal_exit");

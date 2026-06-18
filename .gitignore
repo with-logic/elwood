@@ -11,6 +11,9 @@ bun.lockb
 # Local AI assistant runtime files.
 .claude/
 
+# Local planning scratchpad.
+tickets/
+
 # This repository is spec-first; the PRD must be tracked even if a global
 # gitignore excludes files named PRD.md.
 !PRD.md

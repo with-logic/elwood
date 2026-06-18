@@ -39,7 +39,11 @@ describe("node PTY adapter", () => {
           return { dispose: () => calls.push("off-exit") };
         },
         write: (data: string) => calls.push(`write:${data}`),
-        resize: (cols: number, rows: number) => calls.push(`resize:${cols}x${rows}`),
+        resize: (cols: number, rows: number) => {
+          if (cols === 31) throw new Error("ioctl(2) failed, EBADF");
+          if (cols === 32) throw new Error("ioctl(2) failed, EINVAL");
+          calls.push(`resize:${cols}x${rows}`);
+        },
         kill: (signal?: string) => calls.push(`kill:${signal}`),
       }),
     }));
@@ -67,6 +71,8 @@ describe("node PTY adapter", () => {
       exitCode = event.exitCode;
     });
     pty.resize({ cols: 30, rows: 10 });
+    expect(() => pty.resize({ cols: 31, rows: 10 })).not.toThrow();
+    expect(() => pty.resize({ cols: 32, rows: 10 })).toThrow("EINVAL");
     pty.write("hello\n");
     pty.write(new Uint8Array([113, 10]));
     pty.kill();

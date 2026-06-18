@@ -72,6 +72,7 @@ function fakeSession(): SharedSession {
     cwd: "/tmp/project",
     status: "running",
     warnings: [],
+    terminal: fakeTerminal() as never,
     on: () => () => {},
     sendPrompt: () => Promise.resolve(),
     sendMessage: () => Promise.resolve(),
@@ -81,4 +82,8 @@ function fakeSession(): SharedSession {
     kill: () => Promise.resolve(),
     teardown: () => Promise.resolve(),
   };
+}
+
+function fakeTerminal() {
+  return { snapshot: () => ({ text: "screen" }), settled: () => Promise.resolve() };
 }

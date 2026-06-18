@@ -3,8 +3,8 @@
  * Implements PRD §8.2 and §10.
  */
 
-import { join } from "node:path";
-import type { ElwoodSessionStatus, TerminalSize } from "../core/types.ts";
+import { join, resolve } from "node:path";
+import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
 import type { SessionRecord } from "./store.ts";
 
 const statuses = new Set<ElwoodSessionStatus>([
@@ -42,7 +42,7 @@ function hasExpectedPaths(
   adapter: "claude" | "codex",
 ): boolean {
   if (!isRecord(value)) return false;
-  const dir = join(stateDir, "sessions", id);
+  const dir = join(resolve(stateDir), "sessions", id);
   return (
     value["sessionDir"] === dir &&
     value["settingsPath"] === join(dir, `${adapter}-settings.json`) &&
@@ -63,7 +63,44 @@ function isTerminalSize(value: unknown): value is TerminalSize | undefined {
 }
 
 function isWarningArray(value: unknown): boolean {
-  return Array.isArray(value) && value.every(isRecord);
+  return Array.isArray(value) && value.every(isWarning);
+}
+
+function isWarning(value: unknown): value is ElwoodWarningEvent {
+  if (!isRecord(value)) return false;
+  if (value["severity"] !== "warning") return false;
+  if (value["code"] === "version_unparseable") {
+    return (
+      (value["agent"] === "claude" || value["agent"] === "codex") &&
+      value["source"] === "lifecycle" &&
+      isString(value["elwoodSessionId"]) &&
+      isString(value["message"]) &&
+      isString(value["raw"])
+    );
+  }
+  if (value["code"] === "mcp_server_not_logged_in") {
+    return (
+      value["agent"] === "codex" &&
+      value["source"] === "terminal" &&
+      isString(value["elwoodSessionId"]) &&
+      isString(value["message"]) &&
+      isString(value["mcpServerName"]) &&
+      isString(value["recoveryCommand"]) &&
+      isString(value["raw"])
+    );
+  }
+  if (value["code"] === "mcp_startup_incomplete") {
+    return (
+      value["agent"] === "codex" &&
+      value["source"] === "terminal" &&
+      isString(value["elwoodSessionId"]) &&
+      isString(value["message"]) &&
+      isStringArray(value["failedServers"]) &&
+      isStringArray(value["recoveryCommands"]) &&
+      isString(value["raw"])
+    );
+  }
+  return false;
 }
 
 function isStatus(value: unknown): value is ElwoodSessionStatus {
@@ -76,6 +113,10 @@ function optionalString(value: unknown): boolean {
 
 function isString(value: unknown): value is string {
   return typeof value === "string";
+}
+
+function isStringArray(value: unknown): boolean {
+  return Array.isArray(value) && value.every(isString);
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {

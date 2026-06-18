@@ -14,8 +14,9 @@
     "format": "biome format --write .",
     "check:lines": "bun run scripts/check-lines.ts",
     "check": "bun run typecheck && bun run lint && bun run check:lines && bun test",
+    "test:e2e": "exec node --no-warnings --experimental-test-coverage --test-coverage-include='src/**/*.ts' --test-coverage-exclude='src/app/**' --test-coverage-exclude='tests/**' --test-timeout=240000 --test tests/e2e/*.e2e.ts",
     "dev:app": "exec bun src/app/dev.ts",
-    "dev:web": "exec bun src/app/web-dev.ts"
+    "dev:web": "exec node --no-warnings scripts/dev-web.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.15",

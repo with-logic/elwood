@@ -25,6 +25,7 @@ export interface ElwoodTerminal {
   sendInput(input: string | Uint8Array): void;
   resize(size: TerminalSize): void;
   snapshot(): TerminalSnapshot;
+  settled(): Promise<void>;
   dispose(): void;
 }
 
@@ -50,6 +51,7 @@ export function attachPtyTerminal(
 class HeadlessTerminal implements ElwoodTerminal {
   readonly xterm: XtermTerminal;
   private currentSize: TerminalSize;
+  private writeQueue = Promise.resolve();
   private readonly onInput: (input: string | Uint8Array) => void;
 
   constructor(size: TerminalSize, onInput: (input: string | Uint8Array) => void) {
@@ -68,7 +70,11 @@ class HeadlessTerminal implements ElwoodTerminal {
   }
 
   writeOutput(data: string | Uint8Array): Promise<void> {
-    return new Promise((resolve) => this.xterm.write(data, resolve));
+    const write = this.writeQueue.then(
+      () => new Promise<void>((resolve) => this.xterm.write(data, resolve)),
+    );
+    this.writeQueue = write;
+    return write;
   }
 
   sendInput(input: string | Uint8Array): void {
@@ -98,6 +104,10 @@ class HeadlessTerminal implements ElwoodTerminal {
       lines,
       text: lines.join("\n"),
     };
+  }
+
+  settled(): Promise<void> {
+    return this.writeQueue;
   }
 
   dispose(): void {

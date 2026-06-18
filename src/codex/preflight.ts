@@ -26,6 +26,7 @@ export function preflightCodex(
   let result = readCodexVersion();
   if (autoupdate) {
     runCodexUpdate();
+    cachedCapabilities = undefined;
     result = readCodexVersion();
   }
   const version = parseCodexVersion(result.stdout);

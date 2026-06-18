@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test";
 import { isClaudeHookEvent } from "../../src/bridge/validate.ts";
 
 describe("Claude hook input validation", () => {
-  test("C-HOOK-17 validates lifecycle hook inputs by event-specific schema", () => {
+  test("C-HOOK-07 C-HOOK-17 validates lifecycle hook inputs by event-specific schema", () => {
     expect(isClaudeHookEvent(null)).toBe(false);
     expect(isClaudeHookEvent({ hook_event_name: "Stop", session_id: "x" })).toBe(false);
     expect(isClaudeHookEvent(base("Unknown", {}))).toBe(false);
@@ -50,7 +50,7 @@ describe("Claude hook input validation", () => {
     ).toBe(true);
   });
 
-  test("C-HOOK-17 validates tool hook inputs by known tool schema", () => {
+  test("C-HOOK-07 C-HOOK-17 validates tool hook inputs by known tool schema", () => {
     expect(isClaudeHookEvent(tool("Agent", { prompt: "do it" }))).toBe(true);
     expect(isClaudeHookEvent(tool("AskUserQuestion", { questions: [] }))).toBe(true);
     expect(isClaudeHookEvent(tool("Bash", { command: "echo ok" }))).toBe(true);

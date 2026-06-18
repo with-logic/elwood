@@ -5,12 +5,10 @@ import { HookBridgeServer } from "../bridge/server.ts";
 import * as activity from "../core/activity.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
 import { elwoodError } from "../core/errors.ts";
-import type {
-  ClaudeSession,
-  ResumeClaudeOptions,
-  StartClaudeOptions,
-  TerminalSize,
-} from "../core/types.ts";
+import { emitStartupPromptActivity } from "../core/startup-automation.ts";
+import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
+import type { ClaudeSession, ResumeClaudeOptions, StartClaudeOptions } from "../core/types.ts";
+import { WorkspaceTrustResponder } from "../core/workspace-trust.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { assertStartupUsable } from "../runtime/startup.ts";
@@ -30,8 +28,6 @@ import { preflightClaude } from "./preflight.ts";
 import { serializeHookResult } from "./serialize.ts";
 import { ClaudeSessionImpl, type HookBridge } from "./session-instance.ts";
 import { registerInitialHooks, spawnClaudePty, writeRuntimeFiles } from "./session-runtime.ts";
-
-const defaultSize: TerminalSize = defaultTerminalSize;
 
 type HookBridgeFactory = (
   socketPath: string,
@@ -62,7 +58,7 @@ export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSe
     cwd: options.cwd,
     id: randomUUID(),
     ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
-    size: options.initialSize ?? defaultSize,
+    size: options.initialSize ?? defaultTerminalSize,
     ...(options.name === undefined ? {} : { name: options.name }),
   });
   const record =
@@ -102,16 +98,14 @@ export async function resumeClaude(options: ResumeClaudeOptions): Promise<Claude
     ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
     ...(size === undefined ? {} : { initialSize: size }),
     ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
+    ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
     ...(options.strictVersionCheck === undefined
       ? {}
       : { strictVersionCheck: options.strictVersionCheck }),
   });
 }
 
-async function startFromRecord(
-  record: SessionRecord,
-  options: StartClaudeOptions,
-): Promise<ClaudeSessionImpl> {
+async function startFromRecord(record: SessionRecord, options: StartClaudeOptions) {
   mkdirSync(record.paths.sessionDir, { recursive: true });
   const token = randomUUID();
   writeRuntimeFiles(record, token, options);
@@ -123,9 +117,8 @@ async function startFromRecord(
     token,
     async (input) => {
       const event = input as ClaudeHookEvent;
-      if (event.hook_event_name === "SessionStart") {
+      if (event.hook_event_name === "SessionStart")
         session?.rememberClaudeSessionId(event.session_id);
-      }
       emitter.emit("hook", event);
       emitter.emit("activity", activity.activityFromHook("claude", record.elwoodSessionId, event));
       const outcome = await requestHook(
@@ -165,15 +158,22 @@ async function startFromRecord(
   const pty = spawnClaudePty(record, options);
   let startupOutput = "";
   let startupExit: PtyExit | undefined;
+  const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
+  const workspaceTrust = new WorkspaceTrustResponder("claude", options.autotrust ?? false);
   const terminal = attachPtyTerminal(
-    options.initialSize ?? record.terminalSize ?? defaultSize,
+    options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
     pty,
-    (data) => {
+    (data, renderedTerminal) => {
       startupOutput += data;
+      terminalReplay.push(data);
+      const trust = workspaceTrust.handle(renderedTerminal.snapshot().text, (input) =>
+        renderedTerminal.sendInput(input),
+      );
+      if (trust) emitStartupPromptActivity(emitter, "claude", record.elwoodSessionId, trust);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );
-  session = new ClaudeSessionImpl(record, pty, terminal, bridge, emitter);
+  session = new ClaudeSessionImpl(record, pty, terminal, bridge, emitter, terminalReplay);
   pty.onExit((exit) => {
     startupExit = exit;
     emitter.emit("terminal:exit", { elwoodSessionId: record.elwoodSessionId, ...exit });

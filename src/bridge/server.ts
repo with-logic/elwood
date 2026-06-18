@@ -43,12 +43,12 @@ export class HookBridgeServer {
       let data = "";
       let responded = false;
       socket.on("close", () => this.sockets.delete(socket));
+      socket.on("error", this.sockets.delete.bind(this.sockets, socket));
       const respond = async () => {
         if (responded) return;
         responded = true;
         const result = await this.handleSafely(data);
-        socket.write(JSON.stringify(result));
-        socket.end();
+        socket.end(JSON.stringify(result));
       };
       socket.on("data", (chunk) => {
         data += chunk.toString("utf8");

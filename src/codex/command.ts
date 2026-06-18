@@ -21,9 +21,9 @@ export function buildCodexShellCommand(
   if (capabilities.supportsHookTrustBypass) {
     parts.push("--dangerously-bypass-hook-trust");
   }
-  parts.push("-c", shellQuote("features.hooks=true"));
   for (const override of hookOverrides(record, options)) parts.push("-c", shellQuote(override));
   for (const override of options.configOverrides ?? []) parts.push("-c", shellQuote(override));
+  parts.push("-c", shellQuote("features.hooks=true"));
   parts.push("-c", shellQuote('hookTrust="trust-all"'));
   return parts.join(" ");
 }

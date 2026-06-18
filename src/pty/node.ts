@@ -35,13 +35,21 @@ export const nodePtyFactory: PtyFactory = (options: PtySpawnOptions): PtyProcess
       pty.write(typeof data === "string" ? data : Buffer.from(data));
     },
     resize(size: TerminalSize) {
-      pty.resize(size.cols, size.rows);
+      try {
+        pty.resize(size.cols, size.rows);
+      } catch (error) {
+        if (!isClosedPtyError(error)) throw error;
+      }
     },
     kill(signal = "SIGTERM") {
       pty.kill(signal);
     },
   };
 };
+
+function isClosedPtyError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("EBADF");
+}
 
 export function nodePtySpawnHelperPath(): string {
   return join(

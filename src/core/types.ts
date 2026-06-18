@@ -51,6 +51,7 @@ export type StartClaudeOptions = {
   readonly disallowedTools?: readonly ClaudeToolRule[];
   readonly settingsOverrides?: ClaudeSettingsOverrides;
   readonly autoupdate?: boolean;
+  readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
   readonly metadata?: Readonly<Record<string, unknown>>;
   readonly strictVersionCheck?: boolean;
@@ -63,6 +64,7 @@ export type ResumeClaudeOptions = {
   readonly hooks?: ClaudeHookHandlers;
   readonly initialSize?: TerminalSize;
   readonly autoupdate?: boolean;
+  readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
   readonly strictVersionCheck?: boolean;
 };

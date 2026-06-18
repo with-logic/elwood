@@ -23,7 +23,7 @@ import { createSessionRecord } from "../../src/state/store.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
 describe("Codex core helpers", () => {
-  test("C-CODEX command construction reflects launch policy", () => {
+  test("C-CODEX-03 command construction reflects launch policy", () => {
     const cwd = tempDirForUnit();
     const record = createSessionRecord({
       stateDir: `${cwd}/.elwood`,
@@ -44,7 +44,11 @@ describe("Codex core helpers", () => {
     expect(command).toContain("--profile");
     expect(command).toContain("--ask-for-approval");
     expect(command).toContain("model=");
+    expect(command.lastIndexOf("features.hooks=true")).toBeGreaterThan(command.indexOf("model="));
     expect(command.lastIndexOf("hookTrust")).toBeGreaterThan(command.indexOf("model="));
+    expect(command.lastIndexOf("hookTrust")).toBeGreaterThan(
+      command.indexOf("features.hooks=true"),
+    );
     expect(command).toContain("resume");
     expect(command).toContain("command=\"'");
     expect(
@@ -52,7 +56,7 @@ describe("Codex core helpers", () => {
     ).not.toContain("--dangerously-bypass-hook-trust");
   });
 
-  test("C-CODEX version parsing and strict failure paths are typed", () => {
+  test("C-CODEX-04 version parsing and strict failure paths are typed", () => {
     expect(parseCodexVersion("codex-cli 0.132.0")).toBe("0.132.0");
     expect(minimumCodexVersion).toBe("0.124.0");
     setPlatformForTests("linux");

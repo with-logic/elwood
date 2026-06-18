@@ -44,6 +44,10 @@ export class TypedEmitter<M extends Record<string, unknown> = ElwoodEventMap> {
     }
   }
 
+  hasListeners<E extends EventKey<M>>(event: E): boolean {
+    return (this.handlers.get(event)?.size ?? 0) > 0;
+  }
+
   async request<E extends EventKey<M>>(event: E, payload: M[E]): Promise<unknown> {
     const set = this.handlers.get(event);
     if (!set) return undefined;

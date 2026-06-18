@@ -15,9 +15,14 @@ describe("CodexSession hook handling", () => {
     installFakes();
     const session = await startCodex({ cwd });
     const statuses: string[] = [];
+    const results: unknown[] = [];
     session.on("status", (event) => statuses.push(event.status));
+    session.on("activity", (event) => {
+      if (event.kind === "hook_result") results.push(event.raw);
+    });
     const result = await ptys[0]!.dispatchHook(session.elwoodSessionId, stopEvent(cwd));
     expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
+    expect(results[0]).toMatchObject({ hookEventName: "Stop", failedOpen: true });
     expect(session.status).toBe("ready");
     expect(statuses).toEqual(["ready"]);
   });

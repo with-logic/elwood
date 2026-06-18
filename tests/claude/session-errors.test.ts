@@ -79,7 +79,7 @@ describe("ClaudeSession errors", () => {
     });
   });
 
-  test("C-ERR-01 missing Claude fails with typed error", async () => {
+  test("C-CLAUDE-05 C-ERR-01 missing Claude fails with typed error", async () => {
     installFakes();
     setCommandRunnerForTests(() => ({
       status: null,
@@ -100,7 +100,7 @@ describe("ClaudeSession errors", () => {
     });
   });
 
-  test("C-ERR-01 startup exits stop local resources", async () => {
+  test("C-CLAUDE-06 C-ERR-01 startup exits stop local resources", async () => {
     const cwd = tempDir();
     installFakes();
     setPtyFactoryForTests((options) => {

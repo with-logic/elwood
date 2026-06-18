@@ -28,6 +28,7 @@ describe("Elwood activity events", () => {
       kind: "user_message",
       label: "user",
       text: "hello",
+      hookEventName: "UserPromptSubmit",
     });
   });
 
@@ -38,6 +39,7 @@ describe("Elwood activity events", () => {
       cwd: "/repo",
       model: "gpt-5.3-codex",
       turn_id: "turn-1",
+      tool_use_id: "tool-1",
       tool_name: "Bash",
       tool_input: { command: "bun test" },
     });
@@ -59,9 +61,14 @@ describe("Elwood activity events", () => {
     });
     expect(tool.kind).toBe("tool_call");
     expect(tool.label).toBe("Bash");
+    expect(tool).toMatchObject({ turnId: "turn-1", toolName: "Bash", toolUseId: "tool-1" });
     expect(stop.kind).toBe("assistant_message");
     expect(stop.text).toBe("Done.");
-    expect(error).toMatchObject({ kind: "hook_error", label: "Stop:timeout" });
+    expect(error).toMatchObject({
+      kind: "hook_error",
+      label: "Stop:timeout",
+      hookEventName: "Stop",
+    });
   });
 
   test("C-API-12 maps tool results and unknown transcript items", () => {
@@ -83,12 +90,24 @@ describe("Elwood activity events", () => {
     expect(unknown).toMatchObject({ kind: "hook", label: "unknown" });
   });
 
-  test("C-API-12 maps transcript and lifecycle events", () => {
+  test("C-API-12 maps transcript metadata and lifecycle events", () => {
     const transcript = activityFromCodexTranscript({
       elwoodSessionId: "elwood-3",
       path: "/tmp/transcript.jsonl",
-      item: { payload: { type: "web_search_call", query: "Elwood" } },
+      item: { turn_id: "turn-2", payload: { type: "web_search_call", query: "Elwood" } },
       summary: { kind: "web_search", label: "search", text: "Elwood" },
+    });
+    const toolCall = activityFromCodexTranscript({
+      elwoodSessionId: "elwood-3",
+      path: "/tmp/transcript.jsonl",
+      item: { payload: { type: "function_call", name: "shell", arguments: "{}" } },
+      summary: { kind: "tool_call", label: "shell" },
+    });
+    const toolResult = activityFromCodexTranscript({
+      elwoodSessionId: "elwood-3",
+      path: "/tmp/transcript.jsonl",
+      item: { payload: { type: "function_call_output", call_id: "call-1", output: "ok" } },
+      summary: { kind: "tool_result", label: "call-1" },
     });
     expect(transcript).toMatchObject({
       agent: "codex",
@@ -96,9 +115,19 @@ describe("Elwood activity events", () => {
       kind: "web_search",
       label: "search",
       text: "Elwood",
+      turnId: "turn-2",
+      transcriptPath: "/tmp/transcript.jsonl",
     });
-    expect(activityFromStatus("claude", "elwood-3", "ready").label).toBe("ready");
-    expect(activityFromTerminalExit("claude", "elwood-3", 0).kind).toBe("terminal_exit");
+    expect(toolCall).toMatchObject({ toolName: "shell" });
+    expect(toolResult).toMatchObject({ toolUseId: "call-1" });
+    expect(activityFromStatus("claude", "elwood-3", "ready")).toMatchObject({
+      label: "ready",
+      status: "ready",
+    });
+    expect(activityFromTerminalExit("claude", "elwood-3", 0)).toMatchObject({
+      kind: "terminal_exit",
+      exitCode: 0,
+    });
   });
 
   test("C-API-12 maps hook result labels for known response variants", () => {
@@ -132,5 +161,9 @@ describe("Elwood activity events", () => {
         false,
       ).label,
     ).toBe("worktree");
+    expect(activityFromHookResult("codex", "elwood-5", "Stop", undefined, true)).toMatchObject({
+      hookEventName: "Stop",
+      failedOpen: true,
+    });
   });
 });

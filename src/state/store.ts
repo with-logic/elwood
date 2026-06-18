@@ -35,7 +35,7 @@ export function defaultStateDir(cwd: string): string {
 }
 
 export function sessionDir(stateDir: string, id: string): string {
-  return join(stateDir, "sessions", id);
+  return join(resolve(stateDir), "sessions", id);
 }
 
 export function createSessionRecord(input: {
@@ -76,12 +76,13 @@ export function prepareStateDir(
   stateDir: string,
   options: { readonly gitignore?: boolean } = {},
 ): void {
-  mkdirSync(stateDir, { recursive: true });
-  const gitignorePath = join(stateDir, ".gitignore");
+  const root = resolve(stateDir);
+  mkdirSync(root, { recursive: true });
+  const gitignorePath = join(root, ".gitignore");
   if (options.gitignore === true && !existsSync(gitignorePath)) {
     writeFileSync(gitignorePath, "*\n");
   }
-  mkdirSync(join(stateDir, "sessions"), { recursive: true });
+  mkdirSync(join(root, "sessions"), { recursive: true });
 }
 
 export function writeSessionRecord(record: SessionRecord): void {
@@ -138,12 +139,26 @@ export function appendSessionWarning(
   record: SessionRecord,
   warning: ElwoodWarningEvent,
 ): SessionRecord {
-  if (record.warnings.some((existing) => warningKey(existing) === warningKey(warning)))
-    return record;
+  return upsertSessionWarning(record, warning).record;
+}
+
+export function upsertSessionWarning(
+  record: SessionRecord,
+  warning: ElwoodWarningEvent,
+): { readonly record: SessionRecord; readonly isNew: boolean } {
+  const key = warningKey(warning);
+  const index = record.warnings.findIndex((existing) => warningKey(existing) === key);
+  const warnings =
+    index === -1
+      ? [...record.warnings, warning]
+      : record.warnings.map((existing, current) => (current === index ? warning : existing));
   return {
-    ...record,
-    warnings: [...record.warnings, warning],
-    updatedAt: new Date().toISOString(),
+    record: {
+      ...record,
+      warnings,
+      updatedAt: new Date().toISOString(),
+    },
+    isNew: index === -1,
   };
 }
 

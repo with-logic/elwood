@@ -22,12 +22,14 @@ export async function requestCodexHook(
   elwoodSessionId: string,
 ): Promise<CodexHookDispatchOutcome> {
   try {
-    const result = await withTimeout(
-      (
-        emitter as unknown as { request: (name: string, payload: unknown) => Promise<unknown> }
-      ).request(`hook:${event.hook_event_name}`, event),
-      timeoutMs,
-    );
+    const hookName = `hook:${event.hook_event_name}`;
+    const requestable = emitter as unknown as {
+      hasListeners: (name: string) => boolean;
+      request: (name: string, payload: unknown) => Promise<unknown>;
+    };
+    const hasListener = requestable.hasListeners(hookName);
+    const result = await withTimeout(requestable.request(hookName, event), timeoutMs);
+    if (!hasListener) return { result: undefined, failedOpen: true };
     if (!isCodexHookResult(event.hook_event_name, result)) {
       emitError(emitter, {
         elwoodSessionId,

@@ -36,6 +36,7 @@ export type StartCodexOptions = {
   readonly approvalPolicy?: CodexApprovalPolicy;
   readonly configOverrides?: readonly string[];
   readonly autoupdate?: boolean;
+  readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
   readonly metadata?: Readonly<Record<string, unknown>>;
   readonly strictVersionCheck?: boolean;
@@ -48,6 +49,7 @@ export type ResumeCodexOptions = {
   readonly hooks?: CodexHookHandlers;
   readonly initialSize?: TerminalSize;
   readonly autoupdate?: boolean;
+  readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
   readonly strictVersionCheck?: boolean;
 };

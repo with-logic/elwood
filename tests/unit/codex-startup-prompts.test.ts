@@ -21,6 +21,7 @@ describe("Codex startup prompt responder", () => {
     terminal.sendInput(bytes);
     terminal.resize({ cols: 30, rows: 5 });
     await terminal.writeOutput(new Uint8Array([65, 66]));
+    await terminal.settled();
     expect(inputs).toEqual(["x", bytes]);
     expect(terminal.size).toEqual({ cols: 30, rows: 5 });
     expect(terminal.snapshot().text).toContain("AB");
@@ -36,6 +37,17 @@ describe("Codex startup prompt responder", () => {
     );
     responder.handle("\n  3. Continue without trusting", (input) => writes.push(input));
     expect(writes).toEqual(["2"]);
+  });
+
+  test("C-CODEX-11 trusts directory prompts when autotrust is enabled", () => {
+    const writes: string[] = [];
+    const responder = new CodexStartupPromptResponder("s1", true);
+    const result = responder.handle(
+      "Do you trust the contents of this directory?\n› 1. Yes, continue\n  2. No, quit",
+      (input) => writes.push(input),
+    );
+    expect(result.automations).toEqual([{ prompt: "workspace_trust", input: "1" }]);
+    expect(writes).toEqual(["1\r"]);
   });
 
   test("C-CODEX skips recognized update prompts", () => {

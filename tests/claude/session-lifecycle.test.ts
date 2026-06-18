@@ -13,7 +13,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 afterEach(resetFakes);
 
 describe("ClaudeSession lifecycle", () => {
-  test("C-STATE-02 C-STATE-04 resumes from caller-provided Elwood metadata", async () => {
+  test("C-API-03 C-LIFE-04 C-STATE-02 C-STATE-04 resumes from caller-provided Elwood metadata", async () => {
     const cwd = tempDir();
     const stateDir = join(tempDir(), "state");
     installFakes();
@@ -52,7 +52,7 @@ describe("ClaudeSession lifecycle", () => {
     ).rejects.toMatchObject({ code: "adapter_mismatch" });
   });
 
-  test("C-STATE-02 rejects Claude resume before Claude publishes a session id", async () => {
+  test("C-CLAUDE-08 C-STATE-02 rejects Claude resume before Claude publishes a session id", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
@@ -83,7 +83,7 @@ describe("ClaudeSession lifecycle", () => {
     expect(persisted).not.toContain("SECRET_HOOK");
   });
 
-  test("C-LIFE-02 C-LIFE-03 C-STATE-07 C-STATE-08 C-STATE-09 lifecycle controls state", async () => {
+  test("C-API-04 C-LIFE-02 C-LIFE-03 C-STATE-07 C-STATE-08 C-STATE-09 lifecycle controls state", async () => {
     const cwd = tempDir();
     mkdirSync(join(cwd, ".claude"), { recursive: true });
     const claudeSettings = join(cwd, ".claude", "settings.local.json");
@@ -110,5 +110,11 @@ describe("ClaudeSession lifecycle", () => {
     const session = await startClaude({ cwd });
     ptys[0]!.emitExit({ exitCode: 7 });
     expect(session.status).toBe("exited");
+    expect(() => session.sendPrompt("after exit")).toThrow(
+      expect.objectContaining({ code: "session_not_running" }),
+    );
+    expect(() => session.resize({ cols: 80, rows: 24 })).toThrow(
+      expect.objectContaining({ code: "session_not_running" }),
+    );
   });
 });

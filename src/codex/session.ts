@@ -4,10 +4,10 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { bridgeScriptSource } from "../bridge/script.ts";
 import { HookBridgeServer } from "../bridge/server.ts";
 import * as activity from "../core/activity.ts";
-import { activityFromStartupPrompt } from "../core/activity.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
 import { elwoodError } from "../core/errors.ts";
-import type { TerminalSize } from "../core/types.ts";
+import { emitStartupPromptActivity } from "../core/startup-automation.ts";
+import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { assertStartupUsable } from "../runtime/startup.ts";
@@ -35,29 +35,22 @@ import { CodexStartupPromptResponder } from "./startup-prompts.ts";
 import { CodexTranscriptWatcher } from "./transcript.ts";
 import { isCodexHookEvent } from "./validate.ts";
 
-const defaultSize: TerminalSize = defaultTerminalSize;
-
 type HookBridgeFactory = (
   socketPath: string,
   token: string,
   dispatch: ConstructorParameters<typeof HookBridgeServer>[2],
   onError: ConstructorParameters<typeof HookBridgeServer>[3],
 ) => CodexHookBridge;
-
 const realHookBridgeFactory: HookBridgeFactory = (socketPath, token, dispatch, onError) =>
   new HookBridgeServer(socketPath, token, dispatch, onError, isCodexHookEvent);
-
 let hookBridgeFactory = realHookBridgeFactory;
-
 export function setCodexHookBridgeFactoryForTests(factory: HookBridgeFactory): void {
   hookBridgeFactory = factory;
 }
-
 export function resetCodexSessionSeamsForTests(): void {
   hookBridgeFactory = realHookBridgeFactory;
   preflight.resetCodexPreflightCacheForTests();
 }
-
 export async function startCodex(options: StartCodexOptions): Promise<CodexSession> {
   const warning = preflight.preflightCodex(
     options.strictVersionCheck ?? false,
@@ -71,7 +64,7 @@ export async function startCodex(options: StartCodexOptions): Promise<CodexSessi
     id: randomUUID(),
     adapter: "codex",
     ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
-    size: options.initialSize ?? defaultSize,
+    size: options.initialSize ?? defaultTerminalSize,
     ...(options.name === undefined ? {} : { name: options.name }),
   });
   const record =
@@ -84,7 +77,6 @@ export async function startCodex(options: StartCodexOptions): Promise<CodexSessi
   writeSessionRecord(record);
   return await startFromRecord(record, options);
 }
-
 export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSession> {
   const stateDir = options.stateDir ?? defaultStateDir(options.cwd ?? process.cwd());
   const record = readSessionRecord(stateDir, options.elwoodSessionId);
@@ -114,16 +106,13 @@ export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSes
     ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
     ...(size === undefined ? {} : { initialSize: size }),
     ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
+    ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
     ...(options.strictVersionCheck === undefined
       ? {}
       : { strictVersionCheck: options.strictVersionCheck }),
   });
 }
-
-async function startFromRecord(
-  record: SessionRecord,
-  options: StartCodexOptions,
-): Promise<CodexSessionImpl> {
+async function startFromRecord(record: SessionRecord, options: StartCodexOptions) {
   mkdirSync(record.paths.sessionDir, { recursive: true });
   const token = randomUUID();
   writeFileSync(record.paths.bridgeScriptPath, bridgeScriptSource(record.paths.socketPath, token));
@@ -154,25 +143,36 @@ async function startFromRecord(
   const pty = spawnCodexPty(record, options);
   let startupOutput = "";
   let startupExit: PtyExit | undefined;
-  const promptResponder = new CodexStartupPromptResponder(record.elwoodSessionId);
+  const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
+  const promptResponder = new CodexStartupPromptResponder(
+    record.elwoodSessionId,
+    options.autotrust ?? false,
+  );
   const terminal = attachPtyTerminal(
-    options.initialSize ?? record.terminalSize ?? defaultSize,
+    options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
     pty,
     (data, renderedTerminal) => {
       startupOutput += data;
+      terminalReplay.push(data);
       const result = promptResponder.handle(renderedTerminal.snapshot().text, (input) =>
         renderedTerminal.sendInput(input),
       );
       session?.recordWarnings(result.warnings);
-      for (const automation of result.automations)
-        emitter.emit(
-          "activity",
-          activityFromStartupPrompt(record.elwoodSessionId, automation.prompt, automation.input),
-        );
+      for (const automation of result.automations) {
+        emitStartupPromptActivity(emitter, "codex", record.elwoodSessionId, automation);
+      }
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );
-  session = new CodexSessionImpl(record, pty, terminal, bridge, emitter, transcriptWatcher);
+  session = new CodexSessionImpl(
+    record,
+    pty,
+    terminal,
+    bridge,
+    emitter,
+    terminalReplay,
+    transcriptWatcher,
+  );
   pty.onExit((exit) => {
     startupExit = exit;
     emitter.emit("terminal:exit", { elwoodSessionId: record.elwoodSessionId, ...exit });

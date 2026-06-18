@@ -64,6 +64,44 @@ describe("bridge and emitter edges", () => {
     expect(socket.destroyed).toBe(true);
   });
 
+  test("bridge ignores hook client disconnects before response", async () => {
+    const socketPath = join(tempDirForUnit(), "disconnect-hook.sock");
+    let release!: () => void;
+    const delay = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const server = new HookBridgeServer(
+      socketPath,
+      "token",
+      async () => {
+        await delay;
+        return { exitCode: 0, stdout: "ok", stderr: "" };
+      },
+      () => {},
+    );
+    await server.start();
+    const socket = createConnection(socketPath);
+    await new Promise<void>((resolve) => socket.once("connect", resolve));
+    socket.write(
+      `${JSON.stringify({
+        token: "token",
+        input: JSON.stringify({ hook_event_name: "Stop", session_id: "s1", cwd: "/tmp" }),
+      })}\n`,
+    );
+    socket.destroy();
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const response = await sendBridge(
+      socketPath,
+      JSON.stringify({
+        token: "token",
+        input: JSON.stringify({ hook_event_name: "Stop", session_id: "s2", cwd: "/tmp" }),
+      }),
+    );
+    await server.stop();
+    expect(JSON.parse(response)).toEqual({ exitCode: 0, stdout: "ok", stderr: "" });
+  });
+
   test("C-HOOK-16 bridge waits for a complete framed request", async () => {
     const root = tempDirForUnit();
     const socketPath = join(root, "split-hook.sock");
@@ -135,7 +173,7 @@ describe("bridge and emitter edges", () => {
     expect(isClaudeHookResult("PostToolUse", { extra: "bad" })).toBe(false);
   });
 
-  test("event emitter handles empty emissions and explicit off", async () => {
+  test("C-API-08 event emitter handles empty emissions and explicit off", async () => {
     const emitter = new TypedEmitter();
     emitter.emit("status", { elwoodSessionId: "x", status: "running" });
     expect(

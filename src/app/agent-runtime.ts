@@ -60,6 +60,7 @@ export type SharedSession = Pick<
   | "cwd"
   | "status"
   | "warnings"
+  | "terminal"
   | "sendPrompt"
   | "sendMessage"
   | "sendKeys"

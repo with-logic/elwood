@@ -1,7 +1,4 @@
-/**
- * Focused unit coverage for browser dev app helpers.
- * Covers PRD §9 and §10.
- */
+/** Focused unit coverage for browser dev app helpers. Covers PRD §9 and §10. */
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -55,8 +52,12 @@ describe("browser dev app helpers", () => {
 
   test("C-APP-08 keeps shutdown handling outside the web server body", () => {
     const source = readFileSync(new URL("../../src/app/web-dev.ts", import.meta.url), "utf8");
+    const supervisor = readFileSync(new URL("../../scripts/dev-web.ts", import.meta.url), "utf8");
     expect(source).not.toContain("setRawMode");
     expect(source).not.toContain("process.stdin");
+    expect(source).not.toContain("terminal.snapshot");
+    expect(source).toContain('active.on("terminal:data"');
+    expect(supervisor).toContain('spawn("node"');
   });
 
   test("C-APP-05 summarizes hook events for live logs", () => {
