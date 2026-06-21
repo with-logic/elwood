@@ -37,7 +37,9 @@ export async function dispatchHook(
 ) {
   const event = normalizeCodexHookEvent(input as CodexHookEvent);
   session?.observeTranscript(event.transcript_path);
-  if (event.hook_event_name === "SessionStart") session?.rememberCodexSessionId(event.session_id);
+  if (event.hook_event_name === "SessionStart") {
+    session?.rememberCodexSessionId(event.session_id);
+  }
   emitter.emit("hook", event);
   emitter.emit("activity", activity.activityFromHook("codex", record.elwoodSessionId, event));
   const outcome = await requestCodexHook(
@@ -56,6 +58,9 @@ export async function dispatchHook(
       outcome.failedOpen,
     ),
   );
-  if (event.hook_event_name === "Stop" && !isCodexBlock(outcome.result)) session?.markReady();
+  if (event.hook_event_name === "Stop" && !isCodexBlock(outcome.result)) {
+    session?.flushTranscript();
+    session?.markReady();
+  }
   return serializeCodexHookResult(event.hook_event_name, outcome.result);
 }

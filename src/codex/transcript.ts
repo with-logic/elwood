@@ -59,6 +59,11 @@ export class CodexTranscriptWatcher {
     this.pending = "";
   }
 
+  finish(): void {
+    this.flush();
+    this.stop();
+  }
+
   stop(): void {
     if (this.interval) clearInterval(this.interval);
     this.interval = undefined;

@@ -38,7 +38,6 @@ export { setHookBridgeFactoryForTests };
 export function resetClaudeSessionSeamsForTests(): void {
   resetClaudeHookBridgeFactoryForTests();
 }
-
 export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSession> {
   const warning = preflightClaude(options.strictVersionCheck ?? false, options.autoupdate ?? false);
   const stateDir = options.stateDir ?? defaultStateDir(options.cwd);
@@ -101,6 +100,7 @@ async function startFromRecord(record: SessionRecord, options: StartClaudeOption
   const emitter = new TypedEmitter();
   registerInitialHooks(emitter, options.hooks);
   let session: ClaudeSessionImpl | undefined;
+  let initialReadyMarked = false;
   const bridge = currentClaudeHookBridgeFactory()(
     record.paths.socketPath,
     record.bridgeToken,
@@ -127,6 +127,10 @@ async function startFromRecord(record: SessionRecord, options: StartClaudeOption
           outcome.failedOpen,
         ),
       );
+      if (event.hook_event_name === "InstructionsLoaded" && !initialReadyMarked) {
+        initialReadyMarked = true;
+        session?.markReady();
+      }
       if (event.hook_event_name === "Stop" && !isBlock(outcome.result)) {
         session?.markReady();
       }

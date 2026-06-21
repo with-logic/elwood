@@ -22,7 +22,9 @@
     "check": "bun run typecheck && bun run lint && bun run check:lines && bun test",
     "test:e2e": "exec node --no-warnings --experimental-test-coverage --test-coverage-include='src/**/*.ts' --test-coverage-exclude='src/app/**' --test-coverage-exclude='tests/**' --test-timeout=240000 --test tests/e2e/*.e2e.ts",
     "dev:app": "exec bun src/app/dev.ts",
-    "dev:web": "exec node --no-warnings scripts/dev-web.ts"
+    "dev:web": "exec node --no-warnings scripts/dev-web.ts",
+    "example:minimal": "exec node --no-warnings scripts/run-example.ts examples/minimal.ts",
+    "example:full": "exec node --no-warnings scripts/run-example.ts examples/full.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.15",

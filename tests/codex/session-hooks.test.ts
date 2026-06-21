@@ -20,6 +20,7 @@ describe("CodexSession hook handling", () => {
     session.on("activity", (event) => {
       if (event.kind === "hook_result") results.push(event.raw);
     });
+    await session.sendPrompt("busy");
     const result = await ptys[0]!.dispatchHook(session.elwoodSessionId, stopEvent(cwd));
     expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
     expect(results[0]).toMatchObject({ hookEventName: "Stop", failedOpen: false });
@@ -34,6 +35,7 @@ describe("CodexSession hook handling", () => {
       cwd,
       hooks: { Stop: () => ({ decision: "block", reason: "Run tests again." }) },
     });
+    await session.sendPrompt("busy");
     const result = await ptys[0]!.dispatchHook(session.elwoodSessionId, stopEvent(cwd));
     expect(JSON.parse(result.stdout).decision).toBe("block");
     expect(session.status).toBe("running");

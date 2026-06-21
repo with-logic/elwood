@@ -16,7 +16,6 @@ export async function stopCodexRuntime(
   terminal: ElwoodTerminal,
 ): Promise<void> {
   await bridge.stop();
-  transcriptWatcher?.flush();
-  transcriptWatcher?.stop();
+  transcriptWatcher?.finish();
   terminal.dispose();
 }

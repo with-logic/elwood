@@ -106,7 +106,7 @@ describe("CodexSession startup and terminal control", () => {
     expect(activity).toContain("warning");
   });
 
-  test("C-API-11 sends multiline prompts through bracketed paste", async () => {
+  test("C-API-11 C-API-19 sends prompts and queued messages through bracketed paste", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startCodex({ cwd });
@@ -121,7 +121,10 @@ describe("CodexSession startup and terminal control", () => {
     ptys[0]!.emitData("screen");
     await flushTerminal();
     await session.sendPrompt("hello\nworld");
-    await session.sendMessage("again");
+    const queued = session.sendMessage("again");
+    expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\nworld\u001b[201~\r"]);
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, stopEvent(cwd));
+    await queued;
     await session.sendKeys(new Uint8Array([120]));
     await session.resize({ cols: 88, rows: 33 });
     ptys[0]!.emitExit({ exitCode: 7 });
@@ -158,7 +161,6 @@ describe("CodexSession startup and terminal control", () => {
     expect(data).toEqual([]);
     expect(errors).toEqual(["invalid_input"]);
   });
-
   test("C-API-12 Codex transcript activity is emitted live", async () => {
     const cwd = tempDir();
     const transcript = join(cwd, "codex.jsonl");
@@ -186,7 +188,12 @@ describe("CodexSession startup and terminal control", () => {
     expect(activity).toContain("reasoning");
   });
 });
-
-function flushTerminal(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 25));
-}
+const flushTerminal = () => new Promise((resolve) => setTimeout(resolve, 25));
+const stopEvent = (cwd: string) => ({
+  hook_event_name: "Stop",
+  session_id: "codex-1",
+  cwd,
+  model: "gpt-5.3-codex",
+  turn_id: "turn-1",
+  stop_hook_active: false,
+});

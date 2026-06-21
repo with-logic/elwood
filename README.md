@@ -122,18 +122,27 @@ activities, warnings, startup automation, status changes, and raw event payloads
 The script is still invoked through Bun, but the browser dev server process runs
 under Node so `node-pty` can own a real interactive PTY reliably.
 
-## Minimal Runnable Example
+## Runnable Examples
 
-For the smallest real usage sample, run `examples/minimal.ts`:
+For the smallest real usage sample, run the minimal example. It starts Codex
+headlessly, sends one message, logs structured activity, and exits:
 
 ```sh
-bun examples/minimal.ts --agent codex --cwd . --prompt "Summarize this repo in one paragraph."
+bun run example:minimal
 ```
 
-The example starts Claude or Codex, subscribes to `activity`, `warning`, and
-`hookError`, sends one message, then stops the session. It imports from local
-source while the package is private; published consumers should import the same
-symbols from `elwood`.
+For a fuller sample with Claude/Codex selection, custom prompts, richer logging,
+timeouts, and cleanup options, run `examples/full.ts`:
+
+```sh
+bun run example:full -- --agent codex --cwd . --prompt "Summarize this repo in one paragraph."
+```
+
+The example package scripts use a small Node supervisor because `node-pty` owns
+real PTYs more reliably there and the supervisor can kill the example process
+tree on Ctrl-C. Bun remains the project script runner. The examples import from
+local source while the package is private; published consumers should import the
+same symbols from `elwood`.
 
 ## Quick Start: Claude
 
@@ -238,8 +247,9 @@ interface ElwoodLikeSession {
 }
 ```
 
-Use `sendMessage` for the adapter-neutral chat-loop operation. In v0.1 it is a
-strict alias for `sendPrompt`.
+Use `sendMessage` for the adapter-neutral chat-loop operation. If the session is
+ready, it writes immediately through the PTY. If the session is alive but busy,
+Elwood queues it and submits it on the next `ready` transition.
 
 `sendPrompt` uses bracketed paste so multi-line text is submitted as one prompt.
 It does not wait for `ready`; sending while the agent is busy writes to the

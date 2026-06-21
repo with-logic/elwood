@@ -5,8 +5,12 @@
 
 import { HookBridgeServer } from "../bridge/server.ts";
 import { resetCodexPreflightCacheForTests } from "./preflight.ts";
-import type { CodexHookBridge } from "./session-instance.ts";
 import { isCodexHookEvent } from "./validate.ts";
+
+export type CodexHookBridge = {
+  readonly start: () => Promise<void>;
+  readonly stop: () => Promise<void>;
+};
 
 export type CodexHookBridgeFactory = (
   socketPath: string,

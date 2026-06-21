@@ -73,16 +73,20 @@ describe("ClaudeSession startup and terminal control", () => {
     expect(replayedActivity).toEqual(["warning"]);
   });
 
-  test("C-API-05 C-API-06 C-API-07 C-API-13 sends multiline prompts and adapter-neutral messages", async () => {
+  test("C-API-05 C-API-06 C-API-07 C-API-13 C-API-19 sends prompts and queued messages", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
     await session.sendPrompt("hello\nworld");
-    await session.sendMessage("again");
-    expect(ptys[0]!.writes).toEqual([
-      "\u001b[200~hello\nworld\u001b[201~\r",
-      "\u001b[200~again\u001b[201~\r",
-    ]);
+    const queued = session.sendMessage("again");
+    expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\nworld\u001b[201~\r"]);
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, {
+      hook_event_name: "Stop",
+      session_id: "claude-1",
+      cwd,
+    });
+    await queued;
+    expect(ptys[0]!.writes[1]).toBe("\u001b[200~again\u001b[201~\r");
   });
 
   test("C-PTY-03 C-PTY-04 C-PTY-05 emits terminal data, raw keys, and resize", async () => {

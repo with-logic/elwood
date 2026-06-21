@@ -20,6 +20,7 @@ import {
   writeSessionRecord,
 } from "../state/store.ts";
 import { attachPtyTerminal } from "../terminal/headless.ts";
+import { initialReady } from "./initial-ready.ts";
 import * as preflight from "./preflight.ts";
 import { spawnCodexPty } from "./pty.ts";
 import {
@@ -68,12 +69,10 @@ export async function startCodex(options: StartCodexOptions): Promise<CodexSessi
 export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSession> {
   const stateDir = options.stateDir ?? defaultStateDir(options.cwd ?? process.cwd());
   const record = readSessionRecord(stateDir, options.elwoodSessionId);
-  if (record.adapter !== "codex") {
+  if (record.adapter !== "codex")
     throw elwoodError("adapter_mismatch", "Cannot resume a non-Codex session as Codex.");
-  }
-  if (!record.codex.resumeId) {
+  if (!record.codex.resumeId)
     throw elwoodError("resume_unavailable", "Cannot resume Codex without a Codex session id.");
-  }
   const warning = preflight.preflightCodex(
     options.strictVersionCheck ?? false,
     options.autoupdate ?? false,
@@ -141,10 +140,9 @@ async function startFromRecord(record: SessionRecord, options: StartCodexOptions
   let startupOutput = "";
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
-  const promptResponder = new CodexStartupPromptResponder(
-    record.elwoodSessionId,
-    options.autotrust ?? false,
-  );
+  const ready = initialReady(() => session?.markReady());
+  const autotrust = options.autotrust ?? false;
+  const promptResponder = new CodexStartupPromptResponder(record.elwoodSessionId, autotrust);
   const terminal = attachPtyTerminal(
     options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
     pty,
@@ -158,6 +156,7 @@ async function startFromRecord(record: SessionRecord, options: StartCodexOptions
       for (const automation of result.automations) {
         emitStartupPromptActivity(emitter, "codex", record.elwoodSessionId, automation);
       }
+      if (result.automations.length === 0) ready.schedule();
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );
@@ -170,8 +169,11 @@ async function startFromRecord(record: SessionRecord, options: StartCodexOptions
     terminalReplay,
     transcriptWatcher,
   );
+  ready.replay();
   pty.onExit((exit) => {
     startupExit = exit;
+    ready.cancel();
+    transcriptWatcher.finish();
     emitter.emit("terminal:exit", { elwoodSessionId: record.elwoodSessionId, ...exit });
     emitter.emit(
       "activity",
@@ -186,6 +188,7 @@ async function startFromRecord(record: SessionRecord, options: StartCodexOptions
       output: () => startupOutput,
     });
   } catch (error) {
+    ready.cancel();
     pty.kill("SIGTERM");
     await bridge.stop();
     transcriptWatcher.stop();

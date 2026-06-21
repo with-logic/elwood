@@ -312,11 +312,29 @@ multi-line prompts. The implementation should use bracketed paste or an
 equivalent robust terminal-input strategy so newline characters are entered as
 prompt content rather than premature submissions.
 
-`sendMessage` is the adapter-neutral alias for the common chat-loop operation.
-For Claude it has the same behavior as `sendPrompt`. Parent apps that only need
-to send a user message and wait for activity/status should prefer
-`sendMessage`. In the MVP, `sendMessage` and `sendPrompt` are strict aliases
-for both Claude and Codex.
+`sendMessage` is the adapter-neutral API for the common chat-loop operation:
+send a user message when the wrapped agent can accept one. Parent apps that only
+need to send a user message and wait for activity/status should prefer
+`sendMessage`. If the session is ready, Elwood submits the message immediately
+through the same PTY input path as `sendPrompt`. If the session is alive but not
+ready, Elwood queues the message and submits it when the adapter reports semantic
+readiness through adapter-specific lifecycle signals. Initial readiness may come
+from a hook-backed lifecycle event, such as Claude `InstructionsLoaded`, or from
+a non-text terminal lifecycle signal when the CLI does not emit a pre-input
+readiness hook, such as Codex's first rendered terminal frame after startup
+automation prompts have been handled. Subsequent turn readiness comes from
+completion signals such as an unblocked `Stop` hook. Queued messages are
+submitted in FIFO order, one message per ready transition, so back-to-back calls
+do not accidentally paste multiple user turns into one active agent prompt. A
+queued `sendMessage` promise resolves when that message has been written to the
+PTY. If the session terminates before a queued message is written, the promise
+rejects with `session_not_running`.
+
+Elwood MUST NOT require callers or examples to inspect the terminal screen or
+match adapter-specific prompt text before calling `sendMessage`. Adapter-specific
+terminal behavior belongs inside Elwood. Because terminal prompts are a rendered
+UI rather than a stable machine protocol, Elwood should prefer lifecycle hooks
+and startup health checks over fragile prompt-text regular expressions.
 
 `sendPrompt` does not gate on readiness. If a caller sends a prompt while Claude
 is busy, Elwood writes the input immediately, matching human terminal behavior.
@@ -332,6 +350,13 @@ as UTF-8, because callers use this overload for raw escape/binary input.
 
 `ElwoodSessionStatus` values are `starting`, `running`, `ready`, `stopped`,
 `exited`, `killed`, and `torn_down`.
+
+After startup health checks pass, a newly started or resumed session may enter
+`ready` only when that adapter's first-input readiness signal has fired.
+Otherwise it remains `running` until an adapter lifecycle hook or terminal
+lifecycle signal proves the interactive prompt is ready. Sending a message
+through `sendMessage` or a prompt through `sendPrompt` keeps or moves the session
+in `running`. Adapter readiness signals move the session back to `ready`.
 
 If `initialSize` is omitted, Elwood MUST default the terminal to 189 columns by
 48 rows. Parent apps with a visible terminal should still pass and maintain the
@@ -600,6 +625,12 @@ same observations are also projected into the adapter-neutral `activity` event
 stream. `CodexTranscriptSummary.kind` values are `message`, `tool_call`,
 `tool_result`, `reasoning`, `web_search`, and `other`.
 
+When a Codex PTY exits, Elwood must flush readable live transcript data and stop
+the transcript watcher before emitting `terminal:exit` or terminal lifecycle
+status. Parent applications should not receive delayed transcript activity after
+the session has already emitted `terminal:exit`, `exited`, `stopped`, or
+`killed`.
+
 ## 6. Claude Hook Bridge
 
 ### 6.1 Required hook coverage
@@ -781,7 +812,10 @@ these shapes on the wire.
 
 For Codex, `Stop` is the canonical signal that a turn completed. If a `Stop`
 handler returns a continuation/blocking decision, Elwood must not mark the
-session ready.
+session ready. Before an unblocked Codex `Stop` marks the session ready, Elwood
+should flush readable live transcript data so parent applications receive
+transcript-derived turn activity before the ready transition whenever Codex has
+already written it.
 
 ### 7A.4 Non-Hook Transcript Activity
 
@@ -993,6 +1027,13 @@ PTY-owning process SHOULD run under Node when using `node-pty`, because the
 native PTY binding may not emit data correctly under Bun. Bun remains the
 package script runner and test runner.
 
+The repository should also include runnable examples for the public library API.
+Examples that own real PTYs SHOULD be exposed through package scripts that run a
+small Node supervisor, rather than asking developers to invoke
+`node --experimental-strip-types` directly. Example output should demonstrate
+Elwood as a headless library by logging structured events, not by mirroring the
+wrapped agent's raw terminal stream into the caller's shell.
+
 The test app must:
 
 - start a Claude or Codex session for a selected `cwd`;
@@ -1094,12 +1135,14 @@ Each criterion has:
 | C-API-10 | §5.6 | `resumeCodex({ elwoodSessionId })` resumes using Elwood metadata without requiring a Codex session ID from the caller, provided project-local state is discoverable from the current process cwd or caller-supplied `cwd`/`stateDir`. |
 | C-API-11 | §5.7 | `CodexSession` exposes the same terminal control and lifecycle methods as `ClaudeSession`. |
 | C-API-12 | §5.4 | Claude and Codex sessions emit adapter-neutral `activity` events for common lifecycle, message, tool, transcript, and hook-error observations, with normalized metadata for common timeline rendering. |
-| C-API-13 | §5.3 | Claude and Codex sessions expose `sendMessage` as the adapter-neutral message submission API. |
+| C-API-13 | §5.3 | Claude and Codex sessions expose `sendMessage` as the adapter-neutral queued message submission API. |
 | C-API-14 | §5.7 | Sessions expose a typed `warnings` snapshot and emit typed `warning` events for non-fatal environment issues. |
 | C-API-15 | §5.3 | Sessions expose a typed headless xterm terminal handle with snapshot and underlying xterm access. |
 | C-API-16 | §5.1 | Omitted `initialSize` defaults to a 189 column by 48 row terminal. |
 | C-API-17 | §5.4 | Hook dispatch emits adapter-neutral hook-result activity, and hook failures also appear in the activity stream. |
 | C-API-18 | §5.1 | Claude and Codex start/resume options expose `autotrust` for opt-in workspace trust prompt automation. |
+| C-API-19 | §5.3 | Calling `sendMessage` while the session is alive but not ready queues the message until the next ready transition and rejects only if the session terminates first. |
+| C-API-20 | §5.7 | Codex transcript activity is flushed before terminal exit and terminal lifecycle status are emitted. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 
@@ -1235,6 +1278,7 @@ Each criterion has:
 | C-APP-08 | §11 | The web dev app immediately force-kills itself and child processes on SIGINT, and cleans up owned resources and child processes on SIGTERM/SIGHUP/job-control signals without reading from stdin. |
 | C-APP-09 | §11 | The web dev app emits structured debugger entries for hooks, activity, warnings, hook errors, lifecycle status, terminal exits, and runtime errors. |
 | C-APP-10 | §11 | The web dev app renders filterable, visually delineated debugger rows with a formatted JSON detail inspector. |
+| C-APP-11 | §11 | Runnable example package scripts execute PTY-owning TypeScript examples under a Node supervisor, remain invokable through `bun run`, and do not mirror raw wrapped-agent terminal output into the caller's shell. |
 
 #### C-E2E: Real Adapter Flows (§12)
 

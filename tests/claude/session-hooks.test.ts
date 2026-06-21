@@ -28,6 +28,7 @@ describe("ClaudeSession hook handling", () => {
     expect(results[0]).toMatchObject({ hookEventName: "UserPromptSubmit", failedOpen: false });
     const statuses: string[] = [];
     const offStatus = session.on("status", (event) => statuses.push(event.status));
+    await session.sendPrompt("busy");
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       hook_event_name: "Stop",
       session_id: "claude-1",
@@ -45,6 +46,7 @@ describe("ClaudeSession hook handling", () => {
       cwd,
       hooks: { Stop: () => ({ decision: "block", reason: "tests are still failing" }) },
     });
+    await session.sendPrompt("busy");
     const result = await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       hook_event_name: "Stop",
       session_id: "claude-1",
@@ -173,7 +175,6 @@ describe("ClaudeSession hook handling", () => {
     });
     expect(JSON.parse(result.stdout).hookSpecificOutput.action).toBe("accept");
   });
-
   test("C-API-17 C-HOOK-04 emits hookError and fails open on timeout", async () => {
     const cwd = tempDir();
     installFakes();
