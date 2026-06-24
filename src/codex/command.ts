@@ -17,7 +17,7 @@ export function buildCodexShellCommand(
     ? ["exec", "codex", "resume", shellQuote(record.codex.resumeId)]
     : ["exec", "codex"];
   addLaunchFlags(parts, options);
-  parts.push("--cd", shellQuote(options.cwd));
+  parts.push("--cd", shellQuote(record.cwd));
   if (capabilities.supportsHookTrustBypass) {
     parts.push("--dangerously-bypass-hook-trust");
   }

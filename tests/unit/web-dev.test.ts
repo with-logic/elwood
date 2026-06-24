@@ -1,7 +1,7 @@
 /** Focused unit coverage for browser dev app helpers. Covers PRD §9 and §10. */
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { describe, expect, test } from "vitest";
 import { clientScript, renderHtml } from "../../src/app/web-assets.ts";
 import {
   activityEvent,

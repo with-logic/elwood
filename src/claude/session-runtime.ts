@@ -12,7 +12,7 @@ import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import { currentPtyFactory } from "../runtime/seams.ts";
 import { userShell } from "../runtime/shell.ts";
-import { writePrivateFile } from "../state/files.ts";
+import { writePrivateFileAtomic } from "../state/files.ts";
 import type { SessionRecord } from "../state/store.ts";
 import { buildClaudeShellCommand, shellLaunch } from "./command.ts";
 import { generateClaudeSettings } from "./settings.ts";
@@ -22,7 +22,7 @@ export function writeRuntimeFiles(
   token: string,
   options: StartClaudeOptions,
 ): void {
-  writePrivateFile(
+  writePrivateFileAtomic(
     record.paths.bridgeScriptPath,
     bridgeScriptSource(record.paths.socketPath, token),
   );
@@ -31,7 +31,7 @@ export function writeRuntimeFiles(
     options,
     timeoutSeconds: Math.ceil((options.hookTimeoutMs ?? 25_000) / 1000),
   });
-  writePrivateFile(record.paths.settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+  writePrivateFileAtomic(record.paths.settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
 }
 
 export function spawnClaudePty(record: SessionRecord, options: StartClaudeOptions): PtyProcess {
@@ -63,9 +63,23 @@ export function registerInitialHooks(
 ): void {
   if (!handlers) return;
   for (const [name, handler] of Object.entries(handlers)) {
-    emitter.listen(
-      `hook:${name}` as ElwoodEventName,
-      handler as ElwoodEventHandler<ElwoodEventName>,
-    );
+    emitter.listen(`hook:${name}` as ElwoodEventName, hookHandler(name, handler));
   }
+}
+
+function hookHandler(name: string, handler: unknown): ElwoodEventHandler<ElwoodEventName> {
+  if (typeof handler === "function") return handler as ElwoodEventHandler<ElwoodEventName>;
+  if ((name !== "PreToolUse" && name !== "PermissionRequest") || !isRecord(handler)) {
+    return () => undefined;
+  }
+  return ((event: unknown) => {
+    const toolName =
+      isRecord(event) && typeof event["tool_name"] === "string" ? event["tool_name"] : "";
+    const toolHandler = handler[toolName] ?? handler["unknown"];
+    return typeof toolHandler === "function" ? toolHandler(event) : undefined;
+  }) as ElwoodEventHandler<ElwoodEventName>;
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }

@@ -12,26 +12,27 @@
     }
   },
   "scripts": {
-    "start": "bun run src/index.ts",
-    "test": "bun test",
+    "start": "node --no-warnings src/index.ts",
+    "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "check:lines": "bun run scripts/check-lines.ts",
-    "check": "bun run typecheck && bun run lint && bun run check:lines && bun test",
+    "check:lines": "node --no-warnings scripts/check-lines.ts",
+    "check": "npm run typecheck && npm run lint && npm run check:lines && npm test",
     "test:e2e": "exec node --no-warnings --experimental-test-coverage --test-coverage-include='src/**/*.ts' --test-coverage-exclude='src/app/**' --test-coverage-exclude='tests/**' --test-timeout=240000 --test tests/e2e/*.e2e.ts",
-    "dev:app": "exec bun src/app/dev.ts",
+    "dev:app": "exec node --no-warnings src/app/dev.ts",
     "dev:web": "exec node --no-warnings scripts/dev-web.ts",
     "example:minimal": "exec node --no-warnings scripts/run-example.ts examples/minimal.ts",
     "example:full": "exec node --no-warnings scripts/run-example.ts examples/full.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.15",
-    "@types/bun": "latest",
     "@types/node": "^25.9.1",
     "@types/ws": "^8.18.1",
-    "typescript": "^6.0.3"
+    "@vitest/coverage-istanbul": "^4.1.9",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",

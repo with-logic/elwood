@@ -10,19 +10,20 @@ import { WorkspaceTrustResponder } from "../core/workspace-trust.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { assertStartupUsable } from "../runtime/startup.ts";
+import { cleanupStartupResources } from "../runtime/startup-cleanup.ts";
 import { secureMkdir } from "../state/files.ts";
 import {
-  appendSessionWarning,
   createSessionRecord,
   defaultStateDir,
   prepareStateDir,
   readSessionRecord,
   type SessionRecord,
+  upsertSessionWarning,
   writeSessionRecord,
 } from "../state/store.ts";
 import { attachPtyTerminal } from "../terminal/headless.ts";
 import { isBlock, requestHook } from "./hook-dispatch.ts";
-import type { ClaudeHookEvent } from "./hooks.ts";
+import { normalizeClaudeHookEvent } from "./normalize.ts";
 import { preflightClaude } from "./preflight.ts";
 import { serializeHookResult } from "./serialize.ts";
 import {
@@ -53,10 +54,10 @@ export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSe
   const record =
     warning === undefined
       ? createdRecord
-      : appendSessionWarning(createdRecord, {
+      : upsertSessionWarning(createdRecord, {
           elwoodSessionId: createdRecord.elwoodSessionId,
           ...warning,
-        });
+        }).record;
   writeSessionRecord(record);
   return await startFromRecord(record, options);
 }
@@ -74,7 +75,8 @@ export async function resumeClaude(options: ResumeClaudeOptions): Promise<Claude
   const checkedRecord =
     warning === undefined
       ? record
-      : appendSessionWarning(record, { elwoodSessionId: record.elwoodSessionId, ...warning });
+      : upsertSessionWarning(record, { elwoodSessionId: record.elwoodSessionId, ...warning })
+          .record;
   const size = options.initialSize ?? checkedRecord.terminalSize;
   const resumedRecord =
     options.initialSize === undefined
@@ -106,7 +108,7 @@ async function startFromRecord(record: SessionRecord, options: StartClaudeOption
     record.bridgeToken,
     record.elwoodSessionId,
     async (input) => {
-      const event = input as ClaudeHookEvent;
+      const event = normalizeClaudeHookEvent(input);
       if (event.hook_event_name === "SessionStart")
         session?.rememberClaudeSessionId(event.session_id);
       emitter.emit("hook", event);
@@ -153,7 +155,7 @@ async function startFromRecord(record: SessionRecord, options: StartClaudeOption
   try {
     pty = spawnClaudePty(record, options);
   } catch (error) {
-    await bridge.stop();
+    await cleanupStartupResources({ bridge });
     throw error;
   }
   let startupOutput = "";
@@ -190,9 +192,7 @@ async function startFromRecord(record: SessionRecord, options: StartClaudeOption
       output: () => startupOutput,
     });
   } catch (error) {
-    pty.kill("SIGTERM");
-    await bridge.stop();
-    terminal.dispose();
+    await cleanupStartupResources({ pty, bridge, terminal });
     throw error;
   }
   session.markRunning();

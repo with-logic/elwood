@@ -2,7 +2,7 @@
   "$schema": "https://biomejs.dev/schemas/2.4.15/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
-    "includes": ["**", "!**/node_modules", "!**/dist", "!**/coverage", "!bun.lock"]
+    "includes": ["**", "!**/node_modules", "!**/dist", "!**/coverage", "!package-lock.json"]
   },
   "formatter": {
     "enabled": true,
@@ -20,7 +20,7 @@
       "bracketSpacing": true,
       "quoteProperties": "asNeeded"
     },
-    "globals": ["Bun"]
+    "globals": []
   },
   "json": {
     "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2 }

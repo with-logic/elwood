@@ -7,7 +7,6 @@ import { existsSync, unlinkSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import type { HookErrorEvent } from "../core/types.ts";
 import type { BridgeProcessResult } from "./types.ts";
-import { isClaudeHookEvent } from "./validate.ts";
 
 export type HookDispatcher = (input: unknown) => Promise<BridgeProcessResult>;
 export type HookErrorSink = (event: Omit<HookErrorEvent, "elwoodSessionId">) => void;
@@ -28,7 +27,7 @@ export class HookBridgeServer {
     token: string,
     dispatch: HookDispatcher,
     onError: HookErrorSink,
-    isHookInput: HookInputValidator = isClaudeHookEvent,
+    isHookInput: HookInputValidator,
     elwoodSessionId?: string,
   ) {
     this.socketPath = socketPath;
@@ -41,7 +40,7 @@ export class HookBridgeServer {
 
   async start(): Promise<void> {
     if (existsSync(this.socketPath)) unlinkSync(this.socketPath);
-    this.server = createServer((socket) => {
+    const server = createServer((socket) => {
       this.sockets.add(socket);
       let data = "";
       let responded = false;
@@ -59,12 +58,8 @@ export class HookBridgeServer {
       });
       socket.on("end", () => void respond());
     });
+    this.server = server;
     await new Promise<void>((resolve, reject) => {
-      const server = this.server;
-      if (!server) {
-        resolve();
-        return;
-      }
       const onError = (error: Error) => {
         server.off("listening", onListening);
         reject(error);
@@ -119,7 +114,7 @@ export class HookBridgeServer {
     const hookInput = parseHookInput(parsed.input);
     if (!this.isHookInput(hookInput)) {
       this.onError({
-        hookEventName: "Unknown",
+        hookEventName: hookEventNameFrom(hookInput),
         category: "invalid_input",
         message: "Invalid hook input",
       });
@@ -169,6 +164,16 @@ function parseHookInput(input: string): unknown {
   } catch {
     return null;
   }
+}
+
+function hookEventNameFrom(input: unknown): HookErrorEvent["hookEventName"] {
+  const record =
+    input && typeof input === "object" && !Array.isArray(input)
+      ? (input as Record<string, unknown>)
+      : {};
+  return typeof record["hook_event_name"] === "string"
+    ? (record["hook_event_name"] as HookErrorEvent["hookEventName"])
+    : "Unknown";
 }
 
 function noDecision(): BridgeProcessResult {

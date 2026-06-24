@@ -24,8 +24,23 @@ export function registerInitialHooks(
 ): void {
   if (!handlers) return;
   for (const [name, handler] of Object.entries(handlers)) {
-    emitter.listen(`hook:${name}` as CodexEventName, handler as CodexEventHandler<CodexEventName>);
+    emitter.listen(`hook:${name}` as CodexEventName, hookHandler(name, handler));
   }
+}
+
+function hookHandler(name: string, handler: unknown): CodexEventHandler<CodexEventName> {
+  if (typeof handler === "function") return handler as CodexEventHandler<CodexEventName>;
+  if (name !== "PreToolUse" || !isRecord(handler)) return () => undefined;
+  return ((event: unknown) => {
+    const toolName =
+      isRecord(event) && typeof event["tool_name"] === "string" ? event["tool_name"] : "";
+    const toolHandler = handler[toolName] ?? handler["unknown"];
+    return typeof toolHandler === "function" ? toolHandler(event) : undefined;
+  }) as CodexEventHandler<CodexEventName>;
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 export async function dispatchHook(

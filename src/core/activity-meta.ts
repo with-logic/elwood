@@ -59,8 +59,8 @@ function transcriptToolUseId(
   event: CodexTranscriptEvent,
   payload: Record<string, unknown>,
 ): string | undefined {
-  if (event.summary.kind !== "tool_result") return undefined;
-  return stringValue(payload["call_id"]) ?? event.summary.label;
+  if (event.summary.kind !== "tool_call" && event.summary.kind !== "tool_result") return undefined;
+  return stringValue(payload["id"]) ?? stringValue(payload["call_id"]) ?? event.summary.label;
 }
 
 function optional<K extends keyof ElwoodActivityEvent>(

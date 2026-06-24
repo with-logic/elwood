@@ -3,8 +3,8 @@
  * Covers PRD §11.
  */
 
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { describe, expect, test } from "vitest";
 
 type PackageJson = {
   readonly scripts?: Readonly<Record<string, string>>;
@@ -19,5 +19,12 @@ describe("package scripts", () => {
     expect(packageJson.scripts?.["example:full"]).toBe(
       "exec node --no-warnings scripts/run-example.ts examples/full.ts",
     );
+  });
+
+  test("C-APP-11 full example has runnable defaults", () => {
+    const fullExample = readFileSync("examples/full.ts", "utf8");
+    expect(fullExample).toContain("const defaultPrompt");
+    expect(fullExample).toContain("let prompt = defaultPrompt");
+    expect(fullExample).not.toContain("Missing required --prompt");
   });
 });

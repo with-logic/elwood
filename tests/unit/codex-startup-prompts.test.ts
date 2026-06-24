@@ -3,7 +3,7 @@
  * Covers PRD §4.4 and §5.5.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import {
   CodexStartupPromptResponder,
   codexWarningsFromText,

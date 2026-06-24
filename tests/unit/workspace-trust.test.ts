@@ -3,7 +3,7 @@
  * Covers PRD §5.1, §5.5, C-CLAUDE-10, and C-CODEX-11.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import {
   WorkspaceTrustResponder,
   workspaceTrustPromptVisible,

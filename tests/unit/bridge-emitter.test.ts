@@ -3,12 +3,15 @@
  * Covers PRD §6, §8, and §10.
  */
 
-import { describe, expect, test } from "bun:test";
 import { createConnection } from "node:net";
 import { join } from "node:path";
+import { describe, expect, test } from "vitest";
 import { HookBridgeServer } from "../../src/bridge/server.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 import { sendBridge, tempDirForUnit } from "./helpers.ts";
+
+const acceptHookInput = () => true;
+const rejectHookInput = () => false;
 
 describe("bridge and emitter edges", () => {
   test("C-HOOK-16 invalid bridge input fails open and reports an error", async () => {
@@ -20,6 +23,7 @@ describe("bridge and emitter edges", () => {
       "token",
       async () => ({ exitCode: 0, stdout: "unused", stderr: "" }),
       (event) => errors.push(event.category),
+      rejectHookInput,
     );
     await server.start();
     const response = await sendBridge(socketPath, "not-json");
@@ -40,6 +44,7 @@ describe("bridge and emitter edges", () => {
       "token",
       async () => ({ exitCode: 0, stdout: "", stderr: "" }),
       () => {},
+      acceptHookInput,
     );
     await expect(server.start()).rejects.toBeInstanceOf(Error);
     await server.stop();
@@ -53,6 +58,7 @@ describe("bridge and emitter edges", () => {
       "token",
       async () => ({ exitCode: 0, stdout: "", stderr: "" }),
       () => {},
+      acceptHookInput,
     );
     await server.start();
     const socket = createConnection(socketPath);
@@ -77,6 +83,7 @@ describe("bridge and emitter edges", () => {
         return { exitCode: 0, stdout: "ok", stderr: "" };
       },
       () => {},
+      acceptHookInput,
     );
     await server.start();
     const socket = createConnection(socketPath);
@@ -114,6 +121,7 @@ describe("bridge and emitter edges", () => {
         return { exitCode: 0, stdout: "ok", stderr: "" };
       },
       () => {},
+      acceptHookInput,
     );
     await server.start();
     const socket = createConnection(socketPath);

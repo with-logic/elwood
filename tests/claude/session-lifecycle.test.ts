@@ -3,9 +3,9 @@
  * Covers PRD §5, §7, §8, and §10.
  */
 
-import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { afterEach, describe, expect, test } from "vitest";
 import { resumeClaude, startClaude } from "../../src/index.ts";
 import { createSessionRecord, prepareStateDir, writeSessionRecord } from "../../src/state/store.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -97,9 +97,11 @@ describe("ClaudeSession lifecycle", () => {
     expect(exits).toEqual([0]);
     offExit();
     expect(session.status).toBe("killed");
+    expect(ptys[0]!.killSignals).toEqual(["SIGKILL"]);
     expect(existsSync(join(dir, "session.json"))).toBe(true);
     await session.teardown();
     expect(session.status).toBe("torn_down");
+    expect(ptys[0]!.killSignals).toEqual(["SIGKILL"]);
     expect(existsSync(dir)).toBe(false);
     expect(readFileSync(claudeSettings, "utf8")).toContain("Read");
   });

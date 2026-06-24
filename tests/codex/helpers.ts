@@ -51,6 +51,7 @@ export function tempDir(): string {
 export class FakePty implements PtyProcess {
   readonly pid = ptys.length + 1;
   readonly writes: string[] = [];
+  readonly killSignals: string[] = [];
   readonly dataHandlers: ((data: string) => void)[] = [];
   readonly exitHandlers: ((exit: PtyExit) => void)[] = [];
   readonly options: PtySpawnOptions;
@@ -80,7 +81,8 @@ export class FakePty implements PtyProcess {
     return "resized";
   }
 
-  kill(): void {
+  kill(signal = "SIGTERM"): void {
+    this.killSignals.push(signal);
     this.emitExit({ exitCode: 0 });
   }
 

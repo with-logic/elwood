@@ -3,9 +3,9 @@
  * Covers PRD §7A.4.
  */
 
-import { describe, expect, test } from "bun:test";
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { describe, expect, test } from "vitest";
 import { CodexTranscriptWatcher, summarizeTranscriptItem } from "../../src/codex/transcript.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
@@ -59,6 +59,7 @@ describe("Codex transcript observation", () => {
       kind: "other",
       label: "session_meta",
     });
+    expect(summary({ type: "future_event" })).toEqual({ kind: "other", label: "future_event" });
   });
 });
 

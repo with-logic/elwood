@@ -8,12 +8,14 @@ import { webStyles } from "./web-styles.ts";
 
 export { clientScript };
 
-export function renderHtml(cwd: string): string {
+export function renderHtml(cwd: string, token = ""): string {
   const safeCwd = escapeHtml(cwd);
+  const safeToken = escapeHtml(token);
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="elwood-token" content="${safeToken}" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Elwood Dev</title>
     <link rel="stylesheet" href="/vendor/xterm.css" />

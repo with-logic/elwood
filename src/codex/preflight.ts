@@ -55,12 +55,13 @@ function runCodexUpdate(): void {
 
 function readCodexVersion(): CommandResult {
   const result = currentCommandRunner()(userShell(), loginShellCommand("codex --version"));
-  if (result.status === null || result.error?.code === "ENOENT" || result.status === 127) {
+  if (result.error?.code === "ENOENT" || result.status === 127) {
     throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");
   }
   if (result.status !== 0) {
     throw elwoodError("codex_start_failed", "`codex --version` failed.", {
       stderr: result.stderr,
+      ...(result.error === undefined ? {} : { error: result.error.message }),
     });
   }
   return result;

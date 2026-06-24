@@ -3,10 +3,10 @@
  * Covers PRD §5 and §10.
  */
 
-import { describe, expect, mock, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { currentPtyFactory, resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
+import { describe, expect, test, vi } from "vitest";
 import { loginShellCommand } from "../../src/runtime/shell.ts";
 import { terminatePty } from "../../src/runtime/terminate.ts";
 import { tempDirForUnit } from "./helpers.ts";
@@ -15,19 +15,18 @@ describe("node PTY adapter", () => {
   test("C-PTY-02 interactive login shell sources zsh startup files", () => {
     const home = tempDirForUnit();
     writeFileSync(join(home, ".zshrc"), "export ELWOOD_SHELL_PROBE=from_zshrc\n");
-    const result = Bun.spawnSync({
-      cmd: ["/bin/zsh", ...loginShellCommand("printf $ELWOOD_SHELL_PROBE")],
+    const result = spawnSync("/bin/zsh", loginShellCommand("printf $ELWOOD_SHELL_PROBE"), {
+      encoding: "utf8",
       env: { ...process.env, HOME: home, ZDOTDIR: home },
-      stdout: "pipe",
-      stderr: "pipe",
     });
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout.toString()).toBe("from_zshrc");
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("from_zshrc");
   });
 
   test("C-PTY-01 wraps a real pseudoterminal process", async () => {
     const calls: string[] = [];
-    mock.module("node-pty", () => ({
+    vi.resetModules();
+    vi.doMock("node-pty", () => ({
       spawn: () => ({
         pid: 42,
         onData: (handler: (data: string) => void) => {
@@ -47,6 +46,9 @@ describe("node PTY adapter", () => {
         kill: (signal?: string) => calls.push(`kill:${signal}`),
       }),
     }));
+    const { currentPtyFactory, resetRuntimeSeamsForTests } = await import(
+      "../../src/runtime/seams.ts"
+    );
     const { ensureNodePtySpawnHelperExecutable, nodePtyFactory, nodePtySpawnHelperPath } =
       await import("../../src/pty/node.ts");
     const helper = join(tempDirForUnit(), "spawn-helper");
@@ -103,6 +105,8 @@ describe("node PTY adapter", () => {
     offRuntimeData();
     offRuntimeExit();
     expect(runtimePty.pid).toBe(42);
+    vi.doUnmock("node-pty");
+    vi.resetModules();
   });
 
   test("C-LIFE-02 graceful termination escalates when the process does not exit", async () => {

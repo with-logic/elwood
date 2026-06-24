@@ -3,7 +3,7 @@
  * Covers PRD §5.1 and §5.5.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { preflightClaude } from "../../src/claude/preflight.ts";
 import { preflightCodex } from "../../src/codex/preflight.ts";
 import { ElwoodError } from "../../src/core/errors.ts";

@@ -3,8 +3,8 @@
  * Covers PRD §11.
  */
 
-import { describe, expect, test } from "bun:test";
 import { spawn, spawnSync } from "node:child_process";
+import { describe, expect, test } from "vitest";
 import {
   installHardShutdown,
   killProcessTreeSync,
@@ -91,7 +91,7 @@ describe("web dev app hard shutdown", () => {
 
   test("C-APP-08 process tree cleanup kills real descendants", async () => {
     const child = spawn("sh", ["-c", "sleep 10 & wait"], { stdio: "ignore" });
-    expect(child.pid).toBeNumber();
+    expect(typeof child.pid).toBe("number");
     await waitForChild(child.pid!);
     killProcessTreeSync(child.pid!, true);
     const result = await new Promise<{ readonly signal: string | null }>((resolve) => {

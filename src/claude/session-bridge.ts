@@ -5,6 +5,7 @@
 
 import { HookBridgeServer } from "../bridge/server.ts";
 import type { HookBridge } from "./session-instance.ts";
+import { isClaudeHookInput } from "./validate-input.ts";
 
 export type ClaudeHookBridgeFactory = (
   socketPath: string,
@@ -15,7 +16,7 @@ export type ClaudeHookBridgeFactory = (
 ) => HookBridge;
 
 const realFactory: ClaudeHookBridgeFactory = (socketPath, token, id, dispatch, onError) =>
-  new HookBridgeServer(socketPath, token, dispatch, onError, undefined, id);
+  new HookBridgeServer(socketPath, token, dispatch, onError, isClaudeHookInput, id);
 
 let factory = realFactory;
 

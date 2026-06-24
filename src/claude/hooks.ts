@@ -3,6 +3,7 @@
  * Implements PRD §6 and §7.
  */
 
+export type { ClaudeHookHandlers } from "./handler-types.ts";
 export type {
   ClaudeBackgroundTask,
   ClaudeHookEvent,
@@ -51,14 +52,29 @@ export type {
 import type { ClaudeHookEventFor } from "./hook-events.ts";
 import type { ClaudeHookEventName } from "./hook-names.ts";
 import type { PermissionUpdate } from "./permissions.ts";
-import type { ClaudeToolInputUpdate } from "./tool-types.ts";
 
-export type PreToolUseResult = {
+export type ClaudeToolInputUpdateForEvent<Event> = Event extends {
+  readonly tool_input: infer Input;
+}
+  ? Partial<Input>
+  : never;
+
+export type PreToolUseDecisionResultFor<Event> = {
   readonly permissionDecision: "allow" | "deny" | "ask" | "defer";
   readonly permissionDecisionReason?: string;
-  readonly updatedInput?: ClaudeToolInputUpdate;
+  readonly updatedInput?: ClaudeToolInputUpdateForEvent<Event>;
   readonly additionalContext?: string;
 };
+export type PreToolUseDecisionResult = PreToolUseDecisionResultFor<
+  ClaudeHookEventFor<"PreToolUse">
+>;
+export type PreToolUseCommonResult =
+  | (Omit<PreToolUseDecisionResult, "updatedInput"> & { readonly updatedInput?: never })
+  | { readonly additionalContext: string };
+export type PreToolUseResultFor<Event> =
+  | PreToolUseDecisionResultFor<Event>
+  | { readonly additionalContext: string };
+export type PreToolUseResult = PreToolUseResultFor<ClaudeHookEventFor<"PreToolUse">>;
 
 export type TopLevelBlockResult = {
   readonly decision: "block";
@@ -68,10 +84,13 @@ export type TopLevelBlockResult = {
 
 export type PermissionRequestResult = {
   readonly behavior: "allow" | "deny";
-  readonly updatedInput?: ClaudeToolInputUpdate;
+  readonly updatedInput?: ClaudeToolInputUpdateForEvent<ClaudeHookEventFor<"PermissionRequest">>;
   readonly updatedPermissions?: readonly PermissionUpdate[];
   readonly message?: string;
   readonly interrupt?: boolean;
+};
+export type PermissionRequestCommonResult = Omit<PermissionRequestResult, "updatedInput"> & {
+  readonly updatedInput?: never;
 };
 
 export type PermissionDeniedResult = { readonly retry: true };
@@ -156,6 +175,11 @@ export type ClaudeHookResultFor<K extends ClaudeHookEventName> = K extends "PreT
                   ? ContextResult | undefined
                   : undefined;
 
+export type ClaudeHookResultForEvent<Event extends ClaudeHookEventFor<ClaudeHookEventName>> =
+  Event["hook_event_name"] extends "PreToolUse"
+    ? PreToolUseResultFor<Event> | undefined
+    : ClaudeHookResultFor<Event["hook_event_name"]>;
+
 export type ClaudeHookResult =
   | undefined
   | PreToolUseResult
@@ -167,9 +191,3 @@ export type ClaudeHookResult =
   | PostToolUseResult
   | ElicitationResult
   | WorktreeCreateResult;
-
-export type ClaudeHookHandlers = {
-  readonly [K in ClaudeHookEventName]?: (
-    event: ClaudeHookEventFor<K>,
-  ) => ClaudeHookResultFor<K> | Promise<ClaudeHookResultFor<K>>;
-};

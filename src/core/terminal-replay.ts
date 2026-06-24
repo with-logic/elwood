@@ -25,6 +25,10 @@ export class TerminalReplayBuffer {
     while (this.size > this.maxBytes && this.chunks.length > 1) {
       this.size -= Buffer.byteLength(this.chunks.shift() ?? "");
     }
+    if (this.size > this.maxBytes && this.chunks[0] !== undefined) {
+      this.chunks[0] = Buffer.from(this.chunks[0]).subarray(-this.maxBytes).toString("utf8");
+      this.size = Buffer.byteLength(this.chunks[0]);
+    }
   }
 
   replay(handler: (event: TerminalDataEvent) => unknown): void {

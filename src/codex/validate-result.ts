@@ -3,17 +3,20 @@
  * Implements PRD §7A.2.
  */
 
-import type { CodexHookEventName, CodexHookResult } from "./hooks.ts";
+import type { CodexHookEvent, CodexHookEventName, CodexHookResult } from "./hooks.ts";
 
 export function isCodexHookResult(
-  eventName: CodexHookEventName,
+  event: CodexHookEventName | CodexHookEvent,
   value: unknown,
 ): value is CodexHookResult {
+  const eventName = typeof event === "string" ? event : event.hook_event_name;
+  const toolName =
+    typeof event === "string" || !("tool_name" in event) ? undefined : event.tool_name;
   if (value === undefined) return true;
   if (!isRecord(value)) return false;
-  if ("permissionDecision" in value) return isPreToolUseResult(eventName, value);
+  if ("permissionDecision" in value) return isPreToolUseResult(eventName, value, toolName);
   if (eventName === "PreToolUse" && "additionalContext" in value)
-    return isPreToolUseResult(eventName, value);
+    return isPreToolUseResult(eventName, value, toolName);
   if ("behavior" in value) return isPermissionRequestResult(eventName, value);
   if ("decision" in value) return isBlockResult(eventName, value);
   return isStopResult(eventName, value);
@@ -22,6 +25,7 @@ export function isCodexHookResult(
 function isPreToolUseResult(
   eventName: CodexHookEventName,
   value: Readonly<Record<string, unknown>>,
+  toolName?: string,
 ): boolean {
   if (eventName !== "PreToolUse") return false;
   if (
@@ -48,7 +52,7 @@ function isPreToolUseResult(
     value["permissionDecision"] === "allow" &&
     !("permissionDecisionReason" in value) &&
     !("additionalContext" in value) &&
-    optionalRecord(value["updatedInput"])
+    isCodexToolInputUpdate(toolName, value["updatedInput"])
   );
 }
 
@@ -105,8 +109,15 @@ function optionalString(value: unknown): boolean {
   return value === undefined || typeof value === "string";
 }
 
-function optionalRecord(value: unknown): boolean {
-  return value === undefined || isRecord(value);
+function isCodexToolInputUpdate(toolName: string | undefined, value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!isRecord(value)) return false;
+  if (toolName !== "Bash" && toolName !== "apply_patch") return true;
+  return (
+    keysAre(value, ["command", "description"]) &&
+    optionalString(value["description"]) &&
+    ("command" in value ? typeof value["command"] === "string" : true)
+  );
 }
 
 function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {

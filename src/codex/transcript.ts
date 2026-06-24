@@ -3,7 +3,7 @@
  * Implements PRD §7A and §11.
  */
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
 
 export type CodexTranscriptSummary = {
   readonly kind: "message" | "tool_call" | "tool_result" | "reasoning" | "web_search" | "other";
@@ -43,10 +43,9 @@ export class CodexTranscriptWatcher {
 
   scan(): void {
     if (!(this.path && existsSync(this.path))) return;
-    const content = readFileSync(this.path, "utf8");
-    if (content.length < this.offset) this.offset = 0;
-    const chunk = content.slice(this.offset);
-    this.offset = content.length;
+    const size = statSync(this.path).size;
+    if (size < this.offset) this.offset = 0;
+    const chunk = this.readNewChunk(size);
     if (chunk.length === 0) return;
     const lines = `${this.pending}${chunk}`.split(/\r?\n/);
     this.pending = lines.pop() ?? "";
@@ -78,6 +77,19 @@ export class CodexTranscriptWatcher {
       item,
       summary: summarizeTranscriptItem(item),
     });
+  }
+
+  private readNewChunk(size: number): string {
+    if (!(this.path && size > this.offset)) return "";
+    const buffer = Buffer.allocUnsafe(size - this.offset);
+    const fd = openSync(this.path, "r");
+    try {
+      const bytesRead = readSync(fd, buffer, 0, buffer.length, this.offset);
+      this.offset += bytesRead;
+      return buffer.toString("utf8", 0, bytesRead);
+    } finally {
+      closeSync(fd);
+    }
   }
 }
 

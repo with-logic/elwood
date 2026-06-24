@@ -753,7 +753,7 @@ Return `additionalContext` inside `hookSpecificOutput` alongside the event name:
 {
   "hookSpecificOutput": {
     "hookEventName": "PostToolUse",
-    "additionalContext": "This file is generated. Edit src/schema.ts and run `bun generate` instead."
+    "additionalContext": "This file is generated. Edit src/schema.ts and run `npm run generate` instead."
   }
 }
 ```
@@ -774,7 +774,7 @@ Use `additionalContext` for information Claude should know about the current sta
 
 For instructions that never change, prefer [CLAUDE.md](/en/memory). It loads without running a script and is the standard place for static project conventions.
 
-Write the text as factual statements rather than imperative system instructions. Phrasing such as "The deployment target is production" or "This repo uses `bun test`" reads as project information. Text framed as out-of-band system commands can trigger Claude's prompt-injection defenses, which causes Claude to surface the text to you instead of treating it as context.
+Write the text as factual statements rather than imperative system instructions. Phrasing such as "The deployment target is production" or "This repo uses `vitest run --coverage`" reads as project information. Text framed as out-of-band system commands can trigger Claude's prompt-injection defenses, which causes Claude to surface the text to you instead of treating it as context.
 
 Once injected, the text is saved in the session transcript. For mid-session events like `PostToolUse` or `UserPromptSubmit`, resuming with `--continue` or `--resume` replays the saved text rather than re-running the hook for past turns, so values like timestamps or commit SHAs become stale on resume. `SessionStart` hooks run again on resume with `source` set to `"resume"`, so they can refresh their context.
 
@@ -2835,4 +2835,3 @@ Hook execution details, including which hooks matched, their exit codes, and ful
 For more granular hook matching details, set `CLAUDE_CODE_DEBUG_LOG_LEVEL=verbose` to see additional log lines such as hook matcher counts and query matching.
 
 For troubleshooting common issues like hooks not firing, Stop hooks that keep blocking, or configuration errors, see [Limitations and troubleshooting](/en/hooks-guide#limitations-and-troubleshooting) in the guide. For a broader diagnostic walkthrough covering `/context`, `/doctor`, and settings precedence, see [Debug your config](/en/debug-your-config).
-

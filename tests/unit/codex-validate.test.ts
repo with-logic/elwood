@@ -3,7 +3,7 @@
  * Covers PRD §7A.2.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import {
   isCodexHookEvent,
   isCodexHookResult,
@@ -72,6 +72,18 @@ describe("Codex hook validation", () => {
         updatedInput: { command: "echo ok" },
       }),
     ).toBe(true);
+    const bashEvent = base("PreToolUse", {
+      turn_id: "turn-1",
+      tool_name: "Bash",
+      tool_input: { command: "echo ok" },
+    });
+    if (!isCodexHookEvent(bashEvent)) throw new Error("expected Codex hook event");
+    expect(
+      isCodexHookResult(bashEvent, {
+        permissionDecision: "allow",
+        updatedInput: { query: "docs" },
+      }),
+    ).toBe(false);
     expect(
       isCodexHookResult("PreToolUse", {
         permissionDecision: "allow",

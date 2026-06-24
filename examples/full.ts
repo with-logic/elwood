@@ -23,6 +23,7 @@ type Options = {
   readonly timeoutMs: number;
 };
 
+const defaultPrompt = "Say hello from Elwood in one short sentence, then stop.";
 const options = parseArgs(process.argv.slice(2));
 let session: ExampleSession | undefined;
 
@@ -67,7 +68,7 @@ function parseArgs(args: readonly string[]): Options {
   let agent: Agent = "codex";
   let cwd = process.cwd();
   let keep = false;
-  let prompt = "";
+  let prompt = defaultPrompt;
   let timeoutMs = 120_000;
   let index = 0;
   while (index < args.length) {
@@ -83,7 +84,7 @@ function parseArgs(args: readonly string[]): Options {
     else if (arg === "--keep") [keep, index] = [true, index + 1];
     else throw new Error(`Unknown option: ${arg}`);
   }
-  if (!prompt) throw new Error("Missing required --prompt. Run with --help for usage.");
+  if (!prompt) throw new Error("--prompt must not be empty.");
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0)
     throw new Error("--timeout-ms must be positive.");
   return { agent, cwd: resolve(cwd), keep, prompt, timeoutMs };
@@ -102,7 +103,11 @@ function parseAgent(value: string): Agent {
 
 function printUsageAndExit(): never {
   process.stdout.write(
-    'Usage: bun run example:full -- --agent codex --cwd . --prompt "Summarize this repo."\n',
+    [
+      "Usage: npm run example:full",
+      '       npm run example:full -- --agent codex --cwd . --prompt "Summarize this repo."',
+      "",
+    ].join("\n"),
   );
   process.exit(0);
 }

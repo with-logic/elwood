@@ -114,7 +114,8 @@ function hasUserPromptExpansion(value: Readonly<Record<string, unknown>>): boole
 
 function hasPostToolBatch(value: unknown): boolean {
   return (
-    Array.isArray(value) && value.every((item) => isRecord(item) && hasToolEventFields("", item))
+    Array.isArray(value) &&
+    value.every((item) => isRecord(item) && hasToolEventFields("PostToolUse", item))
   );
 }
 

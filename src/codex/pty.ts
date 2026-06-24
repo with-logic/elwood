@@ -3,7 +3,6 @@
  * Implements PRD §4.1, §4.2, and §5.5.
  */
 
-import { resolve } from "node:path";
 import { defaultTerminalSize } from "../core/defaults.ts";
 import { elwoodError } from "../core/errors.ts";
 import type { PtyProcess } from "../pty/types.ts";
@@ -20,7 +19,7 @@ export function spawnCodexPty(record: SessionRecord, options: StartCodexOptions)
     return currentPtyFactory()({
       command: userShell(),
       args: loginShellCommand(buildCodexShellCommand(record, options, capabilities)),
-      cwd: resolve(options.cwd),
+      cwd: record.cwd,
       env: { ...process.env, ELWOOD_SESSION_ID: record.elwoodSessionId },
       size: options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
     });

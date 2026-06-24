@@ -3,9 +3,9 @@
  * Covers PRD §5.5, §5.7, §7A, and §9.
  */
 
-import { afterEach, describe, expect, test } from "bun:test";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";

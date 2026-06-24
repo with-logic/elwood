@@ -29,8 +29,10 @@ import {
   waitFor,
 } from "./helpers.ts";
 
+const skipTurnsReason = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
+
 test("C-E2E-02 real Claude session supports core public flows", {
-  skip: skipReason("claude"),
+  skip: skipReason("claude") ?? skipTurnsReason,
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("claude");
@@ -65,12 +67,6 @@ test("C-E2E-02 real Claude session supports core public flows", {
     assert.equal(session.terminal.size.rows, 31);
     assert.ok(session.elwoodSessionId);
     assert.equal(session.cwd, project.cwd);
-    if (!turnsEnabled) {
-      await session.teardown();
-      assert.equal(session.status, "torn_down");
-      assert.equal(pathRemoved(project.sessionDir(session.elwoodSessionId)), true);
-      return;
-    }
     await session.sendMessage("Reply exactly: ELWOOD_E2E_CLAUDE_OK. Do not use tools.");
     await waitFor(() => hookNamed(observed.hooks, "UserPromptSubmit"), "Claude UserPromptSubmit");
     await waitFor(() => hookNamed(observed.hooks, "Stop"), "Claude Stop hook");
@@ -105,7 +101,7 @@ test("C-E2E-02 real Claude session supports core public flows", {
 });
 
 test("C-E2E-03 real Codex session supports core public flows", {
-  skip: skipReason("codex"),
+  skip: skipReason("codex") ?? skipTurnsReason,
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("codex");
@@ -141,12 +137,6 @@ test("C-E2E-03 real Codex session supports core public flows", {
     assert.equal(session.terminal.size.rows, 31);
     assert.ok(session.elwoodSessionId);
     assert.equal(session.cwd, project.cwd);
-    if (!turnsEnabled) {
-      await session.teardown();
-      assert.equal(session.status, "torn_down");
-      assert.equal(pathRemoved(project.sessionDir(session.elwoodSessionId)), true);
-      return;
-    }
     await session.sendPrompt("Reply exactly: ELWOOD_E2E_CODEX_OK. Do not use tools.");
     await waitFor(() => hookNamed(observed.hooks, "UserPromptSubmit"), "Codex UserPromptSubmit");
     await waitFor(() => hookNamed(observed.hooks, "Stop"), "Codex Stop hook");

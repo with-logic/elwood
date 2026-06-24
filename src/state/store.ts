@@ -11,8 +11,9 @@ import {
   newBridgeToken,
   safeSessionDir,
   secureMkdir,
-  writePrivateFile,
+  sharedMkdir,
   writePrivateFileAtomic,
+  writeSharedFile,
 } from "./files.ts";
 import { validateSessionRecord } from "./validate.ts";
 
@@ -87,10 +88,14 @@ export function prepareStateDir(
   options: { readonly gitignore?: boolean } = {},
 ): void {
   const root = resolve(stateDir);
-  secureMkdir(root);
+  if (options.gitignore === true) {
+    sharedMkdir(root);
+  } else {
+    secureMkdir(root);
+  }
   const gitignorePath = join(root, ".gitignore");
   if (options.gitignore === true && !existsSync(gitignorePath)) {
-    writePrivateFile(gitignorePath, "*\n");
+    writeSharedFile(gitignorePath, "*\n");
   }
   secureMkdir(join(root, "sessions"));
 }
@@ -144,19 +149,14 @@ export function updateSessionResumeId(
   };
 }
 
-export function appendSessionWarning(
-  record: SessionRecord,
-  warning: ElwoodWarningEvent,
-): SessionRecord {
-  return upsertSessionWarning(record, warning).record;
-}
-
 export function upsertSessionWarning(
   record: SessionRecord,
   warning: ElwoodWarningEvent,
-): { readonly record: SessionRecord; readonly isNew: boolean } {
+): { readonly record: SessionRecord; readonly isNew: boolean; readonly changed: boolean } {
   const key = warningKey(warning);
   const index = record.warnings.findIndex((existing) => warningKey(existing) === key);
+  const existing = index === -1 ? undefined : record.warnings[index];
+  const changed = JSON.stringify(existing) !== JSON.stringify(warning);
   const warnings =
     index === -1
       ? [...record.warnings, warning]
@@ -168,6 +168,7 @@ export function upsertSessionWarning(
       updatedAt: new Date().toISOString(),
     },
     isNew: index === -1,
+    changed,
   };
 }
 

@@ -7,7 +7,7 @@ sends one prompt, prints structured activity, then stops the session. It does
 not mirror the raw Codex TUI into your shell.
 
 ```sh
-bun run example:minimal
+npm run example:minimal
 ```
 
 ## Full Agent Session
@@ -17,8 +17,9 @@ working directories, custom prompts, timeout control, richer event logging, and
 optional process retention with `--keep`.
 
 ```sh
-bun run example:full -- --agent codex --cwd . --prompt "Summarize this repo in one paragraph."
-bun run example:full -- --agent claude --cwd . --prompt "Summarize this repo in one paragraph."
+npm run example:full
+npm run example:full -- --agent codex --cwd . --prompt "Summarize this repo in one paragraph."
+npm run example:full -- --agent claude --cwd . --prompt "Summarize this repo in one paragraph."
 ```
 
 Both examples use `autotrust: true` so embedded sessions can move past known

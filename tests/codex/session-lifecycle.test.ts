@@ -3,11 +3,11 @@
  * Covers PRD §5.6, §8, §9, and §10.
  */
 
-import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { afterEach, describe, expect, test } from "vitest";
 import { setCodexHookBridgeFactoryForTests } from "../../src/codex/session.ts";
-import { ElwoodError, resumeCodex, startCodex } from "../../src/index.ts";
+import { resumeCodex, startCodex } from "../../src/index.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { createSessionRecord, prepareStateDir, writeSessionRecord } from "../../src/state/store.ts";
 import { FakePty, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -79,6 +79,7 @@ describe("CodexSession lifecycle", () => {
     const dir = join(cwd, ".elwood", "sessions", session.elwoodSessionId);
     await session.kill();
     expect(session.status).toBe("killed");
+    expect(ptys[0]!.killSignals).toEqual(["SIGKILL"]);
     expect(() => session.sendPrompt("after kill")).toThrow(
       expect.objectContaining({
         code: "session_not_running",
@@ -87,6 +88,7 @@ describe("CodexSession lifecycle", () => {
     expect(existsSync(join(dir, "session.json"))).toBe(true);
     await session.teardown();
     expect(session.status).toBe("torn_down");
+    expect(ptys[0]!.killSignals).toEqual(["SIGKILL"]);
     expect(existsSync(dir)).toBe(false);
   });
 
@@ -98,7 +100,10 @@ describe("CodexSession lifecycle", () => {
       stderr: "",
       error: { code: "ENOENT", message: "missing" },
     }));
-    await expect(startCodex({ cwd: tempDir() })).rejects.toBeInstanceOf(ElwoodError);
+    await expect(startCodex({ cwd: tempDir() })).rejects.toMatchObject({
+      code: "codex_not_found",
+      message: expect.stringContaining("codex"),
+    });
   });
 
   test("C-ERR-05 C-ERR-06 Codex startup failures are typed", async () => {

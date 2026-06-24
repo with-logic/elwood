@@ -3,11 +3,20 @@
  * Covers PRD §8 and §10.
  */
 
-import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { describe, expect, test } from "vitest";
 import { ElwoodError } from "../../src/core/errors.ts";
+import { writePrivateFile, writePrivateFileAtomic } from "../../src/state/files.ts";
 import {
   createSessionRecord,
   defaultStateDir,
@@ -27,7 +36,7 @@ describe("state store", () => {
     expect(sessionDir("relative-state", "missing")).toBe(
       join(resolve("relative-state"), "sessions", "missing"),
     );
-    expect(elwoodCode(() => sessionDir(root, "../escape"))).toBe("state_corrupt");
+    expect(elwoodCode(() => sessionDir(root, "../escape"))).toBe("state_not_found");
     expect(elwoodCode(() => readSessionRecord(root, "missing"))).toBe("state_not_found");
     const dir = sessionDir(root, "bad");
     mkdirSync(dir, { recursive: true });
@@ -60,6 +69,8 @@ describe("state store", () => {
     const projectState = join(root, ".elwood");
     prepareStateDir(projectState, { gitignore: true });
     expect(readFileSync(join(projectState, ".gitignore"), "utf8")).toBe("*\n");
+    expect(statSync(projectState).mode & 0o777).toBe(0o755);
+    expect(statSync(join(projectState, ".gitignore")).mode & 0o777).toBe(0o644);
     const record = createSessionRecord({ stateDir: root, cwd: root, id: "atomic" });
     writeSessionRecord(record);
     expect(readFileSync(join(record.paths.sessionDir, "session.json"), "utf8")).toContain(
@@ -73,6 +84,18 @@ describe("state store", () => {
     const customState = join(root, "custom-state");
     prepareStateDir(customState);
     expect(existsSync(join(customState, ".gitignore"))).toBe(false);
+  });
+
+  test("C-STATE-03 atomic private writes fully replace files and clean temp files", () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-state-"));
+    const privatePath = join(root, "private", "settings.json");
+    writePrivateFile(privatePath, "{}");
+    expect(statSync(privatePath).mode & 0o777).toBe(0o600);
+    const path = join(root, "session.json");
+    writePrivateFileAtomic(path, "first");
+    writePrivateFileAtomic(path, "second");
+    expect(readFileSync(path, "utf8")).toBe("second");
+    expect(readdirSync(root).filter((entry) => entry.includes(".tmp-"))).toEqual([]);
   });
 
   test("C-API-14 warning upserts refresh snapshots without duplicating events", () => {

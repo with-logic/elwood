@@ -3,7 +3,7 @@
  * Covers PRD §4.4, §7A, §9, and §10.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { buildCodexShellCommand } from "../../src/codex/command.ts";
 import {
   detectCodexCliCapabilities,
@@ -36,14 +36,19 @@ describe("Codex core helpers", () => {
       { ...record, codex: { resumeId: "codex-1" } },
       {
         cwd,
+        model: "gpt-5.3-codex",
         profile: "work",
+        sandbox: "workspace-write",
         approvalPolicy: "never",
         configOverrides: ['model="gpt-5.3-codex"'],
       },
     );
-    expect(command).toContain("--profile");
-    expect(command).toContain("--ask-for-approval");
-    expect(command).toContain("model=");
+    expect(command).toContain("--model 'gpt-5.3-codex'");
+    expect(command).toContain("--profile 'work'");
+    expect(command).toContain("--sandbox 'workspace-write'");
+    expect(command).toContain("--ask-for-approval 'never'");
+    expect(command).toContain(`--cd '${record.cwd}'`);
+    expect(command).toContain("-c 'model=\"gpt-5.3-codex\"'");
     expect(command.lastIndexOf("features.hooks=true")).toBeGreaterThan(command.indexOf("model="));
     expect(command.lastIndexOf("hookTrust")).toBeGreaterThan(command.indexOf("model="));
     expect(command.lastIndexOf("hookTrust")).toBeGreaterThan(
@@ -64,6 +69,15 @@ describe("Codex core helpers", () => {
     setPlatformForTests("darwin");
     setCommandRunnerForTests(() => ({ status: 1, stdout: "", stderr: "boom" }));
     expect(() => preflightCodex(false)).toThrow(ElwoodError);
+    setCommandRunnerForTests(() => ({
+      status: null,
+      stdout: "",
+      stderr: "terminated",
+      error: { code: "SIGTERM", message: "terminated" },
+    }));
+    expect(() => preflightCodex(false)).toThrow(
+      expect.objectContaining({ code: "codex_start_failed" }),
+    );
     setCommandRunnerForTests(() => ({ status: 0, stdout: "unparseable", stderr: "" }));
     expect(() => preflightCodex(false)).not.toThrow();
     expect(() => preflightCodex(true)).toThrow(ElwoodError);

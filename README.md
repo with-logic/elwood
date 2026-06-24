@@ -62,7 +62,7 @@ not finalized yet.
 Supported runtime target:
 
 - macOS only for v0.1
-- Bun for local development and tests
+- Node.js and npm for local development and tests
 - Node-compatible APIs where required by native dependencies
 - Claude Code `2.1.144+`
 - Codex CLI `0.124.0+`
@@ -73,26 +73,26 @@ continues. Pass `strictVersionCheck: true` to fail closed.
 ## Install For Development
 
 ```sh
-bun install
-bun run check
+npm install
+npm run check
 ```
 
-`bun run check` runs the full quality gate:
+`npm run check` runs the full quality gate:
 
 - `tsc --noEmit`
 - `biome check .`
 - `scripts/check-lines.ts`
-- `bun test` with 100% line and function coverage
+- `vitest run --coverage` with 100% line and function coverage
 
 Slow real-agent e2e tests are separate:
 
 ```sh
-bun run test:e2e
+npm run test:e2e
 ```
 
 `test:e2e` starts real local Claude/Codex CLI sessions when the matching CLI is
 installed and authenticated. It can use network/model quota, so it is not part
-of `bun run check`.
+of `npm run check`.
 
 Source and test files under `src/`, `tests/`, and `scripts/` must stay at or
 below 200 lines.
@@ -103,23 +103,23 @@ Elwood includes two local test apps.
 
 ```sh
 # Terminal smoke app, Claude by default.
-bun run dev:app -- --cwd /path/to/project
+npm run dev:app -- --cwd /path/to/project
 
 # Terminal smoke app with Codex.
-bun run dev:app -- --agent codex --cwd /path/to/project
+npm run dev:app -- --agent codex --cwd /path/to/project
 
 # Resume from Elwood metadata.
-bun run dev:app -- --cwd /path/to/project --resume <elwoodSessionId>
+npm run dev:app -- --cwd /path/to/project --resume <elwoodSessionId>
 
 # Browser debugger with xterm.js terminal mirror and structured event inspector.
-bun run dev:web
+npm run dev:web
 ```
 
 `dev:web` serves `http://localhost:4317`. It shows the live terminal on the left
 and a structured event timeline on the right. Use it to inspect hooks,
 activities, warnings, startup automation, status changes, and raw event payloads.
 
-The script is still invoked through Bun, but the browser dev server process runs
+The script is still invoked through npm, but the browser dev server process runs
 under Node so `node-pty` can own a real interactive PTY reliably.
 
 ## Runnable Examples
@@ -128,19 +128,20 @@ For the smallest real usage sample, run the minimal example. It starts Codex
 headlessly, sends one message, logs structured activity, and exits:
 
 ```sh
-bun run example:minimal
+npm run example:minimal
 ```
 
 For a fuller sample with Claude/Codex selection, custom prompts, richer logging,
 timeouts, and cleanup options, run `examples/full.ts`:
 
 ```sh
-bun run example:full -- --agent codex --cwd . --prompt "Summarize this repo in one paragraph."
+npm run example:full
+npm run example:full -- --agent codex --cwd . --prompt "Summarize this repo in one paragraph."
 ```
 
 The example package scripts use a small Node supervisor because `node-pty` owns
 real PTYs more reliably there and the supervisor can kill the example process
-tree on Ctrl-C. Bun remains the project script runner. The examples import from
+tree on Ctrl-C. npm remains the project script runner. The examples import from
 local source while the package is private; published consumers should import the
 same symbols from `elwood`.
 
@@ -364,7 +365,7 @@ Elwood follows a spec-driven workflow:
 1. Update `PRD.md` first for observable behavior.
 2. Implement the behavior in `src/`.
 3. Add or update tests in `tests/`.
-4. Run `bun run check`.
+4. Run `npm run check`.
 
 Repository standards:
 

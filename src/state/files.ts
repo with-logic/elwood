@@ -23,7 +23,7 @@ export function newBridgeToken(): string {
 
 export function assertSessionId(id: string): void {
   if (!/^[A-Za-z0-9._-]+$/.test(id) || id === "." || id === "..") {
-    throw elwoodError("state_corrupt", `Invalid Elwood session id: ${id}`);
+    throw elwoodError("state_not_found", `Invalid Elwood session id: ${id}`);
   }
 }
 
@@ -36,6 +36,17 @@ export function safeSessionDir(stateDir: string, id: string): string {
 export function secureMkdir(path: string): void {
   mkdirSync(path, { recursive: true, mode: 0o700 });
   chmodSync(path, 0o700);
+}
+
+export function sharedMkdir(path: string): void {
+  mkdirSync(path, { recursive: true, mode: 0o755 });
+  chmodSync(path, 0o755);
+}
+
+export function writeSharedFile(path: string, content: string): void {
+  sharedMkdir(dirname(path));
+  writeFileSync(path, content, { mode: 0o644 });
+  chmodSync(path, 0o644);
 }
 
 export function writePrivateFile(path: string, content: string): void {

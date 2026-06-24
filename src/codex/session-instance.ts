@@ -3,7 +3,7 @@
  * Implements PRD §5.7, §7A, §8, and §9.
  */
 
-import { activityFromStatus, activityFromWarning } from "../core/activity.ts";
+import { activityFromStatus } from "../core/activity.ts";
 import { elwoodError } from "../core/errors.ts";
 import { MessageQueue } from "../core/message-queue.ts";
 import type { TerminalReplayBuffer } from "../core/terminal-replay.ts";
@@ -11,13 +11,14 @@ import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../c
 import { replayWarningSnapshots } from "../core/warning-replay.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyProcess } from "../pty/types.ts";
+import { canTransition, terminalStatuses } from "../runtime/session-status.ts";
+import { runTeardownSteps } from "../runtime/teardown.ts";
 import { terminatePty } from "../runtime/terminate.ts";
 import {
   removeSessionDir,
   type SessionRecord,
   updateSessionResumeId,
   updateSessionStatus,
-  upsertSessionWarning,
   writeSessionRecord,
 } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
@@ -29,9 +30,9 @@ import type {
   CodexEventName,
   CodexSession,
 } from "./session-types.ts";
+import { recordCodexWarnings } from "./session-warnings.ts";
 import type { CodexTranscriptWatcher } from "./transcript.ts";
 
-const terminalStatuses = new Set<ElwoodSessionStatus>(["exited", "stopped", "killed", "torn_down"]);
 export class CodexSessionImpl implements CodexSession {
   private record: SessionRecord;
   private readonly pty: PtyProcess;
@@ -127,17 +128,23 @@ export class CodexSessionImpl implements CodexSession {
     }
   }
   async teardown(): Promise<void> {
-    await this.terminate("SIGKILL");
-    await this.cleanupRuntime();
-    this.messages.close();
-    this.setStatus("torn_down");
-    removeSessionDir(this.record);
+    await runTeardownSteps([
+      () => (terminalStatuses.has(this.currentStatus) ? undefined : this.terminate("SIGKILL")),
+      () => this.cleanupRuntime(),
+      () => {
+        this.messages.close();
+        this.setStatus("torn_down");
+      },
+      () => removeSessionDir(this.record),
+    ]);
   }
   markRunning(): void {
+    if (terminalStatuses.has(this.currentStatus)) return;
     this.messages.markRunning();
     this.setStatus("running");
   }
   markReady(): void {
+    if (terminalStatuses.has(this.currentStatus)) return;
     this.setStatus("ready");
     this.messages.markReady();
   }
@@ -157,14 +164,7 @@ export class CodexSessionImpl implements CodexSession {
     this.transcriptWatcher?.flush();
   }
   recordWarnings(warnings: readonly ElwoodWarningEvent[]): void {
-    for (const warning of warnings) {
-      const result = upsertSessionWarning(this.record, warning);
-      this.persist(result.record);
-      if (result.isNew) {
-        this.emitter.emit("warning", warning);
-        this.emitter.emit("activity", activityFromWarning(warning));
-      }
-    }
+    recordCodexWarnings(this.record, warnings, (record) => this.persist(record), this.emitter);
   }
   private ensureRunning(): void {
     if (terminalStatuses.has(this.currentStatus)) {
@@ -178,7 +178,7 @@ export class CodexSessionImpl implements CodexSession {
     return elwoodError("session_not_running", "Codex session is not running.");
   }
   private setStatus(status: ElwoodSessionStatus): void {
-    if (this.currentStatus === status) return;
+    if (!canTransition(this.currentStatus, status)) return;
     this.currentStatus = status;
     this.persist(updateSessionStatus(this.record, status));
     this.emitter.emit("status", { elwoodSessionId: this.elwoodSessionId, status });

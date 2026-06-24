@@ -3,7 +3,7 @@
  * Covers PRD §4, §6, §8, §9, and §10.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { buildClaudeShellCommand, shellLaunch } from "../../src/claude/command.ts";
 import { claudeHookEventNames } from "../../src/claude/hooks.ts";
 import { minimumClaudeVersion, parseVersion, preflightClaude } from "../../src/claude/preflight.ts";
@@ -63,10 +63,19 @@ describe("preflight", () => {
 
   test("runtime seams expose real defaults", () => {
     expect(typeof currentPlatform()).toBe("string");
-    expect(currentCommandRunner()("bun", ["--version"]).stdout.length).toBeGreaterThan(0);
+    expect(currentCommandRunner()("node", ["--version"]).stdout.length).toBeGreaterThan(0);
   });
 
   test("startup readiness detects authentication failures", async () => {
+    for (const adapter of ["claude", "codex"] as const) {
+      for (const output of ["not authenticated", "login required", "authentication failed"]) {
+        await expect(
+          assertStartupUsable({ adapter, exit: undefined, output, waitMs: 0 }),
+        ).rejects.toMatchObject({
+          code: `${adapter}_not_authenticated`,
+        });
+      }
+    }
     await expect(
       assertStartupUsable({
         adapter: "codex",
@@ -94,9 +103,9 @@ describe("settings and command construction", () => {
       allowedTools: ["Bash", "Read"],
       name: "demo",
     });
-    expect(command).toContain("--permission-mode");
-    expect(command).toContain("--allowedTools");
-    expect(command).toContain("--name");
+    expect(command).toContain("--permission-mode 'plan'");
+    expect(command).toContain("--allowedTools 'Bash,Read'");
+    expect(command).toContain("--name 'demo'");
     expect(shellLaunch("/bin/zsh", command).args).toContain("-c");
     const settings = generateClaudeSettings({
       bridgeScriptPath: "/tmp/bridge.mjs",

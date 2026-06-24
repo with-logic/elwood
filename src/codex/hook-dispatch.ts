@@ -30,7 +30,7 @@ export async function requestCodexHook(
     const hasListener = requestable.hasListeners(hookName);
     const result = await withTimeout(requestable.request(hookName, event), timeoutMs);
     if (!hasListener) return { result: undefined, failedOpen: false };
-    if (!isCodexHookResult(event.hook_event_name, result)) {
+    if (!isCodexHookResult(event, result)) {
       emitError(emitter, {
         elwoodSessionId,
         hookEventName: event.hook_event_name,
@@ -66,7 +66,7 @@ function emitError(emitter: TypedEmitter<CodexEventMap>, event: HookErrorEvent):
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  let timeout: Timer | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeout = setTimeout(() => reject(new Error("timeout")), timeoutMs);
   });

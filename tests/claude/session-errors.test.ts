@@ -3,9 +3,9 @@
  * Covers PRD §8 and §10.
  */
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "vitest";
 import { setHookBridgeFactoryForTests } from "../../src/claude/session.ts";
-import { ElwoodError, startClaude } from "../../src/index.ts";
+import { startClaude } from "../../src/index.ts";
 import {
   setCommandRunnerForTests,
   setPlatformForTests,
@@ -16,7 +16,7 @@ import { FakePty, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 afterEach(resetFakes);
 
 describe("ClaudeSession errors", () => {
-  test("C-HOOK-05 emits hookError and fails open on malformed hook input", async () => {
+  test("C-HOOK-07 C-HOOK-16 emits hookError and fails open on malformed hook input", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
@@ -87,7 +87,10 @@ describe("ClaudeSession errors", () => {
       stderr: "",
       error: { code: "ENOENT", message: "missing" },
     }));
-    await expect(startClaude({ cwd: tempDir() })).rejects.toBeInstanceOf(ElwoodError);
+    await expect(startClaude({ cwd: tempDir() })).rejects.toMatchObject({
+      code: "claude_not_found",
+      message: expect.stringContaining("claude"),
+    });
   });
 
   test("C-ERR-05 PTY startup failure is typed", async () => {

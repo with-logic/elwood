@@ -18,6 +18,8 @@ import type {
 import { replayWarningSnapshots } from "../core/warning-replay.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyProcess } from "../pty/types.ts";
+import { canTransition, terminalStatuses } from "../runtime/session-status.ts";
+import { runTeardownSteps } from "../runtime/teardown.ts";
 import { terminatePty } from "../runtime/terminate.ts";
 import {
   removeSessionDir,
@@ -32,8 +34,6 @@ export type HookBridge = {
   readonly start: () => Promise<void>;
   readonly stop: () => Promise<void>;
 };
-
-const terminalStatuses = new Set<ElwoodSessionStatus>(["exited", "stopped", "killed", "torn_down"]);
 
 export class ClaudeSessionImpl implements ClaudeSession {
   private record: SessionRecord;
@@ -131,18 +131,24 @@ export class ClaudeSessionImpl implements ClaudeSession {
     }
   }
   async teardown(): Promise<void> {
-    await this.terminate("SIGKILL");
-    await this.cleanupRuntime();
-    this.messages.close();
-    this.setStatus("torn_down");
-    removeSessionDir(this.record);
+    await runTeardownSteps([
+      () => (terminalStatuses.has(this.currentStatus) ? undefined : this.terminate("SIGKILL")),
+      () => this.cleanupRuntime(),
+      () => {
+        this.messages.close();
+        this.setStatus("torn_down");
+      },
+      () => removeSessionDir(this.record),
+    ]);
   }
   markRunning(): void {
+    if (terminalStatuses.has(this.currentStatus)) return;
     this.messages.markRunning();
     this.setStatus("running");
   }
 
   markReady(): void {
+    if (terminalStatuses.has(this.currentStatus)) return;
     this.setStatus("ready");
     this.messages.markReady();
   }
@@ -167,7 +173,7 @@ export class ClaudeSessionImpl implements ClaudeSession {
     return elwoodError("session_not_running", "Claude session is not running.");
   }
   private setStatus(status: ElwoodSessionStatus): void {
-    if (this.currentStatus === status) return;
+    if (!canTransition(this.currentStatus, status)) return;
     this.currentStatus = status;
     this.persist(updateSessionStatus(this.record, status));
     this.emitter.emit("status", { elwoodSessionId: this.elwoodSessionId, status });

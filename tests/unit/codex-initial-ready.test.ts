@@ -3,7 +3,7 @@
  * Covers PRD §5.3 and C-API-19.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { initialReady } from "../../src/codex/initial-ready.ts";
 
 describe("initialReady", () => {

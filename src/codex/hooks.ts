@@ -4,7 +4,9 @@
  */
 
 import type { CodexCommonHookFields, CodexHookEventName, CodexTurnFields } from "./hook-names.ts";
-import type { CodexGenericToolInput, CodexToolEventFields } from "./tool-types.ts";
+import type { CodexToolEventFields, CodexUnknownToolName } from "./tool-types.ts";
+
+type MaybePromise<T> = T | Promise<T>;
 
 export type {
   CodexCommonHookFields,
@@ -66,9 +68,23 @@ export type CodexHookEventFor<K extends CodexHookEventName> = CodexHookEvent ext
     : never
   : never;
 
-export type CodexPreToolUseResult =
+export type CodexToolInputUpdateForEvent<Event> = Event extends {
+  readonly tool_input: infer Input;
+}
+  ? Partial<Input>
+  : never;
+
+export type CodexPreToolUseResultFor<Event> =
   | { readonly permissionDecision: "deny"; readonly permissionDecisionReason: string }
-  | { readonly permissionDecision: "allow"; readonly updatedInput?: CodexGenericToolInput }
+  | {
+      readonly permissionDecision: "allow";
+      readonly updatedInput?: CodexToolInputUpdateForEvent<Event>;
+    }
+  | { readonly additionalContext: string };
+export type CodexPreToolUseResult = CodexPreToolUseResultFor<CodexHookEventFor<"PreToolUse">>;
+export type CodexPreToolUseCommonResult =
+  | { readonly permissionDecision: "deny"; readonly permissionDecisionReason: string }
+  | { readonly permissionDecision: "allow"; readonly updatedInput?: never }
   | { readonly additionalContext: string };
 
 export type CodexPermissionRequestResult = {
@@ -97,12 +113,36 @@ export type CodexHookResultFor<K extends CodexHookEventName> = K extends "PreToo
       ? CodexBlockResult | CodexStopResult | undefined
       : undefined;
 
+export type CodexHookResultForEvent<Event extends CodexHookEvent> =
+  Event["hook_event_name"] extends "PreToolUse"
+    ? CodexPreToolUseResultFor<Event> | undefined
+    : CodexHookResultFor<Event["hook_event_name"]>;
+
 export type CodexHookResult = {
   [K in CodexHookEventName]: CodexHookResultFor<K>;
 }[CodexHookEventName];
 
+type CodexToolEventForTool<Tool extends string> = CodexHookEventFor<"PreToolUse"> & {
+  readonly tool_name: Tool;
+};
+
+type CodexToolSpecificHandler = {
+  readonly [Tool in Exclude<CodexHookEventFor<"PreToolUse">["tool_name"], CodexUnknownToolName> &
+    string]?: (
+    event: CodexToolEventForTool<Tool>,
+  ) => MaybePromise<CodexHookResultForEvent<CodexToolEventForTool<Tool>>>;
+} & {
+  readonly unknown?: (
+    event: CodexToolEventForTool<CodexUnknownToolName>,
+  ) => MaybePromise<CodexHookResultForEvent<CodexToolEventForTool<CodexUnknownToolName>>>;
+};
+
+type CodexHandlerFor<K extends CodexHookEventName> = K extends "PreToolUse"
+  ?
+      | ((event: CodexHookEventFor<K>) => MaybePromise<CodexPreToolUseCommonResult | undefined>)
+      | CodexToolSpecificHandler
+  : (event: CodexHookEventFor<K>) => MaybePromise<CodexHookResultFor<K>>;
+
 export type CodexHookHandlers = {
-  readonly [K in CodexHookEventName]?: (
-    event: CodexHookEventFor<K>,
-  ) => CodexHookResultFor<K> | Promise<CodexHookResultFor<K>>;
+  readonly [K in CodexHookEventName]?: CodexHandlerFor<K>;
 };

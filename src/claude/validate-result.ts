@@ -1,10 +1,10 @@
 /**
- * Runtime validation for hook payloads crossing the bridge boundary.
+ * Runtime validation for Claude hook handler results.
  * Implements PRD §6.4.
  */
 
-import type { ClaudeHookEventName, ClaudeHookResult } from "../claude/hooks.ts";
-import { isClaudeHookInput } from "../claude/validate-input.ts";
+import type { ClaudeHookEvent, ClaudeHookEventName, ClaudeHookResult } from "./hooks.ts";
+import { isClaudeToolInputUpdate } from "./validate-tool-update.ts";
 
 const contextResultEvents = new Set<string>(["SessionStart", "Setup", "SubagentStart"]);
 const blockResultEvents = new Set<string>([
@@ -20,15 +20,21 @@ const blockResultEvents = new Set<string>([
 ]);
 const continueFalseEvents = new Set<string>(["TeammateIdle", "TaskCreated", "TaskCompleted"]);
 
-export const isClaudeHookEvent = isClaudeHookInput;
-
 export function isClaudeHookResult(
-  eventName: ClaudeHookEventName,
+  event: ClaudeHookEventName | ClaudeHookEvent,
   value: unknown,
 ): value is ClaudeHookResult {
+  const eventName = typeof event === "string" ? event : event.hook_event_name;
+  const toolName =
+    typeof event === "string" || !("tool_name" in event) || typeof event.tool_name !== "string"
+      ? undefined
+      : event.tool_name;
   if (value === undefined) return true;
   if (!isRecord(value)) return false;
-  if ("permissionDecision" in value) return isPreToolUseResult(eventName, value);
+  if ("permissionDecision" in value) return isPreToolUseResult(eventName, value, toolName);
+  if (eventName === "PreToolUse" && "additionalContext" in value) {
+    return isPreToolUseResult(eventName, value, toolName);
+  }
   if ("behavior" in value) return isPermissionRequestResult(eventName, value);
   if ("retry" in value) return eventName === "PermissionDenied" && value["retry"] === true;
   if ("worktreePath" in value) {
@@ -45,9 +51,13 @@ export function isClaudeHookResult(
 function isPreToolUseResult(
   eventName: ClaudeHookEventName,
   value: Readonly<Record<string, unknown>>,
+  toolName?: string,
 ): boolean {
+  if (eventName !== "PreToolUse") return false;
+  if (!("permissionDecision" in value)) {
+    return keysAre(value, ["additionalContext"]) && typeof value["additionalContext"] === "string";
+  }
   return (
-    eventName === "PreToolUse" &&
     keysAre(value, [
       "permissionDecision",
       "permissionDecisionReason",
@@ -57,7 +67,7 @@ function isPreToolUseResult(
     isOneOf(value["permissionDecision"], ["allow", "deny", "ask", "defer"]) &&
     optionalString(value["permissionDecisionReason"]) &&
     optionalString(value["additionalContext"]) &&
-    optionalRecord(value["updatedInput"])
+    isClaudeToolInputUpdate(toolName, value["updatedInput"])
   );
 }
 

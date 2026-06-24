@@ -25,9 +25,9 @@ After the PRD update, make the matching code and test changes in the same PR.
 ## Development Setup
 
 ```sh
-bun install
-bun run check
+npm install
+npm run check
 ```
 
-`bun run check` runs typecheck, Biome, the 200-line file limit check, and the
+`npm run check` runs typecheck, Biome, the 200-line file limit check, and the
 full test suite with 100% line and function coverage.

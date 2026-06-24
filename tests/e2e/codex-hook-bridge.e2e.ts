@@ -34,10 +34,16 @@ test("C-E2E-03 real Codex bridge handles typed hook responses", {
   const transcript = join(project.cwd, "codex-transcript.jsonl");
   writeFileSync(transcript, "");
   const hooks: CodexHookHandlers = {
-    PreToolUse: (event) =>
-      commandFromToolInput(event.tool_input).includes("context")
-        ? { additionalContext: "tool context" }
-        : { permissionDecision: "allow", updatedInput: { command: "echo updated" } },
+    PreToolUse: {
+      Bash: (event) =>
+        commandFromToolInput(event.tool_input).includes("context")
+          ? { additionalContext: "tool context" }
+          : { permissionDecision: "allow", updatedInput: { command: "echo updated" } },
+      apply_patch: () => ({
+        permissionDecision: "allow",
+        updatedInput: { command: "echo updated" },
+      }),
+    },
     PermissionRequest: () => ({ behavior: "deny", message: "blocked" }),
     PostToolUse: () => undefined,
     UserPromptSubmit: () => undefined,

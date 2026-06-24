@@ -154,7 +154,8 @@ type GenericKnownToolName = Exclude<
   | "Write"
 >;
 
-export type ClaudeToolInputUpdate = Partial<ClaudeToolInputByName["tool_input"]>;
+export type ClaudeToolInputUpdate<Tool extends ClaudeToolInputByName = ClaudeToolInputByName> =
+  Partial<Tool["tool_input"]>;
 
 export type ToolHookEventName =
   | "PermissionDenied"

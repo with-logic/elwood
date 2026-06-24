@@ -731,6 +731,29 @@ Invalid states should be unrepresentable where TypeScript can enforce that. For
 example, a `Notification` handler should not be able to return a blocking
 decision, while a `PreToolUse` handler can return `allow`, `deny`, `ask`,
 `defer`, `updatedInput`, and/or `additionalContext` according to Claude's rules.
+`PreToolUse` may also return `additionalContext` without a permission decision.
+Typed `updatedInput` rewrites MUST be authored through a tool-keyed handler such
+as `PreToolUse.Bash` or `PreToolUse.AskUserQuestion`, so the returned input
+rewrite is checked against that exact tool's input type. The event-name
+`PreToolUse(event)` handler form may return permission decisions or context, but
+must not expose `updatedInput`. Elwood must also validate returned
+`updatedInput` against the actual tool input shape for known tools before
+serializing it.
+
+Claude hook response support also includes:
+
+- `PermissionRequest` may return `allow` or `deny`, optional `updatedInput`,
+  `updatedPermissions`, `message`, or `interrupt`.
+  Typed `updatedInput` rewrites follow the same tool-keyed handler rule as
+  `PreToolUse`.
+- `PermissionDenied` may return `{ retry: true }`.
+- context hooks such as `SessionStart`, `Setup`, and `SubagentStart` may return
+  `additionalContext`, `initialUserMessage`, or `watchPaths`.
+- `PostToolUse` may return `additionalContext`, `updatedToolOutput`, or
+  `updatedMCPToolOutput`, or block with a reason.
+- `WorktreeCreate` may return `{ worktreePath: string }`.
+- `TeammateIdle`, `TaskCreated`, and `TaskCompleted` may return
+  `{ continue: false, stopReason? }`.
 
 ### 6.5 Readiness
 
@@ -788,12 +811,18 @@ unions.
   known-tool narrowing remains reliable while preserving a safe generic input
   path.
 - `PreToolUse` may deny, allow, allow a rewritten input, or add context
-  according to Codex's current supported response shapes.
+  according to Codex's current supported response shapes. Typed `updatedInput`
+  rewrites MUST be authored through a tool-keyed handler such as
+  `PreToolUse.Bash` or `PreToolUse.apply_patch`; the event-name
+  `PreToolUse(event)` handler form may return permission decisions or context,
+  but must not expose `updatedInput`.
 - `PermissionRequest` may allow or deny only. Future-only fields such as
   updated input, updated permissions, and interrupts must be unrepresentable.
   Serialized output must put `behavior` and optional `message` inside the
   event-specific `decision` object with `hookEventName`.
-- `Stop` and `SubagentStop` may block completion with a continuation reason.
+- `Stop` and `SubagentStop` may block completion with a continuation reason and
+  optional additional context, or return `continue: false` with a stop reason
+  and optional additional context.
 - `PostToolUse`, `UserPromptSubmit`, `SubagentStart`, `PreCompact`, and
   `PostCompact` are observe-only in Elwood's Codex API until Codex documents a
   stable response contract for those hooks.
@@ -845,6 +874,9 @@ project-local state directory, it should create `.elwood/.gitignore` when that
 file does not already exist. Elwood MUST NOT overwrite an existing gitignore
 file and MUST NOT create gitignore files in caller-provided custom state
 directories unless a future explicit option asks it to.
+The default `.elwood/` directory and generated `.elwood/.gitignore` should be
+readable by normal local tooling, while session-specific subdirectories remain
+private.
 
 ### 8.2 Session record
 
@@ -926,13 +958,11 @@ project/user settings that Elwood did not create.
 
 ### 9.2 Compatibility checks
 
-Elwood MUST check the installed Claude Code version during startup. It must
-document a minimum supported version once implementation selects the first
-Claude feature baseline.
+Elwood MUST check the installed Claude Code version during startup. The minimum
+supported Claude Code version is `2.1.144`.
 
 Elwood MUST check the installed Codex CLI version during `startCodex`. The
-minimum Codex baseline is the first release Elwood validates for stable hooks and
-interactive resume support.
+minimum supported Codex CLI version is `0.124.0`.
 
 If `autoupdate` is true, Elwood first verifies that the CLI exists, then runs
 the adapter's update command, then reads the version again before enforcing the
@@ -1022,10 +1052,10 @@ from the hook bridge path.
 The repository should include a small local developer test app. It is not the
 product's primary surface, but it is required for manual acceptance testing.
 
-The browser dev app should be launched with `bun run dev:web`, but its
+The browser dev app should be launched with `npm run dev:web`, but its
 PTY-owning process SHOULD run under Node when using `node-pty`, because the
-native PTY binding may not emit data correctly under Bun. Bun remains the
-package script runner and test runner.
+native PTY binding is a Node dependency. npm remains the package script runner,
+and Vitest is the default test runner.
 
 The repository should also include runnable examples for the public library API.
 Examples that own real PTYs SHOULD be exposed through package scripts that run a
@@ -1073,7 +1103,7 @@ The test app must not become required for library consumers.
 
 ## 12. End-To-End Testing
 
-The repository should provide `bun run test:e2e` as a separate, opt-in quality
+The repository should provide `npm run test:e2e` as a separate, opt-in quality
 gate for slow and potentially paid real-agent testing. The e2e suite MUST run
 the public TypeScript library API against real local CLI processes and real
 PTYs, minimizing mocks and seams. It should verify the critical library flows
@@ -1086,7 +1116,7 @@ Elwood-owned state cleanup.
 basic version/authentication preflight, but it should not use fake PTYs, fake
 hook bridges, or fake agent processes for the adapter flows it does run. Because
 the suite depends on local auth, network, model availability, and user-installed
-CLIs, it is intentionally separate from `bun run check`. E2E coverage should be
+CLIs, it is intentionally separate from `npm run check`. E2E coverage should be
 reported separately and made as high as practical; unit/conformance tests remain
 responsible for hard-to-force error paths and 100% default coverage.
 
@@ -1099,7 +1129,7 @@ above:
 - IPC transport details, provided it is local-only and session-scoped.
 - Exact generated settings file layout.
 - Exact event-emitter implementation.
-- Whether the package runs on Bun, Node, or both, as long as the TypeScript API
+- Whether the package runs on Node.js or another compatible JavaScript runtime, as long as the TypeScript API
   contract is met by supported hosts.
 - Internal storage filenames under `.elwood/`.
 
@@ -1278,13 +1308,13 @@ Each criterion has:
 | C-APP-08 | §11 | The web dev app immediately force-kills itself and child processes on SIGINT, and cleans up owned resources and child processes on SIGTERM/SIGHUP/job-control signals without reading from stdin. |
 | C-APP-09 | §11 | The web dev app emits structured debugger entries for hooks, activity, warnings, hook errors, lifecycle status, terminal exits, and runtime errors. |
 | C-APP-10 | §11 | The web dev app renders filterable, visually delineated debugger rows with a formatted JSON detail inspector. |
-| C-APP-11 | §11 | Runnable example package scripts execute PTY-owning TypeScript examples under a Node supervisor, remain invokable through `bun run`, and do not mirror raw wrapped-agent terminal output into the caller's shell. |
+| C-APP-11 | §11 | Runnable example package scripts execute PTY-owning TypeScript examples under a Node supervisor, remain invokable through `npm run`, and do not mirror raw wrapped-agent terminal output into the caller's shell. |
 
 #### C-E2E: Real Adapter Flows (§12)
 
 | ID | Section | Criterion |
 |---|---:|---|
-| C-E2E-01 | §12 | `bun run test:e2e` runs real public API session flows outside the default `bun run check` gate. |
+| C-E2E-01 | §12 | `npm run test:e2e` runs real public API session flows outside the default `npm run check` gate. |
 | C-E2E-02 | §12 | Claude e2e coverage starts a real Claude PTY, observes terminal data, sends input/message text, observes hooks/activity, resizes, stops, resumes when possible, and tears down Elwood-owned state. |
 | C-E2E-03 | §12 | Codex e2e coverage starts a real Codex PTY, observes terminal data, sends input/message text, observes hooks/activity/transcript where available, resizes, stops, resumes when possible, and tears down Elwood-owned state. |
 | C-E2E-04 | §12 | Real adapter e2e tests skip only for local prerequisite failures such as a missing CLI; they do not replace adapter flows with fake PTYs, fake CLIs, or fake hook bridges. |
@@ -1293,9 +1323,6 @@ Each criterion has:
 
 - The preferred PTY implementation is still to be selected. The public behavior
   requires a real PTY; the library choice is not part of this PRD.
-- The exact minimum Claude Code version should be set during implementation
-  after validating required hook events and response fields against installed
-  versions.
 - The hook bridge should start with Unix domain sockets on macOS unless an
   implementation spike shows a better local-only IPC path.
 - A future PRD revision should define the adapter interface for non-Claude tools

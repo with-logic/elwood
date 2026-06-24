@@ -3,7 +3,7 @@
  * Covers PRD §7A.
  */
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -47,18 +47,32 @@ describe("CodexSession hook handling", () => {
     const session = await startCodex({
       cwd,
       hooks: {
-        PreToolUse: (event) =>
-          event.tool_name === "Bash"
-            ? { permissionDecision: "deny", permissionDecisionReason: "No destructive shell." }
-            : { permissionDecision: "allow", updatedInput: { command: "echo rewritten" } },
+        PreToolUse: {
+          Bash: () => ({
+            permissionDecision: "deny",
+            permissionDecisionReason: "No destructive shell.",
+          }),
+          apply_patch: () => ({
+            permissionDecision: "allow",
+            updatedInput: { command: "echo rewritten" },
+          }),
+        },
       },
     });
-    const result = await ptys[0]!.dispatchHook(session.elwoodSessionId, {
+    const denied = await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       ...toolEvent(cwd),
       tool_name: "Bash",
       tool_input: { command: "rm -rf build" },
     });
-    expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+    const rewritten = await ptys[0]!.dispatchHook(session.elwoodSessionId, {
+      ...toolEvent(cwd),
+      tool_name: "apply_patch",
+      tool_input: { command: "apply patch" },
+    });
+    expect(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(JSON.parse(rewritten.stdout).hookSpecificOutput.updatedInput.command).toBe(
+      "echo rewritten",
+    );
   });
 
   test("C-HRESP-07 serializes Codex PreToolUse additional context", async () => {

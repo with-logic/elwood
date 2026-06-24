@@ -3,11 +3,11 @@
  * Implements PRD §4.1, §6, and §8.
  */
 
-import { isClaudeHookResult } from "../bridge/validate.ts";
 import { activityFromHookError } from "../core/activity.ts";
 import type { ElwoodEventName, HookErrorEvent } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { ClaudeHookEvent, ClaudeHookResult } from "./hooks.ts";
+import { isClaudeHookResult } from "./validate-result.ts";
 
 export type HookDispatchOutcome = {
   readonly result: ClaudeHookResult;
@@ -25,7 +25,7 @@ export async function requestHook(
     const hasListener = emitter.hasListeners(hookName);
     const result = await withTimeout(emitter.request(hookName, event), timeoutMs);
     if (!hasListener) return { result: undefined, failedOpen: false };
-    if (!isClaudeHookResult(event.hook_event_name, result)) {
+    if (!isClaudeHookResult(event, result)) {
       emitHookError(emitter, {
         elwoodSessionId,
         hookEventName: event.hook_event_name,
@@ -52,7 +52,7 @@ export function isBlock(result: ClaudeHookResult): boolean {
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  let timeout: Timer | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeout = setTimeout(() => reject(new Error("timeout")), timeoutMs);
   });

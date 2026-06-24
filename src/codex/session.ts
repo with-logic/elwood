@@ -1,6 +1,5 @@
 /** CodexSession implementation coordinating PTY, state, and hook dispatch. Implements PRD §5.5, §5.6, §5.7, §7A, §8, and §9. */
 import { randomUUID } from "node:crypto";
-import { bridgeScriptSource } from "../bridge/script.ts";
 import * as activity from "../core/activity.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
 import { elwoodError } from "../core/errors.ts";
@@ -9,27 +8,25 @@ import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { assertStartupUsable } from "../runtime/startup.ts";
-import { secureMkdir, writePrivateFile } from "../state/files.ts";
+import { cleanupStartupResources } from "../runtime/startup-cleanup.ts";
+import { secureMkdir } from "../state/files.ts";
 import {
-  appendSessionWarning,
   createSessionRecord,
   defaultStateDir,
   prepareStateDir,
   readSessionRecord,
   type SessionRecord,
+  upsertSessionWarning,
   writeSessionRecord,
 } from "../state/store.ts";
 import { attachPtyTerminal } from "../terminal/headless.ts";
 import { initialReady } from "./initial-ready.ts";
 import * as preflight from "./preflight.ts";
 import { spawnCodexPty } from "./pty.ts";
-import {
-  currentCodexHookBridgeFactory,
-  resetCodexSessionSeamsForTests,
-  setCodexHookBridgeFactoryForTests,
-} from "./session-bridge.ts";
+import { currentCodexHookBridgeFactory } from "./session-bridge.ts";
 import { dispatchHook, registerInitialHooks } from "./session-hooks.ts";
 import { CodexSessionImpl } from "./session-instance.ts";
+import { writeCodexRuntimeFiles } from "./session-runtime.ts";
 import type {
   CodexEventMap,
   CodexSession,
@@ -39,7 +36,10 @@ import type {
 import { CodexStartupPromptResponder } from "./startup-prompts.ts";
 import { CodexTranscriptWatcher } from "./transcript.ts";
 
-export { resetCodexSessionSeamsForTests, setCodexHookBridgeFactoryForTests };
+export {
+  resetCodexSessionSeamsForTests,
+  setCodexHookBridgeFactoryForTests,
+} from "./session-bridge.ts";
 export async function startCodex(options: StartCodexOptions): Promise<CodexSession> {
   const warning = preflight.preflightCodex(
     options.strictVersionCheck ?? false,
@@ -59,10 +59,10 @@ export async function startCodex(options: StartCodexOptions): Promise<CodexSessi
   const record =
     warning === undefined
       ? createdRecord
-      : appendSessionWarning(createdRecord, {
+      : upsertSessionWarning(createdRecord, {
           elwoodSessionId: createdRecord.elwoodSessionId,
           ...warning,
-        });
+        }).record;
   writeSessionRecord(record);
   return await startFromRecord(record, options);
 }
@@ -80,7 +80,8 @@ export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSes
   const checkedRecord =
     warning === undefined
       ? record
-      : appendSessionWarning(record, { elwoodSessionId: record.elwoodSessionId, ...warning });
+      : upsertSessionWarning(record, { elwoodSessionId: record.elwoodSessionId, ...warning })
+          .record;
   const size = options.initialSize ?? checkedRecord.terminalSize;
   const resumedRecord =
     options.initialSize === undefined
@@ -101,10 +102,7 @@ export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSes
 }
 async function startFromRecord(record: SessionRecord, options: StartCodexOptions) {
   secureMkdir(record.paths.sessionDir);
-  writePrivateFile(
-    record.paths.bridgeScriptPath,
-    bridgeScriptSource(record.paths.socketPath, record.bridgeToken),
-  );
+  writeCodexRuntimeFiles(record);
   const emitter = new TypedEmitter<CodexEventMap>();
   registerInitialHooks(emitter, options.hooks);
   const transcriptWatcher = new CodexTranscriptWatcher(record.elwoodSessionId, (event) => {
@@ -134,7 +132,7 @@ async function startFromRecord(record: SessionRecord, options: StartCodexOptions
   try {
     pty = spawnCodexPty(record, options);
   } catch (error) {
-    await bridge.stop();
+    await cleanupStartupResources({ bridge });
     throw error;
   }
   let startupOutput = "";
@@ -188,11 +186,13 @@ async function startFromRecord(record: SessionRecord, options: StartCodexOptions
       output: () => startupOutput,
     });
   } catch (error) {
-    ready.cancel();
-    pty.kill("SIGTERM");
-    await bridge.stop();
-    transcriptWatcher.stop();
-    terminal.dispose();
+    await cleanupStartupResources({
+      before: () => ready.cancel(),
+      pty,
+      bridge,
+      terminal,
+      after: () => transcriptWatcher.stop(),
+    });
     throw error;
   }
   session.markRunning();

@@ -3,7 +3,7 @@
  * Covers PRD §5.4.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import {
   activityFromCodexTranscript,
   activityFromHook,
@@ -12,6 +12,7 @@ import {
   activityFromStatus,
   activityFromTerminalExit,
 } from "../../src/core/activity.ts";
+import { TerminalReplayBuffer } from "../../src/core/terminal-replay.ts";
 
 describe("Elwood activity events", () => {
   test("C-API-12 maps hook prompts with Elwood session identity", () => {
@@ -41,7 +42,7 @@ describe("Elwood activity events", () => {
       turn_id: "turn-1",
       tool_use_id: "tool-1",
       tool_name: "Bash",
-      tool_input: { command: "bun test" },
+      tool_input: { command: "npm test" },
     });
     const stop = activityFromHook("codex", "elwood-2", {
       hook_event_name: "Stop",
@@ -119,6 +120,14 @@ describe("Elwood activity events", () => {
       transcriptPath: "/tmp/transcript.jsonl",
     });
     expect(toolCall).toMatchObject({ toolName: "shell" });
+    expect(
+      activityFromCodexTranscript({
+        elwoodSessionId: "elwood-3",
+        path: "/tmp/transcript.jsonl",
+        item: { payload: { type: "function_call", name: "shell", call_id: "call-1" } },
+        summary: { kind: "tool_call", label: "shell" },
+      }),
+    ).toMatchObject({ toolUseId: "call-1" });
     expect(toolResult).toMatchObject({ toolUseId: "call-1" });
     expect(activityFromStatus("claude", "elwood-3", "ready")).toMatchObject({
       label: "ready",
@@ -165,5 +174,18 @@ describe("Elwood activity events", () => {
       hookEventName: "Stop",
       failedOpen: true,
     });
+    expect(
+      activityFromHookResult("codex", "elwood-5", "Stop", { ignored: true }, false).label,
+    ).toBe("response");
+  });
+
+  test("C-API-17 terminal replay trims oldest chunks over the byte limit", () => {
+    const buffer = new TerminalReplayBuffer("elwood-6", 4);
+    const replayed: string[] = [];
+    buffer.push("ab");
+    buffer.push("cd");
+    buffer.push("ef");
+    buffer.replay((event) => replayed.push(event.data));
+    expect(replayed).toEqual(["cdef"]);
   });
 });

@@ -18,7 +18,8 @@ terminal.loadAddon(fit);
 terminal.open(document.getElementById("terminal"));
 fit.fit();
 
-const socket = new WebSocket("ws://" + location.host);
+const token = document.querySelector("meta[name='elwood-token']")?.content || "";
+const socket = new WebSocket("ws://" + location.host + "/?token=" + encodeURIComponent(token));
 const events = [];
 const list = document.getElementById("events");
 const session = document.getElementById("session");

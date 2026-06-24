@@ -3,9 +3,8 @@
  * Covers PRD §6.4 and §7.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import type {
-  AskUserQuestionInput,
   ClaudeBackgroundTask,
   ClaudeHookEvent,
   ClaudeHookEventFor,
@@ -41,12 +40,6 @@ describe("public hook types", () => {
           const command: string = event.tool_input.command;
           return { permissionDecision: "deny", permissionDecisionReason: command };
         }
-        if (event.tool_name === "AskUserQuestion") {
-          const updatedInput = {
-            answers: { first: "answer" },
-          } satisfies Partial<AskUserQuestionInput>;
-          return { permissionDecision: "allow", updatedInput };
-        }
         return undefined;
       },
     } satisfies ClaudeHookHandlers;
@@ -64,7 +57,6 @@ describe("public hook types", () => {
       // @ts-expect-error updatedInput must be a tool-input object, not a scalar.
       updatedInput: 42,
     } satisfies PreToolUseResult;
-
     expect(typeof handlers.PreToolUse).toBe("function");
     expect(typeof invalidUpdatedInput).toBe("object");
     expect(unknownTool.tool_input.raw).toBe(true);
@@ -76,10 +68,6 @@ describe("public hook types", () => {
         if (event.tool_name === "Bash") {
           const command: string = event.tool_input.command;
           return { permissionDecision: "deny", permissionDecisionReason: command };
-        }
-        if (event.tool_name === "apply_patch") {
-          const command: string = event.tool_input.command;
-          return { permissionDecision: "allow", updatedInput: { command } };
         }
         // @ts-expect-error Unknown Codex tools do not guarantee command input.
         const command: string = event.tool_input.command;
@@ -102,7 +90,6 @@ describe("public hook types", () => {
       tool_name: "web_search",
       tool_input: {},
     } satisfies CodexHookEvent;
-
     expect(typeof handlers.PreToolUse).toBe("function");
     expect(typeof invalid.PostToolUse).toBe("function");
     expect(rawFutureTool.tool_name).toBe("web_search");

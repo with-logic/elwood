@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { type WebSocket, WebSocketServer } from "ws";
+import type { WebSocket } from "ws";
 import {
   type AgentKind,
   createLiveHookHandlers,
@@ -20,15 +20,17 @@ import {
   type ServerMessage,
   sizeFrom,
 } from "./web-messages.ts";
+import { createBrowserToken, createGuardedWebSocketServer } from "./web-security.ts";
 import { installHardShutdown } from "./web-shutdown.ts";
 
 const require = createRequire(import.meta.url);
 const appPort = Number(process.env["ELWOOD_DEV_PORT"] ?? 4317);
+const browserToken = createBrowserToken();
 
 let session: SharedSession | null = null;
 const server = createServer(handleHttp);
 const sockets = new Set<WebSocket>();
-const wss = new WebSocketServer({ server });
+const wss = createGuardedWebSocketServer(server, browserToken, appPort);
 installHardShutdown({ cleanup: shutdownOwnedResources });
 wss.on("connection", (socket) => {
   sockets.add(socket);
@@ -38,14 +40,14 @@ wss.on("connection", (socket) => {
   });
 });
 
-server.listen(appPort, () => {
+server.listen(appPort, "127.0.0.1", () => {
   process.stdout.write(`Elwood dev app: http://localhost:${appPort}\n`);
 });
 
 function handleHttp(request: IncomingMessage, response: ServerResponse): void {
   const path = request.url?.split("?")[0] ?? "/";
   if (path === "/") {
-    send(response, "text/html; charset=utf-8", renderHtml(process.cwd()));
+    send(response, "text/html; charset=utf-8", renderHtml(process.cwd(), browserToken));
   } else if (path === "/client.js") {
     send(response, "text/javascript; charset=utf-8", clientScript());
   } else if (path === "/vendor/xterm.mjs") {

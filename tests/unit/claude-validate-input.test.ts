@@ -3,8 +3,8 @@
  * Covers PRD §6.4.
  */
 
-import { describe, expect, test } from "bun:test";
-import { isClaudeHookEvent } from "../../src/bridge/validate.ts";
+import { describe, expect, test } from "vitest";
+import { isClaudeHookInput as isClaudeHookEvent } from "../../src/claude/validate-input.ts";
 
 describe("Claude hook input validation", () => {
   test("C-HOOK-07 C-HOOK-17 validates lifecycle hook inputs by event-specific schema", () => {
@@ -85,6 +85,13 @@ describe("Claude hook input validation", () => {
     expect(isClaudeHookEvent(tool("Bash", { command: "echo ok" }, "PostToolUse", response()))).toBe(
       true,
     );
+    expect(
+      isClaudeHookEvent(
+        base("PostToolBatch", {
+          tool_calls: [{ tool_name: "Bash", tool_input: { command: "echo ok" } }],
+        }),
+      ),
+    ).toBe(false);
     expect(
       isClaudeHookEvent(
         tool("Bash", { command: "echo ok" }, "PostToolUseFailure", { error: "failed" }),
