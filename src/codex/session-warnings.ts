@@ -9,6 +9,26 @@ import type { TypedEmitter } from "../events/emitter.ts";
 import { type SessionRecord, upsertSessionWarning } from "../state/store.ts";
 import type { CodexEventMap } from "./session-types.ts";
 
+type CodexHomeWarning = Omit<
+  Extract<ElwoodWarningEvent, { readonly code: "codex_home_hooks_disabled" }>,
+  "elwoodSessionId"
+>;
+
+/** Codex's TUI skips all hook execution when CODEX_HOME is set (C-CODEX-14). */
+export function codexHomeHooksWarning(): CodexHomeWarning | undefined {
+  const codexHome = process.env["CODEX_HOME"];
+  if (codexHome === undefined) return undefined;
+  return {
+    agent: "codex",
+    source: "lifecycle",
+    code: "codex_home_hooks_disabled",
+    severity: "warning",
+    message:
+      "CODEX_HOME is set; the Codex TUI skips hook execution under a relocated home, so Elwood hook events will not fire.",
+    raw: codexHome,
+  };
+}
+
 export function recordCodexWarnings(
   record: SessionRecord,
   warnings: readonly ElwoodWarningEvent[],

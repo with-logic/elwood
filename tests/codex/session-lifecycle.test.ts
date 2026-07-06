@@ -80,11 +80,9 @@ describe("CodexSession lifecycle", () => {
     await session.kill();
     expect(session.status).toBe("killed");
     expect(ptys[0]!.killSignals).toEqual(["SIGKILL"]);
-    expect(() => session.sendPrompt("after kill")).toThrow(
-      expect.objectContaining({
-        code: "session_not_running",
-      }),
-    );
+    await expect(session.sendPrompt("after kill")).rejects.toMatchObject({
+      code: "session_not_running",
+    });
     expect(existsSync(join(dir, "session.json"))).toBe(true);
     await session.teardown();
     expect(session.status).toBe("torn_down");

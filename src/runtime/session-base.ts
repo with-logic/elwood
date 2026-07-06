@@ -79,40 +79,40 @@ export abstract class AgentSessionBase {
     return this.record.warnings;
   }
   sendPrompt(prompt: string): Promise<void> {
-    this.ensureRunning();
-    writePastedPrompt(this.terminal, prompt);
-    this.markRunning();
-    return Promise.resolve();
+    return this.inSession(() => {
+      writePastedPrompt(this.terminal, prompt);
+      this.markRunning();
+    });
   }
   sendMessage(message: string): Promise<void> {
-    this.ensureRunning();
-    return this.messages.send(message);
+    return this.inSession(() => this.messages.send(message));
   }
   sendKeys(input: string | Uint8Array): Promise<void> {
-    this.ensureRunning();
-    this.terminal.sendInput(input);
-    return Promise.resolve();
+    return this.inSession(() => this.terminal.sendInput(input));
   }
   resize(size: TerminalSize): Promise<void> {
-    this.ensureRunning();
-    if (this.pty.resize(size) === "closed") return Promise.resolve();
-    this.terminal.resize(size);
-    this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.currentStatus));
-    return Promise.resolve();
+    return this.inSession(() => {
+      if (this.pty.resize(size) === "closed") return;
+      this.terminal.resize(size);
+      this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.currentStatus));
+    });
   }
   compact(options?: { readonly timeoutMs?: number }): Promise<void> {
-    this.ensureRunning();
-    const submit = () => this.messages.send(compactCommand, "command");
-    const nudge = () => this.terminal.sendInput("\r");
-    return sessionCompact(this.statusEvents, submit, nudge, options?.timeoutMs);
+    return this.inSession(() => {
+      const submit = () => this.messages.send(compactCommand, "command");
+      const nudge = () => this.terminal.sendInput("\r");
+      return sessionCompact(this.statusEvents, submit, nudge, options?.timeoutMs);
+    });
   }
   listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]> {
-    this.ensureRunning();
-    return listPickerModels(this.pickerIo(), this.picker, pickerTimeout(options));
+    return this.inSession(() =>
+      listPickerModels(this.pickerIo(), this.picker, pickerTimeout(options)),
+    );
   }
   setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
-    this.ensureRunning();
-    return setPickerModel(this.pickerIo(), this.picker, id, pickerTimeout(options));
+    return this.inSession(() =>
+      setPickerModel(this.pickerIo(), this.picker, id, pickerTimeout(options)),
+    );
   }
   async stop(): Promise<void> {
     await this.shutdown("SIGTERM", "stopped");
@@ -151,8 +151,10 @@ export abstract class AgentSessionBase {
     if (event === "terminal:data") this.terminalReplay.replay(handler as never);
     replayWarningSnapshots(this.record.warnings, event, handler as (event: never) => void);
   }
-  protected ensureRunning(): void {
-    if (terminalStatuses.has(this.currentStatus)) throw this.notRunningError();
+  /** Rejects (never throws) after a terminal status, per C-API-25. */
+  private inSession<T>(work: () => Promise<T> | T): Promise<T> {
+    if (terminalStatuses.has(this.currentStatus)) return Promise.reject(this.notRunningError());
+    return Promise.resolve(work());
   }
   protected persist(record: SessionRecord): void {
     this.record = record;

@@ -112,11 +112,11 @@ describe("ClaudeSession lifecycle", () => {
     const session = await startClaude({ cwd });
     ptys[0]!.emitExit({ exitCode: 7 });
     expect(session.status).toBe("exited");
-    expect(() => session.sendPrompt("after exit")).toThrow(
-      expect.objectContaining({ code: "session_not_running" }),
-    );
-    expect(() => session.resize({ cols: 80, rows: 24 })).toThrow(
-      expect.objectContaining({ code: "session_not_running" }),
-    );
+    await expect(session.sendPrompt("after exit")).rejects.toMatchObject({
+      code: "session_not_running",
+    });
+    await expect(session.resize({ cols: 80, rows: 24 })).rejects.toMatchObject({
+      code: "session_not_running",
+    });
   });
 });

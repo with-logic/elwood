@@ -55,6 +55,24 @@ describe("session record validation", () => {
     );
     expect(valid?.warnings).toHaveLength(2);
   });
+
+  test("C-CODEX-14 accepts and gates the codex_home_hooks_disabled warning shape", () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const base = jsonRecord(root);
+    const warning = {
+      elwoodSessionId: id,
+      agent: "codex",
+      source: "lifecycle",
+      code: "codex_home_hooks_disabled",
+      severity: "warning",
+      message: "CODEX_HOME is set",
+      raw: "/tmp/home",
+    };
+    expect(validateSessionRecord({ ...base, warnings: [warning] }, root, id)).not.toBeNull();
+    expect(
+      validateSessionRecord({ ...base, warnings: [{ ...warning, source: "terminal" }] }, root, id),
+    ).toBeNull();
+  });
 });
 
 describe("state store edges", () => {

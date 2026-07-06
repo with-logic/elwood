@@ -138,12 +138,12 @@ describe("CodexSession startup and terminal control", () => {
     expect(exits).toEqual([7]);
     expect(activity).toContain("terminal_exit");
     expect(session.status).toBe("exited");
-    expect(() => session.sendKeys("after exit")).toThrow(
-      expect.objectContaining({ code: "session_not_running" }),
-    );
-    expect(() => session.resize({ cols: 80, rows: 24 })).toThrow(
-      expect.objectContaining({ code: "session_not_running" }),
-    );
+    await expect(session.sendKeys("after exit")).rejects.toMatchObject({
+      code: "session_not_running",
+    });
+    await expect(session.resize({ cols: 80, rows: 24 })).rejects.toMatchObject({
+      code: "session_not_running",
+    });
   });
 
   test("C-HOOK-02 C-HOOK-05 Codex bridge errors and listener removal are observable", async () => {

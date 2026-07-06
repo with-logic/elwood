@@ -70,6 +70,26 @@ describe("ClaudeSession message submission", () => {
     expect(record).not.toContain("terse reviewer");
   });
 
+  test("C-API-25 terminated sessions reject calls instead of throwing synchronously", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    await session.stop();
+    // Creating the promises must not throw; every failure arrives as a rejection.
+    const calls = [
+      session.sendPrompt("late"),
+      session.sendMessage("late"),
+      session.sendKeys("late"),
+      session.resize({ cols: 10, rows: 5 }),
+      session.compact(),
+      session.listModels(),
+      session.setModel("haiku"),
+    ];
+    for (const call of calls) {
+      await expect(call).rejects.toMatchObject({ code: "session_not_running" });
+    }
+  });
+
   test("C-API-21 undelivered persona is discarded when the session stops before ready", async () => {
     const cwd = tempDir();
     installFakes();

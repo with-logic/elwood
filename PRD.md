@@ -394,7 +394,10 @@ is busy, Elwood writes the input immediately, matching human terminal behavior.
 This readiness guarantee applies while the agent process is alive, including
 `starting`, `running`, and `ready` states. It does not require Elwood to write to
 terminated sessions; calls made after `stopped`, `exited`, `killed`, or
-`torn_down` should fail with `session_not_running`.
+`torn_down` should fail with `session_not_running`. Promise-returning session
+methods MUST report that failure by rejecting the returned promise; they never
+throw synchronously, so `promise.catch` alone is a complete error-handling
+strategy for callers.
 
 `sendKeys` is the low-level escape hatch for raw terminal input. String input
 flows through the headless xterm input path so terminal semantics match visual
@@ -716,8 +719,26 @@ type ElwoodWarningEvent =
       readonly failedServers: readonly string[];
       readonly recoveryCommands: readonly string[];
       readonly raw: string;
+    }
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "codex";
+      readonly source: "lifecycle";
+      readonly code: "codex_home_hooks_disabled";
+      readonly severity: "warning";
+      readonly message: string;
+      readonly raw: string;
     };
 ```
+
+`codex_home_hooks_disabled` is emitted when a Codex session starts while the
+`CODEX_HOME` environment variable is set. Verified empirically against
+codex-cli 0.142: the interactive Codex TUI silently skips all hook execution —
+including Elwood's session-scoped `-c` hook overrides — whenever `CODEX_HOME`
+is set, even when it points at the default `~/.codex` directory, while
+`codex exec` honors the same hooks. Elwood cannot restore hook delivery in
+this configuration, so it starts the session fail-open and surfaces the
+degradation as a typed warning (`raw` carries the `CODEX_HOME` value).
 
 Warnings are persisted in Elwood session metadata for resume-time inspection,
 but they are not a durable audit log. Repeated observations of the same warning
@@ -1297,6 +1318,7 @@ Each criterion has:
 | C-API-22 | §5.3 §5.7 | `compact()` submits the adapter's `/compact` command through the readiness queue, resolves on the adapter's `PostCompact` hook, rejects with `compact_failed` on timeout, and rejects with `session_not_running` if the session terminates first. |
 | C-API-23 | §5.3 §5.7 | `listModels()` parses the adapter's rendered model picker into typed options with current/default markers, cancels with Escape, and leaves the session model unchanged. |
 | C-API-24 | §5.3 §5.7 | `setModel(id)` switches the session model through cursor navigation using only session-scoped affordances, never persisting a new default into user-owned configuration, and rejects unknown ids with `model_automation_failed` listing available ids. |
+| C-API-25 | §5.3 | Promise-returning session methods called after a terminal status reject with `session_not_running` instead of throwing synchronously. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 
@@ -1344,6 +1366,7 @@ Each criterion has:
 | C-CODEX-11 | §5.5 | `autotrust: true` answers Codex's directory trust prompt through PTY input and emits `startup_prompt` activity. |
 | C-CODEX-12 | §5.5 | If Codex still shows an interactive update prompt inside the TUI, Elwood selects the skip/continue-without-updating option by label. |
 | C-CODEX-13 | §10 | An immediately failing or unusable Codex process fails with `codex_start_failed` or a more specific typed error. |
+| C-CODEX-14 | §5.7 | Starting a Codex session while `CODEX_HOME` is set emits the `codex_home_hooks_disabled` warning because the Codex TUI silently skips hook execution under a relocated home. |
 
 #### C-HOOK: Hook Bridge Coverage And Semantics (§6)
 
