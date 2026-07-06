@@ -100,6 +100,7 @@ export interface CodexSession {
   sendMessage(message: string): Promise<void>;
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): Promise<void>;
+  compact(options?: { readonly timeoutMs?: number }): Promise<void>;
   stop(): Promise<void>;
   kill(): Promise<void>;
   teardown(): Promise<void>;

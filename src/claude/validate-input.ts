@@ -47,7 +47,8 @@ export function isClaudeHookInput(value: unknown): value is ClaudeHookEvent {
   if (eventName === "WorktreeRemove") return typeof value["worktree_path"] === "string";
   if (eventName === "PreCompact")
     return (
-      isOneOf(value["trigger"], ["manual", "auto"]) && hasStrings(value, ["custom_instructions"])
+      isOneOf(value["trigger"], ["manual", "auto"]) &&
+      isNullableOptionalString(value["custom_instructions"])
     );
   if (eventName === "PostCompact")
     return isOneOf(value["trigger"], ["manual", "auto"]) && hasStrings(value, ["compact_summary"]);
@@ -149,6 +150,10 @@ function optionalBoolean(value: unknown): boolean {
 
 function optionalString(value: unknown): boolean {
   return value === undefined || typeof value === "string";
+}
+
+function isNullableOptionalString(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === "string";
 }
 
 function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {

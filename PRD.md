@@ -238,6 +238,7 @@ type StartClaudeOptions = {
   readonly initialSize?: TerminalSize;
   readonly hooks?: ClaudeHookHandlers;
   readonly persona?: string;
+  readonly model?: string;
   readonly permissionMode?: ClaudePermissionMode;
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];
@@ -261,6 +262,10 @@ rechecks the version after the update. `strictVersionCheck` makes unparseable
 Claude versions fatal instead of warning-and-continuing. `permissionMode`
 accepts Claude's documented launch values: `default`, `acceptEdits`, `plan`,
 `auto`, `dontAsk`, and `bypassPermissions`.
+
+`model` is forwarded to Claude's documented `--model` launch flag so the
+session starts on the requested model. Elwood does not validate the value;
+Claude owns model-name resolution and its own failure behavior.
 
 `autotrust` is an opt-in convenience for embedded/headless parent apps.
 When true, Elwood detects Claude's first-party workspace trust prompt in the
@@ -344,6 +349,7 @@ interface ClaudeSession {
   sendMessage(message: string): Promise<void>;
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): Promise<void>;
+  compact(options?: { readonly timeoutMs?: number }): Promise<void>;
 
   stop(): Promise<void>;
   kill(): Promise<void>;
@@ -392,6 +398,17 @@ terminated sessions; calls made after `stopped`, `exited`, `killed`, or
 flows through the headless xterm input path so terminal semantics match visual
 input. `Uint8Array` input is written to the PTY as bytes instead of being decoded
 as UTF-8, because callers use this overload for raw escape/binary input.
+
+`compact` asks the wrapped agent to compact its conversation. The compact
+command submission goes through the same readiness queue as `sendMessage`, so
+a compact requested mid-turn runs after the active turn completes. Elwood
+types the adapter's `/compact` command through terminal input and resolves the
+returned promise when the adapter reports completion through its `PostCompact`
+hook. If no `PostCompact` hook arrives within `timeoutMs` (default 120000 ms),
+the promise rejects with `compact_failed`. If the session terminates first,
+the promise rejects with `session_not_running`. Hook and activity events for
+`PreCompact`/`PostCompact` flow to the parent app exactly as for any other
+hook.
 
 `ElwoodSessionStatus` values are `starting`, `running`, `ready`, `stopped`,
 `exited`, `killed`, and `torn_down`.
@@ -612,9 +629,11 @@ default behavior must be fail-closed.
 ### 5.7 CodexSession
 
 `CodexSession` exposes the same control surface as `ClaudeSession`: typed event
-subscription, `sendPrompt`, `sendMessage`, `sendKeys`, `resize`, `stop`, `kill`, and
-`teardown`. Prompt submission and raw input semantics are the same as Claude:
-Elwood writes to the PTY as a human would.
+subscription, `sendPrompt`, `sendMessage`, `sendKeys`, `resize`, `compact`,
+`stop`, `kill`, and `teardown`. Prompt submission and raw input semantics are
+the same as Claude: Elwood writes to the PTY as a human would. `compact`
+follows the §5.3 contract using Codex's `/compact` command and `PostCompact`
+hook.
 
 Both `ClaudeSession` and `CodexSession` expose `warnings`, a live in-memory
 snapshot of typed non-fatal issues observed by Elwood. Warnings are also emitted
@@ -1093,6 +1112,7 @@ Initial required error names:
 | `session_not_running` | Operation requires a running process but the session is stopped. |
 | `termination_failed` | A stop/kill request did not observe process exit after escalation. |
 | `teardown_failed` | Elwood could not remove all owned session files. |
+| `compact_failed` | A requested conversation compaction did not report completion in time. |
 
 Hook handler failures are normally surfaced as `hookError` events, not thrown
 from the hook bridge path.
@@ -1229,6 +1249,7 @@ Each criterion has:
 | C-API-19 | §5.3 | Calling `sendMessage` while the session is alive but not ready queues the message until the next ready transition and rejects only if the session terminates first. |
 | C-API-20 | §5.7 | Codex transcript activity is flushed before terminal exit and terminal lifecycle status are emitted. |
 | C-API-21 | §5.1 §5.5 | A caller-provided `persona` is submitted as the session's first user message on the first ready transition, ahead of caller-queued messages; it is not persisted and not re-sent on resume. |
+| C-API-22 | §5.3 §5.7 | `compact()` submits the adapter's `/compact` command through the readiness queue, resolves on the adapter's `PostCompact` hook, rejects with `compact_failed` on timeout, and rejects with `session_not_running` if the session terminates first. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 
@@ -1257,6 +1278,7 @@ Each criterion has:
 | C-CLAUDE-09 | §9.2 | `autoupdate: true` rechecks the Claude version after running `claude update`. |
 | C-CLAUDE-10 | §5.1 | `autotrust: true` answers Claude's workspace trust prompt through PTY input and emits `startup_prompt` activity. |
 | C-CLAUDE-11 | §5.1 | Claude's browser tools onboarding prompt is declined through PTY input regardless of `autotrust`, with `startup_prompt` activity emitted under the `browser_tools` label. |
+| C-CLAUDE-12 | §5.1 | `startClaude` forwards `model` to Claude's `--model` launch flag. |
 
 #### C-CODEX: Codex Startup And Config (§4, §7A, §9)
 

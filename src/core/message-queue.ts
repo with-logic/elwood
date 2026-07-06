@@ -4,10 +4,12 @@
  */
 
 export type MessageQueueError = () => Error;
-export type MessageSubmitter = (message: string) => void;
+export type MessageSubmitMode = "message" | "command";
+export type MessageSubmitter = (message: string, mode: MessageSubmitMode) => void;
 
 type QueuedMessage = {
   readonly message: string;
+  readonly mode: MessageSubmitMode;
   readonly resolve: () => void;
   readonly reject: (error: Error) => void;
 };
@@ -26,11 +28,11 @@ export class MessageQueue {
     this.onSubmitted = onSubmitted;
   }
 
-  send(message: string): Promise<void> {
+  send(message: string, mode: MessageSubmitMode = "message"): Promise<void> {
     if (this.closed) return Promise.reject(this.stoppedError());
-    if (this.ready && this.queue.length === 0) return this.submitNow(message);
+    if (this.ready && this.queue.length === 0) return this.submitNow(message, mode);
     return new Promise((resolve, reject) => {
-      this.queue.push({ message, resolve, reject });
+      this.queue.push({ message, mode, resolve, reject });
       this.drain();
     });
   }
@@ -54,13 +56,13 @@ export class MessageQueue {
   private drain(): void {
     if (!(this.ready && this.queue.length > 0)) return;
     const message = this.queue.shift() as QueuedMessage;
-    this.submitNow(message.message).then(message.resolve, message.reject);
+    this.submitNow(message.message, message.mode).then(message.resolve, message.reject);
   }
 
-  private submitNow(message: string): Promise<void> {
+  private submitNow(message: string, mode: MessageSubmitMode): Promise<void> {
     try {
       this.ready = false;
-      this.submit(message);
+      this.submit(message, mode);
       this.onSubmitted();
       return Promise.resolve();
     } catch (error) {

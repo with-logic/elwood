@@ -13,6 +13,7 @@ export function buildClaudeShellCommand(
 ): string {
   const parts = ["exec", "claude", "--settings", shellQuote(settingsPath)];
   if (resumeId) parts.push("--resume", shellQuote(resumeId));
+  if (options.model) parts.push("--model", shellQuote(options.model));
   if (options.permissionMode) {
     parts.push("--permission-mode", shellQuote(options.permissionMode));
   }

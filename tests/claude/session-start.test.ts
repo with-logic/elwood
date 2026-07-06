@@ -35,6 +35,13 @@ describe("ClaudeSession startup and terminal control", () => {
     expect(ptys).toHaveLength(1);
   });
 
+  test("C-CLAUDE-12 forwards model to the --model launch flag", async () => {
+    const cwd = tempDir();
+    installFakes();
+    await startClaude({ cwd, model: "claude-haiku-4-5" });
+    expect(ptys[0]!.options.args.join(" ")).toContain("--model 'claude-haiku-4-5'");
+  });
+
   test("C-STATE-04 persists caller metadata and session name", async () => {
     const cwd = tempDir();
     installFakes();

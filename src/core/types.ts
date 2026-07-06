@@ -47,6 +47,7 @@ export type StartClaudeOptions = {
   readonly initialSize?: TerminalSize;
   readonly hooks?: ClaudeHookHandlers;
   readonly persona?: string;
+  readonly model?: string;
   readonly permissionMode?: ClaudePermissionMode;
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];
@@ -165,6 +166,7 @@ export interface ClaudeSession {
   sendMessage(message: string): Promise<void>;
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): Promise<void>;
+  compact(options?: { readonly timeoutMs?: number }): Promise<void>;
   stop(): Promise<void>;
   kill(): Promise<void>;
   teardown(): Promise<void>;

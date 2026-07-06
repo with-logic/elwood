@@ -4,8 +4,10 @@
  */
 
 import { activityFromStatus } from "../core/activity.ts";
+import { compactCommand, sessionCompact } from "../core/compact.ts";
 import { elwoodError } from "../core/errors.ts";
 import { MessageQueue } from "../core/message-queue.ts";
+import { writePastedPrompt, writeQueuedInput } from "../core/session-input.ts";
 import type { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
 import { replayWarningSnapshots } from "../core/warning-replay.ts";
@@ -44,7 +46,7 @@ export class CodexSessionImpl implements CodexSession {
   private currentStatus: ElwoodSessionStatus = "starting";
   private cleanupPromise: Promise<void> | undefined;
   private readonly messages = new MessageQueue(
-    (message) => this.writePrompt(message),
+    (message, mode) => writeQueuedInput(this.terminal, message, mode),
     () => this.notRunningError(),
     () => this.markRunning(),
   );
@@ -81,15 +83,14 @@ export class CodexSessionImpl implements CodexSession {
     if (event === "terminal:data") this.terminalReplay.replay(handler as never);
     const replay = handler as (event: never) => void;
     replayWarningSnapshots(this.record.warnings, event as string, replay);
-    const unsubscribe = this.emitter.on(event, handler);
-    return unsubscribe;
+    return this.emitter.on(event, handler);
   }
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void {
     this.emitter.off(event, handler);
   }
   sendPrompt(prompt: string): Promise<void> {
     this.ensureRunning();
-    this.writePrompt(prompt);
+    writePastedPrompt(this.terminal, prompt);
     this.markRunning();
     return Promise.resolve();
   }
@@ -109,22 +110,25 @@ export class CodexSessionImpl implements CodexSession {
     this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.currentStatus));
     return Promise.resolve();
   }
+  compact(options?: { readonly timeoutMs?: number }): Promise<void> {
+    this.ensureRunning();
+    const submit = () => this.messages.send(compactCommand, "command");
+    const nudge = () => this.terminal.sendInput("\r");
+    return sessionCompact(this.emitter, submit, nudge, options?.timeoutMs);
+  }
   async stop(): Promise<void> {
-    const wasExited = this.currentStatus === "exited";
-    await this.terminate("SIGTERM");
-    await this.cleanupRuntime();
-    if (!wasExited) {
-      this.messages.close();
-      this.setStatus("stopped");
-    }
+    await this.shutdown("SIGTERM", "stopped");
   }
   async kill(): Promise<void> {
+    await this.shutdown("SIGKILL", "killed");
+  }
+  private async shutdown(signal: "SIGTERM" | "SIGKILL", status: "stopped" | "killed") {
     const wasExited = this.currentStatus === "exited";
-    await this.terminate("SIGKILL");
+    await this.terminate(signal);
     await this.cleanupRuntime();
     if (!wasExited) {
       this.messages.close();
-      this.setStatus("killed");
+      this.setStatus(status);
     }
   }
   async teardown(): Promise<void> {
@@ -170,9 +174,6 @@ export class CodexSessionImpl implements CodexSession {
     if (terminalStatuses.has(this.currentStatus)) {
       throw this.notRunningError();
     }
-  }
-  private writePrompt(prompt: string): void {
-    this.terminal.sendInput(`\u001b[200~${prompt}\u001b[201~\r`);
   }
   private notRunningError(): Error {
     return elwoodError("session_not_running", "Codex session is not running.");

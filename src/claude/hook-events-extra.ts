@@ -65,7 +65,8 @@ export type WorktreeRemoveEvent = ClaudeCommonHookFields & {
 export type PreCompactEvent = ClaudeCommonHookFields & {
   readonly hook_event_name: "PreCompact";
   readonly trigger: "manual" | "auto";
-  readonly custom_instructions: string;
+  // Real manual /compact invocations deliver null custom instructions.
+  readonly custom_instructions?: string | null;
 };
 
 export type PostCompactEvent = ClaudeCommonHookFields & {

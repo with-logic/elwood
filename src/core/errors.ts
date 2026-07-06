@@ -23,7 +23,8 @@ export type ElwoodErrorName =
   | "hook_bridge_failed"
   | "session_not_running"
   | "termination_failed"
-  | "teardown_failed";
+  | "teardown_failed"
+  | "compact_failed";
 
 export class ElwoodError extends Error {
   override readonly name = "ElwoodError";

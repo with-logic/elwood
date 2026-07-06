@@ -4,8 +4,10 @@
  */
 
 import { activityFromStatus } from "../core/activity.ts";
+import { compactCommand, sessionCompact } from "../core/compact.ts";
 import { elwoodError } from "../core/errors.ts";
 import { MessageQueue } from "../core/message-queue.ts";
+import { writePastedPrompt, writeQueuedInput } from "../core/session-input.ts";
 import type { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import type {
   ClaudeSession,
@@ -45,7 +47,7 @@ export class ClaudeSessionImpl implements ClaudeSession {
   private currentStatus: ElwoodSessionStatus = "starting";
   private cleanupPromise: Promise<void> | undefined;
   private readonly messages = new MessageQueue(
-    (message) => this.writePrompt(message),
+    (message, mode) => writeQueuedInput(this.terminal, message, mode),
     () => this.notRunningError(),
     () => this.markRunning(),
   );
@@ -84,17 +86,15 @@ export class ClaudeSessionImpl implements ClaudeSession {
     const unsubscribe = this.emitter.on(event, handler);
     return unsubscribe;
   }
-
   off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void {
     this.emitter.off(event, handler);
   }
   sendPrompt(prompt: string): Promise<void> {
     this.ensureRunning();
-    this.writePrompt(prompt);
+    writePastedPrompt(this.terminal, prompt);
     this.markRunning();
     return Promise.resolve();
   }
-
   sendMessage(message: string): Promise<void> {
     this.ensureRunning();
     return this.messages.send(message);
@@ -104,7 +104,6 @@ export class ClaudeSessionImpl implements ClaudeSession {
     this.terminal.sendInput(input);
     return Promise.resolve();
   }
-
   resize(size: TerminalSize): Promise<void> {
     this.ensureRunning();
     if (this.pty.resize(size) === "closed") return Promise.resolve();
@@ -112,22 +111,25 @@ export class ClaudeSessionImpl implements ClaudeSession {
     this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.currentStatus));
     return Promise.resolve();
   }
+  compact(options?: { readonly timeoutMs?: number }): Promise<void> {
+    this.ensureRunning();
+    const submit = () => this.messages.send(compactCommand, "command");
+    const nudge = () => this.terminal.sendInput("\r");
+    return sessionCompact(this.emitter, submit, nudge, options?.timeoutMs);
+  }
   async stop(): Promise<void> {
-    const wasExited = this.currentStatus === "exited";
-    await this.terminate("SIGTERM");
-    await this.cleanupRuntime();
-    if (!wasExited) {
-      this.messages.close();
-      this.setStatus("stopped");
-    }
+    await this.shutdown("SIGTERM", "stopped");
   }
   async kill(): Promise<void> {
+    await this.shutdown("SIGKILL", "killed");
+  }
+  private async shutdown(signal: "SIGTERM" | "SIGKILL", status: "stopped" | "killed") {
     const wasExited = this.currentStatus === "exited";
-    await this.terminate("SIGKILL");
+    await this.terminate(signal);
     await this.cleanupRuntime();
     if (!wasExited) {
       this.messages.close();
-      this.setStatus("killed");
+      this.setStatus(status);
     }
   }
   async teardown(): Promise<void> {
@@ -146,7 +148,6 @@ export class ClaudeSessionImpl implements ClaudeSession {
     this.messages.markRunning();
     this.setStatus("running");
   }
-
   markReady(): void {
     if (terminalStatuses.has(this.currentStatus)) return;
     this.setStatus("ready");
@@ -165,9 +166,6 @@ export class ClaudeSessionImpl implements ClaudeSession {
     if (terminalStatuses.has(this.currentStatus)) {
       throw this.notRunningError();
     }
-  }
-  private writePrompt(prompt: string): void {
-    this.terminal.sendInput(`\u001b[200~${prompt}\u001b[201~\r`);
   }
   private notRunningError(): Error {
     return elwoodError("session_not_running", "Claude session is not running.");

@@ -43,6 +43,14 @@ describe("Claude hook input validation", () => {
     expect(
       isClaudeHookEvent(base("PreCompact", { trigger: "manual", custom_instructions: "" })),
     ).toBe(true);
+    // Real manual /compact sends custom_instructions: null (captured 2026-07).
+    expect(
+      isClaudeHookEvent(base("PreCompact", { trigger: "manual", custom_instructions: null })),
+    ).toBe(true);
+    expect(isClaudeHookEvent(base("PreCompact", { trigger: "manual" }))).toBe(true);
+    expect(
+      isClaudeHookEvent(base("PreCompact", { trigger: "manual", custom_instructions: 7 })),
+    ).toBe(false);
     expect(isClaudeHookEvent(base("PostCompact", compact()))).toBe(true);
     expect(isClaudeHookEvent(base("SessionEnd", { reason: "exit" }))).toBe(true);
     expect(isClaudeHookEvent(base("Elicitation", { mcp_server_name: "s", message: "m" }))).toBe(
