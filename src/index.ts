@@ -40,6 +40,7 @@ export type {
 export { claudeHookEventNames } from "./claude/hooks.ts";
 export { startClaude } from "./claude/session.ts";
 export { resumeClaude } from "./claude/session-resume.ts";
+export { type StartOrResumeClaudeOptions, startOrResumeClaude } from "./claude/start-or-resume.ts";
 export type {
   CodexCommandToolInput,
   CodexCommonHookFields,
@@ -69,6 +70,7 @@ export type {
   ResumeCodexOptions,
   StartCodexOptions,
 } from "./codex/session-types.ts";
+export { type StartOrResumeCodexOptions, startOrResumeCodex } from "./codex/start-or-resume.ts";
 export type {
   CodexTranscriptEvent,
   CodexTranscriptSummary,
@@ -82,6 +84,7 @@ export type {
 export type { ElwoodErrorName } from "./core/errors.ts";
 export { ElwoodError, elwoodError } from "./core/errors.ts";
 export type { AgentModelOption } from "./core/model-rows.ts";
+export type { StartOrResumeResult } from "./core/start-or-resume.ts";
 export type {
   ClaudePermissionMode,
   ClaudeSession,
