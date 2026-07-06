@@ -278,6 +278,60 @@ becomes ready, ahead of anything else you queue. It is never persisted and is
 not re-sent on resume. `startClaude` additionally accepts `model`, forwarded to
 Claude's `--model` launch flag (Codex has had `model` from the start).
 
+Code generic over "any agent session" should use the exported
+`ElwoodAgentSession` type — a structural supertype both session types satisfy,
+covering the shared events (`terminal:data`, `terminal:exit`, `status`,
+`activity`, `warning`, `hookError`), io, commands, and lifecycle.
+
+### sendKeys: string vs bytes
+
+The two overloads take different paths. A **string** flows through the
+headless xterm input pipeline, which applies terminal input semantics before
+the bytes reach the PTY. A **`Uint8Array`** is written to the PTY verbatim.
+For forwarding a user's real keystrokes from your own terminal UI, send bytes:
+what the user's keyboard produced is exactly what the agent receives, with no
+reinterpretation. Use strings for programmatic input where you are composing
+escape sequences yourself.
+
+### Persisting and resuming
+
+To resume a session across parent-app restarts, persist exactly two things:
+the `elwoodSessionId` and the `stateDir` it lives in (keep that directory
+intact). Everything else Elwood needs is in the session record. Notes:
+
+- Resume does **not** replay launch policy: `model`, `permissionMode`,
+  allowed/disallowed tools, and config overrides are not persisted and must be
+  re-specified if you want them (they are accepted as resume options where
+  supported).
+- `resume*` rejects with `resume_unavailable` when the agent CLI never
+  reported its internal conversation id (for Claude, a conversation is only
+  resumable after at least one completed turn), `state_not_found` when no
+  record exists, and `adapter_mismatch` when the id belongs to the other
+  adapter.
+- Prefer `startOrResumeClaude` / `startOrResumeCodex`: they run the
+  try-resume-else-start dance for you, falling back **only** on those three
+  error names, rethrowing everything else (e.g. `state_corrupt`), and
+  returning `{ session, resumed }` so you can re-persist a fresh id after a
+  fallback.
+
+### Event delivery guarantees
+
+- `terminal:exit` is emitted exactly once per session process exit.
+- A handler never fires after its unsubscribe function returns.
+- A late `terminal:data` subscriber first receives the replay buffer as a
+  single coalesced chunk, then live chunks, with no gap and no duplicates.
+  The replay buffer is bounded at **128 KB** (oldest data dropped), so a very
+  chatty session replays only the most recent screen history — pair it with
+  `session.terminal.snapshot()` if you need current-screen ground truth.
+- Lifecycle is idempotent where it can be: `stop()`/`kill()` after exit are
+  no-ops that preserve the exit status, and `teardown()` is safe to call
+  twice. Input/command methods after any terminal status reject with
+  `session_not_running` (they never throw synchronously).
+
+The default terminal size is 189×48 — deliberately wide so full-width TUI
+layouts render without artificial wrapping in headless use. Visual embedders
+should always pass and maintain their real xterm size instead.
+
 ## Events
 
 Subscribe with `session.on(eventName, handler)`. The most useful event for

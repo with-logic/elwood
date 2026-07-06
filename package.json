@@ -4,6 +4,12 @@
   "private": true,
   "description": "Spec-driven TypeScript project.",
   "type": "module",
+  "files": [
+    "src",
+    "docs",
+    "README.md",
+    "PRD.md"
+  ],
   "module": "src/index.ts",
   "exports": {
     ".": {
