@@ -12,6 +12,15 @@ import type { ClaudeSession, CodexSession } from "../../src/index.ts";
 export type AgentName = "claude" | "codex";
 export type E2eSession = ClaudeSession | CodexSession;
 
+// The suite emulates an agent launched from the user's own terminal. When the
+// suite itself runs nested inside a Claude Code session, claude >= 2.1.201
+// skips conversation persistence for the nested instance (no projects/*.jsonl
+// is written), which silently breaks every resume flow. Strip the nesting
+// markers so spawned agents behave exactly as they would for a real user.
+for (const key of Object.keys(process.env)) {
+  if (key === "CLAUDECODE" || key.startsWith("CLAUDE_CODE_")) delete process.env[key];
+}
+
 type EventSource = {
   on(event: string, handler: (event: unknown) => void): () => void;
 };

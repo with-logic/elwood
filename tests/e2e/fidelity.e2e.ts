@@ -4,7 +4,6 @@
  */
 
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
@@ -18,7 +17,7 @@ import {
 import { homedir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { type ClaudeSession, startClaude } from "../../src/index.ts";
+import { type ClaudeSession, type CodexSession, startClaude, startCodex } from "../../src/index.ts";
 import { cleanup, makeProject, observeSession, skipReason, waitFor } from "./helpers.ts";
 
 const codexAuthPath = join(homedir(), ".codex", "auth.json");
@@ -85,23 +84,20 @@ test("C-E2E-06 project settings hooks and CLAUDE.md load alongside the Elwood br
   }
 });
 
-// Codex TUI hook merging cannot be sandbox-tested on codex-cli 0.142: setting
-// CODEX_HOME at all silently disables TUI hook execution (see PRD §5.7,
-// codex_home_hooks_disabled). The additive user-hook contract is verified
-// against the real binary through codex exec, which honors the same config.
-test("C-E2E-06 codex exec merges user config.toml hooks with session -c hooks", {
+test("C-E2E-06 user Codex config.toml hooks fire alongside the Elwood bridge", {
   skip:
     skipReason("codex") ??
     (existsSync(codexAuthPath) ? undefined : "no ~/.codex/auth.json for a sandboxed CODEX_HOME"),
-  timeout: 240_000,
+  timeout: 180_000,
 }, async () => {
   const project = makeProject("codex");
+  // A sandboxed CODEX_HOME with the user's real auth reproduces a logged-in
+  // machine whose config.toml defines its own hooks, without touching ~/.codex.
   const codexHome = join(project.cwd, "codex-home");
   mkdirSync(codexHome, { recursive: true });
   copyFileSync(codexAuthPath, join(codexHome, "auth.json"));
   chmodSync(join(codexHome, "auth.json"), 0o600);
-  const userMarker = join(project.cwd, "user-hook-fired");
-  const sessionMarker = join(project.cwd, "session-hook-fired");
+  const marker = join(project.cwd, "user-hook-fired");
   writeFileSync(
     join(codexHome, "config.toml"),
     [
@@ -110,42 +106,42 @@ test("C-E2E-06 codex exec merges user config.toml hooks with session -c hooks", 
       "",
       "[[hooks.SessionStart]]",
       'matcher = "startup|resume|clear|compact"',
-      `hooks = [{ type = "command", command = "/usr/bin/touch ${userMarker}", timeout = 5 }]`,
+      `hooks = [{ type = "command", command = "/usr/bin/touch ${marker}", timeout = 5 }]`,
       "",
     ].join("\n"),
   );
-  const override = `hooks.SessionStart=[{matcher="startup|resume|clear|compact",hooks=[{type="command",command="/usr/bin/touch ${sessionMarker}",timeout=5}]}]`;
-  const command = [
-    `CODEX_HOME='${codexHome}'`,
-    "codex exec",
-    `--cd '${project.cwd}'`,
-    "--skip-git-repo-check",
-    "-s read-only",
-    "--dangerously-bypass-hook-trust",
-    `-c '${override.replaceAll("'", "'\\''")}'`,
-    "'Reply exactly: OK'",
-  ].join(" ");
+  const previousHome = process.env["CODEX_HOME"];
+  process.env["CODEX_HOME"] = codexHome;
+  let session: CodexSession | undefined;
+  let stops = 0;
   try {
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn("/bin/zsh", ["-l", "-i", "-c", command], { stdio: "ignore" });
-      child.on("error", reject);
-      child.on("exit", (code) =>
-        code === 0 ? resolve() : reject(new Error(`codex exec exited with ${code}`)),
-      );
+    session = await startCodex({
+      cwd: project.cwd,
+      stateDir: project.stateDir,
+      sandbox: "read-only",
+      approvalPolicy: "never",
+      autotrust: true,
+      hooks: {
+        Stop: () => {
+          stops += 1;
+        },
+      },
     });
-    await waitFor(
-      () => (existsSync(userMarker) ? true : undefined),
-      "user config.toml hook",
-      15_000,
-    );
-    await waitFor(
-      () => (existsSync(sessionMarker) ? true : undefined),
-      "session-scoped -c hook",
-      15_000,
-    );
+    const observed = observeSession(session);
+    // Codex dispatches hooks with the first turn, so run one.
+    await session.sendMessage("Reply exactly: ELWOOD_FIDELITY_OK. Do not use tools.");
+    await waitFor(() => (stops > 0 ? true : undefined), "bridge Stop hook");
+    await waitFor(() => (existsSync(marker) ? true : undefined), "user config.toml hook marker");
+    assert.equal(observed.hookErrors.length, 0);
+    // Elwood must not rewrite the user-owned config it merged with.
     const configRaw = readFileSync(join(codexHome, "config.toml"), "utf8");
-    assert.ok(configRaw.includes("user-hook-fired"), "user config left intact");
+    assert.ok(configRaw.includes("user-hook-fired"));
+    assert.ok(!configRaw.includes("hook-bridge.mjs"), "bridge hooks stay out of user config");
+    observed.dispose();
   } finally {
+    if (previousHome === undefined) delete process.env["CODEX_HOME"];
+    else process.env["CODEX_HOME"] = previousHome;
+    await cleanup(session);
     rmSync(join(codexHome, "auth.json"), { force: true });
   }
 });

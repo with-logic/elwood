@@ -82,7 +82,7 @@ npm run check
 - `tsc --noEmit`
 - `biome check .`
 - `scripts/check-lines.ts`
-- `vitest run --coverage` with 100% line and function coverage
+- `vitest run --coverage` with 100% line, function, statement, and branch coverage
 
 Slow real-agent e2e tests are separate:
 
@@ -269,8 +269,11 @@ reports completion through its `PostCompact` hook.
 `listModels` and `setModel` drive the adapter's own `/model` picker through the
 headless terminal. `listModels` returns typed rows (`id`, `label`,
 `description`, `isCurrent`, `isDefault`) and leaves the model unchanged;
-`setModel` switches the session's model using only session-scoped affordances,
-so the user's saved default model is never modified.
+`setModel` switches the session's model without Elwood touching user config —
+but note an adapter asymmetry: Claude applies session-only, while the Codex
+CLI itself persists the confirmed picker selection to the user's config.toml
+(CLI behavior Elwood cannot prevent; restore it or set the model at launch if
+that matters).
 
 Both adapters also accept a `persona` start option: an instruction message that
 Elwood delivers as the session's guaranteed first user message once the agent

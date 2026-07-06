@@ -63,5 +63,7 @@ cap does not constrain your state layout.
 - **User keystrokes** should be forwarded with the `Uint8Array` overload of
   `sendKeys` for verbatim delivery; the string overload applies terminal
   input semantics (see README).
-- **Model switching** via `setModel` is session-scoped on both adapters and
-  never changes the user's saved default model.
+- **Model switching** via `setModel`: Claude applies session-only and never
+  touches the user's default; the Codex CLI persists picker selections to the
+  user's config.toml on its own — restore it or set the model at launch when
+  the user's default must survive.

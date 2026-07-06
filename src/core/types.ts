@@ -116,15 +116,6 @@ export type ElwoodWarningEvent =
       readonly failedServers: readonly string[];
       readonly recoveryCommands: readonly string[];
       readonly raw: string;
-    }
-  | {
-      readonly elwoodSessionId: string;
-      readonly agent: "codex";
-      readonly source: "lifecycle";
-      readonly code: "codex_home_hooks_disabled";
-      readonly severity: "warning";
-      readonly message: string;
-      readonly raw: string;
     };
 
 export type ElwoodEventMap = {

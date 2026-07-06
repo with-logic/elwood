@@ -29,7 +29,6 @@ import { dispatchHook, registerInitialHooks } from "./session-hooks.ts";
 import { CodexSessionImpl } from "./session-instance.ts";
 import { writeCodexRuntimeFiles } from "./session-runtime.ts";
 import type { CodexEventMap, CodexSession, StartCodexOptions } from "./session-types.ts";
-import { codexHomeHooksWarning } from "./session-warnings.ts";
 import { CodexStartupPromptResponder } from "./startup-prompts.ts";
 import { CodexTranscriptWatcher } from "./transcript.ts";
 
@@ -53,14 +52,13 @@ export async function startCodex(options: StartCodexOptions): Promise<CodexSessi
     size: options.initialSize ?? defaultTerminalSize,
     ...(options.name === undefined ? {} : { name: options.name }),
   });
-  let record = createdRecord;
-  for (const partial of [warning, codexHomeHooksWarning()]) {
-    if (partial === undefined) continue;
-    record = upsertSessionWarning(record, {
-      elwoodSessionId: createdRecord.elwoodSessionId,
-      ...partial,
-    }).record;
-  }
+  const record =
+    warning === undefined
+      ? createdRecord
+      : upsertSessionWarning(createdRecord, {
+          elwoodSessionId: createdRecord.elwoodSessionId,
+          ...warning,
+        }).record;
   writeSessionRecord(record);
   return queuePersonaMessage(await startCodexFromRecord(record, options), options.persona);
 }

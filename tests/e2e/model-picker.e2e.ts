@@ -4,6 +4,9 @@
  */
 
 import assert from "node:assert/strict";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { type ClaudeSession, type CodexSession, startClaude, startCodex } from "../../src/index.ts";
 import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
@@ -48,6 +51,10 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
   timeout: 150_000,
 }, async () => {
   const project = makeProject("codex");
+  // The Codex CLI persists picker selections into the user's config.toml
+  // (PRD §5.3 deviation note), so snapshot and restore it around this test.
+  const configPath = join(homedir(), ".codex", "config.toml");
+  const configBefore = existsSync(configPath) ? readFileSync(configPath, "utf8") : undefined;
   let session: CodexSession | undefined;
   try {
     session = await startCodex({
@@ -74,6 +81,7 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
       "codex default model marker is unchanged",
     );
   } finally {
+    if (configBefore !== undefined) writeFileSync(configPath, configBefore);
     await cleanup(session);
   }
 });

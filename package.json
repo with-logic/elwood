@@ -27,7 +27,7 @@
     "check:lines": "node --no-warnings scripts/check-lines.ts",
     "check": "npm run typecheck && npm run lint && npm run check:lines && npm test",
     "check:all": "npm run check && npm run test:e2e",
-    "test:e2e": "exec node --no-warnings --experimental-test-coverage --test-coverage-include='src/**/*.ts' --test-coverage-exclude='src/app/**' --test-coverage-exclude='tests/**' --test-timeout=240000 --test tests/e2e/*.e2e.ts",
+    "test:e2e": "exec node --no-warnings --experimental-test-coverage --test-coverage-include='src/**/*.ts' --test-coverage-exclude='src/app/**' --test-coverage-exclude='tests/**' --test-timeout=240000 --test-concurrency=1 --test tests/e2e/*.e2e.ts",
     "dev:app": "exec node --no-warnings src/app/dev.ts",
     "dev:web": "exec node --no-warnings scripts/dev-web.ts",
     "example:minimal": "exec node --no-warnings scripts/run-example.ts examples/minimal.ts",

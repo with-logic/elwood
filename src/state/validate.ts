@@ -105,15 +105,6 @@ function isWarning(value: unknown): value is ElwoodWarningEvent {
       isString(value["raw"])
     );
   }
-  if (value["code"] === "codex_home_hooks_disabled") {
-    return (
-      value["agent"] === "codex" &&
-      value["source"] === "lifecycle" &&
-      isString(value["elwoodSessionId"]) &&
-      isString(value["message"]) &&
-      isString(value["raw"])
-    );
-  }
   return false;
 }
 
