@@ -154,6 +154,7 @@ const claude = await startClaude({
   cwd: "/path/to/project",
   disallowedTools: ["AskUserQuestion"],
   autotrust: true,
+  persona: "You are a terse reviewer. Prefer diffs over prose.",
   hooks: {
     PreToolUse(event) {
       if (event.tool_name === "Bash" && event.tool_input.command.includes("rm -rf")) {
@@ -242,6 +243,9 @@ interface ElwoodLikeSession {
   sendMessage(message: string): Promise<void>;
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: { cols: number; rows: number }): Promise<void>;
+  compact(options?: { readonly timeoutMs?: number }): Promise<void>;
+  listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]>;
+  setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void>;
   stop(): Promise<void>;
   kill(): Promise<void>;
   teardown(): Promise<void>;
@@ -258,6 +262,21 @@ terminal immediately, like a human typing into the TUI.
 
 `sendKeys` is the escape hatch. Strings flow through the headless xterm input
 path. `Uint8Array` writes raw bytes to the PTY.
+
+`compact` types the adapter's `/compact` command and resolves when the adapter
+reports completion through its `PostCompact` hook.
+
+`listModels` and `setModel` drive the adapter's own `/model` picker through the
+headless terminal. `listModels` returns typed rows (`id`, `label`,
+`description`, `isCurrent`, `isDefault`) and leaves the model unchanged;
+`setModel` switches the session's model using only session-scoped affordances,
+so the user's saved default model is never modified.
+
+Both adapters also accept a `persona` start option: an instruction message that
+Elwood delivers as the session's guaranteed first user message once the agent
+becomes ready, ahead of anything else you queue. It is never persisted and is
+not re-sent on resume. `startClaude` additionally accepts `model`, forwarded to
+Claude's `--model` launch flag (Codex has had `model` from the start).
 
 ## Events
 
@@ -369,7 +388,7 @@ Elwood follows a spec-driven workflow:
 
 Repository standards:
 
-- 100% line and function coverage.
+- 100% line, function, statement, and branch coverage.
 - Strict TypeScript.
 - Biome linting/formatting.
 - 200-line maximum for code/test/script files.
@@ -382,6 +401,8 @@ Repository standards:
 |---|---|
 | `PRD.md` | Source of truth for product/API behavior and conformance criteria. |
 | `src/index.ts` | Public package exports. |
+| `src/core/` | Adapter-neutral session machinery: message queue, compact, model picker automation, persona, warnings. |
+| `src/runtime/` | Shared session base class, startup checks, teardown, and test seams. |
 | `src/claude/` | Claude adapter, hooks, settings, validation, and session runtime. |
 | `src/codex/` | Codex adapter, hooks, transcript watcher, validation, and session runtime. |
 | `src/terminal/headless.ts` | Headless xterm.js model and PTY attachment. |
@@ -397,4 +418,9 @@ Repository standards:
 - Codex transcript observation is best-effort because not every TUI-visible
   activity is exposed as a hook.
 - Startup prompt automation is intentionally narrow: Elwood answers known Codex
-  hook-trust and update prompts, and reports typed warnings where possible.
+  hook-trust and update prompts, Claude/Codex workspace trust prompts (opt-in
+  via `autotrust`), and Claude's browser-tools onboarding prompt, and reports
+  typed warnings where possible.
+- Model picker automation (`listModels`/`setModel`) is pinned to the picker
+  layouts of current CLI releases; layout drift surfaces as a typed
+  `model_automation_failed` error rather than silent misbehavior.

@@ -57,3 +57,15 @@
 
   20. Teardown Session Completely
      Parent app can remove Elwood-owned metadata, generated settings, sockets, bridge files, and local traces for a session without deleting unrelated Claude/Codex user data.
+
+  21. Deliver A Persona First
+     Parent app provides a persona at start and Elwood submits it as the session's first user message once the agent is ready, ahead of any queued messages.
+
+  22. Load User Configuration Additively
+     A session started in a project with its own hooks, CLAUDE.md/AGENTS.md, skills, and settings loads all of it exactly as a human terminal session would, alongside Elwood's bridge.
+
+  23. Compact The Conversation
+     Parent app calls compact() and Elwood types /compact, then resolves when the adapter's PostCompact hook confirms completion.
+
+  24. List And Switch Models
+     Parent app lists the adapter's models with typed current/default markers and switches the session model through the adapter's own picker without ever changing the user's saved default.
