@@ -1,6 +1,6 @@
 /**
  * Conformance tests for package-level developer commands.
- * Covers PRD §11.
+ * Covers PRD §11 and §12.
  */
 
 import { readFileSync } from "node:fs";
@@ -19,6 +19,12 @@ describe("package scripts", () => {
     expect(packageJson.scripts?.["example:full"]).toBe(
       "exec node --no-warnings scripts/run-example.ts examples/full.ts",
     );
+  });
+
+  test("C-E2E-05 check:all runs the default check gate followed by test:e2e", () => {
+    const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as PackageJson;
+    expect(packageJson.scripts?.["check:all"]).toBe("npm run check && npm run test:e2e");
+    expect(packageJson.scripts?.["check"]).not.toContain("test:e2e");
   });
 
   test("C-APP-11 full example has runnable defaults", () => {

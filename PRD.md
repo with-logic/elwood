@@ -1120,6 +1120,11 @@ CLIs, it is intentionally separate from `npm run check`. E2E coverage should be
 reported separately and made as high as practical; unit/conformance tests remain
 responsible for hard-to-force error paths and 100% default coverage.
 
+The repository should also provide `npm run check:all`, an opt-in convenience
+gate that runs the default `npm run check` gate and then `npm run test:e2e`.
+`check:all` does not change the composition of `npm run check`; the default gate
+remains free of real-agent dependencies.
+
 ## 13. Implementation Latitude
 
 The following are implementation choices unless they affect the public behavior
@@ -1318,6 +1323,7 @@ Each criterion has:
 | C-E2E-02 | §12 | Claude e2e coverage starts a real Claude PTY, observes terminal data, sends input/message text, observes hooks/activity, resizes, stops, resumes when possible, and tears down Elwood-owned state. |
 | C-E2E-03 | §12 | Codex e2e coverage starts a real Codex PTY, observes terminal data, sends input/message text, observes hooks/activity/transcript where available, resizes, stops, resumes when possible, and tears down Elwood-owned state. |
 | C-E2E-04 | §12 | Real adapter e2e tests skip only for local prerequisite failures such as a missing CLI; they do not replace adapter flows with fake PTYs, fake CLIs, or fake hook bridges. |
+| C-E2E-05 | §12 | `npm run check:all` runs the default `npm run check` gate followed by `npm run test:e2e`, without changing the composition of `npm run check`. |
 
 ## 15. Open Implementation Notes
 
