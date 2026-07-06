@@ -4,13 +4,13 @@
  */
 
 import { chmodSync, existsSync, statSync } from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { spawn } from "node-pty";
+import { moduleRequire } from "../core/module-require.ts";
 import type { TerminalSize } from "../core/types.ts";
 import type { PtyFactory, PtyProcess, PtySpawnOptions } from "./types.ts";
 
-const require = createRequire(import.meta.url);
+const require = moduleRequire(import.meta.url);
 
 export const nodePtyFactory: PtyFactory = (options: PtySpawnOptions): PtyProcess => {
   ensureNodePtySpawnHelperExecutable();

@@ -1,9 +1,9 @@
 /** Browser-based local Elwood dev app. Implements PRD §11. */
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import type { WebSocket } from "ws";
+import { moduleRequire } from "../core/module-require.ts";
 import {
   type AgentKind,
   createLiveHookHandlers,
@@ -23,7 +23,7 @@ import {
 import { createBrowserToken, createGuardedWebSocketServer } from "./web-security.ts";
 import { installHardShutdown } from "./web-shutdown.ts";
 
-const require = createRequire(import.meta.url);
+const require = moduleRequire(import.meta.url);
 const appPort = Number(process.env["ELWOOD_DEV_PORT"] ?? 4317);
 const browserToken = createBrowserToken();
 
