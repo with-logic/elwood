@@ -7,7 +7,6 @@ import { queuePersonaMessage } from "../core/persona.ts";
 import { emitStartupPromptActivity } from "../core/startup-automation.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import type { ClaudeSession, StartClaudeOptions } from "../core/types.ts";
-import { WorkspaceTrustResponder } from "../core/workspace-trust.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { assertStartupUsable } from "../runtime/startup.ts";
@@ -33,6 +32,7 @@ import {
 } from "./session-bridge.ts";
 import { ClaudeSessionImpl } from "./session-instance.ts";
 import { registerInitialHooks, spawnClaudePty, writeRuntimeFiles } from "./session-runtime.ts";
+import { ClaudeStartupPromptResponder } from "./startup-prompts.ts";
 
 export {
   resetClaudeHookBridgeFactoryForTests as resetClaudeSessionSeamsForTests,
@@ -126,17 +126,19 @@ export async function startClaudeFromRecord(record: SessionRecord, options: Star
   let startupOutput = "";
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
-  const workspaceTrust = new WorkspaceTrustResponder("claude", options.autotrust ?? false);
+  const promptResponder = new ClaudeStartupPromptResponder(options.autotrust ?? false);
   const terminal = attachPtyTerminal(
     options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
     pty,
     (data, renderedTerminal) => {
       startupOutput += data;
       terminalReplay.push(data);
-      const trust = workspaceTrust.handle(renderedTerminal.snapshot().text, (input) =>
+      const automations = promptResponder.handle(renderedTerminal.snapshot().text, (input) =>
         renderedTerminal.sendInput(input),
       );
-      if (trust) emitStartupPromptActivity(emitter, "claude", record.elwoodSessionId, trust);
+      for (const automation of automations) {
+        emitStartupPromptActivity(emitter, "claude", record.elwoodSessionId, automation);
+      }
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );

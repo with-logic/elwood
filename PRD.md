@@ -196,6 +196,31 @@ Prompt detection MUST operate on raw PTY output, including ANSI-styled and
 cursor-addressed full-screen output where menu text may arrive as `2.Skip`
 rather than as line-oriented `2. Skip` text.
 
+### 4.5 Environment fidelity
+
+An Elwood session MUST behave like the same agent launched from the user's own
+terminal in the same working directory, plus Elwood's additive instrumentation.
+Concretely:
+
+- Sessions launch through the user's login+interactive shell in the caller's
+  `cwd`, inheriting the parent process environment plus Elwood's own session
+  variables (such as `ELWOOD_SESSION_ID`).
+- Elwood MUST NOT modify, move, or shadow user-owned configuration: user and
+  project Claude settings, `CLAUDE.md`/`AGENTS.md`, skills, MCP configuration,
+  and Codex `config.toml` all load exactly as they would without Elwood.
+- Elwood's hook wiring MUST be additive. User-configured hooks for the same
+  events continue to run alongside Elwood's bridge hooks. For Claude this holds
+  because `--settings` is a merged settings source; for Codex this holds
+  because CLI `-c hooks.*` overrides combine with `config.toml` hook groups
+  (verified against codex-cli 0.142).
+- Known deviations MUST be documented rather than silent. Current deviations:
+  Codex hook trust is bypassed inside Elwood sessions because Elwood's reserved
+  `hookTrust="trust-all"` and trust-bypass flag apply to the whole session, so
+  a user hook that Codex would normally prompt about runs without a prompt; and
+  caller-provided `settingsOverrides` (§5.1) may intentionally shadow
+  project-level Claude settings keys because the generated `--settings` file is
+  a high-precedence source.
+
 ## 5. Public TypeScript API
 
 The package MUST expose its public API from the package root and SHOULD define an
@@ -243,6 +268,15 @@ rendered terminal and chooses the trust/continue option through PTY input. The
 default is false because trusting a workspace is a security-sensitive decision.
 When Elwood answers the prompt, the session emits adapter-neutral
 `startup_prompt` activity with label `workspace_trust`.
+
+Separately from `autotrust`, Elwood MUST dismiss Claude's non-security
+first-party onboarding prompts that would otherwise block readiness in an
+embedded session, always choosing the option that declines or defers the
+offered capability. The currently known prompt of this kind is the browser
+tools onboarding prompt, declined through PTY input (Escape) with
+`startup_prompt` activity emitted under the label `browser_tools`. This
+automation is unconditional because declining grants nothing and an unanswered
+onboarding prompt permanently wedges a headless session.
 
 `persona` is an optional instruction message for the agent. When set, Elwood
 enqueues it before control returns to the caller, so it is guaranteed to be the
@@ -1222,6 +1256,7 @@ Each criterion has:
 | C-CLAUDE-08 | §5.2 | `resumeClaude` fails explicitly when Elwood has not persisted a Claude resume id. |
 | C-CLAUDE-09 | §9.2 | `autoupdate: true` rechecks the Claude version after running `claude update`. |
 | C-CLAUDE-10 | §5.1 | `autotrust: true` answers Claude's workspace trust prompt through PTY input and emits `startup_prompt` activity. |
+| C-CLAUDE-11 | §5.1 | Claude's browser tools onboarding prompt is declined through PTY input regardless of `autotrust`, with `startup_prompt` activity emitted under the `browser_tools` label. |
 
 #### C-CODEX: Codex Startup And Config (§4, §7A, §9)
 
@@ -1341,6 +1376,7 @@ Each criterion has:
 | C-E2E-03 | §12 | Codex e2e coverage starts a real Codex PTY, observes terminal data, sends input/message text, observes hooks/activity/transcript where available, resizes, stops, resumes when possible, and tears down Elwood-owned state. |
 | C-E2E-04 | §12 | Real adapter e2e tests skip only for local prerequisite failures such as a missing CLI; they do not replace adapter flows with fake PTYs, fake CLIs, or fake hook bridges. |
 | C-E2E-05 | §12 | `npm run check:all` runs the default `npm run check` gate followed by `npm run test:e2e`, without changing the composition of `npm run check`. |
+| C-E2E-06 | §4.5 | A real session started in a project with its own agent configuration loads that configuration additively: project-defined hooks fire alongside Elwood's bridge hooks and project instruction files are loaded by the agent. |
 
 ## 15. Open Implementation Notes
 
