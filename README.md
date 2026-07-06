@@ -269,11 +269,12 @@ reports completion through its `PostCompact` hook.
 `listModels` and `setModel` drive the adapter's own `/model` picker through the
 headless terminal. `listModels` returns typed rows (`id`, `label`,
 `description`, `isCurrent`, `isDefault`) and leaves the model unchanged;
-`setModel` switches the session's model without Elwood touching user config —
-but note an adapter asymmetry: Claude applies session-only, while the Codex
-CLI itself persists the confirmed picker selection to the user's config.toml
-(CLI behavior Elwood cannot prevent; restore it or set the model at launch if
-that matters).
+`setModel` switches the session's model and leaves the user's saved defaults
+untouched on both adapters. Claude applies session-only; the Codex CLI
+persists picker selections into the user's config.toml on its own, so Elwood
+restores the prior default via compare-and-swap afterwards — if the file
+changed in other ways during the switch, Elwood leaves it alone and emits a
+`codex_default_model_persisted` warning instead of clobbering it.
 
 Both adapters also accept a `persona` start option: an instruction message that
 Elwood delivers as the session's guaranteed first user message once the agent

@@ -467,11 +467,18 @@ new default model into the user's configuration (§4.5): for Claude it applies
 with the session-only key rather than Enter, and it never selects rows via
 number keys because Claude's number shortcut immediately saves the choice as
 the user's default. For Codex, the Codex CLI itself persists the confirmed
-picker selection (model and reasoning effort) into the user's `config.toml`;
-this is CLI behavior outside Elwood's control and is documented as a §4.5
-deviation rather than silently hidden — callers that need the user's default
-preserved should restore it or set the model at launch instead. Elwood
-confirms the CLI's own default reasoning level for the chosen Codex model.
+picker selection (model and reasoning effort) into the user's `config.toml` —
+there is no session-only affordance — so Elwood compensates: it snapshots
+`config.toml` before opening the picker and, after the switch is confirmed,
+restores the prior contents if and only if the file differs solely in the
+root-level `model` and `model_reasoning_effort` keys the picker writes
+(compare-and-swap on the untouched remainder). The restore never affects the
+live session, which keeps the switched model because Codex reads its config
+at launch. When the compare fails — for example the user edited `config.toml`
+concurrently — Elwood MUST NOT clobber the file; it leaves the CLI's write in
+place and emits the `codex_default_model_persisted` warning so the deviation
+is surfaced rather than silent. Elwood confirms the CLI's own default
+reasoning level for the chosen Codex model.
 Both commands queue behind the active turn like `sendMessage`. Failures to
 recognize or drive the rendered picker reject with `model_automation_failed`;
 an unknown `id` rejects with the same error and includes the available ids in
@@ -1416,6 +1423,7 @@ Each criterion has:
 | C-CODEX-11 | §5.5 | `autotrust: true` answers Codex's directory trust prompt through PTY input and emits `startup_prompt` activity. |
 | C-CODEX-12 | §5.5 | If Codex still shows an interactive update prompt inside the TUI, Elwood selects the skip/continue-without-updating option by label. |
 | C-CODEX-13 | §10 | An immediately failing or unusable Codex process fails with `codex_start_failed` or a more specific typed error. |
+| C-CODEX-14 | §5.3 | `setModel` on Codex restores the user's prior `config.toml` default via compare-and-swap after the CLI persists its picker selection, skipping with the `codex_default_model_persisted` warning instead of clobbering concurrent edits. |
 
 #### C-HOOK: Hook Bridge Coverage And Semantics (§6)
 

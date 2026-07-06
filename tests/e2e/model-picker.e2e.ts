@@ -80,6 +80,17 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
       models.find((model) => model.isDefault)?.id,
       "codex default model marker is unchanged",
     );
+    // C-CODEX-14: Elwood itself restored the user's model defaults after the
+    // CLI persisted the picker selection. Codex also appends unrelated trust
+    // bookkeeping at boot, so compare the root model keys, not whole bytes.
+    const rootModelKeys = (text: string | undefined) =>
+      (text ?? "").split("\n").filter((line) => /^(model|model_reasoning_effort)\s*=/.test(line));
+    assert.deepEqual(
+      rootModelKeys(existsSync(configPath) ? readFileSync(configPath, "utf8") : undefined),
+      rootModelKeys(configBefore),
+      "user model defaults already restored by setModel",
+    );
+    assert.equal(after.find((model) => model.isCurrent)?.id, target.id, "session keeps the switch");
   } finally {
     if (configBefore !== undefined) writeFileSync(configPath, configBefore);
     await cleanup(session);

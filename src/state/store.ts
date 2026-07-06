@@ -191,7 +191,8 @@ export function removeSessionDir(record: SessionRecord): void {
 function warningKey(warning: ElwoodWarningEvent): string {
   if (warning.code === "version_unparseable") return `${warning.code}:${warning.agent}`;
   if ("mcpServerName" in warning) return `${warning.code}:${warning.mcpServerName}`;
-  return `${warning.code}:${warning.failedServers.join(",")}`;
+  if ("failedServers" in warning) return `${warning.code}:${warning.failedServers.join(",")}`;
+  return warning.code;
 }
 
 function recordPath(dir: string): string {

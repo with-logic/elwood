@@ -105,6 +105,15 @@ function isWarning(value: unknown): value is ElwoodWarningEvent {
       isString(value["raw"])
     );
   }
+  if (value["code"] === "codex_default_model_persisted") {
+    return (
+      value["agent"] === "codex" &&
+      value["source"] === "lifecycle" &&
+      isString(value["elwoodSessionId"]) &&
+      isString(value["message"]) &&
+      isString(value["raw"])
+    );
+  }
   return false;
 }
 

@@ -55,6 +55,24 @@ describe("session record validation", () => {
     );
     expect(valid?.warnings).toHaveLength(2);
   });
+
+  test("C-CODEX-14 accepts and gates the codex_default_model_persisted warning", () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const base = jsonRecord(root);
+    const warning = {
+      elwoodSessionId: id,
+      agent: "codex",
+      source: "lifecycle",
+      code: "codex_default_model_persisted",
+      severity: "warning",
+      message: "restore skipped",
+      raw: "/tmp/config.toml",
+    };
+    expect(validateSessionRecord({ ...base, warnings: [warning] }, root, id)).not.toBeNull();
+    expect(
+      validateSessionRecord({ ...base, warnings: [{ ...warning, source: "terminal" }] }, root, id),
+    ).toBeNull();
+  });
 });
 
 describe("state store edges", () => {
