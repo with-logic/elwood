@@ -56,14 +56,19 @@ export class MessageQueue {
   private drain(): void {
     if (!(this.ready && this.queue.length > 0)) return;
     const message = this.queue.shift() as QueuedMessage;
-    this.submitNow(message.message, message.mode).then(message.resolve, message.reject);
+    this.submitNow(message.message, message.mode).then(() => {
+      message.resolve();
+      this.drain();
+    }, message.reject);
   }
 
   private submitNow(message: string, mode: MessageSubmitMode): Promise<void> {
     try {
-      this.ready = false;
+      // Slash commands do not start a user turn, so no completion hook will
+      // re-arm readiness afterwards; consuming it would deadlock later sends.
+      if (mode === "message") this.ready = false;
       this.submit(message, mode);
-      this.onSubmitted();
+      if (mode === "message") this.onSubmitted();
       return Promise.resolve();
     } catch (error) {
       return Promise.reject(error instanceof Error ? error : new Error(String(error)));

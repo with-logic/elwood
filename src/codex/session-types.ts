@@ -4,6 +4,7 @@
  */
 
 import type { ElwoodActivityEvent } from "../core/activity.ts";
+import type { AgentModelOption } from "../core/model-rows.ts";
 import type {
   ElwoodSessionStatus,
   ElwoodWarningEvent,
@@ -101,6 +102,8 @@ export interface CodexSession {
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): Promise<void>;
   compact(options?: { readonly timeoutMs?: number }): Promise<void>;
+  listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]>;
+  setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void>;
   stop(): Promise<void>;
   kill(): Promise<void>;
   teardown(): Promise<void>;

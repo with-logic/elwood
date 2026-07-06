@@ -1,0 +1,106 @@
+/**
+ * Shared /model picker automation for adapter sessions.
+ * Implements PRD §5.3, §5.7, C-API-23, and C-API-24.
+ */
+
+import { elwoodError } from "./errors.ts";
+import type { AgentModelOption, ParsedModelPicker } from "./model-rows.ts";
+import {
+  defaultModelTimeoutMs,
+  openCommandScreen,
+  type ScreenTerminal,
+  waitForScreen,
+} from "./tui-screen.ts";
+
+export function pickerTimeout(options?: { readonly timeoutMs?: number }): number {
+  return options?.timeoutMs ?? defaultModelTimeoutMs;
+}
+
+export type ModelPickerIo = {
+  readonly terminal: ScreenTerminal;
+  readonly submit: (command: string) => Promise<void>;
+};
+
+export type ModelPickerSpec = {
+  readonly agent: string;
+  readonly isOpen: (text: string) => boolean;
+  readonly parse: (text: string) => ParsedModelPicker;
+  readonly apply: (io: ModelPickerIo, timeoutMs: number) => Promise<void>;
+};
+
+const escapeKey = "\u001b";
+const arrowDown = "\u001b[B";
+const arrowUp = "\u001b[A";
+const arrowStepMs = 80;
+
+export async function listPickerModels(
+  io: ModelPickerIo,
+  spec: ModelPickerSpec,
+  timeoutMs: number,
+): Promise<readonly AgentModelOption[]> {
+  const parsed = await openAndParse(io, spec, timeoutMs);
+  io.terminal.sendInput(escapeKey);
+  await waitForScreen(
+    io.terminal,
+    (text) => !spec.isOpen(text),
+    timeoutMs,
+    `${spec.agent} model picker to close`,
+  );
+  return parsed.options;
+}
+
+export async function setPickerModel(
+  io: ModelPickerIo,
+  spec: ModelPickerSpec,
+  id: string,
+  timeoutMs: number,
+): Promise<void> {
+  const parsed = await openAndParse(io, spec, timeoutMs);
+  const wanted = id.toLowerCase();
+  const target = parsed.options.findIndex(
+    (option) => option.id === wanted || option.label.toLowerCase() === wanted,
+  );
+  if (target === -1 || parsed.cursorIndex === -1) {
+    io.terminal.sendInput(escapeKey);
+    throw elwoodError("model_automation_failed", `Unknown model id "${id}".`, {
+      available: parsed.options.map((option) => option.id),
+    });
+  }
+  const delta = target - parsed.cursorIndex;
+  const key = delta > 0 ? arrowDown : arrowUp;
+  for (let step = 0; step < Math.abs(delta); step += 1) {
+    io.terminal.sendInput(key);
+    await delay(arrowStepMs);
+  }
+  await waitForScreen(
+    io.terminal,
+    (text) => spec.parse(text).cursorIndex === target,
+    timeoutMs,
+    `${spec.agent} picker cursor on "${id}"`,
+  );
+  await spec.apply(io, timeoutMs);
+}
+
+async function openAndParse(
+  io: ModelPickerIo,
+  spec: ModelPickerSpec,
+  timeoutMs: number,
+): Promise<ParsedModelPicker> {
+  const text = await openCommandScreen({
+    terminal: io.terminal,
+    submit: () => io.submit("/model"),
+    isOpen: spec.isOpen,
+    timeoutMs,
+    label: `${spec.agent} model picker`,
+  });
+  const parsed = spec.parse(text);
+  if (parsed.options.length === 0) {
+    io.terminal.sendInput(escapeKey);
+    throw elwoodError("model_automation_failed", "Could not parse any model picker rows.");
+  }
+  return parsed;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

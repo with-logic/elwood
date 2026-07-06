@@ -350,6 +350,8 @@ interface ClaudeSession {
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): Promise<void>;
   compact(options?: { readonly timeoutMs?: number }): Promise<void>;
+  listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]>;
+  setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void>;
 
   stop(): Promise<void>;
   kill(): Promise<void>;
@@ -398,6 +400,47 @@ terminated sessions; calls made after `stopped`, `exited`, `killed`, or
 flows through the headless xterm input path so terminal semantics match visual
 input. `Uint8Array` input is written to the PTY as bytes instead of being decoded
 as UTF-8, because callers use this overload for raw escape/binary input.
+
+`listModels` and `setModel` drive the adapter's own `/model` picker UI through
+the headless terminal, because neither CLI exposes a stable machine protocol
+for session model selection. The row model is:
+
+```ts
+type AgentModelOption = {
+  readonly id: string;
+  readonly label: string;
+  readonly description?: string;
+  readonly isCurrent: boolean;
+  readonly isDefault: boolean;
+  readonly raw: string;
+};
+```
+
+`id` is a stable lowercase selector (the Claude option label, such as `haiku`,
+or the Codex model slug, such as `gpt-5.4`). `isCurrent` reflects the model the
+session is using now; `isDefault` reflects the CLI's configured default. When
+Codex renders only a `(current)` marker, that row is also the default.
+
+`listModels` opens the picker, parses the rendered rows, cancels the picker
+with Escape, and MUST leave the session's model unchanged. `setModel` selects
+the requested row through cursor navigation and applies it with the
+session-scoped affordance. Elwood MUST NOT persist a new default model into
+the user's own configuration (§4.5): for Claude it applies with the
+session-only key rather than Enter, and it never selects rows via number keys
+because Claude's number shortcut immediately saves the choice as the user's
+default; for Codex, picker selection is session-scoped and Elwood confirms the
+CLI's own default reasoning level for the chosen model. Both commands queue
+behind the active turn like `sendMessage`. Failures to recognize or drive the
+rendered picker reject with `model_automation_failed`; an unknown `id` rejects
+with the same error and includes the available ids in the error details.
+
+Command submissions (`compact`, `listModels`, `setModel`) queue behind the
+active turn like `sendMessage`, but they MUST NOT consume the session's ready
+transition: typing a slash command does not start a user turn, no completion
+hook will re-arm readiness afterwards, and consuming readiness would deadlock
+every later queued submission. After a queued command is typed, the session
+remains ready and any remaining queued messages continue to drain in FIFO
+order.
 
 `compact` asks the wrapped agent to compact its conversation. The compact
 command submission goes through the same readiness queue as `sendMessage`, so
@@ -630,10 +673,11 @@ default behavior must be fail-closed.
 
 `CodexSession` exposes the same control surface as `ClaudeSession`: typed event
 subscription, `sendPrompt`, `sendMessage`, `sendKeys`, `resize`, `compact`,
-`stop`, `kill`, and `teardown`. Prompt submission and raw input semantics are
-the same as Claude: Elwood writes to the PTY as a human would. `compact`
-follows the §5.3 contract using Codex's `/compact` command and `PostCompact`
-hook.
+`listModels`, `setModel`, `stop`, `kill`, and `teardown`. Prompt submission and
+raw input semantics are the same as Claude: Elwood writes to the PTY as a
+human would. `compact` follows the §5.3 contract using Codex's `/compact`
+command and `PostCompact` hook; `listModels`/`setModel` follow the §5.3
+contract against Codex's `Select Model and Effort` picker.
 
 Both `ClaudeSession` and `CodexSession` expose `warnings`, a live in-memory
 snapshot of typed non-fatal issues observed by Elwood. Warnings are also emitted
@@ -1113,6 +1157,7 @@ Initial required error names:
 | `termination_failed` | A stop/kill request did not observe process exit after escalation. |
 | `teardown_failed` | Elwood could not remove all owned session files. |
 | `compact_failed` | A requested conversation compaction did not report completion in time. |
+| `model_automation_failed` | The adapter's model picker could not be recognized or driven to completion. |
 
 Hook handler failures are normally surfaced as `hookError` events, not thrown
 from the hook bridge path.
@@ -1250,6 +1295,8 @@ Each criterion has:
 | C-API-20 | §5.7 | Codex transcript activity is flushed before terminal exit and terminal lifecycle status are emitted. |
 | C-API-21 | §5.1 §5.5 | A caller-provided `persona` is submitted as the session's first user message on the first ready transition, ahead of caller-queued messages; it is not persisted and not re-sent on resume. |
 | C-API-22 | §5.3 §5.7 | `compact()` submits the adapter's `/compact` command through the readiness queue, resolves on the adapter's `PostCompact` hook, rejects with `compact_failed` on timeout, and rejects with `session_not_running` if the session terminates first. |
+| C-API-23 | §5.3 §5.7 | `listModels()` parses the adapter's rendered model picker into typed options with current/default markers, cancels with Escape, and leaves the session model unchanged. |
+| C-API-24 | §5.3 §5.7 | `setModel(id)` switches the session model through cursor navigation using only session-scoped affordances, never persisting a new default into user-owned configuration, and rejects unknown ids with `model_automation_failed` listing available ids. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 

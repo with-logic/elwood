@@ -14,6 +14,7 @@ import type {
 import type { CodexHookEventName } from "../codex/hook-names.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import type { ElwoodActivityEvent } from "./activity.ts";
+import type { AgentModelOption } from "./model-rows.ts";
 
 export type TerminalSize = {
   readonly cols: number;
@@ -167,6 +168,8 @@ export interface ClaudeSession {
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): Promise<void>;
   compact(options?: { readonly timeoutMs?: number }): Promise<void>;
+  listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]>;
+  setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void>;
   stop(): Promise<void>;
   kill(): Promise<void>;
   teardown(): Promise<void>;

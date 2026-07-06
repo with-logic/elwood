@@ -24,7 +24,8 @@ export type ElwoodErrorName =
   | "session_not_running"
   | "termination_failed"
   | "teardown_failed"
-  | "compact_failed";
+  | "compact_failed"
+  | "model_automation_failed";
 
 export class ElwoodError extends Error {
   override readonly name = "ElwoodError";

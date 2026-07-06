@@ -81,6 +81,7 @@ export type {
 } from "./core/activity.ts";
 export type { ElwoodErrorName } from "./core/errors.ts";
 export { ElwoodError, elwoodError } from "./core/errors.ts";
+export type { AgentModelOption } from "./core/model-rows.ts";
 export type {
   ClaudePermissionMode,
   ClaudeSession,

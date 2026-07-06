@@ -28,7 +28,7 @@ describe("CodexSession compact", () => {
       trigger: "manual",
     });
     await compacted;
-    expect(session.status).toBe("running");
+    expect(session.status).toBe("ready");
   });
 
   test("C-API-22 compact rejects with compact_failed when no PostCompact arrives", async () => {
