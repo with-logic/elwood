@@ -3,9 +3,10 @@ import { randomUUID } from "node:crypto";
 import * as activity from "../core/activity.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
 import { elwoodError } from "../core/errors.ts";
+import { queuePersonaMessage } from "../core/persona.ts";
 import { emitStartupPromptActivity } from "../core/startup-automation.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
-import type { ClaudeSession, ResumeClaudeOptions, StartClaudeOptions } from "../core/types.ts";
+import type { ClaudeSession, StartClaudeOptions } from "../core/types.ts";
 import { WorkspaceTrustResponder } from "../core/workspace-trust.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
@@ -16,7 +17,6 @@ import {
   createSessionRecord,
   defaultStateDir,
   prepareStateDir,
-  readSessionRecord,
   type SessionRecord,
   upsertSessionWarning,
   writeSessionRecord,
@@ -34,11 +34,10 @@ import {
 import { ClaudeSessionImpl } from "./session-instance.ts";
 import { registerInitialHooks, spawnClaudePty, writeRuntimeFiles } from "./session-runtime.ts";
 
-export { setHookBridgeFactoryForTests };
-
-export function resetClaudeSessionSeamsForTests(): void {
-  resetClaudeHookBridgeFactoryForTests();
-}
+export {
+  resetClaudeHookBridgeFactoryForTests as resetClaudeSessionSeamsForTests,
+  setHookBridgeFactoryForTests,
+};
 export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSession> {
   const warning = preflightClaude(options.strictVersionCheck ?? false, options.autoupdate ?? false);
   const stateDir = options.stateDir ?? defaultStateDir(options.cwd);
@@ -59,44 +58,10 @@ export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSe
           ...warning,
         }).record;
   writeSessionRecord(record);
-  return await startFromRecord(record, options);
+  return queuePersonaMessage(await startClaudeFromRecord(record, options), options.persona);
 }
 
-export async function resumeClaude(options: ResumeClaudeOptions): Promise<ClaudeSession> {
-  const stateDir = options.stateDir ?? defaultStateDir(options.cwd ?? process.cwd());
-  const record = readSessionRecord(stateDir, options.elwoodSessionId);
-  if (record.adapter !== "claude") {
-    throw elwoodError("adapter_mismatch", "Cannot resume a non-Claude session as Claude.");
-  }
-  if (!record.claude.resumeId) {
-    throw elwoodError("resume_unavailable", "Cannot resume Claude without a Claude session id.");
-  }
-  const warning = preflightClaude(options.strictVersionCheck ?? false, options.autoupdate ?? false);
-  const checkedRecord =
-    warning === undefined
-      ? record
-      : upsertSessionWarning(record, { elwoodSessionId: record.elwoodSessionId, ...warning })
-          .record;
-  const size = options.initialSize ?? checkedRecord.terminalSize;
-  const resumedRecord =
-    options.initialSize === undefined
-      ? checkedRecord
-      : { ...checkedRecord, terminalSize: options.initialSize };
-  writeSessionRecord(resumedRecord);
-  return await startFromRecord(resumedRecord, {
-    cwd: options.cwd ?? record.cwd,
-    stateDir,
-    ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
-    ...(size === undefined ? {} : { initialSize: size }),
-    ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
-    ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
-    ...(options.strictVersionCheck === undefined
-      ? {}
-      : { strictVersionCheck: options.strictVersionCheck }),
-  });
-}
-
-async function startFromRecord(record: SessionRecord, options: StartClaudeOptions) {
+export async function startClaudeFromRecord(record: SessionRecord, options: StartClaudeOptions) {
   secureMkdir(record.paths.sessionDir);
   writeRuntimeFiles(record, record.bridgeToken, options);
   const emitter = new TypedEmitter();

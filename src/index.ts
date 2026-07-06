@@ -38,7 +38,8 @@ export type {
   WriteInput,
 } from "./claude/hooks.ts";
 export { claudeHookEventNames } from "./claude/hooks.ts";
-export { resumeClaude, startClaude } from "./claude/session.ts";
+export { startClaude } from "./claude/session.ts";
+export { resumeClaude } from "./claude/session-resume.ts";
 export type {
   CodexCommandToolInput,
   CodexCommonHookFields,
@@ -56,7 +57,8 @@ export type {
   CodexUnknownToolName,
 } from "./codex/hooks.ts";
 export { codexHookEventNames } from "./codex/hooks.ts";
-export { resumeCodex, startCodex } from "./codex/session.ts";
+export { startCodex } from "./codex/session.ts";
+export { resumeCodex } from "./codex/session-resume.ts";
 export type {
   CodexApprovalPolicy,
   CodexEventHandler,

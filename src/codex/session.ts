@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import * as activity from "../core/activity.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
 import { elwoodError } from "../core/errors.ts";
+import { queuePersonaMessage } from "../core/persona.ts";
 import { emitStartupPromptActivity } from "../core/startup-automation.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import { TypedEmitter } from "../events/emitter.ts";
@@ -14,7 +15,6 @@ import {
   createSessionRecord,
   defaultStateDir,
   prepareStateDir,
-  readSessionRecord,
   type SessionRecord,
   upsertSessionWarning,
   writeSessionRecord,
@@ -27,12 +27,7 @@ import { currentCodexHookBridgeFactory } from "./session-bridge.ts";
 import { dispatchHook, registerInitialHooks } from "./session-hooks.ts";
 import { CodexSessionImpl } from "./session-instance.ts";
 import { writeCodexRuntimeFiles } from "./session-runtime.ts";
-import type {
-  CodexEventMap,
-  CodexSession,
-  ResumeCodexOptions,
-  StartCodexOptions,
-} from "./session-types.ts";
+import type { CodexEventMap, CodexSession, StartCodexOptions } from "./session-types.ts";
 import { CodexStartupPromptResponder } from "./startup-prompts.ts";
 import { CodexTranscriptWatcher } from "./transcript.ts";
 
@@ -64,43 +59,9 @@ export async function startCodex(options: StartCodexOptions): Promise<CodexSessi
           ...warning,
         }).record;
   writeSessionRecord(record);
-  return await startFromRecord(record, options);
+  return queuePersonaMessage(await startCodexFromRecord(record, options), options.persona);
 }
-export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSession> {
-  const stateDir = options.stateDir ?? defaultStateDir(options.cwd ?? process.cwd());
-  const record = readSessionRecord(stateDir, options.elwoodSessionId);
-  if (record.adapter !== "codex")
-    throw elwoodError("adapter_mismatch", "Cannot resume a non-Codex session as Codex.");
-  if (!record.codex.resumeId)
-    throw elwoodError("resume_unavailable", "Cannot resume Codex without a Codex session id.");
-  const warning = preflight.preflightCodex(
-    options.strictVersionCheck ?? false,
-    options.autoupdate ?? false,
-  );
-  const checkedRecord =
-    warning === undefined
-      ? record
-      : upsertSessionWarning(record, { elwoodSessionId: record.elwoodSessionId, ...warning })
-          .record;
-  const size = options.initialSize ?? checkedRecord.terminalSize;
-  const resumedRecord =
-    options.initialSize === undefined
-      ? checkedRecord
-      : { ...checkedRecord, terminalSize: options.initialSize };
-  writeSessionRecord(resumedRecord);
-  return await startFromRecord(resumedRecord, {
-    cwd: options.cwd ?? record.cwd,
-    stateDir,
-    ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
-    ...(size === undefined ? {} : { initialSize: size }),
-    ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
-    ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
-    ...(options.strictVersionCheck === undefined
-      ? {}
-      : { strictVersionCheck: options.strictVersionCheck }),
-  });
-}
-async function startFromRecord(record: SessionRecord, options: StartCodexOptions) {
+export async function startCodexFromRecord(record: SessionRecord, options: StartCodexOptions) {
   secureMkdir(record.paths.sessionDir);
   writeCodexRuntimeFiles(record);
   const emitter = new TypedEmitter<CodexEventMap>();

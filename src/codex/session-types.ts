@@ -30,6 +30,7 @@ export type StartCodexOptions = {
   readonly name?: string;
   readonly initialSize?: TerminalSize;
   readonly hooks?: CodexHookHandlers;
+  readonly persona?: string;
   readonly model?: string;
   readonly profile?: string;
   readonly sandbox?: CodexSandboxMode;

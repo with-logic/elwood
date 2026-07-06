@@ -1,9 +1,9 @@
 /**
  * Conformance tests for Codex adapter-neutral queued messages.
- * Covers PRD §5.3 and C-API-19.
+ * Covers PRD §5.3, C-API-19, and C-API-21.
  */
 
-import { appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
@@ -64,6 +64,35 @@ describe("CodexSession message submission", () => {
     appendFileSync(transcript, `${JSON.stringify(item("agent_message", { message: "done" }))}\n`);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, stopEvent(cwd));
     expect(order).toEqual(["tx", "ready"]);
+  });
+
+  test("C-API-21 persona is submitted first, ahead of caller messages, and never persisted", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startCodex({ cwd, persona: "You are a terse reviewer." });
+    const queued = session.sendMessage("hello");
+    expect(ptys[0]!.writes).toEqual([]);
+    ptys[0]!.emitData("codex rendered");
+    await expect.poll(() => ptys[0]!.writes.length).toBe(1);
+    expect(ptys[0]!.writes[0]).toBe("\u001b[200~You are a terse reviewer.\u001b[201~\r");
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, stopEvent(cwd));
+    await queued;
+    expect(ptys[0]!.writes[1]).toBe("\u001b[200~hello\u001b[201~\r");
+    const record = readFileSync(
+      join(cwd, ".elwood", "sessions", session.elwoodSessionId, "session.json"),
+      "utf8",
+    );
+    expect(record).not.toContain("terse reviewer");
+  });
+
+  test("C-API-21 undelivered persona is discarded when the session stops before ready", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startCodex({ cwd, persona: "never delivered" });
+    await session.stop();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(session.status).toBe("stopped");
+    expect(ptys[0]!.writes).toEqual([]);
   });
 });
 

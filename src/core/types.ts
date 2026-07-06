@@ -46,6 +46,7 @@ export type StartClaudeOptions = {
   readonly name?: string;
   readonly initialSize?: TerminalSize;
   readonly hooks?: ClaudeHookHandlers;
+  readonly persona?: string;
   readonly permissionMode?: ClaudePermissionMode;
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];

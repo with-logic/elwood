@@ -153,20 +153,20 @@ test("C-E2E-03 real Codex turn queues early messages and hooks real tools", {
       approvalPolicy: "never",
       hookTimeoutMs: 10_000,
       autotrust: true,
+      // The persona is delivered by Elwood as the queued first message.
+      persona:
+        "Run `cat AGENTS.md` with your shell tool.\nThen reply exactly: ELWOOD_CODEX_TOOL_OK",
       hooks,
     });
     const observed = observeSession(session);
-    // Queue the first message before the interactive prompt is ready.
-    await session.sendMessage(
-      "Run `cat AGENTS.md` with your shell tool.\nThen reply exactly: ELWOOD_CODEX_TOOL_OK",
-    );
     await waitFor(
       () =>
         prompts.some((p) => p.includes("shell tool") && p.includes("ELWOOD_CODEX_TOOL_OK"))
           ? true
           : undefined,
-      "queued multi-line UserPromptSubmit",
+      "persona delivered as first UserPromptSubmit",
     );
+    assert.ok(prompts[0]?.includes("ELWOOD_CODEX_TOOL_OK"), "persona is the first prompt");
     await waitFor(() => (preTools.length > 0 ? true : undefined), "real Codex PreToolUse");
     await waitFor(() => (postTools.length > 0 ? true : undefined), "real Codex PostToolUse");
     const pre = preTools[0];

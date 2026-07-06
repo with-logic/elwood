@@ -212,6 +212,7 @@ type StartClaudeOptions = {
   readonly name?: string;
   readonly initialSize?: TerminalSize;
   readonly hooks?: ClaudeHookHandlers;
+  readonly persona?: string;
   readonly permissionMode?: ClaudePermissionMode;
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];
@@ -242,6 +243,16 @@ rendered terminal and chooses the trust/continue option through PTY input. The
 default is false because trusting a workspace is a security-sensitive decision.
 When Elwood answers the prompt, the session emits adapter-neutral
 `startup_prompt` activity with label `workspace_trust`.
+
+`persona` is an optional instruction message for the agent. When set, Elwood
+enqueues it before control returns to the caller, so it is guaranteed to be the
+session's first submitted user message: it is delivered through the standard
+message queue as soon as the session first becomes ready, ahead of any
+caller-queued messages. Persona delivery is observable through the normal hook
+and activity events, exactly like a caller-submitted message. The persona is
+not persisted in Elwood state (§8.3 applies) and is not re-sent on resume. If
+the session terminates before ever becoming ready, the undelivered persona is
+discarded silently.
 
 ### 5.2 Resuming Claude
 
@@ -484,6 +495,7 @@ type StartCodexOptions = {
   readonly name?: string;
   readonly initialSize?: TerminalSize;
   readonly hooks?: CodexHookHandlers;
+  readonly persona?: string;
   readonly model?: string;
   readonly profile?: string;
   readonly sandbox?: "read-only" | "workspace-write" | "danger-full-access";
@@ -522,6 +534,10 @@ rendered terminal and chooses the trust/continue option through PTY input. The
 default is false because trusting a workspace is a security-sensitive decision.
 When Elwood answers the prompt, the session emits adapter-neutral
 `startup_prompt` activity with label `workspace_trust`.
+
+`persona` behaves exactly as specified for Claude in §5.1: enqueued before
+control returns to the caller, delivered as the first user message on the first
+ready transition, never persisted, and never re-sent on resume.
 
 ### 5.6 Resuming Codex
 
@@ -1178,6 +1194,7 @@ Each criterion has:
 | C-API-18 | §5.1 | Claude and Codex start/resume options expose `autotrust` for opt-in workspace trust prompt automation. |
 | C-API-19 | §5.3 | Calling `sendMessage` while the session is alive but not ready queues the message until the next ready transition and rejects only if the session terminates first. |
 | C-API-20 | §5.7 | Codex transcript activity is flushed before terminal exit and terminal lifecycle status are emitted. |
+| C-API-21 | §5.1 §5.5 | A caller-provided `persona` is submitted as the session's first user message on the first ready transition, ahead of caller-queued messages; it is not persisted and not re-sent on resume. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 
