@@ -5,6 +5,10 @@
 
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { removeSocketHome } from "./socket-home.ts";
+
+export { withFreshSocketPath } from "./socket-home.ts";
+
 import { ElwoodError, elwoodError } from "../core/errors.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
 import {
@@ -174,6 +178,7 @@ export function upsertSessionWarning(
 
 export function removeSessionDir(record: SessionRecord): void {
   try {
+    removeSocketHome(record);
     rmSync(record.paths.sessionDir, { recursive: true, force: true });
   } catch (error) {
     throw elwoodError("teardown_failed", "Could not remove Elwood session files.", {

@@ -50,3 +50,17 @@ export function elwoodError(
 ): ElwoodError {
   return new ElwoodError(code, message, details);
 }
+
+/**
+ * Extracts diagnosable details from an underlying failure (C-ERR-08):
+ * message as cause, plus errno/syscall/path when the error exposes them.
+ */
+export function causeDetails(error: unknown): Readonly<Record<string, string>> {
+  if (!(error instanceof Error)) return { cause: String(error) };
+  const details: Record<string, string> = { cause: error.message };
+  const { code, syscall, path } = error as NodeJS.ErrnoException;
+  if (typeof code === "string") details["errno"] = code;
+  if (typeof syscall === "string") details["syscall"] = syscall;
+  if (typeof path === "string") details["path"] = path;
+  return details;
+}

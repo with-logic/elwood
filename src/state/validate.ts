@@ -3,7 +3,7 @@
  * Implements PRD §8.2 and §10.
  */
 
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
 import { safeSessionDir } from "./files.ts";
 import type { SessionRecord } from "./store.ts";
@@ -49,7 +49,10 @@ function hasExpectedPaths(
     value["sessionDir"] === dir &&
     value["settingsPath"] === join(dir, `${adapter}-settings.json`) &&
     value["bridgeScriptPath"] === join(dir, "hook-bridge.mjs") &&
-    value["socketPath"] === join(dir, "hook.sock")
+    // The socket home is regenerated on every launch before use, so a stored
+    // socket path only needs to be a plausible absolute path (PRD §8.1).
+    isString(value["socketPath"]) &&
+    isAbsolute(value["socketPath"] as string)
   );
 }
 

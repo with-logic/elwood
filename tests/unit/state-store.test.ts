@@ -55,7 +55,13 @@ describe("state store", () => {
       "state_corrupt",
     );
     const record = createSessionRecord({ stateDir: root, cwd: root, id: "null-path" });
+    // Absolute foreign socket paths are tolerated: every launch regenerates
+    // the socket home before use (C-STATE-12). Relative paths stay invalid.
     writeSessionRecord({ ...record, paths: { ...record.paths, socketPath: "/tmp/foreign.sock" } });
+    expect(readSessionRecord(root, record.elwoodSessionId).paths.socketPath).toBe(
+      "/tmp/foreign.sock",
+    );
+    writeSessionRecord({ ...record, paths: { ...record.paths, socketPath: "relative/h.sock" } });
     expect(elwoodCode(() => readSessionRecord(root, record.elwoodSessionId))).toBe("state_corrupt");
     expect(
       elwoodCode(() =>

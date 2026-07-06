@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 import * as activity from "../core/activity.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
-import { elwoodError } from "../core/errors.ts";
+import { causeDetails, elwoodError } from "../core/errors.ts";
 import { queuePersonaMessage } from "../core/persona.ts";
 import { emitStartupPromptActivity } from "../core/startup-automation.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
@@ -18,6 +18,7 @@ import {
   prepareStateDir,
   type SessionRecord,
   upsertSessionWarning,
+  withFreshSocketPath,
   writeSessionRecord,
 } from "../state/store.ts";
 import { attachPtyTerminal } from "../terminal/headless.ts";
@@ -61,8 +62,13 @@ export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSe
   return queuePersonaMessage(await startClaudeFromRecord(record, options), options.persona);
 }
 
-export async function startClaudeFromRecord(record: SessionRecord, options: StartClaudeOptions) {
+export async function startClaudeFromRecord(
+  storedRecord: SessionRecord,
+  options: StartClaudeOptions,
+) {
+  const record = withFreshSocketPath(storedRecord);
   secureMkdir(record.paths.sessionDir);
+  writeSessionRecord(record);
   writeRuntimeFiles(record, record.bridgeToken, options);
   const emitter = new TypedEmitter();
   registerInitialHooks(emitter, options.hooks);
@@ -113,7 +119,8 @@ export async function startClaudeFromRecord(record: SessionRecord, options: Star
     await bridge.start();
   } catch (error) {
     throw elwoodError("hook_bridge_failed", "Could not start Elwood hook bridge.", {
-      cause: error instanceof Error ? error.message : String(error),
+      ...causeDetails(error),
+      socketPath: record.paths.socketPath,
     });
   }
   let pty: ReturnType<typeof spawnClaudePty>;

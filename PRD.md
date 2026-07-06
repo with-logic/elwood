@@ -258,7 +258,10 @@ the default Elwood state directory. `name` is stored in Elwood metadata and, for
 Claude, is forwarded to Claude's documented `--name` flag. `hooks` registers
 launch-time handlers before Claude starts. When `autoupdate` is true, Elwood
 runs `claude update` from the user's login shell before spawning Claude and
-rechecks the version after the update. `strictVersionCheck` makes unparseable
+rechecks the version after the update. The update command runs at most once
+per parent process per adapter, so a parent spawning a roster of sessions at
+launch does not run N concurrent same-binary updates (C-LIFE-09); later
+sessions in the same process reuse the already-updated binary. `strictVersionCheck` makes unparseable
 Claude versions fatal instead of warning-and-continuing. `permissionMode`
 accepts Claude's documented launch values: `default`, `acceptEdits`, `plan`,
 `auto`, `dontAsk`, and `bypassPermissions`.
@@ -332,6 +335,31 @@ size, metadata, and the agent's internal conversation resume id. Adapter launch
 policy such as model, approval mode, and caller config overrides is intentionally
 not persisted as durable Elwood state yet; future versions may add explicit
 resume launch-policy options instead of silently replaying stale policy.
+
+Because every persisting parent writes the same try-resume-else-start dance,
+Elwood provides it directly:
+
+```ts
+type StartOrResumeClaudeOptions = StartClaudeOptions & {
+  readonly elwoodSessionId?: string;
+};
+
+declare function startOrResumeClaude(
+  options: StartOrResumeClaudeOptions,
+): Promise<{ readonly session: ClaudeSession; readonly resumed: boolean }>;
+```
+
+When `elwoodSessionId` is set, `startOrResumeClaude` attempts a resume,
+forwarding the resume-relevant start options (`cwd`, `stateDir`, `hooks`,
+`initialSize`, `autoupdate`, `autotrust`, `hookTimeoutMs`,
+`strictVersionCheck`). It falls back to a fresh `startClaude` only for the
+error names that mean "no resumable session": `state_not_found`,
+`resume_unavailable`, and `adapter_mismatch`. Every other error — including
+`state_corrupt` — is a real failure and is rethrown, so data problems are
+never silently papered over by a fresh session. The result reports which path
+ran so callers can re-persist a new `elwoodSessionId` after a fallback.
+`startOrResumeCodex` behaves identically for Codex. `persona` follows its
+normal rules: delivered on a fresh start, never re-sent on resume.
 
 ### 5.3 ClaudeSession
 
@@ -1012,6 +1040,16 @@ The default `.elwood/` directory and generated `.elwood/.gitignore` should be
 readable by normal local tooling, while session-specific subdirectories remain
 private.
 
+The hook bridge's Unix domain socket MUST NOT live under `stateDir`. Socket
+paths are capped near 104 bytes on macOS (`sockaddr_un.sun_path`), so a socket
+inside a caller-structured `stateDir` breaks any parent app with nested state
+layouts. Instead, each launch binds the socket inside a fresh short
+Elwood-owned private (0700) directory under the OS temp dir, records that path
+in the session record for diagnostics, and regenerates it on every start and
+resume, so stale recorded socket paths are never trusted or reused. `teardown`
+removes the socket home along with the session directory. `stateDir` length
+MUST NOT constrain whether a session can start.
+
 ### 8.2 Session record
 
 Elwood MUST persist enough metadata to resume or tear down a session after the
@@ -1183,6 +1221,12 @@ Initial required error names:
 Hook handler failures are normally surfaced as `hookError` events, not thrown
 from the hook bridge path.
 
+Startup errors MUST NOT swallow their underlying cause: `pty_start_failed`,
+`hook_bridge_failed`, and adapter start failures carry the underlying error
+message in `details.cause`, plus `errno`, `syscall`, and `path` fields when
+the underlying error exposes them, so consumers can diagnose environment
+failures without instrumenting Elwood internals.
+
 ## 11. Local Test App
 
 The repository should include a small local developer test app. It is not the
@@ -1319,6 +1363,7 @@ Each criterion has:
 | C-API-23 | §5.3 §5.7 | `listModels()` parses the adapter's rendered model picker into typed options with current/default markers, cancels with Escape, and leaves the session model unchanged. |
 | C-API-24 | §5.3 §5.7 | `setModel(id)` switches the session model through cursor navigation using only session-scoped affordances, never persisting a new default into user-owned configuration, and rejects unknown ids with `model_automation_failed` listing available ids. |
 | C-API-25 | §5.3 | Promise-returning session methods called after a terminal status reject with `session_not_running` instead of throwing synchronously. |
+| C-API-26 | §5.2 §5.6 | `startOrResumeClaude`/`startOrResumeCodex` resume when possible, fall back to a fresh start only on `state_not_found`, `resume_unavailable`, or `adapter_mismatch`, rethrow all other errors, and report `resumed` in the result. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 
@@ -1420,6 +1465,9 @@ Each criterion has:
 | C-STATE-09 | §8.4 | `teardown()` does not remove Claude-owned auth, transcripts, or user/project settings. |
 | C-STATE-10 | §5.2, §5.6 | Resume APIs reject session records whose persisted adapter does not match the requested adapter. |
 | C-STATE-11 | §8.1 | Elwood does not overwrite an existing `.elwood/.gitignore` or create gitignore files in custom `stateDir` directories. |
+| C-STATE-12 | §8.1 | Sessions start successfully with arbitrarily long `stateDir` paths because the hook bridge socket binds in a short Elwood-owned temp home, regenerated per launch and removed at teardown. |
+| C-LIFE-09 | §9.2 | `autoupdate` runs the adapter's update command at most once per parent process per adapter, so fleet spawns do not race N concurrent same-binary updates. |
+| C-ERR-08 | §10 | Startup failures carry the underlying cause, and errno/syscall/path details when the underlying error provides them. |
 
 #### C-LIFE: Lifecycle Controls (§5, §9)
 

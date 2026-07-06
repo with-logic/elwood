@@ -4,7 +4,7 @@
  */
 
 import { defaultTerminalSize } from "../core/defaults.ts";
-import { elwoodError } from "../core/errors.ts";
+import { causeDetails, elwoodError } from "../core/errors.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import { currentPtyFactory } from "../runtime/seams.ts";
 import { loginShellCommand, userShell } from "../runtime/shell.ts";
@@ -24,8 +24,6 @@ export function spawnCodexPty(record: SessionRecord, options: StartCodexOptions)
       size: options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
     });
   } catch (error) {
-    throw elwoodError("pty_start_failed", "Could not start Codex PTY.", {
-      cause: error instanceof Error ? error.message : String(error),
-    });
+    throw elwoodError("pty_start_failed", "Could not start Codex PTY.", causeDetails(error));
   }
 }

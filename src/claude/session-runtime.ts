@@ -6,7 +6,7 @@
 import { resolve } from "node:path";
 import { bridgeScriptSource } from "../bridge/script.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
-import { elwoodError } from "../core/errors.ts";
+import { causeDetails, elwoodError } from "../core/errors.ts";
 import type { ElwoodEventHandler, ElwoodEventName, StartClaudeOptions } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyProcess } from "../pty/types.ts";
@@ -51,9 +51,7 @@ export function spawnClaudePty(record: SessionRecord, options: StartClaudeOption
       size: options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
     });
   } catch (error) {
-    throw elwoodError("pty_start_failed", "Could not start Claude PTY.", {
-      cause: error instanceof Error ? error.message : String(error),
-    });
+    throw elwoodError("pty_start_failed", "Could not start Claude PTY.", causeDetails(error));
   }
 }
 

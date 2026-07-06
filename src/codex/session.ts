@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 import * as activity from "../core/activity.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
-import { elwoodError } from "../core/errors.ts";
+import { causeDetails, elwoodError } from "../core/errors.ts";
 import { queuePersonaMessage } from "../core/persona.ts";
 import { emitStartupPromptActivity } from "../core/startup-automation.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
@@ -17,6 +17,7 @@ import {
   prepareStateDir,
   type SessionRecord,
   upsertSessionWarning,
+  withFreshSocketPath,
   writeSessionRecord,
 } from "../state/store.ts";
 import { attachPtyTerminal } from "../terminal/headless.ts";
@@ -63,8 +64,13 @@ export async function startCodex(options: StartCodexOptions): Promise<CodexSessi
   writeSessionRecord(record);
   return queuePersonaMessage(await startCodexFromRecord(record, options), options.persona);
 }
-export async function startCodexFromRecord(record: SessionRecord, options: StartCodexOptions) {
+export async function startCodexFromRecord(
+  storedRecord: SessionRecord,
+  options: StartCodexOptions,
+) {
+  const record = withFreshSocketPath(storedRecord);
   secureMkdir(record.paths.sessionDir);
+  writeSessionRecord(record);
   writeCodexRuntimeFiles(record);
   const emitter = new TypedEmitter<CodexEventMap>();
   registerInitialHooks(emitter, options.hooks);
@@ -88,7 +94,8 @@ export async function startCodexFromRecord(record: SessionRecord, options: Start
     await bridge.start();
   } catch (error) {
     throw elwoodError("hook_bridge_failed", "Could not start Elwood hook bridge.", {
-      cause: error instanceof Error ? error.message : String(error),
+      ...causeDetails(error),
+      socketPath: record.paths.socketPath,
     });
   }
   let pty: ReturnType<typeof spawnCodexPty>;
