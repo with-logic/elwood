@@ -3,7 +3,7 @@
  * Covers PRD §5.1, §5.5, and §9.2.
  */
 
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test } from "vitest";
 import { compareVersions, preflightClaude } from "../../src/claude/preflight.ts";
 import { preflightCodex } from "../../src/codex/preflight.ts";
 import { ElwoodError } from "../../src/core/errors.ts";
@@ -12,8 +12,11 @@ import {
   setCommandRunnerForTests,
   setPlatformForTests,
 } from "../../src/runtime/seams.ts";
+import { resetAutoupdateForTests } from "../../src/runtime/update-once.ts";
 
 describe("CLI autoupdate preflight", () => {
+  beforeEach(resetAutoupdateForTests);
+
   test("C-CLAUDE-07 runs claude update before spawning", () => {
     const commands: string[] = [];
     setPlatformForTests("darwin");
@@ -28,6 +31,7 @@ describe("CLI autoupdate preflight", () => {
         ? { status: 1, stdout: "", stderr: "failed" }
         : { status: 0, stdout: "2.1.144", stderr: "" },
     );
+    resetAutoupdateForTests();
     expect(() => preflightClaude(false, true)).toThrow(ElwoodError);
     resetRuntimeSeamsForTests();
   });
@@ -78,6 +82,27 @@ describe("CLI autoupdate preflight", () => {
       return { status: 127, stdout: "", stderr: "missing" };
     });
     expect(() => preflightCodex(false, true)).toThrow(ElwoodError);
+    resetRuntimeSeamsForTests();
+  });
+});
+
+describe("autoupdate dedupe", () => {
+  beforeEach(resetAutoupdateForTests);
+
+  test("C-LIFE-09 autoupdate runs at most once per adapter per process", () => {
+    const commands: string[] = [];
+    setPlatformForTests("darwin");
+    setCommandRunnerForTests((_command, args) => {
+      commands.push(args.join(" "));
+      return { status: 0, stdout: "2.1.144", stderr: "" };
+    });
+    preflightClaude(false, true);
+    preflightClaude(false, true);
+    preflightCodex(false, true);
+    preflightCodex(false, true);
+    const updates = commands.filter((command) => command.includes(" update"));
+    expect(updates.filter((command) => command.includes("claude update"))).toHaveLength(1);
+    expect(updates.filter((command) => command.includes("codex update"))).toHaveLength(1);
     resetRuntimeSeamsForTests();
   });
 });

@@ -7,6 +7,7 @@ import { elwoodError } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { loginShellCommand, userShell } from "../runtime/shell.ts";
+import { shouldRunAutoupdate } from "../runtime/update-once.ts";
 
 export const minimumClaudeVersion = "2.1.144";
 export type ClaudePreflightWarning = Omit<
@@ -22,7 +23,7 @@ export function preflightClaude(
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
   let result = readClaudeVersion();
-  if (autoupdate) {
+  if (autoupdate && shouldRunAutoupdate("claude")) {
     runClaudeUpdate();
     result = readClaudeVersion();
   }

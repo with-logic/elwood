@@ -7,6 +7,7 @@ import { elwoodError } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { loginShellCommand, userShell } from "../runtime/shell.ts";
+import { shouldRunAutoupdate } from "../runtime/update-once.ts";
 
 export const minimumCodexVersion = "0.124.0";
 export type CodexCliCapabilities = { readonly supportsHookTrustBypass: boolean };
@@ -24,7 +25,7 @@ export function preflightCodex(
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
   let result = readCodexVersion();
-  if (autoupdate) {
+  if (autoupdate && shouldRunAutoupdate("codex")) {
     runCodexUpdate();
     cachedCapabilities = undefined;
     result = readCodexVersion();
