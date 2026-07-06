@@ -81,6 +81,11 @@ export type {
   ElwoodActivitySource,
   ElwoodAgentKind,
 } from "./core/activity.ts";
+export type {
+  ElwoodAgentSession,
+  ElwoodCommonEventMap,
+  ElwoodCommonEventName,
+} from "./core/agent-session.ts";
 export type { ElwoodErrorName } from "./core/errors.ts";
 export { ElwoodError, elwoodError } from "./core/errors.ts";
 export type { AgentModelOption } from "./core/model-rows.ts";

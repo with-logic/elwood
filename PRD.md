@@ -710,6 +710,14 @@ human would. `compact` follows the §5.3 contract using Codex's `/compact`
 command and `PostCompact` hook; `listModels`/`setModel` follow the §5.3
 contract against Codex's `Select Model and Effort` picker.
 
+The package also exports `ElwoodAgentSession`, a structural supertype both
+concrete session types satisfy, covering the shared identity/status
+properties, the common event names (`terminal:data`, `terminal:exit`,
+`status`, `activity`, `warning`, `hookError`), and the shared io, command,
+and lifecycle methods. Parent-app code generic over "any agent session" can
+be written once against this type; adapter-specific hooks and events remain
+on the concrete types.
+
 Both `ClaudeSession` and `CodexSession` expose `warnings`, a live in-memory
 snapshot of typed non-fatal issues observed by Elwood. Warnings are also emitted
 as `warning` events and projected into the adapter-neutral `activity` stream.
@@ -1364,6 +1372,7 @@ Each criterion has:
 | C-API-24 | §5.3 §5.7 | `setModel(id)` switches the session model through cursor navigation using only session-scoped affordances, never persisting a new default into user-owned configuration, and rejects unknown ids with `model_automation_failed` listing available ids. |
 | C-API-25 | §5.3 | Promise-returning session methods called after a terminal status reject with `session_not_running` instead of throwing synchronously. |
 | C-API-26 | §5.2 §5.6 | `startOrResumeClaude`/`startOrResumeCodex` resume when possible, fall back to a fresh start only on `state_not_found`, `resume_unavailable`, or `adapter_mismatch`, rethrow all other errors, and report `resumed` in the result. |
+| C-API-27 | §5.7 | `ElwoodAgentSession` is exported and both `ClaudeSession` and `CodexSession` are assignable to it, covering common events, io, commands, and lifecycle. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 
