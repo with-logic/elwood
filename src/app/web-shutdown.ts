@@ -71,19 +71,18 @@ export async function runShutdown(options: {
   readonly hardKillMs?: number;
 }): Promise<never> {
   const killTree = options.killTree ?? killProcessTreeSync;
-  let timer: ShutdownTimer | undefined;
+  const timer: ShutdownTimer = setTimeout(() => {
+    try {
+      forceKill(options.processLike, killTree);
+    } catch {
+      // The process should be gone; tests may use a fake process that throws.
+    }
+  }, options.hardKillMs ?? 2_500);
+  timer.unref?.();
   try {
-    timer = setTimeout(() => {
-      try {
-        forceKill(options.processLike, killTree);
-      } catch {
-        // The process should be gone; tests may use a fake process that throws.
-      }
-    }, options.hardKillMs ?? 2_500);
-    timer.unref?.();
     await options.cleanup();
   } finally {
-    if (timer) clearTimeout(timer);
+    clearTimeout(timer);
     killTree(options.processLike.pid, false);
     options.processLike.exit(options.code);
   }

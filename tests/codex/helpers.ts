@@ -56,6 +56,7 @@ export class FakePty implements PtyProcess {
   readonly exitHandlers: ((exit: PtyExit) => void)[] = [];
   readonly options: PtySpawnOptions;
   size: TerminalSize;
+  resizeResult: "resized" | "closed" = "resized";
 
   constructor(options: PtySpawnOptions) {
     this.options = options;
@@ -76,9 +77,9 @@ export class FakePty implements PtyProcess {
     this.writes.push(typeof data === "string" ? data : Buffer.from(data).toString("utf8"));
   }
 
-  resize(size: TerminalSize): "resized" {
-    this.size = size;
-    return "resized";
+  resize(size: TerminalSize): "resized" | "closed" {
+    if (this.resizeResult === "resized") this.size = size;
+    return this.resizeResult;
   }
 
   kill(signal = "SIGTERM"): void {

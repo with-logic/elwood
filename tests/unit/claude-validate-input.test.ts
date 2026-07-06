@@ -66,6 +66,18 @@ describe("Claude hook input validation", () => {
     expect(isClaudeHookEvent(tool("AskUserQuestion", { questions: [{ question: "Q?" }] }))).toBe(
       false,
     );
+    expect(
+      isClaudeHookEvent(
+        tool("AskUserQuestion", {
+          questions: [
+            { question: "Q?", header: "Choice", options: [{ label: "A", description: "first" }] },
+          ],
+        }),
+      ),
+    ).toBe(true);
+    expect(isClaudeHookEvent(base("PreToolUse", { tool_name: "Bash", tool_input: "psql" }))).toBe(
+      false,
+    );
     expect(isClaudeHookEvent(tool("Bash", { command: "echo ok" }))).toBe(true);
     expect(
       isClaudeHookEvent(tool("Edit", { file_path: "a.ts", old_string: "a", new_string: "b" })),

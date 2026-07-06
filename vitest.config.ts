@@ -14,8 +14,10 @@ export default defineConfig({
       provider: "istanbul",
       reporter: ["text", "lcov"],
       thresholds: {
+        branches: 100,
         functions: 100,
         lines: 100,
+        statements: 100,
       },
     },
     exclude: ["tests/e2e/**", "node_modules/**"],

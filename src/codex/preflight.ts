@@ -86,18 +86,14 @@ export function resetCodexPreflightCacheForTests(): void {
 }
 
 function compareVersions(left: string, right: string): number {
-  const a = left.split(".").map(toVersionPart);
-  const b = right.split(".").map(toVersionPart);
-  for (let index = 0; index < 3; index += 1) {
-    const diff = (a[index] ?? 0) - (b[index] ?? 0);
+  // Both inputs are dotted numeric triples: parseCodexVersion captures exactly
+  // `major.minor.patch` and minimumCodexVersion is a literal triple.
+  const rightParts = right.split(".");
+  for (const [index, part] of left.split(".").entries()) {
+    const diff = Number(part) - Number(rightParts[index]);
     if (diff !== 0) return diff;
   }
   return 0;
-}
-
-function toVersionPart(part: string): number {
-  const parsed = Number.parseInt(part, 10);
-  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function versionWarning(output: string): CodexPreflightWarning {

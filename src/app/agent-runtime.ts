@@ -182,6 +182,6 @@ function commonLaunchOptions(options: AgentLaunchOptions) {
   };
 }
 
-function formatEventLog(kind: string, name: string, detail?: string): string {
-  return `[${kind}] ${name}${detail === undefined ? "" : ` ${detail}`}\n`;
+function formatEventLog(kind: string, name: string, detail: string): string {
+  return `[${kind}] ${name} ${detail}\n`;
 }

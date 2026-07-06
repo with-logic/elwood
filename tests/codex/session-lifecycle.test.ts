@@ -125,6 +125,28 @@ describe("CodexSession lifecycle", () => {
     });
   });
 
+  test("C-ERR-05 C-ERR-06 non-Error startup failures preserve a string cause", async () => {
+    installFakes();
+    setPtyFactoryForTests(() => {
+      // biome-ignore lint/style/useThrowOnlyError: exercises non-Error PTY failure handling
+      throw "pty exploded";
+    });
+    await expect(startCodex({ cwd: tempDir() })).rejects.toMatchObject({
+      code: "pty_start_failed",
+      details: { cause: "pty exploded" },
+    });
+    resetFakes();
+    installFakes();
+    setCodexHookBridgeFactoryForTests(() => ({
+      start: () => Promise.reject("bridge exploded"),
+      stop: () => Promise.resolve(),
+    }));
+    await expect(startCodex({ cwd: tempDir() })).rejects.toMatchObject({
+      code: "hook_bridge_failed",
+      details: { cause: "bridge exploded" },
+    });
+  });
+
   test("C-CODEX-13 Codex exits during startup with a typed error", async () => {
     installFakes();
     setPtyFactoryForTests((options) => {

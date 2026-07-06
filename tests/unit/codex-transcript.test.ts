@@ -36,6 +36,47 @@ describe("Codex transcript observation", () => {
     );
   });
 
+  test("C-API-12 watcher handles late files, blank lines, re-observe, and truncation", () => {
+    const path = join(tempDirForUnit(), "codex.jsonl");
+    const events: unknown[] = [];
+    const watcher = new CodexTranscriptWatcher("e2", (event) => events.push(event));
+    watcher.observe(path);
+    writeFileSync(path, `${JSON.stringify(line("response_item", { type: "reasoning" }))}\n\n`);
+    watcher.scan();
+    expect(events).toHaveLength(1);
+    watcher.observe(path);
+    writeFileSync(path, '{"type":"note"}\n');
+    watcher.scan();
+    watcher.stop();
+    expect(events).toHaveLength(2);
+    expect(events[1]).toMatchObject({ summary: { kind: "other", label: "note" } });
+  });
+
+  test("C-API-12 transcript summaries fall back for sparse payloads", () => {
+    expect(summarizeTranscriptItem(7)).toEqual({ kind: "other", label: "unknown" });
+    expect(summarizeTranscriptItem({ type: "turn_context", payload: {} })).toEqual({
+      kind: "other",
+      label: "turn_context",
+    });
+    expect(summarizeTranscriptItem({ payload: {} })).toEqual({ kind: "other", label: "unknown" });
+    expect(summary({ type: "web_search_call", action: { pattern: "TODO" } })).toEqual({
+      kind: "web_search",
+      label: "search",
+      text: "TODO",
+    });
+    expect(summary({ type: "web_search_call" })).toEqual({ kind: "web_search", label: "search" });
+    expect(summary({ type: "function_call" }).label).toBe("tool");
+    expect(summary({ type: "function_call_output" }).label).toBe("tool");
+    expect(summary({ type: "message", content: ["hi"] })).toEqual({
+      kind: "message",
+      label: "message",
+    });
+    expect(summary({ type: "agent_message", message: 7 })).toEqual({
+      kind: "message",
+      label: "assistant",
+    });
+  });
+
   test("C-API-12 transcript summaries cover Codex-visible activity", () => {
     expect(summary({ type: "function_call", name: "exec_command" })).toMatchObject({
       kind: "tool_call",

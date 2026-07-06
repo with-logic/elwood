@@ -23,6 +23,17 @@ describe("Codex hook registration", () => {
     await expect(emitter.request("hook:PreToolUse", unknownEvent())).resolves.toMatchObject({
       additionalContext: "unknown tool",
     });
+    await expect(
+      emitter.request("hook:PreToolUse", { hook_event_name: "PreToolUse" } as never),
+    ).resolves.toMatchObject({ additionalContext: "unknown tool" });
+  });
+
+  test("C-HRESP-01 unmatched tools without a fallback handler resolve to undefined", async () => {
+    const emitter = new TypedEmitter<CodexEventMap>();
+    registerInitialHooks(emitter, {
+      PreToolUse: { Bash: () => ({ permissionDecision: "allow" }) },
+    });
+    await expect(emitter.request("hook:PreToolUse", unknownEvent())).resolves.toBeUndefined();
   });
 
   test("C-HRESP-01 invalid object-form non-tool handlers fail open", async () => {

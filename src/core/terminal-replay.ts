@@ -23,7 +23,8 @@ export class TerminalReplayBuffer {
     this.chunks.push(data);
     this.size += Buffer.byteLength(data);
     while (this.size > this.maxBytes && this.chunks.length > 1) {
-      this.size -= Buffer.byteLength(this.chunks.shift() ?? "");
+      // The loop guard keeps the buffer non-empty, so shift always yields a chunk.
+      this.size -= Buffer.byteLength(this.chunks.shift()!);
     }
     if (this.size > this.maxBytes && this.chunks[0] !== undefined) {
       this.chunks[0] = Buffer.from(this.chunks[0]).subarray(-this.maxBytes).toString("utf8");

@@ -37,8 +37,8 @@ match. Do not leave a PRD change unimplemented across a commit.
   `tsconfig.json`.
 - Runtime: Node.js.
 - Lint and format: Biome 2, configured in `biome.json`.
-- Tests: Vitest, with 100% line and function coverage required by the
-  npm `test` script.
+- Tests: Vitest, with 100% line, function, statement, and branch coverage
+  required by the npm `test` script.
 - File size: `npm run check:lines`, with every checked code file capped at 200
   lines.
 
@@ -57,8 +57,8 @@ match. Do not leave a PRD change unimplemented across a commit.
 
 ## Testing Philosophy
 
-Coverage is a hard requirement. `vitest run --coverage` exits non-zero when either line coverage or function
-coverage falls below 100%.
+Coverage is a hard requirement. `vitest run --coverage` exits non-zero when any
+of line, function, statement, or branch coverage falls below 100%.
 
 Write tests alongside code. If the code has a branch, write a test that takes
 that branch. If a defensive branch genuinely cannot fire, delete it rather than

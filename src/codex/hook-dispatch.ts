@@ -73,6 +73,6 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
   try {
     return await Promise.race([promise, timeoutPromise]);
   } finally {
-    if (timeout) clearTimeout(timeout);
+    clearTimeout(timeout);
   }
 }

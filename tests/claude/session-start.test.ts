@@ -35,6 +35,20 @@ describe("ClaudeSession startup and terminal control", () => {
     expect(ptys).toHaveLength(1);
   });
 
+  test("C-STATE-04 persists caller metadata and session name", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd, metadata: { ticket: "ELW-1" }, name: "main" });
+    const record = JSON.parse(
+      readFileSync(
+        join(cwd, ".elwood", "sessions", session.elwoodSessionId, "session.json"),
+        "utf8",
+      ),
+    );
+    expect(record.metadata).toEqual({ ticket: "ELW-1" });
+    expect(record.claude.name).toBe("main");
+  });
+
   test("C-CLAUDE-01 preserves project-local Claude settings", async () => {
     const cwd = tempDir();
     mkdirSync(join(cwd, ".claude"), { recursive: true });

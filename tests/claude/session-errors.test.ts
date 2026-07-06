@@ -103,6 +103,29 @@ describe("ClaudeSession errors", () => {
     });
   });
 
+  test("C-ERR-05 non-Error PTY factory failures are stringified", async () => {
+    installFakes();
+    setPtyFactoryForTests(() => {
+      throw nonErrorFailure("pty exploded");
+    });
+    await expect(startClaude({ cwd: tempDir() })).rejects.toMatchObject({
+      code: "pty_start_failed",
+      details: { cause: "pty exploded" },
+    });
+  });
+
+  test("C-ERR-06 non-Error hook bridge failures are stringified", async () => {
+    installFakes();
+    setHookBridgeFactoryForTests(() => ({
+      start: () => Promise.reject("bridge exploded"),
+      stop: () => Promise.resolve(),
+    }));
+    await expect(startClaude({ cwd: tempDir() })).rejects.toMatchObject({
+      code: "hook_bridge_failed",
+      details: { cause: "bridge exploded" },
+    });
+  });
+
   test("C-CLAUDE-06 C-ERR-01 startup exits stop local resources", async () => {
     const cwd = tempDir();
     installFakes();
@@ -130,3 +153,7 @@ describe("ClaudeSession errors", () => {
     });
   });
 });
+
+function nonErrorFailure(message: string): Error {
+  return message as unknown as Error;
+}

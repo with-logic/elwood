@@ -1,10 +1,10 @@
 /**
- * Focused coverage for optional CLI autoupdate.
- * Covers PRD §5.1 and §5.5.
+ * Focused coverage for optional CLI autoupdate and version comparison.
+ * Covers PRD §5.1, §5.5, and §9.2.
  */
 
 import { describe, expect, test } from "vitest";
-import { preflightClaude } from "../../src/claude/preflight.ts";
+import { compareVersions, preflightClaude } from "../../src/claude/preflight.ts";
 import { preflightCodex } from "../../src/codex/preflight.ts";
 import { ElwoodError } from "../../src/core/errors.ts";
 import {
@@ -46,6 +46,12 @@ describe("CLI autoupdate preflight", () => {
     });
     expect(() => preflightClaude(false, true)).toThrow(ElwoodError);
     resetRuntimeSeamsForTests();
+  });
+
+  test("C-CLAUDE-04 treats missing or malformed version parts as zero", () => {
+    expect(compareVersions("2.1", "2.1")).toBe(0);
+    expect(compareVersions("2..3", "2.0.3")).toBe(0);
+    expect(compareVersions("2.1.x", "2.1.0")).toBe(0);
   });
 
   test("C-CODEX-08 runs codex update and reports failures", () => {

@@ -48,8 +48,10 @@ export class CodexTranscriptWatcher {
     const chunk = this.readNewChunk(size);
     if (chunk.length === 0) return;
     const lines = `${this.pending}${chunk}`.split(/\r?\n/);
-    this.pending = lines.pop() ?? "";
-    for (const line of lines) this.emitLine(line);
+    for (const [index, line] of lines.entries()) {
+      if (index < lines.length - 1) this.emitLine(line);
+      else this.pending = line;
+    }
   }
 
   flush(): void {

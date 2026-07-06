@@ -63,6 +63,51 @@ describe("Codex hook validation", () => {
     ).toBe(true);
   });
 
+  test("C-HOOK-13 validates compact, tool-field, and stop-message variants", () => {
+    expect(isCodexHookEvent(base("PreCompact", { turn_id: "turn-1", trigger: "auto" }))).toBe(true);
+    expect(
+      isCodexHookEvent(base("PostToolUse", { turn_id: "turn-1", tool_name: 7, tool_input: {} })),
+    ).toBe(false);
+    expect(
+      isCodexHookEvent(
+        base("PostToolUse", { turn_id: "turn-1", tool_name: "Read", tool_input: "raw" }),
+      ),
+    ).toBe(false);
+    expect(
+      isCodexHookEvent(
+        base("PostToolUse", {
+          turn_id: "turn-1",
+          tool_name: "Read",
+          tool_input: {},
+          tool_use_id: 7,
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isCodexHookEvent(
+        base("Stop", { turn_id: "turn-1", stop_hook_active: true, last_assistant_message: "done" }),
+      ),
+    ).toBe(true);
+  });
+
+  test("C-HOOK-13 validates undefined, non-record, and command-free rewrite results", () => {
+    expect(isCodexHookResult("Stop", undefined)).toBe(true);
+    expect(isCodexHookResult("Stop", "nope")).toBe(false);
+    expect(isCodexHookResult("Stop", { permissionDecision: "allow" })).toBe(false);
+    const bashEvent = base("PreToolUse", {
+      turn_id: "turn-1",
+      tool_name: "Bash",
+      tool_input: { command: "echo ok" },
+    });
+    if (!isCodexHookEvent(bashEvent)) throw new Error("expected Codex hook event");
+    expect(
+      isCodexHookResult(bashEvent, {
+        permissionDecision: "allow",
+        updatedInput: { description: "annotated" },
+      }),
+    ).toBe(true);
+  });
+
   test("C-HOOK-13 validates Codex hook result semantics", () => {
     expect(isCodexHookResult("PreToolUse", { permissionDecision: "allow" })).toBe(true);
     expect(isCodexHookResult("PreToolUse", { continue: false })).toBe(false);

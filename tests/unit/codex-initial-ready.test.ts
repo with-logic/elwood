@@ -18,6 +18,16 @@ describe("initialReady", () => {
     expect(calls).toBe(2);
   });
 
+  test("ignores late timer fires after readiness is marked", async () => {
+    let calls = 0;
+    const ready = initialReady(() => calls++, 1);
+    ready.schedule();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    ready.schedule();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(calls).toBe(1);
+  });
+
   test("cancels pending readiness", async () => {
     let calls = 0;
     const ready = initialReady(() => calls++, 1);
