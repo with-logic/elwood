@@ -37,7 +37,7 @@ describe("ElwoodAgentSession", () => {
 
     installCodexFakes();
     const codex: ElwoodAgentSession = await startCodex({ cwd: tempDir() });
-    codexPtys[0]?.emitData("codex rendered");
+    codexPtys[0]?.emitData("codex rendered\r\n\u203a ");
     // The shared surface drives either adapter without adapter generics.
     const sessions: readonly ElwoodAgentSession[] = [codex];
     for (const session of sessions) {

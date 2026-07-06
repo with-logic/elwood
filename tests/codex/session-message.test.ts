@@ -18,7 +18,7 @@ describe("CodexSession message submission", () => {
     const session = await startCodex({ cwd });
     const queued = session.sendMessage("hello");
     expect(ptys[0]!.writes).toEqual([]);
-    ptys[0]!.emitData("codex rendered");
+    ptys[0]!.emitData("codex rendered\r\n\u203a ");
     await queued;
     expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\u001b[201~\r"]);
     expect(session.status).toBe("running");
@@ -72,7 +72,7 @@ describe("CodexSession message submission", () => {
     const session = await startCodex({ cwd, persona: "You are a terse reviewer." });
     const queued = session.sendMessage("hello");
     expect(ptys[0]!.writes).toEqual([]);
-    ptys[0]!.emitData("codex rendered");
+    ptys[0]!.emitData("codex rendered\r\n\u203a ");
     await expect.poll(() => ptys[0]!.writes.length).toBe(1);
     expect(ptys[0]!.writes[0]).toBe("\u001b[200~You are a terse reviewer.\u001b[201~\r");
     await ptys[0]!.dispatchHook(session.elwoodSessionId, stopEvent(cwd));

@@ -21,7 +21,7 @@ import {
   writeSessionRecord,
 } from "../state/store.ts";
 import { attachPtyTerminal } from "../terminal/headless.ts";
-import { initialReady } from "./initial-ready.ts";
+import { codexComposerVisible, initialReady } from "./initial-ready.ts";
 import * as preflight from "./preflight.ts";
 import { spawnCodexPty } from "./pty.ts";
 import { currentCodexHookBridgeFactory } from "./session-bridge.ts";
@@ -122,7 +122,11 @@ export async function startCodexFromRecord(
       for (const automation of result.automations) {
         emitStartupPromptActivity(emitter, "codex", record.elwoodSessionId, automation);
       }
-      if (result.automations.length === 0) ready.schedule();
+      ready.armDeadline();
+      // Frame-quiet alone can fire during a boot gap before the TUI accepts
+      // input (a submitted message would be swallowed); require the composer.
+      if (result.automations.length === 0 && codexComposerVisible(renderedTerminal.snapshot().text))
+        ready.schedule();
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );

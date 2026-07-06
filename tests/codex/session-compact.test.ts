@@ -16,7 +16,7 @@ describe("CodexSession compact", () => {
     const session = await startCodex({ cwd });
     const compacted = session.compact();
     expect(ptys[0]!.writes).toEqual([]);
-    ptys[0]!.emitData("codex rendered");
+    ptys[0]!.emitData("codex rendered\r\n\u203a ");
     await expect.poll(() => ptys[0]!.writes.length).toBe(2);
     expect(ptys[0]!.writes).toEqual(["/compact", "\r"]);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
@@ -35,7 +35,7 @@ describe("CodexSession compact", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startCodex({ cwd });
-    ptys[0]!.emitData("codex rendered");
+    ptys[0]!.emitData("codex rendered\r\n\u203a ");
     await expect.poll(() => session.status).toBe("ready");
     const compacted = session.compact({ timeoutMs: 1_000 });
     // Command text, deferred command Enter, and the popup-recovery nudge Enter.

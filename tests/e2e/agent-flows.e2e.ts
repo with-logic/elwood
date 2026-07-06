@@ -109,9 +109,6 @@ test("C-E2E-02 real Claude session supports core public flows", {
 
 test("C-E2E-03 real Codex session supports core public flows", {
   skip: skipReason("codex") ?? skipTurnsReason,
-  // The resumed-turn verification fails under the node:test harness only;
-  // the identical flow passes standalone. Tracked as an open investigation.
-  todo: "resumed Codex turn verification is harness-flaky",
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("codex");
@@ -169,10 +166,9 @@ test("C-E2E-03 real Codex session supports core public flows", {
       45_000,
     );
     // Codex emits SessionStart lazily with the first turn, so a resumed turn
-    // proves the conversation actually reattached. sendPrompt writes without
-    // readiness gating: a failing MCP server's retry spinner can starve the
-    // debounced first-frame readiness signal on resumed sessions.
-    await resumed.sendPrompt("Reply exactly: ELWOOD_RESUMED_OK. Do not use tools.");
+    // proves the conversation actually reattached. sendMessage waits for
+    // composer-visible readiness, so the paste cannot be swallowed by boot.
+    await resumed.sendMessage("Reply exactly: ELWOOD_RESUMED_OK. Do not use tools.");
     await waitFor(
       () => (hooksSeen.filter((name) => name === "SessionStart").length >= 2 ? true : undefined),
       "resumed Codex SessionStart hook",

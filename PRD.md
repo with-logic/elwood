@@ -402,8 +402,16 @@ ready, Elwood queues the message and submits it when the adapter reports semanti
 readiness through adapter-specific lifecycle signals. Initial readiness may come
 from a hook-backed lifecycle event, such as Claude `InstructionsLoaded`, or from
 a non-text terminal lifecycle signal when the CLI does not emit a pre-input
-readiness hook, such as Codex's first rendered terminal frame after startup
-automation prompts have been handled. Subsequent turn readiness comes from
+readiness hook, such as Codex's rendered terminal reaching a quiet frame that
+shows the input composer after startup automation prompts have been handled.
+Frame-quiet alone is not sufficient: a quiet gap during boot can occur before
+the TUI accepts input, and a message submitted then is silently swallowed, so
+initial readiness additionally requires the composer to be visible in the
+rendered screen. Detection MUST also be bounded: a continuously animating
+screen region (for example a failing MCP server's retry spinner) must not
+starve readiness forever, so initial readiness fires no later than a fixed
+deadline after the first rendered frame even when the screen never goes quiet
+or the composer marker is never recognized. Subsequent turn readiness comes from
 completion signals such as an unblocked `Stop` hook. Queued messages are
 submitted in FIFO order, one message per ready transition, so back-to-back calls
 do not accidentally paste multiple user turns into one active agent prompt. A
@@ -1360,6 +1368,7 @@ Each criterion has:
 | C-API-25 | §5.3 | Promise-returning session methods called after a terminal status reject with `session_not_running` instead of throwing synchronously. |
 | C-API-26 | §5.2 §5.6 | `startOrResumeClaude`/`startOrResumeCodex` resume when possible, fall back to a fresh start only on `state_not_found`, `resume_unavailable`, or `adapter_mismatch`, rethrow all other errors, and report `resumed` in the result. |
 | C-API-27 | §5.7 | `ElwoodAgentSession` is exported and both `ClaudeSession` and `CodexSession` are assignable to it, covering common events, io, commands, and lifecycle. |
+| C-API-28 | §5.3 | Codex initial readiness requires a quiet frame with the input composer visible, bounded by a fixed deadline after the first rendered frame so continuous animation or unrecognized composers cannot starve it. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 

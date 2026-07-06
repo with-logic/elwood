@@ -15,7 +15,7 @@ describe("CodexSession model picker", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startCodex({ cwd });
-    ptys[0]!.emitData("codex rendered");
+    ptys[0]!.emitData("codex rendered\r\n\u203a ");
     await expect.poll(() => session.status).toBe("ready");
     const listing = session.listModels({ timeoutMs: 4_000 });
     await expect.poll(() => ptys[0]!.writes.includes("/model")).toBe(true);
