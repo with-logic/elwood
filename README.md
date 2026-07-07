@@ -331,6 +331,12 @@ intact). Everything else Elwood needs is in the session record. Notes:
   no-ops that preserve the exit status, and `teardown()` is safe to call
   twice. Input/command methods after any terminal status reject with
   `session_not_running` (they never throw synchronously).
+- `status` transitions mark every real turn boundary: `running` when a turn
+  starts and `ready` when it ends — including turns ended by an Escape
+  interrupt, which fires no completion hook. Turn state is derived from the
+  rendered TUI (each adapter's documented working indicator plus its
+  composer), so consumers can clear "agent is working" UI on the `ready`
+  status beat without hook assumptions.
 
 The default terminal size is 189×48 — deliberately wide so full-width TUI
 layouts render without artificial wrapping in headless use. Visual embedders

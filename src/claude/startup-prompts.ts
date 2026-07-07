@@ -32,3 +32,8 @@ export class ClaudeStartupPromptResponder {
 export function browserToolsPromptVisible(text: string): boolean {
   return /use my browser/i.test(text) && /keep browser tools off/i.test(text);
 }
+
+/** Claude's idle input composer marker (verified on claude 2.1.201). */
+export function claudeComposerVisible(text: string): boolean {
+  return /^\s*❯/m.test(text);
+}

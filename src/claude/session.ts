@@ -6,6 +6,7 @@ import { causeDetails, elwoodError } from "../core/errors.ts";
 import { queuePersonaMessage } from "../core/persona.ts";
 import { emitStartupPromptActivity } from "../core/startup-automation.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
+import { TurnStateWatcher } from "../core/turn-state.ts";
 import type { ClaudeSession, StartClaudeOptions } from "../core/types.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
@@ -33,7 +34,7 @@ import {
 } from "./session-bridge.ts";
 import { ClaudeSessionImpl } from "./session-instance.ts";
 import { registerInitialHooks, spawnClaudePty, writeRuntimeFiles } from "./session-runtime.ts";
-import { ClaudeStartupPromptResponder } from "./startup-prompts.ts";
+import { ClaudeStartupPromptResponder, claudeComposerVisible } from "./startup-prompts.ts";
 
 export {
   resetClaudeHookBridgeFactoryForTests as resetClaudeSessionSeamsForTests,
@@ -102,9 +103,11 @@ export async function startClaudeFromRecord(
       );
       if (event.hook_event_name === "InstructionsLoaded" && !initialReadyMarked) {
         initialReadyMarked = true;
+        turnWatcher.arm();
         session?.markReady();
       }
       if (event.hook_event_name === "Stop" && !isBlock(outcome.result)) {
+        turnWatcher.arm();
         session?.markReady();
       }
       return serializeHookResult(event.hook_event_name, outcome.result);
@@ -134,6 +137,7 @@ export async function startClaudeFromRecord(
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   const promptResponder = new ClaudeStartupPromptResponder(options.autotrust ?? false);
+  const turnWatcher = new TurnStateWatcher(claudeComposerVisible);
   const terminal = attachPtyTerminal(
     options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
     pty,
@@ -146,6 +150,9 @@ export async function startClaudeFromRecord(
       for (const automation of automations) {
         emitStartupPromptActivity(emitter, "claude", record.elwoodSessionId, automation);
       }
+      const turnEdge = turnWatcher.observe(renderedTerminal.snapshot().text);
+      if (turnEdge === "started") session?.markRunning();
+      if (turnEdge === "ended") session?.markReady();
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );

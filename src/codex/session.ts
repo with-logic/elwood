@@ -6,6 +6,7 @@ import { causeDetails, elwoodError } from "../core/errors.ts";
 import { queuePersonaMessage } from "../core/persona.ts";
 import { emitStartupPromptActivity } from "../core/startup-automation.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
+import { TurnStateWatcher } from "../core/turn-state.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { assertStartupUsable } from "../runtime/startup.ts";
@@ -106,7 +107,11 @@ export async function startCodexFromRecord(
   let startupOutput = "";
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
-  const ready = initialReady(() => session?.markReady());
+  const ready = initialReady(() => {
+    turnWatcher.arm();
+    session?.markReady();
+  });
+  const turnWatcher = new TurnStateWatcher(codexComposerVisible);
   const autotrust = options.autotrust ?? false;
   const promptResponder = new CodexStartupPromptResponder(record.elwoodSessionId, autotrust);
   const terminal = attachPtyTerminal(
@@ -127,6 +132,9 @@ export async function startCodexFromRecord(
       // input (a submitted message would be swallowed); require the composer.
       if (result.automations.length === 0 && codexComposerVisible(renderedTerminal.snapshot().text))
         ready.schedule();
+      const turnEdge = turnWatcher.observe(renderedTerminal.snapshot().text);
+      if (turnEdge === "started") session?.markRunning();
+      if (turnEdge === "ended") session?.markReady();
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );
