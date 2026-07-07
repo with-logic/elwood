@@ -6,7 +6,7 @@ import { causeDetails, elwoodError } from "../core/errors.ts";
 import { queuePersonaMessage } from "../core/persona.ts";
 import { emitStartupPromptActivity } from "../core/startup-automation.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
-import { TurnStateWatcher } from "../core/turn-state.ts";
+import { claudeInterruptBanner, TurnStateWatcher } from "../core/turn-state.ts";
 import type { ClaudeSession, StartClaudeOptions } from "../core/types.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
@@ -137,7 +137,7 @@ export async function startClaudeFromRecord(
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   const promptResponder = new ClaudeStartupPromptResponder(options.autotrust ?? false);
-  const turnWatcher = new TurnStateWatcher(claudeComposerVisible);
+  const turnWatcher = new TurnStateWatcher(claudeComposerVisible, claudeInterruptBanner);
   const terminal = attachPtyTerminal(
     options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
     pty,

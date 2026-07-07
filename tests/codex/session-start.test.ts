@@ -122,15 +122,16 @@ describe("CodexSession startup and terminal control", () => {
     await flushTerminal();
     await session.sendPrompt("hello\nworld");
     const queued = session.sendMessage("again");
-    expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\nworld\u001b[201~\r"]);
+    expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\nworld\u001b[201~"]);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, stopEvent(cwd));
     await queued;
     await session.sendKeys(new Uint8Array([120]));
     await session.resize({ cols: 88, rows: 33 });
     ptys[0]!.emitExit({ exitCode: 7 });
-    expect(ptys[0]!.writes).toEqual([
-      "\u001b[200~hello\nworld\u001b[201~\r",
-      "\u001b[200~again\u001b[201~\r",
+    // Submitting Enters arrive as separate deferred keystrokes (C-API-31).
+    expect(ptys[0]!.writes.filter((w) => w !== "\r")).toEqual([
+      "\u001b[200~hello\nworld\u001b[201~",
+      "\u001b[200~again\u001b[201~",
       "x",
     ]);
     expect(ptys[0]!.size).toEqual({ cols: 88, rows: 33 });

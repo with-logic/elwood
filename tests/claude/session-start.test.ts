@@ -100,14 +100,14 @@ describe("ClaudeSession startup and terminal control", () => {
     const session = await startClaude({ cwd });
     await session.sendPrompt("hello\nworld");
     const queued = session.sendMessage("again");
-    expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\nworld\u001b[201~\r"]);
+    expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\nworld\u001b[201~"]);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       hook_event_name: "Stop",
       session_id: "claude-1",
       cwd,
     });
     await queued;
-    expect(ptys[0]!.writes[1]).toBe("\u001b[200~again\u001b[201~\r");
+    expect(ptys[0]!.writes.filter((w) => w !== "\r")[1]).toBe("\u001b[200~again\u001b[201~");
   });
 
   test("C-PTY-03 C-PTY-04 C-PTY-05 emits terminal data, raw keys, and resize", async () => {

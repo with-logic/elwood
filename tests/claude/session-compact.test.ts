@@ -40,7 +40,7 @@ describe("ClaudeSession compact", () => {
     // Command submissions do not consume readiness: a queued message after a
     // command submits without waiting for another readiness signal.
     await session.sendMessage("hello after compact");
-    expect(ptys[0]!.writes.at(-1)).toBe("\u001b[200~hello after compact\u001b[201~\r");
+    expect(ptys[0]!.writes.at(-1)).toBe("\u001b[200~hello after compact\u001b[201~");
   });
 
   test("C-API-22 compact rejects with compact_failed when no PostCompact arrives", async () => {

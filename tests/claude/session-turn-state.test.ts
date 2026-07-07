@@ -44,3 +44,25 @@ describe("ClaudeSession turn boundaries", () => {
     expect(ptys[0]!.writes.at(-1)).toContain("follow-up after interrupt");
   });
 });
+
+const interruptBanner46 = "  ⎿  Interrupted· What should Claude do \r\n❯ ";
+
+describe("ClaudeSession narrow-width turn boundaries", () => {
+  test("C-TURN-04 the interrupt banner ends the turn when the footer is elided", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd, initialSize: { cols: 46, rows: 12 } });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
+    expect(session.status).toBe("ready");
+    // The turn starts via submission; the elided footer never shows the token.
+    await session.sendMessage("long persona turn");
+    expect(session.status).toBe("running");
+    ptys[0]!.emitData("  essay text streaming, no footer token\r\n❯ ");
+    expect(session.status).toBe("running");
+    // Escape: the CLI renders the Interrupted banner — that alone ends the turn.
+    ptys[0]!.emitData(interruptBanner46);
+    await expect.poll(() => session.status).toBe("ready");
+    await session.sendMessage("follow-up after narrow interrupt");
+    expect(ptys[0]!.writes.at(-1)).toContain("follow-up after narrow interrupt");
+  });
+});

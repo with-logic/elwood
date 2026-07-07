@@ -15,6 +15,7 @@ type InterruptOutcome = { readonly sawRunning: boolean; readonly lastStatus: str
 async function interruptFlow(
   session: ElwoodAgentSession,
   stops: () => number,
+  narrow = false,
 ): Promise<InterruptOutcome> {
   const statuses: string[] = [];
   session.on("status", (event) => statuses.push(event.status));
@@ -22,10 +23,24 @@ async function interruptFlow(
   await session.sendMessage(
     "Write a 400-word essay about the history of terminals. Think carefully. Do not use tools.",
   );
-  // Wait until the rendered TUI shows the turn actually running.
+  // Wait until the turn is visibly mid-flight. Narrow screens elide the
+  // footer token (C-TURN-04) and the tiny viewport caps text growth, so
+  // there we wait for a stream of distinct rendered frames instead.
+  let lastFrame = session.terminal.snapshot().text;
+  let distinctFrames = 0;
   await waitFor(
-    () => (/esc to interrupt/i.test(session.terminal.snapshot().text) ? true : undefined),
-    "working indicator",
+    () => {
+      if (!narrow) {
+        return /esc to interrupt/i.test(session.terminal.snapshot().text) ? true : undefined;
+      }
+      const frame = session.terminal.snapshot().text;
+      if (frame !== lastFrame) {
+        lastFrame = frame;
+        distinctFrames += 1;
+      }
+      return distinctFrames >= 6 ? true : undefined;
+    },
+    "turn visibly running",
     60_000,
   );
   await session.sendKeys("");
@@ -42,31 +57,37 @@ async function interruptFlow(
   return outcome;
 }
 
-test("C-TURN-02 real Claude Esc interrupt emits ready and stays usable", {
-  skip: skipReason("claude") ?? skipTurnsReason,
-  timeout: 240_000,
-}, async () => {
-  const project = makeProject("claude");
-  let stops = 0;
-  const session = await startClaude({
-    cwd: project.cwd,
-    stateDir: project.stateDir,
-    permissionMode: "bypassPermissions",
-    autotrust: true,
-    hooks: {
-      Stop: () => {
-        stops += 1;
+for (const size of [
+  { cols: 80, rows: 24, narrow: false },
+  { cols: 46, rows: 12, narrow: true },
+]) {
+  test(`C-TURN-02 C-TURN-04 real Claude Esc interrupt emits ready at ${size.cols}x${size.rows}`, {
+    skip: skipReason("claude") ?? skipTurnsReason,
+    timeout: 240_000,
+  }, async () => {
+    const project = makeProject("claude");
+    let stops = 0;
+    const session = await startClaude({
+      cwd: project.cwd,
+      stateDir: project.stateDir,
+      initialSize: { cols: size.cols, rows: size.rows },
+      permissionMode: "bypassPermissions",
+      autotrust: true,
+      hooks: {
+        Stop: () => {
+          stops += 1;
+        },
       },
-    },
+    });
+    try {
+      const outcome = await interruptFlow(session, () => stops, size.narrow);
+      assert.ok(outcome.sawRunning, "running status emitted for the turn");
+      assert.equal(outcome.lastStatus, "ready", "ready status emitted on interrupt");
+    } finally {
+      await cleanup(session);
+    }
   });
-  try {
-    const outcome = await interruptFlow(session, () => stops);
-    assert.ok(outcome.sawRunning, "running status emitted for the turn");
-    assert.equal(outcome.lastStatus, "ready", "ready status emitted on interrupt");
-  } finally {
-    await cleanup(session);
-  }
-});
+}
 
 test("C-TURN-02 real Codex Esc interrupt emits ready and stays usable", {
   skip: skipReason("codex") ?? skipTurnsReason,
@@ -77,6 +98,8 @@ test("C-TURN-02 real Codex Esc interrupt emits ready and stays usable", {
   const session = await startCodex({
     cwd: project.cwd,
     stateDir: project.stateDir,
+    // Codex's working spinner survives even 46 columns (C-TURN-04 capture).
+    initialSize: { cols: 46, rows: 12 },
     sandbox: "read-only",
     approvalPolicy: "never",
     autotrust: true,

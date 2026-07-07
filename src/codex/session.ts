@@ -6,7 +6,7 @@ import { causeDetails, elwoodError } from "../core/errors.ts";
 import { queuePersonaMessage } from "../core/persona.ts";
 import { emitStartupPromptActivity } from "../core/startup-automation.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
-import { TurnStateWatcher } from "../core/turn-state.ts";
+import { codexInterruptBanner, TurnStateWatcher } from "../core/turn-state.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { assertStartupUsable } from "../runtime/startup.ts";
@@ -111,7 +111,7 @@ export async function startCodexFromRecord(
     turnWatcher.arm();
     session?.markReady();
   });
-  const turnWatcher = new TurnStateWatcher(codexComposerVisible);
+  const turnWatcher = new TurnStateWatcher(codexComposerVisible, codexInterruptBanner);
   const autotrust = options.autotrust ?? false;
   const promptResponder = new CodexStartupPromptResponder(record.elwoodSessionId, autotrust);
   const terminal = attachPtyTerminal(

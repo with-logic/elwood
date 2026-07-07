@@ -71,6 +71,11 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void {
     this.emitter.off(event, handler);
   }
+  // Codex has no staged chip; the composer still shows the paste's last line.
+  protected stagedPaste(screen: string, prompt: string): boolean {
+    const lastLine = prompt.trim().split("\n").at(-1)?.trim();
+    return lastLine !== undefined && lastLine.length > 0 && screen.includes(lastLine);
+  }
   rememberCodexSessionId(sessionId: string): void {
     if (this.record.codex.resumeId) return;
     this.persist(updateSessionResumeId(this.record, "codex", sessionId));

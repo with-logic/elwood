@@ -27,7 +27,9 @@ describe("ClaudeSession message submission", () => {
       load_reason: "session_start",
     });
     await queued;
-    expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\u001b[201~\r"]);
+    expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\u001b[201~"]);
+    // C-API-31: the submitting Enter follows as a separate keystroke.
+    await expect.poll(() => ptys[0]!.writes.includes("\r")).toBe(true);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       hook_event_name: "InstructionsLoaded",
       session_id: "claude-1",
@@ -54,7 +56,9 @@ describe("ClaudeSession message submission", () => {
       load_reason: "session_start",
     });
     await expect.poll(() => ptys[0]!.writes.length).toBe(1);
-    expect(ptys[0]!.writes[0]).toBe("\u001b[200~You are a terse reviewer.\u001b[201~\r");
+    expect(ptys[0]!.writes.filter((w) => w !== "\r")[0]).toBe(
+      "\u001b[200~You are a terse reviewer.\u001b[201~",
+    );
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       hook_event_name: "Stop",
       session_id: "claude-1",
@@ -62,7 +66,7 @@ describe("ClaudeSession message submission", () => {
       stop_hook_active: false,
     });
     await queued;
-    expect(ptys[0]!.writes[1]).toBe("\u001b[200~hello\u001b[201~\r");
+    expect(ptys[0]!.writes.filter((w) => w !== "\r")[1]).toBe("\u001b[200~hello\u001b[201~");
     const record = readFileSync(
       join(cwd, ".elwood", "sessions", session.elwoodSessionId, "session.json"),
       "utf8",

@@ -15,7 +15,7 @@ import {
   setPickerModel,
 } from "../core/model-picker.ts";
 import type { AgentModelOption } from "../core/model-rows.ts";
-import { writePastedPrompt, writeQueuedInput } from "../core/session-input.ts";
+import { type PasteGuard, writePastedPrompt, writeQueuedInput } from "../core/session-input.ts";
 import type { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
 import { replayWarningSnapshots } from "../core/warning-replay.ts";
@@ -32,8 +32,6 @@ import { canTransition, terminalStatuses } from "./session-status.ts";
 import { runTeardownSteps } from "./teardown.ts";
 import { terminatePty } from "./terminate.ts";
 
-export type { SessionStatusEmitter } from "./session-base-types.ts";
-
 export abstract class AgentSessionBase {
   protected record: SessionRecord;
   readonly terminal: ElwoodTerminal;
@@ -45,7 +43,7 @@ export abstract class AgentSessionBase {
   private currentStatus: ElwoodSessionStatus = "starting";
   private cleanupPromise: Promise<void> | undefined;
   protected readonly messages = new MessageQueue(
-    (message, mode) => writeQueuedInput(this.terminal, message, mode),
+    (message, mode) => writeQueuedInput(this.terminal, message, mode, this.pasteGuard()),
     () => this.notRunningError(),
     () => this.markRunning(),
   );
@@ -80,7 +78,7 @@ export abstract class AgentSessionBase {
   }
   sendPrompt(prompt: string): Promise<void> {
     return this.inSession(() => {
-      writePastedPrompt(this.terminal, prompt);
+      writePastedPrompt(this.terminal, prompt, this.pasteGuard());
       this.markRunning();
     });
   }
@@ -145,6 +143,12 @@ export abstract class AgentSessionBase {
     this.messages.close();
     this.setStatus("exited");
     void this.cleanupRuntime();
+  }
+  /** Whether the rendered screen still shows this prompt staged, unsubmitted. */
+  protected abstract stagedPaste(screen: string, prompt: string): boolean;
+  private pasteGuard(): PasteGuard {
+    const staged = (s: string, p: string) => this.stagedPaste(s, p);
+    return { snapshot: () => this.terminal.snapshot().text, staged };
   }
   protected abstract stopRuntime(): Promise<void>;
   protected replayFor(event: string, handler: unknown): void {

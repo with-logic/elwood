@@ -42,6 +42,10 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void {
     this.emitter.off(event, handler);
   }
+  // Captured staged chip: "❯ [Pasted text #1 +15 lines]" (claude 2.1.201).
+  protected stagedPaste(screen: string): boolean {
+    return /\[Pasted text/.test(screen);
+  }
   rememberClaudeSessionId(sessionId: string): void {
     if (this.record.claude.resumeId) return;
     this.persist(updateSessionResumeId(this.record, "claude", sessionId));

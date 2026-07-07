@@ -20,7 +20,9 @@ describe("CodexSession message submission", () => {
     expect(ptys[0]!.writes).toEqual([]);
     ptys[0]!.emitData("codex rendered\r\n\u203a ");
     await queued;
-    expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\u001b[201~\r"]);
+    expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\u001b[201~"]);
+    // C-API-31: the submitting Enter follows as a separate keystroke.
+    await expect.poll(() => ptys[0]!.writes.includes("\r")).toBe(true);
     expect(session.status).toBe("running");
   });
 
@@ -74,10 +76,12 @@ describe("CodexSession message submission", () => {
     expect(ptys[0]!.writes).toEqual([]);
     ptys[0]!.emitData("codex rendered\r\n\u203a ");
     await expect.poll(() => ptys[0]!.writes.length).toBe(1);
-    expect(ptys[0]!.writes[0]).toBe("\u001b[200~You are a terse reviewer.\u001b[201~\r");
+    expect(ptys[0]!.writes.filter((w) => w !== "\r")[0]).toBe(
+      "\u001b[200~You are a terse reviewer.\u001b[201~",
+    );
     await ptys[0]!.dispatchHook(session.elwoodSessionId, stopEvent(cwd));
     await queued;
-    expect(ptys[0]!.writes[1]).toBe("\u001b[200~hello\u001b[201~\r");
+    expect(ptys[0]!.writes.filter((w) => w !== "\r")[1]).toBe("\u001b[200~hello\u001b[201~");
     const record = readFileSync(
       join(cwd, ".elwood", "sessions", session.elwoodSessionId, "session.json"),
       "utf8",

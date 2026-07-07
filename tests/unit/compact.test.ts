@@ -65,7 +65,7 @@ describe("runCompact", () => {
         writes.push(String(data));
       },
     };
-    writeQueuedInput(terminal, "/compact", "command", 1);
+    writeQueuedInput(terminal, "/compact", "command", undefined, 1);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(writes).toEqual(["/compact"]);
   });

@@ -428,6 +428,19 @@ queued `sendMessage` promise resolves when that message has been written to the
 PTY. If the session terminates before a queued message is written, the promise
 rejects with `session_not_running`.
 
+Prompt submission MUST NOT race the TUI's paste ingestion. The CLIs ingest a
+bracketed paste asynchronously, and an Enter concatenated into the same PTY
+write can be consumed by the paste boundary — leaving the prompt staged in
+the composer, never submitted (long multi-line prompts such as personas hit
+this reliably). Elwood therefore writes the bracketed paste and the
+submitting Enter as separate PTY writes, with the Enter following after a
+short settle delay, and then confirms submission against the rendered
+screen: while the composer still shows staged content (Claude's
+"[Pasted text" chip; for Codex the paste's final line still in the
+composer), Elwood re-sends Enter a bounded number of times. A surplus Enter
+on an empty composer is a no-op on both CLIs, so the recovery cannot
+double-submit.
+
 Turn boundaries MUST be observable even when no completion hook fires. Claude
 does not fire a `Stop` hook when a running turn is interrupted (Escape), so
 hook-driven readiness alone leaves the session in `running` forever after an
@@ -440,7 +453,14 @@ transitions to `ready` — emitting the standard `status` lifecycle activities
 on every real turn boundary regardless of how the turn ended (completion,
 interrupt, or otherwise). A screen that shows neither indicator (for example
 a modal permission dialog) holds the current state so queued messages are
-never submitted into a dialog. Hook-driven readiness (`Stop`) remains as a
+never submitted into a dialog. Detection MUST be robust to terminal width:
+Claude elides the footer working token below roughly 66 columns, so each
+adapter also has a documented interrupt end banner (Claude renders
+"⎿ Interrupted", Codex renders "Conversation interrupted") whose appearance
+fires the turn-end transition even when the working token was never visible.
+Together the sources cover every width: turn start comes from message
+submission, normal completion from the `Stop` hook, and interrupts from the
+working-token edge on wide screens or the end banner anywhere. Hook-driven readiness (`Stop`) remains as a
 redundant turn-end source; transitions are idempotent, and rendered-state
 watching only activates after initial readiness so startup spinners that
 borrow the same wording cannot fabricate turns. The indicator tokens are
@@ -1420,8 +1440,10 @@ Each criterion has:
 | C-TURN-01 | §5.3 | While a turn runs the session is `running`; when the turn ends by any means — completion, Escape interrupt, or otherwise — the session transitions to `ready` and emits the corresponding `status` activity, on both adapters. |
 | C-TURN-02 | §5.3 | An Escape interrupt of a running turn produces the `ready` transition from rendered TUI state alone, with no dependency on a `Stop` hook. |
 | C-TURN-03 | §5.3 | Turn-state detection uses documented per-adapter indicator constants over `snapshot().text`; redundant edges are idempotent, screens showing neither indicator hold state, and watching activates only after initial readiness. |
+| C-TURN-04 | §5.3 | The interrupt `ready` transition fires at any terminal width: via the working-token edge where the footer fits, and via the adapter's interrupt end banner (which Claude's footer elision below ~66 columns makes necessary) on narrow screens. |
 | C-API-29 | §5.2 §5.6 | Resume accepts the same launch-policy options as start and forwards them into the relaunched command: `resumeClaude` forwards `permissionMode`, `allowedTools`, and `disallowedTools`; `resumeCodex` forwards `sandbox` and `approvalPolicy`. A resumed agent stays exactly as privileged and as tool-restricted as it started. |
 | C-API-30 | §5.4 | `tool_call` activity carries the tool's input as a serialized `toolInput` and `tool_result` activity carries the tool's output as a serialized `toolOutput`, for both the Claude hook path (`tool_input`/`tool_response`) and the Codex transcript path (`arguments`/`output`); absent sources leave the field absent. |
+| C-API-31 | §5.3 | The submitting Enter is a separate PTY write after a settle delay, and bounded re-Enters fire while the rendered composer still shows the staged paste, so a first long prompt cannot be left staged-but-unsubmitted. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 
