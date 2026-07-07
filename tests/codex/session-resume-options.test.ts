@@ -41,6 +41,25 @@ describe("CodexSession resume options", () => {
     expect(resumed.status).toBe("running");
   });
 
+  test("C-API-29 resume forwards sandbox and approvalPolicy into the launched command", async () => {
+    const cwd = realpathSync(tempDir());
+    installFakes();
+    const stateDir = join(cwd, ".elwood");
+    prepareStateDir(stateDir);
+    const record = createSessionRecord({ stateDir, cwd, id: "codex-priv", adapter: "codex" });
+    writeSessionRecord({ ...record, codex: { resumeId: "codex-session-9" } });
+    const resumed = await resumeCodex({
+      cwd,
+      elwoodSessionId: "codex-priv",
+      sandbox: "danger-full-access",
+      approvalPolicy: "never",
+    });
+    const command = ptys[0]!.options.args.join(" ");
+    expect(command).toContain("--sandbox 'danger-full-access'");
+    expect(command).toContain("--ask-for-approval 'never'");
+    expect(resumed.status).toBe("running");
+  });
+
   test("C-CODEX-07 resume falls back to defaults for cwd, state dir, and size", async () => {
     const cwd = realpathSync(tempDir());
     installFakes();

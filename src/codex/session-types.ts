@@ -50,6 +50,8 @@ export type ResumeCodexOptions = {
   readonly stateDir?: string;
   readonly hooks?: CodexHookHandlers;
   readonly initialSize?: TerminalSize;
+  readonly sandbox?: CodexSandboxMode;
+  readonly approvalPolicy?: CodexApprovalPolicy;
   readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;

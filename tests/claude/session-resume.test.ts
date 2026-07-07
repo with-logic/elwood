@@ -74,6 +74,25 @@ describe("ClaudeSession resume options", () => {
     }
   });
 
+  test("C-API-29 resume forwards permissionMode into the launched command", async () => {
+    const cwd = tempDir();
+    const stateDir = join(cwd, ".elwood");
+    prepareStateDir(stateDir);
+    const record = updateSessionResumeId(
+      createSessionRecord({ stateDir, cwd, id: "resume-perm" }),
+      "claude",
+      "claude-resume",
+    );
+    writeSessionRecord(record);
+    installFakes();
+    await resumeClaude({
+      cwd,
+      elwoodSessionId: "resume-perm",
+      permissionMode: "bypassPermissions",
+    });
+    expect(ptys[0]!.options.args.join(" ")).toContain("--permission-mode 'bypassPermissions'");
+  });
+
   test("C-API-16 resume falls back to the default terminal size", async () => {
     const cwd = tempDir();
     const stateDir = join(cwd, ".elwood");

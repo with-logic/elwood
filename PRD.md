@@ -305,6 +305,7 @@ type ResumeClaudeOptions = {
   readonly stateDir?: string;
   readonly hooks?: ClaudeHookHandlers;
   readonly initialSize?: TerminalSize;
+  readonly permissionMode?: ClaudePermissionMode;
   readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
@@ -331,10 +332,14 @@ It must not silently launch a fresh Claude conversation under the same Elwood
 session ID.
 
 Decision note: MVP resume restores the Elwood wrapper, hook routing, terminal
-size, metadata, and the agent's internal conversation resume id. Adapter launch
-policy such as model, approval mode, and caller config overrides is intentionally
-not persisted as durable Elwood state yet; future versions may add explicit
-resume launch-policy options instead of silently replaying stale policy.
+size, metadata, and the agent's internal conversation resume id. Launch-policy
+privilege options that the start path accepts are also accepted per-resume so a
+resumed agent stays as privileged as it started: `resumeClaude` accepts
+`permissionMode` and forwards it into the relaunched command exactly as
+`startClaude` does. These options are supplied fresh by the caller on each
+resume rather than persisted as durable Elwood state; other adapter launch
+policy such as model and caller config overrides remains caller-supplied-per-call
+and is intentionally not persisted yet.
 
 Because every persisting parent writes the same try-resume-else-start dance,
 Elwood provides it directly:
@@ -692,6 +697,8 @@ type ResumeCodexOptions = {
   readonly stateDir?: string;
   readonly hooks?: CodexHookHandlers;
   readonly initialSize?: TerminalSize;
+  readonly sandbox?: CodexSandboxMode;
+  readonly approvalPolicy?: CodexApprovalPolicy;
   readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
@@ -718,6 +725,12 @@ If Elwood has not observed and persisted Codex's internal session id,
 conversation under the existing Elwood session ID. Future implementations may
 offer an explicit caller opt-in fallback such as `codex resume --last`, but the
 default behavior must be fail-closed.
+
+Like the start path, `resumeCodex` accepts the launch-policy privilege options
+`sandbox` and `approvalPolicy` and forwards them into the relaunched `codex
+resume` command exactly as `startCodex` does, so a resumed Codex agent stays as
+privileged as it started. These options are supplied fresh by the caller on each
+resume rather than persisted as durable Elwood state.
 
 ### 5.7 CodexSession
 
@@ -1376,6 +1389,7 @@ Each criterion has:
 | C-API-26 | §5.2 §5.6 | `startOrResumeClaude`/`startOrResumeCodex` resume when possible, fall back to a fresh start only on `state_not_found`, `resume_unavailable`, or `adapter_mismatch`, rethrow all other errors, and report `resumed` in the result. |
 | C-API-27 | §5.7 | `ElwoodAgentSession` is exported and both `ClaudeSession` and `CodexSession` are assignable to it, covering common events, io, commands, and lifecycle. |
 | C-API-28 | §5.3 | Codex initial readiness requires a quiet frame with the input composer visible, bounded by a fixed deadline after the first rendered frame so continuous animation or unrecognized composers cannot starve it. |
+| C-API-29 | §5.2 §5.6 | Resume accepts the same launch-policy privilege options as start and forwards them into the relaunched command: `resumeClaude` forwards `permissionMode` (`--permission-mode`) and `resumeCodex` forwards `sandbox` (`--sandbox`) and `approvalPolicy` (`--ask-for-approval`), so a resumed agent stays as privileged as it started. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 

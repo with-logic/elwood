@@ -43,6 +43,8 @@ export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSes
     ...(size === undefined ? {} : { initialSize: size }),
     ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
     ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
+    ...(options.sandbox === undefined ? {} : { sandbox: options.sandbox }),
+    ...(options.approvalPolicy === undefined ? {} : { approvalPolicy: options.approvalPolicy }),
     ...(options.strictVersionCheck === undefined
       ? {}
       : { strictVersionCheck: options.strictVersionCheck }),

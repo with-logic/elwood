@@ -42,6 +42,7 @@ export async function resumeClaude(options: ResumeClaudeOptions): Promise<Claude
     ...(size === undefined ? {} : { initialSize: size }),
     ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
     ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
+    ...(options.permissionMode === undefined ? {} : { permissionMode: options.permissionMode }),
     ...(options.strictVersionCheck === undefined
       ? {}
       : { strictVersionCheck: options.strictVersionCheck }),
