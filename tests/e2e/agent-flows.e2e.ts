@@ -156,6 +156,9 @@ test("C-E2E-03 real Codex session supports core public flows", {
       stateDir: project.stateDir,
       elwoodSessionId: session.elwoodSessionId,
       autotrust: true,
+      // C-API-29: privilege options are accepted in real resume position.
+      sandbox: "workspace-write",
+      approvalPolicy: "never",
       hooks,
     });
     const resumedObserved = observeSession(resumed);

@@ -93,6 +93,17 @@ test("C-E2E-02 real Claude turn queues early messages and hooks real tools", {
     assert.ok(pre.input && typeof pre.input === "object");
     assert.ok(post && post.name.length > 0);
     assert.notEqual(post.response, undefined);
+    // C-API-30: real tool io is surfaced on the unified activity stream.
+    assert.ok(
+      observed.activities.some((a) => typeof (a as { toolInput?: string }).toolInput === "string"),
+      "activity carries toolInput",
+    );
+    assert.ok(
+      observed.activities.some(
+        (a) => typeof (a as { toolOutput?: string }).toolOutput === "string",
+      ),
+      "activity carries toolOutput",
+    );
     await waitFor(() => (stops >= 1 ? true : undefined), "first Claude Stop");
     const replayed: string[] = [];
     session.on("terminal:data", (event) => replayed.push(event.data))();

@@ -32,6 +32,10 @@ export function startOrResumeCodex(
         ...(startOptions.hookTimeoutMs === undefined
           ? {}
           : { hookTimeoutMs: startOptions.hookTimeoutMs }),
+        ...(startOptions.sandbox === undefined ? {} : { sandbox: startOptions.sandbox }),
+        ...(startOptions.approvalPolicy === undefined
+          ? {}
+          : { approvalPolicy: startOptions.approvalPolicy }),
         ...(startOptions.strictVersionCheck === undefined
           ? {}
           : { strictVersionCheck: startOptions.strictVersionCheck }),

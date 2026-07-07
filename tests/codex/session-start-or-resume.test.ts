@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { startOrResumeCodex } from "../../src/index.ts";
 import { createSessionRecord, writeSessionRecord } from "../../src/state/store.ts";
-import { installFakes, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -31,9 +31,14 @@ describe("startOrResumeCodex", () => {
       autoupdate: false,
       autotrust: false,
       hookTimeoutMs: 5_000,
+      sandbox: "read-only",
+      approvalPolicy: "never",
       strictVersionCheck: false,
     });
     expect(resumed.resumed).toBe(true);
+    // C-API-29 privilege options survive the startOrResume resume path.
+    expect(ptys.at(-1)!.options.args.join(" ")).toContain("--sandbox 'read-only'");
+    expect(ptys.at(-1)!.options.args.join(" ")).toContain("--ask-for-approval 'never'");
     expect(resumed.session.elwoodSessionId).toBe("resumable");
     const fresh = await startOrResumeCodex({ cwd, elwoodSessionId: "missing" });
     expect(fresh.resumed).toBe(false);

@@ -56,6 +56,8 @@ test("C-STATE-12 real Claude starts and resumes from a 200-char stateDir", {
       stateDir,
       elwoodSessionId: session.elwoodSessionId,
       autotrust: true,
+      // C-API-29: privilege options are accepted in real resume position.
+      permissionMode: "bypassPermissions",
       hooks: {
         SessionStart: () => {
           sessionStarts += 1;

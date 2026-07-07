@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { startOrResumeClaude } from "../../src/index.ts";
 import { createSessionRecord, writeSessionRecord } from "../../src/state/store.ts";
-import { installFakes, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -40,10 +40,13 @@ describe("startOrResumeClaude", () => {
       autoupdate: false,
       autotrust: false,
       hookTimeoutMs: 5_000,
+      permissionMode: "bypassPermissions",
       strictVersionCheck: false,
     });
     expect(result.resumed).toBe(true);
     expect(result.session.elwoodSessionId).toBe("resumable");
+    // C-API-29 privilege options survive the startOrResume resume path.
+    expect(ptys.at(-1)!.options.args.join(" ")).toContain("--permission-mode 'bypassPermissions'");
     await first.session.stop();
     await result.session.stop();
   });

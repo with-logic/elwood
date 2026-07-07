@@ -32,6 +32,9 @@ export function startOrResumeClaude(
         ...(startOptions.hookTimeoutMs === undefined
           ? {}
           : { hookTimeoutMs: startOptions.hookTimeoutMs }),
+        ...(startOptions.permissionMode === undefined
+          ? {}
+          : { permissionMode: startOptions.permissionMode }),
         ...(startOptions.strictVersionCheck === undefined
           ? {}
           : { strictVersionCheck: startOptions.strictVersionCheck }),
