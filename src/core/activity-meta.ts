@@ -26,6 +26,25 @@ export function hookActivityBase(
   };
 }
 
+const STOP_EVENTS = new Set(["Stop", "SubagentStop", "StopFailure"]);
+
+export function stopMessage(event: ClaudeHookEvent | CodexHookEvent): string | undefined {
+  if (!STOP_EVENTS.has(event.hook_event_name)) return undefined;
+  return stringValue(record(event)["last_assistant_message"]) || undefined;
+}
+
+export function hookToolInput(
+  event: ClaudeHookEvent | CodexHookEvent,
+): Partial<ElwoodActivityEvent> {
+  return optional("toolInput", stringify(record(event)["tool_input"]));
+}
+
+export function hookToolOutput(
+  event: ClaudeHookEvent | CodexHookEvent,
+): Partial<ElwoodActivityEvent> {
+  return optional("toolOutput", stringify(record(event)["tool_response"]));
+}
+
 export function transcriptActivityMeta(event: CodexTranscriptEvent): Partial<ElwoodActivityEvent> {
   const item = record(event.item);
   const payload = record(item["payload"]);
@@ -34,7 +53,31 @@ export function transcriptActivityMeta(event: CodexTranscriptEvent): Partial<Elw
     ...optional("turnId", stringValue(item["turn_id"]) ?? stringValue(payload["turn_id"])),
     ...optional("toolName", transcriptToolName(event, payload)),
     ...optional("toolUseId", transcriptToolUseId(event, payload)),
+    ...transcriptToolIo(event, payload),
   };
+}
+
+function transcriptToolIo(
+  event: CodexTranscriptEvent,
+  payload: Record<string, unknown>,
+): Partial<ElwoodActivityEvent> {
+  if (event.summary.kind === "tool_call") {
+    return optional("toolInput", stringify(payload["arguments"]));
+  }
+  if (event.summary.kind === "tool_result") {
+    return optional("toolOutput", stringify(payload["output"]));
+  }
+  return {};
+}
+
+export function stringify(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 export function record(value: unknown): Record<string, unknown> {

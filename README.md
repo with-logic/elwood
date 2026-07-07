@@ -370,8 +370,10 @@ Core event families:
 | `codex:transcript` | Codex-only best-effort transcript observations for TUI-visible activity not covered by hooks. |
 
 `activity` events include normalized fields for common timeline rendering:
-`hookEventName`, `turnId`, `toolName`, `toolUseId`, `status`, `exitCode`,
-`failedOpen`, and `transcriptPath` when Elwood can derive them. `raw` remains
+`hookEventName`, `turnId`, `toolName`, `toolUseId`, `toolInput`, `toolOutput`,
+`status`, `exitCode`, `failedOpen`, and `transcriptPath` when Elwood can derive
+them (`toolInput`/`toolOutput` are the tool's serialized args/output on
+`tool_call`/`tool_result` activity). `raw` remains
 available for deep inspection, but typical UI timelines should not need it.
 
 Hook handlers should return `undefined` for "no decision". Empty objects are

@@ -591,6 +591,11 @@ adapters. Every activity event includes:
   - `turnId`
   - `toolName`
   - `toolUseId`
+  - `toolInput`: the tool call's input arguments, serialized to a string
+    (already-string inputs pass through; structured inputs are JSON-stringified),
+    present on `tool_call` activity when the source exposes it.
+  - `toolOutput`: the tool result's output, serialized to a string with the same
+    rules, present on `tool_result` activity when the source exposes it.
   - `status`
   - `exitCode`
   - `failedOpen`
@@ -1390,6 +1395,7 @@ Each criterion has:
 | C-API-27 | §5.7 | `ElwoodAgentSession` is exported and both `ClaudeSession` and `CodexSession` are assignable to it, covering common events, io, commands, and lifecycle. |
 | C-API-28 | §5.3 | Codex initial readiness requires a quiet frame with the input composer visible, bounded by a fixed deadline after the first rendered frame so continuous animation or unrecognized composers cannot starve it. |
 | C-API-29 | §5.2 §5.6 | Resume accepts the same launch-policy privilege options as start and forwards them into the relaunched command: `resumeClaude` forwards `permissionMode` (`--permission-mode`) and `resumeCodex` forwards `sandbox` (`--sandbox`) and `approvalPolicy` (`--ask-for-approval`), so a resumed agent stays as privileged as it started. |
+| C-API-30 | §5.4 | `tool_call` activity carries the tool's input as a serialized `toolInput` and `tool_result` activity carries the tool's output as a serialized `toolOutput`, for both the Claude hook path (`tool_input`/`tool_response`) and the Codex transcript path (`arguments`/`output`); absent sources leave the field absent. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 

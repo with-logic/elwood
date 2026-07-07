@@ -6,7 +6,7 @@
 import type { ClaudeHookEvent } from "../claude/hooks.ts";
 import type { CodexHookEvent } from "../codex/hooks.ts";
 import type { CodexTranscriptEvent } from "../codex/transcript.ts";
-import { hookActivityBase, record, stringValue, transcriptActivityMeta } from "./activity-meta.ts";
+import * as meta from "./activity-meta.ts";
 import { hookResultLabel, transcriptActivityKind } from "./hook-result.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "./types.ts";
 
@@ -40,6 +40,8 @@ export type ElwoodActivityEvent = {
   readonly turnId?: string;
   readonly toolName?: string;
   readonly toolUseId?: string;
+  readonly toolInput?: string;
+  readonly toolOutput?: string;
   readonly status?: ElwoodSessionStatus;
   readonly exitCode?: number;
   readonly failedOpen?: boolean;
@@ -82,7 +84,7 @@ export function activityFromHook(
   elwoodSessionId: string,
   event: ClaudeHookEvent | CodexHookEvent,
 ): ElwoodActivityEvent {
-  const base = hookActivityBase(agent, elwoodSessionId, event);
+  const base = meta.hookActivityBase(agent, elwoodSessionId, event);
   if (event.hook_event_name === "UserPromptSubmit") {
     return withText(base, "user_message", "user", event.prompt);
   }
@@ -90,20 +92,14 @@ export function activityFromHook(
     return withText(base, "notification", event.notification_type, event.message);
   }
   if (event.hook_event_name === "PreToolUse" || event.hook_event_name === "PermissionRequest") {
-    return { ...base, kind: "tool_call", label: base.toolName ?? event.hook_event_name };
+    return toolActivity(base, "tool_call", event, meta.hookToolInput(event));
   }
   if (event.hook_event_name === "PostToolUse" || event.hook_event_name === "PostToolBatch") {
-    return { ...base, kind: "tool_result", label: base.toolName ?? event.hook_event_name };
+    return toolActivity(base, "tool_result", event, meta.hookToolOutput(event));
   }
-  if (
-    event.hook_event_name === "Stop" ||
-    event.hook_event_name === "SubagentStop" ||
-    event.hook_event_name === "StopFailure"
-  ) {
-    const text = stringValue(record(event)["last_assistant_message"]);
-    if (text) {
-      return withText(base, "assistant_message", event.hook_event_name, text);
-    }
+  const text = meta.stopMessage(event);
+  if (text !== undefined) {
+    return withText(base, "assistant_message", event.hook_event_name, text);
   }
   return { ...base, kind: "hook", label: event.hook_event_name };
 }
@@ -179,7 +175,7 @@ export function activityFromCodexTranscript(event: CodexTranscriptEvent): Elwood
     kind: transcriptActivityKind(event.summary.kind),
     label: event.summary.label,
     ...(event.summary.text === undefined ? {} : { text: event.summary.text }),
-    ...transcriptActivityMeta(event),
+    ...meta.transcriptActivityMeta(event),
     raw: event.item,
   };
 }
@@ -191,4 +187,13 @@ function withText(
   text: string,
 ): ElwoodActivityEvent {
   return { ...base, kind, label, text };
+}
+
+function toolActivity(
+  base: Omit<ElwoodActivityEvent, "kind" | "label" | "text">,
+  kind: "tool_call" | "tool_result",
+  event: ClaudeHookEvent | CodexHookEvent,
+  io: Partial<ElwoodActivityEvent>,
+): ElwoodActivityEvent {
+  return { ...base, kind, label: base.toolName ?? event.hook_event_name, ...io };
 }

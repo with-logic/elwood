@@ -63,6 +63,8 @@ describe("Elwood activity events", () => {
     expect(tool.kind).toBe("tool_call");
     expect(tool.label).toBe("Bash");
     expect(tool).toMatchObject({ turnId: "turn-1", toolName: "Bash", toolUseId: "tool-1" });
+    expect(tool.toolInput).toBe('{"command":"npm test"}');
+    expect(tool.toolOutput).toBeUndefined();
     expect(stop.kind).toBe("assistant_message");
     expect(stop.text).toBe("Done.");
     expect(error).toMatchObject({
@@ -88,6 +90,8 @@ describe("Elwood activity events", () => {
       summary: { kind: "other", label: "unknown" },
     });
     expect(toolResult).toMatchObject({ kind: "tool_result", label: "Read" });
+    expect(toolResult.toolOutput).toBe('{"content":"ok"}');
+    expect(toolResult.toolInput).toBeUndefined();
     expect(unknown).toMatchObject({ kind: "other", label: "unknown" });
   });
 
@@ -119,7 +123,8 @@ describe("Elwood activity events", () => {
       turnId: "turn-2",
       transcriptPath: "/tmp/transcript.jsonl",
     });
-    expect(toolCall).toMatchObject({ toolName: "shell" });
+    expect(toolCall).toMatchObject({ toolName: "shell", toolInput: "{}" });
+    expect(toolCall.toolOutput).toBeUndefined();
     expect(
       activityFromCodexTranscript({
         elwoodSessionId: "elwood-3",
@@ -128,7 +133,8 @@ describe("Elwood activity events", () => {
         summary: { kind: "tool_call", label: "shell" },
       }),
     ).toMatchObject({ toolUseId: "call-1" });
-    expect(toolResult).toMatchObject({ toolUseId: "call-1" });
+    expect(toolResult).toMatchObject({ toolUseId: "call-1", toolOutput: "ok" });
+    expect(toolResult.toolInput).toBeUndefined();
     expect(activityFromStatus("claude", "elwood-3", "ready")).toMatchObject({
       label: "ready",
       status: "ready",
