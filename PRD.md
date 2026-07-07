@@ -342,16 +342,15 @@ It must not silently launch a fresh Claude conversation under the same Elwood
 session ID.
 
 Decision note: MVP resume restores the Elwood wrapper, hook routing, terminal
-size, metadata, and the agent's internal conversation resume id. Launch-policy
-privilege options that the start path accepts are also accepted per-resume so a
-resumed agent stays exactly as constrained and as privileged as it started:
-`resumeClaude` accepts
-`permissionMode`, `allowedTools`, and `disallowedTools` and forwards them into
-the relaunched command exactly as `startClaude` does — tool restrictions in
-particular MUST NOT silently loosen across a resume. These options are supplied fresh by the caller on each
-resume rather than persisted as durable Elwood state; other adapter launch
-policy such as model and caller config overrides remains caller-supplied-per-call
-and is intentionally not persisted yet.
+size, metadata, and the agent's internal conversation resume id. The launch
+posture (privilege and tool policy) is persisted in the session record at
+start, and resume defaults to it: a bare `resumeClaude` relaunches with the
+same `permissionMode`, `allowedTools`, `disallowedTools`, and `tools` the
+session started with, so tool restrictions cannot silently loosen across a
+resume. Explicit resume options override the persisted posture field by
+field, and the effective posture is re-persisted. Other adapter launch policy
+such as model and caller config overrides remains caller-supplied-per-call and
+is intentionally not persisted yet.
 
 Because every persisting parent writes the same try-resume-else-start dance,
 Elwood provides it directly:
@@ -783,10 +782,10 @@ offer an explicit caller opt-in fallback such as `codex resume --last`, but the
 default behavior must be fail-closed.
 
 Like the start path, `resumeCodex` accepts the launch-policy privilege options
-`sandbox` and `approvalPolicy` and forwards them into the relaunched `codex
-resume` command exactly as `startCodex` does, so a resumed Codex agent stays as
-privileged as it started. These options are supplied fresh by the caller on each
-resume rather than persisted as durable Elwood state.
+`sandbox` and `approvalPolicy`. The session record persists the launch posture
+at start and resume defaults to it, so a bare `resumeCodex` relaunches with the
+same sandbox and approval policy the session started with; explicit resume
+options override field by field and the effective posture is re-persisted.
 
 ### 5.7 CodexSession
 
@@ -1143,6 +1142,11 @@ parent app restarts. Required fields include:
 - status;
 - warnings;
 - Claude or Codex resume metadata needed internally;
+- the resolved launch posture: the privilege and tool-policy options the
+  session was launched with (`permissionMode`, `allowedTools`,
+  `disallowedTools`, `tools` for Claude; `sandbox`, `approvalPolicy` for
+  Codex), so resume can re-derive its own launch configuration and consumers
+  can verify what an agent launched with after the fact;
 - generated settings/config path when the adapter uses one;
 - hook bridge routing metadata;
 - hook bridge authentication token;
@@ -1450,6 +1454,7 @@ Each criterion has:
 | C-TURN-03 | §5.3 | Turn-state detection uses documented per-adapter indicator constants over `snapshot().text`; redundant edges are idempotent, screens showing neither indicator hold state, and watching activates only after initial readiness. |
 | C-TURN-04 | §5.3 | The interrupt `ready` transition fires at any terminal width: via the working-token edge where the footer fits, and via the adapter's interrupt end banner (which Claude's footer elision below ~66 columns makes necessary) on narrow screens. |
 | C-API-29 | §5.2 §5.6 | Resume accepts the same launch-policy options as start and forwards them into the relaunched command: `resumeClaude` forwards `permissionMode`, `allowedTools`, `disallowedTools`, and `tools`; `resumeCodex` forwards `sandbox` and `approvalPolicy`. A resumed agent stays exactly as privileged and as tool-restricted as it started. |
+| C-API-32 | §5.2 §5.6 | Resume defaults launch-policy options from the record's persisted posture; explicit resume options override field by field, and the effective posture is re-persisted. |
 | C-API-30 | §5.4 | `tool_call` activity carries the tool's input as a serialized `toolInput` and `tool_result` activity carries the tool's output as a serialized `toolOutput`, for both the Claude hook path (`tool_input`/`tool_response`) and the Codex transcript path (`arguments`/`output`); absent sources leave the field absent. |
 | C-API-31 | §5.3 | The submitting Enter is a separate PTY write after a settle delay, and bounded re-Enters fire while the rendered composer still shows the staged paste, so a first long prompt cannot be left staged-but-unsubmitted. |
 
@@ -1554,6 +1559,7 @@ Each criterion has:
 | C-STATE-09 | §8.4 | `teardown()` does not remove Claude-owned auth, transcripts, or user/project settings. |
 | C-STATE-10 | §5.2, §5.6 | Resume APIs reject session records whose persisted adapter does not match the requested adapter. |
 | C-STATE-11 | §8.1 | Elwood does not overwrite an existing `.elwood/.gitignore` or create gitignore files in custom `stateDir` directories. |
+| C-STATE-13 | §8.2 | The session record persists the resolved launch posture (privilege and tool policy) at start, validates it on read, and resume updates it to the effective values. |
 | C-STATE-12 | §8.1 | Sessions start successfully with arbitrarily long `stateDir` paths because the hook bridge socket binds in a short Elwood-owned temp home, regenerated per launch and removed at teardown. |
 | C-LIFE-09 | §9.2 | `autoupdate` runs the adapter's update command at most once per parent process per adapter, so fleet spawns do not race N concurrent same-binary updates. |
 | C-ERR-08 | §10 | Startup failures carry the underlying cause, and errno/syscall/path details when the underlying error provides them. |

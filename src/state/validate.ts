@@ -58,7 +58,27 @@ function hasExpectedPaths(
 
 function isAdapterState(value: unknown): boolean {
   if (!isRecord(value)) return false;
-  return optionalString(value["resumeId"]) && optionalString(value["name"]);
+  if (!(optionalString(value["resumeId"]) && optionalString(value["name"]))) return false;
+  return isLaunchPosture(value["launch"]);
+}
+
+// C-STATE-13: a persisted launch posture must round-trip; unknown shapes
+// invalidate the record rather than resuming with corrupted policy.
+function isLaunchPosture(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!isRecord(value)) return false;
+  return (
+    optionalString(value["permissionMode"]) &&
+    optionalString(value["sandbox"]) &&
+    optionalString(value["approvalPolicy"]) &&
+    optionalStringArray(value["allowedTools"]) &&
+    optionalStringArray(value["disallowedTools"]) &&
+    optionalStringArray(value["tools"])
+  );
+}
+
+function optionalStringArray(value: unknown): boolean {
+  return value === undefined || isStringArray(value);
 }
 
 function isTerminalSize(value: unknown): value is TerminalSize | undefined {

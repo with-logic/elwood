@@ -4,6 +4,7 @@
  */
 
 import { elwoodError } from "../core/errors.ts";
+import { codexLaunchPosture, effectivePosture, withCodexLaunch } from "../state/launch-posture.ts";
 import {
   defaultStateDir,
   readSessionRecord,
@@ -31,10 +32,15 @@ export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSes
       : upsertSessionWarning(record, { elwoodSessionId: record.elwoodSessionId, ...warning })
           .record;
   const size = options.initialSize ?? checkedRecord.terminalSize;
-  const resumedRecord =
+  const sized =
     options.initialSize === undefined
       ? checkedRecord
       : { ...checkedRecord, terminalSize: options.initialSize };
+  // Resume defaults to the posture this session launched with; explicit
+  // options override field by field, and the effective posture is
+  // re-persisted (C-API-32, C-STATE-13).
+  const launch = effectivePosture(checkedRecord.codex.launch, codexLaunchPosture(options));
+  const resumedRecord = withCodexLaunch(sized, launch);
   writeSessionRecord(resumedRecord);
   return await startCodexFromRecord(resumedRecord, {
     cwd: options.cwd ?? record.cwd,
@@ -43,8 +49,7 @@ export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSes
     ...(size === undefined ? {} : { initialSize: size }),
     ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
     ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
-    ...(options.sandbox === undefined ? {} : { sandbox: options.sandbox }),
-    ...(options.approvalPolicy === undefined ? {} : { approvalPolicy: options.approvalPolicy }),
+    ...launch,
     ...(options.strictVersionCheck === undefined
       ? {}
       : { strictVersionCheck: options.strictVersionCheck }),

@@ -60,6 +60,25 @@ describe("CodexSession resume options", () => {
     expect(resumed.status).toBe("running");
   });
 
+  test("C-API-32 codex resume defaults sandbox and approval from the record", async () => {
+    const cwd = realpathSync(tempDir());
+    installFakes();
+    const stateDir = join(cwd, ".elwood");
+    prepareStateDir(stateDir);
+    const record = createSessionRecord({ stateDir, cwd, id: "posture-codex", adapter: "codex" });
+    writeSessionRecord({
+      ...record,
+      codex: {
+        resumeId: "codex-session-10",
+        launch: { sandbox: "workspace-write", approvalPolicy: "never" },
+      },
+    });
+    await resumeCodex({ cwd, elwoodSessionId: "posture-codex" });
+    const command = ptys[0]!.options.args.join(" ");
+    expect(command).toContain("--sandbox 'workspace-write'");
+    expect(command).toContain("--ask-for-approval 'never'");
+  });
+
   test("C-CODEX-07 resume falls back to defaults for cwd, state dir, and size", async () => {
     const cwd = realpathSync(tempDir());
     installFakes();

@@ -19,6 +19,7 @@ import {
   writePrivateFileAtomic,
   writeSharedFile,
 } from "./files.ts";
+import type { AdapterState, ClaudeLaunchPosture, CodexLaunchPosture } from "./launch-posture.ts";
 import { validateSessionRecord } from "./validate.ts";
 
 export type SessionRecord = {
@@ -31,8 +32,8 @@ export type SessionRecord = {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly status: ElwoodSessionStatus;
-  readonly claude: { readonly resumeId?: string; readonly name?: string };
-  readonly codex: { readonly resumeId?: string; readonly name?: string };
+  readonly claude: AdapterState<ClaudeLaunchPosture>;
+  readonly codex: AdapterState<CodexLaunchPosture>;
   readonly paths: {
     readonly sessionDir: string;
     readonly settingsPath: string;
@@ -47,9 +48,7 @@ export function defaultStateDir(cwd: string): string {
   return join(resolve(cwd), ".elwood");
 }
 
-export function sessionDir(stateDir: string, id: string): string {
-  return safeSessionDir(stateDir, id);
-}
+export { safeSessionDir as sessionDir };
 
 export function createSessionRecord(input: {
   readonly stateDir: string;
@@ -61,7 +60,7 @@ export function createSessionRecord(input: {
   readonly name?: string;
   readonly bridgeToken?: string;
 }): SessionRecord {
-  const dir = sessionDir(input.stateDir, input.id);
+  const dir = safeSessionDir(input.stateDir, input.id);
   const now = new Date().toISOString();
   const adapter = input.adapter ?? "claude";
   return {
@@ -112,7 +111,7 @@ export function writeSessionRecord(record: SessionRecord): void {
 }
 
 export function readSessionRecord(stateDir: string, id: string): SessionRecord {
-  const dir = sessionDir(stateDir, id);
+  const dir = safeSessionDir(stateDir, id);
   try {
     const parsed = validateSessionRecord(
       JSON.parse(readFileSync(recordPath(dir), "utf8")),

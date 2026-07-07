@@ -58,9 +58,8 @@ test("C-STATE-12 real Claude starts and resumes from a 200-char stateDir", {
       stateDir,
       elwoodSessionId: session.elwoodSessionId,
       autotrust: true,
-      // C-API-29: privilege options are accepted in real resume position.
-      permissionMode: "bypassPermissions",
-      tools: ["Read", "Glob", "Grep"],
+      // C-API-32 C-STATE-13: no explicit posture — the resumed launch derives
+      // entirely from the record persisted at start, against the real CLI.
       hooks: {
         SessionStart: () => {
           sessionStarts += 1;

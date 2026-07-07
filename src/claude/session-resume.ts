@@ -6,6 +6,11 @@
 import { elwoodError } from "../core/errors.ts";
 import type { ClaudeSession, ResumeClaudeOptions } from "../core/types.ts";
 import {
+  claudeLaunchPosture,
+  effectivePosture,
+  withClaudeLaunch,
+} from "../state/launch-posture.ts";
+import {
   defaultStateDir,
   readSessionRecord,
   upsertSessionWarning,
@@ -30,10 +35,15 @@ export async function resumeClaude(options: ResumeClaudeOptions): Promise<Claude
       : upsertSessionWarning(record, { elwoodSessionId: record.elwoodSessionId, ...warning })
           .record;
   const size = options.initialSize ?? checkedRecord.terminalSize;
-  const resumedRecord =
+  const sized =
     options.initialSize === undefined
       ? checkedRecord
       : { ...checkedRecord, terminalSize: options.initialSize };
+  // Resume defaults to the posture this session launched with; explicit
+  // options override field by field, and the effective posture is
+  // re-persisted (C-API-32, C-STATE-13).
+  const launch = effectivePosture(checkedRecord.claude.launch, claudeLaunchPosture(options));
+  const resumedRecord = withClaudeLaunch(sized, launch);
   writeSessionRecord(resumedRecord);
   return await startClaudeFromRecord(resumedRecord, {
     cwd: options.cwd ?? record.cwd,
@@ -42,10 +52,7 @@ export async function resumeClaude(options: ResumeClaudeOptions): Promise<Claude
     ...(size === undefined ? {} : { initialSize: size }),
     ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
     ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
-    ...(options.permissionMode === undefined ? {} : { permissionMode: options.permissionMode }),
-    ...(options.allowedTools === undefined ? {} : { allowedTools: options.allowedTools }),
-    ...(options.disallowedTools === undefined ? {} : { disallowedTools: options.disallowedTools }),
-    ...(options.tools === undefined ? {} : { tools: options.tools }),
+    ...launch,
     ...(options.strictVersionCheck === undefined
       ? {}
       : { strictVersionCheck: options.strictVersionCheck }),

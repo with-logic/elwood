@@ -56,6 +56,17 @@ describe("session record validation", () => {
     expect(valid?.warnings).toHaveLength(2);
   });
 
+  test("C-STATE-13 validates the persisted launch posture shape", () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const base = jsonRecord(root);
+    const good = { ...base, claude: { launch: { permissionMode: "plan", tools: ["Read"] } } };
+    expect(validateSessionRecord(good, root, id)).not.toBeNull();
+    const bad = { ...base, claude: { launch: { tools: "Read" } } };
+    expect(validateSessionRecord(bad, root, id)).toBeNull();
+    expect(validateSessionRecord({ ...base, claude: { launch: "plan" } }, root, id)).toBeNull();
+    expect(validateSessionRecord({ ...base, claude: { resumeId: 42 } }, root, id)).toBeNull();
+  });
+
   test("C-CODEX-14 accepts and gates the codex_default_model_persisted warning", () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
     const base = jsonRecord(root);

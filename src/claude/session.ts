@@ -13,6 +13,7 @@ import type { PtyExit } from "../pty/types.ts";
 import { assertStartupUsable } from "../runtime/startup.ts";
 import { cleanupStartupResources } from "../runtime/startup-cleanup.ts";
 import { secureMkdir } from "../state/files.ts";
+import { claudeLaunchPosture, withClaudeLaunch } from "../state/launch-posture.ts";
 import {
   createSessionRecord,
   defaultStateDir,
@@ -52,11 +53,12 @@ export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSe
     size: options.initialSize ?? defaultTerminalSize,
     ...(options.name === undefined ? {} : { name: options.name }),
   });
+  const posture = withClaudeLaunch(createdRecord, claudeLaunchPosture(options));
   const record =
     warning === undefined
-      ? createdRecord
-      : upsertSessionWarning(createdRecord, {
-          elwoodSessionId: createdRecord.elwoodSessionId,
+      ? posture
+      : upsertSessionWarning(posture, {
+          elwoodSessionId: posture.elwoodSessionId,
           ...warning,
         }).record;
   writeSessionRecord(record);
