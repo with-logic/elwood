@@ -35,6 +35,12 @@ export function startOrResumeClaude(
         ...(startOptions.permissionMode === undefined
           ? {}
           : { permissionMode: startOptions.permissionMode }),
+        ...(startOptions.allowedTools === undefined
+          ? {}
+          : { allowedTools: startOptions.allowedTools }),
+        ...(startOptions.disallowedTools === undefined
+          ? {}
+          : { disallowedTools: startOptions.disallowedTools }),
         ...(startOptions.strictVersionCheck === undefined
           ? {}
           : { strictVersionCheck: startOptions.strictVersionCheck }),

@@ -67,6 +67,8 @@ export type ResumeClaudeOptions = {
   readonly hooks?: ClaudeHookHandlers;
   readonly initialSize?: TerminalSize;
   readonly permissionMode?: ClaudePermissionMode;
+  readonly allowedTools?: readonly ClaudeToolRule[];
+  readonly disallowedTools?: readonly ClaudeToolRule[];
   readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;

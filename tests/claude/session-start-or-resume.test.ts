@@ -41,12 +41,16 @@ describe("startOrResumeClaude", () => {
       autotrust: false,
       hookTimeoutMs: 5_000,
       permissionMode: "bypassPermissions",
+      allowedTools: ["Read"],
+      disallowedTools: ["Bash"],
       strictVersionCheck: false,
     });
     expect(result.resumed).toBe(true);
     expect(result.session.elwoodSessionId).toBe("resumable");
     // C-API-29 privilege options survive the startOrResume resume path.
     expect(ptys.at(-1)!.options.args.join(" ")).toContain("--permission-mode 'bypassPermissions'");
+    expect(ptys.at(-1)!.options.args.join(" ")).toContain("--allowedTools 'Read'");
+    expect(ptys.at(-1)!.options.args.join(" ")).toContain("--disallowedTools 'Bash'");
     await first.session.stop();
     await result.session.stop();
   });
