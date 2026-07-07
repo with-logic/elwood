@@ -28,6 +28,7 @@ export type {
   GenericToolInput,
   GlobInput,
   GrepInput,
+  KnownClaudeToolName,
   PermissionRule,
   PermissionUpdate,
   PermissionUpdateDestination,
