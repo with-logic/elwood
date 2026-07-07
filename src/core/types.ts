@@ -52,6 +52,7 @@ export type StartClaudeOptions = {
   readonly permissionMode?: ClaudePermissionMode;
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];
+  readonly tools?: readonly ClaudeToolRule[];
   readonly settingsOverrides?: ClaudeSettingsOverrides;
   readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
@@ -69,6 +70,7 @@ export type ResumeClaudeOptions = {
   readonly permissionMode?: ClaudePermissionMode;
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];
+  readonly tools?: readonly ClaudeToolRule[];
   readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;

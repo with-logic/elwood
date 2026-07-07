@@ -165,6 +165,12 @@ flags to maximize compatibility. The tool rule list is encoded as one
 comma-separated flag value because current `claude --help` explicitly accepts
 comma-separated or space-separated tool lists.
 
+Beyond the allow/deny rule pair, `tools` exposes Claude's `--tools` flag — a
+true allowlist over the built-in tool set where only the named tools exist
+and newly added CLI tools default to absent. An empty `tools` array encodes
+`--tools ""`, which Claude documents as disabling all tools. `allowedTools`/
+`disallowedTools` govern permission rules; `tools` governs existence.
+
 ### 4.4 Codex configuration behavior
 
 Elwood MUST NOT mutate `.codex/config.toml`, `.codex/hooks.json`,
@@ -242,6 +248,7 @@ type StartClaudeOptions = {
   readonly permissionMode?: ClaudePermissionMode;
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];
+  readonly tools?: readonly ClaudeToolRule[];
   readonly settingsOverrides?: ClaudeSettingsOverrides;
   readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
@@ -308,6 +315,7 @@ type ResumeClaudeOptions = {
   readonly permissionMode?: ClaudePermissionMode;
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];
+  readonly tools?: readonly ClaudeToolRule[];
   readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
@@ -1441,7 +1449,7 @@ Each criterion has:
 | C-TURN-02 | §5.3 | An Escape interrupt of a running turn produces the `ready` transition from rendered TUI state alone, with no dependency on a `Stop` hook. |
 | C-TURN-03 | §5.3 | Turn-state detection uses documented per-adapter indicator constants over `snapshot().text`; redundant edges are idempotent, screens showing neither indicator hold state, and watching activates only after initial readiness. |
 | C-TURN-04 | §5.3 | The interrupt `ready` transition fires at any terminal width: via the working-token edge where the footer fits, and via the adapter's interrupt end banner (which Claude's footer elision below ~66 columns makes necessary) on narrow screens. |
-| C-API-29 | §5.2 §5.6 | Resume accepts the same launch-policy options as start and forwards them into the relaunched command: `resumeClaude` forwards `permissionMode`, `allowedTools`, and `disallowedTools`; `resumeCodex` forwards `sandbox` and `approvalPolicy`. A resumed agent stays exactly as privileged and as tool-restricted as it started. |
+| C-API-29 | §5.2 §5.6 | Resume accepts the same launch-policy options as start and forwards them into the relaunched command: `resumeClaude` forwards `permissionMode`, `allowedTools`, `disallowedTools`, and `tools`; `resumeCodex` forwards `sandbox` and `approvalPolicy`. A resumed agent stays exactly as privileged and as tool-restricted as it started. |
 | C-API-30 | §5.4 | `tool_call` activity carries the tool's input as a serialized `toolInput` and `tool_result` activity carries the tool's output as a serialized `toolOutput`, for both the Claude hook path (`tool_input`/`tool_response`) and the Codex transcript path (`arguments`/`output`); absent sources leave the field absent. |
 | C-API-31 | §5.3 | The submitting Enter is a separate PTY write after a settle delay, and bounded re-Enters fire while the rendered composer still shows the staged paste, so a first long prompt cannot be left staged-but-unsubmitted. |
 
@@ -1473,6 +1481,7 @@ Each criterion has:
 | C-CLAUDE-10 | §5.1 | `autotrust: true` answers Claude's workspace trust prompt through PTY input and emits `startup_prompt` activity. |
 | C-CLAUDE-11 | §5.1 | Claude's browser tools onboarding prompt is declined through PTY input regardless of `autotrust`, with `startup_prompt` activity emitted under the `browser_tools` label. |
 | C-CLAUDE-12 | §5.1 | `startClaude` forwards `model` to Claude's `--model` launch flag. |
+| C-CLAUDE-13 | §4.3 | `tools` emits Claude's `--tools` allowlist flag as one comma-separated value, with an empty array encoding `--tools ""` (all tools disabled); it is forwarded across resume like the other tool options. |
 
 #### C-CODEX: Codex Startup And Config (§4, §7A, §9)
 

@@ -22,6 +22,8 @@ export function buildClaudeShellCommand(
   }
   if (options.disallowedTools && options.disallowedTools.length > 0)
     parts.push("--disallowedTools", shellQuote(options.disallowedTools.join(",")));
+  // --tools is a true allowlist; an empty list ("") disables all tools.
+  if (options.tools !== undefined) parts.push("--tools", shellQuote(options.tools.join(",")));
   if (options.name) {
     parts.push("--name", shellQuote(options.name));
   }

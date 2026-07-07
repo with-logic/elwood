@@ -31,6 +31,8 @@ test("C-STATE-12 real Claude starts and resumes from a 200-char stateDir", {
     session = await startClaude({
       cwd: project.cwd,
       stateDir,
+      // C-CLAUDE-13: the real CLI accepts the --tools allowlist.
+      tools: ["Read", "Glob", "Grep"],
       autotrust: true,
       permissionMode: "bypassPermissions",
       hooks: {
@@ -58,6 +60,7 @@ test("C-STATE-12 real Claude starts and resumes from a 200-char stateDir", {
       autotrust: true,
       // C-API-29: privilege options are accepted in real resume position.
       permissionMode: "bypassPermissions",
+      tools: ["Read", "Glob", "Grep"],
       hooks: {
         SessionStart: () => {
           sessionStarts += 1;

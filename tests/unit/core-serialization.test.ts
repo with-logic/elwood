@@ -101,10 +101,16 @@ describe("settings and command construction", () => {
       cwd: "/tmp/project",
       permissionMode: "plan",
       allowedTools: ["Bash", "Read"],
+      tools: ["Bash", "Read", "Edit"],
       name: "demo",
     });
     expect(command).toContain("--permission-mode 'plan'");
     expect(command).toContain("--allowedTools 'Bash,Read'");
+    // C-CLAUDE-13: --tools is a true allowlist; empty means all disabled.
+    expect(command).toContain("--tools 'Bash,Read,Edit'");
+    expect(buildClaudeShellCommand("/tmp/settings.json", { cwd: "/tmp/p", tools: [] })).toContain(
+      "--tools ''",
+    );
     expect(command).toContain("--name 'demo'");
     expect(shellLaunch("/bin/zsh", command).args).toContain("-c");
     const settings = generateClaudeSettings({

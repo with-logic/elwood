@@ -43,6 +43,7 @@ describe("startOrResumeClaude", () => {
       permissionMode: "bypassPermissions",
       allowedTools: ["Read"],
       disallowedTools: ["Bash"],
+      tools: ["Read", "Edit"],
       strictVersionCheck: false,
     });
     expect(result.resumed).toBe(true);
@@ -51,6 +52,7 @@ describe("startOrResumeClaude", () => {
     expect(ptys.at(-1)!.options.args.join(" ")).toContain("--permission-mode 'bypassPermissions'");
     expect(ptys.at(-1)!.options.args.join(" ")).toContain("--allowedTools 'Read'");
     expect(ptys.at(-1)!.options.args.join(" ")).toContain("--disallowedTools 'Bash'");
+    expect(ptys.at(-1)!.options.args.join(" ")).toContain("--tools 'Read,Edit'");
     await first.session.stop();
     await result.session.stop();
   });
