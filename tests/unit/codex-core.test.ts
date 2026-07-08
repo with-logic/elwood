@@ -61,48 +61,49 @@ describe("Codex core helpers", () => {
     ).not.toContain("--dangerously-bypass-hook-trust");
   });
 
-  test("C-CODEX-04 version parsing and strict failure paths are typed", () => {
+  test("C-CODEX-04 version parsing and strict failure paths are typed", async () => {
     expect(parseCodexVersion("codex-cli 0.132.0")).toBe("0.132.0");
     expect(minimumCodexVersion).toBe("0.124.0");
     setPlatformForTests("linux");
-    expect(() => preflightCodex(false)).toThrow(ElwoodError);
+    await expect(preflightCodex(false)).rejects.toThrow(ElwoodError);
     setPlatformForTests("darwin");
     setCommandRunnerForTests(() => ({ status: 1, stdout: "", stderr: "boom" }));
-    expect(() => preflightCodex(false)).toThrow(ElwoodError);
+    await expect(preflightCodex(false)).rejects.toThrow(ElwoodError);
     setCommandRunnerForTests(() => ({
       status: null,
       stdout: "",
       stderr: "terminated",
       error: { code: "SIGTERM", message: "terminated" },
     }));
-    expect(() => preflightCodex(false)).toThrow(
+    await expect(preflightCodex(false)).rejects.toThrow(
       expect.objectContaining({ code: "codex_start_failed" }),
     );
     setCommandRunnerForTests(() => ({ status: 0, stdout: "unparseable", stderr: "" }));
-    expect(() => preflightCodex(false)).not.toThrow();
-    expect(() => preflightCodex(true)).toThrow(ElwoodError);
+    // Non-strict unparseable version resolves with a warning (does not throw).
+    await expect(preflightCodex(false)).resolves.toMatchObject({ code: "version_unparseable" });
+    await expect(preflightCodex(true)).rejects.toThrow(ElwoodError);
     setCommandRunnerForTests(() => ({
       status: 0,
       stdout: `codex-cli ${minimumCodexVersion}\n`,
       stderr: "",
     }));
-    expect(() => preflightCodex(true)).not.toThrow();
+    await expect(preflightCodex(true)).resolves.toBeUndefined();
     setCommandRunnerForTests(() => ({ status: 0, stdout: "0.1.0", stderr: "" }));
-    expect(() => preflightCodex(false)).toThrow(ElwoodError);
+    await expect(preflightCodex(false)).rejects.toThrow(ElwoodError);
     resetRuntimeSeamsForTests();
   });
 
-  test("C-CODEX-06 detects hook trust bypass support from login shell help", () => {
+  test("C-CODEX-06 detects hook trust bypass support from login shell help", async () => {
     setPlatformForTests("darwin");
     setCommandRunnerForTests((_command, args) =>
       args.join(" ").includes("--help")
         ? { status: 0, stdout: "--dangerously-bypass-hook-trust", stderr: "" }
         : { status: 0, stdout: "codex-cli 0.133.0", stderr: "" },
     );
-    expect(detectCodexCliCapabilities().supportsHookTrustBypass).toBe(true);
+    expect((await detectCodexCliCapabilities()).supportsHookTrustBypass).toBe(true);
     resetCodexPreflightCacheForTests();
     setCommandRunnerForTests(() => ({ status: 0, stdout: "codex help", stderr: "" }));
-    expect(detectCodexCliCapabilities().supportsHookTrustBypass).toBe(false);
+    expect((await detectCodexCliCapabilities()).supportsHookTrustBypass).toBe(false);
     resetCodexPreflightCacheForTests();
     resetRuntimeSeamsForTests();
   });

@@ -13,8 +13,11 @@ import { buildCodexShellCommand } from "./command.ts";
 import * as preflight from "./preflight.ts";
 import type { StartCodexOptions } from "./session-types.ts";
 
-export function spawnCodexPty(record: SessionRecord, options: StartCodexOptions): PtyProcess {
-  const capabilities = preflight.detectCodexCliCapabilities();
+export async function spawnCodexPty(
+  record: SessionRecord,
+  options: StartCodexOptions,
+): Promise<PtyProcess> {
+  const capabilities = await preflight.detectCodexCliCapabilities();
   try {
     return currentPtyFactory()({
       command: userShell(),

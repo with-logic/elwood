@@ -17,18 +17,20 @@ export type CodexPreflightWarning = Omit<
 >;
 let cachedCapabilities: CodexCliCapabilities | undefined;
 
-export function preflightCodex(
+export async function preflightCodex(
   strictVersionCheck: boolean,
   autoupdate = false,
-): CodexPreflightWarning | undefined {
+): Promise<CodexPreflightWarning | undefined> {
+  // Platform check is synchronous and first: unsupported hosts throw before
+  // any subprocess is spawned.
   if (currentPlatform() !== "darwin") {
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
-  let result = readCodexVersion();
+  let result = await readCodexVersion();
   if (autoupdate && shouldRunAutoupdate("codex")) {
-    runCodexUpdate();
+    await runCodexUpdate();
     cachedCapabilities = undefined;
-    result = readCodexVersion();
+    result = await readCodexVersion();
   }
   const version = parseCodexVersion(result.stdout);
   if (!version) {
@@ -47,15 +49,15 @@ export function preflightCodex(
   return undefined;
 }
 
-function runCodexUpdate(): void {
-  const result = currentCommandRunner()(userShell(), loginShellCommand("codex update"));
+async function runCodexUpdate(): Promise<void> {
+  const result = await currentCommandRunner()(userShell(), loginShellCommand("codex update"));
   if (result.status !== 0) {
     throw elwoodError("codex_update_failed", "`codex update` failed.", { stderr: result.stderr });
   }
 }
 
-function readCodexVersion(): CommandResult {
-  const result = currentCommandRunner()(userShell(), loginShellCommand("codex --version"));
+async function readCodexVersion(): Promise<CommandResult> {
+  const result = await currentCommandRunner()(userShell(), loginShellCommand("codex --version"));
   if (result.error?.code === "ENOENT" || result.status === 127) {
     throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");
   }
@@ -72,9 +74,9 @@ export function parseCodexVersion(output: string): string | null {
   return /(\d+\.\d+\.\d+)/.exec(output)?.[1] ?? null;
 }
 
-export function detectCodexCliCapabilities(): CodexCliCapabilities {
+export async function detectCodexCliCapabilities(): Promise<CodexCliCapabilities> {
   if (cachedCapabilities) return cachedCapabilities;
-  const result = currentCommandRunner()(userShell(), loginShellCommand("codex --help"));
+  const result = await currentCommandRunner()(userShell(), loginShellCommand("codex --help"));
   const help = `${result.stdout}\n${result.stderr}`;
   cachedCapabilities = {
     supportsHookTrustBypass: help.includes("--dangerously-bypass-hook-trust"),

@@ -42,7 +42,7 @@ export {
   setCodexHookBridgeFactoryForTests,
 } from "./session-bridge.ts";
 export async function startCodex(options: StartCodexOptions): Promise<CodexSession> {
-  const warning = preflight.preflightCodex(
+  const warning = await preflight.preflightCodex(
     options.strictVersionCheck ?? false,
     options.autoupdate ?? false,
   );
@@ -102,9 +102,9 @@ export async function startCodexFromRecord(
       socketPath: record.paths.socketPath,
     });
   }
-  let pty: ReturnType<typeof spawnCodexPty>;
+  let pty: Awaited<ReturnType<typeof spawnCodexPty>>;
   try {
-    pty = spawnCodexPty(record, options);
+    pty = await spawnCodexPty(record, options);
   } catch (error) {
     await cleanupStartupResources({ bridge });
     throw error;

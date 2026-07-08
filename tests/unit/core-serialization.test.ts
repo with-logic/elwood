@@ -48,22 +48,23 @@ describe("serialization", () => {
 });
 
 describe("preflight", () => {
-  test("C-CLAUDE-04 version parsing and comparisons cover strict paths", () => {
+  test("C-CLAUDE-04 version parsing and comparisons cover strict paths", async () => {
     expect(parseVersion("claude 2.1.144")).toBe(minimumClaudeVersion);
     setPlatformForTests("darwin");
     setCommandRunnerForTests(() => ({ status: 1, stdout: "", stderr: "boom" }));
-    expect(() => preflightClaude(false)).toThrow(ElwoodError);
+    await expect(preflightClaude(false)).rejects.toThrow(ElwoodError);
     setCommandRunnerForTests(() => ({ status: 0, stdout: "unparseable", stderr: "" }));
-    expect(() => preflightClaude(false)).not.toThrow();
-    expect(() => preflightClaude(true)).toThrow(ElwoodError);
+    // Non-strict unparseable version resolves with a warning (does not throw).
+    await expect(preflightClaude(false)).resolves.toMatchObject({ code: "version_unparseable" });
+    await expect(preflightClaude(true)).rejects.toThrow(ElwoodError);
     setCommandRunnerForTests(() => ({ status: 0, stdout: "2.1.1", stderr: "" }));
-    expect(() => preflightClaude(false)).toThrow(ElwoodError);
+    await expect(preflightClaude(false)).rejects.toThrow(ElwoodError);
     resetRuntimeSeamsForTests();
   });
 
-  test("runtime seams expose real defaults", () => {
+  test("runtime seams expose real defaults", async () => {
     expect(typeof currentPlatform()).toBe("string");
-    expect(currentCommandRunner()("node", ["--version"]).stdout.length).toBeGreaterThan(0);
+    expect((await currentCommandRunner()("node", ["--version"])).stdout.length).toBeGreaterThan(0);
   });
 
   test("startup readiness detects authentication failures", async () => {

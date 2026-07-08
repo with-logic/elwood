@@ -46,7 +46,10 @@ export {
   setHookBridgeFactoryForTests,
 };
 export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSession> {
-  const warning = preflightClaude(options.strictVersionCheck ?? false, options.autoupdate ?? false);
+  const warning = await preflightClaude(
+    options.strictVersionCheck ?? false,
+    options.autoupdate ?? false,
+  );
   const stateDir = options.stateDir ?? defaultStateDir(options.cwd);
   prepareStateDir(stateDir, { gitignore: options.stateDir === undefined });
   const createdRecord = createSessionRecord({

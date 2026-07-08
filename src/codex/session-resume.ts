@@ -22,7 +22,7 @@ export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSes
     throw elwoodError("adapter_mismatch", "Cannot resume a non-Codex session as Codex.");
   if (!record.codex.resumeId)
     throw elwoodError("resume_unavailable", "Cannot resume Codex without a Codex session id.");
-  const warning = preflight.preflightCodex(
+  const warning = await preflight.preflightCodex(
     options.strictVersionCheck ?? false,
     options.autoupdate ?? false,
   );

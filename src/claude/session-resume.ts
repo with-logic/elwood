@@ -29,7 +29,10 @@ export async function resumeClaude(options: ResumeClaudeOptions): Promise<Claude
   if (!record.claude.resumeId) {
     throw elwoodError("resume_unavailable", "Cannot resume Claude without a Claude session id.");
   }
-  const warning = preflightClaude(options.strictVersionCheck ?? false, options.autoupdate ?? false);
+  const warning = await preflightClaude(
+    options.strictVersionCheck ?? false,
+    options.autoupdate ?? false,
+  );
   const checkedRecord =
     warning === undefined
       ? record

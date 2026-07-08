@@ -17,14 +17,14 @@ import { resetAutoupdateForTests } from "../../src/runtime/update-once.ts";
 describe("CLI autoupdate preflight", () => {
   beforeEach(resetAutoupdateForTests);
 
-  test("C-CLAUDE-07 runs claude update before spawning", () => {
+  test("C-CLAUDE-07 runs claude update before spawning", async () => {
     const commands: string[] = [];
     setPlatformForTests("darwin");
     setCommandRunnerForTests((command, args) => {
       commands.push(`${command} ${args.join(" ")}`);
       return { status: 0, stdout: "2.1.144", stderr: "" };
     });
-    preflightClaude(false, true);
+    await preflightClaude(false, true);
     expect(commands.some((command) => command.includes("claude update"))).toBe(true);
     setCommandRunnerForTests((_command, args) =>
       args.join(" ").includes("claude update")
@@ -32,23 +32,23 @@ describe("CLI autoupdate preflight", () => {
         : { status: 0, stdout: "2.1.144", stderr: "" },
     );
     resetAutoupdateForTests();
-    expect(() => preflightClaude(false, true)).toThrow(ElwoodError);
+    await expect(preflightClaude(false, true)).rejects.toThrow(ElwoodError);
     resetRuntimeSeamsForTests();
   });
 
-  test("C-CLAUDE-09 validates the post-update version", () => {
+  test("C-CLAUDE-09 validates the post-update version", async () => {
     const outputs = ["2.1.1", "2.1.144"];
     setPlatformForTests("darwin");
     setCommandRunnerForTests((_command, args) => {
       if (args.join(" ").includes("claude update")) return { status: 0, stdout: "", stderr: "" };
       return { status: 0, stdout: outputs.shift() ?? "2.1.144", stderr: "" };
     });
-    expect(() => preflightClaude(false, true)).not.toThrow();
+    await expect(preflightClaude(false, true)).resolves.toBeUndefined();
     setCommandRunnerForTests((_command, args) => {
       if (args.join(" ").includes("claude update")) return { status: 0, stdout: "", stderr: "" };
       return { status: 127, stdout: "", stderr: "missing" };
     });
-    expect(() => preflightClaude(false, true)).toThrow(ElwoodError);
+    await expect(preflightClaude(false, true)).rejects.toThrow(ElwoodError);
     resetRuntimeSeamsForTests();
   });
 
@@ -58,30 +58,30 @@ describe("CLI autoupdate preflight", () => {
     expect(compareVersions("2.1.x", "2.1.0")).toBe(0);
   });
 
-  test("C-CODEX-08 runs codex update and reports failures", () => {
+  test("C-CODEX-08 runs codex update and reports failures", async () => {
     setPlatformForTests("darwin");
     setCommandRunnerForTests((_command, args) =>
       args.join(" ").includes("codex update")
         ? { status: 1, stdout: "", stderr: "failed" }
         : { status: 0, stdout: "codex-cli 0.132.0", stderr: "" },
     );
-    expect(() => preflightCodex(false, true)).toThrow(ElwoodError);
+    await expect(preflightCodex(false, true)).rejects.toThrow(ElwoodError);
     resetRuntimeSeamsForTests();
   });
 
-  test("C-CODEX-10 validates the post-update version", () => {
+  test("C-CODEX-10 validates the post-update version", async () => {
     const outputs = ["codex-cli 0.1.0", "codex-cli 0.132.0"];
     setPlatformForTests("darwin");
     setCommandRunnerForTests((_command, args) => {
       if (args.join(" ").includes("codex update")) return { status: 0, stdout: "", stderr: "" };
       return { status: 0, stdout: outputs.shift() ?? "codex-cli 0.132.0", stderr: "" };
     });
-    expect(() => preflightCodex(false, true)).not.toThrow();
+    await expect(preflightCodex(false, true)).resolves.toBeUndefined();
     setCommandRunnerForTests((_command, args) => {
       if (args.join(" ").includes("codex update")) return { status: 0, stdout: "", stderr: "" };
       return { status: 127, stdout: "", stderr: "missing" };
     });
-    expect(() => preflightCodex(false, true)).toThrow(ElwoodError);
+    await expect(preflightCodex(false, true)).rejects.toThrow(ElwoodError);
     resetRuntimeSeamsForTests();
   });
 });
@@ -89,17 +89,17 @@ describe("CLI autoupdate preflight", () => {
 describe("autoupdate dedupe", () => {
   beforeEach(resetAutoupdateForTests);
 
-  test("C-LIFE-09 autoupdate runs at most once per adapter per process", () => {
+  test("C-LIFE-09 autoupdate runs at most once per adapter per process", async () => {
     const commands: string[] = [];
     setPlatformForTests("darwin");
     setCommandRunnerForTests((_command, args) => {
       commands.push(args.join(" "));
       return { status: 0, stdout: "2.1.144", stderr: "" };
     });
-    preflightClaude(false, true);
-    preflightClaude(false, true);
-    preflightCodex(false, true);
-    preflightCodex(false, true);
+    await preflightClaude(false, true);
+    await preflightClaude(false, true);
+    await preflightCodex(false, true);
+    await preflightCodex(false, true);
     const updates = commands.filter((command) => command.includes(" update"));
     expect(updates.filter((command) => command.includes("claude update"))).toHaveLength(1);
     expect(updates.filter((command) => command.includes("codex update"))).toHaveLength(1);

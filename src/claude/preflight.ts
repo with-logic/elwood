@@ -15,17 +15,19 @@ export type ClaudePreflightWarning = Omit<
   "elwoodSessionId"
 >;
 
-export function preflightClaude(
+export async function preflightClaude(
   strictVersionCheck: boolean,
   autoupdate = false,
-): ClaudePreflightWarning | undefined {
+): Promise<ClaudePreflightWarning | undefined> {
+  // Platform check is synchronous and first: unsupported hosts throw before
+  // any subprocess is spawned.
   if (currentPlatform() !== "darwin") {
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
-  let result = readClaudeVersion();
+  let result = await readClaudeVersion();
   if (autoupdate && shouldRunAutoupdate("claude")) {
-    runClaudeUpdate();
-    result = readClaudeVersion();
+    await runClaudeUpdate();
+    result = await readClaudeVersion();
   }
   const version = parseVersion(result.stdout);
   if (!version) {
@@ -47,8 +49,8 @@ export function preflightClaude(
   return undefined;
 }
 
-function runClaudeUpdate(): void {
-  const result = currentCommandRunner()(userShell(), loginShellCommand("claude update"));
+async function runClaudeUpdate(): Promise<void> {
+  const result = await currentCommandRunner()(userShell(), loginShellCommand("claude update"));
   if (result.status !== 0) {
     throw elwoodError("claude_update_failed", "`claude update` failed.", {
       stderr: result.stderr,
@@ -56,8 +58,8 @@ function runClaudeUpdate(): void {
   }
 }
 
-function readClaudeVersion(): CommandResult {
-  const result = currentCommandRunner()(userShell(), loginShellCommand("claude --version"));
+async function readClaudeVersion(): Promise<CommandResult> {
+  const result = await currentCommandRunner()(userShell(), loginShellCommand("claude --version"));
   if (result.error?.code === "ENOENT" || result.status === 127) {
     throw elwoodError("claude_not_found", "`claude` was not found on PATH.");
   }
