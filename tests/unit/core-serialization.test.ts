@@ -59,7 +59,23 @@ describe("preflight", () => {
     expect(parseVersion("claude 2.1.144")).toBe(minimumClaudeVersion);
     setPlatformForTests("darwin");
     setVersion({ status: 1, stdout: "", stderr: "boom" });
-    await expect(preflightClaude(false)).rejects.toThrow(ElwoodError);
+    // A plain non-zero probe carries stderr and no synthetic cause/errno.
+    await expect(preflightClaude(false)).rejects.toMatchObject({
+      code: "claude_start_failed",
+      details: { stderr: "boom" },
+    });
+    // C-PERF-03: a bounded-probe failure (timeout/overflow) surfaces the
+    // runner's cause/errno through the same start-failure name.
+    setVersion({
+      status: null,
+      stdout: "",
+      stderr: "",
+      error: { code: "ETIMEDOUT", message: "probe timed out after 15000 ms" },
+    });
+    await expect(preflightClaude(false)).rejects.toMatchObject({
+      code: "claude_start_failed",
+      details: { cause: "probe timed out after 15000 ms", errno: "ETIMEDOUT" },
+    });
     setVersion({ status: 0, stdout: "unparseable", stderr: "" });
     // Non-strict unparseable version resolves with a warning (does not throw).
     await expect(preflightClaude(false)).resolves.toMatchObject({ code: "version_unparseable" });

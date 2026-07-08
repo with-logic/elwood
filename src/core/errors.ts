@@ -65,3 +65,20 @@ export function causeDetails(error: unknown): Readonly<Record<string, string>> {
   if (typeof path === "string") details["path"] = path;
   return details;
 }
+
+/**
+ * Diagnosable details for a failed CLI probe (C-ERR-08): stderr plus the
+ * runner's typed cause/errno (e.g. `ETIMEDOUT` on a probe timeout, `E2BIG` on
+ * output overflow) so a start failure never drops the underlying reason.
+ */
+export function probeFailureDetails(result: {
+  readonly stderr: string;
+  readonly error?: { readonly code?: string | undefined; readonly message: string };
+}): Readonly<Record<string, string>> {
+  const details: Record<string, string> = { stderr: result.stderr };
+  if (result.error) {
+    details["cause"] = result.error.message;
+    if (typeof result.error.code === "string") details["errno"] = result.error.code;
+  }
+  return details;
+}

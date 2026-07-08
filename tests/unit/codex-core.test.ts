@@ -83,9 +83,17 @@ describe("Codex core helpers", () => {
       stderr: "terminated",
       error: { code: "SIGTERM", message: "terminated" },
     });
-    await expect(preflightCodex(false)).rejects.toThrow(
-      expect.objectContaining({ code: "codex_start_failed" }),
-    );
+    // C-PERF-03: the underlying cause/errno is preserved in details.
+    await expect(preflightCodex(false)).rejects.toMatchObject({
+      code: "codex_start_failed",
+      details: { stderr: "terminated", cause: "terminated", errno: "SIGTERM" },
+    });
+    // An error without a code carries the cause but no synthetic errno.
+    setVersion({ status: null, stdout: "", stderr: "gone", error: { message: "spawn died" } });
+    await expect(preflightCodex(false)).rejects.toMatchObject({
+      code: "codex_start_failed",
+      details: { stderr: "gone", cause: "spawn died" },
+    });
     setVersion({ status: 0, stdout: "unparseable", stderr: "" });
     // Non-strict unparseable version resolves with a warning (does not throw).
     await expect(preflightCodex(false)).resolves.toMatchObject({ code: "version_unparseable" });

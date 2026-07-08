@@ -3,7 +3,7 @@
  * Implements PRD §9.2 and §10.
  */
 
-import { elwoodError } from "../core/errors.ts";
+import { elwoodError, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
@@ -78,9 +78,11 @@ async function readClaudeVersion(): Promise<CommandResult> {
     throw elwoodError("claude_not_found", "`claude` was not found on PATH.");
   }
   if (result.status !== 0) {
-    throw elwoodError("claude_start_failed", "`claude --version` failed.", {
-      stderr: result.stderr,
-    });
+    throw elwoodError(
+      "claude_start_failed",
+      "`claude --version` failed.",
+      probeFailureDetails(result),
+    );
   }
   return result;
 }

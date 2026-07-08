@@ -3,7 +3,7 @@
  * Implements PRD §9.2 and §10.
  */
 
-import { elwoodError } from "../core/errors.ts";
+import { elwoodError, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
@@ -78,10 +78,11 @@ async function readCodexVersion(): Promise<CommandResult> {
     throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");
   }
   if (result.status !== 0) {
-    throw elwoodError("codex_start_failed", "`codex --version` failed.", {
-      stderr: result.stderr,
-      ...(result.error === undefined ? {} : { error: result.error.message }),
-    });
+    throw elwoodError(
+      "codex_start_failed",
+      "`codex --version` failed.",
+      probeFailureDetails(result),
+    );
   }
   return result;
 }
