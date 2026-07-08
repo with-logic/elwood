@@ -6,7 +6,7 @@
 import { elwoodError } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
-import { loginShellCommand, userShell } from "../runtime/shell.ts";
+import { probeShellCommand, userShell } from "../runtime/shell.ts";
 import {
   cachedVersionRead,
   invalidateVersionRead,
@@ -57,7 +57,7 @@ export async function preflightCodex(
 }
 
 async function runCodexUpdate(): Promise<void> {
-  const result = await currentCommandRunner()(userShell(), loginShellCommand("codex update"));
+  const result = await currentCommandRunner()(userShell(), probeShellCommand("codex update"));
   if (result.status !== 0) {
     throw elwoodError("codex_update_failed", "`codex update` failed.", { stderr: result.stderr });
   }
@@ -67,7 +67,7 @@ async function readCodexVersion(): Promise<CommandResult> {
   // The mapping to typed errors runs on every call (cache hit or miss) so all
   // callers throw identically; only the subprocess is deduped.
   const result = await cachedVersionRead("codex", () =>
-    Promise.resolve(currentCommandRunner()(userShell(), loginShellCommand("codex --version"))),
+    Promise.resolve(currentCommandRunner()(userShell(), probeShellCommand("codex --version"))),
   );
   if (result.error?.code === "ENOENT" || result.status === 127) {
     throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");
@@ -87,7 +87,7 @@ export function parseCodexVersion(output: string): string | null {
 
 export async function detectCodexCliCapabilities(): Promise<CodexCliCapabilities> {
   if (cachedCapabilities) return cachedCapabilities;
-  const result = await currentCommandRunner()(userShell(), loginShellCommand("codex --help"));
+  const result = await currentCommandRunner()(userShell(), probeShellCommand("codex --help"));
   const help = `${result.stdout}\n${result.stderr}`;
   cachedCapabilities = {
     supportsHookTrustBypass: help.includes("--dangerously-bypass-hook-trust"),

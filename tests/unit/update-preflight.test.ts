@@ -124,6 +124,29 @@ describe("autoupdate dedupe", () => {
 describe("version-read cache", () => {
   beforeEach(resetPreflight);
 
+  test("C-PERF-01 concurrent adapter preflights overlap instead of serializing", async () => {
+    setPlatformForTests("darwin");
+    // Deterministic overlap proof: track how many reads are in flight at once.
+    // A synchronous (serializing) runner would never exceed 1; an async one
+    // that overlaps reaches 2 when both adapters' reads are pending together.
+    let inFlight = 0;
+    let maxInFlight = 0;
+    setCommandRunnerForTests((_command, args) => {
+      const stdout = args.join(" ").includes("codex") ? "codex-cli 0.132.0" : "2.1.144";
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          inFlight -= 1;
+          resolve({ status: 0, stdout, stderr: "" });
+        }, 5);
+      });
+    });
+    await Promise.all([preflightClaude(false), preflightCodex(false)]);
+    expect(maxInFlight).toBe(2);
+    resetRuntimeSeamsForTests();
+  });
+
   test("C-PERF-02 reads --version at most once per process", async () => {
     let reads = 0;
     setPlatformForTests("darwin");

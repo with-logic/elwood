@@ -6,7 +6,7 @@
 import { elwoodError } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
-import { loginShellCommand, userShell } from "../runtime/shell.ts";
+import { probeShellCommand, userShell } from "../runtime/shell.ts";
 import {
   cachedVersionRead,
   invalidateVersionRead,
@@ -57,7 +57,7 @@ export async function preflightClaude(
 }
 
 async function runClaudeUpdate(): Promise<void> {
-  const result = await currentCommandRunner()(userShell(), loginShellCommand("claude update"));
+  const result = await currentCommandRunner()(userShell(), probeShellCommand("claude update"));
   if (result.status !== 0) {
     throw elwoodError("claude_update_failed", "`claude update` failed.", {
       stderr: result.stderr,
@@ -69,7 +69,7 @@ async function readClaudeVersion(): Promise<CommandResult> {
   // The mapping to typed errors runs on every call (cache hit or miss) so all
   // callers throw identically; only the subprocess is deduped.
   const result = await cachedVersionRead("claude", () =>
-    Promise.resolve(currentCommandRunner()(userShell(), loginShellCommand("claude --version"))),
+    Promise.resolve(currentCommandRunner()(userShell(), probeShellCommand("claude --version"))),
   );
   if (result.error?.code === "ENOENT" || result.status === 127) {
     throw elwoodError("claude_not_found", "`claude` was not found on PATH.");

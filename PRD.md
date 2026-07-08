@@ -138,6 +138,16 @@ The implementation should use the user's login shell and interactive/login flags
 appropriate for that shell. For the common zsh case, this is expected to behave
 like an interactive login shell and load the user's normal startup files.
 
+This interactive login form (`-l -i` for zsh) applies to the **agent PTY**. The
+one-shot, non-PTY preflight probes (`--version`, `update`, `--help`) instead use
+a **login-only** shell (`-l`, without the interactive flag): the login form
+resolves the user's PATH, while dropping the interactive flag skips the
+expensive interactive startup (`.zshrc`/prompt setup) that a one-shot probe does
+not need. This keeps probes off the host's critical path. The trade-off: a user
+who sets PATH only in interactive startup files (not login files) could have a
+probe fail to resolve the CLI; PATH belongs in login files for exactly this
+reason, and the agent PTY still uses the full interactive login shell.
+
 Elwood MUST provide diagnostics or tests proving that environment variables from
 the user's shell startup are visible to the launched agent process.
 
@@ -1287,10 +1297,18 @@ version and feature. If the version cannot be parsed, Elwood records a typed
 callers to make this fatal.
 
 Version checks and optional `claude update` / `codex update` commands must run
-through the same account login shell resolution path used for the launched agent
-so PATH and shell startup behavior match a normal Terminal.app session. Elwood
-uses the user's configured macOS login shell rather than trusting an inherited
-`SHELL` environment override from the parent process.
+through the user's configured macOS login shell so PATH resolves as it would in
+a normal Terminal.app session; they use the login-only (non-interactive) form
+(see §4.2). Elwood uses the user's configured login shell rather than trusting
+an inherited `SHELL` environment override from the parent process.
+
+These probes MUST run asynchronously and MUST NOT block the host process's
+event loop: a parent that spawns a roster of sessions must not serialize their
+preflights on a single thread. Elwood reads each adapter's `--version` at most
+once per parent process — concurrent first reads share a single subprocess, and
+later reads reuse the cached result — mirroring the once-per-process autoupdate
+dedupe (C-LIFE-09). The cached read is invalidated after an `autoupdate` update
+so the post-update version is re-read.
 
 After spawning the PTY, Elwood waits briefly for immediate process exits or
 known authentication/startup failure banners before reporting the session as
@@ -1536,6 +1554,14 @@ Each criterion has:
 | C-PTY-05 | §5.3 | `resize({ cols, rows })` resizes both the underlying PTY and the headless terminal model, while closed-fd resize races during process exit are ignored. |
 | C-PTY-06 | §9.4 | Process exit emits a terminal/process exit event and updates session status. |
 | C-PTY-07 | §4.1 | Cursor-addressed PTY output renders into the headless xterm snapshot before startup prompt detection runs. |
+| C-PTY-08 | §4.2 §9.2 | Non-PTY CLI probes (`--version`, `update`, `--help`) run in a login-only shell (no interactive flag), while the agent PTY uses the interactive login shell. |
+
+#### C-PERF: Startup Performance (§9)
+
+| ID | PRD | Criterion |
+|---|---|---|
+| C-PERF-01 | §9.2 | Version/capability probes run asynchronously and never block the host process's event loop, so a roster of concurrent spawns does not serialize on a single thread. |
+| C-PERF-02 | §9.2 | Each adapter's `--version` is read at most once per parent process; concurrent first reads share a single subprocess, later reads reuse the cached result, and the cache is invalidated after `autoupdate`. |
 
 #### C-CLAUDE: Claude Startup And Settings (§4, §7, §9)
 
