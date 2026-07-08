@@ -27,9 +27,10 @@ describe("ClaudeSession message submission", () => {
       load_reason: "session_start",
     });
     await queued;
-    expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\u001b[201~"]);
-    // C-API-31: the submitting Enter follows as a separate keystroke.
-    await expect.poll(() => ptys[0]!.writes.includes("\r")).toBe(true);
+    // C-API-31/FIFO: `queued` resolves only after the paste and its
+    // separate submitting Enter have both landed, in order.
+    expect(ptys[0]!.writes[0]).toBe("\u001b[200~hello\u001b[201~");
+    expect(ptys[0]!.writes).toContain("\r");
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       hook_event_name: "InstructionsLoaded",
       session_id: "claude-1",

@@ -39,6 +39,34 @@ describe("ControlQueue ordering and failures", () => {
     expect(order).toEqual(["submit:/compact", "enter:/compact", "submit:/model"]);
   });
 
+  test("C-API-19 a message holds the next command until its submit resolves", async () => {
+    // The message-mode submitter resolves only after its (delayed) Enter; a
+    // command queued behind it must not write until then, preserving FIFO.
+    const order: string[] = [];
+    let releaseMessage: (() => void) | undefined;
+    const queue = new ControlQueue(
+      (input, mode) => {
+        order.push(`${mode}:${input}`);
+        if (mode === "message") {
+          return new Promise<void>((resolve) => {
+            releaseMessage = resolve;
+          });
+        }
+        return Promise.resolve();
+      },
+      () => new Error("closed"),
+      () => undefined,
+    );
+    queue.markReady();
+    const message = queue.send("hello", "message");
+    const command = queue.send("/model", "list_models");
+    // Only the message has been written; the command waits for its submit.
+    expect(order).toEqual(["message:hello"]);
+    releaseMessage?.();
+    await Promise.all([message, command]);
+    expect(order).toEqual(["message:hello", "command:/model"]);
+  });
+
   test("C-API-19 rejects queued and future operations after close", async () => {
     const queue = new ControlQueue(
       () => Promise.resolve(),
@@ -84,6 +112,28 @@ describe("ControlQueue ordering and failures", () => {
     queue.markReady();
     await next;
     expect(submitted).toEqual(["bad", "next"]);
+  });
+
+  test("C-API-19 close rejects the operation still dispatching in flight", async () => {
+    // A command whose delayed Enter never resolves is in flight when close()
+    // is called; it must reject immediately with the stopped error, and its
+    // own late settle must not override that.
+    let releaseLate: (() => void) | undefined;
+    const queue = new ControlQueue(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseLate = resolve;
+        }),
+      () => new Error("session_not_running"),
+      () => undefined,
+    );
+    queue.markReady();
+    const inFlight = queue.send("/model", "list_models");
+    queue.close();
+    await expect(inFlight).rejects.toThrow("session_not_running");
+    // The dispatched promise resolving afterwards is a no-op (already settled).
+    releaseLate?.();
+    await Promise.resolve();
   });
 
   test("C-API-19 ignores running and ready after close", async () => {

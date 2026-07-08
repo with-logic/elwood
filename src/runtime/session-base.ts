@@ -48,8 +48,8 @@ export abstract class AgentSessionBase {
   private readonly statusEvents: SessionStatusEmitter;
   private readonly terminalReplay: TerminalReplayBuffer;
   private cleanupPromise: Promise<void> | undefined;
-  // Set before a controlled shutdown signals the PTY, so the signal-triggered
-  // exit resolves to that terminal status rather than a racing `exited`.
+  // Set before a controlled shutdown signals the PTY, so the exit resolves to
+  // that terminal status rather than a racing `exited`.
   private pendingShutdown: ShutdownEvidence | undefined;
   protected readonly controlQueue = new ControlQueue(
     (input, mode) => writeQueuedInput(this.terminal, input, mode, this.pasteGuard()),
@@ -95,7 +95,7 @@ export abstract class AgentSessionBase {
   }
   sendPrompt(prompt: string): Promise<void> {
     return this.inSession(() => {
-      writePastedPrompt(this.terminal, prompt, this.pasteGuard());
+      void writePastedPrompt(this.terminal, prompt, this.pasteGuard());
       this.submitEvidence("caller_submitted");
     });
   }

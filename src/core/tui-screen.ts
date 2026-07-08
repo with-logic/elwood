@@ -54,8 +54,8 @@ export async function openCommandScreen(input: {
     nudgeTimer = setInterval(() => {
       if (resubmitting || input.isOpen(input.terminal.snapshot().text)) return;
       resubmitting = true;
-      // A rejected re-submit (e.g. the session closed) propagates verbatim;
-      // `controlQueue.send` only ever rejects with a typed ElwoodError.
+      // A rejected re-submit (e.g. the session closed while polling) is
+      // propagated unchanged so the caller settles with the real error.
       input.submit().then(() => {
         resubmitting = false;
       }, reject);

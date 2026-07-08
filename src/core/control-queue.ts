@@ -81,8 +81,8 @@ export class ControlQueue {
   private readonly onTurnStarted: () => void;
   private ready = false;
   private closed = false;
-  /** True while a submission (incl. its delayed Enter) is still dispatching. */
-  private inFlight = false;
+  /** The operation whose submission (incl. delayed Enter) is still dispatching. */
+  private inFlight: QueuedOperation | undefined;
 
   constructor(
     submit: ControlSubmitter,
@@ -120,6 +120,12 @@ export class ControlQueue {
   close(): void {
     this.closed = true;
     const error = this.stoppedError();
+    // Reject the still-dispatching operation too: closing while a command's
+    // delayed Enter is pending must fail it immediately with the stopped
+    // error, not let it later resolve or time out downstream.
+    const settling = this.inFlight;
+    this.inFlight = undefined;
+    if (settling) settling.reject(error);
     for (const operation of this.queue.splice(0)) operation.reject(error);
   }
 
@@ -142,21 +148,21 @@ export class ControlQueue {
     }
     // The write (incl. any delayed command Enter) holds the next drain so
     // back-to-back queued operations never interleave in the terminal. The
-    // caller settles with the write's outcome: a rejected submit rejects the
-    // operation rather than leaking an unhandled rejection.
-    this.inFlight = true;
+    // caller settles with the write's outcome; if close() already settled this
+    // operation, the handlers no-op (inFlight was cleared).
+    this.inFlight = operation;
     dispatched.then(
-      () => {
-        this.inFlight = false;
-        operation.resolve();
-        this.drain();
-      },
-      (error: unknown) => {
-        this.inFlight = false;
-        operation.reject(asError(error));
-        this.drain();
-      },
+      () => this.settleInFlight(operation, () => operation.resolve()),
+      (error: unknown) => this.settleInFlight(operation, () => operation.reject(asError(error))),
     );
+  }
+
+  private settleInFlight(operation: QueuedOperation, settle: () => void): void {
+    // close() may have already rejected and cleared this operation.
+    if (this.inFlight !== operation) return;
+    this.inFlight = undefined;
+    settle();
+    this.drain();
   }
 
   /** Writes the operation and returns a promise for when its write fully lands. */

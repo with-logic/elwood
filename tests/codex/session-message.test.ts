@@ -20,9 +20,10 @@ describe("CodexSession message submission", () => {
     expect(ptys[0]!.writes).toEqual([]);
     ptys[0]!.emitData("codex rendered\r\n\u203a ");
     await queued;
-    expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\u001b[201~"]);
-    // C-API-31: the submitting Enter follows as a separate keystroke.
-    await expect.poll(() => ptys[0]!.writes.includes("\r")).toBe(true);
+    // C-API-31/FIFO: `queued` resolves only after the paste and its
+    // separate submitting Enter have both landed, in order.
+    expect(ptys[0]!.writes[0]).toBe("\u001b[200~hello\u001b[201~");
+    expect(ptys[0]!.writes).toContain("\r");
     expect(session.status).toBe("running");
   });
 

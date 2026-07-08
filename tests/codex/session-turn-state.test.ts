@@ -21,7 +21,7 @@ describe("CodexSession turn boundaries", () => {
     ptys[0]!.emitData("\u001b[2J\u001b[H■ Conversation interrupted\r\n› ");
     await expect.poll(() => session.status).toBe("ready");
     await session.sendMessage("follow-up after interrupt");
-    expect(ptys[0]!.writes.at(-1)).toContain("follow-up after interrupt");
+    expect(ptys[0]!.writes.join("")).toContain("follow-up after interrupt");
   });
 
   test("C-ATTN-01 a rendered approval dialog blocks and emits attention", async () => {

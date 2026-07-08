@@ -27,13 +27,20 @@ export const pasteNudgeAttempts = 2;
  * lone Enter from the staged state submits, and a surplus Enter on an empty
  * composer is a no-op, so the recovery is safe on both adapters.
  */
+/**
+ * Writes a bracketed paste and submits it. The returned promise resolves once
+ * the first submitting Enter has been dispatched (after the settle delay), so
+ * the control queue does not drain the next operation into the composer before
+ * this prompt has actually been submitted. Bounded recovery re-Enters continue
+ * in the background afterwards and are idempotent.
+ */
 export function writePastedPrompt(
   terminal: InputTerminal,
   prompt: string,
   guard?: PasteGuard,
   settleDelayMs = pasteSettleDelayMs,
   nudgeDelayMs = pasteNudgeDelayMs,
-): void {
+): Promise<void> {
   terminal.sendInput(`\u001b[200~${prompt}\u001b[201~`);
   const enter = () => {
     try {
@@ -54,10 +61,13 @@ export function writePastedPrompt(
     enter();
     schedule(nudge, nudgeDelayMs);
   };
-  schedule(() => {
-    enter();
-    schedule(nudge, nudgeDelayMs);
-  }, settleDelayMs);
+  return new Promise((resolve) => {
+    schedule(() => {
+      enter();
+      schedule(nudge, nudgeDelayMs);
+      resolve();
+    }, settleDelayMs);
+  });
 }
 
 export function writeQueuedInput(
@@ -68,8 +78,9 @@ export function writeQueuedInput(
   enterDelayMs = commandEnterDelayMs,
 ): Promise<void> {
   if (mode !== "command") {
-    writePastedPrompt(terminal, message, guard);
-    return Promise.resolve();
+    // Resolve only after the message's submitting Enter has dispatched, so the
+    // next queued operation cannot write into the composer first (FIFO).
+    return writePastedPrompt(terminal, message, guard);
   }
   // Slash-command popups (Codex) swallow an Enter that arrives in the same
   // PTY chunk as the command text, so Enter follows as a separate keystroke.

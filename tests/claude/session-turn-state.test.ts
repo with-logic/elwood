@@ -41,7 +41,7 @@ describe("ClaudeSession turn boundaries", () => {
     expect(statuses.at(-1)).toBe("ready");
     // C-TURN-01: readiness is real — a queued message now submits.
     await session.sendMessage("follow-up after interrupt");
-    expect(ptys[0]!.writes.at(-1)).toContain("follow-up after interrupt");
+    expect(ptys[0]!.writes.join("")).toContain("follow-up after interrupt");
   });
 });
 
@@ -63,6 +63,6 @@ describe("ClaudeSession narrow-width turn boundaries", () => {
     ptys[0]!.emitData(interruptBanner46);
     await expect.poll(() => session.status).toBe("ready");
     await session.sendMessage("follow-up after narrow interrupt");
-    expect(ptys[0]!.writes.at(-1)).toContain("follow-up after narrow interrupt");
+    expect(ptys[0]!.writes.join("")).toContain("follow-up after narrow interrupt");
   });
 });
