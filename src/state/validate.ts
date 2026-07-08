@@ -4,20 +4,10 @@
  */
 
 import { isAbsolute, join, resolve } from "node:path";
-import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
+import { allStatuses, type ElwoodSessionStatus } from "../core/status-categories.ts";
+import type { ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
 import { safeSessionDir } from "./files.ts";
 import type { SessionRecord } from "./store.ts";
-
-const statuses = new Set<ElwoodSessionStatus>([
-  "starting",
-  "running",
-  "ready",
-  "blocked",
-  "stopped",
-  "exited",
-  "killed",
-  "torn_down",
-]);
 
 export function validateSessionRecord(
   value: unknown,
@@ -139,7 +129,7 @@ function isWarning(value: unknown): value is ElwoodWarningEvent {
 }
 
 function isStatus(value: unknown): value is ElwoodSessionStatus {
-  return typeof value === "string" && statuses.has(value as ElwoodSessionStatus);
+  return typeof value === "string" && allStatuses.has(value as ElwoodSessionStatus);
 }
 
 function optionalString(value: unknown): boolean {

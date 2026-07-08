@@ -83,7 +83,7 @@ describe("screen fact tables", () => {
     expect(
       hasScreenFact(claudeScreenFactTable, { text: "❯ ", title: idleTitle }, "working_visible"),
     ).toBe(false);
-    // A fact with no rules is false without scanning others.
+    // A screen-region rule still matches when the title is empty.
     expect(
       hasScreenFact(claudeScreenFactTable, { text: claudeWorking, title: "" }, "composer_visible"),
     ).toBe(true);

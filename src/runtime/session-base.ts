@@ -58,9 +58,9 @@ export abstract class AgentSessionBase {
   );
   private readonly statusEngine = new SessionStatusEngine({
     onStatus: (status) => this.emitStatus(status),
-    queueRunning: () => this.controlQueue.markRunning(),
+    queueRunning: () => this.controlQueue.suspendReadiness(),
     queueReady: () => this.controlQueue.markReady(),
-    queueBlocked: () => this.controlQueue.markRunning(),
+    queueBlocked: () => this.controlQueue.suspendReadiness(),
     queueClose: () => this.controlQueue.close(),
     cleanup: () => void this.cleanupRuntime(),
   });

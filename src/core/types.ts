@@ -19,15 +19,9 @@ export type TerminalSize = {
   readonly rows: number;
 };
 
-export type ElwoodSessionStatus =
-  | "starting"
-  | "running"
-  | "ready"
-  | "blocked"
-  | "stopped"
-  | "exited"
-  | "killed"
-  | "torn_down";
+import type { ElwoodSessionStatus } from "./status-categories.ts";
+
+export type { ElwoodSessionStatus };
 
 /** The kinds of evidence that can drive a session status transition. */
 export type ElwoodStatusEvidence =

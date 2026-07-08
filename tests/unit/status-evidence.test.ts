@@ -101,13 +101,17 @@ describe("decideStatus", () => {
     expect(decideStatus("blocked", "blocking_prompt_shown").to).toBeUndefined();
   });
 
+  test("evidence whose target equals the current status is a no-op", () => {
+    // `hook_turn_ended` targets `ready`; from `ready` it applies nothing.
+    expect(decideStatus("ready", "hook_turn_ended").to).toBeUndefined();
+  });
+
   test("C-PTY-06 turn evidence is ignored once the session is terminal", () => {
     for (const evidence of ["rendered_turn_started", "rendered_turn_ended"] as const) {
       const decision = decideStatus("exited", evidence);
       expect(decision.to).toBeUndefined();
       expect(decision.reason).toContain("ignored");
     }
-    expect(decideStatus("ready", "hook_turn_ended").to).toBeUndefined();
     expect(decideStatus("killed", "stop_completed").to).toBeUndefined();
     expect(decideStatus("torn_down", "terminal_exited").to).toBeUndefined();
   });
