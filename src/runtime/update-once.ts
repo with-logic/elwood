@@ -8,16 +8,23 @@ import type { CommandResult } from "./seams.ts";
 
 type Adapter = "claude" | "codex";
 
-const updatedAdapters = new Set<Adapter>();
+// The in-flight/settled autoupdate per adapter. Every `autoupdate: true`
+// caller awaits the SAME update (not just the first) so concurrent roster
+// spawns run one update and all observe the same success or failure — no
+// caller proceeds on a stale pre-update version or races a second update.
+const autoupdates = new Map<Adapter, Promise<void>>();
 
 /**
- * True exactly once per adapter per process: parents that spawn a roster of
- * sessions at launch should not run N concurrent same-binary updates.
+ * Runs the adapter's update at most once per process; concurrent callers share
+ * the single in-flight update. `runUpdate` invalidates the version cache on
+ * success so the post-update version is re-read by every caller.
  */
-export function shouldRunAutoupdate(adapter: Adapter): boolean {
-  if (updatedAdapters.has(adapter)) return false;
-  updatedAdapters.add(adapter);
-  return true;
+export function cachedAutoupdate(adapter: Adapter, runUpdate: () => Promise<void>): Promise<void> {
+  const existing = autoupdates.get(adapter);
+  if (existing) return existing;
+  const pending = runUpdate();
+  autoupdates.set(adapter, pending);
+  return pending;
 }
 
 // The in-flight/settled `--version` read per adapter. Caching the PROMISE
@@ -48,7 +55,7 @@ export function invalidateVersionRead(adapter: Adapter): void {
 }
 
 export function resetAutoupdateForTests(): void {
-  updatedAdapters.clear();
+  autoupdates.clear();
 }
 
 export function resetPreflightCacheForTests(): void {

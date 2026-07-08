@@ -4,7 +4,11 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { currentCommandRunner, resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
+import {
+  currentCommandRunner,
+  resetRuntimeSeamsForTests,
+  setProbeTimeoutMsForTests,
+} from "../../src/runtime/seams.ts";
 import { cleanupStartupResources } from "../../src/runtime/startup-cleanup.ts";
 import { runTeardownSteps } from "../../src/runtime/teardown.ts";
 
@@ -27,6 +31,55 @@ describe("runtime seams", () => {
     expect(result.status).toBe(3);
     expect(result.stdout).toBe("out");
     expect(result.stderr).toBe("err");
+  });
+
+  test("C-PERF-01 the production runner is async — the loop advances before it resolves", async () => {
+    resetRuntimeSeamsForTests();
+    let ticked = false;
+    // A macrotask scheduled now would not run if the runner blocked the loop.
+    setTimeout(() => {
+      ticked = true;
+    }, 0);
+    const pending = currentCommandRunner()("node", ["-e", "setTimeout(() => {}, 15)"]);
+    // Yield once: if the runner were synchronous (spawnSync), the subprocess
+    // would already be done and the loop would not have ticked mid-call.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(ticked).toBe(true);
+    await pending;
+    resetRuntimeSeamsForTests();
+  });
+
+  test("C-PERF-01 a hung probe is killed at the timeout with a typed error", async () => {
+    resetRuntimeSeamsForTests();
+    setProbeTimeoutMsForTests(50);
+    // A child that never exits must be killed and resolve an ETIMEDOUT result.
+    const result = await currentCommandRunner()("node", ["-e", "setInterval(() => {}, 1000)"]);
+    expect(result.status).toBeNull();
+    expect(result.error?.code).toBe("ETIMEDOUT");
+    resetRuntimeSeamsForTests();
+  });
+
+  test("C-PERF-01 a stdout-flooding probe is capped and killed with a typed error", async () => {
+    resetRuntimeSeamsForTests();
+    // A child that streams far more than the 1MB cap must be bounded, not OOM.
+    const result = await currentCommandRunner()("node", [
+      "-e",
+      "const b = 'x'.repeat(1 << 20); for (let i = 0; i < 8; i++) process.stdout.write(b);",
+    ]);
+    expect(result.error?.code).toBe("E2BIG");
+    expect(result.stdout.length).toBeLessThanOrEqual(1_000_000);
+    resetRuntimeSeamsForTests();
+  });
+
+  test("C-PERF-01 a stderr-flooding probe is capped and killed with a typed error", async () => {
+    resetRuntimeSeamsForTests();
+    const result = await currentCommandRunner()("node", [
+      "-e",
+      "const b = 'x'.repeat(1 << 20); for (let i = 0; i < 8; i++) process.stderr.write(b);",
+    ]);
+    expect(result.error?.code).toBe("E2BIG");
+    expect(result.stderr.length).toBeLessThanOrEqual(1_000_000);
+    resetRuntimeSeamsForTests();
   });
 });
 

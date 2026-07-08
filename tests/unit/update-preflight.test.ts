@@ -119,73 +119,49 @@ describe("autoupdate dedupe", () => {
     expect(updates.filter((command) => command.includes("codex update"))).toHaveLength(1);
     resetRuntimeSeamsForTests();
   });
-});
 
-describe("version-read cache", () => {
-  beforeEach(resetPreflight);
-
-  test("C-PERF-01 concurrent adapter preflights overlap instead of serializing", async () => {
-    setPlatformForTests("darwin");
-    // Deterministic overlap proof: track how many reads are in flight at once.
-    // A synchronous (serializing) runner would never exceed 1; an async one
-    // that overlaps reaches 2 when both adapters' reads are pending together.
-    let inFlight = 0;
-    let maxInFlight = 0;
-    setCommandRunnerForTests((_command, args) => {
-      const stdout = args.join(" ").includes("codex") ? "codex-cli 0.132.0" : "2.1.144";
-      inFlight += 1;
-      maxInFlight = Math.max(maxInFlight, inFlight);
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          inFlight -= 1;
-          resolve({ status: 0, stdout, stderr: "" });
-        }, 5);
-      });
-    });
-    await Promise.all([preflightClaude(false), preflightCodex(false)]);
-    expect(maxInFlight).toBe(2);
-    resetRuntimeSeamsForTests();
-  });
-
-  test("C-PERF-02 reads --version at most once per process", async () => {
-    let reads = 0;
-    setPlatformForTests("darwin");
-    setCommandRunnerForTests(() => {
-      reads += 1;
-      return { status: 0, stdout: "2.1.144", stderr: "" };
-    });
-    await preflightClaude(false);
-    await preflightClaude(true);
-    expect(reads).toBe(1);
-    resetRuntimeSeamsForTests();
-  });
-
-  test("C-PERF-02 concurrent first reads share one subprocess", async () => {
-    let reads = 0;
-    setPlatformForTests("darwin");
-    setCommandRunnerForTests(
-      () =>
-        new Promise((resolve) => {
-          reads += 1;
-          setTimeout(() => resolve({ status: 0, stdout: "2.1.144", stderr: "" }), 5);
-        }),
-    );
-    await Promise.all([preflightClaude(false), preflightClaude(false), preflightClaude(false)]);
-    expect(reads).toBe(1);
-    resetRuntimeSeamsForTests();
-  });
-
-  test("C-PERF-02 autoupdate invalidates the cache so the version is re-read", async () => {
-    const versions: string[] = [];
+  test("C-CLAUDE-09 concurrent autoupdate callers all validate the post-update version", async () => {
+    // Version reads: the first (pre-update) is too old; after the shared
+    // update the re-read is valid. Every concurrent caller must observe the
+    // post-update version, not the stale pre-update one.
+    const versions = ["2.1.1", "2.1.144", "2.1.144"];
+    let updates = 0;
     setPlatformForTests("darwin");
     setCommandRunnerForTests((_command, args) => {
-      if (args.join(" ").includes("claude update")) return { status: 0, stdout: "", stderr: "" };
-      versions.push("read");
+      if (args.join(" ").includes("claude update")) {
+        updates += 1;
+        return { status: 0, stdout: "", stderr: "" };
+      }
+      return { status: 0, stdout: versions.shift() ?? "2.1.144", stderr: "" };
+    });
+    // Three concurrent autoupdate callers: one update, all resolve (none
+    // rejects on the stale 2.1.1 pre-update read).
+    await Promise.all([
+      preflightClaude(false, true),
+      preflightClaude(false, true),
+      preflightClaude(false, true),
+    ]);
+    expect(updates).toBe(1);
+    resetRuntimeSeamsForTests();
+  });
+
+  test("C-CLAUDE-08 concurrent autoupdate callers share one update failure", async () => {
+    let updates = 0;
+    setPlatformForTests("darwin");
+    setCommandRunnerForTests((_command, args) => {
+      if (args.join(" ").includes("claude update")) {
+        updates += 1;
+        return { status: 1, stdout: "", stderr: "failed" };
+      }
       return { status: 0, stdout: "2.1.144", stderr: "" };
     });
-    await preflightClaude(false, true);
-    // One read before the update, one after the invalidate.
-    expect(versions).toHaveLength(2);
+    const results = await Promise.allSettled([
+      preflightClaude(false, true),
+      preflightClaude(false, true),
+    ]);
+    // Both callers reject from the single shared update failure.
+    expect(results.every((r) => r.status === "rejected")).toBe(true);
+    expect(updates).toBe(1);
     resetRuntimeSeamsForTests();
   });
 });

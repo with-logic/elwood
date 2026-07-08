@@ -8,9 +8,9 @@ import type { ElwoodWarningEvent } from "../core/types.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
 import {
+  cachedAutoupdate,
   cachedVersionRead,
   invalidateVersionRead,
-  shouldRunAutoupdate,
 } from "../runtime/update-once.ts";
 
 export const minimumCodexVersion = "0.124.0";
@@ -20,6 +20,7 @@ export type CodexPreflightWarning = Omit<
   "elwoodSessionId"
 >;
 let cachedCapabilities: CodexCliCapabilities | undefined;
+let inFlightCapabilities: Promise<CodexCliCapabilities> | undefined;
 
 export async function preflightCodex(
   strictVersionCheck: boolean,
@@ -31,12 +32,11 @@ export async function preflightCodex(
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
   let result = await readCodexVersion();
-  if (autoupdate && shouldRunAutoupdate("codex")) {
-    await runCodexUpdate();
-    cachedCapabilities = undefined;
-    // The update may have changed the binary; drop the cached read so the
-    // post-update version is re-read.
-    invalidateVersionRead("codex");
+  if (autoupdate) {
+    // Every autoupdate caller awaits the single shared update, then re-reads
+    // the same post-update version — so no concurrent caller validates a
+    // stale pre-update result or races a second update.
+    await cachedAutoupdate("codex", runCodexUpdate);
     result = await readCodexVersion();
   }
   const version = parseCodexVersion(result.stdout);
@@ -61,6 +61,11 @@ async function runCodexUpdate(): Promise<void> {
   if (result.status !== 0) {
     throw elwoodError("codex_update_failed", "`codex update` failed.", { stderr: result.stderr });
   }
+  // The update may have changed the binary; drop the cached version read and
+  // the capability cache so every caller re-detects against the new binary.
+  invalidateVersionRead("codex");
+  cachedCapabilities = undefined;
+  inFlightCapabilities = undefined;
 }
 
 async function readCodexVersion(): Promise<CommandResult> {
@@ -87,16 +92,22 @@ export function parseCodexVersion(output: string): string | null {
 
 export async function detectCodexCliCapabilities(): Promise<CodexCliCapabilities> {
   if (cachedCapabilities) return cachedCapabilities;
+  // Cache the in-flight probe so concurrent first Codex spawns share one
+  // `codex --help` subprocess rather than each launching its own.
+  inFlightCapabilities ??= detectCapabilities();
+  cachedCapabilities = await inFlightCapabilities;
+  return cachedCapabilities;
+}
+
+async function detectCapabilities(): Promise<CodexCliCapabilities> {
   const result = await currentCommandRunner()(userShell(), probeShellCommand("codex --help"));
   const help = `${result.stdout}\n${result.stderr}`;
-  cachedCapabilities = {
-    supportsHookTrustBypass: help.includes("--dangerously-bypass-hook-trust"),
-  };
-  return cachedCapabilities;
+  return { supportsHookTrustBypass: help.includes("--dangerously-bypass-hook-trust") };
 }
 
 export function resetCodexPreflightCacheForTests(): void {
   cachedCapabilities = undefined;
+  inFlightCapabilities = undefined;
 }
 
 function compareVersions(left: string, right: string): number {

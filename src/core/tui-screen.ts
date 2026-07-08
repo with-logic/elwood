@@ -46,15 +46,26 @@ export async function openCommandScreen(input: {
   // surplus Enter, are both no-ops once the picker is already open.
   const nudgeDelayMs = input.nudgeDelayMs ?? openNudgeDelayMs;
   let resubmitting = false;
-  const nudgeTimer = setInterval(() => {
-    if (resubmitting || input.isOpen(input.terminal.snapshot().text)) return;
-    resubmitting = true;
-    void input.submit().finally(() => {
-      resubmitting = false;
-    });
-  }, nudgeDelayMs);
+  let nudgeTimer: ReturnType<typeof setInterval> | undefined;
+  // A re-submit that rejects (e.g. the session closed while polling) must
+  // settle this call with that error immediately, not be dropped as an
+  // unhandled rejection while the caller waits out the picker timeout.
+  const submitFailed = new Promise<never>((_resolve, reject) => {
+    nudgeTimer = setInterval(() => {
+      if (resubmitting || input.isOpen(input.terminal.snapshot().text)) return;
+      resubmitting = true;
+      // A rejected re-submit (e.g. the session closed) propagates verbatim;
+      // `controlQueue.send` only ever rejects with a typed ElwoodError.
+      input.submit().then(() => {
+        resubmitting = false;
+      }, reject);
+    }, nudgeDelayMs);
+  });
   try {
-    return await waitForScreen(input.terminal, input.isOpen, input.timeoutMs, input.label);
+    return await Promise.race([
+      waitForScreen(input.terminal, input.isOpen, input.timeoutMs, input.label),
+      submitFailed,
+    ]);
   } finally {
     clearInterval(nudgeTimer);
   }

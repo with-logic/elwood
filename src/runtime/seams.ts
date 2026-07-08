@@ -56,6 +56,17 @@ export function resetRuntimeSeamsForTests(): void {
   ptyFactory = null;
   commandRunner = realCommandRunner;
   platform = process.platform;
+  probeTimeoutMs = defaultProbeTimeoutMs;
+}
+
+// A misbehaving CLI on PATH must not stream forever or flood memory during a
+// one-shot probe: bound each probe's runtime and captured output.
+const defaultProbeTimeoutMs = 15_000;
+const maxProbeOutputBytes = 1_000_000;
+let probeTimeoutMs = defaultProbeTimeoutMs;
+
+export function setProbeTimeoutMsForTests(value: number): void {
+  probeTimeoutMs = value;
 }
 
 function realCommandRunner(command: string, args: readonly string[]): Promise<CommandResult> {
@@ -63,23 +74,51 @@ function realCommandRunner(command: string, args: readonly string[]): Promise<Co
     const child = spawn(command, [...args]);
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    const settle = (result: CommandResult): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill("SIGKILL");
+      resolve(result);
+    };
+    const capture = (current: string, chunk: string): string =>
+      (current + chunk).slice(0, maxProbeOutputBytes);
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
-      stdout += chunk;
+      stdout = capture(stdout, chunk);
+      if (stdout.length >= maxProbeOutputBytes) settle(overflow(stdout, stderr));
     });
     child.stderr.on("data", (chunk: string) => {
-      stderr += chunk;
+      stderr = capture(stderr, chunk);
+      if (stderr.length >= maxProbeOutputBytes) settle(overflow(stdout, stderr));
     });
-    // Spawn failure (e.g. ENOENT) fires `error` and not `close`; resolve the
-    // same shape spawnSync produced. A later `close` is a no-op — Promise
-    // ignores the second settle. Node's spawn `error` always carries a `code`
-    // (e.g. "ENOENT"), which preflight maps to `*_not_found`.
+    // Spawn failure (e.g. ENOENT) fires `error` and not `close`. Node's spawn
+    // `error` always carries a `code`, which preflight maps to `*_not_found`.
     child.on("error", (err: NodeJS.ErrnoException) => {
-      resolve({ status: null, stdout, stderr, error: { code: err.code, message: err.message } });
+      settle({ status: null, stdout, stderr, error: { code: err.code, message: err.message } });
     });
     child.on("close", (code) => {
-      resolve({ status: code, stdout, stderr });
+      settle({ status: code, stdout, stderr });
     });
+    const timer = setTimeout(() => {
+      settle({
+        status: null,
+        stdout,
+        stderr,
+        error: { code: "ETIMEDOUT", message: `probe timed out after ${probeTimeoutMs} ms` },
+      });
+    }, probeTimeoutMs);
+    timer.unref?.();
   });
+}
+
+function overflow(stdout: string, stderr: string): CommandResult {
+  return {
+    status: null,
+    stdout,
+    stderr,
+    error: { code: "E2BIG", message: `probe output exceeded ${maxProbeOutputBytes} bytes` },
+  };
 }

@@ -8,9 +8,9 @@ import type { ElwoodWarningEvent } from "../core/types.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
 import {
+  cachedAutoupdate,
   cachedVersionRead,
   invalidateVersionRead,
-  shouldRunAutoupdate,
 } from "../runtime/update-once.ts";
 
 export const minimumClaudeVersion = "2.1.144";
@@ -29,11 +29,11 @@ export async function preflightClaude(
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
   let result = await readClaudeVersion();
-  if (autoupdate && shouldRunAutoupdate("claude")) {
-    await runClaudeUpdate();
-    // The update may have changed the binary; drop the cached read so the
-    // post-update version is re-read.
-    invalidateVersionRead("claude");
+  if (autoupdate) {
+    // Every autoupdate caller awaits the single shared update, then re-reads
+    // the same post-update version — so no concurrent caller validates a
+    // stale pre-update result or races a second update.
+    await cachedAutoupdate("claude", runClaudeUpdate);
     result = await readClaudeVersion();
   }
   const version = parseVersion(result.stdout);
@@ -63,6 +63,9 @@ async function runClaudeUpdate(): Promise<void> {
       stderr: result.stderr,
     });
   }
+  // The update may have changed the binary; drop the cached read so every
+  // caller re-reads the post-update version.
+  invalidateVersionRead("claude");
 }
 
 async function readClaudeVersion(): Promise<CommandResult> {

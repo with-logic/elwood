@@ -133,6 +133,29 @@ describe("model picker automation", () => {
     expect(submits).toBeGreaterThanOrEqual(2);
   });
 
+  test("C-API-35 a rejected re-submit settles openCommandScreen with that error", async () => {
+    // The picker never opens; the first nudge re-submit rejects (e.g. the
+    // session closed while polling). openCommandScreen must reject with that
+    // error immediately, not wait out the timeout or leak an unhandled reject.
+    const terminal = scripted("still the composer");
+    let submits = 0;
+    const submit = () => {
+      submits += 1;
+      // First call (initial submit) resolves; the nudge re-submit rejects.
+      return submits === 1 ? Promise.resolve() : Promise.reject(new Error("session_not_running"));
+    };
+    await expect(
+      openCommandScreen({
+        terminal,
+        submit,
+        isOpen: (screen) => /Select model/.test(screen),
+        timeoutMs: 5_000,
+        label: "test picker",
+        nudgeDelayMs: 10,
+      }),
+    ).rejects.toThrow("session_not_running");
+  });
+
   test("C-API-23 openCommandScreen does not re-submit once the picker is open", async () => {
     const terminal = scripted("booting");
     let submits = 0;

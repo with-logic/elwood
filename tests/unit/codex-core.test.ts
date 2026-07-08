@@ -112,6 +112,27 @@ describe("Codex core helpers", () => {
     resetRuntimeSeamsForTests();
   });
 
+  test("C-PERF-02 concurrent first capability probes share one subprocess", async () => {
+    resetCodexPreflightCacheForTests();
+    setPlatformForTests("darwin");
+    let helpReads = 0;
+    setCommandRunnerForTests(
+      () =>
+        new Promise((resolve) => {
+          helpReads += 1;
+          setTimeout(() => resolve({ status: 0, stdout: "codex help", stderr: "" }), 5);
+        }),
+    );
+    await Promise.all([
+      detectCodexCliCapabilities(),
+      detectCodexCliCapabilities(),
+      detectCodexCliCapabilities(),
+    ]);
+    expect(helpReads).toBe(1);
+    resetCodexPreflightCacheForTests();
+    resetRuntimeSeamsForTests();
+  });
+
   test("C-HRESP-10 serializes Codex hook response variants", () => {
     expect(
       serializeCodexHookResult("Stop", { continue: false, stopReason: "run tests" }).stdout,

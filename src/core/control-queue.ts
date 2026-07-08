@@ -108,7 +108,12 @@ export class ControlQueue {
     this.drain();
   }
 
-  markRunning(): void {
+  /**
+   * Suspends readiness so readiness-waiting operations (messages, compact)
+   * hold until the next `markReady`. Used both when a turn starts and when a
+   * blocking dialog appears; it implies no new turn on its own.
+   */
+  suspendReadiness(): void {
     this.ready = false;
   }
 
@@ -131,19 +136,27 @@ export class ControlQueue {
     try {
       dispatched = this.submitNow(operation.input, operation.kind);
     } catch (error) {
-      operation.reject(error instanceof Error ? error : new Error(String(error)));
+      operation.reject(asError(error));
       this.drain();
       return;
     }
-    // The caller resolves as soon as the write is dispatched; the next drain
-    // is held until the write (incl. any delayed command Enter) fully lands,
-    // so back-to-back queued operations never interleave in the terminal.
-    operation.resolve();
+    // The write (incl. any delayed command Enter) holds the next drain so
+    // back-to-back queued operations never interleave in the terminal. The
+    // caller settles with the write's outcome: a rejected submit rejects the
+    // operation rather than leaking an unhandled rejection.
     this.inFlight = true;
-    dispatched.finally(() => {
-      this.inFlight = false;
-      this.drain();
-    });
+    dispatched.then(
+      () => {
+        this.inFlight = false;
+        operation.resolve();
+        this.drain();
+      },
+      (error: unknown) => {
+        this.inFlight = false;
+        operation.reject(asError(error));
+        this.drain();
+      },
+    );
   }
 
   /** Writes the operation and returns a promise for when its write fully lands. */
@@ -154,4 +167,8 @@ export class ControlQueue {
     if (traits.startsTurn) this.onTurnStarted();
     return dispatched;
   }
+}
+
+function asError(value: unknown): Error {
+  return value instanceof Error ? value : new Error(String(value));
 }
