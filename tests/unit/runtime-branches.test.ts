@@ -4,10 +4,47 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { setProbeTimeoutMsForTests } from "../../src/runtime/probe.ts";
+import { completeUtf8Length, setProbeTimeoutMsForTests } from "../../src/runtime/probe.ts";
 import { currentCommandRunner, resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { cleanupStartupResources } from "../../src/runtime/startup-cleanup.ts";
 import { runTeardownSteps } from "../../src/runtime/teardown.ts";
+
+describe("C-PERF-03 UTF-8 boundary truncation", () => {
+  const euro = Buffer.from("€", "utf8"); // 3 bytes: e2 82 ac
+
+  test("keeps a buffer that ends on a complete code point", () => {
+    const full = Buffer.concat([euro, euro]);
+    expect(completeUtf8Length(full)).toBe(full.length);
+  });
+
+  test("keeps a buffer ending in ASCII", () => {
+    const ascii = Buffer.from("ab", "utf8");
+    expect(completeUtf8Length(ascii)).toBe(2);
+  });
+
+  test("drops an incomplete 3-byte trailing sequence", () => {
+    const split = Buffer.concat([euro, euro.subarray(0, 2)]); // last € missing 1 byte
+    expect(completeUtf8Length(split)).toBe(3);
+  });
+
+  test("drops an incomplete 4-byte trailing sequence", () => {
+    const emoji = Buffer.from("😀", "utf8"); // 4 bytes: f0 9f 98 80
+    const split = emoji.subarray(0, 3); // one byte short
+    expect(completeUtf8Length(split)).toBe(0);
+  });
+
+  test("drops an incomplete 2-byte trailing sequence", () => {
+    const eacute = Buffer.from("é", "utf8"); // 2 bytes: c3 a9
+    const split = eacute.subarray(0, 1); // lead byte only
+    expect(completeUtf8Length(split)).toBe(0);
+  });
+
+  test("keeps everything when there is no lead byte (all continuation bytes)", () => {
+    // Degenerate input with no lead byte: the guard keeps the buffer as-is.
+    const orphan = Buffer.from([0x80, 0x80]);
+    expect(completeUtf8Length(orphan)).toBe(2);
+  });
+});
 
 describe("runtime seams", () => {
   test("real command runner reports spawn failures for missing commands", async () => {
@@ -82,18 +119,19 @@ describe("runtime seams", () => {
   test("C-PERF-03 the output cap is enforced by bytes, not decoded length", async () => {
     resetRuntimeSeamsForTests();
     // Multibyte output: each `€` is 3 bytes, so a decoded-LENGTH cap of 1e6
-    // would keep ~1e6 chars ≈ 3e6 bytes. A byte cap keeps the captured bytes
-    // near 1e6 — assert the decoded string is far short of a length cap (its
-    // char count is ~1e6/3), proving the cap counts bytes. (Re-encoding a
-    // boundary-split char can nudge byte length a couple bytes over the cap;
-    // memory safety is the captured-byte bound, which the cap enforces.)
+    // would keep ~1e6 chars ≈ 3e6 bytes. A byte cap keeps the decoded string
+    // far short of a length cap (its char count is ~1e6/3), proving the cap
+    // counts bytes. Truncation drops an incomplete trailing code point, so the
+    // decoded string re-encodes to at most the exact cap (no replacement-char
+    // growth past 1e6).
     const result = await currentCommandRunner()("node", [
       "-e",
       "const b = '\\u20ac'.repeat(1 << 20); for (let i = 0; i < 8; i++) process.stdout.write(b);",
     ]);
     expect(result.error?.code).toBe("E2BIG");
     expect(result.stdout.length).toBeLessThan(400_000); // ~1e6 bytes / 3, not 1e6 chars
-    expect(Buffer.byteLength(result.stdout)).toBeLessThanOrEqual(1_000_002);
+    expect(result.stdout).not.toContain("�"); // no replacement char from a split
+    expect(Buffer.byteLength(result.stdout)).toBeLessThanOrEqual(1_000_000);
     resetRuntimeSeamsForTests();
   });
 

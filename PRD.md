@@ -1315,7 +1315,10 @@ caller proceeds on a stale pre-update version or races a second update.
 Each probe is bounded so a broken or hostile CLI on PATH cannot hang or flood
 the host: a probe that does not exit within a default timeout (15 seconds) or
 whose captured output exceeds a per-stream byte cap (1,000,000 bytes) is
-killed, and its captured output is truncated to the cap. This applies to every
+killed, and its captured output is truncated to the cap. Truncation happens on
+a UTF-8 code-point boundary — an incomplete trailing sequence is dropped — so
+the decoded output re-encodes to at most the cap rather than growing via a
+replacement character. This applies to every
 non-PTY probe — `--version`, `--help` capability detection, and
 `claude update` / `codex update`. A bounded (or otherwise failed) probe
 surfaces through that probe's existing public error name — `--version` and

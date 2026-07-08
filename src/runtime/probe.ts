@@ -43,8 +43,33 @@ class CappedBuffer {
   }
 
   text(): string {
-    return Buffer.concat(this.chunks).toString("utf8");
+    // Byte capping can split a multibyte code point at the boundary. Drop any
+    // incomplete trailing UTF-8 sequence so the decoded string re-encodes to
+    // at most the byte cap (C-PERF-03) rather than growing via a replacement
+    // character.
+    const bytes = Buffer.concat(this.chunks);
+    return bytes.subarray(0, completeUtf8Length(bytes)).toString("utf8");
   }
+}
+
+/**
+ * Returns the length of the longest prefix of `bytes` that ends on a complete
+ * UTF-8 code point, dropping at most a 3-byte incomplete trailing sequence.
+ * Exported for focused boundary tests (C-PERF-03).
+ */
+export function completeUtf8Length(bytes: Buffer): number {
+  const end = bytes.length;
+  // Scan back over continuation bytes (0b10xxxxxx) to the lead byte.
+  let lead = end - 1;
+  while (lead >= 0 && (bytes[lead] as number) >= 0x80 && (bytes[lead] as number) < 0xc0) lead--;
+  if (lead < 0) return end;
+  const leadByte = bytes[lead] as number;
+  // ASCII byte is itself complete.
+  if (leadByte < 0x80) return end;
+  // The scan stopped on a lead byte (>= 0xc0), so it heads a 2-, 3-, or 4-byte
+  // sequence. Keep all if that sequence is complete; else drop the partial lead.
+  const expected = leadByte >= 0xf0 ? 4 : leadByte >= 0xe0 ? 3 : 2;
+  return end - lead === expected ? end : lead;
 }
 
 export function runProbe(command: string, args: readonly string[]): Promise<CommandResult> {
