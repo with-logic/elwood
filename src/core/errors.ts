@@ -3,6 +3,8 @@
  * Implements PRD §10.
  */
 
+import type { CommandResult } from "../runtime/seams.ts";
+
 export type ElwoodErrorName =
   | "unsupported_platform"
   | "claude_not_found"
@@ -71,10 +73,9 @@ export function causeDetails(error: unknown): Readonly<Record<string, string>> {
  * runner's typed cause/errno (e.g. `ETIMEDOUT` on a probe timeout, `E2BIG` on
  * output overflow) so a start failure never drops the underlying reason.
  */
-export function probeFailureDetails(result: {
-  readonly stderr: string;
-  readonly error?: { readonly code?: string | undefined; readonly message: string };
-}): Readonly<Record<string, string>> {
+export function probeFailureDetails(
+  result: Pick<CommandResult, "stderr" | "error">,
+): Readonly<Record<string, string>> {
   const details: Record<string, string> = { stderr: result.stderr };
   if (result.error) {
     details["cause"] = result.error.message;

@@ -59,7 +59,7 @@ export async function preflightCodex(
 async function runCodexUpdate(): Promise<void> {
   const result = await currentCommandRunner()(userShell(), probeShellCommand("codex update"));
   if (result.status !== 0) {
-    throw elwoodError("codex_update_failed", "`codex update` failed.", { stderr: result.stderr });
+    throw elwoodError("codex_update_failed", "`codex update` failed.", probeFailureDetails(result));
   }
   // The update may have changed the binary; drop the cached version read and
   // the capability cache so every caller re-detects against the new binary.
@@ -102,6 +102,11 @@ export async function detectCodexCliCapabilities(): Promise<CodexCliCapabilities
 
 async function detectCapabilities(): Promise<CodexCliCapabilities> {
   const result = await currentCommandRunner()(userShell(), probeShellCommand("codex --help"));
+  // A bounded probe (timeout/overflow) or nonzero exit is a diagnosable
+  // startup failure, not "capability unsupported" — surface it with cause.
+  if (result.error !== undefined || result.status !== 0) {
+    throw elwoodError("codex_start_failed", "`codex --help` failed.", probeFailureDetails(result));
+  }
   const help = `${result.stdout}\n${result.stderr}`;
   return { supportsHookTrustBypass: help.includes("--dangerously-bypass-hook-trust") };
 }

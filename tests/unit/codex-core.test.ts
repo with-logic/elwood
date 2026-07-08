@@ -6,11 +6,9 @@
 import { describe, expect, test } from "vitest";
 import { buildCodexShellCommand } from "../../src/codex/command.ts";
 import {
-  detectCodexCliCapabilities,
   minimumCodexVersion,
   parseCodexVersion,
   preflightCodex,
-  resetCodexPreflightCacheForTests,
 } from "../../src/codex/preflight.ts";
 import { serializeCodexHookResult } from "../../src/codex/serialize.ts";
 import { ElwoodError } from "../../src/core/errors.ts";
@@ -102,42 +100,6 @@ describe("Codex core helpers", () => {
     await expect(preflightCodex(true)).resolves.toBeUndefined();
     setVersion({ status: 0, stdout: "0.1.0", stderr: "" });
     await expect(preflightCodex(false)).rejects.toThrow(ElwoodError);
-    resetRuntimeSeamsForTests();
-  });
-
-  test("C-CODEX-06 detects hook trust bypass support from login shell help", async () => {
-    setPlatformForTests("darwin");
-    setCommandRunnerForTests((_command, args) =>
-      args.join(" ").includes("--help")
-        ? { status: 0, stdout: "--dangerously-bypass-hook-trust", stderr: "" }
-        : { status: 0, stdout: "codex-cli 0.133.0", stderr: "" },
-    );
-    expect((await detectCodexCliCapabilities()).supportsHookTrustBypass).toBe(true);
-    resetCodexPreflightCacheForTests();
-    setCommandRunnerForTests(() => ({ status: 0, stdout: "codex help", stderr: "" }));
-    expect((await detectCodexCliCapabilities()).supportsHookTrustBypass).toBe(false);
-    resetCodexPreflightCacheForTests();
-    resetRuntimeSeamsForTests();
-  });
-
-  test("C-PERF-02 concurrent first capability probes share one subprocess", async () => {
-    resetCodexPreflightCacheForTests();
-    setPlatformForTests("darwin");
-    let helpReads = 0;
-    setCommandRunnerForTests(
-      () =>
-        new Promise((resolve) => {
-          helpReads += 1;
-          setTimeout(() => resolve({ status: 0, stdout: "codex help", stderr: "" }), 5);
-        }),
-    );
-    await Promise.all([
-      detectCodexCliCapabilities(),
-      detectCodexCliCapabilities(),
-      detectCodexCliCapabilities(),
-    ]);
-    expect(helpReads).toBe(1);
-    resetCodexPreflightCacheForTests();
     resetRuntimeSeamsForTests();
   });
 

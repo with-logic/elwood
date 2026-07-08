@@ -1314,12 +1314,17 @@ caller proceeds on a stale pre-update version or races a second update.
 
 Each probe is bounded so a broken or hostile CLI on PATH cannot hang or flood
 the host: a probe that does not exit within a default timeout (15 seconds) or
-whose captured output exceeds a per-stream cap (1,000,000 bytes) is killed, and
-its captured output is truncated to the cap. A bounded probe surfaces through
-the same public start-failure names (`claude_start_failed` / `codex_start_failed`),
-and the underlying reason is preserved in the error `details` as `cause` (and
-`errno`, e.g. `ETIMEDOUT` on timeout or `E2BIG` on overflow) alongside any
-`stderr`.
+whose captured output exceeds a per-stream byte cap (1,000,000 bytes) is
+killed, and its captured output is truncated to the cap. This applies to every
+non-PTY probe — `--version`, `--help` capability detection, and
+`claude update` / `codex update`. A bounded (or otherwise failed) probe
+surfaces through that probe's existing public error name — `--version` and
+`--help` failures as `claude_start_failed` / `codex_start_failed`, update
+failures as `claude_update_failed` / `codex_update_failed` — and the underlying
+reason is preserved in the error `details` as `cause` (and `errno`, e.g.
+`ETIMEDOUT` on timeout or `E2BIG` on overflow) alongside any `stderr`. A killed
+probe is signaled only because Elwood aborted it; a probe that exits or fails
+to spawn on its own is not signaled.
 
 After spawning the PTY, Elwood waits briefly for immediate process exits or
 known authentication/startup failure banners before reporting the session as
@@ -1573,7 +1578,7 @@ Each criterion has:
 |---|---|---|
 | C-PERF-01 | §9.2 | Version/capability probes run asynchronously and never block the host process's event loop, so a roster of concurrent spawns does not serialize on a single thread. |
 | C-PERF-02 | §9.2 | Each adapter's `--version` is read at most once per parent process; concurrent first reads share a single subprocess, later reads reuse the cached result, and the cache is invalidated after `autoupdate`. |
-| C-PERF-03 | §9.2 | A probe that exceeds the default runtime timeout (15s) or per-stream output cap (1,000,000 bytes) is killed; it surfaces as the adapter's start-failure name with the `cause`/`errno` (`ETIMEDOUT`/`E2BIG`) preserved in `details`. |
+| C-PERF-03 | §9.2 | Any non-PTY probe (`--version`, `--help`, `update`) that exceeds the default runtime timeout (15s) or per-stream byte cap (1,000,000 bytes) is killed and surfaces through that probe's public error name (`*_start_failed` for version/help, `*_update_failed` for update) with `cause`/`errno` (`ETIMEDOUT`/`E2BIG`) preserved in `details`; probes that exit or fail to spawn on their own are not signaled. |
 | C-PERF-04 | §9.2 | With `autoupdate`, concurrent callers share one update and all validate the same post-update version; none proceeds on a stale pre-update version or races a second update. |
 
 #### C-CLAUDE: Claude Startup And Settings (§4, §7, §9)

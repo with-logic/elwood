@@ -4,11 +4,8 @@
  */
 
 import { describe, expect, test } from "vitest";
-import {
-  currentCommandRunner,
-  resetRuntimeSeamsForTests,
-  setProbeTimeoutMsForTests,
-} from "../../src/runtime/seams.ts";
+import { setProbeTimeoutMsForTests } from "../../src/runtime/probe.ts";
+import { currentCommandRunner, resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { cleanupStartupResources } from "../../src/runtime/startup-cleanup.ts";
 import { runTeardownSteps } from "../../src/runtime/teardown.ts";
 
@@ -49,7 +46,7 @@ describe("runtime seams", () => {
     resetRuntimeSeamsForTests();
   });
 
-  test("C-PERF-01 a hung probe is killed at the timeout with a typed error", async () => {
+  test("C-PERF-03 a hung probe is killed at the timeout with a typed error", async () => {
     resetRuntimeSeamsForTests();
     setProbeTimeoutMsForTests(50);
     // A child that never exits must be killed and resolve an ETIMEDOUT result.
@@ -59,7 +56,7 @@ describe("runtime seams", () => {
     resetRuntimeSeamsForTests();
   });
 
-  test("C-PERF-01 a stdout-flooding probe is capped and killed with a typed error", async () => {
+  test("C-PERF-03 a stdout-flooding probe is capped and killed with a typed error", async () => {
     resetRuntimeSeamsForTests();
     // A child that streams far more than the 1MB cap must be bounded, not OOM.
     const result = await currentCommandRunner()("node", [
@@ -67,18 +64,45 @@ describe("runtime seams", () => {
       "const b = 'x'.repeat(1 << 20); for (let i = 0; i < 8; i++) process.stdout.write(b);",
     ]);
     expect(result.error?.code).toBe("E2BIG");
-    expect(result.stdout.length).toBeLessThanOrEqual(1_000_000);
+    expect(Buffer.byteLength(result.stdout)).toBeLessThanOrEqual(1_000_000);
     resetRuntimeSeamsForTests();
   });
 
-  test("C-PERF-01 a stderr-flooding probe is capped and killed with a typed error", async () => {
+  test("C-PERF-03 a stderr-flooding probe is capped and killed with a typed error", async () => {
     resetRuntimeSeamsForTests();
     const result = await currentCommandRunner()("node", [
       "-e",
       "const b = 'x'.repeat(1 << 20); for (let i = 0; i < 8; i++) process.stderr.write(b);",
     ]);
     expect(result.error?.code).toBe("E2BIG");
-    expect(result.stderr.length).toBeLessThanOrEqual(1_000_000);
+    expect(Buffer.byteLength(result.stderr)).toBeLessThanOrEqual(1_000_000);
+    resetRuntimeSeamsForTests();
+  });
+
+  test("C-PERF-03 the output cap is enforced by bytes, not decoded length", async () => {
+    resetRuntimeSeamsForTests();
+    // Multibyte output: each `€` is 3 bytes, so a decoded-LENGTH cap of 1e6
+    // would keep ~1e6 chars ≈ 3e6 bytes. A byte cap keeps the captured bytes
+    // near 1e6 — assert the decoded string is far short of a length cap (its
+    // char count is ~1e6/3), proving the cap counts bytes. (Re-encoding a
+    // boundary-split char can nudge byte length a couple bytes over the cap;
+    // memory safety is the captured-byte bound, which the cap enforces.)
+    const result = await currentCommandRunner()("node", [
+      "-e",
+      "const b = '\\u20ac'.repeat(1 << 20); for (let i = 0; i < 8; i++) process.stdout.write(b);",
+    ]);
+    expect(result.error?.code).toBe("E2BIG");
+    expect(result.stdout.length).toBeLessThan(400_000); // ~1e6 bytes / 3, not 1e6 chars
+    expect(Buffer.byteLength(result.stdout)).toBeLessThanOrEqual(1_000_002);
+    resetRuntimeSeamsForTests();
+  });
+
+  test("C-PERF-03 a normal probe exit is not signaled", async () => {
+    resetRuntimeSeamsForTests();
+    // A fast clean exit resolves with its status and no ETIMEDOUT/E2BIG error.
+    const result = await currentCommandRunner()("node", ["-e", "process.exit(0)"]);
+    expect(result.status).toBe(0);
+    expect(result.error).toBeUndefined();
     resetRuntimeSeamsForTests();
   });
 });

@@ -59,9 +59,11 @@ export async function preflightClaude(
 async function runClaudeUpdate(): Promise<void> {
   const result = await currentCommandRunner()(userShell(), probeShellCommand("claude update"));
   if (result.status !== 0) {
-    throw elwoodError("claude_update_failed", "`claude update` failed.", {
-      stderr: result.stderr,
-    });
+    throw elwoodError(
+      "claude_update_failed",
+      "`claude update` failed.",
+      probeFailureDetails(result),
+    );
   }
   // The update may have changed the binary; drop the cached read so every
   // caller re-reads the post-update version.

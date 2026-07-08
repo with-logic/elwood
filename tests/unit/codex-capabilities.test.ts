@@ -1,0 +1,94 @@
+/**
+ * Codex capability detection and bounded-probe failure surfacing.
+ * Covers PRD §9.2, C-CODEX-06, C-PERF-02, and C-PERF-03.
+ */
+
+import { describe, expect, test } from "vitest";
+import {
+  detectCodexCliCapabilities,
+  preflightCodex,
+  resetCodexPreflightCacheForTests,
+} from "../../src/codex/preflight.ts";
+import {
+  resetRuntimeSeamsForTests,
+  setCommandRunnerForTests,
+  setPlatformForTests,
+} from "../../src/runtime/seams.ts";
+
+describe("Codex capability detection", () => {
+  test("C-CODEX-06 detects hook trust bypass support from login shell help", async () => {
+    setPlatformForTests("darwin");
+    setCommandRunnerForTests((_command, args) =>
+      args.join(" ").includes("--help")
+        ? { status: 0, stdout: "--dangerously-bypass-hook-trust", stderr: "" }
+        : { status: 0, stdout: "codex-cli 0.133.0", stderr: "" },
+    );
+    expect((await detectCodexCliCapabilities()).supportsHookTrustBypass).toBe(true);
+    resetCodexPreflightCacheForTests();
+    setCommandRunnerForTests(() => ({ status: 0, stdout: "codex help", stderr: "" }));
+    expect((await detectCodexCliCapabilities()).supportsHookTrustBypass).toBe(false);
+    resetCodexPreflightCacheForTests();
+    resetRuntimeSeamsForTests();
+  });
+
+  test("C-PERF-02 concurrent first capability probes share one subprocess", async () => {
+    resetCodexPreflightCacheForTests();
+    setPlatformForTests("darwin");
+    let helpReads = 0;
+    setCommandRunnerForTests(
+      () =>
+        new Promise((resolve) => {
+          helpReads += 1;
+          setTimeout(() => resolve({ status: 0, stdout: "codex help", stderr: "" }), 5);
+        }),
+    );
+    await Promise.all([
+      detectCodexCliCapabilities(),
+      detectCodexCliCapabilities(),
+      detectCodexCliCapabilities(),
+    ]);
+    expect(helpReads).toBe(1);
+    resetCodexPreflightCacheForTests();
+    resetRuntimeSeamsForTests();
+  });
+
+  test("C-PERF-03 a bounded --help probe fails as codex_start_failed with cause", async () => {
+    resetCodexPreflightCacheForTests();
+    setPlatformForTests("darwin");
+    // A timed-out/overflowed `codex --help` is a diagnosable startup failure,
+    // not "capability unsupported".
+    for (const error of [
+      { code: "ETIMEDOUT", message: "probe timed out after 15000 ms" },
+      { code: "E2BIG", message: "probe output exceeded 1000000 bytes" },
+    ]) {
+      resetCodexPreflightCacheForTests();
+      setCommandRunnerForTests(() => ({ status: null, stdout: "", stderr: "", error }));
+      await expect(detectCodexCliCapabilities()).rejects.toMatchObject({
+        code: "codex_start_failed",
+        details: { cause: error.message, errno: error.code },
+      });
+    }
+    resetCodexPreflightCacheForTests();
+    resetRuntimeSeamsForTests();
+  });
+
+  test("C-PERF-03 a bounded codex update probe fails with cause/errno", async () => {
+    resetCodexPreflightCacheForTests();
+    setPlatformForTests("darwin");
+    setCommandRunnerForTests((_command, args) =>
+      args.join(" ").includes("codex update")
+        ? {
+            status: null,
+            stdout: "",
+            stderr: "",
+            error: { code: "ETIMEDOUT", message: "probe timed out after 15000 ms" },
+          }
+        : { status: 0, stdout: "codex-cli 0.132.0", stderr: "" },
+    );
+    await expect(preflightCodex(false, true)).rejects.toMatchObject({
+      code: "codex_update_failed",
+      details: { cause: "probe timed out after 15000 ms", errno: "ETIMEDOUT" },
+    });
+    resetRuntimeSeamsForTests();
+  });
+});

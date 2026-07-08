@@ -89,3 +89,91 @@ describe("version-read cache", () => {
     resetRuntimeSeamsForTests();
   });
 });
+
+describe("autoupdate dedupe", () => {
+  beforeEach(resetPreflight);
+
+  test("C-LIFE-09 autoupdate runs at most once per adapter per process", async () => {
+    const commands: string[] = [];
+    setPlatformForTests("darwin");
+    setCommandRunnerForTests((_command, args) => {
+      commands.push(args.join(" "));
+      return { status: 0, stdout: "2.1.144", stderr: "" };
+    });
+    await preflightClaude(false, true);
+    await preflightClaude(false, true);
+    await preflightCodex(false, true);
+    await preflightCodex(false, true);
+    const updates = commands.filter((command) => command.includes(" update"));
+    expect(updates.filter((command) => command.includes("claude update"))).toHaveLength(1);
+    expect(updates.filter((command) => command.includes("codex update"))).toHaveLength(1);
+    resetRuntimeSeamsForTests();
+  });
+
+  test("C-PERF-04 concurrent Claude autoupdate callers all validate the post-update version", async () => {
+    // Version reads: the first (pre-update) is too old; after the shared
+    // update the re-read is valid. Every concurrent caller must observe the
+    // post-update version, not the stale pre-update one.
+    const versions = ["2.1.1", "2.1.144", "2.1.144"];
+    let updates = 0;
+    setPlatformForTests("darwin");
+    setCommandRunnerForTests((_command, args) => {
+      if (args.join(" ").includes("claude update")) {
+        updates += 1;
+        return { status: 0, stdout: "", stderr: "" };
+      }
+      return { status: 0, stdout: versions.shift() ?? "2.1.144", stderr: "" };
+    });
+    // Three concurrent autoupdate callers: one update, all resolve (none
+    // rejects on the stale 2.1.1 pre-update read).
+    await Promise.all([
+      preflightClaude(false, true),
+      preflightClaude(false, true),
+      preflightClaude(false, true),
+    ]);
+    expect(updates).toBe(1);
+    resetRuntimeSeamsForTests();
+  });
+
+  test("C-PERF-04 concurrent Codex autoupdate callers all validate the post-update version", async () => {
+    const versions = ["codex-cli 0.1.0", "codex-cli 0.132.0", "codex-cli 0.132.0"];
+    let updates = 0;
+    setPlatformForTests("darwin");
+    setCommandRunnerForTests((_command, args) => {
+      const joined = args.join(" ");
+      if (joined.includes("codex update")) {
+        updates += 1;
+        return { status: 0, stdout: "", stderr: "" };
+      }
+      if (joined.includes("--help")) return { status: 0, stdout: "codex help", stderr: "" };
+      return { status: 0, stdout: versions.shift() ?? "codex-cli 0.132.0", stderr: "" };
+    });
+    await Promise.all([
+      preflightCodex(false, true),
+      preflightCodex(false, true),
+      preflightCodex(false, true),
+    ]);
+    expect(updates).toBe(1);
+    resetRuntimeSeamsForTests();
+  });
+
+  test("C-PERF-04 concurrent autoupdate callers share one update failure", async () => {
+    let updates = 0;
+    setPlatformForTests("darwin");
+    setCommandRunnerForTests((_command, args) => {
+      if (args.join(" ").includes("claude update")) {
+        updates += 1;
+        return { status: 1, stdout: "", stderr: "failed" };
+      }
+      return { status: 0, stdout: "2.1.144", stderr: "" };
+    });
+    const results = await Promise.allSettled([
+      preflightClaude(false, true),
+      preflightClaude(false, true),
+    ]);
+    // Both callers reject from the single shared update failure.
+    expect(results.every((r) => r.status === "rejected")).toBe(true);
+    expect(updates).toBe(1);
+    resetRuntimeSeamsForTests();
+  });
+});

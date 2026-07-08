@@ -44,6 +44,25 @@ describe("CLI autoupdate preflight", () => {
     resetRuntimeSeamsForTests();
   });
 
+  test("C-PERF-03 a bounded claude update probe fails with cause/errno", async () => {
+    setPlatformForTests("darwin");
+    setCommandRunnerForTests((_command, args) =>
+      args.join(" ").includes("claude update")
+        ? {
+            status: null,
+            stdout: "",
+            stderr: "",
+            error: { code: "E2BIG", message: "probe output exceeded 1000000 bytes" },
+          }
+        : { status: 0, stdout: "2.1.144", stderr: "" },
+    );
+    await expect(preflightClaude(false, true)).rejects.toMatchObject({
+      code: "claude_update_failed",
+      details: { cause: "probe output exceeded 1000000 bytes", errno: "E2BIG" },
+    });
+    resetRuntimeSeamsForTests();
+  });
+
   test("C-CLAUDE-09 validates the post-update version", async () => {
     const outputs = ["2.1.1", "2.1.144"];
     setPlatformForTests("darwin");
@@ -96,72 +115,6 @@ describe("CLI autoupdate preflight", () => {
       return { status: 127, stdout: "", stderr: "missing" };
     });
     await expect(preflightCodex(false, true)).rejects.toThrow(ElwoodError);
-    resetRuntimeSeamsForTests();
-  });
-});
-
-describe("autoupdate dedupe", () => {
-  beforeEach(resetPreflight);
-
-  test("C-LIFE-09 autoupdate runs at most once per adapter per process", async () => {
-    const commands: string[] = [];
-    setPlatformForTests("darwin");
-    setCommandRunnerForTests((_command, args) => {
-      commands.push(args.join(" "));
-      return { status: 0, stdout: "2.1.144", stderr: "" };
-    });
-    await preflightClaude(false, true);
-    await preflightClaude(false, true);
-    await preflightCodex(false, true);
-    await preflightCodex(false, true);
-    const updates = commands.filter((command) => command.includes(" update"));
-    expect(updates.filter((command) => command.includes("claude update"))).toHaveLength(1);
-    expect(updates.filter((command) => command.includes("codex update"))).toHaveLength(1);
-    resetRuntimeSeamsForTests();
-  });
-
-  test("C-CLAUDE-09 concurrent autoupdate callers all validate the post-update version", async () => {
-    // Version reads: the first (pre-update) is too old; after the shared
-    // update the re-read is valid. Every concurrent caller must observe the
-    // post-update version, not the stale pre-update one.
-    const versions = ["2.1.1", "2.1.144", "2.1.144"];
-    let updates = 0;
-    setPlatformForTests("darwin");
-    setCommandRunnerForTests((_command, args) => {
-      if (args.join(" ").includes("claude update")) {
-        updates += 1;
-        return { status: 0, stdout: "", stderr: "" };
-      }
-      return { status: 0, stdout: versions.shift() ?? "2.1.144", stderr: "" };
-    });
-    // Three concurrent autoupdate callers: one update, all resolve (none
-    // rejects on the stale 2.1.1 pre-update read).
-    await Promise.all([
-      preflightClaude(false, true),
-      preflightClaude(false, true),
-      preflightClaude(false, true),
-    ]);
-    expect(updates).toBe(1);
-    resetRuntimeSeamsForTests();
-  });
-
-  test("C-CLAUDE-08 concurrent autoupdate callers share one update failure", async () => {
-    let updates = 0;
-    setPlatformForTests("darwin");
-    setCommandRunnerForTests((_command, args) => {
-      if (args.join(" ").includes("claude update")) {
-        updates += 1;
-        return { status: 1, stdout: "", stderr: "failed" };
-      }
-      return { status: 0, stdout: "2.1.144", stderr: "" };
-    });
-    const results = await Promise.allSettled([
-      preflightClaude(false, true),
-      preflightClaude(false, true),
-    ]);
-    // Both callers reject from the single shared update failure.
-    expect(results.every((r) => r.status === "rejected")).toBe(true);
-    expect(updates).toBe(1);
     resetRuntimeSeamsForTests();
   });
 });
