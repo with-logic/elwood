@@ -21,6 +21,8 @@ export type TerminalSnapshot = {
 export interface ElwoodTerminal {
   readonly xterm: XtermTerminal;
   readonly size: TerminalSize;
+  /** Latest OSC 0/1/2 window title, or "" before any title is set. */
+  readonly title: string;
   writeOutput(data: string | Uint8Array): Promise<void>;
   sendInput(input: string | Uint8Array): void;
   resize(size: TerminalSize): void;
@@ -56,6 +58,7 @@ class HeadlessTerminal implements ElwoodTerminal {
   private readonly onInput: (input: string | Uint8Array) => void;
   private readonly disposers: Array<() => void> = [];
   private disposed = false;
+  private currentTitle = "";
 
   constructor(size: TerminalSize, onInput: (input: string | Uint8Array) => void) {
     this.currentSize = size;
@@ -66,10 +69,17 @@ class HeadlessTerminal implements ElwoodTerminal {
       rows: size.rows,
     });
     this.xterm.onData(onInput);
+    this.xterm.onTitleChange((title) => {
+      this.currentTitle = title;
+    });
   }
 
   get size(): TerminalSize {
     return this.currentSize;
+  }
+
+  get title(): string {
+    return this.currentTitle;
   }
 
   writeOutput(data: string | Uint8Array): Promise<void> {

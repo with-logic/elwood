@@ -1,13 +1,15 @@
 /** ClaudeSession implementation coordinating PTY, state, and hook dispatch. Implements PRD §5, §6, §8, and §9. */
 import { randomUUID } from "node:crypto";
 import * as activity from "../core/activity.ts";
+import { AttentionWatcher } from "../core/attention.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, elwoodError } from "../core/errors.ts";
 import { queuePersonaMessage } from "../core/persona.ts";
+import { observeRenderedFrame } from "../core/rendered-observers.ts";
 import { emitStartupPromptActivity } from "../core/startup-automation.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
-import { claudeInterruptBanner, TurnStateWatcher } from "../core/turn-state.ts";
-import type { ClaudeSession, StartClaudeOptions } from "../core/types.ts";
+import { TurnStateWatcher } from "../core/turn-state.ts";
+import type { StartClaudeOptions } from "../core/types.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { assertStartupUsable } from "../runtime/startup.ts";
@@ -27,6 +29,7 @@ import { attachPtyTerminal } from "../terminal/headless.ts";
 import { isBlock, requestHook } from "./hook-dispatch.ts";
 import { normalizeClaudeHookEvent } from "./normalize.ts";
 import { preflightClaude } from "./preflight.ts";
+import { claudeScreenFactTableForTrustPolicy } from "./screen-table.ts";
 import { serializeHookResult } from "./serialize.ts";
 import {
   currentClaudeHookBridgeFactory,
@@ -34,8 +37,9 @@ import {
   setHookBridgeFactoryForTests,
 } from "./session-bridge.ts";
 import { ClaudeSessionImpl } from "./session-instance.ts";
+import type { ClaudeSession } from "./session-interface.ts";
 import { registerInitialHooks, spawnClaudePty, writeRuntimeFiles } from "./session-runtime.ts";
-import { ClaudeStartupPromptResponder, claudeComposerVisible } from "./startup-prompts.ts";
+import { ClaudeStartupPromptResponder } from "./startup-prompts.ts";
 
 export {
   resetClaudeHookBridgeFactoryForTests as resetClaudeSessionSeamsForTests,
@@ -106,11 +110,11 @@ export async function startClaudeFromRecord(
       if (event.hook_event_name === "InstructionsLoaded" && !initialReadyMarked) {
         initialReadyMarked = true;
         turnWatcher.arm();
-        session?.markReady();
+        session?.submitEvidence("initial_ready");
       }
       if (event.hook_event_name === "Stop" && !isBlock(outcome.result)) {
         turnWatcher.arm();
-        session?.markReady();
+        session?.submitEvidence("hook_turn_ended");
       }
       return serializeHookResult(event.hook_event_name, outcome.result);
     },
@@ -139,22 +143,30 @@ export async function startClaudeFromRecord(
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   const promptResponder = new ClaudeStartupPromptResponder(options.autotrust ?? false);
-  const turnWatcher = new TurnStateWatcher(claudeComposerVisible, claudeInterruptBanner);
+  const observers = {
+    turn: new TurnStateWatcher(),
+    attention: new AttentionWatcher(),
+    table: claudeScreenFactTableForTrustPolicy(options.autotrust ?? false),
+    agent: "claude" as const,
+    elwoodSessionId: record.elwoodSessionId,
+    emitActivity: (event: activity.ElwoodActivityEvent) => emitter.emit("activity", event),
+  };
+  const turnWatcher = observers.turn;
   const terminal = attachPtyTerminal(
     options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
     pty,
     (data, renderedTerminal) => {
       startupOutput += data;
       terminalReplay.push(data);
-      const automations = promptResponder.handle(renderedTerminal.snapshot().text, (input) =>
+      // One snapshot per render: reused for prompt automation and detection.
+      const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
+      const automations = promptResponder.handle(frame.text, (input) =>
         renderedTerminal.sendInput(input),
       );
       for (const automation of automations) {
         emitStartupPromptActivity(emitter, "claude", record.elwoodSessionId, automation);
       }
-      const turnEdge = turnWatcher.observe(renderedTerminal.snapshot().text);
-      if (turnEdge === "started") session?.markRunning();
-      if (turnEdge === "ended") session?.markReady();
+      observeRenderedFrame(observers, frame, session);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );
@@ -166,7 +178,7 @@ export async function startClaudeFromRecord(
       "activity",
       activity.activityFromTerminalExit("claude", record.elwoodSessionId, exit.exitCode),
     );
-    session?.markExited();
+    session?.submitExit();
   });
   try {
     await assertStartupUsable({
@@ -178,6 +190,6 @@ export async function startClaudeFromRecord(
     await cleanupStartupResources({ pty, bridge, terminal });
     throw error;
   }
-  session.markRunning();
+  session.submitEvidence("startup_usable");
   return session;
 }

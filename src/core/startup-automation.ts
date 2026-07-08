@@ -4,7 +4,6 @@
  */
 
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity.ts";
-import { activityFromStartupPrompt } from "./activity.ts";
 
 export type StartupPromptAutomation = {
   readonly prompt: string;
@@ -14,6 +13,22 @@ export type StartupPromptAutomation = {
 export type StartupActivityEmitter = {
   emit(event: "activity", payload: ElwoodActivityEvent): void;
 };
+
+export function activityFromStartupPrompt(
+  agent: ElwoodAgentKind,
+  elwoodSessionId: string,
+  label: string,
+  input: string,
+): ElwoodActivityEvent {
+  return {
+    elwoodSessionId,
+    agent,
+    source: "terminal",
+    kind: "startup_prompt",
+    label,
+    text: `Detected ${agent} ${label} prompt; sent ${input}.`,
+  };
+}
 
 export function emitStartupPromptActivity(
   emitter: StartupActivityEmitter,

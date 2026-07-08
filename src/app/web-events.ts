@@ -3,7 +3,7 @@
  * Implements PRD §11.
  */
 
-import type { ElwoodActivityEvent, ElwoodWarningEvent } from "../index.ts";
+import type { ElwoodActivityEvent, ElwoodStatusDecision, ElwoodWarningEvent } from "../index.ts";
 import type { AgentHookEvent, CommonEventMap } from "./agent-runtime.ts";
 import { summarizeHookEvent } from "./web-log.ts";
 import type { DebugEventEntry, DebugEventKind, DebugEventLevel } from "./web-messages.ts";
@@ -18,8 +18,12 @@ export function sessionEvent(input: {
   return entry("session", "success", "SES", "Session started", input.id, ["session"], input);
 }
 
-export function statusEvent(event: CommonEventMap["status"]): DebugEventEntry {
-  return entry("status", "info", "STS", "Status", event.status, [event.status], event);
+export function statusEvent(
+  event: CommonEventMap["status"],
+  decision?: ElwoodStatusDecision,
+): DebugEventEntry {
+  const summary = decision ? `${event.status} — ${decision.reason}` : event.status;
+  return entry("status", "info", "STS", "Status", summary, [event.status], decision ?? event);
 }
 
 export function terminalExitEvent(event: CommonEventMap["terminal:exit"]): DebugEventEntry {
@@ -112,7 +116,7 @@ function entry(
 
 function activityLevel(event: ElwoodActivityEvent): DebugEventLevel {
   if (event.kind === "hook_error") return "error";
-  if (event.kind === "warning") return "warn";
+  if (event.kind === "warning" || event.kind === "attention") return "warn";
   if (event.kind === "status") return "success";
   return "info";
 }

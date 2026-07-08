@@ -40,8 +40,8 @@ describe("CodexSession lifecycle edges", () => {
     expect(session.status).toBe("exited");
     await session.stop();
     await session.kill();
-    (session as CodexSessionImpl).markRunning();
-    (session as CodexSessionImpl).markReady();
+    (session as CodexSessionImpl).submitEvidence("rendered_turn_started");
+    (session as CodexSessionImpl).submitEvidence("rendered_turn_ended");
     expect(session.status).toBe("exited");
     expect(ptys[0]!.killSignals).toEqual([]);
     expect(statuses).toEqual(["exited"]);

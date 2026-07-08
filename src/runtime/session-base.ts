@@ -5,8 +5,8 @@
 
 import { activityFromStatus, type ElwoodAgentKind } from "../core/activity.ts";
 import { compactCommand, sessionCompact } from "../core/compact.ts";
+import { ControlQueue } from "../core/control-queue.ts";
 import { elwoodError } from "../core/errors.ts";
-import { MessageQueue } from "../core/message-queue.ts";
 import {
   listPickerModels,
   type ModelPickerIo,
@@ -28,9 +28,16 @@ import {
 } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { agentTitles, type SessionStatusEmitter } from "./session-base-types.ts";
-import { canTransition, terminalStatuses } from "./session-status.ts";
+import { terminalStatuses } from "./session-status.ts";
+import {
+  SessionStatusEngine,
+  type StatusDecision,
+  type StatusEvidenceKind,
+} from "./status-evidence.ts";
 import { runTeardownSteps } from "./teardown.ts";
 import { terminatePty } from "./terminate.ts";
+
+type ShutdownEvidence = "stop_completed" | "kill_completed" | "teardown_completed";
 
 export abstract class AgentSessionBase {
   protected record: SessionRecord;
@@ -40,13 +47,23 @@ export abstract class AgentSessionBase {
   private readonly pty: PtyProcess;
   private readonly statusEvents: SessionStatusEmitter;
   private readonly terminalReplay: TerminalReplayBuffer;
-  private currentStatus: ElwoodSessionStatus = "starting";
   private cleanupPromise: Promise<void> | undefined;
-  protected readonly messages = new MessageQueue(
-    (message, mode) => writeQueuedInput(this.terminal, message, mode, this.pasteGuard()),
+  // Set before a controlled shutdown signals the PTY, so the signal-triggered
+  // exit resolves to that terminal status rather than a racing `exited`.
+  private pendingShutdown: ShutdownEvidence | undefined;
+  protected readonly controlQueue = new ControlQueue(
+    (input, mode) => writeQueuedInput(this.terminal, input, mode, this.pasteGuard()),
     () => this.notRunningError(),
-    () => this.markRunning(),
+    () => this.submitEvidence("caller_submitted"),
   );
+  private readonly statusEngine = new SessionStatusEngine({
+    onStatus: (status) => this.emitStatus(status),
+    queueRunning: () => this.controlQueue.markRunning(),
+    queueReady: () => this.controlQueue.markReady(),
+    queueBlocked: () => this.controlQueue.markRunning(),
+    queueClose: () => this.controlQueue.close(),
+    cleanup: () => void this.cleanupRuntime(),
+  });
 
   protected constructor(
     agent: ElwoodAgentKind,
@@ -71,7 +88,7 @@ export abstract class AgentSessionBase {
     return this.record.cwd;
   }
   get status(): ElwoodSessionStatus {
-    return this.currentStatus;
+    return this.statusEngine.status;
   }
   get warnings(): readonly ElwoodWarningEvent[] {
     return this.record.warnings;
@@ -79,11 +96,11 @@ export abstract class AgentSessionBase {
   sendPrompt(prompt: string): Promise<void> {
     return this.inSession(() => {
       writePastedPrompt(this.terminal, prompt, this.pasteGuard());
-      this.markRunning();
+      this.submitEvidence("caller_submitted");
     });
   }
   sendMessage(message: string): Promise<void> {
-    return this.inSession(() => this.messages.send(message));
+    return this.inSession(() => this.controlQueue.send(message, "message"));
   }
   sendKeys(input: string | Uint8Array): Promise<void> {
     return this.inSession(() => this.terminal.sendInput(input));
@@ -92,57 +109,50 @@ export abstract class AgentSessionBase {
     return this.inSession(() => {
       if (this.pty.resize(size) === "closed") return;
       this.terminal.resize(size);
-      this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.currentStatus));
+      this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.status));
     });
   }
   compact(options?: { readonly timeoutMs?: number }): Promise<void> {
     return this.inSession(() => {
-      const submit = () => this.messages.send(compactCommand, "command");
+      const submit = () => this.controlQueue.send(compactCommand, "compact");
       const nudge = () => this.terminal.sendInput("\r");
       return sessionCompact(this.statusEvents, submit, nudge, options?.timeoutMs);
     });
   }
   listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]> {
-    return this.inSession(() =>
-      listPickerModels(this.pickerIo(), this.picker, pickerTimeout(options)),
-    );
+    const io = this.pickerIo("list_models");
+    return this.inSession(() => listPickerModels(io, this.picker, pickerTimeout(options)));
   }
   setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
-    return this.inSession(() =>
-      setPickerModel(this.pickerIo(), this.picker, id, pickerTimeout(options)),
-    );
+    const io = this.pickerIo("set_model");
+    return this.inSession(() => setPickerModel(io, this.picker, id, pickerTimeout(options)));
   }
-  async stop(): Promise<void> {
-    await this.shutdown("SIGTERM", "stopped");
+  stop(): Promise<void> {
+    return this.shutdown("SIGTERM", "stop_completed");
   }
-  async kill(): Promise<void> {
-    await this.shutdown("SIGKILL", "killed");
+  kill(): Promise<void> {
+    return this.shutdown("SIGKILL", "kill_completed");
   }
   async teardown(): Promise<void> {
+    this.pendingShutdown ??= "teardown_completed"; // Claim the exit as teardown.
     await runTeardownSteps([
-      () => (terminalStatuses.has(this.currentStatus) ? undefined : this.terminate("SIGKILL")),
+      () => (terminalStatuses.has(this.status) ? undefined : terminatePty(this.pty, "SIGKILL")),
       () => this.cleanupRuntime(),
-      () => {
-        this.messages.close();
-        this.setStatus("torn_down");
-      },
+      () => void this.submitEvidence("teardown_completed"),
       () => removeSessionDir(this.record),
     ]);
   }
-  markRunning(): void {
-    if (terminalStatuses.has(this.currentStatus)) return;
-    this.messages.markRunning();
-    this.setStatus("running");
+  /** Submits lifecycle evidence; the engine decides whether status moves. */
+  submitEvidence(kind: StatusEvidenceKind): StatusDecision {
+    return this.statusEngine.submit(kind);
   }
-  markReady(): void {
-    if (terminalStatuses.has(this.currentStatus)) return;
-    this.setStatus("ready");
-    this.messages.markReady();
+  submitExit(): StatusDecision {
+    // A controlled shutdown claims the exit; otherwise it is unsolicited.
+    return this.statusEngine.submit(this.pendingShutdown ?? "terminal_exited");
   }
-  markExited(): void {
-    this.messages.close();
-    this.setStatus("exited");
-    void this.cleanupRuntime();
+  /** Bounded live-only log of recent evidence decisions for diagnostics. */
+  statusDecisions(): readonly StatusDecision[] {
+    return this.statusEngine.decisions();
   }
   /** Whether the rendered screen still shows this prompt staged, unsubmitted. */
   protected abstract stagedPaste(screen: string, prompt: string): boolean;
@@ -157,7 +167,7 @@ export abstract class AgentSessionBase {
   }
   /** Rejects (never throws) after a terminal status, per C-API-25. */
   private inSession<T>(work: () => Promise<T> | T): Promise<T> {
-    if (terminalStatuses.has(this.currentStatus)) return Promise.reject(this.notRunningError());
+    if (terminalStatuses.has(this.status)) return Promise.reject(this.notRunningError());
     return Promise.resolve(work());
   }
   protected persist(record: SessionRecord): void {
@@ -168,32 +178,23 @@ export abstract class AgentSessionBase {
     this.cleanupPromise ??= this.stopRuntime();
     return this.cleanupPromise;
   }
-  private pickerIo(): ModelPickerIo {
-    return { terminal: this.terminal, submit: (command) => this.messages.send(command, "command") };
+  private pickerIo(kind: "list_models" | "set_model"): ModelPickerIo {
+    return { terminal: this.terminal, submit: (command) => this.controlQueue.send(command, kind) };
   }
-  private async shutdown(signal: "SIGTERM" | "SIGKILL", status: "stopped" | "killed") {
-    const wasExited = this.currentStatus === "exited";
-    await this.terminate(signal);
+  private async shutdown(signal: "SIGTERM" | "SIGKILL", evidence: ShutdownEvidence) {
+    const wasExited = this.status === "exited";
+    this.pendingShutdown ??= evidence; // Claim the exit before signaling.
+    if (this.status !== "exited") await terminatePty(this.pty, signal);
     await this.cleanupRuntime();
-    if (wasExited) return;
-    this.messages.close();
-    this.setStatus(status);
+    if (!wasExited) this.submitEvidence(evidence);
   }
   private notRunningError(): Error {
     return elwoodError("session_not_running", `${agentTitles[this.agent]} session is not running.`);
   }
-  private setStatus(status: ElwoodSessionStatus): void {
-    if (!canTransition(this.currentStatus, status)) return;
-    this.currentStatus = status;
+  private emitStatus(status: ElwoodSessionStatus): void {
+    const elwoodSessionId = this.elwoodSessionId;
     this.persist(updateSessionStatus(this.record, status));
-    this.statusEvents.emit("status", { elwoodSessionId: this.elwoodSessionId, status });
-    this.statusEvents.emit(
-      "activity",
-      activityFromStatus(this.agent, this.elwoodSessionId, status),
-    );
-  }
-  private async terminate(signal: "SIGTERM" | "SIGKILL"): Promise<void> {
-    if (this.currentStatus === "exited") return;
-    await terminatePty(this.pty, signal);
+    this.statusEvents.emit("status", { elwoodSessionId, status });
+    this.statusEvents.emit("activity", activityFromStatus(this.agent, elwoodSessionId, status));
   }
 }

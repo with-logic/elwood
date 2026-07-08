@@ -10,11 +10,6 @@ export type InitialReady = {
   readonly armDeadline: () => void;
 };
 
-/** A quiet boot gap can precede input acceptance; require the composer. */
-export function codexComposerVisible(text: string): boolean {
-  return /^\s*›/m.test(text);
-}
-
 export function initialReady(
   callback: () => void,
   delayMs = 250,

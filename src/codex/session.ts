@@ -1,12 +1,14 @@
 /** CodexSession implementation coordinating PTY, state, and hook dispatch. Implements PRD §5.5, §5.6, §5.7, §7A, §8, and §9. */
 import { randomUUID } from "node:crypto";
 import * as activity from "../core/activity.ts";
+import { AttentionWatcher } from "../core/attention.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, elwoodError } from "../core/errors.ts";
 import { queuePersonaMessage } from "../core/persona.ts";
+import { observeRenderedFrame } from "../core/rendered-observers.ts";
 import { emitStartupPromptActivity } from "../core/startup-automation.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
-import { codexInterruptBanner, TurnStateWatcher } from "../core/turn-state.ts";
+import { TurnStateWatcher } from "../core/turn-state.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { assertStartupUsable } from "../runtime/startup.ts";
@@ -23,9 +25,10 @@ import {
   writeSessionRecord,
 } from "../state/store.ts";
 import { attachPtyTerminal } from "../terminal/headless.ts";
-import { codexComposerVisible, initialReady } from "./initial-ready.ts";
+import { initialReady } from "./initial-ready.ts";
 import * as preflight from "./preflight.ts";
 import { spawnCodexPty } from "./pty.ts";
+import { codexComposerVisible, codexScreenFactTableForTrustPolicy } from "./screen-table.ts";
 import { currentCodexHookBridgeFactory } from "./session-bridge.ts";
 import { dispatchHook, registerInitialHooks } from "./session-hooks.ts";
 import { CodexSessionImpl } from "./session-instance.ts";
@@ -111,10 +114,18 @@ export async function startCodexFromRecord(
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   const ready = initialReady(() => {
     turnWatcher.arm();
-    session?.markReady();
+    session?.submitEvidence("initial_ready");
   });
-  const turnWatcher = new TurnStateWatcher(codexComposerVisible, codexInterruptBanner);
   const autotrust = options.autotrust ?? false;
+  const observers = {
+    turn: new TurnStateWatcher(),
+    attention: new AttentionWatcher(),
+    table: codexScreenFactTableForTrustPolicy(autotrust),
+    agent: "codex" as const,
+    elwoodSessionId: record.elwoodSessionId,
+    emitActivity: (event: activity.ElwoodActivityEvent) => emitter.emit("activity", event),
+  };
+  const turnWatcher = observers.turn;
   const promptResponder = new CodexStartupPromptResponder(record.elwoodSessionId, autotrust);
   const terminal = attachPtyTerminal(
     options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
@@ -122,7 +133,10 @@ export async function startCodexFromRecord(
     (data, renderedTerminal) => {
       startupOutput += data;
       terminalReplay.push(data);
-      const result = promptResponder.handle(renderedTerminal.snapshot().text, (input) =>
+      // One snapshot per render: reused for prompt automation, readiness, and
+      // detection (input written here only repaints on the next callback).
+      const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
+      const result = promptResponder.handle(frame.text, (input) =>
         renderedTerminal.sendInput(input),
       );
       session?.recordWarnings(result.warnings);
@@ -132,11 +146,8 @@ export async function startCodexFromRecord(
       ready.armDeadline();
       // Frame-quiet alone can fire during a boot gap before the TUI accepts
       // input (a submitted message would be swallowed); require the composer.
-      if (result.automations.length === 0 && codexComposerVisible(renderedTerminal.snapshot().text))
-        ready.schedule();
-      const turnEdge = turnWatcher.observe(renderedTerminal.snapshot().text);
-      if (turnEdge === "started") session?.markRunning();
-      if (turnEdge === "ended") session?.markReady();
+      if (result.automations.length === 0 && codexComposerVisible(frame.text)) ready.schedule();
+      observeRenderedFrame(observers, frame, session);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );
@@ -159,7 +170,7 @@ export async function startCodexFromRecord(
       "activity",
       activity.activityFromTerminalExit("codex", record.elwoodSessionId, exit.exitCode),
     );
-    session?.markExited();
+    session?.submitExit();
   });
   try {
     await assertStartupUsable({
@@ -177,6 +188,6 @@ export async function startCodexFromRecord(
     });
     throw error;
   }
-  session.markRunning();
+  session.submitEvidence("startup_usable");
   return session;
 }

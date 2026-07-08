@@ -38,15 +38,25 @@ export async function openCommandScreen(input: {
   readonly nudgeDelayMs?: number;
 }): Promise<string> {
   await input.submit();
-  // A slash-command popup can swallow the submitting Enter; if the screen has
-  // not appeared by the nudge deadline, one extra Enter is sent.
-  const nudgeTimer = setTimeout(() => {
-    if (!input.isOpen(input.terminal.snapshot().text)) input.terminal.sendInput("\r");
-  }, input.nudgeDelayMs ?? openNudgeDelayMs);
+  // The command text or its Enter can be dropped when the TUI is redrawing
+  // (e.g. an MCP-server boot streaming into the composer at startup). A bare
+  // Enter nudge cannot recover a lost command line, so re-submit the whole
+  // command on each nudge interval until the picker opens or the timeout
+  // fires. Re-typing an idempotent slash command on an empty composer, and a
+  // surplus Enter, are both no-ops once the picker is already open.
+  const nudgeDelayMs = input.nudgeDelayMs ?? openNudgeDelayMs;
+  let resubmitting = false;
+  const nudgeTimer = setInterval(() => {
+    if (resubmitting || input.isOpen(input.terminal.snapshot().text)) return;
+    resubmitting = true;
+    void input.submit().finally(() => {
+      resubmitting = false;
+    });
+  }, nudgeDelayMs);
   try {
     return await waitForScreen(input.terminal, input.isOpen, input.timeoutMs, input.label);
   } finally {
-    clearTimeout(nudgeTimer);
+    clearInterval(nudgeTimer);
   }
 }
 

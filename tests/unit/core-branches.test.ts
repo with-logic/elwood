@@ -10,8 +10,8 @@ import {
   activityFromHook,
   activityFromHookResult,
 } from "../../src/core/activity.ts";
+import { ControlQueue } from "../../src/core/control-queue.ts";
 import { ElwoodError } from "../../src/core/errors.ts";
-import { MessageQueue } from "../../src/core/message-queue.ts";
 import { WorkspaceTrustResponder } from "../../src/core/workspace-trust.ts";
 
 describe("core activity branches", () => {
@@ -62,13 +62,13 @@ describe("core activity branches", () => {
   });
 
   test("C-API-19 wraps non-Error submit failures in Error instances", async () => {
-    const queue = new MessageQueue(
+    const queue = new ControlQueue(
       () => throwPrimitive("primitive submit failure"),
       () => new Error("closed"),
       () => undefined,
     );
     queue.markReady();
-    const failure = queue.send("boom");
+    const failure = queue.send("boom", "message");
     await expect(failure).rejects.toBeInstanceOf(Error);
     await expect(failure).rejects.toThrow("primitive submit failure");
   });

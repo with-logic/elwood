@@ -32,9 +32,11 @@ export class WorkspaceTrustResponder {
   }
 }
 
+export const claudeTrustPrompt = /trust this folder/i;
+export const codexTrustPrompt = /Do you trust the contents of this directory/i;
+
 export function workspaceTrustPromptVisible(text: string, agent: ElwoodAgentKind): boolean {
-  if (agent === "claude") return /trust this folder/i.test(text);
-  return /Do you trust the contents of this directory/i.test(text);
+  return (agent === "claude" ? claudeTrustPrompt : codexTrustPrompt).test(text);
 }
 
 function findTrustOption(text: string): string | null {

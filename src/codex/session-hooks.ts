@@ -75,7 +75,7 @@ export async function dispatchHook(
   );
   if (event.hook_event_name === "Stop" && !isCodexBlock(outcome.result)) {
     session?.flushTranscript();
-    session?.markReady();
+    session?.submitEvidence("hook_turn_ended");
   }
   return serializeCodexHookResult(event.hook_event_name, outcome.result);
 }

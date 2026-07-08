@@ -73,6 +73,7 @@ function fakeSession(): SharedSession {
     status: "running",
     warnings: [],
     terminal: fakeTerminal() as never,
+    statusDecisions: () => [],
     on: () => () => {},
     sendPrompt: () => Promise.resolve(),
     sendMessage: () => Promise.resolve(),

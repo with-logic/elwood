@@ -4,8 +4,9 @@
  */
 
 import { type StartOrResumeResult, startOrResume } from "../core/start-or-resume.ts";
-import type { ClaudeSession, StartClaudeOptions } from "../core/types.ts";
+import type { StartClaudeOptions } from "../core/types.ts";
 import { startClaude } from "./session.ts";
+import type { ClaudeSession } from "./session-interface.ts";
 import { resumeClaude } from "./session-resume.ts";
 
 export type StartOrResumeClaudeOptions = StartClaudeOptions & {

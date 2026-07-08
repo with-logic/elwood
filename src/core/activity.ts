@@ -25,6 +25,7 @@ export type ElwoodActivityKind =
   | "notification"
   | "warning"
   | "startup_prompt"
+  | "attention"
   | "hook"
   | "hook_result"
   | "hook_error";
@@ -148,22 +149,6 @@ export function activityFromWarning(event: ElwoodWarningEvent): ElwoodActivityEv
     label: event.code,
     text: event.message,
     raw: event,
-  };
-}
-
-export function activityFromStartupPrompt(
-  agent: ElwoodAgentKind,
-  elwoodSessionId: string,
-  label: string,
-  input: string,
-): ElwoodActivityEvent {
-  return {
-    elwoodSessionId,
-    agent,
-    source: "terminal",
-    kind: "startup_prompt",
-    label,
-    text: `Detected ${agent} ${label} prompt; sent ${input}.`,
   };
 }
 

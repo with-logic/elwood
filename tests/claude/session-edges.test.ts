@@ -54,14 +54,104 @@ describe("ClaudeSession terminal-state edges", () => {
     expect(existsSync(dir)).toBe(false);
   });
 
+  test("C-API-33 statusDecisions logs applied transitions with reasons", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const decisions = (await startClaude({ cwd })).statusDecisions();
+    const startup = decisions.find((d) => d.evidence === "startup_usable");
+    expect(startup).toMatchObject({ from: "starting", to: "running" });
+    expect(startup?.reason).toContain("applied");
+    // The log carries no prompt/terminal content — only evidence + statuses.
+    expect(Object.keys(decisions[0] ?? {}).sort()).toEqual(["evidence", "from", "reason", "to"]);
+  });
+
+  test("C-TURN-05 the OSC window title is exposed but never persisted", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    // A spinner title arrives on the PTY stream and is tracked on the handle.
+    ptys[0]!.emitData(`${String.fromCharCode(27)}]2;⠹ working${String.fromCharCode(7)}`);
+    await expect.poll(() => session.terminal.title).toBe("⠹ working");
+    const raw = readFileSync(
+      join(cwd, ".elwood", "sessions", session.elwoodSessionId, "session.json"),
+      "utf8",
+    );
+    expect(raw).not.toContain("⠹ working");
+    expect(raw).not.toContain("title");
+  });
+
+  test("C-API-33 status decisions are live-only and never persisted", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    // Drive a few transitions so the decision log is non-trivial.
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, {
+      hook_event_name: "InstructionsLoaded",
+      session_id: "claude-persist",
+      cwd,
+    });
+    expect(session.statusDecisions().length).toBeGreaterThan(0);
+    const raw = readFileSync(
+      join(cwd, ".elwood", "sessions", session.elwoodSessionId, "session.json"),
+      "utf8",
+    );
+    // The record persists status but none of the decision-log internals.
+    expect(raw).not.toContain("statusDecisions");
+    expect(raw).not.toContain("decisions");
+    expect(raw).not.toContain("startup_usable");
+    expect(raw).not.toContain("initial_ready");
+    expect(raw).not.toContain("applied:");
+  });
+
+  test("C-API-34 waitForStatus and waitForActivity resolve from session events", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    // Resolves immediately from the current status.
+    await expect(session.waitForStatus((s) => s === "running")).resolves.toBe("running");
+    const activityWait = session.waitForActivity((e) => e.kind === "attention");
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, {
+      hook_event_name: "InstructionsLoaded",
+      session_id: "claude-wait",
+      cwd,
+    });
+    ptys[0]!.emitData(
+      "Do you want to create x.txt?\r\n ❯ 1. Yes\r\n   3. No\r\n Esc to cancel\r\n",
+    );
+    await expect(activityWait).resolves.toMatchObject({ kind: "attention" });
+  });
+
   test("C-PTY-06 ready and running markers are no-ops after exit", async () => {
     const cwd = tempDir();
     installFakes();
     const session = (await startClaude({ cwd })) as ClaudeSessionImpl;
     ptys[0]!.emitExit({ exitCode: 0 });
-    session.markRunning();
-    session.markReady();
+    expect(session.submitEvidence("rendered_turn_started").to).toBeUndefined();
+    expect(session.submitEvidence("rendered_turn_ended").to).toBeUndefined();
     expect(session.status).toBe("exited");
+    expect(session.statusDecisions().at(-1)?.reason).toContain("ignored");
+  });
+
+  test("C-ATTN-01 a rendered permission dialog blocks and emits attention", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    const attention: string[] = [];
+    session.on("activity", (event) => {
+      if (event.kind === "attention") attention.push(event.label);
+    });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, {
+      hook_event_name: "InstructionsLoaded",
+      session_id: "claude-attn",
+      cwd,
+    });
+    ptys[0]!.emitData(
+      "Do you want to create elwood.txt?\r\n ❯ 1. Yes\r\n   3. No\r\n Esc to cancel\r\n",
+    );
+    await expect.poll(() => session.status).toBe("blocked");
+    expect(attention).toEqual(["claude-permission-dialog"]);
+    ptys[0]!.emitData("[2J[H❯ \r\n  ready again\r\n");
+    await expect.poll(() => session.status).toBe("ready");
   });
 
   test("C-STATE-02 keeps the first Claude session id for resume", async () => {

@@ -40,6 +40,7 @@ export type {
 } from "./claude/hooks.ts";
 export { claudeHookEventNames } from "./claude/hooks.ts";
 export { startClaude } from "./claude/session.ts";
+export type { ClaudeSession } from "./claude/session-interface.ts";
 export { resumeClaude } from "./claude/session-resume.ts";
 export { type StartOrResumeClaudeOptions, startOrResumeClaude } from "./claude/start-or-resume.ts";
 export type {
@@ -92,18 +93,21 @@ export { ElwoodError, elwoodError } from "./core/errors.ts";
 export type { AgentModelOption } from "./core/model-rows.ts";
 export type { StartOrResumeResult } from "./core/start-or-resume.ts";
 export type {
+  ActivityMatch,
   ClaudePermissionMode,
-  ClaudeSession,
   ClaudeSettingsOverrides,
   ClaudeToolRule,
   ElwoodEventHandler,
   ElwoodEventMap,
   ElwoodEventName,
   ElwoodSessionStatus,
+  ElwoodStatusDecision,
+  ElwoodStatusEvidence,
   ElwoodWarningEvent,
   HookErrorEvent,
   ResumeClaudeOptions,
   StartClaudeOptions,
+  StatusMatch,
   TerminalSize,
   Unsubscribe,
 } from "./core/types.ts";

@@ -235,9 +235,13 @@ Claude and Codex sessions intentionally share the same core control surface:
 interface ElwoodLikeSession {
   readonly elwoodSessionId: string;
   readonly cwd: string;
-  readonly status: "starting" | "running" | "ready" | "stopped" | "exited" | "killed" | "torn_down";
+  readonly status: "starting" | "running" | "ready" | "blocked" | "stopped" | "exited" | "killed" | "torn_down";
   readonly warnings: readonly ElwoodWarningEvent[];
   readonly terminal: ElwoodTerminal;
+
+  statusDecisions(): readonly ElwoodStatusDecision[];
+  waitForStatus(match: (status: ElwoodSessionStatus) => boolean, timeoutMs?: number): Promise<ElwoodSessionStatus>;
+  waitForActivity(match: (event: ElwoodActivityEvent) => boolean, timeoutMs?: number): Promise<ElwoodActivityEvent>;
 
   sendPrompt(prompt: string): Promise<void>;
   sendMessage(message: string): Promise<void>;
@@ -467,7 +471,7 @@ Repository standards:
 |---|---|
 | `PRD.md` | Source of truth for product/API behavior and conformance criteria. |
 | `src/index.ts` | Public package exports. |
-| `src/core/` | Adapter-neutral session machinery: message queue, compact, model picker automation, persona, warnings. |
+| `src/core/` | Adapter-neutral session machinery: control-operation queue, status-evidence and rendered-state detection helpers, compact, model picker automation, persona, warnings. |
 | `src/runtime/` | Shared session base class, startup checks, teardown, and test seams. |
 | `src/claude/` | Claude adapter, hooks, settings, validation, and session runtime. |
 | `src/codex/` | Codex adapter, hooks, transcript watcher, validation, and session runtime. |

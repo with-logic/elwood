@@ -151,6 +151,7 @@ class FakeSession implements SharedSession {
   readonly prompts: string[] = [];
   readonly sizes: { readonly cols: number; readonly rows: number }[] = [];
   private readonly handlers = new Map<CommonEventName, CommonEventHandler<CommonEventName>[]>();
+  statusDecisions = () => [];
 
   on<E extends CommonEventName>(event: E, handler: CommonEventHandler<E>) {
     const handlers = this.handlers.get(event) ?? [];
@@ -189,9 +190,7 @@ class FakeSession implements SharedSession {
   }
 
   stop = () => Promise.resolve();
-
   kill = () => Promise.resolve();
-
   teardown = () => Promise.resolve();
 }
 

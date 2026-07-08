@@ -5,7 +5,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { startClaude } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -78,6 +78,42 @@ describe("ClaudeSession startup and terminal control", () => {
     await flushTerminal();
     expect(ptys[0]!.writes).toEqual(["1\r"]);
     expect(activity).toContain("startup_prompt:workspace_trust");
+  });
+
+  test("C-ATTN-03 an auto-answered trust prompt does not block the session", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd, autotrust: true });
+    const attention: string[] = [];
+    session.on("activity", (event) => {
+      if (event.kind === "attention") attention.push(event.label);
+    });
+    ptys[0]!.emitData(
+      "Quick safety check: Is this a project you created or one you trust?\r\n1. Yes, I trust this folder\r\n",
+    );
+    // Wait on the deterministic processed outcome — the autotrust answer being
+    // written — rather than a fixed sleep, so the frame has been observed.
+    await vi.waitFor(() => expect(ptys[0]!.writes).toContain("1\r"));
+    // Elwood answered the prompt; it never surfaces as blocked/attention.
+    expect(attention).toEqual([]);
+    expect(session.status).not.toBe("blocked");
+  });
+
+  test("C-ATTN-03 an unanswered trust prompt blocks with the trust label", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd, autotrust: false });
+    const attention: string[] = [];
+    session.on("activity", (event) => {
+      if (event.kind === "attention") attention.push(event.label);
+    });
+    ptys[0]!.emitData(
+      "Quick safety check: Is this a project you created or one you trust?\r\n1. Yes, I trust this folder\r\n",
+    );
+    await expect.poll(() => session.status).toBe("blocked");
+    expect(attention).toEqual(["claude-trust-prompt"]);
+    // Elwood did not answer on the caller's behalf.
+    expect(ptys[0]!.writes).toEqual([]);
   });
 
   test("C-ERR-07 version warnings are captured when non-strict parsing fails", async () => {

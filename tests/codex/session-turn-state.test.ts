@@ -24,6 +24,40 @@ describe("CodexSession turn boundaries", () => {
     expect(ptys[0]!.writes.at(-1)).toContain("follow-up after interrupt");
   });
 
+  test("C-ATTN-01 a rendered approval dialog blocks and emits attention", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startCodex({ cwd });
+    const attention: string[] = [];
+    session.on("activity", (event) => {
+      if (event.kind === "attention") attention.push(event.label);
+    });
+
+    ptys[0]!.emitData("codex rendered\r\n› ");
+    await expect.poll(() => session.status).toBe("ready");
+    ptys[0]!.emitData(
+      "[2J[HWould you like to run the following command?\r\n $ rm -rf build\r\n › 1. Yes (y)\r\n Press enter to confirm or esc to cancel\r\n",
+    );
+    await expect.poll(() => session.status).toBe("blocked");
+    expect(attention).toEqual(["codex-approval-dialog"]);
+    ptys[0]!.emitData("[2J[H› ");
+    await expect.poll(() => session.status).toBe("ready");
+  });
+
+  test("C-API-34 waitForStatus and waitForActivity resolve on Codex sessions", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startCodex({ cwd });
+    await expect(session.waitForStatus((s) => s === "running")).resolves.toBe("running");
+    const wait = session.waitForActivity((e) => e.kind === "attention");
+    ptys[0]!.emitData("codex rendered\r\n\u203a ");
+    await expect.poll(() => session.status).toBe("ready");
+    ptys[0]!.emitData(
+      "\u001b[2J\u001b[HWould you like to run the following command?\r\n \u203a 1. Yes (y)\r\n Press enter to confirm or esc to cancel\r\n",
+    );
+    await expect(wait).resolves.toMatchObject({ kind: "attention" });
+  });
+
   test("C-TURN-03 the pre-ready MCP boot spinner does not fabricate a turn", async () => {
     const cwd = tempDir();
     installFakes();

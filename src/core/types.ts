@@ -12,9 +12,7 @@ import type {
   ClaudeHookResultFor,
 } from "../claude/hooks.ts";
 import type { CodexHookEventName } from "../codex/hook-names.ts";
-import type { ElwoodTerminal } from "../terminal/headless.ts";
 import type { ElwoodActivityEvent } from "./activity.ts";
-import type { AgentModelOption } from "./model-rows.ts";
 
 export type TerminalSize = {
   readonly cols: number;
@@ -25,10 +23,37 @@ export type ElwoodSessionStatus =
   | "starting"
   | "running"
   | "ready"
+  | "blocked"
   | "stopped"
   | "exited"
   | "killed"
   | "torn_down";
+
+/** The kinds of evidence that can drive a session status transition. */
+export type ElwoodStatusEvidence =
+  | "startup_usable"
+  | "initial_ready"
+  | "hook_turn_ended"
+  | "rendered_turn_started"
+  | "rendered_turn_ended"
+  | "caller_submitted"
+  | "blocking_prompt_shown"
+  | "blocking_prompt_cleared"
+  | "terminal_exited"
+  | "stop_completed"
+  | "kill_completed"
+  | "teardown_completed";
+
+/** One live-only status-decision log entry; `to` is undefined when ignored. */
+export type ElwoodStatusDecision = {
+  readonly evidence: ElwoodStatusEvidence;
+  readonly from: ElwoodSessionStatus;
+  readonly to: ElwoodSessionStatus | undefined;
+  readonly reason: string;
+};
+
+export type StatusMatch = (status: ElwoodSessionStatus) => boolean;
+export type ActivityMatch = (event: ElwoodActivityEvent) => boolean;
 
 export type ClaudePermissionMode =
   | "default"
@@ -166,25 +191,3 @@ export type ElwoodEventHandler<E extends ElwoodEventName> = (
   : void;
 
 export type Unsubscribe = () => void;
-
-export interface ClaudeSession {
-  readonly elwoodSessionId: string;
-  readonly cwd: string;
-  readonly status: ElwoodSessionStatus;
-  readonly warnings: readonly ElwoodWarningEvent[];
-  readonly terminal: ElwoodTerminal;
-
-  on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): Unsubscribe;
-  off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void;
-
-  sendPrompt(prompt: string): Promise<void>;
-  sendMessage(message: string): Promise<void>;
-  sendKeys(input: string | Uint8Array): Promise<void>;
-  resize(size: TerminalSize): Promise<void>;
-  compact(options?: { readonly timeoutMs?: number }): Promise<void>;
-  listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]>;
-  setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void>;
-  stop(): Promise<void>;
-  kill(): Promise<void>;
-  teardown(): Promise<void>;
-}

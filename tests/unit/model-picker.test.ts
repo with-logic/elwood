@@ -110,38 +110,50 @@ describe("model picker automation", () => {
     expect(terminal.inputs).toEqual(["\r", "\r"]);
   });
 
-  test("C-API-23 openCommandScreen nudges Enter when the screen does not appear", async () => {
+  test("C-API-35 openCommandScreen re-submits the command when the picker is dropped", async () => {
+    // The first submit is lost (composer redraw during MCP boot); the picker
+    // only appears after a re-submit on the nudge interval.
     const terminal = scripted("still the composer");
-    terminal.onInput = (input) => {
-      if (input === "\r") terminal.text = claudePicker;
+    let submits = 0;
+    const submit = () => {
+      submits += 1;
+      if (submits >= 2) terminal.text = claudePicker;
+      return Promise.resolve();
     };
     const text = await openCommandScreen({
       terminal,
-      submit: submitOk,
+      submit,
       isOpen: (screen) => /Select model/.test(screen),
       timeoutMs: 2_000,
       label: "test picker",
       nudgeDelayMs: 10,
     });
     expect(parseClaudeModelPicker(text).options.length).toBe(5);
-    expect(terminal.inputs).toEqual(["\r"]);
+    // The whole command was re-submitted, not just a bare Enter nudge.
+    expect(submits).toBeGreaterThanOrEqual(2);
   });
 
-  test("C-API-23 openCommandScreen skips the nudge when the screen is already open", async () => {
+  test("C-API-23 openCommandScreen does not re-submit once the picker is open", async () => {
     const terminal = scripted("booting");
+    let submits = 0;
+    const submit = () => {
+      submits += 1;
+      return Promise.resolve();
+    };
     setTimeout(() => {
       terminal.text = claudePicker;
     }, 20);
     await openCommandScreen({
       terminal,
-      submit: submitOk,
+      submit,
       isOpen: (screen) => /Select model/.test(screen),
       timeoutMs: 2_000,
       label: "test picker",
       nudgeDelayMs: 60,
     });
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    expect(terminal.inputs).toEqual([]);
+    await new Promise((resolve) => setTimeout(resolve, 140));
+    // Only the initial submit; no re-submit once the picker was already open.
+    expect(submits).toBe(1);
   });
 
   test("C-API-23 pickerTimeout falls back to the 20s default", () => {

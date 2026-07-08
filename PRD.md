@@ -384,7 +384,18 @@ interface ClaudeSession {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;
+  readonly warnings: readonly ElwoodWarningEvent[];
   readonly terminal: ElwoodTerminal;
+
+  statusDecisions(): readonly ElwoodStatusDecision[];
+  waitForStatus(
+    match: (status: ElwoodSessionStatus) => boolean,
+    timeoutMs?: number,
+  ): Promise<ElwoodSessionStatus>;
+  waitForActivity(
+    match: (event: ElwoodActivityEvent) => boolean,
+    timeoutMs?: number,
+  ): Promise<ElwoodActivityEvent>;
 
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): Unsubscribe;
   off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void;
@@ -465,14 +476,19 @@ Claude elides the footer working token below roughly 66 columns, so each
 adapter also has a documented interrupt end banner (Claude renders
 "⎿ Interrupted", Codex renders "Conversation interrupted") whose appearance
 fires the turn-end transition even when the working token was never visible.
-Together the sources cover every width: turn start comes from message
-submission, normal completion from the `Stop` hook, and interrupts from the
-working-token edge on wide screens or the end banner anywhere. Hook-driven readiness (`Stop`) remains as a
-redundant turn-end source; transitions are idempotent, and rendered-state
-watching only activates after initial readiness so startup spinners that
-borrow the same wording cannot fabricate turns. The indicator tokens are
-version-coupled TUI wording and MUST live in named per-adapter constants
-documenting the CLI version they were verified against.
+Together the sources cover every width. Turn start is a rendered-state signal:
+the on-screen working token where it fits, plus the OSC window-title braille
+spinner (C-TURN-05) which is width-independent and reveals a running turn even
+when the footer token is elided; a caller `sendMessage`/`sendPrompt` also moves
+the session to `running`. Normal completion comes from the `Stop` hook, and
+interrupts from the working-token edge on wide screens or the end banner
+anywhere. Hook-driven readiness (`Stop`) remains a redundant turn-end source;
+transitions are idempotent, and rendered-state watching only activates after
+initial readiness so startup spinners that borrow the same wording cannot
+fabricate turns. These indicators (working token, title spinner, composer
+markers, interrupt banners, and blocking-dialog shapes) are version-coupled TUI
+wording and MUST live in the documented per-adapter screen-fact tables, each
+recording the CLI version it was verified against.
 
 Elwood MUST NOT require callers or examples to inspect the terminal screen or
 match adapter-specific prompt text before calling `sendMessage`. Adapter-specific
@@ -534,18 +550,21 @@ concurrently — Elwood MUST NOT clobber the file; it leaves the CLI's write in
 place and emits the `codex_default_model_persisted` warning so the deviation
 is surfaced rather than silent. Elwood confirms the CLI's own default
 reasoning level for the chosen Codex model.
-Both commands queue behind the active turn like `sendMessage`. Failures to
-recognize or drive the rendered picker reject with `model_automation_failed`;
-an unknown `id` rejects with the same error and includes the available ids in
-the error details.
+`listModels` and `setModel` are transient TUI control: they open and drive the
+adapter's own picker overlay and MUST dispatch even while a turn is in flight
+(for example an MCP-server boot spinner at startup), rather than waiting for
+the session to reach `ready`. Waiting would stall picker automation behind a
+turn that has not completed. Failures to recognize or drive the rendered
+picker reject with `model_automation_failed`; an unknown `id` rejects with the
+same error and includes the available ids in the error details.
 
-Command submissions (`compact`, `listModels`, `setModel`) queue behind the
-active turn like `sendMessage`, but they MUST NOT consume the session's ready
-transition: typing a slash command does not start a user turn, no completion
-hook will re-arm readiness afterwards, and consuming readiness would deadlock
-every later queued submission. After a queued command is typed, the session
-remains ready and any remaining queued messages continue to drain in FIFO
-order.
+Command submissions (`compact`, `listModels`, `setModel`) MUST NOT consume the
+session's ready transition: typing a slash command does not start a user turn,
+no completion hook will re-arm readiness afterwards, and consuming readiness
+would deadlock every later queued submission. Operations still reach the
+terminal in FIFO order. A readiness-waiting operation at the head of the queue
+(a message or `compact`) holds the operations queued behind it — including
+picker commands — until the turn completes, so ordering is preserved.
 
 `compact` asks the wrapped agent to compact its conversation. The compact
 command submission goes through the same readiness queue as `sendMessage`, so
@@ -558,8 +577,8 @@ the promise rejects with `session_not_running`. Hook and activity events for
 `PreCompact`/`PostCompact` flow to the parent app exactly as for any other
 hook.
 
-`ElwoodSessionStatus` values are `starting`, `running`, `ready`, `stopped`,
-`exited`, `killed`, and `torn_down`.
+`ElwoodSessionStatus` values are `starting`, `running`, `ready`, `blocked`,
+`stopped`, `exited`, `killed`, and `torn_down`.
 
 After startup health checks pass, a newly started or resumed session may enter
 `ready` only when that adapter's first-input readiness signal has fired.
@@ -568,13 +587,50 @@ lifecycle signal proves the interactive prompt is ready. Sending a message
 through `sendMessage` or a prompt through `sendPrompt` keeps or moves the session
 in `running`. Adapter readiness signals move the session back to `ready`.
 
+`blocked` reports that the wrapped agent is waiting on a human decision it
+cannot answer itself: a tool permission or approval dialog, or a workspace
+trust prompt Elwood was not authorized to answer (`autotrust: false`).
+Blocked detection derives from the rendered screen via the adapter's
+documented screen-fact rules. A session enters `blocked` from any live status
+(`running` or `ready`) when a blocking dialog appears — an adapter may finish
+its working indicator before the dialog settles, so the block can follow a
+`ready` beat — and settles to `ready` when the dialog resolves, since the
+composer is then waiting for input again. Prompts Elwood answers automatically
+(startup prompt automation, or workspace trust with `autotrust: true`) MUST
+NOT produce a `blocked` transition. Terminal statuses absorb blocking
+evidence. On the transition into `blocked`, Elwood also emits an `activity`
+event with `source: "terminal"`, `kind: "attention"`, a label naming the
+matched screen-fact rule ids, and text describing that the agent is waiting on
+a human decision.
+
+`statusDecisions()` returns a live-only log of at most the 50 most recent
+status decisions, oldest first. Each `ElwoodStatusDecision` records the evidence that
+arrived, the status it moved `from`, the status it moved `to` (undefined when
+the evidence was ignored rather than applied), and a human-readable `reason`.
+It explains why lifecycle transitions did or did not fire — including which
+evidence was ignored — for diagnostics and the local dev app. The log is never
+persisted and never contains prompt, terminal, or hook payload content.
+
+`waitForStatus(match, timeoutMs?)` and `waitForActivity(match, timeoutMs?)` are
+typed helpers over the session's own `status` and `activity` event streams.
+`waitForStatus` resolves with the current status if `match` already accepts it,
+otherwise on the first matching `status` event. `waitForActivity` resolves on
+the first `activity` event `match` accepts. Both reject with `wait_timeout`
+after `timeoutMs` (default 60000 ms), and reject with `session_not_running` if
+the session reaches a terminal status the caller was not waiting for before the
+condition is met (for `waitForActivity`, this includes a session that is
+already terminal when the call is made). The helpers unsubscribe on settle and
+add no persistence; they are convenience wrappers over events parent apps could
+observe directly.
+
 If `initialSize` is omitted, Elwood MUST default the terminal to 189 columns by
 48 rows. Parent apps with a visible terminal should still pass and maintain the
 visual xterm size explicitly.
 
 `terminal` exposes the session's headless xterm.js terminal handle. The handle
-MUST expose the underlying headless xterm instance, current size, and a snapshot
-API with visible lines, joined visible text, and cursor position. Parent apps may
+MUST expose the underlying headless xterm instance, current size, the latest
+OSC window title, and a snapshot API with visible lines, joined visible text,
+and cursor position. Parent apps may
 use this handle for diagnostics or to bridge Elwood's terminal state into their
 own renderer, while `terminal:data` remains the live raw stream for browser
 renderers. The handle also exposes terminal-control methods used internally
@@ -620,7 +676,8 @@ must still surface.
 - `activity`: adapter-neutral live events for common observability, including
   lifecycle changes, user messages, assistant messages, reasoning, tool calls,
   tool results, web search, notifications, warnings, startup prompt automation,
-  generic hooks, hook results, and hook errors.
+  attention (blocked-on-a-human-decision) transitions, generic hooks, hook
+  results, and hook errors.
 - `hook`: every Claude hook event after parsing and validation.
 - `codex:transcript`: live, best-effort Codex transcript observations for
   activity that Codex does not expose as hook events.
@@ -790,8 +847,9 @@ options override field by field and the effective posture is re-persisted.
 ### 5.7 CodexSession
 
 `CodexSession` exposes the same control surface as `ClaudeSession`: typed event
-subscription, `sendPrompt`, `sendMessage`, `sendKeys`, `resize`, `compact`,
-`listModels`, `setModel`, `stop`, `kill`, and `teardown`. Prompt submission and
+subscription, `statusDecisions`, `waitForStatus`, `waitForActivity`,
+`sendPrompt`, `sendMessage`, `sendKeys`, `resize`, `compact`, `listModels`,
+`setModel`, `stop`, `kill`, and `teardown`. Prompt submission and
 raw input semantics are the same as Claude: Elwood writes to the PTY as a
 human would. `compact` follows the §5.3 contract using Codex's `/compact`
 command and `PostCompact` hook; `listModels`/`setModel` follow the §5.3
@@ -800,10 +858,11 @@ contract against Codex's `Select Model and Effort` picker.
 The package also exports `ElwoodAgentSession`, a structural supertype both
 concrete session types satisfy, covering the shared identity/status
 properties, the common event names (`terminal:data`, `terminal:exit`,
-`status`, `activity`, `warning`, `hookError`), and the shared io, command,
-and lifecycle methods. Parent-app code generic over "any agent session" can
-be written once against this type; adapter-specific hooks and events remain
-on the concrete types.
+`status`, `activity`, `warning`, `hookError`), the diagnostics and wait
+helpers (`statusDecisions`, `waitForStatus`, `waitForActivity`), and the
+shared io, command, and lifecycle methods. Parent-app code generic over "any
+agent session" can be written once against this type; adapter-specific hooks
+and events remain on the concrete types.
 
 Both `ClaudeSession` and `CodexSession` expose `warnings`, a live in-memory
 snapshot of typed non-fatal issues observed by Elwood. Warnings are also emitted
@@ -1300,6 +1359,7 @@ Initial required error names:
 | `teardown_failed` | Elwood could not remove all owned session files. |
 | `compact_failed` | A requested conversation compaction did not report completion in time. |
 | `model_automation_failed` | The adapter's model picker could not be recognized or driven to completion. |
+| `wait_timeout` | A `waitForStatus`/`waitForActivity` call did not observe its condition before the timeout. |
 
 Hook handler failures are normally surfaced as `hookError` events, not thrown
 from the hook bridge path.
@@ -1445,6 +1505,7 @@ Each criterion has:
 | C-API-22 | §5.3 §5.7 | `compact()` submits the adapter's `/compact` command through the readiness queue, resolves on the adapter's `PostCompact` hook, rejects with `compact_failed` on timeout, and rejects with `session_not_running` if the session terminates first. |
 | C-API-23 | §5.3 §5.7 | `listModels()` parses the adapter's rendered model picker into typed options with current/default markers, cancels with Escape, and leaves the session model unchanged. |
 | C-API-24 | §5.3 §5.7 | `setModel(id)` switches the session model through cursor navigation; Elwood itself never persists a new default into user-owned configuration (Claude uses the session-only key; the Codex CLI persists its own picker selection, documented as a §4.5 deviation) and unknown ids reject with `model_automation_failed` listing available ids. |
+| C-API-35 | §5.3 §5.7 | `listModels()`/`setModel()` dispatch the picker command even while a turn is in flight (they do not wait for `ready`), so picker automation is not stalled by an in-flight turn such as an MCP-server boot spinner; `compact` and messages still wait for the active turn, and FIFO ordering is preserved. |
 | C-API-25 | §5.3 | Promise-returning session methods called after a terminal status reject with `session_not_running` instead of throwing synchronously. |
 | C-API-26 | §5.2 §5.6 | `startOrResumeClaude`/`startOrResumeCodex` resume when possible, fall back to a fresh start only on `state_not_found`, `resume_unavailable`, or `adapter_mismatch`, rethrow all other errors, and report `resumed` in the result. |
 | C-API-27 | §5.7 | `ElwoodAgentSession` is exported and both `ClaudeSession` and `CodexSession` are assignable to it, covering common events, io, commands, and lifecycle. |
@@ -1453,6 +1514,12 @@ Each criterion has:
 | C-TURN-02 | §5.3 | An Escape interrupt of a running turn produces the `ready` transition from rendered TUI state alone, with no dependency on a `Stop` hook. |
 | C-TURN-03 | §5.3 | Turn-state detection uses documented per-adapter indicator constants over `snapshot().text`; redundant edges are idempotent, screens showing neither indicator hold state, and watching activates only after initial readiness. |
 | C-TURN-04 | §5.3 | The interrupt `ready` transition fires at any terminal width: via the working-token edge where the footer fits, and via the adapter's interrupt end banner (which Claude's footer elision below ~66 columns makes necessary) on narrow screens. |
+| C-TURN-05 | §5.3 | Turn-state detection also consumes the OSC window title as a width-independent working signal: both adapters render a braille-spinner glyph (U+2800–U+28FF) in the title while a turn runs, so a turn `started` edge can fire from the title alone when the on-screen footer token is elided. The title is exposed on the terminal handle and is not persisted. |
+| C-ATTN-01 | §5.3 | A tool permission dialog rendered mid-turn transitions the session to `blocked` and emits an `attention` activity whose label names the matched screen-fact rule ids, on both adapters. |
+| C-ATTN-02 | §5.3 | A session enters `blocked` from either `running` or `ready` when a blocking dialog appears, and settles to `ready` when the dialog resolves; blocking evidence never moves a session out of a terminal status. |
+| C-ATTN-03 | §5.3 | Startup prompts Elwood answers automatically never produce `blocked`; a workspace trust prompt left unanswered because `autotrust` is false does. |
+| C-API-33 | §5.3 | `statusDecisions()` returns a live-only log of at most the 50 most recent status decisions, oldest first, each recording the evidence, the from/to statuses (`to` undefined when ignored), and a human-readable reason; it is never persisted and carries no prompt, terminal, or hook payload content. |
+| C-API-34 | §5.3 | `waitForStatus`/`waitForActivity` resolve from current state or the next matching event, reject with `wait_timeout` after the timeout (default 60000 ms), and reject with `session_not_running` when the session reaches an unwaited terminal status first; both unsubscribe on settle. |
 | C-API-29 | §5.2 §5.6 | Resume accepts the same launch-policy options as start and forwards them into the relaunched command: `resumeClaude` forwards `permissionMode`, `allowedTools`, `disallowedTools`, and `tools`; `resumeCodex` forwards `sandbox` and `approvalPolicy`. A resumed agent stays exactly as privileged and as tool-restricted as it started. |
 | C-API-32 | §5.2 §5.6 | Resume defaults launch-policy options from the record's persisted posture; explicit resume options override field by field, and the effective posture is re-persisted. |
 | C-API-30 | §5.4 | `tool_call` activity carries the tool's input as a serialized `toolInput` and `tool_result` activity carries the tool's output as a serialized `toolOutput`, for both the Claude hook path (`tool_input`/`tool_response`) and the Codex transcript path (`arguments`/`output`); absent sources leave the field absent. |

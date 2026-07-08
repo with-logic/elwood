@@ -137,7 +137,7 @@ function wireSession(active: SharedSession): void {
   active.on("terminal:exit", (event) => broadcastEvent(events.terminalExitEvent(event)));
   active.on("status", (event) => {
     broadcast({ type: "status", status: event.status });
-    broadcastEvent(events.statusEvent(event));
+    broadcastEvent(events.statusEvent(event, active.statusDecisions().at(-1)));
   });
   active.on("activity", (event) => broadcastEvent(events.activityEvent(event)));
   active.on("warning", (event) => broadcastEvent(events.warningEvent(event)));

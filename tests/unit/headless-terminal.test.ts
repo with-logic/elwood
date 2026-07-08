@@ -17,4 +17,14 @@ describe("headless terminal", () => {
     terminal.dispose();
     await expect(terminal.writeOutput("after dispose")).resolves.toBeUndefined();
   });
+
+  test("C-TURN-05 tracks the latest OSC window title", async () => {
+    const terminal = createHeadlessTerminal({ cols: 20, rows: 3 }, () => undefined);
+    expect(terminal.title).toBe("");
+    // OSC 2 sets the window title, terminated by BEL.
+    await terminal.writeOutput(`${String.fromCharCode(27)}]2;⠹ working${String.fromCharCode(7)}`);
+    expect(terminal.title).toBe("⠹ working");
+    await terminal.writeOutput(`${String.fromCharCode(27)}]2;✳ idle${String.fromCharCode(7)}`);
+    expect(terminal.title).toBe("✳ idle");
+  });
 });

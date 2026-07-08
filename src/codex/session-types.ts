@@ -6,9 +6,12 @@
 import type { ElwoodActivityEvent } from "../core/activity.ts";
 import type { AgentModelOption } from "../core/model-rows.ts";
 import type {
+  ActivityMatch,
   ElwoodSessionStatus,
+  ElwoodStatusDecision,
   ElwoodWarningEvent,
   HookErrorEvent,
+  StatusMatch,
   TerminalSize,
   Unsubscribe,
 } from "../core/types.ts";
@@ -95,6 +98,11 @@ export interface CodexSession {
   readonly status: ElwoodSessionStatus;
   readonly warnings: readonly ElwoodWarningEvent[];
   readonly terminal: ElwoodTerminal;
+
+  /** Live-only log of recent status decisions, oldest first, for diagnostics. */
+  statusDecisions(): readonly ElwoodStatusDecision[];
+  waitForStatus(match: StatusMatch, timeoutMs?: number): Promise<ElwoodSessionStatus>;
+  waitForActivity(match: ActivityMatch, timeoutMs?: number): Promise<ElwoodActivityEvent>;
 
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): Unsubscribe;
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void;

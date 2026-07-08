@@ -12,6 +12,7 @@ const statuses = new Set<ElwoodSessionStatus>([
   "starting",
   "running",
   "ready",
+  "blocked",
   "stopped",
   "exited",
   "killed",

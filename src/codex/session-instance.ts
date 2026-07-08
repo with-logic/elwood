@@ -3,8 +3,10 @@
  * Implements PRD §5.7, §7A, §8, and §9.
  */
 
+import type { ElwoodActivityEvent } from "../core/activity.ts";
+import { sessionWaitForActivity, sessionWaitForStatus } from "../core/session-wait.ts";
 import type { TerminalReplayBuffer } from "../core/terminal-replay.ts";
-import type { ElwoodWarningEvent } from "../core/types.ts";
+import type { ElwoodSessionStatus, ElwoodWarningEvent } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import { AgentSessionBase } from "../runtime/session-base.ts";
@@ -70,6 +72,12 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
   }
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void {
     this.emitter.off(event, handler);
+  }
+  waitForStatus(match: (status: ElwoodSessionStatus) => boolean, timeoutMs?: number) {
+    return sessionWaitForStatus(this, match, timeoutMs);
+  }
+  waitForActivity(match: (event: ElwoodActivityEvent) => boolean, timeoutMs?: number) {
+    return sessionWaitForActivity(this, match, timeoutMs);
   }
   // Codex has no staged chip; the composer still shows the paste's last line.
   protected stagedPaste(screen: string, prompt: string): boolean {

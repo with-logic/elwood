@@ -4,7 +4,7 @@
  */
 
 import { elwoodError } from "../core/errors.ts";
-import type { ClaudeSession, ResumeClaudeOptions } from "../core/types.ts";
+import type { ResumeClaudeOptions } from "../core/types.ts";
 import {
   claudeLaunchPosture,
   effectivePosture,
@@ -18,6 +18,7 @@ import {
 } from "../state/store.ts";
 import { preflightClaude } from "./preflight.ts";
 import { startClaudeFromRecord } from "./session.ts";
+import type { ClaudeSession } from "./session-interface.ts";
 
 export async function resumeClaude(options: ResumeClaudeOptions): Promise<ClaudeSession> {
   const stateDir = options.stateDir ?? defaultStateDir(options.cwd ?? process.cwd());
