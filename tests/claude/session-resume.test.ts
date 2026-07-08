@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { resumeClaude, startClaude } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
+import { resetPreflightCacheForTests } from "../../src/runtime/update-once.ts";
 import {
   createSessionRecord,
   prepareStateDir,
@@ -30,6 +31,8 @@ describe("ClaudeSession resume options", () => {
       stateDir,
     );
     await session.stop();
+    // Resume must re-read the (now unparseable) version, not the cached good one.
+    resetPreflightCacheForTests();
     setCommandRunnerForTests(() => ({ status: 0, stdout: "mystery build", stderr: "" }));
     const stops: string[] = [];
     const resumed = await resumeClaude({

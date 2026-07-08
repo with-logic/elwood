@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resetCodexPreflightCacheForTests } from "../../src/codex/preflight.ts";
 import { resetCodexSessionSeamsForTests } from "../../src/codex/session.ts";
 import type { TerminalSize } from "../../src/index.ts";
 import type { PtyExit, PtyProcess, PtySpawnOptions } from "../../src/pty/types.ts";
@@ -11,6 +12,7 @@ import {
   setPtyFactoryForTests,
 } from "../../src/runtime/seams.ts";
 import { resetStartupWaitMsForTests, setStartupWaitMsForTests } from "../../src/runtime/startup.ts";
+import { resetPreflightCacheForTests } from "../../src/runtime/update-once.ts";
 
 export const ptys: FakePty[] = [];
 
@@ -38,6 +40,8 @@ export function installFakes(options: { readonly supportsHookTrustBypass?: boole
 export function resetFakes(): void {
   resetRuntimeSeamsForTests();
   resetStartupWaitMsForTests();
+  resetPreflightCacheForTests();
+  resetCodexPreflightCacheForTests();
   resetCodexSessionSeamsForTests();
   ptys.length = 0;
 }

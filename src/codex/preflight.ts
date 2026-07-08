@@ -7,7 +7,11 @@ import { elwoodError } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { loginShellCommand, userShell } from "../runtime/shell.ts";
-import { shouldRunAutoupdate } from "../runtime/update-once.ts";
+import {
+  cachedVersionRead,
+  invalidateVersionRead,
+  shouldRunAutoupdate,
+} from "../runtime/update-once.ts";
 
 export const minimumCodexVersion = "0.124.0";
 export type CodexCliCapabilities = { readonly supportsHookTrustBypass: boolean };
@@ -30,6 +34,9 @@ export async function preflightCodex(
   if (autoupdate && shouldRunAutoupdate("codex")) {
     await runCodexUpdate();
     cachedCapabilities = undefined;
+    // The update may have changed the binary; drop the cached read so the
+    // post-update version is re-read.
+    invalidateVersionRead("codex");
     result = await readCodexVersion();
   }
   const version = parseCodexVersion(result.stdout);
@@ -57,7 +64,11 @@ async function runCodexUpdate(): Promise<void> {
 }
 
 async function readCodexVersion(): Promise<CommandResult> {
-  const result = await currentCommandRunner()(userShell(), loginShellCommand("codex --version"));
+  // The mapping to typed errors runs on every call (cache hit or miss) so all
+  // callers throw identically; only the subprocess is deduped.
+  const result = await cachedVersionRead("codex", () =>
+    Promise.resolve(currentCommandRunner()(userShell(), loginShellCommand("codex --version"))),
+  );
   if (result.error?.code === "ENOENT" || result.status === 127) {
     throw elwoodError("codex_not_found", "Could not find `codex` on PATH.");
   }

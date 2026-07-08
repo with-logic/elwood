@@ -11,6 +11,7 @@ import {
   setPtyFactoryForTests,
 } from "../../src/runtime/seams.ts";
 import { resetStartupWaitMsForTests, setStartupWaitMsForTests } from "../../src/runtime/startup.ts";
+import { resetPreflightCacheForTests } from "../../src/runtime/update-once.ts";
 
 export const ptys: FakePty[] = [];
 
@@ -30,6 +31,7 @@ export function installFakes(): void {
 export function resetFakes(): void {
   resetRuntimeSeamsForTests();
   resetStartupWaitMsForTests();
+  resetPreflightCacheForTests();
   resetClaudeSessionSeamsForTests();
   ptys.length = 0;
 }

@@ -11,6 +11,7 @@ import { serializeHookResult } from "../../src/claude/serialize.ts";
 import { generateClaudeSettings } from "../../src/claude/settings.ts";
 import { ElwoodError } from "../../src/core/errors.ts";
 import {
+  type CommandResult,
   currentCommandRunner,
   currentPlatform,
   resetRuntimeSeamsForTests,
@@ -18,6 +19,7 @@ import {
   setPlatformForTests,
 } from "../../src/runtime/seams.ts";
 import { assertStartupUsable } from "../../src/runtime/startup.ts";
+import { resetPreflightCacheForTests } from "../../src/runtime/update-once.ts";
 
 describe("serialization", () => {
   test("C-HRESP-06 variants serialize to Claude-compatible output", () => {
@@ -49,15 +51,20 @@ describe("serialization", () => {
 
 describe("preflight", () => {
   test("C-CLAUDE-04 version parsing and comparisons cover strict paths", async () => {
+    // Clear the per-process version cache whenever the fake changes output.
+    const setVersion = (result: CommandResult) => {
+      resetPreflightCacheForTests();
+      setCommandRunnerForTests(() => result);
+    };
     expect(parseVersion("claude 2.1.144")).toBe(minimumClaudeVersion);
     setPlatformForTests("darwin");
-    setCommandRunnerForTests(() => ({ status: 1, stdout: "", stderr: "boom" }));
+    setVersion({ status: 1, stdout: "", stderr: "boom" });
     await expect(preflightClaude(false)).rejects.toThrow(ElwoodError);
-    setCommandRunnerForTests(() => ({ status: 0, stdout: "unparseable", stderr: "" }));
+    setVersion({ status: 0, stdout: "unparseable", stderr: "" });
     // Non-strict unparseable version resolves with a warning (does not throw).
     await expect(preflightClaude(false)).resolves.toMatchObject({ code: "version_unparseable" });
     await expect(preflightClaude(true)).rejects.toThrow(ElwoodError);
-    setCommandRunnerForTests(() => ({ status: 0, stdout: "2.1.1", stderr: "" }));
+    setVersion({ status: 0, stdout: "2.1.1", stderr: "" });
     await expect(preflightClaude(false)).rejects.toThrow(ElwoodError);
     resetRuntimeSeamsForTests();
   });

@@ -15,10 +15,12 @@ import {
 import { serializeCodexHookResult } from "../../src/codex/serialize.ts";
 import { ElwoodError } from "../../src/core/errors.ts";
 import {
+  type CommandResult,
   resetRuntimeSeamsForTests,
   setCommandRunnerForTests,
   setPlatformForTests,
 } from "../../src/runtime/seams.ts";
+import { resetPreflightCacheForTests } from "../../src/runtime/update-once.ts";
 import { createSessionRecord } from "../../src/state/store.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
@@ -62,33 +64,35 @@ describe("Codex core helpers", () => {
   });
 
   test("C-CODEX-04 version parsing and strict failure paths are typed", async () => {
+    // Each fresh `--version` output must be re-read, so clear the per-process
+    // version cache whenever the fake runner changes output.
+    const setVersion = (result: CommandResult) => {
+      resetPreflightCacheForTests();
+      setCommandRunnerForTests(() => result);
+    };
     expect(parseCodexVersion("codex-cli 0.132.0")).toBe("0.132.0");
     expect(minimumCodexVersion).toBe("0.124.0");
     setPlatformForTests("linux");
     await expect(preflightCodex(false)).rejects.toThrow(ElwoodError);
     setPlatformForTests("darwin");
-    setCommandRunnerForTests(() => ({ status: 1, stdout: "", stderr: "boom" }));
+    setVersion({ status: 1, stdout: "", stderr: "boom" });
     await expect(preflightCodex(false)).rejects.toThrow(ElwoodError);
-    setCommandRunnerForTests(() => ({
+    setVersion({
       status: null,
       stdout: "",
       stderr: "terminated",
       error: { code: "SIGTERM", message: "terminated" },
-    }));
+    });
     await expect(preflightCodex(false)).rejects.toThrow(
       expect.objectContaining({ code: "codex_start_failed" }),
     );
-    setCommandRunnerForTests(() => ({ status: 0, stdout: "unparseable", stderr: "" }));
+    setVersion({ status: 0, stdout: "unparseable", stderr: "" });
     // Non-strict unparseable version resolves with a warning (does not throw).
     await expect(preflightCodex(false)).resolves.toMatchObject({ code: "version_unparseable" });
     await expect(preflightCodex(true)).rejects.toThrow(ElwoodError);
-    setCommandRunnerForTests(() => ({
-      status: 0,
-      stdout: `codex-cli ${minimumCodexVersion}\n`,
-      stderr: "",
-    }));
+    setVersion({ status: 0, stdout: `codex-cli ${minimumCodexVersion}\n`, stderr: "" });
     await expect(preflightCodex(true)).resolves.toBeUndefined();
-    setCommandRunnerForTests(() => ({ status: 0, stdout: "0.1.0", stderr: "" }));
+    setVersion({ status: 0, stdout: "0.1.0", stderr: "" });
     await expect(preflightCodex(false)).rejects.toThrow(ElwoodError);
     resetRuntimeSeamsForTests();
   });
