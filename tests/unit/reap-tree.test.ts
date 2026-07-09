@@ -6,8 +6,12 @@
 import { spawn } from "node-pty";
 import { describe, expect, test } from "vitest";
 import type { PtyExit } from "../../src/pty/types.ts";
-import { reapProcessGroup, rethrowUnlessGroupGone } from "../../src/runtime/reap-tree.ts";
-import { reap, terminatePty } from "../../src/runtime/terminate.ts";
+import {
+  reapProcessGroup,
+  rethrowUnlessGroupGone,
+  SessionReaper,
+} from "../../src/runtime/reap-tree.ts";
+import { terminatePty } from "../../src/runtime/terminate.ts";
 
 const LEADER = 1000;
 
@@ -40,13 +44,25 @@ describe("C-LIFE-10 process-group reaping", () => {
     expect(() => rethrowUnlessGroupGone({ code: "EPERM" })).toThrow();
   });
 
-  test("terminate.reap uses the default group killer when none is injected", () => {
-    // Low pid is refused by the guard, so the default (real) killer is reached
-    // but performs no signal — exercising the no-injected-killer branch safely.
-    expect(() => reap({ pid: 1 } as never, undefined)).not.toThrow();
+  test("SessionReaper reaps exactly once; later calls are reuse-safe no-ops", () => {
+    // Reaping the same numeric pgid twice is unsafe: once the group empties the
+    // kernel may recycle the pid, so a second kill(-pgid) could hit an unrelated
+    // group. The latch guarantees at most one signal per session.
+    const killed: number[] = [];
+    const reaper = new SessionReaper(LEADER, { killGroup: (pgid) => killed.push(pgid) });
+    reaper.reap();
+    reaper.reap();
+    reaper.reap();
+    expect(killed).toEqual([LEADER]);
   });
 
-  test("terminatePty reaps the leader's group with an injected killer after exit", async () => {
+  test("SessionReaper uses the default (real) killer when none is injected", () => {
+    // A system-range pid is refused by the guard, so the default killer performs
+    // no signal — exercising the no-injected-killer path safely.
+    expect(() => new SessionReaper(1).reap()).not.toThrow();
+  });
+
+  test("terminatePty reaps the leader's group after exit", async () => {
     const killed: number[] = [];
     const pty = {
       pid: LEADER,
@@ -62,9 +78,10 @@ describe("C-LIFE-10 process-group reaping", () => {
     await terminatePty(
       pty,
       "SIGKILL",
-      { gracefulMs: 0, forceMs: 10 },
+      new SessionReaper(LEADER, { killGroup: (p) => killed.push(p) }),
       {
-        killGroup: (pgid) => killed.push(pgid),
+        gracefulMs: 0,
+        forceMs: 10,
       },
     );
     expect(killed).toEqual([LEADER]);

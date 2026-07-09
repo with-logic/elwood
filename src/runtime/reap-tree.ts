@@ -70,3 +70,29 @@ export function resetGroupKillerForTests(): void {
 export function rethrowUnlessGroupGone(error: unknown): void {
   if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
 }
+
+/**
+ * Owns a single PTY leader's group reap. The reap MUST happen at most once per
+ * session: `stop()` then a later `teardown()` both want to guarantee the group
+ * is gone, but signaling the same numeric pgid twice is unsafe — once the group
+ * is empty the kernel may recycle the pid, and a second `kill(-pgid)` would hit
+ * an unrelated group. This latch pins the leader pid at construction and reaps
+ * exactly once; every later call is a no-op that returns the recorded result.
+ */
+export class SessionReaper {
+  private readonly leaderPid: number;
+  private readonly ops: ProcessGroupKiller;
+  private done = false;
+
+  constructor(leaderPid: number, ops: ProcessGroupKiller = activeKiller) {
+    this.leaderPid = leaderPid;
+    this.ops = ops;
+  }
+
+  /** Reap the group once; subsequent calls no-op. Idempotent and reuse-safe. */
+  reap(): void {
+    if (this.done) return;
+    this.done = true;
+    reapProcessGroup(this.leaderPid, this.ops);
+  }
+}

@@ -1,7 +1,4 @@
-/**
- * Shared adapter session behavior: lifecycle, input, and command surface.
- * Implements PRD §5.3 and §5.7 common session semantics.
- */
+/** Shared adapter session behavior: lifecycle, input, command surface. Implements PRD §5.3, §5.7. */
 
 import { activityFromStatus, type ElwoodAgentKind } from "../core/activity.ts";
 import { compactCommand, sessionCompact } from "../core/compact.ts";
@@ -27,6 +24,7 @@ import {
   writeSessionRecord,
 } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
+import { SessionReaper } from "./reap-tree.ts";
 import { agentTitles, type SessionStatusEmitter } from "./session-base-types.ts";
 import { terminalStatuses } from "./session-status.ts";
 import {
@@ -35,7 +33,7 @@ import {
   type StatusEvidenceKind,
 } from "./status-evidence.ts";
 import { runTeardownSteps } from "./teardown.ts";
-import { reap, terminatePty } from "./terminate.ts";
+import { terminatePty } from "./terminate.ts";
 
 type ShutdownEvidence = "stop_completed" | "kill_completed" | "teardown_completed";
 
@@ -45,11 +43,12 @@ export abstract class AgentSessionBase {
   protected abstract readonly picker: ModelPickerSpec;
   private readonly agent: ElwoodAgentKind;
   private readonly pty: PtyProcess;
+  // One-shot reaper: at most one group signal/session, so a later call can't re-signal a recycled pgid (C-LIFE-10).
+  private readonly reaper: SessionReaper;
   private readonly statusEvents: SessionStatusEmitter;
   private readonly terminalReplay: TerminalReplayBuffer;
   private cleanupPromise: Promise<void> | undefined;
-  // Claims the exit for a controlled shutdown so it resolves to that terminal status.
-  private pendingShutdown: ShutdownEvidence | undefined;
+  private pendingShutdown: ShutdownEvidence | undefined; // Claims the exit for a controlled shutdown.
   protected readonly controlQueue = new ControlQueue(
     (input, mode) => writeQueuedInput(this.terminal, input, mode, this.pasteGuard()),
     () => this.notRunningError(),
@@ -75,6 +74,7 @@ export abstract class AgentSessionBase {
     this.agent = agent;
     this.record = record;
     this.pty = pty;
+    this.reaper = new SessionReaper(pty.pid);
     this.terminal = terminal;
     this.statusEvents = statusEvents;
     this.terminalReplay = terminalReplay;
@@ -134,15 +134,15 @@ export abstract class AgentSessionBase {
   }
   async teardown(): Promise<void> {
     this.pendingShutdown ??= "teardown_completed"; // Claim the exit as teardown.
+    const live = () => !terminalStatuses.has(this.status);
     await runTeardownSteps([
-      () => (terminalStatuses.has(this.status) ? undefined : terminatePty(this.pty, "SIGKILL")),
-      () => reap(this.pty, undefined), // Reap group even if terminatePty skipped (C-LIFE-10).
+      () => (live() ? terminatePty(this.pty, "SIGKILL", this.reaper) : undefined),
+      () => this.reaper.reap(), // No-op if terminatePty already reaped (one-shot).
       () => this.cleanupRuntime(),
       () => void this.submitEvidence("teardown_completed"),
       () => removeSessionDir(this.record),
     ]);
   }
-  /** Submits lifecycle evidence; the engine decides whether status moves. */
   submitEvidence(kind: StatusEvidenceKind): StatusDecision {
     return this.statusEngine.submit(kind);
   }
@@ -152,7 +152,6 @@ export abstract class AgentSessionBase {
   statusDecisions(): readonly StatusDecision[] {
     return this.statusEngine.decisions();
   }
-  /** Whether the rendered screen still shows this prompt staged, unsubmitted. */
   protected abstract stagedPaste(screen: string, prompt: string): boolean;
   private pasteGuard(): PasteGuard {
     const staged = (s: string, p: string) => this.stagedPaste(s, p);
@@ -163,7 +162,7 @@ export abstract class AgentSessionBase {
     if (event === "terminal:data") this.terminalReplay.replay(handler as never);
     replayWarningSnapshots(this.record.warnings, event, handler as (event: never) => void);
   }
-  /** Rejects (never throws) after a terminal status, per C-API-25. */
+  // Rejects (never throws) after a terminal status, per C-API-25.
   private inSession<T>(work: () => Promise<T> | T): Promise<T> {
     if (terminalStatuses.has(this.status)) return Promise.reject(this.notRunningError());
     return Promise.resolve(work());
@@ -183,8 +182,8 @@ export abstract class AgentSessionBase {
     const wasExited = this.status === "exited";
     this.pendingShutdown ??= evidence; // Claim the exit before signaling.
     if (wasExited)
-      reap(this.pty, undefined); // Leader gone; reap survivors.
-    else await terminatePty(this.pty, signal); // Reaps after exit.
+      this.reaper.reap(); // Leader gone; reap survivors (one-shot).
+    else await terminatePty(this.pty, signal, this.reaper); // Reaps on every path.
     await this.cleanupRuntime();
     if (!wasExited) this.submitEvidence(evidence);
   }

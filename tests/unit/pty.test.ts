@@ -7,9 +7,15 @@ import { spawnSync } from "node:child_process";
 import { statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
+import { SessionReaper } from "../../src/runtime/reap-tree.ts";
 import { loginShellCommand } from "../../src/runtime/shell.ts";
 import { terminatePty } from "../../src/runtime/terminate.ts";
 import { tempDirForUnit } from "./helpers.ts";
+
+/** A reaper with an injected killer so tests never signal a real process group. */
+function testReaper(reaped: number[], pid = 1000) {
+  return new SessionReaper(pid, { killGroup: (pgid) => reaped.push(pgid) });
+}
 
 describe("node PTY adapter", () => {
   test("C-PTY-02 interactive login shell sources zsh startup files", () => {
@@ -111,10 +117,11 @@ describe("node PTY adapter", () => {
 
   test("C-LIFE-02 graceful termination escalates when the process does not exit", async () => {
     const signals: string[] = [];
+    const reaped: number[] = [];
     let exitHandler: (() => void) | undefined;
     await terminatePty(
       {
-        pid: 1,
+        pid: 1000,
         onData: () => () => {},
         onExit: (handler) => {
           exitHandler = () => handler({ exitCode: 0 });
@@ -128,39 +135,58 @@ describe("node PTY adapter", () => {
         },
       },
       "SIGTERM",
+      testReaper(reaped),
       { gracefulMs: 0, forceMs: 10 },
     );
     expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
+    expect(reaped).toEqual([1000]); // reaped after exit
   });
 
-  test("C-LIFE-02 termination reports failure when no exit is observed", async () => {
-    await expect(
-      terminatePty(
-        {
-          pid: 1,
-          onData: () => () => {},
-          onExit: () => () => {},
-          write: () => {},
-          resize: () => "resized",
-          kill: () => {},
-        },
-        "SIGTERM",
-        { gracefulMs: 0, forceMs: 0 },
-      ),
-    ).rejects.toMatchObject({ code: "termination_failed" });
-    await expect(
-      terminatePty(
-        {
-          pid: 1,
-          onData: () => () => {},
-          onExit: () => () => {},
-          write: () => {},
-          resize: () => "resized",
-          kill: () => {},
-        },
-        "SIGKILL",
-        { gracefulMs: 0, forceMs: 0 },
-      ),
-    ).rejects.toMatchObject({ code: "termination_failed" });
+  test("C-LIFE-10 termination reports failure but STILL reaps the group", async () => {
+    // Both timeout branches must reap before returning: a termination_failed
+    // outcome that leaks the descendant tree is the exact P0 this guards.
+    for (const signal of ["SIGTERM", "SIGKILL"] as const) {
+      const reaped: number[] = [];
+      await expect(
+        terminatePty(
+          {
+            pid: 1000,
+            onData: () => () => {},
+            onExit: () => () => {},
+            write: () => {},
+            resize: () => "resized",
+            kill: () => {},
+          },
+          signal,
+          testReaper(reaped),
+          { gracefulMs: 0, forceMs: 0 },
+        ),
+      ).rejects.toMatchObject({ code: "termination_failed" });
+      expect(reaped).toEqual([1000]); // reaped despite the failure
+    }
+  });
+
+  test("C-LIFE-10 a throwing PTY kill still reaps and surfaces the error", async () => {
+    for (const thrown of [new Error("pty gone"), "raw string failure"]) {
+      const reaped: number[] = [];
+      await expect(
+        terminatePty(
+          {
+            pid: 1000,
+            onData: () => () => {},
+            onExit: () => () => {},
+            write: () => {},
+            resize: () => "resized",
+            kill: () => {
+              throw thrown;
+            },
+          },
+          "SIGKILL",
+          testReaper(reaped),
+          { gracefulMs: 0, forceMs: 0 },
+        ),
+      ).rejects.toThrow(String(thrown).replace(/^Error: /, ""));
+      expect(reaped).toEqual([1000]); // reaped even when the PTY op threw
+    }
   });
 });

@@ -5,38 +5,39 @@
 
 import { elwoodError } from "../core/errors.ts";
 import type { PtyProcess } from "../pty/types.ts";
-import { type ProcessGroupKiller, reapProcessGroup } from "./reap-tree.ts";
+import type { SessionReaper } from "./reap-tree.ts";
 
 type TerminationTimeouts = { readonly gracefulMs: number; readonly forceMs: number };
 const defaultTimeouts: TerminationTimeouts = { gracefulMs: 5_000, forceMs: 1_000 };
 
+/**
+ * Signal the PTY, wait for exit, and reap the leader's process group. The reap
+ * is guaranteed on EVERY exit path — normal exit, timeout, or a throwing PTY
+ * operation — so a `termination_failed` outcome never leaks the descendants
+ * this is meant to kill (C-LIFE-10). The reaper is one-shot and reuse-safe, so
+ * a later `teardown()` reaping again is a harmless no-op (see SessionReaper).
+ */
 export async function terminatePty(
   pty: PtyProcess,
   signal: "SIGTERM" | "SIGKILL",
+  reaper: SessionReaper,
   timeouts: TerminationTimeouts = defaultTimeouts,
-  groupKiller: ProcessGroupKiller | undefined = undefined,
 ): Promise<void> {
-  const timeoutMs = signal === "SIGTERM" ? timeouts.gracefulMs : timeouts.forceMs;
-  const exited = await waitForExitAfterSignal(pty, signal, timeoutMs);
-  if (!exited && signal === "SIGTERM") {
-    if (await waitForExitAfterSignal(pty, "SIGKILL", timeouts.forceMs))
-      return reap(pty, groupKiller);
-    throw elwoodError("termination_failed", "PTY did not exit after SIGKILL.");
-  }
-  if (!exited) {
+  try {
+    const timeoutMs = signal === "SIGTERM" ? timeouts.gracefulMs : timeouts.forceMs;
+    const exited = await waitForExitAfterSignal(pty, signal, timeoutMs);
+    if (exited) return;
+    if (signal === "SIGTERM" && (await waitForExitAfterSignal(pty, "SIGKILL", timeouts.forceMs))) {
+      return;
+    }
     throw elwoodError("termination_failed", `PTY did not exit after ${signal}.`);
+  } finally {
+    // Reap on every path: even if the wait timed out or a PTY call threw, a
+    // surviving group must still be SIGKILLed. If reaping itself throws (a real
+    // kill failure), that propagates — but only when the try block succeeded, so
+    // an original termination_failed is preserved.
+    reaper.reap();
   }
-  reap(pty, groupKiller);
-}
-
-/**
- * Reap the leader's process group after it exits. Group membership survives the
- * leader's exit and the reparenting of any descendant to PID 1, so a
- * CLI-spawned hook bridge left running is killed here (C-LIFE-10).
- */
-export function reap(pty: PtyProcess, groupKiller: ProcessGroupKiller | undefined): void {
-  if (groupKiller) reapProcessGroup(pty.pid, groupKiller);
-  else reapProcessGroup(pty.pid);
 }
 
 function waitForExitAfterSignal(
@@ -44,16 +45,23 @@ function waitForExitAfterSignal(
   signal: "SIGTERM" | "SIGKILL",
   timeoutMs: number,
 ): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
+  return new Promise<boolean>((resolve, reject) => {
+    let unsubscribe: (() => void) | undefined;
     const timer = setTimeout(() => {
-      unsubscribe();
+      unsubscribe?.();
       resolve(false);
     }, timeoutMs);
-    const unsubscribe = pty.onExit(() => {
+    try {
+      unsubscribe = pty.onExit(() => {
+        clearTimeout(timer);
+        unsubscribe?.();
+        resolve(true);
+      });
+      pty.kill(signal);
+    } catch (error) {
       clearTimeout(timer);
-      unsubscribe();
-      resolve(true);
-    });
-    pty.kill(signal);
+      unsubscribe?.();
+      reject(error instanceof Error ? error : new Error(String(error)));
+    }
   });
 }

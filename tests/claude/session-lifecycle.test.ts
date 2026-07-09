@@ -118,6 +118,19 @@ describe("ClaudeSession lifecycle", () => {
     }
   });
 
+  test("C-LIFE-10 stop then teardown reaps the group EXACTLY once (no pgid reuse)", async () => {
+    // Reaping the same numeric pgid twice risks hitting a recycled, unrelated
+    // group. stop() reaps; the later teardown() must NOT signal it again.
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    const leaderPid = ptys.at(-1)!.pid;
+    reapedGroups.length = 0;
+    await session.stop();
+    await session.teardown();
+    expect(reapedGroups.filter((pid) => pid === leaderPid)).toEqual([leaderPid]);
+  });
+
   test("C-LIFE-10 an already-terminal teardown still reaps the leader group", async () => {
     const cwd = tempDir();
     installFakes();
@@ -130,11 +143,13 @@ describe("ClaudeSession lifecycle", () => {
     expect(reapedGroups).toContain(leaderPid);
   });
 
-  test("C-LIFE-11 teardown completes even when it rejects an in-flight message", async () => {
+  test("C-LIFE-11 teardown reaps and completes even when it rejects an in-flight message", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
+    const leaderPid = ptys.at(-1)!.pid;
     const dir = join(cwd, ".elwood", "sessions", session.elwoodSessionId);
+    reapedGroups.length = 0;
     // Queue a message while the session is not ready: it stays in the control
     // queue, unresolved, until a ready transition that never comes.
     const pending = session.sendMessage("queued-until-teardown");
@@ -144,6 +159,9 @@ describe("ClaudeSession lifecycle", () => {
     await session.teardown();
     await expect(pending).rejects.toMatchObject({ code: "session_not_running" });
     expect(session.status).toBe("torn_down");
+    // The reap must actually happen on this rejecting path — the exact step that
+    // would silently regress the original P0 leak (C-LIFE-10).
+    expect(reapedGroups).toContain(leaderPid);
     expect(existsSync(dir)).toBe(false);
   });
 
