@@ -100,6 +100,12 @@ describe("web dev app hard shutdown", () => {
     expect(result.signal).toBe("SIGKILL");
     killProcessTreeSync(999_999_999, true);
   });
+
+  test("C-APP-08 does not group-signal the caller's own process group", () => {
+    // Passing our own pid must skip the negative-pid group kill (which would
+    // signal this test runner) and, with includeRoot=false, do nothing at all.
+    expect(() => killProcessTreeSync(process.pid, false)).not.toThrow();
+  });
 });
 
 async function waitForChild(pid: number): Promise<void> {
