@@ -64,6 +64,24 @@ describe("C-CLAUDE-15 Claude transcript summarizer", () => {
     expect(summarizeClaudeRecord("not an object")).toEqual([]);
   });
 
+  test("C-CLAUDE-15 UI-chrome records (away-summary recap, status lines) are not messages", () => {
+    // Claude Code's "recap" / away-summary and its status lines are rendered TUI
+    // chrome the CLI writes as system/attachment records — never a committed
+    // assistant turn. They MUST NOT become an assistant_message. (Observed in a
+    // real transcript as type:"system" subtype:"away_summary" + type:"attachment".)
+    expect(
+      summarizeClaudeRecord({
+        type: "system",
+        subtype: "away_summary",
+        content: "recap: Goal: switch Dependabot from npm to bun. (disable recaps in /config)",
+      }),
+    ).toEqual([]);
+    expect(summarizeClaudeRecord({ type: "system", subtype: "stop_hook_summary" })).toEqual([]);
+    expect(
+      summarizeClaudeRecord({ type: "attachment", content: "Brewed for 7s · 1 monitor running" }),
+    ).toEqual([]);
+  });
+
   test("defaults a nameless tool_use / anonymous tool_result label", () => {
     expect(
       summarizeClaudeRecord({
