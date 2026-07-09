@@ -3,6 +3,8 @@
  * Implements PRD §11.
  */
 
+import { spawnSync } from "node:child_process";
+
 type ShutdownSignal = "SIGINT" | "SIGTERM" | "SIGHUP" | "SIGTSTP" | "SIGTTIN" | "SIGTTOU";
 type ExitSignal = "SIGKILL";
 
@@ -87,24 +89,33 @@ export async function runShutdown(options: {
 }
 
 export function killProcessTreeSync(pid: number, includeRoot: boolean): void {
-  // Dev web app teardown (PRD §11). Reap by process group — no `pgrep`, no PATH
-  // lookup, no subprocess: SIGKILL the group led by `pid`, which reaches every
-  // descendant even after reparenting (see reap-tree.ts for the same technique
-  // on the shipped session path). Skips the caller's own group so the dev
-  // process cannot signal-kill itself before it finishes its own shutdown.
-  if (pid !== process.pid) {
-    try {
-      process.kill(-pid, "SIGKILL");
-    } catch {
-      // The group may already be empty.
-    }
-  }
+  // Dev web app teardown (PRD §11): the elwood process is tearing itself down
+  // and must SIGKILL its descendants (e.g. supervised PTY children) — including
+  // when reaping its OWN pid, where a process-group kill would suicide the
+  // process before it finishes shutting down. A parent-pid walk is the only way
+  // to reap descendants without signaling self. This is the dev tool, not the
+  // shipped session path (session teardown reaps by process group, reap-tree.ts).
+  for (const child of childPids(pid)) killProcessTreeSync(child, true);
   if (!includeRoot) return;
   try {
     process.kill(pid, "SIGKILL");
   } catch {
     // Process may have already exited.
   }
+}
+
+function childPids(pid: number): readonly number[] {
+  // Absolute path avoids resolving pgrep through a hijacked PATH; the timeout
+  // stops a wedged executable from hanging shutdown.
+  const result = spawnSync("/usr/bin/pgrep", ["-P", String(pid)], {
+    encoding: "utf8",
+    timeout: 2_000,
+  });
+  if (result.status !== 0) return [];
+  return result.stdout
+    .split(/\s+/)
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0);
 }
 
 function forceKill(processLike: ShutdownProcess, killTree: KillTree): never {

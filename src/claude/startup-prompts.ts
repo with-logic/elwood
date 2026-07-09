@@ -4,14 +4,14 @@
  */
 
 import type { StartupPromptAutomation } from "../core/startup-automation.ts";
-import { WorkspaceTrustResponder } from "../core/workspace-trust.ts";
+import { TrustPromptResponder } from "../core/trust-responder.ts";
 
 export class ClaudeStartupPromptResponder {
-  private readonly trust: WorkspaceTrustResponder;
+  private readonly trust: TrustPromptResponder;
   private browserDeclined = false;
 
   constructor(autotrust: boolean) {
-    this.trust = new WorkspaceTrustResponder("claude", autotrust);
+    this.trust = new TrustPromptResponder("claude", autotrust);
   }
 
   handle(screenText: string, write: (input: string) => void): readonly StartupPromptAutomation[] {

@@ -1,11 +1,12 @@
 # Elwood requests from the coal-harbor team
 
-**Owner:** elwood engineer. Open, net-new work — by priority:
+**Owner:** elwood engineer. Status of the net-new work — by priority.
+Detailed sections below preserve the ORIGINAL request text as filed.
 
-- **Request 7 (OPEN, P0):** `591b967` leaks the agent `hook-bridge.mjs` process
-  tree on session close / app quit — see below. Coal-harbor has REVERTED to
-  `d3e97ad` (commit `d0bb915`) until this is fixed; re-bump once teardown reaps
-  the tree.
+- **Request 7 (DONE, P0):** the `hook-bridge.mjs` process-tree leak on session
+  close/quit is fixed by reaping the PTY leader's process group (survives
+  reparenting), wired into stop/kill/teardown including already-terminal
+  sessions. Coal-harbor can re-bump off `d3e97ad`.
 - **Request 8 (DONE, P1):** auto-answer the allowlisted trust-prompt family
   (folder/directory + skill/plugin/MCP + Codex hook trust) under a full-trust
   launch, via a table-driven `TrustPromptResponder`. Narrowed to an explicit
@@ -18,15 +19,10 @@
   with Codex), never from the Stop hook's `last_assistant_message` — so un-sent
   ghost-text never posts. Proven by a real-CLI e2e (C-E2E-07): a committed turn
   yields `source: "transcript"` and zero hook-sourced messages. See below.
-- **Request 9 (was OPEN, P1):** a Claude CLI ghost-text / autocomplete SUGGESTION is
-  being forwarded as a real `assistant_message` (kind=`assistant_message`, from
-  the `Stop` hook's `last_assistant_message`) — so an un-sent autocomplete line
-  ("go ahead and open that PR") posts into the room as if the agent spoke it.
-  See below.
 
 ---
 
-# Request 7 (OPEN, P0): `591b967` leaks the hook-bridge process tree on teardown
+# Request 7 (original request as filed, P0): `591b967` leaks the hook-bridge process tree on teardown
 
 **Symptom.** After the `591b967` bump, the app leaks the agent session's
 `hook-bridge.mjs` process tree on quit: orphaned Electron processes running
@@ -62,7 +58,7 @@ fixes) once teardown reaps the tree.
 
 ---
 
-# Request 8 (OPEN, P1): auto-answer all launch/trust prompts, not just workspace-trust
+# Request 8 (original request as filed, P1): auto-answer all launch/trust prompts, not just workspace-trust
 
 **Symptom.** An agent wedged at startup on a prompt asking whether it could
 read/load a skill. Agents run with Claude `permissionMode: bypassPermissions`
@@ -100,7 +96,7 @@ repro.
 
 ---
 
-# Request 9 (OPEN, P1): ghost-text / autocomplete is forwarded as an `assistant_message`
+# Request 9 (original request as filed, P1): ghost-text / autocomplete is forwarded as an `assistant_message`
 
 **Symptom.** An agent posted a message into the chat room that it never actually
 sent — the text was a Claude CLI **autocomplete / ghost-text suggestion** (e.g.

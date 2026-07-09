@@ -6,28 +6,26 @@
 import type { ElwoodAgentKind } from "./activity.ts";
 import {
   affirmativeOptionPattern,
+  type TrustPromptId,
   type TrustPromptSpec,
   trustPromptAllowlist,
 } from "./trust-prompts.ts";
 
 export type TrustPromptAutomation = {
-  /** The allowlisted prompt id that was answered (e.g. `workspace_trust`). */
-  readonly prompt: string;
+  /** The allowlisted prompt id that was answered (a stable `startup_prompt` label). */
+  readonly prompt: TrustPromptId;
   readonly input: string;
 };
-
-/** Back-compat alias: the workspace-trust prompt is one entry in the allowlist. */
-export type WorkspaceTrustAutomation = TrustPromptAutomation;
 
 /**
  * Answers each allowlisted trust prompt for one agent at most once, and only
  * when enabled (the caller's full-trust/autotrust posture). Extending trust is
  * a matter of adding an entry to `trustPromptAllowlist`, never a broader match.
  */
-export class WorkspaceTrustResponder {
+export class TrustPromptResponder {
   private readonly enabled: boolean;
   private readonly specs: readonly TrustPromptSpec[];
-  private readonly answered = new Set<string>();
+  private readonly answered = new Set<TrustPromptId>();
 
   constructor(agent: ElwoodAgentKind, enabled = false) {
     this.enabled = enabled;
@@ -52,7 +50,7 @@ export class WorkspaceTrustResponder {
 }
 
 /** True when any allowlisted trust prompt for `agent` is visible in `text`. */
-export function workspaceTrustPromptVisible(text: string, agent: ElwoodAgentKind): boolean {
+export function trustPromptVisible(text: string, agent: ElwoodAgentKind): boolean {
   return trustPromptAllowlist.some((spec) => spec.agent === agent && spec.visible.test(text));
 }
 

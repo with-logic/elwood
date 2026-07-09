@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { resetClaudeSessionSeamsForTests } from "../../src/claude/session.ts";
 import type { TerminalSize } from "../../src/index.ts";
 import type { PtyExit, PtyProcess, PtySpawnOptions } from "../../src/pty/types.ts";
+import { resetGroupKillerForTests, setGroupKillerForTests } from "../../src/runtime/reap-tree.ts";
 import {
   resetRuntimeSeamsForTests,
   setCommandRunnerForTests,
@@ -14,6 +15,8 @@ import { resetStartupWaitMsForTests, setStartupWaitMsForTests } from "../../src/
 import { resetPreflightCacheForTests } from "../../src/runtime/update-once.ts";
 
 export const ptys: FakePty[] = [];
+/** Process-group ids that session teardown asked the reaper to SIGKILL. */
+export const reapedGroups: number[] = [];
 
 const versionOk = () => ({ status: 0, stdout: "2.1.144\n", stderr: "" });
 
@@ -21,6 +24,8 @@ export function installFakes(): void {
   setPlatformForTests("darwin");
   setCommandRunnerForTests(versionOk);
   setStartupWaitMsForTests(25);
+  // Record group reaps instead of issuing a real SIGKILL to a live pgid.
+  setGroupKillerForTests({ killGroup: (pgid) => reapedGroups.push(pgid) });
   setPtyFactoryForTests((options) => {
     const pty = new FakePty(options);
     ptys.push(pty);
@@ -33,7 +38,9 @@ export function resetFakes(): void {
   resetStartupWaitMsForTests();
   resetPreflightCacheForTests();
   resetClaudeSessionSeamsForTests();
+  resetGroupKillerForTests();
   ptys.length = 0;
+  reapedGroups.length = 0;
 }
 
 export function tempDir(): string {
@@ -43,7 +50,7 @@ export function tempDir(): string {
 }
 
 export class FakePty implements PtyProcess {
-  readonly pid = ptys.length + 1;
+  readonly pid = 1000 + ptys.length;
   readonly writes: string[] = [];
   readonly killSignals: string[] = [];
   readonly dataHandlers: ((data: string) => void)[] = [];

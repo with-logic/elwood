@@ -4,7 +4,6 @@
  */
 
 import { describe, expect, test } from "vitest";
-import type { ClaudeHookEventFor } from "../../src/claude/hooks.ts";
 import {
   activityFromCodexTranscript,
   activityFromHook,
@@ -12,21 +11,23 @@ import {
 } from "../../src/core/activity.ts";
 import { ControlQueue } from "../../src/core/control-queue.ts";
 import { ElwoodError } from "../../src/core/errors.ts";
-import { WorkspaceTrustResponder } from "../../src/core/workspace-trust.ts";
+import { TrustPromptResponder } from "../../src/core/trust-responder.ts";
 
 describe("core activity branches", () => {
   test("C-API-12 falls back to hook event names when tool metadata is missing", () => {
-    const permission = activityFromHook("claude", "elwood-7", {
+    // Tool-hook mapping is the Codex path now (Claude tool activity is
+    // transcript-sourced, C-CLAUDE-15).
+    const permission = activityFromHook("codex", "elwood-7", {
       hook_event_name: "PermissionRequest",
-      session_id: "claude-session",
+      session_id: "codex-session",
       cwd: "/repo",
-    } as ClaudeHookEventFor<"PermissionRequest">);
-    const batch = activityFromHook("claude", "elwood-7", {
+    } as never);
+    const batch = activityFromHook("codex", "elwood-7", {
       hook_event_name: "PostToolBatch",
-      session_id: "claude-session",
+      session_id: "codex-session",
       cwd: "/repo",
       tool_calls: [],
-    });
+    } as never);
     expect(permission).toMatchObject({ kind: "tool_call", label: "PermissionRequest" });
     expect(batch).toMatchObject({ kind: "tool_result", label: "PostToolBatch" });
   });
@@ -75,7 +76,7 @@ describe("core activity branches", () => {
 
   test("C-CLAUDE-10 leaves trust prompts alone when no trusted option is listed", () => {
     const writes: string[] = [];
-    const responder = new WorkspaceTrustResponder("claude", true);
+    const responder = new TrustPromptResponder("claude", true);
     const result = responder.handle("Do you trust this folder?\n1. No, exit", (input) =>
       writes.push(input),
     );

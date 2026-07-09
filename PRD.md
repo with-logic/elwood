@@ -834,10 +834,12 @@ warning-and-continuing.
 
 `autotrust` is an opt-in convenience for embedded/headless parent apps.
 When true, Elwood detects Codex's first-party directory trust prompt in the
-rendered terminal and chooses the trust/continue option through PTY input. The
-default is false because trusting a workspace is a security-sensitive decision.
-When Elwood answers the prompt, the session emits adapter-neutral
-`startup_prompt` activity with label `workspace_trust`.
+rendered terminal and chooses the trust/continue option through PTY input,
+emitting `startup_prompt` activity with label `workspace_trust`. The default is
+false because trusting a workspace is a security-sensitive decision. Independent
+of `autotrust`, Codex's `Hooks need review` prompt is answered once — hook trust
+is Elwood's own integration, required for the session to function, not
+third-party trust — emitting `startup_prompt` activity with label `hook_trust`.
 
 `persona` behaves exactly as specified for Claude in §5.1: enqueued before
 control returns to the caller, delivered as the first user message on the first
@@ -1658,7 +1660,7 @@ Each criterion has:
 | C-CODEX-03 | §5.5 | `model`, `profile`, `sandbox`, `approvalPolicy`, and `configOverrides` options are reflected in Codex launch policy. |
 | C-CODEX-04 | §9.2 | Startup checks Codex CLI version and fails with `codex_version_unsupported` when below the configured minimum. |
 | C-CODEX-05 | §10 | Missing `codex` fails with `codex_not_found` and a useful message. |
-| C-CODEX-06 | §4.4 | Codex hooks are trusted by `hookTrust="trust-all"`, bypass flag when supported, or — under `autotrust` — answering the allowlisted `Hooks need review` TUI trust prompt once. |
+| C-CODEX-06 | §4.4 | Codex hooks are trusted by `hookTrust="trust-all"`, the bypass flag when supported, or by answering the allowlisted `Hooks need review` TUI prompt once regardless of `autotrust` (hook trust is Elwood's own integration; see C-CODEX-15). |
 | C-CODEX-07 | §5.6 | `resumeCodex` fails explicitly when Elwood has not persisted a Codex resume id. |
 | C-CODEX-08 | §5.5 | `autoupdate: true` runs `codex update` before spawning Codex. |
 | C-CODEX-09 | §5.7 | Codex MCP startup warnings are parsed from terminal output into typed warning events with server names and recovery commands. |

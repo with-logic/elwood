@@ -4,15 +4,12 @@
  */
 
 import { describe, expect, test } from "vitest";
-import {
-  WorkspaceTrustResponder,
-  workspaceTrustPromptVisible,
-} from "../../src/core/workspace-trust.ts";
+import { TrustPromptResponder, trustPromptVisible } from "../../src/core/trust-responder.ts";
 
 describe("allowlisted trust prompt automation", () => {
   test("C-API-18 stays disabled unless callers opt in", () => {
     const writes: string[] = [];
-    const responder = new WorkspaceTrustResponder("claude");
+    const responder = new TrustPromptResponder("claude");
     const result = responder.handle("Quick safety check: trust this folder?", (input) =>
       writes.push(input),
     );
@@ -22,7 +19,7 @@ describe("allowlisted trust prompt automation", () => {
 
   test("C-CLAUDE-10 answers Claude workspace trust prompts once", () => {
     const writes: string[] = [];
-    const responder = new WorkspaceTrustResponder("claude", true);
+    const responder = new TrustPromptResponder("claude", true);
     expect(
       responder.handle("Do you trust this folder?\n1. Yes", (input) => writes.push(input)),
     ).toEqual({ prompt: "workspace_trust", input: "1" });
@@ -39,7 +36,7 @@ describe("allowlisted trust prompt automation", () => {
       ["Trust this MCP server?\n1. Yes, proceed", "mcp_trust"],
     ] as const) {
       const writes: string[] = [];
-      const responder = new WorkspaceTrustResponder("claude", true);
+      const responder = new TrustPromptResponder("claude", true);
       expect(responder.handle(screen, (input) => writes.push(input))).toEqual({
         prompt: id,
         input: "1",
@@ -50,7 +47,7 @@ describe("allowlisted trust prompt automation", () => {
 
   test("C-CLAUDE-14 does not answer an off-allowlist first-run prompt", () => {
     const writes: string[] = [];
-    const responder = new WorkspaceTrustResponder("claude", true);
+    const responder = new TrustPromptResponder("claude", true);
     // A generic confirmation that is NOT an allowlisted trust prompt: ignored,
     // so a future CLI security gate is never blanket-bypassed.
     expect(
@@ -60,17 +57,15 @@ describe("allowlisted trust prompt automation", () => {
   });
 
   test("C-CODEX-11 C-CODEX-15 detects Codex directory and hook trust prompts", () => {
-    expect(
-      workspaceTrustPromptVisible("Do you trust the contents of this directory?", "codex"),
-    ).toBe(true);
+    expect(trustPromptVisible("Do you trust the contents of this directory?", "codex")).toBe(true);
     // Hook trust is now an allowlisted trust prompt, so it is recognized too.
-    expect(workspaceTrustPromptVisible("Hooks need review", "codex")).toBe(true);
-    expect(workspaceTrustPromptVisible("Some unrelated banner", "codex")).toBe(false);
+    expect(trustPromptVisible("Hooks need review", "codex")).toBe(true);
+    expect(trustPromptVisible("Some unrelated banner", "codex")).toBe(false);
   });
 
   test("skips a visible prompt whose affirmative option is absent", () => {
     const writes: string[] = [];
-    const responder = new WorkspaceTrustResponder("claude", true);
+    const responder = new TrustPromptResponder("claude", true);
     // The prompt is visible but offers no affirmative option to select, so the
     // responder declines to guess and writes nothing.
     expect(

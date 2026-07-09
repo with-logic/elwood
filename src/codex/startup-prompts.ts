@@ -3,12 +3,13 @@
  * Implements PRD §4.4, §5.5, and §5.7.
  */
 
+import type { TrustPromptId } from "../core/trust-prompts.ts";
+import { TrustPromptResponder } from "../core/trust-responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
-import { WorkspaceTrustResponder } from "../core/workspace-trust.ts";
 
 export type CodexStartupPromptAutomation = {
-  /** An allowlisted trust-prompt id (see trust-prompts.ts) or `update`. */
-  readonly prompt: string;
+  /** An allowlisted trust-prompt id (a stable label) or `update`. */
+  readonly prompt: TrustPromptId | "update";
   readonly input: string;
 };
 
@@ -23,7 +24,7 @@ const updateOptionPattern = /continue\s*without\s*updat|skip|not\s*now|later/i;
 export class CodexStartupPromptResponder {
   private buffer: string;
   private readonly elwoodSessionId: string;
-  private readonly trust: WorkspaceTrustResponder;
+  private readonly trust: TrustPromptResponder;
   private skippedUpdate: boolean;
 
   constructor(elwoodSessionId = "", autotrust = false) {
@@ -31,7 +32,7 @@ export class CodexStartupPromptResponder {
     this.buffer = "";
     // Owns the whole allowlisted trust family (directory + hook trust), not just
     // one prompt; extended by adding entries to trustPromptAllowlist.
-    this.trust = new WorkspaceTrustResponder("codex", autotrust);
+    this.trust = new TrustPromptResponder("codex", autotrust);
     this.skippedUpdate = false;
   }
 

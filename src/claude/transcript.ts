@@ -28,12 +28,19 @@ export class ClaudeTranscriptWatcher {
     this.emit = emit;
   }
 
-  /** Begin watching a transcript path; a new path resets the read position. */
+  /**
+   * Begin watching a transcript path from its start. Reading from offset 0 (not
+   * the current end) is deliberate: the first hook to carry `transcript_path`
+   * may be the turn-boundary `Stop` hook, by which point the committed assistant
+   * record is already on disk. Seeking to end-of-file there would skip the only
+   * source of that message now that the Stop hook no longer emits it (C-CLAUDE-15).
+   * The incremental offset then dedupes within the session.
+   */
   observe(path: string): void {
     if (this.path === path) return;
     this.stop();
     this.path = path;
-    this.offset = existsSync(path) ? statSync(path).size : 0;
+    this.offset = 0;
     this.pending = "";
     this.interval = setInterval(() => this.scan(), 250);
     this.interval.unref?.();

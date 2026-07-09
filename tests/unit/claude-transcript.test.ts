@@ -63,6 +63,20 @@ describe("C-CLAUDE-15 Claude transcript watcher", () => {
     expect(events.at(-1)!.summary.text).toBe("c");
   });
 
+  test("observing a path that already holds the committed turn still emits it", () => {
+    // The bug guard: if the first hook to carry transcript_path is Stop, the
+    // committed assistant record is already on disk when observe() runs. Reading
+    // from offset 0 (not end-of-file) ensures that turn is not skipped.
+    const dir = mkdtempSync(join(tmpdir(), "elwood-tx-"));
+    const path = join(dir, "t.jsonl");
+    const events: ClaudeTranscriptEvent[] = [];
+    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
+    write(path, { type: "assistant", message: { content: [{ type: "text", text: "committed" }] } });
+    watcher.observe(path); // first observe AFTER the record is written
+    watcher.scan();
+    expect(events.map((e) => e.summary.text)).toEqual(["committed"]);
+  });
+
   test("scan and finish are safe before any observe and for a missing file", () => {
     const events: ClaudeTranscriptEvent[] = [];
     const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
@@ -93,12 +107,14 @@ describe("C-CLAUDE-15 Claude transcript watcher", () => {
     const path = join(dir, "t.jsonl");
     const events: ClaudeTranscriptEvent[] = [];
     const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
-    write(path);
-    watcher.observe(path);
-    write(path, { type: "assistant", message: { content: [{ type: "text", text: "polled" }] } });
-    await new Promise((resolve) => setTimeout(resolve, 400)); // past the 250ms poll
-    watcher.stop();
-    expect(events.map((e) => e.summary.text)).toEqual(["polled"]);
+    try {
+      watcher.observe(path);
+      write(path, { type: "assistant", message: { content: [{ type: "text", text: "polled" }] } });
+      // Poll the outcome rather than sleeping a fixed span past the 250ms tick.
+      await expect.poll(() => events.map((e) => e.summary.text)).toEqual(["polled"]);
+    } finally {
+      watcher.stop();
+    }
   });
 });
 

@@ -29,10 +29,11 @@ const minReapableGroupId = 100;
  * in the group — including one already reparented to PID 1. node-pty starts the
  * leader via `setsid()`, so it heads its own session and its pgid equals its pid;
  * that group is always distinct from the host's own group, so this cannot signal
- * the host process. No-ops on a system-range id. Never throws: an already-dead
- * group (leader and children exited together) is the normal case.
+ * the host process. No-ops on a system-range id. An already-dead group (leader and
+ * children exited together) is the normal case and its `ESRCH` is swallowed; a
+ * real kill failure such as `EPERM` propagates.
  */
-export function reapProcessGroup(leaderPid: number, ops: ProcessGroupKiller = defaultKiller): void {
+export function reapProcessGroup(leaderPid: number, ops: ProcessGroupKiller = activeKiller): void {
   if (!Number.isInteger(leaderPid) || leaderPid < minReapableGroupId) return;
   ops.killGroup(leaderPid);
 }
@@ -46,6 +47,19 @@ const defaultKiller: ProcessGroupKiller = {
     }
   },
 };
+
+// The killer used when a caller does not inject one. A test seam so session
+// lifecycle tests can observe (and neutralize) the group SIGKILL without a real
+// signal, and without every session/terminate call site taking a killer param.
+let activeKiller: ProcessGroupKiller = defaultKiller;
+
+export function setGroupKillerForTests(killer: ProcessGroupKiller): void {
+  activeKiller = killer;
+}
+
+export function resetGroupKillerForTests(): void {
+  activeKiller = defaultKiller;
+}
 
 /**
  * Swallows the ESRCH raised when the group is already empty (the normal case:

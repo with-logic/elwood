@@ -21,18 +21,25 @@ export type ClaudeTranscriptSummary = {
  * Only committed roles produce activity — a record with no usable block yields
  * an empty list, so non-message records (mode, snapshots) are silently skipped.
  */
+/** The committed roles a Claude transcript record can carry. */
+type ClaudeTranscriptRole = "assistant" | "user";
+
 export function summarizeClaudeRecord(item: unknown): readonly ClaudeTranscriptSummary[] {
   const record = asRecord(item);
   const type = stringValue(record["type"]);
   if (type !== "assistant" && type !== "user") return [];
+  const role: ClaudeTranscriptRole = type;
   const message = asRecord(record["message"]);
   const content = message["content"];
-  if (typeof content === "string") return [messageSummary(type, content)];
+  if (typeof content === "string") return [messageSummary(role, content)];
   if (!Array.isArray(content)) return [];
-  return content.flatMap((block) => summarizeBlock(type, block));
+  return content.flatMap((block) => summarizeBlock(role, block));
 }
 
-function summarizeBlock(role: string, block: unknown): readonly ClaudeTranscriptSummary[] {
+function summarizeBlock(
+  role: ClaudeTranscriptRole,
+  block: unknown,
+): readonly ClaudeTranscriptSummary[] {
   const record = asRecord(block);
   const type = stringValue(record["type"]);
   if (type === "text") {
@@ -44,7 +51,7 @@ function summarizeBlock(role: string, block: unknown): readonly ClaudeTranscript
   return [];
 }
 
-function messageSummary(role: string, text: string): ClaudeTranscriptSummary {
+function messageSummary(role: ClaudeTranscriptRole, text: string): ClaudeTranscriptSummary {
   const kind = role === "assistant" ? "assistant_message" : "user_message";
   return { kind, label: role, text };
 }

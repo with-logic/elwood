@@ -75,14 +75,16 @@ describe("Elwood activity events", () => {
   });
 
   test("C-API-12 maps tool results and unknown transcript items", () => {
-    const toolResult = activityFromHook("claude", "elwood-4", {
+    // Codex still maps tool hooks to tool activity; Claude tool activity is
+    // transcript-sourced (C-CLAUDE-15) and covered in activity-tool-io.test.ts.
+    const toolResult = activityFromHook("codex", "elwood-4", {
       hook_event_name: "PostToolUse",
-      session_id: "claude-session",
+      session_id: "codex-session",
       cwd: "/repo",
       tool_name: "Read",
       tool_input: { file_path: "README.md" },
       tool_response: { content: "ok" },
-    });
+    } as never);
     const unknown = activityFromCodexTranscript({
       elwoodSessionId: "elwood-4",
       path: "/tmp/transcript.jsonl",

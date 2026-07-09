@@ -91,18 +91,27 @@ export function activityFromHook(
   if (event.hook_event_name === "Notification") {
     return withText(base, "notification", event.notification_type, event.message);
   }
+  // Claude's assistant_message, tool_call, and tool_result are sourced from the
+  // committed transcript (C-CLAUDE-15). For Claude these hook events therefore
+  // stay plain `hook` activity — emitting tool_call/tool_result here too would
+  // duplicate the transcript items and let a hook observation masquerade as a
+  // committed one. Codex has no transcript-backed Claude path, so its tool hooks
+  // and stop message remain its tool/message activity source.
+  if (agent === "codex") return codexHookActivity(base, event);
+  return { ...base, kind: "hook", label: event.hook_event_name };
+}
+
+function codexHookActivity(
+  base: Omit<ElwoodActivityEvent, "kind" | "label" | "text">,
+  event: ClaudeHookEvent | CodexHookEvent,
+): ElwoodActivityEvent {
   if (event.hook_event_name === "PreToolUse" || event.hook_event_name === "PermissionRequest") {
     return toolActivity(base, "tool_call", event, meta.hookToolInput(event));
   }
   if (event.hook_event_name === "PostToolUse" || event.hook_event_name === "PostToolBatch") {
     return toolActivity(base, "tool_result", event, meta.hookToolOutput(event));
   }
-  // Claude sources assistant_message from the committed transcript (C-CLAUDE-15),
-  // so a Stop hook's last_assistant_message — which can carry an un-sent
-  // ghost-text suggestion — is NOT emitted as a message here; the Stop hook
-  // stays a turn-boundary signal. Codex has no transcript-backed Claude path, so
-  // its stop message remains the assistant_message source.
-  const text = agent === "codex" ? meta.stopMessage(event) : undefined;
+  const text = meta.stopMessage(event);
   if (text !== undefined) {
     return withText(base, "assistant_message", event.hook_event_name, text);
   }

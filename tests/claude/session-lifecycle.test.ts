@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { resumeClaude, startClaude } from "../../src/index.ts";
 import { createSessionRecord, prepareStateDir, writeSessionRecord } from "../../src/state/store.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -104,6 +104,30 @@ describe("ClaudeSession lifecycle", () => {
     expect(ptys[0]!.killSignals).toEqual(["SIGKILL"]);
     expect(existsSync(dir)).toBe(false);
     expect(readFileSync(claudeSettings, "utf8")).toContain("Read");
+  });
+
+  test("C-LIFE-10 stop, kill, and teardown each reap the PTY leader group", async () => {
+    for (const end of ["stop", "kill", "teardown"] as const) {
+      resetFakes();
+      installFakes();
+      const session = await startClaude({ cwd: tempDir() });
+      const leaderPid = ptys.at(-1)!.pid;
+      reapedGroups.length = 0;
+      await session[end]();
+      expect(reapedGroups).toContain(leaderPid);
+    }
+  });
+
+  test("C-LIFE-10 an already-terminal teardown still reaps the leader group", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    const leaderPid = ptys.at(-1)!.pid;
+    ptys.at(-1)!.emitExit({ exitCode: 0 }); // leader exits on its own first
+    expect(session.status).toBe("exited");
+    reapedGroups.length = 0;
+    await session.teardown(); // terminatePty skipped, but the group is still reaped
+    expect(reapedGroups).toContain(leaderPid);
   });
 
   test("C-LIFE-11 teardown completes even when it rejects an in-flight message", async () => {
