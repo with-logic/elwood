@@ -5,9 +5,8 @@
 
 import type { ClaudeHookEvent } from "../claude/hooks.ts";
 import type { CodexHookEvent } from "../codex/hooks.ts";
-import type { CodexTranscriptEvent } from "../codex/transcript.ts";
 import * as meta from "./activity-meta.ts";
-import { hookResultLabel, transcriptActivityKind } from "./hook-result.ts";
+import { hookResultLabel } from "./hook-result.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "./types.ts";
 
 export type ElwoodAgentKind = "claude" | "codex";
@@ -98,7 +97,12 @@ export function activityFromHook(
   if (event.hook_event_name === "PostToolUse" || event.hook_event_name === "PostToolBatch") {
     return toolActivity(base, "tool_result", event, meta.hookToolOutput(event));
   }
-  const text = meta.stopMessage(event);
+  // Claude sources assistant_message from the committed transcript (C-CLAUDE-15),
+  // so a Stop hook's last_assistant_message — which can carry an un-sent
+  // ghost-text suggestion — is NOT emitted as a message here; the Stop hook
+  // stays a turn-boundary signal. Codex has no transcript-backed Claude path, so
+  // its stop message remains the assistant_message source.
+  const text = agent === "codex" ? meta.stopMessage(event) : undefined;
   if (text !== undefined) {
     return withText(base, "assistant_message", event.hook_event_name, text);
   }
@@ -152,18 +156,10 @@ export function activityFromWarning(event: ElwoodWarningEvent): ElwoodActivityEv
   };
 }
 
-export function activityFromCodexTranscript(event: CodexTranscriptEvent): ElwoodActivityEvent {
-  return {
-    elwoodSessionId: event.elwoodSessionId,
-    agent: "codex",
-    source: "transcript",
-    kind: transcriptActivityKind(event.summary.kind),
-    label: event.summary.label,
-    ...(event.summary.text === undefined ? {} : { text: event.summary.text }),
-    ...meta.transcriptActivityMeta(event),
-    raw: event.item,
-  };
-}
+export {
+  activityFromClaudeTranscript,
+  activityFromCodexTranscript,
+} from "./activity-transcript.ts";
 
 function withText(
   base: Omit<ElwoodActivityEvent, "kind" | "label" | "text">,

@@ -13,7 +13,12 @@
   own integration) answers regardless of autotrust; third-party trust is gated
   on autotrust. Sub-item confirmed: `sendMessage` already shares the race-free
   paste-then-Enter submit from `18ba87f`. See below.
-- **Request 9 (OPEN, P1):** a Claude CLI ghost-text / autocomplete SUGGESTION is
+- **Request 9 (DONE, P1):** Claude `assistant_message`/`tool_call`/`tool_result`
+  now sourced from the committed transcript (`ClaudeTranscriptWatcher`, parity
+  with Codex), never from the Stop hook's `last_assistant_message` — so un-sent
+  ghost-text never posts. Proven by a real-CLI e2e (C-E2E-07): a committed turn
+  yields `source: "transcript"` and zero hook-sourced messages. See below.
+- **Request 9 (was OPEN, P1):** a Claude CLI ghost-text / autocomplete SUGGESTION is
   being forwarded as a real `assistant_message` (kind=`assistant_message`, from
   the `Stop` hook's `last_assistant_message`) — so an un-sent autocomplete line
   ("go ahead and open that PR") posts into the room as if the agent spoke it.

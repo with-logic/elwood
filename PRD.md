@@ -967,6 +967,18 @@ same observations are also projected into the adapter-neutral `activity` event
 stream. `CodexTranscriptSummary.kind` values are `message`, `tool_call`,
 `tool_result`, `reasoning`, `web_search`, and `other`.
 
+`ClaudeSession` likewise observes Claude's own JSONL transcript at the
+`transcript_path` (and `agent_transcript_path`) the hook payloads carry, and is
+the source of truth for committed Claude activity. A Claude `assistant_message`,
+`tool_call`, or `tool_result` MUST be projected from the committed transcript
+record — a Messages-API turn whose `content` blocks are `text`, `tool_use`, and
+`tool_result` — and MUST NOT be projected from the `Stop` hook's
+`last_assistant_message`. That hook field can carry an un-sent ghost-text or
+autocomplete suggestion the user never submitted; sourcing the message from the
+transcript ensures only a genuinely committed turn becomes a room message
+(C-CLAUDE-15). The `Stop` hook remains a turn-boundary signal. As with Codex,
+Elwood flushes readable transcript data and stops the watcher when the PTY exits.
+
 When a Codex PTY exits, Elwood must flush readable live transcript data and stop
 the transcript watcher before emitting `terminal:exit` or terminal lifecycle
 status. Parent applications should not receive delayed transcript activity after
@@ -1635,6 +1647,7 @@ Each criterion has:
 | C-CLAUDE-12 | §5.1 | `startClaude` forwards `model` to Claude's `--model` launch flag. |
 | C-CLAUDE-13 | §4.3 | `tools` emits Claude's `--tools` allowlist flag as one comma-separated value, with an empty array encoding `--tools ""` (all tools disabled); it is forwarded across resume like the other tool options. |
 | C-CLAUDE-14 | §5.1 | Under `autotrust`, Claude's allowlisted skill/plugin/MCP trust prompts are each answered once with the affirmative option and emit `startup_prompt` activity under their `skill_trust`/`plugin_trust`/`mcp_trust` labels; an off-allowlist first-run prompt is never auto-answered. |
+| C-CLAUDE-15 | §5.4 | Claude `assistant_message`, `tool_call`, and `tool_result` activities are sourced from the committed transcript the CLI writes at `transcript_path`, never from the `Stop` hook's `last_assistant_message`; an un-sent ghost-text / composer draft therefore never becomes an `assistant_message`. |
 
 #### C-CODEX: Codex Startup And Config (§4, §7A, §9)
 
@@ -1763,6 +1776,7 @@ Each criterion has:
 | C-E2E-04 | §12 | Real adapter e2e tests skip only for local prerequisite failures such as a missing CLI; they do not replace adapter flows with fake PTYs, fake CLIs, or fake hook bridges. |
 | C-E2E-05 | §12 | `npm run check:all` runs the default `npm run check` gate followed by `npm run test:e2e`, without changing the composition of `npm run check`. |
 | C-E2E-06 | §4.5 | A real session started in a project with its own agent configuration loads that configuration additively: project-defined hooks fire alongside Elwood's bridge hooks and project instruction files are loaded by the agent. |
+| C-E2E-07 | §5.4 | A real committed Claude turn surfaces an `assistant_message` with `source: "transcript"` and a `transcriptPath`, and no `assistant_message` is emitted with `source: "hook"` (C-CLAUDE-15). |
 
 ## 15. Open Implementation Notes
 

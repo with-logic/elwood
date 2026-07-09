@@ -39,6 +39,7 @@ import {
 import { ClaudeSessionImpl } from "./session-instance.ts";
 import type { ClaudeSession } from "./session-interface.ts";
 import { registerInitialHooks, spawnClaudePty, writeRuntimeFiles } from "./session-runtime.ts";
+import { createTranscriptWatcher, observeTranscript } from "./session-transcript.ts";
 import { ClaudeStartupPromptResponder } from "./startup-prompts.ts";
 
 export {
@@ -64,10 +65,8 @@ export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSe
   const record =
     warning === undefined
       ? posture
-      : upsertSessionWarning(posture, {
-          elwoodSessionId: posture.elwoodSessionId,
-          ...warning,
-        }).record;
+      : upsertSessionWarning(posture, { elwoodSessionId: posture.elwoodSessionId, ...warning })
+          .record;
   writeSessionRecord(record);
   return queuePersonaMessage(await startClaudeFromRecord(record, options), options.persona);
 }
@@ -82,6 +81,7 @@ export async function startClaudeFromRecord(
   writeRuntimeFiles(record, record.bridgeToken, options);
   const emitter = new TypedEmitter();
   registerInitialHooks(emitter, options.hooks);
+  const transcriptWatcher = createTranscriptWatcher(record.elwoodSessionId, emitter);
   let session: ClaudeSessionImpl | undefined;
   let initialReadyMarked = false;
   const bridge = currentClaudeHookBridgeFactory()(
@@ -92,6 +92,7 @@ export async function startClaudeFromRecord(
       const event = normalizeClaudeHookEvent(input);
       if (event.hook_event_name === "SessionStart")
         session?.rememberClaudeSessionId(event.session_id);
+      observeTranscript(transcriptWatcher, event);
       emitter.emit("hook", event);
       emitter.emit("activity", activity.activityFromHook("claude", record.elwoodSessionId, event));
       const outcome = await requestHook(
@@ -116,6 +117,7 @@ export async function startClaudeFromRecord(
         session?.submitEvidence("initial_ready");
       }
       if (event.hook_event_name === "Stop" && !isBlock(outcome.result)) {
+        transcriptWatcher.scan(); // Committed turn is on disk; read it now (C-CLAUDE-15).
         turnWatcher.arm();
         session?.submitEvidence("hook_turn_ended");
       }
@@ -161,7 +163,6 @@ export async function startClaudeFromRecord(
     (data, renderedTerminal) => {
       startupOutput += data;
       terminalReplay.push(data);
-      // One snapshot per render: reused for prompt automation and detection.
       const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
       const automations = promptResponder.handle(frame.text, (input) =>
         renderedTerminal.sendInput(input),
@@ -176,6 +177,7 @@ export async function startClaudeFromRecord(
   session = new ClaudeSessionImpl(record, pty, terminal, bridge, emitter, terminalReplay);
   pty.onExit((exit) => {
     startupExit = exit;
+    transcriptWatcher.finish(); // Flush trailing committed items before exit.
     emitter.emit("terminal:exit", { elwoodSessionId: record.elwoodSessionId, ...exit });
     emitter.emit(
       "activity",
