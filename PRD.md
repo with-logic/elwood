@@ -666,6 +666,21 @@ still indefinitely alive. `kill` force-terminates the process. `teardown` remove
 Elwood-owned state for the session and must not remove Claude-owned transcripts,
 auth, or project/user settings that Elwood did not create.
 
+`stop`, `kill`, and `teardown` MUST reap the full PTY process tree, not only the
+PTY leader. The adapter CLI spawns helper subprocesses that are descendants of
+the PTY leader — notably the per-session hook bridge (`node hook-bridge.mjs`) the
+CLI runs on each hook — and signaling only the leader can orphan them, leaking a
+process tree that accumulates across launch/quit cycles. Elwood MUST reap these
+by SIGKILLing the leader's process group: node-pty starts the leader as its own
+session leader, so every descendant inherits its process group, and a group
+SIGKILL reaches them even after a descendant has been reparented to PID 1 by the
+leader's exit — which a parent-pid walk cannot. The reap MUST run for `stop()`,
+`kill()`, and `teardown()`, including when the leader has already exited on its
+own (an already-terminal session still reaps the group). A dead or empty group
+is a no-op. A `teardown()` that rejects in-flight control-queue operations MUST
+still complete: rejecting a pending `sendMessage`/`compact`/model operation does
+not skip the group reap or the rest of teardown.
+
 ### 5.4 Events
 
 The primary event API is typed event-emitter style.
@@ -1687,6 +1702,8 @@ Each criterion has:
 | C-LIFE-03 | §5.3 | `kill()` force-terminates the Claude process and updates status. |
 | C-LIFE-04 | §9.3 | `resumeClaude` restores hook routing and PTY control for a saved Elwood session. |
 | C-LIFE-05 | §5.3 | One `ClaudeSession` owns exactly one main Claude process. |
+| C-LIFE-10 | §5.3 | `stop()`, `kill()`, and `teardown()` reap the full PTY process tree by SIGKILLing the leader's process group, so a descendant reparented to PID 1 after the leader exits (e.g. the CLI-spawned `hook-bridge.mjs`) is still killed and no process tree leaks across launch/quit cycles. |
+| C-LIFE-11 | §5.3 | A `teardown()` that rejects in-flight control-queue operations still completes: the rejected `sendMessage`/`compact`/model operation does not skip the process-group reap or remaining teardown steps. |
 
 #### C-ERR: Error Model (§10)
 

@@ -35,7 +35,7 @@ import {
   type StatusEvidenceKind,
 } from "./status-evidence.ts";
 import { runTeardownSteps } from "./teardown.ts";
-import { terminatePty } from "./terminate.ts";
+import { reap, terminatePty } from "./terminate.ts";
 
 type ShutdownEvidence = "stop_completed" | "kill_completed" | "teardown_completed";
 
@@ -48,8 +48,7 @@ export abstract class AgentSessionBase {
   private readonly statusEvents: SessionStatusEmitter;
   private readonly terminalReplay: TerminalReplayBuffer;
   private cleanupPromise: Promise<void> | undefined;
-  // Set before a controlled shutdown signals the PTY, so the exit resolves to
-  // that terminal status rather than a racing `exited`.
+  // Claims the exit for a controlled shutdown so it resolves to that terminal status.
   private pendingShutdown: ShutdownEvidence | undefined;
   protected readonly controlQueue = new ControlQueue(
     (input, mode) => writeQueuedInput(this.terminal, input, mode, this.pasteGuard()),
@@ -137,6 +136,7 @@ export abstract class AgentSessionBase {
     this.pendingShutdown ??= "teardown_completed"; // Claim the exit as teardown.
     await runTeardownSteps([
       () => (terminalStatuses.has(this.status) ? undefined : terminatePty(this.pty, "SIGKILL")),
+      () => reap(this.pty, undefined), // Reap group even if terminatePty skipped (C-LIFE-10).
       () => this.cleanupRuntime(),
       () => void this.submitEvidence("teardown_completed"),
       () => removeSessionDir(this.record),
@@ -147,10 +147,8 @@ export abstract class AgentSessionBase {
     return this.statusEngine.submit(kind);
   }
   submitExit(): StatusDecision {
-    // A controlled shutdown claims the exit; otherwise it is unsolicited.
     return this.statusEngine.submit(this.pendingShutdown ?? "terminal_exited");
   }
-  /** Bounded live-only log of recent evidence decisions for diagnostics. */
   statusDecisions(): readonly StatusDecision[] {
     return this.statusEngine.decisions();
   }
@@ -184,7 +182,9 @@ export abstract class AgentSessionBase {
   private async shutdown(signal: "SIGTERM" | "SIGKILL", evidence: ShutdownEvidence) {
     const wasExited = this.status === "exited";
     this.pendingShutdown ??= evidence; // Claim the exit before signaling.
-    if (this.status !== "exited") await terminatePty(this.pty, signal);
+    if (wasExited)
+      reap(this.pty, undefined); // Leader gone; reap survivors.
+    else await terminatePty(this.pty, signal); // Reaps after exit.
     await this.cleanupRuntime();
     if (!wasExited) this.submitEvidence(evidence);
   }

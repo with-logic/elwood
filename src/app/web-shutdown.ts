@@ -89,6 +89,10 @@ export async function runShutdown(options: {
 }
 
 export function killProcessTreeSync(pid: number, includeRoot: boolean): void {
+  // Dev web app teardown (PRD §11): the elwood process is alive here so its
+  // subtree is still intact and a parent-pid walk finds every child. This is the
+  // dev tool, not the shipped session path (session teardown reaps by process
+  // group in reap-tree.ts).
   for (const child of childPids(pid)) killProcessTreeSync(child, true);
   if (!includeRoot) return;
   try {
@@ -96,6 +100,20 @@ export function killProcessTreeSync(pid: number, includeRoot: boolean): void {
   } catch {
     // Process may have already exited.
   }
+}
+
+function childPids(pid: number): readonly number[] {
+  // Absolute path avoids resolving pgrep through a hijacked PATH; the timeout
+  // stops a wedged executable from hanging shutdown.
+  const result = spawnSync("/usr/bin/pgrep", ["-P", String(pid)], {
+    encoding: "utf8",
+    timeout: 2_000,
+  });
+  if (result.status !== 0) return [];
+  return result.stdout
+    .split(/\s+/)
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0);
 }
 
 function forceKill(processLike: ShutdownProcess, killTree: KillTree): never {
@@ -117,13 +135,4 @@ function exitCode(signal: ShutdownSignal): number {
   if (signal === "SIGTERM") return 143;
   if (signal === "SIGHUP") return 129;
   return 130;
-}
-
-function childPids(pid: number): readonly number[] {
-  const result = spawnSync("pgrep", ["-P", String(pid)], { encoding: "utf8" });
-  if (result.status !== 0) return [];
-  return result.stdout
-    .split(/\s+/)
-    .map((value) => Number(value))
-    .filter((value) => Number.isInteger(value) && value > 0);
 }
