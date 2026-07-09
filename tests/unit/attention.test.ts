@@ -57,7 +57,7 @@ describe("AttentionWatcher", () => {
       new AttentionWatcher().observe(read(claudeScreenFactTableForTrustPolicy(false), claudeTrust)),
     ).toEqual({
       edge: "raised",
-      ruleIds: ["claude-trust-prompt"],
+      ruleIds: ["claude-trust-prompt-0"],
     });
     expect(
       new AttentionWatcher().observe(read(claudeScreenFactTableForTrustPolicy(true), claudeTrust)),

@@ -5,7 +5,7 @@
  */
 
 import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
-import { claudeTrustPrompt } from "../core/workspace-trust.ts";
+import { trustPromptPatterns } from "../core/trust-prompts.ts";
 
 /**
  * Verified against claude 2.1.203 (see `verifiedAgainst`). The footer renders
@@ -43,15 +43,17 @@ export const claudeScreenFactTable: ScreenFactTable = {
   ],
 };
 
-/** Detection mirrors the workspace-trust responder (C-ATTN-03). */
-const claudeTrustRule: ScreenFactRule = {
-  id: "claude-trust-prompt",
-  fact: "blocking_prompt_visible",
-  all: [claudeTrustPrompt],
-};
+/** One blocking rule per allowlisted trust prompt (C-ATTN-03). */
+const claudeTrustRules: readonly ScreenFactRule[] = trustPromptPatterns("claude").map(
+  (pattern, index) => ({
+    id: `claude-trust-prompt-${index}`,
+    fact: "blocking_prompt_visible",
+    all: [pattern],
+  }),
+);
 
 /** With autotrust off, an unanswered trust prompt blocks on the human. */
 export function claudeScreenFactTableForTrustPolicy(autotrust: boolean): ScreenFactTable {
   if (autotrust) return claudeScreenFactTable;
-  return { ...claudeScreenFactTable, rules: [...claudeScreenFactTable.rules, claudeTrustRule] };
+  return { ...claudeScreenFactTable, rules: [...claudeScreenFactTable.rules, ...claudeTrustRules] };
 }

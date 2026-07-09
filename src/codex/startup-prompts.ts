@@ -7,7 +7,8 @@ import type { ElwoodWarningEvent } from "../core/types.ts";
 import { WorkspaceTrustResponder } from "../core/workspace-trust.ts";
 
 export type CodexStartupPromptAutomation = {
-  readonly prompt: "hook_trust" | "update" | "workspace_trust";
+  /** An allowlisted trust-prompt id (see trust-prompts.ts) or `update`. */
+  readonly prompt: string;
   readonly input: string;
 };
 
@@ -18,36 +19,28 @@ export type CodexStartupPromptResult = {
 
 const maxBufferLength = 6_000;
 const updateOptionPattern = /continue\s*without\s*updat|skip|not\s*now|later/i;
-const hookTrustPattern = /Trust\s*all\s*and\s*continue/i;
 
 export class CodexStartupPromptResponder {
   private buffer: string;
   private readonly elwoodSessionId: string;
-  private readonly workspaceTrust: WorkspaceTrustResponder;
-  private trustedHooks: boolean;
+  private readonly trust: WorkspaceTrustResponder;
   private skippedUpdate: boolean;
 
   constructor(elwoodSessionId = "", autotrust = false) {
     this.elwoodSessionId = elwoodSessionId;
     this.buffer = "";
-    this.workspaceTrust = new WorkspaceTrustResponder("codex", autotrust);
-    this.trustedHooks = false;
+    // Owns the whole allowlisted trust family (directory + hook trust), not just
+    // one prompt; extended by adding entries to trustPromptAllowlist.
+    this.trust = new WorkspaceTrustResponder("codex", autotrust);
     this.skippedUpdate = false;
   }
 
   handle(screenText: string, write: (input: string) => void): CodexStartupPromptResult {
     const automations: CodexStartupPromptAutomation[] = [];
     this.buffer = `${this.buffer}\n${screenText}`.slice(-maxBufferLength);
-    const trust = this.workspaceTrust.handle(this.buffer, write);
+    const trust = this.trust.handle(this.buffer, write);
     if (trust) automations.push(trust);
-    if (!this.trustedHooks && /Hooks need review/i.test(this.buffer)) {
-      const option = findNumberedOption(this.buffer, hookTrustPattern);
-      if (option) {
-        write(option);
-        automations.push({ prompt: "hook_trust", input: option });
-        this.trustedHooks = true;
-      }
-    }
+    // Skipping an available update is not a trust decision, so it stays here.
     if (!this.skippedUpdate && /update/i.test(this.buffer)) {
       const option = findNumberedOption(this.buffer, updateOptionPattern);
       if (option) {

@@ -28,15 +28,28 @@ describe("Codex startup prompt responder", () => {
     terminal.dispose();
   });
 
-  test("C-CODEX-06 trusts hook review prompts once", () => {
+  test("C-CODEX-06 trusts hook review prompts once, even without autotrust", () => {
     const writes: string[] = [];
+    // Hook trust is Elwood's OWN integration (required for the session to work),
+    // so it is answered regardless of autotrust — unlike third-party trust.
     const responder = new CodexStartupPromptResponder();
     responder.handle("Hooks need review\n  1. Review hooks", (input) => writes.push(input));
     responder.handle("Hooks need review\n› 1. Review hooks\n  2. Trust all and continue", (input) =>
       writes.push(input),
     );
     responder.handle("\n  3. Continue without trusting", (input) => writes.push(input));
-    expect(writes).toEqual(["2"]);
+    expect(writes).toEqual(["2\r"]);
+  });
+
+  test("C-CODEX-15 does not trust the DIRECTORY prompt without autotrust", () => {
+    const writes: string[] = [];
+    const responder = new CodexStartupPromptResponder();
+    const result = responder.handle(
+      "Do you trust the contents of this directory?\n› 1. Yes, continue\n  2. No, quit",
+      (input) => writes.push(input),
+    );
+    expect(writes).toEqual([]);
+    expect(result.automations).toEqual([]);
   });
 
   test("C-CODEX-11 trusts directory prompts when autotrust is enabled", () => {

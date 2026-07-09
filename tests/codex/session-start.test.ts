@@ -44,7 +44,7 @@ describe("CodexSession startup and terminal control", () => {
     expect(ptys[0]!.options.args.join(" ")).not.toContain("--dangerously-bypass-hook-trust");
     ptys[0]!.emitData("Hooks need review\r\n  1. Review hooks\r\n› 2. Trust all and continue");
     await flushTerminal();
-    expect(ptys[0]!.writes).toEqual(["2"]);
+    expect(ptys[0]!.writes).toEqual(["2\r"]);
   });
 
   test("C-CODEX-11 autotrust answers Codex directory prompts", async () => {

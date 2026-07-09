@@ -746,7 +746,25 @@ available for deep debugging and unsupported future payloads.
 When Elwood detects and answers an interactive startup prompt on behalf of the
 parent app, it MUST emit an activity event with `source: "terminal"`,
 `kind: "startup_prompt"`, a stable label, and text describing the key sent.
-Stable startup prompt labels are `workspace_trust`, `hook_trust`, and `update`.
+Stable startup prompt labels are `workspace_trust`, `skill_trust`,
+`plugin_trust`, `mcp_trust`, `hook_trust`, and `update`.
+
+Under a caller's full-trust launch (`autotrust`), Elwood auto-answers the trust
+prompt family — folder/directory trust, and the CLI's first-run trust prompts for
+loading a skill, a plugin, or an MCP server — so an agent never wedges invisibly
+on a trust gate the parent app does not relay. This is an EXPLICIT ALLOWLIST:
+each answered prompt is a named entry matched by its verified on-screen wording
+with a fixed affirmative outcome, extensible only by adding a new entry. Elwood
+MUST NOT blanket-answer "any first-run confirmation": an open-ended match would
+silently bypass a future CLI security gate for third-party code or config. These
+third-party trust prompts are answered only when `autotrust` is set; with it off,
+an unanswered trust prompt is a blocking prompt that holds session state for the
+human.
+
+Two prompts are exceptions to the `autotrust` gate. Codex hook trust
+(`hook_trust`) is Elwood's OWN integration — the session cannot function without
+its hook bridge trusted — so it is always answered, and `update` is not a trust
+decision at all; both are handled independently of `autotrust`.
 Every hook dispatch must also emit an adapter-neutral hook-result activity after
 parent handlers run. The result activity must include the hook event name,
 whether the dispatch failed open, and the raw in-memory result payload when
@@ -1616,6 +1634,7 @@ Each criterion has:
 | C-CLAUDE-11 | §5.1 | Claude's browser tools onboarding prompt is declined through PTY input regardless of `autotrust`, with `startup_prompt` activity emitted under the `browser_tools` label. |
 | C-CLAUDE-12 | §5.1 | `startClaude` forwards `model` to Claude's `--model` launch flag. |
 | C-CLAUDE-13 | §4.3 | `tools` emits Claude's `--tools` allowlist flag as one comma-separated value, with an empty array encoding `--tools ""` (all tools disabled); it is forwarded across resume like the other tool options. |
+| C-CLAUDE-14 | §5.1 | Under `autotrust`, Claude's allowlisted skill/plugin/MCP trust prompts are each answered once with the affirmative option and emit `startup_prompt` activity under their `skill_trust`/`plugin_trust`/`mcp_trust` labels; an off-allowlist first-run prompt is never auto-answered. |
 
 #### C-CODEX: Codex Startup And Config (§4, §7A, §9)
 
@@ -1626,7 +1645,7 @@ Each criterion has:
 | C-CODEX-03 | §5.5 | `model`, `profile`, `sandbox`, `approvalPolicy`, and `configOverrides` options are reflected in Codex launch policy. |
 | C-CODEX-04 | §9.2 | Startup checks Codex CLI version and fails with `codex_version_unsupported` when below the configured minimum. |
 | C-CODEX-05 | §10 | Missing `codex` fails with `codex_not_found` and a useful message. |
-| C-CODEX-06 | §4.4 | Codex hooks are always trusted by `hookTrust="trust-all"`, bypass flag when supported, or answering the TUI trust prompt. |
+| C-CODEX-06 | §4.4 | Codex hooks are trusted by `hookTrust="trust-all"`, bypass flag when supported, or — under `autotrust` — answering the allowlisted `Hooks need review` TUI trust prompt once. |
 | C-CODEX-07 | §5.6 | `resumeCodex` fails explicitly when Elwood has not persisted a Codex resume id. |
 | C-CODEX-08 | §5.5 | `autoupdate: true` runs `codex update` before spawning Codex. |
 | C-CODEX-09 | §5.7 | Codex MCP startup warnings are parsed from terminal output into typed warning events with server names and recovery commands. |
@@ -1635,6 +1654,7 @@ Each criterion has:
 | C-CODEX-12 | §5.5 | If Codex still shows an interactive update prompt inside the TUI, Elwood selects the skip/continue-without-updating option by label. |
 | C-CODEX-13 | §10 | An immediately failing or unusable Codex process fails with `codex_start_failed` or a more specific typed error. |
 | C-CODEX-14 | §5.3 | `setModel` on Codex restores the user's prior `config.toml` default via compare-and-swap after the CLI persists its picker selection, skipping with the `codex_default_model_persisted` warning instead of clobbering concurrent edits. |
+| C-CODEX-15 | §5.5 | Codex's directory-trust prompt is answered only under `autotrust` (blocking on the human when off); Codex hook trust — Elwood's own integration, required to function — is answered regardless of `autotrust`. Each is answered once, from the shared allowlist. |
 
 #### C-HOOK: Hook Bridge Coverage And Semantics (§6)
 

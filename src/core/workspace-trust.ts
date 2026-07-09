@@ -1,51 +1,65 @@
 /**
- * Detects and answers adapter workspace trust prompts.
- * Implements PRD §5 and §9.1.
+ * Detects and answers the allowlisted family of adapter startup trust prompts.
+ * Implements PRD §5.1 and §9.1 (C-CLAUDE-10, C-CODEX-11, C-CLAUDE-14, C-CODEX-15).
  */
 
 import type { ElwoodAgentKind } from "./activity.ts";
+import {
+  affirmativeOptionPattern,
+  type TrustPromptSpec,
+  trustPromptAllowlist,
+} from "./trust-prompts.ts";
 
-export type WorkspaceTrustAutomation = {
-  readonly prompt: "workspace_trust";
+export type TrustPromptAutomation = {
+  /** The allowlisted prompt id that was answered (e.g. `workspace_trust`). */
+  readonly prompt: string;
   readonly input: string;
 };
 
+/** Back-compat alias: the workspace-trust prompt is one entry in the allowlist. */
+export type WorkspaceTrustAutomation = TrustPromptAutomation;
+
+/**
+ * Answers each allowlisted trust prompt for one agent at most once, and only
+ * when enabled (the caller's full-trust/autotrust posture). Extending trust is
+ * a matter of adding an entry to `trustPromptAllowlist`, never a broader match.
+ */
 export class WorkspaceTrustResponder {
-  private readonly agent: ElwoodAgentKind;
   private readonly enabled: boolean;
-  private trusted = false;
+  private readonly specs: readonly TrustPromptSpec[];
+  private readonly answered = new Set<string>();
 
   constructor(agent: ElwoodAgentKind, enabled = false) {
-    this.agent = agent;
     this.enabled = enabled;
+    this.specs = trustPromptAllowlist.filter((spec) => spec.agent === agent);
   }
 
-  handle(screenText: string, write: (input: string) => void): WorkspaceTrustAutomation | undefined {
-    if (!this.enabled || this.trusted || !workspaceTrustPromptVisible(screenText, this.agent)) {
-      return undefined;
+  handle(screenText: string, write: (input: string) => void): TrustPromptAutomation | undefined {
+    for (const spec of this.specs) {
+      // `always` prompts (Elwood's own hook bridge) answer regardless of
+      // autotrust; every other trust prompt requires the caller's full-trust
+      // posture so third-party trust is never granted implicitly.
+      if (!(this.enabled || spec.always)) continue;
+      if (this.answered.has(spec.id) || !spec.visible.test(screenText)) continue;
+      const option = affirmativeOption(screenText);
+      if (option === undefined) continue;
+      write(`${option}\r`);
+      this.answered.add(spec.id);
+      return { prompt: spec.id, input: option };
     }
-    const option = findTrustOption(screenText);
-    if (!option) return undefined;
-    write(`${option}\r`);
-    this.trusted = true;
-    return { prompt: "workspace_trust", input: option };
+    return undefined;
   }
 }
 
-export const claudeTrustPrompt = /trust this folder/i;
-export const codexTrustPrompt = /Do you trust the contents of this directory/i;
-
+/** True when any allowlisted trust prompt for `agent` is visible in `text`. */
 export function workspaceTrustPromptVisible(text: string, agent: ElwoodAgentKind): boolean {
-  return (agent === "claude" ? claudeTrustPrompt : codexTrustPrompt).test(text);
+  return trustPromptAllowlist.some((spec) => spec.agent === agent && spec.visible.test(text));
 }
 
-function findTrustOption(text: string): string | null {
-  return (
-    numberedOptions(text).find((option) => trustOptionPattern.test(option.label))?.number ?? null
-  );
+function affirmativeOption(text: string): string | undefined {
+  return numberedOptions(text).find((option) => affirmativeOptionPattern.test(option.label))
+    ?.number;
 }
-
-const trustOptionPattern = /^(?!.*\b(no|without|not|quit|cancel)\b).*\b(yes|trust|continue)\b/i;
 
 function numberedOptions(
   text: string,

@@ -5,7 +5,7 @@
  */
 
 import { hasScreenFact, type ScreenFactRule, type ScreenFactTable } from "../core/screen-facts.ts";
-import { codexTrustPrompt } from "../core/workspace-trust.ts";
+import { trustPromptPatterns } from "../core/trust-prompts.ts";
 
 /**
  * Verified against codex-cli 0.142.5. The working spinner renders
@@ -44,17 +44,19 @@ export const codexScreenFactTable: ScreenFactTable = {
   ],
 };
 
-/** Detection mirrors the workspace-trust responder (C-ATTN-03). */
-const codexTrustRule: ScreenFactRule = {
-  id: "codex-trust-prompt",
-  fact: "blocking_prompt_visible",
-  all: [codexTrustPrompt],
-};
+/** One blocking rule per allowlisted trust prompt (C-ATTN-03). */
+const codexTrustRules: readonly ScreenFactRule[] = trustPromptPatterns("codex").map(
+  (pattern, index) => ({
+    id: `codex-trust-prompt-${index}`,
+    fact: "blocking_prompt_visible",
+    all: [pattern],
+  }),
+);
 
 /** With autotrust off, an unanswered trust prompt blocks on the human. */
 export function codexScreenFactTableForTrustPolicy(autotrust: boolean): ScreenFactTable {
   if (autotrust) return codexScreenFactTable;
-  return { ...codexScreenFactTable, rules: [...codexScreenFactTable.rules, codexTrustRule] };
+  return { ...codexScreenFactTable, rules: [...codexScreenFactTable.rules, ...codexTrustRules] };
 }
 
 /** A quiet boot gap can precede input acceptance; readiness requires this. */
