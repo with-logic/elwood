@@ -19,10 +19,12 @@ export type { ClaudeTranscriptEvent, TranscriptDropNotice, TranscriptReadErrorNo
 
 /** Poll cadence: transcript activity is not latency-critical, so this stays coarse. */
 const pollMs = 500;
-// Max bounded read passes per scan pass, shared across ALL cursors (×256 KiB ≈
-// 4 MiB total): a huge delta — even spread over many subagent cursors — drains
-// across poll ticks, not in one large event-loop block (PRD §9.2).
+// Read passes per scan, shared across ALL cursors (×256 KiB ≈ 4 MiB): a huge delta
+// drains across poll ticks, not one large event-loop block (§9.2). The terminal
+// drain (retire/finish) uses a far larger cap so it drains a normal turn fully but
+// still can't block termination on a pathological delta.
 const scanChunksPerScan = 16;
+const maxDrainChunks = 1024;
 
 /** Notices the watcher forwards for observation problems (both rate-bounded). */
 export type TranscriptNoticeHandlers = {
@@ -55,12 +57,10 @@ export class ClaudeTranscriptWatcher {
     this.lines = new LineEmitter(elwoodSessionId, emit, this.drops);
   }
 
-  // Begin watching `path`: baselines at EOF (history not replayed); cursor
-  // construction shares the fs guard. Only a turn-boundary first-observe
-  // (recoverTail) replays the committed tail — resume baselines at EOF (§5.4).
+  // Begin watching `path`: baselines at EOF (history not replayed); only a
+  // turn-boundary first-observe (recoverTail) replays the committed tail (§5.4).
+  // No observation after finish — a late hook must not emit past terminal:exit.
   observe(path: string, recoverTail = false): void {
-    // No new observation after the watcher is finished — a late hook must not
-    // restart polling or emit transcript activity past terminal:exit (§5.4).
     if (this.finished || this.cursors.has(path)) return;
     const cursor = this.readFs(path, () => new TranscriptCursor(path));
     if (cursor === undefined) return;
@@ -79,22 +79,21 @@ export class ClaudeTranscriptWatcher {
     }
   }
 
-  // Flush and retire a stopped subagent's transcript: a one-shot input, dropped
-  // from the active cursor set after its final read so it is not polled forever.
+  // Flush and retire a stopped subagent's transcript (one-shot input): drained
+  // then removed from the active cursor set so it is not polled forever.
   retire(path: string): void {
     const cursor = this.cursors.get(path);
     if (!cursor || this.finished) return;
-    this.drainCursor(cursor); // a one-shot input: drain it fully before retiring
+    this.drainCursor(cursor);
     this.lines.emitLines(cursor.path, cursor.drainPending());
     this.cursors.delete(path);
   }
 
-  /** Test seam: drive one poll pass synchronously (the interval calls poll()). */
   pollOnceForTests(): Promise<void> {
-    return this.poll();
+    return this.poll(); // test seam: drive one poll pass synchronously
   }
 
-  // Idle-friendly poll: an async stat gates each cursor (zero sync fs work when
+  // Idle-friendly poll: an async stat gates each cursor (no sync fs work when
   // idle, §9.2); a bounded sync read runs only on growth. Re-entrancy-guarded.
   private async poll(): Promise<void> {
     if (this.polling || this.finished) return;
@@ -103,8 +102,8 @@ export class ClaudeTranscriptWatcher {
       const budget = { chunks: scanChunksPerScan }; // one budget for the whole pass
       for (const cursor of this.cursors.values()) {
         const changed = await this.readFsAsync(cursor.path, () => cursor.needsScan());
-        // Re-check AFTER the await: finish() may have run during the async stat,
-        // and a post-exit emit would violate the terminal:exit ordering (§5.4).
+        // Re-check after the await: finish() may have run during the async stat;
+        // a post-exit emit would break terminal:exit ordering (§5.4).
         if (this.finished) return;
         if (budget.chunks <= 0) break; // watcher-wide budget spent this tick
         if (changed) this.scanCursor(cursor, budget);
@@ -114,9 +113,9 @@ export class ClaudeTranscriptWatcher {
     }
   }
 
-  // Flush buffered partials, then permanently stop. `finished` is set FIRST so an
-  // in-flight poll bails after its await and a later observe/scan no-ops — nothing
-  // emits past terminal:exit (§5.4). Flushing must not prevent stop() (finally).
+  // Flush buffered partials, then permanently stop. `finished` set FIRST so an
+  // in-flight poll bails and later observe/scan no-op — nothing emits past
+  // terminal:exit (§5.4); flushing must not prevent stop() (finally).
   finish(): void {
     if (this.finished) return;
     this.finished = true;
@@ -132,13 +131,15 @@ export class ClaudeTranscriptWatcher {
     }
   }
 
-  /** Drain a cursor to EOF at teardown (bounded only by per-record discarding). */
+  // Drain to EOF at teardown/retire, bounded so a pathological final delta can't
+  // block termination. The cap (≈256 MiB) far exceeds any real turn (§9.2).
   private drainCursor(cursor: TranscriptCursor): void {
-    for (;;) {
+    let more = true;
+    for (let budget = maxDrainChunks; more && budget > 0; budget--) {
       const chunk = this.readFs(cursor.path, () => cursor.readChunk());
       if (chunk === undefined) return;
       if (chunk.text.length > 0) this.lines.emitLines(cursor.path, chunk.text, cursor);
-      if (!chunk.more) return;
+      more = chunk.more;
     }
   }
 

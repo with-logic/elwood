@@ -26,7 +26,7 @@ function answersWorkspaceTrust(frame: string): boolean {
 test("C-E2E-09 the allowlist recognizes and answers the REAL Claude folder-trust frame", {
   skip: skipReason("claude"),
   timeout: 240_000,
-}, async () => {
+}, async (t) => {
   const project = makeProject("claude");
   // autotrust: false so Elwood does NOT auto-answer — we want to capture the raw
   // trust frame the real CLI renders in a fresh, untrusted directory.
@@ -50,10 +50,10 @@ test("C-E2E-09 the allowlist recognizes and answers the REAL Claude folder-trust
     );
 
     if (frame === "" || !answersWorkspaceTrust(frame)) {
-      // Loud skip: surface what the CLI actually rendered so the allowlist can
-      // be re-verified against it, rather than passing on a stale assumption.
-      console.log(
-        `[C-E2E-09 SKIP] no matchable folder-trust frame from claude ${session.status}. ` +
+      // A REAL skip (not a silent pass): surface what the CLI rendered so the
+      // allowlist can be re-verified against it, then mark the test skipped.
+      t.skip(
+        `no matchable folder-trust frame from claude (status=${session.status}). ` +
           `Captured terminal:\n${session.terminal.snapshot().text}`,
       );
       return;

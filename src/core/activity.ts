@@ -83,7 +83,7 @@ export function activityFromClaudeHook(
   return shared ?? { ...base, kind: "hook", label: event.hook_event_name };
 }
 
-/** Codex hook → activity. Codex tool activity comes from its HOOKS (unlike Claude, which sources tools from the transcript); a separate `codex:transcript` path emits thinking/status, not these tool events. */
+/** Codex hook → activity. Codex maps tool HOOKS to tool activity (unlike Claude, whose tool activity is transcript-sourced); Codex's own `codex:transcript` path ALSO surfaces tool calls/results plus thinking/status (see activity-transcript). */
 export function activityFromCodexHook(
   elwoodSessionId: string,
   event: CodexHookEvent,

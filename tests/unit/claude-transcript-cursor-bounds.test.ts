@@ -4,7 +4,7 @@
  * (C-CLAUDE-15).
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, readSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -13,6 +13,25 @@ import {
   setRangeReaderForTests,
   TranscriptCursor,
 } from "../../src/claude/transcript/cursor.ts";
+
+function fileBytes(path: string): number {
+  return statSync(path).size;
+}
+
+/** A real range read that also tallies the total bytes requested (read amplification). */
+function countingReader(counter: { bytes: number }) {
+  return (path: string, start: number, length: number) => {
+    counter.bytes += length;
+    const buf = Buffer.allocUnsafe(length);
+    const fd = openSync(path, "r");
+    try {
+      const read = readSync(fd, buf, 0, length, start);
+      return { text: buf.toString("utf8", 0, read), bytes: read };
+    } finally {
+      closeSync(fd);
+    }
+  };
+}
 
 function tmpFile(): string {
   return join(mkdtempSync(join(tmpdir(), "elwood-tx-")), "t.jsonl");
@@ -45,6 +64,29 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
     drainAll(cursor); // advance the offset to EOF
     writeFileSync(path, "c\n"); // strictly shorter: size !== offset, must re-scan
     expect(await cursor.needsScan()).toBe(true);
+  });
+
+  test("baselineTail reads LINEAR bytes, not the quadratic expanding-window amount", () => {
+    // The pre-fix baselineTail re-read the whole suffix each 64 KiB backward step,
+    // so total bytes read grew ~O(n²) (≈ steps × suffix). The non-overlapping
+    // block scan reads each byte at most ~once. Assert the total requested bytes
+    // stays near the file size, which the old expanding-window impl would blow past.
+    const path = tmpFile();
+    // No user boundary within the cap → the scan walks back the full window: this
+    // is the worst case for read amplification. Build ~800 KiB of assistant lines.
+    const asst = (t: string) =>
+      JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: t }] } });
+    writeFileSync(path, `${Array.from({ length: 8000 }, (_, i) => asst(`m${i}`)).join("\n")}\n`);
+    const counter = { bytes: 0 };
+    setRangeReaderForTests(countingReader(counter));
+    try {
+      new TranscriptCursor(path).baselineTail();
+    } finally {
+      resetRangeReaderForTests();
+    }
+    // Linear: each backward block is read once, so total ≈ the scanned span, well
+    // under 2× the file. The old impl re-read the suffix each step → many× the file.
+    expect(counter.bytes).toBeLessThan(fileBytes(path) * 2);
   });
 
   test("a non-ENOENT stat error at construction propagates to the caller's fs guard", () => {

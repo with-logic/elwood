@@ -4,18 +4,26 @@
  */
 
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity.ts";
+import type { TrustPromptId } from "./trust-prompts.ts";
 import type { ElwoodWarningEvent } from "./warnings.ts";
+
+/**
+ * The stable startup-prompt labels: every allowlisted trust prompt id plus the
+ * two non-trust startup prompts. Derived from the allowlist (via TrustPromptId)
+ * so it can never drift; matches the PRD's exact label contract (§5.1).
+ */
+export type StartupPromptLabel = TrustPromptId | "browser_tools" | "update";
 
 /**
  * The outcome of a startup-prompt automation, discriminated so the two states
  * cannot be confused: an `answered` prompt ALWAYS carries the `input` sent, while
  * an `unanswerable` prompt (recognized allowlisted trust prompt whose verified
- * option was absent — C-CLAUDE-14) NEVER carries an input. A contradictory shape
- * like `{ input: "1", unanswerable: true }` is no longer representable.
+ * option was absent — C-CLAUDE-14) NEVER carries an input. `prompt` is the stable
+ * label union, so an invalid label does not compile.
  */
 export type StartupPromptAutomation =
-  | { readonly kind: "answered"; readonly prompt: string; readonly input: string }
-  | { readonly kind: "unanswerable"; readonly prompt: string };
+  | { readonly kind: "answered"; readonly prompt: StartupPromptLabel; readonly input: string }
+  | { readonly kind: "unanswerable"; readonly prompt: StartupPromptLabel };
 
 export type StartupActivityEmitter = {
   emit(event: "activity", payload: ElwoodActivityEvent): void;

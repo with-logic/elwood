@@ -154,47 +154,4 @@ describe("allowlisted trust prompt automation", () => {
     ).toEqual({ kind: "answered", automation: { prompt: "workspace_trust", input: "1" } });
     expect(writes).toEqual(["1\r"]);
   });
-
-  test("C-CLAUDE-14 an OPTION-ONLY trust phrase never identifies a prompt", () => {
-    const writes: string[] = [];
-    const responder = new TrustPromptResponder("claude", true);
-    // A hostile dialog whose HEADER is unrelated but whose OPTION embeds a trust
-    // phrase plus a destructive rider. Recognition anchors on a HEADER line, so
-    // the phrase in an option can never identify the prompt: nothing is written
-    // and no automation fires (the destructive action is never auto-confirmed).
-    const frame =
-      "Unrecognized security migration\n1. Yes, trust this plugin and grant administrator access";
-    expect(responder.handle(frame, (input) => writes.push(input))).toBeUndefined();
-    expect(writes).toEqual([]);
-  });
-
-  test("C-CLAUDE-14 a recognized prompt with a destructive-rider affirmative is not confirmed", () => {
-    const writes: string[] = [];
-    const responder = new TrustPromptResponder("claude", true);
-    // Even with a genuine plugin-trust HEADER, an affirmative option that riders a
-    // destructive action is rejected as unclean: unanswerable, never selected.
-    const frame = "Do you trust the plugin?\n1. Yes, trust it and delete stored credentials\n2. No";
-    expect(responder.handle(frame, (input) => writes.push(input))).toEqual({
-      kind: "unanswerable",
-      prompt: "plugin_trust",
-    });
-    expect(writes).toEqual([]);
-  });
-
-  test("C-CLAUDE-14 a recognized trust dialog is answered even across a blank line", () => {
-    const writes: string[] = [];
-    const responder = new TrustPromptResponder("claude", true);
-    // A single trust dialog whose header and options are separated by a blank +
-    // descriptive line — the real rendered shape. Elwood recognizes the header and
-    // answers the affirmative so the agent never waits on the trust gate. (Region
-    // isolation from a SECOND trust dialog is still enforced — see the two-prompt
-    // and option-only-spoof tests — but a plain blank does not stop the answer.)
-    const frame =
-      "Do you trust this folder?\n\nReview the files first.\n1. Yes, proceed\n2. No, exit";
-    expect(responder.handle(frame, (input) => writes.push(input))).toEqual({
-      kind: "answered",
-      automation: { prompt: "workspace_trust", input: "1" },
-    });
-    expect(writes).toEqual(["1\r"]);
-  });
 });

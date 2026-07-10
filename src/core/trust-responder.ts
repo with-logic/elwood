@@ -40,7 +40,12 @@ export type TrustPromptResult<A extends ElwoodAgentKind = ElwoodAgentKind> =
 export class TrustPromptResponder<A extends ElwoodAgentKind> {
   private readonly enabled: boolean;
   private readonly specs: readonly TrustPromptEntry[];
+  // A prompt is `settled` once ANSWERED (never re-answer the same prompt).
   private readonly settled = new Set<TrustPromptIdFor<A>>();
+  // A prompt whose unanswerable wedge has already been reported once. Kept SEPARATE
+  // from `settled`: an unanswerable outcome must NOT block a later frame — the real
+  // affirmative option may render after a partial frame — so we can still answer it.
+  private readonly reportedUnanswerable = new Set<TrustPromptIdFor<A>>();
 
   constructor(agent: A, enabled = false) {
     this.enabled = enabled;
@@ -58,10 +63,10 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       // autotrust; every other trust prompt requires the caller's full-trust
       // posture so third-party trust is never granted implicitly.
       if (!(this.enabled || ("always" in spec && spec.always))) continue;
-      // Recognize the prompt by its `visible` phrase (which real prompts may put
-      // in the question OR in an affirmative option like "1. Yes, I trust this
-      // folder"). The region is the contiguous dialog block around that match,
-      // bounded so a different dialog in the same frame is excluded (PRD §5.1).
+      // Recognize the prompt ONLY by its `visible` HEADER wording on a non-option
+      // line (never an option label), so a hostile option can't spoof a prompt.
+      // The region is that dialog's block (header → prose → options), ending at a
+      // different allowlisted prompt's header (PRD §5.1).
       const region = promptRegion(lines, spec);
       if (this.settled.has(id) || region === undefined) continue;
       // No numbered options in the region yet: the dialog is still RENDERING
@@ -69,14 +74,17 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       // wedging it as unanswerable. `continue` (not return) so a different,
       // fully-rendered prompt in the same frame can still be handled this pass.
       if (!hasAnyOption(region)) continue;
-      // Options are present. The answer must be THIS prompt's own CLEAN affirmative
-      // option — not a generic "Yes" from another dialog, and never an option that
+      // Options are present. The answer must be a CLEAN affirmative for THIS
+      // prompt (its specific accept, never a generic Yes), and never an option that
       // riders a destructive action ("... and delete stored credentials").
       const option = matchOption(region, spec);
       if (option === undefined) {
-        // Fully rendered but no acceptable option: genuinely unanswerable. Surface
-        // it ONCE rather than silently continuing (which would wedge the agent).
-        this.settled.add(id);
+        // Options present but none acceptable YET. This can be a partial render
+        // (a non-affirmative option drew before the affirmative), so do NOT settle
+        // — a later frame with the real option can still answer. Report the wedge
+        // ONCE (durable warning), then keep watching on subsequent frames.
+        if (this.reportedUnanswerable.has(id)) continue;
+        this.reportedUnanswerable.add(id);
         return { kind: "unanswerable", prompt: id };
       }
       write(`${option}\r`);
@@ -140,7 +148,15 @@ function promptRegion(lines: readonly string[], spec: TrustPromptEntry): string 
   return undefined;
 }
 
-/** Where `spec`'s region ends: the next different allowlisted prompt header, or EOF. */
+/**
+ * Where `spec`'s region ends: the next DIFFERENT allowlisted prompt's header, or
+ * EOF. The region deliberately spans the blank and descriptive lines within one
+ * trust dialog — a real prompt renders header → prose → options as ONE dialog,
+ * and a wrapped header's own question mark must not split it — so detection just
+ * answers the recognized dialog (Steve's directive: never leave the agent waiting
+ * on a trust gate under autotrust). Anti-spoof and destructive-rider protections
+ * (see promptRegion / carriesDestructiveRider) remain the security guarantees.
+ */
 function regionEnd(lines: readonly string[], start: number, spec: TrustPromptEntry): number {
   for (let i = start + 1; i < lines.length; i++) {
     if (!isOptionLine(lines[i] as string) && startsOtherPrompt(lines[i] as string, spec)) return i;

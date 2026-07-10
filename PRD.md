@@ -772,23 +772,24 @@ verified affirmative-option label for that prompt. A prompt MUST be recognized
 only by its HEADER/question wording on a line that is NOT itself a numbered
 option — a trust phrase appearing only inside an option label (e.g. "1. Yes,
 trust this plugin and grant admin access") MUST NOT identify the prompt, so a
-hostile option cannot spoof a trust dialog. Both the prompt and its answer
-MUST be matched within the SAME current rendered frame, never across accumulated
-screen history — a stale phrase from an earlier frame must never pair with a
-"Yes" option belonging to a different, current dialog. A real trust dialog renders
-as a header, then blank/descriptive lines, then its numbered options — all ONE
-dialog — and a wrapped header spans physical rows; recognition MUST tolerate that
-layout (match the header against the dialog's joined non-option lines) so the
-agent is never left waiting on a trust gate the parent app relayed for autotrust.
-The affirmative option is selected from the recognized dialog's region, which
-extends from its header to its options and ends only where a DIFFERENT allowlisted
-prompt's header begins (a second trust dialog in the same frame). The selected
-affirmative option MUST be a CLEAN affirmative: an option label that riders a
-destructive or irreversible action (for example "Yes, trust this plugin and
-delete stored credentials") MUST NOT be auto-selected, even if it matches the
-prompt's affirmative pattern; and a prompt whose affirmative wording is specific
-(for example hook trust's "Trust all"/"Trust hooks") MUST NOT be answered by an
-unrelated generic "Yes". If an allowlisted prompt
+hostile option cannot spoof a trust dialog. Both the prompt and its answer MUST be
+matched within the SAME current rendered frame, never across accumulated screen
+history — a stale phrase from an earlier frame must never be answered against a
+later, unrelated frame. A real trust dialog renders as a header, then
+blank/descriptive lines, then its numbered options — all ONE dialog — and a
+wrapped header spans physical rows; recognition MUST tolerate that layout (match
+the header against the dialog's joined non-option lines) so that under autotrust
+the agent is never left waiting on a trust gate the parent app relayed. When such
+a header is recognized, Elwood answers the dialog's affirmative option — the guard
+against answering the WRONG thing is not screen geometry but the option itself:
+the selected affirmative MUST be a CLEAN affirmative — an option label that riders
+a destructive or irreversible action (for example "Yes, trust this plugin and
+delete stored credentials") MUST NOT be auto-selected — and a prompt whose
+affirmative wording is specific (for example hook trust's "Trust all"/"Trust
+hooks") MUST NOT be answered by an unrelated generic "Yes". The region from which
+the affirmative is selected extends from the header through the dialog's options
+and ends only where a DIFFERENT allowlisted prompt's header begins. If an
+allowlisted prompt
 is recognized but its verified affirmative option is not present, Elwood MUST NOT
 answer a substitute option; instead it emits an `attention` activity (labelled
 with the prompt id) so the wedge is visible to the parent app rather than silent,
@@ -1796,7 +1797,7 @@ Each criterion has:
 | C-CODEX-12 | §5.5 | If Codex still shows an interactive update prompt inside the TUI, Elwood selects the skip/continue-without-updating option by label. |
 | C-CODEX-13 | §10 | An immediately failing or unusable Codex process fails with `codex_start_failed` or a more specific typed error. |
 | C-CODEX-14 | §5.3 | `setModel` on Codex restores the user's prior `config.toml` default via compare-and-swap after the CLI persists its picker selection, skipping with the `codex_default_model_persisted` warning instead of clobbering concurrent edits. |
-| C-CODEX-15 | §5.5 | Codex's directory-trust prompt is answered only under `autotrust` (blocking on the human when off); Codex hook trust — Elwood's own integration — is answered regardless of `autotrust` and is NOT classified as blocking. Prompt and answer are matched within the same current frame AND scoped to the prompt's own region, with a prompt-specific affirmative option (hook trust's "Trust all"/"Trust hooks", not a generic "Yes"), so a stale phrase OR a foreign dialog's "Yes" in the same frame never auto-confirms trust. Each is answered once, from the shared allowlist. |
+| C-CODEX-15 | §5.5 | Codex's directory-trust prompt is answered only under `autotrust` (blocking on the human when off); Codex hook trust — Elwood's own integration — is answered regardless of `autotrust` and is NOT classified as blocking. Each is recognized only by its HEADER wording (never an option line, so an option-only phrase cannot spoof it) and answered from its own dialog region; the wrong-answer guard is the option: a destructive-rider affirmative is never selected, and hook trust's specific affirmative ("Trust all"/"Trust hooks") is never satisfied by a generic "Yes". Each is answered once, from the shared allowlist. |
 
 #### C-HOOK: Hook Bridge Coverage And Semantics (§6)
 
