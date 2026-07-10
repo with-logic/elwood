@@ -64,9 +64,12 @@ export async function terminatePty(
 
 /**
  * Builds one error preserving BOTH the termination and the reap failure causes.
- * An ElwoodError carries the reap cause in `details.reapError`; any other Error
- * carries it on the standard `.cause` — so neither cause is ever dropped, whether
- * termination failed with a typed ElwoodError or a plain PTY Error (C-LIFE-10).
+ * The reap cause is carried on a dedicated `.reapError` string property (NOT the
+ * standard `.cause`, which the termination error may already use for its own root
+ * cause): an ElwoodError gets it in `details.reapError`; any other Error gets it as
+ * a `.reapError` property added in place, preserving the original identity/stack.
+ * Either way neither cause is dropped, whether termination failed with a typed
+ * ElwoodError or a plain PTY Error (C-LIFE-10). Callers/tests read `.reapError`.
  */
 function bothFailed(terminationError: unknown, reapError: unknown): unknown {
   const reap = reapError instanceof Error ? reapError.message : String(reapError);

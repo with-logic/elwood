@@ -4,6 +4,13 @@
  */
 
 import type { PtyProcess } from "../pty/types.ts";
+import { SessionReaper } from "./reap-tree.ts";
+import { terminatePty } from "./terminate.ts";
+
+export type StartupTerminationTimeouts = {
+  readonly gracefulMs: number;
+  readonly forceMs: number;
+};
 
 export type StartupCleanupResources = {
   readonly before?: () => void;
@@ -11,18 +18,35 @@ export type StartupCleanupResources = {
   readonly pty?: PtyProcess;
   readonly terminal?: { readonly dispose: () => void };
   readonly after?: () => void;
+  /** Overrides the bounded PTY termination window (tests only; production defaults). */
+  readonly terminationTimeouts?: StartupTerminationTimeouts;
 };
+
+// Bounded so a failed startup never hangs on an unresponsive CLI while still
+// giving the leader a chance to exit gracefully before the group SIGKILL reap.
+const startupTermination: StartupTerminationTimeouts = { gracefulMs: 5_000, forceMs: 1_000 };
 
 export async function cleanupStartupResources(resources: StartupCleanupResources): Promise<void> {
   tryCall(resources.before);
-  try {
-    resources.pty?.kill("SIGTERM");
-  } catch {
-    // Preserve the original startup error.
-  }
+  // Route the PTY through the SAME group-reaping primitive the normal exit path
+  // uses: it signals, waits (bounded), and SIGKILLs the leader's process group on
+  // EVERY path — even when the PTY signal throws — so CLI descendants (e.g. a
+  // hook-bridge grandchild reparented to PID 1) cannot survive a failed startup
+  // (PRD §9.1, §9.4, C-LIFE-10). A termination/reap failure stays SECONDARY: it is
+  // contained here so the original startup error is the one that rejects.
+  if (resources.pty)
+    await reapPtyGroup(resources.pty, resources.terminationTimeouts ?? startupTermination);
   if (resources.bridge) await Promise.allSettled([resources.bridge.stop()]);
   tryCall(resources.after);
   tryCall(resources.terminal?.dispose.bind(resources.terminal));
+}
+
+async function reapPtyGroup(pty: PtyProcess, timeouts: StartupTerminationTimeouts): Promise<void> {
+  try {
+    await terminatePty(pty, "SIGTERM", new SessionReaper(pty.pid), timeouts);
+  } catch {
+    // Preserve the original startup error; a reap/termination failure is secondary.
+  }
 }
 
 /**

@@ -3,7 +3,10 @@
  * Implements PRD §11.
  */
 
-import { spawnSync } from "node:child_process";
+import { childPids } from "./child-lookup.ts";
+
+export type { ChildLookupDiagnostic } from "./child-lookup.ts";
+export { classifyChildLookup, setChildLookupReporter } from "./child-lookup.ts";
 
 type ShutdownSignal = "SIGINT" | "SIGTERM" | "SIGHUP" | "SIGTSTP" | "SIGTTIN" | "SIGTTOU";
 type ExitSignal = "SIGKILL";
@@ -102,20 +105,6 @@ export function killProcessTreeSync(pid: number, includeRoot: boolean): void {
   } catch {
     // Process may have already exited.
   }
-}
-
-function childPids(pid: number): readonly number[] {
-  // Absolute path avoids resolving pgrep through a hijacked PATH; the timeout
-  // stops a wedged executable from hanging shutdown.
-  const result = spawnSync("/usr/bin/pgrep", ["-P", String(pid)], {
-    encoding: "utf8",
-    timeout: 2_000,
-  });
-  if (result.status !== 0) return [];
-  return result.stdout
-    .split(/\s+/)
-    .map((value) => Number(value))
-    .filter((value) => Number.isInteger(value) && value > 0);
 }
 
 function forceKill(processLike: ShutdownProcess, killTree: KillTree): never {

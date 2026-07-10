@@ -2,7 +2,7 @@
  * Detects and answers the allowlisted family of adapter startup trust prompts.
  * Implements PRD §5.1 and §9.1 (C-CLAUDE-10, C-CODEX-11, C-CLAUDE-14, C-CODEX-15).
  *
- * Policy (Steve's directive): an agent must NEVER be left waiting on a trust gate.
+ * Policy (PRD §5.1): an agent must NEVER be left waiting on a trust gate.
  * Under the caller's full-trust posture, when an allowlisted trust prompt is
  * visible in the current frame, Elwood selects its affirmative option and sends
  * it — always say yes. Elwood only auto-answers ALLOWLISTED prompts (an

@@ -19,8 +19,29 @@ const maxPendingBytes = 1024 * 1024;
 /** Outcome of a bounded read: the decoded text plus whether more remains to read. */
 export type ChunkRead = { readonly text: string; readonly more: boolean };
 
-/** Lines parsed from a chunk, plus bytes discarded from an over-length record. */
-export type TakenLines = { readonly lines: readonly string[]; readonly droppedBytes: number };
+/**
+ * The cursor's over-length-discard state transition across one `takeLines` call,
+ * reported EXPLICITLY so the emitter never has to infer it from `lines`/`bytes`:
+ * - `"none"`: the cursor was not discarding and did not start (the common case).
+ * - `"started"`: this call BEGAN a fresh over-length discard (count one lost record).
+ * - `"continuing"`: this call added more bytes to a discard already in progress
+ *   (count zero records — the same record's continuation, not a new loss).
+ * - `"ended"`: this call consumed the discarded record's terminating newline and
+ *   the cursor is no longer discarding; any over-length bytes reported belong to a
+ *   NEW record that also started this call (so it also counts one).
+ */
+export type DiscardTransition = "none" | "started" | "continuing" | "ended";
+
+/**
+ * Lines parsed from a chunk, plus bytes discarded from an over-length record and
+ * the EXPLICIT discard-state transition (so the emitter synchronizes its per-path
+ * marker from the cursor's truth, never inferred from `lines.length`/`droppedBytes`).
+ */
+export type TakenLines = {
+  readonly lines: readonly string[];
+  readonly droppedBytes: number;
+  readonly discard: DiscardTransition;
+};
 
 /**
  * Tracks the read position for one transcript path and performs bounded reads.
@@ -86,12 +107,19 @@ export class TranscriptCursor {
   // Split buffered text into complete lines, retaining any trailing partial. A
   // record past `maxPendingBytes` with no newline is discarded through its next
   // newline (its bytes reported) so it can't OOM or re-concat quadratically (§5.4).
+  // The returned `discard` transition is the cursor's OWN truth (started/continuing/
+  // ended/none), so the emitter counts exactly one lost record per over-length
+  // record even when one chunk both ENDS one discard and STARTS the next (§5.4).
   takeLines(text: string): TakenLines {
     let dropped = 0;
     let rest = text;
+    // `wasDiscarding` distinguishes "continued/ended an in-progress discard" from
+    // "started a fresh one" so the caller counts each lost record exactly once.
+    const wasDiscarding = this.discarding;
     if (this.discarding) {
       const nl = rest.indexOf("\n");
-      if (nl === -1) return { lines: [], droppedBytes: byteLen(rest) }; // still no newline
+      // Still no newline: the same over-length record continues (bytes only, no +1).
+      if (nl === -1) return { lines: [], droppedBytes: byteLen(rest), discard: "continuing" };
       dropped += byteLen(rest.slice(0, nl + 1));
       this.discarding = false;
       rest = rest.slice(nl + 1);
@@ -99,13 +127,16 @@ export class TranscriptCursor {
     const lines = `${this.pending}${rest}`.split(/\r?\n/);
     // `split` always yields at least one element, so pop() is a string here.
     this.pending = lines.pop() as string;
-    if (byteLen(this.pending) > maxPendingBytes) {
+    const startedNew = byteLen(this.pending) > maxPendingBytes;
+    if (startedNew) {
       dropped += byteLen(this.pending); // over-length un-terminated record: discard it
       this.pending = "";
       this.discarding = true;
     }
-    return { lines, droppedBytes: dropped };
+    return { lines, droppedBytes: dropped, discard: transition(wasDiscarding, startedNew) };
   }
+
+  // (transition helper lives at module scope below)
 
   /** The final buffered partial line (flushed once at teardown), then cleared. */
   drainPending(): string {
@@ -121,4 +152,16 @@ export class TranscriptCursor {
     const size = fileSize(this.path);
     return size > this.offset ? size - this.offset : 0;
   }
+}
+
+// Map (was-discarding, started-a-new-over-length-record) onto the explicit
+// transition the emitter counts from. A `started` always means "this call BEGAN a
+// fresh over-length record" (+1) — even when it ALSO closed a prior discard, since
+// that prior record was counted when IT started, so this call still adds exactly
+// one for the new record. `ended` closed an in-progress discard with no new one
+// (0). The `continuing` case is returned inline (still no newline) and never here.
+function transition(wasDiscarding: boolean, startedNew: boolean): DiscardTransition {
+  if (startedNew) return "started";
+  if (wasDiscarding) return "ended";
+  return "none";
 }

@@ -6,7 +6,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   createTranscriptWatcher,
   type ObservableTranscript,
@@ -158,13 +158,19 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     const emitter = fakeEmitter((a) => {
       if (a.kind === "assistant_message") throw new Error("listener bug");
     });
-    const { watcher } = createTranscriptWatcher("s9", emitter, () => sink);
+    // A short poll cadence via the seam + waitFor makes the timer-path assertion
+    // deterministic, not a fixed sleep race (the pattern used in the recovery tests).
+    const { watcher } = createTranscriptWatcher("s9", emitter, () => sink, {}, 5);
     const path = tmpFile();
-    writeFileSync(path, "");
-    watcher.observe(path);
-    writeFileSync(path, `${JSON.stringify(assistant("boom"))}\n`);
-    await new Promise((resolve) => setTimeout(resolve, 700)); // one poll tick
-    watcher.finish();
-    expect(recorded.some((w) => w.code === "transcript_poll_stopped")).toBe(true);
+    try {
+      writeFileSync(path, "");
+      watcher.observe(path);
+      writeFileSync(path, `${JSON.stringify(assistant("boom"))}\n`);
+      await vi.waitFor(() =>
+        expect(recorded.some((w) => w.code === "transcript_poll_stopped")).toBe(true),
+      );
+    } finally {
+      watcher.finish(); // always stop the watcher, even if the assertion throws
+    }
   });
 });

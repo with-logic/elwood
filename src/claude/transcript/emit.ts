@@ -21,9 +21,6 @@ export class LineEmitter {
   private readonly elwoodSessionId: string;
   private readonly emit: (event: ClaudeTranscriptEvent) => void;
   private readonly drops: DropTracker;
-  // Per-path mirror of the cursor's discard state so a single over-length record
-  // spanning several chunks is counted as ONE dropped record, not once per chunk.
-  private readonly discarding = new Set<string>();
 
   constructor(id: string, emit: (event: ClaudeTranscriptEvent) => void, drops: DropTracker) {
     this.elwoodSessionId = id;
@@ -38,25 +35,17 @@ export class LineEmitter {
       for (const line of text.split(/\r?\n/)) this.emitLine(path, line);
       return;
     }
-    const { lines, droppedBytes } = cursor.takeLines(text);
+    const { lines, droppedBytes, discard } = cursor.takeLines(text);
     // An over-length un-terminated record was discarded, not emitted: report its
     // bytes as a drop so the truncation is visible rather than silent (§5.4). The
-    // record COUNT increments exactly ONCE — when discard mode BEGINS — while the
-    // continuation/newline chunks that carry the rest of the same record only add
-    // bytes (records=0), so discarding one record never inflates droppedCount.
-    if (droppedBytes > 0) this.accountDiscard(path, droppedBytes);
-    // Any parsed line, or a clean chunk with no discarded bytes, ends the discard
-    // run: a later overflow on this path then begins a fresh record (count +1).
-    if (lines.length > 0 || droppedBytes === 0) this.discarding.delete(path);
+    // record COUNT is driven by the cursor's EXPLICIT transition, never inferred:
+    // `started` began a fresh over-length record (+1) — even when the same chunk
+    // ALSO closed a prior discard, so two consecutive over-length records split
+    // across one chunk boundary count as TWO, not one — while `continuing`/`ended`
+    // add bytes only (records=0), so one record is never counted per chunk.
+    if (droppedBytes > 0)
+      this.drops.recordBytes(path, droppedBytes, discard === "started" ? 1 : 0, "oversized");
     for (const line of lines) this.emitLine(path, line);
-  }
-
-  // Report discarded bytes for `path`, counting a new dropped record only on the
-  // FIRST chunk of a discard run; continuation chunks add bytes only (records=0).
-  private accountDiscard(path: string, bytes: number): void {
-    const isNewRecord = !this.discarding.has(path);
-    this.drops.recordBytes(path, bytes, isNewRecord ? 1 : 0, "oversized");
-    this.discarding.add(path);
   }
 
   private emitLine(path: string, line: string): void {

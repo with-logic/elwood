@@ -5,7 +5,7 @@
  * transcripts, or conversation content.
  */
 
-import type { PollErrorReason, ReapErrorCode } from "./warning-reasons.ts";
+import type { DropCause, PollErrorReason, PollPhase, ReapErrorCode } from "./warning-reasons.ts";
 
 export type ElwoodWarningEvent =
   | {
@@ -61,7 +61,7 @@ export type ElwoodWarningEvent =
       // Why data was lost, bounded to a fixed token so cause + cardinality are
       // never false: an unparseable committed record, an over-length record
       // discarded through its next newline, or an unread teardown backlog.
-      readonly cause: "unparseable" | "oversized" | "unread_backlog";
+      readonly cause: DropCause;
       readonly transcriptPath: string;
       readonly raw: string;
     }
@@ -90,7 +90,7 @@ export type ElwoodWarningEvent =
       // Which lifecycle phase failed: a live periodic poll or the final flush at
       // PTY exit — so lost trailing shutdown activity is distinguishable from a
       // live-watcher poll failure without a distinct warning code.
-      readonly phase: "poll" | "final_flush";
+      readonly phase: PollPhase;
       readonly raw: string;
     }
   | {

@@ -54,10 +54,12 @@ export function drainToBudget(
   for (const cursor of cursors) {
     const backlog = drainCursor(context, cursor, budget, deadline, now);
     // An unread teardown backlog is content-free data loss with its OWN cause
-    // ("unread_backlog"), never conflated with an unparseable record: the bytes
-    // are the true magnitude and the record count is unknown, so it contributes a
-    // single loss event under a truthful cause rather than a false "unparseable"
-    // cardinality (MAJOR: cause-neutral data-loss accounting, PRD §5.4).
+    // ("unread_backlog"), never conflated with an unparseable record: the bytes are
+    // the true magnitude and the enclosed record count is unknowable, so it counts
+    // as exactly ONE loss INCIDENT under a truthful cause rather than a false record
+    // cardinality. `droppedCount` is loss incidents (each unparseable record, each
+    // over-length record, and each backlog = 1 incident), so cause + count are both
+    // truthful (MAJOR: cause-neutral data-loss accounting, C-CLAUDE-15, PRD §5.4).
     if (backlog > 0) context.drops.recordBytes(cursor.path, backlog, 1, "unread_backlog");
     context.lines.emitLines(cursor.path, cursor.drainPending());
   }

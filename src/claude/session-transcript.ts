@@ -7,7 +7,7 @@
 import * as activity from "../core/activity.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { ClaudeTranscriptWatcher, type TranscriptWatcherSeed } from "./transcript/index.ts";
-import { dropWarning, pollErrorWarning, readErrorWarning } from "./transcript/warnings.ts";
+import { dropWarning, readErrorWarning, transcriptFailureWarning } from "./transcript/warnings.ts";
 
 /** The session surface the watcher needs to persist and de-duplicate warnings. */
 export type WarningSink = {
@@ -79,6 +79,9 @@ export function createTranscriptWatcher(
   emitter: TranscriptActivityEmitter,
   sink?: () => WarningSink | undefined,
   seed: TranscriptWatcherSeed = {},
+  // Poll-cadence override forwarded to the watcher's existing test seam; production
+  // omits it and the watcher uses its default cadence. Internal only (not a PRD flag).
+  pollIntervalMs?: number,
 ): WiredTranscriptWatcher {
   const pending: ElwoodWarningEvent[] = [];
   const flushPendingWarnings = () => {
@@ -100,7 +103,8 @@ export function createTranscriptWatcher(
     {
       onDrop: (notice) => route(dropWarning(notice)),
       onReadError: (notice) => route(readErrorWarning(notice)),
-      onPollError: (error) => route(pollErrorWarning(elwoodSessionId, error)),
+      onPollError: (error) => route(transcriptFailureWarning(elwoodSessionId, error)),
+      ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
     },
     seed,
   );
@@ -116,7 +120,7 @@ export function createTranscriptWatcher(
       try {
         // A failed FINAL flush at exit is phase-labelled so an operator can tell
         // lost trailing shutdown activity from a live poll failure (MAJOR: phase).
-        route(pollErrorWarning(elwoodSessionId, error, "final_flush"));
+        route(transcriptFailureWarning(elwoodSessionId, error, "final_flush"));
       } catch {} // a diagnostic-listener bug must not block lifecycle completion
     } finally {
       afterFlush();

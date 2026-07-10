@@ -8,7 +8,12 @@
  */
 
 import type { ElwoodWarningEvent } from "../core/types.ts";
-import { isPollErrorReason, isReapErrorCode } from "../core/warning-reasons.ts";
+import {
+  isDropCause,
+  isPollErrorReason,
+  isPollPhase,
+  isReapErrorCode,
+} from "../core/warning-reasons.ts";
 import {
   isCount,
   isPositiveCount,
@@ -59,6 +64,7 @@ const warningValidators = {
     claudeTerminalBase(value) &&
     isPositiveCount(value["droppedCount"]) &&
     isCount(value["droppedBytes"]) &&
+    isDropCause(value["cause"]) &&
     isString(value["transcriptPath"]),
   transcript_read_error: (value) =>
     claudeTerminalBase(value) &&
@@ -68,7 +74,7 @@ const warningValidators = {
   // The `reason` is validated against the SAME allowlist the producer draws from,
   // so a non-allowlisted (possibly conversation-derived) reason cannot round-trip.
   transcript_poll_stopped: (value) =>
-    claudeTerminalBase(value) && isPollErrorReason(value["reason"]),
+    claudeTerminalBase(value) && isPollErrorReason(value["reason"]) && isPollPhase(value["phase"]),
   // Content-free lifecycle diagnostic: the leaked group's pgid (a real leader pid,
   // so a safe integer > 1) + an ALLOWLISTED normalized error code, per agent —
   // never a raw system message (§5.7, C-LIFE-10).

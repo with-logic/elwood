@@ -20,21 +20,21 @@ export class ClaudeStartupPromptResponder {
     screenText: string,
     write: (input: string) => void,
   ): readonly StartupPromptOutcome<"claude">[] {
-    const automations: StartupPromptOutcome<"claude">[] = [];
+    const outcomes: StartupPromptOutcome<"claude">[] = [];
     const trust = this.trust.handle(screenText, write);
     if (trust?.kind === "answered") {
-      automations.push({ kind: "answered", ...trust.automation });
+      outcomes.push({ kind: "answered", ...trust.automation });
     } else if (trust?.kind === "option_pending") {
-      automations.push({ kind: "option_pending", prompt: trust.prompt });
+      outcomes.push({ kind: "option_pending", prompt: trust.prompt });
     }
     if (!this.browserDeclined && browserToolsPromptVisible(screenText)) {
       // Escape is the prompt's documented decline path and needs no option
       // number, so it stays correct if the option ordering changes.
       write("\u001b");
       this.browserDeclined = true;
-      automations.push({ kind: "answered", prompt: "browser_tools", input: "esc" });
+      outcomes.push({ kind: "answered", prompt: "browser_tools", input: "esc" });
     }
-    return automations;
+    return outcomes;
   }
 }
 

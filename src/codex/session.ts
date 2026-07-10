@@ -140,7 +140,7 @@ export async function startCodexFromRecord(
         renderedTerminal.sendInput(input),
       );
       session?.recordWarnings(result.warnings);
-      emitStartupPromptActivities(emitter, "codex", record.elwoodSessionId, result.automations);
+      emitStartupPromptActivities(emitter, "codex", record.elwoodSessionId, result.outcomes);
       // Readiness is hook-backed (the `SessionStart` hook fires it); the frame
       // only arms the starvation-deadline fallback, never releases the queue
       // on the boot-time composer placeholder (C-API-28, see initial-ready.ts).

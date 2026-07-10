@@ -21,7 +21,7 @@ export type CodexStartupPromptOutcome = StartupPromptOutcome<"codex">;
 
 export type CodexStartupPromptResult = {
   readonly warnings: readonly ElwoodWarningEvent[];
-  readonly automations: readonly CodexStartupPromptOutcome[];
+  readonly outcomes: readonly CodexStartupPromptOutcome[];
 };
 
 const maxBufferLength = 6_000;
@@ -43,26 +43,26 @@ export class CodexStartupPromptResponder {
   }
 
   handle(screenText: string, write: (input: string) => void): CodexStartupPromptResult {
-    const automations: CodexStartupPromptOutcome[] = [];
+    const outcomes: CodexStartupPromptOutcome[] = [];
     this.buffer = `${this.buffer}\n${screenText}`.slice(-maxBufferLength);
     // Trust prompts are matched against the CURRENT frame only: a stale phrase in
     // the accumulated buffer must never pair with a different dialog's answer.
     const trust = this.trust.handle(screenText, write);
     if (trust?.kind === "answered") {
-      automations.push({ kind: "answered", ...trust.automation });
+      outcomes.push({ kind: "answered", ...trust.automation });
     } else if (trust?.kind === "option_pending") {
-      automations.push({ kind: "option_pending", prompt: trust.prompt });
+      outcomes.push({ kind: "option_pending", prompt: trust.prompt });
     }
     // Skipping an available update is not a trust decision, so it stays here.
     if (!this.skippedUpdate && /update/i.test(this.buffer)) {
       const option = findNumberedOption(this.buffer, updateOptionPattern);
       if (option) {
         write(option);
-        automations.push({ kind: "answered", prompt: "update", input: option });
+        outcomes.push({ kind: "answered", prompt: "update", input: option });
         this.skippedUpdate = true;
       }
     }
-    return { warnings: codexWarningsFromText(this.buffer, this.elwoodSessionId), automations };
+    return { warnings: codexWarningsFromText(this.buffer, this.elwoodSessionId), outcomes };
   }
 }
 

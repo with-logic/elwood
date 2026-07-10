@@ -80,3 +80,27 @@ const reapErrorCodes: ReadonlySet<string> = new Set(REAP_ERROR_CODES);
 export function isReapErrorCode(value: unknown): value is ReapErrorCode {
   return typeof value === "string" && reapErrorCodes.has(value);
 }
+
+/** Why transcript data was lost, so cause + cardinality are never mislabeled. */
+export const DROP_CAUSES = ["unparseable", "oversized", "unread_backlog"] as const;
+
+/** A bounded `transcript_records_dropped.cause` token. */
+export type DropCause = (typeof DROP_CAUSES)[number];
+
+const dropCauses: ReadonlySet<string> = new Set(DROP_CAUSES);
+
+export function isDropCause(value: unknown): value is DropCause {
+  return typeof value === "string" && dropCauses.has(value);
+}
+
+/** Which lifecycle phase a transcript failure occurred in. */
+export const POLL_PHASES = ["poll", "final_flush"] as const;
+
+/** A bounded `transcript_poll_stopped.phase` token. */
+export type PollPhase = (typeof POLL_PHASES)[number];
+
+const pollPhases: ReadonlySet<string> = new Set(POLL_PHASES);
+
+export function isPollPhase(value: unknown): value is PollPhase {
+  return typeof value === "string" && pollPhases.has(value);
+}

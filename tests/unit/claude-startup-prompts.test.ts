@@ -31,8 +31,8 @@ describe("ClaudeStartupPromptResponder", () => {
     const responder = new ClaudeStartupPromptResponder(true);
     const writes: string[] = [];
     const combined = `Do you trust this folder?\n ❯ 1. Yes, continue\n${browserPrompt}`;
-    const automations = responder.handle(combined, (input) => writes.push(input));
-    expect(automations.map((automation) => automation.prompt)).toEqual([
+    const outcomes = responder.handle(combined, (input) => writes.push(input));
+    expect(outcomes.map((automation) => automation.prompt)).toEqual([
       "workspace_trust",
       "browser_tools",
     ]);
@@ -51,11 +51,11 @@ describe("ClaudeStartupPromptResponder", () => {
     // MCP prompt recognized, but the affirmative option ("Use this MCP server")
     // has not rendered yet, so it is surfaced as a transient option_pending and
     // not answered — a later frame carrying the option would still answer it.
-    const automations = responder.handle(
+    const outcomes = responder.handle(
       "New MCP server found in this project\n1. Do something unexpected\n2. No",
       (input) => writes.push(input),
     );
-    expect(automations).toEqual([{ kind: "option_pending", prompt: "mcp_trust" }]);
+    expect(outcomes).toEqual([{ kind: "option_pending", prompt: "mcp_trust" }]);
     expect(writes).toEqual([]);
   });
 });

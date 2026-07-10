@@ -103,6 +103,22 @@ describe("C-CLAUDE-15 transcript diagnostic trackers", () => {
     ]);
   });
 
+  test("MAJOR: droppedCount is loss incidents — N unparseable records => N, one backlog => +1", () => {
+    // `droppedCount` uniformly counts loss INCIDENTS: each unparseable record is one
+    // incident, and each unread teardown backlog is exactly ONE incident (its
+    // enclosed record count is unknown), never conflated. So N unparseable records
+    // plus one backlog event yields N+1, and the backlog's cause is truthful.
+    const notices: TranscriptDropNotice[] = [];
+    const tracker = new DropTracker("s1", (n) => notices.push(n));
+    for (let i = 0; i < 3; i++) tracker.record("/p", "{ bad }"); // 3 unparseable incidents
+    tracker.recordBytes("/p", 9000, 1, "unread_backlog"); // 1 backlog incident
+    tracker.flush();
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ droppedCount: 4, cause: "unread_backlog" });
+    // The bytes are the true magnitude: 3×7 unparseable bytes + 9000 backlog bytes.
+    expect(notices[0]!.droppedBytes).toBe(21 + 9000);
+  });
+
   test("trackers with no handler are safe no-ops", () => {
     // The `onDrop`/`onError` callbacks are optional; recording + flushing must not throw.
     const drops = new DropTracker("s1", undefined);

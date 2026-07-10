@@ -21,7 +21,7 @@ import {
   sizeFrom,
 } from "./web-messages.ts";
 import { createBrowserToken, createGuardedWebSocketServer } from "./web-security.ts";
-import { installHardShutdown } from "./web-shutdown.ts";
+import { installHardShutdown, setChildLookupReporter } from "./web-shutdown.ts";
 
 const require = moduleRequire(import.meta.url);
 const appPort = Number(process.env["ELWOOD_DEV_PORT"] ?? 4317);
@@ -32,12 +32,14 @@ const server = createServer(handleHttp);
 const sockets = new Set<WebSocket>();
 const wss = createGuardedWebSocketServer(server, browserToken, appPort);
 installHardShutdown({ cleanup: shutdownOwnedResources });
+// A failed teardown descendant lookup routes through the debugger, not silence (C-APP-08).
+setChildLookupReporter((d) =>
+  broadcastEvent(events.runtimeErrorEvent(`Child-process lookup failed (${d.reason}).`, d)),
+);
 wss.on("connection", (socket) => {
   sockets.add(socket);
   socket.on("close", () => sockets.delete(socket));
-  socket.on("message", (data) => {
-    void handleClientMessage(socket, data.toString("utf8"));
-  });
+  socket.on("message", (data) => void handleClientMessage(socket, data.toString("utf8")));
 });
 
 server.listen(appPort, "127.0.0.1", () => {

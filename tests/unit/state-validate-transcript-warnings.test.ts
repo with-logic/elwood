@@ -31,6 +31,7 @@ describe("C-CLAUDE-15 transcript warning validation", () => {
       message: "Dropped 3 record(s).",
       droppedCount: 3,
       droppedBytes: 42,
+      cause: "unparseable",
       transcriptPath: "/tmp/t.jsonl",
       raw: "count=3",
     };
@@ -44,6 +45,13 @@ describe("C-CLAUDE-15 transcript warning validation", () => {
           root,
           id,
         ),
+      ).toBeNull();
+    }
+    // The `cause` discriminator is REQUIRED and allowlisted: a missing or
+    // off-allowlist cause invalidates the record rather than resuming corrupt.
+    for (const bad of [undefined, "mystery", 7]) {
+      expect(
+        validateSessionRecord({ ...record, warnings: [{ ...warning, cause: bad }] }, root, id),
       ).toBeNull();
     }
     // droppedBytes may be 0 (a zero-byte dropped line is possible), so it is NOT
@@ -87,6 +95,7 @@ describe("C-CLAUDE-15 transcript warning validation", () => {
       severity: "warning",
       message: "Transcript polling stopped after an unexpected error.",
       reason: "ENOENT",
+      phase: "poll",
       raw: "reason=ENOENT",
     };
     expect(validateSessionRecord({ ...record, warnings: [warning] }, root, id)).not.toBeNull();
@@ -96,6 +105,12 @@ describe("C-CLAUDE-15 transcript warning validation", () => {
     for (const bad of [5, "boom", "leakedPromptText"]) {
       expect(
         validateSessionRecord({ ...record, warnings: [{ ...warning, reason: bad }] }, root, id),
+      ).toBeNull();
+    }
+    // The `phase` discriminator is REQUIRED and allowlisted.
+    for (const bad of [undefined, "startup", 3]) {
+      expect(
+        validateSessionRecord({ ...record, warnings: [{ ...warning, phase: bad }] }, root, id),
       ).toBeNull();
     }
   });

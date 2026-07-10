@@ -4,7 +4,7 @@
  */
 
 import { createServer } from "node:http";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import {
   createBrowserToken,
   createGuardedWebSocketServer,
@@ -14,9 +14,13 @@ import {
 import { normalizeClaudeHookEvent } from "../../src/claude/normalize.ts";
 import { isClaudeToolInputUpdate } from "../../src/claude/validate-tool-update.ts";
 import { TerminalReplayBuffer } from "../../src/core/terminal-replay.ts";
+import { resetGroupKillerForTests, setGroupKillerForTests } from "../../src/runtime/reap-tree.ts";
 import { canTransition } from "../../src/runtime/session-status.ts";
 import { cleanupStartupResources } from "../../src/runtime/startup-cleanup.ts";
 import { runTeardownSteps } from "../../src/runtime/teardown.ts";
+
+// Every group reap here goes through an injected fake — never a real system signal.
+afterEach(resetGroupKillerForTests);
 
 describe("review feedback regressions", () => {
   test("C-PTY-03 terminal replay bounds a single oversized chunk", () => {
@@ -54,13 +58,21 @@ describe("review feedback regressions", () => {
   });
 
   test("C-ERR-07 startup cleanup preserves original errors", async () => {
+    // Cleanup routes the PTY through the group-reaping termination primitive and
+    // runs every step (bridge stop, watcher `after`, terminal dispose) even when a
+    // step rejects — the original startup error is preserved, never replaced.
+    const reaped: number[] = [];
+    setGroupKillerForTests({ killGroup: (pgid) => reaped.push(pgid) });
     const calls: string[] = [];
     await cleanupStartupResources({
       before: () => calls.push("before"),
       pty: {
-        pid: 1,
+        pid: 2000,
         onData: () => () => {},
-        onExit: () => () => {},
+        onExit: (handler) => {
+          queueMicrotask(() => handler({ exitCode: 0 }));
+          return () => {};
+        },
         write: () => {},
         resize: () => "resized",
         kill: () => calls.push("kill"),
@@ -70,8 +82,10 @@ describe("review feedback regressions", () => {
       },
       terminal: { dispose: () => calls.push("dispose") },
       after: () => calls.push("after"),
+      terminationTimeouts: { gracefulMs: 0, forceMs: 0 },
     });
     expect(calls).toEqual(["before", "kill", "after", "dispose"]);
+    expect(reaped).toEqual([2000]); // the leader's process GROUP was reaped
   });
 
   test("C-STATE-09 teardown attempts all cleanup steps before throwing", async () => {

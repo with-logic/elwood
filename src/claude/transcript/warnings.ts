@@ -17,6 +17,11 @@ const causePhrase: Record<TranscriptDropNotice["cause"], string> = {
   unread_backlog: "unread transcript backlog",
 };
 
+// `droppedCount` counts LOSS INCIDENTS, not records: each unparseable record, each
+// over-length record, and each unread teardown backlog is exactly ONE incident. A
+// backlog's record count is unknowable (its bytes are the true magnitude), so the
+// message says "loss incident(s)" cause-tagged rather than falsely claiming a
+// record count for a backlog (C-CLAUDE-15 truthful cardinality).
 export function dropWarning(notice: TranscriptDropNotice): ElwoodWarningEvent {
   return {
     elwoodSessionId: notice.elwoodSessionId,
@@ -24,7 +29,7 @@ export function dropWarning(notice: TranscriptDropNotice): ElwoodWarningEvent {
     source: "terminal",
     code: "transcript_records_dropped",
     severity: "warning",
-    message: `Dropped ${notice.droppedCount} transcript record(s) (${notice.droppedBytes} bytes; last cause: ${causePhrase[notice.cause]}).`,
+    message: `Dropped ${notice.droppedCount} transcript loss incident(s) (${notice.droppedBytes} bytes; last cause: ${causePhrase[notice.cause]}).`,
     droppedCount: notice.droppedCount,
     droppedBytes: notice.droppedBytes,
     cause: notice.cause,
@@ -59,16 +64,18 @@ const phaseMessage: Record<TranscriptFailurePhase, string> = {
 
 /**
  * A programming error escaped transcript processing; the watcher stopped (§5.4).
- * `phase` records WHERE it escaped — a live periodic poll (`"poll"`) or the final
- * flush at PTY exit (`"final_flush"`) — so a failed shutdown flush (lost trailing
- * activity) is distinguishable from a live-watcher poll failure without a separate
- * warning code. This warning is PERSISTED, and the escaping error can be a
- * downstream activity-listener exception whose message embeds raw transcript items
- * (prompts, tool output, credentials). To honor the content-free warning
- * guarantee (§5.4/§8.3), only a bounded, allowlisted error NAME/errno reaches the
- * persisted fields — never `error.message` or `String(error)`.
+ * Phase-neutral by design: `phase` records WHERE it escaped — a live periodic poll
+ * (`"poll"`) or the final flush at PTY exit (`"final_flush"`) — so a failed shutdown
+ * flush (lost trailing activity) is distinguishable from a live-watcher poll failure
+ * without a separate warning code. The public `transcript_poll_stopped` code is
+ * kept (PRD-required), but the builder is named for BOTH phases it now handles.
+ * This warning is PERSISTED, and the escaping error can be a downstream
+ * activity-listener exception whose message embeds raw transcript items (prompts,
+ * tool output, credentials). To honor the content-free warning guarantee
+ * (§5.4/§8.3), only a bounded, allowlisted error NAME/errno reaches the persisted
+ * fields — never `error.message` or `String(error)`.
  */
-export function pollErrorWarning(
+export function transcriptFailureWarning(
   elwoodSessionId: string,
   error: unknown,
   phase: TranscriptFailurePhase = "poll",

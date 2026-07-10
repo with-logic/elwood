@@ -995,7 +995,10 @@ type ElwoodWarningEvent =
       readonly code: "transcript_records_dropped";
       readonly severity: "warning";
       readonly message: string;
-      // Count, byte magnitude, and path only — never raw transcript content.
+      // Loss-incident count, byte magnitude, and path only — never raw content.
+      // `droppedCount` is loss INCIDENTS (each unparseable record, each over-length
+      // record, and each unread backlog = 1 incident), so a backlog whose record
+      // count is unknowable is never reported as a false record count.
       readonly droppedCount: number;
       readonly droppedBytes: number;
       // Why data was lost: an unparseable committed record, an over-length record
@@ -1069,7 +1072,14 @@ discriminator distinguishes these three sources — `"unparseable"` for a malfor
 committed record, `"oversized"` for an over-length record discarded through its
 next newline, and `"unread_backlog"` for a teardown backlog left unread when the
 drain bound is spent — so the warning never mislabels a valid unread backlog as an
-unparseable record. Because each observation only advances an in-memory running
+unparseable record. `droppedCount` counts loss INCIDENTS, not records: each
+unparseable record, each over-length record, and each unread backlog is exactly
+one incident. Records and incidents coincide for unparseable and over-length
+losses, but a backlog encloses an unknowable number of records, so incidents is
+the only cardinality that is uniformly truthful; `droppedBytes` carries the true
+byte magnitude, and the warning message reports "loss incident(s)" cause-tagged
+rather than claiming a record count a backlog cannot supply. Because each
+observation only advances an in-memory running
 count, the persisted snapshot is rewritten at most once per scan pass, per
 teardown-drain call, and at finish — so a chunk holding many malformed records
 causes a bounded number of snapshot writes, not one write per record, while the
@@ -1594,8 +1604,14 @@ assertion, and the startup-usable evidence. If ANY of them fails — including a
 disk or permission error while flushing buffered diagnostics — Elwood tears down
 the now-live PTY, hook bridge, terminal, and transcript watcher before rejecting,
 so a failed `startClaude`/`startCodex` never leaks a live process, IPC endpoint,
-or file watcher. The original startup error is preserved; cleanup failures never
-replace it.
+or file watcher. Tearing down the PTY routes through the SAME one-shot
+process-group reap the normal exit path uses (§9.4, C-LIFE-10): the PTY is
+signaled, its exit is awaited within a bounded window, and the leader's process
+group is SIGKILLed on every path — even if the PTY signal throws — so a
+CLI-spawned descendant such as a hook-bridge grandchild (which POSIX reparents to
+PID 1 the instant the leader exits) cannot survive or reparent past a failed
+startup. The original startup error is preserved; a cleanup or reap failure is
+secondary and never replaces it.
 
 ### 9.3 Resume
 
@@ -1642,10 +1658,18 @@ shutdown; a concurrent caller of the same or a lower urgency joins that same
 in-flight operation rather than snapshotting status independently and re-signaling
 a PID that may already have exited and been recycled. A more urgent call (a
 `kill()` during an in-flight `stop()`, or a `teardown()`) escalates by running after
-the in-flight shutdown settles — by which point the session is terminal, so the
-escalation performs only the one-shot survivor reap and its own extra work (e.g.
-teardown's file removal) and never issues a second PTY signal. Each caller still
-observes its own operation's success or typed failure.
+the in-flight shutdown settles, then performs only the one-shot survivor reap and
+its own extra work (e.g. teardown's file removal) and never issues a second PTY
+signal. Signal ownership is tracked INDEPENDENTLY of lifecycle status: once any
+shutdown has signaled the PTY, no later caller re-signals it — not even when the
+predecessor signaled and reaped but failed before submitting a terminal status, so
+the session is still non-terminal. Such a later caller may still reap, clean up,
+and (for teardown) remove files. A settled shutdown failure is not permanently
+sticky: because signal ownership is separate from the in-flight promise, a later
+`stop()`/`kill()`/`teardown()` after a failed one runs a fresh attempt that RETRIES
+the reap, runtime cleanup, and file removal — without re-signaling the PTY — rather
+than returning the earlier rejection forever (C-LIFE-10 retry posture). Each caller
+still observes its own operation's success or typed failure.
 
 ## 10. Error Model
 
@@ -1828,7 +1852,7 @@ Each criterion has:
 | C-API-25 | §5.3 | Promise-returning session methods called after a terminal status reject with `session_not_running` instead of throwing synchronously. |
 | C-API-26 | §5.2 §5.6 | `startOrResumeClaude`/`startOrResumeCodex` resume when possible, fall back to a fresh start only on `state_not_found`, `resume_unavailable`, or `adapter_mismatch`, rethrow all other errors, and report `resumed` in the result. |
 | C-API-27 | §5.7 | `ElwoodAgentSession` is exported and both `ClaudeSession` and `CodexSession` are assignable to it, covering common events, io, commands, and lifecycle. |
-| C-API-28 | §5.3 | Codex initial readiness fires from the `SessionStart` hook (the pre-input readiness event); a bounded deadline after the first rendered frame is the only fallback, so a missing or failed readiness hook cannot starve readiness. The rendered composer is never a readiness signal — the boot-time composer placeholder alone never releases the first queued message. |
+| C-API-28 | §5.3 | Initial readiness fires from the adapter's pre-input readiness hook — Codex's `SessionStart`, Claude's `InstructionsLoaded`; a bounded deadline after the first rendered frame is the only fallback on BOTH adapters, so a missing or failed readiness hook cannot starve queued persona/messages forever. The deadline fires readiness exactly once (idempotent): a hook arriving after the deadline, or a deadline arriving after the hook, releases the first queued message no more than once. The rendered composer is never a readiness signal — the boot-time composer placeholder alone never releases the first queued message. |
 | C-TURN-01 | §5.3 | While a turn runs the session is `running`; when the turn ends by any means — completion, Escape interrupt, or otherwise — the session transitions to `ready` and emits the corresponding `status` activity, on both adapters. |
 | C-TURN-02 | §5.3 | An Escape interrupt of a running turn produces the `ready` transition from rendered TUI state alone, with no dependency on a `Stop` hook. |
 | C-TURN-03 | §5.3 | Turn-state detection uses documented per-adapter indicator constants over `snapshot().text`; redundant edges are idempotent, screens showing neither indicator hold state, and watching activates only after initial readiness. |

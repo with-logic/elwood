@@ -1,6 +1,5 @@
 /** ClaudeSession implementation coordinating PTY, state, and hook dispatch. Implements PRD §5, §6, §8, and §9. */
 import { randomUUID } from "node:crypto";
-import * as activity from "../core/activity.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, elwoodError } from "../core/errors.ts";
 import { queuePersonaMessage } from "../core/persona.ts";
@@ -10,6 +9,7 @@ import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import type { StartClaudeOptions } from "../core/types.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
+import { initialReady } from "../runtime/initial-ready.ts";
 import { assertStartupUsable } from "../runtime/startup.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../runtime/startup-cleanup.ts";
 import { secureMkdir } from "../state/files.ts";
@@ -24,15 +24,13 @@ import {
   writeSessionRecord,
 } from "../state/store.ts";
 import { attachPtyTerminal } from "../terminal/headless.ts";
-import { isBlock, requestHook } from "./hook-dispatch.ts";
-import { normalizeClaudeHookEvent } from "./normalize.ts";
 import { preflightClaude } from "./preflight.ts";
-import { serializeHookResult } from "./serialize.ts";
 import {
   currentClaudeHookBridgeFactory,
   resetClaudeHookBridgeFactoryForTests,
   setHookBridgeFactoryForTests,
 } from "./session-bridge.ts";
+import { buildClaudeHookErrorHandler, buildClaudeHookHandler } from "./session-hook-handler.ts";
 import { ClaudeSessionImpl } from "./session-instance.ts";
 import type { ClaudeSession } from "./session-interface.ts";
 import {
@@ -91,51 +89,29 @@ export async function startClaudeFromRecord(
   const seed = transcriptSeedFromWarnings(record.warnings);
   const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => session, seed);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
-  let initialReadyMarked = false;
+  // Initial readiness is hook-backed (`InstructionsLoaded` fires `mark`); the first
+  // rendered frame only arms a starvation deadline so a missing or failed hook
+  // bridge cannot leave queued persona/messages starved forever (PRD §5.3, C-API-28).
+  // The callback is one-shot (idempotent), so a late deadline after the hook is a no-op.
+  const ready = initialReady(() => {
+    turnWatcher.arm();
+    session?.submitEvidence("initial_ready");
+  });
   const bridge = currentClaudeHookBridgeFactory()(
     record.paths.socketPath,
     record.bridgeToken,
     record.elwoodSessionId,
-    async (input) => {
-      const event = normalizeClaudeHookEvent(input);
-      if (event.hook_event_name === "SessionStart")
-        session?.rememberClaudeSessionId(event.session_id);
-      observeTranscript(transcriptWatcher, event);
-      emitter.emit("hook", event);
-      emitter.emit("activity", activity.activityFromClaudeHook(record.elwoodSessionId, event));
-      const outcome = await requestHook(
-        emitter,
-        event,
-        options.hookTimeoutMs ?? 25_000,
-        record.elwoodSessionId,
-      );
-      emitter.emit(
-        "activity",
-        activity.activityFromHookResult(
-          "claude",
-          record.elwoodSessionId,
-          event.hook_event_name,
-          outcome.result,
-          outcome.failedOpen,
-        ),
-      );
-      if (event.hook_event_name === "InstructionsLoaded" && !initialReadyMarked) {
-        initialReadyMarked = true;
-        turnWatcher.arm();
-        session?.submitEvidence("initial_ready");
-      }
-      if (event.hook_event_name === "Stop" && !isBlock(outcome.result)) {
-        transcriptWatcher.scan(); // Committed turn is on disk; read it now (C-CLAUDE-15).
-        turnWatcher.arm();
-        session?.submitEvidence("hook_turn_ended");
-      }
-      return serializeHookResult(event.hook_event_name, outcome.result);
-    },
-    (event) => {
-      const hookError = { elwoodSessionId: record.elwoodSessionId, ...event };
-      emitter.emit("hookError", hookError);
-      emitter.emit("activity", activity.activityFromHookError("claude", hookError));
-    },
+    buildClaudeHookHandler({
+      record,
+      options,
+      emitter,
+      transcriptWatcher,
+      ready,
+      getSession: () => session,
+      getTurnWatcher: () => turnWatcher,
+      observeHookTranscript: (event) => observeTranscript(transcriptWatcher, event),
+    }),
+    buildClaudeHookErrorHandler(record, emitter),
   );
   try {
     await bridge.start();
@@ -168,6 +144,10 @@ export async function startClaudeFromRecord(
       const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
       const autos = promptResponder.handle(frame.text, (i) => renderedTerminal.sendInput(i));
       emitStartupPromptActivities(emitter, "claude", record.elwoodSessionId, autos);
+      // Readiness is hook-backed (`InstructionsLoaded` fires it); the frame only
+      // arms the starvation-deadline fallback so a missing/failed hook bridge
+      // cannot starve the queue forever (C-API-28, see initial-ready.ts).
+      ready.armDeadline();
       observeRenderedFrame(observers, frame, session);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
@@ -180,8 +160,12 @@ export async function startClaudeFromRecord(
   await guardStartupRegion(
     async () => {
       flushPendingWarnings(); // sink now exists: flush any early-buffered diagnostic (§5.7)
+      // A hook or deadline that fired before the session existed submitted nothing
+      // (evidence is `session?.`-guarded); replay it now the session can consume it.
+      ready.replay();
       pty.onExit((exit) => {
         startupExit = exit;
+        ready.cancel(); // No queued message can release after exit; drop the pending deadline.
         handleClaudeExit(emitter, record.elwoodSessionId, exit, finishSafely, () =>
           active.submitExit(),
         );
@@ -193,7 +177,7 @@ export async function startClaudeFromRecord(
       });
       active.submitEvidence("startup_usable");
     },
-    { pty, bridge, terminal, after: () => transcriptWatcher.stop() },
+    { before: () => ready.cancel(), pty, bridge, terminal, after: () => transcriptWatcher.stop() },
   );
   return session;
 }

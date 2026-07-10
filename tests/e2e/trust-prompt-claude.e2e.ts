@@ -15,6 +15,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
+import { numberedOptions } from "../../src/core/terminal-options.ts";
 import { TrustPromptResponder } from "../../src/core/trust-responder.ts";
 import { type ClaudeSession, startClaude } from "../../src/index.ts";
 import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
@@ -34,6 +35,11 @@ function trustInputFor(frame: string): string | undefined {
   if (result?.kind !== "answered" || result.automation.prompt !== "workspace_trust")
     return undefined;
   return written;
+}
+
+/** The affirmative ("Yes"-family) option number the real frame renders, if any. */
+function affirmativeOptionNumber(frame: string): string | undefined {
+  return numberedOptions(frame).find((o) => /\byes\b|proceed|trust/i.test(o.label))?.number;
 }
 
 /** An answerable real trust frame, an auto-trusted "ready", or no matchable frame. */
@@ -64,8 +70,14 @@ async function captureTrustFrame(session: ClaudeSession): Promise<Capture> {
       "answerable folder-trust frame or ready",
       90_000,
     );
-  } catch {
-    return { kind: "unmatched" };
+  } catch (error) {
+    // ONLY a genuine wait TIMEOUT means "no matchable frame rendered" (skip).
+    // A real terminal.snapshot()/responder regression must FAIL, not skip — else
+    // C-E2E-09 would mask exactly the kind of drift it exists to catch.
+    if (error instanceof Error && error.message.startsWith("Timed out waiting for")) {
+      return { kind: "unmatched" };
+    }
+    throw error;
   }
 }
 
@@ -94,9 +106,14 @@ test("C-E2E-09 the allowlist recognizes and the autotrust path clears the REAL C
       return;
     }
     // The REAL frame is recognized as workspace_trust AND the responder wrote the
-    // affirmative keystroke into the write callback (not a dropped no-op).
+    // EXACT affirmative option (not just any non-empty input): the number the CLI
+    // rendered for its "Yes/proceed/trust" option, followed by Enter. This would
+    // catch a regression that selected a decline option (C-E2E-09 requires the
+    // affirmative option against the captured wording).
     const input = trustInputFor(capture.frame);
-    assert.ok(input && input.length > 0, "responder wrote an affirmative input for the real frame");
+    const expected = affirmativeOptionNumber(capture.frame);
+    assert.ok(expected, "the captured frame renders an affirmative option");
+    assert.equal(input, `${expected}\r`, "responder selects the real affirmative option");
   } finally {
     await cleanup(captureSession);
   }

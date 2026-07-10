@@ -53,7 +53,7 @@ describe("Codex startup prompt responder", () => {
       (input) => writes.push(input),
     );
     expect(writes).toEqual([]);
-    expect(result.automations).toEqual([]);
+    expect(result.outcomes).toEqual([]);
   });
 
   test("C-CODEX-15 a foreign 'Yes, continue' is never selected for HOOK trust", () => {
@@ -69,7 +69,7 @@ describe("Codex startup prompt responder", () => {
       (input) => writes.push(input),
     );
     expect(writes).toEqual([]);
-    expect(result.automations).toEqual([{ kind: "option_pending", prompt: "hook_trust" }]);
+    expect(result.outcomes).toEqual([{ kind: "option_pending", prompt: "hook_trust" }]);
   });
 
   test("C-CODEX-11 a recognized directory-trust dialog is answered (detect → approve)", () => {
@@ -83,9 +83,7 @@ describe("Codex startup prompt responder", () => {
       (input) => writes.push(input),
     );
     expect(writes).toEqual(["1\r"]);
-    expect(result.automations).toEqual([
-      { kind: "answered", prompt: "workspace_trust", input: "1" },
-    ]);
+    expect(result.outcomes).toEqual([{ kind: "answered", prompt: "workspace_trust", input: "1" }]);
   });
 
   test("C-CODEX-15 does not trust the DIRECTORY prompt without autotrust", () => {
@@ -96,7 +94,7 @@ describe("Codex startup prompt responder", () => {
       (input) => writes.push(input),
     );
     expect(writes).toEqual([]);
-    expect(result.automations).toEqual([]);
+    expect(result.outcomes).toEqual([]);
   });
 
   test("C-CODEX-11 trusts directory prompts when autotrust is enabled", () => {
@@ -106,9 +104,7 @@ describe("Codex startup prompt responder", () => {
       "Do you trust the contents of this directory?\n› 1. Yes, continue\n  2. No, quit",
       (input) => writes.push(input),
     );
-    expect(result.automations).toEqual([
-      { kind: "answered", prompt: "workspace_trust", input: "1" },
-    ]);
+    expect(result.outcomes).toEqual([{ kind: "answered", prompt: "workspace_trust", input: "1" }]);
     expect(writes).toEqual(["1\r"]);
   });
 

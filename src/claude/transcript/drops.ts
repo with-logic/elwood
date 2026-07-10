@@ -23,7 +23,12 @@ export type DropCause = "unparseable" | "oversized" | "unread_backlog";
 export type TranscriptDropNotice = {
   readonly elwoodSessionId: string;
   readonly path: string;
-  /** Total dropped so far this session (running count, never the raw content). */
+  /**
+   * Total LOSS INCIDENTS so far this session (running count, never raw content):
+   * each unparseable record, each over-length record, and each unread teardown
+   * backlog is exactly ONE incident. A backlog's enclosed record count is unknown,
+   * so incidents — not records — is the only uniformly truthful cardinality.
+   */
   readonly droppedCount: number;
   /** Total bytes of the dropped lines (diagnostic magnitude, not content). */
   readonly droppedBytes: number;
@@ -72,19 +77,21 @@ export class DropTracker {
     this.droppedBytes = seed?.droppedBytes ?? 0;
   }
 
-  /** Account one unparseable committed record; the aggregate is flushed later. */
+  /** Account one unparseable committed record (one loss incident); flushed later. */
   record(path: string, line: string): void {
     this.recordBytes(path, Buffer.byteLength(line, "utf8"), 1, "unparseable");
   }
 
-  // Account `records` lost lines contributing `bytes` under `cause`. This only
+  // Account `incidents` loss incidents contributing `bytes` under `cause` (each
+  // unparseable record, each over-length record, and each unread backlog is ONE
+  // incident — never a record count, which is unknowable for a backlog). This only
   // advances the IN-MEMORY running count and marks the pending observation dirty;
-  // it never touches the sink, so N records in one chunk cause 0 persists here —
+  // it never touches the sink, so N incidents in one chunk cause 0 persists here —
   // the batched `flush()` (≤once per slice) is the sole persistence trigger. Both
-  // `records` and `cause` are explicit (no defaults) so every call site names the
+  // `incidents` and `cause` are explicit (no defaults) so every call site names the
   // cardinality and cause it means, never inheriting a silent wrong default.
-  recordBytes(path: string, bytes: number, records: number, cause: DropCause): void {
-    this.count += records;
+  recordBytes(path: string, bytes: number, incidents: number, cause: DropCause): void {
+    this.count += incidents;
     this.droppedBytes += bytes;
     this.pendingPath = path;
     this.pendingCause = cause;
