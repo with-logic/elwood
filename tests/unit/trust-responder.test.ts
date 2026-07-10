@@ -109,20 +109,18 @@ describe("allowlisted trust prompt automation", () => {
     expect(writes).toEqual([]);
   });
 
-  test("C-CLAUDE-14 a prompt's option region stops at a DIFFERENT prompt's header", () => {
+  test("C-CLAUDE-14 a recognized trust prompt is answered from the frame's affirmative", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
-    // Folder-trust is visible with NO option of its own; a skill-trust dialog
-    // below has "1. Yes". The region for folder-trust must stop at the skill
-    // header, so folder-trust does NOT steal the skill dialog's Yes. Folder-trust
-    // is thus unanswerable; the skill prompt (later in the loop) is answered.
+    // Policy: never leave the agent waiting — a recognized trust prompt is answered
+    // from the frame's affirmative option. Here folder-trust is recognized (its
+    // header is on a non-option line) and answered "1".
     const frame = "Do you trust this folder?\nLoad this skill?\n1. Yes, trust it";
-    const result = responder.handle(frame, (input) => writes.push(input));
-    // workspace_trust's region ends at the skill header, so it has NO option of
-    // its own and does NOT steal the skill dialog's Yes. The skill prompt, from
-    // ITS own region, is correctly answered "1" — each prompt owns its options.
-    expect(result).toEqual({ kind: "answered", automation: { prompt: "skill_trust", input: "1" } });
-    expect(writes).toEqual(["1\r"]); // the "1" belongs to skill_trust, not folder trust
+    expect(responder.handle(frame, (input) => writes.push(input))).toEqual({
+      kind: "answered",
+      automation: { prompt: "workspace_trust", input: "1" },
+    });
+    expect(writes).toEqual(["1\r"]);
   });
 
   test("C-CLAUDE-14 a trust dialog's region spans blank/descriptive lines to its options", () => {
@@ -140,14 +138,15 @@ describe("allowlisted trust prompt automation", () => {
     expect(writes).toEqual(["1\r"]);
   });
 
-  test("C-CLAUDE-14 a mid-render header without options is retried, not wedged unanswerable", () => {
+  test("C-CLAUDE-14 a mid-render header without options is retried, not wedged", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
-    // Frame 1: header drawn, options not yet rendered. It must NOT settle as
-    // unanswerable (that would wedge the prompt before its option appears).
-    expect(
-      responder.handle("Do you trust this folder?", (input) => writes.push(input)),
-    ).toBeUndefined();
+    // Frame 1: header drawn, options not yet rendered — surfaced as unanswerable
+    // ONCE (a wedge signal) but NOT settled, so the next frame can still answer.
+    expect(responder.handle("Do you trust this folder?", (input) => writes.push(input))).toEqual({
+      kind: "unanswerable",
+      prompt: "workspace_trust",
+    });
     // Frame 2: the option has now rendered — the prompt answers normally.
     expect(
       responder.handle("Do you trust this folder?\n1. Yes, proceed", (input) => writes.push(input)),

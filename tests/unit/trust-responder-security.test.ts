@@ -42,17 +42,26 @@ describe("trust-prompt automation security", () => {
     expect(writes).toEqual([]);
   });
 
-  test("C-CLAUDE-14 a recognized prompt with a destructive-rider affirmative is not confirmed", () => {
+  test("C-CLAUDE-14 the ONLY guard is allowlisted + non-option-header recognition", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
-    // Even with a genuine plugin-trust HEADER, an affirmative option that riders a
-    // destructive action is rejected as unclean: unanswerable, never selected.
-    const frame = "Do you trust the plugin?\n1. Yes, trust it and delete stored credentials\n2. No";
-    expect(responder.handle(frame, (input) => writes.push(input))).toEqual({
-      kind: "unanswerable",
-      prompt: "plugin_trust",
-    });
-    expect(writes).toEqual([]);
+    // Policy: never leave the agent waiting — a RECOGNIZED trust prompt is answered
+    // from its affirmative, whatever the option text. The single remaining guard is
+    // recognition itself: an off-allowlist dialog, and a trust phrase appearing
+    // ONLY in an option label, are NOT recognized and never answered.
+    expect(
+      responder.handle("Enable telemetry?\n1. Yes", (input) => writes.push(input)),
+    ).toBeUndefined(); // off-allowlist: not answered
+    expect(
+      responder.handle("Migration\n1. Yes, trust this plugin now", (input) => writes.push(input)),
+    ).toBeUndefined(); // trust phrase only in the option: not recognized, not answered
+    // But a genuinely recognized plugin-trust HEADER is answered from its option.
+    expect(
+      responder.handle("Do you trust the plugin?\n1. Yes, trust it\n2. No", (input) =>
+        writes.push(input),
+      ),
+    ).toEqual({ kind: "answered", automation: { prompt: "plugin_trust", input: "1" } });
+    expect(writes).toEqual(["1\r"]);
   });
 
   test("C-CLAUDE-14 a recognized trust dialog is answered even across a blank line", () => {

@@ -763,41 +763,29 @@ The trust-prompt labels (`workspace_trust`, `skill_trust`, `plugin_trust`,
 `mcp_trust`, `hook_trust`) are exactly the ids in the trust-prompt allowlist; a
 second implementation MUST treat this table as the complete output union.
 
-Under a caller's full-trust launch (`autotrust`), Elwood auto-answers the trust
-prompt family — folder/directory trust, and the CLI's first-run trust prompts for
-loading a skill, a plugin, or an MCP server — so an agent never wedges invisibly
-on a trust gate the parent app does not relay. This is an EXPLICIT ALLOWLIST:
-each answered prompt is a named entry with a verified on-screen wording AND a
-verified affirmative-option label for that prompt. A prompt MUST be recognized
-only by its HEADER/question wording on a line that is NOT itself a numbered
-option — a trust phrase appearing only inside an option label (e.g. "1. Yes,
-trust this plugin and grant admin access") MUST NOT identify the prompt, so a
-hostile option cannot spoof a trust dialog. Both the prompt and its answer MUST be
-matched within the SAME current rendered frame, never across accumulated screen
-history — a stale phrase from an earlier frame must never be answered against a
-later, unrelated frame. A real trust dialog renders as a header, then
-blank/descriptive lines, then its numbered options — all ONE dialog — and a
-wrapped header spans physical rows; recognition MUST tolerate that layout (match
-the header against the dialog's joined non-option lines) so that under autotrust
-the agent is never left waiting on a trust gate the parent app relayed. When such
-a header is recognized, Elwood answers the dialog's affirmative option — the guard
-against answering the WRONG thing is not screen geometry but the option itself:
-the selected affirmative MUST be a CLEAN affirmative — an option label that riders
-a destructive or irreversible action (for example "Yes, trust this plugin and
-delete stored credentials") MUST NOT be auto-selected — and a prompt whose
-affirmative wording is specific (for example hook trust's "Trust all"/"Trust
-hooks") MUST NOT be answered by an unrelated generic "Yes". The region from which
-the affirmative is selected extends from the header through the dialog's options
-and ends only where a DIFFERENT allowlisted prompt's header begins. If an
-allowlisted prompt
-is recognized but its verified affirmative option is not present, Elwood MUST NOT
-answer a substitute option; instead it emits an `attention` activity (labelled
-with the prompt id) so the wedge is visible to the parent app rather than silent,
-and it does so at most once per prompt. Elwood MUST NOT blanket-answer "any
-first-run confirmation": an open-ended match would silently bypass a future CLI
-security gate for third-party code or config. These third-party trust prompts are answered
-only when `autotrust` is set; with it off, an unanswered trust prompt is a
-blocking prompt that holds session state for the human. A prompt that Elwood
+Under a caller's full-trust launch (`autotrust`), an agent MUST NEVER be left
+waiting on a trust gate: when an allowlisted trust prompt is visible in the
+current rendered frame, Elwood selects its affirmative option and sends it —
+always say yes. The trust prompt family is folder/directory trust and the CLI's
+first-run prompts for loading a skill, a plugin, or an MCP server. This is an
+EXPLICIT ALLOWLIST: each entry names one prompt by its on-screen HEADER wording
+and an affirmative-option matcher. Recognition — and ONLY recognition — is the
+guard: (1) Elwood auto-answers only ALLOWLISTED prompts, so an off-allowlist
+first-run confirmation is left to the human and a future CLI security gate is
+never blanket-bypassed; and (2) a prompt is recognized ONLY by its HEADER wording
+on a line that is NOT itself a numbered option — a trust phrase appearing only
+inside an option label (e.g. "1. Yes, trust this plugin and grant admin access")
+does NOT identify a prompt, so a hostile option cannot spoof one. Recognition
+matches the header against the frame's joined non-option lines, so a header
+wrapped across physical rows still matches; the affirmative is the first option
+whose label matches the prompt's affirmative pattern. Elwood matches only against
+the CURRENT frame, never accumulated history. If an allowlisted prompt is
+recognized but its affirmative option has not rendered yet, Elwood emits an
+`attention` activity (labelled with the prompt id) at most once, and keeps
+watching so a later frame carrying the option is still answered — it never
+permanently wedges. These trust prompts are answered only when `autotrust` is set;
+with it off, an unanswered trust prompt is a blocking prompt that holds session
+state for the human. A prompt that Elwood
 auto-answers (including an always-answered one) MUST NOT be classified as a
 blocking prompt.
 
@@ -1797,7 +1785,7 @@ Each criterion has:
 | C-CODEX-12 | §5.5 | If Codex still shows an interactive update prompt inside the TUI, Elwood selects the skip/continue-without-updating option by label. |
 | C-CODEX-13 | §10 | An immediately failing or unusable Codex process fails with `codex_start_failed` or a more specific typed error. |
 | C-CODEX-14 | §5.3 | `setModel` on Codex restores the user's prior `config.toml` default via compare-and-swap after the CLI persists its picker selection, skipping with the `codex_default_model_persisted` warning instead of clobbering concurrent edits. |
-| C-CODEX-15 | §5.5 | Codex's directory-trust prompt is answered only under `autotrust` (blocking on the human when off); Codex hook trust — Elwood's own integration — is answered regardless of `autotrust` and is NOT classified as blocking. Each is recognized only by its HEADER wording (never an option line, so an option-only phrase cannot spoof it) and answered from its own dialog region; the wrong-answer guard is the option: a destructive-rider affirmative is never selected, and hook trust's specific affirmative ("Trust all"/"Trust hooks") is never satisfied by a generic "Yes". Each is answered once, from the shared allowlist. |
+| C-CODEX-15 | §5.5 | Codex's directory-trust prompt is answered only under `autotrust` (blocking on the human when off); Codex hook trust — Elwood's own integration — is answered regardless of `autotrust` and is NOT classified as blocking. Each is recognized only by its HEADER wording on a non-option line (so an option-only phrase cannot spoof it) and, once recognized, answered from the frame's affirmative option — the agent is never left waiting. Each is answered once, from the shared allowlist. |
 
 #### C-HOOK: Hook Bridge Coverage And Semantics (§6)
 
