@@ -761,9 +761,11 @@ MUST be matched within the SAME current rendered frame, never across accumulated
 screen history — a stale phrase from an earlier frame must never pair with a
 "Yes" option belonging to a different, current dialog. If an allowlisted prompt
 is recognized but its verified affirmative option is not present, Elwood MUST NOT
-answer a substitute option. Elwood MUST NOT blanket-answer "any first-run
-confirmation": an open-ended match would silently bypass a future CLI security
-gate for third-party code or config. These third-party trust prompts are answered
+answer a substitute option; instead it emits an `attention` activity (labelled
+with the prompt id) so the wedge is visible to the parent app rather than silent,
+and it does so at most once per prompt. Elwood MUST NOT blanket-answer "any
+first-run confirmation": an open-ended match would silently bypass a future CLI
+security gate for third-party code or config. These third-party trust prompts are answered
 only when `autotrust` is set; with it off, an unanswered trust prompt is a
 blocking prompt that holds session state for the human. A prompt that Elwood
 auto-answers (including an always-answered one) MUST NOT be classified as a
@@ -1614,7 +1616,7 @@ Each criterion has:
 | C-API-34 | §5.3 | `waitForStatus`/`waitForActivity` resolve from current state or the next matching event, reject with `wait_timeout` after the timeout (default 60000 ms), and reject with `session_not_running` when the session reaches an unwaited terminal status first; both unsubscribe on settle. |
 | C-API-29 | §5.2 §5.6 | Resume accepts the same launch-policy options as start and forwards them into the relaunched command: `resumeClaude` forwards `permissionMode`, `allowedTools`, `disallowedTools`, and `tools`; `resumeCodex` forwards `sandbox` and `approvalPolicy`. A resumed agent stays exactly as privileged and as tool-restricted as it started. |
 | C-API-32 | §5.2 §5.6 | Resume defaults launch-policy options from the record's persisted posture; explicit resume options override field by field, and the effective posture is re-persisted. |
-| C-API-30 | §5.4 | `tool_call` activity carries the tool's input as a serialized `toolInput` and `tool_result` activity carries the tool's output as a serialized `toolOutput`, for both the Claude hook path (`tool_input`/`tool_response`) and the Codex transcript path (`arguments`/`output`); absent sources leave the field absent. |
+| C-API-30 | §5.4 | `tool_call` activity carries the tool's input as a serialized `toolInput` and `tool_result` activity carries the tool's output as a serialized `toolOutput`, sourced from the committed transcript for Claude (`tool_use.input`/`tool_result.content`, per C-CLAUDE-15) and from the transcript for Codex (`arguments`/`output`); absent sources leave the field absent. |
 | C-API-31 | §5.3 | The submitting Enter is a separate PTY write after a settle delay, and bounded re-Enters fire while the rendered composer still shows the staged paste, so a first long prompt cannot be left staged-but-unsubmitted. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)

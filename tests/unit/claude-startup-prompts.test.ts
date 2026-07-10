@@ -44,4 +44,17 @@ describe("ClaudeStartupPromptResponder", () => {
     expect(browserToolsPromptVisible("1. Yes, use my browser")).toBe(false);
     expect(browserToolsPromptVisible(browserPrompt)).toBe(true);
   });
+
+  test("C-CLAUDE-14 a recognized-but-unanswerable trust prompt is flagged, not answered", () => {
+    const responder = new ClaudeStartupPromptResponder(true);
+    const writes: string[] = [];
+    // MCP prompt recognized, but the option label is unfamiliar (no verified
+    // affirmative option), so it is surfaced as unanswerable and not answered.
+    const automations = responder.handle(
+      "New MCP server found in this project\n1. Do something unexpected\n2. No",
+      (input) => writes.push(input),
+    );
+    expect(automations).toEqual([{ prompt: "mcp_trust", input: "", unanswerable: true }]);
+    expect(writes).toEqual([]);
+  });
 });

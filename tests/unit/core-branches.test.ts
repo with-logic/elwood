@@ -83,13 +83,13 @@ describe("core activity branches", () => {
     await expect(failure).rejects.toThrow("primitive submit failure");
   });
 
-  test("C-CLAUDE-10 leaves trust prompts alone when no trusted option is listed", () => {
+  test("C-CLAUDE-14 flags a recognized prompt with no trusted option as unanswerable", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
     const result = responder.handle("Do you trust this folder?\n1. No, exit", (input) =>
       writes.push(input),
     );
-    expect(result).toBeUndefined();
+    expect(result).toEqual({ kind: "unanswerable", prompt: "workspace_trust" });
     expect(writes).toEqual([]);
   });
 });

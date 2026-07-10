@@ -16,6 +16,16 @@ export type TrustPromptAutomation<A extends ElwoodAgentKind = ElwoodAgentKind> =
 };
 
 /**
+ * The outcome of handling a frame: an answered prompt, a recognized prompt whose
+ * verified affirmative option is absent (so it cannot be safely auto-answered),
+ * or nothing.
+ */
+export type TrustPromptResult<A extends ElwoodAgentKind = ElwoodAgentKind> =
+  | { readonly kind: "answered"; readonly automation: TrustPromptAutomation<A> }
+  | { readonly kind: "unanswerable"; readonly prompt: TrustPromptIdFor<A> }
+  | undefined;
+
+/**
  * Answers each allowlisted trust prompt for one agent at most once, and only
  * when enabled (the caller's full-trust/autotrust posture). Generic in the agent
  * so the automation's `prompt` is that agent's own label set. The prompt AND its
@@ -26,7 +36,7 @@ export type TrustPromptAutomation<A extends ElwoodAgentKind = ElwoodAgentKind> =
 export class TrustPromptResponder<A extends ElwoodAgentKind> {
   private readonly enabled: boolean;
   private readonly specs: readonly TrustPromptEntry[];
-  private readonly answered = new Set<TrustPromptIdFor<A>>();
+  private readonly settled = new Set<TrustPromptIdFor<A>>();
 
   constructor(agent: A, enabled = false) {
     this.enabled = enabled;
@@ -34,7 +44,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
   }
 
   /** `frame` MUST be the CURRENT rendered screen, not an accumulated buffer. */
-  handle(frame: string, write: (input: string) => void): TrustPromptAutomation<A> | undefined {
+  handle(frame: string, write: (input: string) => void): TrustPromptResult<A> {
     for (const spec of this.specs) {
       // `this.specs` was filtered to this agent in the constructor, so its ids
       // are this agent's label set even though the array type is the full union.
@@ -43,14 +53,19 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       // autotrust; every other trust prompt requires the caller's full-trust
       // posture so third-party trust is never granted implicitly.
       if (!(this.enabled || ("always" in spec && spec.always))) continue;
-      if (this.answered.has(id) || !spec.visible.test(frame)) continue;
+      if (this.settled.has(id) || !spec.visible.test(frame)) continue;
       // The answer must be THIS prompt's own affirmative option, present in the
       // same frame — not any generic "Yes" that might belong to another dialog.
       const option = acceptOption(frame, spec);
-      if (option === undefined) continue;
+      if (option === undefined) {
+        // Recognized but unanswerable: surface it ONCE rather than silently
+        // continuing (which would leave the agent wedged with no signal).
+        this.settled.add(id);
+        return { kind: "unanswerable", prompt: id };
+      }
       write(`${option}\r`);
-      this.answered.add(id);
-      return { prompt: id, input: option };
+      this.settled.add(id);
+      return { kind: "answered", automation: { prompt: id, input: option } };
     }
     return undefined;
   }

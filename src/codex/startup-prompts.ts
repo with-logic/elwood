@@ -11,6 +11,8 @@ export type CodexStartupPromptAutomation = {
   /** A Codex trust-prompt label (Claude-only ids are excluded) or `update`. */
   readonly prompt: TrustPromptIdFor<"codex"> | "update";
   readonly input: string;
+  /** True when a recognized trust prompt could not be answered (see startup-automation). */
+  readonly unanswerable?: boolean;
 };
 
 export type CodexStartupPromptResult = {
@@ -42,7 +44,10 @@ export class CodexStartupPromptResponder {
     // Trust prompts are matched against the CURRENT frame only: a stale phrase in
     // the accumulated buffer must never pair with a different dialog's answer.
     const trust = this.trust.handle(screenText, write);
-    if (trust) automations.push(trust);
+    if (trust?.kind === "answered") automations.push(trust.automation);
+    else if (trust?.kind === "unanswerable") {
+      automations.push({ prompt: trust.prompt, input: "", unanswerable: true });
+    }
     // Skipping an available update is not a trust decision, so it stays here.
     if (!this.skippedUpdate && /update/i.test(this.buffer)) {
       const option = findNumberedOption(this.buffer, updateOptionPattern);

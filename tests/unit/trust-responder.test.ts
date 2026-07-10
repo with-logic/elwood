@@ -22,7 +22,7 @@ describe("allowlisted trust prompt automation", () => {
     const responder = new TrustPromptResponder("claude", true);
     expect(
       responder.handle("Do you trust this folder?\n1. Yes", (input) => writes.push(input)),
-    ).toEqual({ prompt: "workspace_trust", input: "1" });
+    ).toEqual({ kind: "answered", automation: { prompt: "workspace_trust", input: "1" } });
     expect(
       responder.handle("Do you trust this folder?", (input) => writes.push(input)),
     ).toBeUndefined();
@@ -44,8 +44,8 @@ describe("allowlisted trust prompt automation", () => {
       const writes: string[] = [];
       const responder = new TrustPromptResponder("claude", true);
       expect(responder.handle(screen, (input) => writes.push(input))).toEqual({
-        prompt: id,
-        input: option,
+        kind: "answered",
+        automation: { prompt: id, input: option },
       });
       expect(writes).toEqual([`${option}\r`]);
     }
@@ -69,11 +69,16 @@ describe("allowlisted trust prompt automation", () => {
     expect(trustPromptVisible("Some unrelated banner", "codex")).toBe(false);
   });
 
-  test("skips a visible prompt whose affirmative option is absent", () => {
+  test("C-CLAUDE-14 recognized-but-unanswerable prompt is flagged, not silently skipped", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
-    // The prompt is visible but offers no affirmative option to select, so the
-    // responder declines to guess and writes nothing.
+    // The prompt is recognized but its verified affirmative option is absent, so
+    // the responder writes nothing AND surfaces `unanswerable` (a wedge signal),
+    // once. A wrong "No, cancel" option is never selected.
+    expect(
+      responder.handle("Do you trust this folder?\n1. No, cancel", (input) => writes.push(input)),
+    ).toEqual({ kind: "unanswerable", prompt: "workspace_trust" });
+    // Settled once: a second frame does not re-flag.
     expect(
       responder.handle("Do you trust this folder?\n1. No, cancel", (input) => writes.push(input)),
     ).toBeUndefined();
