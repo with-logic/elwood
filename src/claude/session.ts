@@ -6,7 +6,7 @@ import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, elwoodError } from "../core/errors.ts";
 import { queuePersonaMessage } from "../core/persona.ts";
 import { observeRenderedFrame } from "../core/rendered-observers.ts";
-import { emitStartupPromptActivity } from "../core/startup-automation.ts";
+import { applyStartupAutomations } from "../core/startup-automation.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import { TurnStateWatcher } from "../core/turn-state.ts";
 import type { StartClaudeOptions } from "../core/types.ts";
@@ -82,7 +82,8 @@ export async function startClaudeFromRecord(
   const emitter = new TypedEmitter();
   registerInitialHooks(emitter, options.hooks);
   let session: ClaudeSessionImpl | undefined;
-  const transcriptWatcher = createTranscriptWatcher(record.elwoodSessionId, emitter, () => session);
+  const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => session);
+  const { watcher: transcriptWatcher, flushPendingWarnings } = wired;
   let initialReadyMarked = false;
   const bridge = currentClaudeHookBridgeFactory()(
     record.paths.socketPath,
@@ -164,17 +165,15 @@ export async function startClaudeFromRecord(
       startupOutput += data;
       terminalReplay.push(data);
       const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
-      const automations = promptResponder.handle(frame.text, (input) =>
-        renderedTerminal.sendInput(input),
-      );
-      for (const automation of automations) {
-        emitStartupPromptActivity(emitter, "claude", record.elwoodSessionId, automation);
-      }
+      const write = (input: string) => renderedTerminal.sendInput(input);
+      const autos = promptResponder.handle(frame.text, write);
+      applyStartupAutomations(emitter, "claude", record.elwoodSessionId, autos, () => session);
       observeRenderedFrame(observers, frame, session);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );
   session = new ClaudeSessionImpl(record, pty, terminal, bridge, emitter, terminalReplay);
+  flushPendingWarnings(); // sink now exists: flush any early-buffered diagnostic (§5.7)
   pty.onExit((exit) => {
     startupExit = exit;
     transcriptWatcher.finish(); // Flush trailing committed items before exit.

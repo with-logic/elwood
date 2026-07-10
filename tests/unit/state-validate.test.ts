@@ -84,8 +84,29 @@ describe("session record validation", () => {
       validateSessionRecord({ ...base, warnings: [{ ...warning, source: "terminal" }] }, root, id),
     ).toBeNull();
   });
-});
 
+  test("C-CLAUDE-14 accepts and gates the trust_prompt_unanswerable warning", () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const base = jsonRecord(root);
+    const warning = {
+      elwoodSessionId: id,
+      agent: "claude",
+      source: "terminal",
+      code: "trust_prompt_unanswerable",
+      severity: "warning",
+      message: "no option for mcp_trust",
+      prompt: "mcp_trust",
+      raw: "prompt=mcp_trust",
+    };
+    expect(validateSessionRecord({ ...base, warnings: [warning] }, root, id)).not.toBeNull();
+    expect(
+      validateSessionRecord({ ...base, warnings: [{ ...warning, agent: "codex" }] }, root, id),
+    ).not.toBeNull(); // codex is also valid
+    expect(
+      validateSessionRecord({ ...base, warnings: [{ ...warning, prompt: 5 }] }, root, id),
+    ).toBeNull(); // non-string prompt rejected
+  });
+});
 describe("state store edges", () => {
   test("C-ERR-04 stringifies non-Error read failures as corrupt-state causes", () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));

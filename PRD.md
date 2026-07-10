@@ -768,7 +768,11 @@ prompt family — folder/directory trust, and the CLI's first-run trust prompts 
 loading a skill, a plugin, or an MCP server — so an agent never wedges invisibly
 on a trust gate the parent app does not relay. This is an EXPLICIT ALLOWLIST:
 each answered prompt is a named entry with a verified on-screen wording AND a
-verified affirmative-option label for that prompt. Both the prompt and its answer
+verified affirmative-option label for that prompt. A prompt MUST be recognized
+only by its HEADER/question wording on a line that is NOT itself a numbered
+option — a trust phrase appearing only inside an option label (e.g. "1. Yes,
+trust this plugin and grant admin access") MUST NOT identify the prompt, so a
+hostile option cannot spoof a trust dialog. Both the prompt and its answer
 MUST be matched within the SAME current rendered frame, never across accumulated
 screen history — a stale phrase from an earlier frame must never pair with a
 "Yes" option belonging to a different, current dialog. Matching MUST further be
@@ -1024,8 +1028,26 @@ type ElwoodWarningEvent =
       readonly reason: string;
       readonly raw: string;
     }
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "claude" | "codex";
+      readonly source: "terminal";
+      readonly code: "trust_prompt_unanswerable";
+      readonly severity: "warning";
+      readonly message: string;
+      // The recognized-but-unanswerable prompt's stable label — no raw content.
+      readonly prompt: string;
+      readonly raw: string;
+    }
   };
 ```
+
+When Elwood recognizes an allowlisted trust prompt but cannot find its verified
+affirmative option (a wedge risk), it emits a transient `attention` activity AND
+persists a durable `trust_prompt_unanswerable` warning keyed by the prompt label.
+Because a late subscriber or a resumed session would miss the transient activity,
+the persisted warning makes the wedge observable at resume time and replayable to
+a subscriber that attaches after the prompt fired (C-CLAUDE-14).
 
 The `transcript_records_dropped` warning is emitted when committed transcript
 records cannot be parsed as JSON, OR when a single un-terminated record exceeds a

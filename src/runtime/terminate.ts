@@ -57,7 +57,12 @@ export async function terminatePty(
   if (terminationError !== undefined) throw terminationError;
 }
 
-/** Builds one error preserving BOTH the termination and the reap failure causes. */
+/**
+ * Builds one error preserving BOTH the termination and the reap failure causes.
+ * An ElwoodError carries the reap cause in `details.reapError`; any other Error
+ * carries it on the standard `.cause` — so neither cause is ever dropped, whether
+ * termination failed with a typed ElwoodError or a plain PTY Error (C-LIFE-10).
+ */
 function bothFailed(terminationError: unknown, reapError: unknown): unknown {
   const reap = reapError instanceof Error ? reapError.message : String(reapError);
   if (terminationError instanceof ElwoodError) {
@@ -66,6 +71,11 @@ function bothFailed(terminationError: unknown, reapError: unknown): unknown {
       reapError: reap,
     });
   }
+  // Any other termination error reaching here is always an Error (ElwoodError is
+  // handled above; a thrown PTY value was normalized to Error in
+  // waitForExitAfterSignal). Preserve the reap cause on it without losing the
+  // original identity/stack.
+  (terminationError as Error & { reapError?: string }).reapError = reap;
   return terminationError;
 }
 

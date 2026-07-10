@@ -35,4 +35,15 @@ describe("CodexSession trust prompts", () => {
     expect(ptys[0]!.writes).toEqual(["1\r"]);
     expect(activity).toContain("startup_prompt:workspace_trust");
   });
+
+  test("C-CODEX-15 an unanswerable directory prompt persists a durable wedge warning", async () => {
+    installFakes();
+    const session = await startCodex({ cwd: tempDir(), autotrust: true });
+    // A recognized directory-trust HEADER but only a declining option: the
+    // responder finds no clean affirmative, so it surfaces unanswerable.
+    ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. No, quit");
+    await flushTerminal();
+    expect(session.warnings.map((w) => w.code)).toContain("trust_prompt_unanswerable");
+    expect(ptys[0]!.writes).toEqual([]); // nothing auto-answered
+  });
 });

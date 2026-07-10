@@ -5,7 +5,10 @@
 
 import { describe, expect, test } from "vitest";
 import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
-import { emitStartupPromptActivity } from "../../src/core/startup-automation.ts";
+import {
+  emitStartupPromptActivity,
+  warningFromStartupPrompt,
+} from "../../src/core/startup-automation.ts";
 
 function collect(): {
   events: ElwoodActivityEvent[];
@@ -35,5 +38,21 @@ describe("startup-prompt activity", () => {
     });
     expect(events[0]).toMatchObject({ kind: "attention", label: "mcp_trust", source: "terminal" });
     expect(events[0]!.text).toContain("no known option");
+  });
+
+  test("C-CLAUDE-14 an unanswerable prompt yields a durable warning; an answered one does not", () => {
+    const wedge = warningFromStartupPrompt("claude", "s1", {
+      kind: "unanswerable",
+      prompt: "mcp_trust",
+    });
+    expect(wedge).toMatchObject({ code: "trust_prompt_unanswerable", prompt: "mcp_trust" });
+    // An answered prompt has nothing to persist.
+    expect(
+      warningFromStartupPrompt("claude", "s1", {
+        kind: "answered",
+        prompt: "workspace_trust",
+        input: "1",
+      }),
+    ).toBeUndefined();
   });
 });

@@ -131,10 +131,10 @@ describe("C-LIFE-10 process-group reaping", () => {
     });
   });
 
-  test("a non-ElwoodError termination is thrown as-is even when reaping also fails", async () => {
-    // When pty.kill() throws a PLAIN error (not the termination_failed ElwoodError)
-    // and the reap also fails, the original thrown error is preserved unchanged —
-    // there is no ElwoodError to attach the reap cause to.
+  test("a PLAIN-Error termination still preserves the reap cause when both fail", async () => {
+    // When pty.kill() throws a plain Error (not an ElwoodError) and the reap also
+    // fails, the original error keeps its identity/message AND carries the reap
+    // cause on `.reapError` — neither cause is dropped (C-LIFE-10).
     const throwingKillPty = {
       ...deadPty,
       kill: () => {
@@ -143,7 +143,7 @@ describe("C-LIFE-10 process-group reaping", () => {
     };
     await expect(
       terminatePty(throwingKillPty, "SIGKILL", throwingReaper(), { gracefulMs: 0, forceMs: 0 }),
-    ).rejects.toThrow("kill exploded");
+    ).rejects.toMatchObject({ message: "kill exploded", reapError: "reap failure" });
   });
 
   test("a non-Error reap failure is stringified into the diagnostic", async () => {

@@ -6,7 +6,7 @@ import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, elwoodError } from "../core/errors.ts";
 import { queuePersonaMessage } from "../core/persona.ts";
 import { observeRenderedFrame } from "../core/rendered-observers.ts";
-import { emitStartupPromptActivity } from "../core/startup-automation.ts";
+import { applyStartupAutomations } from "../core/startup-automation.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import { TurnStateWatcher } from "../core/turn-state.ts";
 import { TypedEmitter } from "../events/emitter.ts";
@@ -140,9 +140,13 @@ export async function startCodexFromRecord(
         renderedTerminal.sendInput(input),
       );
       session?.recordWarnings(result.warnings);
-      for (const automation of result.automations) {
-        emitStartupPromptActivity(emitter, "codex", record.elwoodSessionId, automation);
-      }
+      applyStartupAutomations(
+        emitter,
+        "codex",
+        record.elwoodSessionId,
+        result.automations,
+        () => session,
+      );
       ready.armDeadline();
       // Frame-quiet alone can fire during a boot gap before the TUI accepts
       // input (a submitted message would be swallowed); require the composer.

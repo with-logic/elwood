@@ -69,25 +69,27 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
     expect(drainAll(cursor)).toBe("three\n"); // only the new content, no replay
   });
 
-  test("a FAILED post-truncation read preserves the offset (retry returns only the suffix)", () => {
-    // Force the read that follows a truncation to THROW. If the offset had been
-    // reset to 0 BEFORE that read (the pre-fix bug), the retry would replay from
-    // the start. It must instead preserve the offset and, on retry, return only
-    // the newly-appended suffix — proving the offset commits only after success.
+  test("a FAILED post-truncation read preserves the offset (no replay after regrowth)", () => {
+    // The pre-fix bug reset the offset to 0 the instant a truncation was DETECTED,
+    // BEFORE the read. So: drain to EOF, TRUNCATE to a shorter file, then fail the
+    // read that truncation triggers. If the offset were reset to 0 here, a later
+    // regrowth would replay the whole file. With the fix the offset stays put, so
+    // after regrowth only the newly-appended suffix is returned.
     const path = tmpFile();
     writeFileSync(path, "aaaa\nbbbb\ncccc\n"); // 15 bytes
     const cursor = new TranscriptCursor(path);
     drainAll(cursor); // advance offset to EOF (15)
-    // Rewrite LONGER so no truncation, then append the suffix we expect back.
-    writeFileSync(path, "aaaa\nbbbb\ncccc\nDD\n"); // grew: 18 bytes, offset still 15
+    writeFileSync(path, "XY\n"); // TRUNCATE to 3 bytes: size (3) < offset (15) → from 0
     setRangeReaderForTests(() => {
       resetRangeReaderForTests(); // subsequent reads use the real reader
-      throw Object.assign(new Error("EIO"), { code: "EIO" }); // this first read throws
+      throw Object.assign(new Error("EIO"), { code: "EIO" }); // fail the truncation read
     });
     try {
-      // The first readChunk throws inside readRange; the offset must NOT advance.
+      // The read throws; a pre-fix impl already reset the offset to 0 by now.
       expect(() => cursor.readChunk()).toThrow("EIO");
-      // Retry (real reader now): only the "DD" suffix, never a replay of earlier records.
+      // Regrow past the old offset. Fixed: offset still 15 → reads only "DD\n".
+      // Pre-fix: offset 0 → would replay "aaaa\n...\nDD\n". Assert no replay.
+      writeFileSync(path, "aaaa\nbbbb\ncccc\nDD\n"); // 18 bytes
       expect(drainAll(cursor)).toBe("DD\n");
     } finally {
       resetRangeReaderForTests();

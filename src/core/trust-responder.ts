@@ -114,37 +114,40 @@ function matchOption(region: string, spec: TrustPromptEntry): string | undefined
 }
 
 /**
- * The contiguous dialog block that CONTAINS `spec.visible` — real prompts may put
- * the trust phrase in the question OR in an affirmative option, so recognition is
- * by region, not a header line. The block runs from the line after the previous
- * boundary (a blank line, a fresh question, or a different allowlisted prompt)
- * above the match, down to the next boundary below it. Returns undefined when the
- * phrase is absent, so a different, unrelated dialog never contributes its option.
+ * The contiguous dialog block anchored on `spec.visible`'s HEADER line — the
+ * `visible` phrase MUST match a line that is NOT itself a numbered option, so a
+ * hostile option like "1. Yes, trust this plugin and grant admin access" can
+ * never identify the prompt (PRD §5.1). The block runs from that header down to
+ * the next boundary (a blank line, a fresh question, or a different allowlisted
+ * prompt). Returns undefined when no genuine header line matches.
  */
 function promptRegion(lines: readonly string[], spec: TrustPromptEntry): string | undefined {
-  const match = lines.findIndex((line) => spec.visible.test(line));
-  if (match === -1) return undefined;
-  let start = match;
-  while (start > 0 && !isBoundaryAbove(lines[start] as string, spec)) start--;
+  const header = lines.findIndex((line) => !isOptionLine(line) && spec.visible.test(line));
+  if (header === -1) return undefined;
   const region: string[] = [];
-  for (let i = start; i < lines.length; i++) {
+  for (let i = header; i < lines.length; i++) {
     const line = lines[i] as string;
-    if (i > start && isBoundaryAbove(line, spec)) break;
+    if (i > header && isBoundary(line, spec)) break;
     region.push(line);
   }
   return region.join("\n");
 }
 
+/** True when `line` is itself a numbered option (e.g. "1. ...", "› 2) ..."). */
+function isOptionLine(line: string): boolean {
+  return /(?:^|[\s›>])\d+[.)]/.test(line);
+}
+
 /**
  * True when `line` begins a NEW dialog block (so it bounds the current region):
  * a blank line, a fresh question (ends "?"), or a different allowlisted prompt's
- * visible phrase. Ending at every such boundary keeps an unrelated dialog in the
- * same frame from ever contributing its "Yes" (PRD §5.1).
+ * header. Ending at every such boundary keeps an unrelated dialog in the same
+ * frame from ever contributing its "Yes" (PRD §5.1).
  */
-function isBoundaryAbove(line: string, spec: TrustPromptEntry): boolean {
+function isBoundary(line: string, spec: TrustPromptEntry): boolean {
   if (line.trim() === "" || /\?\s*$/.test(line)) return true;
   return trustPromptAllowlist.some(
-    (other) => other !== spec && !spec.visible.test(line) && other.visible.test(line),
+    (other) => other !== spec && !isOptionLine(line) && other.visible.test(line),
   );
 }
 

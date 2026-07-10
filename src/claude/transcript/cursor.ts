@@ -42,21 +42,28 @@ export class TranscriptCursor {
   }
 
   // The current (final) turn already on disk (the Stop-first edge). Scans BACKWARD
-  // in NON-OVERLAPPING blocks (accumulating the tail once, not re-reading the
-  // suffix each step — was O(n²)) to the last user PROMPT record. Bounded by
+  // in NON-OVERLAPPING blocks to the last user PROMPT record. Each block's lines
+  // are prepended to an accumulator ONCE and only the block's own new lines are
+  // scanned for a boundary (the seam line is re-merged with the carried head), so
+  // total work is O(n), not O(n²) re-splitting of a growing window. Bounded by
   // baselineMaxBytes; returns "" when new/empty or no boundary is within the cap.
   baselineTail(): string {
     const size = fileSize(this.path);
     if (size === 0) return "";
+    const after: string[] = []; // lines already confirmed to be after any boundary
     let end = size;
-    let tail = ""; // records already confirmed to be after any boundary found so far
     while (end > 0 && size - end < baselineMaxBytes) {
       const start = Math.max(0, end - baselineStepBytes);
-      const block = readRange(this.path, start, end - start).text;
-      const window = `${block}${tail}`;
-      const boundary = lastUserBoundary(window);
-      if (boundary >= 0) return afterBoundary(window, boundary);
-      tail = window; // no boundary yet: carry the whole window and step further back
+      const block = readRange(this.path, start, end - start).text.split(/\r?\n/);
+      // Merge the block's last (partial) line with the carried head line.
+      if (after.length > 0) block[block.length - 1] += after.shift() as string;
+      const boundary = lastUserLine(block);
+      if (boundary >= 0)
+        return block
+          .slice(boundary + 1)
+          .concat(after)
+          .join("\n");
+      after.unshift(...block); // no boundary in this block: carry it and step back
       end = start;
     }
     return "";
@@ -118,21 +125,12 @@ export class TranscriptCursor {
   }
 }
 
-/** Index of the last `user`-role record line in `text`, or -1 if none. */
-function lastUserBoundary(text: string): number {
-  const lines = text.split(/\r?\n/);
+/** Index of the last `user`-role record line in `lines`, or -1 if none. */
+function lastUserLine(lines: readonly string[]): number {
   for (let i = lines.length - 1; i >= 0; i--) {
     if (isUserRecord(lines[i] as string)) return i;
   }
   return -1;
-}
-
-/** The records after the boundary line — the current, possibly-just-committed turn. */
-function afterBoundary(text: string, boundary: number): string {
-  return text
-    .split(/\r?\n/)
-    .slice(boundary + 1)
-    .join("\n");
 }
 
 // True only for a genuine user PROMPT — the real turn boundary. A `tool_result`

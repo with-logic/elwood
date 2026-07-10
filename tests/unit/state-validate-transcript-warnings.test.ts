@@ -34,10 +34,10 @@ describe("C-CLAUDE-15 transcript warning validation", () => {
       transcriptPath: "/tmp/t.jsonl",
       raw: "count=3",
     };
-    // Valid survives round-trip; non-numeric, negative, and fractional counts are
-    // all rejected (a count is a non-negative safe integer), never coerced.
+    // Valid survives round-trip; a count must be a POSITIVE safe integer, so a
+    // non-numeric, negative, fractional, OR zero droppedCount is rejected.
     expect(validateSessionRecord({ ...record, warnings: [warning] }, root, id)).not.toBeNull();
-    for (const bad of ["3", -1, 1.5]) {
+    for (const bad of ["3", -1, 1.5, 0]) {
       expect(
         validateSessionRecord(
           { ...record, warnings: [{ ...warning, droppedCount: bad }] },
@@ -46,6 +46,11 @@ describe("C-CLAUDE-15 transcript warning validation", () => {
         ),
       ).toBeNull();
     }
+    // droppedBytes may be 0 (a zero-byte dropped line is possible), so it is NOT
+    // gated as positive — only as a non-negative integer.
+    expect(
+      validateSessionRecord({ ...record, warnings: [{ ...warning, droppedBytes: 0 }] }, root, id),
+    ).not.toBeNull();
   });
 
   test("accepts and gates the transcript_read_error warning", () => {
@@ -63,9 +68,13 @@ describe("C-CLAUDE-15 transcript warning validation", () => {
       raw: "count=2",
     };
     expect(validateSessionRecord({ ...record, warnings: [warning] }, root, id)).not.toBeNull();
-    expect(
-      validateSessionRecord({ ...record, warnings: [{ ...warning, errorCount: "2" }] }, root, id),
-    ).toBeNull();
+    // errorCount must be a positive safe integer: string, zero, negative, and
+    // fractional are all rejected.
+    for (const bad of ["2", 0, -3, 2.5]) {
+      expect(
+        validateSessionRecord({ ...record, warnings: [{ ...warning, errorCount: bad }] }, root, id),
+      ).toBeNull();
+    }
   });
 
   test("accepts and gates the transcript_poll_stopped warning", () => {

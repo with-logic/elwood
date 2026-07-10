@@ -86,12 +86,12 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     expect(retired).toEqual(["/sub.jsonl"]);
   });
 
-  test("a drop observed before the sink exists is BUFFERED, then flushed once it does", () => {
+  test("a LONE drop buffered before the sink exists is flushed by flushPendingWarnings", () => {
     const activities: ElwoodActivityEvent[] = [];
     const emitter = fakeEmitter((a) => activities.push(a));
     const recorded: ElwoodWarningEvent[] = [];
     let sink: WarningSink | undefined; // not ready yet (early startup)
-    const watcher = createTranscriptWatcher("s9", emitter, () => sink);
+    const { watcher, flushPendingWarnings } = createTranscriptWatcher("s9", emitter, () => sink);
     const path = tmpFile();
     writeFileSync(path, "");
     watcher.observe(path);
@@ -100,10 +100,11 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     // Sink absent: the drop is NOT emitted as an activity-only warning (which
     // would neither persist nor replay) — it is held.
     expect(activities).not.toContainEqual(expect.objectContaining({ kind: "warning" }));
-    // The sink appears; the next diagnostic flushes the buffered one through it.
+    expect(recorded).toEqual([]);
+    // The session sink now exists. A SINGLE early warning must flush WITHOUT
+    // needing a second diagnostic to trigger it (the lone-warning gap).
     sink = { recordWarnings: (w) => recorded.push(...w) };
-    writeFileSync(path, `${JSON.stringify(assistant("wired"))}\n{ bad }\n{ bad2 }\n`);
-    watcher.finish();
+    flushPendingWarnings();
     expect(recorded.some((w) => w.code === "transcript_records_dropped")).toBe(true);
   });
 
@@ -112,7 +113,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     const emitter = fakeEmitter((a) => activities.push(a));
     const recorded: ElwoodWarningEvent[] = [];
     const sink: WarningSink = { recordWarnings: (w) => recorded.push(...w) };
-    const watcher = createTranscriptWatcher("s9", emitter, () => sink);
+    const { watcher } = createTranscriptWatcher("s9", emitter, () => sink);
     const path = tmpFile();
     writeFileSync(path, "");
     watcher.observe(path);
@@ -134,7 +135,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     const emitter = fakeEmitter();
     const recorded: ElwoodWarningEvent[] = [];
     const sink: WarningSink = { recordWarnings: (w) => recorded.push(...w) };
-    const watcher = createTranscriptWatcher("s9", emitter, () => sink);
+    const { watcher } = createTranscriptWatcher("s9", emitter, () => sink);
     const path = tmpFile();
     writeFileSync(path, "");
     watcher.observe(path);
@@ -157,7 +158,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     const emitter = fakeEmitter((a) => {
       if (a.kind === "assistant_message") throw new Error("listener bug");
     });
-    const watcher = createTranscriptWatcher("s9", emitter, () => sink);
+    const { watcher } = createTranscriptWatcher("s9", emitter, () => sink);
     const path = tmpFile();
     writeFileSync(path, "");
     watcher.observe(path);

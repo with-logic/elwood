@@ -71,4 +71,25 @@ describe("recordSessionWarnings", () => {
     expect(persisted[0]?.warnings[0]).toMatchObject({ droppedCount: 9 });
     expect(emitted).toEqual([]);
   });
+
+  test("distinct trust_prompt_unanswerable prompts are distinct warning keys", () => {
+    const { persisted, emit } = harness();
+    const unanswerable = (prompt: string): ElwoodWarningEvent => ({
+      elwoodSessionId: "warn-1",
+      agent: "claude",
+      source: "terminal",
+      code: "trust_prompt_unanswerable",
+      severity: "warning",
+      message: `no option for ${prompt}`,
+      prompt,
+      raw: `prompt=${prompt}`,
+    });
+    // Two different prompts key differently, so BOTH persist (not deduped together).
+    const warnings = [unanswerable("skill_trust"), unanswerable("plugin_trust")];
+    recordSessionWarnings(record(), warnings, (r) => persisted.push(r), emit);
+    expect(persisted.at(-1)?.warnings.map((w) => w.code)).toEqual([
+      "trust_prompt_unanswerable",
+      "trust_prompt_unanswerable",
+    ]);
+  });
 });

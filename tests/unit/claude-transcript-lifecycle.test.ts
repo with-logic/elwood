@@ -48,6 +48,50 @@ describe("C-CLAUDE-15 Claude transcript watcher lifecycle", () => {
     expect(events).toEqual([]);
   });
 
+  test("scan() shares ONE budget across cursors: a huge first cursor defers the second", () => {
+    // The per-scan budget is watcher-wide (16 × 256 KiB). A first cursor with a
+    // multi-MiB delta consumes the whole budget, so a second cursor is deferred to
+    // the next scan tick rather than also draining a full budget in the same pass.
+    const events: ClaudeTranscriptEvent[] = [];
+    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
+    const big = tmpFile();
+    const small = tmpFile();
+    writeRecords(big);
+    writeRecords(small);
+    watcher.observe(big);
+    watcher.observe(small);
+    // > 16 × 256 KiB of records on the first cursor: enough to exhaust the budget.
+    const filler = "q".repeat(300 * 1024); // one record > one chunk
+    appendRecords(big, [], ...Array.from({ length: 20 }, () => assistant(filler)));
+    appendRecords(small, [], assistant("second-cursor"));
+    watcher.scan();
+    // The shared budget was spent on `big`, so `small` has not been read yet.
+    expect(texts(events)).not.toContain("second-cursor");
+    // A later scan (fresh budget) picks up the deferred cursor.
+    watcher.scan();
+    watcher.finish();
+    expect(texts(events)).toContain("second-cursor");
+  });
+
+  test("poll() shares ONE budget across cursors too: the second is deferred a tick", async () => {
+    const events: ClaudeTranscriptEvent[] = [];
+    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
+    const big = tmpFile();
+    const small = tmpFile();
+    writeRecords(big);
+    writeRecords(small);
+    watcher.observe(big);
+    watcher.observe(small);
+    const filler = "q".repeat(300 * 1024);
+    appendRecords(big, [], ...Array.from({ length: 20 }, () => assistant(filler)));
+    appendRecords(small, [], assistant("second-poll"));
+    await watcher.pollOnceForTests(); // both grew, but the budget is spent on `big`
+    expect(texts(events)).not.toContain("second-poll");
+    await watcher.pollOnceForTests(); // fresh budget picks up the deferred cursor
+    watcher.stop();
+    expect(texts(events)).toContain("second-poll");
+  });
+
   test("finish() drains a multi-chunk delta fully (more=true loops to EOF)", () => {
     const path = tmpFile();
     const events: ClaudeTranscriptEvent[] = [];

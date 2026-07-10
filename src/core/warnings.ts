@@ -82,4 +82,15 @@ export type ElwoodWarningEvent =
       // A short error reason only — never raw transcript content.
       readonly reason: string;
       readonly raw: string;
+    }
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "claude" | "codex";
+      readonly source: "terminal";
+      readonly code: "trust_prompt_unanswerable";
+      readonly severity: "warning";
+      readonly message: string;
+      // The recognized-but-unanswerable prompt's stable label (no raw content).
+      readonly prompt: string;
+      readonly raw: string;
     };

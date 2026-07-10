@@ -29,24 +29,33 @@ export type TranscriptActivityEmitter = {
  * and flushed through `recordWarnings` once it does — never silently emitted as
  * activity-only (which would neither persist nor replay).
  */
+/** A watcher plus a hook to flush any early-buffered warnings once the sink exists. */
+export type WiredTranscriptWatcher = {
+  readonly watcher: ClaudeTranscriptWatcher;
+  /** Flush warnings buffered before the session sink existed; call once it does. */
+  readonly flushPendingWarnings: () => void;
+};
+
 export function createTranscriptWatcher(
   elwoodSessionId: string,
   emitter: TranscriptActivityEmitter,
   sink?: () => WarningSink | undefined,
-): ClaudeTranscriptWatcher {
+): WiredTranscriptWatcher {
   const pending: ElwoodWarningEvent[] = [];
+  const flushPendingWarnings = () => {
+    const target = sink?.();
+    if (target && pending.length > 0) target.recordWarnings(pending.splice(0));
+  };
   const route = (warning: ElwoodWarningEvent) => {
     const target = sink?.();
     if (!target) {
       pending.push(warning); // sink not ready yet: hold until it is, don't drop
       return;
     }
-    if (pending.length > 0) {
-      target.recordWarnings(pending.splice(0));
-    }
+    flushPendingWarnings();
     target.recordWarnings([warning]);
   };
-  return new ClaudeTranscriptWatcher(
+  const watcher = new ClaudeTranscriptWatcher(
     elwoodSessionId,
     (event) => emitter.emit("activity", activity.activityFromClaudeTranscript(event)),
     {
@@ -55,6 +64,7 @@ export function createTranscriptWatcher(
       onPollError: (error) => route(pollErrorWarning(elwoodSessionId, error)),
     },
   );
+  return { watcher, flushPendingWarnings };
 }
 
 /** Turn-boundary hooks: a first observe here recovers the already-committed tail. */

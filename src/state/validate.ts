@@ -127,39 +127,45 @@ function isWarning(value: unknown): value is ElwoodWarningEvent {
   }
   if (value["code"] === "transcript_records_dropped") {
     return (
-      value["agent"] === "claude" &&
-      value["source"] === "terminal" &&
-      isString(value["elwoodSessionId"]) &&
-      isString(value["message"]) &&
-      isCount(value["droppedCount"]) &&
+      claudeTerminalBase(value) &&
+      isPositiveCount(value["droppedCount"]) &&
       isCount(value["droppedBytes"]) &&
-      isString(value["transcriptPath"]) &&
-      isString(value["raw"])
+      isString(value["transcriptPath"])
     );
   }
   if (value["code"] === "transcript_read_error") {
     return (
-      value["agent"] === "claude" &&
-      value["source"] === "terminal" &&
-      isString(value["elwoodSessionId"]) &&
-      isString(value["message"]) &&
-      isCount(value["errorCount"]) &&
+      claudeTerminalBase(value) &&
+      isPositiveCount(value["errorCount"]) &&
       isString(value["lastErrorCode"]) &&
-      isString(value["transcriptPath"]) &&
-      isString(value["raw"])
+      isString(value["transcriptPath"])
     );
   }
   if (value["code"] === "transcript_poll_stopped") {
+    return claudeTerminalBase(value) && isString(value["reason"]);
+  }
+  if (value["code"] === "trust_prompt_unanswerable") {
+    const agent = value["agent"];
     return (
-      value["agent"] === "claude" &&
-      value["source"] === "terminal" &&
-      isString(value["elwoodSessionId"]) &&
-      isString(value["message"]) &&
-      isString(value["reason"]) &&
-      isString(value["raw"])
+      (agent === "claude" || agent === "codex") && terminalBase(value) && isString(value["prompt"])
     );
   }
   return false;
+}
+
+/** Fields common to every claude-agent terminal warning: agent/source/session/message/raw. */
+function claudeTerminalBase(value: Readonly<Record<string, unknown>>): boolean {
+  return value["agent"] === "claude" && terminalBase(value);
+}
+
+/** The source/session/message/raw fields common to all terminal warnings. */
+function terminalBase(value: Readonly<Record<string, unknown>>): boolean {
+  return (
+    value["source"] === "terminal" &&
+    isString(value["elwoodSessionId"]) &&
+    isString(value["message"]) &&
+    isString(value["raw"])
+  );
 }
 
 function isStatus(value: unknown): value is ElwoodSessionStatus {
@@ -174,9 +180,13 @@ function isString(value: unknown): value is string {
   return typeof value === "string";
 }
 
-/** A persisted count/byte total: a non-negative SAFE integer, never fractional or negative. */
+/** A persisted byte total: a non-negative safe integer (never fractional/negative). */
 function isCount(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+/** A persisted event count: a POSITIVE safe integer (a notice always counts ≥ 1). */
+function isPositiveCount(value: unknown): value is number {
+  return isCount(value) && value > 0;
 }
 
 function isStringArray(value: unknown): boolean {

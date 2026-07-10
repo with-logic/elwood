@@ -51,22 +51,37 @@ const trustHooksOption = new RegExp(`^${notDecline}.*\\btrust\\b.*\\b(hooks?|all
  * and `mcp` cover the CLI's first-run trust prompts for loading third-party
  * skills, plugins, and MCP servers under a full-trust launch.
  */
+// Each `visible` matches the prompt's QUESTION/HEADER wording — never a phrase
+// that lives only in an affirmative option — so recognition anchors on a header
+// line (see promptRegion), which a hostile option cannot spoof (PRD §5.1).
 export const trustPromptAllowlist = [
-  { id: "workspace_trust", agent: "claude", visible: /trust this folder/i, accept: yesOption },
+  {
+    // Header renders as "Do you trust this folder?" or "Quick safety check: Is
+    // this a project you created or one you trust?" (claude 2.1.205/2.1.206).
+    id: "workspace_trust",
+    agent: "claude",
+    visible: /do you trust this folder|project you (?:created|.*)\bor one you trust/i,
+    accept: yesOption,
+  },
   {
     id: "skill_trust",
     agent: "claude",
-    visible: /trust (?:this|the) skill|load this skill/i,
+    visible: /do you (?:want to )?(?:trust|load) (?:this|the) skill|load this skill\?/i,
     accept: yesOption,
   },
-  { id: "plugin_trust", agent: "claude", visible: /trust (?:this|the) plugin/i, accept: yesOption },
   {
-    // Real claude 2.1.205 prompt: "New MCP server found in this project" with an
-    // affirmative option "Use this MCP server" (no "yes/trust/continue" word), so
-    // it needs its own `accept` — the generic yes-matcher would leave it wedged.
+    id: "plugin_trust",
+    agent: "claude",
+    visible: /do you (?:want to )?trust (?:this|the) plugin|trust the plugin\?/i,
+    accept: yesOption,
+  },
+  {
+    // Header "New MCP server found in this project"; the affirmative option is
+    // "Use this MCP server" (no yes/trust/continue word), needing a per-prompt
+    // accept — the generic yes-matcher would leave it wedged.
     id: "mcp_trust",
     agent: "claude",
-    visible: /New MCP server found|trust (?:this|the) MCP server|use this MCP server/i,
+    visible: /New MCP server found|do you trust (?:this|the) MCP server/i,
     accept: useMcpOption,
   },
   {

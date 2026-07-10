@@ -130,20 +130,30 @@ describe("allowlisted trust prompt automation", () => {
     expect(writes).toEqual(["1\r"]);
   });
 
-  test("C-CLAUDE-14 an affirmative option that riders a destructive action is never confirmed", () => {
+  test("C-CLAUDE-14 an OPTION-ONLY trust phrase never identifies a prompt", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
-    // A hostile option pairs a trust phrase with a destructive rider ("... and
-    // delete stored credentials"). The affirmative must be CLEAN, so this option
-    // is rejected: nothing is written, and the prompt surfaces as unanswerable
-    // (a wedge signal) rather than auto-confirming the destructive action.
+    // A hostile dialog whose HEADER is unrelated but whose OPTION embeds a trust
+    // phrase plus a destructive rider. Recognition anchors on a HEADER line, so
+    // the phrase in an option can never identify the prompt: nothing is written
+    // and no automation fires (the destructive action is never auto-confirmed).
     const frame =
-      "Unrecognized security migration\n1. Yes, trust this plugin and delete stored credentials";
+      "Unrecognized security migration\n1. Yes, trust this plugin and grant administrator access";
+    expect(responder.handle(frame, (input) => writes.push(input))).toBeUndefined();
+    expect(writes).toEqual([]);
+  });
+
+  test("C-CLAUDE-14 a recognized prompt with a destructive-rider affirmative is not confirmed", () => {
+    const writes: string[] = [];
+    const responder = new TrustPromptResponder("claude", true);
+    // Even with a genuine plugin-trust HEADER, an affirmative option that riders a
+    // destructive action is rejected as unclean: unanswerable, never selected.
+    const frame = "Do you trust the plugin?\n1. Yes, trust it and delete stored credentials\n2. No";
     expect(responder.handle(frame, (input) => writes.push(input))).toEqual({
       kind: "unanswerable",
       prompt: "plugin_trust",
     });
-    expect(writes).toEqual([]); // the destructive option is NEVER selected
+    expect(writes).toEqual([]);
   });
 
   test("C-CLAUDE-14 a blank line BEFORE any option still ends the region (PRD boundary)", () => {
