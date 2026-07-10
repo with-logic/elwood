@@ -6,14 +6,14 @@
  * pre-existing history is never replayed (see TranscriptCursor).
  */
 
-import { TranscriptCursor } from "./transcript-cursor.ts";
+import { TranscriptCursor } from "./cursor.ts";
 import {
   DropTracker,
   ReadErrorTracker,
   type TranscriptDropNotice,
   type TranscriptReadErrorNotice,
-} from "./transcript-drops.ts";
-import { type ClaudeTranscriptEvent, LineEmitter } from "./transcript-emit.ts";
+} from "./drops.ts";
+import { type ClaudeTranscriptEvent, LineEmitter } from "./emit.ts";
 
 export type { ClaudeTranscriptEvent, TranscriptDropNotice, TranscriptReadErrorNotice };
 

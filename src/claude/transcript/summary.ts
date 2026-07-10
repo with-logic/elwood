@@ -4,7 +4,7 @@
  * results are sourced from the committed transcript, never from ghost-text.
  */
 
-import { stringify } from "../core/serialize.ts";
+import { stringify } from "../../core/serialize.ts";
 
 /**
  * A committed transcript item, discriminated by kind so each variant carries

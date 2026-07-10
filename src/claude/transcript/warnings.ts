@@ -5,8 +5,8 @@
  * error code — never raw transcript content.
  */
 
-import type { ElwoodWarningEvent } from "../core/types.ts";
-import type { TranscriptDropNotice, TranscriptReadErrorNotice } from "./transcript-drops.ts";
+import type { ElwoodWarningEvent } from "../../core/types.ts";
+import type { TranscriptDropNotice, TranscriptReadErrorNotice } from "./drops.ts";
 
 export function dropWarning(notice: TranscriptDropNotice): ElwoodWarningEvent {
   return {

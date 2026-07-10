@@ -7,8 +7,8 @@
 import * as activity from "../core/activity.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
-import { ClaudeTranscriptWatcher } from "./transcript.ts";
-import { dropWarning, pollErrorWarning, readErrorWarning } from "./transcript-warnings.ts";
+import { ClaudeTranscriptWatcher } from "./transcript/index.ts";
+import { dropWarning, pollErrorWarning, readErrorWarning } from "./transcript/warnings.ts";
 
 /** The session surface the watcher needs to persist and de-duplicate warnings. */
 export type WarningSink = {

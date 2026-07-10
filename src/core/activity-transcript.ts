@@ -3,7 +3,7 @@
  * Implements PRD §5.4 (C-CLAUDE-15 and the Codex transcript activity contract).
  */
 
-import type { ClaudeTranscriptEvent } from "../claude/transcript.ts";
+import type { ClaudeTranscriptEvent } from "../claude/transcript/index.ts";
 import type { CodexTranscriptEvent } from "../codex/transcript.ts";
 import type { ElwoodActivityEvent } from "./activity.ts";
 import * as meta from "./activity-meta.ts";

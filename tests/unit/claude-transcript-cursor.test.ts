@@ -8,7 +8,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { TranscriptCursor } from "../../src/claude/transcript-cursor.ts";
+import { TranscriptCursor } from "../../src/claude/transcript/cursor.ts";
 
 function tmpFile(): string {
   return join(mkdtempSync(join(tmpdir(), "elwood-tx-")), "t.jsonl");

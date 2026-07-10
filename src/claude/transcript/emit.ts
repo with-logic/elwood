@@ -5,9 +5,9 @@
  * emitted.
  */
 
-import type { TranscriptCursor } from "./transcript-cursor.ts";
-import type { DropTracker } from "./transcript-drops.ts";
-import { type ClaudeTranscriptSummary, summarizeClaudeRecord } from "./transcript-summary.ts";
+import type { TranscriptCursor } from "./cursor.ts";
+import type { DropTracker } from "./drops.ts";
+import { type ClaudeTranscriptSummary, summarizeClaudeRecord } from "./summary.ts";
 
 export type ClaudeTranscriptEvent = {
   readonly elwoodSessionId: string;

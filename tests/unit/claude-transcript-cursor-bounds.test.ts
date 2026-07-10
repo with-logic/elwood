@@ -12,7 +12,7 @@ import {
   resetRangeReaderForTests,
   setRangeReaderForTests,
   TranscriptCursor,
-} from "../../src/claude/transcript-cursor.ts";
+} from "../../src/claude/transcript/cursor.ts";
 
 function tmpFile(): string {
   return join(mkdtempSync(join(tmpdir(), "elwood-tx-")), "t.jsonl");

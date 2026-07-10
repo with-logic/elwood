@@ -12,7 +12,7 @@ import {
   ClaudeTranscriptWatcher,
   type TranscriptDropNotice,
   type TranscriptReadErrorNotice,
-} from "../../src/claude/transcript.ts";
+} from "../../src/claude/transcript/index.ts";
 
 const assistant = (text: string) => ({
   type: "assistant",

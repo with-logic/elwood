@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { summarizeClaudeRecord } from "../../src/claude/transcript-summary.ts";
+import { summarizeClaudeRecord } from "../../src/claude/transcript/summary.ts";
 import { stringify } from "../../src/core/serialize.ts";
 
 describe("C-CLAUDE-15 Claude transcript summarizer", () => {

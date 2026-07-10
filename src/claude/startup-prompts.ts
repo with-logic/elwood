@@ -1,6 +1,8 @@
 /**
- * Answers Claude first-party startup prompts that block embedded readiness.
- * Implements PRD §5.1, C-CLAUDE-10, and C-CLAUDE-11.
+ * Answers Claude first-party startup prompts that block embedded readiness:
+ * workspace/skill/plugin/MCP trust (via the allowlisted TrustPromptResponder)
+ * and the browser-tools prompt. Implements PRD §5.1, C-CLAUDE-10, C-CLAUDE-11,
+ * and C-CLAUDE-14.
  */
 
 import type { StartupPromptAutomation } from "../core/startup-automation.ts";

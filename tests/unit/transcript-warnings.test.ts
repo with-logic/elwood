@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { pollErrorWarning } from "../../src/claude/transcript-warnings.ts";
+import { pollErrorWarning } from "../../src/claude/transcript/warnings.ts";
 
 describe("C-CLAUDE-15 transcript warning builders", () => {
   test("pollErrorWarning stringifies both Error and non-Error causes", () => {

@@ -9,7 +9,7 @@ import {
   DropTracker,
   ReadErrorTracker,
   type TranscriptReadErrorNotice,
-} from "../../src/claude/transcript-drops.ts";
+} from "../../src/claude/transcript/drops.ts";
 
 describe("C-CLAUDE-15 transcript diagnostic trackers", () => {
   test("a read error without an errno code reports the UNKNOWN fallback", () => {

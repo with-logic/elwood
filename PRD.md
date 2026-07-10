@@ -746,10 +746,22 @@ available for deep debugging and unsupported future payloads.
 When Elwood detects and answers an interactive startup prompt on behalf of the
 parent app, it MUST emit an activity event with `source: "terminal"`,
 `kind: "startup_prompt"`, a stable label, and text describing the key sent. The
-stable startup-prompt labels include `workspace_trust`, `skill_trust`,
-`plugin_trust`, `mcp_trust`, `hook_trust`, `browser_tools`, and `update`; the
-complete set is defined by the conformance criteria (C-CLAUDE-11/14, C-CODEX-06,
-and the trust-prompt allowlist), which this list summarizes non-exhaustively.
+stable startup-prompt label set is EXACTLY the following, and no other value may
+be emitted with `kind: "startup_prompt"`:
+
+| label             | agent          | defined by                  |
+| ----------------- | -------------- | --------------------------- |
+| `workspace_trust` | claude, codex  | C-CLAUDE-10, C-CODEX-11/15   |
+| `skill_trust`     | claude         | C-CLAUDE-14                 |
+| `plugin_trust`    | claude         | C-CLAUDE-14                 |
+| `mcp_trust`       | claude         | C-CLAUDE-14                 |
+| `browser_tools`   | claude         | C-CLAUDE-11                 |
+| `hook_trust`      | codex          | C-CODEX-06/15               |
+| `update`          | codex          | C-CODEX-12                  |
+
+The trust-prompt labels (`workspace_trust`, `skill_trust`, `plugin_trust`,
+`mcp_trust`, `hook_trust`) are exactly the ids in the trust-prompt allowlist; a
+second implementation MUST treat this table as the complete output union.
 
 Under a caller's full-trust launch (`autotrust`), Elwood auto-answers the trust
 prompt family — folder/directory trust, and the CLI's first-run trust prompts for

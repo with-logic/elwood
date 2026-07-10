@@ -7,7 +7,7 @@
 
 import { closeSync, openSync, readSync, statSync } from "node:fs";
 import { stat } from "node:fs/promises";
-import { completeUtf8Length } from "../runtime/probe.ts";
+import { completeUtf8Length } from "../../runtime/probe.ts";
 
 const maxChunkBytes = 256 * 1024; // bytes read per scan pass (a large delta streams)
 const baselineStepBytes = 64 * 1024; // one backward step in current-turn recovery
