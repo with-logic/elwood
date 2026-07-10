@@ -9,6 +9,11 @@
 import { TranscriptCursor } from "./transcript-cursor.ts";
 import { type ClaudeTranscriptSummary, summarizeClaudeRecord } from "./transcript-summary.ts";
 
+/** Poll cadence: transcript activity is not latency-critical, so this stays coarse. */
+const pollMs = 500;
+/** Emit a drop notice at most once per this many dropped records (rate-bounded). */
+const dropNoticeEvery = 50;
+
 export type ClaudeTranscriptEvent = {
   readonly elwoodSessionId: string;
   readonly path: string;
@@ -16,18 +21,24 @@ export type ClaudeTranscriptEvent = {
   readonly summary: ClaudeTranscriptSummary;
 };
 
-/** A bounded, non-fatal notice that some committed records could not be parsed. */
+/** A bounded, content-free notice that committed records could not be parsed. */
 export type TranscriptDropNotice = {
   readonly elwoodSessionId: string;
   readonly path: string;
+  /** Total dropped so far this session (running count, never the raw content). */
   readonly droppedCount: number;
+  /** Total bytes of the dropped lines (diagnostic magnitude, not content). */
+  readonly droppedBytes: number;
 };
 
 export class ClaudeTranscriptWatcher {
   // One cursor per observed path so A→B→A never rewinds A to the start.
   private readonly cursors = new Map<string, TranscriptCursor>();
   private interval: ReturnType<typeof setInterval> | undefined;
-  private droppedSinceNotice = 0;
+  private dropped = 0;
+  private droppedBytes = 0;
+  private notifiedAt = 0;
+  private lastDropPath = "";
   private readonly elwoodSessionId: string;
   private readonly emit: (event: ClaudeTranscriptEvent) => void;
   private readonly onDrop: ((notice: TranscriptDropNotice) => void) | undefined;
@@ -51,22 +62,21 @@ export class ClaudeTranscriptWatcher {
     if (this.cursors.has(path)) return;
     const cursor = new TranscriptCursor(path);
     this.cursors.set(path, cursor);
-    this.guard(() => this.emitLines(cursor, cursor.baselineTail()));
+    this.emitLines(path, readFs(() => cursor.baselineTail()) ?? "");
     this.ensurePolling();
   }
 
   scan(): void {
-    for (const cursor of this.cursors.values()) this.guard(() => this.scanCursor(cursor));
+    for (const cursor of this.cursors.values()) this.scanCursor(cursor);
   }
 
   /** Flush any buffered partial lines across all paths, then stop polling. */
   finish(): void {
     for (const cursor of this.cursors.values()) {
-      this.guard(() => {
-        this.scanCursor(cursor);
-        this.emitLines(cursor, cursor.drainPending());
-      });
+      this.scanCursor(cursor);
+      this.emitLines(cursor.path, cursor.drainPending());
     }
+    this.flushDropNotice();
     this.stop();
   }
 
@@ -77,29 +87,36 @@ export class ClaudeTranscriptWatcher {
 
   private ensurePolling(): void {
     if (this.interval) return;
-    this.interval = setInterval(() => this.scan(), 250);
+    this.interval = setInterval(() => this.scan(), pollMs);
     this.interval.unref?.();
   }
 
-  /** Drain a cursor in bounded chunks so a huge delta never allocates all at once. */
+  /**
+   * Drain a cursor in bounded chunks. The filesystem read is contained (a normal
+   * transcript rotation/removal race must not crash the timer or reject the hook
+   * dispatch that calls scan()/finish()); parsing and emit run OUTSIDE that guard
+   * so a downstream listener error is never silently swallowed.
+   */
   private scanCursor(cursor: TranscriptCursor): void {
-    for (let guardBudget = 64; guardBudget > 0; guardBudget--) {
-      const { text, more } = cursor.readChunk();
-      if (text.length > 0) this.emitLines(cursor, text);
-      if (!more) return;
+    for (let budget = 64; budget > 0; budget--) {
+      const chunk = readFs(() => cursor.readChunk());
+      if (chunk === undefined) return; // contained FS failure; keep last offset
+      if (chunk.text.length > 0) this.emitLines(cursor.path, chunk.text, cursor);
+      if (!chunk.more) return;
     }
   }
 
-  private emitLines(cursor: TranscriptCursor, text: string): void {
+  private emitLines(path: string, text: string, cursor?: TranscriptCursor): void {
     if (text.length === 0) return;
-    for (const line of cursor.takeLines(text)) this.emitLine(cursor.path, line);
+    const lines = cursor ? cursor.takeLines(text) : takeLinesOf(text);
+    for (const line of lines) this.emitLine(path, line);
   }
 
   private emitLine(path: string, line: string): void {
     if (!line.trim()) return;
     const item = parseLine(line);
     if (item === undefined) {
-      this.recordDrop(path);
+      this.recordDrop(path, line);
       return;
     }
     for (const summary of summarizeClaudeRecord(item)) {
@@ -107,27 +124,44 @@ export class ClaudeTranscriptWatcher {
     }
   }
 
-  private recordDrop(path: string): void {
-    this.droppedSinceNotice += 1;
+  private recordDrop(path: string, line: string): void {
+    this.dropped += 1;
+    this.droppedBytes += Buffer.byteLength(line, "utf8");
+    this.lastDropPath = path;
+    // Rate-bound: notify on the first drop and then only every N, not per line.
+    if (this.dropped - this.notifiedAt >= dropNoticeEvery || this.notifiedAt === 0) {
+      this.notifyDrop(path);
+    }
+  }
+
+  /** Emit a final aggregated notice for any drops not yet reported. */
+  private flushDropNotice(): void {
+    if (this.dropped > this.notifiedAt) this.notifyDrop(this.lastDropPath);
+  }
+
+  private notifyDrop(path: string): void {
+    this.notifiedAt = this.dropped;
     this.onDrop?.({
       elwoodSessionId: this.elwoodSessionId,
       path,
-      droppedCount: this.droppedSinceNotice,
+      droppedCount: this.dropped,
+      droppedBytes: this.droppedBytes,
     });
   }
+}
 
-  /**
-   * Runs a scan step but contains any filesystem error: the normal transcript
-   * removal/rotation race must never crash the polling timer, nor reject the
-   * hook dispatch / PTY-exit callback that also calls scan()/finish().
-   */
-  private guard(step: () => void): void {
-    try {
-      step();
-    } catch {
-      // Expected best-effort I/O failure; the cursor keeps its last valid offset.
-    }
+/** Runs a filesystem read, returning undefined on the expected removal/rotation race. */
+function readFs<T>(read: () => T): T | undefined {
+  try {
+    return read();
+  } catch {
+    return undefined;
   }
+}
+
+/** Line splitter for text with no retained partial (baseline/pending flushes). */
+function takeLinesOf(text: string): readonly string[] {
+  return text.split(/\r?\n/);
 }
 
 /** Returns undefined for a malformed line so the caller can count the drop. */

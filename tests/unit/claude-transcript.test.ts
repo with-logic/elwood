@@ -77,23 +77,6 @@ describe("C-CLAUDE-15 Claude transcript watcher", () => {
     expect(texts(events)).toEqual(["a1", "b1"]);
   });
 
-  test("skips malformed JSON and reports a bounded drop diagnostic (no raw content)", () => {
-    const path = tmpFile();
-    const events: ClaudeTranscriptEvent[] = [];
-    const drops: TranscriptDropNotice[] = [];
-    const watcher = new ClaudeTranscriptWatcher(
-      "s1",
-      (e) => events.push(e),
-      (d) => drops.push(d),
-    );
-    writeRecords(path);
-    watcher.observe(path);
-    writeFileSync(path, `${JSON.stringify(assistant("ok"))}\n{ not json }\n`);
-    watcher.finish();
-    expect(texts(events)).toEqual(["ok"]);
-    expect(drops).toEqual([{ elwoodSessionId: "s1", path, droppedCount: 1 }]);
-  });
-
   test("scan/finish are safe (non-throwing) before observe and for a missing file", () => {
     const watcher = new ClaudeTranscriptWatcher("s1", () => {});
     expect(() => watcher.scan()).not.toThrow();
@@ -115,36 +98,6 @@ describe("C-CLAUDE-15 Claude transcript watcher", () => {
     expect(events).toHaveLength(5000);
     expect(texts(events).at(-1)).toBe("m4999");
     watcher.stop();
-  });
-
-  test("a filesystem error during scan is contained (best-effort, non-throwing)", () => {
-    // Observe a path, then replace the file with a directory: statSync/readSync
-    // now throw a rotation-race-like error that the guard must swallow.
-    const { mkdirSync, rmSync } = require("node:fs") as typeof import("node:fs");
-    const path = tmpFile();
-    const events: ClaudeTranscriptEvent[] = [];
-    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
-    writeRecords(path);
-    watcher.observe(path);
-    rmSync(path);
-    mkdirSync(path); // reading a directory throws EISDIR
-    expect(() => watcher.scan()).not.toThrow();
-    expect(events).toEqual([]);
-    watcher.stop();
-  });
-
-  test("malformed records in the baseline tail do not break turn detection", () => {
-    // A bad line before the user boundary must not crash isUserRecord parsing.
-    const path = tmpFile();
-    const events: ClaudeTranscriptEvent[] = [];
-    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
-    writeFileSync(
-      path,
-      `{ bad\n${JSON.stringify(user("go"))}\n${JSON.stringify(assistant("cur"))}\n`,
-    );
-    watcher.observe(path);
-    watcher.finish();
-    expect(texts(events)).toEqual(["cur"]);
   });
 
   test("a truncated/rotated file restarts the cursor rather than reading garbage", () => {

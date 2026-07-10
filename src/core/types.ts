@@ -157,8 +157,9 @@ export type ElwoodWarningEvent =
       readonly code: "transcript_records_dropped";
       readonly severity: "warning";
       readonly message: string;
-      // Count and path only — never raw transcript content.
+      // Count, byte magnitude, and path only — never raw transcript content.
       readonly droppedCount: number;
+      readonly droppedBytes: number;
       readonly transcriptPath: string;
       readonly raw: string;
     };

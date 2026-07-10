@@ -44,9 +44,10 @@ function dropWarning(notice: TranscriptDropNotice): ElwoodWarningEvent {
     source: "terminal",
     code: "transcript_records_dropped",
     severity: "warning",
-    message: `Dropped ${notice.droppedCount} unparseable transcript record(s).`,
+    message: `Dropped ${notice.droppedCount} unparseable transcript record(s) (${notice.droppedBytes} bytes).`,
     droppedCount: notice.droppedCount,
+    droppedBytes: notice.droppedBytes,
     transcriptPath: notice.path,
-    raw: `transcript_records_dropped count=${notice.droppedCount}`,
+    raw: `transcript_records_dropped count=${notice.droppedCount} bytes=${notice.droppedBytes}`,
   };
 }
