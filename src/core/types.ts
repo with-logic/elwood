@@ -109,60 +109,9 @@ export type HookErrorEvent = {
   readonly timeoutMs?: number;
 };
 
-export type ElwoodWarningEvent =
-  | {
-      readonly elwoodSessionId: string;
-      readonly agent: "claude" | "codex";
-      readonly source: "lifecycle";
-      readonly code: "version_unparseable";
-      readonly severity: "warning";
-      readonly message: string;
-      readonly raw: string;
-    }
-  | {
-      readonly elwoodSessionId: string;
-      readonly agent: "codex";
-      readonly source: "terminal";
-      readonly code: "mcp_server_not_logged_in";
-      readonly severity: "warning";
-      readonly message: string;
-      readonly mcpServerName: string;
-      readonly recoveryCommand: string;
-      readonly raw: string;
-    }
-  | {
-      readonly elwoodSessionId: string;
-      readonly agent: "codex";
-      readonly source: "terminal";
-      readonly code: "mcp_startup_incomplete";
-      readonly severity: "warning";
-      readonly message: string;
-      readonly failedServers: readonly string[];
-      readonly recoveryCommands: readonly string[];
-      readonly raw: string;
-    }
-  | {
-      readonly elwoodSessionId: string;
-      readonly agent: "codex";
-      readonly source: "lifecycle";
-      readonly code: "codex_default_model_persisted";
-      readonly severity: "warning";
-      readonly message: string;
-      readonly raw: string;
-    }
-  | {
-      readonly elwoodSessionId: string;
-      readonly agent: "claude";
-      readonly source: "terminal";
-      readonly code: "transcript_records_dropped";
-      readonly severity: "warning";
-      readonly message: string;
-      // Count, byte magnitude, and path only — never raw transcript content.
-      readonly droppedCount: number;
-      readonly droppedBytes: number;
-      readonly transcriptPath: string;
-      readonly raw: string;
-    };
+import type { ElwoodWarningEvent } from "./warnings.ts";
+
+export type { ElwoodWarningEvent };
 
 export type ElwoodEventMap = {
   readonly "terminal:data": { readonly elwoodSessionId: string; readonly data: string };

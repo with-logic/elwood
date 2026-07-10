@@ -7,35 +7,39 @@
 import * as activity from "../core/activity.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
-import { ClaudeTranscriptWatcher, type TranscriptDropNotice } from "./transcript.ts";
+import { ClaudeTranscriptWatcher } from "./transcript.ts";
+import { dropWarning, readErrorWarning } from "./transcript-warnings.ts";
 
-/** The session surface the watcher needs to persist and de-duplicate drop warnings. */
+/** The session surface the watcher needs to persist and de-duplicate warnings. */
 export type WarningSink = {
   recordWarnings(warnings: readonly ElwoodWarningEvent[]): void;
 };
 
 /**
- * Builds a transcript watcher that emits committed items and drop diagnostics.
- * Drop notices are routed through the session's warning sink so they are
- * de-duplicated, persisted into the session snapshot, and emitted through the
- * `warning` (and projected `activity`) contract rather than as raw activity.
- * The sink is resolved lazily because the session object is constructed after
- * the watcher (PRD §5.7). Until it exists, a drop is projected as `activity`
- * only — a transient early-startup case that never reaches persistence anyway.
+ * Builds a transcript watcher that emits committed items and bounded diagnostics
+ * (drops and contained fs errors). Diagnostics are routed through the session's
+ * warning sink so they are de-duplicated, persisted into the session snapshot,
+ * and emitted through the `warning` (and projected `activity`) contract rather
+ * than as raw activity. The sink is resolved lazily because the session object
+ * is constructed after the watcher (PRD §5.7). Until it exists, a diagnostic is
+ * projected as `activity` only — a transient early-startup case.
  */
 export function createTranscriptWatcher(
   elwoodSessionId: string,
   emitter: TypedEmitter,
   sink?: () => WarningSink | undefined,
 ): ClaudeTranscriptWatcher {
+  const route = (warning: ElwoodWarningEvent) => {
+    const target = sink?.();
+    if (target) target.recordWarnings([warning]);
+    else emitter.emit("activity", activity.activityFromWarning(warning));
+  };
   return new ClaudeTranscriptWatcher(
     elwoodSessionId,
     (event) => emitter.emit("activity", activity.activityFromClaudeTranscript(event)),
-    (notice) => {
-      const warning = dropWarning(notice);
-      const target = sink?.();
-      if (target) target.recordWarnings([warning]);
-      else emitter.emit("activity", activity.activityFromWarning(warning));
+    {
+      onDrop: (notice) => route(dropWarning(notice)),
+      onReadError: (notice) => route(readErrorWarning(notice)),
     },
   );
 }
@@ -64,19 +68,4 @@ export function observeTranscript(
     const path = event[key];
     if (typeof path === "string" && path.length > 0) watcher.observe(path, recoverTail);
   }
-}
-
-function dropWarning(notice: TranscriptDropNotice): ElwoodWarningEvent {
-  return {
-    elwoodSessionId: notice.elwoodSessionId,
-    agent: "claude",
-    source: "terminal",
-    code: "transcript_records_dropped",
-    severity: "warning",
-    message: `Dropped ${notice.droppedCount} unparseable transcript record(s) (${notice.droppedBytes} bytes).`,
-    droppedCount: notice.droppedCount,
-    droppedBytes: notice.droppedBytes,
-    transcriptPath: notice.path,
-    raw: `transcript_records_dropped count=${notice.droppedCount} bytes=${notice.droppedBytes}`,
-  };
 }

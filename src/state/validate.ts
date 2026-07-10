@@ -137,6 +137,18 @@ function isWarning(value: unknown): value is ElwoodWarningEvent {
       isString(value["raw"])
     );
   }
+  if (value["code"] === "transcript_read_error") {
+    return (
+      value["agent"] === "claude" &&
+      value["source"] === "terminal" &&
+      isString(value["elwoodSessionId"]) &&
+      isString(value["message"]) &&
+      isNumber(value["errorCount"]) &&
+      isString(value["lastErrorCode"]) &&
+      isString(value["transcriptPath"]) &&
+      isString(value["raw"])
+    );
+  }
   return false;
 }
 

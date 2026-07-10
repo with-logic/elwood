@@ -105,10 +105,13 @@ function promptRegion(frame: string, spec: TrustPromptEntry): string {
   let sawOption = false;
   for (let i = start; i < lines.length; i++) {
     const line = lines[i] as string;
-    // The header of ANOTHER allowlisted prompt always ends this region — those
-    // options belong to that dialog. A blank line ends it too, but only once
-    // we've already seen an option, so a "header\n\n  1. Yes" layout still works.
-    if (i > start && (startsOtherPrompt(line, spec) || (sawOption && line.trim() === ""))) break;
+    // A DIFFERENT dialog beginning ends this region — its options belong to that
+    // dialog, not this prompt. That boundary is the header of another allowlisted
+    // prompt, a fresh question line (ends with "?"), or a blank line once we have
+    // already seen an option (so a "header\n\n  1. Yes" layout still works).
+    const endsRegion =
+      startsOtherPrompt(line, spec) || startsNewQuestion(line) || (sawOption && line.trim() === "");
+    if (i > start && endsRegion) break;
     if (/(?:^|[\s›>])\d+[.)]/.test(line)) sawOption = true;
     region.push(line);
   }
@@ -118,6 +121,16 @@ function promptRegion(frame: string, spec: TrustPromptEntry): string {
 /** True when `line` is the header of a different allowlisted prompt than `spec`. */
 function startsOtherPrompt(line: string, spec: TrustPromptEntry): boolean {
   return trustPromptAllowlist.some((other) => other !== spec && other.visible.test(line));
+}
+
+/**
+ * True when `line` reads as the start of a NEW dialog question (ends with "?"),
+ * so an unrelated dialog rendered below the prompt (e.g. "Delete stored
+ * credentials?") ends the prompt's option region even though it is not itself an
+ * allowlisted prompt. This closes the same-frame cross-dialog isolation gap.
+ */
+function startsNewQuestion(line: string): boolean {
+  return /\?\s*$/.test(line);
 }
 
 function numberedOptions(

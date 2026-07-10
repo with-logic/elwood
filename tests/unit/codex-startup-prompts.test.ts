@@ -74,6 +74,23 @@ describe("Codex startup prompt responder", () => {
     expect(result.automations).toEqual([{ prompt: "hook_trust", input: "", unanswerable: true }]);
   });
 
+  test("C-CODEX-15 a SAME-frame foreign 'Yes' never auto-confirms DIRECTORY trust", () => {
+    // Directory trust uses the generic yesOption, so region-scoping (not a
+    // per-prompt pattern) is what protects it: an unrelated question below the
+    // directory prompt ("Delete stored credentials?") ends the region, so its
+    // "1. Yes, continue" is not the directory prompt's option. Nothing is written.
+    const writes: string[] = [];
+    const responder = new CodexStartupPromptResponder("s1", true);
+    const result = responder.handle(
+      "Do you trust the contents of this directory?\nDelete stored credentials?\n› 1. Yes, continue\n  2. No",
+      (input) => writes.push(input),
+    );
+    expect(writes).toEqual([]);
+    expect(result.automations).toEqual([
+      { prompt: "workspace_trust", input: "", unanswerable: true },
+    ]);
+  });
+
   test("C-CODEX-15 does not trust the DIRECTORY prompt without autotrust", () => {
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder();

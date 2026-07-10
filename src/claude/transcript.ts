@@ -7,10 +7,15 @@
  */
 
 import { TranscriptCursor } from "./transcript-cursor.ts";
-import { DropTracker, type TranscriptDropNotice } from "./transcript-drops.ts";
+import {
+  DropTracker,
+  ReadErrorTracker,
+  type TranscriptDropNotice,
+  type TranscriptReadErrorNotice,
+} from "./transcript-drops.ts";
 import { type ClaudeTranscriptSummary, summarizeClaudeRecord } from "./transcript-summary.ts";
 
-export type { TranscriptDropNotice };
+export type { TranscriptDropNotice, TranscriptReadErrorNotice };
 
 /** Poll cadence: transcript activity is not latency-critical, so this stays coarse. */
 const pollMs = 500;
@@ -22,41 +27,46 @@ export type ClaudeTranscriptEvent = {
   readonly summary: ClaudeTranscriptSummary;
 };
 
+/** Notices the watcher forwards for observation problems (both rate-bounded). */
+export type TranscriptNoticeHandlers = {
+  readonly onDrop?: (notice: TranscriptDropNotice) => void;
+  readonly onReadError?: (notice: TranscriptReadErrorNotice) => void;
+};
+
 export class ClaudeTranscriptWatcher {
   // One cursor per observed path so A→B→A never rewinds A to the start.
   private readonly cursors = new Map<string, TranscriptCursor>();
   private interval: ReturnType<typeof setInterval> | undefined;
   private polling = false;
   private readonly drops: DropTracker;
+  private readonly readErrors: ReadErrorTracker;
   private readonly elwoodSessionId: string;
   private readonly emit: (event: ClaudeTranscriptEvent) => void;
 
   constructor(
     elwoodSessionId: string,
     emit: (event: ClaudeTranscriptEvent) => void,
-    onDrop?: (notice: TranscriptDropNotice) => void,
+    notices: TranscriptNoticeHandlers = {},
   ) {
     this.elwoodSessionId = elwoodSessionId;
     this.emit = emit;
-    this.drops = new DropTracker(elwoodSessionId, onDrop);
+    this.drops = new DropTracker(elwoodSessionId, notices.onDrop);
+    this.readErrors = new ReadErrorTracker(elwoodSessionId, notices.onReadError);
   }
 
   /**
    * Begin watching `path`. A path seen for the first time baselines at the file's
-   * current end (history is not replayed); its current-turn tail already on disk
-   * is recovered once so a first-observe on a Stop hook still emits that turn.
+   * current end (history is not replayed). Cursor construction shares the fs
+   * guard so a first-observe race can't throw out of hook dispatch. Only a
+   * turn-boundary first-observe (recoverTail) replays the already-committed tail;
+   * a SessionStart/resume observe baselines at EOF and never republishes history.
    */
   observe(path: string, recoverTail = false): void {
     if (this.cursors.has(path)) return;
-    // Cursor construction reads the file size, so it shares the fs guard: a
-    // rotation/removal race at first observe must not throw out of hook dispatch.
-    const cursor = readFs(() => new TranscriptCursor(path));
+    const cursor = this.readFs(path, () => new TranscriptCursor(path));
     if (cursor === undefined) return;
     this.cursors.set(path, cursor);
-    // Only a first-observe that lands on a turn-boundary hook recovers the
-    // already-committed tail; a SessionStart/resume observe baselines at EOF so
-    // a prior conversation's final turn is never republished.
-    if (recoverTail) this.emitLines(path, readFs(() => cursor.baselineTail()) ?? "");
+    if (recoverTail) this.emitLines(path, this.readFs(path, () => cursor.baselineTail()) ?? "");
     this.ensurePolling();
   }
 
@@ -64,24 +74,23 @@ export class ClaudeTranscriptWatcher {
     for (const cursor of this.cursors.values()) this.scanCursor(cursor);
   }
 
-  /**
-   * Idle-friendly poll: an ASYNC stat gates each cursor so a session with no
-   * new transcript bytes performs zero synchronous fs work on the shared event
-   * loop (PRD §9.2). A bounded synchronous read runs only for a cursor that
-   * actually grew. Re-entrancy is guarded so a slow read can't overlap the next
-   * tick. The stat race is contained like every other transcript fs access.
-   */
   /** Test seam: drive one poll pass synchronously (the interval calls poll()). */
   pollOnceForTests(): Promise<void> {
     return this.poll();
   }
 
+  /**
+   * Idle-friendly poll: an ASYNC stat gates each cursor so a session with no new
+   * bytes does zero synchronous fs work on the shared event loop (PRD §9.2); a
+   * bounded sync read runs only for a cursor that grew. Re-entrancy is guarded so
+   * a slow read can't overlap the next tick; the stat race is contained.
+   */
   private async poll(): Promise<void> {
     if (this.polling) return;
     this.polling = true;
     try {
       for (const cursor of this.cursors.values()) {
-        const grown = await readFsAsync(() => cursor.hasGrown());
+        const grown = await this.readFsAsync(cursor.path, () => cursor.hasGrown());
         if (grown) this.scanCursor(cursor);
       }
     } finally {
@@ -99,6 +108,7 @@ export class ClaudeTranscriptWatcher {
         this.emitLines(cursor.path, cursor.drainPending());
       }
       this.drops.flush();
+      this.readErrors.flush();
     } finally {
       this.stop();
     }
@@ -118,17 +128,40 @@ export class ClaudeTranscriptWatcher {
   }
 
   /**
-   * Drain a cursor in bounded chunks. The filesystem read is contained (a normal
-   * transcript rotation/removal race must not crash the timer or reject the hook
-   * dispatch that calls scan()/finish()); parsing and emit run OUTSIDE that guard
-   * so a downstream listener error is never silently swallowed.
+   * Drain a cursor in bounded chunks. The read is contained (a rotation/removal
+   * race must not crash the timer or the hook dispatch that calls scan()); parse
+   * and emit run OUTSIDE the guard so a listener error is never swallowed.
    */
   private scanCursor(cursor: TranscriptCursor): void {
     for (let budget = 64; budget > 0; budget--) {
-      const chunk = readFs(() => cursor.readChunk());
+      const chunk = this.readFs(cursor.path, () => cursor.readChunk());
       if (chunk === undefined) return; // contained FS failure; keep last offset
       if (chunk.text.length > 0) this.emitLines(cursor.path, chunk.text, cursor);
       if (!chunk.more) return;
+    }
+  }
+
+  /**
+   * Runs an fs read, containing the removal/rotation race so it never crashes the
+   * timer or hook dispatch — but recording a bounded, content-free diagnostic
+   * (count + last error code) so a persistent fault is visible, not silent (§5.4).
+   */
+  private readFs<T>(path: string, read: () => T): T | undefined {
+    try {
+      return read();
+    } catch (error) {
+      this.readErrors.record(path, error);
+      return undefined;
+    }
+  }
+
+  /** Async twin of readFs: contains and records a rejected stat during polling. */
+  private async readFsAsync(path: string, read: () => Promise<boolean>): Promise<boolean> {
+    try {
+      return await read();
+    } catch (error) {
+      this.readErrors.record(path, error);
+      return false;
     }
   }
 
@@ -148,24 +181,6 @@ export class ClaudeTranscriptWatcher {
     for (const summary of summarizeClaudeRecord(item)) {
       this.emit({ elwoodSessionId: this.elwoodSessionId, path, item, summary });
     }
-  }
-}
-
-/** Runs a filesystem read, returning undefined on the expected removal/rotation race. */
-function readFs<T>(read: () => T): T | undefined {
-  try {
-    return read();
-  } catch {
-    return undefined;
-  }
-}
-
-/** Async twin of readFs: contains a rejected stat during idle polling as `false`. */
-async function readFsAsync(read: () => Promise<boolean>): Promise<boolean> {
-  try {
-    return await read();
-  } catch {
-    return false;
   }
 }
 

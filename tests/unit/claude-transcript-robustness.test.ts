@@ -11,6 +11,7 @@ import {
   type ClaudeTranscriptEvent,
   ClaudeTranscriptWatcher,
   type TranscriptDropNotice,
+  type TranscriptReadErrorNotice,
 } from "../../src/claude/transcript.ts";
 
 const assistant = (text: string) => ({
@@ -25,11 +26,9 @@ describe("C-CLAUDE-15 transcript watcher robustness", () => {
     const path = tmpFile();
     const events: ClaudeTranscriptEvent[] = [];
     const drops: TranscriptDropNotice[] = [];
-    const watcher = new ClaudeTranscriptWatcher(
-      "s1",
-      (e) => events.push(e),
-      (d) => drops.push(d),
-    );
+    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e), {
+      onDrop: (d) => drops.push(d),
+    });
     writeFileSync(path, "");
     watcher.observe(path);
     writeFileSync(path, `${record(assistant("ok"))}{ not json }\n`);
@@ -41,19 +40,28 @@ describe("C-CLAUDE-15 transcript watcher robustness", () => {
     expect(drops).toEqual([{ elwoodSessionId: "s1", path, droppedCount: 1, droppedBytes: 12 }]);
   });
 
-  test("a filesystem error during scan is contained (best-effort, non-throwing)", () => {
+  test("a filesystem error during scan is contained AND surfaced as a bounded diagnostic", () => {
     // Replace the file with a directory: reads now throw a rotation-race-like
-    // error that the fs guard must swallow without crashing the timer.
+    // error that the fs guard must swallow without crashing the timer, while
+    // still surfacing a bounded, content-free read-error notice (count + code).
     const path = tmpFile();
     const events: ClaudeTranscriptEvent[] = [];
-    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
+    const readErrors: TranscriptReadErrorNotice[] = [];
+    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e), {
+      onReadError: (n) => readErrors.push(n),
+    });
     writeFileSync(path, "");
     watcher.observe(path);
     rmSync(path);
     mkdirSync(path); // reading a directory throws EISDIR
     expect(() => watcher.scan()).not.toThrow();
     expect(events).toEqual([]);
-    watcher.stop();
+    watcher.finish();
+    // Not silent: a bounded notice carrying the count, last error code, and path.
+    // Each contained read attempt increments the count (scan + finish re-read).
+    expect(readErrors.at(-1)).toMatchObject({ elwoodSessionId: "s1", path });
+    expect(readErrors.at(-1)!.errorCount).toBeGreaterThanOrEqual(1);
+    expect(readErrors.at(-1)!.lastErrorCode).toBeTruthy();
   });
 
   test("a failing baseline read at observe is contained (no crash, no baseline)", () => {
@@ -98,11 +106,7 @@ describe("C-CLAUDE-15 transcript watcher robustness", () => {
   test("drop notices are rate-bounded and content-free, not one-per-line", () => {
     const path = tmpFile();
     const drops: TranscriptDropNotice[] = [];
-    const watcher = new ClaudeTranscriptWatcher(
-      "s1",
-      () => {},
-      (d) => drops.push(d),
-    );
+    const watcher = new ClaudeTranscriptWatcher("s1", () => {}, { onDrop: (d) => drops.push(d) });
     writeFileSync(path, "");
     watcher.observe(path);
     // 60 malformed lines: notify on the first, then at the 50-drop threshold, and

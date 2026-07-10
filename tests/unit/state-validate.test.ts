@@ -84,27 +84,6 @@ describe("session record validation", () => {
       validateSessionRecord({ ...base, warnings: [{ ...warning, source: "terminal" }] }, root, id),
     ).toBeNull();
   });
-  test("C-CLAUDE-15 accepts and gates the transcript_records_dropped warning", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
-    const base = jsonRecord(root);
-    const warning = {
-      elwoodSessionId: id,
-      agent: "claude",
-      source: "terminal",
-      code: "transcript_records_dropped",
-      severity: "warning",
-      message: "Dropped 3 record(s).",
-      droppedCount: 3,
-      droppedBytes: 42,
-      transcriptPath: "/tmp/t.jsonl",
-      raw: "count=3",
-    };
-    // Valid survives round-trip; a non-numeric count is rejected, not coerced.
-    expect(validateSessionRecord({ ...base, warnings: [warning] }, root, id)).not.toBeNull();
-    expect(
-      validateSessionRecord({ ...base, warnings: [{ ...warning, droppedCount: "3" }] }, root, id),
-    ).toBeNull();
-  });
 });
 
 describe("state store edges", () => {

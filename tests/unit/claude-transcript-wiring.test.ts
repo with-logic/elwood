@@ -3,7 +3,7 @@
  * Covers PRD §5.4 (C-CLAUDE-15): both transcript paths observed; drops surfaced.
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -95,5 +95,25 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
       transcriptPath: path,
     });
     expect(activities).not.toContainEqual(expect.objectContaining({ kind: "warning" }));
+  });
+
+  test("a contained fs read error is routed to the sink as a transcript_read_error warning", () => {
+    const emitter = { emit: () => {} } as never;
+    const recorded: ElwoodWarningEvent[] = [];
+    const sink: WarningSink = { recordWarnings: (w) => recorded.push(...w) };
+    const watcher = createTranscriptWatcher("s9", emitter, () => sink);
+    const path = tmpFile();
+    writeFileSync(path, "");
+    watcher.observe(path);
+    rmSync(path);
+    mkdirSync(path); // reads now throw EISDIR: contained and surfaced, not silent
+    watcher.scan();
+    watcher.finish();
+    expect(recorded.at(-1)).toMatchObject({
+      code: "transcript_read_error",
+      agent: "claude",
+      errorCount: expect.any(Number),
+      transcriptPath: path,
+    });
   });
 });

@@ -133,11 +133,9 @@ describe("C-CLAUDE-15 Claude transcript watcher", () => {
     const path = tmpFile();
     const events: ClaudeTranscriptEvent[] = [];
     const drops: TranscriptDropNotice[] = [];
-    const watcher = new ClaudeTranscriptWatcher(
-      "s1",
-      (e) => events.push(e),
-      (d) => drops.push(d),
-    );
+    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e), {
+      onDrop: (d) => drops.push(d),
+    });
     writeRecords(path);
     watcher.observe(path);
     writeFileSync(path, `${JSON.stringify(assistant("a"))}\n\n${JSON.stringify(assistant("b"))}\n`);
