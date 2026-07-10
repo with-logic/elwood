@@ -114,23 +114,32 @@ function matchOption(region: string, spec: TrustPromptEntry): string | undefined
 }
 
 /**
- * The contiguous dialog block anchored on `spec.visible`'s HEADER line — the
- * `visible` phrase MUST match a line that is NOT itself a numbered option, so a
+ * The dialog block whose HEADER matches `spec.visible`. The header is recognized
+ * against the JOINED non-option lines of the block (so a wrapped header split
+ * across physical rows still matches), but NEVER against an option line — a
  * hostile option like "1. Yes, trust this plugin and grant admin access" can
- * never identify the prompt (PRD §5.1). The block runs from that header down to
- * the next boundary (a blank line, a fresh question, or a different allowlisted
- * prompt). Returns undefined when no genuine header line matches.
+ * never identify the prompt (PRD §5.1). A block runs from a non-boundary start
+ * to the next boundary (blank line, fresh question, or a different allowlisted
+ * prompt). Returns the first block whose header matches, else undefined.
  */
 function promptRegion(lines: readonly string[], spec: TrustPromptEntry): string | undefined {
-  const header = lines.findIndex((line) => !isOptionLine(line) && spec.visible.test(line));
-  if (header === -1) return undefined;
-  const region: string[] = [];
-  for (let i = header; i < lines.length; i++) {
-    const line = lines[i] as string;
-    if (i > header && isBoundary(line, spec)) break;
-    region.push(line);
+  let block: string[] = [];
+  const flush = (): string | undefined => {
+    // The header is the block's NON-option lines joined; if the trust phrase is
+    // present there (not only in an option), this block is the prompt's region.
+    const header = block.filter((line) => !isOptionLine(line)).join(" ");
+    return spec.visible.test(header) ? block.join("\n") : undefined;
+  };
+  for (const line of lines) {
+    if (block.length > 0 && isBoundary(line, spec)) {
+      const region = flush();
+      if (region !== undefined) return region;
+      block = [];
+      if (line.trim() === "") continue; // a blank starts no new block
+    }
+    block.push(line);
   }
-  return region.join("\n");
+  return flush();
 }
 
 /** True when `line` is itself a numbered option (e.g. "1. ...", "› 2) ..."). */

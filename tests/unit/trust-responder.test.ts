@@ -29,6 +29,30 @@ describe("allowlisted trust prompt automation", () => {
     expect(writes).toEqual(["1\r"]);
   });
 
+  test("C-CLAUDE-10 answers the REAL claude 2.1.206 folder-trust frame, header WRAPPED", () => {
+    // Captured from claude 2.1.206 (C-E2E-09). The header question wraps across
+    // physical rows on a narrow terminal, and the trust phrase lives in the header
+    // AND the option — recognition must match the joined wrapped header (not a
+    // single line), and answer the affirmative. Regression: header-anchored
+    // line-by-line matching silently missed the wrapped header, wedging autotrust.
+    const writes: string[] = [];
+    const frame = [
+      "Quick safety check: Is this a project you created or one you",
+      "trust? (Like your own code, a well-known open source project). If not,",
+      "take a moment to review what's in this folder first.",
+      "Claude Code'll be able to read, edit, and execute files here.",
+      "Security guide",
+      "❯ 1. Yes, I trust this folder",
+      "  2. No, exit",
+      "Enter to confirm · Esc to cancel",
+    ].join("\n");
+    expect(new TrustPromptResponder("claude", true).handle(frame, (i) => writes.push(i))).toEqual({
+      kind: "answered",
+      automation: { prompt: "workspace_trust", input: "1" },
+    });
+    expect(writes).toEqual(["1\r"]);
+  });
+
   test("C-CLAUDE-14 answers the allowlisted skill/plugin/MCP trust prompts", () => {
     for (const [screen, id, option] of [
       ["Load this skill?\n1. Yes, trust it", "skill_trust", "1"],
