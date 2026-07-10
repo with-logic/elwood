@@ -1903,6 +1903,7 @@ Each criterion has:
 | C-E2E-06 | §4.5 | A real session started in a project with its own agent configuration loads that configuration additively: project-defined hooks fire alongside Elwood's bridge hooks and project instruction files are loaded by the agent. |
 | C-E2E-07 | §5.4 | A real committed Claude turn surfaces an `assistant_message` with `source: "transcript"` and a `transcriptPath`, and no `assistant_message` is emitted with `source: "hook"` (C-CLAUDE-15). |
 | C-E2E-08 | §5.4 | A real Claude tool turn surfaces `tool_call` and `tool_result` with `source: "transcript"`, correlated `toolUseId`s, and serialized input/output, and no `tool_call`/`tool_result` is emitted with `source: "hook"` (C-CLAUDE-15). |
+| C-E2E-09 | §5.1 | The trust-prompt allowlist recognizes and answers the REAL folder-trust frame the installed Claude CLI renders in a fresh untrusted directory (header-anchored recognition + affirmative-option selection), verified against captured CLI wording; the test skips loudly (logging the captured terminal) if no matchable frame renders, never passing silently. |
 
 ## 15. Open Implementation Notes
 
