@@ -84,4 +84,33 @@ describe("allowlisted trust prompt automation", () => {
     ).toBeUndefined();
     expect(writes).toEqual([]);
   });
+
+  test("C-CLAUDE-14 a prompt's option region stops at a DIFFERENT prompt's header", () => {
+    const writes: string[] = [];
+    const responder = new TrustPromptResponder("claude", true);
+    // Folder-trust is visible with NO option of its own; a skill-trust dialog
+    // below has "1. Yes". The region for folder-trust must stop at the skill
+    // header, so folder-trust does NOT steal the skill dialog's Yes. Folder-trust
+    // is thus unanswerable; the skill prompt (later in the loop) is answered.
+    const frame = "Do you trust this folder?\nLoad this skill?\n1. Yes, trust it";
+    const result = responder.handle(frame, (input) => writes.push(input));
+    // The FIRST spec in allowlist order is workspace_trust: its region excludes
+    // the skill option, so it is surfaced as unanswerable (never answered wrong).
+    expect(result).toEqual({ kind: "unanswerable", prompt: "workspace_trust" });
+    expect(writes).toEqual([]); // the skill dialog's Yes was NOT written for folder trust
+  });
+
+  test("C-CLAUDE-14 a blank line after an option ends the prompt's region", () => {
+    const writes: string[] = [];
+    const responder = new TrustPromptResponder("claude", true);
+    // Folder-trust header, its own declined-only option, then a blank line, then
+    // an unrelated dialog's Yes. The blank line (after an option was seen) ends
+    // the region, so the trailing foreign Yes is not considered.
+    const frame = "Do you trust this folder?\n1. No, cancel\n\nSomething else\n1. Yes, do it";
+    expect(responder.handle(frame, (input) => writes.push(input))).toEqual({
+      kind: "unanswerable",
+      prompt: "workspace_trust",
+    });
+    expect(writes).toEqual([]);
+  });
 });

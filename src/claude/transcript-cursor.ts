@@ -115,10 +115,25 @@ function afterBoundary(text: string, boundary: number): string {
     .join("\n");
 }
 
+/**
+ * True only for a genuine user PROMPT record — the real turn boundary. A Claude
+ * `tool_result` is ALSO a `type: "user"` record, but it belongs to the CURRENT
+ * turn (assistant tool_use → user tool_result → assistant text), so treating it
+ * as the boundary would drop committed tool activity C-CLAUDE-15 requires. A
+ * prompt carries prose (string content or a `text` block); a pure tool_result
+ * record carries only `tool_result` blocks and is NOT a boundary.
+ */
 function isUserRecord(line: string): boolean {
   if (!line.trim()) return false;
   try {
-    return (JSON.parse(line) as { type?: unknown }).type === "user";
+    const record = JSON.parse(line) as { type?: unknown; message?: { content?: unknown } };
+    if (record.type !== "user") return false;
+    const content = record.message?.content;
+    if (typeof content === "string") return true; // string content is always prose
+    if (!Array.isArray(content)) return false;
+    // A prompt has at least one non-tool_result block; a pure tool_result record
+    // (every block is a tool_result) is part of the current turn, not a boundary.
+    return content.some((block) => (block as { type?: unknown })?.type !== "tool_result");
   } catch {
     return false;
   }

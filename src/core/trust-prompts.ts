@@ -40,6 +40,10 @@ export type TrustPromptSpec = {
 const notDecline = "(?!.*\\b(no|without|not|quit|cancel|deny|don't)\\b)";
 const yesOption = new RegExp(`^${notDecline}.*\\b(yes|trust|continue|proceed)\\b`, "i");
 const useMcpOption = new RegExp(`^${notDecline}.*\\buse this(?:.*\\bMCP)? server`, "i");
+// Codex hook trust's real affirmative is "Trust all and continue" / "Trust
+// hooks" — matched specifically so a nearby unrelated dialog's generic "Yes,
+// continue" (e.g. a credential prompt) can never be selected for hook trust.
+const trustHooksOption = new RegExp(`^${notDecline}.*\\btrust\\b.*\\b(hooks?|all)\\b`, "i");
 
 /**
  * The allowlist. Wording verified against claude 2.1.205 and codex-cli 0.142.5.
@@ -79,7 +83,9 @@ export const trustPromptAllowlist = [
     id: "hook_trust",
     agent: "codex",
     visible: /Hooks need review/i,
-    accept: yesOption,
+    // Specific to hook trust's own option ("Trust all and continue"), never a
+    // generic "Yes" that could belong to a different dialog in the same frame.
+    accept: trustHooksOption,
     always: true,
   },
 ] as const satisfies readonly TrustPromptSpec[];

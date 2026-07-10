@@ -76,8 +76,48 @@ export function trustPromptVisible(text: string, agent: ElwoodAgentKind): boolea
   return trustPromptAllowlist.some((spec) => spec.agent === agent && spec.visible.test(text));
 }
 
+/**
+ * Finds THIS prompt's affirmative option, scoped to the prompt's own region of
+ * the frame. The option must appear on or after the line where `spec.visible`
+ * matches and before the region ends (a blank line or the start of a DIFFERENT
+ * allowlisted prompt). This prevents a prompt's text pairing with a "Yes" that
+ * actually belongs to a different, unrelated dialog rendered in the same frame
+ * (e.g. "Hooks need review" above "Delete credentials? 1. Yes") — PRD §5.1.
+ */
 function acceptOption(frame: string, spec: TrustPromptEntry): string | undefined {
-  return numberedOptions(frame).find((option) => spec.accept.test(option.label))?.number;
+  const region = promptRegion(frame, spec);
+  return numberedOptions(region).find((option) => spec.accept.test(option.label))?.number;
+}
+
+/**
+ * The lines belonging to `spec`'s prompt: from its `visible` line to the region
+ * end. `acceptOption` is only reached after `spec.visible.test(frame)` succeeded
+ * and every `visible` pattern is line-local, so a matching line always exists;
+ * `Math.max(0, …)` keeps the loop well-formed without an unreachable guard.
+ */
+function promptRegion(frame: string, spec: TrustPromptEntry): string {
+  const lines = frame.split("\n");
+  const start = Math.max(
+    0,
+    lines.findIndex((line) => spec.visible.test(line)),
+  );
+  const region: string[] = [];
+  let sawOption = false;
+  for (let i = start; i < lines.length; i++) {
+    const line = lines[i] as string;
+    // The header of ANOTHER allowlisted prompt always ends this region — those
+    // options belong to that dialog. A blank line ends it too, but only once
+    // we've already seen an option, so a "header\n\n  1. Yes" layout still works.
+    if (i > start && (startsOtherPrompt(line, spec) || (sawOption && line.trim() === ""))) break;
+    if (/(?:^|[\s›>])\d+[.)]/.test(line)) sawOption = true;
+    region.push(line);
+  }
+  return region.join("\n");
+}
+
+/** True when `line` is the header of a different allowlisted prompt than `spec`. */
+function startsOtherPrompt(line: string, spec: TrustPromptEntry): boolean {
+  return trustPromptAllowlist.some((other) => other !== spec && other.visible.test(line));
 }
 
 function numberedOptions(
