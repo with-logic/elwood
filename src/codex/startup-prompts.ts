@@ -7,13 +7,17 @@ import type { TrustPromptIdFor } from "../core/trust-prompts.ts";
 import { TrustPromptResponder } from "../core/trust-responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 
-export type CodexStartupPromptAutomation = {
-  /** A Codex trust-prompt label (Claude-only ids are excluded) or `update`. */
-  readonly prompt: TrustPromptIdFor<"codex"> | "update";
-  readonly input: string;
-  /** True when a recognized trust prompt could not be answered (see startup-automation). */
-  readonly unanswerable?: boolean;
-};
+/** A Codex startup-prompt label: a Codex trust-prompt id (Claude ids excluded) or `update`. */
+export type CodexStartupPromptLabel = TrustPromptIdFor<"codex"> | "update";
+
+/**
+ * Discriminated so the two outcomes can't be confused: an `answered` prompt
+ * always carries the `input` sent; an `unanswerable` prompt (recognized trust
+ * prompt with no verified option) never does.
+ */
+export type CodexStartupPromptAutomation =
+  | { readonly kind: "answered"; readonly prompt: CodexStartupPromptLabel; readonly input: string }
+  | { readonly kind: "unanswerable"; readonly prompt: CodexStartupPromptLabel };
 
 export type CodexStartupPromptResult = {
   readonly warnings: readonly ElwoodWarningEvent[];
@@ -44,16 +48,17 @@ export class CodexStartupPromptResponder {
     // Trust prompts are matched against the CURRENT frame only: a stale phrase in
     // the accumulated buffer must never pair with a different dialog's answer.
     const trust = this.trust.handle(screenText, write);
-    if (trust?.kind === "answered") automations.push(trust.automation);
-    else if (trust?.kind === "unanswerable") {
-      automations.push({ prompt: trust.prompt, input: "", unanswerable: true });
+    if (trust?.kind === "answered") {
+      automations.push({ kind: "answered", ...trust.automation });
+    } else if (trust?.kind === "unanswerable") {
+      automations.push({ kind: "unanswerable", prompt: trust.prompt });
     }
     // Skipping an available update is not a trust decision, so it stays here.
     if (!this.skippedUpdate && /update/i.test(this.buffer)) {
       const option = findNumberedOption(this.buffer, updateOptionPattern);
       if (option) {
         write(option);
-        automations.push({ prompt: "update", input: option });
+        automations.push({ kind: "answered", prompt: "update", input: option });
         this.skippedUpdate = true;
       }
     }

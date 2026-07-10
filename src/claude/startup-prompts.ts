@@ -17,16 +17,17 @@ export class ClaudeStartupPromptResponder {
   handle(screenText: string, write: (input: string) => void): readonly StartupPromptAutomation[] {
     const automations: StartupPromptAutomation[] = [];
     const trust = this.trust.handle(screenText, write);
-    if (trust?.kind === "answered") automations.push(trust.automation);
-    else if (trust?.kind === "unanswerable") {
-      automations.push({ prompt: trust.prompt, input: "", unanswerable: true });
+    if (trust?.kind === "answered") {
+      automations.push({ kind: "answered", ...trust.automation });
+    } else if (trust?.kind === "unanswerable") {
+      automations.push({ kind: "unanswerable", prompt: trust.prompt });
     }
     if (!this.browserDeclined && browserToolsPromptVisible(screenText)) {
       // Escape is the prompt's documented decline path and needs no option
       // number, so it stays correct if the option ordering changes.
       write("\u001b");
       this.browserDeclined = true;
-      automations.push({ prompt: "browser_tools", input: "esc" });
+      automations.push({ kind: "answered", prompt: "browser_tools", input: "esc" });
     }
     return automations;
   }

@@ -21,7 +21,7 @@ describe("ClaudeStartupPromptResponder", () => {
     const responder = new ClaudeStartupPromptResponder(false);
     const writes: string[] = [];
     const first = responder.handle(browserPrompt, (input) => writes.push(input));
-    expect(first).toEqual([{ prompt: "browser_tools", input: "esc" }]);
+    expect(first).toEqual([{ kind: "answered", prompt: "browser_tools", input: "esc" }]);
     expect(writes).toEqual(["\u001b"]);
     expect(responder.handle(browserPrompt, (input) => writes.push(input))).toEqual([]);
     expect(writes).toEqual(["\u001b"]);
@@ -54,7 +54,7 @@ describe("ClaudeStartupPromptResponder", () => {
       "New MCP server found in this project\n1. Do something unexpected\n2. No",
       (input) => writes.push(input),
     );
-    expect(automations).toEqual([{ prompt: "mcp_trust", input: "", unanswerable: true }]);
+    expect(automations).toEqual([{ kind: "unanswerable", prompt: "mcp_trust" }]);
     expect(writes).toEqual([]);
   });
 });

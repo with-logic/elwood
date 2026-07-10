@@ -106,7 +106,9 @@ describe("Codex startup prompt responder", () => {
       "Do you trust the contents of this directory?\n› 1. Yes, continue\n  2. No, quit",
       (input) => writes.push(input),
     );
-    expect(result.automations).toEqual([{ prompt: "workspace_trust", input: "1" }]);
+    expect(result.automations).toEqual([
+      { kind: "answered", prompt: "workspace_trust", input: "1" },
+    ]);
     expect(writes).toEqual(["1\r"]);
   });
 

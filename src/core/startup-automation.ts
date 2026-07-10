@@ -5,18 +5,16 @@
 
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity.ts";
 
-export type StartupPromptAutomation = {
-  readonly prompt: string;
-  readonly input: string;
-  /**
-   * True when Elwood RECOGNIZED an allowlisted trust prompt but could not find
-   * its verified affirmative option in the frame, so it did not answer. This
-   * surfaces as `attention` (the session needs a human / an updated allowlist)
-   * rather than a normal answered `startup_prompt`, so the agent never wedges
-   * silently (C-CLAUDE-14).
-   */
-  readonly unanswerable?: boolean;
-};
+/**
+ * The outcome of a startup-prompt automation, discriminated so the two states
+ * cannot be confused: an `answered` prompt ALWAYS carries the `input` sent, while
+ * an `unanswerable` prompt (recognized allowlisted trust prompt whose verified
+ * option was absent — C-CLAUDE-14) NEVER carries an input. A contradictory shape
+ * like `{ input: "1", unanswerable: true }` is no longer representable.
+ */
+export type StartupPromptAutomation =
+  | { readonly kind: "answered"; readonly prompt: string; readonly input: string }
+  | { readonly kind: "unanswerable"; readonly prompt: string };
 
 export type StartupActivityEmitter = {
   emit(event: "activity", payload: ElwoodActivityEvent): void;
@@ -27,7 +25,7 @@ export function activityFromStartupPrompt(
   elwoodSessionId: string,
   automation: StartupPromptAutomation,
 ): ElwoodActivityEvent {
-  if (automation.unanswerable) {
+  if (automation.kind === "unanswerable") {
     return {
       elwoodSessionId,
       agent,
