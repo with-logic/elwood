@@ -79,37 +79,47 @@ export function activityFromTerminalExit(
   };
 }
 
-export function activityFromHook(
-  agent: ElwoodAgentKind,
-  elwoodSessionId: string,
+/** Hook events both adapters map identically; returns undefined for the rest. */
+function sharedHookActivity(
+  base: Omit<ElwoodActivityEvent, "kind" | "label" | "text">,
   event: ClaudeHookEvent | CodexHookEvent,
-): ElwoodActivityEvent {
-  const base = meta.hookActivityBase(agent, elwoodSessionId, event);
+): ElwoodActivityEvent | undefined {
   if (event.hook_event_name === "UserPromptSubmit") {
     return withText(base, "user_message", "user", event.prompt);
   }
   if (event.hook_event_name === "Notification") {
     return withText(base, "notification", event.notification_type, event.message);
   }
-  // Claude's assistant_message, tool_call, and tool_result are sourced from the
-  // committed transcript (C-CLAUDE-15). For Claude these hook events therefore
-  // stay plain `hook` activity — emitting tool_call/tool_result here too would
-  // duplicate the transcript items and let a hook observation masquerade as a
-  // committed one. Codex has no transcript-backed Claude path, so its tool hooks
-  // and stop message remain its tool/message activity source.
-  if (agent === "codex") return codexHookActivity(base, event);
-  return { ...base, kind: "hook", label: event.hook_event_name };
+  return undefined;
 }
 
-function codexHookActivity(
-  base: Omit<ElwoodActivityEvent, "kind" | "label" | "text">,
-  event: ClaudeHookEvent | CodexHookEvent,
+/**
+ * Claude hook → activity. Agent/event correlation stops a Claude event routing
+ * through the Codex path. Claude tool/assistant activity is transcript-sourced
+ * (C-CLAUDE-15), so those hooks stay plain `hook` here (no transcript duplicate).
+ */
+export function activityFromClaudeHook(
+  elwoodSessionId: string,
+  event: ClaudeHookEvent,
 ): ElwoodActivityEvent {
+  const base = meta.hookActivityBase("claude", elwoodSessionId, event);
+  const shared = sharedHookActivity(base, event);
+  return shared ?? { ...base, kind: "hook", label: event.hook_event_name };
+}
+
+/** Codex hook → activity. Codex has no transcript-backed path, so its tool hooks and stop message remain its source. */
+export function activityFromCodexHook(
+  elwoodSessionId: string,
+  event: CodexHookEvent,
+): ElwoodActivityEvent {
+  const base = meta.hookActivityBase("codex", elwoodSessionId, event);
+  const shared = sharedHookActivity(base, event);
+  if (shared) return shared;
   if (event.hook_event_name === "PreToolUse" || event.hook_event_name === "PermissionRequest") {
-    return toolActivity(base, "tool_call", event, meta.hookToolInput(event));
+    return toolActivity(base, "tool_call", meta.hookToolInput(event));
   }
-  if (event.hook_event_name === "PostToolUse" || event.hook_event_name === "PostToolBatch") {
-    return toolActivity(base, "tool_result", event, meta.hookToolOutput(event));
+  if (event.hook_event_name === "PostToolUse") {
+    return toolActivity(base, "tool_result", meta.hookToolOutput(event));
   }
   const text = meta.stopMessage(event);
   if (text !== undefined) {
@@ -182,8 +192,8 @@ function withText(
 function toolActivity(
   base: Omit<ElwoodActivityEvent, "kind" | "label" | "text">,
   kind: "tool_call" | "tool_result",
-  event: ClaudeHookEvent | CodexHookEvent,
   io: Partial<ElwoodActivityEvent>,
 ): ElwoodActivityEvent {
-  return { ...base, kind, label: base.toolName ?? event.hook_event_name, ...io };
+  // Callers are Codex tool events, which always carry `tool_name`.
+  return { ...base, kind, label: base.toolName as string, ...io };
 }

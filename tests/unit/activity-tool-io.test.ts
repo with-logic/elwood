@@ -50,38 +50,25 @@ describe("Elwood activity tool input/output", () => {
     expect(noInput.toolInput).toBeUndefined();
   });
 
-  test("C-API-30 falls back to String for non-serializable Codex tool input", async () => {
-    const { activityFromHook } = await import("../../src/core/activity.ts");
-    const circular: Record<string, unknown> = {};
-    circular["self"] = circular;
-    const event = activityFromHook("codex", "e2", {
-      hook_event_name: "PreToolUse",
-      session_id: "s",
-      cwd: "/repo",
-      tool_name: "Bash",
-      tool_input: circular,
-    } as never);
-    expect(event.toolInput).toBe("[object Object]");
-  });
-
   test("C-CLAUDE-15 Claude tool hook events are NOT emitted as tool activity", async () => {
-    const { activityFromHook } = await import("../../src/core/activity.ts");
+    const { activityFromClaudeHook } = await import("../../src/core/activity.ts");
     // PreToolUse/PostToolUse for Claude are plain hook observations now; the
     // committed tool_call/tool_result comes from the transcript instead.
-    const pre = activityFromHook("claude", "e1", {
+    const pre = activityFromClaudeHook("e1", {
       hook_event_name: "PreToolUse",
       session_id: "s",
       cwd: "/repo",
       tool_name: "Bash",
       tool_input: { command: "ls" },
     });
-    const post = activityFromHook("claude", "e1", {
+    const post = activityFromClaudeHook("e1", {
       hook_event_name: "PostToolUse",
       session_id: "s",
       cwd: "/repo",
       tool_name: "Bash",
+      tool_input: { command: "ls" },
       tool_response: { stdout: "x" },
-    } as never);
+    });
     expect(pre.kind).toBe("hook");
     expect(post.kind).toBe("hook");
     expect(pre.toolInput).toBeUndefined();

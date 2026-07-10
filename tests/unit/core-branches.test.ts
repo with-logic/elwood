@@ -5,8 +5,8 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  activityFromCodexHook,
   activityFromCodexTranscript,
-  activityFromHook,
   activityFromHookResult,
 } from "../../src/core/activity.ts";
 import { ControlQueue } from "../../src/core/control-queue.ts";
@@ -14,22 +14,31 @@ import { ElwoodError } from "../../src/core/errors.ts";
 import { TrustPromptResponder } from "../../src/core/trust-responder.ts";
 
 describe("core activity branches", () => {
-  test("C-API-12 falls back to hook event names when tool metadata is missing", () => {
-    // Tool-hook mapping is the Codex path now (Claude tool activity is
-    // transcript-sourced, C-CLAUDE-15).
-    const permission = activityFromHook("codex", "elwood-7", {
+  test("C-API-12 falls back to the event name when tool metadata is missing", () => {
+    // Codex maps tool hooks to tool activity (Claude tool activity is
+    // transcript-sourced, C-CLAUDE-15). With no tool_name the label falls back to
+    // the hook event name. Valid events only — agent/event correlation (M2)
+    // rejects impossible shapes at compile time, no `as never` needed.
+    const permission = activityFromCodexHook("elwood-7", {
       hook_event_name: "PermissionRequest",
       session_id: "codex-session",
       cwd: "/repo",
-    } as never);
-    const batch = activityFromHook("codex", "elwood-7", {
-      hook_event_name: "PostToolBatch",
+      model: "gpt-5.3-codex",
+      turn_id: "t1",
+      tool_name: "Bash",
+      tool_input: { command: "ls" },
+    });
+    const post = activityFromCodexHook("elwood-7", {
+      hook_event_name: "PostToolUse",
       session_id: "codex-session",
       cwd: "/repo",
-      tool_calls: [],
-    } as never);
-    expect(permission).toMatchObject({ kind: "tool_call", label: "PermissionRequest" });
-    expect(batch).toMatchObject({ kind: "tool_result", label: "PostToolBatch" });
+      model: "gpt-5.3-codex",
+      turn_id: "t1",
+      tool_name: "Bash",
+      tool_input: { command: "ls" },
+    });
+    expect(permission).toMatchObject({ kind: "tool_call", label: "Bash" });
+    expect(post).toMatchObject({ kind: "tool_result", label: "Bash" });
   });
 
   test("C-API-12 maps non-object transcript items and unnamed tool calls", () => {

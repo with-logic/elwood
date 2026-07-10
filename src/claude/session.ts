@@ -94,7 +94,7 @@ export async function startClaudeFromRecord(
         session?.rememberClaudeSessionId(event.session_id);
       observeTranscript(transcriptWatcher, event);
       emitter.emit("hook", event);
-      emitter.emit("activity", activity.activityFromHook("claude", record.elwoodSessionId, event));
+      emitter.emit("activity", activity.activityFromClaudeHook(record.elwoodSessionId, event));
       const outcome = await requestHook(
         emitter,
         event,

@@ -5,10 +5,10 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  activityFromClaudeHook,
+  activityFromCodexHook,
   activityFromCodexTranscript,
-  activityFromHook,
   activityFromHookError,
-  activityFromHookResult,
   activityFromStatus,
   activityFromTerminalExit,
 } from "../../src/core/activity.ts";
@@ -16,7 +16,7 @@ import { TerminalReplayBuffer } from "../../src/core/terminal-replay.ts";
 
 describe("Elwood activity events", () => {
   test("C-API-12 maps hook prompts with Elwood session identity", () => {
-    const event = activityFromHook("claude", "elwood-1", {
+    const event = activityFromClaudeHook("elwood-1", {
       hook_event_name: "UserPromptSubmit",
       session_id: "claude-session",
       cwd: "/repo",
@@ -34,7 +34,7 @@ describe("Elwood activity events", () => {
   });
 
   test("C-API-12 maps tools, assistant messages, and hook errors", () => {
-    const tool = activityFromHook("codex", "elwood-2", {
+    const tool = activityFromCodexHook("elwood-2", {
       hook_event_name: "PermissionRequest",
       session_id: "codex-session",
       cwd: "/repo",
@@ -44,7 +44,7 @@ describe("Elwood activity events", () => {
       tool_name: "Bash",
       tool_input: { command: "npm test" },
     });
-    const stop = activityFromHook("codex", "elwood-2", {
+    const stop = activityFromCodexHook("elwood-2", {
       hook_event_name: "Stop",
       session_id: "codex-session",
       cwd: "/repo",
@@ -75,26 +75,38 @@ describe("Elwood activity events", () => {
   });
 
   test("C-API-12 maps tool results and unknown transcript items", () => {
-    // Codex still maps tool hooks to tool activity; Claude tool activity is
-    // transcript-sourced (C-CLAUDE-15) and covered in activity-tool-io.test.ts.
-    const toolResult = activityFromHook("codex", "elwood-4", {
+    // A Codex PostToolUse hook maps to tool_result; the hook carries no output
+    // field (that comes from the transcript), so toolOutput is absent here.
+    const toolResult = activityFromCodexHook("elwood-4", {
       hook_event_name: "PostToolUse",
       session_id: "codex-session",
       cwd: "/repo",
-      tool_name: "Read",
-      tool_input: { file_path: "README.md" },
-      tool_response: { content: "ok" },
-    } as never);
+      model: "gpt-5.3-codex",
+      turn_id: "t1",
+      tool_name: "Bash",
+      tool_input: { command: "ls" },
+    });
     const unknown = activityFromCodexTranscript({
       elwoodSessionId: "elwood-4",
       path: "/tmp/transcript.jsonl",
       item: { payload: { type: "unknown" } },
       summary: { kind: "other", label: "unknown" },
     });
-    expect(toolResult).toMatchObject({ kind: "tool_result", label: "Read" });
-    expect(toolResult.toolOutput).toBe('{"content":"ok"}');
-    expect(toolResult.toolInput).toBeUndefined();
+    expect(toolResult).toMatchObject({ kind: "tool_result", label: "Bash" });
+    expect(toolResult.toolOutput).toBeUndefined();
     expect(unknown).toMatchObject({ kind: "other", label: "unknown" });
+    // A generic-tool input that JSON.stringify cannot serialize (BigInt) falls
+    // back to String() rather than throwing.
+    const bigintTool = activityFromCodexHook("elwood-4", {
+      hook_event_name: "PreToolUse",
+      session_id: "codex-session",
+      cwd: "/repo",
+      model: "gpt-5.3-codex",
+      turn_id: "t1",
+      tool_name: "unknown:custom",
+      tool_input: { n: 1n },
+    });
+    expect(bigintTool.toolInput).toBe("[object Object]");
   });
 
   test("C-API-12 maps transcript metadata and lifecycle events", () => {
@@ -145,46 +157,6 @@ describe("Elwood activity events", () => {
       kind: "terminal_exit",
       exitCode: 0,
     });
-  });
-
-  test("C-API-12 maps hook result labels for known response variants", () => {
-    expect(
-      activityFromHookResult(
-        "claude",
-        "elwood-5",
-        "SessionStart",
-        {
-          additionalContext: "ctx",
-        },
-        false,
-      ).label,
-    ).toBe("context");
-    expect(
-      activityFromHookResult("claude", "elwood-5", "Elicitation", { action: "accept" }, false)
-        .label,
-    ).toBe("accept");
-    expect(
-      activityFromHookResult("claude", "elwood-5", "PermissionDenied", { retry: true }, false)
-        .label,
-    ).toBe("retry");
-    expect(
-      activityFromHookResult(
-        "claude",
-        "elwood-5",
-        "WorktreeCreate",
-        {
-          worktreePath: "/tmp/work",
-        },
-        false,
-      ).label,
-    ).toBe("worktree");
-    expect(activityFromHookResult("codex", "elwood-5", "Stop", undefined, true)).toMatchObject({
-      hookEventName: "Stop",
-      failedOpen: true,
-    });
-    expect(
-      activityFromHookResult("codex", "elwood-5", "Stop", { ignored: true }, false).label,
-    ).toBe("response");
   });
 
   test("C-API-17 terminal replay trims oldest chunks over the byte limit", () => {

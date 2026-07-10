@@ -56,7 +56,7 @@ export async function dispatchHook(
     session?.rememberCodexSessionId(event.session_id);
   }
   emitter.emit("hook", event);
-  emitter.emit("activity", activity.activityFromHook("codex", record.elwoodSessionId, event));
+  emitter.emit("activity", activity.activityFromCodexHook(record.elwoodSessionId, event));
   const outcome = await requestCodexHook(
     emitter,
     event,
