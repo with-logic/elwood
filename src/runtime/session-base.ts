@@ -147,6 +147,7 @@ export abstract class AgentSessionBase {
     return this.statusEngine.submit(kind);
   }
   submitExit(): StatusDecision {
+    this.reaper.reap(); // Reap on exit — even unsolicited — to avoid pgid reuse (C-LIFE-10). One-shot.
     return this.statusEngine.submit(this.pendingShutdown ?? "terminal_exited");
   }
   statusDecisions(): readonly StatusDecision[] {

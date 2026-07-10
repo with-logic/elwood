@@ -87,6 +87,42 @@ describe("C-LIFE-10 process-group reaping", () => {
     expect(killed).toEqual([LEADER]);
   });
 
+  const deadPty = {
+    pid: LEADER,
+    onData: () => () => {},
+    onExit: () => () => {},
+    write: () => {},
+    resize: () => "resized" as const,
+    kill: () => {},
+  };
+  const throwingReaper = () =>
+    new SessionReaper(LEADER, {
+      killGroup: () => {
+        throw new Error("reap failure");
+      },
+    });
+
+  test("a failed termination is preserved when reaping also fails", async () => {
+    // Both fail → the ORIGINAL termination error wins; a reap failure must not
+    // mask the real cause (only surfaces when termination succeeded).
+    await expect(
+      terminatePty(deadPty, "SIGKILL", throwingReaper(), { gracefulMs: 0, forceMs: 0 }),
+    ).rejects.toMatchObject({ code: "termination_failed" });
+  });
+
+  test("a reap failure surfaces only when termination succeeded", async () => {
+    const exitingPty = {
+      ...deadPty,
+      onExit: (handler: (exit: PtyExit) => void) => {
+        queueMicrotask(() => handler({ exitCode: 0 }));
+        return () => {};
+      },
+    };
+    await expect(
+      terminatePty(exitingPty, "SIGKILL", throwingReaper(), { gracefulMs: 0, forceMs: 10 }),
+    ).rejects.toThrow("reap failure");
+  });
+
   test("real seams: kills a descendant reparented to PID 1 that a pgrep -P walk would miss", async () => {
     // Reproduces the hook-bridge leak shape: a PTY leader (zsh) whose middle
     // process spawns a long-lived grandchild and then exits. POSIX reparents the

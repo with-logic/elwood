@@ -131,16 +131,29 @@ describe("ClaudeSession lifecycle", () => {
     expect(reapedGroups.filter((pid) => pid === leaderPid)).toEqual([leaderPid]);
   });
 
-  test("C-LIFE-10 an already-terminal teardown still reaps the leader group", async () => {
+  test("C-LIFE-10 an UNSOLICITED PTY exit reaps the group immediately", async () => {
+    // A natural exit must reap on the spot — not wait for a later lifecycle call,
+    // which would leave a window for the kernel to recycle the pgid.
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
     const leaderPid = ptys.at(-1)!.pid;
-    ptys.at(-1)!.emitExit({ exitCode: 0 }); // leader exits on its own first
+    reapedGroups.length = 0;
+    ptys.at(-1)!.emitExit({ exitCode: 0 }); // unsolicited exit, no stop/kill/teardown
+    expect(session.status).toBe("exited");
+    expect(reapedGroups).toContain(leaderPid);
+  });
+
+  test("C-LIFE-10 teardown after a natural exit does not double-signal the group", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    ptys.at(-1)!.emitExit({ exitCode: 0 }); // reaps on exit (one-shot)
     expect(session.status).toBe("exited");
     reapedGroups.length = 0;
-    await session.teardown(); // terminatePty skipped, but the group is still reaped
-    expect(reapedGroups).toContain(leaderPid);
+    await session.teardown();
+    // The one-shot reaper already fired on the exit, so teardown does NOT signal again.
+    expect(reapedGroups).toEqual([]);
   });
 
   test("C-LIFE-11 teardown reaps and completes even when it rejects an in-flight message", async () => {
