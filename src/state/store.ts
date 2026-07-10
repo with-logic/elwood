@@ -5,10 +5,6 @@
 
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { removeSocketHome } from "./socket-home.ts";
-
-export { withFreshSocketPath } from "./socket-home.ts";
-
 import { ElwoodError, elwoodError } from "../core/errors.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
 import {
@@ -20,6 +16,7 @@ import {
   writeSharedFile,
 } from "./files.ts";
 import type { AdapterState, ClaudeLaunchPosture, CodexLaunchPosture } from "./launch-posture.ts";
+import { removeSocketHome, withFreshSocketPath } from "./socket-home.ts";
 import { validateSessionRecord } from "./validate.ts";
 
 export type SessionRecord = {
@@ -48,7 +45,7 @@ export function defaultStateDir(cwd: string): string {
   return join(resolve(cwd), ".elwood");
 }
 
-export { safeSessionDir as sessionDir };
+export { safeSessionDir as sessionDir, withFreshSocketPath };
 
 export function createSessionRecord(input: {
   readonly stateDir: string;
@@ -191,7 +188,9 @@ function warningKey(warning: ElwoodWarningEvent): string {
   if (warning.code === "version_unparseable") return `${warning.code}:${warning.agent}`;
   if ("mcpServerName" in warning) return `${warning.code}:${warning.mcpServerName}`;
   if ("failedServers" in warning) return `${warning.code}:${warning.failedServers.join(",")}`;
-  return warning.code; // `reap_failed` keys on `code`: one leader pid per session.
+  // Key reap_failed on code AND pgid: a resume's NEW leaked leader is distinct.
+  if (warning.code === "reap_failed") return `${warning.code}:${warning.processGroupId}`;
+  return warning.code;
 }
 
 function recordPath(dir: string): string {

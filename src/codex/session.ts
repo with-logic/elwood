@@ -6,13 +6,13 @@ import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, elwoodError } from "../core/errors.ts";
 import { queuePersonaMessage } from "../core/persona.ts";
 import { observeRenderedFrame } from "../core/rendered-observers.ts";
-import { applyStartupAutomations } from "../core/startup-automation.ts";
+import { emitStartupPromptActivities } from "../core/startup-automation.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import { TurnStateWatcher } from "../core/turn-state.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { assertStartupUsable } from "../runtime/startup.ts";
-import { cleanupStartupResources } from "../runtime/startup-cleanup.ts";
+import { cleanupStartupResources, guardStartupRegion } from "../runtime/startup-cleanup.ts";
 import { secureMkdir } from "../state/files.ts";
 import { codexLaunchPosture, withCodexLaunch } from "../state/launch-posture.ts";
 import {
@@ -140,7 +140,7 @@ export async function startCodexFromRecord(
         renderedTerminal.sendInput(input),
       );
       session?.recordWarnings(result.warnings);
-      applyStartupAutomations(emitter, "codex", record.elwoodSessionId, result.automations);
+      emitStartupPromptActivities(emitter, "codex", record.elwoodSessionId, result.automations);
       // Readiness is hook-backed (the `SessionStart` hook fires it); the frame
       // only arms the starvation-deadline fallback, never releases the queue
       // on the boot-time composer placeholder (C-API-28, see initial-ready.ts).
@@ -158,37 +158,36 @@ export async function startCodexFromRecord(
     terminalReplay,
     transcriptWatcher,
   );
-  // The `SessionStart` hook releases the first queued message (C-API-28).
-  session.setInitialReadyHook(() => ready.mark());
-  ready.replay();
   const id = record.elwoodSessionId;
-  // C-LIFE-10: drain+emit behind an error boundary; submitExit (reaps in `finally`) always runs.
-  pty.onExit((exit) => {
-    startupExit = exit;
-    ready.cancel();
-    const drainAndEmit = () => {
-      transcriptWatcher.finish();
-      emitter.emit("terminal:exit", { elwoodSessionId: id, ...exit });
-      emitter.emit("activity", activity.activityFromTerminalExit("codex", id, exit.exitCode));
-    };
-    finishCodexExit(drainAndEmit, () => session?.submitExit());
-  });
-  try {
-    await assertStartupUsable({
-      adapter: "codex",
-      exit: () => startupExit,
-      output: () => startupOutput,
-    });
-  } catch (error) {
-    await cleanupStartupResources({
-      before: () => ready.cancel(),
-      pty,
-      bridge,
-      terminal,
-      after: () => transcriptWatcher.stop(),
-    });
-    throw error;
-  }
-  session.submitEvidence("startup_usable");
+  const activeSession = session;
+  // ONE guarded region for every live-resource step after the session exists
+  // (readiness wiring/replay, exit registration, startup assertion, startup evidence):
+  // a failure in ANY of them tears down the now-live PTY, bridge, terminal, readiness
+  // watcher, and transcript watcher before rethrowing (PRD §9.1, §9.4). Mirrors Claude.
+  await guardStartupRegion(
+    async () => {
+      // The `SessionStart` hook releases the first queued message (C-API-28).
+      activeSession.setInitialReadyHook(() => ready.mark());
+      ready.replay();
+      // C-LIFE-10: drain+emit behind an error boundary; submitExit (reaps in `finally`) always runs.
+      pty.onExit((exit) => {
+        startupExit = exit;
+        ready.cancel();
+        const drainAndEmit = () => {
+          transcriptWatcher.finish();
+          emitter.emit("terminal:exit", { elwoodSessionId: id, ...exit });
+          emitter.emit("activity", activity.activityFromTerminalExit("codex", id, exit.exitCode));
+        };
+        finishCodexExit(drainAndEmit, () => activeSession.submitExit());
+      });
+      await assertStartupUsable({
+        adapter: "codex",
+        exit: () => startupExit,
+        output: () => startupOutput,
+      });
+      activeSession.submitEvidence("startup_usable");
+    },
+    { before: () => ready.cancel(), pty, bridge, terminal, after: () => transcriptWatcher.stop() },
+  );
   return session;
 }

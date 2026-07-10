@@ -45,8 +45,18 @@ export class TranscriptCursor {
   // the bounded backward scan (`scanBaselineTail`): UTF-8-seam-safe, linear, and —
   // when the turn is larger than the cap — recovering the in-window committed
   // records rather than silently dropping the whole turn (§5.4, C-CLAUDE-15).
-  baselineTail(): string {
-    return scanBaselineTail(this.path, fileSize(this.path)).lines.join("\n");
+  // Returns the joined tail text PLUS whether the scan hit its cap (`truncated`)
+  // and, if so, the bytes beyond the window that were NOT recovered — so the caller
+  // can surface that loss as a bounded, content-free drop instead of dropping it
+  // silently (MINOR: propagate BaselineTail.truncated for drop accounting).
+  baselineTail(): { text: string; truncated: boolean; droppedBytes: number } {
+    const size = fileSize(this.path);
+    const tail = scanBaselineTail(this.path, size);
+    return {
+      text: tail.lines.join("\n"),
+      truncated: tail.truncated,
+      droppedBytes: tail.unrecoveredBytes,
+    };
   }
 
   // True when the file changed size (grew OR truncated) since the last read, via

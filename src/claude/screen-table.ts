@@ -4,8 +4,8 @@
  * C-ATTN-03.
  */
 
-import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
-import { blockingTrustSpecs, trustPromptHeaderVisible } from "../core/trust-prompts.ts";
+import type { ScreenFactTable } from "../core/screen-facts.ts";
+import { withTrustBlockingRules } from "../core/trust-blocking.ts";
 
 /**
  * Verified against claude 2.1.203 (see `verifiedAgainst`). The footer renders
@@ -43,21 +43,7 @@ export const claudeScreenFactTable: ScreenFactTable = {
   ],
 };
 
-/**
- * A blocking rule per trust prompt that stays UNANSWERED under the policy
- * (C-ATTN-03), with stable semantic ids from the prompt id (not positional).
- */
+/** Appends the shared per-agent trust blocking rules (C-ATTN-03; PRD §5.1). */
 export function claudeScreenFactTableForTrustPolicy(autotrust: boolean): ScreenFactTable {
-  const rules: ScreenFactRule[] = blockingTrustSpecs("claude", autotrust).map((spec) => ({
-    id: `claude-${spec.id}-prompt`,
-    fact: "blocking_prompt_visible",
-    // Option-aware recognition: the header must appear on a NON-option line, so an
-    // unrelated dialog whose numbered option merely contains a trust phrase is NOT
-    // misclassified as a blocking trust prompt (PRD §5.1). Same recognizer the
-    // responder uses, so classification and answering never diverge.
-    match: (text) => trustPromptHeaderVisible(text, spec),
-  }));
-  return rules.length === 0
-    ? claudeScreenFactTable
-    : { ...claudeScreenFactTable, rules: [...claudeScreenFactTable.rules, ...rules] };
+  return withTrustBlockingRules(claudeScreenFactTable, "claude", autotrust);
 }

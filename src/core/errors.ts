@@ -55,6 +55,18 @@ export function elwoodError(
 }
 
 /**
+ * The errno string of a thrown value, or `undefined` when it has none. Narrows
+ * object-ness FIRST so a thrown `null`/`undefined`/primitive can never make the
+ * inspection itself throw a secondary TypeError that would replace the original
+ * failure — the caller keeps and rethrows the real thrown value (C-ERR-01).
+ */
+export function errnoCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
+
+/**
  * Extracts diagnosable details from an underlying failure (C-ERR-08):
  * message as cause, plus errno/syscall/path when the error exposes them.
  */

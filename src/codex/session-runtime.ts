@@ -4,6 +4,7 @@
  */
 
 import { bridgeScriptSource } from "../bridge/script.ts";
+import { finishSessionExit } from "../runtime/session-exit.ts";
 import { writePrivateFileAtomic } from "../state/files.ts";
 import type { SessionRecord } from "../state/store.ts";
 
@@ -15,22 +16,12 @@ export function writeCodexRuntimeFiles(record: SessionRecord): void {
 }
 
 /**
- * Run the Codex PTY-exit drain + emission behind an error boundary, then ALWAYS
- * submit terminal status (PRD §5.3 C-LIFE-10). `submitExit` reaps the descendant
- * tree in its own `finally`, so a throwing transcript finish, terminal:exit, or
- * activity listener can never skip the terminal status or the unconditional reap,
- * and no listener failure escapes the native exit callback.
+ * Run the Codex PTY-exit drain + emission behind the shared error boundary, then
+ * ALWAYS submit terminal status (PRD §5.3 C-LIFE-10). `submitExit` reaps in its own
+ * `finally`, so a throwing transcript finish, terminal:exit, or activity listener can
+ * never skip the terminal status or the unconditional reap. Thin adapter wrapper over
+ * `finishSessionExit` — kept so the Codex startup path names its own exit step.
  */
 export function finishCodexExit(drainAndEmit: () => void, submitExit: () => void): void {
-  try {
-    drainAndEmit();
-  } catch {
-    // A throwing drain/emit listener must not skip terminal status + reap.
-  } finally {
-    try {
-      submitExit();
-    } catch {
-      // Status submitted and reap ran in submitExit's finally; contain the rest.
-    }
-  }
+  finishSessionExit(drainAndEmit, submitExit);
 }

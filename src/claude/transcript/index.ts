@@ -15,6 +15,7 @@ import {
   type TranscriptReadErrorNotice,
 } from "./drops.ts";
 import { type ClaudeTranscriptEvent, LineEmitter } from "./emit.ts";
+import { TranscriptFsGuard } from "./fs-guard.ts";
 import type { TranscriptNoticeHandlers, TranscriptWatcherSeed } from "./watcher-config.ts";
 
 export type { TranscriptNoticeHandlers, TranscriptWatcherSeed } from "./watcher-config.ts";
@@ -34,7 +35,7 @@ export class ClaudeTranscriptWatcher {
   // ONE budget shared across every retire() + finish(): terminal work is watcher-bounded (§9.2).
   private readonly terminalBudget: ChunkBudget = newTerminalBudget();
   private readonly drops: DropTracker;
-  private readonly readErrors: ReadErrorTracker;
+  private readonly guard: TranscriptFsGuard;
   private readonly onPollError: ((error: unknown) => void) | undefined;
   private readonly pollIntervalMs: number;
   private readonly lines: LineEmitter;
@@ -46,7 +47,8 @@ export class ClaudeTranscriptWatcher {
     seed: TranscriptWatcherSeed = {},
   ) {
     this.drops = new DropTracker(elwoodSessionId, notices.onDrop, seed.drops);
-    this.readErrors = new ReadErrorTracker(elwoodSessionId, notices.onReadError, seed.readErrors);
+    const readErrors = new ReadErrorTracker(elwoodSessionId, notices.onReadError, seed.readErrors);
+    this.guard = new TranscriptFsGuard(readErrors, () => this.finished);
     this.onPollError = notices.onPollError;
     this.pollIntervalMs = notices.pollIntervalMs ?? pollMs;
     this.lines = new LineEmitter(elwoodSessionId, emit, this.drops);
@@ -57,11 +59,18 @@ export class ClaudeTranscriptWatcher {
   // after finish — a late hook must not emit past terminal:exit.
   observe(path: string, recoverTail = false): void {
     if (this.finished || this.cursors.has(path)) return;
-    const cursor = this.readFs(path, () => new TranscriptCursor(path));
+    const cursor = this.guard.read(path, () => new TranscriptCursor(path));
     if (cursor === undefined) return;
     this.cursors.set(path, cursor);
-    if (recoverTail)
-      this.lines.emitLines(path, this.readFs(path, () => cursor.baselineTail()) ?? "");
+    if (recoverTail) {
+      const tail = this.guard.read(path, () => cursor.baselineTail());
+      this.lines.emitLines(path, tail?.text ?? "");
+      // A turn larger than the recovery window surfaces its out-of-window records as
+      // a bounded, content-free backlog loss so the gap is not silent (§5.4).
+      if (tail?.truncated && tail.droppedBytes > 0)
+        this.drops.recordBytes(path, tail.droppedBytes, 1, "unread_backlog");
+    }
+    this.drops.flush(); // one persist per observe, not one per recovered drop
     this.ensurePolling();
   }
 
@@ -72,6 +81,7 @@ export class ClaudeTranscriptWatcher {
       if (budget.chunks <= 0) break; // watcher-wide budget spent; resume next tick
       this.scanCursor(cursor, budget);
     }
+    this.drops.flush(); // ≤one persist per scan pass, not one per malformed record
   }
 
   // Flush + retire a stopped subagent's transcript (one-shot): drained against the
@@ -96,9 +106,8 @@ export class ClaudeTranscriptWatcher {
     try {
       const budget = { chunks: scanChunksPerScan }; // one budget for the whole pass
       for (const cursor of this.cursors.values()) {
-        const changed = await this.readFsAsync(cursor.path, () => cursor.needsScan());
-        // Re-check after the await: finish() (post-exit emit breaks §5.4 ordering)
-        // or retire() (drained+deleted this cursor) may have run during the stat.
+        const changed = await this.guard.readAsync(cursor.path, () => cursor.needsScan());
+        // Re-check after the await: finish() or retire() may have run mid-stat (§5.4).
         if (this.finished) return;
         if (this.cursors.get(cursor.path) !== cursor) continue;
         if (budget.chunks <= 0) break; // watcher-wide budget spent this tick
@@ -106,13 +115,17 @@ export class ClaudeTranscriptWatcher {
       }
     } finally {
       this.polling = false;
+      // ≤one persist per poll tick, not one per malformed record. Skipped once
+      // finished (a drop past terminal:exit breaks the latch); finish()'s own drain
+      // flushes the pending aggregate instead (§5.4).
+      if (!this.finished) this.drops.flush();
     }
   }
 
   // Flush buffered partials, then permanently stop. `finished` set FIRST so an
   // in-flight poll bails and later observe/scan/retire no-op — nothing emits past
   // terminal:exit (§5.4); flushing must not prevent stop() (finally). The drain uses
-  // the shared budget's LEFTOVER, is wall-clock-slice-bounded, drops leftovers (§9.2).
+  // the shared budget's LEFTOVER and is wall-clock-slice-bounded (§9.2).
   finish(): void {
     if (this.finished) return;
     this.finished = true;
@@ -123,9 +136,10 @@ export class ClaudeTranscriptWatcher {
     }
   }
 
-  // `readFs` is bound so the shared fs guard still contains a read failure mid-drain.
+  // The guard's `read` is bound so the shared fs guard still contains a read
+  // failure mid-drain (the drain's `readFs` seam maps to it).
   private drainContext(): DrainContext {
-    return { readFs: this.readFs.bind(this), lines: this.lines, drops: this.drops };
+    return { readFs: this.guard.read.bind(this.guard), lines: this.lines, drops: this.drops };
   }
 
   stop(): void {
@@ -135,9 +149,9 @@ export class ClaudeTranscriptWatcher {
 
   private ensurePolling(): void {
     if (this.interval || this.finished) return;
-    // scanCursor can throw a synchronous listener error AFTER the poll's await,
-    // which on the timer path would become an unhandled rejection. The catch stops
-    // the watcher and routes the failure (non-throwing recovery, chain voided).
+    // scanCursor can throw a listener error after the poll's await, which on the
+    // timer path would become an unhandled rejection; the catch stops the watcher
+    // and routes the failure (non-throwing recovery).
     this.interval = setInterval(() => {
       void this.poll().catch((error) => this.recoverFromPollError(error));
     }, this.pollIntervalMs);
@@ -145,8 +159,8 @@ export class ClaudeTranscriptWatcher {
   }
 
   // Non-throwing recovery for a failed poll: finish() and the poll-error diagnostic
-  // can each throw a listener error; a throw here would become a host-terminating
-  // unhandled rejection, so each step is contained.
+  // can each throw a listener error, which would become a host-terminating unhandled
+  // rejection, so each step is contained.
   private recoverFromPollError(error: unknown): void {
     try {
       this.finish();
@@ -159,42 +173,14 @@ export class ClaudeTranscriptWatcher {
   }
 
   // Drain a cursor in bounded chunks against the SHARED per-scan budget (sync work
-  // bounded across ALL cursors); the read is contained, parse/emit run OUTSIDE it.
+  // bounded across ALL cursors); the read is contained, parse/emit run outside it.
   private scanCursor(cursor: TranscriptCursor, budget: ChunkBudget): void {
     while (budget.chunks > 0) {
       budget.chunks -= 1;
-      const chunk = this.readFs(cursor.path, () => cursor.readChunk());
+      const chunk = this.guard.read(cursor.path, () => cursor.readChunk());
       if (chunk === undefined) return; // contained FS failure; keep last offset
       if (chunk.text.length > 0) this.lines.emitLines(cursor.path, chunk.text, cursor);
       if (!chunk.more) return;
     } // budget exhausted with more to read: the next poll tick resumes here.
-  }
-
-  // Contains the removal/rotation race (never crashes the timer/hook dispatch) and
-  // records a bounded diagnostic so a persistent fault stays visible (§5.4).
-  private readFs<T>(path: string, read: () => T): T | undefined {
-    try {
-      return read();
-    } catch (error) {
-      this.readErrors.record(path, error);
-      return undefined;
-    }
-  }
-
-  /**
-   * Async twin of readFs: contains and records a rejected stat during polling.
-   * A stat kicked off before finish()/teardown can reject AFTER the watcher is
-   * terminal; recording/routing its warning then would emit and persist activity
-   * past `terminal:exit`, breaking the permanent latch (§5.4). So the rejection is
-   * only accounted while `!this.finished` — a post-finish rejected stat is
-   * swallowed content-free, and poll()'s own post-await latch check still bails.
-   */
-  private async readFsAsync(path: string, read: () => Promise<boolean>): Promise<boolean> {
-    try {
-      return await read();
-    } catch (error) {
-      if (!this.finished) this.readErrors.record(path, error);
-      return false;
-    }
   }
 }

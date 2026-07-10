@@ -33,22 +33,13 @@ export type WiredTranscriptWatcher = {
    * budget plus a small wall-clock slice, §9.2), so it returns to the event loop
    * promptly rather than looping over a hundreds-of-MiB backlog. A flush failure is
    * contained and routed as a bounded, content-free `transcript_poll_stopped`
-   * diagnostic; a throwing diagnostic listener is swallowed so it can't block
-   * lifecycle completion.
+   * diagnostic carrying `phase: "final_flush"` (so lost trailing shutdown activity
+   * is distinguishable from a live poll failure); a throwing diagnostic listener is
+   * swallowed so it can't block lifecycle completion.
    */
   readonly finishSafely: (afterFlush?: () => void) => void;
 };
 
-/**
- * Builds a transcript watcher that emits committed items and bounded diagnostics
- * (drops, contained fs errors, and a poll-error stop). Diagnostics are routed
- * through the session's warning sink so they are de-duplicated, persisted into
- * the session snapshot, and emitted through the `warning`/`activity` contract.
- * The sink is resolved lazily because the session object is constructed after the
- * watcher (PRD §5.7). A diagnostic observed BEFORE the sink exists is BUFFERED
- * and flushed through `recordWarnings` once it does — never silently emitted as
- * activity-only (which would neither persist nor replay).
- */
 /**
  * Recovers the prior running drop/read-error totals from a resumed session's
  * persisted warnings so the watcher continues counting from the snapshot instead
@@ -73,6 +64,16 @@ export function transcriptSeedFromWarnings(
   };
 }
 
+/**
+ * Builds a transcript watcher that emits committed items and bounded diagnostics
+ * (drops, contained fs errors, and a poll-error stop). Diagnostics are routed
+ * through the session's warning sink so they are de-duplicated, persisted into
+ * the session snapshot, and emitted through the `warning`/`activity` contract.
+ * The sink is resolved lazily because the session object is constructed after the
+ * watcher (PRD §5.7). A diagnostic observed BEFORE the sink exists is BUFFERED
+ * and flushed through `recordWarnings` once it does — never silently emitted as
+ * activity-only (which would neither persist nor replay).
+ */
 export function createTranscriptWatcher(
   elwoodSessionId: string,
   emitter: TranscriptActivityEmitter,
@@ -113,7 +114,9 @@ export function createTranscriptWatcher(
       watcher.finish();
     } catch (error) {
       try {
-        route(pollErrorWarning(elwoodSessionId, error));
+        // A failed FINAL flush at exit is phase-labelled so an operator can tell
+        // lost trailing shutdown activity from a live poll failure (MAJOR: phase).
+        route(pollErrorWarning(elwoodSessionId, error, "final_flush"));
       } catch {} // a diagnostic-listener bug must not block lifecycle completion
     } finally {
       afterFlush();

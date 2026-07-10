@@ -9,7 +9,6 @@ import {
   activityFromCodexHook,
   activityFromCodexTranscript,
   activityFromHookError,
-  activityFromReapFailure,
   activityFromStatus,
   activityFromTerminalExit,
 } from "../../src/core/activity.ts";
@@ -153,28 +152,6 @@ describe("Elwood activity events", () => {
       kind: "terminal_exit",
       exitCode: 0,
     });
-  });
-
-  test("C-LIFE-10 a reap failure projects a warning activity carrying pgid + code", () => {
-    // An errno cause is normalized to its code and the pgid is preserved, so the
-    // projected activity locates AND explains the un-reaped group.
-    const fromError = activityFromReapFailure(
-      "claude",
-      "elwood-9",
-      4242,
-      Object.assign(new Error("permission denied"), { code: "EPERM" }),
-    );
-    expect(fromError).toMatchObject({ kind: "warning", label: "reap_failed" });
-    expect(fromError.text).toContain("EPERM");
-    expect(fromError.text).toContain("4242");
-    expect(fromError.raw).toMatchObject({ code: "reap_failed", processGroupId: 4242 });
-    // A plain Error without an errno code normalizes to its `.name`, not its message.
-    const fromPlain = activityFromReapFailure("claude", "elwood-9", 7, new TypeError("bad state"));
-    expect(fromPlain.text).toContain("TypeError");
-    expect(fromPlain.text).not.toContain("bad state");
-    // A non-Error cause is stringified rather than dropped.
-    const fromString = activityFromReapFailure("codex", "elwood-9", 7, "raw-failure");
-    expect(fromString.text).toContain("raw-failure");
   });
 
   test("C-API-17 terminal replay trims oldest chunks over the byte limit", () => {

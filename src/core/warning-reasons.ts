@@ -1,0 +1,82 @@
+/**
+ * The fixed allowlists of bounded reason/error-code tokens carried by content-free
+ * warnings, and their derived types + guards.
+ * Implements PRD §5.7 and §8.2 (C-CLAUDE-15, C-LIFE-10): the `reason` field of a
+ * `transcript_poll_stopped` warning and the `errorCode` field of a `reap_failed`
+ * warning may carry ONLY a value from a fixed allowlist — never a raw system
+ * message or a caller-controlled string. This module is the single source of
+ * truth those unions, their producers, and persisted-state validation all derive
+ * from, so a producer, the type, and the validator can never drift apart.
+ */
+
+/**
+ * The allowlisted tokens for `transcript_poll_stopped.reason`: standard JS error
+ * constructor names + common Node filesystem/stream errnos, plus the fixed
+ * `UnknownError` fallback that any unrecognized value collapses to.
+ */
+export const POLL_ERROR_REASONS = [
+  "UnknownError",
+  // Standard ECMAScript error constructor names.
+  "Error",
+  "TypeError",
+  "RangeError",
+  "ReferenceError",
+  "SyntaxError",
+  "EvalError",
+  "URIError",
+  "AggregateError",
+  // Common Node.js filesystem/stream errno codes seen on a transcript read.
+  "ENOENT",
+  "EACCES",
+  "EPERM",
+  "EISDIR",
+  "ENOTDIR",
+  "EBADF",
+  "EMFILE",
+  "ENFILE",
+  "ELOOP",
+  "ENAMETOOLONG",
+  "EBUSY",
+  "EAGAIN",
+  "EIO",
+] as const;
+
+/** A bounded, allowlisted `transcript_poll_stopped.reason` token. */
+export type PollErrorReason = (typeof POLL_ERROR_REASONS)[number];
+
+const pollErrorReasons: ReadonlySet<string> = new Set(POLL_ERROR_REASONS);
+
+export function isPollErrorReason(value: unknown): value is PollErrorReason {
+  return typeof value === "string" && pollErrorReasons.has(value);
+}
+
+/**
+ * The allowlisted tokens for `reap_failed.errorCode`: standard JS error
+ * constructor names + the process-signalling errnos a group SIGKILL can surface,
+ * plus the fixed `UnknownError` fallback any unrecognized value collapses to. A
+ * reap failure's error `name`/`.code`/message are caller/system-controlled, so
+ * only a value on this allowlist may reach persisted state.
+ */
+export const REAP_ERROR_CODES = [
+  "UnknownError",
+  // Standard ECMAScript error constructor names.
+  "Error",
+  "TypeError",
+  "RangeError",
+  "ReferenceError",
+  // Errnos a process-group signal (kill(-pgid, SIGKILL)) can surface.
+  "EPERM",
+  "ESRCH",
+  "EINVAL",
+  "EACCES",
+  "EAGAIN",
+] as const;
+
+/** A bounded, allowlisted `reap_failed.errorCode` token. */
+export type ReapErrorCode = (typeof REAP_ERROR_CODES)[number];
+
+const reapErrorCodes: ReadonlySet<string> = new Set(REAP_ERROR_CODES);
+
+export function isReapErrorCode(value: unknown): value is ReapErrorCode {
+  return typeof value === "string" && reapErrorCodes.has(value);
+}

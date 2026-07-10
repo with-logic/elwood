@@ -1,7 +1,6 @@
 /** Shared adapter session behavior: lifecycle, input, command surface. Implements PRD §5.3, §5.7. */
 
-import type { ElwoodAgentKind } from "../core/activity.ts";
-import { activityFromStatus } from "../core/activity.ts";
+import { activityFromStatus, type ElwoodAgentKind } from "../core/activity.ts";
 import { ControlQueue } from "../core/control-queue.ts";
 import { elwoodError } from "../core/errors.ts";
 import type { ModelPickerSpec } from "../core/model-picker.ts";
@@ -17,12 +16,12 @@ import { agentTitles, type SessionStatusEmitter } from "./session-base-types.ts"
 import { CommandSurface } from "./session-commands.ts";
 import { SessionReapPolicy } from "./session-reap.ts";
 import {
-  runShutdown,
-  runTeardown,
+  buildShutdownHost,
+  runManagedShutdown,
   type ShutdownEvidence,
-  type ShutdownHost,
 } from "./session-shutdown.ts";
 import { terminalStatuses } from "./session-status.ts";
+import { ShutdownCoordinator } from "./shutdown-coordinator.ts";
 import {
   SessionStatusEngine,
   type StatusDecision,
@@ -41,6 +40,9 @@ export abstract class AgentSessionBase {
   private readonly terminalReplay: TerminalReplayBuffer;
   private cleanupPromise: Promise<void> | undefined;
   private pendingShutdown: ShutdownEvidence | undefined;
+  // Serializes overlapping stop/kill/teardown: PTY signaled at most once, later
+  // callers join the in-flight shutdown rather than racing it (C-LIFE-10).
+  private readonly shutdownCoordinator = new ShutdownCoordinator();
   protected readonly controlQueue = new ControlQueue(
     (input, mode) => writeQueuedInput(this.terminal, input, mode, this.pasteGuard()),
     () => this.notRunningError(),
@@ -119,16 +121,16 @@ export abstract class AgentSessionBase {
     return this.inSession(() => this.commands.setModel(id, options));
   }
   stop(): Promise<void> {
-    return runShutdown(this.shutdownHost(), "SIGTERM", "stop_completed");
+    return runManagedShutdown(this.shutdownCoordinator, "stop", () => this.shutdownHost());
   }
   kill(): Promise<void> {
-    return runShutdown(this.shutdownHost(), "SIGKILL", "kill_completed");
+    return runManagedShutdown(this.shutdownCoordinator, "kill", () => this.shutdownHost());
   }
   teardown(): Promise<void> {
-    return runTeardown(this.shutdownHost());
+    return runManagedShutdown(this.shutdownCoordinator, "teardown", () => this.shutdownHost());
   }
-  private shutdownHost(): ShutdownHost {
-    return {
+  private shutdownHost() {
+    return buildShutdownHost({
       pty: this.pty,
       record: this.record,
       reapPolicy: this.reapPolicy,
@@ -138,22 +140,21 @@ export abstract class AgentSessionBase {
       },
       cleanupRuntime: () => this.cleanupRuntime(),
       submitEvidence: (kind) => void this.submitEvidence(kind),
-    };
+    });
   }
   submitEvidence(kind: StatusEvidenceKind): StatusDecision {
     return this.statusEngine.submit(kind);
   }
   submitExit(): StatusDecision {
-    // Terminal status FIRST, reap in `finally` (C-LIFE-10): reaches terminal AND
-    // reaps even if status submission throws.
+    // Terminal status FIRST, reap in `finally`: reaches terminal AND reaps even if
+    // status submission throws (C-LIFE-10).
     try {
       return this.statusEngine.submit(this.pendingShutdown ?? "terminal_exited");
     } finally {
       this.reapSurvivors();
     }
   }
-  // Best-effort reap for the native exit callback (the ONLY swallowing caller): a
-  // failure surfaces as a durable `reap_failed` warning, never thrown.
+  // Best-effort native-exit reap (the ONLY swallowing caller): a failure becomes a durable `reap_failed` warning, never thrown (C-LIFE-10).
   private reapSurvivors(): void {
     const warning = this.reapPolicy.bestEffort();
     if (warning) this.recordWarnings([warning]);
@@ -191,9 +192,9 @@ export abstract class AgentSessionBase {
     return elwoodError("session_not_running", `${agentTitles[this.agent]} session is not running.`);
   }
   private emitStatus(status: ElwoodSessionStatus): void {
-    const elwoodSessionId = this.elwoodSessionId;
+    const id = this.elwoodSessionId;
     this.persist(updateSessionStatus(this.record, status));
-    this.statusEvents.emit("status", { elwoodSessionId, status });
-    this.statusEvents.emit("activity", activityFromStatus(this.agent, elwoodSessionId, status));
+    this.statusEvents.emit("status", { elwoodSessionId: id, status });
+    this.statusEvents.emit("activity", activityFromStatus(this.agent, id, status));
   }
 }

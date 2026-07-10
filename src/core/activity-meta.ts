@@ -9,8 +9,6 @@ import type { CodexTranscriptEvent } from "../codex/transcript.ts";
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity.ts";
 import { stringify } from "./serialize.ts";
 
-export { stringify };
-
 export function hookActivityBase(
   agent: ElwoodAgentKind,
   elwoodSessionId: string,

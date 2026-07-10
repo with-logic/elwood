@@ -998,6 +998,10 @@ type ElwoodWarningEvent =
       // Count, byte magnitude, and path only — never raw transcript content.
       readonly droppedCount: number;
       readonly droppedBytes: number;
+      // Why data was lost: an unparseable committed record, an over-length record
+      // discarded through its next newline, or an unread teardown backlog. Bounds
+      // the diagnostic to a fixed token so cause and cardinality are never false.
+      readonly cause: "unparseable" | "oversized" | "unread_backlog";
       readonly transcriptPath: string;
       readonly raw: string;
     }
@@ -1021,8 +1025,26 @@ type ElwoodWarningEvent =
       readonly code: "transcript_poll_stopped";
       readonly severity: "warning";
       readonly message: string;
-      // A short error reason only — never raw transcript content.
+      // A short, allowlisted error reason only — never raw transcript content.
       readonly reason: string;
+      // Which lifecycle phase failed: a live periodic poll, or the final flush at
+      // PTY exit. Lets an operator tell lost trailing activity during shutdown from
+      // a live-watcher poll failure without a distinct warning code.
+      readonly phase: "poll" | "final_flush";
+      readonly raw: string;
+    }
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "claude" | "codex";
+      readonly source: "lifecycle";
+      readonly code: "reap_failed";
+      readonly severity: "warning";
+      readonly message: string;
+      // The leaked leader's process-group id and a normalized, allowlisted error
+      // code only (e.g. "EPERM") — enough to locate + explain the un-reaped group,
+      // never a raw system message or conversation content.
+      readonly processGroupId: number;
+      readonly errorCode: string;
       readonly raw: string;
     }
   };
@@ -1042,7 +1064,17 @@ bounded size and is discarded through its next newline (so a pathological line
 can neither exhaust memory nor cause quadratic processing), OR when a teardown
 drain (subagent retirement or the final flush at PTY exit) reaches its bound with
 an unread backlog still on disk: the backlog's size is accounted as a drop rather
-than read in a single unbounded synchronous loop. That drain is bounded two ways.
+than read in a single unbounded synchronous loop. A bounded `cause`
+discriminator distinguishes these three sources — `"unparseable"` for a malformed
+committed record, `"oversized"` for an over-length record discarded through its
+next newline, and `"unread_backlog"` for a teardown backlog left unread when the
+drain bound is spent — so the warning never mislabels a valid unread backlog as an
+unparseable record. Because each observation only advances an in-memory running
+count, the persisted snapshot is rewritten at most once per scan pass, per
+teardown-drain call, and at finish — so a chunk holding many malformed records
+causes a bounded number of snapshot writes, not one write per record, while the
+first observation still emits the user-visible `warning` event and the final
+totals are always persisted. That drain is bounded two ways.
 First, a single chunk budget is shared across every subagent retirement AND the
 final flush for a watcher's whole lifetime — a retirement never gets a fresh full
 budget — so aggregate terminal read work is watcher-bounded, not per-retire.
@@ -1060,7 +1092,10 @@ blocks, carries any UTF-8 code point split at a block boundary so recovered text
 is byte-exact, and reaches back only a bounded distance. If the current turn is
 larger than that bound, Elwood recovers the committed records that fall within
 the bounded window rather than discarding the whole turn; only the portion beyond
-the window (including the prompt boundary itself) is not recovered. A turn larger
+the window (including the prompt boundary itself) is not recovered, and that
+truncation is surfaced as a bounded, content-free `transcript_records_dropped`
+drop (`cause: "unread_backlog"`, a byte magnitude, no record text) so the
+observability gap is closed rather than silent. A turn larger
 than the recovery bound therefore never silently loses all of its committed
 activity. The `transcript_read_error`
 warning is emitted when a transcript filesystem read is contained (a
@@ -1069,6 +1104,10 @@ does not swallow it silently. The `transcript_poll_stopped` warning is emitted
 when a programming error escapes the periodic transcript poll OR the final flush
 at PTY exit: the watcher stops itself and surfaces a bounded reason rather than
 letting the failure become an unhandled rejection or abort the exit path. A
+bounded `phase` discriminator records which of the two failed — `"poll"` for a
+live periodic poll, `"final_flush"` for the final flush at PTY exit — so an
+operator can tell lost trailing activity during shutdown from a live-watcher poll
+failure without a distinct warning code. A
 throwing activity listener during the final flush never prevents `terminal:exit`
 emission, terminal status persistence, or the process-tree reap (C-LIFE-10): the
 flush runs behind an error boundary and lifecycle completion is guaranteed. Like
@@ -1084,10 +1123,13 @@ unsolicited PTY exit fails (for example the group SIGKILL returns `EPERM`): the
 session still reaches its terminal status, but the descendant process group may
 have leaked, so the risk is surfaced durably instead of thrown out of the native
 exit callback. This is a lifecycle warning (`source: "lifecycle"`) carrying only
-the leaked leader's process-group id and a normalized error code — never a raw
-system message — and it is de-duplicated, persisted into the session snapshot,
-replayed to late subscribers, and projected into `activity` through the same
-`warning`/`activity` contract as every other warning. A reap failure on an
+the leaked leader's process-group id and a normalized error code drawn from a
+fixed allowlist (standard error names and common Node errnos; any unrecognized
+value collapses to `UnknownError`) — never a raw system message or a
+caller-controlled string — and it is de-duplicated per leaked process group,
+persisted into the session snapshot, replayed to late subscribers, and projected
+into `activity` through the same `warning`/`activity` contract as every other
+warning. A reap failure on an
 *explicit* `stop()`/`kill()`/`teardown()` is NOT downgraded to this warning: it
 rejects with a typed `termination_failed` error so the caller learns the group
 was not confirmed reaped (C-LIFE-10, C-ERR-01).
@@ -1545,6 +1587,16 @@ the first agent prompt. Authentication banner matching is best-effort and should
 cover the common `not authenticated`, `login required`, `authentication failed`,
 and non-MCP `not logged in` forms.
 
+Once the live resources exist (hook bridge, PTY, terminal, and transcript
+watcher), every remaining startup step runs behind a single cleanup boundary: the
+early-warning flush, PTY-exit registration, the readiness/authentication
+assertion, and the startup-usable evidence. If ANY of them fails — including a
+disk or permission error while flushing buffered diagnostics — Elwood tears down
+the now-live PTY, hook bridge, terminal, and transcript watcher before rejecting,
+so a failed `startClaude`/`startCodex` never leaks a live process, IPC endpoint,
+or file watcher. The original startup error is preserved; cleanup failures never
+replace it.
+
 ### 9.3 Resume
 
 `resumeClaude` loads the Elwood session record and starts a new wrapper around
@@ -1583,6 +1635,17 @@ survivor reap (it does not re-signal the dead PTY — node-pty does not replay t
 exit event, and the pid may already be recycled) and rejects with a typed
 `termination_failed` error if that reap fails, leaving the reap retryable by a
 later `teardown()`.
+
+Overlapping `stop()`, `kill()`, and `teardown()` calls on one session are
+serialized so the PTY is signaled at most once. The first caller owns the in-flight
+shutdown; a concurrent caller of the same or a lower urgency joins that same
+in-flight operation rather than snapshotting status independently and re-signaling
+a PID that may already have exited and been recycled. A more urgent call (a
+`kill()` during an in-flight `stop()`, or a `teardown()`) escalates by running after
+the in-flight shutdown settles — by which point the session is terminal, so the
+escalation performs only the one-shot survivor reap and its own extra work (e.g.
+teardown's file removal) and never issues a second PTY signal. Each caller still
+observes its own operation's success or typed failure.
 
 ## 10. Error Model
 

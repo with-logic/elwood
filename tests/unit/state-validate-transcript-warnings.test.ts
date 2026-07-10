@@ -85,15 +85,19 @@ describe("C-CLAUDE-15 transcript warning validation", () => {
       source: "terminal",
       code: "transcript_poll_stopped",
       severity: "warning",
-      message: "Transcript polling stopped after an unexpected error: boom.",
-      reason: "boom",
-      raw: "reason=boom",
+      message: "Transcript polling stopped after an unexpected error.",
+      reason: "ENOENT",
+      raw: "reason=ENOENT",
     };
     expect(validateSessionRecord({ ...record, warnings: [warning] }, root, id)).not.toBeNull();
-    // A missing reason is rejected, not coerced.
-    expect(
-      validateSessionRecord({ ...record, warnings: [{ ...warning, reason: 5 }] }, root, id),
-    ).toBeNull();
+    // The reason is validated against the SAME allowlist the producer draws from,
+    // so a non-numeric reason AND a non-allowlisted (possibly conversation-derived)
+    // string are both rejected rather than round-tripped.
+    for (const bad of [5, "boom", "leakedPromptText"]) {
+      expect(
+        validateSessionRecord({ ...record, warnings: [{ ...warning, reason: bad }] }, root, id),
+      ).toBeNull();
+    }
   });
 
   test("C-LIFE-10 accepts and gates the reap_failed lifecycle warning", () => {
@@ -115,7 +119,14 @@ describe("C-CLAUDE-15 transcript warning validation", () => {
     expect(one({ ...warning, source: "terminal" })).toBeNull(); // wrong source
     expect(one({ ...warning, processGroupId: "4242" })).toBeNull(); // non-integer pgid
     expect(one({ ...warning, processGroupId: 1.5 })).toBeNull(); // fractional pgid
+    // A real PTY leader pid is a safe integer > 1, so 0, 1, negatives, and unsafe
+    // integers are all rejected rather than persisted.
+    for (const bad of [0, 1, -5, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(one({ ...warning, processGroupId: bad })).toBeNull();
+    }
     expect(one({ ...warning, errorCode: 5 })).toBeNull(); // non-string code
+    // A non-allowlisted (possibly conversation-derived) errorCode is rejected.
+    expect(one({ ...warning, errorCode: "leakedSecretToken" })).toBeNull();
     expect(one({ ...warning, agent: "gemini" })).toBeNull(); // unknown agent
   });
 });

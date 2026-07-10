@@ -4,13 +4,11 @@
  */
 
 import { describe, expect, test } from "vitest";
-import type { PtyExit } from "../../src/pty/types.ts";
 import {
   reapProcessGroup,
   rethrowUnlessGroupGone,
   SessionReaper,
 } from "../../src/runtime/reap-tree.ts";
-import { terminatePty } from "../../src/runtime/terminate.ts";
 
 const LEADER = 1000;
 
@@ -52,6 +50,26 @@ describe("C-LIFE-10 process-group reaping", () => {
     expect(() => rethrowUnlessGroupGone({ code: "EPERM" })).toThrow();
   });
 
+  test("preserves a null / non-Error thrown value instead of a secondary TypeError", () => {
+    // C-ERR-01: reading `.code` off a bare null/string must NOT throw a TypeError that
+    // replaces the original failure — the exact thrown value is rethrown unchanged.
+    expect(() => rethrowUnlessGroupGone(null)).toThrow();
+    let caught: unknown;
+    try {
+      rethrowUnlessGroupGone(null);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeNull(); // the original value, not a TypeError about reading `.code`
+    let thrown: unknown;
+    try {
+      rethrowUnlessGroupGone("boom");
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBe("boom"); // the exact bare-string value is preserved
+  });
+
   test("SessionReaper reaps exactly once on success; later calls are reuse-safe no-ops", () => {
     // Reaping the same pgid twice is unsafe: once the group empties the kernel may
     // recycle the pid, so a second kill(-pgid) could hit an unrelated group. The
@@ -87,111 +105,5 @@ describe("C-LIFE-10 process-group reaping", () => {
     // pid 1 is refused by the guard, so the default killer performs no real signal
     // — exercising the no-injected-killer path safely.
     expect(() => new SessionReaper(1).reap()).not.toThrow();
-  });
-
-  const deadPty = {
-    pid: LEADER,
-    onData: () => () => {},
-    onExit: () => () => {},
-    write: () => {},
-    resize: () => "resized" as const,
-    kill: () => {},
-  };
-  const exitingPty = {
-    ...deadPty,
-    onExit: (handler: (exit: PtyExit) => void) => {
-      queueMicrotask(() => handler({ exitCode: 0 }));
-      return () => {};
-    },
-  };
-
-  test("terminatePty reaps the leader's group after exit", async () => {
-    const killed: number[] = [];
-    const reaper = new SessionReaper(LEADER, { killGroup: (p) => killed.push(p) });
-    await terminatePty(exitingPty, "SIGKILL", reaper, { gracefulMs: 0, forceMs: 10 });
-    expect(killed).toEqual([LEADER]);
-  });
-  const throwingReaper = () =>
-    new SessionReaper(LEADER, {
-      killGroup: () => {
-        throw new Error("reap failure");
-      },
-    });
-
-  test("when BOTH termination and reaping fail, both causes are preserved", async () => {
-    // The termination error wins as the thrown cause, but the reap failure must
-    // NOT be silently dropped — it is carried in the error's details (C-LIFE-10).
-    await expect(
-      terminatePty(deadPty, "SIGKILL", throwingReaper(), { gracefulMs: 0, forceMs: 0 }),
-    ).rejects.toMatchObject({
-      code: "termination_failed",
-      details: { reapError: "reap failure" },
-    });
-  });
-
-  test("a PLAIN-Error termination still preserves the reap cause when both fail", async () => {
-    // When pty.kill() throws a plain Error (not an ElwoodError) and the reap also
-    // fails, the original error keeps its identity/message AND carries the reap
-    // cause on `.reapError` — neither cause is dropped (C-LIFE-10).
-    const throwingKillPty = {
-      ...deadPty,
-      kill: () => {
-        throw new Error("kill exploded");
-      },
-    };
-    await expect(
-      terminatePty(throwingKillPty, "SIGKILL", throwingReaper(), { gracefulMs: 0, forceMs: 0 }),
-    ).rejects.toMatchObject({ message: "kill exploded", reapError: "reap failure" });
-  });
-
-  test("a non-Error reap failure is stringified into the diagnostic", async () => {
-    // The reap killer throws a bare string (not an Error): its String() form is
-    // still carried, never dropped, when termination also fails.
-    const stringThrowReaper = new SessionReaper(LEADER, {
-      killGroup: () => {
-        // biome-ignore lint/style/useThrowOnlyError: intentional non-Error throw for coverage of the String() path.
-        throw "raw-string-failure";
-      },
-    });
-    await expect(
-      terminatePty(deadPty, "SIGKILL", stringThrowReaper, { gracefulMs: 0, forceMs: 0 }),
-    ).rejects.toMatchObject({ details: { reapError: "raw-string-failure" } });
-  });
-
-  test("a SIGTERM timeout that escalates and also times out reports SIGKILL", async () => {
-    // The reported signal must be the phase that actually failed: after a SIGTERM
-    // timeout escalates to SIGKILL and that also times out, the operator is sent
-    // to the SIGKILL phase, not misdirected back to SIGTERM.
-    const signals: string[] = [];
-    const neverExits = {
-      ...deadPty,
-      kill: (signal: string) => {
-        signals.push(signal);
-      },
-    };
-    await expect(
-      terminatePty(neverExits, "SIGTERM", new SessionReaper(LEADER, { killGroup: () => {} }), {
-        gracefulMs: 0,
-        forceMs: 0,
-      }),
-    ).rejects.toThrow("PTY did not exit after SIGKILL.");
-    expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
-  });
-
-  test("a reap-ONLY failure (termination succeeded) wraps as typed termination_failed", async () => {
-    // Finding D: PTY exited cleanly but the group reap failed — the raw system error
-    // must NOT escape unwrapped; stop()/kill() reject with a typed `termination_failed`
-    // (PRD §10, C-ERR-01) whose normalized cause preserves errno.
-    const epermReaper = new SessionReaper(LEADER, {
-      killGroup: () => {
-        throw Object.assign(new Error("reap failure"), { code: "EPERM" });
-      },
-    });
-    await expect(
-      terminatePty(exitingPty, "SIGKILL", epermReaper, { gracefulMs: 0, forceMs: 10 }),
-    ).rejects.toMatchObject({
-      code: "termination_failed",
-      details: { cause: "reap failure", errno: "EPERM" },
-    });
   });
 });

@@ -32,7 +32,7 @@ export type StartupPromptLabelFor<A extends ElwoodAgentKind> =
 export type StartupPromptLabel = TrustPromptId | "browser_tools" | "update";
 
 /**
- * The outcome of a startup-prompt automation for agent `A`, discriminated so the
+ * The outcome of handling a startup prompt for agent `A`, discriminated so the
  * two states cannot be confused: an `answered` prompt ALWAYS carries the `input`
  * sent and is labeled with any of the agent's startup labels, while an
  * `option_pending` prompt (recognized allowlisted trust prompt whose affirmative
@@ -41,7 +41,7 @@ export type StartupPromptLabel = TrustPromptId | "browser_tools" | "update";
  * like `browser_tools`/`update` is never "recognized but option-pending"). Both
  * correlate the label to `A`, so an off-agent or impossible label does not compile.
  */
-export type StartupPromptAutomation<A extends ElwoodAgentKind = ElwoodAgentKind> =
+export type StartupPromptOutcome<A extends ElwoodAgentKind = ElwoodAgentKind> =
   | { readonly kind: "answered"; readonly prompt: StartupPromptLabelFor<A>; readonly input: string }
   | { readonly kind: "option_pending"; readonly prompt: TrustPromptIdFor<A> };
 
@@ -52,7 +52,7 @@ export type StartupActivityEmitter = {
 export function activityFromStartupPrompt<A extends ElwoodAgentKind>(
   agent: A,
   elwoodSessionId: string,
-  automation: StartupPromptAutomation<A>,
+  automation: StartupPromptOutcome<A>,
 ): ElwoodActivityEvent {
   if (automation.kind === "option_pending") {
     return {
@@ -78,7 +78,7 @@ export function emitStartupPromptActivity<A extends ElwoodAgentKind>(
   emitter: StartupActivityEmitter,
   agent: A,
   elwoodSessionId: string,
-  automation: StartupPromptAutomation<A>,
+  automation: StartupPromptOutcome<A>,
 ): void {
   emitter.emit("activity", activityFromStartupPrompt(agent, elwoodSessionId, automation));
 }
@@ -90,11 +90,11 @@ export function emitStartupPromptActivity<A extends ElwoodAgentKind>(
  * fire-once `attention` activity is the whole surface (C-CLAUDE-14). Shared by
  * both adapters.
  */
-export function applyStartupAutomations<A extends "claude" | "codex">(
+export function emitStartupPromptActivities<A extends "claude" | "codex">(
   emitter: StartupActivityEmitter,
   agent: A,
   elwoodSessionId: string,
-  automations: readonly StartupPromptAutomation<A>[],
+  automations: readonly StartupPromptOutcome<A>[],
 ): void {
   for (const automation of automations) {
     emitStartupPromptActivity(emitter, agent, elwoodSessionId, automation);

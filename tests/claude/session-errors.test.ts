@@ -152,6 +152,34 @@ describe("ClaudeSession errors", () => {
       code: "hook_bridge_failed",
     });
   });
+
+  test("C-LIFE-10 a failure in the guarded startup region tears down the live bridge + PTY", async () => {
+    // BLOCKER: the region now spans the warning flush, exit registration, the startup
+    // assertion, and startup evidence — all AFTER the bridge/PTY/terminal are live. A
+    // failure in ANY of them (here, the auth-banner assertion) must run cleanup so the
+    // now-live bridge is stopped and the PTY killed, never leaked.
+    const cwd = tempDir();
+    installFakes();
+    let bridgeStopped = false;
+    setHookBridgeFactoryForTests(() => ({
+      start: () => Promise.resolve(),
+      stop: () => {
+        bridgeStopped = true;
+        return Promise.resolve();
+      },
+    }));
+    setPtyFactoryForTests((options) => {
+      const pty = new FakePty(options);
+      ptys.push(pty);
+      queueMicrotask(() => pty.emitData("not authenticated")); // auth banner => region rejects
+      return pty;
+    });
+    await expect(startClaude({ cwd })).rejects.toMatchObject({
+      code: "claude_not_authenticated",
+    });
+    expect(bridgeStopped).toBe(true); // the live bridge was stopped by the region cleanup
+    expect(ptys.at(-1)!.killSignals).toContain("SIGTERM"); // the live PTY was signaled
+  });
 });
 
 function nonErrorFailure(message: string): Error {

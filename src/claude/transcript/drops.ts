@@ -1,18 +1,25 @@
 /**
  * Rate-bounded, content-free accounting of transcript observation problems:
- * unparseable committed records (drops) and contained filesystem read errors.
- * Implements PRD §5.4 (C-CLAUDE-15): a malformed record or a transient fs error
- * is surfaced as a running count and byte/kind magnitude — never raw content.
+ * lost committed data (drops) and contained filesystem read errors.
+ * Implements PRD §5.4 (C-CLAUDE-15): a malformed record, an over-length record,
+ * an unread teardown backlog, or a transient fs error is surfaced as a running
+ * count and byte/kind magnitude with a bounded cause — never raw content.
  *
- * Snapshot vs event: the tracker feeds EVERY updated aggregate to its sink so the
- * persisted snapshot count stays current even if the host crashes before exit.
- * The user-visible warning EVENT stays rate-bounded downstream: the persistence
- * path (`recordSessionWarnings`) suppresses duplicate events while still writing
- * the updated count, so a repeated observation updates the count without emitting
- * a duplicate `warning` event (C-CLAUDE-15, PRD §5.7).
+ * Snapshot vs event vs persist: EVERY observation advances an IN-MEMORY running
+ * count (so nothing is lost), but the sink is fed only when the caller `flush()`es
+ * at a batch boundary (a scan pass, a teardown-drain call, or finish). Decoupling
+ * "update running count" from "persist snapshot" keeps a single 256 KiB chunk full
+ * of tiny malformed records from triggering one synchronous session.json rewrite
+ * per record: the snapshot is rewritten a BOUNDED number of times per slice, not N.
+ * The user-visible warning EVENT stays rate-bounded further downstream: the
+ * persistence path (`recordSessionWarnings`) emits the `warning` event only on the
+ * FIRST observation while still writing the updated count (C-CLAUDE-15, PRD §5.7).
  */
 
-/** A bounded, content-free notice that committed records could not be parsed. */
+/** Why committed transcript data was lost, bounded to a fixed token (never content). */
+export type DropCause = "unparseable" | "oversized" | "unread_backlog";
+
+/** A bounded, content-free notice that committed transcript data was lost. */
 export type TranscriptDropNotice = {
   readonly elwoodSessionId: string;
   readonly path: string;
@@ -20,6 +27,8 @@ export type TranscriptDropNotice = {
   readonly droppedCount: number;
   /** Total bytes of the dropped lines (diagnostic magnitude, not content). */
   readonly droppedBytes: number;
+  /** The cause of the most recent loss folded into this aggregate (never content). */
+  readonly cause: DropCause;
 };
 
 /** A bounded, content-free notice that transcript filesystem reads failed. */
@@ -35,12 +44,19 @@ export type TranscriptReadErrorNotice = {
 /** Prior running totals recovered from a persisted snapshot when a watcher resumes. */
 export type DropSeed = { readonly droppedCount: number; readonly droppedBytes: number };
 
-/** Tracks unparseable records for one watcher and reports the running aggregate. */
+/** Tracks lost committed data for one watcher and reports the running aggregate. */
 export class DropTracker {
   private count: number;
   private droppedBytes: number;
   private readonly elwoodSessionId: string;
   private readonly onDrop: ((notice: TranscriptDropNotice) => void) | undefined;
+  // The pending, un-flushed observation: the latest path + cause and whether any
+  // record advanced the aggregate since the last flush. Kept in memory so a chunk
+  // full of malformed records advances the count without one persist per record;
+  // `flush()` at a batch boundary feeds the sink at most once (the BLOCKER fix).
+  private pendingPath: string | undefined;
+  private pendingCause: DropCause = "unparseable";
+  private dirty = false;
 
   // `seed` carries the prior snapshot totals so a resumed watcher continues the
   // running count instead of restarting at 0 — a same-code warning's persisted
@@ -56,21 +72,38 @@ export class DropTracker {
     this.droppedBytes = seed?.droppedBytes ?? 0;
   }
 
+  /** Account one unparseable committed record; the aggregate is flushed later. */
   record(path: string, line: string): void {
-    this.recordBytes(path, Buffer.byteLength(line, "utf8"));
+    this.recordBytes(path, Buffer.byteLength(line, "utf8"), 1, "unparseable");
   }
 
-  /** Count `records` dropped lines contributing `bytes` and report the new aggregate. */
-  recordBytes(path: string, bytes: number, records = 1): void {
+  // Account `records` lost lines contributing `bytes` under `cause`. This only
+  // advances the IN-MEMORY running count and marks the pending observation dirty;
+  // it never touches the sink, so N records in one chunk cause 0 persists here —
+  // the batched `flush()` (≤once per slice) is the sole persistence trigger. Both
+  // `records` and `cause` are explicit (no defaults) so every call site names the
+  // cardinality and cause it means, never inheriting a silent wrong default.
+  recordBytes(path: string, bytes: number, records: number, cause: DropCause): void {
     this.count += records;
     this.droppedBytes += bytes;
-    // Feed every updated aggregate to the sink: the snapshot count must stay
-    // current even though the persistence path emits at most one warning EVENT.
+    this.pendingPath = path;
+    this.pendingCause = cause;
+    this.dirty = true;
+  }
+
+  // Feed the latest aggregate to the sink ONCE if anything changed since the last
+  // flush. Called at a batch boundary (scan pass / drain call / finish) so the
+  // persisted snapshot is rewritten a bounded number of times per slice — never
+  // once per malformed record — while the running count stays current (C-CLAUDE-15).
+  flush(): void {
+    if (!this.dirty || this.pendingPath === undefined) return;
+    this.dirty = false;
     this.onDrop?.({
       elwoodSessionId: this.elwoodSessionId,
-      path,
+      path: this.pendingPath,
       droppedCount: this.count,
       droppedBytes: this.droppedBytes,
+      cause: this.pendingCause,
     });
   }
 }

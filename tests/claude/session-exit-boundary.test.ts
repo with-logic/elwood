@@ -1,9 +1,9 @@
 /**
- * Finding A: the native PTY-exit callback contains flush + emission failures and
- * still reaches a terminal status AND reaps the descendant tree. Covers PRD
- * §5.3/§9.4 (C-LIFE-10): transcript drain, terminal:exit/activity emission, and
- * status submission all run BEFORE the reap, so a throw in any of them must not
- * abort the unconditional reap or leak the session non-terminal.
+ * C-LIFE-10 exit-boundary invariant: the native PTY-exit callback contains flush +
+ * emission failures and still reaches a terminal status AND reaps the descendant
+ * tree. Covers PRD §5.3/§9.4: transcript drain, terminal:exit/activity emission, and
+ * status submission all run BEFORE the reap, so a throw in any of them must not abort
+ * the unconditional reap or leak the session non-terminal.
  */
 
 import { afterEach, describe, expect, test } from "vitest";

@@ -8,6 +8,8 @@
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity.ts";
 import type { ElwoodSessionStatus } from "./status-categories.ts";
 import type { ElwoodWarningEvent } from "./types.ts";
+import type { ReapErrorCode } from "./warning-reasons.ts";
+import { isReapErrorCode } from "./warning-reasons.ts";
 
 export function activityFromStatus(
   agent: ElwoodAgentKind,
@@ -62,35 +64,16 @@ export function reapFailureWarning(
 }
 
 /**
- * A stable, bounded code for a reap failure: the errno (e.g. `EPERM`) when the
- * cause is an `ErrnoException`, else the Error's `name`, else the stringified
- * non-Error cause. Never the raw system message — that could carry an env path.
+ * A stable, bounded, ALLOWLISTED code for a reap failure. The cause's `.code`
+ * (errno), `Error.name`, and `String(error)` are all system/caller-controlled and
+ * could carry an env path or conversation-derived text, so — mirroring the
+ * transcript poll-error path (`boundedErrorName`) — only a value on the fixed
+ * `REAP_ERROR_CODES` allowlist passes through; anything else collapses to
+ * `"UnknownError"`, so no raw system message can ever reach persisted state.
  */
-function normalizeReapErrorCode(error: unknown): string {
+function normalizeReapErrorCode(error: unknown): ReapErrorCode {
   const code = (error as NodeJS.ErrnoException | undefined)?.code;
-  if (typeof code === "string" && code.length > 0) return code;
-  if (error instanceof Error) return error.name;
-  return String(error);
-}
-
-/**
- * The `activity` projection of a `reap_failed` warning, used where only the
- * lifecycle activity view is needed (kept parallel to `activityFromWarning`).
- */
-export function activityFromReapFailure(
-  agent: ElwoodAgentKind,
-  elwoodSessionId: string,
-  processGroupId: number,
-  error: unknown,
-): ElwoodActivityEvent {
-  const warning = reapFailureWarning(agent, elwoodSessionId, processGroupId, error);
-  return {
-    elwoodSessionId,
-    agent,
-    source: "lifecycle",
-    kind: "warning",
-    label: warning.code,
-    text: warning.message,
-    raw: warning,
-  };
+  if (isReapErrorCode(code)) return code;
+  if (error instanceof Error && isReapErrorCode(error.name)) return error.name;
+  return "UnknownError";
 }

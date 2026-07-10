@@ -27,15 +27,21 @@ export function isOptionLine(line: string): boolean {
 }
 
 /**
- * The frame's NON-option lines joined into one string. Trust-prompt recognition
- * anchors on this so a wrapped header spanning rows still matches while a phrase
- * living only inside a numbered option label is excluded — a hostile option
- * cannot masquerade as a prompt header (PRD §5.1). Shared by the responder and
- * the screen-fact blocking rules so both recognize prompts identically.
+ * The frame's HEADER text: every line STRICTLY BEFORE the first numbered option,
+ * joined into one string. Real trust prompts render the header (which may wrap
+ * across rows, and may be followed by blank/descriptive lines) FIRST and the
+ * numbered options LAST, so recognition anchors on the pre-option region. This
+ * excludes not just the option lines themselves but their WRAPPED CONTINUATION
+ * rows too: a benign option whose label wraps onto a second physical row cannot
+ * smuggle a trust phrase into the header, because everything from the first
+ * option onward is option region, never header (PRD §5.1 option-only anti-spoof).
+ * A frame with no numbered option yet contributes its whole text as header, so a
+ * mid-render header still matches before the options paint. Shared by the
+ * responder and the screen-fact blocking rules so both recognize identically.
  */
 export function nonOptionText(frame: string): string {
-  return frame
-    .split("\n")
-    .filter((line) => !isOptionLine(line))
-    .join(" ");
+  const lines = frame.split("\n");
+  const firstOption = lines.findIndex(isOptionLine);
+  const header = firstOption === -1 ? lines : lines.slice(0, firstOption);
+  return header.join(" ");
 }

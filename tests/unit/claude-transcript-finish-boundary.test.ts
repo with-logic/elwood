@@ -46,7 +46,11 @@ describe("C-CLAUDE-15 / C-LIFE-10 finishSafely error boundary", () => {
     watcher.observe(path); // baseline at EOF
     writeFileSync(path, `${JSON.stringify(assistant("committed"))}\n`); // unread until flush
     expect(() => finishSafely()).not.toThrow();
-    expect(recorded.some((w) => w.code === "transcript_poll_stopped")).toBe(true);
+    // MAJOR: a failed FINAL flush is phase-labelled so an operator can tell lost
+    // trailing shutdown activity from a live-watcher poll failure.
+    const stopped = recorded.find((w) => w.code === "transcript_poll_stopped");
+    expect(stopped).toBeDefined();
+    if (stopped?.code === "transcript_poll_stopped") expect(stopped.phase).toBe("final_flush");
   });
 
   test("runs afterFlush in a finally even when the flush throws", () => {

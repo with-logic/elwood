@@ -55,7 +55,7 @@ export class LineEmitter {
   // FIRST chunk of a discard run; continuation chunks add bytes only (records=0).
   private accountDiscard(path: string, bytes: number): void {
     const isNewRecord = !this.discarding.has(path);
-    this.drops.recordBytes(path, bytes, isNewRecord ? 1 : 0);
+    this.drops.recordBytes(path, bytes, isNewRecord ? 1 : 0, "oversized");
     this.discarding.add(path);
   }
 

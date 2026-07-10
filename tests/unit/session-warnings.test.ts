@@ -28,6 +28,7 @@ function dropWarning(count: number): ElwoodWarningEvent {
     message: `Dropped ${count} record(s).`,
     droppedCount: count,
     droppedBytes: count * 10,
+    cause: "unparseable",
     transcriptPath: "/tmp/t.jsonl",
     raw: `transcript_records_dropped count=${count}`,
   };
@@ -114,6 +115,7 @@ describe("recordSessionWarnings", () => {
       severity: "warning",
       message: "stopped",
       reason: "Error",
+      phase: "poll",
       raw: "transcript_poll_stopped reason=Error",
     };
     expect(transcriptSeedFromWarnings([readError, pollStopped])).toEqual({

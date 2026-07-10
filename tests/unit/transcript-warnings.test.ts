@@ -4,7 +4,8 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { pollErrorWarning } from "../../src/claude/transcript/warnings.ts";
+import type { DropCause } from "../../src/claude/transcript/drops.ts";
+import { dropWarning, pollErrorWarning } from "../../src/claude/transcript/warnings.ts";
 
 /** The `transcript_poll_stopped` member carries `reason`; narrow to read it. */
 function reasonOf(error: unknown): string {
@@ -50,5 +51,47 @@ describe("C-CLAUDE-15 transcript warning builders", () => {
     expect(reasonOf(spoofBoth)).toBe("UnknownError");
     // A non-Error cause with no code falls back to the fixed token.
     expect(reasonOf("raw-reason")).toBe("UnknownError");
+  });
+
+  test("pollErrorWarning carries the phase and a phase-specific message", () => {
+    // MAJOR: the same warning code distinguishes a live poll failure from a failed
+    // final flush at exit via the bounded `phase` field, so an operator can tell
+    // lost trailing shutdown activity from a live-watcher poll failure.
+    const poll = pollErrorWarning("s1", new Error("x")); // defaults to "poll"
+    if (poll.code !== "transcript_poll_stopped") throw new Error("wrong code");
+    expect(poll.phase).toBe("poll");
+    expect(poll.message).toContain("polling stopped");
+    expect(poll.raw).toContain("phase=poll");
+    const flush = pollErrorWarning("s1", new Error("x"), "final_flush");
+    if (flush.code !== "transcript_poll_stopped") throw new Error("wrong code");
+    expect(flush.phase).toBe("final_flush");
+    expect(flush.message).toContain("final flush");
+    expect(flush.raw).toContain("phase=final_flush");
+  });
+
+  test("dropWarning labels every cause truthfully and never carries content", () => {
+    // MAJOR: unparseable, oversized, and unread-backlog losses share ONE code but
+    // carry a bounded `cause` discriminator, so a valid unread backlog is never
+    // mislabelled as an unparseable record. The count/bytes are magnitudes only.
+    const cases: Record<DropCause, string> = {
+      unparseable: "unparseable",
+      oversized: "over-length",
+      unread_backlog: "unread transcript backlog",
+    };
+    for (const cause of Object.keys(cases) as DropCause[]) {
+      const warning = dropWarning({
+        elwoodSessionId: "s1",
+        path: "/tmp/t.jsonl",
+        droppedCount: 2,
+        droppedBytes: 4096,
+        cause,
+      });
+      if (warning.code !== "transcript_records_dropped") throw new Error("wrong code");
+      expect(warning.cause).toBe(cause);
+      expect(warning.message).toContain(cases[cause]);
+      expect(warning.raw).toContain(`cause=${cause}`);
+      expect(warning.droppedCount).toBe(2);
+      expect(warning.droppedBytes).toBe(4096);
+    }
   });
 });

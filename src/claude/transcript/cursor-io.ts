@@ -6,6 +6,7 @@
  */
 
 import { closeSync, openSync, readSync, statSync } from "node:fs";
+import { errnoCode } from "../../core/errors.ts";
 import { completeUtf8Length } from "../../runtime/probe.ts";
 
 export function byteLen(text: string): number {
@@ -14,11 +15,14 @@ export function byteLen(text: string): number {
 
 export function fileSize(path: string): number {
   // One stat, no exists-then-stat TOCTOU window: ENOENT means "no file yet",
-  // which is size 0; any other error propagates to the caller's fs guard.
+  // which is size 0; any other error propagates to the caller's fs guard. The
+  // errno is read through `errnoCode` (object-ness narrowed first), so a thrown
+  // null/non-Error is preserved and rethrown, never replaced by a secondary
+  // TypeError raised while inspecting it (C-ERR-01).
   try {
     return statSync(path).size;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    if (errnoCode(error) === "ENOENT") return 0;
     throw error;
   }
 }

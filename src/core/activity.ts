@@ -50,7 +50,6 @@ export type ElwoodActivityEvent = {
 };
 
 export {
-  activityFromReapFailure,
   activityFromStatus,
   activityFromTerminalExit,
   reapFailureWarning,

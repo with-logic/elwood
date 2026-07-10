@@ -70,7 +70,7 @@ describe("C-CLAUDE-15 transcript cursor current-turn recovery", () => {
     const emojiStart = Buffer.byteLength(`${boundary}${head}`);
     expect(emojiStart).toBe(seam - 2); // 🎯 starts two bytes below the seam …
     expect(emojiStart + 4).toBeGreaterThan(seam); // … and ends above it: it straddles
-    const tail = new TranscriptCursor(path).baselineTail();
+    const tail = new TranscriptCursor(path).baselineTail().text;
     expect(tail).toContain(marker); // emoji + marker recovered intact
     expect(tail).not.toContain("�"); // no replacement character at the seam
   });
@@ -82,7 +82,7 @@ describe("C-CLAUDE-15 transcript cursor current-turn recovery", () => {
     const path = tmpFile();
     const big = "z".repeat(80 * 1024); // one filler assistant line > one step
     writeFileSync(path, `${user("go")}\n${asst(big)}\n${asst("final")}\n`);
-    const tail = new TranscriptCursor(path).baselineTail();
+    const tail = new TranscriptCursor(path).baselineTail().text;
     expect(tail).toContain(big);
     expect(tail).toContain("final");
     expect(tail).not.toContain('"content":"go"'); // prior user turn not included
@@ -91,7 +91,7 @@ describe("C-CLAUDE-15 transcript cursor current-turn recovery", () => {
   test("baselineTail returns nothing when the file has NO user boundary at all", () => {
     const path = tmpFile();
     writeFileSync(path, `${asst("only-assistant-history")}\n`);
-    expect(new TranscriptCursor(path).baselineTail()).toBe("");
+    expect(new TranscriptCursor(path).baselineTail().text).toBe("");
   });
 
   test("a Stop-first turn LARGER than the 4 MiB cap recovers its in-window records", () => {
@@ -106,7 +106,7 @@ describe("C-CLAUDE-15 transcript cursor current-turn recovery", () => {
     // before reaching it. The tail records are all within the cap window.
     const body = `${user("go")}\n${Array.from({ length: 22 }, () => filler).join("\n")}\n`;
     writeFileSync(path, `${body}${records.join("\n")}\n`);
-    const tail = new TranscriptCursor(path).baselineTail();
+    const tail = new TranscriptCursor(path).baselineTail().text;
     expect(tail).not.toBe(""); // the whole turn is NOT silently dropped
     expect(tail).toContain("rec-21"); // the newest in-window committed record survives
     expect(tail).not.toContain('"content":"go"'); // the out-of-window prompt is not reached
@@ -115,13 +115,13 @@ describe("C-CLAUDE-15 transcript cursor current-turn recovery", () => {
   test("baselineTail is empty for a new/empty file", () => {
     const path = tmpFile();
     writeFileSync(path, "");
-    expect(new TranscriptCursor(path).baselineTail()).toBe("");
+    expect(new TranscriptCursor(path).baselineTail().text).toBe("");
   });
 
   test("a malformed line in the tail window does not break boundary detection", () => {
     const path = tmpFile();
     writeFileSync(path, `{ bad\n${user("go")}\n${asst("cur")}\n`);
-    expect(new TranscriptCursor(path).baselineTail()).toContain("cur");
+    expect(new TranscriptCursor(path).baselineTail().text).toContain("cur");
   });
 
   test("a line that carries the user marker but is not a user PROMPT is not a boundary", () => {
@@ -136,7 +136,7 @@ describe("C-CLAUDE-15 transcript cursor current-turn recovery", () => {
     // (as another field's value), so it passes the prefilter yet fails the type check.
     const asstMentionsUser = '{"type":"assistant","author":"user","message":{"content":"hi"}}';
     writeFileSync(path, `${user("go")}\n${brokenUser}\n${asstMentionsUser}\n${asst("cur")}\n`);
-    const tail = new TranscriptCursor(path).baselineTail();
+    const tail = new TranscriptCursor(path).baselineTail().text;
     expect(tail).toContain("cur");
     expect(tail).toContain(brokenUser); // the broken line is part of the current turn
     expect(tail).toContain(asstMentionsUser); // the assistant mention is not a boundary
@@ -161,7 +161,7 @@ describe("C-CLAUDE-15 transcript cursor current-turn recovery", () => {
       path,
       `${user("prev")}\n${asst("old")}\n${user("go")}\n${toolUse}\n${toolResult}\n${asst("final")}\n`,
     );
-    const tail = new TranscriptCursor(path).baselineTail();
+    const tail = new TranscriptCursor(path).baselineTail().text;
     expect(tail).toContain('"name":"Read"'); // tool_use recovered
     expect(tail).toContain('"tool_use_id":"t1"'); // tool_result recovered
     expect(tail).toContain("final"); // final assistant text recovered
@@ -175,7 +175,7 @@ describe("C-CLAUDE-15 transcript cursor current-turn recovery", () => {
     const path = tmpFile();
     const oddUser = JSON.stringify({ type: "user", message: { content: { note: "x" } } });
     writeFileSync(path, `${user("go")}\n${oddUser}\n${asst("cur")}\n`);
-    const tail = new TranscriptCursor(path).baselineTail();
+    const tail = new TranscriptCursor(path).baselineTail().text;
     expect(tail).toContain("cur");
     expect(tail).toContain(oddUser); // the odd record is part of the current turn
     expect(tail).not.toContain('"content":"go"'); // real prompt is the boundary
@@ -190,7 +190,7 @@ describe("C-CLAUDE-15 transcript cursor current-turn recovery", () => {
       message: { content: [{ type: "text", text: "go" }] },
     });
     writeFileSync(path, `${arrayPrompt}\n${asst("cur")}\n`);
-    const tail = new TranscriptCursor(path).baselineTail();
+    const tail = new TranscriptCursor(path).baselineTail().text;
     expect(tail).toContain("cur");
     expect(tail).not.toContain('"text":"go"'); // the prompt boundary is excluded
   });

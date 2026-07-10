@@ -1,8 +1,8 @@
 /**
- * Finding A (codex): the native PTY-exit callback contains the transcript drain +
- * terminal:exit/activity emission and still reaches a terminal status AND reaps.
- * Covers PRD §5.3/§9.4 (C-LIFE-10): a throw in the drain/emit chain must not abort
- * the unconditional reap or leak the session non-terminal.
+ * C-LIFE-10 codex exit-boundary invariant: the native PTY-exit callback contains the
+ * transcript drain + terminal:exit/activity emission and still reaches a terminal
+ * status AND reaps. Covers PRD §5.3/§9.4: a throw in the drain/emit chain must not
+ * abort the unconditional reap or leak the session non-terminal.
  */
 
 import { afterEach, describe, expect, test } from "vitest";
@@ -29,7 +29,7 @@ describe("C-LIFE-10 codex exit-callback error boundary", () => {
     });
   }
 
-  test("Finding E (codex): a reap failure on exit persists a durable reap_failed warning", async () => {
+  test("C-LIFE-10 a reap failure on codex exit persists a durable reap_failed warning", async () => {
     // Routes through the codex warning persistence path (recordCodexWarnings), so a
     // leaked group is durably surfaced, content-free, with pgid + normalized code.
     const cwd = tempDir();

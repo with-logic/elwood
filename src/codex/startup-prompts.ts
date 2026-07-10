@@ -3,7 +3,7 @@
  * Implements PRD §4.4, §5.5, and §5.7.
  */
 
-import type { StartupPromptAutomation, StartupPromptLabelFor } from "../core/startup-automation.ts";
+import type { StartupPromptLabelFor, StartupPromptOutcome } from "../core/startup-automation.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
 import { TrustPromptResponder } from "../core/trust-responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
@@ -17,11 +17,11 @@ export type CodexStartupPromptLabel = StartupPromptLabelFor<"codex">;
  * prompt whose option has not rendered yet — transient) never does and is limited
  * to trust ids.
  */
-export type CodexStartupPromptAutomation = StartupPromptAutomation<"codex">;
+export type CodexStartupPromptOutcome = StartupPromptOutcome<"codex">;
 
 export type CodexStartupPromptResult = {
   readonly warnings: readonly ElwoodWarningEvent[];
-  readonly automations: readonly CodexStartupPromptAutomation[];
+  readonly automations: readonly CodexStartupPromptOutcome[];
 };
 
 const maxBufferLength = 6_000;
@@ -43,7 +43,7 @@ export class CodexStartupPromptResponder {
   }
 
   handle(screenText: string, write: (input: string) => void): CodexStartupPromptResult {
-    const automations: CodexStartupPromptAutomation[] = [];
+    const automations: CodexStartupPromptOutcome[] = [];
     this.buffer = `${this.buffer}\n${screenText}`.slice(-maxBufferLength);
     // Trust prompts are matched against the CURRENT frame only: a stale phrase in
     // the accumulated buffer must never pair with a different dialog's answer.

@@ -53,9 +53,18 @@ export function drainToBudget(
   const deadline = now() + (context.sliceMs ?? drainSliceMs);
   for (const cursor of cursors) {
     const backlog = drainCursor(context, cursor, budget, deadline, now);
-    if (backlog > 0) context.drops.recordBytes(cursor.path, backlog);
+    // An unread teardown backlog is content-free data loss with its OWN cause
+    // ("unread_backlog"), never conflated with an unparseable record: the bytes
+    // are the true magnitude and the record count is unknown, so it contributes a
+    // single loss event under a truthful cause rather than a false "unparseable"
+    // cardinality (MAJOR: cause-neutral data-loss accounting, PRD §5.4).
+    if (backlog > 0) context.drops.recordBytes(cursor.path, backlog, 1, "unread_backlog");
     context.lines.emitLines(cursor.path, cursor.drainPending());
   }
+  // Persist the batched aggregate at most ONCE per drain call (not per record):
+  // the running count advanced in memory across every emitted/dropped line above,
+  // and this single flush feeds the sink at the slice boundary (BLOCKER, §9.2).
+  context.drops.flush();
 }
 
 // Read one cursor to EOF within the shared budget and the per-call deadline.

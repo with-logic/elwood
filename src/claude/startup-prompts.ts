@@ -5,7 +5,7 @@
  * and C-CLAUDE-14.
  */
 
-import type { StartupPromptAutomation } from "../core/startup-automation.ts";
+import type { StartupPromptOutcome } from "../core/startup-automation.ts";
 import { TrustPromptResponder } from "../core/trust-responder.ts";
 
 export class ClaudeStartupPromptResponder {
@@ -19,8 +19,8 @@ export class ClaudeStartupPromptResponder {
   handle(
     screenText: string,
     write: (input: string) => void,
-  ): readonly StartupPromptAutomation<"claude">[] {
-    const automations: StartupPromptAutomation<"claude">[] = [];
+  ): readonly StartupPromptOutcome<"claude">[] {
+    const automations: StartupPromptOutcome<"claude">[] = [];
     const trust = this.trust.handle(screenText, write);
     if (trust?.kind === "answered") {
       automations.push({ kind: "answered", ...trust.automation });

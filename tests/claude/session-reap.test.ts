@@ -23,7 +23,7 @@ function throwingKiller(): void {
 
 describe("C-LIFE-10 session reap-failure handling", () => {
   test("a throwing reaper on exit still reaches 'exited' and surfaces a durable diagnostic", async () => {
-    // Finding E: a reap failure on an already-exited PTY must NOT keep the session
+    // C-LIFE-10: a reap failure on an already-exited PTY must NOT keep the session
     // live; terminal evidence is submitted first, and the failure surfaces as a
     // durable `reap_failed` warning (persisted + replayed) carrying the pgid + code
     // — not a single transient activity thrown out of the native exit callback.
@@ -49,7 +49,7 @@ describe("C-LIFE-10 session reap-failure handling", () => {
     expect(activityLabels).toEqual(["reap_failed"]);
   });
 
-  test("Finding B: stop() after a failed exit-reap REJECTS with a typed error (no hidden failure)", async () => {
+  test("C-LIFE-10 stop() after a failed exit-reap REJECTS with a typed error (no hidden failure)", async () => {
     // The best-effort exit reap fails (unlatched). A later explicit stop() must NOT
     // swallow-and-resolve: it retries the reap and rejects with `termination_failed`
     // so the caller learns the group was not confirmed reaped (C-ERR-01).
@@ -62,7 +62,7 @@ describe("C-LIFE-10 session reap-failure handling", () => {
     await expect(session.stop()).rejects.toMatchObject({ code: "termination_failed" });
   });
 
-  test("Finding C: stop() after a successful exit-reap does NOT re-signal the dead PTY", async () => {
+  test("C-LIFE-10 stop() after a successful exit-reap does NOT re-signal the dead PTY", async () => {
     // A stop() racing after the first exit callback already reaped must one-shot
     // no-op (reaper latched) and resolve promptly — never re-signal the dead PTY
     // (node-pty won't replay exit; the pid may be recycled) and never re-reap.

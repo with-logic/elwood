@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { causeDetails } from "../../src/core/errors.ts";
+import { causeDetails, errnoCode } from "../../src/core/errors.ts";
 
 describe("causeDetails", () => {
   test("C-ERR-08 stringifies non-Error failures", () => {
@@ -26,5 +26,23 @@ describe("causeDetails", () => {
       syscall: "bind",
       path: "/very/long/hook.sock",
     });
+  });
+});
+
+describe("errnoCode", () => {
+  test("C-ERR-01 reads a string .code off an errno error", () => {
+    expect(errnoCode(Object.assign(new Error("x"), { code: "ENOENT" }))).toBe("ENOENT");
+    expect(errnoCode({ code: "EPERM" })).toBe("EPERM");
+  });
+
+  test("C-ERR-01 returns undefined for null/undefined/primitive/no-code without throwing", () => {
+    // Narrowing object-ness FIRST means a thrown null/primitive can never make the
+    // inspection itself throw a secondary TypeError that would mask the original.
+    expect(errnoCode(null)).toBeUndefined();
+    expect(errnoCode(undefined)).toBeUndefined();
+    expect(errnoCode("boom")).toBeUndefined();
+    expect(errnoCode(42)).toBeUndefined();
+    expect(errnoCode({ code: 500 })).toBeUndefined(); // non-string code
+    expect(errnoCode({})).toBeUndefined();
   });
 });

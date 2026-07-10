@@ -25,12 +25,18 @@ export function resetMaxRecordsForTests(): void {
 }
 
 /**
- * Recovered current turn: the committed record lines plus whether a real user
- * PROMPT boundary was found. `truncated` is true when the cap/BOF was reached
- * first, so the caller can account the boundary that fell outside the window as a
- * content-free drop rather than silently losing the turn.
+ * Recovered current turn: the committed record lines plus whether the scan hit
+ * its byte/record cap before the user PROMPT boundary. `truncated` is true only
+ * on that cap path (NOT on a clean BOF with no boundary, which has no turn to
+ * recover); `unrecoveredBytes` is then the magnitude of the earlier-in-file
+ * portion that fell outside the window, so the caller can surface it as a bounded,
+ * content-free drop rather than silently losing it (MINOR: truncation accounting).
  */
-export type BaselineTail = { readonly lines: readonly string[]; readonly truncated: boolean };
+export type BaselineTail = {
+  readonly lines: readonly string[];
+  readonly truncated: boolean;
+  readonly unrecoveredBytes: number;
+};
 
 /**
  * Scans backward in bounded blocks to the last user PROMPT. Blocks are collected
@@ -40,7 +46,7 @@ export type BaselineTail = { readonly lines: readonly string[]; readonly truncat
  * whether the scan stopped at the cap/BOF without finding the boundary.
  */
 export function scanBaselineTail(path: string, size: number): BaselineTail {
-  if (size === 0) return { lines: [], truncated: false };
+  if (size === 0) return { lines: [], truncated: false, unrecoveredBytes: 0 };
   const chunks: string[][] = []; // confirmed post-frontier line runs, newest-first
   let head = ""; // partial first line of the block just scanned (seam carry)
   let end = size;
@@ -53,10 +59,14 @@ export function scanBaselineTail(path: string, size: number): BaselineTail {
     records += lines.length;
     const boundary = lastUserLine(lines);
     if (boundary >= 0)
-      return { lines: flatten(chunks, lines.slice(boundary + 1)), truncated: false };
+      return {
+        lines: flatten(chunks, lines.slice(boundary + 1)),
+        truncated: false,
+        unrecoveredBytes: 0,
+      };
     // Reached the start of the file with NO prompt: the file holds no boundary at
     // all, so there is no current turn to recover — matches the pre-fix contract.
-    if (block.start === 0) return { lines: [], truncated: false };
+    if (block.start === 0) return { lines: [], truncated: false, unrecoveredBytes: 0 };
     head = lines[0] as string; // carry the (still partial) first line one step back
     chunks.push(lines.slice(1));
     end = block.start;
@@ -64,8 +74,10 @@ export function scanBaselineTail(path: string, size: number): BaselineTail {
   // Cap/record-budget hit BEFORE the boundary (the turn is larger than the cap):
   // recover the in-window bounded records rather than discarding the whole turn.
   // The carried `head` is a partial first line (the window began mid-file), so it
-  // is dropped, not emitted; every complete in-window record is kept.
-  return { lines: flatten(chunks, []), truncated: true };
+  // is dropped, not emitted; every complete in-window record is kept. `end` is the
+  // byte offset the recovered window begins at, so the `[0, end)` prefix is the
+  // magnitude of the earlier-in-file portion that was NOT recovered.
+  return { lines: flatten(chunks, []), truncated: true, unrecoveredBytes: end };
 }
 
 // Assemble the turn in FORWARD (oldest-first) order. `tail` is the post-boundary

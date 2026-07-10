@@ -5,13 +5,13 @@ import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, elwoodError } from "../core/errors.ts";
 import { queuePersonaMessage } from "../core/persona.ts";
 import { observeRenderedFrame } from "../core/rendered-observers.ts";
-import { applyStartupAutomations } from "../core/startup-automation.ts";
+import { emitStartupPromptActivities } from "../core/startup-automation.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import type { StartClaudeOptions } from "../core/types.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { assertStartupUsable } from "../runtime/startup.ts";
-import { cleanupStartupResources } from "../runtime/startup-cleanup.ts";
+import { cleanupStartupResources, guardStartupRegion } from "../runtime/startup-cleanup.ts";
 import { secureMkdir } from "../state/files.ts";
 import { claudeLaunchPosture, withClaudeLaunch } from "../state/launch-posture.ts";
 import {
@@ -155,12 +155,9 @@ export async function startClaudeFromRecord(
   let startupOutput = "";
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
-  const promptResponder = new ClaudeStartupPromptResponder(options.autotrust ?? false);
-  const observers = buildClaudeObservers(
-    record.elwoodSessionId,
-    options.autotrust ?? false,
-    emitter,
-  );
+  const autotrust = options.autotrust ?? false;
+  const promptResponder = new ClaudeStartupPromptResponder(autotrust);
+  const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
   const turnWatcher = observers.turn;
   const terminal = attachPtyTerminal(
     options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
@@ -170,28 +167,33 @@ export async function startClaudeFromRecord(
       terminalReplay.push(data);
       const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
       const autos = promptResponder.handle(frame.text, (i) => renderedTerminal.sendInput(i));
-      applyStartupAutomations(emitter, "claude", record.elwoodSessionId, autos);
+      emitStartupPromptActivities(emitter, "claude", record.elwoodSessionId, autos);
       observeRenderedFrame(observers, frame, session);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );
   session = new ClaudeSessionImpl(record, pty, terminal, bridge, emitter, terminalReplay);
-  flushPendingWarnings(); // sink now exists: flush any early-buffered diagnostic (§5.7)
-  pty.onExit((exit) => {
-    startupExit = exit;
-    const submit = () => session?.submitExit();
-    handleClaudeExit(emitter, record.elwoodSessionId, exit, finishSafely, submit);
-  });
-  try {
-    await assertStartupUsable({
-      adapter: "claude",
-      exit: () => startupExit,
-      output: () => startupOutput,
-    });
-  } catch (error) {
-    await cleanupStartupResources({ pty, bridge, terminal });
-    throw error;
-  }
-  session.submitEvidence("startup_usable");
+  const active = session;
+  // ONE guarded region for every live-resource step after the session exists (flush,
+  // exit registration, startup assertion, startup evidence): a failure in ANY of them
+  // tears down the now-live PTY, bridge, terminal, and watcher first (PRD §9.1, §9.4).
+  await guardStartupRegion(
+    async () => {
+      flushPendingWarnings(); // sink now exists: flush any early-buffered diagnostic (§5.7)
+      pty.onExit((exit) => {
+        startupExit = exit;
+        handleClaudeExit(emitter, record.elwoodSessionId, exit, finishSafely, () =>
+          active.submitExit(),
+        );
+      });
+      await assertStartupUsable({
+        adapter: "claude",
+        exit: () => startupExit,
+        output: () => startupOutput,
+      });
+      active.submitEvidence("startup_usable");
+    },
+    { pty, bridge, terminal, after: () => transcriptWatcher.stop() },
+  );
   return session;
 }

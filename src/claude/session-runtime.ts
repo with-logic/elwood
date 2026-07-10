@@ -14,6 +14,7 @@ import type { ElwoodEventHandler, ElwoodEventName, StartClaudeOptions } from "..
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit, PtyProcess } from "../pty/types.ts";
 import { currentPtyFactory } from "../runtime/seams.ts";
+import { finishSessionExit } from "../runtime/session-exit.ts";
 import { userShell } from "../runtime/shell.ts";
 import { writePrivateFileAtomic } from "../state/files.ts";
 import type { SessionRecord } from "../state/store.ts";
@@ -103,31 +104,9 @@ export function emitTerminalExit(
 }
 
 /**
- * Emit the terminal-exit event and submit terminal status behind an error boundary
- * (PRD §5.3 C-LIFE-10). `submitExit` — which reaps the descendant tree in its own
- * `finally` — ALWAYS runs, even if a throwing `terminal:exit`/`activity` listener
- * fails the emission, and no listener failure escapes the native PTY-exit callback
- * to abort the unconditional reap. Called from inside the bounded flush boundary.
- */
-export function finishExit(emitExit: () => void, submitExit: () => void): void {
-  try {
-    emitExit();
-  } catch {
-    // A throwing exit/activity listener must not skip terminal status + reap.
-  } finally {
-    try {
-      submitExit();
-    } catch {
-      // Status was submitted and the reap ran inside submitExit's own finally;
-      // contain any late status-listener throw so it can't abort the callback.
-    }
-  }
-}
-
-/**
  * The PTY-exit boundary: run the bounded transcript flush, then emit `terminal:exit`
- * and submit terminal status (which reaps) behind the error boundary so a throwing
- * flush/listener never skips the unconditional reap (PRD §5.3 C-LIFE-10).
+ * and submit terminal status (which reaps) behind the shared error boundary so a
+ * throwing flush/listener never skips the unconditional reap (PRD §5.3 C-LIFE-10).
  */
 export function handleClaudeExit(
   emitter: TypedEmitter,
@@ -137,7 +116,7 @@ export function handleClaudeExit(
   submitExit: () => void,
 ): void {
   finishSafely(() =>
-    finishExit(() => emitTerminalExit(emitter, elwoodSessionId, exit), submitExit),
+    finishSessionExit(() => emitTerminalExit(emitter, elwoodSessionId, exit), submitExit),
   );
 }
 

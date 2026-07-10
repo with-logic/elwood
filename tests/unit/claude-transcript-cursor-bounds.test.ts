@@ -112,6 +112,9 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
     try {
       const tail = scanBaselineTail(path, fileBytes(path));
       expect(tail.truncated).toBe(true); // budget hit before the boundary
+      // The earlier-in-file portion that fell outside the window is quantified so
+      // the caller can surface it as a bounded, content-free drop (MINOR fix).
+      expect(tail.unrecoveredBytes).toBeGreaterThan(0);
       expect(tail.lines.join("\n")).toContain("r3-"); // a newest in-window record kept
       expect(tail.lines.join("\n")).not.toContain('"content":"go"'); // prompt not reached
     } finally {

@@ -25,6 +25,25 @@ export async function cleanupStartupResources(resources: StartupCleanupResources
   tryCall(resources.terminal?.dispose.bind(resources.terminal));
 }
 
+/**
+ * Runs the post-session-construction startup steps behind ONE cleanup boundary
+ * (PRD §9.1, §9.4): if `region` rejects — a disk error in a warning flush, a failed
+ * startup assertion, anything — the now-live PTY, bridge, terminal, and any watcher
+ * are torn down via `cleanupStartupResources` before the original error rethrows, so
+ * a rejected `startClaude`/`startCodex` never leaks live resources.
+ */
+export async function guardStartupRegion(
+  region: () => Promise<void>,
+  resources: StartupCleanupResources,
+): Promise<void> {
+  try {
+    await region();
+  } catch (error) {
+    await cleanupStartupResources(resources);
+    throw error;
+  }
+}
+
 function tryCall(callback: (() => void) | undefined): void {
   try {
     callback?.();

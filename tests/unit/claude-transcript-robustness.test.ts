@@ -36,8 +36,10 @@ describe("C-CLAUDE-15 transcript watcher robustness", () => {
     expect(
       events.map((e) => (e.summary.kind === "assistant_message" ? e.summary.text : "")),
     ).toEqual(["ok"]);
-    // Bounded, content-free: count + byte magnitude, never the raw line.
-    expect(drops).toEqual([{ elwoodSessionId: "s1", path, droppedCount: 1, droppedBytes: 12 }]);
+    // Bounded, content-free: count + byte magnitude + cause, never the raw line.
+    expect(drops).toEqual([
+      { elwoodSessionId: "s1", path, droppedCount: 1, droppedBytes: 12, cause: "unparseable" },
+    ]);
   });
 
   test("a filesystem error during scan is contained AND surfaced as a bounded diagnostic", () => {

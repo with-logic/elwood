@@ -6,7 +6,16 @@
  */
 
 import type { ElwoodWarningEvent } from "../../core/types.ts";
+import type { PollErrorReason } from "../../core/warning-reasons.ts";
+import { isPollErrorReason } from "../../core/warning-reasons.ts";
 import type { TranscriptDropNotice, TranscriptReadErrorNotice } from "./drops.ts";
+
+/** Human-readable phrase for each bounded drop cause (no raw content). */
+const causePhrase: Record<TranscriptDropNotice["cause"], string> = {
+  unparseable: "unparseable transcript record(s)",
+  oversized: "over-length transcript record(s)",
+  unread_backlog: "unread transcript backlog",
+};
 
 export function dropWarning(notice: TranscriptDropNotice): ElwoodWarningEvent {
   return {
@@ -15,11 +24,12 @@ export function dropWarning(notice: TranscriptDropNotice): ElwoodWarningEvent {
     source: "terminal",
     code: "transcript_records_dropped",
     severity: "warning",
-    message: `Dropped ${notice.droppedCount} unparseable transcript record(s) (${notice.droppedBytes} bytes).`,
+    message: `Dropped ${notice.droppedCount} transcript record(s) (${notice.droppedBytes} bytes; last cause: ${causePhrase[notice.cause]}).`,
     droppedCount: notice.droppedCount,
     droppedBytes: notice.droppedBytes,
+    cause: notice.cause,
     transcriptPath: notice.path,
-    raw: `transcript_records_dropped count=${notice.droppedCount} bytes=${notice.droppedBytes}`,
+    raw: `transcript_records_dropped count=${notice.droppedCount} bytes=${notice.droppedBytes} cause=${notice.cause}`,
   };
 }
 
@@ -38,15 +48,31 @@ export function readErrorWarning(notice: TranscriptReadErrorNotice): ElwoodWarni
   };
 }
 
+/** Which lifecycle phase surfaced a transcript-processing failure (§5.4). */
+export type TranscriptFailurePhase = "poll" | "final_flush";
+
+/** Phase-specific message so an operator can tell WHICH phase failed. */
+const phaseMessage: Record<TranscriptFailurePhase, string> = {
+  poll: "Transcript polling stopped after an unexpected error.",
+  final_flush: "Transcript final flush at exit failed after an unexpected error.",
+};
+
 /**
- * A programming error escaped the transcript poll; the watcher stopped (§5.4).
- * This warning is PERSISTED, and the escaping error can be a downstream
- * activity-listener exception whose message embeds raw transcript items
+ * A programming error escaped transcript processing; the watcher stopped (§5.4).
+ * `phase` records WHERE it escaped — a live periodic poll (`"poll"`) or the final
+ * flush at PTY exit (`"final_flush"`) — so a failed shutdown flush (lost trailing
+ * activity) is distinguishable from a live-watcher poll failure without a separate
+ * warning code. This warning is PERSISTED, and the escaping error can be a
+ * downstream activity-listener exception whose message embeds raw transcript items
  * (prompts, tool output, credentials). To honor the content-free warning
- * guarantee (§5.4/§8.3), only a bounded, allowlisted error NAME/errno reaches
- * the persisted fields — never `error.message` or `String(error)`.
+ * guarantee (§5.4/§8.3), only a bounded, allowlisted error NAME/errno reaches the
+ * persisted fields — never `error.message` or `String(error)`.
  */
-export function pollErrorWarning(elwoodSessionId: string, error: unknown): ElwoodWarningEvent {
+export function pollErrorWarning(
+  elwoodSessionId: string,
+  error: unknown,
+  phase: TranscriptFailurePhase = "poll",
+): ElwoodWarningEvent {
   const reason = boundedErrorName(error);
   return {
     elwoodSessionId,
@@ -54,9 +80,10 @@ export function pollErrorWarning(elwoodSessionId: string, error: unknown): Elwoo
     source: "terminal",
     code: "transcript_poll_stopped",
     severity: "warning",
-    message: "Transcript polling stopped after an unexpected error.",
+    message: phaseMessage[phase],
     reason,
-    raw: `transcript_poll_stopped reason=${reason}`,
+    phase,
+    raw: `transcript_poll_stopped phase=${phase} reason=${reason}`,
   };
 }
 
@@ -64,39 +91,14 @@ export function pollErrorWarning(elwoodSessionId: string, error: unknown): Elwoo
  * The escaping error mapped to an ALLOWLISTED reason token. `error.name` and
  * `error.code` are caller-controlled — an activity-listener bug can throw an
  * error whose `name`/`code` embeds conversation text — so sanitizing is not
- * enough. Only a value on the fixed allowlist (the standard JS error
- * constructors + common Node errnos) passes through; anything else collapses to
- * `"UnknownError"`, so no conversation-derived string can reach persisted state.
+ * enough. Only a value on the fixed allowlist (`POLL_ERROR_REASONS`: the standard
+ * JS error constructors + common Node errnos) passes through; anything else
+ * collapses to `"UnknownError"`, so no conversation-derived string can reach
+ * persisted state.
  */
-const allowedErrorReasons: ReadonlySet<string> = new Set([
-  // Standard ECMAScript error constructor names.
-  "Error",
-  "TypeError",
-  "RangeError",
-  "ReferenceError",
-  "SyntaxError",
-  "EvalError",
-  "URIError",
-  "AggregateError",
-  // Common Node.js filesystem/stream errno codes seen on a transcript read.
-  "ENOENT",
-  "EACCES",
-  "EPERM",
-  "EISDIR",
-  "ENOTDIR",
-  "EBADF",
-  "EMFILE",
-  "ENFILE",
-  "ELOOP",
-  "ENAMETOOLONG",
-  "EBUSY",
-  "EAGAIN",
-  "EIO",
-]);
-
-function boundedErrorName(error: unknown): string {
+function boundedErrorName(error: unknown): PollErrorReason {
   const code = (error as { code?: unknown } | null)?.code;
-  if (typeof code === "string" && allowedErrorReasons.has(code)) return code;
-  if (error instanceof Error && allowedErrorReasons.has(error.name)) return error.name;
+  if (isPollErrorReason(code)) return code;
+  if (error instanceof Error && isPollErrorReason(error.name)) return error.name;
   return "UnknownError";
 }

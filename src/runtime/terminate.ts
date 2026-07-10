@@ -11,11 +11,13 @@ type TerminationTimeouts = { readonly gracefulMs: number; readonly forceMs: numb
 const defaultTimeouts: TerminationTimeouts = { gracefulMs: 5_000, forceMs: 1_000 };
 
 /**
- * Signal the PTY, wait for exit, and reap the leader's process group. The reap
- * is guaranteed on EVERY exit path — normal exit, timeout, or a throwing PTY
- * operation — so a `termination_failed` outcome never leaks the descendants
- * this is meant to kill (C-LIFE-10). The reaper is one-shot and reuse-safe, so
- * a later `teardown()` reaping again is a harmless no-op (see SessionReaper).
+ * Signal the PTY, wait for exit, and reap the leader's process group. The reap is
+ * ATTEMPTED on EVERY exit path — normal exit, timeout, or a throwing PTY operation
+ * — so no path skips it. It does NOT guarantee the tree is gone: a failing reap
+ * (e.g. EPERM) still leaves descendants alive, so that failure is PROPAGATED as a
+ * typed `termination_failed` (never swallowed) and the reaper stays unlatched so a
+ * later `teardown()` RETRIES it. A successful reap latches, so a later reuse is a
+ * harmless no-op (see SessionReaper) (C-LIFE-10).
  */
 export async function terminatePty(
   pty: PtyProcess,

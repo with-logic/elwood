@@ -4,8 +4,8 @@
  * through C-ATTN-03.
  */
 
-import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
-import { blockingTrustSpecs, trustPromptHeaderVisible } from "../core/trust-prompts.ts";
+import type { ScreenFactTable } from "../core/screen-facts.ts";
+import { withTrustBlockingRules } from "../core/trust-blocking.ts";
 
 /**
  * Verified against codex-cli 0.142.5. The working spinner renders
@@ -45,22 +45,10 @@ export const codexScreenFactTable: ScreenFactTable = {
 };
 
 /**
- * A blocking rule per trust prompt that stays UNANSWERED under the policy
- * (C-ATTN-03). An `always`-answered prompt (hook trust) is auto-handled and MUST
- * NOT block, so it is excluded even when autotrust is off. Ids are stable and
- * semantic (from the prompt id), not positional.
+ * Appends the shared per-agent trust blocking rules (C-ATTN-03; PRD §5.1). An
+ * `always`-answered prompt (hook trust) is auto-handled and never blocks, so
+ * `blockingTrustSpecs` already excludes it even when autotrust is off.
  */
 export function codexScreenFactTableForTrustPolicy(autotrust: boolean): ScreenFactTable {
-  const rules: ScreenFactRule[] = blockingTrustSpecs("codex", autotrust).map((spec) => ({
-    id: `codex-${spec.id}-prompt`,
-    fact: "blocking_prompt_visible",
-    // Option-aware recognition: the header must appear on a NON-option line, so an
-    // unrelated dialog whose numbered option merely contains a directory-trust
-    // phrase is NOT misclassified as a blocking trust prompt (PRD §5.1). Same
-    // recognizer the responder uses, so classification and answering never diverge.
-    match: (text) => trustPromptHeaderVisible(text, spec),
-  }));
-  return rules.length === 0
-    ? codexScreenFactTable
-    : { ...codexScreenFactTable, rules: [...codexScreenFactTable.rules, ...rules] };
+  return withTrustBlockingRules(codexScreenFactTable, "codex", autotrust);
 }

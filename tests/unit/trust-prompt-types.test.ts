@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import type { StartupPromptAutomation } from "../../src/core/startup-automation.ts";
+import type { StartupPromptOutcome } from "../../src/core/startup-automation.ts";
 import type { TrustPromptSpec } from "../../src/core/trust-prompts.ts";
 
 const headerPattern = /trust/i;
@@ -62,36 +62,36 @@ describe("trust-prompt type guards", () => {
     expect(alwaysOnCodexWorkspace.id).toBe("workspace_trust");
   });
 
-  test("C-CLAUDE-11 C-CODEX-12 StartupPromptAutomation correlates labels to their agent", () => {
+  test("C-CLAUDE-11 C-CODEX-12 StartupPromptOutcome correlates labels to their agent", () => {
     const claudeAnswered = {
       kind: "answered",
       prompt: "browser_tools",
       input: "2",
-    } satisfies StartupPromptAutomation<"claude">;
+    } satisfies StartupPromptOutcome<"claude">;
     const codexAnswered = {
       kind: "answered",
       prompt: "update",
       input: "1",
-    } satisfies StartupPromptAutomation<"codex">;
+    } satisfies StartupPromptOutcome<"codex">;
 
     const claudeWithCodexLabel = {
       kind: "answered",
       // @ts-expect-error `update` is Codex-only and cannot label a Claude automation.
       prompt: "update",
       input: "1",
-    } satisfies StartupPromptAutomation<"claude">;
+    } satisfies StartupPromptOutcome<"claude">;
     const codexWithClaudeBrowser = {
       kind: "answered",
       // @ts-expect-error `browser_tools` is Claude-only and cannot label a Codex automation.
       prompt: "browser_tools",
       input: "1",
-    } satisfies StartupPromptAutomation<"codex">;
+    } satisfies StartupPromptOutcome<"codex">;
     const codexWithClaudeMcp = {
       kind: "answered",
       // @ts-expect-error `mcp_trust` is a Claude-only trust id and cannot label a Codex automation.
       prompt: "mcp_trust",
       input: "1",
-    } satisfies StartupPromptAutomation<"codex">;
+    } satisfies StartupPromptOutcome<"codex">;
 
     expect(claudeAnswered.prompt).toBe("browser_tools");
     expect(codexAnswered.prompt).toBe("update");
@@ -104,18 +104,18 @@ describe("trust-prompt type guards", () => {
     const validPending = {
       kind: "option_pending",
       prompt: "mcp_trust",
-    } satisfies StartupPromptAutomation<"claude">;
+    } satisfies StartupPromptOutcome<"claude">;
 
     const claudeNonTrustPending = {
       kind: "option_pending",
       prompt: "browser_tools",
       // @ts-expect-error `browser_tools` is a non-trust prompt and can never be recognized-but-option-pending.
-    } satisfies StartupPromptAutomation<"claude">;
+    } satisfies StartupPromptOutcome<"claude">;
     const codexNonTrustPending = {
       kind: "option_pending",
       prompt: "update",
       // @ts-expect-error `update` is a non-trust prompt and can never be recognized-but-option-pending.
-    } satisfies StartupPromptAutomation<"codex">;
+    } satisfies StartupPromptOutcome<"codex">;
 
     expect(validPending.prompt).toBe("mcp_trust");
     expect(claudeNonTrustPending.kind).toBe("option_pending");

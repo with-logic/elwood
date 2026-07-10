@@ -47,7 +47,8 @@ no in-flight `sendMessage` branch to test.
 ## 4. "One scan can synchronously process 16 MiB per cursor" — ADEQUATELY BOUNDED
 
 The normal-scan path now shares a watcher-wide ~4 MiB budget across all cursors,
-and the terminal drain (retire/finish) is capped by maxDrainChunks. The reviewer
+and the terminal drain (retire/finish) shares one watcher-wide chunk budget and
+a per-call wall-clock slice (see item 6). The reviewer
 additionally wants fully async/yielding reads; that is a substantial rewrite of a
 path that is already bounded, and is deferred as diminishing returns.
 

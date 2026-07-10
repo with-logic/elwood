@@ -10,6 +10,8 @@
  * PATH lookup, no post-exit reparenting blind spot.
  */
 
+import { errnoCode } from "../core/errors.ts";
+
 /** Injectable so tests never signal real process groups; production uses `process.kill`. */
 export type ProcessGroupKiller = {
   /** SIGKILLs the process group `pgid` (via `kill(-pgid)`); tolerates an empty/dead group. */
@@ -76,10 +78,13 @@ export function resetGroupKillerForTests(): void {
  * Swallows the ESRCH raised when the group is already empty (the normal case:
  * the leader and its children exited together) and re-throws any other error —
  * a real failure (e.g. EPERM) that must not be reported as a successful reap.
- * Exported for focused coverage of both branches without an unsafe real signal.
+ * Reads the errno through `errnoCode`, which narrows object-ness first, so a
+ * thrown `null`/non-Error is preserved and rethrown rather than triggering a
+ * secondary TypeError while inspecting it (C-ERR-01). Exported for focused
+ * coverage of both branches without an unsafe real signal.
  */
 export function rethrowUnlessGroupGone(error: unknown): void {
-  if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+  if (errnoCode(error) !== "ESRCH") throw error;
 }
 
 /**
