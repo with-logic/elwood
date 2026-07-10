@@ -6,13 +6,17 @@
 
 import * as activity from "../core/activity.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
-import type { TypedEmitter } from "../events/emitter.ts";
 import { ClaudeTranscriptWatcher } from "./transcript/index.ts";
 import { dropWarning, pollErrorWarning, readErrorWarning } from "./transcript/warnings.ts";
 
 /** The session surface the watcher needs to persist and de-duplicate warnings. */
 export type WarningSink = {
   recordWarnings(warnings: readonly ElwoodWarningEvent[]): void;
+};
+
+/** The narrow emitter surface the transcript wiring needs (activity only). */
+export type TranscriptActivityEmitter = {
+  emit(event: "activity", payload: activity.ElwoodActivityEvent): void;
 };
 
 /**
@@ -27,7 +31,7 @@ export type WarningSink = {
  */
 export function createTranscriptWatcher(
   elwoodSessionId: string,
-  emitter: TypedEmitter,
+  emitter: TranscriptActivityEmitter,
   sink?: () => WarningSink | undefined,
 ): ClaudeTranscriptWatcher {
   const pending: ElwoodWarningEvent[] = [];
@@ -56,6 +60,9 @@ export function createTranscriptWatcher(
 /** Turn-boundary hooks: a first observe here recovers the already-committed tail. */
 const turnBoundaryHooks = new Set(["Stop", "SubagentStop"]);
 
+/** The narrow watcher surface observeTranscript drives (observe + retire only). */
+export type ObservableTranscript = Pick<ClaudeTranscriptWatcher, "observe" | "retire">;
+
 /**
  * Points the watcher at every transcript path the hook payload carries. A
  * `SubagentStop` event has both a main `transcript_path` and a required
@@ -69,7 +76,7 @@ const turnBoundaryHooks = new Set(["Stop", "SubagentStop"]);
  * prior conversation's final assistant/tool turn (PRD §5.4, C-CLAUDE-15).
  */
 export function observeTranscript(
-  watcher: ClaudeTranscriptWatcher,
+  watcher: ObservableTranscript,
   event: { readonly [key: string]: unknown },
 ): void {
   const hook = event["hook_event_name"] as string;

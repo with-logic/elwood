@@ -1,6 +1,7 @@
 /**
- * Real Claude assistant_message provenance: committed transcript, not the hook.
- * Implements C-E2E-07 for C-CLAUDE-15.
+ * Real Claude activity provenance: assistant messages AND tool calls/results come
+ * from the committed transcript, not the hook. Implements C-E2E-07 and C-E2E-08
+ * for C-CLAUDE-15.
  */
 
 import assert from "node:assert/strict";

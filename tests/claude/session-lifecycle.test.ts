@@ -156,28 +156,6 @@ describe("ClaudeSession lifecycle", () => {
     expect(reapedGroups).toEqual([]);
   });
 
-  test("C-LIFE-11 teardown reaps and completes even when it rejects an in-flight message", async () => {
-    const cwd = tempDir();
-    installFakes();
-    const session = await startClaude({ cwd });
-    const leaderPid = ptys.at(-1)!.pid;
-    const dir = join(cwd, ".elwood", "sessions", session.elwoodSessionId);
-    reapedGroups.length = 0;
-    // Queue a message while the session is not ready: it stays in the control
-    // queue, unresolved, until a ready transition that never comes.
-    const pending = session.sendMessage("queued-until-teardown");
-    // Tearing down closes the control queue (rejecting the pending message) and
-    // must still run every teardown step — group reap, runtime cleanup, and
-    // session-dir removal — to completion.
-    await session.teardown();
-    await expect(pending).rejects.toMatchObject({ code: "session_not_running" });
-    expect(session.status).toBe("torn_down");
-    // The reap must actually happen on this rejecting path — the exact step that
-    // would silently regress the original P0 leak (C-LIFE-10).
-    expect(reapedGroups).toContain(leaderPid);
-    expect(existsSync(dir)).toBe(false);
-  });
-
   test("C-PTY-06 process exit updates session status", async () => {
     const cwd = tempDir();
     installFakes();

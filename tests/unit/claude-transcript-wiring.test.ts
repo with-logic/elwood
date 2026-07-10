@@ -9,10 +9,20 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import {
   createTranscriptWatcher,
+  type ObservableTranscript,
   observeTranscript,
+  type TranscriptActivityEmitter,
   type WarningSink,
 } from "../../src/claude/session-transcript.ts";
+import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
+
+/** A typed activity-emitter fake that records the events it receives. */
+function fakeEmitter(
+  sink: (event: ElwoodActivityEvent) => void = () => {},
+): TranscriptActivityEmitter {
+  return { emit: (_event, payload) => sink(payload) };
+}
 
 const assistant = (text: string) => ({
   type: "assistant",
@@ -26,9 +36,10 @@ function tmpFile(): string {
 describe("C-CLAUDE-15 transcript session wiring", () => {
   test("observeTranscript follows BOTH transcript_path and agent_transcript_path", () => {
     const observed: [string, boolean][] = [];
-    const watcher = {
-      observe: (p: string, recover: boolean) => observed.push([p, recover]),
-    } as never;
+    const watcher: ObservableTranscript = {
+      observe: (p, recover) => observed.push([p, recover ?? false]),
+      retire: () => {},
+    };
     // A Stop is a turn boundary, so a first observe recovers the committed tail.
     observeTranscript(watcher, {
       hook_event_name: "Stop",
@@ -45,9 +56,10 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
 
   test("observeTranscript does NOT recover history on a non-boundary hook", () => {
     const observed: [string, boolean][] = [];
-    const watcher = {
-      observe: (p: string, recover: boolean) => observed.push([p, recover]),
-    } as never;
+    const watcher: ObservableTranscript = {
+      observe: (p, recover) => observed.push([p, recover ?? false]),
+      retire: () => {},
+    };
     // A SessionStart/resume observe baselines at EOF: no backward recovery, so a
     // resumed session never republishes the prior conversation's final turn.
     observeTranscript(watcher, {
@@ -60,10 +72,10 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
   test("SubagentStop observes then RETIRES the agent transcript from active polling", () => {
     const observed: string[] = [];
     const retired: string[] = [];
-    const watcher = {
-      observe: (p: string) => observed.push(p),
-      retire: (p: string) => retired.push(p),
-    } as never;
+    const watcher: ObservableTranscript = {
+      observe: (p) => observed.push(p),
+      retire: (p) => retired.push(p),
+    };
     observeTranscript(watcher, {
       hook_event_name: "SubagentStop",
       transcript_path: "/main.jsonl",
@@ -75,8 +87,8 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
   });
 
   test("a drop observed before the sink exists is BUFFERED, then flushed once it does", () => {
-    const activities: Array<{ kind?: string; label?: string }> = [];
-    const emitter = { emit: (_e: string, a: never) => activities.push(a) } as never;
+    const activities: ElwoodActivityEvent[] = [];
+    const emitter = fakeEmitter((a) => activities.push(a));
     const recorded: ElwoodWarningEvent[] = [];
     let sink: WarningSink | undefined; // not ready yet (early startup)
     const watcher = createTranscriptWatcher("s9", emitter, () => sink);
@@ -96,8 +108,8 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
   });
 
   test("with a warning sink, a drop is routed through recordWarnings (persist + dedup)", () => {
-    const activities: Array<{ kind?: string }> = [];
-    const emitter = { emit: (_e: string, a: never) => activities.push(a) } as never;
+    const activities: ElwoodActivityEvent[] = [];
+    const emitter = fakeEmitter((a) => activities.push(a));
     const recorded: ElwoodWarningEvent[] = [];
     const sink: WarningSink = { recordWarnings: (w) => recorded.push(...w) };
     const watcher = createTranscriptWatcher("s9", emitter, () => sink);
@@ -119,7 +131,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
   });
 
   test("a contained fs read error is routed to the sink as a transcript_read_error warning", () => {
-    const emitter = { emit: () => {} } as never;
+    const emitter = fakeEmitter();
     const recorded: ElwoodWarningEvent[] = [];
     const sink: WarningSink = { recordWarnings: (w) => recorded.push(...w) };
     const watcher = createTranscriptWatcher("s9", emitter, () => sink);
@@ -142,11 +154,9 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     const recorded: ElwoodWarningEvent[] = [];
     const sink: WarningSink = { recordWarnings: (w) => recorded.push(...w) };
     // The transcript event emitter throws — a programming error on the timer path.
-    const emitter = {
-      emit: (_e: string, a: { kind?: string }) => {
-        if (a.kind === "assistant_message") throw new Error("listener bug");
-      },
-    } as never;
+    const emitter = fakeEmitter((a) => {
+      if (a.kind === "assistant_message") throw new Error("listener bug");
+    });
     const watcher = createTranscriptWatcher("s9", emitter, () => sink);
     const path = tmpFile();
     writeFileSync(path, "");
