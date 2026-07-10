@@ -71,4 +71,15 @@ export type ElwoodWarningEvent =
       readonly lastErrorCode: string;
       readonly transcriptPath: string;
       readonly raw: string;
+    }
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "claude";
+      readonly source: "terminal";
+      readonly code: "transcript_poll_stopped";
+      readonly severity: "warning";
+      readonly message: string;
+      // A short error reason only — never raw transcript content.
+      readonly reason: string;
+      readonly raw: string;
     };

@@ -1001,19 +1001,43 @@ type ElwoodWarningEvent =
       readonly transcriptPath: string;
       readonly raw: string;
     }
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "claude";
+      readonly source: "terminal";
+      readonly code: "transcript_poll_stopped";
+      readonly severity: "warning";
+      readonly message: string;
+      // A short error reason only — never raw transcript content.
+      readonly reason: string;
+      readonly raw: string;
+    }
   };
 ```
 
 The `transcript_records_dropped` warning is emitted when committed transcript
-records cannot be parsed as JSON. The `transcript_read_error` warning is emitted
-when a transcript filesystem read is contained (a rotation/removal/permission
-race): the watcher never crashes the host on such an error, but it also does not
-swallow it silently — it surfaces a bounded diagnostic. Like every warning both
-carry no raw conversation content: only running counts, a byte magnitude or last
-error code, and the transcript path. Both are de-duplicated, persisted, and
-emitted through the same `warning`/`activity` contract as all other warnings,
-and repeated observations update the snapshot count without emitting a duplicate
+records cannot be parsed as JSON, OR when a single un-terminated record exceeds a
+bounded size and is discarded through its next newline (so a pathological line
+can neither exhaust memory nor cause quadratic processing). The
+`transcript_read_error` warning is emitted when a transcript filesystem read is
+contained (a rotation/removal/permission race): the watcher never crashes the
+host, but also does not swallow it silently. The `transcript_poll_stopped`
+warning is emitted when a programming error escapes the periodic transcript poll:
+the watcher stops itself and surfaces the reason rather than letting the failure
+become an unhandled rejection that could terminate the host. Like every warning
+these carry no raw conversation content: only running counts, a byte magnitude,
+an error code or short reason, and the transcript path. All are de-duplicated,
+persisted, and emitted through the same `warning`/`activity` contract, and
+repeated observations update the snapshot count without emitting a duplicate
 `warning` event (C-CLAUDE-15).
+
+A stopped subagent's transcript (`agent_transcript_path` on a `SubagentStop`) is
+a one-shot input: Elwood flushes it once and then retires it from active polling,
+so a long-lived session with many subagents does not accumulate an unbounded set
+of transcript files polled for the rest of its lifetime. Once the session's PTY
+exits, the watcher becomes permanently terminal: no scan, emit, or observation
+occurs after `finish()`, so no transcript activity is ever delivered past
+`terminal:exit`.
 
 Warnings are persisted in Elwood session metadata for resume-time inspection,
 but they are not a durable audit log. Repeated observations of the same warning

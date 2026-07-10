@@ -8,7 +8,7 @@ import * as activity from "../core/activity.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import { ClaudeTranscriptWatcher } from "./transcript.ts";
-import { dropWarning, readErrorWarning } from "./transcript-warnings.ts";
+import { dropWarning, pollErrorWarning, readErrorWarning } from "./transcript-warnings.ts";
 
 /** The session surface the watcher needs to persist and de-duplicate warnings. */
 export type WarningSink = {
@@ -17,22 +17,30 @@ export type WarningSink = {
 
 /**
  * Builds a transcript watcher that emits committed items and bounded diagnostics
- * (drops and contained fs errors). Diagnostics are routed through the session's
- * warning sink so they are de-duplicated, persisted into the session snapshot,
- * and emitted through the `warning` (and projected `activity`) contract rather
- * than as raw activity. The sink is resolved lazily because the session object
- * is constructed after the watcher (PRD §5.7). Until it exists, a diagnostic is
- * projected as `activity` only — a transient early-startup case.
+ * (drops, contained fs errors, and a poll-error stop). Diagnostics are routed
+ * through the session's warning sink so they are de-duplicated, persisted into
+ * the session snapshot, and emitted through the `warning`/`activity` contract.
+ * The sink is resolved lazily because the session object is constructed after the
+ * watcher (PRD §5.7). A diagnostic observed BEFORE the sink exists is BUFFERED
+ * and flushed through `recordWarnings` once it does — never silently emitted as
+ * activity-only (which would neither persist nor replay).
  */
 export function createTranscriptWatcher(
   elwoodSessionId: string,
   emitter: TypedEmitter,
   sink?: () => WarningSink | undefined,
 ): ClaudeTranscriptWatcher {
+  const pending: ElwoodWarningEvent[] = [];
   const route = (warning: ElwoodWarningEvent) => {
     const target = sink?.();
-    if (target) target.recordWarnings([warning]);
-    else emitter.emit("activity", activity.activityFromWarning(warning));
+    if (!target) {
+      pending.push(warning); // sink not ready yet: hold until it is, don't drop
+      return;
+    }
+    if (pending.length > 0) {
+      target.recordWarnings(pending.splice(0));
+    }
+    target.recordWarnings([warning]);
   };
   return new ClaudeTranscriptWatcher(
     elwoodSessionId,
@@ -40,6 +48,7 @@ export function createTranscriptWatcher(
     {
       onDrop: (notice) => route(dropWarning(notice)),
       onReadError: (notice) => route(readErrorWarning(notice)),
+      onPollError: (error) => route(pollErrorWarning(elwoodSessionId, error)),
     },
   );
 }
@@ -63,9 +72,15 @@ export function observeTranscript(
   watcher: ClaudeTranscriptWatcher,
   event: { readonly [key: string]: unknown },
 ): void {
-  const recoverTail = turnBoundaryHooks.has(event["hook_event_name"] as string);
+  const hook = event["hook_event_name"] as string;
+  const recoverTail = turnBoundaryHooks.has(hook);
   for (const key of ["transcript_path", "agent_transcript_path"]) {
     const path = event[key];
-    if (typeof path === "string" && path.length > 0) watcher.observe(path, recoverTail);
+    if (typeof path !== "string" || path.length === 0) continue;
+    watcher.observe(path, recoverTail);
+    // A SubagentStop's agent transcript is a one-shot input: flush it now and
+    // retire it from active polling so a long session with many subagents does
+    // not accumulate cursors statted twice a second forever (PRD §5.4).
+    if (hook === "SubagentStop" && key === "agent_transcript_path") watcher.retire(path);
   }
 }

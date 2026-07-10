@@ -37,3 +37,18 @@ export function readErrorWarning(notice: TranscriptReadErrorNotice): ElwoodWarni
     raw: `transcript_read_error count=${notice.errorCount} code=${notice.lastErrorCode}`,
   };
 }
+
+/** A programming error escaped the transcript poll; the watcher stopped (§5.4). */
+export function pollErrorWarning(elwoodSessionId: string, error: unknown): ElwoodWarningEvent {
+  const cause = error instanceof Error ? error.message : String(error);
+  return {
+    elwoodSessionId,
+    agent: "claude",
+    source: "terminal",
+    code: "transcript_poll_stopped",
+    severity: "warning",
+    message: `Transcript polling stopped after an unexpected error: ${cause}.`,
+    reason: cause,
+    raw: `transcript_poll_stopped reason=${cause}`,
+  };
+}

@@ -13,24 +13,22 @@ import {
   type TranscriptDropNotice,
   type TranscriptReadErrorNotice,
 } from "./transcript-drops.ts";
-import { type ClaudeTranscriptSummary, summarizeClaudeRecord } from "./transcript-summary.ts";
+import { type ClaudeTranscriptEvent, LineEmitter } from "./transcript-emit.ts";
 
-export type { TranscriptDropNotice, TranscriptReadErrorNotice };
+export type { ClaudeTranscriptEvent, TranscriptDropNotice, TranscriptReadErrorNotice };
 
 /** Poll cadence: transcript activity is not latency-critical, so this stays coarse. */
 const pollMs = 500;
-
-export type ClaudeTranscriptEvent = {
-  readonly elwoodSessionId: string;
-  readonly path: string;
-  readonly item: unknown;
-  readonly summary: ClaudeTranscriptSummary;
-};
+// Max bounded read passes per cursor per scan (×256 KiB ≈ 4 MiB): a huge delta is
+// drained across poll ticks, not in one 16 MiB event-loop block (PRD §9.2).
+const scanChunksPerCursor = 16;
 
 /** Notices the watcher forwards for observation problems (both rate-bounded). */
 export type TranscriptNoticeHandlers = {
   readonly onDrop?: (notice: TranscriptDropNotice) => void;
   readonly onReadError?: (notice: TranscriptReadErrorNotice) => void;
+  /** A programming error escaped the timer poll; the watcher has stopped. */
+  readonly onPollError?: (error: unknown) => void;
 };
 
 export class ClaudeTranscriptWatcher {
@@ -38,20 +36,22 @@ export class ClaudeTranscriptWatcher {
   private readonly cursors = new Map<string, TranscriptCursor>();
   private interval: ReturnType<typeof setInterval> | undefined;
   private polling = false;
+  // A permanent terminal latch: once finished, no scan/emit/observe/poll runs.
+  private finished = false;
   private readonly drops: DropTracker;
   private readonly readErrors: ReadErrorTracker;
-  private readonly elwoodSessionId: string;
-  private readonly emit: (event: ClaudeTranscriptEvent) => void;
+  private readonly onPollError: ((error: unknown) => void) | undefined;
+  private readonly lines: LineEmitter;
 
   constructor(
     elwoodSessionId: string,
     emit: (event: ClaudeTranscriptEvent) => void,
     notices: TranscriptNoticeHandlers = {},
   ) {
-    this.elwoodSessionId = elwoodSessionId;
-    this.emit = emit;
     this.drops = new DropTracker(elwoodSessionId, notices.onDrop);
     this.readErrors = new ReadErrorTracker(elwoodSessionId, notices.onReadError);
+    this.onPollError = notices.onPollError;
+    this.lines = new LineEmitter(elwoodSessionId, emit, this.drops);
   }
 
   /**
@@ -62,16 +62,33 @@ export class ClaudeTranscriptWatcher {
    * a SessionStart/resume observe baselines at EOF and never republishes history.
    */
   observe(path: string, recoverTail = false): void {
-    if (this.cursors.has(path)) return;
+    // No new observation after the watcher is finished — a late hook must not
+    // restart polling or emit transcript activity past terminal:exit (§5.4).
+    if (this.finished || this.cursors.has(path)) return;
     const cursor = this.readFs(path, () => new TranscriptCursor(path));
     if (cursor === undefined) return;
     this.cursors.set(path, cursor);
-    if (recoverTail) this.emitLines(path, this.readFs(path, () => cursor.baselineTail()) ?? "");
+    if (recoverTail)
+      this.lines.emitLines(path, this.readFs(path, () => cursor.baselineTail()) ?? "");
     this.ensurePolling();
   }
 
   scan(): void {
+    if (this.finished) return;
     for (const cursor of this.cursors.values()) this.scanCursor(cursor);
+  }
+
+  /**
+   * Flush and retire a stopped subagent's transcript: a `SubagentStop` path is a
+   * one-shot input, so after its final read it is dropped from the active cursor
+   * set and no longer statted twice a second for the whole session lifetime.
+   */
+  retire(path: string): void {
+    const cursor = this.cursors.get(path);
+    if (!cursor || this.finished) return;
+    this.scanCursor(cursor);
+    this.lines.emitLines(cursor.path, cursor.drainPending());
+    this.cursors.delete(path);
   }
 
   /** Test seam: drive one poll pass synchronously (the interval calls poll()). */
@@ -79,18 +96,17 @@ export class ClaudeTranscriptWatcher {
     return this.poll();
   }
 
-  /**
-   * Idle-friendly poll: an ASYNC stat gates each cursor so a session with no new
-   * bytes does zero synchronous fs work on the shared event loop (PRD §9.2); a
-   * bounded sync read runs only for a cursor that grew. Re-entrancy is guarded so
-   * a slow read can't overlap the next tick; the stat race is contained.
-   */
+  // Idle-friendly poll: an async stat gates each cursor (zero sync fs work when
+  // idle, §9.2); a bounded sync read runs only on growth. Re-entrancy-guarded.
   private async poll(): Promise<void> {
-    if (this.polling) return;
+    if (this.polling || this.finished) return;
     this.polling = true;
     try {
       for (const cursor of this.cursors.values()) {
         const grown = await this.readFsAsync(cursor.path, () => cursor.hasGrown());
+        // Re-check AFTER the await: finish() may have run during the async stat,
+        // and a post-exit emit would violate the terminal:exit ordering (§5.4).
+        if (this.finished) return;
         if (grown) this.scanCursor(cursor);
       }
     } finally {
@@ -98,19 +114,35 @@ export class ClaudeTranscriptWatcher {
     }
   }
 
-  /** Flush any buffered partial lines across all paths, then stop polling. */
+  /**
+   * Flush any buffered partial lines across all paths, then permanently stop.
+   * `finished` is set FIRST so an in-flight poll's post-await re-check bails and
+   * a later observe/scan is a no-op — nothing emits past terminal:exit (§5.4).
+   */
   finish(): void {
-    // Polling MUST stop even if flushing throws (a listener bug), so a wedged
-    // watcher can't keep firing after teardown and delay later lifecycle events.
+    if (this.finished) return;
+    this.finished = true;
+    // Flushing MUST NOT prevent the watcher from stopping (a listener bug in an
+    // emit could otherwise leave the interval running and wedge lifecycle events).
     try {
       for (const cursor of this.cursors.values()) {
-        this.scanCursor(cursor);
-        this.emitLines(cursor.path, cursor.drainPending());
+        this.drainCursor(cursor); // final flush drains fully, not just one budget
+        this.lines.emitLines(cursor.path, cursor.drainPending());
       }
       this.drops.flush();
       this.readErrors.flush();
     } finally {
       this.stop();
+    }
+  }
+
+  /** Drain a cursor to EOF at teardown (bounded only by per-record discarding). */
+  private drainCursor(cursor: TranscriptCursor): void {
+    for (;;) {
+      const chunk = this.readFs(cursor.path, () => cursor.readChunk());
+      if (chunk === undefined) return;
+      if (chunk.text.length > 0) this.lines.emitLines(cursor.path, chunk.text, cursor);
+      if (!chunk.more) return;
     }
   }
 
@@ -120,32 +152,33 @@ export class ClaudeTranscriptWatcher {
   }
 
   private ensurePolling(): void {
-    if (this.interval) return;
-    // Fire-and-forget: poll() is re-entrancy-guarded and self-contains its fs
-    // errors, so a rejected promise is impossible; void satisfies the linter.
-    this.interval = setInterval(() => void this.poll(), pollMs);
+    if (this.interval || this.finished) return;
+    // The interval catches at its boundary: scanCursor can throw a synchronous
+    // listener error AFTER the poll's await, which on the timer path would become
+    // an unhandled rejection. Instead we stop the watcher and route the failure
+    // to a diagnostic so a listener bug can't terminate the host.
+    this.interval = setInterval(() => {
+      this.poll().catch((error) => {
+        this.finish();
+        this.onPollError?.(error);
+      });
+    }, pollMs);
     this.interval.unref?.();
   }
 
-  /**
-   * Drain a cursor in bounded chunks. The read is contained (a rotation/removal
-   * race must not crash the timer or the hook dispatch that calls scan()); parse
-   * and emit run OUTSIDE the guard so a listener error is never swallowed.
-   */
+  // Drain a cursor in bounded chunks. The read is contained; parse/emit run
+  // OUTSIDE the guard so a listener error is never swallowed.
   private scanCursor(cursor: TranscriptCursor): void {
-    for (let budget = 64; budget > 0; budget--) {
+    for (let budget = scanChunksPerCursor; budget > 0; budget--) {
       const chunk = this.readFs(cursor.path, () => cursor.readChunk());
       if (chunk === undefined) return; // contained FS failure; keep last offset
-      if (chunk.text.length > 0) this.emitLines(cursor.path, chunk.text, cursor);
+      if (chunk.text.length > 0) this.lines.emitLines(cursor.path, chunk.text, cursor);
       if (!chunk.more) return;
-    }
+    } // budget exhausted with more to read: the next poll tick resumes here.
   }
 
-  /**
-   * Runs an fs read, containing the removal/rotation race so it never crashes the
-   * timer or hook dispatch — but recording a bounded, content-free diagnostic
-   * (count + last error code) so a persistent fault is visible, not silent (§5.4).
-   */
+  // Contains the removal/rotation race (never crashes the timer/hook dispatch)
+  // and records a bounded diagnostic so a persistent fault is visible (§5.4).
   private readFs<T>(path: string, read: () => T): T | undefined {
     try {
       return read();
@@ -163,37 +196,5 @@ export class ClaudeTranscriptWatcher {
       this.readErrors.record(path, error);
       return false;
     }
-  }
-
-  private emitLines(path: string, text: string, cursor?: TranscriptCursor): void {
-    if (text.length === 0) return;
-    const lines = cursor ? cursor.takeLines(text) : takeLinesOf(text);
-    for (const line of lines) this.emitLine(path, line);
-  }
-
-  private emitLine(path: string, line: string): void {
-    if (!line.trim()) return;
-    const item = parseLine(line);
-    if (item === undefined) {
-      this.drops.record(path, line);
-      return;
-    }
-    for (const summary of summarizeClaudeRecord(item)) {
-      this.emit({ elwoodSessionId: this.elwoodSessionId, path, item, summary });
-    }
-  }
-}
-
-/** Line splitter for text with no retained partial (baseline/pending flushes). */
-function takeLinesOf(text: string): readonly string[] {
-  return text.split(/\r?\n/);
-}
-
-/** Returns undefined for a malformed line so the caller can count the drop. */
-function parseLine(line: string): unknown {
-  try {
-    return JSON.parse(line);
-  } catch {
-    return undefined;
   }
 }

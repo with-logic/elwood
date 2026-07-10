@@ -64,8 +64,13 @@ export class DropTracker extends RateBounded {
   }
 
   record(path: string, line: string): void {
+    this.recordBytes(path, Buffer.byteLength(line, "utf8"));
+  }
+
+  /** Count one dropped record contributing `bytes` (an over-length line already measured). */
+  recordBytes(path: string, bytes: number): void {
     this.count += 1;
-    this.droppedBytes += Buffer.byteLength(line, "utf8");
+    this.droppedBytes += bytes;
     this.lastDropPath = path;
     if (this.shouldNotify()) this.notify(path);
   }

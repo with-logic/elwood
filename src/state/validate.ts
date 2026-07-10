@@ -149,6 +149,16 @@ function isWarning(value: unknown): value is ElwoodWarningEvent {
       isString(value["raw"])
     );
   }
+  if (value["code"] === "transcript_poll_stopped") {
+    return (
+      value["agent"] === "claude" &&
+      value["source"] === "terminal" &&
+      isString(value["elwoodSessionId"]) &&
+      isString(value["message"]) &&
+      isString(value["reason"]) &&
+      isString(value["raw"])
+    );
+  }
   return false;
 }
 

@@ -57,21 +57,42 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     expect(observed).toEqual([["/main.jsonl", false]]);
   });
 
-  test("without a warning sink, a drop is projected as a bare warning activity", () => {
+  test("SubagentStop observes then RETIRES the agent transcript from active polling", () => {
+    const observed: string[] = [];
+    const retired: string[] = [];
+    const watcher = {
+      observe: (p: string) => observed.push(p),
+      retire: (p: string) => retired.push(p),
+    } as never;
+    observeTranscript(watcher, {
+      hook_event_name: "SubagentStop",
+      transcript_path: "/main.jsonl",
+      agent_transcript_path: "/sub.jsonl",
+    });
+    // Both observed; only the one-shot agent transcript is retired.
+    expect(observed).toEqual(["/main.jsonl", "/sub.jsonl"]);
+    expect(retired).toEqual(["/sub.jsonl"]);
+  });
+
+  test("a drop observed before the sink exists is BUFFERED, then flushed once it does", () => {
     const activities: Array<{ kind?: string; label?: string }> = [];
     const emitter = { emit: (_e: string, a: never) => activities.push(a) } as never;
-    // No sink (the transient early-startup case before the session exists).
-    const watcher = createTranscriptWatcher("s9", emitter);
+    const recorded: ElwoodWarningEvent[] = [];
+    let sink: WarningSink | undefined; // not ready yet (early startup)
+    const watcher = createTranscriptWatcher("s9", emitter, () => sink);
     const path = tmpFile();
     writeFileSync(path, "");
     watcher.observe(path);
     writeFileSync(path, `${JSON.stringify(assistant("wired"))}\n{ bad }\n`);
+    watcher.scan();
+    // Sink absent: the drop is NOT emitted as an activity-only warning (which
+    // would neither persist nor replay) — it is held.
+    expect(activities).not.toContainEqual(expect.objectContaining({ kind: "warning" }));
+    // The sink appears; the next diagnostic flushes the buffered one through it.
+    sink = { recordWarnings: (w) => recorded.push(...w) };
+    writeFileSync(path, `${JSON.stringify(assistant("wired"))}\n{ bad }\n{ bad2 }\n`);
     watcher.finish();
-    expect(activities).toContainEqual(expect.objectContaining({ kind: "assistant_message" }));
-    // The drop diagnostic is a warning activity labelled with its code.
-    expect(activities).toContainEqual(
-      expect.objectContaining({ kind: "warning", label: "transcript_records_dropped" }),
-    );
+    expect(recorded.some((w) => w.code === "transcript_records_dropped")).toBe(true);
   });
 
   test("with a warning sink, a drop is routed through recordWarnings (persist + dedup)", () => {
@@ -115,5 +136,24 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
       errorCount: expect.any(Number),
       transcriptPath: path,
     });
+  });
+
+  test("a timer-path listener error is routed to the sink as a transcript_poll_stopped warning", async () => {
+    const recorded: ElwoodWarningEvent[] = [];
+    const sink: WarningSink = { recordWarnings: (w) => recorded.push(...w) };
+    // The transcript event emitter throws — a programming error on the timer path.
+    const emitter = {
+      emit: (_e: string, a: { kind?: string }) => {
+        if (a.kind === "assistant_message") throw new Error("listener bug");
+      },
+    } as never;
+    const watcher = createTranscriptWatcher("s9", emitter, () => sink);
+    const path = tmpFile();
+    writeFileSync(path, "");
+    watcher.observe(path);
+    writeFileSync(path, `${JSON.stringify(assistant("boom"))}\n`);
+    await new Promise((resolve) => setTimeout(resolve, 700)); // one poll tick
+    watcher.finish();
+    expect(recorded.some((w) => w.code === "transcript_poll_stopped")).toBe(true);
   });
 });

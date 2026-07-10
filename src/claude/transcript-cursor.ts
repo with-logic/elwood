@@ -16,9 +16,19 @@ const maxChunkBytes = 256 * 1024;
 const baselineStepBytes = 64 * 1024;
 /** Hard cap on how far back the baseline scan reaches, so it stays bounded. */
 const baselineMaxBytes = 4 * 1024 * 1024;
+/**
+ * Max bytes a single un-terminated record line may buffer. A pathological record
+ * with no newline (a huge tool/MCP output) would otherwise grow `pending`
+ * without bound and re-concatenate quadratically. Past this the line is
+ * discarded through its next newline and reported as dropped bytes.
+ */
+const maxPendingBytes = 1024 * 1024;
 
 /** Outcome of a bounded read: the decoded text plus whether more remains to read. */
 export type ChunkRead = { readonly text: string; readonly more: boolean };
+
+/** Lines parsed from a chunk, plus bytes discarded from an over-length record. */
+export type TakenLines = { readonly lines: readonly string[]; readonly droppedBytes: number };
 
 /**
  * Tracks the read position for one transcript path and performs bounded reads.
@@ -30,6 +40,9 @@ export class TranscriptCursor {
   readonly path: string;
   private offset: number;
   private pending = "";
+  // When the current un-terminated line overflowed, we discard incoming bytes up
+  // to (and including) the next newline instead of buffering them.
+  private discarding = false;
 
   constructor(path: string) {
     this.path = path;
@@ -37,33 +50,31 @@ export class TranscriptCursor {
   }
 
   /**
-   * The current (final) assistant turn already on disk, for the Stop-first edge
-   * where the committed record landed just before the first observe. Scans
-   * BACKWARD from EOF in bounded steps until the last `user`-role record (the
-   * turn boundary) is found, so a resume with a long history never replays prior
-   * turns AND a current turn larger than one step is not lost. Bounded by
-   * `baselineMaxBytes`. Returns "" when the file is new/empty.
+   * The current (final) turn already on disk (the Stop-first edge). Scans BACKWARD
+   * from EOF in NON-OVERLAPPING blocks — accumulating the tail once, not re-reading
+   * the suffix each step (was O(n²)) — until the last user PROMPT record (the turn
+   * boundary). Bounded by `baselineMaxBytes`; returns "" when new/empty or no
+   * boundary is within the cap.
    */
   baselineTail(): string {
     const size = fileSize(this.path);
     if (size === 0) return "";
-    let start = Math.max(0, size - baselineStepBytes);
-    while (true) {
-      const window = readRange(this.path, start, size - start).text;
+    let end = size;
+    let tail = ""; // records already confirmed to be after any boundary found so far
+    while (end > 0 && size - end < baselineMaxBytes) {
+      const start = Math.max(0, end - baselineStepBytes);
+      const block = readRange(this.path, start, end - start).text;
+      const window = `${block}${tail}`;
       const boundary = lastUserBoundary(window);
-      // Found the boundary, or reached the file start / the scan cap: stop.
       if (boundary >= 0) return afterBoundary(window, boundary);
-      if (start === 0 || size - start >= baselineMaxBytes) return "";
-      start = Math.max(0, start - baselineStepBytes);
+      tail = window; // no boundary yet: carry the whole window and step further back
+      end = start;
     }
+    return "";
   }
 
-  /**
-   * True when the file has new bytes (or was truncated) since the last read,
-   * using an ASYNC stat so an idle poll never blocks the shared event loop —
-   * the common case is "no change", for which no synchronous fs work runs at
-   * all (PRD §9.2). A bounded synchronous read then follows only on real growth.
-   */
+  // True when the file changed size (grew OR truncated) since the last read, via
+  // an ASYNC stat so an idle poll does no sync fs work on the loop (§9.2).
   async hasGrown(): Promise<boolean> {
     const size = (await stat(this.path)).size;
     return size !== this.offset;
@@ -72,9 +83,8 @@ export class TranscriptCursor {
   /** Read up to `maxChunkBytes` of new content, advancing the cursor by bytes consumed. */
   readChunk(): ChunkRead {
     const size = fileSize(this.path);
-    // A truncation restarts from 0, but the offset is only COMMITTED after the
-    // read succeeds — if readRange throws (a truncate-then-read race), the old
-    // offset is preserved so recovery does not replay already-emitted content.
+    // Truncation restarts from 0, but the offset is COMMITTED only after the read
+    // succeeds, so a truncate-then-read throw doesn't replay already-emitted data.
     const from = size < this.offset ? 0 : this.offset;
     if (size <= from) {
       this.offset = from;
@@ -82,18 +92,33 @@ export class TranscriptCursor {
     }
     const want = Math.min(maxChunkBytes, size - from);
     const { text, bytes } = readRange(this.path, from, want);
-    // Advance by the bytes actually consumed (a code point split at the chunk
-    // boundary is left for the next read), so the offset can never drift.
+    // Advance by bytes actually consumed (a split code point waits), no drift.
     this.offset = from + bytes;
     return { text, more: this.offset < size };
   }
 
-  /** Split buffered text into complete lines, retaining any trailing partial line. */
-  takeLines(text: string): readonly string[] {
-    const lines = `${this.pending}${text}`.split(/\r?\n/);
+  // Split buffered text into complete lines, retaining any trailing partial. A
+  // record past `maxPendingBytes` with no newline is discarded through its next
+  // newline (its bytes reported) so it can't OOM or re-concat quadratically (§5.4).
+  takeLines(text: string): TakenLines {
+    let dropped = 0;
+    let rest = text;
+    if (this.discarding) {
+      const nl = rest.indexOf("\n");
+      if (nl === -1) return { lines: [], droppedBytes: byteLen(rest) }; // still no newline
+      dropped += byteLen(rest.slice(0, nl + 1));
+      this.discarding = false;
+      rest = rest.slice(nl + 1);
+    }
+    const lines = `${this.pending}${rest}`.split(/\r?\n/);
     // `split` always yields at least one element, so pop() is a string here.
     this.pending = lines.pop() as string;
-    return lines;
+    if (byteLen(this.pending) > maxPendingBytes) {
+      dropped += byteLen(this.pending); // over-length un-terminated record: discard it
+      this.pending = "";
+      this.discarding = true;
+    }
+    return { lines, droppedBytes: dropped };
   }
 
   /** The final buffered partial line (flushed once at teardown), then cleared. */
@@ -121,14 +146,10 @@ function afterBoundary(text: string, boundary: number): string {
     .join("\n");
 }
 
-/**
- * True only for a genuine user PROMPT record — the real turn boundary. A Claude
- * `tool_result` is ALSO a `type: "user"` record, but it belongs to the CURRENT
- * turn (assistant tool_use → user tool_result → assistant text), so treating it
- * as the boundary would drop committed tool activity C-CLAUDE-15 requires. A
- * prompt carries prose (string content or a `text` block); a pure tool_result
- * record carries only `tool_result` blocks and is NOT a boundary.
- */
+// True only for a genuine user PROMPT — the real turn boundary. A `tool_result`
+// is ALSO a `type:"user"` record but belongs to the current turn, so it is NOT a
+// boundary (else committed tool activity is dropped). A prompt carries prose
+// (string content or a `text` block); a pure tool_result carries only those.
 function isUserRecord(line: string): boolean {
   if (!line.trim()) return false;
   try {
@@ -143,6 +164,10 @@ function isUserRecord(line: string): boolean {
   } catch {
     return false;
   }
+}
+
+function byteLen(text: string): number {
+  return Buffer.byteLength(text, "utf8");
 }
 
 function fileSize(path: string): number {

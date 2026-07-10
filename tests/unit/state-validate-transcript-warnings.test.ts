@@ -60,4 +60,23 @@ describe("C-CLAUDE-15 transcript warning validation", () => {
       validateSessionRecord({ ...record, warnings: [{ ...warning, errorCount: "2" }] }, root, id),
     ).toBeNull();
   });
+
+  test("accepts and gates the transcript_poll_stopped warning", () => {
+    const { root, record } = base();
+    const warning = {
+      elwoodSessionId: id,
+      agent: "claude",
+      source: "terminal",
+      code: "transcript_poll_stopped",
+      severity: "warning",
+      message: "Transcript polling stopped after an unexpected error: boom.",
+      reason: "boom",
+      raw: "reason=boom",
+    };
+    expect(validateSessionRecord({ ...record, warnings: [warning] }, root, id)).not.toBeNull();
+    // A missing reason is rejected, not coerced.
+    expect(
+      validateSessionRecord({ ...record, warnings: [{ ...warning, reason: 5 }] }, root, id),
+    ).toBeNull();
+  });
 });

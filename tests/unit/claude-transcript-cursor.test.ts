@@ -172,4 +172,29 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
     writeFileSync(path, "three\n"); // regrow
     expect(drainAll(cursor)).toBe("three\n"); // only the new content, no replay
   });
+
+  test("takeLines splits complete lines and retains the trailing partial", () => {
+    const path = tmpFile();
+    writeFileSync(path, "");
+    const cursor = new TranscriptCursor(path);
+    expect(cursor.takeLines("a\nb\npart")).toEqual({ lines: ["a", "b"], droppedBytes: 0 });
+    expect(cursor.takeLines("ial\nc\n")).toEqual({ lines: ["partial", "c"], droppedBytes: 0 });
+  });
+
+  test("takeLines discards an over-length un-terminated record through its next newline", () => {
+    const path = tmpFile();
+    writeFileSync(path, "");
+    const cursor = new TranscriptCursor(path);
+    const huge = "x".repeat(1024 * 1024 + 10); // >1 MiB, no newline: pending overflows
+    const first = cursor.takeLines(huge);
+    expect(first.lines).toEqual([]); // nothing complete, and the pending overflowed
+    expect(first.droppedBytes).toBeGreaterThan(1024 * 1024);
+    // Still discarding: more bytes without a newline are counted, not buffered.
+    const second = cursor.takeLines("yyyy");
+    expect(second).toEqual({ lines: [], droppedBytes: 4 });
+    // The newline ends the discarded record; content after it resumes normally.
+    const third = cursor.takeLines("tail-of-huge\nnext\n");
+    expect(third.lines).toEqual(["next"]);
+    expect(third.droppedBytes).toBe("tail-of-huge\n".length);
+  });
 });
