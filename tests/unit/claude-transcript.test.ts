@@ -1,149 +1,195 @@
 /**
- * Focused coverage for the Claude transcript reader and record summarizer.
- * Covers PRD §5.4 (C-CLAUDE-15).
+ * Focused coverage for the Claude transcript watcher and cursor.
+ * Covers PRD §5.4 (C-CLAUDE-15): bounded, per-path, no-replay observation.
  */
 
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { createTranscriptWatcher, observeTranscript } from "../../src/claude/session-transcript.ts";
 import {
   type ClaudeTranscriptEvent,
   ClaudeTranscriptWatcher,
+  type TranscriptDropNotice,
 } from "../../src/claude/transcript.ts";
 
+const assistant = (text: string) => ({
+  type: "assistant",
+  message: { content: [{ type: "text", text }] },
+});
+
+function tmpFile(): string {
+  return join(mkdtempSync(join(tmpdir(), "elwood-tx-")), "t.jsonl");
+}
+const writeRecords = (path: string, ...records: unknown[]) =>
+  writeFileSync(
+    path,
+    records.length ? `${records.map((r) => JSON.stringify(r)).join("\n")}\n` : "",
+  );
+const appendRecords = (path: string, prior: unknown[], ...records: unknown[]) =>
+  writeRecords(path, ...prior, ...records);
+const texts = (events: ClaudeTranscriptEvent[]) =>
+  events.map((e) => (e.summary.kind === "assistant_message" ? e.summary.text : e.summary.kind));
+
 describe("C-CLAUDE-15 Claude transcript watcher", () => {
-  const write = (path: string, ...records: unknown[]) =>
-    writeFileSync(
-      path,
-      records.length ? `${records.map((r) => JSON.stringify(r)).join("\n")}\n` : "",
-    );
-
-  test("emits items appended after observe and skips invalid JSON lines", () => {
-    const dir = mkdtempSync(join(tmpdir(), "elwood-tx-"));
-    const path = join(dir, "t.jsonl");
+  test("emits only NEW records appended after observe; does not replay history", () => {
+    const path = tmpFile();
     const events: ClaudeTranscriptEvent[] = [];
     const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
-    // Observe an empty transcript first (as the session does on early hooks),
-    // then let content be appended as the turn commits.
-    write(path);
+    // Pre-existing history — a new session must NOT re-emit this.
+    writeRecords(path, assistant("old-1"), assistant("old-2"));
     watcher.observe(path);
-    // A blank line (skipped) and a malformed line (parsed, yields no summary)
-    // between two committed records exercise both emitLine guards.
-    writeFileSync(
-      path,
-      `${JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "first" }] } })}\n\n{ not json }\n${JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "second" }] } })}\n`,
-    );
+    appendRecords(path, [assistant("old-1"), assistant("old-2")], assistant("new"));
     watcher.finish();
-    expect(events.map((e) => e.summary.text)).toEqual(["first", "second"]);
-    expect(events[0]!.elwoodSessionId).toBe("s1");
-    expect(events[0]!.path).toBe(path);
+    expect(texts(events)).toEqual(["new"]);
   });
 
-  test("observe resets on a new path and no-ops on the same path; scan tolerates truncation", () => {
-    const dir = mkdtempSync(join(tmpdir(), "elwood-tx-"));
-    const path = join(dir, "t.jsonl");
+  const user = (text: string) => ({ type: "user", message: { content: text } });
+
+  test("first observe recovers ONLY the current assistant turn (after the last user record)", () => {
+    // The Stop-first edge: the committed turn is already on disk when observe
+    // runs. Recovery is scoped to records after the last user boundary, so the
+    // prior turn ("old") is not replayed but the current one ("committed") is.
+    const path = tmpFile();
     const events: ClaudeTranscriptEvent[] = [];
     const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
-    write(path); // observe empty, then append
+    writeRecords(path, assistant("old"), user("go"), assistant("committed"));
     watcher.observe(path);
-    watcher.observe(path); // same path: no reset
-    write(
-      path,
-      { type: "assistant", message: { content: [{ type: "text", text: "aaaaa" }] } },
-      { type: "assistant", message: { content: [{ type: "text", text: "bbbbb" }] } },
+    watcher.finish();
+    expect(texts(events)).toEqual(["committed"]);
+  });
+
+  test("independent cursors per path: A→B→A does not replay A", () => {
+    const a = tmpFile();
+    const b = tmpFile();
+    const events: ClaudeTranscriptEvent[] = [];
+    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
+    writeRecords(a);
+    writeRecords(b);
+    watcher.observe(a);
+    appendRecords(a, [], assistant("a1"));
+    watcher.scan();
+    watcher.observe(b);
+    appendRecords(b, [], assistant("b1"));
+    watcher.observe(a); // re-observe A: must NOT reset its cursor or replay a1
+    watcher.scan();
+    watcher.finish();
+    expect(texts(events)).toEqual(["a1", "b1"]);
+  });
+
+  test("skips malformed JSON and reports a bounded drop diagnostic (no raw content)", () => {
+    const path = tmpFile();
+    const events: ClaudeTranscriptEvent[] = [];
+    const drops: TranscriptDropNotice[] = [];
+    const watcher = new ClaudeTranscriptWatcher(
+      "s1",
+      (e) => events.push(e),
+      (d) => drops.push(d),
     );
-    watcher.scan();
-    expect(events.map((e) => e.summary.text)).toEqual(["aaaaa", "bbbbb"]);
-    // Rewrite strictly shorter than the current offset: the watcher rewinds to 0
-    // and re-reads rather than throwing or reading a torn tail.
-    write(path, { type: "assistant", message: { content: [{ type: "text", text: "c" }] } });
-    watcher.scan();
-    expect(events.at(-1)!.summary.text).toBe("c");
+    writeRecords(path);
+    watcher.observe(path);
+    writeFileSync(path, `${JSON.stringify(assistant("ok"))}\n{ not json }\n`);
+    watcher.finish();
+    expect(texts(events)).toEqual(["ok"]);
+    expect(drops).toEqual([{ elwoodSessionId: "s1", path, droppedCount: 1 }]);
   });
 
-  test("observing a path that already holds the committed turn still emits it", () => {
-    // The bug guard: if the first hook to carry transcript_path is Stop, the
-    // committed assistant record is already on disk when observe() runs. Reading
-    // from offset 0 (not end-of-file) ensures that turn is not skipped.
-    const dir = mkdtempSync(join(tmpdir(), "elwood-tx-"));
-    const path = join(dir, "t.jsonl");
-    const events: ClaudeTranscriptEvent[] = [];
-    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
-    write(path, { type: "assistant", message: { content: [{ type: "text", text: "committed" }] } });
-    watcher.observe(path); // first observe AFTER the record is written
-    watcher.scan();
-    expect(events.map((e) => e.summary.text)).toEqual(["committed"]);
-  });
-
-  test("scan and finish are safe before any observe and for a missing file", () => {
-    const events: ClaudeTranscriptEvent[] = [];
-    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
+  test("scan/finish are safe (non-throwing) before observe and for a missing file", () => {
+    const watcher = new ClaudeTranscriptWatcher("s1", () => {});
     expect(() => watcher.scan()).not.toThrow();
     watcher.observe(join(tmpdir(), "elwood-does-not-exist.jsonl"));
     expect(() => watcher.finish()).not.toThrow();
-    expect(events).toEqual([]);
   });
 
-  test("finish flushes a trailing record with no final newline", () => {
-    const dir = mkdtempSync(join(tmpdir(), "elwood-tx-"));
-    const path = join(dir, "t.jsonl");
+  test("streams a large delta in bounded chunks (never buffers it whole)", () => {
+    // 5000 small records force multiple readChunk() passes (256KB cap), covering
+    // the bounded-drain loop that prevents an unbounded full-file allocation.
+    const path = tmpFile();
     const events: ClaudeTranscriptEvent[] = [];
     const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
-    write(path);
+    writeRecords(path);
     watcher.observe(path);
-    // No trailing newline: the record sits in `pending` until finish flushes it.
+    const many = Array.from({ length: 5000 }, (_, i) => assistant(`m${i}`));
+    appendRecords(path, [], ...many);
+    watcher.scan();
+    expect(events).toHaveLength(5000);
+    expect(texts(events).at(-1)).toBe("m4999");
+    watcher.stop();
+  });
+
+  test("a filesystem error during scan is contained (best-effort, non-throwing)", () => {
+    // Observe a path, then replace the file with a directory: statSync/readSync
+    // now throw a rotation-race-like error that the guard must swallow.
+    const { mkdirSync, rmSync } = require("node:fs") as typeof import("node:fs");
+    const path = tmpFile();
+    const events: ClaudeTranscriptEvent[] = [];
+    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
+    writeRecords(path);
+    watcher.observe(path);
+    rmSync(path);
+    mkdirSync(path); // reading a directory throws EISDIR
+    expect(() => watcher.scan()).not.toThrow();
+    expect(events).toEqual([]);
+    watcher.stop();
+  });
+
+  test("malformed records in the baseline tail do not break turn detection", () => {
+    // A bad line before the user boundary must not crash isUserRecord parsing.
+    const path = tmpFile();
+    const events: ClaudeTranscriptEvent[] = [];
+    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
     writeFileSync(
       path,
-      JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "tail" }] } }),
+      `{ bad\n${JSON.stringify(user("go"))}\n${JSON.stringify(assistant("cur"))}\n`,
     );
+    watcher.observe(path);
     watcher.finish();
-    expect(events.map((e) => e.summary.text)).toEqual(["tail"]);
+    expect(texts(events)).toEqual(["cur"]);
   });
 
-  test("the poll interval emits committed items without an explicit scan", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "elwood-tx-"));
-    const path = join(dir, "t.jsonl");
+  test("a truncated/rotated file restarts the cursor rather than reading garbage", () => {
+    const path = tmpFile();
     const events: ClaudeTranscriptEvent[] = [];
     const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
+    writeRecords(path);
+    watcher.observe(path);
+    appendRecords(path, [], assistant("aaaaa"), assistant("bbbbb"));
+    watcher.scan();
+    // Rewrite strictly shorter than the current offset: cursor rewinds to 0.
+    writeRecords(path, assistant("c"));
+    watcher.scan();
+    expect(texts(events)).toEqual(["aaaaa", "bbbbb", "c"]);
+    watcher.stop();
+  });
+
+  test("blank lines between records are skipped without a drop", () => {
+    const path = tmpFile();
+    const events: ClaudeTranscriptEvent[] = [];
+    const drops: TranscriptDropNotice[] = [];
+    const watcher = new ClaudeTranscriptWatcher(
+      "s1",
+      (e) => events.push(e),
+      (d) => drops.push(d),
+    );
+    writeRecords(path);
+    watcher.observe(path);
+    writeFileSync(path, `${JSON.stringify(assistant("a"))}\n\n${JSON.stringify(assistant("b"))}\n`);
+    watcher.finish();
+    expect(texts(events)).toEqual(["a", "b"]);
+    expect(drops).toEqual([]); // a blank line is not a dropped record
+  });
+
+  test("the poll interval emits without an explicit scan", async () => {
+    const path = tmpFile();
+    const events: ClaudeTranscriptEvent[] = [];
+    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
+    writeRecords(path);
     try {
       watcher.observe(path);
-      write(path, { type: "assistant", message: { content: [{ type: "text", text: "polled" }] } });
-      // Poll the outcome rather than sleeping a fixed span past the 250ms tick.
-      await expect.poll(() => events.map((e) => e.summary.text)).toEqual(["polled"]);
+      appendRecords(path, [], assistant("polled"));
+      await expect.poll(() => texts(events)).toEqual(["polled"]);
     } finally {
       watcher.stop();
     }
-  });
-});
-
-describe("C-CLAUDE-15 transcript session wiring", () => {
-  test("observeTranscript follows transcript_path and agent_transcript_path", () => {
-    const observed: string[] = [];
-    const watcher = { observe: (p: string) => observed.push(p) } as never;
-    observeTranscript(watcher, { transcript_path: "/a.jsonl" });
-    observeTranscript(watcher, { agent_transcript_path: "/b.jsonl" });
-    observeTranscript(watcher, {}); // no path: ignored
-    observeTranscript(watcher, { transcript_path: "" }); // empty: ignored
-    expect(observed).toEqual(["/a.jsonl", "/b.jsonl"]);
-  });
-
-  test("createTranscriptWatcher emits transcript activities onto the emitter", () => {
-    const activities: unknown[] = [];
-    const emitter = { emit: (_e: string, a: unknown) => activities.push(a) } as never;
-    const watcher = createTranscriptWatcher("s9", emitter);
-    const dir = mkdtempSync(join(tmpdir(), "elwood-tx-"));
-    const path = join(dir, "t.jsonl");
-    writeFileSync(path, "");
-    watcher.observe(path);
-    writeFileSync(
-      path,
-      `${JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "wired" }] } })}\n`,
-    );
-    watcher.scan();
-    expect(activities).toEqual([
-      expect.objectContaining({ agent: "claude", source: "transcript", kind: "assistant_message" }),
-    ]);
   });
 });

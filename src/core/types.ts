@@ -149,6 +149,18 @@ export type ElwoodWarningEvent =
       readonly severity: "warning";
       readonly message: string;
       readonly raw: string;
+    }
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "claude";
+      readonly source: "terminal";
+      readonly code: "transcript_records_dropped";
+      readonly severity: "warning";
+      readonly message: string;
+      // Count and path only — never raw transcript content.
+      readonly droppedCount: number;
+      readonly transcriptPath: string;
+      readonly raw: string;
     };
 
 export type ElwoodEventMap = {

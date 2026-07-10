@@ -46,10 +46,31 @@ describe("C-CLAUDE-15 Claude transcript summarizer", () => {
     ]);
   });
 
-  test("handles string content and a plain user message", () => {
+  test("C-CLAUDE-15 user prose is NOT emitted (stays hook-sourced, no double)", () => {
+    // User text comes from the UserPromptSubmit hook; emitting it from the
+    // transcript too would double every submitted prompt.
     expect(
       summarizeClaudeRecord({ type: "user", message: { role: "user", content: "hi" } }),
-    ).toEqual([{ kind: "user_message", label: "user", text: "hi" }]);
+    ).toEqual([]);
+    expect(
+      summarizeClaudeRecord({
+        type: "user",
+        message: { role: "user", content: [{ type: "text", text: "hi" }] },
+      }),
+    ).toEqual([]);
+    // ...but a user-role tool_result block IS still committed activity.
+    expect(
+      summarizeClaudeRecord({
+        type: "user",
+        message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] },
+      }),
+    ).toEqual([{ kind: "tool_result", label: "t1", toolUseId: "t1", toolOutput: "ok" }]);
+  });
+
+  test("handles assistant string content", () => {
+    expect(summarizeClaudeRecord({ type: "assistant", message: { content: "done" } })).toEqual([
+      { kind: "assistant_message", label: "assistant", text: "done" },
+    ]);
   });
 
   test("yields nothing for non-message records or empty/unknown blocks", () => {
@@ -62,6 +83,10 @@ describe("C-CLAUDE-15 Claude transcript summarizer", () => {
       }),
     ).toEqual([]);
     expect(summarizeClaudeRecord("not an object")).toEqual([]);
+    // A text block with no `text` field yields nothing (empty-string branch).
+    expect(
+      summarizeClaudeRecord({ type: "assistant", message: { content: [{ type: "text" }] } }),
+    ).toEqual([]);
   });
 
   test("C-CLAUDE-15 UI-chrome records (away-summary recap, status lines) are not messages", () => {

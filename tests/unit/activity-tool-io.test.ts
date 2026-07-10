@@ -10,19 +10,31 @@ import {
   activityFromCodexTranscript,
 } from "../../src/core/activity.ts";
 
-const claudeToolActivity = (kind: "tool_call" | "tool_result", extra: Record<string, string>) =>
+const claudeCall = (toolInput?: string) =>
   activityFromClaudeTranscript({
     elwoodSessionId: "elwood-7",
     path: "/tmp/t.jsonl",
     item: {},
-    summary: { kind, label: "Bash", ...extra },
+    summary: {
+      kind: "tool_call",
+      label: "Bash",
+      toolName: "Bash",
+      ...(toolInput ? { toolInput } : {}),
+    },
+  });
+const claudeResult2 = (toolOutput: string) =>
+  activityFromClaudeTranscript({
+    elwoodSessionId: "elwood-7",
+    path: "/tmp/t.jsonl",
+    item: {},
+    summary: { kind: "tool_result", label: "c", toolUseId: "c", toolOutput },
   });
 
 describe("Elwood activity tool input/output", () => {
   test("C-API-30 surfaces serialized tool input and output across adapters", () => {
-    const call = claudeToolActivity("tool_call", { toolInput: '{"command":"ls"}' });
-    const bareCall = claudeToolActivity("tool_call", { toolInput: "{}" });
-    const claudeResult = claudeToolActivity("tool_result", { toolOutput: '{"stdout":"file.txt"}' });
+    const call = claudeCall('{"command":"ls"}');
+    const bareCall = claudeCall("{}");
+    const claudeResult = claudeResult2('{"stdout":"file.txt"}');
     const codexObjectResult = activityFromCodexTranscript({
       elwoodSessionId: "elwood-7",
       path: "/tmp/transcript.jsonl",
@@ -30,7 +42,7 @@ describe("Elwood activity tool input/output", () => {
       summary: { kind: "tool_result", label: "c1" },
     });
     // Absent source leaves the field absent (no tool_input key at all).
-    const noInput = claudeToolActivity("tool_call", {});
+    const noInput = claudeCall();
     expect(call.toolInput).toBe('{"command":"ls"}');
     expect(bareCall.toolInput).toBe("{}");
     expect(claudeResult.toolOutput).toBe('{"stdout":"file.txt"}');

@@ -4,34 +4,45 @@
  * results are sourced from the committed transcript, never from ghost-text.
  */
 
-export type ClaudeTranscriptSummary = {
-  readonly kind: "assistant_message" | "tool_call" | "tool_result" | "user_message" | "other";
-  readonly label: string;
-  readonly text?: string;
-  readonly toolName?: string;
-  readonly toolUseId?: string;
-  readonly toolInput?: string;
-  readonly toolOutput?: string;
-};
-
 /**
- * Expands one transcript record into zero or more summaries. A Claude record is
- * an Anthropic Messages-API turn (`{ type, message: { role, content } }`); its
- * `content` is an array of typed blocks (`text`, `tool_use`, `tool_result`).
- * Only committed roles produce activity — a record with no usable block yields
- * an empty list, so non-message records (mode, snapshots) are silently skipped.
+ * A committed transcript item, discriminated by kind so each variant carries
+ * only the fields it can have (an `assistant_message` always has `text`; a
+ * `tool_call` always has `toolName`; a `tool_result` always has `toolUseId`).
  */
+export type ClaudeTranscriptSummary =
+  | { readonly kind: "assistant_message"; readonly label: string; readonly text: string }
+  | {
+      readonly kind: "tool_call";
+      readonly label: string;
+      readonly toolName: string;
+      readonly toolUseId?: string;
+      readonly toolInput?: string;
+    }
+  | {
+      readonly kind: "tool_result";
+      readonly label: string;
+      readonly toolUseId: string;
+      readonly toolOutput?: string;
+    };
+
 /** The committed roles a Claude transcript record can carry. */
 type ClaudeTranscriptRole = "assistant" | "user";
 
+/**
+ * Expands one transcript record into zero or more summaries. A Claude record is
+ * an Anthropic Messages-API turn (`{ type, message: { role, content } }`) whose
+ * `content` is `text` / `tool_use` / `tool_result` blocks. Only committed
+ * ASSISTANT text and tool calls/results become activity (C-CLAUDE-15): user
+ * prose stays hook-sourced from `UserPromptSubmit`, so it is NOT emitted here
+ * (that would double every submitted prompt). Non-message records yield nothing.
+ */
 export function summarizeClaudeRecord(item: unknown): readonly ClaudeTranscriptSummary[] {
   const record = asRecord(item);
   const type = stringValue(record["type"]);
   if (type !== "assistant" && type !== "user") return [];
   const role: ClaudeTranscriptRole = type;
-  const message = asRecord(record["message"]);
-  const content = message["content"];
-  if (typeof content === "string") return [messageSummary(role, content)];
+  const content = asRecord(record["message"])["content"];
+  if (typeof content === "string") return assistantText(role, content);
   if (!Array.isArray(content)) return [];
   return content.flatMap((block) => summarizeBlock(role, block));
 }
@@ -42,18 +53,19 @@ function summarizeBlock(
 ): readonly ClaudeTranscriptSummary[] {
   const record = asRecord(block);
   const type = stringValue(record["type"]);
-  if (type === "text") {
-    const text = stringValue(record["text"]);
-    return text ? [messageSummary(role, text)] : [];
-  }
+  if (type === "text") return assistantText(role, stringValue(record["text"]) ?? "");
   if (type === "tool_use") return [toolCall(record)];
   if (type === "tool_result") return [toolResult(record)];
   return [];
 }
 
-function messageSummary(role: ClaudeTranscriptRole, text: string): ClaudeTranscriptSummary {
-  const kind = role === "assistant" ? "assistant_message" : "user_message";
-  return { kind, label: role, text };
+/** Assistant prose only: user text is intentionally dropped (hook-sourced). */
+function assistantText(
+  role: ClaudeTranscriptRole,
+  text: string,
+): readonly ClaudeTranscriptSummary[] {
+  if (role !== "assistant" || text.length === 0) return [];
+  return [{ kind: "assistant_message", label: role, text }];
 }
 
 function toolCall(block: Record<string, unknown>): ClaudeTranscriptSummary {
