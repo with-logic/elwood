@@ -72,13 +72,19 @@ export class TranscriptCursor {
   /** Read up to `maxChunkBytes` of new content, advancing the cursor by bytes consumed. */
   readChunk(): ChunkRead {
     const size = fileSize(this.path);
-    if (size < this.offset) this.offset = 0; // truncated/rotated: restart.
-    if (size <= this.offset) return { text: "", more: false };
-    const want = Math.min(maxChunkBytes, size - this.offset);
-    const { text, bytes } = readRange(this.path, this.offset, want);
+    // A truncation restarts from 0, but the offset is only COMMITTED after the
+    // read succeeds — if readRange throws (a truncate-then-read race), the old
+    // offset is preserved so recovery does not replay already-emitted content.
+    const from = size < this.offset ? 0 : this.offset;
+    if (size <= from) {
+      this.offset = from;
+      return { text: "", more: false };
+    }
+    const want = Math.min(maxChunkBytes, size - from);
+    const { text, bytes } = readRange(this.path, from, want);
     // Advance by the bytes actually consumed (a code point split at the chunk
     // boundary is left for the next read), so the offset can never drift.
-    this.offset += bytes;
+    this.offset = from + bytes;
     return { text, more: this.offset < size };
   }
 

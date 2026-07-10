@@ -158,4 +158,18 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
     writeFileSync(file, "x");
     expect(() => new TranscriptCursor(join(file, "child.jsonl"))).toThrow();
   });
+
+  test("readChunk commits the offset only after a successful read (no replay)", () => {
+    // The offset must not be reset before the read succeeds. Truncate to empty,
+    // read (empty), then regrow: the new content emits once, and the pre-truncate
+    // content is never re-read — the offset commit is atomic with the read.
+    const path = tmpFile();
+    writeFileSync(path, "one\ntwo\n");
+    const cursor = new TranscriptCursor(path); // baselines at EOF (offset = 8)
+    expect(cursor.readChunk()).toEqual({ text: "", more: false }); // nothing new
+    writeFileSync(path, ""); // truncate to empty: size (0) < offset (8) → from 0
+    expect(cursor.readChunk()).toEqual({ text: "", more: false });
+    writeFileSync(path, "three\n"); // regrow
+    expect(drainAll(cursor)).toBe("three\n"); // only the new content, no replay
+  });
 });
