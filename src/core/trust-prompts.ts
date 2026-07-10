@@ -23,13 +23,21 @@ export type TrustPromptId =
   | "mcp_trust"
   | "hook_trust";
 
-/** One allowlisted trust prompt: a stable id, the agent, and its wording. */
+/**
+ * One allowlisted trust prompt. The prompt and its answer are BOTH matched
+ * within the same current frame: `visible` identifies the prompt, and `accept`
+ * matches the exact affirmative option label in that same prompt. This prevents
+ * a stale phrase from one frame pairing with a "Yes" from a different, current
+ * dialog (which could auto-confirm an unrelated security gate).
+ */
 export type TrustPromptSpec = {
   /** Stable id used as the automation label and for once-only dedupe. */
   readonly id: TrustPromptId;
   readonly agent: ElwoodAgentKind;
-  /** Matches the prompt on the rendered screen. Verified against the CLI versions noted below. */
+  /** Identifies the prompt on the current rendered frame. Verified against the CLI versions below. */
   readonly visible: RegExp;
+  /** Matches the exact affirmative option label for THIS prompt (per-prompt, not generic). */
+  readonly accept: RegExp;
   /**
    * When true, answered regardless of `autotrust`. Reserved for trusting
    * Elwood's OWN integration (the hook bridge), which the session requires to
@@ -39,6 +47,11 @@ export type TrustPromptSpec = {
   readonly always?: boolean;
 };
 
+// Affirmative option shapes. Each rejects decline words so "No, ..." never matches.
+const notDecline = "(?!.*\\b(no|without|not|quit|cancel|deny|don't)\\b)";
+const yesOption = new RegExp(`^${notDecline}.*\\b(yes|trust|continue|proceed)\\b`, "i");
+const useMcpOption = new RegExp(`^${notDecline}.*\\buse this(?:.*\\bMCP)? server`, "i");
+
 /**
  * The allowlist. Wording verified against claude 2.1.205 and codex-cli 0.142.5.
  * `workspace`/`directory` trust are the folder-trust gates; `skill`, `plugin`,
@@ -46,13 +59,22 @@ export type TrustPromptSpec = {
  * skills, plugins, and MCP servers under a full-trust launch.
  */
 export const trustPromptAllowlist: readonly TrustPromptSpec[] = [
-  { id: "workspace_trust", agent: "claude", visible: /trust this folder/i },
-  { id: "skill_trust", agent: "claude", visible: /trust (?:this|the) skill|load this skill/i },
-  { id: "plugin_trust", agent: "claude", visible: /trust (?:this|the) plugin/i },
+  { id: "workspace_trust", agent: "claude", visible: /trust this folder/i, accept: yesOption },
   {
+    id: "skill_trust",
+    agent: "claude",
+    visible: /trust (?:this|the) skill|load this skill/i,
+    accept: yesOption,
+  },
+  { id: "plugin_trust", agent: "claude", visible: /trust (?:this|the) plugin/i, accept: yesOption },
+  {
+    // Real claude 2.1.205 prompt: "New MCP server found in this project" with an
+    // affirmative option "Use this MCP server" (no "yes/trust/continue" word), so
+    // it needs its own `accept` — the generic yes-matcher would leave it wedged.
     id: "mcp_trust",
     agent: "claude",
-    visible: /trust (?:this|the) MCP server|use this MCP server/i,
+    visible: /New MCP server found|trust (?:this|the) MCP server|use this MCP server/i,
+    accept: useMcpOption,
   },
   {
     // Codex's directory-trust gate keeps the stable `workspace_trust` label
@@ -60,20 +82,27 @@ export const trustPromptAllowlist: readonly TrustPromptSpec[] = [
     id: "workspace_trust",
     agent: "codex",
     visible: /Do you trust the contents of this directory/i,
+    accept: yesOption,
   },
   // Hook trust is Elwood's own integration, required for the session to work, so
   // it is always answered (not gated on autotrust) — see `always`.
-  { id: "hook_trust", agent: "codex", visible: /Hooks need review/i, always: true },
+  {
+    id: "hook_trust",
+    agent: "codex",
+    visible: /Hooks need review/i,
+    accept: yesOption,
+    always: true,
+  },
 ];
 
-/** The trust-prompt matchers for one agent, for screen-fact blocking detection. */
-export function trustPromptPatterns(agent: ElwoodAgentKind): readonly RegExp[] {
-  return trustPromptAllowlist.filter((spec) => spec.agent === agent).map((spec) => spec.visible);
+/** Specs for one agent that stay UNANSWERED under the effective policy (block on the human). */
+export function blockingTrustSpecs(
+  agent: ElwoodAgentKind,
+  autotrust: boolean,
+): readonly TrustPromptSpec[] {
+  return trustPromptAllowlist.filter(
+    // An `always`-answered prompt (hook trust) is auto-handled, so it must NOT be
+    // classified as human-blocking. Others block only when autotrust is off.
+    (spec) => spec.agent === agent && !spec.always && !autotrust,
+  );
 }
-
-/**
- * Selects the affirmative numbered option: a positively-worded option
- * ("yes"/"trust"/"continue") that is not a decline ("no"/"without"/"cancel").
- */
-export const affirmativeOptionPattern =
-  /^(?!.*\b(no|without|not|quit|cancel|deny)\b).*\b(yes|trust|continue|proceed)\b/i;

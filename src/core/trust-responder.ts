@@ -4,12 +4,7 @@
  */
 
 import type { ElwoodAgentKind } from "./activity.ts";
-import {
-  affirmativeOptionPattern,
-  type TrustPromptId,
-  type TrustPromptSpec,
-  trustPromptAllowlist,
-} from "./trust-prompts.ts";
+import { type TrustPromptId, type TrustPromptSpec, trustPromptAllowlist } from "./trust-prompts.ts";
 
 export type TrustPromptAutomation = {
   /** The allowlisted prompt id that was answered (a stable `startup_prompt` label). */
@@ -19,8 +14,10 @@ export type TrustPromptAutomation = {
 
 /**
  * Answers each allowlisted trust prompt for one agent at most once, and only
- * when enabled (the caller's full-trust/autotrust posture). Extending trust is
- * a matter of adding an entry to `trustPromptAllowlist`, never a broader match.
+ * when enabled (the caller's full-trust/autotrust posture). The prompt AND its
+ * affirmative option are matched within the SAME current frame — never across an
+ * accumulated history — so a stale phrase can't select a different dialog's
+ * "Yes". Extending trust is adding an allowlist entry, never a broader match.
  */
 export class TrustPromptResponder {
   private readonly enabled: boolean;
@@ -32,14 +29,17 @@ export class TrustPromptResponder {
     this.specs = trustPromptAllowlist.filter((spec) => spec.agent === agent);
   }
 
-  handle(screenText: string, write: (input: string) => void): TrustPromptAutomation | undefined {
+  /** `frame` MUST be the CURRENT rendered screen, not an accumulated buffer. */
+  handle(frame: string, write: (input: string) => void): TrustPromptAutomation | undefined {
     for (const spec of this.specs) {
       // `always` prompts (Elwood's own hook bridge) answer regardless of
       // autotrust; every other trust prompt requires the caller's full-trust
       // posture so third-party trust is never granted implicitly.
       if (!(this.enabled || spec.always)) continue;
-      if (this.answered.has(spec.id) || !spec.visible.test(screenText)) continue;
-      const option = affirmativeOption(screenText);
+      if (this.answered.has(spec.id) || !spec.visible.test(frame)) continue;
+      // The answer must be THIS prompt's own affirmative option, present in the
+      // same frame — not any generic "Yes" that might belong to another dialog.
+      const option = acceptOption(frame, spec);
       if (option === undefined) continue;
       write(`${option}\r`);
       this.answered.add(spec.id);
@@ -54,9 +54,8 @@ export function trustPromptVisible(text: string, agent: ElwoodAgentKind): boolea
   return trustPromptAllowlist.some((spec) => spec.agent === agent && spec.visible.test(text));
 }
 
-function affirmativeOption(text: string): string | undefined {
-  return numberedOptions(text).find((option) => affirmativeOptionPattern.test(option.label))
-    ?.number;
+function acceptOption(frame: string, spec: TrustPromptSpec): string | undefined {
+  return numberedOptions(frame).find((option) => spec.accept.test(option.label))?.number;
 }
 
 function numberedOptions(

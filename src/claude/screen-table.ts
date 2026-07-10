@@ -5,7 +5,7 @@
  */
 
 import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
-import { trustPromptPatterns } from "../core/trust-prompts.ts";
+import { blockingTrustSpecs } from "../core/trust-prompts.ts";
 
 /**
  * Verified against claude 2.1.203 (see `verifiedAgainst`). The footer renders
@@ -43,17 +43,17 @@ export const claudeScreenFactTable: ScreenFactTable = {
   ],
 };
 
-/** One blocking rule per allowlisted trust prompt (C-ATTN-03). */
-const claudeTrustRules: readonly ScreenFactRule[] = trustPromptPatterns("claude").map(
-  (pattern, index) => ({
-    id: `claude-trust-prompt-${index}`,
-    fact: "blocking_prompt_visible",
-    all: [pattern],
-  }),
-);
-
-/** With autotrust off, an unanswered trust prompt blocks on the human. */
+/**
+ * A blocking rule per trust prompt that stays UNANSWERED under the policy
+ * (C-ATTN-03), with stable semantic ids from the prompt id (not positional).
+ */
 export function claudeScreenFactTableForTrustPolicy(autotrust: boolean): ScreenFactTable {
-  if (autotrust) return claudeScreenFactTable;
-  return { ...claudeScreenFactTable, rules: [...claudeScreenFactTable.rules, ...claudeTrustRules] };
+  const rules: ScreenFactRule[] = blockingTrustSpecs("claude", autotrust).map((spec) => ({
+    id: `claude-${spec.id}-prompt`,
+    fact: "blocking_prompt_visible",
+    all: [spec.visible],
+  }));
+  return rules.length === 0
+    ? claudeScreenFactTable
+    : { ...claudeScreenFactTable, rules: [...claudeScreenFactTable.rules, ...rules] };
 }

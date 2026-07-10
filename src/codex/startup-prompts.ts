@@ -39,7 +39,9 @@ export class CodexStartupPromptResponder {
   handle(screenText: string, write: (input: string) => void): CodexStartupPromptResult {
     const automations: CodexStartupPromptAutomation[] = [];
     this.buffer = `${this.buffer}\n${screenText}`.slice(-maxBufferLength);
-    const trust = this.trust.handle(this.buffer, write);
+    // Trust prompts are matched against the CURRENT frame only: a stale phrase in
+    // the accumulated buffer must never pair with a different dialog's answer.
+    const trust = this.trust.handle(screenText, write);
     if (trust) automations.push(trust);
     // Skipping an available update is not a trust decision, so it stays here.
     if (!this.skippedUpdate && /update/i.test(this.buffer)) {

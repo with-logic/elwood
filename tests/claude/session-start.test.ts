@@ -111,7 +111,7 @@ describe("ClaudeSession startup and terminal control", () => {
       "Quick safety check: Is this a project you created or one you trust?\r\n1. Yes, I trust this folder\r\n",
     );
     await expect.poll(() => session.status).toBe("blocked");
-    expect(attention).toEqual(["claude-trust-prompt-0"]);
+    expect(attention).toEqual(["claude-workspace_trust-prompt"]);
     // Elwood did not answer on the caller's behalf.
     expect(ptys[0]!.writes).toEqual([]);
   });

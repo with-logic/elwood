@@ -37,28 +37,6 @@ describe("CodexSession startup and terminal control", () => {
     expect(readFileSync(codexConfig, "utf8")).toBe('model="unchanged"\n');
   });
 
-  test("C-CODEX-06 trusts hooks through the TUI prompt when bypass is unsupported", async () => {
-    const cwd = tempDir();
-    installFakes({ supportsHookTrustBypass: false });
-    await startCodex({ cwd });
-    expect(ptys[0]!.options.args.join(" ")).not.toContain("--dangerously-bypass-hook-trust");
-    ptys[0]!.emitData("Hooks need review\r\n  1. Review hooks\r\n› 2. Trust all and continue");
-    await flushTerminal();
-    expect(ptys[0]!.writes).toEqual(["2\r"]);
-  });
-
-  test("C-CODEX-11 autotrust answers Codex directory prompts", async () => {
-    const cwd = tempDir();
-    installFakes();
-    const session = await startCodex({ cwd, autotrust: true });
-    const activity: string[] = [];
-    session.on("activity", (event) => activity.push(`${event.kind}:${event.label}`));
-    ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. Yes, continue");
-    await flushTerminal();
-    expect(ptys[0]!.writes).toEqual(["1\r"]);
-    expect(activity).toContain("startup_prompt:workspace_trust");
-  });
-
   test("C-ERR-07 version warnings are captured when non-strict parsing fails", async () => {
     const cwd = tempDir();
     installFakes();

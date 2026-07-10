@@ -745,21 +745,29 @@ available for deep debugging and unsupported future payloads.
 
 When Elwood detects and answers an interactive startup prompt on behalf of the
 parent app, it MUST emit an activity event with `source: "terminal"`,
-`kind: "startup_prompt"`, a stable label, and text describing the key sent.
-Stable startup prompt labels are `workspace_trust`, `skill_trust`,
-`plugin_trust`, `mcp_trust`, `hook_trust`, and `update`.
+`kind: "startup_prompt"`, a stable label, and text describing the key sent. The
+stable startup-prompt labels include `workspace_trust`, `skill_trust`,
+`plugin_trust`, `mcp_trust`, `hook_trust`, `browser_tools`, and `update`; the
+complete set is defined by the conformance criteria (C-CLAUDE-11/14, C-CODEX-06,
+and the trust-prompt allowlist), which this list summarizes non-exhaustively.
 
 Under a caller's full-trust launch (`autotrust`), Elwood auto-answers the trust
 prompt family — folder/directory trust, and the CLI's first-run trust prompts for
 loading a skill, a plugin, or an MCP server — so an agent never wedges invisibly
 on a trust gate the parent app does not relay. This is an EXPLICIT ALLOWLIST:
-each answered prompt is a named entry matched by its verified on-screen wording
-with a fixed affirmative outcome, extensible only by adding a new entry. Elwood
-MUST NOT blanket-answer "any first-run confirmation": an open-ended match would
-silently bypass a future CLI security gate for third-party code or config. These
-third-party trust prompts are answered only when `autotrust` is set; with it off,
-an unanswered trust prompt is a blocking prompt that holds session state for the
-human.
+each answered prompt is a named entry with a verified on-screen wording AND a
+verified affirmative-option label for that prompt. Both the prompt and its answer
+MUST be matched within the SAME current rendered frame, never across accumulated
+screen history — a stale phrase from an earlier frame must never pair with a
+"Yes" option belonging to a different, current dialog. If an allowlisted prompt
+is recognized but its verified affirmative option is not present, Elwood MUST NOT
+answer a substitute option. Elwood MUST NOT blanket-answer "any first-run
+confirmation": an open-ended match would silently bypass a future CLI security
+gate for third-party code or config. These third-party trust prompts are answered
+only when `autotrust` is set; with it off, an unanswered trust prompt is a
+blocking prompt that holds session state for the human. A prompt that Elwood
+auto-answers (including an always-answered one) MUST NOT be classified as a
+blocking prompt.
 
 Two prompts are exceptions to the `autotrust` gate. Codex hook trust
 (`hook_trust`) is Elwood's OWN integration — the session cannot function without
@@ -1648,7 +1656,7 @@ Each criterion has:
 | C-CLAUDE-11 | §5.1 | Claude's browser tools onboarding prompt is declined through PTY input regardless of `autotrust`, with `startup_prompt` activity emitted under the `browser_tools` label. |
 | C-CLAUDE-12 | §5.1 | `startClaude` forwards `model` to Claude's `--model` launch flag. |
 | C-CLAUDE-13 | §4.3 | `tools` emits Claude's `--tools` allowlist flag as one comma-separated value, with an empty array encoding `--tools ""` (all tools disabled); it is forwarded across resume like the other tool options. |
-| C-CLAUDE-14 | §5.1 | Under `autotrust`, Claude's allowlisted skill/plugin/MCP trust prompts are each answered once with the affirmative option and emit `startup_prompt` activity under their `skill_trust`/`plugin_trust`/`mcp_trust` labels; an off-allowlist first-run prompt is never auto-answered. |
+| C-CLAUDE-14 | §5.1 | Under `autotrust`, Claude's allowlisted skill/plugin/MCP trust prompts are each answered once, selecting that prompt's own verified affirmative option within the same frame (e.g. the real "Use this MCP server" MCP option), and emit `startup_prompt` activity under their `skill_trust`/`plugin_trust`/`mcp_trust` labels; an off-allowlist first-run prompt is never auto-answered, and a recognized prompt lacking its verified option is not answered with a substitute. |
 | C-CLAUDE-15 | §5.4 | Claude `assistant_message`, `tool_call`, and `tool_result` activities are sourced from the committed transcript the CLI writes at `transcript_path`, never from the `Stop` hook's `last_assistant_message`; an un-sent ghost-text / composer draft therefore never becomes an `assistant_message`. |
 
 #### C-CODEX: Codex Startup And Config (§4, §7A, §9)
@@ -1669,7 +1677,7 @@ Each criterion has:
 | C-CODEX-12 | §5.5 | If Codex still shows an interactive update prompt inside the TUI, Elwood selects the skip/continue-without-updating option by label. |
 | C-CODEX-13 | §10 | An immediately failing or unusable Codex process fails with `codex_start_failed` or a more specific typed error. |
 | C-CODEX-14 | §5.3 | `setModel` on Codex restores the user's prior `config.toml` default via compare-and-swap after the CLI persists its picker selection, skipping with the `codex_default_model_persisted` warning instead of clobbering concurrent edits. |
-| C-CODEX-15 | §5.5 | Codex's directory-trust prompt is answered only under `autotrust` (blocking on the human when off); Codex hook trust — Elwood's own integration, required to function — is answered regardless of `autotrust`. Each is answered once, from the shared allowlist. |
+| C-CODEX-15 | §5.5 | Codex's directory-trust prompt is answered only under `autotrust` (blocking on the human when off); Codex hook trust — Elwood's own integration — is answered regardless of `autotrust` and is NOT classified as blocking. Prompt and answer are matched within the same current frame, so a stale phrase never auto-confirms a different current dialog. Each is answered once, from the shared allowlist. |
 
 #### C-HOOK: Hook Bridge Coverage And Semantics (§6)
 

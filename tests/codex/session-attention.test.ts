@@ -37,7 +37,7 @@ describe("CodexSession attention wiring", () => {
     });
     ptys[0]!.emitData(trustPrompt);
     await expect.poll(() => session.status).toBe("blocked");
-    expect(attention).toEqual(["codex-trust-prompt-0"]);
+    expect(attention).toEqual(["codex-workspace_trust-prompt"]);
     expect(ptys[0]!.writes).toEqual([]);
   });
 });

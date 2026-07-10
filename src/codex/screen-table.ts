@@ -5,7 +5,7 @@
  */
 
 import { hasScreenFact, type ScreenFactRule, type ScreenFactTable } from "../core/screen-facts.ts";
-import { trustPromptPatterns } from "../core/trust-prompts.ts";
+import { blockingTrustSpecs } from "../core/trust-prompts.ts";
 
 /**
  * Verified against codex-cli 0.142.5. The working spinner renders
@@ -44,19 +44,21 @@ export const codexScreenFactTable: ScreenFactTable = {
   ],
 };
 
-/** One blocking rule per allowlisted trust prompt (C-ATTN-03). */
-const codexTrustRules: readonly ScreenFactRule[] = trustPromptPatterns("codex").map(
-  (pattern, index) => ({
-    id: `codex-trust-prompt-${index}`,
-    fact: "blocking_prompt_visible",
-    all: [pattern],
-  }),
-);
-
-/** With autotrust off, an unanswered trust prompt blocks on the human. */
+/**
+ * A blocking rule per trust prompt that stays UNANSWERED under the policy
+ * (C-ATTN-03). An `always`-answered prompt (hook trust) is auto-handled and MUST
+ * NOT block, so it is excluded even when autotrust is off. Ids are stable and
+ * semantic (from the prompt id), not positional.
+ */
 export function codexScreenFactTableForTrustPolicy(autotrust: boolean): ScreenFactTable {
-  if (autotrust) return codexScreenFactTable;
-  return { ...codexScreenFactTable, rules: [...codexScreenFactTable.rules, ...codexTrustRules] };
+  const rules: ScreenFactRule[] = blockingTrustSpecs("codex", autotrust).map((spec) => ({
+    id: `codex-${spec.id}-prompt`,
+    fact: "blocking_prompt_visible",
+    all: [spec.visible],
+  }));
+  return rules.length === 0
+    ? codexScreenFactTable
+    : { ...codexScreenFactTable, rules: [...codexScreenFactTable.rules, ...rules] };
 }
 
 /** A quiet boot gap can precede input acceptance; readiness requires this. */

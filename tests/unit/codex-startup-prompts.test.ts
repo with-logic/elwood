@@ -31,14 +31,29 @@ describe("Codex startup prompt responder", () => {
   test("C-CODEX-06 trusts hook review prompts once, even without autotrust", () => {
     const writes: string[] = [];
     // Hook trust is Elwood's OWN integration (required for the session to work),
-    // so it is answered regardless of autotrust — unlike third-party trust.
+    // so it is answered regardless of autotrust — unlike third-party trust. The
+    // phrase and its answer appear in the SAME frame (as the real CLI renders).
     const responder = new CodexStartupPromptResponder();
-    responder.handle("Hooks need review\n  1. Review hooks", (input) => writes.push(input));
-    responder.handle("Hooks need review\n› 1. Review hooks\n  2. Trust all and continue", (input) =>
-      writes.push(input),
-    );
-    responder.handle("\n  3. Continue without trusting", (input) => writes.push(input));
+    const frame = "Hooks need review\n› 1. Review hooks\n  2. Trust all and continue";
+    responder.handle(frame, (input) => writes.push(input));
+    responder.handle(frame, (input) => writes.push(input)); // repeat: answered once
     expect(writes).toEqual(["2\r"]);
+  });
+
+  test("C-CODEX-15 a stale trust phrase never auto-confirms a DIFFERENT dialog", () => {
+    // The security regression: frame 1 shows the hook-trust phrase; frame 2 shows
+    // an unrelated dialog with a "1. Yes". A buffer-accumulating matcher would
+    // pair the stale phrase with frame 2's "Yes" and send 1. Frame-scoped
+    // matching must NOT: no answer belongs to frame 2's dialog.
+    const writes: string[] = [];
+    const responder = new CodexStartupPromptResponder("s1", true);
+    responder.handle("Hooks need review\n  1. Review hooks", (input) => writes.push(input));
+    const result = responder.handle(
+      "Delete stored credentials?\n› 1. Yes, continue\n  2. No",
+      (input) => writes.push(input),
+    );
+    expect(writes).toEqual([]);
+    expect(result.automations).toEqual([]);
   });
 
   test("C-CODEX-15 does not trust the DIRECTORY prompt without autotrust", () => {
