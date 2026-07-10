@@ -4,6 +4,7 @@
  */
 
 import type { ElwoodAgentKind } from "./activity.ts";
+import { numberedOptions } from "./terminal-options.ts";
 import { type TrustPromptIdFor, trustPromptAllowlist } from "./trust-prompts.ts";
 
 /** The concrete allowlist entry type (preserves the derived literal `id`). */
@@ -150,13 +151,4 @@ function isBoundaryAbove(line: string, spec: TrustPromptEntry): boolean {
 /** True when an affirmative label riders a destructive/irreversible action. */
 function carriesDestructiveRider(label: string): boolean {
   return /\b(delete|remove|wipe|erase|destroy|overwrite|revoke|disable|uninstall)\b/i.test(label);
-}
-
-function numberedOptions(
-  text: string,
-): readonly { readonly number: string; readonly label: string }[] {
-  return text.split("\n").flatMap((line) => {
-    const matches = line.matchAll(/(?:^|[\s›>])(\d+)[.)]\s*(.+?)(?=\s*\d+[.)]\s*|$)/g);
-    return [...matches].map((match) => ({ number: match[1]!, label: match[2]!.trim() }));
-  });
 }

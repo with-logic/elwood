@@ -7,6 +7,9 @@ import type { ClaudeHookEvent } from "../claude/hooks.ts";
 import type { CodexHookEvent } from "../codex/hooks.ts";
 import type { CodexTranscriptEvent } from "../codex/transcript.ts";
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity.ts";
+import { stringify } from "./serialize.ts";
+
+export { stringify };
 
 export function hookActivityBase(
   agent: ElwoodAgentKind,
@@ -68,16 +71,6 @@ function transcriptToolIo(
     return optional("toolOutput", stringify(payload["output"]));
   }
   return {};
-}
-
-export function stringify(value: unknown): string | undefined {
-  if (value === undefined || value === null) return undefined;
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
 }
 
 export function record(value: unknown): Record<string, unknown> {

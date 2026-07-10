@@ -3,6 +3,7 @@
  * Implements PRD §4.4, §5.5, and §5.7.
  */
 
+import { numberedOptions } from "../core/terminal-options.ts";
 import type { TrustPromptIdFor } from "../core/trust-prompts.ts";
 import { TrustPromptResponder } from "../core/trust-responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
@@ -121,13 +122,4 @@ function mcpStartupWarning(
     recoveryCommands: failedServers.map((server) => `codex mcp login ${server}`),
     raw,
   };
-}
-
-function numberedOptions(
-  text: string,
-): readonly { readonly number: string; readonly label: string }[] {
-  return text.split("\n").flatMap((line) => {
-    const matches = line.matchAll(/(?:^|[\s›>])(\d+)[.)]\s*(.+?)(?=\s*\d+[.)]\s*|$)/g);
-    return [...matches].map((match) => ({ number: match[1]!, label: match[2]!.trim() }));
-  });
 }

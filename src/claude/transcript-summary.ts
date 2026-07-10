@@ -4,6 +4,8 @@
  * results are sourced from the committed transcript, never from ghost-text.
  */
 
+import { stringify } from "../core/serialize.ts";
+
 /**
  * A committed transcript item, discriminated by kind so each variant carries
  * only the fields it can have (an `assistant_message` always has `text`; a
@@ -91,16 +93,6 @@ function toolResult(block: Record<string, unknown>): ClaudeTranscriptSummary {
 
 function optional<K extends string>(key: K, value: string | undefined): Partial<Record<K, string>> {
   return value === undefined ? {} : ({ [key]: value } as Record<K, string>);
-}
-
-export function stringify(value: unknown): string | undefined {
-  if (value === undefined || value === null) return undefined;
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
