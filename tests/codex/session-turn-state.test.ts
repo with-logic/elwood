@@ -5,7 +5,7 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -14,7 +14,7 @@ describe("CodexSession turn boundaries", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startCodex({ cwd });
-    ptys[0]!.emitData("codex rendered\r\n› ");
+    await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
     ptys[0]!.emitData("• Working (3s • esc to interrupt)\r\n› ");
     await expect.poll(() => session.status).toBe("running");
@@ -33,7 +33,7 @@ describe("CodexSession turn boundaries", () => {
       if (event.kind === "attention") attention.push(event.label);
     });
 
-    ptys[0]!.emitData("codex rendered\r\n› ");
+    await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
     ptys[0]!.emitData(
       "[2J[HWould you like to run the following command?\r\n $ rm -rf build\r\n › 1. Yes (y)\r\n Press enter to confirm or esc to cancel\r\n",
@@ -50,7 +50,7 @@ describe("CodexSession turn boundaries", () => {
     const session = await startCodex({ cwd });
     await expect(session.waitForStatus((s) => s === "running")).resolves.toBe("running");
     const wait = session.waitForActivity((e) => e.kind === "attention");
-    ptys[0]!.emitData("codex rendered\r\n\u203a ");
+    await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
     ptys[0]!.emitData(
       "\u001b[2J\u001b[HWould you like to run the following command?\r\n \u203a 1. Yes (y)\r\n Press enter to confirm or esc to cancel\r\n",
@@ -58,14 +58,20 @@ describe("CodexSession turn boundaries", () => {
     await expect(wait).resolves.toMatchObject({ kind: "attention" });
   });
 
-  test("C-TURN-03 the pre-ready MCP boot spinner does not fabricate a turn", async () => {
+  test("C-TURN-03/C-API-28 boot spinner and composer placeholder do not fabricate readiness", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startCodex({ cwd });
     // Codex renders "esc to interrupt" during MCP boot, before readiness.
     ptys[0]!.emitData("Booting MCP server: codex_apps (3s • esc to interrupt)\r\n");
     expect(session.status).toBe("running");
+    // The boot-time composer placeholder (C-API-28) must NOT release readiness:
+    // it paints ~1s before Codex accepts input, so treating it as ready would
+    // swallow the first queued message. Readiness comes only from SessionStart.
     ptys[0]!.emitData("\u001b[2J\u001b[H› ");
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(session.status).toBe("running");
+    await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
     // The boot spinner never produced a running/ready turn cycle of its own.
     expect(ptys[0]!.writes).toEqual([]);

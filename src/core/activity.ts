@@ -53,6 +53,7 @@ export {
   activityFromReapFailure,
   activityFromStatus,
   activityFromTerminalExit,
+  reapFailureWarning,
 } from "./activity-lifecycle.ts";
 
 /** Hook events both adapters map identically; returns undefined for the rest. */
@@ -83,25 +84,22 @@ export function activityFromClaudeHook(
   return shared ?? { ...base, kind: "hook", label: event.hook_event_name };
 }
 
-/** Codex hook → activity. Codex maps tool HOOKS to tool activity (unlike Claude, whose tool activity is transcript-sourced); Codex's own `codex:transcript` path ALSO surfaces tool calls/results plus thinking/status (see activity-transcript). */
+/**
+ * Codex hook → activity. Codex's `assistant_message`, `tool_call`, and
+ * `tool_result` are sourced from the committed `codex:transcript` (C-CODEX-16),
+ * so the `Stop`/`PreToolUse`/`PostToolUse` hooks MUST NOT re-project them — that
+ * surfaced every reply and every tool step twice (once from the hook, once from
+ * the transcript). Those hooks stay plain `hook` turn-boundary signals here, and
+ * `Stop`'s `last_assistant_message` (which can be un-submitted ghost text) never
+ * becomes an `assistant_message`, exactly as for Claude (C-CLAUDE-15).
+ */
 export function activityFromCodexHook(
   elwoodSessionId: string,
   event: CodexHookEvent,
 ): ElwoodActivityEvent {
   const base = meta.hookActivityBase("codex", elwoodSessionId, event);
   const shared = sharedHookActivity(base, event);
-  if (shared) return shared;
-  if (event.hook_event_name === "PreToolUse" || event.hook_event_name === "PermissionRequest") {
-    return toolActivity(base, "tool_call", event.tool_name, meta.hookToolInput(event));
-  }
-  if (event.hook_event_name === "PostToolUse") {
-    return toolActivity(base, "tool_result", event.tool_name, meta.hookToolOutput(event));
-  }
-  const text = meta.stopMessage(event);
-  if (text !== undefined) {
-    return withText(base, "assistant_message", event.hook_event_name, text);
-  }
-  return { ...base, kind: "hook", label: event.hook_event_name };
+  return shared ?? { ...base, kind: "hook", label: event.hook_event_name };
 }
 
 export function activityFromHookError(
@@ -163,15 +161,4 @@ function withText(
   text: string,
 ): ElwoodActivityEvent {
   return { ...base, kind, label, text };
-}
-
-function toolActivity(
-  base: Omit<ElwoodActivityEvent, "kind" | "label" | "text">,
-  kind: "tool_call" | "tool_result",
-  toolName: string,
-  io: Partial<ElwoodActivityEvent>,
-): ElwoodActivityEvent {
-  // `toolName` is the narrowed Codex tool event's required `tool_name` — a proven
-  // string, not an assertion off the base, so the label can never be undefined.
-  return { ...base, kind, label: toolName, ...io };
 }

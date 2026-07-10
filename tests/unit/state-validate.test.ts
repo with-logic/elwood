@@ -85,10 +85,13 @@ describe("session record validation", () => {
     ).toBeNull();
   });
 
-  test("C-CLAUDE-14 accepts and gates the trust_prompt_unanswerable warning", () => {
+  test("C-CLAUDE-14 an unknown warning code (e.g. a removed trust_prompt_unanswerable) is rejected", () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
     const base = jsonRecord(root);
-    const warning = {
+    // The transient render-delay state no longer persists a durable warning, so a
+    // stale/removed `trust_prompt_unanswerable` record must fall through to the
+    // unknown-code rejection rather than round-trip back into the snapshot.
+    const stale = {
       elwoodSessionId: id,
       agent: "claude",
       source: "terminal",
@@ -98,13 +101,9 @@ describe("session record validation", () => {
       prompt: "mcp_trust",
       raw: "prompt=mcp_trust",
     };
-    expect(validateSessionRecord({ ...base, warnings: [warning] }, root, id)).not.toBeNull();
-    expect(
-      validateSessionRecord({ ...base, warnings: [{ ...warning, agent: "codex" }] }, root, id),
-    ).not.toBeNull(); // codex is also valid
-    expect(
-      validateSessionRecord({ ...base, warnings: [{ ...warning, prompt: 5 }] }, root, id),
-    ).toBeNull(); // non-string prompt rejected
+    const one = (w: object) => validateSessionRecord({ ...base, warnings: [w] }, root, id);
+    expect(one(stale)).toBeNull(); // removed code: no longer a valid warning shape
+    expect(one({ ...stale, code: "made_up_code" })).toBeNull(); // any unknown code rejects
   });
 });
 describe("state store edges", () => {

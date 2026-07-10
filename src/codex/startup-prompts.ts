@@ -3,22 +3,21 @@
  * Implements PRD §4.4, §5.5, and §5.7.
  */
 
+import type { StartupPromptAutomation, StartupPromptLabelFor } from "../core/startup-automation.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
-import type { TrustPromptIdFor } from "../core/trust-prompts.ts";
 import { TrustPromptResponder } from "../core/trust-responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 
 /** A Codex startup-prompt label: a Codex trust-prompt id (Claude ids excluded) or `update`. */
-export type CodexStartupPromptLabel = TrustPromptIdFor<"codex"> | "update";
+export type CodexStartupPromptLabel = StartupPromptLabelFor<"codex">;
 
 /**
  * Discriminated so the two outcomes can't be confused: an `answered` prompt
- * always carries the `input` sent; an `unanswerable` prompt (recognized trust
- * prompt with no verified option) never does.
+ * always carries the `input` sent; an `option_pending` prompt (recognized trust
+ * prompt whose option has not rendered yet — transient) never does and is limited
+ * to trust ids.
  */
-export type CodexStartupPromptAutomation =
-  | { readonly kind: "answered"; readonly prompt: CodexStartupPromptLabel; readonly input: string }
-  | { readonly kind: "unanswerable"; readonly prompt: CodexStartupPromptLabel };
+export type CodexStartupPromptAutomation = StartupPromptAutomation<"codex">;
 
 export type CodexStartupPromptResult = {
   readonly warnings: readonly ElwoodWarningEvent[];
@@ -51,8 +50,8 @@ export class CodexStartupPromptResponder {
     const trust = this.trust.handle(screenText, write);
     if (trust?.kind === "answered") {
       automations.push({ kind: "answered", ...trust.automation });
-    } else if (trust?.kind === "unanswerable") {
-      automations.push({ kind: "unanswerable", prompt: trust.prompt });
+    } else if (trust?.kind === "option_pending") {
+      automations.push({ kind: "option_pending", prompt: trust.prompt });
     }
     // Skipping an available update is not a trust decision, so it stays here.
     if (!this.skippedUpdate && /update/i.test(this.buffer)) {

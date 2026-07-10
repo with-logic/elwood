@@ -6,7 +6,7 @@
 
 import * as activity from "../core/activity.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
-import { ClaudeTranscriptWatcher } from "./transcript/index.ts";
+import { ClaudeTranscriptWatcher, type TranscriptWatcherSeed } from "./transcript/index.ts";
 import { dropWarning, pollErrorWarning, readErrorWarning } from "./transcript/warnings.ts";
 
 /** The session surface the watcher needs to persist and de-duplicate warnings. */
@@ -19,6 +19,26 @@ export type TranscriptActivityEmitter = {
   emit(event: "activity", payload: activity.ElwoodActivityEvent): void;
 };
 
+/** A watcher plus a hook to flush any early-buffered warnings once the sink exists. */
+export type WiredTranscriptWatcher = {
+  readonly watcher: ClaudeTranscriptWatcher;
+  /** Flush warnings buffered before the session sink existed; call once it does. */
+  readonly flushPendingWarnings: () => void;
+  /**
+   * Drive `watcher.finish()` behind an error boundary (PRD §5.3 C-LIFE-10): the
+   * final transcript flush emits deltas through activity listeners, and a throwing
+   * listener must NOT abort the PTY-exit callback before it emits `terminal:exit`,
+   * persists terminal status, and reaps. `afterFlush` runs in a `finally` so those
+   * steps always execute. The flush itself is bounded (a shared watcher-wide chunk
+   * budget plus a small wall-clock slice, §9.2), so it returns to the event loop
+   * promptly rather than looping over a hundreds-of-MiB backlog. A flush failure is
+   * contained and routed as a bounded, content-free `transcript_poll_stopped`
+   * diagnostic; a throwing diagnostic listener is swallowed so it can't block
+   * lifecycle completion.
+   */
+  readonly finishSafely: (afterFlush?: () => void) => void;
+};
+
 /**
  * Builds a transcript watcher that emits committed items and bounded diagnostics
  * (drops, contained fs errors, and a poll-error stop). Diagnostics are routed
@@ -29,17 +49,35 @@ export type TranscriptActivityEmitter = {
  * and flushed through `recordWarnings` once it does — never silently emitted as
  * activity-only (which would neither persist nor replay).
  */
-/** A watcher plus a hook to flush any early-buffered warnings once the sink exists. */
-export type WiredTranscriptWatcher = {
-  readonly watcher: ClaudeTranscriptWatcher;
-  /** Flush warnings buffered before the session sink existed; call once it does. */
-  readonly flushPendingWarnings: () => void;
-};
+/**
+ * Recovers the prior running drop/read-error totals from a resumed session's
+ * persisted warnings so the watcher continues counting from the snapshot instead
+ * of restarting at 0. Without this, the first post-resume failure would REPLACE a
+ * same-code warning's stored count (e.g. 60 → 1), erasing history and violating
+ * the running-count semantics (C-CLAUDE-15).
+ */
+export function transcriptSeedFromWarnings(
+  warnings: readonly ElwoodWarningEvent[],
+): TranscriptWatcherSeed {
+  let drops: TranscriptWatcherSeed["drops"];
+  let readErrors: TranscriptWatcherSeed["readErrors"];
+  for (const warning of warnings) {
+    if (warning.code === "transcript_records_dropped")
+      drops = { droppedCount: warning.droppedCount, droppedBytes: warning.droppedBytes };
+    else if (warning.code === "transcript_read_error")
+      readErrors = { errorCount: warning.errorCount };
+  }
+  return {
+    ...(drops === undefined ? {} : { drops }),
+    ...(readErrors === undefined ? {} : { readErrors }),
+  };
+}
 
 export function createTranscriptWatcher(
   elwoodSessionId: string,
   emitter: TranscriptActivityEmitter,
   sink?: () => WarningSink | undefined,
+  seed: TranscriptWatcherSeed = {},
 ): WiredTranscriptWatcher {
   const pending: ElwoodWarningEvent[] = [];
   const flushPendingWarnings = () => {
@@ -63,8 +101,25 @@ export function createTranscriptWatcher(
       onReadError: (notice) => route(readErrorWarning(notice)),
       onPollError: (error) => route(pollErrorWarning(elwoodSessionId, error)),
     },
+    seed,
   );
-  return { watcher, flushPendingWarnings };
+  // C-LIFE-10: flush trailing committed items behind an error boundary, then run
+  // `afterFlush` (terminal:exit emission, status, reap) in a `finally` so a throwing
+  // flush listener can never abort lifecycle completion. A flush failure is contained
+  // and surfaced as a bounded diagnostic; a throwing diagnostic route is swallowed.
+  const noop = () => undefined;
+  const finishSafely = (afterFlush: () => void = noop) => {
+    try {
+      watcher.finish();
+    } catch (error) {
+      try {
+        route(pollErrorWarning(elwoodSessionId, error));
+      } catch {} // a diagnostic-listener bug must not block lifecycle completion
+    } finally {
+      afterFlush();
+    }
+  };
+  return { watcher, flushPendingWarnings, finishSafely };
 }
 
 /** Turn-boundary hooks: a first observe here recovers the already-committed tail. */
@@ -97,7 +152,9 @@ export function observeTranscript(
     watcher.observe(path, recoverTail);
     // A SubagentStop's agent transcript is a one-shot input: flush it now and
     // retire it from active polling so a long session with many subagents does
-    // not accumulate cursors statted twice a second forever (PRD §5.4).
+    // not accumulate cursors statted twice a second forever (PRD §5.4). The flush
+    // shares the watcher-wide terminal budget and a wall-clock slice, so it cannot
+    // stall the hook-dispatch path with a hundreds-of-MiB synchronous loop (§9.2).
     if (hook === "SubagentStop" && key === "agent_transcript_path") watcher.retire(path);
   }
 }

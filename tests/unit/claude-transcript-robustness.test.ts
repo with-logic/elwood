@@ -103,18 +103,20 @@ describe("C-CLAUDE-15 transcript watcher robustness", () => {
     watcher.stop();
   });
 
-  test("drop notices are rate-bounded and content-free, not one-per-line", () => {
+  test("drop notices are content-free and carry the running aggregate count", () => {
     const path = tmpFile();
     const drops: TranscriptDropNotice[] = [];
     const watcher = new ClaudeTranscriptWatcher("s1", () => {}, { onDrop: (d) => drops.push(d) });
     writeFileSync(path, "");
     watcher.observe(path);
-    // 60 malformed lines: notify on the first, then at the 50-drop threshold, and
-    // once more on finish — never 60 notices.
+    // 60 malformed lines: each updates the snapshot aggregate (event-level dedup is
+    // downstream in recordSessionWarnings), so the final notice reports the full
+    // running count and byte magnitude — never the raw content of any line.
     writeFileSync(path, `${Array.from({ length: 60 }, () => "{ bad }").join("\n")}\n`);
     watcher.finish();
-    expect(drops.length).toBeLessThan(60);
     expect(drops.at(-1)).toMatchObject({ droppedCount: 60 });
     expect(drops.at(-1)!.droppedBytes).toBeGreaterThan(0);
+    // Content-free: no notice field carries any raw line text.
+    expect(JSON.stringify(drops)).not.toContain("bad");
   });
 });

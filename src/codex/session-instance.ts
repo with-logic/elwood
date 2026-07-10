@@ -30,6 +30,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
   private readonly bridge: CodexHookBridge;
   private readonly emitter: TypedEmitter<CodexEventMap>;
   private readonly transcriptWatcher: CodexTranscriptWatcher | undefined;
+  private onInitialReady: (() => void) | undefined;
 
   constructor(
     record: SessionRecord,
@@ -88,13 +89,24 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
     if (this.record.codex.resumeId) return;
     this.persist(updateSessionResumeId(this.record, "codex", sessionId));
   }
+  /** Registers the readiness trigger fired by the `SessionStart` hook — Codex's
+   * authoritative "initialized and accepting input" signal (C-API-28). */
+  setInitialReadyHook(fire: () => void): void {
+    this.onInitialReady = fire;
+  }
+  /** Fires initial readiness from the `SessionStart` hook so the first queued
+   * message is released only once Codex is actually accepting input, not on the
+   * boot-time composer placeholder that would swallow it (C-API-28). */
+  markInitialReadyFromHook(): void {
+    this.onInitialReady?.();
+  }
   observeTranscript(path?: string | null): void {
     if (path) this.transcriptWatcher?.observe(path);
   }
   flushTranscript(): void {
     this.transcriptWatcher?.flush();
   }
-  recordWarnings(warnings: readonly ElwoodWarningEvent[]): void {
+  override recordWarnings(warnings: readonly ElwoodWarningEvent[]): void {
     recordCodexWarnings(this.record, warnings, (record) => this.persist(record), this.emitter);
   }
   protected async stopRuntime(): Promise<void> {

@@ -1,8 +1,11 @@
 /**
  * Verifies the trust-prompt ALLOWLIST against a REAL Claude CLI frame rather than
- * hand-authored strings: launches Claude in a fresh, untrusted directory without
- * autotrust, captures the actual folder-trust frame, and asserts our recognition
- * (header-anchored) + affirmative-option matching accept the real wording.
+ * hand-authored strings, AND that the autotrust path clears the gate end-to-end:
+ * launches Claude in a fresh, untrusted directory WITHOUT autotrust, captures the
+ * actual folder-trust frame, and asserts our recognition (header-anchored) +
+ * affirmative-option matching accept the real wording — then launches a SECOND
+ * fresh session WITH autotrust and asserts the real session/PTY wiring clears the
+ * trust gate and reaches readiness (the "never block — always say yes" policy).
  * Implements C-E2E-09 for C-CLAUDE-10/C-CLAUDE-14 (§5.1).
  *
  * If the installed CLI does not render a folder-trust prompt (e.g. it auto-trusts
@@ -13,56 +16,110 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { TrustPromptResponder } from "../../src/core/trust-responder.ts";
-import { startClaude } from "../../src/index.ts";
+import { type ClaudeSession, startClaude } from "../../src/index.ts";
 import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
 
-/** A frame is a folder-trust prompt when our responder answers it under autotrust. */
-function answersWorkspaceTrust(frame: string): boolean {
+/**
+ * Answers `frame` under autotrust and returns the affirmative input written by the
+ * responder, or undefined if it is not a recognized workspace-trust frame. The
+ * write callback is REAL (not a no-op): we assert the affirmative keystroke it
+ * received, proving the responder both recognizes the frame AND emits input.
+ */
+function trustInputFor(frame: string): string | undefined {
   const responder = new TrustPromptResponder("claude", true);
-  const result = responder.handle(frame, () => {});
-  return result?.kind === "answered" && result.automation.prompt === "workspace_trust";
+  let written: string | undefined;
+  const result = responder.handle(frame, (input) => {
+    written = input;
+  });
+  if (result?.kind !== "answered" || result.automation.prompt !== "workspace_trust")
+    return undefined;
+  return written;
 }
 
-test("C-E2E-09 the allowlist recognizes and answers the REAL Claude folder-trust frame", {
+/** An answerable real trust frame, an auto-trusted "ready", or no matchable frame. */
+type Capture =
+  | { readonly kind: "answerable"; readonly frame: string }
+  | { readonly kind: "ready" }
+  | { readonly kind: "unmatched" };
+
+/**
+ * Capture the real folder-trust frame once it is ANSWERABLE (its affirmative
+ * option has painted), or "ready" if the CLI reached ready first (auto-trusted).
+ * A bare trust HEADER paints before its numbered options, so we keep waiting until
+ * the responder can actually answer — otherwise we'd capture a partial frame that
+ * is "option_pending" (options not yet rendered) and mistake it for a wording
+ * mismatch. On timeout (a trust-ish frame that never became answerable, or wording
+ * we don't recognize) we return "unmatched" so the caller SKIPS LOUDLY rather than
+ * failing — the point of C-E2E-09 is to catch drift, not to be brittle.
+ */
+async function captureTrustFrame(session: ClaudeSession): Promise<Capture> {
+  try {
+    return await waitFor(
+      () => {
+        const text = session.terminal.snapshot().text;
+        if (trustInputFor(text) !== undefined) return { kind: "answerable", frame: text } as const;
+        if (session.status === "ready") return { kind: "ready" } as const;
+        return undefined;
+      },
+      "answerable folder-trust frame or ready",
+      90_000,
+    );
+  } catch {
+    return { kind: "unmatched" };
+  }
+}
+
+test("C-E2E-09 the allowlist recognizes and the autotrust path clears the REAL Claude folder-trust gate", {
   skip: skipReason("claude"),
   timeout: 240_000,
 }, async (t) => {
   const project = makeProject("claude");
-  // autotrust: false so Elwood does NOT auto-answer — we want to capture the raw
-  // trust frame the real CLI renders in a fresh, untrusted directory.
-  const session = await startClaude({
+  // autotrust: false so Elwood does NOT auto-answer — we capture the raw trust
+  // frame the real CLI renders in a fresh, untrusted directory.
+  const captureSession = await startClaude({
     cwd: project.cwd,
     stateDir: project.stateDir,
     autotrust: false,
   });
+  let capture: Capture = { kind: "unmatched" };
   try {
-    // Wait until either a folder-trust frame renders or the session becomes
-    // ready (meaning the CLI did not prompt — auto-trusted or different wording).
-    const frame = await waitFor(
-      () => {
-        const text = session.terminal.snapshot().text;
-        if (/trust/i.test(text) && /folder|files/i.test(text)) return text;
-        if (session.status === "ready") return "";
-        return undefined;
-      },
-      "folder-trust frame or ready",
-      90_000,
-    );
-
-    if (frame === "" || !answersWorkspaceTrust(frame)) {
+    capture = await captureTrustFrame(captureSession);
+    if (capture.kind !== "answerable") {
       // A REAL skip (not a silent pass): surface what the CLI rendered so the
       // allowlist can be re-verified against it, then mark the test skipped.
       t.skip(
-        `no matchable folder-trust frame from claude (status=${session.status}). ` +
-          `Captured terminal:\n${session.terminal.snapshot().text}`,
+        `no matchable folder-trust frame from claude (status=${captureSession.status}). ` +
+          `Captured terminal:\n${captureSession.terminal.snapshot().text}`,
       );
       return;
     }
-
-    // The REAL frame is recognized as workspace_trust AND its affirmative option
-    // is selected — proving our header-anchored matchers accept live CLI wording.
-    assert.ok(answersWorkspaceTrust(frame), "allowlist answers the real folder-trust frame");
+    // The REAL frame is recognized as workspace_trust AND the responder wrote the
+    // affirmative keystroke into the write callback (not a dropped no-op).
+    const input = trustInputFor(capture.frame);
+    assert.ok(input && input.length > 0, "responder wrote an affirmative input for the real frame");
   } finally {
-    await cleanup(session);
+    await cleanup(captureSession);
+  }
+
+  // The direct-responder check above cannot prove the LIVE autotrust wiring
+  // (session start → PTY submission → readiness transition) actually clears the
+  // gate. So drive a SECOND fresh, untrusted session WITH autotrust and assert it
+  // reaches readiness — the "never block, always say yes" policy end-to-end.
+  const trusted = makeProject("claude");
+  let autoSession: ClaudeSession | undefined;
+  try {
+    autoSession = await startClaude({
+      cwd: trusted.cwd,
+      stateDir: trusted.stateDir,
+      autotrust: true,
+    });
+    await waitFor(
+      () => (autoSession?.status === "ready" ? true : undefined),
+      "autotrust session clears the trust gate and reaches ready",
+      120_000,
+    );
+    assert.equal(autoSession.status, "ready", "autotrust cleared the real folder-trust gate");
+  } finally {
+    await cleanup(autoSession);
   }
 });

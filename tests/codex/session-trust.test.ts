@@ -36,14 +36,32 @@ describe("CodexSession trust prompts", () => {
     expect(activity).toContain("startup_prompt:workspace_trust");
   });
 
-  test("C-CODEX-15 an unanswerable directory prompt persists a durable wedge warning", async () => {
+  test("C-CODEX-15 a not-yet-rendered option emits a TRANSIENT attention, persists NO durable warning", async () => {
     installFakes();
     const session = await startCodex({ cwd: tempDir(), autotrust: true });
-    // A recognized directory-trust HEADER but only a declining option: the
-    // responder finds no clean affirmative, so it surfaces unanswerable.
+    const attention: string[] = [];
+    session.on("activity", (e) => e.kind === "attention" && attention.push(e.label));
+    // A recognized directory-trust HEADER whose affirmative option has not rendered
+    // yet: the responder emits a fire-once TRANSIENT attention and keeps watching.
     ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. No, quit");
     await flushTerminal();
-    expect(session.warnings.map((w) => w.code)).toContain("trust_prompt_unanswerable");
-    expect(ptys[0]!.writes).toEqual([]); // nothing auto-answered
+    expect(attention).toContain("workspace_trust");
+    // No durable wedge warning — the pending state is transient (would answer on a
+    // later frame), so it must not replay a false "not auto-answered" record.
+    expect(session.warnings.map((w) => w.code)).not.toContain("trust_prompt_unanswerable");
+    expect(ptys[0]!.writes).toEqual([]); // nothing auto-answered yet
+  });
+
+  test("C-CODEX-15 a partial frame followed by a complete frame ANSWERS the prompt, no stale warning", async () => {
+    installFakes();
+    const session = await startCodex({ cwd: tempDir(), autotrust: true });
+    // Frame 1: header only — transient pending, nothing sent.
+    ptys[0]!.emitData("Do you trust the contents of this directory?");
+    await flushTerminal();
+    // Frame 2: the affirmative now paints — Elwood answers it.
+    ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. Yes, continue");
+    await flushTerminal();
+    expect(ptys[0]!.writes).toEqual(["1\r"]);
+    expect(session.warnings.map((w) => w.code)).not.toContain("trust_prompt_unanswerable");
   });
 });

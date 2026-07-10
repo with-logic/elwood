@@ -5,13 +5,13 @@
  * transcript can be hundreds of MB, so a full-delta read would OOM the host.
  */
 
-import { closeSync, openSync, readSync, statSync } from "node:fs";
 import { stat } from "node:fs/promises";
-import { completeUtf8Length } from "../../runtime/probe.ts";
+import { scanBaselineTail } from "./baseline.ts";
+import { byteLen, fileSize, readRange } from "./cursor-io.ts";
+
+export { resetByteReaderForTests, setByteReaderForTests } from "./cursor-io.ts";
 
 const maxChunkBytes = 256 * 1024; // bytes read per scan pass (a large delta streams)
-const baselineStepBytes = 64 * 1024; // one backward step in current-turn recovery
-const baselineMaxBytes = 4 * 1024 * 1024; // cap on how far back the baseline scan reaches
 // Max bytes a single un-terminated record may buffer before it is discarded
 // through its next newline (a no-newline giant line can't OOM or re-concat n²).
 const maxPendingBytes = 1024 * 1024;
@@ -41,32 +41,12 @@ export class TranscriptCursor {
     this.offset = fileSize(path);
   }
 
-  // The current (final) turn already on disk (the Stop-first edge). Scans BACKWARD
-  // in NON-OVERLAPPING blocks to the last user PROMPT record. Each block's lines
-  // are prepended to an accumulator ONCE and only the block's own new lines are
-  // scanned for a boundary (the seam line is re-merged with the carried head), so
-  // total work is O(n), not O(n²) re-splitting of a growing window. Bounded by
-  // baselineMaxBytes; returns "" when new/empty or no boundary is within the cap.
+  // The current (final) turn already on disk (the Stop-first edge). Delegates to
+  // the bounded backward scan (`scanBaselineTail`): UTF-8-seam-safe, linear, and —
+  // when the turn is larger than the cap — recovering the in-window committed
+  // records rather than silently dropping the whole turn (§5.4, C-CLAUDE-15).
   baselineTail(): string {
-    const size = fileSize(this.path);
-    if (size === 0) return "";
-    const after: string[] = []; // lines already confirmed to be after any boundary
-    let end = size;
-    while (end > 0 && size - end < baselineMaxBytes) {
-      const start = Math.max(0, end - baselineStepBytes);
-      const block = readRange(this.path, start, end - start).text.split(/\r?\n/);
-      // Merge the block's last (partial) line with the carried head line.
-      if (after.length > 0) block[block.length - 1] += after.shift() as string;
-      const boundary = lastUserLine(block);
-      if (boundary >= 0)
-        return block
-          .slice(boundary + 1)
-          .concat(after)
-          .join("\n");
-      after.unshift(...block); // no boundary in this block: carry it and step back
-      end = start;
-    }
-    return "";
+    return scanBaselineTail(this.path, fileSize(this.path)).lines.join("\n");
   }
 
   // True when the file changed size (grew OR truncated) since the last read, via
@@ -123,76 +103,12 @@ export class TranscriptCursor {
     this.pending = "";
     return rest;
   }
-}
 
-/** Index of the last `user`-role record line in `lines`, or -1 if none. */
-function lastUserLine(lines: readonly string[]): number {
-  for (let i = lines.length - 1; i >= 0; i--) {
-    if (isUserRecord(lines[i] as string)) return i;
+  // Unread bytes still on disk past the cursor (a truncation reads as 0). Used at
+  // teardown to size the backlog left unread when the drain budget is spent, so
+  // it is accounted as a content-free drop rather than read as hundreds of MiB.
+  remainingBytes(): number {
+    const size = fileSize(this.path);
+    return size > this.offset ? size - this.offset : 0;
   }
-  return -1;
-}
-
-// True only for a genuine user PROMPT — the real turn boundary. A `tool_result`
-// is ALSO a `type:"user"` record but belongs to the current turn, so it is NOT a
-// boundary (else committed tool activity is dropped). A prompt carries prose
-// (string content or a `text` block); a pure tool_result carries only those.
-function isUserRecord(line: string): boolean {
-  if (!line.trim()) return false;
-  try {
-    const record = JSON.parse(line) as { type?: unknown; message?: { content?: unknown } };
-    if (record.type !== "user") return false;
-    const content = record.message?.content;
-    if (typeof content === "string") return true; // string content is always prose
-    if (!Array.isArray(content)) return false;
-    // A prompt has at least one non-tool_result block; a pure tool_result record
-    // (every block is a tool_result) is part of the current turn, not a boundary.
-    return content.some((block) => (block as { type?: unknown })?.type !== "tool_result");
-  } catch {
-    return false;
-  }
-}
-
-function byteLen(text: string): number {
-  return Buffer.byteLength(text, "utf8");
-}
-
-function fileSize(path: string): number {
-  // One stat, no exists-then-stat TOCTOU window: ENOENT means "no file yet",
-  // which is size 0; any other error propagates to the caller's fs guard.
-  try {
-    return statSync(path).size;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
-    throw error;
-  }
-}
-
-type RangeRead = { text: string; bytes: number };
-type RangeReader = (path: string, start: number, length: number) => RangeRead;
-
-// Reads `length` bytes at `start`, decoding only to the last COMPLETE UTF-8 code
-// point (a split multibyte char is left for the next read, not corrupted).
-function realReadRange(path: string, start: number, length: number): RangeRead {
-  const buffer = Buffer.allocUnsafe(length);
-  const fd = openSync(path, "r");
-  try {
-    const read = readSync(fd, buffer, 0, length, start);
-    const complete = completeUtf8Length(buffer.subarray(0, read));
-    return { text: buffer.toString("utf8", 0, complete), bytes: complete };
-  } finally {
-    closeSync(fd);
-  }
-}
-
-// Indirection so a test can force a read failure and prove the offset is
-// committed only AFTER a successful read.
-let readRangeImpl: RangeReader = realReadRange;
-const readRange: RangeReader = (p, s, l) => readRangeImpl(p, s, l);
-
-export function setRangeReaderForTests(reader: RangeReader): void {
-  readRangeImpl = reader;
-}
-export function resetRangeReaderForTests(): void {
-  readRangeImpl = realReadRange;
 }

@@ -54,6 +54,9 @@ export async function dispatchHook(
   session?.observeTranscript(event.transcript_path);
   if (event.hook_event_name === "SessionStart") {
     session?.rememberCodexSessionId(event.session_id);
+    // Codex's authoritative pre-input readiness signal: release the first queued
+    // message here, not on the boot-time composer placeholder (C-API-28).
+    session?.markInitialReadyFromHook();
   }
   emitter.emit("hook", event);
   emitter.emit("activity", activity.activityFromCodexHook(record.elwoodSessionId, event));

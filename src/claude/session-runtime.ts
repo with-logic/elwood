@@ -5,17 +5,37 @@
 
 import { resolve } from "node:path";
 import { bridgeScriptSource } from "../bridge/script.ts";
+import * as activity from "../core/activity.ts";
+import { AttentionWatcher } from "../core/attention.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, elwoodError } from "../core/errors.ts";
+import { TurnStateWatcher } from "../core/turn-state.ts";
 import type { ElwoodEventHandler, ElwoodEventName, StartClaudeOptions } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
-import type { PtyProcess } from "../pty/types.ts";
+import type { PtyExit, PtyProcess } from "../pty/types.ts";
 import { currentPtyFactory } from "../runtime/seams.ts";
 import { userShell } from "../runtime/shell.ts";
 import { writePrivateFileAtomic } from "../state/files.ts";
 import type { SessionRecord } from "../state/store.ts";
 import { buildClaudeShellCommand, shellLaunch } from "./command.ts";
+import { claudeScreenFactTableForTrustPolicy } from "./screen-table.ts";
 import { generateClaudeSettings } from "./settings.ts";
+
+/** The rendered-frame observers (turn/attention/screen-fact) for a Claude session. */
+export function buildClaudeObservers(
+  elwoodSessionId: string,
+  autotrust: boolean,
+  emitter: TypedEmitter,
+) {
+  return {
+    turn: new TurnStateWatcher(),
+    attention: new AttentionWatcher(),
+    table: claudeScreenFactTableForTrustPolicy(autotrust),
+    agent: "claude" as const,
+    elwoodSessionId,
+    emitActivity: (event: activity.ElwoodActivityEvent) => emitter.emit("activity", event),
+  };
+}
 
 export function writeRuntimeFiles(
   record: SessionRecord,
@@ -63,6 +83,62 @@ export function registerInitialHooks(
   for (const [name, handler] of Object.entries(handlers)) {
     emitter.listen(`hook:${name}` as ElwoodEventName, hookHandler(name, handler));
   }
+}
+
+/**
+ * Emit the terminal-exit event and its activity (PRD §5.3 C-LIFE-10). Called from
+ * the PTY-exit boundary's `finally` so it always runs, even if the final transcript
+ * flush threw — no missed exit event, no unpersisted terminal status.
+ */
+export function emitTerminalExit(
+  emitter: TypedEmitter,
+  elwoodSessionId: string,
+  exit: PtyExit,
+): void {
+  emitter.emit("terminal:exit", { elwoodSessionId, ...exit });
+  emitter.emit(
+    "activity",
+    activity.activityFromTerminalExit("claude", elwoodSessionId, exit.exitCode),
+  );
+}
+
+/**
+ * Emit the terminal-exit event and submit terminal status behind an error boundary
+ * (PRD §5.3 C-LIFE-10). `submitExit` — which reaps the descendant tree in its own
+ * `finally` — ALWAYS runs, even if a throwing `terminal:exit`/`activity` listener
+ * fails the emission, and no listener failure escapes the native PTY-exit callback
+ * to abort the unconditional reap. Called from inside the bounded flush boundary.
+ */
+export function finishExit(emitExit: () => void, submitExit: () => void): void {
+  try {
+    emitExit();
+  } catch {
+    // A throwing exit/activity listener must not skip terminal status + reap.
+  } finally {
+    try {
+      submitExit();
+    } catch {
+      // Status was submitted and the reap ran inside submitExit's own finally;
+      // contain any late status-listener throw so it can't abort the callback.
+    }
+  }
+}
+
+/**
+ * The PTY-exit boundary: run the bounded transcript flush, then emit `terminal:exit`
+ * and submit terminal status (which reaps) behind the error boundary so a throwing
+ * flush/listener never skips the unconditional reap (PRD §5.3 C-LIFE-10).
+ */
+export function handleClaudeExit(
+  emitter: TypedEmitter,
+  elwoodSessionId: string,
+  exit: PtyExit,
+  finishSafely: (afterFlush: () => void) => void,
+  submitExit: () => void,
+): void {
+  finishSafely(() =>
+    finishExit(() => emitTerminalExit(emitter, elwoodSessionId, exit), submitExit),
+  );
 }
 
 function hookHandler(name: string, handler: unknown): ElwoodEventHandler<ElwoodEventName> {

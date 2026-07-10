@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, test } from "vitest";
+import type { ClaudeTranscriptSummary } from "../../src/claude/transcript/summary.ts";
 import {
   activityFromClaudeTranscript,
   activityFromCodexTranscript,
@@ -48,6 +49,58 @@ describe("Elwood activity tool input/output", () => {
     expect(claudeResult.toolOutput).toBe('{"stdout":"file.txt"}');
     expect(codexObjectResult.toolOutput).toBe('{"ok":true}');
     expect(noInput.toolInput).toBeUndefined();
+  });
+
+  test("C-CLAUDE-15 a tool_call keeps its toolUseId and a tool_result omits an absent output", () => {
+    // A tool_call MAY carry a correlating toolUseId (present here); a tool_result
+    // MUST carry its toolUseId but its toolOutput is optional (absent here).
+    const call = activityFromClaudeTranscript({
+      elwoodSessionId: "elwood-7",
+      path: "/tmp/t.jsonl",
+      item: {},
+      summary: { kind: "tool_call", label: "Bash", toolName: "Bash", toolUseId: "u1" },
+    });
+    const result = activityFromClaudeTranscript({
+      elwoodSessionId: "elwood-7",
+      path: "/tmp/t.jsonl",
+      item: {},
+      summary: { kind: "tool_result", label: "u1", toolUseId: "u1" },
+    });
+    expect(call).toMatchObject({ kind: "tool_call", toolName: "Bash", toolUseId: "u1" });
+    expect(result).toMatchObject({ kind: "tool_result", toolUseId: "u1" });
+    expect(result.toolOutput).toBeUndefined(); // absent output leaves the field absent
+  });
+
+  test("C-CLAUDE-15 an assistant_message projection carries its committed text and path", () => {
+    const message = activityFromClaudeTranscript({
+      elwoodSessionId: "elwood-7",
+      path: "/tmp/t.jsonl",
+      item: {},
+      summary: { kind: "assistant_message", label: "assistant", text: "hello" },
+    });
+    expect(message).toMatchObject({
+      kind: "assistant_message",
+      source: "transcript",
+      text: "hello",
+      transcriptPath: "/tmp/t.jsonl",
+    });
+    // The tool fields are absent for an assistant message (variant is precise).
+    expect(message.toolName).toBeUndefined();
+    expect(message.toolUseId).toBeUndefined();
+  });
+
+  test("C-CLAUDE-15 the Claude-transcript projection REQUIRES each variant's fields", () => {
+    // Finding D: the projection is built by switching on the summary discriminant,
+    // so the compiler enforces that an assistant_message carries `text`, a
+    // tool_call its `toolName`, and a tool_result its correlating `toolUseId`. A
+    // future summary variant that omits a required field fails to typecheck here.
+    // @ts-expect-error assistant_message without `text` is rejected at the boundary
+    const badMessage: ClaudeTranscriptSummary = { kind: "assistant_message", label: "a" };
+    // @ts-expect-error tool_call without `toolName` is rejected at the boundary
+    const badCall: ClaudeTranscriptSummary = { kind: "tool_call", label: "Bash" };
+    // @ts-expect-error tool_result without `toolUseId` is rejected at the boundary
+    const badResult: ClaudeTranscriptSummary = { kind: "tool_result", label: "c" };
+    expect([badMessage, badCall, badResult]).toHaveLength(3);
   });
 
   test("C-CLAUDE-15 Claude tool hook events are NOT emitted as tool activity", async () => {

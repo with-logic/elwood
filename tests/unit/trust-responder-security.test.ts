@@ -1,7 +1,10 @@
 /**
- * Security-focused coverage for the allowlisted trust-prompt automation: partial
- * renders, option-only spoofing, destructive riders, and blank-line layouts.
- * Covers PRD §5.1 (C-CLAUDE-14, C-CODEX-15).
+ * Recognition-focused coverage for the allowlisted trust-prompt automation:
+ * partial renders, option-only spoofing, and blank-line layouts. The policy is
+ * "never block — say yes to any RECOGNIZED allowlisted prompt", so the only
+ * guard exercised here is recognition (allowlisted id + non-option HEADER
+ * wording); there is deliberately NO region isolation or destructive-rider
+ * refusal. Covers PRD §5.1 (C-CLAUDE-14, C-CODEX-15).
  */
 
 import { describe, expect, test } from "vitest";
@@ -12,11 +15,11 @@ describe("trust-prompt automation security", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
     // Frame 1: header + a non-affirmative option ("No, cancel") only — the real
-    // "Yes" hasn't rendered. It surfaces unanswerable ONCE but must NOT settle.
+    // "Yes" hasn't rendered. It surfaces option_pending ONCE but must NOT settle.
     expect(
       responder.handle("Do you trust this folder?\n1. No, cancel", (input) => writes.push(input)),
-    ).toEqual({ kind: "unanswerable", prompt: "workspace_trust" });
-    // Same partial frame again: reported once, so no second wedge signal.
+    ).toEqual({ kind: "option_pending", prompt: "workspace_trust" });
+    // Same partial frame again: reported once, so no second pending signal.
     expect(
       responder.handle("Do you trust this folder?\n1. No, cancel", (input) => writes.push(input)),
     ).toBeUndefined();
@@ -69,9 +72,12 @@ describe("trust-prompt automation security", () => {
     const responder = new TrustPromptResponder("claude", true);
     // A single trust dialog whose header and options are separated by a blank +
     // descriptive line — the real rendered shape. Elwood recognizes the header and
-    // answers the affirmative so the agent never waits on the trust gate. (Region
-    // isolation from a SECOND trust dialog is still enforced — see the two-prompt
-    // and option-only-spoof tests — but a plain blank does not stop the answer.)
+    // answers the affirmative so the agent never waits on the trust gate. There is
+    // NO region isolation by design (say-yes-to-anything policy): recognition is
+    // the only guard, and the responder answers the first affirmative option in
+    // the frame. A stacked second dialog is not defended against here — that is an
+    // accepted consequence of the policy (see VALIDATION-DECISIONS.md), not a
+    // guarantee this test makes.
     const frame =
       "Do you trust this folder?\n\nReview the files first.\n1. Yes, proceed\n2. No, exit";
     expect(responder.handle(frame, (input) => writes.push(input))).toEqual({

@@ -12,7 +12,11 @@
 
 import type { ElwoodAgentKind } from "./activity.ts";
 import { numberedOptions } from "./terminal-options.ts";
-import { type TrustPromptIdFor, trustPromptAllowlist } from "./trust-prompts.ts";
+import {
+  type TrustPromptIdFor,
+  trustPromptAllowlist,
+  trustPromptHeaderVisible,
+} from "./trust-prompts.ts";
 
 /** The concrete allowlist entry type (preserves the derived literal `id`). */
 type TrustPromptEntry = (typeof trustPromptAllowlist)[number];
@@ -25,24 +29,28 @@ export type TrustPromptAutomation<A extends ElwoodAgentKind = ElwoodAgentKind> =
 
 /**
  * The outcome of handling a frame: an answered prompt, a recognized prompt whose
- * affirmative option is not present in the frame yet (still rendering — retry next
- * frame), or nothing.
+ * affirmative option has not rendered yet (a TRANSIENT render delay — under the
+ * say-yes policy a later frame carrying the option is still answered, so this is
+ * never a terminal wedge), or nothing.
  */
 export type TrustPromptResult<A extends ElwoodAgentKind = ElwoodAgentKind> =
   | { readonly kind: "answered"; readonly automation: TrustPromptAutomation<A> }
-  | { readonly kind: "unanswerable"; readonly prompt: TrustPromptIdFor<A> }
+  | { readonly kind: "option_pending"; readonly prompt: TrustPromptIdFor<A> }
   | undefined;
 
 export class TrustPromptResponder<A extends ElwoodAgentKind> {
-  private readonly enabled: boolean;
+  // Whether the caller launched under full trust (`autotrust`). `answerPolicy:
+  // "always"` prompts (hook trust) are answered even when this is false.
+  private readonly autotrust: boolean;
   private readonly specs: readonly TrustPromptEntry[];
   private readonly settled = new Set<TrustPromptIdFor<A>>();
-  // A prompt whose "no option yet" state was reported once, kept SEPARATE from
-  // `settled` so a later frame with the real option can still be answered.
-  private readonly reportedUnanswerable = new Set<TrustPromptIdFor<A>>();
+  // A prompt whose "option not rendered yet" state was reported once, kept
+  // SEPARATE from `settled` so a later frame with the real option can still be
+  // answered — the pending state is transient, not terminal.
+  private readonly reportedPending = new Set<TrustPromptIdFor<A>>();
 
-  constructor(agent: A, enabled = false) {
-    this.enabled = enabled;
+  constructor(agent: A, autotrust = false) {
+    this.autotrust = autotrust;
     this.specs = trustPromptAllowlist.filter((spec) => spec.agent === agent);
   }
 
@@ -51,20 +59,22 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     const options = numberedOptions(frame);
     for (const spec of this.specs) {
       const id = spec.id as TrustPromptIdFor<A>;
-      // `always` prompts (Elwood's own hook bridge) answer regardless of autotrust;
-      // every other trust prompt requires the caller's full-trust posture.
-      if (!(this.enabled || ("always" in spec && spec.always))) continue;
-      // Recognized when the prompt's `visible` HEADER wording appears on a
-      // NON-OPTION line, so a phrase living only inside an option label can't spoof
-      // a prompt. That is the ONLY guard — recognition means "say yes".
-      if (this.settled.has(id) || !isVisible(frame, spec)) continue;
+      // `answerPolicy: "always"` prompts (Elwood's own hook bridge) answer
+      // regardless of autotrust; every other trust prompt requires the caller's
+      // full-trust posture.
+      if (!(this.autotrust || spec.answerPolicy === "always")) continue;
+      // Recognized when the prompt's HEADER wording appears on a NON-OPTION line
+      // (via the shared `trustPromptHeaderVisible`), so a phrase living only inside
+      // an option label can't spoof a prompt. That is the ONLY guard — recognition
+      // means "say yes".
+      if (this.settled.has(id) || !trustPromptHeaderVisible(frame, spec)) continue;
       const option = options.find((o) => spec.accept.test(o.label))?.number;
       if (option === undefined) {
         // Affirmative not rendered yet (partial frame). Report once, but DON'T
         // settle — a later frame with the option can still be answered.
-        if (this.reportedUnanswerable.has(id)) continue;
-        this.reportedUnanswerable.add(id);
-        return { kind: "unanswerable", prompt: id };
+        if (this.reportedPending.has(id)) continue;
+        this.reportedPending.add(id);
+        return { kind: "option_pending", prompt: id };
       }
       write(`${option}\r`);
       this.settled.add(id);
@@ -76,24 +86,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
 
 /** True when an allowlisted trust prompt for `agent` is visible in `text`. */
 export function trustPromptVisible(text: string, agent: ElwoodAgentKind): boolean {
-  return trustPromptAllowlist.some((spec) => spec.agent === agent && isVisible(text, spec));
-}
-
-/**
- * True when `spec`'s HEADER is visible: its `visible` phrase matches the frame's
- * NON-OPTION lines (joined, so a wrapped header spanning rows still matches). An
- * option-only phrase — e.g. "1. Yes, trust this plugin" — never matches, so a
- * hostile option cannot masquerade as a trust prompt (PRD §5.1).
- */
-function isVisible(frame: string, spec: TrustPromptEntry): boolean {
-  const header = frame
-    .split("\n")
-    .filter((line) => !isOptionLine(line))
-    .join(" ");
-  return spec.visible.test(header);
-}
-
-/** True when `line` is itself a numbered option (e.g. "1. ...", "› 2) ..."). */
-function isOptionLine(line: string): boolean {
-  return /(?:^|[\s›>])\d+[.)]/.test(line);
+  return trustPromptAllowlist.some(
+    (spec) => spec.agent === agent && trustPromptHeaderVisible(text, spec),
+  );
 }

@@ -29,25 +29,6 @@ export function hookActivityBase(
   };
 }
 
-const STOP_EVENTS = new Set(["Stop", "SubagentStop", "StopFailure"]);
-
-export function stopMessage(event: ClaudeHookEvent | CodexHookEvent): string | undefined {
-  if (!STOP_EVENTS.has(event.hook_event_name)) return undefined;
-  return stringValue(record(event)["last_assistant_message"]) || undefined;
-}
-
-export function hookToolInput(
-  event: ClaudeHookEvent | CodexHookEvent,
-): Partial<ElwoodActivityEvent> {
-  return optional("toolInput", stringify(record(event)["tool_input"]));
-}
-
-export function hookToolOutput(
-  event: ClaudeHookEvent | CodexHookEvent,
-): Partial<ElwoodActivityEvent> {
-  return optional("toolOutput", stringify(record(event)["tool_response"]));
-}
-
 export function transcriptActivityMeta(event: CodexTranscriptEvent): Partial<ElwoodActivityEvent> {
   const item = record(event.item);
   const payload = record(item["payload"]);

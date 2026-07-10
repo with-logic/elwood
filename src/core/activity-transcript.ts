@@ -4,6 +4,7 @@
  */
 
 import type { ClaudeTranscriptEvent } from "../claude/transcript/index.ts";
+import type { ClaudeTranscriptSummary } from "../claude/transcript/summary.ts";
 import type { CodexTranscriptEvent } from "../codex/transcript.ts";
 import type { ElwoodActivityEvent } from "./activity.ts";
 import * as meta from "./activity-meta.ts";
@@ -23,20 +24,46 @@ export function activityFromCodexTranscript(event: CodexTranscriptEvent): Elwood
 }
 
 /**
- * The Claude summary's `kind` is already an activity kind and its text/tool
- * fields are only present when set, so they carry straight across.
- * `assistant_message` here is the committed-turn source of truth (C-CLAUDE-15).
+ * Projects a committed Claude summary into activity. Rather than spreading the
+ * summary's fields (which would WIDEN each per-variant guarantee back to
+ * optional), it switches on the discriminant and builds each variant explicitly,
+ * so the compiler enforces C-CLAUDE-15's required fields AT THIS BOUNDARY: an
+ * `assistant_message` must carry `text`, a `tool_call` its `toolName`, and a
+ * `tool_result` its correlating `toolUseId`. A future summary variant that omits
+ * one fails to typecheck here rather than silently producing a field-less event.
  */
 export function activityFromClaudeTranscript(event: ClaudeTranscriptEvent): ElwoodActivityEvent {
-  const { kind, label, ...fields } = event.summary;
-  return {
+  const base = {
     elwoodSessionId: event.elwoodSessionId,
     agent: "claude",
     source: "transcript",
-    kind,
-    label,
+    label: event.summary.label,
     transcriptPath: event.path,
-    ...fields,
     raw: event.item,
+  } as const;
+  return { ...base, ...claudeActivityFields(event.summary) };
+}
+
+// The per-variant fields, typed off the summary discriminant so each guaranteed
+// field is REQUIRED at construction (a widened optional cannot satisfy these).
+function claudeActivityFields(
+  summary: ClaudeTranscriptSummary,
+): Pick<
+  ElwoodActivityEvent,
+  "kind" | "text" | "toolName" | "toolUseId" | "toolInput" | "toolOutput"
+> {
+  if (summary.kind === "assistant_message") return { kind: summary.kind, text: summary.text };
+  if (summary.kind === "tool_call") {
+    return {
+      kind: summary.kind,
+      toolName: summary.toolName,
+      ...(summary.toolUseId === undefined ? {} : { toolUseId: summary.toolUseId }),
+      ...(summary.toolInput === undefined ? {} : { toolInput: summary.toolInput }),
+    };
+  }
+  return {
+    kind: summary.kind,
+    toolUseId: summary.toolUseId,
+    ...(summary.toolOutput === undefined ? {} : { toolOutput: summary.toolOutput }),
   };
 }

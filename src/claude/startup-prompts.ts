@@ -16,13 +16,16 @@ export class ClaudeStartupPromptResponder {
     this.trust = new TrustPromptResponder("claude", autotrust);
   }
 
-  handle(screenText: string, write: (input: string) => void): readonly StartupPromptAutomation[] {
-    const automations: StartupPromptAutomation[] = [];
+  handle(
+    screenText: string,
+    write: (input: string) => void,
+  ): readonly StartupPromptAutomation<"claude">[] {
+    const automations: StartupPromptAutomation<"claude">[] = [];
     const trust = this.trust.handle(screenText, write);
     if (trust?.kind === "answered") {
       automations.push({ kind: "answered", ...trust.automation });
-    } else if (trust?.kind === "unanswerable") {
-      automations.push({ kind: "unanswerable", prompt: trust.prompt });
+    } else if (trust?.kind === "option_pending") {
+      automations.push({ kind: "option_pending", prompt: trust.prompt });
     }
     if (!this.browserDeclined && browserToolsPromptVisible(screenText)) {
       // Escape is the prompt's documented decline path and needs no option

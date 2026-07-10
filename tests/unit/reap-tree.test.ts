@@ -21,16 +21,25 @@ describe("C-LIFE-10 process-group reaping", () => {
     expect(killed).toEqual([LEADER]);
   });
 
-  test("refuses a system-range group id", () => {
-    let touched = false;
-    for (const pid of [1, 42, 99]) {
-      reapProcessGroup(pid, {
-        killGroup: () => {
-          touched = true;
-        },
-      });
+  test("refuses only ids the kernel would misroute: pid 0, pid 1, and our own pid", () => {
+    // pid 0 => "our own group", pid 1 => init/launchd, our own pid => kill(-pid)
+    // hits our own group. None identifies an owned PTY leader; none may be signaled.
+    // (A fake pid 1 in a reaper run once killed a dev's real apps — hence this guard.)
+    const touched: number[] = [];
+    for (const pid of [0, 1, process.pid]) {
+      reapProcessGroup(pid, { killGroup: (p) => touched.push(p) });
     }
-    expect(touched).toBe(false);
+    expect(touched).toEqual([]);
+  });
+
+  test("reaps a low-but-valid owned leader pid — no arbitrary numeric floor", () => {
+    // The leader pid is a KNOWN-OWNED node-pty leader; its value is an allocation
+    // detail. After PID-space wrap or in a constrained namespace it can be low
+    // (e.g. 42). The prior `< 100` floor silently no-op'd such leaders and leaked
+    // their descendants; killGroup MUST fire for a low, valid, injected fake pid.
+    const killed: number[] = [];
+    reapProcessGroup(42, { killGroup: (pgid) => killed.push(pgid) });
+    expect(killed).toEqual([42]);
   });
 
   test("real seams: reaping an already-dead group is a harmless no-op (ESRCH)", () => {
@@ -44,9 +53,9 @@ describe("C-LIFE-10 process-group reaping", () => {
   });
 
   test("SessionReaper reaps exactly once on success; later calls are reuse-safe no-ops", () => {
-    // Reaping the same numeric pgid twice is unsafe: once the group empties the
-    // kernel may recycle the pid, so a second kill(-pgid) could hit an unrelated
-    // group. The latch guarantees at most one SUCCESSFUL signal per session.
+    // Reaping the same pgid twice is unsafe: once the group empties the kernel may
+    // recycle the pid, so a second kill(-pgid) could hit an unrelated group. The
+    // latch guarantees at most one SUCCESSFUL signal per session.
     const killed: number[] = [];
     const reaper = new SessionReaper(LEADER, { killGroup: (pgid) => killed.push(pgid) });
     reaper.reap();
@@ -56,9 +65,9 @@ describe("C-LIFE-10 process-group reaping", () => {
   });
 
   test("SessionReaper does NOT latch on a failed kill: the reap stays retryable", () => {
-    // A real kill failure (e.g. EPERM) must not mark the reaper done — otherwise a
-    // later teardown no-ops and the descendant leak survives permanently. The
-    // failing call rethrows; once the killer recovers, the retry succeeds.
+    // A real kill failure (e.g. EPERM) must not mark the reaper done — else a later
+    // teardown no-ops and the leak survives. The failing call rethrows; on retry it
+    // succeeds once the killer recovers.
     let attempts = 0;
     const reaper = new SessionReaper(LEADER, {
       killGroup: (pgid) => {
@@ -75,34 +84,9 @@ describe("C-LIFE-10 process-group reaping", () => {
   });
 
   test("SessionReaper uses the default (real) killer when none is injected", () => {
-    // A system-range pid is refused by the guard, so the default killer performs
-    // no signal — exercising the no-injected-killer path safely.
+    // pid 1 is refused by the guard, so the default killer performs no real signal
+    // — exercising the no-injected-killer path safely.
     expect(() => new SessionReaper(1).reap()).not.toThrow();
-  });
-
-  test("terminatePty reaps the leader's group after exit", async () => {
-    const killed: number[] = [];
-    const pty = {
-      pid: LEADER,
-      onData: () => () => {},
-      onExit: (handler: (exit: PtyExit) => void) => {
-        queueMicrotask(() => handler({ exitCode: 0 }));
-        return () => {};
-      },
-      write: () => {},
-      resize: () => "resized" as const,
-      kill: () => {},
-    };
-    await terminatePty(
-      pty,
-      "SIGKILL",
-      new SessionReaper(LEADER, { killGroup: (p) => killed.push(p) }),
-      {
-        gracefulMs: 0,
-        forceMs: 10,
-      },
-    );
-    expect(killed).toEqual([LEADER]);
   });
 
   const deadPty = {
@@ -113,6 +97,20 @@ describe("C-LIFE-10 process-group reaping", () => {
     resize: () => "resized" as const,
     kill: () => {},
   };
+  const exitingPty = {
+    ...deadPty,
+    onExit: (handler: (exit: PtyExit) => void) => {
+      queueMicrotask(() => handler({ exitCode: 0 }));
+      return () => {};
+    },
+  };
+
+  test("terminatePty reaps the leader's group after exit", async () => {
+    const killed: number[] = [];
+    const reaper = new SessionReaper(LEADER, { killGroup: (p) => killed.push(p) });
+    await terminatePty(exitingPty, "SIGKILL", reaper, { gracefulMs: 0, forceMs: 10 });
+    expect(killed).toEqual([LEADER]);
+  });
   const throwingReaper = () =>
     new SessionReaper(LEADER, {
       killGroup: () => {
@@ -180,16 +178,20 @@ describe("C-LIFE-10 process-group reaping", () => {
     expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
   });
 
-  test("a reap failure surfaces only when termination succeeded", async () => {
-    const exitingPty = {
-      ...deadPty,
-      onExit: (handler: (exit: PtyExit) => void) => {
-        queueMicrotask(() => handler({ exitCode: 0 }));
-        return () => {};
+  test("a reap-ONLY failure (termination succeeded) wraps as typed termination_failed", async () => {
+    // Finding D: PTY exited cleanly but the group reap failed — the raw system error
+    // must NOT escape unwrapped; stop()/kill() reject with a typed `termination_failed`
+    // (PRD §10, C-ERR-01) whose normalized cause preserves errno.
+    const epermReaper = new SessionReaper(LEADER, {
+      killGroup: () => {
+        throw Object.assign(new Error("reap failure"), { code: "EPERM" });
       },
-    };
+    });
     await expect(
-      terminatePty(exitingPty, "SIGKILL", throwingReaper(), { gracefulMs: 0, forceMs: 10 }),
-    ).rejects.toThrow("reap failure");
+      terminatePty(exitingPty, "SIGKILL", epermReaper, { gracefulMs: 0, forceMs: 10 }),
+    ).rejects.toMatchObject({
+      code: "termination_failed",
+      details: { cause: "reap failure", errno: "EPERM" },
+    });
   });
 });

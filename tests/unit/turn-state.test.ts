@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from "vitest";
 import { claudeScreenFactTable } from "../../src/claude/screen-table.ts";
-import { codexComposerVisible, codexScreenFactTable } from "../../src/codex/screen-table.ts";
+import { codexScreenFactTable } from "../../src/codex/screen-table.ts";
 import { hasScreenFact, type RenderedFrame, readScreenFacts } from "../../src/core/screen-facts.ts";
 import { TurnStateWatcher } from "../../src/core/turn-state.ts";
 
@@ -69,9 +69,16 @@ describe("screen fact tables", () => {
     expect(readScreenFacts(claudeScreenFactTable, screen(modalDialog)).matched).toEqual([]);
   });
 
-  test("the codex composer helper reads the table", () => {
-    expect(codexComposerVisible(codexIdle)).toBe(true);
-    expect(codexComposerVisible(modalDialog)).toBe(false);
+  test("the codex composer_visible fact tracks the composer marker (turn-state, not readiness)", () => {
+    // composer_visible feeds idle-turn detection; it is NOT a readiness signal
+    // — the boot-time placeholder marker paints before input is accepted, so
+    // Codex readiness is hook-backed (C-API-28), not composer-driven.
+    expect(
+      hasScreenFact(codexScreenFactTable, { text: codexIdle, title: "" }, "composer_visible"),
+    ).toBe(true);
+    expect(
+      hasScreenFact(codexScreenFactTable, { text: modalDialog, title: "" }, "composer_visible"),
+    ).toBe(false);
   });
 
   test("hasScreenFact evaluates a single fact across screen and title regions", () => {

@@ -9,8 +9,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import {
-  resetRangeReaderForTests,
-  setRangeReaderForTests,
+  resetMaxRecordsForTests,
+  scanBaselineTail,
+  setMaxRecordsForTests,
+} from "../../src/claude/transcript/baseline.ts";
+import {
+  resetByteReaderForTests,
+  setByteReaderForTests,
   TranscriptCursor,
 } from "../../src/claude/transcript/cursor.ts";
 
@@ -18,7 +23,7 @@ function fileBytes(path: string): number {
   return statSync(path).size;
 }
 
-/** A real range read that also tallies the total bytes requested (read amplification). */
+/** A real byte read that also tallies the total bytes requested (read amplification). */
 function countingReader(counter: { bytes: number }) {
   return (path: string, start: number, length: number) => {
     counter.bytes += length;
@@ -26,7 +31,7 @@ function countingReader(counter: { bytes: number }) {
     const fd = openSync(path, "r");
     try {
       const read = readSync(fd, buf, 0, length, start);
-      return { text: buf.toString("utf8", 0, read), bytes: read };
+      return buf.subarray(0, read);
     } finally {
       closeSync(fd);
     }
@@ -78,15 +83,40 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
       JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: t }] } });
     writeFileSync(path, `${Array.from({ length: 8000 }, (_, i) => asst(`m${i}`)).join("\n")}\n`);
     const counter = { bytes: 0 };
-    setRangeReaderForTests(countingReader(counter));
+    setByteReaderForTests(countingReader(counter));
     try {
       new TranscriptCursor(path).baselineTail();
     } finally {
-      resetRangeReaderForTests();
+      resetByteReaderForTests();
     }
     // Linear: each backward block is read once, so total ≈ the scanned span, well
     // under 2× the file. The old impl re-read the suffix each step → many× the file.
     expect(counter.bytes).toBeLessThan(fileBytes(path) * 2);
+  });
+
+  test("baselineTail stops at the record-count budget and recovers the in-window records", () => {
+    // The CPU guard: even within the byte cap, a pathological many-tiny-line window
+    // must not run an unbounded JSON.parse loop. With the budget shrunk below the
+    // record count, the scan stops early yet still recovers the bounded in-window
+    // records (never dropping the whole turn) rather than reaching the prompt.
+    const path = tmpFile();
+    const asst = (t: string) =>
+      JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: t }] } });
+    const user = JSON.stringify({ type: "user", message: { content: "go" } });
+    // Prompt deep enough (behind > 64 KiB of records) that the FIRST backward block
+    // does not reach it; each record is large so a block holds a few of them.
+    const big = (i: number) => asst(`r${i}-${"x".repeat(50 * 1024)}`);
+    const tailRecords = Array.from({ length: 4 }, (_, i) => big(i)).join("\n");
+    writeFileSync(path, `${user}\n${big(99)}\n${big(98)}\n${tailRecords}\n`);
+    setMaxRecordsForTests(1); // stop after the first block, before the prompt block
+    try {
+      const tail = scanBaselineTail(path, fileBytes(path));
+      expect(tail.truncated).toBe(true); // budget hit before the boundary
+      expect(tail.lines.join("\n")).toContain("r3-"); // a newest in-window record kept
+      expect(tail.lines.join("\n")).not.toContain('"content":"go"'); // prompt not reached
+    } finally {
+      resetMaxRecordsForTests();
+    }
   });
 
   test("a non-ENOENT stat error at construction propagates to the caller's fs guard", () => {
@@ -122,8 +152,8 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
     const cursor = new TranscriptCursor(path);
     drainAll(cursor); // advance offset to EOF (15)
     writeFileSync(path, "XY\n"); // TRUNCATE to 3 bytes: size (3) < offset (15) → from 0
-    setRangeReaderForTests(() => {
-      resetRangeReaderForTests(); // subsequent reads use the real reader
+    setByteReaderForTests(() => {
+      resetByteReaderForTests(); // subsequent reads use the real reader
       throw Object.assign(new Error("EIO"), { code: "EIO" }); // fail the truncation read
     });
     try {
@@ -134,7 +164,7 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
       writeFileSync(path, "aaaa\nbbbb\ncccc\nDD\n"); // 18 bytes
       expect(drainAll(cursor)).toBe("DD\n");
     } finally {
-      resetRangeReaderForTests();
+      resetByteReaderForTests();
     }
   });
 

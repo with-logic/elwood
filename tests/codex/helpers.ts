@@ -58,6 +58,27 @@ export function tempDir(): string {
   return path;
 }
 
+/**
+ * Drives a fake Codex session to initial readiness the way the real CLI does:
+ * via its `SessionStart` hook (C-API-28). The rendered composer marker is a
+ * boot-time placeholder and no longer releases the first queued message, so
+ * tests dispatch the readiness hook instead of emitting a `›` frame.
+ */
+export function becomeReady(
+  elwoodSessionId: string,
+  cwd: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return ptys[0]!.dispatchHook(elwoodSessionId, {
+    hook_event_name: "SessionStart",
+    session_id: "codex-1",
+    cwd,
+    model: "gpt-5.3-codex",
+    source: "startup",
+    ...overrides,
+  });
+}
+
 export class FakePty implements PtyProcess {
   readonly pid = 1000 + ptys.length;
   readonly writes: string[] = [];

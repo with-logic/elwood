@@ -7,18 +7,23 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
 describe("CodexSession message submission", () => {
-  test("C-API-19 first sendMessage waits for first rendered terminal frame", async () => {
+  test("C-API-19 first sendMessage waits for the SessionStart readiness hook", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startCodex({ cwd });
     const queued = session.sendMessage("hello");
     expect(ptys[0]!.writes).toEqual([]);
+    // A boot-time composer frame must NOT release the queued message (C-API-28).
     ptys[0]!.emitData("codex rendered\r\n\u203a ");
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(ptys[0]!.writes).toEqual([]);
+    // Codex's SessionStart hook is the real pre-input readiness signal.
+    await becomeReady(session.elwoodSessionId, cwd);
     await queued;
     // C-API-31/FIFO: `queued` resolves only after the paste and its
     // separate submitting Enter have both landed, in order.
@@ -59,11 +64,18 @@ describe("CodexSession message submission", () => {
     writeFileSync(transcript, "");
     const session = await startCodex({ cwd });
     const order: string[] = [];
+    // observeTranscript is the SessionStart hook, which now also fires initial
+    // readiness (C-API-28); begin recording only the Stop cycle so the assertion
+    // captures the transcript-flush-before-Stop-readiness ordering under test.
+    await observeTranscript(session.elwoodSessionId, cwd, transcript);
+    // Drive a turn into `running` so the Stop hook's readiness is a real
+    // running->ready transition (SessionStart already consumed starting->ready).
+    ptys[0]!.emitData("• Working (1s • esc to interrupt)\r\n› ");
+    await expect.poll(() => session.status).toBe("running");
     session.on("activity", (event) => {
       if (event.source === "transcript" && event.kind === "assistant_message") order.push("tx");
       if (event.kind === "status" && event.status === "ready") order.push("ready");
     });
-    await observeTranscript(session.elwoodSessionId, cwd, transcript);
     appendFileSync(transcript, `${JSON.stringify(item("agent_message", { message: "done" }))}\n`);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, stopEvent(cwd));
     expect(order).toEqual(["tx", "ready"]);
@@ -75,7 +87,7 @@ describe("CodexSession message submission", () => {
     const session = await startCodex({ cwd, persona: "You are a terse reviewer." });
     const queued = session.sendMessage("hello");
     expect(ptys[0]!.writes).toEqual([]);
-    ptys[0]!.emitData("codex rendered\r\n\u203a ");
+    await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => ptys[0]!.writes.length).toBe(1);
     expect(ptys[0]!.writes.filter((w) => w !== "\r")[0]).toBe(
       "\u001b[200~You are a terse reviewer.\u001b[201~",

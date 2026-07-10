@@ -436,19 +436,23 @@ need to send a user message and wait for activity/status should prefer
 `sendMessage`. If the session is ready, Elwood submits the message immediately
 through the same PTY input path as `sendPrompt`. If the session is alive but not
 ready, Elwood queues the message and submits it when the adapter reports semantic
-readiness through adapter-specific lifecycle signals. Initial readiness may come
-from a hook-backed lifecycle event, such as Claude `InstructionsLoaded`, or from
-a non-text terminal lifecycle signal when the CLI does not emit a pre-input
-readiness hook, such as Codex's rendered terminal reaching a quiet frame that
-shows the input composer after startup automation prompts have been handled.
-Frame-quiet alone is not sufficient: a quiet gap during boot can occur before
-the TUI accepts input, and a message submitted then is silently swallowed, so
-initial readiness additionally requires the composer to be visible in the
-rendered screen. Detection MUST also be bounded: a continuously animating
-screen region (for example a failing MCP server's retry spinner) must not
-starve readiness forever, so initial readiness fires no later than a fixed
-deadline after the first rendered frame even when the screen never goes quiet
-or the composer marker is never recognized. Subsequent turn readiness comes from
+readiness through adapter-specific lifecycle signals. Initial readiness MUST be
+hook-backed whenever the CLI emits a pre-input readiness event: Claude's
+`InstructionsLoaded` and Codex's `SessionStart` both fire only once the CLI is
+initialized and accepting input, so Elwood submits the first queued message on
+that hook. The rendered terminal is NOT a reliable pre-input signal on Codex:
+the input composer marker (a line-leading `›`) is painted as a boot-time
+placeholder roughly a second before the TUI accepts input, and it is
+byte-for-byte identical to the ready composer, so a message submitted on the
+composer marker alone races Codex's input loop and is silently swallowed
+(observed: the queued persona never reaches `SessionStart`/`UserPromptSubmit`).
+Elwood therefore never treats the rendered composer as a readiness signal. The
+ONLY fallback is a bounded deadline: a continuously animating screen region (for
+example a failing MCP server's retry spinner) or a session whose readiness hook
+never arrives (a missing or failed hook bridge) must not starve readiness
+forever, so initial readiness fires no later than a fixed deadline after the
+first rendered frame even when no hook ever fires. Subsequent turn readiness
+comes from
 completion signals such as an unblocked `Stop` hook. Queued messages are
 submitted in FIFO order, one message per ready transition, so back-to-back calls
 do not accidentally paste multiple user turns into one active agent prompt. A
@@ -1021,42 +1025,72 @@ type ElwoodWarningEvent =
       readonly reason: string;
       readonly raw: string;
     }
-  | {
-      readonly elwoodSessionId: string;
-      readonly agent: "claude" | "codex";
-      readonly source: "terminal";
-      readonly code: "trust_prompt_unanswerable";
-      readonly severity: "warning";
-      readonly message: string;
-      // The recognized-but-unanswerable prompt's stable label — no raw content.
-      readonly prompt: string;
-      readonly raw: string;
-    }
   };
 ```
 
-When Elwood recognizes an allowlisted trust prompt but cannot find its verified
-affirmative option (a wedge risk), it emits a transient `attention` activity AND
-persists a durable `trust_prompt_unanswerable` warning keyed by the prompt label.
-Because a late subscriber or a resumed session would miss the transient activity,
-the persisted warning makes the wedge observable at resume time and replayable to
-a subscriber that attaches after the prompt fired (C-CLAUDE-14).
+When Elwood recognizes an allowlisted trust prompt but its affirmative option has
+not rendered in the current frame yet, it emits a transient `attention` activity
+(labelled with the prompt id) at most once. This is a TRANSIENT render-delay
+state, not a wedge: under the say-yes policy Elwood keeps watching and answers the
+prompt on a later frame once the option paints, so there is deliberately NO durable
+warning persisted for it — persisting one would replay as a permanent "not
+auto-answered" record even after the prompt is successfully answered (C-CLAUDE-14).
 
 The `transcript_records_dropped` warning is emitted when committed transcript
-records cannot be parsed as JSON, OR when a single un-terminated record exceeds a
+records cannot be parsed as JSON, when a single un-terminated record exceeds a
 bounded size and is discarded through its next newline (so a pathological line
-can neither exhaust memory nor cause quadratic processing). The
-`transcript_read_error` warning is emitted when a transcript filesystem read is
-contained (a rotation/removal/permission race): the watcher never crashes the
-host, but also does not swallow it silently. The `transcript_poll_stopped`
-warning is emitted when a programming error escapes the periodic transcript poll:
-the watcher stops itself and surfaces the reason rather than letting the failure
-become an unhandled rejection that could terminate the host. Like every warning
-these carry no raw conversation content: only running counts, a byte magnitude,
-an error code or short reason, and the transcript path. All are de-duplicated,
-persisted, and emitted through the same `warning`/`activity` contract, and
-repeated observations update the snapshot count without emitting a duplicate
-`warning` event (C-CLAUDE-15).
+can neither exhaust memory nor cause quadratic processing), OR when a teardown
+drain (subagent retirement or the final flush at PTY exit) reaches its bound with
+an unread backlog still on disk: the backlog's size is accounted as a drop rather
+than read in a single unbounded synchronous loop. That drain is bounded two ways.
+First, a single chunk budget is shared across every subagent retirement AND the
+final flush for a watcher's whole lifetime — a retirement never gets a fresh full
+budget — so aggregate terminal read work is watcher-bounded, not per-retire.
+Second, each individual drain call stops at a small wall-clock slice, so it
+returns to the event loop promptly instead of monopolizing it grinding a
+hundreds-of-MiB backlog; whatever is still unread when the shared budget or the
+slice is spent is accounted as a content-free drop. Termination and retirement
+therefore always complete in bounded-latency work — capped by both the shared
+budget and the per-call slice — rather than an unbounded synchronous drain.
+
+When the first hook to carry a transcript path is a turn-boundary hook, Elwood
+recovers the current turn already committed on disk by scanning backward from the
+file's end to the last user prompt. That scan is bounded: it reads in fixed
+blocks, carries any UTF-8 code point split at a block boundary so recovered text
+is byte-exact, and reaches back only a bounded distance. If the current turn is
+larger than that bound, Elwood recovers the committed records that fall within
+the bounded window rather than discarding the whole turn; only the portion beyond
+the window (including the prompt boundary itself) is not recovered. A turn larger
+than the recovery bound therefore never silently loses all of its committed
+activity. The `transcript_read_error`
+warning is emitted when a transcript filesystem read is contained (a
+rotation/removal/permission race): the watcher never crashes the host, but also
+does not swallow it silently. The `transcript_poll_stopped` warning is emitted
+when a programming error escapes the periodic transcript poll OR the final flush
+at PTY exit: the watcher stops itself and surfaces a bounded reason rather than
+letting the failure become an unhandled rejection or abort the exit path. A
+throwing activity listener during the final flush never prevents `terminal:exit`
+emission, terminal status persistence, or the process-tree reap (C-LIFE-10): the
+flush runs behind an error boundary and lifecycle completion is guaranteed. Like
+every warning these carry no raw conversation content: only running counts, a
+byte magnitude, an error code or short reason, and the transcript path. All are
+de-duplicated, persisted, and emitted through the same `warning`/`activity`
+contract; every observation updates the persisted snapshot count so it stays
+current, while only the first crossing emits a user-visible `warning` event, so a
+repeated observation never emits a duplicate event (C-CLAUDE-15).
+
+The `reap_failed` warning is emitted when the best-effort survivor reap on an
+unsolicited PTY exit fails (for example the group SIGKILL returns `EPERM`): the
+session still reaches its terminal status, but the descendant process group may
+have leaked, so the risk is surfaced durably instead of thrown out of the native
+exit callback. This is a lifecycle warning (`source: "lifecycle"`) carrying only
+the leaked leader's process-group id and a normalized error code — never a raw
+system message — and it is de-duplicated, persisted into the session snapshot,
+replayed to late subscribers, and projected into `activity` through the same
+`warning`/`activity` contract as every other warning. A reap failure on an
+*explicit* `stop()`/`kill()`/`teardown()` is NOT downgraded to this warning: it
+rejects with a typed `termination_failed` error so the caller learns the group
+was not confirmed reaped (C-LIFE-10, C-ERR-01).
 
 A stopped subagent's transcript (`agent_transcript_path` on a `SubagentStop`) is
 a one-shot input: Elwood flushes it once and then retires it from active polling,
@@ -1084,6 +1118,17 @@ transcript activity that is not currently represented as a Codex hook. Those
 same observations are also projected into the adapter-neutral `activity` event
 stream. `CodexTranscriptSummary.kind` values are `message`, `tool_call`,
 `tool_result`, `reasoning`, `web_search`, and `other`.
+
+As with Claude, the Codex transcript is the single source of truth for committed
+`assistant_message`, `tool_call`, and `tool_result` activity. The Codex `Stop`,
+`PreToolUse`, and `PostToolUse` hooks MUST NOT also project those activities from
+their hook payloads (`last_assistant_message`, `tool_name`/`tool_input`,
+`tool_name`/`tool_output`); doing so would surface every reply and every tool
+step twice — once from the hook and once from the transcript. Those hooks remain
+turn-boundary and lifecycle signals, emitted as plain `hook` activity. The
+`Stop` hook's `last_assistant_message` in particular can carry an un-submitted
+ghost-text draft, so — exactly as for Claude — only the committed transcript
+turn becomes an `assistant_message` (C-CODEX-16).
 
 `ClaudeSession` likewise observes Claude's own JSONL transcript at the
 `transcript_path` (and `agent_transcript_path`) the hook payloads carry, and is
@@ -1528,6 +1573,17 @@ When the agent process exits, Elwood emits terminal/process exit events and
 updates session metadata. It keeps metadata and generated files unless teardown
 is requested.
 
+Reaping the leader's process group is unconditional on every exit path
+(C-LIFE-10). On an unsolicited PTY exit the terminal status is submitted first,
+then the group is reaped in a `finally`, so transcript-drain, warning-emission, or
+status-listener failures can never skip the reap; a reap failure there surfaces as
+a durable `reap_failed` warning rather than aborting the exit callback. An explicit
+`stop()`/`kill()` on an already-terminal session performs only the one-shot
+survivor reap (it does not re-signal the dead PTY — node-pty does not replay the
+exit event, and the pid may already be recycled) and rejects with a typed
+`termination_failed` error if that reap fails, leaving the reap retryable by a
+later `teardown()`.
+
 ## 10. Error Model
 
 Elwood errors exposed to library callers must be typed and stable. Error names
@@ -1555,7 +1611,7 @@ Initial required error names:
 | `pty_start_failed` | PTY or shell startup failed. |
 | `hook_bridge_failed` | The hook bridge or IPC endpoint could not be initialized. |
 | `session_not_running` | Operation requires a running process but the session is stopped. |
-| `termination_failed` | A stop/kill request did not observe process exit after escalation. |
+| `termination_failed` | A stop/kill request did not observe process exit after escalation, or the PTY exited but its process group could not be confirmed reaped. |
 | `teardown_failed` | Elwood could not remove all owned session files. |
 | `compact_failed` | A requested conversation compaction did not report completion in time. |
 | `model_automation_failed` | The adapter's model picker could not be recognized or driven to completion. |
@@ -1709,7 +1765,7 @@ Each criterion has:
 | C-API-25 | §5.3 | Promise-returning session methods called after a terminal status reject with `session_not_running` instead of throwing synchronously. |
 | C-API-26 | §5.2 §5.6 | `startOrResumeClaude`/`startOrResumeCodex` resume when possible, fall back to a fresh start only on `state_not_found`, `resume_unavailable`, or `adapter_mismatch`, rethrow all other errors, and report `resumed` in the result. |
 | C-API-27 | §5.7 | `ElwoodAgentSession` is exported and both `ClaudeSession` and `CodexSession` are assignable to it, covering common events, io, commands, and lifecycle. |
-| C-API-28 | §5.3 | Codex initial readiness requires a quiet frame with the input composer visible, bounded by a fixed deadline after the first rendered frame so continuous animation or unrecognized composers cannot starve it. |
+| C-API-28 | §5.3 | Codex initial readiness fires from the `SessionStart` hook (the pre-input readiness event); a bounded deadline after the first rendered frame is the only fallback, so a missing or failed readiness hook cannot starve readiness. The rendered composer is never a readiness signal — the boot-time composer placeholder alone never releases the first queued message. |
 | C-TURN-01 | §5.3 | While a turn runs the session is `running`; when the turn ends by any means — completion, Escape interrupt, or otherwise — the session transitions to `ready` and emits the corresponding `status` activity, on both adapters. |
 | C-TURN-02 | §5.3 | An Escape interrupt of a running turn produces the `ready` transition from rendered TUI state alone, with no dependency on a `Stop` hook. |
 | C-TURN-03 | §5.3 | Turn-state detection uses documented per-adapter indicator constants over `snapshot().text`; redundant edges are idempotent, screens showing neither indicator hold state, and watching activates only after initial readiness. |
@@ -1764,7 +1820,7 @@ Each criterion has:
 | C-CLAUDE-11 | §5.1 | Claude's browser tools onboarding prompt is declined through PTY input regardless of `autotrust`, with `startup_prompt` activity emitted under the `browser_tools` label. |
 | C-CLAUDE-12 | §5.1 | `startClaude` forwards `model` to Claude's `--model` launch flag. |
 | C-CLAUDE-13 | §4.3 | `tools` emits Claude's `--tools` allowlist flag as one comma-separated value, with an empty array encoding `--tools ""` (all tools disabled); it is forwarded across resume like the other tool options. |
-| C-CLAUDE-14 | §5.1 | Under `autotrust`, Claude's allowlisted skill/plugin/MCP trust prompts are each answered once, selecting that prompt's own verified affirmative option within the same frame (e.g. the real "Use this MCP server" MCP option), and emit `startup_prompt` activity under their `skill_trust`/`plugin_trust`/`mcp_trust` labels; an off-allowlist first-run prompt is never auto-answered, and a recognized prompt lacking its verified option is not answered with a substitute. |
+| C-CLAUDE-14 | §5.1 | Under `autotrust`, Claude's allowlisted skill/plugin/MCP trust prompts are each answered once and emit `startup_prompt` activity under their `skill_trust`/`plugin_trust`/`mcp_trust` labels. Recognition is the only guard: a prompt is recognized solely by its HEADER wording on a non-option line (so an option-only trust phrase cannot spoof one), and once recognized Elwood sends the first affirmative option in the current frame — the agent is never left waiting. When a recognized prompt's affirmative option has not rendered in the current frame yet, Elwood emits a fire-once transient `attention` activity and keeps watching so a later frame carrying the option is still answered; this render-delay state is TRANSIENT and no durable warning is persisted for it. An off-allowlist first-run prompt is never auto-answered. Per the say-yes policy there is deliberately no per-dialog region binding, so a second stacked dialog's affirmative in the same frame is an accepted consequence, not a defended boundary. |
 | C-CLAUDE-15 | §5.4 | Claude `assistant_message`, `tool_call`, and `tool_result` activities are sourced from the committed transcript the CLI writes at `transcript_path`, never from the `Stop` hook's `last_assistant_message`; an un-sent ghost-text / composer draft therefore never becomes an `assistant_message`. |
 
 #### C-CODEX: Codex Startup And Config (§4, §7A, §9)
@@ -1785,7 +1841,8 @@ Each criterion has:
 | C-CODEX-12 | §5.5 | If Codex still shows an interactive update prompt inside the TUI, Elwood selects the skip/continue-without-updating option by label. |
 | C-CODEX-13 | §10 | An immediately failing or unusable Codex process fails with `codex_start_failed` or a more specific typed error. |
 | C-CODEX-14 | §5.3 | `setModel` on Codex restores the user's prior `config.toml` default via compare-and-swap after the CLI persists its picker selection, skipping with the `codex_default_model_persisted` warning instead of clobbering concurrent edits. |
-| C-CODEX-15 | §5.5 | Codex's directory-trust prompt is answered only under `autotrust` (blocking on the human when off); Codex hook trust — Elwood's own integration — is answered regardless of `autotrust` and is NOT classified as blocking. Each is recognized only by its HEADER wording on a non-option line (so an option-only phrase cannot spoof it) and, once recognized, answered from the frame's affirmative option — the agent is never left waiting. Each is answered once, from the shared allowlist. |
+| C-CODEX-15 | §5.5 | Codex's directory-trust prompt is answered only under `autotrust` (blocking on the human when off); Codex hook trust — Elwood's own integration — is answered regardless of `autotrust` and is NOT classified as blocking. Each is recognized only by its HEADER wording on a non-option line (so an option-only phrase cannot spoof it) and, once recognized, answered from the frame's affirmative option — the agent is never left waiting. When a recognized prompt's affirmative option has not rendered yet, a fire-once transient `attention` activity is emitted and Elwood keeps watching so a later frame answers it; this render-delay state is TRANSIENT and no durable warning is persisted for it. Each is answered once, from the shared allowlist. |
+| C-CODEX-16 | §5.1 | Codex `assistant_message`, `tool_call`, and `tool_result` activities are sourced only from the committed transcript, never re-projected from the `Stop`/`PreToolUse`/`PostToolUse` hook payloads; those hooks emit plain `hook` activity, so a single reply or tool step is surfaced exactly once (mirrors C-CLAUDE-15). |
 
 #### C-HOOK: Hook Bridge Coverage And Semantics (§6)
 
@@ -1896,6 +1953,8 @@ Each criterion has:
 | C-E2E-06 | §4.5 | A real session started in a project with its own agent configuration loads that configuration additively: project-defined hooks fire alongside Elwood's bridge hooks and project instruction files are loaded by the agent. |
 | C-E2E-07 | §5.4 | A real committed Claude turn surfaces an `assistant_message` with `source: "transcript"` and a `transcriptPath`, and no `assistant_message` is emitted with `source: "hook"` (C-CLAUDE-15). |
 | C-E2E-08 | §5.4 | A real Claude tool turn surfaces `tool_call` and `tool_result` with `source: "transcript"`, correlated `toolUseId`s, and serialized input/output, and no `tool_call`/`tool_result` is emitted with `source: "hook"` (C-CLAUDE-15). |
+| C-E2E-10 | §5.1 | A real committed Codex turn surfaces exactly one `assistant_message` (with `source: "transcript"`), never a second copy from the `Stop` hook (C-CODEX-16). |
+| C-E2E-11 | §5.3 | A real Codex session with a queued initial persona delivers that message to Codex (a `UserPromptSubmit` with the persona text is observed) rather than swallowing it — the queue is released on `SessionStart`, not on the boot-time composer placeholder (C-API-28). |
 | C-E2E-09 | §5.1 | The trust-prompt allowlist recognizes and answers the REAL folder-trust frame the installed Claude CLI renders in a fresh untrusted directory (header-anchored recognition + affirmative-option selection), verified against captured CLI wording; the test skips loudly (logging the captured terminal) if no matchable frame renders, never passing silently. |
 
 ## 15. Open Implementation Notes

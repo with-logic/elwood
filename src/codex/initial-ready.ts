@@ -1,43 +1,40 @@
 /**
- * Codex first terminal-frame readiness marker with a starvation deadline.
+ * Codex initial-readiness marker: hook-backed, with a starvation deadline.
  * Implements PRD §5.3, C-API-19, and C-API-28.
+ *
+ * Readiness fires from the `SessionStart` hook — Codex's authoritative pre-input
+ * signal (`mark`). The rendered composer marker is NOT used: it is a boot-time
+ * placeholder that paints ~1s before input is accepted, and releasing the first
+ * queued message on it swallows the message (C-API-28). `armDeadline` is the
+ * only fallback: if the readiness hook never arrives (missing/failed hook
+ * bridge), readiness still fires after a fixed deadline rather than never.
  */
 
 export type InitialReady = {
   readonly cancel: () => void;
   readonly replay: () => void;
-  readonly schedule: () => void;
   readonly armDeadline: () => void;
+  /** Fire readiness now (one-shot) — the `SessionStart` hook path. */
+  readonly mark: () => void;
 };
 
-export function initialReady(
-  callback: () => void,
-  delayMs = 250,
-  maxWaitMs = 10_000,
-): InitialReady {
+export function initialReady(callback: () => void, maxWaitMs = 10_000): InitialReady {
   let ready = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
   let deadline: ReturnType<typeof setTimeout> | undefined;
   const mark = () => {
     if (ready) return;
     ready = true;
     callback();
   };
-  const cancel = () => {
-    if (timer) clearTimeout(timer);
-    if (deadline) clearTimeout(deadline);
-  };
   return {
-    cancel,
-    replay: () => void (ready && callback()),
-    // The deadline arms on the first frame regardless of composer detection,
-    // so continuous animation or renderer drift cannot starve readiness.
-    armDeadline: () => {
-      deadline ??= setTimeout(mark, maxWaitMs);
+    cancel: () => {
+      if (deadline) clearTimeout(deadline);
     },
-    schedule: () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(mark, delayMs);
+    mark,
+    replay: () => void (ready && callback()),
+    // Arms on the first frame regardless of hook arrival, so a missing or failed
+    // readiness hook cannot starve readiness forever.
+    armDeadline: () => {
       deadline ??= setTimeout(mark, maxWaitMs);
     },
   };

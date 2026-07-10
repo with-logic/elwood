@@ -3,7 +3,7 @@
  * Implements PRD §5.3 and §9.4.
  */
 
-import { ElwoodError, elwoodError } from "../core/errors.ts";
+import { causeDetails, ElwoodError, elwoodError } from "../core/errors.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import type { SessionReaper } from "./reap-tree.ts";
 
@@ -47,11 +47,14 @@ export async function terminatePty(
   // termination_failed outcome never leaks the descendant tree (C-LIFE-10). The
   // reaper does NOT latch on failure, so a later teardown can retry. When BOTH
   // termination and reap fail, neither cause is dropped: the thrown error keeps
-  // the termination message and carries the reap failure in its details.
+  // the termination message and carries the reap failure in its details. When
+  // ONLY the reap fails (termination succeeded), the raw system error is wrapped
+  // as a typed `termination_failed` so the caller always rejects with an
+  // ElwoodError, never a bare EPERM (PRD §10, C-ERR-01).
   try {
     reaper.reap();
   } catch (reapError) {
-    if (terminationError === undefined) throw reapError;
+    if (terminationError === undefined) throw reapOnlyFailed(reapError);
     throw bothFailed(terminationError, reapError);
   }
   if (terminationError !== undefined) throw terminationError;
@@ -77,6 +80,22 @@ function bothFailed(terminationError: unknown, reapError: unknown): unknown {
   // original identity/stack.
   (terminationError as Error & { reapError?: string }).reapError = reap;
   return terminationError;
+}
+
+/**
+ * Wraps a reap-only failure (PTY termination SUCCEEDED, the group reap FAILED) as
+ * a typed `termination_failed` error with a normalized cause (errno/syscall/path
+ * when available), so `stop()`/`kill()` reject with an ElwoodError rather than a
+ * raw system error (PRD §10, C-ERR-01, C-LIFE-10).
+ */
+function reapOnlyFailed(reapError: unknown): ElwoodError {
+  return elwoodError(
+    "termination_failed",
+    "PTY exited but its process group could not be reaped.",
+    {
+      ...causeDetails(reapError),
+    },
+  );
 }
 
 function waitForExitAfterSignal(

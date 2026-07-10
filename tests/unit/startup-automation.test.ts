@@ -5,10 +5,7 @@
 
 import { describe, expect, test } from "vitest";
 import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
-import {
-  emitStartupPromptActivity,
-  warningFromStartupPrompt,
-} from "../../src/core/startup-automation.ts";
+import { emitStartupPromptActivity } from "../../src/core/startup-automation.ts";
 
 function collect(): {
   events: ElwoodActivityEvent[];
@@ -30,29 +27,17 @@ describe("startup-prompt activity", () => {
     expect(events[0]!.text).toContain("sent 1");
   });
 
-  test("C-CLAUDE-14 a recognized-but-unanswerable prompt emits an attention activity", () => {
+  test("C-CLAUDE-14 an option_pending prompt emits a transient attention activity, no durable warning", () => {
     const { events, emit } = collect();
+    // The render-delay state is TRANSIENT: it emits only a fire-once attention
+    // activity with accurate "awaiting a later frame" text — never a persisted
+    // "not auto-answered" warning that would go stale once the prompt is answered.
     emitStartupPromptActivity({ emit }, "claude", "s1", {
-      kind: "unanswerable",
+      kind: "option_pending",
       prompt: "mcp_trust",
     });
     expect(events[0]).toMatchObject({ kind: "attention", label: "mcp_trust", source: "terminal" });
-    expect(events[0]!.text).toContain("no known option");
-  });
-
-  test("C-CLAUDE-14 an unanswerable prompt yields a durable warning; an answered one does not", () => {
-    const wedge = warningFromStartupPrompt("claude", "s1", {
-      kind: "unanswerable",
-      prompt: "mcp_trust",
-    });
-    expect(wedge).toMatchObject({ code: "trust_prompt_unanswerable", prompt: "mcp_trust" });
-    // An answered prompt has nothing to persist.
-    expect(
-      warningFromStartupPrompt("claude", "s1", {
-        kind: "answered",
-        prompt: "workspace_trust",
-        input: "1",
-      }),
-    ).toBeUndefined();
+    expect(events[0]!.text).toContain("not rendered yet");
+    expect(events[0]!.text).toContain("awaiting a later frame");
   });
 });

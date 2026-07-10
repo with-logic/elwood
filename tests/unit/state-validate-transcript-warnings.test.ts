@@ -95,4 +95,27 @@ describe("C-CLAUDE-15 transcript warning validation", () => {
       validateSessionRecord({ ...record, warnings: [{ ...warning, reason: 5 }] }, root, id),
     ).toBeNull();
   });
+
+  test("C-LIFE-10 accepts and gates the reap_failed lifecycle warning", () => {
+    const { root, record } = base();
+    const warning = {
+      elwoodSessionId: id,
+      agent: "claude",
+      source: "lifecycle",
+      code: "reap_failed",
+      severity: "warning",
+      message: "Could not reap PTY process group 4242 after exit (EPERM).",
+      processGroupId: 4242,
+      errorCode: "EPERM",
+      raw: "reap_failed pgid=4242 code=EPERM",
+    };
+    const one = (w: object) => validateSessionRecord({ ...record, warnings: [w] }, root, id);
+    expect(one(warning)).not.toBeNull(); // valid claude lifecycle reap_failed
+    expect(one({ ...warning, agent: "codex" })).not.toBeNull(); // valid under codex too
+    expect(one({ ...warning, source: "terminal" })).toBeNull(); // wrong source
+    expect(one({ ...warning, processGroupId: "4242" })).toBeNull(); // non-integer pgid
+    expect(one({ ...warning, processGroupId: 1.5 })).toBeNull(); // fractional pgid
+    expect(one({ ...warning, errorCode: 5 })).toBeNull(); // non-string code
+    expect(one({ ...warning, agent: "gemini" })).toBeNull(); // unknown agent
+  });
 });

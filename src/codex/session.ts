@@ -28,11 +28,11 @@ import { attachPtyTerminal } from "../terminal/headless.ts";
 import { initialReady } from "./initial-ready.ts";
 import * as preflight from "./preflight.ts";
 import { spawnCodexPty } from "./pty.ts";
-import { codexComposerVisible, codexScreenFactTableForTrustPolicy } from "./screen-table.ts";
+import { codexScreenFactTableForTrustPolicy } from "./screen-table.ts";
 import { currentCodexHookBridgeFactory } from "./session-bridge.ts";
 import { dispatchHook, registerInitialHooks } from "./session-hooks.ts";
 import { CodexSessionImpl } from "./session-instance.ts";
-import { writeCodexRuntimeFiles } from "./session-runtime.ts";
+import { finishCodexExit, writeCodexRuntimeFiles } from "./session-runtime.ts";
 import type { CodexEventMap, CodexSession, StartCodexOptions } from "./session-types.ts";
 import { CodexStartupPromptResponder } from "./startup-prompts.ts";
 import { CodexTranscriptWatcher } from "./transcript.ts";
@@ -140,17 +140,11 @@ export async function startCodexFromRecord(
         renderedTerminal.sendInput(input),
       );
       session?.recordWarnings(result.warnings);
-      applyStartupAutomations(
-        emitter,
-        "codex",
-        record.elwoodSessionId,
-        result.automations,
-        () => session,
-      );
+      applyStartupAutomations(emitter, "codex", record.elwoodSessionId, result.automations);
+      // Readiness is hook-backed (the `SessionStart` hook fires it); the frame
+      // only arms the starvation-deadline fallback, never releases the queue
+      // on the boot-time composer placeholder (C-API-28, see initial-ready.ts).
       ready.armDeadline();
-      // Frame-quiet alone can fire during a boot gap before the TUI accepts
-      // input (a submitted message would be swallowed); require the composer.
-      if (result.automations.length === 0 && codexComposerVisible(frame.text)) ready.schedule();
       observeRenderedFrame(observers, frame, session);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
@@ -164,17 +158,20 @@ export async function startCodexFromRecord(
     terminalReplay,
     transcriptWatcher,
   );
+  // The `SessionStart` hook releases the first queued message (C-API-28).
+  session.setInitialReadyHook(() => ready.mark());
   ready.replay();
+  const id = record.elwoodSessionId;
+  // C-LIFE-10: drain+emit behind an error boundary; submitExit (reaps in `finally`) always runs.
   pty.onExit((exit) => {
     startupExit = exit;
     ready.cancel();
-    transcriptWatcher.finish();
-    emitter.emit("terminal:exit", { elwoodSessionId: record.elwoodSessionId, ...exit });
-    emitter.emit(
-      "activity",
-      activity.activityFromTerminalExit("codex", record.elwoodSessionId, exit.exitCode),
-    );
-    session?.submitExit();
+    const drainAndEmit = () => {
+      transcriptWatcher.finish();
+      emitter.emit("terminal:exit", { elwoodSessionId: id, ...exit });
+      emitter.emit("activity", activity.activityFromTerminalExit("codex", id, exit.exitCode));
+    };
+    finishCodexExit(drainAndEmit, () => session?.submitExit());
   });
   try {
     await assertStartupUsable({

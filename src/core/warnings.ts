@@ -86,11 +86,14 @@ export type ElwoodWarningEvent =
   | {
       readonly elwoodSessionId: string;
       readonly agent: "claude" | "codex";
-      readonly source: "terminal";
-      readonly code: "trust_prompt_unanswerable";
+      readonly source: "lifecycle";
+      readonly code: "reap_failed";
       readonly severity: "warning";
       readonly message: string;
-      // The recognized-but-unanswerable prompt's stable label (no raw content).
-      readonly prompt: string;
+      // The leaked leader's process-group id and a normalized error code only
+      // (e.g. "EPERM"): enough to locate + explain the un-reaped group, never a
+      // raw system message or conversation content (§5.7, C-LIFE-10).
+      readonly processGroupId: number;
+      readonly errorCode: string;
       readonly raw: string;
     };

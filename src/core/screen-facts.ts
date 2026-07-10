@@ -14,15 +14,25 @@ export type ScreenFactKind =
 /** Which rendered source a rule's patterns match against. */
 export type ScreenFactRegion = "screen" | "title";
 
+/**
+ * A rule matches EITHER via `all` (every regex tests true against the region's
+ * text) OR via `match` (a predicate over the region's text). `match` exists for
+ * rules whose recognition is not a plain regex-over-the-whole-frame test — most
+ * importantly the trust-prompt blocking rules, which must anchor on non-option
+ * lines so an option-only trust phrase cannot spoof a blocking prompt (PRD §5.1).
+ * A raw header regex applied to the full frame would misclassify such an option.
+ */
+export type ScreenFactRuleCondition =
+  | { readonly all: readonly RegExp[]; readonly match?: never }
+  | { readonly all?: never; readonly match: (text: string) => boolean };
+
 export type ScreenFactRule = {
   /** Stable id surfaced in diagnostics and explain traces. */
   readonly id: string;
   readonly fact: ScreenFactKind;
   /** Where the patterns are evaluated; defaults to the viewport text. */
   readonly region?: ScreenFactRegion;
-  /** The rule matches when every pattern matches the region's text. */
-  readonly all: readonly RegExp[];
-};
+} & ScreenFactRuleCondition;
 
 export type ScreenFactTable = {
   readonly agent: "claude" | "codex";
@@ -60,9 +70,16 @@ export function hasScreenFact(
   for (const rule of table.rules) {
     if (rule.fact !== fact) continue;
     const target = (rule.region ?? "screen") === "title" ? frame.title : frame.text;
-    if (rule.all.every((pattern) => pattern.test(target))) return true;
+    if (ruleMatches(rule, target)) return true;
   }
   return false;
+}
+
+/** A rule fires when its `all` regexes all match, or its `match` predicate holds. */
+function ruleMatches(rule: ScreenFactRule, target: string): boolean {
+  return rule.all === undefined
+    ? rule.match(target)
+    : rule.all.every((pattern) => pattern.test(target));
 }
 
 /**
@@ -82,7 +99,7 @@ export function readScreenFacts(table: ScreenFactTable, frame: RenderedFrame): S
   for (const rule of table.rules) {
     const region = rule.region ?? "screen";
     const target = region === "title" ? frame.title : frame.text;
-    if (!rule.all.every((pattern) => pattern.test(target))) continue;
+    if (!ruleMatches(rule, target)) continue;
     facts[rule.fact] = true;
     matched.push({ id: rule.id, fact: rule.fact, region });
   }

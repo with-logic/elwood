@@ -191,8 +191,7 @@ function warningKey(warning: ElwoodWarningEvent): string {
   if (warning.code === "version_unparseable") return `${warning.code}:${warning.agent}`;
   if ("mcpServerName" in warning) return `${warning.code}:${warning.mcpServerName}`;
   if ("failedServers" in warning) return `${warning.code}:${warning.failedServers.join(",")}`;
-  if (warning.code === "trust_prompt_unanswerable") return `${warning.code}:${warning.prompt}`;
-  return warning.code;
+  return warning.code; // `reap_failed` keys on `code`: one leader pid per session.
 }
 
 function recordPath(dir: string): string {

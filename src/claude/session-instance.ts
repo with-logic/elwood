@@ -65,7 +65,7 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     if (this.record.claude.resumeId) return;
     this.persist(updateSessionResumeId(this.record, "claude", sessionId));
   }
-  recordWarnings(warnings: readonly ElwoodWarningEvent[]): void {
+  override recordWarnings(warnings: readonly ElwoodWarningEvent[]): void {
     recordSessionWarnings(this.record, warnings, (record) => this.persist(record), {
       warning: (event) => this.emitter.emit("warning", event),
       activity: (event) => this.emitter.emit("activity", event),

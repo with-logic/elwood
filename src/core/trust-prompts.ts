@@ -10,31 +10,67 @@
  */
 
 import type { ElwoodAgentKind } from "./activity.ts";
+import { nonOptionText } from "./terminal-options.ts";
 
 /**
- * The shape of one allowlisted trust prompt. The prompt and its answer are BOTH
- * matched within the same current frame: `visible` identifies the prompt, and
- * `accept` matches the exact affirmative option label in that same prompt. This
- * prevents a stale phrase from one frame pairing with a "Yes" from a different,
- * current dialog (which could auto-confirm an unrelated security gate). The
- * concrete `id` union is derived from the allowlist itself (see TrustPromptId).
+ * The fields common to every allowlisted trust prompt. The prompt and its answer
+ * are BOTH matched within the same current frame: `headerPattern` identifies the
+ * prompt by its HEADER wording, and `accept` matches the exact affirmative option
+ * label in that same prompt. This prevents a stale phrase from one frame pairing
+ * with a "Yes" from a different, current dialog (which could auto-confirm an
+ * unrelated security gate). `headerPattern` is a HEADER matcher, not a
+ * whole-frame matcher: it is only safe when tested against the frame's non-option
+ * lines (via `trustPromptHeaderVisible`), never applied raw to the full frame.
  */
-export type TrustPromptSpec = {
-  /** Stable id used as the automation label and for once-only dedupe. */
-  readonly id: string;
-  readonly agent: ElwoodAgentKind;
-  /** Identifies the prompt on the current rendered frame. Verified against the CLI versions below. */
-  readonly visible: RegExp;
+type TrustPromptBase = {
+  /**
+   * Identifies the prompt by its HEADER wording. MUST be tested only against the
+   * frame's non-option lines (see `trustPromptHeaderVisible`) — applying it raw
+   * to the full frame would let an option-only trust phrase spoof recognition.
+   * Verified against the CLI versions below.
+   */
+  readonly headerPattern: RegExp;
   /** Matches the exact affirmative option label for THIS prompt (per-prompt, not generic). */
   readonly accept: RegExp;
-  /**
-   * When true, answered regardless of `autotrust`. Reserved for trusting
-   * Elwood's OWN integration (the hook bridge), which the session requires to
-   * function at all — not third-party code. Third-party trust (skills, plugins,
-   * MCP servers, folder trust) stays gated on the caller's full-trust posture.
-   */
-  readonly always?: boolean;
 };
+
+/**
+ * When an allowlisted prompt is answered. `"autotrust"` prompts are answered ONLY
+ * under the caller's full-trust posture; `"always"` prompts are answered
+ * regardless of it (Elwood's own hook bridge, never third-party code).
+ */
+export type TrustAnswerPolicy = "always" | "autotrust";
+
+/**
+ * One allowlisted trust prompt, as an agent+id-DISCRIMINATED union so that (a) a
+ * typo in `id` cannot compile into a public startup label, and (b)
+ * `answerPolicy: "always"` — answered regardless of `autotrust` — is permitted
+ * ONLY on Codex `hook_trust`, Elwood's OWN integration (the hook bridge) that the
+ * session requires to work. Every third-party trust prompt (skills, plugins, MCP
+ * servers, folder trust) is `answerPolicy: "autotrust"`, staying gated on the
+ * caller's full-trust posture, so the invalid "third-party prompt answered
+ * always" state is unrepresentable.
+ */
+export type TrustPromptSpec =
+  | ({
+      readonly agent: "claude";
+      readonly id: ClaudeTrustPromptId;
+      readonly answerPolicy: "autotrust";
+    } & TrustPromptBase)
+  | ({
+      readonly agent: "codex";
+      readonly id: "workspace_trust";
+      readonly answerPolicy: "autotrust";
+    } & TrustPromptBase)
+  | ({
+      readonly agent: "codex";
+      readonly id: "hook_trust";
+      /** Answered regardless of `autotrust`: Elwood's own hook bridge (never third-party code). */
+      readonly answerPolicy: "always";
+    } & TrustPromptBase);
+
+/** The Claude trust-prompt ids: folder trust plus the CLI's first-run skill/plugin/MCP gates. */
+type ClaudeTrustPromptId = "workspace_trust" | "skill_trust" | "plugin_trust" | "mcp_trust";
 
 // Affirmative option shapes. Each rejects decline words so "No, ..." never matches.
 const notDecline = "(?!.*\\b(no|without|not|quit|cancel|deny|don't)\\b)";
@@ -51,29 +87,33 @@ const trustHooksOption = new RegExp(`^${notDecline}.*\\btrust\\b.*\\b(hooks?|all
  * and `mcp` cover the CLI's first-run trust prompts for loading third-party
  * skills, plugins, and MCP servers under a full-trust launch.
  */
-// Each `visible` matches the prompt's QUESTION/HEADER wording — never a phrase
-// that lives only in an affirmative option — so recognition anchors on a header
-// line (see promptRegion), which a hostile option cannot spoof (PRD §5.1).
+// Each `headerPattern` matches the prompt's QUESTION/HEADER wording — never a
+// phrase that lives only in an affirmative option — so recognition anchors on a
+// header line (matched via `trustPromptHeaderVisible`, which excludes numbered
+// option lines), which a hostile option cannot spoof (PRD §5.1).
 export const trustPromptAllowlist = [
   {
     // Header renders as "Do you trust this folder?" or "Quick safety check: Is
     // this a project you created or one you trust?" (claude 2.1.205/2.1.206).
     id: "workspace_trust",
     agent: "claude",
-    visible: /do you trust this folder|project you (?:created|.*)\bor one you trust/i,
+    headerPattern: /do you trust this folder|project you (?:created|.*)\bor one you trust/i,
     accept: yesOption,
+    answerPolicy: "autotrust",
   },
   {
     id: "skill_trust",
     agent: "claude",
-    visible: /do you (?:want to )?(?:trust|load) (?:this|the) skill|load this skill\?/i,
+    headerPattern: /do you (?:want to )?(?:trust|load) (?:this|the) skill|load this skill\?/i,
     accept: yesOption,
+    answerPolicy: "autotrust",
   },
   {
     id: "plugin_trust",
     agent: "claude",
-    visible: /do you (?:want to )?trust (?:this|the) plugin|trust the plugin\?/i,
+    headerPattern: /do you (?:want to )?trust (?:this|the) plugin|trust the plugin\?/i,
     accept: yesOption,
+    answerPolicy: "autotrust",
   },
   {
     // Header "New MCP server found in this project"; the affirmative option is
@@ -81,36 +121,50 @@ export const trustPromptAllowlist = [
     // accept — the generic yes-matcher would leave it wedged.
     id: "mcp_trust",
     agent: "claude",
-    visible: /New MCP server found|do you trust (?:this|the) MCP server/i,
+    headerPattern: /New MCP server found|do you trust (?:this|the) MCP server/i,
     accept: useMcpOption,
+    answerPolicy: "autotrust",
   },
   {
     // Codex's directory-trust gate keeps the stable `workspace_trust` label
     // (PRD §5.4) even though its wording differs from Claude's.
     id: "workspace_trust",
     agent: "codex",
-    visible: /Do you trust the contents of this directory/i,
+    headerPattern: /Do you trust the contents of this directory/i,
     accept: yesOption,
+    answerPolicy: "autotrust",
   },
   // Hook trust is Elwood's own integration, required for the session to work, so
-  // it is always answered (not gated on autotrust) — see `always`.
+  // it is always answered (not gated on autotrust) — see `answerPolicy: "always"`.
   {
     id: "hook_trust",
     agent: "codex",
-    visible: /Hooks need review/i,
+    headerPattern: /Hooks need review/i,
     // Specific to hook trust's own option ("Trust all and continue"), never a
     // generic "Yes" that could belong to a different dialog in the same frame.
     accept: trustHooksOption,
-    always: true,
+    answerPolicy: "always",
   },
 ] as const satisfies readonly TrustPromptSpec[];
 
 /**
+ * True when `spec`'s HEADER wording appears on a NON-option line of `frame`. This
+ * is the ONE shared, option-aware recognizer: the responder and the screen-fact
+ * blocking rules both go through it, so a numbered option whose label merely
+ * contains a trust phrase (e.g. "1. Trust the plugin?") is never recognized as a
+ * trust prompt. Matching against joined non-option lines also keeps a header that
+ * wrapped across physical rows matching (PRD §5.1).
+ */
+export function trustPromptHeaderVisible(frame: string, spec: TrustPromptBase): boolean {
+  return spec.headerPattern.test(nonOptionText(frame));
+}
+
+/**
  * The stable public `startup_prompt` trust labels (§5.4), derived from the
  * allowlist so the two can never drift: deleting, adding, or renaming an entry
- * updates this union automatically. (Ids are `string` in `TrustPromptSpec`, so a
- * typo does not fail compilation here — it simply widens this derived union; the
- * per-agent `TrustPromptIdFor` narrowing is what keeps agents' labels distinct.)
+ * updates this union automatically. Because `TrustPromptSpec` fixes each agent's
+ * ids to a closed literal union, a typo in an entry's `id` fails to compile
+ * against `satisfies` rather than silently widening this derived label union.
  */
 export type TrustPromptId = (typeof trustPromptAllowlist)[number]["id"];
 
@@ -126,8 +180,8 @@ export function blockingTrustSpecs(
   autotrust: boolean,
 ): readonly TrustPromptSpec[] {
   return trustPromptAllowlist.filter(
-    // An `always`-answered prompt (hook trust) is auto-handled, so it must NOT be
-    // classified as human-blocking. Others block only when autotrust is off.
-    (spec) => spec.agent === agent && !("always" in spec && spec.always) && !autotrust,
+    // An `answerPolicy: "always"` prompt (hook trust) is auto-handled, so it must
+    // NOT be classified as human-blocking. Others block only when autotrust is off.
+    (spec) => spec.agent === agent && spec.answerPolicy !== "always" && !autotrust,
   );
 }

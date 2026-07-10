@@ -1,14 +1,12 @@
 /** ClaudeSession implementation coordinating PTY, state, and hook dispatch. Implements PRD §5, §6, §8, and §9. */
 import { randomUUID } from "node:crypto";
 import * as activity from "../core/activity.ts";
-import { AttentionWatcher } from "../core/attention.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, elwoodError } from "../core/errors.ts";
 import { queuePersonaMessage } from "../core/persona.ts";
 import { observeRenderedFrame } from "../core/rendered-observers.ts";
 import { applyStartupAutomations } from "../core/startup-automation.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
-import { TurnStateWatcher } from "../core/turn-state.ts";
 import type { StartClaudeOptions } from "../core/types.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
@@ -29,7 +27,6 @@ import { attachPtyTerminal } from "../terminal/headless.ts";
 import { isBlock, requestHook } from "./hook-dispatch.ts";
 import { normalizeClaudeHookEvent } from "./normalize.ts";
 import { preflightClaude } from "./preflight.ts";
-import { claudeScreenFactTableForTrustPolicy } from "./screen-table.ts";
 import { serializeHookResult } from "./serialize.ts";
 import {
   currentClaudeHookBridgeFactory,
@@ -38,8 +35,18 @@ import {
 } from "./session-bridge.ts";
 import { ClaudeSessionImpl } from "./session-instance.ts";
 import type { ClaudeSession } from "./session-interface.ts";
-import { registerInitialHooks, spawnClaudePty, writeRuntimeFiles } from "./session-runtime.ts";
-import { createTranscriptWatcher, observeTranscript } from "./session-transcript.ts";
+import {
+  buildClaudeObservers,
+  handleClaudeExit,
+  registerInitialHooks,
+  spawnClaudePty,
+  writeRuntimeFiles,
+} from "./session-runtime.ts";
+import {
+  createTranscriptWatcher,
+  observeTranscript,
+  transcriptSeedFromWarnings,
+} from "./session-transcript.ts";
 import { ClaudeStartupPromptResponder } from "./startup-prompts.ts";
 
 export {
@@ -47,10 +54,8 @@ export {
   setHookBridgeFactoryForTests,
 };
 export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSession> {
-  const warning = await preflightClaude(
-    options.strictVersionCheck ?? false,
-    options.autoupdate ?? false,
-  );
+  const strict = options.strictVersionCheck ?? false;
+  const warning = await preflightClaude(strict, options.autoupdate ?? false);
   const stateDir = options.stateDir ?? defaultStateDir(options.cwd);
   prepareStateDir(stateDir, { gitignore: options.stateDir === undefined });
   const createdRecord = createSessionRecord({
@@ -82,8 +87,10 @@ export async function startClaudeFromRecord(
   const emitter = new TypedEmitter();
   registerInitialHooks(emitter, options.hooks);
   let session: ClaudeSessionImpl | undefined;
-  const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => session);
-  const { watcher: transcriptWatcher, flushPendingWarnings } = wired;
+  // Seed continues a resumed session's running drop/read-error counts, not 0 (§5.4).
+  const seed = transcriptSeedFromWarnings(record.warnings);
+  const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => session, seed);
+  const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   let initialReadyMarked = false;
   const bridge = currentClaudeHookBridgeFactory()(
     record.paths.socketPath,
@@ -149,14 +156,11 @@ export async function startClaudeFromRecord(
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   const promptResponder = new ClaudeStartupPromptResponder(options.autotrust ?? false);
-  const observers = {
-    turn: new TurnStateWatcher(),
-    attention: new AttentionWatcher(),
-    table: claudeScreenFactTableForTrustPolicy(options.autotrust ?? false),
-    agent: "claude" as const,
-    elwoodSessionId: record.elwoodSessionId,
-    emitActivity: (event: activity.ElwoodActivityEvent) => emitter.emit("activity", event),
-  };
+  const observers = buildClaudeObservers(
+    record.elwoodSessionId,
+    options.autotrust ?? false,
+    emitter,
+  );
   const turnWatcher = observers.turn;
   const terminal = attachPtyTerminal(
     options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
@@ -165,9 +169,8 @@ export async function startClaudeFromRecord(
       startupOutput += data;
       terminalReplay.push(data);
       const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
-      const write = (input: string) => renderedTerminal.sendInput(input);
-      const autos = promptResponder.handle(frame.text, write);
-      applyStartupAutomations(emitter, "claude", record.elwoodSessionId, autos, () => session);
+      const autos = promptResponder.handle(frame.text, (i) => renderedTerminal.sendInput(i));
+      applyStartupAutomations(emitter, "claude", record.elwoodSessionId, autos);
       observeRenderedFrame(observers, frame, session);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
@@ -176,13 +179,8 @@ export async function startClaudeFromRecord(
   flushPendingWarnings(); // sink now exists: flush any early-buffered diagnostic (§5.7)
   pty.onExit((exit) => {
     startupExit = exit;
-    transcriptWatcher.finish(); // Flush trailing committed items before exit.
-    emitter.emit("terminal:exit", { elwoodSessionId: record.elwoodSessionId, ...exit });
-    emitter.emit(
-      "activity",
-      activity.activityFromTerminalExit("claude", record.elwoodSessionId, exit.exitCode),
-    );
-    session?.submitExit();
+    const submit = () => session?.submitExit();
+    handleClaudeExit(emitter, record.elwoodSessionId, exit, finishSafely, submit);
   });
   try {
     await assertStartupUsable({

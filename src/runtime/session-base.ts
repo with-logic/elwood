@@ -1,36 +1,33 @@
 /** Shared adapter session behavior: lifecycle, input, command surface. Implements PRD §5.3, §5.7. */
 
 import type { ElwoodAgentKind } from "../core/activity.ts";
-import { activityFromReapFailure, activityFromStatus } from "../core/activity.ts";
+import { activityFromStatus } from "../core/activity.ts";
 import { ControlQueue } from "../core/control-queue.ts";
 import { elwoodError } from "../core/errors.ts";
-import type { ModelPickerIo, ModelPickerSpec } from "../core/model-picker.ts";
+import type { ModelPickerSpec } from "../core/model-picker.ts";
 import type { AgentModelOption } from "../core/model-rows.ts";
 import { type PasteGuard, writePastedPrompt, writeQueuedInput } from "../core/session-input.ts";
 import type { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
 import { replayWarningSnapshots } from "../core/warning-replay.ts";
 import type { PtyProcess } from "../pty/types.ts";
-import {
-  removeSessionDir,
-  type SessionRecord,
-  updateSessionStatus,
-  writeSessionRecord,
-} from "../state/store.ts";
+import { type SessionRecord, updateSessionStatus, writeSessionRecord } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
-import { SessionReaper } from "./reap-tree.ts";
 import { agentTitles, type SessionStatusEmitter } from "./session-base-types.ts";
-import { compactCommand, runCompact, runListModels, runSetModel } from "./session-commands.ts";
+import { CommandSurface } from "./session-commands.ts";
+import { SessionReapPolicy } from "./session-reap.ts";
+import {
+  runShutdown,
+  runTeardown,
+  type ShutdownEvidence,
+  type ShutdownHost,
+} from "./session-shutdown.ts";
 import { terminalStatuses } from "./session-status.ts";
 import {
   SessionStatusEngine,
   type StatusDecision,
   type StatusEvidenceKind,
 } from "./status-evidence.ts";
-import { runTeardownSteps } from "./teardown.ts";
-import { terminatePty } from "./terminate.ts";
-
-type ShutdownEvidence = "stop_completed" | "kill_completed" | "teardown_completed";
 
 export abstract class AgentSessionBase {
   protected record: SessionRecord;
@@ -38,7 +35,8 @@ export abstract class AgentSessionBase {
   protected abstract readonly picker: ModelPickerSpec;
   private readonly agent: ElwoodAgentKind;
   private readonly pty: PtyProcess;
-  private readonly reaper: SessionReaper;
+  private readonly reapPolicy: SessionReapPolicy;
+  private readonly commands: CommandSurface;
   private readonly statusEvents: SessionStatusEmitter;
   private readonly terminalReplay: TerminalReplayBuffer;
   private cleanupPromise: Promise<void> | undefined;
@@ -68,10 +66,16 @@ export abstract class AgentSessionBase {
     this.agent = agent;
     this.record = record;
     this.pty = pty;
-    this.reaper = new SessionReaper(pty.pid);
+    this.reapPolicy = new SessionReapPolicy(agent, record.elwoodSessionId, pty.pid);
     this.terminal = terminal;
     this.statusEvents = statusEvents;
     this.terminalReplay = terminalReplay;
+    this.commands = new CommandSurface({
+      terminal,
+      statusEvents,
+      picker: () => this.picker,
+      submit: (command, kind) => this.controlQueue.send(command, kind),
+    });
   }
 
   get elwoodSessionId(): string {
@@ -106,52 +110,53 @@ export abstract class AgentSessionBase {
     });
   }
   compact(options?: { readonly timeoutMs?: number }): Promise<void> {
-    const submit = () => this.controlQueue.send(compactCommand, "compact");
-    const nudge = () => this.terminal.sendInput("\r");
-    return this.inSession(() => runCompact(this.statusEvents, submit, nudge, options));
+    return this.inSession(() => this.commands.compact(options));
   }
   listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]> {
-    return this.inSession(() => runListModels(this.pickerIo("list_models"), this.picker, options));
+    return this.inSession(() => this.commands.listModels(options));
   }
   setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
-    return this.inSession(() => runSetModel(this.pickerIo("set_model"), this.picker, id, options));
-  }
-  private pickerIo(k: "list_models" | "set_model"): ModelPickerIo {
-    return { terminal: this.terminal, submit: (c) => this.controlQueue.send(c, k) };
+    return this.inSession(() => this.commands.setModel(id, options));
   }
   stop(): Promise<void> {
-    return this.shutdown("SIGTERM", "stop_completed");
+    return runShutdown(this.shutdownHost(), "SIGTERM", "stop_completed");
   }
   kill(): Promise<void> {
-    return this.shutdown("SIGKILL", "kill_completed");
+    return runShutdown(this.shutdownHost(), "SIGKILL", "kill_completed");
   }
-  async teardown(): Promise<void> {
-    this.pendingShutdown ??= "teardown_completed";
-    const live = () => !terminalStatuses.has(this.status);
-    await runTeardownSteps([
-      () => (live() ? terminatePty(this.pty, "SIGKILL", this.reaper) : undefined),
-      () => this.reaper.reap(), // No-op once latched; retries a prior failed reap.
-      () => this.cleanupRuntime(),
-      () => void this.submitEvidence("teardown_completed"),
-      () => removeSessionDir(this.record),
-    ]);
+  teardown(): Promise<void> {
+    return runTeardown(this.shutdownHost());
+  }
+  private shutdownHost(): ShutdownHost {
+    return {
+      pty: this.pty,
+      record: this.record,
+      reapPolicy: this.reapPolicy,
+      status: () => this.status,
+      claimShutdown: (evidence) => {
+        this.pendingShutdown ??= evidence;
+      },
+      cleanupRuntime: () => this.cleanupRuntime(),
+      submitEvidence: (kind) => void this.submitEvidence(kind),
+    };
   }
   submitEvidence(kind: StatusEvidenceKind): StatusDecision {
     return this.statusEngine.submit(kind);
   }
   submitExit(): StatusDecision {
-    // Terminal evidence FIRST (C-LIFE-10): exited status even if the reap fails.
-    const decision = this.statusEngine.submit(this.pendingShutdown ?? "terminal_exited");
-    this.reapSurvivors();
-    return decision;
-  }
-  private reapSurvivors(): void {
+    // Terminal status FIRST, reap in `finally` (C-LIFE-10): reaches terminal AND
+    // reaps even if status submission throws.
     try {
-      this.reaper.reap();
-    } catch (e) {
-      const a = activityFromReapFailure(this.agent, this.elwoodSessionId, e);
-      this.statusEvents.emit("activity", a);
+      return this.statusEngine.submit(this.pendingShutdown ?? "terminal_exited");
+    } finally {
+      this.reapSurvivors();
     }
+  }
+  // Best-effort reap for the native exit callback (the ONLY swallowing caller): a
+  // failure surfaces as a durable `reap_failed` warning, never thrown.
+  private reapSurvivors(): void {
+    const warning = this.reapPolicy.bestEffort();
+    if (warning) this.recordWarnings([warning]);
   }
   statusDecisions(): readonly StatusDecision[] {
     return this.statusEngine.decisions();
@@ -162,6 +167,9 @@ export abstract class AgentSessionBase {
     return { snapshot: () => this.terminal.snapshot().text, staged };
   }
   protected abstract stopRuntime(): Promise<void>;
+  // Persist + emit typed warnings through the adapter's dedup/replay path; the base
+  // uses it to surface a `reap_failed` diagnostic durably rather than transiently.
+  protected abstract recordWarnings(warnings: readonly ElwoodWarningEvent[]): void;
   protected replayFor(event: string, handler: unknown): void {
     if (event === "terminal:data") this.terminalReplay.replay(handler as never);
     replayWarningSnapshots(this.record.warnings, event, handler as (event: never) => void);
@@ -178,15 +186,6 @@ export abstract class AgentSessionBase {
   protected cleanupRuntime(): Promise<void> {
     this.cleanupPromise ??= this.stopRuntime();
     return this.cleanupPromise;
-  }
-  private async shutdown(signal: "SIGTERM" | "SIGKILL", evidence: ShutdownEvidence) {
-    const wasExited = this.status === "exited";
-    this.pendingShutdown ??= evidence; // Claim the exit before signaling.
-    // Already exited: reap survivors best-effort; else terminatePty reaps + surfaces.
-    if (wasExited) this.reapSurvivors();
-    else await terminatePty(this.pty, signal, this.reaper);
-    await this.cleanupRuntime();
-    if (!wasExited) this.submitEvidence(evidence);
   }
   private notRunningError(): Error {
     return elwoodError("session_not_running", `${agentTitles[this.agent]} session is not running.`);

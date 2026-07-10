@@ -45,16 +45,17 @@ describe("ClaudeStartupPromptResponder", () => {
     expect(browserToolsPromptVisible(browserPrompt)).toBe(true);
   });
 
-  test("C-CLAUDE-14 a recognized-but-unanswerable trust prompt is flagged, not answered", () => {
+  test("C-CLAUDE-14 a recognized trust prompt whose affirmative has not rendered is option_pending, not answered", () => {
     const responder = new ClaudeStartupPromptResponder(true);
     const writes: string[] = [];
-    // MCP prompt recognized, but the option label is unfamiliar (no verified
-    // affirmative option), so it is surfaced as unanswerable and not answered.
+    // MCP prompt recognized, but the affirmative option ("Use this MCP server")
+    // has not rendered yet, so it is surfaced as a transient option_pending and
+    // not answered — a later frame carrying the option would still answer it.
     const automations = responder.handle(
       "New MCP server found in this project\n1. Do something unexpected\n2. No",
       (input) => writes.push(input),
     );
-    expect(automations).toEqual([{ kind: "unanswerable", prompt: "mcp_trust" }]);
+    expect(automations).toEqual([{ kind: "option_pending", prompt: "mcp_trust" }]);
     expect(writes).toEqual([]);
   });
 });

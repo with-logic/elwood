@@ -5,9 +5,11 @@
 
 import { isAbsolute, join, resolve } from "node:path";
 import { allStatuses, type ElwoodSessionStatus } from "../core/status-categories.ts";
-import type { ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
+import type { TerminalSize } from "../core/types.ts";
 import { safeSessionDir } from "./files.ts";
 import type { SessionRecord } from "./store.ts";
+import { isRecord, isString, isStringArray } from "./validate-predicates.ts";
+import { isWarningArray } from "./validate-warnings.ts";
 
 export function validateSessionRecord(
   value: unknown,
@@ -78,121 +80,10 @@ function isTerminalSize(value: unknown): value is TerminalSize | undefined {
   return Number.isInteger(value["cols"]) && Number.isInteger(value["rows"]);
 }
 
-function isWarningArray(value: unknown): boolean {
-  return Array.isArray(value) && value.every(isWarning);
-}
-
-function isWarning(value: unknown): value is ElwoodWarningEvent {
-  if (!isRecord(value)) return false;
-  if (value["severity"] !== "warning") return false;
-  if (value["code"] === "version_unparseable") {
-    return (
-      (value["agent"] === "claude" || value["agent"] === "codex") &&
-      value["source"] === "lifecycle" &&
-      isString(value["elwoodSessionId"]) &&
-      isString(value["message"]) &&
-      isString(value["raw"])
-    );
-  }
-  if (value["code"] === "mcp_server_not_logged_in") {
-    return (
-      value["agent"] === "codex" &&
-      value["source"] === "terminal" &&
-      isString(value["elwoodSessionId"]) &&
-      isString(value["message"]) &&
-      isString(value["mcpServerName"]) &&
-      isString(value["recoveryCommand"]) &&
-      isString(value["raw"])
-    );
-  }
-  if (value["code"] === "mcp_startup_incomplete") {
-    return (
-      value["agent"] === "codex" &&
-      value["source"] === "terminal" &&
-      isString(value["elwoodSessionId"]) &&
-      isString(value["message"]) &&
-      isStringArray(value["failedServers"]) &&
-      isStringArray(value["recoveryCommands"]) &&
-      isString(value["raw"])
-    );
-  }
-  if (value["code"] === "codex_default_model_persisted") {
-    return (
-      value["agent"] === "codex" &&
-      value["source"] === "lifecycle" &&
-      isString(value["elwoodSessionId"]) &&
-      isString(value["message"]) &&
-      isString(value["raw"])
-    );
-  }
-  if (value["code"] === "transcript_records_dropped") {
-    return (
-      claudeTerminalBase(value) &&
-      isPositiveCount(value["droppedCount"]) &&
-      isCount(value["droppedBytes"]) &&
-      isString(value["transcriptPath"])
-    );
-  }
-  if (value["code"] === "transcript_read_error") {
-    return (
-      claudeTerminalBase(value) &&
-      isPositiveCount(value["errorCount"]) &&
-      isString(value["lastErrorCode"]) &&
-      isString(value["transcriptPath"])
-    );
-  }
-  if (value["code"] === "transcript_poll_stopped") {
-    return claudeTerminalBase(value) && isString(value["reason"]);
-  }
-  if (value["code"] === "trust_prompt_unanswerable") {
-    const agent = value["agent"];
-    return (
-      (agent === "claude" || agent === "codex") && terminalBase(value) && isString(value["prompt"])
-    );
-  }
-  return false;
-}
-
-/** Fields common to every claude-agent terminal warning: agent/source/session/message/raw. */
-function claudeTerminalBase(value: Readonly<Record<string, unknown>>): boolean {
-  return value["agent"] === "claude" && terminalBase(value);
-}
-
-/** The source/session/message/raw fields common to all terminal warnings. */
-function terminalBase(value: Readonly<Record<string, unknown>>): boolean {
-  return (
-    value["source"] === "terminal" &&
-    isString(value["elwoodSessionId"]) &&
-    isString(value["message"]) &&
-    isString(value["raw"])
-  );
-}
-
 function isStatus(value: unknown): value is ElwoodSessionStatus {
   return typeof value === "string" && allStatuses.has(value as ElwoodSessionStatus);
 }
 
 function optionalString(value: unknown): boolean {
   return value === undefined || typeof value === "string";
-}
-
-function isString(value: unknown): value is string {
-  return typeof value === "string";
-}
-
-/** A persisted byte total: a non-negative safe integer (never fractional/negative). */
-function isCount(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
-/** A persisted event count: a POSITIVE safe integer (a notice always counts ≥ 1). */
-function isPositiveCount(value: unknown): value is number {
-  return isCount(value) && value > 0;
-}
-
-function isStringArray(value: unknown): boolean {
-  return Array.isArray(value) && value.every(isString);
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }

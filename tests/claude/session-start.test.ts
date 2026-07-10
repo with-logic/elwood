@@ -116,23 +116,6 @@ describe("ClaudeSession startup and terminal control", () => {
     expect(ptys[0]!.writes).toEqual([]);
   });
 
-  test("C-CLAUDE-14 an unanswerable trust prompt persists a durable wedge warning", async () => {
-    const cwd = tempDir();
-    installFakes();
-    const session = await startClaude({ cwd, autotrust: true });
-    // A recognized folder-trust HEADER but with only a declining option — the
-    // responder finds no clean affirmative, so it is unanswerable.
-    ptys[0]!.emitData("Do you trust this folder?\r\n1. No, cancel\r\n");
-    // The wedge is persisted as a durable warning (observable at resume), not just
-    // a transient attention event.
-    await expect
-      .poll(() => session.warnings.map((w) => w.code))
-      .toContain("trust_prompt_unanswerable");
-    const wedge = session.warnings.find((w) => w.code === "trust_prompt_unanswerable");
-    expect(wedge).toMatchObject({ prompt: "workspace_trust" });
-    expect(ptys[0]!.writes).toEqual([]); // nothing auto-answered
-  });
-
   test("C-ERR-07 version warnings are captured when non-strict parsing fails", async () => {
     const cwd = tempDir();
     installFakes();

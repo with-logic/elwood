@@ -4,8 +4,8 @@
  * through C-ATTN-03.
  */
 
-import { hasScreenFact, type ScreenFactRule, type ScreenFactTable } from "../core/screen-facts.ts";
-import { blockingTrustSpecs } from "../core/trust-prompts.ts";
+import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
+import { blockingTrustSpecs, trustPromptHeaderVisible } from "../core/trust-prompts.ts";
 
 /**
  * Verified against codex-cli 0.142.5. The working spinner renders
@@ -54,14 +54,13 @@ export function codexScreenFactTableForTrustPolicy(autotrust: boolean): ScreenFa
   const rules: ScreenFactRule[] = blockingTrustSpecs("codex", autotrust).map((spec) => ({
     id: `codex-${spec.id}-prompt`,
     fact: "blocking_prompt_visible",
-    all: [spec.visible],
+    // Option-aware recognition: the header must appear on a NON-option line, so an
+    // unrelated dialog whose numbered option merely contains a directory-trust
+    // phrase is NOT misclassified as a blocking trust prompt (PRD §5.1). Same
+    // recognizer the responder uses, so classification and answering never diverge.
+    match: (text) => trustPromptHeaderVisible(text, spec),
   }));
   return rules.length === 0
     ? codexScreenFactTable
     : { ...codexScreenFactTable, rules: [...codexScreenFactTable.rules, ...rules] };
-}
-
-/** A quiet boot gap can precede input acceptance; readiness requires this. */
-export function codexComposerVisible(text: string): boolean {
-  return hasScreenFact(codexScreenFactTable, { text, title: "" }, "composer_visible");
 }

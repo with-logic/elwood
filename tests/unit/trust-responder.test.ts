@@ -93,16 +93,16 @@ describe("allowlisted trust prompt automation", () => {
     expect(trustPromptVisible("Some unrelated banner", "codex")).toBe(false);
   });
 
-  test("C-CLAUDE-14 recognized-but-unanswerable prompt is flagged, not silently skipped", () => {
+  test("C-CLAUDE-14 recognized prompt with option not yet rendered is option_pending, not silently skipped", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
-    // The prompt is recognized but its verified affirmative option is absent, so
-    // the responder writes nothing AND surfaces `unanswerable` (a wedge signal),
-    // once. A wrong "No, cancel" option is never selected.
+    // The prompt is recognized but its affirmative option is absent, so the
+    // responder writes nothing AND surfaces `option_pending` (a transient
+    // render-delay signal), once. A wrong "No, cancel" option is never selected.
     expect(
       responder.handle("Do you trust this folder?\n1. No, cancel", (input) => writes.push(input)),
-    ).toEqual({ kind: "unanswerable", prompt: "workspace_trust" });
-    // Settled once: a second frame does not re-flag.
+    ).toEqual({ kind: "option_pending", prompt: "workspace_trust" });
+    // Reported once: a second identical frame does not re-flag.
     expect(
       responder.handle("Do you trust this folder?\n1. No, cancel", (input) => writes.push(input)),
     ).toBeUndefined();
@@ -123,12 +123,14 @@ describe("allowlisted trust prompt automation", () => {
     expect(writes).toEqual(["1\r"]);
   });
 
-  test("C-CLAUDE-14 a trust dialog's region spans blank/descriptive lines to its options", () => {
+  test("C-CLAUDE-14 a trust dialog is answered across blank/descriptive lines to its options", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
     // A real trust dialog renders header → blank/descriptive lines → options as
-    // ONE dialog (claude 2.1.206, C-E2E-09). The region MUST span the blanks to
-    // reach the affirmative — the prior line-boundary rule wedged the agent here.
+    // ONE dialog (claude 2.1.206, C-E2E-09). The header match joins all non-option
+    // lines and the affirmative is found among all numbered options, so blanks
+    // between them do not block the answer — the prior line-boundary rule wedged
+    // the agent here.
     const frame =
       "Do you trust this folder?\n\nClaude Code can read/edit here.\n\n1. Yes, proceed\n2. No";
     expect(responder.handle(frame, (input) => writes.push(input))).toEqual({
@@ -141,10 +143,11 @@ describe("allowlisted trust prompt automation", () => {
   test("C-CLAUDE-14 a mid-render header without options is retried, not wedged", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
-    // Frame 1: header drawn, options not yet rendered — surfaced as unanswerable
-    // ONCE (a wedge signal) but NOT settled, so the next frame can still answer.
+    // Frame 1: header drawn, options not yet rendered — surfaced as option_pending
+    // ONCE (a transient render-delay signal) but NOT settled, so the next frame
+    // can still answer.
     expect(responder.handle("Do you trust this folder?", (input) => writes.push(input))).toEqual({
-      kind: "unanswerable",
+      kind: "option_pending",
       prompt: "workspace_trust",
     });
     // Frame 2: the option has now rendered — the prompt answers normally.

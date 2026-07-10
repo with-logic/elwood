@@ -7,7 +7,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   type ClaudeTranscriptEvent,
   ClaudeTranscriptWatcher,
@@ -183,15 +183,17 @@ describe("C-CLAUDE-15 Claude transcript watcher lifecycle", () => {
       () => {
         throw new Error("listener bug");
       },
-      { onPollError: (e) => errors.push(e) },
+      // Short poll cadence so the assertion is deterministic and fast instead of
+      // sleeping the coarse production interval and racing the scheduler.
+      { onPollError: (e) => errors.push(e), pollIntervalMs: 5 },
     );
     writeRecords(path);
     watcher.observe(path);
     appendRecords(path, [], assistant("boom"));
     // The interval boundary catches the thrown listener error, finishes the
-    // watcher, and routes the failure — never an unhandled rejection.
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    expect(errors).toHaveLength(1);
+    // watcher (whose own drain re-throws through the listener, exercising the
+    // stop() fallback), and routes the failure — never an unhandled rejection.
+    await vi.waitFor(() => expect(errors).toHaveLength(1));
     expect((errors[0] as Error).message).toBe("listener bug");
     watcher.stop();
   });

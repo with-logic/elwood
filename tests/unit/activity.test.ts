@@ -34,7 +34,11 @@ describe("Elwood activity events", () => {
     });
   });
 
-  test("C-API-12 maps tools, assistant messages, and hook errors", () => {
+  test("C-CODEX-16 Codex tool/stop hooks stay plain hook (transcript is the source)", () => {
+    // Codex tool and assistant activity is transcript-sourced (C-CODEX-16), so
+    // the PreToolUse/PostToolUse/PermissionRequest/Stop hooks MUST NOT
+    // re-project tool_call/tool_result/assistant_message — they would double the
+    // transcript's copy. They stay plain `hook` turn-boundary signals here.
     const tool = activityFromCodexHook("elwood-2", {
       hook_event_name: "PermissionRequest",
       session_id: "codex-session",
@@ -61,13 +65,16 @@ describe("Elwood activity events", () => {
       message: "timeout",
       timeoutMs: 1,
     });
-    expect(tool.kind).toBe("tool_call");
-    expect(tool.label).toBe("Bash");
+    // Plain hook: still carries base metadata (turnId/toolName from the payload)
+    // but never a tool_call kind or a serialized toolInput/toolOutput, and never
+    // an assistant_message with the (possibly ghost-text) last_assistant_message.
+    expect(tool.kind).toBe("hook");
+    expect(tool.label).toBe("PermissionRequest");
     expect(tool).toMatchObject({ turnId: "turn-1", toolName: "Bash", toolUseId: "tool-1" });
-    expect(tool.toolInput).toBe('{"command":"npm test"}');
-    expect(tool.toolOutput).toBeUndefined();
-    expect(stop.kind).toBe("assistant_message");
-    expect(stop.text).toBe("Done.");
+    expect(tool.toolInput).toBeUndefined();
+    expect(stop.kind).toBe("hook");
+    expect(stop.label).toBe("Stop");
+    expect(stop.text).toBeUndefined();
     expect(error).toMatchObject({
       kind: "hook_error",
       label: "Stop:timeout",
@@ -75,9 +82,9 @@ describe("Elwood activity events", () => {
     });
   });
 
-  test("C-API-12 maps tool results and unknown transcript items", () => {
-    // A Codex PostToolUse hook maps to tool_result; the hook carries no output
-    // field (that comes from the transcript), so toolOutput is absent here.
+  test("C-CODEX-16 PostToolUse hook is plain hook; transcript carries tool_result", () => {
+    // A Codex PostToolUse hook is a turn-boundary signal (plain `hook`); the
+    // tool_result activity comes from the committed transcript, not the hook.
     const toolResult = activityFromCodexHook("elwood-4", {
       hook_event_name: "PostToolUse",
       session_id: "codex-session",
@@ -93,21 +100,9 @@ describe("Elwood activity events", () => {
       item: { payload: { type: "unknown" } },
       summary: { kind: "other", label: "unknown" },
     });
-    expect(toolResult).toMatchObject({ kind: "tool_result", label: "Bash" });
+    expect(toolResult).toMatchObject({ kind: "hook", label: "PostToolUse", toolName: "Bash" });
     expect(toolResult.toolOutput).toBeUndefined();
     expect(unknown).toMatchObject({ kind: "other", label: "unknown" });
-    // A generic-tool input that JSON.stringify cannot serialize (BigInt) falls
-    // back to String() rather than throwing.
-    const bigintTool = activityFromCodexHook("elwood-4", {
-      hook_event_name: "PreToolUse",
-      session_id: "codex-session",
-      cwd: "/repo",
-      model: "gpt-5.3-codex",
-      turn_id: "t1",
-      tool_name: "unknown:custom",
-      tool_input: { n: 1n },
-    });
-    expect(bigintTool.toolInput).toBe("[object Object]");
   });
 
   test("C-API-12 maps transcript metadata and lifecycle events", () => {
@@ -160,12 +155,25 @@ describe("Elwood activity events", () => {
     });
   });
 
-  test("C-LIFE-10 a reap failure becomes a warning activity (Error and non-Error causes)", () => {
-    const fromError = activityFromReapFailure("claude", "elwood-9", new Error("EPERM"));
+  test("C-LIFE-10 a reap failure projects a warning activity carrying pgid + code", () => {
+    // An errno cause is normalized to its code and the pgid is preserved, so the
+    // projected activity locates AND explains the un-reaped group.
+    const fromError = activityFromReapFailure(
+      "claude",
+      "elwood-9",
+      4242,
+      Object.assign(new Error("permission denied"), { code: "EPERM" }),
+    );
     expect(fromError).toMatchObject({ kind: "warning", label: "reap_failed" });
     expect(fromError.text).toContain("EPERM");
+    expect(fromError.text).toContain("4242");
+    expect(fromError.raw).toMatchObject({ code: "reap_failed", processGroupId: 4242 });
+    // A plain Error without an errno code normalizes to its `.name`, not its message.
+    const fromPlain = activityFromReapFailure("claude", "elwood-9", 7, new TypeError("bad state"));
+    expect(fromPlain.text).toContain("TypeError");
+    expect(fromPlain.text).not.toContain("bad state");
     // A non-Error cause is stringified rather than dropped.
-    const fromString = activityFromReapFailure("codex", "elwood-9", "raw-failure");
+    const fromString = activityFromReapFailure("codex", "elwood-9", 7, "raw-failure");
     expect(fromString.text).toContain("raw-failure");
   });
 

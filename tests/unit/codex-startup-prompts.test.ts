@@ -59,9 +59,9 @@ describe("Codex startup prompt responder", () => {
   test("C-CODEX-15 a foreign 'Yes, continue' is never selected for HOOK trust", () => {
     // Hook trust's affirmative is SPECIFIC ("Trust all"/"Trust hooks"), so even
     // with a foreign "1. Yes, continue" in the frame, it is never selected: the
-    // prompt is recognized but has no matchable option, so it is unanswerable and
-    // nothing is written. (The per-prompt accept — not blank-line scoping — is
-    // what protects hook trust from a generic foreign 'Yes'.)
+    // prompt is recognized but has no matchable affirmative, so it is transient
+    // option_pending and nothing is written. (The per-prompt accept — not
+    // blank-line scoping — is what protects hook trust from a generic foreign 'Yes'.)
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder("s1", true);
     const result = responder.handle(
@@ -69,7 +69,7 @@ describe("Codex startup prompt responder", () => {
       (input) => writes.push(input),
     );
     expect(writes).toEqual([]);
-    expect(result.automations).toEqual([{ kind: "unanswerable", prompt: "hook_trust" }]);
+    expect(result.automations).toEqual([{ kind: "option_pending", prompt: "hook_trust" }]);
   });
 
   test("C-CODEX-11 a recognized directory-trust dialog is answered (detect → approve)", () => {

@@ -8,6 +8,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
+import { transcriptSeedFromWarnings } from "../../src/claude/session-transcript.ts";
 import { recordSessionWarnings, type WarningEmit } from "../../src/core/session-warnings.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
 import { createSessionRecord, type SessionRecord } from "../../src/state/store.ts";
@@ -72,24 +73,75 @@ describe("recordSessionWarnings", () => {
     expect(emitted).toEqual([]);
   });
 
-  test("distinct trust_prompt_unanswerable prompts are distinct warning keys", () => {
-    const { persisted, emit } = harness();
-    const unanswerable = (prompt: string): ElwoodWarningEvent => ({
+  test("start→persist→resume→one-more-failure keeps the running total at N+1", () => {
+    // Finding B end-to-end at the recorder level: a prior session persisted a
+    // droppedCount of 60. On resume the watcher is SEEDED from that snapshot
+    // (transcriptSeedFromWarnings), so the first post-resume drop the tracker
+    // reports is 61. Feeding that 61-count warning through the recorder persists
+    // the new total WITHOUT going backwards to 1 (C-CLAUDE-15).
+    const { persisted, emitted, emit, persist } = harness();
+    const base = record();
+    const seeded = { ...base, warnings: [dropWarning(60)] };
+    const seed = transcriptSeedFromWarnings(seeded.warnings);
+    expect(seed).toEqual({ drops: { droppedCount: 60, droppedBytes: 600 } });
+    // The resumed watcher (seeded to 60) reports 61 on its first drop.
+    recordSessionWarnings(seeded, [dropWarning(61)], persist, emit);
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0]?.warnings[0]).toMatchObject({ droppedCount: 61 });
+    expect(emitted).toEqual([]); // same key, higher count: persist, no re-emit
+  });
+
+  test("transcriptSeedFromWarnings derives read-error seed and ignores other codes", () => {
+    // Only count-bearing transcript warnings seed the trackers; unrelated codes
+    // (e.g. poll_stopped) leave the seed empty for that dimension.
+    const readError: ElwoodWarningEvent = {
       elwoodSessionId: "warn-1",
       agent: "claude",
       source: "terminal",
-      code: "trust_prompt_unanswerable",
+      code: "transcript_read_error",
       severity: "warning",
-      message: `no option for ${prompt}`,
-      prompt,
-      raw: `prompt=${prompt}`,
+      message: "contained 4 read error(s)",
+      errorCount: 4,
+      lastErrorCode: "EISDIR",
+      transcriptPath: "/tmp/t.jsonl",
+      raw: "transcript_read_error count=4 code=EISDIR",
+    };
+    const pollStopped: ElwoodWarningEvent = {
+      elwoodSessionId: "warn-1",
+      agent: "claude",
+      source: "terminal",
+      code: "transcript_poll_stopped",
+      severity: "warning",
+      message: "stopped",
+      reason: "Error",
+      raw: "transcript_poll_stopped reason=Error",
+    };
+    expect(transcriptSeedFromWarnings([readError, pollStopped])).toEqual({
+      readErrors: { errorCount: 4 },
     });
-    // Two different prompts key differently, so BOTH persist (not deduped together).
-    const warnings = [unanswerable("skill_trust"), unanswerable("plugin_trust")];
+    expect(transcriptSeedFromWarnings([])).toEqual({});
+  });
+
+  test("distinct mcp-login warnings for different servers are distinct warning keys", () => {
+    const { persisted, emit } = harness();
+    const login = (server: string): ElwoodWarningEvent => ({
+      elwoodSessionId: "warn-1",
+      agent: "codex",
+      source: "terminal",
+      code: "mcp_server_not_logged_in",
+      severity: "warning",
+      message: `The ${server} MCP server is not logged in.`,
+      mcpServerName: server,
+      recoveryCommand: `codex mcp login ${server}`,
+      raw: `server=${server}`,
+    });
+    // Two different servers key differently (on `mcpServerName`), so BOTH persist
+    // (not deduped together).
+    const warnings = [login("alpha"), login("beta")];
     recordSessionWarnings(record(), warnings, (r) => persisted.push(r), emit);
     expect(persisted.at(-1)?.warnings.map((w) => w.code)).toEqual([
-      "trust_prompt_unanswerable",
-      "trust_prompt_unanswerable",
+      "mcp_server_not_logged_in",
+      "mcp_server_not_logged_in",
     ]);
   });
 });

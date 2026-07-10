@@ -13,7 +13,7 @@ import {
   codexPickerSplitMarkers,
   codexReasoningScreen,
 } from "../helpers/model-pickers.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 const originalCodexHome = process.env["CODEX_HOME"];
 const userConfig = 'model = "gpt-5.5"\nmodel_reasoning_effort = "high"\n\n[hooks]\n';
@@ -58,7 +58,7 @@ describe("CodexSession model picker", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startCodex({ cwd });
-    ptys[0]!.emitData("codex rendered\r\n› ");
+    await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
     const listing = session.listModels({ timeoutMs: 4_000 });
     await expect.poll(() => ptys[0]!.writes.includes("/model")).toBe(true);
@@ -98,7 +98,7 @@ describe("CodexSession model picker", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startCodex({ cwd });
-    ptys[0]!.emitData("codex rendered\r\n› ");
+    await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
 
     // First: listModels opens and closes the picker.
@@ -126,7 +126,7 @@ describe("CodexSession model picker", () => {
     const configPath = sandboxCodexHome(cwd);
     installFakes();
     const session = await startCodex({ cwd });
-    ptys[0]!.emitData("codex rendered\r\n› ");
+    await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
     const setting = session.setModel("gpt-5.4", { timeoutMs: 4_000 });
     await driveSetModel(
@@ -143,7 +143,7 @@ describe("CodexSession model picker", () => {
     const configPath = sandboxCodexHome(cwd);
     installFakes();
     const session = await startCodex({ cwd });
-    ptys[0]!.emitData("codex rendered\r\n› ");
+    await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
     const setting = session.setModel("gpt-5.4", { timeoutMs: 4_000 });
     const concurrent = 'model = "gpt-5.4"\nextra = true\n\n[hooks]\n';

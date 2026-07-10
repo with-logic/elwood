@@ -13,34 +13,53 @@ import {
   setPickerModel,
 } from "../core/model-picker.ts";
 import type { AgentModelOption } from "../core/model-rows.ts";
+import type { ScreenTerminal } from "../core/tui-screen.ts";
 import type { SessionStatusEmitter } from "./session-base-types.ts";
 
 type Timeout = { readonly timeoutMs?: number };
 
-export function runCompact(
-  statusEvents: SessionStatusEmitter,
-  submit: () => Promise<void>,
-  nudge: () => void,
-  options?: Timeout,
-): Promise<void> {
-  return sessionCompact(statusEvents, submit, nudge, options?.timeoutMs);
-}
+/**
+ * The session primitives the compact + model-picker command surface drives. The
+ * picker is a thunk because the concrete adapter sets `picker` in a subclass field
+ * initializer that runs AFTER the base constructor, so it is resolved per call.
+ */
+export type CommandSurfaceDeps = {
+  readonly terminal: ScreenTerminal;
+  readonly statusEvents: SessionStatusEmitter;
+  readonly picker: () => ModelPickerSpec;
+  readonly submit: (
+    command: string,
+    kind: "compact" | "list_models" | "set_model",
+  ) => Promise<void>;
+};
 
-export function runListModels(
-  io: ModelPickerIo,
-  picker: ModelPickerSpec,
-  options?: Timeout,
-): Promise<readonly AgentModelOption[]> {
-  return listPickerModels(io, picker, pickerTimeout(options));
-}
+/**
+ * The compact + /model picker surface, extracted from AgentSessionBase to keep it
+ * within the file-size cap. Each call builds the picker IO or compact closures from
+ * the injected session primitives (PRD §5.3).
+ */
+export class CommandSurface {
+  private readonly deps: CommandSurfaceDeps;
 
-export function runSetModel(
-  io: ModelPickerIo,
-  picker: ModelPickerSpec,
-  id: string,
-  options?: Timeout,
-): Promise<void> {
-  return setPickerModel(io, picker, id, pickerTimeout(options));
-}
+  constructor(deps: CommandSurfaceDeps) {
+    this.deps = deps;
+  }
 
-export { compactCommand };
+  compact(options?: Timeout): Promise<void> {
+    const submit = () => this.deps.submit(compactCommand, "compact");
+    const nudge = () => this.deps.terminal.sendInput("\r");
+    return sessionCompact(this.deps.statusEvents, submit, nudge, options?.timeoutMs);
+  }
+
+  listModels(options?: Timeout): Promise<readonly AgentModelOption[]> {
+    return listPickerModels(this.io("list_models"), this.deps.picker(), pickerTimeout(options));
+  }
+
+  setModel(id: string, options?: Timeout): Promise<void> {
+    return setPickerModel(this.io("set_model"), this.deps.picker(), id, pickerTimeout(options));
+  }
+
+  private io(kind: "list_models" | "set_model"): ModelPickerIo {
+    return { terminal: this.deps.terminal, submit: (c) => this.deps.submit(c, kind) };
+  }
+}

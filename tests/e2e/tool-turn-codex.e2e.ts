@@ -65,12 +65,17 @@ test("C-E2E-03 real Codex turn queues early messages and hooks real tools", {
       hooks,
     });
     const observed = observeSession(session);
+    // C-E2E-11: the queued initial persona is DELIVERED (observed as the first
+    // UserPromptSubmit), not swallowed — the queue is released on Codex's
+    // SessionStart hook, not the boot-time composer placeholder (C-API-28).
+    // This is the exact Coal-Harbour "initial prompt submitted before Codex was
+    // ready" failure: if readiness fired early, no UserPromptSubmit would arrive.
     await waitFor(
       () =>
         prompts.some((p) => p.includes("shell tool") && p.includes("ELWOOD_CODEX_TOOL_OK"))
           ? true
           : undefined,
-      "persona delivered as first UserPromptSubmit",
+      "C-E2E-11 persona delivered as first UserPromptSubmit",
     );
     assert.ok(prompts[0]?.includes("ELWOOD_CODEX_TOOL_OK"), "persona is the first prompt");
     await waitFor(() => (preTools.length > 0 ? true : undefined), "real Codex PreToolUse");
@@ -79,6 +84,21 @@ test("C-E2E-03 real Codex turn queues early messages and hooks real tools", {
     assert.ok(pre && pre.name.length > 0);
     assert.ok(pre.input && typeof pre.input === "object");
     await waitFor(() => (stops >= 1 ? true : undefined), "Codex Stop");
+    // C-E2E-10: the committed reply surfaces as exactly one assistant_message,
+    // sourced from the transcript — never a second copy re-projected from the
+    // Stop hook's last_assistant_message (C-CODEX-16). Regression guard for the
+    // Coal-Harbour "Codex replies received twice" report.
+    await waitFor(
+      () => (assistantMessages(observed.activities).length >= 1 ? true : undefined),
+      "Codex assistant_message activity",
+    );
+    const replies = assistantMessages(observed.activities);
+    assert.equal(replies.length, 1, "reply surfaces exactly once, not doubled");
+    assert.equal(replies[0]?.source, "transcript", "assistant_message is transcript-sourced");
+    assert.ok(
+      !replies.some((a) => a.source === "hook"),
+      "no assistant_message re-projected from the Stop hook",
+    );
     const replayed: string[] = [];
     session.on("terminal:data", (event) => replayed.push(event.data))();
     assert.ok(replayed.join("").length > 0, "late subscriber receives replayed terminal data");
@@ -99,4 +119,17 @@ test("C-E2E-03 real Codex turn queues early messages and hooks real tools", {
 
 function hasCode(code: string): (error: unknown) => boolean {
   return (error) => error instanceof ElwoodError && error.code === code;
+}
+
+type ReplyActivity = { readonly source?: unknown; readonly text?: unknown };
+/** The committed persona reply, projected as `assistant_message` activity. */
+function assistantMessages(activities: readonly unknown[]): readonly ReplyActivity[] {
+  return activities.filter((a): a is ReplyActivity => {
+    const event = a as { kind?: unknown; text?: unknown };
+    return (
+      event.kind === "assistant_message" &&
+      typeof event.text === "string" &&
+      event.text.includes("ELWOOD_CODEX_TOOL_OK")
+    );
+  });
 }

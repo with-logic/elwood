@@ -1,0 +1,92 @@
+/**
+ * Coverage for finishSafely: the final-flush error boundary at PTY exit.
+ * Covers PRD §5.3/§5.4 (C-CLAUDE-15, C-LIFE-10): a throwing activity listener or a
+ * throwing warning sink during the final transcript flush is contained so the
+ * PTY-exit callback can still emit terminal:exit, persist status, and reap.
+ */
+
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, test } from "vitest";
+import {
+  createTranscriptWatcher,
+  type TranscriptActivityEmitter,
+  type WarningSink,
+} from "../../src/claude/session-transcript.ts";
+import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
+import type { ElwoodWarningEvent } from "../../src/core/types.ts";
+
+function fakeEmitter(
+  sink: (event: ElwoodActivityEvent) => void = () => {},
+): TranscriptActivityEmitter {
+  return { emit: (_event, payload) => sink(payload) };
+}
+
+const assistant = (text: string) => ({
+  type: "assistant",
+  message: { content: [{ type: "text", text }] },
+});
+const tmpFile = () => join(mkdtempSync(join(tmpdir(), "elwood-tx-")), "t.jsonl");
+
+describe("C-CLAUDE-15 / C-LIFE-10 finishSafely error boundary", () => {
+  test("contains a throwing final flush and routes a bounded diagnostic", () => {
+    // The final flush emits committed deltas through the activity listener. When
+    // that listener throws, finishSafely must NOT propagate the throw (which would
+    // abort the PTY-exit callback before terminal:exit/reap); it stops the watcher
+    // and surfaces a bounded, content-free transcript_poll_stopped.
+    const recorded: ElwoodWarningEvent[] = [];
+    const sink: WarningSink = { recordWarnings: (w) => recorded.push(...w) };
+    const emitter = fakeEmitter((a) => {
+      if (a.kind === "assistant_message") throw new Error("flush listener bug");
+    });
+    const { watcher, finishSafely } = createTranscriptWatcher("s9", emitter, () => sink);
+    const path = tmpFile();
+    writeFileSync(path, "");
+    watcher.observe(path); // baseline at EOF
+    writeFileSync(path, `${JSON.stringify(assistant("committed"))}\n`); // unread until flush
+    expect(() => finishSafely()).not.toThrow();
+    expect(recorded.some((w) => w.code === "transcript_poll_stopped")).toBe(true);
+  });
+
+  test("runs afterFlush in a finally even when the flush throws", () => {
+    // afterFlush carries the terminal:exit/status/reap work; it MUST run whether or
+    // not the flush threw, so termination always completes (C-LIFE-10).
+    const sink: WarningSink = { recordWarnings: () => {} };
+    const emitter = fakeEmitter((a) => {
+      if (a.kind === "assistant_message") throw new Error("flush listener bug");
+    });
+    const { watcher, finishSafely } = createTranscriptWatcher("s9", emitter, () => sink);
+    const path = tmpFile();
+    writeFileSync(path, "");
+    watcher.observe(path);
+    writeFileSync(path, `${JSON.stringify(assistant("committed"))}\n`);
+    let afterFlushRan = false;
+    finishSafely(() => {
+      afterFlushRan = true;
+    });
+    expect(afterFlushRan).toBe(true);
+  });
+
+  test("swallows a throwing diagnostic route so lifecycle never blocks", () => {
+    // Both the flush listener AND the warning sink throw. finishSafely must contain
+    // the routing throw too, so a diagnostic-listener bug can never block the
+    // PTY-exit callback from completing termination.
+    const sink: WarningSink = {
+      recordWarnings: () => {
+        throw new Error("sink bug");
+      },
+    };
+    const emitter = fakeEmitter((a) => {
+      if (a.kind === "assistant_message") throw new Error("flush listener bug");
+    });
+    const { watcher, finishSafely } = createTranscriptWatcher("s9", emitter, () => sink);
+    const path = tmpFile();
+    writeFileSync(path, "");
+    watcher.observe(path);
+    writeFileSync(path, `${JSON.stringify(assistant("committed"))}\n`);
+    let afterFlushRan = false;
+    expect(() => finishSafely(() => (afterFlushRan = true))).not.toThrow();
+    expect(afterFlushRan).toBe(true); // afterFlush still ran despite both throws
+  });
+});
