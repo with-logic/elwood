@@ -12,27 +12,16 @@
 import type { ElwoodAgentKind } from "./activity.ts";
 
 /**
- * The bounded set of stable trust-prompt ids. These are PRD-stable public
- * `startup_prompt` labels (§5.4), so the union keeps a typo from compiling into
- * a contract-breaking label.
- */
-export type TrustPromptId =
-  | "workspace_trust"
-  | "skill_trust"
-  | "plugin_trust"
-  | "mcp_trust"
-  | "hook_trust";
-
-/**
- * One allowlisted trust prompt. The prompt and its answer are BOTH matched
- * within the same current frame: `visible` identifies the prompt, and `accept`
- * matches the exact affirmative option label in that same prompt. This prevents
- * a stale phrase from one frame pairing with a "Yes" from a different, current
- * dialog (which could auto-confirm an unrelated security gate).
+ * The shape of one allowlisted trust prompt. The prompt and its answer are BOTH
+ * matched within the same current frame: `visible` identifies the prompt, and
+ * `accept` matches the exact affirmative option label in that same prompt. This
+ * prevents a stale phrase from one frame pairing with a "Yes" from a different,
+ * current dialog (which could auto-confirm an unrelated security gate). The
+ * concrete `id` union is derived from the allowlist itself (see TrustPromptId).
  */
 export type TrustPromptSpec = {
   /** Stable id used as the automation label and for once-only dedupe. */
-  readonly id: TrustPromptId;
+  readonly id: string;
   readonly agent: ElwoodAgentKind;
   /** Identifies the prompt on the current rendered frame. Verified against the CLI versions below. */
   readonly visible: RegExp;
@@ -58,7 +47,7 @@ const useMcpOption = new RegExp(`^${notDecline}.*\\buse this(?:.*\\bMCP)? server
  * and `mcp` cover the CLI's first-run trust prompts for loading third-party
  * skills, plugins, and MCP servers under a full-trust launch.
  */
-export const trustPromptAllowlist: readonly TrustPromptSpec[] = [
+export const trustPromptAllowlist = [
   { id: "workspace_trust", agent: "claude", visible: /trust this folder/i, accept: yesOption },
   {
     id: "skill_trust",
@@ -93,7 +82,20 @@ export const trustPromptAllowlist: readonly TrustPromptSpec[] = [
     accept: yesOption,
     always: true,
   },
-];
+] as const satisfies readonly TrustPromptSpec[];
+
+/**
+ * The stable public `startup_prompt` trust labels (§5.4), derived from the
+ * allowlist so the two can never drift: deleting or renaming an entry updates
+ * this union, and a typo'd id fails `satisfies TrustPromptSpec` above.
+ */
+export type TrustPromptId = (typeof trustPromptAllowlist)[number]["id"];
+
+/** The trust label ids for one specific agent (e.g. Codex automation cannot use a Claude-only id). */
+export type TrustPromptIdFor<A extends ElwoodAgentKind> = Extract<
+  (typeof trustPromptAllowlist)[number],
+  { readonly agent: A }
+>["id"];
 
 /** Specs for one agent that stay UNANSWERED under the effective policy (block on the human). */
 export function blockingTrustSpecs(
@@ -103,6 +105,6 @@ export function blockingTrustSpecs(
   return trustPromptAllowlist.filter(
     // An `always`-answered prompt (hook trust) is auto-handled, so it must NOT be
     // classified as human-blocking. Others block only when autotrust is off.
-    (spec) => spec.agent === agent && !spec.always && !autotrust,
+    (spec) => spec.agent === agent && !("always" in spec && spec.always) && !autotrust,
   );
 }

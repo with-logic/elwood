@@ -7,7 +7,7 @@ import type { StartupPromptAutomation } from "../core/startup-automation.ts";
 import { TrustPromptResponder } from "../core/trust-responder.ts";
 
 export class ClaudeStartupPromptResponder {
-  private readonly trust: TrustPromptResponder;
+  private readonly trust: TrustPromptResponder<"claude">;
   private browserDeclined = false;
 
   constructor(autotrust: boolean) {

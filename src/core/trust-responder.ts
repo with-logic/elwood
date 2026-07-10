@@ -4,46 +4,53 @@
  */
 
 import type { ElwoodAgentKind } from "./activity.ts";
-import { type TrustPromptId, type TrustPromptSpec, trustPromptAllowlist } from "./trust-prompts.ts";
+import { type TrustPromptIdFor, trustPromptAllowlist } from "./trust-prompts.ts";
 
-export type TrustPromptAutomation = {
-  /** The allowlisted prompt id that was answered (a stable `startup_prompt` label). */
-  readonly prompt: TrustPromptId;
+/** The concrete allowlist entry type (preserves the derived literal `id`). */
+type TrustPromptEntry = (typeof trustPromptAllowlist)[number];
+
+/** An answered trust prompt; `prompt` is narrowed to the responder's agent. */
+export type TrustPromptAutomation<A extends ElwoodAgentKind = ElwoodAgentKind> = {
+  readonly prompt: TrustPromptIdFor<A>;
   readonly input: string;
 };
 
 /**
  * Answers each allowlisted trust prompt for one agent at most once, and only
- * when enabled (the caller's full-trust/autotrust posture). The prompt AND its
+ * when enabled (the caller's full-trust/autotrust posture). Generic in the agent
+ * so the automation's `prompt` is that agent's own label set. The prompt AND its
  * affirmative option are matched within the SAME current frame — never across an
  * accumulated history — so a stale phrase can't select a different dialog's
  * "Yes". Extending trust is adding an allowlist entry, never a broader match.
  */
-export class TrustPromptResponder {
+export class TrustPromptResponder<A extends ElwoodAgentKind> {
   private readonly enabled: boolean;
-  private readonly specs: readonly TrustPromptSpec[];
-  private readonly answered = new Set<TrustPromptId>();
+  private readonly specs: readonly TrustPromptEntry[];
+  private readonly answered = new Set<TrustPromptIdFor<A>>();
 
-  constructor(agent: ElwoodAgentKind, enabled = false) {
+  constructor(agent: A, enabled = false) {
     this.enabled = enabled;
     this.specs = trustPromptAllowlist.filter((spec) => spec.agent === agent);
   }
 
   /** `frame` MUST be the CURRENT rendered screen, not an accumulated buffer. */
-  handle(frame: string, write: (input: string) => void): TrustPromptAutomation | undefined {
+  handle(frame: string, write: (input: string) => void): TrustPromptAutomation<A> | undefined {
     for (const spec of this.specs) {
+      // `this.specs` was filtered to this agent in the constructor, so its ids
+      // are this agent's label set even though the array type is the full union.
+      const id = spec.id as TrustPromptIdFor<A>;
       // `always` prompts (Elwood's own hook bridge) answer regardless of
       // autotrust; every other trust prompt requires the caller's full-trust
       // posture so third-party trust is never granted implicitly.
-      if (!(this.enabled || spec.always)) continue;
-      if (this.answered.has(spec.id) || !spec.visible.test(frame)) continue;
+      if (!(this.enabled || ("always" in spec && spec.always))) continue;
+      if (this.answered.has(id) || !spec.visible.test(frame)) continue;
       // The answer must be THIS prompt's own affirmative option, present in the
       // same frame — not any generic "Yes" that might belong to another dialog.
       const option = acceptOption(frame, spec);
       if (option === undefined) continue;
       write(`${option}\r`);
-      this.answered.add(spec.id);
-      return { prompt: spec.id, input: option };
+      this.answered.add(id);
+      return { prompt: id, input: option };
     }
     return undefined;
   }
@@ -54,7 +61,7 @@ export function trustPromptVisible(text: string, agent: ElwoodAgentKind): boolea
   return trustPromptAllowlist.some((spec) => spec.agent === agent && spec.visible.test(text));
 }
 
-function acceptOption(frame: string, spec: TrustPromptSpec): string | undefined {
+function acceptOption(frame: string, spec: TrustPromptEntry): string | undefined {
   return numberedOptions(frame).find((option) => spec.accept.test(option.label))?.number;
 }
 
