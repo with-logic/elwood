@@ -64,7 +64,7 @@ export class TranscriptCursor {
 
   // True when the file changed size (grew OR truncated) since the last read, via
   // an ASYNC stat so an idle poll does no sync fs work on the loop (§9.2).
-  async hasGrown(): Promise<boolean> {
+  async needsScan(): Promise<boolean> {
     const size = (await stat(this.path)).size;
     return size !== this.offset;
   }

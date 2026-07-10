@@ -3,7 +3,7 @@
  * Implements PRD §5.7 and §8.2.
  */
 
-import { recordSessionWarnings, type WarningEmitter } from "../core/session-warnings.ts";
+import { recordSessionWarnings } from "../core/session-warnings.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { SessionRecord } from "../state/store.ts";
@@ -15,5 +15,10 @@ export function recordCodexWarnings(
   persist: (record: SessionRecord) => void,
   emitter: TypedEmitter<CodexEventMap>,
 ): void {
-  recordSessionWarnings(record, warnings, persist, emitter as WarningEmitter);
+  // No cast: each callback is the emitter's own `emit` bound to a correlated
+  // event name, so a map/payload drift is a compile error here.
+  recordSessionWarnings(record, warnings, persist, {
+    warning: (event) => emitter.emit("warning", event),
+    activity: (event) => emitter.emit("activity", event),
+  });
 }

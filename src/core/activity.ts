@@ -83,7 +83,7 @@ export function activityFromClaudeHook(
   return shared ?? { ...base, kind: "hook", label: event.hook_event_name };
 }
 
-/** Codex hook → activity. Codex has no transcript-backed path, so its tool hooks and stop message remain its source. */
+/** Codex hook → activity. Codex tool activity comes from its HOOKS (unlike Claude, which sources tools from the transcript); a separate `codex:transcript` path emits thinking/status, not these tool events. */
 export function activityFromCodexHook(
   elwoodSessionId: string,
   event: CodexHookEvent,
@@ -92,10 +92,10 @@ export function activityFromCodexHook(
   const shared = sharedHookActivity(base, event);
   if (shared) return shared;
   if (event.hook_event_name === "PreToolUse" || event.hook_event_name === "PermissionRequest") {
-    return toolActivity(base, "tool_call", meta.hookToolInput(event));
+    return toolActivity(base, "tool_call", event.tool_name, meta.hookToolInput(event));
   }
   if (event.hook_event_name === "PostToolUse") {
-    return toolActivity(base, "tool_result", meta.hookToolOutput(event));
+    return toolActivity(base, "tool_result", event.tool_name, meta.hookToolOutput(event));
   }
   const text = meta.stopMessage(event);
   if (text !== undefined) {
@@ -168,8 +168,10 @@ function withText(
 function toolActivity(
   base: Omit<ElwoodActivityEvent, "kind" | "label" | "text">,
   kind: "tool_call" | "tool_result",
+  toolName: string,
   io: Partial<ElwoodActivityEvent>,
 ): ElwoodActivityEvent {
-  // Callers are Codex tool events, which always carry `tool_name`.
-  return { ...base, kind, label: base.toolName as string, ...io };
+  // `toolName` is the narrowed Codex tool event's required `tool_name` — a proven
+  // string, not an assertion off the base, so the label can never be undefined.
+  return { ...base, kind, label: toolName, ...io };
 }

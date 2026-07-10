@@ -103,11 +103,11 @@ export class ClaudeTranscriptWatcher {
     this.polling = true;
     try {
       for (const cursor of this.cursors.values()) {
-        const grown = await this.readFsAsync(cursor.path, () => cursor.hasGrown());
+        const changed = await this.readFsAsync(cursor.path, () => cursor.needsScan());
         // Re-check AFTER the await: finish() may have run during the async stat,
         // and a post-exit emit would violate the terminal:exit ordering (§5.4).
         if (this.finished) return;
-        if (grown) this.scanCursor(cursor);
+        if (changed) this.scanCursor(cursor);
       }
     } finally {
       this.polling = false;

@@ -8,7 +8,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { recordSessionWarnings, type WarningEmitter } from "../../src/core/session-warnings.ts";
+import { recordSessionWarnings, type WarningEmit } from "../../src/core/session-warnings.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
 import { createSessionRecord, type SessionRecord } from "../../src/state/store.ts";
 
@@ -35,37 +35,38 @@ function dropWarning(count: number): ElwoodWarningEvent {
 function harness() {
   const persisted: SessionRecord[] = [];
   const emitted: string[] = [];
-  const emitter: WarningEmitter = {
-    emit: (event: "warning" | "activity") => emitted.push(event),
+  const emit: WarningEmit = {
+    warning: () => emitted.push("warning"),
+    activity: () => emitted.push("activity"),
   };
-  return { persisted, emitted, emitter, persist: (r: SessionRecord) => persisted.push(r) };
+  return { persisted, emitted, emit, persist: (r: SessionRecord) => persisted.push(r) };
 }
 
 describe("recordSessionWarnings", () => {
   test("a first warning persists once and emits warning + activity", () => {
-    const { persisted, emitted, emitter, persist } = harness();
-    recordSessionWarnings(record(), [dropWarning(1)], persist, emitter);
+    const { persisted, emitted, emit, persist } = harness();
+    recordSessionWarnings(record(), [dropWarning(1)], persist, emit);
     expect(persisted).toHaveLength(1);
     expect(emitted).toEqual(["warning", "activity"]);
   });
 
   test("an identical repeat is de-duplicated: no persist, no emit", () => {
-    const { persisted, emitted, emitter, persist } = harness();
+    const { persisted, emitted, emit, persist } = harness();
     const base = record();
     // Seed the snapshot with the warning, then feed the SAME warning again.
     const seeded = { ...base, warnings: [dropWarning(1)] };
-    recordSessionWarnings(seeded, [dropWarning(1)], persist, emitter);
+    recordSessionWarnings(seeded, [dropWarning(1)], persist, emit);
     expect(persisted).toEqual([]);
     expect(emitted).toEqual([]);
   });
 
   test("an updated count for the same key persists but does not re-emit", () => {
-    const { persisted, emitted, emitter, persist } = harness();
+    const { persisted, emitted, emit, persist } = harness();
     const base = record();
     // Same warning key, higher count: the snapshot changes (persist) but it is
     // not a NEW key, so no duplicate warning/activity event fires.
     const seeded = { ...base, warnings: [dropWarning(1)] };
-    recordSessionWarnings(seeded, [dropWarning(9)], persist, emitter);
+    recordSessionWarnings(seeded, [dropWarning(9)], persist, emit);
     expect(persisted).toHaveLength(1);
     expect(persisted[0]?.warnings[0]).toMatchObject({ droppedCount: 9 });
     expect(emitted).toEqual([]);

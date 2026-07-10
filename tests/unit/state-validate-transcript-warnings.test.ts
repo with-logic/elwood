@@ -34,11 +34,18 @@ describe("C-CLAUDE-15 transcript warning validation", () => {
       transcriptPath: "/tmp/t.jsonl",
       raw: "count=3",
     };
-    // Valid survives round-trip; a non-numeric count is rejected, not coerced.
+    // Valid survives round-trip; non-numeric, negative, and fractional counts are
+    // all rejected (a count is a non-negative safe integer), never coerced.
     expect(validateSessionRecord({ ...record, warnings: [warning] }, root, id)).not.toBeNull();
-    expect(
-      validateSessionRecord({ ...record, warnings: [{ ...warning, droppedCount: "3" }] }, root, id),
-    ).toBeNull();
+    for (const bad of ["3", -1, 1.5]) {
+      expect(
+        validateSessionRecord(
+          { ...record, warnings: [{ ...warning, droppedCount: bad }] },
+          root,
+          id,
+        ),
+      ).toBeNull();
+    }
   });
 
   test("accepts and gates the transcript_read_error warning", () => {

@@ -131,8 +131,8 @@ function isWarning(value: unknown): value is ElwoodWarningEvent {
       value["source"] === "terminal" &&
       isString(value["elwoodSessionId"]) &&
       isString(value["message"]) &&
-      isNumber(value["droppedCount"]) &&
-      isNumber(value["droppedBytes"]) &&
+      isCount(value["droppedCount"]) &&
+      isCount(value["droppedBytes"]) &&
       isString(value["transcriptPath"]) &&
       isString(value["raw"])
     );
@@ -143,7 +143,7 @@ function isWarning(value: unknown): value is ElwoodWarningEvent {
       value["source"] === "terminal" &&
       isString(value["elwoodSessionId"]) &&
       isString(value["message"]) &&
-      isNumber(value["errorCount"]) &&
+      isCount(value["errorCount"]) &&
       isString(value["lastErrorCode"]) &&
       isString(value["transcriptPath"]) &&
       isString(value["raw"])
@@ -174,8 +174,9 @@ function isString(value: unknown): value is string {
   return typeof value === "string";
 }
 
-function isNumber(value: unknown): value is number {
-  return typeof value === "number";
+/** A persisted count/byte total: a non-negative SAFE integer, never fractional or negative. */
+function isCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function isStringArray(value: unknown): boolean {
