@@ -49,35 +49,11 @@ export type ElwoodActivityEvent = {
   readonly raw?: unknown;
 };
 
-export function activityFromStatus(
-  agent: ElwoodAgentKind,
-  elwoodSessionId: string,
-  status: ElwoodSessionStatus,
-): ElwoodActivityEvent {
-  return {
-    elwoodSessionId,
-    agent,
-    source: "lifecycle",
-    kind: "status",
-    label: status,
-    status,
-  };
-}
-
-export function activityFromTerminalExit(
-  agent: ElwoodAgentKind,
-  elwoodSessionId: string,
-  exitCode: number,
-): ElwoodActivityEvent {
-  return {
-    elwoodSessionId,
-    agent,
-    source: "lifecycle",
-    kind: "terminal_exit",
-    label: `${exitCode}`,
-    exitCode,
-  };
-}
+export {
+  activityFromReapFailure,
+  activityFromStatus,
+  activityFromTerminalExit,
+} from "./activity-lifecycle.ts";
 
 /** Hook events both adapters map identically; returns undefined for the rest. */
 function sharedHookActivity(

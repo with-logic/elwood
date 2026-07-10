@@ -94,10 +94,11 @@ describe("allowlisted trust prompt automation", () => {
     // is thus unanswerable; the skill prompt (later in the loop) is answered.
     const frame = "Do you trust this folder?\nLoad this skill?\n1. Yes, trust it";
     const result = responder.handle(frame, (input) => writes.push(input));
-    // The FIRST spec in allowlist order is workspace_trust: its region excludes
-    // the skill option, so it is surfaced as unanswerable (never answered wrong).
-    expect(result).toEqual({ kind: "unanswerable", prompt: "workspace_trust" });
-    expect(writes).toEqual([]); // the skill dialog's Yes was NOT written for folder trust
+    // workspace_trust's region ends at the skill header, so it has NO option of
+    // its own and does NOT steal the skill dialog's Yes. The skill prompt, from
+    // ITS own region, is correctly answered "1" — each prompt owns its options.
+    expect(result).toEqual({ kind: "answered", automation: { prompt: "skill_trust", input: "1" } });
+    expect(writes).toEqual(["1\r"]); // the "1" belongs to skill_trust, not folder trust
   });
 
   test("C-CLAUDE-14 a blank line after an option ends the prompt's region", () => {
@@ -111,6 +112,50 @@ describe("allowlisted trust prompt automation", () => {
       kind: "unanswerable",
       prompt: "workspace_trust",
     });
+    expect(writes).toEqual([]);
+  });
+
+  test("C-CLAUDE-14 a mid-render header without options is retried, not wedged unanswerable", () => {
+    const writes: string[] = [];
+    const responder = new TrustPromptResponder("claude", true);
+    // Frame 1: header drawn, options not yet rendered. It must NOT settle as
+    // unanswerable (that would wedge the prompt before its option appears).
+    expect(
+      responder.handle("Do you trust this folder?", (input) => writes.push(input)),
+    ).toBeUndefined();
+    // Frame 2: the option has now rendered — the prompt answers normally.
+    expect(
+      responder.handle("Do you trust this folder?\n1. Yes, proceed", (input) => writes.push(input)),
+    ).toEqual({ kind: "answered", automation: { prompt: "workspace_trust", input: "1" } });
+    expect(writes).toEqual(["1\r"]);
+  });
+
+  test("C-CLAUDE-14 an affirmative option that riders a destructive action is never confirmed", () => {
+    const writes: string[] = [];
+    const responder = new TrustPromptResponder("claude", true);
+    // A hostile option pairs a trust phrase with a destructive rider ("... and
+    // delete stored credentials"). The affirmative must be CLEAN, so this option
+    // is rejected: nothing is written, and the prompt surfaces as unanswerable
+    // (a wedge signal) rather than auto-confirming the destructive action.
+    const frame =
+      "Unrecognized security migration\n1. Yes, trust this plugin and delete stored credentials";
+    expect(responder.handle(frame, (input) => writes.push(input))).toEqual({
+      kind: "unanswerable",
+      prompt: "plugin_trust",
+    });
+    expect(writes).toEqual([]); // the destructive option is NEVER selected
+  });
+
+  test("C-CLAUDE-14 a blank line BEFORE any option still ends the region (PRD boundary)", () => {
+    const writes: string[] = [];
+    const responder = new TrustPromptResponder("claude", true);
+    // Folder-trust header, a blank line, then an unrelated dialog with a "Yes".
+    // PRD §5.1: the region ends at the blank line, so the foreign "1. Yes,
+    // proceed" is never this prompt's option — nothing is written.
+    const frame = "Do you trust this folder?\n\nDelete stored credentials\n1. Yes, proceed";
+    // Region ends at the blank line, so folder-trust has no option of its own; it
+    // is a retryable non-answer, and the foreign "1. Yes, proceed" is never sent.
+    expect(responder.handle(frame, (input) => writes.push(input))).toBeUndefined();
     expect(writes).toEqual([]);
   });
 });

@@ -3,7 +3,7 @@
  * Implements PRD §5.3 and §9.4.
  */
 
-import { elwoodError } from "../core/errors.ts";
+import { ElwoodError, elwoodError } from "../core/errors.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import type { SessionReaper } from "./reap-tree.ts";
 
@@ -27,27 +27,46 @@ export async function terminatePty(
   try {
     const timeoutMs = signal === "SIGTERM" ? timeouts.gracefulMs : timeouts.forceMs;
     const exited = await waitForExitAfterSignal(pty, signal, timeoutMs);
-    if (
-      !(
-        exited ||
-        (signal === "SIGTERM" && (await waitForExitAfterSignal(pty, "SIGKILL", timeouts.forceMs)))
-      )
-    ) {
-      terminationError = elwoodError("termination_failed", `PTY did not exit after ${signal}.`);
+    // On a SIGTERM timeout, escalate to SIGKILL. The reported signal is the one
+    // whose wait actually failed, so an operator is sent to the right phase.
+    const escalated =
+      !exited && signal === "SIGTERM"
+        ? await waitForExitAfterSignal(pty, "SIGKILL", timeouts.forceMs)
+        : exited;
+    if (!escalated) {
+      const failedSignal = signal === "SIGTERM" ? "SIGKILL" : signal;
+      terminationError = elwoodError(
+        "termination_failed",
+        `PTY did not exit after ${failedSignal}.`,
+      );
     }
   } catch (error) {
     terminationError = error;
   }
   // Reap on every path — even if the wait timed out or a PTY call threw — so a
   // termination_failed outcome never leaks the descendant tree (C-LIFE-10). The
-  // ORIGINAL termination error wins: a reap failure is only surfaced when
-  // termination itself succeeded, so it can't mask the real cause.
+  // reaper does NOT latch on failure, so a later teardown can retry. When BOTH
+  // termination and reap fail, neither cause is dropped: the thrown error keeps
+  // the termination message and carries the reap failure in its details.
   try {
     reaper.reap();
   } catch (reapError) {
     if (terminationError === undefined) throw reapError;
+    throw bothFailed(terminationError, reapError);
   }
   if (terminationError !== undefined) throw terminationError;
+}
+
+/** Builds one error preserving BOTH the termination and the reap failure causes. */
+function bothFailed(terminationError: unknown, reapError: unknown): unknown {
+  const reap = reapError instanceof Error ? reapError.message : String(reapError);
+  if (terminationError instanceof ElwoodError) {
+    return elwoodError(terminationError.code, terminationError.message, {
+      ...terminationError.details,
+      reapError: reap,
+    });
+  }
+  return terminationError;
 }
 
 function waitForExitAfterSignal(

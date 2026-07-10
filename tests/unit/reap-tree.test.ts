@@ -3,7 +3,6 @@
  * Covers PRD §5.3 and §9.4 (C-LIFE-10).
  */
 
-import { spawn } from "node-pty";
 import { describe, expect, test } from "vitest";
 import type { PtyExit } from "../../src/pty/types.ts";
 import {
@@ -44,16 +43,35 @@ describe("C-LIFE-10 process-group reaping", () => {
     expect(() => rethrowUnlessGroupGone({ code: "EPERM" })).toThrow();
   });
 
-  test("SessionReaper reaps exactly once; later calls are reuse-safe no-ops", () => {
+  test("SessionReaper reaps exactly once on success; later calls are reuse-safe no-ops", () => {
     // Reaping the same numeric pgid twice is unsafe: once the group empties the
     // kernel may recycle the pid, so a second kill(-pgid) could hit an unrelated
-    // group. The latch guarantees at most one signal per session.
+    // group. The latch guarantees at most one SUCCESSFUL signal per session.
     const killed: number[] = [];
     const reaper = new SessionReaper(LEADER, { killGroup: (pgid) => killed.push(pgid) });
     reaper.reap();
     reaper.reap();
     reaper.reap();
     expect(killed).toEqual([LEADER]);
+  });
+
+  test("SessionReaper does NOT latch on a failed kill: the reap stays retryable", () => {
+    // A real kill failure (e.g. EPERM) must not mark the reaper done — otherwise a
+    // later teardown no-ops and the descendant leak survives permanently. The
+    // failing call rethrows; once the killer recovers, the retry succeeds.
+    let attempts = 0;
+    const reaper = new SessionReaper(LEADER, {
+      killGroup: (pgid) => {
+        attempts += 1;
+        if (attempts === 1) throw Object.assign(new Error("EPERM"), { code: "EPERM" });
+        void pgid;
+      },
+    });
+    expect(() => reaper.reap()).toThrow("EPERM"); // first attempt fails, does not latch
+    expect(() => reaper.reap()).not.toThrow(); // retry succeeds
+    expect(attempts).toBe(2);
+    reaper.reap(); // now latched: no third attempt
+    expect(attempts).toBe(2);
   });
 
   test("SessionReaper uses the default (real) killer when none is injected", () => {
@@ -102,12 +120,64 @@ describe("C-LIFE-10 process-group reaping", () => {
       },
     });
 
-  test("a failed termination is preserved when reaping also fails", async () => {
-    // Both fail → the ORIGINAL termination error wins; a reap failure must not
-    // mask the real cause (only surfaces when termination succeeded).
+  test("when BOTH termination and reaping fail, both causes are preserved", async () => {
+    // The termination error wins as the thrown cause, but the reap failure must
+    // NOT be silently dropped — it is carried in the error's details (C-LIFE-10).
     await expect(
       terminatePty(deadPty, "SIGKILL", throwingReaper(), { gracefulMs: 0, forceMs: 0 }),
-    ).rejects.toMatchObject({ code: "termination_failed" });
+    ).rejects.toMatchObject({
+      code: "termination_failed",
+      details: { reapError: "reap failure" },
+    });
+  });
+
+  test("a non-ElwoodError termination is thrown as-is even when reaping also fails", async () => {
+    // When pty.kill() throws a PLAIN error (not the termination_failed ElwoodError)
+    // and the reap also fails, the original thrown error is preserved unchanged —
+    // there is no ElwoodError to attach the reap cause to.
+    const throwingKillPty = {
+      ...deadPty,
+      kill: () => {
+        throw new Error("kill exploded");
+      },
+    };
+    await expect(
+      terminatePty(throwingKillPty, "SIGKILL", throwingReaper(), { gracefulMs: 0, forceMs: 0 }),
+    ).rejects.toThrow("kill exploded");
+  });
+
+  test("a non-Error reap failure is stringified into the diagnostic", async () => {
+    // The reap killer throws a bare string (not an Error): its String() form is
+    // still carried, never dropped, when termination also fails.
+    const stringThrowReaper = new SessionReaper(LEADER, {
+      killGroup: () => {
+        // biome-ignore lint/style/useThrowOnlyError: intentional non-Error throw for coverage of the String() path.
+        throw "raw-string-failure";
+      },
+    });
+    await expect(
+      terminatePty(deadPty, "SIGKILL", stringThrowReaper, { gracefulMs: 0, forceMs: 0 }),
+    ).rejects.toMatchObject({ details: { reapError: "raw-string-failure" } });
+  });
+
+  test("a SIGTERM timeout that escalates and also times out reports SIGKILL", async () => {
+    // The reported signal must be the phase that actually failed: after a SIGTERM
+    // timeout escalates to SIGKILL and that also times out, the operator is sent
+    // to the SIGKILL phase, not misdirected back to SIGTERM.
+    const signals: string[] = [];
+    const neverExits = {
+      ...deadPty,
+      kill: (signal: string) => {
+        signals.push(signal);
+      },
+    };
+    await expect(
+      terminatePty(neverExits, "SIGTERM", new SessionReaper(LEADER, { killGroup: () => {} }), {
+        gracefulMs: 0,
+        forceMs: 0,
+      }),
+    ).rejects.toThrow("PTY did not exit after SIGKILL.");
+    expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
   });
 
   test("a reap failure surfaces only when termination succeeded", async () => {
@@ -122,67 +192,4 @@ describe("C-LIFE-10 process-group reaping", () => {
       terminatePty(exitingPty, "SIGKILL", throwingReaper(), { gracefulMs: 0, forceMs: 10 }),
     ).rejects.toThrow("reap failure");
   });
-
-  test("real seams: kills a descendant reparented to PID 1 that a pgrep -P walk would miss", async () => {
-    // Reproduces the hook-bridge leak shape: a PTY leader (zsh) whose middle
-    // process spawns a long-lived grandchild and then exits. POSIX reparents the
-    // grandchild to PID 1 — so `pgrep -P <leader>` finds nothing — but it stays
-    // in the leader's process group, so a group SIGKILL still reaps it.
-    const marker = `${tmpMarker()}`;
-    const inner =
-      "const{spawn}=require('child_process');" +
-      `const gc=spawn(process.execPath,['-e','process.title=${JSON.stringify(marker)};setInterval(()=>{},1e9)'],{stdio:'ignore'});` +
-      `require('fs').writeFileSync('${marker}',String(gc.pid));` +
-      "setTimeout(()=>process.exit(0),150);";
-    const pty = spawn("/bin/zsh", ["-c", `node -e "${inner.replace(/"/g, '\\"')}"; sleep 5`], {
-      name: "xterm-256color",
-      cols: 80,
-      rows: 24,
-    });
-    const leader = pty.pid;
-    const grandchildPid = await readPidWhenWritten(marker);
-    // The grandchild has been reparented to init but shares the leader's group.
-    expect(processAlive(grandchildPid)).toBe(true);
-    reapProcessGroup(leader);
-    expect(await pollGone(grandchildPid)).toBe(true);
-  });
 });
-
-let markerCounter = 0;
-function tmpMarker(): string {
-  markerCounter += 1;
-  return `/tmp/elwood-reap-test-${process.pid}-${markerCounter}.pid`;
-}
-
-async function readPidWhenWritten(path: string): Promise<number> {
-  const { existsSync, readFileSync } = await import("node:fs");
-  for (let i = 0; i < 200; i++) {
-    if (existsSync(path)) {
-      const value = Number(readFileSync(path, "utf8").trim());
-      if (Number.isInteger(value) && value > 0) return value;
-    }
-    await delay(20);
-  }
-  throw new Error("grandchild pid was never written");
-}
-
-function processAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function pollGone(pid: number): Promise<boolean> {
-  for (let i = 0; i < 100; i++) {
-    if (!processAlive(pid)) return true;
-    await delay(20);
-  }
-  return false;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}

@@ -60,10 +60,9 @@ describe("Codex startup prompt responder", () => {
     // The sharper regression: within ONE rendered frame the hook-trust phrase is
     // visible ABOVE an unrelated dialog whose option is "1. Yes, continue". A
     // generic yes-matcher scanning the whole frame would send 1 to the WRONG
-    // dialog. Hook trust's option is specific ("Trust all and continue"), so a
-    // credential dialog's "Yes, continue" is not its option: nothing is written.
-    // The prompt is recognized but its real option is absent, so it is surfaced
-    // as unanswerable (a wedge signal) rather than answered against the wrong one.
+    // dialog. The foreign "?" line ends the hook-trust region, so hook trust has
+    // NO option of its own in-frame: nothing is written and no automation fires.
+    // The credential dialog's "Yes, continue" is never selected.
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder("s1", true);
     const result = responder.handle(
@@ -71,7 +70,7 @@ describe("Codex startup prompt responder", () => {
       (input) => writes.push(input),
     );
     expect(writes).toEqual([]); // the foreign dialog's "Yes" is never selected
-    expect(result.automations).toEqual([{ prompt: "hook_trust", input: "", unanswerable: true }]);
+    expect(result.automations).toEqual([]);
   });
 
   test("C-CODEX-15 a SAME-frame foreign 'Yes' never auto-confirms DIRECTORY trust", () => {
@@ -86,9 +85,7 @@ describe("Codex startup prompt responder", () => {
       (input) => writes.push(input),
     );
     expect(writes).toEqual([]);
-    expect(result.automations).toEqual([
-      { prompt: "workspace_trust", input: "", unanswerable: true },
-    ]);
+    expect(result.automations).toEqual([]);
   });
 
   test("C-CODEX-15 does not trust the DIRECTORY prompt without autotrust", () => {

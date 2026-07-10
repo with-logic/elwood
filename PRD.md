@@ -761,10 +761,14 @@ MUST be matched within the SAME current rendered frame, never across accumulated
 screen history — a stale phrase from an earlier frame must never pair with a
 "Yes" option belonging to a different, current dialog. Matching MUST further be
 scoped to the prompt's OWN region within that frame: the affirmative option is
-selected only from the lines that belong to the recognized prompt (from its
-header up to a blank line or the header of a different allowlisted prompt), and
-each prompt's affirmative-option pattern MUST be specific enough that a generic
-"Yes" from an unrelated dialog rendered in the same frame is never selected. If an allowlisted prompt
+selected only from the lines that belong to the recognized prompt (its contiguous
+dialog block, bounded by a blank line, a fresh question line, or a different
+allowlisted prompt), and each prompt's affirmative-option pattern MUST be specific
+enough that a generic "Yes" from an unrelated dialog rendered in the same frame is
+never selected. The selected affirmative option MUST additionally be a CLEAN
+affirmative: an option label that riders a destructive or irreversible action
+(for example "Yes, trust this plugin and delete stored credentials") MUST NOT be
+auto-selected, even if it matches the prompt's affirmative pattern. If an allowlisted prompt
 is recognized but its verified affirmative option is not present, Elwood MUST NOT
 answer a substitute option; instead it emits an `attention` activity (labelled
 with the prompt id) so the wedge is visible to the parent app rather than silent,

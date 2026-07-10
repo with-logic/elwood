@@ -72,12 +72,14 @@ export function rethrowUnlessGroupGone(error: unknown): void {
 }
 
 /**
- * Owns a single PTY leader's group reap. The reap MUST happen at most once per
- * session: `stop()` then a later `teardown()` both want to guarantee the group
- * is gone, but signaling the same numeric pgid twice is unsafe — once the group
- * is empty the kernel may recycle the pid, and a second `kill(-pgid)` would hit
- * an unrelated group. This latch pins the leader pid at construction and reaps
- * exactly once; every later call is a no-op that returns the recorded result.
+ * Owns a single PTY leader's group reap. A SUCCESSFUL reap MUST happen at most
+ * once: `stop()` then a later `teardown()` both want to guarantee the group is
+ * gone, but signaling the same numeric pgid twice is unsafe — once the group is
+ * empty the kernel may recycle the pid, and a second `kill(-pgid)` would hit an
+ * unrelated group. So the latch is set only AFTER the kill succeeds (an already
+ * empty group's `ESRCH` is normalized to success by `reapProcessGroup`). A real
+ * failure (e.g. EPERM) leaves the latch OPEN and rethrows, so a later teardown
+ * call can retry rather than leaving the descendant leak permanently unreaped.
  */
 export class SessionReaper {
   private readonly leaderPid: number;
@@ -89,10 +91,14 @@ export class SessionReaper {
     this.ops = ops;
   }
 
-  /** Reap the group once; subsequent calls no-op. Idempotent and reuse-safe. */
+  /**
+   * Reap the group once it succeeds; a successful call latches so subsequent
+   * calls no-op (no recycled-pgid double-kill). A failed kill does NOT latch and
+   * rethrows, keeping the reap retryable on a later lifecycle call.
+   */
   reap(): void {
     if (this.done) return;
-    this.done = true;
     reapProcessGroup(this.leaderPid, this.ops);
+    this.done = true;
   }
 }

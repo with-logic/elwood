@@ -1,16 +1,10 @@
 /** Shared adapter session behavior: lifecycle, input, command surface. Implements PRD §5.3, §5.7. */
 
-import { activityFromStatus, type ElwoodAgentKind } from "../core/activity.ts";
-import { compactCommand, sessionCompact } from "../core/compact.ts";
+import type { ElwoodAgentKind } from "../core/activity.ts";
+import { activityFromReapFailure, activityFromStatus } from "../core/activity.ts";
 import { ControlQueue } from "../core/control-queue.ts";
 import { elwoodError } from "../core/errors.ts";
-import {
-  listPickerModels,
-  type ModelPickerIo,
-  type ModelPickerSpec,
-  pickerTimeout,
-  setPickerModel,
-} from "../core/model-picker.ts";
+import type { ModelPickerIo, ModelPickerSpec } from "../core/model-picker.ts";
 import type { AgentModelOption } from "../core/model-rows.ts";
 import { type PasteGuard, writePastedPrompt, writeQueuedInput } from "../core/session-input.ts";
 import type { TerminalReplayBuffer } from "../core/terminal-replay.ts";
@@ -26,6 +20,7 @@ import {
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { SessionReaper } from "./reap-tree.ts";
 import { agentTitles, type SessionStatusEmitter } from "./session-base-types.ts";
+import { compactCommand, runCompact, runListModels, runSetModel } from "./session-commands.ts";
 import { terminalStatuses } from "./session-status.ts";
 import {
   SessionStatusEngine,
@@ -43,12 +38,11 @@ export abstract class AgentSessionBase {
   protected abstract readonly picker: ModelPickerSpec;
   private readonly agent: ElwoodAgentKind;
   private readonly pty: PtyProcess;
-  // One-shot reaper: at most one group signal/session, so a later call can't re-signal a recycled pgid (C-LIFE-10).
   private readonly reaper: SessionReaper;
   private readonly statusEvents: SessionStatusEmitter;
   private readonly terminalReplay: TerminalReplayBuffer;
   private cleanupPromise: Promise<void> | undefined;
-  private pendingShutdown: ShutdownEvidence | undefined; // Claims the exit for a controlled shutdown.
+  private pendingShutdown: ShutdownEvidence | undefined;
   protected readonly controlQueue = new ControlQueue(
     (input, mode) => writeQueuedInput(this.terminal, input, mode, this.pasteGuard()),
     () => this.notRunningError(),
@@ -112,19 +106,18 @@ export abstract class AgentSessionBase {
     });
   }
   compact(options?: { readonly timeoutMs?: number }): Promise<void> {
-    return this.inSession(() => {
-      const submit = () => this.controlQueue.send(compactCommand, "compact");
-      const nudge = () => this.terminal.sendInput("\r");
-      return sessionCompact(this.statusEvents, submit, nudge, options?.timeoutMs);
-    });
+    const submit = () => this.controlQueue.send(compactCommand, "compact");
+    const nudge = () => this.terminal.sendInput("\r");
+    return this.inSession(() => runCompact(this.statusEvents, submit, nudge, options));
   }
   listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]> {
-    const io = this.pickerIo("list_models");
-    return this.inSession(() => listPickerModels(io, this.picker, pickerTimeout(options)));
+    return this.inSession(() => runListModels(this.pickerIo("list_models"), this.picker, options));
   }
   setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
-    const io = this.pickerIo("set_model");
-    return this.inSession(() => setPickerModel(io, this.picker, id, pickerTimeout(options)));
+    return this.inSession(() => runSetModel(this.pickerIo("set_model"), this.picker, id, options));
+  }
+  private pickerIo(k: "list_models" | "set_model"): ModelPickerIo {
+    return { terminal: this.terminal, submit: (c) => this.controlQueue.send(c, k) };
   }
   stop(): Promise<void> {
     return this.shutdown("SIGTERM", "stop_completed");
@@ -133,11 +126,11 @@ export abstract class AgentSessionBase {
     return this.shutdown("SIGKILL", "kill_completed");
   }
   async teardown(): Promise<void> {
-    this.pendingShutdown ??= "teardown_completed"; // Claim the exit as teardown.
+    this.pendingShutdown ??= "teardown_completed";
     const live = () => !terminalStatuses.has(this.status);
     await runTeardownSteps([
       () => (live() ? terminatePty(this.pty, "SIGKILL", this.reaper) : undefined),
-      () => this.reaper.reap(), // No-op if terminatePty already reaped (one-shot).
+      () => this.reaper.reap(), // No-op once latched; retries a prior failed reap.
       () => this.cleanupRuntime(),
       () => void this.submitEvidence("teardown_completed"),
       () => removeSessionDir(this.record),
@@ -147,8 +140,18 @@ export abstract class AgentSessionBase {
     return this.statusEngine.submit(kind);
   }
   submitExit(): StatusDecision {
-    this.reaper.reap(); // Reap on exit — even unsolicited — to avoid pgid reuse (C-LIFE-10). One-shot.
-    return this.statusEngine.submit(this.pendingShutdown ?? "terminal_exited");
+    // Terminal evidence FIRST (C-LIFE-10): exited status even if the reap fails.
+    const decision = this.statusEngine.submit(this.pendingShutdown ?? "terminal_exited");
+    this.reapSurvivors();
+    return decision;
+  }
+  private reapSurvivors(): void {
+    try {
+      this.reaper.reap();
+    } catch (e) {
+      const a = activityFromReapFailure(this.agent, this.elwoodSessionId, e);
+      this.statusEvents.emit("activity", a);
+    }
   }
   statusDecisions(): readonly StatusDecision[] {
     return this.statusEngine.decisions();
@@ -163,8 +166,8 @@ export abstract class AgentSessionBase {
     if (event === "terminal:data") this.terminalReplay.replay(handler as never);
     replayWarningSnapshots(this.record.warnings, event, handler as (event: never) => void);
   }
-  // Rejects (never throws) after a terminal status, per C-API-25.
   private inSession<T>(work: () => Promise<T> | T): Promise<T> {
+    // Rejects (never throws) after a terminal status (C-API-25).
     if (terminalStatuses.has(this.status)) return Promise.reject(this.notRunningError());
     return Promise.resolve(work());
   }
@@ -176,15 +179,12 @@ export abstract class AgentSessionBase {
     this.cleanupPromise ??= this.stopRuntime();
     return this.cleanupPromise;
   }
-  private pickerIo(kind: "list_models" | "set_model"): ModelPickerIo {
-    return { terminal: this.terminal, submit: (command) => this.controlQueue.send(command, kind) };
-  }
   private async shutdown(signal: "SIGTERM" | "SIGKILL", evidence: ShutdownEvidence) {
     const wasExited = this.status === "exited";
     this.pendingShutdown ??= evidence; // Claim the exit before signaling.
-    if (wasExited)
-      this.reaper.reap(); // Leader gone; reap survivors (one-shot).
-    else await terminatePty(this.pty, signal, this.reaper); // Reaps on every path.
+    // Already exited: reap survivors best-effort; else terminatePty reaps + surfaces.
+    if (wasExited) this.reapSurvivors();
+    else await terminatePty(this.pty, signal, this.reaper);
     await this.cleanupRuntime();
     if (!wasExited) this.submitEvidence(evidence);
   }

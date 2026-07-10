@@ -9,6 +9,7 @@ import {
   activityFromCodexHook,
   activityFromCodexTranscript,
   activityFromHookError,
+  activityFromReapFailure,
   activityFromStatus,
   activityFromTerminalExit,
 } from "../../src/core/activity.ts";
@@ -157,6 +158,15 @@ describe("Elwood activity events", () => {
       kind: "terminal_exit",
       exitCode: 0,
     });
+  });
+
+  test("C-LIFE-10 a reap failure becomes a warning activity (Error and non-Error causes)", () => {
+    const fromError = activityFromReapFailure("claude", "elwood-9", new Error("EPERM"));
+    expect(fromError).toMatchObject({ kind: "warning", label: "reap_failed" });
+    expect(fromError.text).toContain("EPERM");
+    // A non-Error cause is stringified rather than dropped.
+    const fromString = activityFromReapFailure("codex", "elwood-9", "raw-failure");
+    expect(fromString.text).toContain("raw-failure");
   });
 
   test("C-API-17 terminal replay trims oldest chunks over the byte limit", () => {

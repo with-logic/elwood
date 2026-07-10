@@ -92,8 +92,10 @@ export const trustPromptAllowlist = [
 
 /**
  * The stable public `startup_prompt` trust labels (§5.4), derived from the
- * allowlist so the two can never drift: deleting or renaming an entry updates
- * this union, and a typo'd id fails `satisfies TrustPromptSpec` above.
+ * allowlist so the two can never drift: deleting, adding, or renaming an entry
+ * updates this union automatically. (Ids are `string` in `TrustPromptSpec`, so a
+ * typo does not fail compilation here — it simply widens this derived union; the
+ * per-agent `TrustPromptIdFor` narrowing is what keeps agents' labels distinct.)
  */
 export type TrustPromptId = (typeof trustPromptAllowlist)[number]["id"];
 
