@@ -1,27 +1,19 @@
 /**
  * Bounded, per-path incremental reader for a Claude transcript JSONL file.
- * Implements PRD §5.4 (C-CLAUDE-15): reads only NEW committed records without
- * ever buffering the whole file. Resume and A→B→A path switches must not replay
- * history — a real transcript can be hundreds of MB, so a full-delta read would
- * block the event loop and OOM the host.
+ * Implements PRD §5.4 (C-CLAUDE-15): reads only NEW committed records, never the
+ * whole file. Resume and A→B→A path switches must not replay history — a real
+ * transcript can be hundreds of MB, so a full-delta read would OOM the host.
  */
 
 import { closeSync, openSync, readSync, statSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { completeUtf8Length } from "../runtime/probe.ts";
 
-/** Read at most this many bytes per scan pass, so a large delta is streamed, not slurped. */
-const maxChunkBytes = 256 * 1024;
-/** One backward step when recovering the current turn at first observe. */
-const baselineStepBytes = 64 * 1024;
-/** Hard cap on how far back the baseline scan reaches, so it stays bounded. */
-const baselineMaxBytes = 4 * 1024 * 1024;
-/**
- * Max bytes a single un-terminated record line may buffer. A pathological record
- * with no newline (a huge tool/MCP output) would otherwise grow `pending`
- * without bound and re-concatenate quadratically. Past this the line is
- * discarded through its next newline and reported as dropped bytes.
- */
+const maxChunkBytes = 256 * 1024; // bytes read per scan pass (a large delta streams)
+const baselineStepBytes = 64 * 1024; // one backward step in current-turn recovery
+const baselineMaxBytes = 4 * 1024 * 1024; // cap on how far back the baseline scan reaches
+// Max bytes a single un-terminated record may buffer before it is discarded
+// through its next newline (a no-newline giant line can't OOM or re-concat n²).
 const maxPendingBytes = 1024 * 1024;
 
 /** Outcome of a bounded read: the decoded text plus whether more remains to read. */
@@ -49,13 +41,10 @@ export class TranscriptCursor {
     this.offset = fileSize(path);
   }
 
-  /**
-   * The current (final) turn already on disk (the Stop-first edge). Scans BACKWARD
-   * from EOF in NON-OVERLAPPING blocks — accumulating the tail once, not re-reading
-   * the suffix each step (was O(n²)) — until the last user PROMPT record (the turn
-   * boundary). Bounded by `baselineMaxBytes`; returns "" when new/empty or no
-   * boundary is within the cap.
-   */
+  // The current (final) turn already on disk (the Stop-first edge). Scans BACKWARD
+  // in NON-OVERLAPPING blocks (accumulating the tail once, not re-reading the
+  // suffix each step — was O(n²)) to the last user PROMPT record. Bounded by
+  // baselineMaxBytes; returns "" when new/empty or no boundary is within the cap.
   baselineTail(): string {
     const size = fileSize(this.path);
     if (size === 0) return "";
@@ -181,13 +170,12 @@ function fileSize(path: string): number {
   }
 }
 
-/**
- * Reads `length` bytes at `start` and decodes only up to the last COMPLETE UTF-8
- * code point, returning the decoded text and the exact number of bytes it spans.
- * A multibyte character split at the requested boundary is dropped from this read
- * (its bytes are left for the next read) rather than becoming a replacement char.
- */
-function readRange(path: string, start: number, length: number): { text: string; bytes: number } {
+type RangeRead = { text: string; bytes: number };
+type RangeReader = (path: string, start: number, length: number) => RangeRead;
+
+// Reads `length` bytes at `start`, decoding only to the last COMPLETE UTF-8 code
+// point (a split multibyte char is left for the next read, not corrupted).
+function realReadRange(path: string, start: number, length: number): RangeRead {
   const buffer = Buffer.allocUnsafe(length);
   const fd = openSync(path, "r");
   try {
@@ -197,4 +185,16 @@ function readRange(path: string, start: number, length: number): { text: string;
   } finally {
     closeSync(fd);
   }
+}
+
+// Indirection so a test can force a read failure and prove the offset is
+// committed only AFTER a successful read.
+let readRangeImpl: RangeReader = realReadRange;
+const readRange: RangeReader = (p, s, l) => readRangeImpl(p, s, l);
+
+export function setRangeReaderForTests(reader: RangeReader): void {
+  readRangeImpl = reader;
+}
+export function resetRangeReaderForTests(): void {
+  readRangeImpl = realReadRange;
 }
