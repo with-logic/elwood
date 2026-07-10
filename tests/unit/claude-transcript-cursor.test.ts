@@ -79,3 +79,31 @@ describe("C-CLAUDE-15 transcript cursor current-turn recovery", () => {
     expect(new TranscriptCursor(path).baselineTail()).toContain("cur");
   });
 });
+
+describe("C-CLAUDE-15 transcript cursor growth check", () => {
+  test("hasGrown is false with no new bytes and true once the file grows", async () => {
+    const path = tmpFile();
+    writeFileSync(path, "");
+    const cursor = new TranscriptCursor(path);
+    expect(await cursor.hasGrown()).toBe(false); // baselined at EOF: no growth
+    writeFileSync(path, "abc\n");
+    expect(await cursor.hasGrown()).toBe(true);
+  });
+
+  test("hasGrown is true after a truncation shrinks the file below the offset", async () => {
+    const path = tmpFile();
+    writeFileSync(path, "aaaa\nbbbb\n");
+    const cursor = new TranscriptCursor(path);
+    drainAll(cursor); // advance the offset to EOF
+    writeFileSync(path, "c\n"); // strictly shorter: size !== offset, must re-scan
+    expect(await cursor.hasGrown()).toBe(true);
+  });
+
+  test("a non-ENOENT stat error at construction propagates to the caller's fs guard", () => {
+    // A regular file used as a directory component yields ENOTDIR (not ENOENT),
+    // which fileSize must rethrow rather than swallow as "empty file".
+    const file = tmpFile();
+    writeFileSync(file, "x");
+    expect(() => new TranscriptCursor(join(file, "child.jsonl"))).toThrow();
+  });
+});

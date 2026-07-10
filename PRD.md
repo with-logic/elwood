@@ -957,8 +957,38 @@ type ElwoodWarningEvent =
       readonly recoveryCommands: readonly string[];
       readonly raw: string;
     }
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "codex";
+      readonly source: "lifecycle";
+      readonly code: "codex_default_model_persisted";
+      readonly severity: "warning";
+      readonly message: string;
+      readonly raw: string;
+    }
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "claude";
+      readonly source: "terminal";
+      readonly code: "transcript_records_dropped";
+      readonly severity: "warning";
+      readonly message: string;
+      // Count, byte magnitude, and path only — never raw transcript content.
+      readonly droppedCount: number;
+      readonly droppedBytes: number;
+      readonly transcriptPath: string;
+      readonly raw: string;
+    }
   };
 ```
+
+The `transcript_records_dropped` warning is emitted when committed transcript
+records cannot be parsed as JSON. Like every warning it carries no raw
+conversation content: only a running count of dropped records, their total byte
+magnitude, and the transcript path. It is de-duplicated, persisted, and emitted
+through the same `warning`/`activity` contract as all other warnings, and its
+repeated observation updates the snapshot count without emitting a duplicate
+`warning` event (C-CLAUDE-15).
 
 Warnings are persisted in Elwood session metadata for resume-time inspection,
 but they are not a durable audit log. Repeated observations of the same warning

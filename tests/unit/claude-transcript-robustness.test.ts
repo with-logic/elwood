@@ -58,13 +58,27 @@ describe("C-CLAUDE-15 transcript watcher robustness", () => {
 
   test("a failing baseline read at observe is contained (no crash, no baseline)", () => {
     // The path is a directory, so the first-observe baseline read throws; observe
-    // must contain it and emit nothing rather than propagate.
+    // must contain it and emit nothing rather than propagate. recoverTail=true so
+    // the baseline path (not just cursor construction) is exercised.
     const dir = mkdtempSync(join(tmpdir(), "elwood-tx-dir-"));
     const events: ClaudeTranscriptEvent[] = [];
     const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
-    expect(() => watcher.observe(dir)).not.toThrow();
+    expect(() => watcher.observe(dir, true)).not.toThrow();
     expect(events).toEqual([]);
     watcher.stop();
+  });
+
+  test("a failing cursor construction at observe is contained (no cursor registered)", () => {
+    // The path's parent is a regular file, so constructing the cursor stats an
+    // ENOTDIR path and throws; observe must contain it and register no cursor, so
+    // a later scan/finish stays a no-op rather than crashing.
+    const file = tmpFile();
+    writeFileSync(file, "x");
+    const events: ClaudeTranscriptEvent[] = [];
+    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
+    expect(() => watcher.observe(join(file, "child.jsonl"), true)).not.toThrow();
+    expect(() => watcher.finish()).not.toThrow();
+    expect(events).toEqual([]);
   });
 
   test("a downstream emit/listener error is NOT swallowed by the fs guard", () => {

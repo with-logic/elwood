@@ -81,8 +81,8 @@ export async function startClaudeFromRecord(
   writeRuntimeFiles(record, record.bridgeToken, options);
   const emitter = new TypedEmitter();
   registerInitialHooks(emitter, options.hooks);
-  const transcriptWatcher = createTranscriptWatcher(record.elwoodSessionId, emitter);
   let session: ClaudeSessionImpl | undefined;
+  const transcriptWatcher = createTranscriptWatcher(record.elwoodSessionId, emitter, () => session);
   let initialReadyMarked = false;
   const bridge = currentClaudeHookBridgeFactory()(
     record.paths.socketPath,

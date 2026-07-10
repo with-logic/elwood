@@ -7,12 +7,13 @@
  */
 
 import { TranscriptCursor } from "./transcript-cursor.ts";
+import { DropTracker, type TranscriptDropNotice } from "./transcript-drops.ts";
 import { type ClaudeTranscriptSummary, summarizeClaudeRecord } from "./transcript-summary.ts";
+
+export type { TranscriptDropNotice };
 
 /** Poll cadence: transcript activity is not latency-critical, so this stays coarse. */
 const pollMs = 500;
-/** Emit a drop notice at most once per this many dropped records (rate-bounded). */
-const dropNoticeEvery = 50;
 
 export type ClaudeTranscriptEvent = {
   readonly elwoodSessionId: string;
@@ -21,27 +22,14 @@ export type ClaudeTranscriptEvent = {
   readonly summary: ClaudeTranscriptSummary;
 };
 
-/** A bounded, content-free notice that committed records could not be parsed. */
-export type TranscriptDropNotice = {
-  readonly elwoodSessionId: string;
-  readonly path: string;
-  /** Total dropped so far this session (running count, never the raw content). */
-  readonly droppedCount: number;
-  /** Total bytes of the dropped lines (diagnostic magnitude, not content). */
-  readonly droppedBytes: number;
-};
-
 export class ClaudeTranscriptWatcher {
   // One cursor per observed path so A→B→A never rewinds A to the start.
   private readonly cursors = new Map<string, TranscriptCursor>();
   private interval: ReturnType<typeof setInterval> | undefined;
-  private dropped = 0;
-  private droppedBytes = 0;
-  private notifiedAt = 0;
-  private lastDropPath = "";
+  private polling = false;
+  private readonly drops: DropTracker;
   private readonly elwoodSessionId: string;
   private readonly emit: (event: ClaudeTranscriptEvent) => void;
-  private readonly onDrop: ((notice: TranscriptDropNotice) => void) | undefined;
 
   constructor(
     elwoodSessionId: string,
@@ -50,7 +38,7 @@ export class ClaudeTranscriptWatcher {
   ) {
     this.elwoodSessionId = elwoodSessionId;
     this.emit = emit;
-    this.onDrop = onDrop;
+    this.drops = new DropTracker(elwoodSessionId, onDrop);
   }
 
   /**
@@ -58,11 +46,17 @@ export class ClaudeTranscriptWatcher {
    * current end (history is not replayed); its current-turn tail already on disk
    * is recovered once so a first-observe on a Stop hook still emits that turn.
    */
-  observe(path: string): void {
+  observe(path: string, recoverTail = false): void {
     if (this.cursors.has(path)) return;
-    const cursor = new TranscriptCursor(path);
+    // Cursor construction reads the file size, so it shares the fs guard: a
+    // rotation/removal race at first observe must not throw out of hook dispatch.
+    const cursor = readFs(() => new TranscriptCursor(path));
+    if (cursor === undefined) return;
     this.cursors.set(path, cursor);
-    this.emitLines(path, readFs(() => cursor.baselineTail()) ?? "");
+    // Only a first-observe that lands on a turn-boundary hook recovers the
+    // already-committed tail; a SessionStart/resume observe baselines at EOF so
+    // a prior conversation's final turn is never republished.
+    if (recoverTail) this.emitLines(path, readFs(() => cursor.baselineTail()) ?? "");
     this.ensurePolling();
   }
 
@@ -70,14 +64,44 @@ export class ClaudeTranscriptWatcher {
     for (const cursor of this.cursors.values()) this.scanCursor(cursor);
   }
 
+  /**
+   * Idle-friendly poll: an ASYNC stat gates each cursor so a session with no
+   * new transcript bytes performs zero synchronous fs work on the shared event
+   * loop (PRD §9.2). A bounded synchronous read runs only for a cursor that
+   * actually grew. Re-entrancy is guarded so a slow read can't overlap the next
+   * tick. The stat race is contained like every other transcript fs access.
+   */
+  /** Test seam: drive one poll pass synchronously (the interval calls poll()). */
+  pollOnceForTests(): Promise<void> {
+    return this.poll();
+  }
+
+  private async poll(): Promise<void> {
+    if (this.polling) return;
+    this.polling = true;
+    try {
+      for (const cursor of this.cursors.values()) {
+        const grown = await readFsAsync(() => cursor.hasGrown());
+        if (grown) this.scanCursor(cursor);
+      }
+    } finally {
+      this.polling = false;
+    }
+  }
+
   /** Flush any buffered partial lines across all paths, then stop polling. */
   finish(): void {
-    for (const cursor of this.cursors.values()) {
-      this.scanCursor(cursor);
-      this.emitLines(cursor.path, cursor.drainPending());
+    // Polling MUST stop even if flushing throws (a listener bug), so a wedged
+    // watcher can't keep firing after teardown and delay later lifecycle events.
+    try {
+      for (const cursor of this.cursors.values()) {
+        this.scanCursor(cursor);
+        this.emitLines(cursor.path, cursor.drainPending());
+      }
+      this.drops.flush();
+    } finally {
+      this.stop();
     }
-    this.flushDropNotice();
-    this.stop();
   }
 
   stop(): void {
@@ -87,7 +111,9 @@ export class ClaudeTranscriptWatcher {
 
   private ensurePolling(): void {
     if (this.interval) return;
-    this.interval = setInterval(() => this.scan(), pollMs);
+    // Fire-and-forget: poll() is re-entrancy-guarded and self-contains its fs
+    // errors, so a rejected promise is impossible; void satisfies the linter.
+    this.interval = setInterval(() => void this.poll(), pollMs);
     this.interval.unref?.();
   }
 
@@ -116,37 +142,12 @@ export class ClaudeTranscriptWatcher {
     if (!line.trim()) return;
     const item = parseLine(line);
     if (item === undefined) {
-      this.recordDrop(path, line);
+      this.drops.record(path, line);
       return;
     }
     for (const summary of summarizeClaudeRecord(item)) {
       this.emit({ elwoodSessionId: this.elwoodSessionId, path, item, summary });
     }
-  }
-
-  private recordDrop(path: string, line: string): void {
-    this.dropped += 1;
-    this.droppedBytes += Buffer.byteLength(line, "utf8");
-    this.lastDropPath = path;
-    // Rate-bound: notify on the first drop and then only every N, not per line.
-    if (this.dropped - this.notifiedAt >= dropNoticeEvery || this.notifiedAt === 0) {
-      this.notifyDrop(path);
-    }
-  }
-
-  /** Emit a final aggregated notice for any drops not yet reported. */
-  private flushDropNotice(): void {
-    if (this.dropped > this.notifiedAt) this.notifyDrop(this.lastDropPath);
-  }
-
-  private notifyDrop(path: string): void {
-    this.notifiedAt = this.dropped;
-    this.onDrop?.({
-      elwoodSessionId: this.elwoodSessionId,
-      path,
-      droppedCount: this.dropped,
-      droppedBytes: this.droppedBytes,
-    });
   }
 }
 
@@ -156,6 +157,15 @@ function readFs<T>(read: () => T): T | undefined {
     return read();
   } catch {
     return undefined;
+  }
+}
+
+/** Async twin of readFs: contains a rejected stat during idle polling as `false`. */
+async function readFsAsync(read: () => Promise<boolean>): Promise<boolean> {
+  try {
+    return await read();
+  } catch {
+    return false;
   }
 }
 

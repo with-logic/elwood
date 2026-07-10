@@ -5,8 +5,14 @@
 
 import type { ElwoodActivityEvent } from "../core/activity.ts";
 import { sessionWaitForActivity, sessionWaitForStatus } from "../core/session-wait.ts";
+import { recordSessionWarnings } from "../core/session-warnings.ts";
 import type { TerminalReplayBuffer } from "../core/terminal-replay.ts";
-import type { ElwoodEventHandler, ElwoodEventName, ElwoodSessionStatus } from "../core/types.ts";
+import type {
+  ElwoodEventHandler,
+  ElwoodEventName,
+  ElwoodSessionStatus,
+  ElwoodWarningEvent,
+} from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import { AgentSessionBase } from "../runtime/session-base.ts";
@@ -58,6 +64,9 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   rememberClaudeSessionId(sessionId: string): void {
     if (this.record.claude.resumeId) return;
     this.persist(updateSessionResumeId(this.record, "claude", sessionId));
+  }
+  recordWarnings(warnings: readonly ElwoodWarningEvent[]): void {
+    recordSessionWarnings(this.record, warnings, (record) => this.persist(record), this.emitter);
   }
   protected async stopRuntime(): Promise<void> {
     await this.bridge.stop();

@@ -3,7 +3,7 @@
  * Covers PRD §5.4 (C-CLAUDE-15): bounded, per-path, no-replay observation.
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -46,17 +46,31 @@ describe("C-CLAUDE-15 Claude transcript watcher", () => {
 
   const user = (text: string) => ({ type: "user", message: { content: text } });
 
-  test("first observe recovers ONLY the current assistant turn (after the last user record)", () => {
+  test("a turn-boundary first observe recovers ONLY the current assistant turn", () => {
     // The Stop-first edge: the committed turn is already on disk when observe
-    // runs. Recovery is scoped to records after the last user boundary, so the
-    // prior turn ("old") is not replayed but the current one ("committed") is.
+    // runs on a turn-boundary hook (recoverTail=true). Recovery is scoped to
+    // records after the last user boundary, so the prior turn ("old") is not
+    // replayed but the current one ("committed") is.
     const path = tmpFile();
     const events: ClaudeTranscriptEvent[] = [];
     const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
     writeRecords(path, assistant("old"), user("go"), assistant("committed"));
-    watcher.observe(path);
+    watcher.observe(path, true);
     watcher.finish();
     expect(texts(events)).toEqual(["committed"]);
+  });
+
+  test("a non-boundary first observe (resume) recovers NO history", () => {
+    // SessionStart/resume: recoverTail defaults to false, so the already-on-disk
+    // final turn is NOT republished. Only records appended AFTER observe emit.
+    const path = tmpFile();
+    const events: ClaudeTranscriptEvent[] = [];
+    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
+    writeRecords(path, assistant("old"), user("go"), assistant("committed"));
+    watcher.observe(path); // no recoverTail: baseline at EOF
+    appendRecords(path, [assistant("old"), user("go"), assistant("committed")], assistant("fresh"));
+    watcher.finish();
+    expect(texts(events)).toEqual(["fresh"]);
   });
 
   test("independent cursors per path: A→B→A does not replay A", () => {
@@ -144,5 +158,35 @@ describe("C-CLAUDE-15 Claude transcript watcher", () => {
     } finally {
       watcher.stop();
     }
+  });
+
+  test("overlapping poll passes are guarded: the second is a no-op until the first ends", async () => {
+    const path = tmpFile();
+    const events: ClaudeTranscriptEvent[] = [];
+    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
+    writeRecords(path);
+    watcher.observe(path);
+    appendRecords(path, [], assistant("once"));
+    // Fire two poll passes back-to-back: the second must observe `polling` and
+    // return immediately, so the appended record is emitted exactly once.
+    const first = watcher.pollOnceForTests();
+    const second = watcher.pollOnceForTests();
+    await Promise.all([first, second]);
+    watcher.stop();
+    expect(texts(events)).toEqual(["once"]);
+  });
+
+  test("an idle-poll stat race (file removed) is contained, not crashing the timer", async () => {
+    // The async growth check must swallow a removal/rotation race so the shared
+    // timer keeps running for every session instead of rejecting on a gone file.
+    const path = tmpFile();
+    const events: ClaudeTranscriptEvent[] = [];
+    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
+    writeRecords(path);
+    watcher.observe(path);
+    rmSync(path); // the file vanishes: the poll's async stat rejects
+    await expect(watcher.pollOnceForTests()).resolves.toBeUndefined();
+    expect(events).toEqual([]);
+    watcher.stop();
   });
 });

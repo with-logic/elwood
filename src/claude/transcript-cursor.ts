@@ -6,7 +6,8 @@
  * block the event loop and OOM the host.
  */
 
-import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, openSync, readSync, statSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { completeUtf8Length } from "../runtime/probe.ts";
 
 /** Read at most this many bytes per scan pass, so a large delta is streamed, not slurped. */
@@ -55,6 +56,17 @@ export class TranscriptCursor {
       if (start === 0 || size - start >= baselineMaxBytes) return "";
       start = Math.max(0, start - baselineStepBytes);
     }
+  }
+
+  /**
+   * True when the file has new bytes (or was truncated) since the last read,
+   * using an ASYNC stat so an idle poll never blocks the shared event loop —
+   * the common case is "no change", for which no synchronous fs work runs at
+   * all (PRD §9.2). A bounded synchronous read then follows only on real growth.
+   */
+  async hasGrown(): Promise<boolean> {
+    const size = (await stat(this.path)).size;
+    return size !== this.offset;
   }
 
   /** Read up to `maxChunkBytes` of new content, advancing the cursor by bytes consumed. */
@@ -113,7 +125,14 @@ function isUserRecord(line: string): boolean {
 }
 
 function fileSize(path: string): number {
-  return existsSync(path) ? statSync(path).size : 0;
+  // One stat, no exists-then-stat TOCTOU window: ENOENT means "no file yet",
+  // which is size 0; any other error propagates to the caller's fs guard.
+  try {
+    return statSync(path).size;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    throw error;
+  }
 }
 
 /**

@@ -125,6 +125,18 @@ function isWarning(value: unknown): value is ElwoodWarningEvent {
       isString(value["raw"])
     );
   }
+  if (value["code"] === "transcript_records_dropped") {
+    return (
+      value["agent"] === "claude" &&
+      value["source"] === "terminal" &&
+      isString(value["elwoodSessionId"]) &&
+      isString(value["message"]) &&
+      isNumber(value["droppedCount"]) &&
+      isNumber(value["droppedBytes"]) &&
+      isString(value["transcriptPath"]) &&
+      isString(value["raw"])
+    );
+  }
   return false;
 }
 
@@ -138,6 +150,10 @@ function optionalString(value: unknown): boolean {
 
 function isString(value: unknown): value is string {
   return typeof value === "string";
+}
+
+function isNumber(value: unknown): value is number {
+  return typeof value === "number";
 }
 
 function isStringArray(value: unknown): boolean {

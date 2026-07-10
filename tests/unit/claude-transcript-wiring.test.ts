@@ -7,7 +7,12 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { createTranscriptWatcher, observeTranscript } from "../../src/claude/session-transcript.ts";
+import {
+  createTranscriptWatcher,
+  observeTranscript,
+  type WarningSink,
+} from "../../src/claude/session-transcript.ts";
+import type { ElwoodWarningEvent } from "../../src/core/types.ts";
 
 const assistant = (text: string) => ({
   type: "assistant",
@@ -20,20 +25,42 @@ function tmpFile(): string {
 
 describe("C-CLAUDE-15 transcript session wiring", () => {
   test("observeTranscript follows BOTH transcript_path and agent_transcript_path", () => {
-    const observed: string[] = [];
-    const watcher = { observe: (p: string) => observed.push(p) } as never;
+    const observed: [string, boolean][] = [];
+    const watcher = {
+      observe: (p: string, recover: boolean) => observed.push([p, recover]),
+    } as never;
+    // A Stop is a turn boundary, so a first observe recovers the committed tail.
     observeTranscript(watcher, {
+      hook_event_name: "Stop",
       transcript_path: "/main.jsonl",
       agent_transcript_path: "/sub.jsonl",
     });
     observeTranscript(watcher, {}); // neither present: ignored
     observeTranscript(watcher, { transcript_path: "" }); // empty: ignored
-    expect(observed).toEqual(["/main.jsonl", "/sub.jsonl"]);
+    expect(observed).toEqual([
+      ["/main.jsonl", true],
+      ["/sub.jsonl", true],
+    ]);
   });
 
-  test("createTranscriptWatcher emits transcript + drop activities onto the emitter", () => {
+  test("observeTranscript does NOT recover history on a non-boundary hook", () => {
+    const observed: [string, boolean][] = [];
+    const watcher = {
+      observe: (p: string, recover: boolean) => observed.push([p, recover]),
+    } as never;
+    // A SessionStart/resume observe baselines at EOF: no backward recovery, so a
+    // resumed session never republishes the prior conversation's final turn.
+    observeTranscript(watcher, {
+      hook_event_name: "SessionStart",
+      transcript_path: "/main.jsonl",
+    });
+    expect(observed).toEqual([["/main.jsonl", false]]);
+  });
+
+  test("without a warning sink, a drop is projected as a bare warning activity", () => {
     const activities: Array<{ kind?: string; label?: string }> = [];
     const emitter = { emit: (_e: string, a: never) => activities.push(a) } as never;
+    // No sink (the transient early-startup case before the session exists).
     const watcher = createTranscriptWatcher("s9", emitter);
     const path = tmpFile();
     writeFileSync(path, "");
@@ -45,5 +72,28 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     expect(activities).toContainEqual(
       expect.objectContaining({ kind: "warning", label: "transcript_records_dropped" }),
     );
+  });
+
+  test("with a warning sink, a drop is routed through recordWarnings (persist + dedup)", () => {
+    const activities: Array<{ kind?: string }> = [];
+    const emitter = { emit: (_e: string, a: never) => activities.push(a) } as never;
+    const recorded: ElwoodWarningEvent[] = [];
+    const sink: WarningSink = { recordWarnings: (w) => recorded.push(...w) };
+    const watcher = createTranscriptWatcher("s9", emitter, () => sink);
+    const path = tmpFile();
+    writeFileSync(path, "");
+    watcher.observe(path);
+    writeFileSync(path, "{ bad }\n");
+    watcher.finish();
+    // The drop went to the sink (persist/dedup/warning contract), NOT emitted as
+    // a raw activity by the watcher itself.
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({
+      code: "transcript_records_dropped",
+      agent: "claude",
+      droppedCount: 1,
+      transcriptPath: path,
+    });
+    expect(activities).not.toContainEqual(expect.objectContaining({ kind: "warning" }));
   });
 });
