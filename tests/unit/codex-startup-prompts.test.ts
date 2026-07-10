@@ -56,36 +56,36 @@ describe("Codex startup prompt responder", () => {
     expect(result.automations).toEqual([]);
   });
 
-  test("C-CODEX-15 a SAME-frame foreign 'Yes' never auto-confirms hook trust", () => {
-    // The sharper regression: within ONE rendered frame the hook-trust phrase is
-    // visible ABOVE an unrelated dialog whose option is "1. Yes, continue". A
-    // generic yes-matcher scanning the whole frame would send 1 to the WRONG
-    // dialog. The foreign "?" line ends the hook-trust region, so hook trust has
-    // NO option of its own in-frame: nothing is written and no automation fires.
-    // The credential dialog's "Yes, continue" is never selected.
+  test("C-CODEX-15 a foreign 'Yes, continue' is never selected for HOOK trust", () => {
+    // Hook trust's affirmative is SPECIFIC ("Trust all"/"Trust hooks"), so even
+    // with a foreign "1. Yes, continue" in the frame, it is never selected: the
+    // prompt is recognized but has no matchable option, so it is unanswerable and
+    // nothing is written. (The per-prompt accept — not blank-line scoping — is
+    // what protects hook trust from a generic foreign 'Yes'.)
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder("s1", true);
     const result = responder.handle(
       "Hooks need review\nDelete stored credentials?\n› 1. Yes, continue\n  2. No",
       (input) => writes.push(input),
     );
-    expect(writes).toEqual([]); // the foreign dialog's "Yes" is never selected
-    expect(result.automations).toEqual([]);
+    expect(writes).toEqual([]);
+    expect(result.automations).toEqual([{ kind: "unanswerable", prompt: "hook_trust" }]);
   });
 
-  test("C-CODEX-15 a SAME-frame foreign 'Yes' never auto-confirms DIRECTORY trust", () => {
-    // Directory trust uses the generic yesOption, so region-scoping (not a
-    // per-prompt pattern) is what protects it: an unrelated question below the
-    // directory prompt ("Delete stored credentials?") ends the region, so its
-    // "1. Yes, continue" is not the directory prompt's option. Nothing is written.
+  test("C-CODEX-11 a recognized directory-trust dialog is answered (detect → approve)", () => {
+    // Directory trust is recognized and answered so the agent never waits on the
+    // gate. A destructive-rider option is still rejected (see the Claude rider
+    // test); a clean 'Yes' affirmative is selected.
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder("s1", true);
     const result = responder.handle(
-      "Do you trust the contents of this directory?\nDelete stored credentials?\n› 1. Yes, continue\n  2. No",
+      "Do you trust the contents of this directory?\n› 1. Yes, continue\n  2. No, quit",
       (input) => writes.push(input),
     );
-    expect(writes).toEqual([]);
-    expect(result.automations).toEqual([]);
+    expect(writes).toEqual(["1\r"]);
+    expect(result.automations).toEqual([
+      { kind: "answered", prompt: "workspace_trust", input: "1" },
+    ]);
   });
 
   test("C-CODEX-15 does not trust the DIRECTORY prompt without autotrust", () => {

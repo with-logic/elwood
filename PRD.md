@@ -775,16 +775,20 @@ trust this plugin and grant admin access") MUST NOT identify the prompt, so a
 hostile option cannot spoof a trust dialog. Both the prompt and its answer
 MUST be matched within the SAME current rendered frame, never across accumulated
 screen history — a stale phrase from an earlier frame must never pair with a
-"Yes" option belonging to a different, current dialog. Matching MUST further be
-scoped to the prompt's OWN region within that frame: the affirmative option is
-selected only from the lines that belong to the recognized prompt (its contiguous
-dialog block, bounded by a blank line, a fresh question line, or a different
-allowlisted prompt), and each prompt's affirmative-option pattern MUST be specific
-enough that a generic "Yes" from an unrelated dialog rendered in the same frame is
-never selected. The selected affirmative option MUST additionally be a CLEAN
-affirmative: an option label that riders a destructive or irreversible action
-(for example "Yes, trust this plugin and delete stored credentials") MUST NOT be
-auto-selected, even if it matches the prompt's affirmative pattern. If an allowlisted prompt
+"Yes" option belonging to a different, current dialog. A real trust dialog renders
+as a header, then blank/descriptive lines, then its numbered options — all ONE
+dialog — and a wrapped header spans physical rows; recognition MUST tolerate that
+layout (match the header against the dialog's joined non-option lines) so the
+agent is never left waiting on a trust gate the parent app relayed for autotrust.
+The affirmative option is selected from the recognized dialog's region, which
+extends from its header to its options and ends only where a DIFFERENT allowlisted
+prompt's header begins (a second trust dialog in the same frame). The selected
+affirmative option MUST be a CLEAN affirmative: an option label that riders a
+destructive or irreversible action (for example "Yes, trust this plugin and
+delete stored credentials") MUST NOT be auto-selected, even if it matches the
+prompt's affirmative pattern; and a prompt whose affirmative wording is specific
+(for example hook trust's "Trust all"/"Trust hooks") MUST NOT be answered by an
+unrelated generic "Yes". If an allowlisted prompt
 is recognized but its verified affirmative option is not present, Elwood MUST NOT
 answer a substitute option; instead it emits an `attention` activity (labelled
 with the prompt id) so the wedge is visible to the parent app rather than silent,

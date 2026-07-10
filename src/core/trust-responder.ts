@@ -114,32 +114,38 @@ function matchOption(region: string, spec: TrustPromptEntry): string | undefined
 }
 
 /**
- * The dialog block whose HEADER matches `spec.visible`. The header is recognized
- * against the JOINED non-option lines of the block (so a wrapped header split
- * across physical rows still matches), but NEVER against an option line — a
- * hostile option like "1. Yes, trust this plugin and grant admin access" can
- * never identify the prompt (PRD §5.1). A block runs from a non-boundary start
- * to the next boundary (blank line, fresh question, or a different allowlisted
- * prompt). Returns the first block whose header matches, else undefined.
+ * The dialog region for `spec`: recognized by its HEADER (its `visible` phrase in
+ * the NON-OPTION lines — never an option line, so a hostile option can't spoof a
+ * prompt — joined so a header wrapped across rows still matches). A real trust
+ * dialog renders header → blank/descriptive lines → options as ONE dialog, so the
+ * region spans blanks and prose; it ends only where a DIFFERENT allowlisted
+ * prompt's header begins (a second trust dialog in the same frame). Returns the
+ * lines of the recognized dialog, or undefined when no header matches.
  */
 function promptRegion(lines: readonly string[], spec: TrustPromptEntry): string | undefined {
-  let block: string[] = [];
-  const flush = (): string | undefined => {
-    // The header is the block's NON-option lines joined; if the trust phrase is
-    // present there (not only in an option), this block is the prompt's region.
-    const header = block.filter((line) => !isOptionLine(line)).join(" ");
-    return spec.visible.test(header) ? block.join("\n") : undefined;
-  };
-  for (const line of lines) {
-    if (block.length > 0 && isBoundary(line, spec)) {
-      const region = flush();
-      if (region !== undefined) return region;
-      block = [];
-      if (line.trim() === "") continue; // a blank starts no new block
-    }
-    block.push(line);
+  // Anchor on this spec's own HEADER — the first non-option line from which the
+  // forward run of non-option lines (up to the next different prompt) joins to
+  // match `spec.visible`. Joining supports a header wrapped across rows; testing
+  // only non-option lines means an option-only phrase never anchors, so a hostile
+  // option ("1. Yes, trust this plugin ...") can't spoof a prompt (PRD §5.1).
+  for (let start = 0; start < lines.length; start++) {
+    if (isOptionLine(lines[start] as string)) continue;
+    const end = regionEnd(lines, start, spec);
+    const header = lines
+      .slice(start, end)
+      .filter((line) => !isOptionLine(line))
+      .join(" ");
+    if (spec.visible.test(header)) return lines.slice(start, end).join("\n");
   }
-  return flush();
+  return undefined;
+}
+
+/** Where `spec`'s region ends: the next different allowlisted prompt header, or EOF. */
+function regionEnd(lines: readonly string[], start: number, spec: TrustPromptEntry): number {
+  for (let i = start + 1; i < lines.length; i++) {
+    if (!isOptionLine(lines[i] as string) && startsOtherPrompt(lines[i] as string, spec)) return i;
+  }
+  return lines.length;
 }
 
 /** True when `line` is itself a numbered option (e.g. "1. ...", "› 2) ..."). */
@@ -147,14 +153,8 @@ function isOptionLine(line: string): boolean {
   return /(?:^|[\s›>])\d+[.)]/.test(line);
 }
 
-/**
- * True when `line` begins a NEW dialog block (so it bounds the current region):
- * a blank line, a fresh question (ends "?"), or a different allowlisted prompt's
- * header. Ending at every such boundary keeps an unrelated dialog in the same
- * frame from ever contributing its "Yes" (PRD §5.1).
- */
-function isBoundary(line: string, spec: TrustPromptEntry): boolean {
-  if (line.trim() === "" || /\?\s*$/.test(line)) return true;
+/** True when `line` is the header of a DIFFERENT allowlisted prompt than `spec`. */
+function startsOtherPrompt(line: string, spec: TrustPromptEntry): boolean {
   return trustPromptAllowlist.some(
     (other) => other !== spec && !isOptionLine(line) && other.visible.test(line),
   );

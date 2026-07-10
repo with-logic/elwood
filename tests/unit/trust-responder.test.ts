@@ -125,18 +125,19 @@ describe("allowlisted trust prompt automation", () => {
     expect(writes).toEqual(["1\r"]); // the "1" belongs to skill_trust, not folder trust
   });
 
-  test("C-CLAUDE-14 a blank line after an option ends the prompt's region", () => {
+  test("C-CLAUDE-14 a trust dialog's region spans blank/descriptive lines to its options", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
-    // Folder-trust header, its own declined-only option, then a blank line, then
-    // an unrelated dialog's Yes. The blank line (after an option was seen) ends
-    // the region, so the trailing foreign Yes is not considered.
-    const frame = "Do you trust this folder?\n1. No, cancel\n\nSomething else\n1. Yes, do it";
+    // A real trust dialog renders header → blank/descriptive lines → options as
+    // ONE dialog (claude 2.1.206, C-E2E-09). The region MUST span the blanks to
+    // reach the affirmative — the prior line-boundary rule wedged the agent here.
+    const frame =
+      "Do you trust this folder?\n\nClaude Code can read/edit here.\n\n1. Yes, proceed\n2. No";
     expect(responder.handle(frame, (input) => writes.push(input))).toEqual({
-      kind: "unanswerable",
-      prompt: "workspace_trust",
+      kind: "answered",
+      automation: { prompt: "workspace_trust", input: "1" },
     });
-    expect(writes).toEqual([]);
+    expect(writes).toEqual(["1\r"]);
   });
 
   test("C-CLAUDE-14 a mid-render header without options is retried, not wedged unanswerable", () => {
@@ -180,16 +181,20 @@ describe("allowlisted trust prompt automation", () => {
     expect(writes).toEqual([]);
   });
 
-  test("C-CLAUDE-14 a blank line BEFORE any option still ends the region (PRD boundary)", () => {
+  test("C-CLAUDE-14 a recognized trust dialog is answered even across a blank line", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
-    // Folder-trust header, a blank line, then an unrelated dialog with a "Yes".
-    // PRD §5.1: the region ends at the blank line, so the foreign "1. Yes,
-    // proceed" is never this prompt's option — nothing is written.
-    const frame = "Do you trust this folder?\n\nDelete stored credentials\n1. Yes, proceed";
-    // Region ends at the blank line, so folder-trust has no option of its own; it
-    // is a retryable non-answer, and the foreign "1. Yes, proceed" is never sent.
-    expect(responder.handle(frame, (input) => writes.push(input))).toBeUndefined();
-    expect(writes).toEqual([]);
+    // A single trust dialog whose header and options are separated by a blank +
+    // descriptive line — the real rendered shape. Elwood recognizes the header and
+    // answers the affirmative so the agent never waits on the trust gate. (Region
+    // isolation from a SECOND trust dialog is still enforced — see the two-prompt
+    // and option-only-spoof tests — but a plain blank does not stop the answer.)
+    const frame =
+      "Do you trust this folder?\n\nReview the files first.\n1. Yes, proceed\n2. No, exit";
+    expect(responder.handle(frame, (input) => writes.push(input))).toEqual({
+      kind: "answered",
+      automation: { prompt: "workspace_trust", input: "1" },
+    });
+    expect(writes).toEqual(["1\r"]);
   });
 });
