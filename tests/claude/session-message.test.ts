@@ -116,6 +116,27 @@ describe("ClaudeSession message submission", () => {
     expect(ptys[0]!.writes[0]).toBe("\u001b[200~hello\u001b[201~");
   });
 
+  test("C-API-36 a failed readiness listener still releases queued input", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    const off = session.on("status", () => {
+      off();
+      throw new Error("listener failed");
+    });
+    const queued = session.sendMessage("hello");
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, {
+      hook_event_name: "InstructionsLoaded",
+      session_id: "claude-1",
+      cwd,
+      file_path: "/tmp/CLAUDE.md",
+      memory_type: "Project",
+      load_reason: "session_start",
+    });
+    await queued;
+    expect(ptys[0]!.writes[0]).toBe("\u001b[200~hello\u001b[201~");
+  });
+
   test("C-API-25 terminated sessions reject calls instead of throwing synchronously", async () => {
     const cwd = tempDir();
     installFakes();

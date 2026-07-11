@@ -85,6 +85,12 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     } catch {
       // Readiness is authoritative; continuing wide is safer than losing input.
     }
+    try {
+      this.submitEvidence("initial_ready");
+    } catch {
+      // A persistence/listener failure must not leave queued input starved.
+      this.controlQueue.markReady();
+    }
   }
   rememberClaudeSessionId(sessionId: string): void {
     if (this.record.claude.resumeId) return;

@@ -97,7 +97,7 @@ export async function startClaudeFromRecord(
   // The callback is one-shot (idempotent), so a late deadline after the hook is a no-op.
   const ready = initialReady(() => {
     turnWatcher.arm();
-    void session?.initialized().then(() => session?.submitEvidence("initial_ready"));
+    void session?.initialized();
   });
   const bridge = currentClaudeHookBridgeFactory()(
     record.paths.socketPath,
