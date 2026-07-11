@@ -74,11 +74,17 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
       ? Promise.resolve()
       : super.resize(size);
   }
-  /** Restore the latest requested geometry before the ready queue drains. */
-  initialized(): void {
+  /** Restore the latest requested geometry before the ready queue drains. A
+   * failed restore leaves Claude at its safe bootstrap width but never starves
+   * queued input or leaks an unhandled rejection. */
+  async initialized(): Promise<void> {
     if (!this.initializing) return;
     this.initializing = false;
-    void super.resize(this.requestedSize);
+    try {
+      await super.resize(this.requestedSize);
+    } catch {
+      // Readiness is authoritative; continuing wide is safer than losing input.
+    }
   }
   rememberClaudeSessionId(sessionId: string): void {
     if (this.record.claude.resumeId) return;

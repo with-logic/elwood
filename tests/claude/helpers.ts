@@ -58,6 +58,7 @@ export class FakePty implements PtyProcess {
   readonly options: PtySpawnOptions;
   size: TerminalSize;
   resizeResult: "resized" | "closed" = "resized";
+  resizeError: Error | undefined;
 
   constructor(options: PtySpawnOptions) {
     this.options = options;
@@ -79,6 +80,7 @@ export class FakePty implements PtyProcess {
   }
 
   resize(size: TerminalSize): "resized" | "closed" {
+    if (this.resizeError !== undefined) throw this.resizeError;
     if (this.resizeResult === "closed") return "closed";
     this.size = size;
     return "resized";
