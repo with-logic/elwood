@@ -47,6 +47,8 @@ import {
 } from "./session-transcript.ts";
 import { ClaudeStartupPromptResponder } from "./startup-prompts.ts";
 
+const CLAUDE_STARTUP_MIN_COLS = 100;
+
 export {
   resetClaudeHookBridgeFactoryForTests as resetClaudeSessionSeamsForTests,
   setHookBridgeFactoryForTests,
@@ -95,6 +97,7 @@ export async function startClaudeFromRecord(
   // The callback is one-shot (idempotent), so a late deadline after the hook is a no-op.
   const ready = initialReady(() => {
     turnWatcher.arm();
+    session?.initialized();
     session?.submitEvidence("initial_ready");
   });
   const bridge = currentClaudeHookBridgeFactory()(
@@ -121,9 +124,14 @@ export async function startClaudeFromRecord(
       socketPath: record.paths.socketPath,
     });
   }
+  const requestedSize = options.initialSize ?? record.terminalSize ?? defaultTerminalSize;
+  const startupSize = {
+    ...requestedSize,
+    cols: Math.max(requestedSize.cols, CLAUDE_STARTUP_MIN_COLS),
+  };
   let pty: ReturnType<typeof spawnClaudePty>;
   try {
-    pty = spawnClaudePty(record, options);
+    pty = spawnClaudePty(record, { ...options, initialSize: startupSize });
   } catch (error) {
     await cleanupStartupResources({ bridge });
     throw error;
@@ -135,24 +143,28 @@ export async function startClaudeFromRecord(
   const promptResponder = new ClaudeStartupPromptResponder(autotrust);
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
   const turnWatcher = observers.turn;
-  const terminal = attachPtyTerminal(
-    options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
+  const terminal = attachPtyTerminal(startupSize, pty, (data, renderedTerminal) => {
+    startupOutput += data;
+    terminalReplay.push(data);
+    const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
+    const autos = promptResponder.handle(frame.text, (i) => renderedTerminal.sendInput(i));
+    emitStartupPromptActivities(emitter, "claude", record.elwoodSessionId, autos);
+    // Readiness is hook-backed (`InstructionsLoaded` fires it); the frame only
+    // arms the starvation-deadline fallback so a missing/failed hook bridge
+    // cannot starve the queue forever (C-API-28, see initial-ready.ts).
+    ready.armDeadline();
+    observeRenderedFrame(observers, frame, session);
+    emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
+  });
+  session = new ClaudeSessionImpl(
+    record,
     pty,
-    (data, renderedTerminal) => {
-      startupOutput += data;
-      terminalReplay.push(data);
-      const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
-      const autos = promptResponder.handle(frame.text, (i) => renderedTerminal.sendInput(i));
-      emitStartupPromptActivities(emitter, "claude", record.elwoodSessionId, autos);
-      // Readiness is hook-backed (`InstructionsLoaded` fires it); the frame only
-      // arms the starvation-deadline fallback so a missing/failed hook bridge
-      // cannot starve the queue forever (C-API-28, see initial-ready.ts).
-      ready.armDeadline();
-      observeRenderedFrame(observers, frame, session);
-      emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
-    },
+    terminal,
+    bridge,
+    emitter,
+    terminalReplay,
+    requestedSize,
   );
-  session = new ClaudeSessionImpl(record, pty, terminal, bridge, emitter, terminalReplay);
   const active = session;
   // ONE guarded region for every live-resource step after the session exists (flush,
   // exit registration, startup assertion, startup evidence): a failure in ANY of them

@@ -12,10 +12,12 @@ import type {
   ElwoodEventName,
   ElwoodSessionStatus,
   ElwoodWarningEvent,
+  TerminalSize,
 } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import { AgentSessionBase } from "../runtime/session-base.ts";
+import { terminalStatuses } from "../runtime/session-status.ts";
 import { type SessionRecord, updateSessionResumeId } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { claudeModelPicker } from "./model-picker.ts";
@@ -30,6 +32,8 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   protected readonly picker = claudeModelPicker;
   private readonly bridge: HookBridge;
   private readonly emitter: TypedEmitter;
+  private requestedSize: TerminalSize;
+  private initializing = true;
 
   constructor(
     record: SessionRecord,
@@ -38,10 +42,12 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     bridge: HookBridge,
     emitter: TypedEmitter,
     terminalReplay: TerminalReplayBuffer,
+    requestedSize: TerminalSize,
   ) {
     super("claude", record, pty, terminal, emitter, terminalReplay);
     this.bridge = bridge;
     this.emitter = emitter;
+    this.requestedSize = requestedSize;
   }
 
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>) {
@@ -60,6 +66,19 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   // Captured staged chip: "❯ [Pasted text #1 +15 lines]" (claude 2.1.201).
   protected stagedPaste(screen: string): boolean {
     return /\[Pasted text/.test(screen);
+  }
+  /** Hold caller resizes until Claude reaches its one-shot readiness transition. */
+  override resize(size: TerminalSize): Promise<void> {
+    this.requestedSize = size;
+    return this.initializing && !terminalStatuses.has(this.status)
+      ? Promise.resolve()
+      : super.resize(size);
+  }
+  /** Restore the latest requested geometry before the ready queue drains. */
+  initialized(): void {
+    if (!this.initializing) return;
+    this.initializing = false;
+    void super.resize(this.requestedSize);
   }
   rememberClaudeSessionId(sessionId: string): void {
     if (this.record.claude.resumeId) return;

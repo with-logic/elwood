@@ -46,6 +46,19 @@ describe("ClaudeSession resume options", () => {
       strictVersionCheck: false,
     });
     expect(resumed.warnings).toMatchObject([{ code: "version_unparseable", agent: "claude" }]);
+    expect(ptys[1]!.options.size).toEqual({ cols: 100, rows: 20 });
+    await ptys[1]!.dispatchHook(
+      resumed.elwoodSessionId,
+      {
+        hook_event_name: "InstructionsLoaded",
+        session_id: "claude-resume",
+        cwd,
+        file_path: "/tmp/CLAUDE.md",
+        memory_type: "Project",
+        load_reason: "session_start",
+      },
+      stateDir,
+    );
     expect(ptys[1]!.size).toEqual({ cols: 50, rows: 20 });
     await ptys[1]!.dispatchHook(
       resumed.elwoodSessionId,

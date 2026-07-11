@@ -32,6 +32,19 @@ describe("ClaudeSession lifecycle", () => {
     const resumed = await resumeClaude({ cwd, stateDir, elwoodSessionId: session.elwoodSessionId });
     expect(resumed.elwoodSessionId).toBe(session.elwoodSessionId);
     expect(ptys).toHaveLength(2);
+    expect(ptys[1]!.options.size).toEqual({ cols: 100, rows: 12 });
+    await ptys[1]!.dispatchHook(
+      resumed.elwoodSessionId,
+      {
+        hook_event_name: "InstructionsLoaded",
+        session_id: "claude-resume-id",
+        cwd,
+        file_path: "/tmp/CLAUDE.md",
+        memory_type: "Project",
+        load_reason: "session_start",
+      },
+      stateDir,
+    );
     expect(ptys[1]!.size).toEqual({ cols: 44, rows: 12 });
     expect(ptys[1]!.options.args.join(" ")).toContain("--resume 'claude-resume-id'");
   });

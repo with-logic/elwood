@@ -167,6 +167,14 @@ describe("ClaudeSession startup and terminal control", () => {
     ptys[0]!.emitData("ignored");
     await session.sendKeys("x");
     await session.resize({ cols: 80, rows: 24 });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, {
+      hook_event_name: "InstructionsLoaded",
+      session_id: "claude-1",
+      cwd,
+      file_path: "/tmp/CLAUDE.md",
+      memory_type: "Project",
+      load_reason: "session_start",
+    });
     ptys[0]!.emitExit({ exitCode: 7 });
     expect(seen).toEqual(["early", "abc"]);
     expect(ptys[0]!.writes).toEqual(["x"]);

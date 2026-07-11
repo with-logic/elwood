@@ -641,6 +641,13 @@ If `initialSize` is omitted, Elwood MUST default the terminal to 189 columns by
 48 rows. Parent apps with a visible terminal should still pass and maintain the
 visual xterm size explicitly.
 
+Claude sessions requested below 100 columns MUST bootstrap the PTY and headless
+terminal at 100 columns because Claude Code can silently discard input when it
+initializes below that width. Elwood holds caller resizes during this bootstrap
+and restores the latest requested size at the one-shot initial-ready transition,
+before the queued persona or caller message is submitted. Later resizes retain
+their ordinary exact behavior. Codex sessions do not apply this bootstrap.
+
 `terminal` exposes the session's headless xterm.js terminal handle. The handle
 MUST expose the underlying headless xterm instance, current size, the latest
 OSC window title, and a snapshot API with visible lines, joined visible text,
@@ -1849,6 +1856,7 @@ Each criterion has:
 | C-API-23 | §5.3 §5.7 | `listModels()` parses the adapter's rendered model picker into typed options with current/default markers, cancels with Escape, and leaves the session model unchanged. |
 | C-API-24 | §5.3 §5.7 | `setModel(id)` switches the session model through cursor navigation; Elwood itself never persists a new default into user-owned configuration (Claude uses the session-only key; the Codex CLI persists its own picker selection, documented as a §4.5 deviation) and unknown ids reject with `model_automation_failed` listing available ids. |
 | C-API-35 | §5.3 §5.7 | `listModels()`/`setModel()` dispatch the picker command even while a turn is in flight (they do not wait for `ready`), so picker automation is not stalled by an in-flight turn such as an MCP-server boot spinner; `compact` and messages still wait for the active turn, and FIFO ordering is preserved. |
+| C-API-36 | §5.3 | A Claude session requested below 100 columns bootstraps at 100 columns, holds pre-ready resizes, and restores the latest requested size before its initial ready queue drains, so narrow visible terminals do not lose their first prompt. |
 | C-API-25 | §5.3 | Promise-returning session methods called after a terminal status reject with `session_not_running` instead of throwing synchronously. |
 | C-API-26 | §5.2 §5.6 | `startOrResumeClaude`/`startOrResumeCodex` resume when possible, fall back to a fresh start only on `state_not_found`, `resume_unavailable`, or `adapter_mismatch`, rethrow all other errors, and report `resumed` in the result. |
 | C-API-27 | §5.7 | `ElwoodAgentSession` is exported and both `ClaudeSession` and `CodexSession` are assignable to it, covering common events, io, commands, and lifecycle. |

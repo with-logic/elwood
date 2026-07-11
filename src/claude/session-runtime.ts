@@ -7,10 +7,14 @@ import { resolve } from "node:path";
 import { bridgeScriptSource } from "../bridge/script.ts";
 import * as activity from "../core/activity.ts";
 import { AttentionWatcher } from "../core/attention.ts";
-import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, elwoodError } from "../core/errors.ts";
 import { TurnStateWatcher } from "../core/turn-state.ts";
-import type { ElwoodEventHandler, ElwoodEventName, StartClaudeOptions } from "../core/types.ts";
+import type {
+  ElwoodEventHandler,
+  ElwoodEventName,
+  StartClaudeOptions,
+  TerminalSize,
+} from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit, PtyProcess } from "../pty/types.ts";
 import { currentPtyFactory } from "../runtime/seams.ts";
@@ -55,7 +59,10 @@ export function writeRuntimeFiles(
   writePrivateFileAtomic(record.paths.settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
 }
 
-export function spawnClaudePty(record: SessionRecord, options: StartClaudeOptions): PtyProcess {
+export function spawnClaudePty(
+  record: SessionRecord,
+  options: StartClaudeOptions & { readonly initialSize: TerminalSize },
+): PtyProcess {
   const launch = shellLaunch(
     userShell(),
     buildClaudeShellCommand(record.paths.settingsPath, options, record.claude.resumeId),
@@ -69,7 +76,7 @@ export function spawnClaudePty(record: SessionRecord, options: StartClaudeOption
         ...process.env,
         ELWOOD_SESSION_ID: record.elwoodSessionId,
       },
-      size: options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
+      size: options.initialSize,
     });
   } catch (error) {
     throw elwoodError("pty_start_failed", "Could not start Claude PTY.", causeDetails(error));
