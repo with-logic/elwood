@@ -4,7 +4,7 @@
  */
 
 import type { StartClaudeOptions } from "../core/types.ts";
-import { shellQuote } from "./command.ts";
+import { hookCommand } from "../runtime/hook-command.ts";
 import { claudeHookEventNames } from "./hooks.ts";
 
 export type GeneratedSettingsInput = {
@@ -36,7 +36,7 @@ function generateHooks(
         hooks: [
           {
             type: "command",
-            command: `${shellQuote(process.execPath)} ${shellQuote(bridgeScriptPath)}`,
+            command: hookCommand(bridgeScriptPath),
             timeout,
           },
         ],

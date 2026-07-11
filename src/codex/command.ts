@@ -3,6 +3,7 @@
  * Implements PRD §4.2, §4.4, and §9.1.
  */
 
+import { hookCommand } from "../runtime/hook-command.ts";
 import type { SessionRecord } from "../state/store.ts";
 import { codexHookEventNames } from "./hooks.ts";
 import type { CodexCliCapabilities } from "./preflight.ts";
@@ -40,7 +41,7 @@ function addLaunchFlags(parts: string[], options: StartCodexOptions): void {
 function hookOverrides(record: SessionRecord, options: StartCodexOptions): string[] {
   const timeout = Math.ceil((options.hookTimeoutMs ?? 25_000) / 1000);
   return codexHookEventNames.map((eventName) => {
-    const command = `${shellQuote(process.execPath)} ${shellQuote(record.paths.bridgeScriptPath)}`;
+    const command = hookCommand(record.paths.bridgeScriptPath);
     const hook = `{type="command",command=${tomlString(command)},timeout=${timeout}}`;
     const group = `{matcher=${tomlString(matcherFor(eventName))},hooks=[${hook}]}`;
     return `hooks.${eventName}=[${group}]`;
