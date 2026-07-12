@@ -45,6 +45,7 @@ export abstract class AgentSessionBase {
     (input, mode) => writeQueuedInput(this.terminal, input, mode, this.pasteGuard()),
     () => this.notRunningError(),
     () => this.submitEvidence("caller_submitted"),
+    () => this.status === "running",
   );
   private readonly statusEngine = new SessionStatusEngine({
     onStatus: (status) => this.emitStatus(status),
@@ -97,9 +98,7 @@ export abstract class AgentSessionBase {
     return this.inSession(() => this.controlQueue.send(message, "message"));
   }
   sendGuidance(message: string): Promise<void> {
-    const immediate = this.status === "running" && this.controlQueue.hasBeenReady();
-    const kind = immediate ? "readiness_bypass" : "message";
-    return this.inSession(() => this.controlQueue.send(message, kind));
+    return this.inSession(() => this.controlQueue.send(message, "guidance"));
   }
   sendKeys(input: string | Uint8Array): Promise<void> {
     return this.inSession(() => this.terminal.sendInput(input));

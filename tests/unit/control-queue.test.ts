@@ -112,10 +112,13 @@ describe("ControlQueue", () => {
       },
       () => new Error("closed"),
       () => undefined,
+      () => true,
     );
+    queue.markReady();
+    queue.suspendReadiness();
     const waiting = queue.send("later", "message");
-    const first = queue.send("urgent-1", "readiness_bypass");
-    const second = queue.send("urgent-2", "readiness_bypass");
+    const first = queue.send("urgent-1", "guidance");
+    const second = queue.send("urgent-2", "guidance");
     expect(submitted).toEqual(["urgent-1"]);
     release();
     await first;
@@ -128,11 +131,47 @@ describe("ControlQueue", () => {
     await waiting;
   });
 
+  test("C-API-37 queued guidance rechecks blocking state before dispatch", async () => {
+    const submitted: string[] = [];
+    let release = (): void => {};
+    let running = true;
+    const queue = new ControlQueue(
+      (input) => {
+        submitted.push(input);
+        return new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      },
+      () => new Error("closed"),
+      () => undefined,
+      () => running,
+    );
+    queue.markReady();
+    const first = queue.send("first", "guidance");
+    const second = queue.send("hold-while-blocked", "guidance");
+    running = false;
+    queue.suspendReadiness();
+    release();
+    await first;
+    expect(submitted).toEqual(["first"]);
+    running = true;
+    queue.markReady();
+    expect(submitted).toEqual(["first", "hold-while-blocked"]);
+    release();
+    await second;
+  });
+
   test("C-API-19 traits table pins per-operation readiness semantics", () => {
     expect(controlOperationTraits.message).toMatchObject({
       startsTurn: true,
       consumesReadiness: true,
       waitsForReadiness: true,
+    });
+    expect(controlOperationTraits.guidance).toEqual({
+      startsTurn: true,
+      consumesReadiness: true,
+      waitsForReadiness: true,
+      submitMode: "message",
     });
     expect(controlOperationTraits.readiness_bypass).toEqual({
       startsTurn: true,

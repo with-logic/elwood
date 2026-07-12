@@ -1,33 +1,19 @@
-/**
- * Typed control-operation queue for adapter sessions: caller messages and
- * TUI slash-command operations share one submission lifecycle with
- * per-operation readiness semantics.
- * Implements PRD §5.3 and C-API-19.
- */
+/** Serialized adapter controls with readiness semantics (PRD §5.3, C-API-19/37). */
 
 export type ControlQueueError = () => Error;
 export type ControlSubmitMode = "message" | "command";
 export type ControlOperationKind =
   | "message"
+  | "guidance"
   | "readiness_bypass"
   | "compact"
   | "list_models"
   | "set_model";
 
 export type ControlOperationTraits = {
-  /** Whether submitting this operation starts a user turn. */
   readonly startsTurn: boolean;
-  /** Whether submission consumes queue readiness until the next ready mark. */
   readonly consumesReadiness: boolean;
-  /**
-   * Whether the operation waits for queue readiness before dispatching.
-   * Messages and `compact` run after the active turn completes (C-API-22);
-   * picker automation (`list_models`/`set_model`) is transient TUI control
-   * that must dispatch even mid-turn, or an in-flight turn (e.g. an MCP boot
-   * spinner) would stall it.
-   */
   readonly waitsForReadiness: boolean;
-  /** How the operation's input is written to the terminal. */
   readonly submitMode: ControlSubmitMode;
 };
 
@@ -40,6 +26,12 @@ export const controlOperationTraits: Readonly<
   Record<ControlOperationKind, ControlOperationTraits>
 > = {
   message: {
+    startsTurn: true,
+    consumesReadiness: true,
+    waitsForReadiness: true,
+    submitMode: "message",
+  },
+  guidance: {
     startsTurn: true,
     consumesReadiness: true,
     waitsForReadiness: true,
@@ -90,6 +82,7 @@ export class ControlQueue {
   private readonly submit: ControlSubmitter;
   private readonly stoppedError: ControlQueueError;
   private readonly onTurnStarted: () => void;
+  private readonly guidanceMayBypass: () => boolean;
   private ready = false;
   private everReady = false;
   private closed = false;
@@ -100,10 +93,12 @@ export class ControlQueue {
     submit: ControlSubmitter,
     stoppedError: ControlQueueError,
     onTurnStarted: () => void,
+    guidanceMayBypass: () => boolean = () => false,
   ) {
     this.submit = submit;
     this.stoppedError = stoppedError;
     this.onTurnStarted = onTurnStarted;
+    this.guidanceMayBypass = guidanceMayBypass;
   }
 
   send(input: string, kind: ControlOperationKind): Promise<void> {
@@ -119,10 +114,6 @@ export class ControlQueue {
     this.everReady = true;
     this.ready = true;
     this.drain();
-  }
-
-  hasBeenReady(): boolean {
-    return this.everReady;
   }
 
   /**
@@ -148,11 +139,16 @@ export class ControlQueue {
 
   private drain(): void {
     if (this.inFlight || this.queue.length === 0) return;
-    // A readiness-bypassing submission may overtake a waiting head;
-    // all other operations retain FIFO and their readiness semantics.
+    // Immediate prompts and currently-safe guidance may overtake a waiting
+    // head; all other operations retain FIFO and readiness semantics.
     const next = this.queue[0] as QueuedOperation;
-    const headWaits = controlOperationTraits[next.kind].waitsForReadiness && !this.ready;
-    const index = headWaits ? this.queue.findIndex(({ kind }) => kind === "readiness_bypass") : 0;
+    const index = this.canDispatch(next)
+      ? 0
+      : this.queue.findIndex(
+          (operation) =>
+            operation.kind === "readiness_bypass" ||
+            (operation.kind === "guidance" && this.canDispatch(operation)),
+        );
     if (index < 0) return;
     const operation = this.queue.splice(index, 1)[0] as QueuedOperation;
     let dispatched: Promise<void>;
@@ -172,6 +168,13 @@ export class ControlQueue {
       () => this.settleInFlight(operation, () => operation.resolve()),
       (error: unknown) => this.settleInFlight(operation, () => operation.reject(asError(error))),
     );
+  }
+
+  private canDispatch(operation: QueuedOperation): boolean {
+    if (operation.kind === "guidance") {
+      return this.ready || (this.everReady && this.guidanceMayBypass());
+    }
+    return this.ready || !controlOperationTraits[operation.kind].waitsForReadiness;
   }
 
   private settleInFlight(operation: QueuedOperation, settle: () => void): void {

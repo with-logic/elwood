@@ -147,4 +147,22 @@ describe("ControlQueue ordering and failures", () => {
     queue.markReady();
     await expect(queue.send("ignored", "message")).rejects.toThrow("closed");
   });
+
+  test("C-API-37 guidance does not bypass without an active-turn policy", async () => {
+    const submitted: string[] = [];
+    const queue = new ControlQueue(
+      (input) => {
+        submitted.push(input);
+        return Promise.resolve();
+      },
+      () => new Error("closed"),
+      () => undefined,
+    );
+    queue.markReady();
+    queue.suspendReadiness();
+    const held = queue.send("held", "guidance");
+    expect(submitted).toEqual([]);
+    queue.close();
+    await expect(held).rejects.toThrow("closed");
+  });
 });
