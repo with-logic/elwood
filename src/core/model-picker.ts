@@ -39,7 +39,7 @@ export async function listPickerModels(
   timeoutMs: number,
 ): Promise<readonly AgentModelOption[]> {
   const parsed = await openAndParse(io, spec, timeoutMs);
-  io.terminal.sendInput(escapeKey);
+  await io.terminal.sendInput(escapeKey);
   await waitForScreen(
     io.terminal,
     (text) => !spec.isOpen(text),
@@ -61,7 +61,7 @@ export async function setPickerModel(
     (option) => option.id === wanted || option.label.toLowerCase() === wanted,
   );
   if (target === -1 || parsed.cursorIndex === -1) {
-    io.terminal.sendInput(escapeKey);
+    await io.terminal.sendInput(escapeKey);
     throw elwoodError("model_automation_failed", `Unknown model id "${id}".`, {
       available: parsed.options.map((option) => option.id),
     });
@@ -69,7 +69,7 @@ export async function setPickerModel(
   const delta = target - parsed.cursorIndex;
   const key = delta > 0 ? arrowDown : arrowUp;
   for (let step = 0; step < Math.abs(delta); step += 1) {
-    io.terminal.sendInput(key);
+    await io.terminal.sendInput(key);
     await delay(arrowStepMs);
   }
   await waitForScreen(
@@ -95,7 +95,7 @@ async function openAndParse(
   });
   const parsed = spec.parse(text);
   if (parsed.options.length === 0) {
-    io.terminal.sendInput(escapeKey);
+    await io.terminal.sendInput(escapeKey);
     throw elwoodError("model_automation_failed", "Could not parse any model picker rows.");
   }
   return parsed;

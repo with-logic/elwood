@@ -24,7 +24,7 @@ export interface ElwoodTerminal {
   /** Latest OSC 0/1/2 window title, or "" before any title is set. */
   readonly title: string;
   writeOutput(data: string | Uint8Array): Promise<void>;
-  sendInput(input: string | Uint8Array): void;
+  sendInput(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): void;
   snapshot(): TerminalSnapshot;
   settled(): Promise<void>;
@@ -56,6 +56,10 @@ class HeadlessTerminal implements ElwoodTerminal {
   private currentSize: TerminalSize;
   private writeQueue = Promise.resolve();
   private readonly onInput: (input: string | Uint8Array) => void;
+  private readonly inputWaiters: Array<{
+    readonly resolve: () => void;
+    readonly reject: (error: unknown) => void;
+  }> = [];
   private readonly disposers: Array<() => void> = [];
   private disposed = false;
   private currentTitle = "";
@@ -68,7 +72,7 @@ class HeadlessTerminal implements ElwoodTerminal {
       cols: size.cols,
       rows: size.rows,
     });
-    this.xterm.onData(onInput);
+    this.xterm.onData((input) => this.forwardInput(input));
     this.xterm.onTitleChange((title) => {
       this.currentTitle = title;
     });
@@ -91,12 +95,13 @@ class HeadlessTerminal implements ElwoodTerminal {
     return write;
   }
 
-  sendInput(input: string | Uint8Array): void {
-    if (typeof input === "string") {
+  sendInput(input: string | Uint8Array): Promise<void> {
+    if (this.disposed) return Promise.reject(new Error("Terminal is disposed."));
+    if (typeof input !== "string") return this.forwardBytes(input);
+    return new Promise((resolve, reject) => {
+      this.inputWaiters.push({ resolve, reject });
       this.xterm.input(input);
-      return;
-    }
-    this.onInput(input);
+    });
   }
 
   resize(size: TerminalSize): void {
@@ -133,5 +138,32 @@ class HeadlessTerminal implements ElwoodTerminal {
 
   onDispose(dispose: () => void): void {
     this.disposers.push(dispose);
+  }
+
+  private forwardInput(input: string): void {
+    const waiter = this.inputWaiters.shift();
+    if (!waiter) {
+      try {
+        this.onInput(input);
+      } catch {
+        // Unsolicited xterm protocol replies have no caller promise to reject.
+      }
+      return;
+    }
+    try {
+      this.onInput(input);
+      waiter.resolve();
+    } catch (error) {
+      waiter.reject(error);
+    }
+  }
+
+  private forwardBytes(input: Uint8Array): Promise<void> {
+    try {
+      this.onInput(input);
+      return Promise.resolve();
+    } catch (error) {
+      return Promise.reject(error);
+    }
   }
 }

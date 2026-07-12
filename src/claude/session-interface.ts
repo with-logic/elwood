@@ -33,6 +33,7 @@ export interface ClaudeSession {
 
   sendPrompt(prompt: string): Promise<void>;
   sendMessage(message: string): Promise<void>;
+  sendGuidance(message: string): Promise<void>;
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): Promise<void>;
   compact(options?: { readonly timeoutMs?: number }): Promise<void>;

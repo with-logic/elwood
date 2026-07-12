@@ -100,7 +100,7 @@ describe("CodexSession startup and terminal control", () => {
     await flushTerminal();
     await session.sendPrompt("hello\nworld");
     const queued = session.sendMessage("again");
-    expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\nworld\u001b[201~"]);
+    expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\nworld\u001b[201~", "\r"]);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, stopEvent(cwd));
     await queued;
     await session.sendKeys(new Uint8Array([120]));

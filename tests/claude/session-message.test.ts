@@ -146,6 +146,7 @@ describe("ClaudeSession message submission", () => {
     const calls = [
       session.sendPrompt("late"),
       session.sendMessage("late"),
+      session.sendGuidance("late"),
       session.sendKeys("late"),
       session.resize({ cols: 10, rows: 5 }),
       session.compact(),

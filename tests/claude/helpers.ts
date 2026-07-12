@@ -59,6 +59,7 @@ export class FakePty implements PtyProcess {
   size: TerminalSize;
   resizeResult: "resized" | "closed" = "resized";
   resizeError: Error | undefined;
+  failOnWrite: string | undefined;
 
   constructor(options: PtySpawnOptions) {
     this.options = options;
@@ -76,6 +77,7 @@ export class FakePty implements PtyProcess {
   }
 
   write(data: string | Uint8Array): void {
+    if (data === this.failOnWrite) throw new Error("terminal disposed");
     this.writes.push(typeof data === "string" ? data : Buffer.from(data).toString("utf8"));
   }
 

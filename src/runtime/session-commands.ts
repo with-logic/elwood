@@ -13,6 +13,7 @@ import {
   setPickerModel,
 } from "../core/model-picker.ts";
 import type { AgentModelOption } from "../core/model-rows.ts";
+import { ignoreInputFailure } from "../core/session-input.ts";
 import type { ScreenTerminal } from "../core/tui-screen.ts";
 import type { SessionStatusEmitter } from "./session-base-types.ts";
 
@@ -47,7 +48,9 @@ export class CommandSurface {
 
   compact(options?: Timeout): Promise<void> {
     const submit = () => this.deps.submit(compactCommand, "compact");
-    const nudge = () => this.deps.terminal.sendInput("\r");
+    const nudge = () => {
+      ignoreInputFailure(this.deps.terminal.sendInput("\r"));
+    };
     return sessionCompact(this.deps.statusEvents, submit, nudge, options?.timeoutMs);
   }
 

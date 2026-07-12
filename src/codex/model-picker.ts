@@ -17,14 +17,14 @@ export const codexModelPicker: ModelPickerSpec = {
   // Enter confirms the model, then Codex asks for a reasoning level with the
   // cursor pre-set on that model's default; a second Enter keeps it.
   apply: async (io, timeoutMs) => {
-    io.terminal.sendInput("\r");
+    await io.terminal.sendInput("\r");
     await waitForScreen(
       io.terminal,
       (text) => reasoningHeader.test(text),
       timeoutMs,
       "codex reasoning level screen",
     );
-    io.terminal.sendInput("\r");
+    await io.terminal.sendInput("\r");
     await waitForScreen(
       io.terminal,
       (text) => changeConfirmed.test(text) && !reasoningHeader.test(text),

@@ -7,7 +7,12 @@
 
 export type ControlQueueError = () => Error;
 export type ControlSubmitMode = "message" | "command";
-export type ControlOperationKind = "message" | "compact" | "list_models" | "set_model";
+export type ControlOperationKind =
+  | "message"
+  | "readiness_bypass"
+  | "compact"
+  | "list_models"
+  | "set_model";
 
 export type ControlOperationTraits = {
   /** Whether submitting this operation starts a user turn. */
@@ -38,6 +43,12 @@ export const controlOperationTraits: Readonly<
     startsTurn: true,
     consumesReadiness: true,
     waitsForReadiness: true,
+    submitMode: "message",
+  },
+  readiness_bypass: {
+    startsTurn: true,
+    consumesReadiness: true,
+    waitsForReadiness: false,
     submitMode: "message",
   },
   compact: {
@@ -80,6 +91,7 @@ export class ControlQueue {
   private readonly stoppedError: ControlQueueError;
   private readonly onTurnStarted: () => void;
   private ready = false;
+  private everReady = false;
   private closed = false;
   /** The operation whose submission (incl. delayed Enter) is still dispatching. */
   private inFlight: QueuedOperation | undefined;
@@ -104,8 +116,13 @@ export class ControlQueue {
 
   markReady(): void {
     if (this.closed) return;
+    this.everReady = true;
     this.ready = true;
     this.drain();
+  }
+
+  hasBeenReady(): boolean {
+    return this.everReady;
   }
 
   /**
@@ -131,13 +148,13 @@ export class ControlQueue {
 
   private drain(): void {
     if (this.inFlight || this.queue.length === 0) return;
-    // Messages and compact wait for readiness (they run after the active turn,
-    // per C-API-22); picker automation dispatches even mid-turn, or an
-    // in-flight turn (e.g. an MCP boot spinner) would stall it. A readiness-
-    // waiting head also holds any command queued behind it, preserving FIFO.
+    // A readiness-bypassing submission may overtake a waiting head;
+    // all other operations retain FIFO and their readiness semantics.
     const next = this.queue[0] as QueuedOperation;
-    if (controlOperationTraits[next.kind].waitsForReadiness && !this.ready) return;
-    const operation = this.queue.shift() as QueuedOperation;
+    const headWaits = controlOperationTraits[next.kind].waitsForReadiness && !this.ready;
+    const index = headWaits ? this.queue.findIndex(({ kind }) => kind === "readiness_bypass") : 0;
+    if (index < 0) return;
+    const operation = this.queue.splice(index, 1)[0] as QueuedOperation;
     let dispatched: Promise<void>;
     try {
       dispatched = this.submitNow(operation.input, operation.kind);

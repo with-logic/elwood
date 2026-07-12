@@ -6,6 +6,7 @@ import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, elwoodError } from "../core/errors.ts";
 import { queuePersonaMessage } from "../core/persona.ts";
 import { observeRenderedFrame } from "../core/rendered-observers.ts";
+import { ignoreInputFailure } from "../core/session-input.ts";
 import { emitStartupPromptActivities } from "../core/startup-automation.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import { TurnStateWatcher } from "../core/turn-state.ts";
@@ -136,9 +137,9 @@ export async function startCodexFromRecord(
       // One snapshot per render: reused for prompt automation, readiness, and
       // detection (input written here only repaints on the next callback).
       const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
-      const result = promptResponder.handle(frame.text, (input) =>
-        renderedTerminal.sendInput(input),
-      );
+      const result = promptResponder.handle(frame.text, (input) => {
+        ignoreInputFailure(renderedTerminal.sendInput(input));
+      });
       session?.recordWarnings(result.warnings);
       emitStartupPromptActivities(emitter, "codex", record.elwoodSessionId, result.outcomes);
       // Readiness is hook-backed (the `SessionStart` hook fires it); the frame

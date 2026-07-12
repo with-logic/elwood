@@ -64,6 +64,7 @@ export type SharedSession = Pick<
   | "statusDecisions"
   | "sendPrompt"
   | "sendMessage"
+  | "sendGuidance"
   | "sendKeys"
   | "resize"
   | "stop"

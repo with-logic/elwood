@@ -4,7 +4,11 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { type PasteGuard, writePastedPrompt } from "../../src/core/session-input.ts";
+import {
+  ignoreInputFailure,
+  type PasteGuard,
+  writePastedPrompt,
+} from "../../src/core/session-input.ts";
 
 function fakeTerminal(): { writes: string[]; sendInput: (d: string | Uint8Array) => void } {
   const writes: string[] = [];
@@ -15,6 +19,10 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const paste = (text: string) => `\u001b[200~${text}\u001b[201~`;
 
 describe("writePastedPrompt", () => {
+  test("best-effort input consumes asynchronous failures", async () => {
+    ignoreInputFailure(Promise.reject(new Error("ignored")));
+    await sleep(0);
+  });
   test("C-API-31 the Enter is a separate keystroke after the paste settles", async () => {
     const terminal = fakeTerminal();
     writePastedPrompt(terminal, "hello", undefined, 5, 5);
@@ -46,7 +54,7 @@ describe("writePastedPrompt", () => {
     expect(terminal.writes.filter((w) => w === "\r")).toHaveLength(1);
   });
 
-  test("C-API-31 an Enter after termination is swallowed", async () => {
+  test("C-API-07 C-API-37 a failed first Enter rejects submission", async () => {
     const writes: string[] = [];
     const terminal = {
       sendInput: (d: string | Uint8Array) => {
@@ -54,8 +62,24 @@ describe("writePastedPrompt", () => {
         writes.push(String(d));
       },
     };
-    writePastedPrompt(terminal, "hello", undefined, 1, 1);
-    await sleep(10);
+    await expect(writePastedPrompt(terminal, "hello", undefined, 1, 1)).rejects.toThrow(
+      "terminal disposed",
+    );
     expect(writes).toEqual([paste("hello")]);
+  });
+
+  test("C-API-31 later recovery Enter failures remain best-effort", async () => {
+    let enters = 0;
+    const terminal = {
+      sendInput: (data: string | Uint8Array) => {
+        if (data !== "\r") return;
+        enters += 1;
+        if (enters > 1) throw new Error("terminal disposed");
+      },
+    };
+    const guard: PasteGuard = { snapshot: () => "[Pasted text", staged: () => true };
+    await expect(writePastedPrompt(terminal, "hello", guard, 1, 1)).resolves.toBeUndefined();
+    await sleep(10);
+    expect(enters).toBeGreaterThan(1);
   });
 });

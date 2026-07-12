@@ -245,6 +245,7 @@ interface ElwoodLikeSession {
 
   sendPrompt(prompt: string): Promise<void>;
   sendMessage(message: string): Promise<void>;
+  sendGuidance(message: string): Promise<void>;
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: { cols: number; rows: number }): Promise<void>;
   compact(options?: { readonly timeoutMs?: number }): Promise<void>;
@@ -264,8 +265,17 @@ Elwood queues it and submits it on the next `ready` transition.
 It does not wait for `ready`; sending while the agent is busy writes to the
 terminal immediately, like a human typing into the TUI.
 
-`sendKeys` is the escape hatch. Strings flow through the headless xterm input
-path. `Uint8Array` writes raw bytes to the PTY.
+Use `sendGuidance` when a coordinator needs to intervene in an active turn. It
+queues safely before the session's first readiness and while a blocking dialog
+is visible. After the session has been ready at least once, guidance sent while
+`running` bypasses readiness and enters the TUI immediately. Guidance remains
+serialized with queue-backed prompts, messages, and commands, and its promise
+resolves only after the pasted text and submitting Enter have both been written.
+
+`sendKeys` is the immediate escape hatch. Strings flow through the headless
+xterm input path; `Uint8Array` writes raw bytes to the PTY. It intentionally
+bypasses the control queue, so an interrupt can interleave with a pending
+paste/Enter sequence.
 
 `compact` types the adapter's `/compact` command and resolves when the adapter
 reports completion through its `PostCompact` hook.

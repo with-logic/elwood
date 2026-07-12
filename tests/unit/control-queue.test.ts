@@ -100,11 +100,45 @@ describe("ControlQueue", () => {
     expect(submitted).toEqual(["/compact"]);
   });
 
+  test("C-API-37 guidance overtakes a waiting message but submissions stay serialized", async () => {
+    const submitted: string[] = [];
+    let release = (): void => {};
+    const queue = new ControlQueue(
+      (input) => {
+        submitted.push(input);
+        return new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      },
+      () => new Error("closed"),
+      () => undefined,
+    );
+    const waiting = queue.send("later", "message");
+    const first = queue.send("urgent-1", "readiness_bypass");
+    const second = queue.send("urgent-2", "readiness_bypass");
+    expect(submitted).toEqual(["urgent-1"]);
+    release();
+    await first;
+    expect(submitted).toEqual(["urgent-1", "urgent-2"]);
+    release();
+    await second;
+    queue.markReady();
+    expect(submitted).toEqual(["urgent-1", "urgent-2", "later"]);
+    release();
+    await waiting;
+  });
+
   test("C-API-19 traits table pins per-operation readiness semantics", () => {
     expect(controlOperationTraits.message).toMatchObject({
       startsTurn: true,
       consumesReadiness: true,
       waitsForReadiness: true,
+    });
+    expect(controlOperationTraits.readiness_bypass).toEqual({
+      startsTurn: true,
+      consumesReadiness: true,
+      waitsForReadiness: false,
+      submitMode: "message",
     });
     // Compact is a command but still waits for readiness (runs after the turn).
     expect(controlOperationTraits.compact).toEqual({

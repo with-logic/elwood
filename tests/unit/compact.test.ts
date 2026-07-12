@@ -57,7 +57,7 @@ describe("runCompact", () => {
     expect(nudges).toBe(0);
   });
 
-  test("C-API-22 a deferred Enter on a terminated session is swallowed", async () => {
+  test("C-API-22 a failed deferred command Enter rejects submission", async () => {
     const writes: string[] = [];
     const terminal = {
       sendInput: (data: string | Uint8Array) => {
@@ -65,8 +65,9 @@ describe("runCompact", () => {
         writes.push(String(data));
       },
     };
-    writeQueuedInput(terminal, "/compact", "command", undefined, 1);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await expect(writeQueuedInput(terminal, "/compact", "command", undefined, 1)).rejects.toThrow(
+      "terminal disposed",
+    );
     expect(writes).toEqual(["/compact"]);
   });
 });

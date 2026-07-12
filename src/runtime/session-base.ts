@@ -1,11 +1,10 @@
 /** Shared adapter session behavior: lifecycle, input, command surface. Implements PRD §5.3, §5.7. */
-
 import { activityFromStatus, type ElwoodAgentKind } from "../core/activity.ts";
 import { ControlQueue } from "../core/control-queue.ts";
 import { elwoodError } from "../core/errors.ts";
 import type { ModelPickerSpec } from "../core/model-picker.ts";
 import type { AgentModelOption } from "../core/model-rows.ts";
-import { type PasteGuard, writePastedPrompt, writeQueuedInput } from "../core/session-input.ts";
+import { type PasteGuard, writeQueuedInput } from "../core/session-input.ts";
 import type { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
 import { replayWarningSnapshots } from "../core/warning-replay.ts";
@@ -40,8 +39,7 @@ export abstract class AgentSessionBase {
   private readonly terminalReplay: TerminalReplayBuffer;
   private cleanupPromise: Promise<void> | undefined;
   private pendingShutdown: ShutdownEvidence | undefined;
-  // Serializes overlapping stop/kill/teardown: PTY signaled at most once, later
-  // callers join the in-flight shutdown rather than racing it (C-LIFE-10).
+  // Serializes stop/kill/teardown so later callers join rather than race (C-LIFE-10).
   private readonly shutdownCoordinator = new ShutdownCoordinator();
   protected readonly controlQueue = new ControlQueue(
     (input, mode) => writeQueuedInput(this.terminal, input, mode, this.pasteGuard()),
@@ -93,13 +91,15 @@ export abstract class AgentSessionBase {
     return this.record.warnings;
   }
   sendPrompt(prompt: string): Promise<void> {
-    return this.inSession(() => {
-      void writePastedPrompt(this.terminal, prompt, this.pasteGuard());
-      this.submitEvidence("caller_submitted");
-    });
+    return this.inSession(() => this.controlQueue.send(prompt, "readiness_bypass"));
   }
   sendMessage(message: string): Promise<void> {
     return this.inSession(() => this.controlQueue.send(message, "message"));
+  }
+  sendGuidance(message: string): Promise<void> {
+    const immediate = this.status === "running" && this.controlQueue.hasBeenReady();
+    const kind = immediate ? "readiness_bypass" : "message";
+    return this.inSession(() => this.controlQueue.send(message, kind));
   }
   sendKeys(input: string | Uint8Array): Promise<void> {
     return this.inSession(() => this.terminal.sendInput(input));

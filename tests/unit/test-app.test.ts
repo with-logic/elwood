@@ -177,11 +177,12 @@ class FakeSession implements SharedSession {
     this.prompts.push(prompt);
     return Promise.resolve();
   }
-
   sendMessage(message: string): Promise<void> {
     return this.sendPrompt(message);
   }
-
+  sendGuidance(message: string): Promise<void> {
+    return this.sendPrompt(message);
+  }
   sendKeys = () => Promise.resolve();
 
   resize(size: { readonly cols: number; readonly rows: number }): Promise<void> {

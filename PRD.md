@@ -412,6 +412,7 @@ interface ClaudeSession {
 
   sendPrompt(prompt: string): Promise<void>;
   sendMessage(message: string): Promise<void>;
+  sendGuidance(message: string): Promise<void>;
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): Promise<void>;
   compact(options?: { readonly timeoutMs?: number }): Promise<void>;
@@ -459,6 +460,15 @@ do not accidentally paste multiple user turns into one active agent prompt. A
 queued `sendMessage` promise resolves when that message has been written to the
 PTY. If the session terminates before a queued message is written, the promise
 rejects with `session_not_running`.
+
+`sendGuidance` is the adapter-neutral intervention API. Before the session has
+ever reached semantic readiness, and while a blocking dialog is visible, it has
+the same readiness-safe behavior as `sendMessage`. During a real running turn
+after initial readiness, it bypasses turn readiness and enters the live TUI
+immediately, like `sendPrompt`. Guidance may overtake readiness-waiting messages,
+but queue-backed prompt, message, and command submissions remain serialized so
+their bracketed pastes and delayed Enter keystrokes never interleave. Its promise
+resolves only after the first submitting Enter is dispatched.
 
 Prompt submission MUST NOT race the TUI's paste ingestion. The CLIs ingest a
 bracketed paste asynchronously, and an Enter concatenated into the same PTY
@@ -523,7 +533,9 @@ strategy for callers.
 `sendKeys` is the low-level escape hatch for raw terminal input. String input
 flows through the headless xterm input path so terminal semantics match visual
 input. `Uint8Array` input is written to the PTY as bytes instead of being decoded
-as UTF-8, because callers use this overload for raw escape/binary input.
+as UTF-8, because callers use this overload for raw escape/binary input. It
+bypasses the control queue intentionally so interrupts remain immediate, and
+may therefore interleave with a prompt's paste and delayed Enter.
 
 `listModels` and `setModel` drive the adapter's own `/model` picker UI through
 the headless terminal, because neither CLI exposes a stable machine protocol
@@ -661,6 +673,8 @@ prefer the session-level `sendPrompt`, `sendMessage`, `sendKeys`, `resize`,
 integrations. Consumers that need diagnostics may await `terminal.settled()` and
 read `terminal.snapshot()`, but visual terminal renderers SHOULD render the raw
 `terminal:data` byte stream instead of repainting from snapshots.
+`sendInput` resolves after input has been forwarded to the PTY and rejects when
+that forwarding fails.
 Because parent apps often attach listeners after `startClaude` or `startCodex`
 resolves, sessions MUST maintain a bounded live-only replay buffer of raw PTY
 output emitted during the current process lifetime. New `terminal:data`
@@ -932,12 +946,13 @@ options override field by field and the effective posture is re-persisted.
 
 `CodexSession` exposes the same control surface as `ClaudeSession`: typed event
 subscription, `statusDecisions`, `waitForStatus`, `waitForActivity`,
-`sendPrompt`, `sendMessage`, `sendKeys`, `resize`, `compact`, `listModels`,
+`sendPrompt`, `sendMessage`, `sendGuidance`, `sendKeys`, `resize`, `compact`, `listModels`,
 `setModel`, `stop`, `kill`, and `teardown`. Prompt submission and
 raw input semantics are the same as Claude: Elwood writes to the PTY as a
-human would. `compact` follows the §5.3 contract using Codex's `/compact`
-command and `PostCompact` hook; `listModels`/`setModel` follow the §5.3
-contract against Codex's `Select Model and Effort` picker.
+human would. `sendGuidance` follows the state-aware intervention contract in
+§5.3. `compact` follows the §5.3 contract using Codex's `/compact` command and
+`PostCompact` hook; `listModels`/`setModel` follow the §5.3 contract against
+Codex's `Select Model and Effort` picker.
 
 The package also exports `ElwoodAgentSession`, a structural supertype both
 concrete session types satisfy, covering the shared identity/status
@@ -1837,7 +1852,7 @@ Each criterion has:
 | C-API-04 | §5.3 | `ClaudeSession` exposes `sendPrompt`, `sendKeys`, `resize`, `stop`, `kill`, and `teardown`. |
 | C-API-05 | §5.3 | `sendPrompt` writes through the PTY input path, not through Claude print mode or SDK APIs. |
 | C-API-06 | §5.3 | `sendPrompt` supports multi-line prompt text as one submitted user prompt. |
-| C-API-07 | §5.3 | Calling `sendPrompt` while Claude is busy writes input immediately rather than rejecting or queueing by default; terminated sessions may still fail with `session_not_running`. |
+| C-API-07 | §5.3 | Calling `sendPrompt` while Claude is busy writes input immediately rather than waiting for turn readiness, serializes against queue-backed prompt/message/command submissions, and resolves after its submitting Enter is dispatched; terminated sessions may still fail with `session_not_running`. |
 | C-API-08 | §5.4 | Consumers can subscribe and unsubscribe from typed session events. |
 | C-API-09 | §5.5 | `startCodex({ cwd })` returns a `CodexSession` with a stable non-empty `elwoodSessionId`. |
 | C-API-10 | §5.6 | `resumeCodex({ elwoodSessionId })` resumes using Elwood metadata without requiring a Codex session ID from the caller, provided project-local state is discoverable from the current process cwd or caller-supplied `cwd`/`stateDir`. |
@@ -1857,6 +1872,7 @@ Each criterion has:
 | C-API-24 | §5.3 §5.7 | `setModel(id)` switches the session model through cursor navigation; Elwood itself never persists a new default into user-owned configuration (Claude uses the session-only key; the Codex CLI persists its own picker selection, documented as a §4.5 deviation) and unknown ids reject with `model_automation_failed` listing available ids. |
 | C-API-35 | §5.3 §5.7 | `listModels()`/`setModel()` dispatch the picker command even while a turn is in flight (they do not wait for `ready`), so picker automation is not stalled by an in-flight turn such as an MCP-server boot spinner; `compact` and messages still wait for the active turn, and FIFO ordering is preserved. |
 | C-API-36 | §5.3 | A Claude session requested below 100 columns bootstraps at 100 columns, holds pre-ready resizes, and restores the latest requested size before its initial ready queue drains, so narrow visible terminals do not lose their first prompt. |
+| C-API-37 | §5.3 §5.7 | Claude and Codex expose `sendGuidance(message)`: before first readiness and while blocked it queues safely like `sendMessage`; during a post-ready running turn it overtakes readiness-waiting operations and enters the TUI immediately. Guidance serializes with queue-backed prompt/message/command submissions and resolves only after the submitting Enter is dispatched; raw `sendKeys` intentionally bypasses that queue. |
 | C-API-25 | §5.3 | Promise-returning session methods called after a terminal status reject with `session_not_running` instead of throwing synchronously. |
 | C-API-26 | §5.2 §5.6 | `startOrResumeClaude`/`startOrResumeCodex` resume when possible, fall back to a fresh start only on `state_not_found`, `resume_unavailable`, or `adapter_mismatch`, rethrow all other errors, and report `resumed` in the result. |
 | C-API-27 | §5.7 | `ElwoodAgentSession` is exported and both `ClaudeSession` and `CodexSession` are assignable to it, covering common events, io, commands, and lifecycle. |

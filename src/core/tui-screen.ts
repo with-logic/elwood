@@ -6,7 +6,7 @@
 import { elwoodError } from "./errors.ts";
 
 export type ScreenTerminal = {
-  sendInput(data: string | Uint8Array): void;
+  sendInput(data: string | Uint8Array): void | Promise<void>;
   snapshot(): { readonly text: string };
 };
 

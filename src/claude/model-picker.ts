@@ -14,7 +14,7 @@ export const claudeModelPicker: ModelPickerSpec = {
   // "s" applies for this session only. Enter or a number key would save the
   // selection as the user's default for new sessions, which §4.5 forbids.
   apply: async (io, timeoutMs) => {
-    io.terminal.sendInput("s");
+    await io.terminal.sendInput("s");
     await waitForScreen(
       io.terminal,
       (text) => !claudeModelPickerHeader.test(text),

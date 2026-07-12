@@ -136,7 +136,7 @@ describe("ClaudeSession startup and terminal control", () => {
     const session = await startClaude({ cwd });
     await session.sendPrompt("hello\nworld");
     const queued = session.sendMessage("again");
-    expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\nworld\u001b[201~"]);
+    expect(ptys[0]!.writes).toEqual(["\u001b[200~hello\nworld\u001b[201~", "\r"]);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       hook_event_name: "Stop",
       session_id: "claude-1",

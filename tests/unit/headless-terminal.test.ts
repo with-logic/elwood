@@ -27,4 +27,34 @@ describe("headless terminal", () => {
     await terminal.writeOutput(`${String.fromCharCode(27)}]2;✳ idle${String.fromCharCode(7)}`);
     expect(terminal.title).toBe("✳ idle");
   });
+
+  test("input promises settle with PTY forwarding and disposal", async () => {
+    const inputs: Array<string | Uint8Array> = [];
+    const terminal = createHeadlessTerminal({ cols: 20, rows: 3 }, (input) => inputs.push(input));
+    await terminal.sendInput("x");
+    await terminal.sendInput(new Uint8Array([121]));
+    expect(inputs).toEqual(["x", new Uint8Array([121])]);
+    await terminal.sendInput("pending");
+    terminal.dispose();
+    await expect(terminal.sendInput("late")).rejects.toThrow("Terminal is disposed");
+  });
+
+  test("input promises reject PTY forwarding failures", async () => {
+    const terminal = createHeadlessTerminal({ cols: 20, rows: 3 }, () => {
+      throw new Error("PTY closed");
+    });
+    await expect(terminal.sendInput("x")).rejects.toThrow("PTY closed");
+    await expect(terminal.sendInput(new Uint8Array([121]))).rejects.toThrow("PTY closed");
+  });
+
+  test("unsolicited xterm protocol replies are forwarded best-effort", async () => {
+    const inputs: Array<string | Uint8Array> = [];
+    const terminal = createHeadlessTerminal({ cols: 20, rows: 3 }, (input) => inputs.push(input));
+    await terminal.writeOutput("\u001b[c");
+    expect(inputs).toHaveLength(1);
+    const failing = createHeadlessTerminal({ cols: 20, rows: 3 }, () => {
+      throw new Error("PTY closed");
+    });
+    await expect(failing.writeOutput("\u001b[c")).resolves.toBeUndefined();
+  });
 });
