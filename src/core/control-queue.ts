@@ -6,6 +6,7 @@ import {
   type ControlQueueError,
   type ControlSubmitMode,
   controlOperationTraits,
+  dispatchesWhileNotReady,
 } from "./control-queue-traits.ts";
 
 export type {
@@ -27,17 +28,16 @@ import { toError } from "./errors.ts";
 export type ControlSubmitter = (
   input: string,
   mode: ControlSubmitMode,
-  // Aborted when the NEXT operation begins dispatching, so a prior submission's
-  // background recovery nudges cannot fire an Enter into a later prompt's paste.
+  // Aborted when the NEXT operation dispatches, so a prior submission's recovery
+  // nudges cannot fire an Enter into a later prompt's paste.
   signal: AbortSignal,
 ) => Promise<void>;
 
 type QueuedOperation = {
   readonly input: string;
   readonly kind: ControlOperationKind;
-  // Bypass eligibility is FROZEN at enqueue time: guidance that was queued
-  // before first readiness (or while blocked) behaves like a message for its
-  // whole lifetime and must not later reclassify into an active turn (C-API-37).
+  // Bypass eligibility is FROZEN at enqueue time: guidance queued before first
+  // readiness (or while blocked) stays message-like all its life (C-API-37).
   readonly mayBypassReadiness: boolean;
   readonly resolve: () => void;
   readonly reject: (error: Error) => void;
@@ -52,9 +52,9 @@ export class ControlQueue {
   private ready = false;
   private everReady = false;
   private closed = false;
-  // Count of queued operations that can dispatch while not ready (prompts,
-  // picker commands, bypass-eligible guidance). Lets `drain` skip the O(n) scan
-  // for an overtaker when none exists — so N held messages stay amortized O(1).
+  // Count of queued operations that can dispatch while not ready (prompts, picker
+  // commands, bypass-eligible guidance). Lets `drain` skip the O(n) overtaker scan
+  // when none exists, so N held messages stay amortized O(1).
   private bypassable = 0;
   /** The operation whose submission (incl. delayed Enter) is still dispatching. */
   private inFlight: QueuedOperation | undefined;
@@ -109,8 +109,7 @@ export class ControlQueue {
     this.closed = true;
     const error = this.stoppedError();
     // Reject the still-dispatching operation too: closing while a command's
-    // delayed Enter is pending must fail it immediately with the stopped
-    // error, not let it later resolve or time out downstream.
+    // delayed Enter is pending must fail it now, not let it later resolve.
     const settling = this.inFlight;
     this.inFlight = undefined;
     this.bypassable = 0;
@@ -126,7 +125,7 @@ export class ControlQueue {
     if (this.dispatchesWhileNotReady(operation)) this.bypassable -= 1;
     // Own the queue BEFORE lifecycle work or the write starts, so a throwing
     // turn-start listener can't leave a started write ownerless and let a
-    // bypass-capable follower interleave with it (C-API-35).
+    // bypass-capable follower interleave (C-API-35).
     this.inFlight = operation;
     const traits = controlOperationTraits[operation.kind];
     let dispatched: Promise<void>;
@@ -138,8 +137,7 @@ export class ControlQueue {
       return;
     }
     // The write (incl. any delayed command Enter) holds the next drain so
-    // back-to-back queued operations never interleave. close() may have already
-    // settled this operation, in which case these handlers no-op.
+    // back-to-back operations never interleave; if close() already settled this, these no-op.
     dispatched.then(
       () => this.settleInFlight(operation, () => operation.resolve()),
       (error: unknown) => this.rollbackSubmission(operation, traits, toError(error)),
@@ -158,9 +156,9 @@ export class ControlQueue {
   }
 
   // Index of the next operation to dispatch, or -1. The head dispatches when
-  // ready; otherwise the first dispatch-while-not-ready operation (a prompt/command
-  // or bypass-eligible guidance) overtakes it. The `bypassable` counter skips the
-  // scan when no overtaker is queued, keeping a message backlog amortized O(1).
+  // ready; otherwise the first dispatch-while-not-ready operation (prompt/command
+  // or bypass-eligible guidance) overtakes it. `bypassable` skips that scan when
+  // none is queued, so a message backlog stays amortized O(1).
   private nextDispatchIndex(): number {
     if (this.ready) return 0;
     if (this.dispatchesWhileNotReady(this.queue[0] as QueuedOperation)) return 0;
@@ -170,9 +168,8 @@ export class ControlQueue {
 
   /** Whether the operation may dispatch even though the session is not ready. */
   private dispatchesWhileNotReady(operation: QueuedOperation): boolean {
-    const policy = controlOperationTraits[operation.kind].readiness;
-    if (policy === "always") return true;
-    return policy === "running_after_ready" && operation.mayBypassReadiness;
+    const { readiness } = controlOperationTraits[operation.kind];
+    return dispatchesWhileNotReady(readiness, operation.mayBypassReadiness);
   }
 
   private settleInFlight(operation: QueuedOperation, settle: () => void): void {
@@ -187,7 +184,7 @@ export class ControlQueue {
   // the write, so a throwing status listener aborts with nothing yet in flight.
   private beginSubmission(traits: ControlOperationTraits): void {
     if (traits.consumesReadiness) this.ready = false;
-    if (traits.startsTurn) this.onTurnStarted();
+    if (traits.reportsCallerSubmission) this.onTurnStarted();
   }
 
   // Fresh abort signal per submission; aborting the PRIOR one halts its background

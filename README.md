@@ -263,8 +263,10 @@ ready, it writes immediately through the PTY. If the session is alive but busy,
 Elwood queues it and submits it on the next `ready` transition.
 
 `sendPrompt` uses bracketed paste so multi-line text is submitted as one prompt.
-It does not wait for `ready`; sending while the agent is busy writes to the
-terminal immediately, like a human typing into the TUI.
+It does not wait for `ready`: the prompt bypasses readiness and dispatches as
+soon as no other submission is in flight, like a human typing into the TUI. It
+may overtake readiness-waiting messages, but never interleaves with an in-flight
+paste/Enter sequence — that completes first.
 
 Use `sendGuidance` when a coordinator needs to intervene in an active turn. It
 queues safely before the session's first readiness and while a blocking dialog

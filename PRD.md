@@ -535,7 +535,11 @@ UI rather than a stable machine protocol, Elwood should prefer lifecycle hooks
 and startup health checks over fragile prompt-text regular expressions.
 
 `sendPrompt` does not gate on readiness. If a caller sends a prompt while Claude
-is busy, Elwood writes the input immediately, matching human terminal behavior.
+is busy, Elwood does NOT wait for `ready`: the prompt bypasses readiness and
+dispatches as soon as no other submission is in flight, matching human terminal
+behavior. Like guidance, it may overtake readiness-waiting messages, but it never
+interleaves with an in-flight submission — any paste/Enter sequence already
+underway completes first (C-API-07, queue ordering above).
 This readiness guarantee applies while the agent process is alive, including
 `starting`, `running`, and `ready` states. It does not require Elwood to write to
 terminated sessions; calls made after `stopped`, `exited`, `killed`, or

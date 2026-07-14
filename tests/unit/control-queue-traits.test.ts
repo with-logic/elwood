@@ -9,26 +9,26 @@ import { ControlQueue, controlOperationTraits } from "../../src/core/control-que
 describe("control-queue traits", () => {
   test("C-API-19 traits table pins per-operation readiness semantics", () => {
     expect(controlOperationTraits.message).toMatchObject({
-      startsTurn: true,
+      reportsCallerSubmission: true,
       consumesReadiness: true,
       readiness: "ready",
     });
     // Guidance's conditional policy is named explicitly, not a bare boolean.
     expect(controlOperationTraits.guidance).toEqual({
-      startsTurn: true,
+      reportsCallerSubmission: true,
       consumesReadiness: true,
       readiness: "running_after_ready",
       submitMode: "pasted_input",
     });
     expect(controlOperationTraits.prompt).toEqual({
-      startsTurn: true,
+      reportsCallerSubmission: true,
       consumesReadiness: true,
       readiness: "always",
       submitMode: "pasted_input",
     });
     // Compact is a command but still waits for readiness (runs after the turn).
     expect(controlOperationTraits.compact).toEqual({
-      startsTurn: false,
+      reportsCallerSubmission: false,
       consumesReadiness: false,
       readiness: "ready",
       submitMode: "command",
@@ -36,7 +36,7 @@ describe("control-queue traits", () => {
     // Picker automation dispatches even mid-turn.
     for (const kind of ["list_models", "set_model"] as const) {
       expect(controlOperationTraits[kind]).toEqual({
-        startsTurn: false,
+        reportsCallerSubmission: false,
         consumesReadiness: false,
         readiness: "always",
         submitMode: "command",

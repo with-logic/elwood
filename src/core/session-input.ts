@@ -52,20 +52,28 @@ export function sanitizePasteText(text: string): string {
 }
 
 /**
+ * Writes a bracketed paste and submits it.
+ *
  * The TUIs ingest bracketed pastes asynchronously; an Enter concatenated into
- * the same PTY write races that ingestion and can be dropped, leaving the
- * prompt staged but never submitted (long personas hit this reliably). The
- * Enter therefore follows as a separate keystroke after a settle delay, and
- * bounded re-Enters fire while the screen still shows staged content — a
- * lone Enter from the staged state submits, and a surplus Enter on an empty
- * composer is a no-op, so the recovery is safe on both adapters.
- */
-/**
- * Writes a bracketed paste and submits it. The returned promise resolves once
- * the first submitting Enter has been dispatched (after the settle delay), so
- * the control queue does not drain the next operation into the composer before
- * this prompt has actually been submitted. Bounded recovery re-Enters continue
- * in the background afterwards and are idempotent.
+ * the same PTY write races that ingestion and can be dropped, leaving the prompt
+ * staged but never submitted (long personas hit this reliably). The Enter
+ * therefore follows as a separate keystroke after a settle delay, and bounded
+ * re-Enters fire while the screen still shows staged content — a lone Enter from
+ * the staged state submits, and a surplus Enter on an empty composer is a no-op,
+ * so the recovery is safe on both adapters.
+ *
+ * While a blocking human-decision dialog is on screen, the WHOLE submission is
+ * held: neither the paste nor any Enter reaches the terminal until the dialog
+ * clears, so caller/model text can never be interpreted as the dialog's
+ * shortcuts or confirm its highlighted option (C-API-37 dialog safety). Paste
+ * text is sanitized first so an embedded end sentinel or control byte cannot
+ * escape paste mode into live keystrokes (§5.3).
+ *
+ * The returned promise resolves once the first submitting Enter has been
+ * dispatched (after the settle delay), so the control queue does not drain the
+ * next operation into the composer before this prompt has actually been
+ * submitted. Bounded recovery re-Enters continue in the background afterwards
+ * and are idempotent.
  */
 export async function writePastedPrompt(
   terminal: InputTerminal,
@@ -142,19 +150,25 @@ export async function writeQueuedInput(
   signal?: AbortSignal,
   enterDelayMs = commandEnterDelayMs,
 ): Promise<void> {
-  if (mode !== "command") {
-    // Resolve only after the input's submitting Enter has dispatched, so the
-    // next queued operation cannot write into the composer first (FIFO).
-    await writePastedPrompt(terminal, input, guard, signal);
-    return;
-  }
-  // Slash-command popups (Codex) swallow an Enter that arrives in the same
-  // PTY chunk as the command text, so Enter follows as a separate keystroke.
-  // The returned promise resolves only after that Enter is dispatched, so a
-  // queued command's Enter always lands before the next operation writes.
-  await terminal.sendInput(input);
-  await wait(enterDelayMs);
-  await terminal.sendInput("\r");
+  // Dispatch through a Record keyed by ControlSubmitMode: a new mode must add an
+  // entry here or the object fails to type-check, so it can never silently reuse
+  // pasted-input behavior. The map has no unreachable default arm, so 100%
+  // coverage holds (both entries are exercised).
+  const submitters: Readonly<Record<ControlSubmitMode, () => Promise<void>>> = {
+    // Resolve only after the input's submitting Enter has dispatched, so the next
+    // queued operation cannot write into the composer first (FIFO).
+    pasted_input: () => writePastedPrompt(terminal, input, guard, signal),
+    // Slash-command popups (Codex) swallow an Enter that arrives in the same PTY
+    // chunk as the command text, so Enter follows as a separate keystroke. The
+    // returned promise resolves only after that Enter is dispatched, so a queued
+    // command's Enter always lands before the next operation writes.
+    command: async () => {
+      await terminal.sendInput(input);
+      await wait(enterDelayMs);
+      await terminal.sendInput("\r");
+    },
+  };
+  await submitters[mode]();
 }
 
 function wait(ms: number): Promise<void> {

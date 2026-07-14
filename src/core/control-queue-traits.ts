@@ -24,8 +24,29 @@ export type ControlOperationKind =
  */
 export type ReadinessPolicy = "ready" | "always" | "running_after_ready";
 
+/**
+ * Whether an operation with this readiness policy may dispatch while the session
+ * is not ready. Exhaustive over ReadinessPolicy with no runtime default (100%
+ * coverage holds): a new member leaves a return-less path, so `noImplicitReturns`
+ * fails the build rather than letting it silently become non-bypassable.
+ */
+export function dispatchesWhileNotReady(policy: ReadinessPolicy, mayBypass: boolean): boolean {
+  switch (policy) {
+    case "always":
+      return true;
+    case "running_after_ready":
+      return mayBypass;
+    case "ready":
+      return false;
+  }
+}
+
 export type ControlOperationTraits = {
-  readonly startsTurn: boolean;
+  // True when dispatching this operation submits `caller_submitted` evidence via
+  // the queue's turn-started callback. This holds for guidance even when it
+  // intervenes in an EXISTING turn, so it is named for its effect (reporting a
+  // caller submission), not for "starting" a turn.
+  readonly reportsCallerSubmission: boolean;
   readonly consumesReadiness: boolean;
   readonly readiness: ReadinessPolicy;
   readonly submitMode: ControlSubmitMode;
@@ -40,37 +61,37 @@ export const controlOperationTraits: Readonly<
   Record<ControlOperationKind, ControlOperationTraits>
 > = {
   message: {
-    startsTurn: true,
+    reportsCallerSubmission: true,
     consumesReadiness: true,
     readiness: "ready",
     submitMode: "pasted_input",
   },
   guidance: {
-    startsTurn: true,
+    reportsCallerSubmission: true,
     consumesReadiness: true,
     readiness: "running_after_ready",
     submitMode: "pasted_input",
   },
   prompt: {
-    startsTurn: true,
+    reportsCallerSubmission: true,
     consumesReadiness: true,
     readiness: "always",
     submitMode: "pasted_input",
   },
   compact: {
-    startsTurn: false,
+    reportsCallerSubmission: false,
     consumesReadiness: false,
     readiness: "ready",
     submitMode: "command",
   },
   list_models: {
-    startsTurn: false,
+    reportsCallerSubmission: false,
     consumesReadiness: false,
     readiness: "always",
     submitMode: "command",
   },
   set_model: {
-    startsTurn: false,
+    reportsCallerSubmission: false,
     consumesReadiness: false,
     readiness: "always",
     submitMode: "command",

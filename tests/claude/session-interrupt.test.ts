@@ -62,6 +62,30 @@ describe("ClaudeSession interrupt", () => {
     expect(escapes(ptys[0]!.writes)).toBe(1);
   });
 
+  test("C-API-38 a settled interrupt is not reused: a later turn gets a fresh Escape", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
+    // Drive a FULL interrupt to completion so the coalescing guard's `.finally`
+    // resets the cached in-flight promise.
+    await session.sendMessage("write a long essay");
+    const first = session.interrupt();
+    await expect.poll(() => escapes(ptys[0]!.writes)).toBe(1);
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, stopHook(cwd));
+    await first;
+    expect(session.status).toBe("ready");
+    // A SECOND turn: if the settled promise were reused, this interrupt would send
+    // NO Escape and resolve off the stale settle. Assert a fresh (second) Escape.
+    await session.sendMessage("write another essay");
+    expect(session.status).toBe("running");
+    const second = session.interrupt();
+    await expect.poll(() => escapes(ptys[0]!.writes)).toBe(2);
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, stopHook(cwd));
+    await second;
+    expect(session.status).toBe("ready");
+  });
+
   test("C-API-38 Escape interleaves with an in-flight prompt's paste and delayed Enter", async () => {
     const cwd = tempDir();
     installFakes();
