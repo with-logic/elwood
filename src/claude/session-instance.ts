@@ -23,6 +23,7 @@ import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { claudeModelPicker } from "./model-picker.ts";
 import { resizeRestoreFailedWarning } from "./resize-restore.ts";
 import type { ClaudeSession } from "./session-interface.ts";
+import { CLAUDE_STARTUP_MIN_COLS } from "./startup-size.ts";
 
 export type HookBridge = {
   readonly start: () => Promise<void>;
@@ -34,7 +35,13 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   private readonly bridge: HookBridge;
   private readonly emitter: TypedEmitter;
   private requestedSize: TerminalSize;
-  private awaitingInitialReady = true;
+  // Only a session requested BELOW the 100-column startup floor bootstraps wide
+  // and defers its restore to readiness (C-API-36). A session requested at 100+
+  // columns already starts at its exact size, so its pre-ready resizes apply
+  // immediately like any other resize — nothing to hold or restore.
+  private awaitingInitialReady: boolean;
+  // Whether the one-shot initial-ready transition has already run (idempotent).
+  private initialReadyDone = false;
 
   constructor(
     record: SessionRecord,
@@ -49,6 +56,7 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     this.bridge = bridge;
     this.emitter = emitter;
     this.requestedSize = requestedSize;
+    this.awaitingInitialReady = requestedSize.cols < CLAUDE_STARTUP_MIN_COLS;
   }
 
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>) {
@@ -68,35 +76,56 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   protected stagedPaste(screen: string): boolean {
     return /\[Pasted text/.test(screen);
   }
-  /** Hold the PHYSICAL resize until Claude's one-shot readiness transition, but
-   * still DURABLY persist the requested size now, so an exit before readiness
-   * resumes at the latest requested geometry rather than the bootstrap width. */
+  /** A narrow session holds the PHYSICAL resize until Claude's one-shot readiness
+   * transition, but still DURABLY persists the requested size now so an exit before
+   * readiness resumes at the latest requested geometry rather than the bootstrap
+   * width. A wide session (100+ cols) never deferred, so it resizes immediately. */
   override resize(size: TerminalSize): Promise<void> {
     this.requestedSize = size;
     if (!(this.awaitingInitialReady && !terminalStatuses.has(this.status))) {
       return super.resize(size);
     }
     // Non-terminal by the guard above: durably record the size now (unless the
-    // pty is racing exit), and defer the physical resize to readiness.
-    this.persistHeldSize(size);
-    return Promise.resolve();
+    // pty is racing exit), and defer the physical resize to readiness. Wrapped so
+    // a throwing pty-liveness probe rejects rather than throws synchronously
+    // (C-API-25); the base `resize` path already rejects on its own throws.
+    return Promise.resolve().then(() => this.persistHeldSize(size));
   }
-  /** Restore the latest requested geometry before the ready queue drains. A real
-   * (non-closed) resize failure leaves Claude at its safe bootstrap width and is
-   * surfaced as a typed `resize_restore_failed` warning — never silently swallowed
-   * and never reported as a success — but it still never starves queued input. */
+  /** Restore the deferred geometry (narrow sessions only) then advance readiness.
+   * Readiness advancement is the load-bearing invariant and MUST run even if the
+   * restore or its warning delivery throws, or a live session's queued
+   * persona/messages would be starved forever (C-API-39, C-API-36). Idempotent:
+   * a late deadline after the hook re-runs neither the restore nor readiness. */
   async completeInitialReady(): Promise<void> {
-    if (!this.awaitingInitialReady) return;
+    if (this.initialReadyDone) return;
+    this.initialReadyDone = true;
+    const wasNarrowBootstrap = this.awaitingInitialReady;
     this.awaitingInitialReady = false;
+    try {
+      if (wasNarrowBootstrap) await this.restoreRequestedSize();
+    } finally {
+      this.advanceInitialReady();
+    }
+  }
+  /** Restore the deferred physical resize; a real failure warns durably. */
+  private async restoreRequestedSize(): Promise<void> {
     try {
       await super.resize(this.requestedSize);
     } catch (error) {
       // A closed PTY is a benign no-op handled in the base resize; reaching here
       // means a real error, so surface it durably instead of continuing silently.
-      this.recordWarnings([
-        resizeRestoreFailedWarning(this.elwoodSessionId, this.requestedSize, error),
-      ]);
+      // Isolated so a throwing warning/activity listener cannot skip readiness.
+      try {
+        this.recordWarnings([
+          resizeRestoreFailedWarning(this.elwoodSessionId, this.requestedSize, error),
+        ]);
+      } catch {
+        // A warning-sink/listener failure must never block readiness release.
+      }
     }
+  }
+  /** Advance to `ready`, falling back to opening the queue directly on failure. */
+  private advanceInitialReady(): void {
     try {
       this.submitEvidence("initial_ready");
     } catch {

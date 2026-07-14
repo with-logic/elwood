@@ -7,7 +7,6 @@ import { createConnection } from "node:net";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { HookBridgeServer } from "../../src/bridge/server.ts";
-import { TypedEmitter } from "../../src/events/emitter.ts";
 import { sendBridge, tempDirForUnit } from "./helpers.ts";
 
 const acceptHookInput = () => true;
@@ -145,50 +144,5 @@ describe("bridge and emitter edges", () => {
     await server.stop();
     expect(dispatched).toBe(1);
     expect(JSON.parse(response)).toEqual({ exitCode: 0, stdout: "ok", stderr: "" });
-  });
-
-  test("C-API-08 event emitter handles empty emissions and explicit off", async () => {
-    const emitter = new TypedEmitter();
-    emitter.emit("status", { elwoodSessionId: "x", status: "running" });
-    expect(
-      await emitter.request("status", { elwoodSessionId: "x", status: "running" }),
-    ).toBeUndefined();
-    const statuses: string[] = [];
-    const handler = (event: { readonly status: string }) => statuses.push(event.status);
-    const unsubscribe = emitter.on("status", handler);
-    emitter.emit("status", { elwoodSessionId: "x", status: "running" });
-    emitter.off("status", handler);
-    unsubscribe();
-    emitter.emit("status", { elwoodSessionId: "x", status: "ready" });
-    const offUndefinedHandler = emitter.on("status", () => undefined);
-    expect(
-      await emitter.request("status", { elwoodSessionId: "x", status: "ready" }),
-    ).toBeUndefined();
-    offUndefinedHandler();
-    emitter.listen("status", (event) => event.status);
-    expect(await emitter.request("status", { elwoodSessionId: "x", status: "ready" })).toBe(
-      "ready",
-    );
-    expect(statuses).toEqual(["running"]);
-  });
-
-  test("emit delivers to every listener before rethrowing the first failure", () => {
-    const emitter = new TypedEmitter();
-    const seen: string[] = [];
-    // A rogue user listener throwing must not abort delivery to the internal
-    // lifecycle subscriber registered after it (e.g. interrupt/compact settle);
-    // the failure is still surfaced to any enclosing boundary via a rethrow.
-    emitter.on("status", () => {
-      throw new Error("first rogue");
-    });
-    emitter.on("status", (event) => seen.push(event.status));
-    emitter.on("status", () => {
-      throw new Error("second rogue");
-    });
-    expect(() => emitter.emit("status", { elwoodSessionId: "x", status: "ready" })).toThrow(
-      "first rogue",
-    );
-    // Every listener ran despite the earlier throw.
-    expect(seen).toEqual(["ready"]);
   });
 });

@@ -16,12 +16,20 @@ export type {
 } from "./control-queue-traits.ts";
 export { controlOperationTraits } from "./control-queue-traits.ts";
 
+import { toError } from "./errors.ts";
+
 /**
  * Writes an operation to the terminal. Resolves only once the submission —
  * including any delayed Enter keystroke — has been dispatched, so the queue
  * does not drain the next operation into a half-written composer.
  */
-export type ControlSubmitter = (input: string, mode: ControlSubmitMode) => Promise<void>;
+export type ControlSubmitter = (
+  input: string,
+  mode: ControlSubmitMode,
+  // Aborted when the NEXT operation begins dispatching, so a prior submission's
+  // background recovery nudges cannot fire an Enter into a later prompt's paste.
+  signal: AbortSignal,
+) => Promise<void>;
 
 type QueuedOperation = {
   readonly input: string;
@@ -49,6 +57,8 @@ export class ControlQueue {
   private bypassable = 0;
   /** The operation whose submission (incl. delayed Enter) is still dispatching. */
   private inFlight: QueuedOperation | undefined;
+  /** Aborts the current submission's background recovery nudges when the next starts. */
+  private submitAbort: AbortController | undefined;
 
   constructor(
     submit: ControlSubmitter,
@@ -117,7 +127,7 @@ export class ControlQueue {
     try {
       dispatched = this.submitNow(operation.input, operation.kind);
     } catch (error) {
-      operation.reject(asError(error));
+      operation.reject(toError(error));
       this.drain();
       return;
     }
@@ -128,7 +138,7 @@ export class ControlQueue {
     this.inFlight = operation;
     dispatched.then(
       () => this.settleInFlight(operation, () => operation.resolve()),
-      (error: unknown) => this.settleInFlight(operation, () => operation.reject(asError(error))),
+      (error: unknown) => this.settleInFlight(operation, () => operation.reject(toError(error))),
     );
   }
 
@@ -165,12 +175,13 @@ export class ControlQueue {
   private submitNow(input: string, kind: ControlOperationKind): Promise<void> {
     const traits = controlOperationTraits[kind];
     if (traits.consumesReadiness) this.ready = false;
-    const dispatched = this.submit(input, traits.submitMode);
+    // Abort the PRIOR submission's background work (recovery nudges) before the
+    // next one dispatches, so an older nudge can never fire an Enter into this
+    // paste. A submission's own foreground write is already complete by then.
+    this.submitAbort?.abort();
+    this.submitAbort = new AbortController();
+    const dispatched = this.submit(input, traits.submitMode, this.submitAbort.signal);
     if (traits.startsTurn) this.onTurnStarted();
     return dispatched;
   }
-}
-
-function asError(value: unknown): Error {
-  return value instanceof Error ? value : new Error(String(value));
 }

@@ -39,14 +39,18 @@ export class TypedEmitter<M extends Record<string, unknown> = ElwoodEventMap> {
   emit<E extends EventKey<M>>(event: E, payload: M[E]): void {
     const set = this.handlers.get(event);
     if (!set) return;
-    // Deliver to EVERY subscriber before surfacing any failure: one throwing
+    // Deliver to every subscriber before surfacing any failure: one throwing
     // listener must not abort iteration and wedge an internal lifecycle
     // subscriber (e.g. interrupt/compact settling on a status transition, or
     // the transcript watcher's flush). The first error is rethrown after the
-    // full fan-out so an enclosing error boundary can still observe it.
+    // full fan-out so an enclosing error boundary can still observe it. We
+    // snapshot the set so adding a listener mid-emit does not fire this round,
+    // but SKIP any snapshot entry a prior handler already unsubscribed — an
+    // unsubscribe must take effect immediately, even within the same emission.
     let firstError: unknown;
     let failed = false;
     for (const handler of [...set]) {
+      if (!set.has(handler)) continue;
       try {
         handler(payload);
       } catch (error) {

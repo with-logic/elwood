@@ -101,4 +101,64 @@ describe("ClaudeSession narrow-bootstrap resize", () => {
     expect(session.warnings.find((w) => w.code === "resize_restore_failed")).toBeUndefined();
     expect(session.status).toBe("running");
   });
+
+  test("C-API-36 a session requested at 100+ columns resizes immediately, not held", async () => {
+    const cwd = tempDir();
+    installFakes();
+    // Wide session: no bootstrap deferral, so a pre-ready resize applies at once.
+    const session = await startClaude({ cwd, initialSize: { cols: 120, rows: 30 } });
+    await session.resize({ cols: 130, rows: 32 });
+    expect(ptys[0]!.size).toEqual({ cols: 130, rows: 32 });
+  });
+
+  test("C-API-25 a wide-session resize throwing a non-Error rejects with a normalized Error", async () => {
+    const cwd = tempDir();
+    installFakes();
+    // Wide session goes through the base resize path; a non-Error synchronous
+    // throw is normalized into an Error rejection rather than escaping raw.
+    const session = await startClaude({ cwd, initialSize: { cols: 120, rows: 30 } });
+    ptys[0]!.resizeError = "raw pty failure" as unknown as Error;
+    await expect(session.resize({ cols: 130, rows: 32 })).rejects.toThrow("raw pty failure");
+  });
+
+  test("C-API-36 a held resize on a closed PTY persists nothing (process-exit race)", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd, initialSize: { cols: 68, rows: 10 } });
+    // The pty is racing exit: the liveness probe reports closed, so the held
+    // resize records nothing that could never physically apply.
+    ptys[0]!.resizeResult = "closed";
+    await session.resize({ cols: 72, rows: 9 });
+    // The persisted size is unchanged from the bootstrap record (68 requested).
+    expect(persistedSize(cwd, session.elwoodSessionId)).toEqual({ cols: 68, rows: 10 });
+  });
+
+  test("C-API-25 a resize whose PTY probe throws rejects rather than throwing", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd, initialSize: { cols: 68, rows: 10 } });
+    // A held pre-ready resize probes pty liveness synchronously; a throwing probe
+    // must surface as a rejected promise, never a synchronous throw (C-API-25).
+    ptys[0]!.resizeError = Object.assign(new Error("probe failed"), { code: "EIO" });
+    await expect(session.resize({ cols: 70, rows: 9 })).rejects.toThrow("probe failed");
+    // A non-Error throw is normalized to an Error rejection, not thrown raw.
+    ptys[0]!.resizeError = "raw string failure" as unknown as Error;
+    await expect(session.resize({ cols: 71, rows: 9 })).rejects.toThrow("raw string failure");
+  });
+
+  test("C-API-39 a throwing warning listener at restore still releases queued input", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd, initialSize: { cols: 68, rows: 10 } });
+    // A rogue warning listener throws during restore-failure delivery; readiness
+    // must still advance so the queued message is never permanently starved.
+    session.on("warning", () => {
+      throw new Error("rogue warning listener");
+    });
+    const queued = session.sendMessage("hello");
+    ptys[0]!.resizeError = Object.assign(new Error("resize failed"), { code: "EIO" });
+    await reachReady(cwd, session.elwoodSessionId);
+    await queued;
+    expect(ptys[0]!.writes[0]).toBe("[200~hello[201~");
+  });
 });

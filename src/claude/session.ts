@@ -46,8 +46,7 @@ import {
   transcriptSeedFromWarnings,
 } from "./session-transcript.ts";
 import { ClaudeStartupPromptResponder } from "./startup-prompts.ts";
-
-const CLAUDE_STARTUP_MIN_COLS = 100;
+import { CLAUDE_STARTUP_MIN_COLS } from "./startup-size.ts";
 
 export {
   resetClaudeHookBridgeFactoryForTests as resetClaudeSessionSeamsForTests,
@@ -97,6 +96,8 @@ export async function startClaudeFromRecord(
   // The callback is one-shot (idempotent), so a late deadline after the hook is a no-op.
   const ready = initialReady(() => {
     turnWatcher.arm();
+    // completeInitialReady advances readiness in a finally and isolates restore +
+    // warning failures internally, so its promise never rejects (not awaited).
     void session?.completeInitialReady();
   });
   const bridge = currentClaudeHookBridgeFactory()(

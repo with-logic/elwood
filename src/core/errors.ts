@@ -55,6 +55,11 @@ export function elwoodError(
   return new ElwoodError(code, message, details);
 }
 
+/** Normalize a thrown value into an Error so a non-Error throw never escapes raw. */
+export function toError(value: unknown): Error {
+  return value instanceof Error ? value : new Error(String(value));
+}
+
 /**
  * The errno string of a thrown value, or `undefined` when it has none. Narrows
  * object-ness FIRST so a thrown `null`/`undefined`/primitive can never make the

@@ -1,6 +1,7 @@
 /** Shared adapter session behavior: lifecycle, input, command surface. Implements PRD §5.3, §5.7. */
 import { activityFromStatus, type ElwoodAgentKind } from "../core/activity.ts";
 import { ControlQueue } from "../core/control-queue.ts";
+import { toError } from "../core/errors.ts";
 import type { ModelPickerSpec } from "../core/model-picker.ts";
 import type { AgentModelOption } from "../core/model-rows.ts";
 import { type PasteGuard, writeQueuedInput } from "../core/session-input.ts";
@@ -48,7 +49,7 @@ export abstract class AgentSessionBase {
     blocked: () => this.status === "blocked",
   };
   protected readonly controlQueue = new ControlQueue(
-    (input, mode) => writeQueuedInput(this.terminal, input, mode, this.pasteGuard),
+    (input, mode, signal) => writeQueuedInput(this.terminal, input, mode, this.pasteGuard, signal),
     () => notRunningError(this.agent),
     () => this.submitEvidence("caller_submitted"),
     () => this.status === "running",
@@ -105,13 +106,12 @@ export abstract class AgentSessionBase {
   private enqueue(input: string, kind: "prompt" | "message" | "guidance"): Promise<void> {
     return this.inSession(() => this.controlQueue.send(input, kind));
   }
-  sendKeys(input: string | Uint8Array): Promise<void> {
-    return this.inSession(() => this.terminal.sendInput(input));
-  }
+  sendKeys = (input: string | Uint8Array): Promise<void> =>
+    this.inSession(() => this.terminal.sendInput(input));
   resize(size: TerminalSize): Promise<void> {
     return this.inSession(() => applyResize(this.pty, this.terminal, this.persistSize, size));
   }
-  // Persist a HELD (deferred-physical) resize, per C-API-39 (see session-resize.ts).
+  /** Persist a HELD (deferred-physical) resize (C-API-39). */
   protected persistHeldSize(size: TerminalSize): void {
     persistHeldResize(this.pty, this.terminal, this.persistSize, size);
   }
@@ -151,9 +151,7 @@ export abstract class AgentSessionBase {
       submitEvidence: (kind) => void this.submitEvidence(kind),
     });
   }
-  submitEvidence(kind: StatusEvidenceKind): StatusDecision {
-    return this.statusEngine.submit(kind);
-  }
+  submitEvidence = (kind: StatusEvidenceKind): StatusDecision => this.statusEngine.submit(kind);
   submitExit(): StatusDecision {
     // Terminal status FIRST, reap in `finally`: reach terminal AND reap even if status throws (C-LIFE-10).
     try {
@@ -167,9 +165,7 @@ export abstract class AgentSessionBase {
     const warning = this.reapPolicy.bestEffort();
     if (warning) this.recordWarnings([warning]);
   }
-  statusDecisions(): readonly StatusDecision[] {
-    return this.statusEngine.decisions();
-  }
+  statusDecisions = (): readonly StatusDecision[] => this.statusEngine.decisions();
   protected abstract stagedPaste(screen: string, prompt: string): boolean;
   protected abstract stopRuntime(): Promise<void>;
   protected abstract recordWarnings(warnings: readonly ElwoodWarningEvent[]): void;
@@ -178,9 +174,13 @@ export abstract class AgentSessionBase {
     replayWarningSnapshots(this.record.warnings, event, handler as (event: never) => void);
   }
   private inSession<T>(work: () => Promise<T> | T): Promise<T> {
-    // Rejects (never throws) after a terminal status (C-API-25).
+    // Rejects, never throws (C-API-25): a terminal status OR a synchronous `work` throw.
     if (terminalStatuses.has(this.status)) return Promise.reject(notRunningError(this.agent));
-    return Promise.resolve(work());
+    try {
+      return Promise.resolve(work());
+    } catch (error) {
+      return Promise.reject(toError(error));
+    }
   }
   protected persist(record: SessionRecord): void {
     this.record = record;

@@ -7,6 +7,7 @@ import { describe, expect, test } from "vitest";
 import {
   ignoreInputFailure,
   type PasteGuard,
+  sanitizePasteText,
   writePastedPrompt,
 } from "../../src/core/session-input.ts";
 
@@ -25,7 +26,7 @@ describe("writePastedPrompt", () => {
   });
   test("C-API-31 the Enter is a separate keystroke after the paste settles", async () => {
     const terminal = fakeTerminal();
-    writePastedPrompt(terminal, "hello", undefined, 5, 5);
+    writePastedPrompt(terminal, "hello", undefined, undefined, 5, 5);
     expect(terminal.writes).toEqual([paste("hello")]);
     await sleep(15);
     expect(terminal.writes).toEqual([paste("hello"), "\r"]);
@@ -37,10 +38,26 @@ describe("writePastedPrompt", () => {
       snapshot: () => "> [Pasted text #1 +15 lines]",
       staged: (screen) => screen.includes("[Pasted text"),
     };
-    writePastedPrompt(terminal, "line1\nline2", guard, 5, 5);
+    writePastedPrompt(terminal, "line1\nline2", guard, undefined, 5, 5);
     await sleep(40);
     // Initial Enter plus exactly pasteNudgeAttempts re-Enters, then stop.
     expect(terminal.writes.filter((w) => w === "\r")).toHaveLength(3);
+  });
+
+  test("C-API-31 an aborted signal stops recovery nudges so they cannot hit a later paste", async () => {
+    const terminal = fakeTerminal();
+    const guard: PasteGuard = {
+      snapshot: () => "> [Pasted text #1]",
+      staged: (screen) => screen.includes("[Pasted text"),
+    };
+    const controller = new AbortController();
+    writePastedPrompt(terminal, "old", guard, controller.signal, 5, 5);
+    // The next submission begins: aborting must halt this prompt's nudges even
+    // though its staged chip is still on screen.
+    controller.abort();
+    await sleep(40);
+    // Only the first submitting Enter landed; no background nudge fired.
+    expect(terminal.writes.filter((w) => w === "\r")).toHaveLength(1);
   });
 
   test("C-API-31 a submitted prompt is never nudged", async () => {
@@ -49,7 +66,7 @@ describe("writePastedPrompt", () => {
       snapshot: () => "> ",
       staged: (screen) => screen.includes("[Pasted text"),
     };
-    writePastedPrompt(terminal, "hello", guard, 5, 5);
+    writePastedPrompt(terminal, "hello", guard, undefined, 5, 5);
     await sleep(30);
     expect(terminal.writes.filter((w) => w === "\r")).toHaveLength(1);
   });
@@ -62,7 +79,7 @@ describe("writePastedPrompt", () => {
         writes.push(String(d));
       },
     };
-    await expect(writePastedPrompt(terminal, "hello", undefined, 1, 1)).rejects.toThrow(
+    await expect(writePastedPrompt(terminal, "hello", undefined, undefined, 1, 1)).rejects.toThrow(
       "terminal disposed",
     );
     expect(writes).toEqual([paste("hello")]);
@@ -80,7 +97,7 @@ describe("writePastedPrompt", () => {
     // would confirm the dialog instead of submitting the staged paste. Stay
     // blocked long enough that the guard re-polls at least once (blockedPollMs
     // is 50ms) before the dialog clears.
-    const submitted = writePastedPrompt(terminal, "hello", guard, 5, 5);
+    const submitted = writePastedPrompt(terminal, "hello", guard, undefined, 5, 5);
     await sleep(140);
     expect(terminal.writes).toEqual([paste("hello")]);
     // Once the dialog clears, a later poll fires the held Enter and resolves.
@@ -97,7 +114,7 @@ describe("writePastedPrompt", () => {
       staged: (screen) => screen.includes("[Pasted text"),
       blocked: () => blocked,
     };
-    await writePastedPrompt(terminal, "line1\nline2", guard, 5, 5);
+    await writePastedPrompt(terminal, "line1\nline2", guard, undefined, 5, 5);
     // First Enter fired (not blocked); now a dialog appears before the nudge.
     blocked = true;
     await sleep(30);
@@ -118,8 +135,38 @@ describe("writePastedPrompt", () => {
       },
     };
     const guard: PasteGuard = { snapshot: () => "[Pasted text", staged: () => true };
-    await expect(writePastedPrompt(terminal, "hello", guard, 1, 1)).resolves.toBeUndefined();
+    await expect(
+      writePastedPrompt(terminal, "hello", guard, undefined, 1, 1),
+    ).resolves.toBeUndefined();
     await sleep(10);
     expect(enters).toBeGreaterThan(1);
+  });
+});
+
+describe("sanitizePasteText", () => {
+  test("C-API-40 strips an embedded bracketed-paste end sentinel so it cannot escape paste mode", () => {
+    // A message with ESC[201~ then a live Enter would otherwise end the paste
+    // early and submit into a dialog; the ESC is removed, leaving inert text.
+    const evil = "approve?[201~\rmalicious";
+    const clean = sanitizePasteText(evil);
+    // The ESC is gone, so the sentinel can no longer terminate paste mode; the
+    // now-inert "[201~" text and the carriage return remain paste DATA.
+    expect(clean.includes("")).toBe(false);
+    expect(clean).toBe("approve?[201~\rmalicious");
+  });
+
+  test("C-API-40 preserves tab, newline, and carriage return as multi-line text", () => {
+    expect(sanitizePasteText("a\tb\nc")).toBe("a\tb\nc");
+  });
+
+  test("C-API-40 strips other C0/C1 control bytes", () => {
+    expect(sanitizePasteText("ab")).toBe("ab");
+  });
+
+  test("C-API-40 the written paste of hostile text carries no payload control bytes", () => {
+    const terminal = fakeTerminal();
+    writePastedPrompt(terminal, "x[201~\ry", undefined, undefined, 5, 5);
+    // Only the two framing ESCs Elwood itself adds remain; none from the payload.
+    expect(terminal.writes[0]).toBe(paste("x[201~\ry"));
   });
 });

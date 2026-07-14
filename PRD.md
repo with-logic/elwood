@@ -484,6 +484,19 @@ composer), Elwood re-sends Enter a bounded number of times. A surplus Enter
 on an empty composer is a no-op on both CLIs, so the recovery cannot
 double-submit.
 
+Message text is DATA, never terminal control. `sendPrompt`, `sendMessage`, and
+`sendGuidance` submit caller- or model-controlled text as the content of a
+bracketed paste, so that text MUST NOT be able to escape paste mode or inject
+live keystrokes. Before framing the paste, Elwood sanitizes the text: it removes
+the bracketed-paste sentinels (`ESC [ 200~` and `ESC [ 201~`) so an embedded end
+sentinel cannot terminate the paste early and turn following bytes — an Enter, an
+Escape, a permission-dialog confirmation — into live input, and it strips other
+C0/C1 control characters except the horizontal tab, newline, and carriage return
+that are legitimate multi-line text. This sanitization applies only to the
+queued text-submission APIs; `sendKeys` is the explicit raw-input escape hatch
+and is never sanitized. Newlines inside a sanitized paste remain paste content
+(the whole point of bracketed paste) rather than premature submissions.
+
 Turn boundaries MUST be observable even when no completion hook fires. Claude
 does not fire a `Stop` hook when a running turn is interrupted (Escape), so
 hook-driven readiness alone leaves the session in `running` forever after an
@@ -1996,6 +2009,7 @@ Each criterion has:
 | C-API-32 | §5.2 §5.6 | Resume defaults launch-policy options from the record's persisted posture; explicit resume options override field by field, and the effective posture is re-persisted. |
 | C-API-30 | §5.4 | `tool_call` activity carries the tool's input as a serialized `toolInput` and `tool_result` activity carries the tool's output as a serialized `toolOutput`, sourced from the committed transcript for Claude (`tool_use.input`/`tool_result.content`, per C-CLAUDE-15) and from the transcript for Codex (`arguments`/`output`); absent sources leave the field absent. |
 | C-API-31 | §5.3 | The submitting Enter is a separate PTY write after a settle delay, and bounded re-Enters fire while the rendered composer still shows the staged paste, so a first long prompt cannot be left staged-but-unsubmitted. |
+| C-API-40 | §5.3 | `sendPrompt`/`sendMessage`/`sendGuidance` text is sanitized before it is framed as a bracketed paste: the `ESC [ 200~`/`ESC [ 201~` sentinels and all other C0/C1 control characters except tab, newline, and carriage return are removed, so caller/model text cannot escape paste mode and inject live keystrokes (e.g. an Enter that confirms a permission dialog). `sendKeys` is the raw escape hatch and is never sanitized. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 

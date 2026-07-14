@@ -32,6 +32,25 @@ export function ignoreInputFailure(input: void | Promise<void>): void {
   void Promise.resolve(input).catch(() => undefined);
 }
 
+// C0 (\u0000-\u001f) and C1 (\u007f-\u009f) control chars EXCEPT tab,
+// newline, and carriage return, which are legitimate multi-line whitespace.
+// Stripping ESC (\u001b) alone already defuses the ESC[200~ / ESC[201~
+// bracketed-paste sentinels, leaving only inert `[20x~` text.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: neutralizing control input is the point.
+const pasteUnsafe = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g;
+
+/**
+ * Neutralizes caller/model text before it is framed as a bracketed paste (§5.3).
+ * Message text is data, so an embedded `ESC[201~` end sentinel (or a bare control
+ * byte) MUST NOT terminate paste mode early and turn following bytes into live
+ * keystrokes — e.g. an Enter that confirms a permission dialog. Tab, newline, and
+ * carriage return survive as legitimate multi-line text; everything else is
+ * stripped. `sendKeys` is the raw escape hatch and never goes through here.
+ */
+export function sanitizePasteText(text: string): string {
+  return text.replace(pasteUnsafe, "");
+}
+
 /**
  * The TUIs ingest bracketed pastes asynchronously; an Enter concatenated into
  * the same PTY write races that ingestion and can be dropped, leaving the
@@ -52,17 +71,22 @@ export async function writePastedPrompt(
   terminal: InputTerminal,
   prompt: string,
   guard?: PasteGuard,
+  signal?: AbortSignal,
   settleDelayMs = pasteSettleDelayMs,
   nudgeDelayMs = pasteNudgeDelayMs,
 ): Promise<void> {
-  await terminal.sendInput(`\u001b[200~${prompt}\u001b[201~`);
+  // Sanitize FIRST: caller/model text is data, so an embedded end sentinel or
+  // control byte must not escape paste mode into live keystrokes (§5.3).
+  await terminal.sendInput(`\u001b[200~${sanitizePasteText(prompt)}\u001b[201~`);
   const schedule = (work: () => void, ms: number) => {
     const timer = setTimeout(work, ms);
     timer.unref?.();
   };
   let nudges = 0;
   const nudge = async () => {
-    if (!guard || nudges >= pasteNudgeAttempts) return;
+    // Stop once a LATER submission has begun: a stale nudge must never fire an
+    // Enter into a newer prompt's paste (the staged chip is not prompt-specific).
+    if (signal?.aborted || !guard || nudges >= pasteNudgeAttempts) return;
     // A dialog that appears after the first Enter must not be confirmed by a
     // recovery Enter either; skip this attempt and re-check on the next tick.
     if (guard.blocked?.()) {
@@ -109,12 +133,13 @@ export async function writeQueuedInput(
   input: string,
   mode: ControlSubmitMode,
   guard?: PasteGuard,
+  signal?: AbortSignal,
   enterDelayMs = commandEnterDelayMs,
 ): Promise<void> {
   if (mode !== "command") {
     // Resolve only after the input's submitting Enter has dispatched, so the
     // next queued operation cannot write into the composer first (FIFO).
-    await writePastedPrompt(terminal, input, guard);
+    await writePastedPrompt(terminal, input, guard, signal);
     return;
   }
   // Slash-command popups (Codex) swallow an Enter that arrives in the same

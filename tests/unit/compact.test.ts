@@ -65,9 +65,9 @@ describe("runCompact", () => {
         writes.push(String(data));
       },
     };
-    await expect(writeQueuedInput(terminal, "/compact", "command", undefined, 1)).rejects.toThrow(
-      "terminal disposed",
-    );
+    await expect(
+      writeQueuedInput(terminal, "/compact", "command", undefined, undefined, 1),
+    ).rejects.toThrow("terminal disposed");
     expect(writes).toEqual(["/compact"]);
   });
 });
