@@ -165,12 +165,14 @@ describe("ClaudeSession narrow-bootstrap resize", () => {
     expect(ptys[0]!.size).toEqual({ cols: 72, rows: 9 });
   });
 
-  test("C-API-39 a throwing warning listener at restore still releases queued input", async () => {
+  test("C-API-39 a throwing warning listener at restore still advances to ready and releases input", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd, initialSize: { cols: 68, rows: 10 } });
     // A rogue warning listener throws during restore-failure delivery; readiness
     // must still advance so the queued message is never permanently starved.
+    const statuses: string[] = [];
+    session.on("status", (event) => statuses.push(event.status));
     session.on("warning", () => {
       throw new Error("rogue warning listener");
     });
@@ -178,6 +180,9 @@ describe("ClaudeSession narrow-bootstrap resize", () => {
     ptys[0]!.resizeError = Object.assign(new Error("resize failed"), { code: "EIO" });
     await reachReady(cwd, session.elwoodSessionId);
     await queued;
+    // The `ready` status evidence is NOT lost — it advanced before the queued
+    // message drained; only the downstream listener throw was contained.
+    expect(statuses).toContain("ready");
     expect(ptys[0]!.writes[0]).toBe("[200~hello[201~");
   });
 });
