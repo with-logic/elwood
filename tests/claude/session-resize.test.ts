@@ -146,6 +146,25 @@ describe("ClaudeSession narrow-bootstrap resize", () => {
     await expect(session.resize({ cols: 71, rows: 9 })).rejects.toThrow("raw string failure");
   });
 
+  test("C-API-39 a REJECTED held resize is not applied at readiness; the last SUCCESSFUL one is", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd, initialSize: { cols: 68, rows: 10 } });
+    const queued = session.sendMessage("hello");
+    // A held resize succeeds and becomes the requested geometry...
+    await session.resize({ cols: 72, rows: 9 });
+    // ...then a later held resize's probe throws and REJECTS: it must NOT become
+    // the requested geometry, so it can never be applied at readiness.
+    ptys[0]!.resizeError = Object.assign(new Error("probe failed"), { code: "EIO" });
+    await expect(session.resize({ cols: 80, rows: 20 })).rejects.toThrow("probe failed");
+    ptys[0]!.resizeError = undefined;
+    expect(persistedSize(cwd, session.elwoodSessionId)).toEqual({ cols: 72, rows: 9 });
+    await reachReady(cwd, session.elwoodSessionId);
+    await queued;
+    // The last SUCCESSFUL requested size is applied, not the rejected one.
+    expect(ptys[0]!.size).toEqual({ cols: 72, rows: 9 });
+  });
+
   test("C-API-39 a throwing warning listener at restore still releases queued input", async () => {
     const cwd = tempDir();
     installFakes();

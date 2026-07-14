@@ -81,15 +81,19 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
    * readiness resumes at the latest requested geometry rather than the bootstrap
    * width. A wide session (100+ cols) never deferred, so it resizes immediately. */
   override resize(size: TerminalSize): Promise<void> {
-    this.requestedSize = size;
     if (!(this.awaitingInitialReady && !terminalStatuses.has(this.status))) {
+      this.requestedSize = size;
       return super.resize(size);
     }
     // Non-terminal by the guard above: durably record the size now (unless the
-    // pty is racing exit), and defer the physical resize to readiness. Wrapped so
-    // a throwing pty-liveness probe rejects rather than throws synchronously
-    // (C-API-25); the base `resize` path already rejects on its own throws.
-    return Promise.resolve().then(() => this.persistHeldSize(size));
+    // pty is racing exit), and defer the physical resize to readiness. `size`
+    // becomes the requested geometry ONLY if the held persist succeeds — a
+    // rejected persist (e.g. a throwing pty-liveness probe) must NOT be applied
+    // at readiness, and the caller sees the rejection (C-API-25/C-API-39).
+    return Promise.resolve().then(() => {
+      this.persistHeldSize(size);
+      this.requestedSize = size;
+    });
   }
   /** Restore the deferred geometry (narrow sessions only) then advance readiness.
    * Readiness advancement is the load-bearing invariant and MUST run even if the

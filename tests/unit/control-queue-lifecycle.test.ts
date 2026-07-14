@@ -51,6 +51,32 @@ describe("ControlQueue submission lifecycle", () => {
     expect(submitted).toEqual(["second"]);
   });
 
+  test("C-API-07 a failed BYPASS submission never fabricates readiness the session lacked", async () => {
+    const submitted: string[] = [];
+    let running = false;
+    const queue = new ControlQueue(
+      (input) => {
+        submitted.push(input);
+        return input === "prompt" ? Promise.reject(new Error("write failed")) : Promise.resolve();
+      },
+      () => new Error("closed"),
+      () => {
+        running = true;
+      },
+      () => running,
+    );
+    // Never ready: a prompt bypasses and dispatches while NOT ready, then fails.
+    const prompt = queue.send("prompt", "prompt");
+    await expect(prompt).rejects.toThrow("write failed");
+    // Readiness must NOT be fabricated to `true`: a queued message stays held
+    // until a real ready transition, exactly as before the failed bypass.
+    const held = queue.send("held", "message");
+    expect(submitted).toEqual(["prompt"]);
+    queue.markReady();
+    await held;
+    expect(submitted).toEqual(["prompt", "held"]);
+  });
+
   test("C-API-31 the prior submission's abort signal fires before the next dispatches", async () => {
     // A submission's background recovery nudges are cancelled when the next
     // operation begins, so an older nudge can't fire an Enter into a later paste.

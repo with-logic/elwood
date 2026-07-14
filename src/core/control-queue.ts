@@ -128,30 +128,31 @@ export class ControlQueue {
     // bypass-capable follower interleave (C-API-35).
     this.inFlight = operation;
     const traits = controlOperationTraits[operation.kind];
+    // Snapshot readiness so a failed submission restores the EXACT prior value —
+    // never fabricates `ready` a bypass op (dispatched while not ready) never had.
+    const priorReady = this.ready;
     let dispatched: Promise<void>;
     try {
       this.beginSubmission(traits);
       dispatched = this.submit(operation.input, traits.submitMode, this.armAbort());
     } catch (error) {
-      this.rollbackSubmission(operation, traits, toError(error));
+      this.rollbackSubmission(operation, priorReady, toError(error));
       return;
     }
     // The write (incl. any delayed command Enter) holds the next drain so
     // back-to-back operations never interleave; if close() already settled this, these no-op.
     dispatched.then(
       () => this.settleInFlight(operation, () => operation.resolve()),
-      (error: unknown) => this.rollbackSubmission(operation, traits, toError(error)),
+      (error: unknown) => this.rollbackSubmission(operation, priorReady, toError(error)),
     );
   }
 
-  // Restore consumed readiness on a failed submission: it never actually started
-  // a turn, so no Stop signal is coming — without this the queue wedges unready.
-  private rollbackSubmission(
-    operation: QueuedOperation,
-    traits: ControlOperationTraits,
-    error: Error,
-  ): void {
-    if (traits.consumesReadiness && !this.closed) this.ready = true;
+  // Restore the exact prior readiness on a failed submission: it never actually
+  // started a turn, so no Stop signal is coming — without this a readiness-consuming
+  // submission that failed would wedge the queue unready (or, for a bypass op that
+  // ran while not ready, fabricate a readiness it never had).
+  private rollbackSubmission(operation: QueuedOperation, priorReady: boolean, error: Error): void {
+    if (!this.closed) this.ready = priorReady;
     this.settleInFlight(operation, () => operation.reject(error));
   }
 
