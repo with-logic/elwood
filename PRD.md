@@ -610,10 +610,23 @@ same error and includes the available ids in the error details.
 Command submissions (`compact`, `listModels`, `setModel`) MUST NOT consume the
 session's ready transition: typing a slash command does not start a user turn,
 no completion hook will re-arm readiness afterwards, and consuming readiness
-would deadlock every later queued submission. Operations still reach the
-terminal in FIFO order. A readiness-waiting operation at the head of the queue
-(a message or `compact`) holds the operations queued behind it — including
-picker commands — until the turn completes, so ordering is preserved.
+would deadlock every later queued submission.
+
+Queue ordering is FIFO by default, with two documented overtaking exceptions.
+An operation is *readiness-waiting* (a `sendMessage`, a persona message, or a
+`compact`) when it may only reach the terminal once the session is ready; the
+rest are *immediate* (a `sendPrompt`; a `listModels`/`setModel` picker command;
+and a `sendGuidance` that was submitted during an already-ready running turn —
+see §5.3 guidance). When the head of the queue is readiness-waiting and the
+session is not ready, it holds every OTHER readiness-waiting operation behind it
+in FIFO order, but an immediate operation queued behind it overtakes the head
+and reaches the terminal first. Among operations of the same class, and once the
+session is ready, order is strict FIFO. Overtaking never interleaves two
+submissions: the bracketed paste and delayed Enter of one operation always
+complete before the next operation writes. Guidance's eligibility to overtake is
+fixed when it is submitted (§5.3), so guidance queued before first readiness or
+while blocked stays readiness-waiting for its whole lifetime and never reclassifies
+into a later turn.
 
 `compact` asks the wrapped agent to compact its conversation. The compact
 command submission goes through the same readiness queue as `sendMessage`, so
@@ -678,10 +691,20 @@ visual xterm size explicitly.
 
 Claude sessions requested below 100 columns MUST bootstrap the PTY and headless
 terminal at 100 columns because Claude Code can silently discard input when it
-initializes below that width. Elwood holds caller resizes during this bootstrap
-and restores the latest requested size at the one-shot initial-ready transition,
+initializes below that width. Elwood holds only the PHYSICAL pty/terminal resize
+during this bootstrap; a caller `resize` in this window still DURABLY persists the
+requested terminal size immediately, so a session that exits before readiness
+resumes at the latest requested size rather than the bootstrap width. Elwood
+restores that latest requested size at the one-shot initial-ready transition,
 before the queued persona or caller message is submitted. Later resizes retain
 their ordinary exact behavior. Codex sessions do not apply this bootstrap.
+
+If restoring the latest requested size at the initial-ready transition fails with
+a real (non-closed) native PTY resize error, Elwood MUST NOT report that resize as
+applied: the session stays at its safe bootstrap width, the failure is surfaced as
+a typed `resize_restore_failed` warning, and the queued persona or caller message
+is still released so a failed restore never starves input. A closed-fd resize at
+this transition is the ordinary benign race and is a no-op, not a warning.
 
 `terminal` exposes the session's headless xterm.js terminal handle. The handle
 MUST expose the underlying headless xterm instance, current size, the latest
@@ -793,9 +816,12 @@ available for deep debugging and unsupported future payloads.
 
 When Elwood detects and answers an interactive startup prompt on behalf of the
 parent app, it MUST emit an activity event with `source: "terminal"`,
-`kind: "startup_prompt"`, a stable label, and text describing the key sent. The
-stable startup-prompt label set is EXACTLY the following, and no other value may
-be emitted with `kind: "startup_prompt"`:
+`kind: "startup_prompt"`, a stable label, and text describing the key sent. This
+`startup_prompt` activity is emitted only after the prompt's PTY write actually
+fulfills; a rejected write emits no such activity and instead surfaces the
+`startup_prompt_write_failed` warning (§5.7) while leaving the prompt retryable.
+The stable startup-prompt label set is EXACTLY the following, and no other value
+may be emitted with `kind: "startup_prompt"`:
 
 | label             | agent          | defined by                  |
 | ----------------- | -------------- | --------------------------- |
@@ -1097,8 +1123,45 @@ type ElwoodWarningEvent =
       readonly errorCode: string;
       readonly raw: string;
     }
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "claude";
+      readonly source: "lifecycle";
+      readonly code: "resize_restore_failed";
+      readonly severity: "warning";
+      readonly message: string;
+      // The size Elwood tried to restore after the narrow bootstrap and a
+      // normalized, allowlisted error code only — never a raw system message
+      // or conversation content.
+      readonly requestedCols: number;
+      readonly requestedRows: number;
+      readonly errorCode: string;
+      readonly raw: string;
+    }
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "claude" | "codex";
+      readonly source: "terminal";
+      readonly code: "startup_prompt_write_failed";
+      readonly severity: "warning";
+      readonly message: string;
+      // The startup-prompt LABEL whose PTY write was rejected, drawn only from the
+      // fixed startup-prompt label set (§5.4) — never raw prompt or screen content.
+      // The prompt is left retryable, so a later frame re-attempts the write.
+      readonly label: StartupPromptLabel;
+      readonly raw: string;
+    }
   };
 ```
+
+A startup prompt Elwood auto-answers is marked settled and emits its
+`startup_prompt` activity ONLY after its PTY `sendInput` write actually fulfills.
+If that write is rejected (for example, the terminal was disposed mid-startup),
+Elwood emits NO `startup_prompt` activity for that attempt and instead surfaces a
+bounded, content-free `startup_prompt_write_failed` warning carrying only the
+prompt label; the prompt is left un-settled (retryable) so a later frame
+re-attempts it. This prevents a failed write from being reported as an answered
+prompt and from becoming permanently unanswerable (C-CLAUDE-16, C-CODEX-17).
 
 When Elwood recognizes an allowlisted trust prompt but its affirmative option has
 not rendered in the current frame yet, it emits a transient `attention` activity
@@ -1190,6 +1253,20 @@ warning. A reap failure on an
 *explicit* `stop()`/`kill()`/`teardown()` is NOT downgraded to this warning: it
 rejects with a typed `termination_failed` error so the caller learns the group
 was not confirmed reaped (C-LIFE-10, C-ERR-01).
+
+The `resize_restore_failed` warning is emitted when the narrow-bootstrap restore
+of the latest requested terminal size at the one-shot initial-ready transition
+fails with a real (non-closed) native PTY resize error: the session stays at its
+safe bootstrap width rather than reporting a resize it never applied, but the
+queued persona or caller message is still released so a failed restore never
+starves input. This is a lifecycle warning (`source: "lifecycle"`, Claude only)
+carrying only the size Elwood tried to restore and a normalized error code drawn
+from a fixed allowlist (standard error names and common native-resize errnos; any
+unrecognized value collapses to `UnknownError`) — never a raw system message — and
+it is persisted into the session snapshot, replayed to late subscribers, and
+projected into `activity` through the same `warning`/`activity` contract as every
+other warning. A closed-fd resize at this transition is the ordinary benign
+process-exit race and is a silent no-op, not a warning (C-API-39).
 
 A stopped subagent's transcript (`agent_transcript_path` on a `SubagentStop`) is
 a one-shot input: Elwood flushes it once and then retires it from active polling,
@@ -1896,10 +1973,11 @@ Each criterion has:
 | C-API-22 | §5.3 §5.7 | `compact()` submits the adapter's `/compact` command through the readiness queue, resolves on the adapter's `PostCompact` hook, rejects with `compact_failed` on timeout, and rejects with `session_not_running` if the session terminates first. |
 | C-API-23 | §5.3 §5.7 | `listModels()` parses the adapter's rendered model picker into typed options with current/default markers, cancels with Escape, and leaves the session model unchanged. |
 | C-API-24 | §5.3 §5.7 | `setModel(id)` switches the session model through cursor navigation; Elwood itself never persists a new default into user-owned configuration (Claude uses the session-only key; the Codex CLI persists its own picker selection, documented as a §4.5 deviation) and unknown ids reject with `model_automation_failed` listing available ids. |
-| C-API-35 | §5.3 §5.7 | `listModels()`/`setModel()` dispatch the picker command even while a turn is in flight (they do not wait for `ready`), so picker automation is not stalled by an in-flight turn such as an MCP-server boot spinner; `compact` and messages still wait for the active turn, and FIFO ordering is preserved. |
-| C-API-36 | §5.3 | A Claude session requested below 100 columns bootstraps at 100 columns, holds pre-ready resizes, and restores the latest requested size before its initial ready queue drains, so narrow visible terminals do not lose their first prompt. |
+| C-API-35 | §5.3 §5.7 | `listModels()`/`setModel()` dispatch the picker command even while a turn is in flight (they do not wait for `ready`), so picker automation is not stalled by an in-flight turn such as an MCP-server boot spinner; `compact` and messages still wait for the active turn. Ordering is FIFO except for the documented overtaking of a readiness-waiting head by an immediate operation (a picker command, a `sendPrompt`, or already-ready running-turn guidance); same-class and post-ready ordering stays FIFO, and no two submissions interleave. |
+| C-API-36 | §5.3 | A Claude session requested below 100 columns bootstraps at 100 columns and holds only the PHYSICAL pre-ready resize while still durably persisting each pre-ready requested size immediately (so an exit before readiness resumes at the latest requested size, and multiple pre-ready resizes leave the last one persisted); it restores the latest requested size before its initial ready queue drains, so narrow visible terminals do not lose their first prompt. |
 | C-API-37 | §5.3 §5.7 | Claude and Codex expose `sendGuidance(message)`: before first readiness and while blocked it queues safely like `sendMessage`; during a post-ready running turn it overtakes readiness-waiting operations and enters the TUI immediately. Guidance serializes with queue-backed prompt/message/command submissions and resolves only after the submitting Enter is dispatched; raw `sendKeys` intentionally bypasses that queue. |
 | C-API-38 | §5.3 §5.7 | `interrupt()` bypasses the control queue and writes a single Escape immediately while the session is `running` or `blocked` AND has reached initial readiness at least once, resolving when the session next reaches `ready`; with no turn in flight — an idle `ready` session or the pre-readiness startup `running` window — it resolves without writing anything; concurrent calls coalesce into one Escape; it rejects with `interrupt_failed` after `timeoutMs` (default 10000 ms) and with `session_not_running` when the session terminates first or is already terminal. |
+| C-API-39 | §5.3 §5.7 | When restoring the latest requested size at Claude's initial-ready transition fails with a real (non-closed) native PTY resize error, Elwood keeps the safe bootstrap width, does not report the resize as applied, and surfaces a typed `resize_restore_failed` warning (content-free: only the requested size and an allowlisted error code), while still releasing the queued persona/caller message so input is never starved; a closed-fd resize at that transition stays a silent no-op. |
 | C-API-25 | §5.3 | Promise-returning session methods called after a terminal status reject with `session_not_running` instead of throwing synchronously. |
 | C-API-26 | §5.2 §5.6 | `startOrResumeClaude`/`startOrResumeCodex` resume when possible, fall back to a fresh start only on `state_not_found`, `resume_unavailable`, or `adapter_mismatch`, rethrow all other errors, and report `resumed` in the result. |
 | C-API-27 | §5.7 | `ElwoodAgentSession` is exported and both `ClaudeSession` and `CodexSession` are assignable to it, covering common events, io, commands, and lifecycle. |
@@ -1960,6 +2038,7 @@ Each criterion has:
 | C-CLAUDE-13 | §4.3 | `tools` emits Claude's `--tools` allowlist flag as one comma-separated value, with an empty array encoding `--tools ""` (all tools disabled); it is forwarded across resume like the other tool options. |
 | C-CLAUDE-14 | §5.1 | Under `autotrust`, Claude's allowlisted skill/plugin/MCP trust prompts are each answered once and emit `startup_prompt` activity under their `skill_trust`/`plugin_trust`/`mcp_trust` labels. Recognition is the only guard: a prompt is recognized solely by its HEADER wording on a non-option line (so an option-only trust phrase cannot spoof one), and once recognized Elwood sends the first affirmative option in the current frame — the agent is never left waiting. When a recognized prompt's affirmative option has not rendered in the current frame yet, Elwood emits a fire-once transient `attention` activity and keeps watching so a later frame carrying the option is still answered; this render-delay state is TRANSIENT and no durable warning is persisted for it. An off-allowlist first-run prompt is never auto-answered. Per the say-yes policy there is deliberately no per-dialog region binding, so a second stacked dialog's affirmative in the same frame is an accepted consequence, not a defended boundary. |
 | C-CLAUDE-15 | §5.4 | Claude `assistant_message`, `tool_call`, and `tool_result` activities are sourced from the committed transcript the CLI writes at `transcript_path`, never from the `Stop` hook's `last_assistant_message`; an un-sent ghost-text / composer draft therefore never becomes an `assistant_message`. |
+| C-CLAUDE-16 | §5.1 §5.4 §5.7 | A Claude startup prompt Elwood auto-answers is marked settled and emits its `startup_prompt` activity only after its PTY `sendInput` write fulfills. A rejected write emits NO `startup_prompt` activity, leaves the prompt un-settled so a later frame re-attempts it, and surfaces a bounded, content-free `startup_prompt_write_failed` warning carrying only the prompt label. |
 
 #### C-CODEX: Codex Startup And Config (§4, §7A, §9)
 
@@ -1981,6 +2060,7 @@ Each criterion has:
 | C-CODEX-14 | §5.3 | `setModel` on Codex restores the user's prior `config.toml` default via compare-and-swap after the CLI persists its picker selection, skipping with the `codex_default_model_persisted` warning instead of clobbering concurrent edits. |
 | C-CODEX-15 | §5.5 | Codex's directory-trust prompt is answered only under `autotrust` (blocking on the human when off); Codex hook trust — Elwood's own integration — is answered regardless of `autotrust` and is NOT classified as blocking. Each is recognized only by its HEADER wording on a non-option line (so an option-only phrase cannot spoof it) and, once recognized, answered from the frame's affirmative option — the agent is never left waiting. When a recognized prompt's affirmative option has not rendered yet, a fire-once transient `attention` activity is emitted and Elwood keeps watching so a later frame answers it; this render-delay state is TRANSIENT and no durable warning is persisted for it. Each is answered once, from the shared allowlist. |
 | C-CODEX-16 | §5.1 | Codex `assistant_message`, `tool_call`, and `tool_result` activities are sourced only from the committed transcript, never re-projected from the `Stop`/`PreToolUse`/`PostToolUse` hook payloads; those hooks emit plain `hook` activity, so a single reply or tool step is surfaced exactly once (mirrors C-CLAUDE-15). |
+| C-CODEX-17 | §5.4 §5.5 §5.7 | A Codex startup prompt Elwood auto-answers (directory/hook trust, `update` skip) is marked settled and emits its `startup_prompt` activity only after its PTY `sendInput` write fulfills. A rejected write emits NO `startup_prompt` activity, leaves the prompt un-settled so a later frame re-attempts it, and surfaces a bounded, content-free `startup_prompt_write_failed` warning carrying only the prompt label (mirrors C-CLAUDE-16). |
 
 #### C-HOOK: Hook Bridge Coverage And Semantics (§6)
 

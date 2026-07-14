@@ -42,4 +42,21 @@ describe("ClaudeSession trust-prompt render delay", () => {
     // No stale wedge warning lingers after the prompt was successfully answered.
     expect(session.warnings.map((w) => w.code)).not.toContain("trust_prompt_unanswerable");
   });
+
+  test("C-CLAUDE-16 a rejected trust-prompt write stays retryable and warns", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd, autotrust: true });
+    // The PTY rejects the trust answer write: the prompt must NOT be reported as
+    // answered, must stay retryable, and must surface the bounded warning.
+    ptys[0]!.failOnWrite = "1\r";
+    ptys[0]!.emitData("Do you trust this folder?\r\n1. Yes, I trust this folder\r\n");
+    await expect
+      .poll(() => session.warnings.map((w) => w.code))
+      .toContain("startup_prompt_write_failed");
+    // Retryable: the next frame re-attempts the answer with a now-succeeding write.
+    ptys[0]!.failOnWrite = undefined;
+    ptys[0]!.emitData("Do you trust this folder?\r\n1. Yes, I trust this folder\r\n");
+    await expect.poll(() => ptys[0]!.writes).toContain("1\r");
+  });
 });

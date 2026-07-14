@@ -8,13 +8,26 @@ import {
   CodexStartupPromptResponder,
   codexWarningsFromText,
   findNumberedOption,
+  type SettledCodexStartupOutcome,
 } from "../../src/codex/startup-prompts.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
+
+/** The bare outcomes of a settled-outcome list, for concise assertions. */
+function outcomesOf(settled: readonly SettledCodexStartupOutcome[]) {
+  return settled.map((entry) => entry.outcome);
+}
+
+/** A void-returning write callback that records each input into `sink`. */
+function writer<T>(sink: T[]): (input: T) => void {
+  return (input) => {
+    sink.push(input);
+  };
+}
 
 describe("Codex startup prompt responder", () => {
   test("C-API-15 exposes a controllable headless terminal handle", async () => {
     const inputs: Array<string | Uint8Array> = [];
-    const terminal = createHeadlessTerminal({ cols: 20, rows: 4 }, (input) => inputs.push(input));
+    const terminal = createHeadlessTerminal({ cols: 20, rows: 4 }, writer(inputs));
     const bytes = new Uint8Array([0xff, 0x00]);
     expect(terminal.size).toEqual({ cols: 20, rows: 4 });
     terminal.sendInput("x");
@@ -35,8 +48,8 @@ describe("Codex startup prompt responder", () => {
     // phrase and its answer appear in the SAME frame (as the real CLI renders).
     const responder = new CodexStartupPromptResponder();
     const frame = "Hooks need review\n› 1. Review hooks\n  2. Trust all and continue";
-    responder.handle(frame, (input) => writes.push(input));
-    responder.handle(frame, (input) => writes.push(input)); // repeat: answered once
+    responder.handle(frame, writer(writes));
+    responder.handle(frame, writer(writes)); // repeat: answered once
     expect(writes).toEqual(["2\r"]);
   });
 
@@ -47,13 +60,13 @@ describe("Codex startup prompt responder", () => {
     // matching must NOT: no answer belongs to frame 2's dialog.
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder("s1", true);
-    responder.handle("Hooks need review\n  1. Review hooks", (input) => writes.push(input));
+    responder.handle("Hooks need review\n  1. Review hooks", writer(writes));
     const result = responder.handle(
       "Delete stored credentials?\n› 1. Yes, continue\n  2. No",
-      (input) => writes.push(input),
+      writer(writes),
     );
     expect(writes).toEqual([]);
-    expect(result.outcomes).toEqual([]);
+    expect(outcomesOf(result.outcomes)).toEqual([]);
   });
 
   test("C-CODEX-15 a foreign 'Yes, continue' is never selected for HOOK trust", () => {
@@ -66,10 +79,10 @@ describe("Codex startup prompt responder", () => {
     const responder = new CodexStartupPromptResponder("s1", true);
     const result = responder.handle(
       "Hooks need review\nDelete stored credentials?\n› 1. Yes, continue\n  2. No",
-      (input) => writes.push(input),
+      writer(writes),
     );
     expect(writes).toEqual([]);
-    expect(result.outcomes).toEqual([{ kind: "option_pending", prompt: "hook_trust" }]);
+    expect(outcomesOf(result.outcomes)).toEqual([{ kind: "option_pending", prompt: "hook_trust" }]);
   });
 
   test("C-CODEX-11 a recognized directory-trust dialog is answered (detect → approve)", () => {
@@ -80,10 +93,12 @@ describe("Codex startup prompt responder", () => {
     const responder = new CodexStartupPromptResponder("s1", true);
     const result = responder.handle(
       "Do you trust the contents of this directory?\n› 1. Yes, continue\n  2. No, quit",
-      (input) => writes.push(input),
+      writer(writes),
     );
     expect(writes).toEqual(["1\r"]);
-    expect(result.outcomes).toEqual([{ kind: "answered", prompt: "workspace_trust", input: "1" }]);
+    expect(outcomesOf(result.outcomes)).toEqual([
+      { kind: "answered", prompt: "workspace_trust", input: "1" },
+    ]);
   });
 
   test("C-CODEX-15 does not trust the DIRECTORY prompt without autotrust", () => {
@@ -91,10 +106,10 @@ describe("Codex startup prompt responder", () => {
     const responder = new CodexStartupPromptResponder();
     const result = responder.handle(
       "Do you trust the contents of this directory?\n› 1. Yes, continue\n  2. No, quit",
-      (input) => writes.push(input),
+      writer(writes),
     );
     expect(writes).toEqual([]);
-    expect(result.outcomes).toEqual([]);
+    expect(outcomesOf(result.outcomes)).toEqual([]);
   });
 
   test("C-CODEX-11 trusts directory prompts when autotrust is enabled", () => {
@@ -102,18 +117,21 @@ describe("Codex startup prompt responder", () => {
     const responder = new CodexStartupPromptResponder("s1", true);
     const result = responder.handle(
       "Do you trust the contents of this directory?\n› 1. Yes, continue\n  2. No, quit",
-      (input) => writes.push(input),
+      writer(writes),
     );
-    expect(result.outcomes).toEqual([{ kind: "answered", prompt: "workspace_trust", input: "1" }]);
+    expect(outcomesOf(result.outcomes)).toEqual([
+      { kind: "answered", prompt: "workspace_trust", input: "1" },
+    ]);
     expect(writes).toEqual(["1\r"]);
   });
 
   test("C-CODEX-12 skips recognized update prompts", () => {
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder();
-    responder.handle("Update available\n  1. Update now", (input) => writes.push(input));
-    responder.handle("Update available\n  1. Update now\n  2. Continue without updating", (input) =>
-      writes.push(input),
+    responder.handle("Update available\n  1. Update now", writer(writes));
+    responder.handle(
+      "Update available\n  1. Update now\n  2. Continue without updating",
+      writer(writes),
     );
     expect(writes).toEqual(["2"]);
   });
@@ -121,10 +139,8 @@ describe("Codex startup prompt responder", () => {
   test("C-CODEX-12 skips current Codex release update prompts", () => {
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder();
-    responder.handle("Update available! 0.132.0 -> 0.133.0\n\n› 1. Update now", (input) =>
-      writes.push(input),
-    );
-    responder.handle("\n  2. Skip\n  3. Skip until next version", (input) => writes.push(input));
+    responder.handle("Update available! 0.132.0 -> 0.133.0\n\n› 1. Update now", writer(writes));
+    responder.handle("\n  2. Skip\n  3. Skip until next version", writer(writes));
     expect(writes).toEqual(["2"]);
   });
 
@@ -139,7 +155,7 @@ describe("Codex startup prompt responder", () => {
         "\u001b[8;3H3.\u001b[8;6HSkip\u001b[8;11Huntil\u001b[8;17Hnext\u001b[8;22Hversion",
     );
     expect(terminal.snapshot().text).toContain("2. Skip");
-    responder.handle(terminal.snapshot().text, (input) => writes.push(input));
+    responder.handle(terminal.snapshot().text, writer(writes));
     terminal.dispose();
     expect(writes).toEqual(["2"]);
   });
@@ -149,7 +165,7 @@ describe("Codex startup prompt responder", () => {
     const responder = new CodexStartupPromptResponder();
     responder.handle(
       "Update available! 0.132.0 -> 0.133.0 Release notes: url › 1. Update now  2. Skip  3. Skip until next version",
-      (input) => writes.push(input),
+      writer(writes),
     );
     expect(writes).toEqual(["2"]);
   });

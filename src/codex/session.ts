@@ -6,8 +6,7 @@ import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, elwoodError } from "../core/errors.ts";
 import { queuePersonaMessage } from "../core/persona.ts";
 import { observeRenderedFrame } from "../core/rendered-observers.ts";
-import { ignoreInputFailure } from "../core/session-input.ts";
-import { emitStartupPromptActivities } from "../core/startup-automation.ts";
+import { emitSettledStartupOutcomes } from "../core/startup-write.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import { TurnStateWatcher } from "../core/turn-state.ts";
 import { TypedEmitter } from "../events/emitter.ts";
@@ -137,11 +136,16 @@ export async function startCodexFromRecord(
       // One snapshot per render: reused for prompt automation, readiness, and
       // detection (input written here only repaints on the next callback).
       const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
-      const result = promptResponder.handle(frame.text, (input) => {
-        ignoreInputFailure(renderedTerminal.sendInput(input));
-      });
+      // The write RETURNS its `sendInput` completion (no longer swallowed): the
+      // responder settles the prompt and its `startup_prompt` activity only after
+      // the write fulfills, and a rejected write stays retryable + warns (C-CODEX-17).
+      const result = promptResponder.handle(frame.text, (input) =>
+        renderedTerminal.sendInput(input),
+      );
       session?.recordWarnings(result.warnings);
-      emitStartupPromptActivities(emitter, "codex", record.elwoodSessionId, result.outcomes);
+      emitSettledStartupOutcomes(emitter, "codex", record.elwoodSessionId, result.outcomes, {
+        recordWarnings: (warnings) => session?.recordWarnings(warnings),
+      });
       // Readiness is hook-backed (the `SessionStart` hook fires it); the frame
       // only arms the starvation-deadline fallback, never releases the queue
       // on the boot-time composer placeholder (C-API-28, see initial-ready.ts).

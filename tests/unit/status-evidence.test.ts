@@ -53,8 +53,7 @@ const requiresLiveSession = new Set<StatusEvidenceKind>([
 
 describe("decideStatus", () => {
   test("maps every evidence kind to its target from a valid source status", () => {
-    // A source status from which each evidence produces a real transition to
-    // its target (never a same-status no-op).
+    // A source from which each evidence produces a real transition (no same-status no-op).
     const validSource: Record<StatusEvidenceKind, ElwoodSessionStatus> = {
       startup_usable: "starting",
       initial_ready: "running",
@@ -99,6 +98,15 @@ describe("decideStatus", () => {
     expect(decideStatus("ready", "blocking_prompt_shown").to).toBe("blocked");
     // From `blocked` itself it is a no-op (already blocked, same target).
     expect(decideStatus("blocked", "blocking_prompt_shown").to).toBeUndefined();
+  });
+
+  test("C-API-37 initial_ready must not reopen a blocked startup session", () => {
+    // A startup dialog can be on screen when readiness fires; applying `ready`
+    // would drain queued input into it. Only `blocking_prompt_cleared` unblocks.
+    const decision = decideStatus("blocked", "initial_ready");
+    expect(decision.to).toBeUndefined();
+    expect(decision.reason).toContain("reopen a blocked session");
+    expect(decideStatus("blocked", "blocking_prompt_cleared").to).toBe("ready");
   });
 
   test("evidence whose target equals the current status is a no-op", () => {
@@ -155,15 +163,13 @@ describe("SessionStatusEngine", () => {
     calls.length = 0;
     // The dialog can appear after the working indicator has already cleared.
     expect(engine.submit("blocking_prompt_shown").to).toBe("blocked");
-    // Blocked suspends the queue (no send may write into the dialog) before
-    // emitting status; it does not close the queue.
+    // Blocked suspends the queue (no send may write into the dialog), not closes it.
     expect(calls).toEqual(["queueBlocked", "status:blocked"]);
     // Resolving the dialog settles to ready (the composer is waiting again).
     expect(engine.submit("blocking_prompt_cleared").to).toBe("ready");
     // A stale clear with no active block is ignored.
     expect(engine.submit("blocking_prompt_cleared").to).toBeUndefined();
-    // Blocking evidence never revives a terminal session.
-    engine.submit("terminal_exited");
+    engine.submit("terminal_exited"); // blocking evidence never revives a terminal session
     expect(engine.submit("blocking_prompt_shown").to).toBeUndefined();
   });
 

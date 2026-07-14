@@ -21,6 +21,7 @@ import { terminalStatuses } from "../runtime/session-status.ts";
 import { type SessionRecord, updateSessionResumeId } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { claudeModelPicker } from "./model-picker.ts";
+import { resizeRestoreFailedWarning } from "./resize-restore.ts";
 import type { ClaudeSession } from "./session-interface.ts";
 
 export type HookBridge = {
@@ -33,7 +34,7 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   private readonly bridge: HookBridge;
   private readonly emitter: TypedEmitter;
   private requestedSize: TerminalSize;
-  private initializing = true;
+  private awaitingInitialReady = true;
 
   constructor(
     record: SessionRecord,
@@ -67,23 +68,34 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   protected stagedPaste(screen: string): boolean {
     return /\[Pasted text/.test(screen);
   }
-  /** Hold caller resizes until Claude reaches its one-shot readiness transition. */
+  /** Hold the PHYSICAL resize until Claude's one-shot readiness transition, but
+   * still DURABLY persist the requested size now, so an exit before readiness
+   * resumes at the latest requested geometry rather than the bootstrap width. */
   override resize(size: TerminalSize): Promise<void> {
     this.requestedSize = size;
-    return this.initializing && !terminalStatuses.has(this.status)
-      ? Promise.resolve()
-      : super.resize(size);
+    if (!(this.awaitingInitialReady && !terminalStatuses.has(this.status))) {
+      return super.resize(size);
+    }
+    // Non-terminal by the guard above: durably record the size now (unless the
+    // pty is racing exit), and defer the physical resize to readiness.
+    this.persistHeldSize(size);
+    return Promise.resolve();
   }
-  /** Restore the latest requested geometry before the ready queue drains. A
-   * failed restore leaves Claude at its safe bootstrap width but never starves
-   * queued input or leaks an unhandled rejection. */
-  async initialized(): Promise<void> {
-    if (!this.initializing) return;
-    this.initializing = false;
+  /** Restore the latest requested geometry before the ready queue drains. A real
+   * (non-closed) resize failure leaves Claude at its safe bootstrap width and is
+   * surfaced as a typed `resize_restore_failed` warning — never silently swallowed
+   * and never reported as a success — but it still never starves queued input. */
+  async completeInitialReady(): Promise<void> {
+    if (!this.awaitingInitialReady) return;
+    this.awaitingInitialReady = false;
     try {
       await super.resize(this.requestedSize);
-    } catch {
-      // Readiness is authoritative; continuing wide is safer than losing input.
+    } catch (error) {
+      // A closed PTY is a benign no-op handled in the base resize; reaching here
+      // means a real error, so surface it durably instead of continuing silently.
+      this.recordWarnings([
+        resizeRestoreFailedWarning(this.elwoodSessionId, this.requestedSize, error),
+      ]);
     }
     try {
       this.submitEvidence("initial_ready");

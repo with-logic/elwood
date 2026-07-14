@@ -11,12 +11,21 @@ type InputTerminal = { sendInput(data: string | Uint8Array): void | Promise<void
 export type PasteGuard = {
   readonly snapshot: () => string;
   readonly staged: (screen: string, prompt: string) => boolean;
+  /**
+   * True when a blocking human-decision dialog is on screen. A dialog can
+   * appear during the paste-settle window; sending the submitting Enter then
+   * would confirm the dialog's highlighted option (e.g. approve a tool). The
+   * Enter is therefore held while this is true and retried once it clears.
+   */
+  readonly blocked?: () => boolean;
 };
 
 export const commandEnterDelayMs = 150;
 export const pasteSettleDelayMs = 150;
 export const pasteNudgeDelayMs = 1_000;
 export const pasteNudgeAttempts = 2;
+/** How often the submitting Enter re-checks a blocking dialog before firing. */
+export const blockedPollMs = 50;
 
 /** Explicitly best-effort input for startup/recovery automation. */
 export function ignoreInputFailure(input: void | Promise<void>): void {
@@ -54,6 +63,12 @@ export async function writePastedPrompt(
   let nudges = 0;
   const nudge = async () => {
     if (!guard || nudges >= pasteNudgeAttempts) return;
+    // A dialog that appears after the first Enter must not be confirmed by a
+    // recovery Enter either; skip this attempt and re-check on the next tick.
+    if (guard.blocked?.()) {
+      schedule(nudge, nudgeDelayMs);
+      return;
+    }
     nudges += 1;
     if (!guard.staged(guard.snapshot(), prompt)) return;
     try {
@@ -64,28 +79,49 @@ export async function writePastedPrompt(
     schedule(nudge, nudgeDelayMs);
   };
   await wait(settleDelayMs);
+  // Hold the submitting Enter while a blocking dialog is on screen: firing it
+  // would confirm the dialog's highlighted option instead of submitting the
+  // staged paste (C-API-37 dialog safety). The paste stays staged behind the
+  // dialog and submits once it clears.
+  await waitWhileBlocked(guard);
   await terminal.sendInput("\r");
   schedule(nudge, nudgeDelayMs);
 }
 
+function waitWhileBlocked(guard?: PasteGuard): Promise<void> {
+  if (!guard?.blocked?.()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const poll = () => {
+      if (!guard.blocked?.()) {
+        resolve();
+        return;
+      }
+      const timer = setTimeout(poll, blockedPollMs);
+      timer.unref?.();
+    };
+    const timer = setTimeout(poll, blockedPollMs);
+    timer.unref?.();
+  });
+}
+
 export async function writeQueuedInput(
   terminal: InputTerminal,
-  message: string,
+  input: string,
   mode: ControlSubmitMode,
   guard?: PasteGuard,
   enterDelayMs = commandEnterDelayMs,
 ): Promise<void> {
   if (mode !== "command") {
-    // Resolve only after the message's submitting Enter has dispatched, so the
+    // Resolve only after the input's submitting Enter has dispatched, so the
     // next queued operation cannot write into the composer first (FIFO).
-    await writePastedPrompt(terminal, message, guard);
+    await writePastedPrompt(terminal, input, guard);
     return;
   }
   // Slash-command popups (Codex) swallow an Enter that arrives in the same
   // PTY chunk as the command text, so Enter follows as a separate keystroke.
   // The returned promise resolves only after that Enter is dispatched, so a
   // queued command's Enter always lands before the next operation writes.
-  await terminal.sendInput(message);
+  await terminal.sendInput(input);
   await wait(enterDelayMs);
   await terminal.sendInput("\r");
 }

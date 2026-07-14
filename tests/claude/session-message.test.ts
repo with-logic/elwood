@@ -6,7 +6,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import type { ClaudeSessionImpl } from "../../src/claude/session-instance.ts";
 import { startClaude } from "../../src/index.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -74,46 +73,6 @@ describe("ClaudeSession message submission", () => {
       "utf8",
     );
     expect(record).not.toContain("terse reviewer");
-  });
-
-  test("C-API-19 C-API-36 narrow Claude bootstraps wide then restores the latest size", async () => {
-    const cwd = tempDir();
-    installFakes();
-    const session = await startClaude({ cwd, initialSize: { cols: 68, rows: 10 } });
-    const queued = session.sendMessage("hello");
-    await ptys[0]!.dispatchHook(session.elwoodSessionId, {
-      hook_event_name: "InstructionsLoaded",
-      session_id: "claude-1",
-      cwd,
-      file_path: "/tmp/CLAUDE.md",
-      memory_type: "Project",
-      load_reason: "session_start",
-    });
-    await queued;
-    expect(ptys[0]!.options.size).toEqual({ cols: 100, rows: 10 });
-    expect(ptys[0]!.size).toEqual({ cols: 68, rows: 10 });
-    await session.resize({ cols: 60, rows: 8 });
-    expect(ptys[0]!.size).toEqual({ cols: 60, rows: 8 });
-    await (session as ClaudeSessionImpl).initialized(); // one-shot replay is idempotent
-  });
-
-  test("C-API-36 a failed size restore still releases queued input", async () => {
-    const cwd = tempDir();
-    installFakes();
-    const session = await startClaude({ cwd, initialSize: { cols: 68, rows: 10 } });
-    const queued = session.sendMessage("hello");
-    ptys[0]!.resizeError = new Error("resize failed");
-    await ptys[0]!.dispatchHook(session.elwoodSessionId, {
-      hook_event_name: "InstructionsLoaded",
-      session_id: "claude-1",
-      cwd,
-      file_path: "/tmp/CLAUDE.md",
-      memory_type: "Project",
-      load_reason: "session_start",
-    });
-    await queued;
-    expect(ptys[0]!.size).toEqual({ cols: 100, rows: 10 });
-    expect(ptys[0]!.writes[0]).toBe("\u001b[200~hello\u001b[201~");
   });
 
   test("C-API-36 a failed readiness listener still releases queued input", async () => {

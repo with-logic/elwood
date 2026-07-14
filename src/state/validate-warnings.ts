@@ -7,12 +7,14 @@
  * fails to compile until it is validated here.
  */
 
+import { isStartupPromptLabel } from "../core/startup-automation.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import {
   isDropCause,
   isPollErrorReason,
   isPollPhase,
   isReapErrorCode,
+  isResizeErrorCode,
 } from "../core/warning-reasons.ts";
 import {
   isCount,
@@ -75,6 +77,12 @@ const warningValidators = {
   // so a non-allowlisted (possibly conversation-derived) reason cannot round-trip.
   transcript_poll_stopped: (value) =>
     claudeTerminalBase(value) && isPollErrorReason(value["reason"]) && isPollPhase(value["phase"]),
+  // The `label` is bounded to the fixed startup-prompt label set, so a persisted
+  // failure can never round-trip a raw prompt/screen string as its label (§5.4, §5.7).
+  startup_prompt_write_failed: (value) =>
+    (value["agent"] === "claude" || value["agent"] === "codex") &&
+    terminalBase(value) &&
+    isStartupPromptLabel(value["label"]),
   // Content-free lifecycle diagnostic: the leaked group's pgid (a real leader pid,
   // so a safe integer > 1) + an ALLOWLISTED normalized error code, per agent —
   // never a raw system message (§5.7, C-LIFE-10).
@@ -85,6 +93,18 @@ const warningValidators = {
     isString(value["message"]) &&
     isProcessGroupId(value["processGroupId"]) &&
     isReapErrorCode(value["errorCode"]) &&
+    isString(value["raw"]),
+  // Content-free lifecycle diagnostic: the size Elwood tried to restore (positive
+  // terminal dimensions) + an ALLOWLISTED normalized error code — never a raw
+  // system message (§5.3, §5.7, C-API-39).
+  resize_restore_failed: (value) =>
+    value["agent"] === "claude" &&
+    value["source"] === "lifecycle" &&
+    isString(value["elwoodSessionId"]) &&
+    isString(value["message"]) &&
+    isPositiveCount(value["requestedCols"]) &&
+    isPositiveCount(value["requestedRows"]) &&
+    isResizeErrorCode(value["errorCode"]) &&
     isString(value["raw"]),
 } satisfies Record<ElwoodWarningEvent["code"], WarningValidator>;
 

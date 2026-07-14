@@ -4,7 +4,11 @@
  */
 
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity.ts";
-import type { TrustPromptId, TrustPromptIdFor } from "./trust-prompts.ts";
+import {
+  type TrustPromptId,
+  type TrustPromptIdFor,
+  trustPromptAllowlist,
+} from "./trust-prompts.ts";
 
 /**
  * The non-trust startup-prompt labels correlated with their owning agent: the
@@ -30,6 +34,23 @@ export type StartupPromptLabelFor<A extends ElwoodAgentKind> =
 
 /** The full stable startup-prompt label union across all agents (§5.4). */
 export type StartupPromptLabel = TrustPromptId | "browser_tools" | "update";
+
+/**
+ * The complete set of stable startup-prompt labels (§5.4), derived from the trust
+ * allowlist plus the two non-trust labels, so the persisted-warning validator and
+ * this type can never drift. Used to bound a persisted `startup_prompt_write_failed`
+ * label to the allowlist.
+ */
+const startupPromptLabels: ReadonlySet<string> = new Set<StartupPromptLabel>([
+  ...trustPromptAllowlist.map((spec) => spec.id),
+  "browser_tools",
+  "update",
+]);
+
+/** True when `value` is one of the fixed startup-prompt labels (§5.4). */
+export function isStartupPromptLabel(value: unknown): value is StartupPromptLabel {
+  return typeof value === "string" && startupPromptLabels.has(value);
+}
 
 /**
  * The outcome of handling a startup prompt for agent `A`, discriminated so the
@@ -81,22 +102,4 @@ export function emitStartupPromptActivity<A extends ElwoodAgentKind>(
   automation: StartupPromptOutcome<A>,
 ): void {
   emitter.emit("activity", activityFromStartupPrompt(agent, elwoodSessionId, automation));
-}
-
-/**
- * Emit each automation's activity. An `option_pending` prompt is a TRANSIENT
- * render-delay state — under the say-yes policy a later frame carrying the option
- * is still answered, so there is deliberately NO durable warning to persist; the
- * fire-once `attention` activity is the whole surface (C-CLAUDE-14). Shared by
- * both adapters.
- */
-export function emitStartupPromptActivities<A extends "claude" | "codex">(
-  emitter: StartupActivityEmitter,
-  agent: A,
-  elwoodSessionId: string,
-  automations: readonly StartupPromptOutcome<A>[],
-): void {
-  for (const automation of automations) {
-    emitStartupPromptActivity(emitter, agent, elwoodSessionId, automation);
-  }
 }

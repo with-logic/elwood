@@ -87,9 +87,9 @@ describe("core activity branches", () => {
   test("C-CLAUDE-14 flags a recognized prompt with no rendered affirmative option as option_pending", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
-    const result = responder.handle("Do you trust this folder?\n1. No, exit", (input) =>
-      writes.push(input),
-    );
+    const result = responder.handle("Do you trust this folder?\n1. No, exit", (input) => {
+      writes.push(input);
+    });
     expect(result).toEqual({ kind: "option_pending", prompt: "workspace_trust" });
     expect(writes).toEqual([]);
   });

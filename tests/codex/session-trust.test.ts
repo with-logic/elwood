@@ -36,6 +36,22 @@ describe("CodexSession trust prompts", () => {
     expect(activity).toContain("startup_prompt:workspace_trust");
   });
 
+  test("C-CODEX-17 a rejected trust-prompt write stays retryable and warns", async () => {
+    installFakes();
+    const session = await startCodex({ cwd: tempDir(), autotrust: true });
+    // The PTY rejects the trust answer write: the prompt stays retryable and
+    // surfaces the bounded warning rather than being reported as answered.
+    ptys[0]!.failOnWrite = "1\r";
+    ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. Yes, continue");
+    await expect
+      .poll(() => session.warnings.map((w) => w.code))
+      .toContain("startup_prompt_write_failed");
+    // Retryable: a later frame re-attempts the answer with a now-succeeding write.
+    ptys[0]!.failOnWrite = undefined;
+    ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. Yes, continue");
+    await expect.poll(() => ptys[0]!.writes).toContain("1\r");
+  });
+
   test("C-CODEX-15 a not-yet-rendered option emits a TRANSIENT attention, persists NO durable warning", async () => {
     installFakes();
     const session = await startCodex({ cwd: tempDir(), autotrust: true });

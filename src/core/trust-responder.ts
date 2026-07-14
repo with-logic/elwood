@@ -28,13 +28,26 @@ export type TrustPromptAutomation<A extends ElwoodAgentKind = ElwoodAgentKind> =
 };
 
 /**
+ * The completion of an answered trust write: a `void | Promise<void>` write is
+ * normalized to a promise that resolves on success and rejects once the prompt
+ * has been un-settled (kept retryable) on a rejected write.
+ */
+export type TrustWriteResult = void | Promise<void>;
+
+/**
  * The outcome of handling a frame: an answered prompt, a recognized prompt whose
  * affirmative option has not rendered yet (a TRANSIENT render delay — under the
  * say-yes policy a later frame carrying the option is still answered, so this is
  * never a terminal wedge), or nothing.
  */
 export type TrustPromptResult<A extends ElwoodAgentKind = ElwoodAgentKind> =
-  | { readonly kind: "answered"; readonly automation: TrustPromptAutomation<A> }
+  | {
+      readonly kind: "answered";
+      readonly automation: TrustPromptAutomation<A>;
+      // Resolves when the affirmative write fulfills; rejects (after the prompt is
+      // un-settled, so a later frame re-attempts it) if the write is rejected.
+      readonly settled: Promise<void>;
+    }
   | { readonly kind: "option_pending"; readonly prompt: TrustPromptIdFor<A> }
   | undefined;
 
@@ -55,7 +68,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
   }
 
   /** `frame` MUST be the CURRENT rendered screen, not an accumulated buffer. */
-  handle(frame: string, write: (input: string) => void): TrustPromptResult<A> {
+  handle(frame: string, write: (input: string) => TrustWriteResult): TrustPromptResult<A> {
     const options = numberedOptions(frame);
     for (const spec of this.specs) {
       const id = spec.id as TrustPromptIdFor<A>;
@@ -76,9 +89,16 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
         this.reportedPending.add(id);
         return { kind: "option_pending", prompt: id };
       }
-      write(`${option}\r`);
+      // Settle OPTIMISTICALLY so a second frame in the same tick does not re-answer,
+      // but keep the settle contingent on the write: if the write is rejected we
+      // un-settle here so a later frame re-attempts it, and the returned `settled`
+      // promise rejects so the caller emits a warning instead of a false "answered".
       this.settled.add(id);
-      return { kind: "answered", automation: { prompt: id, input: option } };
+      const settled = Promise.resolve(write(`${option}\r`)).catch((error: unknown) => {
+        this.settled.delete(id);
+        throw error;
+      });
+      return { kind: "answered", automation: { prompt: id, input: option }, settled };
     }
     return undefined;
   }

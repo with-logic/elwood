@@ -47,7 +47,7 @@ describe("ControlQueue ordering and failures", () => {
     const queue = new ControlQueue(
       (input, mode) => {
         order.push(`${mode}:${input}`);
-        if (mode === "message") {
+        if (mode === "pasted_input") {
           return new Promise<void>((resolve) => {
             releaseMessage = resolve;
           });
@@ -61,10 +61,10 @@ describe("ControlQueue ordering and failures", () => {
     const message = queue.send("hello", "message");
     const command = queue.send("/model", "list_models");
     // Only the message has been written; the command waits for its submit.
-    expect(order).toEqual(["message:hello"]);
+    expect(order).toEqual(["pasted_input:hello"]);
     releaseMessage?.();
     await Promise.all([message, command]);
-    expect(order).toEqual(["message:hello", "command:/model"]);
+    expect(order).toEqual(["pasted_input:hello", "command:/model"]);
   });
 
   test("C-API-19 rejects queued and future operations after close", async () => {

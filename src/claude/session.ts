@@ -4,8 +4,7 @@ import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, elwoodError } from "../core/errors.ts";
 import { queuePersonaMessage } from "../core/persona.ts";
 import { observeRenderedFrame } from "../core/rendered-observers.ts";
-import { ignoreInputFailure } from "../core/session-input.ts";
-import { emitStartupPromptActivities } from "../core/startup-automation.ts";
+import { emitSettledStartupOutcomes } from "../core/startup-write.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import type { StartClaudeOptions } from "../core/types.ts";
 import { TypedEmitter } from "../events/emitter.ts";
@@ -98,7 +97,7 @@ export async function startClaudeFromRecord(
   // The callback is one-shot (idempotent), so a late deadline after the hook is a no-op.
   const ready = initialReady(() => {
     turnWatcher.arm();
-    void session?.initialized();
+    void session?.completeInitialReady();
   });
   const bridge = currentClaudeHookBridgeFactory()(
     record.paths.socketPath,
@@ -147,10 +146,13 @@ export async function startClaudeFromRecord(
     startupOutput += data;
     terminalReplay.push(data);
     const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
-    const autos = promptResponder.handle(frame.text, (input) => {
-      ignoreInputFailure(renderedTerminal.sendInput(input));
+    // The write RETURNS its `sendInput` completion (no longer swallowed): the
+    // responder settles the prompt and its `startup_prompt` activity only after
+    // the write fulfills, and a rejected write stays retryable + warns (C-CLAUDE-16).
+    const autos = promptResponder.handle(frame.text, (input) => renderedTerminal.sendInput(input));
+    emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
+      recordWarnings: (warnings) => session?.recordWarnings(warnings),
     });
-    emitStartupPromptActivities(emitter, "claude", record.elwoodSessionId, autos);
     // Readiness is hook-backed (`InstructionsLoaded` fires it); the frame only
     // arms the starvation-deadline fallback so a missing/failed hook bridge
     // cannot starve the queue forever (C-API-28, see initial-ready.ts).

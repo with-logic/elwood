@@ -4,8 +4,9 @@
  */
 
 import type { StartupPromptLabelFor, StartupPromptOutcome } from "../core/startup-automation.ts";
+import type { SettledStartupOutcome } from "../core/startup-write.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
-import { TrustPromptResponder } from "../core/trust-responder.ts";
+import { TrustPromptResponder, type TrustWriteResult } from "../core/trust-responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 
 /** A Codex startup-prompt label: a Codex trust-prompt id (Claude ids excluded) or `update`. */
@@ -19,9 +20,12 @@ export type CodexStartupPromptLabel = StartupPromptLabelFor<"codex">;
  */
 export type CodexStartupPromptOutcome = StartupPromptOutcome<"codex">;
 
+/** A Codex startup outcome paired with its PTY-write completion (§5.4, §5.7). */
+export type SettledCodexStartupOutcome = SettledStartupOutcome<"codex">;
+
 export type CodexStartupPromptResult = {
   readonly warnings: readonly ElwoodWarningEvent[];
-  readonly outcomes: readonly CodexStartupPromptOutcome[];
+  readonly outcomes: readonly SettledCodexStartupOutcome[];
 };
 
 const maxBufferLength = 6_000;
@@ -42,24 +46,30 @@ export class CodexStartupPromptResponder {
     this.skippedUpdate = false;
   }
 
-  handle(screenText: string, write: (input: string) => void): CodexStartupPromptResult {
-    const outcomes: CodexStartupPromptOutcome[] = [];
+  handle(screenText: string, write: (input: string) => TrustWriteResult): CodexStartupPromptResult {
+    const outcomes: SettledCodexStartupOutcome[] = [];
     this.buffer = `${this.buffer}\n${screenText}`.slice(-maxBufferLength);
     // Trust prompts are matched against the CURRENT frame only: a stale phrase in
     // the accumulated buffer must never pair with a different dialog's answer.
     const trust = this.trust.handle(screenText, write);
     if (trust?.kind === "answered") {
-      outcomes.push({ kind: "answered", ...trust.automation });
+      outcomes.push({ outcome: { kind: "answered", ...trust.automation }, settled: trust.settled });
     } else if (trust?.kind === "option_pending") {
-      outcomes.push({ kind: "option_pending", prompt: trust.prompt });
+      outcomes.push({ outcome: { kind: "option_pending", prompt: trust.prompt } });
     }
     // Skipping an available update is not a trust decision, so it stays here.
     if (!this.skippedUpdate && /update/i.test(this.buffer)) {
       const option = findNumberedOption(this.buffer, updateOptionPattern);
       if (option) {
-        write(option);
-        outcomes.push({ kind: "answered", prompt: "update", input: option });
+        // Settle OPTIMISTICALLY but keep the skip retryable if the write is
+        // rejected, so a later frame re-attempts it rather than falsely reporting
+        // the update as skipped (C-CODEX-17).
         this.skippedUpdate = true;
+        const settled = Promise.resolve(write(option)).catch((error: unknown) => {
+          this.skippedUpdate = false;
+          throw error;
+        });
+        outcomes.push({ outcome: { kind: "answered", prompt: "update", input: option }, settled });
       }
     }
     return { warnings: codexWarningsFromText(this.buffer, this.elwoodSessionId), outcomes };

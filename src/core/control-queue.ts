@@ -1,67 +1,20 @@
 /** Serialized adapter controls with readiness semantics (PRD §5.3, C-API-19/37). */
 
-export type ControlQueueError = () => Error;
-export type ControlSubmitMode = "message" | "command";
-export type ControlOperationKind =
-  | "message"
-  | "guidance"
-  | "readiness_bypass"
-  | "compact"
-  | "list_models"
-  | "set_model";
+import {
+  type ControlOperationKind,
+  type ControlQueueError,
+  type ControlSubmitMode,
+  controlOperationTraits,
+} from "./control-queue-traits.ts";
 
-export type ControlOperationTraits = {
-  readonly startsTurn: boolean;
-  readonly consumesReadiness: boolean;
-  readonly waitsForReadiness: boolean;
-  readonly submitMode: ControlSubmitMode;
-};
-
-/**
- * Slash-command operations do not start a user turn, so no completion hook
- * will re-arm readiness afterwards; consuming readiness would deadlock later
- * sends.
- */
-export const controlOperationTraits: Readonly<
-  Record<ControlOperationKind, ControlOperationTraits>
-> = {
-  message: {
-    startsTurn: true,
-    consumesReadiness: true,
-    waitsForReadiness: true,
-    submitMode: "message",
-  },
-  guidance: {
-    startsTurn: true,
-    consumesReadiness: true,
-    waitsForReadiness: true,
-    submitMode: "message",
-  },
-  readiness_bypass: {
-    startsTurn: true,
-    consumesReadiness: true,
-    waitsForReadiness: false,
-    submitMode: "message",
-  },
-  compact: {
-    startsTurn: false,
-    consumesReadiness: false,
-    waitsForReadiness: true,
-    submitMode: "command",
-  },
-  list_models: {
-    startsTurn: false,
-    consumesReadiness: false,
-    waitsForReadiness: false,
-    submitMode: "command",
-  },
-  set_model: {
-    startsTurn: false,
-    consumesReadiness: false,
-    waitsForReadiness: false,
-    submitMode: "command",
-  },
-};
+export type {
+  ControlOperationKind,
+  ControlOperationTraits,
+  ControlQueueError,
+  ControlSubmitMode,
+  ReadinessPolicy,
+} from "./control-queue-traits.ts";
+export { controlOperationTraits } from "./control-queue-traits.ts";
 
 /**
  * Writes an operation to the terminal. Resolves only once the submission —
@@ -73,6 +26,10 @@ export type ControlSubmitter = (input: string, mode: ControlSubmitMode) => Promi
 type QueuedOperation = {
   readonly input: string;
   readonly kind: ControlOperationKind;
+  // Bypass eligibility is FROZEN at enqueue time: guidance that was queued
+  // before first readiness (or while blocked) behaves like a message for its
+  // whole lifetime and must not later reclassify into an active turn (C-API-37).
+  readonly mayBypassReadiness: boolean;
   readonly resolve: () => void;
   readonly reject: (error: Error) => void;
 };
@@ -86,6 +43,10 @@ export class ControlQueue {
   private ready = false;
   private everReady = false;
   private closed = false;
+  // Count of queued operations that can dispatch while not ready (prompts,
+  // picker commands, bypass-eligible guidance). Lets `drain` skip the O(n) scan
+  // for an overtaker when none exists — so N held messages stay amortized O(1).
+  private bypassable = 0;
   /** The operation whose submission (incl. delayed Enter) is still dispatching. */
   private inFlight: QueuedOperation | undefined;
 
@@ -103,8 +64,16 @@ export class ControlQueue {
 
   send(input: string, kind: ControlOperationKind): Promise<void> {
     if (this.closed) return Promise.reject(this.stoppedError());
+    // Freeze bypass eligibility now: guidance only bypasses if the session is
+    // already past initial readiness AND currently mid-turn at enqueue time.
+    const mayBypassReadiness =
+      controlOperationTraits[kind].readiness === "running_after_ready" &&
+      this.everReady &&
+      this.guidanceMayBypass();
     return new Promise((resolve, reject) => {
-      this.queue.push({ input, kind, resolve, reject });
+      const operation = { input, kind, mayBypassReadiness, resolve, reject };
+      this.queue.push(operation);
+      if (this.dispatchesWhileNotReady(operation)) this.bypassable += 1;
       this.drain();
     });
   }
@@ -133,24 +102,17 @@ export class ControlQueue {
     // error, not let it later resolve or time out downstream.
     const settling = this.inFlight;
     this.inFlight = undefined;
+    this.bypassable = 0;
     if (settling) settling.reject(error);
     for (const operation of this.queue.splice(0)) operation.reject(error);
   }
 
   private drain(): void {
     if (this.inFlight || this.queue.length === 0) return;
-    // Immediate prompts and currently-safe guidance may overtake a waiting
-    // head; all other operations retain FIFO and readiness semantics.
-    const next = this.queue[0] as QueuedOperation;
-    const index = this.canDispatch(next)
-      ? 0
-      : this.queue.findIndex(
-          (operation) =>
-            operation.kind === "readiness_bypass" ||
-            (operation.kind === "guidance" && this.canDispatch(operation)),
-        );
+    const index = this.nextDispatchIndex();
     if (index < 0) return;
     const operation = this.queue.splice(index, 1)[0] as QueuedOperation;
+    if (this.dispatchesWhileNotReady(operation)) this.bypassable -= 1;
     let dispatched: Promise<void>;
     try {
       dispatched = this.submitNow(operation.input, operation.kind);
@@ -170,11 +132,25 @@ export class ControlQueue {
     );
   }
 
-  private canDispatch(operation: QueuedOperation): boolean {
-    if (operation.kind === "guidance") {
-      return this.ready || (this.everReady && this.guidanceMayBypass());
-    }
-    return this.ready || !controlOperationTraits[operation.kind].waitsForReadiness;
+  /**
+   * The queue index of the next operation to dispatch, or -1 if none can. The
+   * head dispatches when ready; otherwise the first operation that dispatches
+   * while not ready (a prompt/command, or bypass-eligible guidance) overtakes
+   * it. When no such overtaker is queued the scan is skipped, keeping a backlog
+   * of held messages amortized O(1) rather than O(n) per enqueue.
+   */
+  private nextDispatchIndex(): number {
+    if (this.ready) return 0;
+    if (this.dispatchesWhileNotReady(this.queue[0] as QueuedOperation)) return 0;
+    if (this.bypassable === 0) return -1;
+    return this.queue.findIndex((operation) => this.dispatchesWhileNotReady(operation));
+  }
+
+  /** Whether the operation may dispatch even though the session is not ready. */
+  private dispatchesWhileNotReady(operation: QueuedOperation): boolean {
+    const policy = controlOperationTraits[operation.kind].readiness;
+    if (policy === "always") return true;
+    return policy === "running_after_ready" && operation.mayBypassReadiness;
   }
 
   private settleInFlight(operation: QueuedOperation, settle: () => void): void {

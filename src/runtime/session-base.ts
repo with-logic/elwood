@@ -13,6 +13,7 @@ import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { notRunningError, type SessionStatusEmitter } from "./session-base-types.ts";
 import { CommandSurface } from "./session-commands.ts";
 import { SessionReapPolicy } from "./session-reap.ts";
+import { applyResize, persistHeldResize } from "./session-resize.ts";
 import {
   buildShutdownHost,
   runManagedShutdown,
@@ -38,11 +39,16 @@ export abstract class AgentSessionBase {
   private readonly terminalReplay: TerminalReplayBuffer;
   private cleanupPromise: Promise<void> | undefined;
   private pendingShutdown: ShutdownEvidence | undefined;
-  private everReady = false; // gates `interrupt` off the startup `running` bootstrap (see CommandSurface)
+  private everReady = false; // gates `interrupt` off the startup `running` bootstrap
   // Serializes stop/kill/teardown so later callers join rather than race (C-LIFE-10).
   private readonly shutdownCoordinator = new ShutdownCoordinator();
+  private readonly pasteGuard: PasteGuard = {
+    snapshot: () => this.terminal.snapshot().text,
+    staged: (s, p) => this.stagedPaste(s, p),
+    blocked: () => this.status === "blocked",
+  };
   protected readonly controlQueue = new ControlQueue(
-    (input, mode) => writeQueuedInput(this.terminal, input, mode, this.pasteGuard()),
+    (input, mode) => writeQueuedInput(this.terminal, input, mode, this.pasteGuard),
     () => notRunningError(this.agent),
     () => this.submitEvidence("caller_submitted"),
     () => this.status === "running",
@@ -93,25 +99,24 @@ export abstract class AgentSessionBase {
   get warnings(): readonly ElwoodWarningEvent[] {
     return this.record.warnings;
   }
-  sendPrompt(prompt: string): Promise<void> {
-    return this.inSession(() => this.controlQueue.send(prompt, "readiness_bypass"));
-  }
-  sendMessage(message: string): Promise<void> {
-    return this.inSession(() => this.controlQueue.send(message, "message"));
-  }
-  sendGuidance(message: string): Promise<void> {
-    return this.inSession(() => this.controlQueue.send(message, "guidance"));
+  sendPrompt = (prompt: string): Promise<void> => this.enqueue(prompt, "prompt");
+  sendMessage = (message: string): Promise<void> => this.enqueue(message, "message");
+  sendGuidance = (message: string): Promise<void> => this.enqueue(message, "guidance");
+  private enqueue(input: string, kind: "prompt" | "message" | "guidance"): Promise<void> {
+    return this.inSession(() => this.controlQueue.send(input, kind));
   }
   sendKeys(input: string | Uint8Array): Promise<void> {
     return this.inSession(() => this.terminal.sendInput(input));
   }
   resize(size: TerminalSize): Promise<void> {
-    return this.inSession(() => {
-      if (this.pty.resize(size) === "closed") return;
-      this.terminal.resize(size);
-      this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.status));
-    });
+    return this.inSession(() => applyResize(this.pty, this.terminal, this.persistSize, size));
   }
+  // Persist a HELD (deferred-physical) resize, per C-API-39 (see session-resize.ts).
+  protected persistHeldSize(size: TerminalSize): void {
+    persistHeldResize(this.pty, this.terminal, this.persistSize, size);
+  }
+  private readonly persistSize = (size: TerminalSize) =>
+    this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.status));
   interrupt(options?: { readonly timeoutMs?: number }): Promise<void> {
     return this.inSession(() => this.commands.interrupt(options));
   }
@@ -150,14 +155,14 @@ export abstract class AgentSessionBase {
     return this.statusEngine.submit(kind);
   }
   submitExit(): StatusDecision {
-    // Terminal status FIRST, reap in `finally`: reaches terminal AND reaps even if status throws (C-LIFE-10).
+    // Terminal status FIRST, reap in `finally`: reach terminal AND reap even if status throws (C-LIFE-10).
     try {
       return this.statusEngine.submit(this.pendingShutdown ?? "terminal_exited");
     } finally {
       this.reapSurvivors();
     }
   }
-  // Best-effort native-exit reap (the ONLY swallowing caller): a failure becomes a durable `reap_failed` warning, never thrown (C-LIFE-10).
+  // Best-effort native-exit reap: a failure becomes a durable `reap_failed` warning, never thrown (C-LIFE-10).
   private reapSurvivors(): void {
     const warning = this.reapPolicy.bestEffort();
     if (warning) this.recordWarnings([warning]);
@@ -166,12 +171,7 @@ export abstract class AgentSessionBase {
     return this.statusEngine.decisions();
   }
   protected abstract stagedPaste(screen: string, prompt: string): boolean;
-  private pasteGuard(): PasteGuard {
-    const staged = (s: string, p: string) => this.stagedPaste(s, p);
-    return { snapshot: () => this.terminal.snapshot().text, staged };
-  }
   protected abstract stopRuntime(): Promise<void>;
-  // Persist + emit typed warnings through the adapter's dedup/replay path.
   protected abstract recordWarnings(warnings: readonly ElwoodWarningEvent[]): void;
   protected replayFor(event: string, handler: unknown): void {
     if (event === "terminal:data") this.terminalReplay.replay(handler as never);

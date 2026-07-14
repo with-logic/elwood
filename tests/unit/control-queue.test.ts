@@ -4,11 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import {
-  ControlQueue,
-  type ControlSubmitMode,
-  controlOperationTraits,
-} from "../../src/core/control-queue.ts";
+import { ControlQueue, type ControlSubmitMode } from "../../src/core/control-queue.ts";
 
 describe("ControlQueue", () => {
   test("C-API-19 submits immediately when ready and marks the turn started", async () => {
@@ -54,7 +50,7 @@ describe("ControlQueue", () => {
       "command",
       "command",
       "command",
-      "message",
+      "pasted_input",
     ]);
     expect(turnsStarted).toBe(1);
   });
@@ -75,12 +71,15 @@ describe("ControlQueue", () => {
     expect(submitted).toEqual(["/model"]);
     const queuedMessage = queue.send("hello", "message");
     expect(submitted).toEqual(["/model"]);
-    // A picker command queued behind the pending message must not jump ahead.
-    const queuedCommand = queue.send("/model", "set_model");
-    expect(submitted).toEqual(["/model"]);
+    // C-API-35: a picker command queued behind a readiness-waiting message
+    // OVERTAKES it and dispatches immediately rather than stalling behind the
+    // in-flight turn — it is an immediate operation, not readiness-waiting.
+    const queuedCommand = queue.send("/model2", "set_model");
+    await queuedCommand;
+    expect(submitted).toEqual(["/model", "/model2"]);
     queue.markReady();
-    await Promise.all([queuedMessage, queuedCommand]);
-    expect(submitted).toEqual(["/model", "hello", "/model"]);
+    await queuedMessage;
+    expect(submitted).toEqual(["/model", "/model2", "hello"]);
   });
 
   test("C-API-22 compact waits for readiness like a message", async () => {
@@ -131,7 +130,7 @@ describe("ControlQueue", () => {
     await waiting;
   });
 
-  test("C-API-37 queued guidance rechecks blocking state before dispatch", async () => {
+  test("C-API-37 guidance eligibility is fixed at enqueue, not rechecked at drain", async () => {
     const submitted: string[] = [];
     let release = (): void => {};
     let running = true;
@@ -147,53 +146,19 @@ describe("ControlQueue", () => {
       () => running,
     );
     queue.markReady();
+    // Both guidances are submitted while ready + running, so both freeze
+    // bypass-eligible. A later suspend/block does NOT reclassify the queued
+    // second one back to readiness-waiting: its eligibility is already fixed.
+    // (Dialog safety for a dialog that appears mid-submit is enforced at the
+    // write layer, not by re-holding the queue.)
     const first = queue.send("first", "guidance");
-    const second = queue.send("hold-while-blocked", "guidance");
+    const second = queue.send("second", "guidance");
     running = false;
     queue.suspendReadiness();
     release();
     await first;
-    expect(submitted).toEqual(["first"]);
-    running = true;
-    queue.markReady();
-    expect(submitted).toEqual(["first", "hold-while-blocked"]);
+    expect(submitted).toEqual(["first", "second"]);
     release();
     await second;
-  });
-
-  test("C-API-19 traits table pins per-operation readiness semantics", () => {
-    expect(controlOperationTraits.message).toMatchObject({
-      startsTurn: true,
-      consumesReadiness: true,
-      waitsForReadiness: true,
-    });
-    expect(controlOperationTraits.guidance).toEqual({
-      startsTurn: true,
-      consumesReadiness: true,
-      waitsForReadiness: true,
-      submitMode: "message",
-    });
-    expect(controlOperationTraits.readiness_bypass).toEqual({
-      startsTurn: true,
-      consumesReadiness: true,
-      waitsForReadiness: false,
-      submitMode: "message",
-    });
-    // Compact is a command but still waits for readiness (runs after the turn).
-    expect(controlOperationTraits.compact).toEqual({
-      startsTurn: false,
-      consumesReadiness: false,
-      waitsForReadiness: true,
-      submitMode: "command",
-    });
-    // Picker automation dispatches even mid-turn.
-    for (const kind of ["list_models", "set_model"] as const) {
-      expect(controlOperationTraits[kind]).toEqual({
-        startsTurn: false,
-        consumesReadiness: false,
-        waitsForReadiness: false,
-        submitMode: "command",
-      });
-    }
   });
 });

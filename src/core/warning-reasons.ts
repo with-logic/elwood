@@ -93,6 +93,38 @@ export function isDropCause(value: unknown): value is DropCause {
   return typeof value === "string" && dropCauses.has(value);
 }
 
+/**
+ * The allowlisted tokens for `resize_restore_failed.errorCode`: standard JS error
+ * constructor names + the errnos a native PTY resize can surface, plus the fixed
+ * `UnknownError` fallback any unrecognized value collapses to. A resize failure's
+ * error `name`/`.code`/message are system-controlled, so only a value on this
+ * allowlist may reach persisted state (§5.7).
+ */
+export const RESIZE_ERROR_CODES = [
+  "UnknownError",
+  // Standard ECMAScript error constructor names.
+  "Error",
+  "TypeError",
+  "RangeError",
+  "ReferenceError",
+  // Errnos a native PTY resize (ioctl TIOCSWINSZ) or terminal write can surface.
+  "EBADF",
+  "EINVAL",
+  "EIO",
+  "ENXIO",
+  "EPERM",
+  "EACCES",
+] as const;
+
+/** A bounded, allowlisted `resize_restore_failed.errorCode` token. */
+export type ResizeErrorCode = (typeof RESIZE_ERROR_CODES)[number];
+
+const resizeErrorCodes: ReadonlySet<string> = new Set(RESIZE_ERROR_CODES);
+
+export function isResizeErrorCode(value: unknown): value is ResizeErrorCode {
+  return typeof value === "string" && resizeErrorCodes.has(value);
+}
+
 /** Which lifecycle phase a transcript failure occurred in. */
 export const POLL_PHASES = ["poll", "final_flush"] as const;
 

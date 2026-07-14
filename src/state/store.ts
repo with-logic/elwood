@@ -190,6 +190,8 @@ function warningKey(warning: ElwoodWarningEvent): string {
   if ("failedServers" in warning) return `${warning.code}:${warning.failedServers.join(",")}`;
   // Key reap_failed on code AND pgid: a resume's NEW leaked leader is distinct.
   if (warning.code === "reap_failed") return `${warning.code}:${warning.processGroupId}`;
+  // Key on code AND label so a different prompt's failed write is a distinct incident.
+  if (warning.code === "startup_prompt_write_failed") return `${warning.code}:${warning.label}`;
   return warning.code;
 }
 

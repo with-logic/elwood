@@ -4,19 +4,21 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest";
+import type { CodexHookEventFor } from "../../src/index.ts";
 import { startCodex } from "../../src/index.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-const stopHook = (cwd: string) => ({
-  hook_event_name: "Stop",
-  session_id: "codex-1",
-  cwd,
-  model: "gpt-5.3-codex",
-  turn_id: "turn-1",
-  stop_hook_active: false,
-});
+const stopHook = (cwd: string) =>
+  ({
+    hook_event_name: "Stop",
+    session_id: "codex-1",
+    cwd,
+    model: "gpt-5.3-codex",
+    turn_id: "turn-1",
+    stop_hook_active: false,
+  }) satisfies CodexHookEventFor<"Stop">;
 
 describe("CodexSession interrupt", () => {
   test("C-API-38 interrupt writes Escape immediately mid-turn and resolves on ready", async () => {

@@ -68,6 +68,46 @@ describe("writePastedPrompt", () => {
     expect(writes).toEqual([paste("hello")]);
   });
 
+  test("C-API-37 the submitting Enter is held across poll ticks until the dialog clears", async () => {
+    const terminal = fakeTerminal();
+    let blocked = true;
+    const guard: PasteGuard = {
+      snapshot: () => "> ",
+      staged: () => false,
+      blocked: () => blocked,
+    };
+    // Paste lands, but the settle-delayed Enter must NOT fire while blocked: it
+    // would confirm the dialog instead of submitting the staged paste. Stay
+    // blocked long enough that the guard re-polls at least once (blockedPollMs
+    // is 50ms) before the dialog clears.
+    const submitted = writePastedPrompt(terminal, "hello", guard, 5, 5);
+    await sleep(140);
+    expect(terminal.writes).toEqual([paste("hello")]);
+    // Once the dialog clears, a later poll fires the held Enter and resolves.
+    blocked = false;
+    await submitted;
+    expect(terminal.writes).toEqual([paste("hello"), "\r"]);
+  });
+
+  test("C-API-37 a recovery nudge is also skipped while blocked", async () => {
+    const terminal = fakeTerminal();
+    let blocked = false;
+    const guard: PasteGuard = {
+      snapshot: () => "> [Pasted text #1]",
+      staged: (screen) => screen.includes("[Pasted text"),
+      blocked: () => blocked,
+    };
+    await writePastedPrompt(terminal, "line1\nline2", guard, 5, 5);
+    // First Enter fired (not blocked); now a dialog appears before the nudge.
+    blocked = true;
+    await sleep(30);
+    const entersWhileBlocked = terminal.writes.filter((w) => w === "\r").length;
+    blocked = false;
+    await sleep(20);
+    // The nudge that was skipped while blocked resumes once the dialog clears.
+    expect(terminal.writes.filter((w) => w === "\r").length).toBeGreaterThan(entersWhileBlocked);
+  });
+
   test("C-API-31 later recovery Enter failures remain best-effort", async () => {
     let enters = 0;
     const terminal = {

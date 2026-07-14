@@ -5,7 +5,14 @@
  * transcripts, or conversation content.
  */
 
-import type { DropCause, PollErrorReason, PollPhase, ReapErrorCode } from "./warning-reasons.ts";
+import type { StartupPromptLabel } from "./startup-automation.ts";
+import type {
+  DropCause,
+  PollErrorReason,
+  PollPhase,
+  ReapErrorCode,
+  ResizeErrorCode,
+} from "./warning-reasons.ts";
 
 export type ElwoodWarningEvent =
   | {
@@ -96,6 +103,19 @@ export type ElwoodWarningEvent =
   | {
       readonly elwoodSessionId: string;
       readonly agent: "claude" | "codex";
+      readonly source: "terminal";
+      readonly code: "startup_prompt_write_failed";
+      readonly severity: "warning";
+      readonly message: string;
+      // The startup-prompt LABEL whose PTY write was rejected — a bounded id from
+      // the fixed startup-prompt label set only, never raw prompt/screen content.
+      // The prompt is left retryable, so a later frame re-attempts the write.
+      readonly label: StartupPromptLabel;
+      readonly raw: string;
+    }
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "claude" | "codex";
       readonly source: "lifecycle";
       readonly code: "reap_failed";
       readonly severity: "warning";
@@ -105,5 +125,21 @@ export type ElwoodWarningEvent =
       // never a raw system message or conversation content (§5.7, C-LIFE-10).
       readonly processGroupId: number;
       readonly errorCode: ReapErrorCode;
+      readonly raw: string;
+    }
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "claude";
+      readonly source: "lifecycle";
+      readonly code: "resize_restore_failed";
+      readonly severity: "warning";
+      readonly message: string;
+      // The narrow-bootstrap restore failed with a real (non-closed) resize error,
+      // so Claude stays at its safe bootstrap width. Carries only the size Elwood
+      // tried to restore and a normalized, allowlisted error code — never a raw
+      // system message or conversation content (§5.3, §5.7, C-API-39).
+      readonly requestedCols: number;
+      readonly requestedRows: number;
+      readonly errorCode: ResizeErrorCode;
       readonly raw: string;
     };

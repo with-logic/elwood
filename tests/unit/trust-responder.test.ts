@@ -10,9 +10,9 @@ describe("allowlisted trust prompt automation", () => {
   test("C-API-18 stays disabled unless callers opt in", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude");
-    const result = responder.handle("Quick safety check: trust this folder?", (input) =>
-      writes.push(input),
-    );
+    const result = responder.handle("Quick safety check: trust this folder?", (input) => {
+      writes.push(input);
+    });
     expect(result).toBeUndefined();
     expect(writes).toEqual([]);
   });
@@ -21,10 +21,14 @@ describe("allowlisted trust prompt automation", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
     expect(
-      responder.handle("Do you trust this folder?\n1. Yes", (input) => writes.push(input)),
-    ).toEqual({ kind: "answered", automation: { prompt: "workspace_trust", input: "1" } });
+      responder.handle("Do you trust this folder?\n1. Yes", (input) => {
+        writes.push(input);
+      }),
+    ).toMatchObject({ kind: "answered", automation: { prompt: "workspace_trust", input: "1" } });
     expect(
-      responder.handle("Do you trust this folder?", (input) => writes.push(input)),
+      responder.handle("Do you trust this folder?", (input) => {
+        writes.push(input);
+      }),
     ).toBeUndefined();
     expect(writes).toEqual(["1\r"]);
   });
@@ -46,7 +50,11 @@ describe("allowlisted trust prompt automation", () => {
       "  2. No, exit",
       "Enter to confirm · Esc to cancel",
     ].join("\n");
-    expect(new TrustPromptResponder("claude", true).handle(frame, (i) => writes.push(i))).toEqual({
+    expect(
+      new TrustPromptResponder("claude", true).handle(frame, (i) => {
+        writes.push(i);
+      }),
+    ).toMatchObject({
       kind: "answered",
       automation: { prompt: "workspace_trust", input: "1" },
     });
@@ -67,7 +75,11 @@ describe("allowlisted trust prompt automation", () => {
     ] as const) {
       const writes: string[] = [];
       const responder = new TrustPromptResponder("claude", true);
-      expect(responder.handle(screen, (input) => writes.push(input))).toEqual({
+      expect(
+        responder.handle(screen, (input) => {
+          writes.push(input);
+        }),
+      ).toMatchObject({
         kind: "answered",
         automation: { prompt: id, input: option },
       });
@@ -81,7 +93,9 @@ describe("allowlisted trust prompt automation", () => {
     // A generic confirmation that is NOT an allowlisted trust prompt: ignored,
     // so a future CLI security gate is never blanket-bypassed.
     expect(
-      responder.handle("Enable telemetry for this session?\n1. Yes", (input) => writes.push(input)),
+      responder.handle("Enable telemetry for this session?\n1. Yes", (input) => {
+        writes.push(input);
+      }),
     ).toBeUndefined();
     expect(writes).toEqual([]);
   });
@@ -100,11 +114,15 @@ describe("allowlisted trust prompt automation", () => {
     // responder writes nothing AND surfaces `option_pending` (a transient
     // render-delay signal), once. A wrong "No, cancel" option is never selected.
     expect(
-      responder.handle("Do you trust this folder?\n1. No, cancel", (input) => writes.push(input)),
+      responder.handle("Do you trust this folder?\n1. No, cancel", (input) => {
+        writes.push(input);
+      }),
     ).toEqual({ kind: "option_pending", prompt: "workspace_trust" });
     // Reported once: a second identical frame does not re-flag.
     expect(
-      responder.handle("Do you trust this folder?\n1. No, cancel", (input) => writes.push(input)),
+      responder.handle("Do you trust this folder?\n1. No, cancel", (input) => {
+        writes.push(input);
+      }),
     ).toBeUndefined();
     expect(writes).toEqual([]);
   });
@@ -116,7 +134,11 @@ describe("allowlisted trust prompt automation", () => {
     // from the frame's affirmative option. Here folder-trust is recognized (its
     // header is on a non-option line) and answered "1".
     const frame = "Do you trust this folder?\nLoad this skill?\n1. Yes, trust it";
-    expect(responder.handle(frame, (input) => writes.push(input))).toEqual({
+    expect(
+      responder.handle(frame, (input) => {
+        writes.push(input);
+      }),
+    ).toMatchObject({
       kind: "answered",
       automation: { prompt: "workspace_trust", input: "1" },
     });
@@ -133,7 +155,11 @@ describe("allowlisted trust prompt automation", () => {
     // the agent here.
     const frame =
       "Do you trust this folder?\n\nClaude Code can read/edit here.\n\n1. Yes, proceed\n2. No";
-    expect(responder.handle(frame, (input) => writes.push(input))).toEqual({
+    expect(
+      responder.handle(frame, (input) => {
+        writes.push(input);
+      }),
+    ).toMatchObject({
       kind: "answered",
       automation: { prompt: "workspace_trust", input: "1" },
     });
@@ -146,14 +172,20 @@ describe("allowlisted trust prompt automation", () => {
     // Frame 1: header drawn, options not yet rendered — surfaced as option_pending
     // ONCE (a transient render-delay signal) but NOT settled, so the next frame
     // can still answer.
-    expect(responder.handle("Do you trust this folder?", (input) => writes.push(input))).toEqual({
+    expect(
+      responder.handle("Do you trust this folder?", (input) => {
+        writes.push(input);
+      }),
+    ).toEqual({
       kind: "option_pending",
       prompt: "workspace_trust",
     });
     // Frame 2: the option has now rendered — the prompt answers normally.
     expect(
-      responder.handle("Do you trust this folder?\n1. Yes, proceed", (input) => writes.push(input)),
-    ).toEqual({ kind: "answered", automation: { prompt: "workspace_trust", input: "1" } });
+      responder.handle("Do you trust this folder?\n1. Yes, proceed", (input) => {
+        writes.push(input);
+      }),
+    ).toMatchObject({ kind: "answered", automation: { prompt: "workspace_trust", input: "1" } });
     expect(writes).toEqual(["1\r"]);
   });
 });

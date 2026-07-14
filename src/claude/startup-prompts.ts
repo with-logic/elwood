@@ -2,11 +2,15 @@
  * Answers Claude first-party startup prompts that block embedded readiness:
  * workspace/skill/plugin/MCP trust (via the allowlisted TrustPromptResponder)
  * and the browser-tools prompt. Implements PRD §5.1, C-CLAUDE-10, C-CLAUDE-11,
- * and C-CLAUDE-14.
+ * C-CLAUDE-14, and C-CLAUDE-16.
  */
 
-import type { StartupPromptOutcome } from "../core/startup-automation.ts";
-import { TrustPromptResponder } from "../core/trust-responder.ts";
+import type { SettledStartupOutcome } from "../core/startup-write.ts";
+import { TrustPromptResponder, type TrustWriteResult } from "../core/trust-responder.ts";
+
+// The prompt's documented decline keystroke (ESC); built from its code point so
+// the raw control byte never appears literally in source.
+const declineKey = String.fromCharCode(0x1b);
 
 export class ClaudeStartupPromptResponder {
   private readonly trust: TrustPromptResponder<"claude">;
@@ -18,23 +22,31 @@ export class ClaudeStartupPromptResponder {
 
   handle(
     screenText: string,
-    write: (input: string) => void,
-  ): readonly StartupPromptOutcome<"claude">[] {
-    const outcomes: StartupPromptOutcome<"claude">[] = [];
+    write: (input: string) => TrustWriteResult,
+  ): readonly SettledStartupOutcome<"claude">[] {
+    const settled: SettledStartupOutcome<"claude">[] = [];
     const trust = this.trust.handle(screenText, write);
     if (trust?.kind === "answered") {
-      outcomes.push({ kind: "answered", ...trust.automation });
+      settled.push({ outcome: { kind: "answered", ...trust.automation }, settled: trust.settled });
     } else if (trust?.kind === "option_pending") {
-      outcomes.push({ kind: "option_pending", prompt: trust.prompt });
+      settled.push({ outcome: { kind: "option_pending", prompt: trust.prompt } });
     }
     if (!this.browserDeclined && browserToolsPromptVisible(screenText)) {
       // Escape is the prompt's documented decline path and needs no option
-      // number, so it stays correct if the option ordering changes.
-      write("\u001b");
+      // number, so it stays correct if the option ordering changes. Settle
+      // OPTIMISTICALLY, but keep the decline retryable if the write is rejected
+      // so a later frame re-attempts it rather than reporting a false "answered".
       this.browserDeclined = true;
-      outcomes.push({ kind: "answered", prompt: "browser_tools", input: "esc" });
+      const writeSettled = Promise.resolve(write(declineKey)).catch((error: unknown) => {
+        this.browserDeclined = false;
+        throw error;
+      });
+      settled.push({
+        outcome: { kind: "answered", prompt: "browser_tools", input: "esc" },
+        settled: writeSettled,
+      });
     }
-    return outcomes;
+    return settled;
   }
 }
 

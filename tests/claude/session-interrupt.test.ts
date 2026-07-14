@@ -4,26 +4,29 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest";
+import type { ClaudeHookEventFor } from "../../src/index.ts";
 import { startClaude } from "../../src/index.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-const instructionsLoaded = (cwd: string) => ({
-  hook_event_name: "InstructionsLoaded",
-  session_id: "claude-1",
-  cwd,
-  file_path: "/tmp/CLAUDE.md",
-  memory_type: "Project",
-  load_reason: "session_start",
-});
+const instructionsLoaded = (cwd: string) =>
+  ({
+    hook_event_name: "InstructionsLoaded",
+    session_id: "claude-1",
+    cwd,
+    file_path: "/tmp/CLAUDE.md",
+    memory_type: "Project",
+    load_reason: "session_start",
+  }) satisfies ClaudeHookEventFor<"InstructionsLoaded">;
 
-const stopHook = (cwd: string) => ({
-  hook_event_name: "Stop",
-  session_id: "claude-1",
-  cwd,
-  stop_hook_active: false,
-});
+const stopHook = (cwd: string) =>
+  ({
+    hook_event_name: "Stop",
+    session_id: "claude-1",
+    cwd,
+    stop_hook_active: false,
+  }) satisfies ClaudeHookEventFor<"Stop">;
 
 describe("ClaudeSession interrupt", () => {
   const escapes = (writes: readonly string[]) => writes.filter((w) => w === "\u001b").length;

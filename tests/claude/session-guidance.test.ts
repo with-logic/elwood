@@ -4,19 +4,29 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest";
+import type { ClaudeHookEventFor } from "../../src/index.ts";
 import { startClaude } from "../../src/index.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-const instructionsLoaded = (cwd: string) => ({
-  hook_event_name: "InstructionsLoaded",
-  session_id: "claude-1",
-  cwd,
-  file_path: "/tmp/CLAUDE.md",
-  memory_type: "Project",
-  load_reason: "session_start",
-});
+const instructionsLoaded = (cwd: string) =>
+  ({
+    hook_event_name: "InstructionsLoaded",
+    session_id: "claude-1",
+    cwd,
+    file_path: "/tmp/CLAUDE.md",
+    memory_type: "Project",
+    load_reason: "session_start",
+  }) satisfies ClaudeHookEventFor<"InstructionsLoaded">;
+
+const stopHook = (cwd: string) =>
+  ({
+    hook_event_name: "Stop",
+    session_id: "claude-1",
+    cwd,
+    stop_hook_active: false,
+  }) satisfies ClaudeHookEventFor<"Stop">;
 
 describe("ClaudeSession guidance", () => {
   test("C-API-37 queues at startup, then overtakes a running turn through Enter", async () => {
@@ -46,12 +56,7 @@ describe("ClaudeSession guidance", () => {
       "\u001b",
       "\r",
     ]);
-    await ptys[0]!.dispatchHook(session.elwoodSessionId, {
-      hook_event_name: "Stop",
-      session_id: "claude-1",
-      cwd,
-      stop_hook_active: false,
-    });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, stopHook(cwd));
     await waiting;
     expect(ptys[0]!.writes.slice(-2)).toEqual(["\u001b[200~wait-for-ready\u001b[201~", "\r"]);
   });
@@ -72,6 +77,27 @@ describe("ClaudeSession guidance", () => {
     expect(ptys[0]!.writes).toEqual(["\u001b[200~after-human-decision\u001b[201~", "\r"]);
   });
 
+  test("C-API-37 a dialog blocking Claude holds a guidance Enter until it clears", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
+    // A permission dialog is on screen while the coordinator intervenes. The
+    // submitting Enter must NOT fire into the dialog (it would confirm the
+    // highlighted "Yes"); it is held until the dialog clears. The deterministic
+    // paste->hold->Enter ordering is pinned in tests/unit/session-input.test.ts;
+    // here we prove the wiring end-to-end through a real blocked session.
+    ptys[0]!.emitData("Do you want to run this?\r\n ❯ 1. Yes\r\n   3. No\r\n Esc to cancel\r\n");
+    await expect.poll(() => session.status).toBe("blocked");
+    const guidance = session.sendGuidance("intervene");
+    // Blocked holds the whole submission: nothing is written into the dialog.
+    await expect.poll(() => ptys[0]!.writes.length, { timeout: 300 }).toBe(0);
+    // The dialog clears; the held guidance now pastes and submits.
+    ptys[0]!.emitData("[2J[H❯ \r\n  ready again\r\n");
+    await guidance;
+    expect(ptys[0]!.writes).toContain("[200~intervene[201~");
+    expect(ptys[0]!.writes).toContain("\r");
+  });
   test("C-API-07 C-API-37 first-Enter failures reject public submissions", async () => {
     const cwd = tempDir();
     installFakes();
@@ -79,12 +105,7 @@ describe("ClaudeSession guidance", () => {
     await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
     ptys[0]!.failOnWrite = "\r";
     await expect(session.sendPrompt("prompt-fails")).rejects.toThrow("terminal disposed");
-    await ptys[0]!.dispatchHook(session.elwoodSessionId, {
-      hook_event_name: "Stop",
-      session_id: "claude-1",
-      cwd,
-      stop_hook_active: false,
-    });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, stopHook(cwd));
     await expect(session.sendGuidance("guidance-fails")).rejects.toThrow("terminal disposed");
   });
 });

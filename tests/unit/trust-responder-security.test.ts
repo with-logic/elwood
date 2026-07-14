@@ -17,18 +17,22 @@ describe("trust-prompt automation security", () => {
     // Frame 1: header + a non-affirmative option ("No, cancel") only — the real
     // "Yes" hasn't rendered. It surfaces option_pending ONCE but must NOT settle.
     expect(
-      responder.handle("Do you trust this folder?\n1. No, cancel", (input) => writes.push(input)),
+      responder.handle("Do you trust this folder?\n1. No, cancel", (input) => {
+        writes.push(input);
+      }),
     ).toEqual({ kind: "option_pending", prompt: "workspace_trust" });
     // Same partial frame again: reported once, so no second pending signal.
     expect(
-      responder.handle("Do you trust this folder?\n1. No, cancel", (input) => writes.push(input)),
+      responder.handle("Do you trust this folder?\n1. No, cancel", (input) => {
+        writes.push(input);
+      }),
     ).toBeUndefined();
     // Frame 2: the affirmative finally rendered — the prompt is answered, not wedged.
     expect(
-      responder.handle("Do you trust this folder?\n1. Yes, proceed\n2. No, cancel", (input) =>
-        writes.push(input),
-      ),
-    ).toEqual({ kind: "answered", automation: { prompt: "workspace_trust", input: "1" } });
+      responder.handle("Do you trust this folder?\n1. Yes, proceed\n2. No, cancel", (input) => {
+        writes.push(input);
+      }),
+    ).toMatchObject({ kind: "answered", automation: { prompt: "workspace_trust", input: "1" } });
     expect(writes).toEqual(["1\r"]);
   });
 
@@ -41,7 +45,11 @@ describe("trust-prompt automation security", () => {
     // and no automation fires (the destructive action is never auto-confirmed).
     const frame =
       "Unrecognized security migration\n1. Yes, trust this plugin and grant administrator access";
-    expect(responder.handle(frame, (input) => writes.push(input))).toBeUndefined();
+    expect(
+      responder.handle(frame, (input) => {
+        writes.push(input);
+      }),
+    ).toBeUndefined();
     expect(writes).toEqual([]);
   });
 
@@ -56,7 +64,11 @@ describe("trust-prompt automation security", () => {
     // possibly destructive, first option.
     const frame =
       "Delete all stored credentials?\n1. Yes, wipe everything and also\n   Do you trust this folder?\n2. No, cancel";
-    expect(responder.handle(frame, (input) => writes.push(input))).toBeUndefined();
+    expect(
+      responder.handle(frame, (input) => {
+        writes.push(input);
+      }),
+    ).toBeUndefined();
     expect(writes).toEqual([]);
   });
 
@@ -68,17 +80,21 @@ describe("trust-prompt automation security", () => {
     // recognition itself: an off-allowlist dialog, and a trust phrase appearing
     // ONLY in an option label, are NOT recognized and never answered.
     expect(
-      responder.handle("Enable telemetry?\n1. Yes", (input) => writes.push(input)),
+      responder.handle("Enable telemetry?\n1. Yes", (input) => {
+        writes.push(input);
+      }),
     ).toBeUndefined(); // off-allowlist: not answered
     expect(
-      responder.handle("Migration\n1. Yes, trust this plugin now", (input) => writes.push(input)),
+      responder.handle("Migration\n1. Yes, trust this plugin now", (input) => {
+        writes.push(input);
+      }),
     ).toBeUndefined(); // trust phrase only in the option: not recognized, not answered
     // But a genuinely recognized plugin-trust HEADER is answered from its option.
     expect(
-      responder.handle("Do you trust the plugin?\n1. Yes, trust it\n2. No", (input) =>
-        writes.push(input),
-      ),
-    ).toEqual({ kind: "answered", automation: { prompt: "plugin_trust", input: "1" } });
+      responder.handle("Do you trust the plugin?\n1. Yes, trust it\n2. No", (input) => {
+        writes.push(input);
+      }),
+    ).toMatchObject({ kind: "answered", automation: { prompt: "plugin_trust", input: "1" } });
     expect(writes).toEqual(["1\r"]);
   });
 
@@ -95,7 +111,11 @@ describe("trust-prompt automation security", () => {
     // guarantee this test makes.
     const frame =
       "Do you trust this folder?\n\nReview the files first.\n1. Yes, proceed\n2. No, exit";
-    expect(responder.handle(frame, (input) => writes.push(input))).toEqual({
+    expect(
+      responder.handle(frame, (input) => {
+        writes.push(input);
+      }),
+    ).toMatchObject({
       kind: "answered",
       automation: { prompt: "workspace_trust", input: "1" },
     });
