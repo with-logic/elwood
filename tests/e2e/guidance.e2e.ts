@@ -5,14 +5,19 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { type ElwoodAgentSession, startClaude, startCodex } from "../../src/index.ts";
+import {
+  type ElwoodAgentSession,
+  type ElwoodSessionStatus,
+  startClaude,
+  startCodex,
+} from "../../src/index.ts";
 import { cleanup, makeProject, skipReason, turnsEnabled, waitFor } from "./helpers.ts";
 
 const skipTurnsReason = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
 
 type GuidanceOutcome = {
   readonly elapsedMs: number;
-  readonly status: string;
+  readonly status: ElwoodSessionStatus;
   readonly screen: string;
 };
 
@@ -28,11 +33,19 @@ async function guidanceFlow(session: ElwoodAgentSession, marker: string): Promis
   );
   const started = Date.now();
   await session.sendGuidance(`Coordinator intervention: stop the essay. Marker: ${marker}`);
-  return {
-    elapsedMs: Date.now() - started,
-    status: session.status,
-    screen: session.terminal.snapshot().text,
-  };
+  // Capture timing and status at the moment guidance resolved; the TUI may not
+  // have redrawn the marker yet, so poll for it before snapshotting the screen.
+  const elapsedMs = Date.now() - started;
+  const status = session.status;
+  const screen = await waitFor(
+    () => {
+      const text = session.terminal.snapshot().text;
+      return text.includes(marker) ? text : undefined;
+    },
+    "guidance marker on screen",
+    30_000,
+  );
+  return { elapsedMs, status, screen };
 }
 
 test("C-API-37 real Claude receives guidance during an active turn", {

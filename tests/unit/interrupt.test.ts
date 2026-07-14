@@ -29,6 +29,8 @@ describe("sessionInterrupt", () => {
     expect(interruptKey).toBe("\u001b");
   });
 
+  const everReady = () => true;
+
   test("C-API-38 no turn in flight resolves without sending Escape", async () => {
     let escapes = 0;
     const emitter = statusEmitter();
@@ -36,8 +38,25 @@ describe("sessionInterrupt", () => {
       escapes += 1;
       return Promise.resolve();
     };
-    await sessionInterrupt(emitter, () => "ready", sendEscape, undefined);
-    await sessionInterrupt(emitter, () => "starting", sendEscape, undefined);
+    await sessionInterrupt(emitter, () => "ready", everReady, sendEscape, undefined);
+    await sessionInterrupt(emitter, () => "starting", everReady, sendEscape, undefined);
+    expect(escapes).toBe(0);
+  });
+
+  test("C-API-38 pre-readiness running is the startup bootstrap, not a turn: no Escape", async () => {
+    let escapes = 0;
+    const emitter = statusEmitter();
+    // Status is `running` (startup_usable) but the session has never been ready.
+    await sessionInterrupt(
+      emitter,
+      () => "running",
+      () => false,
+      () => {
+        escapes += 1;
+        return Promise.resolve();
+      },
+      undefined,
+    );
     expect(escapes).toBe(0);
   });
 
@@ -47,6 +66,7 @@ describe("sessionInterrupt", () => {
     const result = sessionInterrupt(
       emitter,
       () => "running",
+      everReady,
       () => {
         escapes += 1;
         return Promise.resolve();
@@ -66,6 +86,7 @@ describe("sessionInterrupt", () => {
     const result = sessionInterrupt(
       emitter,
       () => "blocked",
+      everReady,
       () => {
         escapes += 1;
         return Promise.resolve();
@@ -82,6 +103,7 @@ describe("sessionInterrupt", () => {
     const result = sessionInterrupt(
       emitter,
       () => "running",
+      everReady,
       () => Promise.resolve(),
       20,
     );
@@ -93,6 +115,7 @@ describe("sessionInterrupt", () => {
     const result = sessionInterrupt(
       emitter,
       () => "running",
+      everReady,
       () => Promise.resolve(),
       1_000,
     );
@@ -105,6 +128,7 @@ describe("sessionInterrupt", () => {
     const result = sessionInterrupt(
       emitter,
       () => "running",
+      everReady,
       () => Promise.reject(new Error("terminal disposed")),
       1_000,
     );
@@ -120,6 +144,7 @@ describe("sessionInterrupt", () => {
     const result = sessionInterrupt(
       emitter,
       () => "running",
+      everReady,
       () => escapeWrite,
       1_000,
     );

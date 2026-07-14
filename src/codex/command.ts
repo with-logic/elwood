@@ -4,6 +4,7 @@
  */
 
 import { hookCommand } from "../runtime/hook-command.ts";
+import { shellQuote } from "../runtime/shell.ts";
 import type { SessionRecord } from "../state/store.ts";
 import { codexHookEventNames } from "./hooks.ts";
 import type { CodexCliCapabilities } from "./preflight.ts";
@@ -57,8 +58,4 @@ function matcherFor(eventName: string): string {
 
 function tomlString(value: string): string {
   return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
 }

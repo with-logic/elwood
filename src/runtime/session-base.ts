@@ -38,6 +38,7 @@ export abstract class AgentSessionBase {
   private readonly terminalReplay: TerminalReplayBuffer;
   private cleanupPromise: Promise<void> | undefined;
   private pendingShutdown: ShutdownEvidence | undefined;
+  private everReady = false; // gates `interrupt` off the startup `running` bootstrap (see CommandSurface)
   // Serializes stop/kill/teardown so later callers join rather than race (C-LIFE-10).
   private readonly shutdownCoordinator = new ShutdownCoordinator();
   protected readonly controlQueue = new ControlQueue(
@@ -74,6 +75,7 @@ export abstract class AgentSessionBase {
       terminal,
       statusEvents,
       status: () => this.status,
+      everReady: () => this.everReady,
       picker: () => this.picker,
       submit: (command, kind) => this.controlQueue.send(command, kind),
     });
@@ -148,8 +150,7 @@ export abstract class AgentSessionBase {
     return this.statusEngine.submit(kind);
   }
   submitExit(): StatusDecision {
-    // Terminal status FIRST, reap in `finally`: reaches terminal AND reaps even if
-    // status submission throws (C-LIFE-10).
+    // Terminal status FIRST, reap in `finally`: reaches terminal AND reaps even if status throws (C-LIFE-10).
     try {
       return this.statusEngine.submit(this.pendingShutdown ?? "terminal_exited");
     } finally {
@@ -170,8 +171,7 @@ export abstract class AgentSessionBase {
     return { snapshot: () => this.terminal.snapshot().text, staged };
   }
   protected abstract stopRuntime(): Promise<void>;
-  // Persist + emit typed warnings through the adapter's dedup/replay path; the base
-  // uses it to surface a `reap_failed` diagnostic durably rather than transiently.
+  // Persist + emit typed warnings through the adapter's dedup/replay path.
   protected abstract recordWarnings(warnings: readonly ElwoodWarningEvent[]): void;
   protected replayFor(event: string, handler: unknown): void {
     if (event === "terminal:data") this.terminalReplay.replay(handler as never);
@@ -192,6 +192,7 @@ export abstract class AgentSessionBase {
   }
   private emitStatus(status: ElwoodSessionStatus): void {
     const id = this.elwoodSessionId;
+    this.everReady ||= status === "ready";
     this.persist(updateSessionStatus(this.record, status));
     this.statusEvents.emit("status", { elwoodSessionId: id, status });
     this.statusEvents.emit("activity", activityFromStatus(this.agent, id, status));

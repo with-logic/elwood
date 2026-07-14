@@ -278,12 +278,15 @@ xterm input path; `Uint8Array` writes raw bytes to the PTY. It intentionally
 bypasses the control queue, so an interrupt can interleave with a pending
 paste/Enter sequence.
 
-`interrupt` cancels the in-flight turn — the programmatic Escape keypress. It
-bypasses the control queue and writes Escape immediately when the session is
-`running` or `blocked`, then resolves once the session is `ready` again (or
-rejects with `interrupt_failed` after `timeoutMs`, default 10s). With no turn
-in flight it resolves without touching the terminal, so it is always safe to
-call.
+`interrupt` cancels the in-flight turn — the programmatic Escape keypress. Once
+the session has reached initial readiness, it bypasses the control queue and
+writes Escape immediately when the session is `running` or `blocked`, then
+resolves once the session is `ready` again (or rejects with `interrupt_failed`
+after `timeoutMs`, default 10s). With no turn in flight — an idle `ready`
+session or the pre-readiness startup window — it resolves without touching the
+terminal. Concurrent calls coalesce into a single Escape. On a session that has
+already terminated it rejects with `session_not_running`, like every other
+session method.
 
 `compact` types the adapter's `/compact` command and resolves when the adapter
 reports completion through its `PostCompact` hook.

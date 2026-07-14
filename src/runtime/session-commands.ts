@@ -30,6 +30,7 @@ export type CommandSurfaceDeps = {
   readonly terminal: ScreenTerminal;
   readonly statusEvents: SessionStatusEmitter;
   readonly status: () => ElwoodSessionStatus;
+  readonly everReady: () => boolean;
   readonly picker: () => ModelPickerSpec;
   readonly submit: (
     command: string,
@@ -44,15 +45,31 @@ export type CommandSurfaceDeps = {
  */
 export class CommandSurface {
   private readonly deps: CommandSurfaceDeps;
+  // Coalesces concurrent interrupts: a second call while one is in flight joins
+  // the first rather than writing a second Escape, which could land on the now
+  // idle composer after the first cancels the turn (a non-neutral keystroke).
+  private interrupting: Promise<void> | undefined;
 
   constructor(deps: CommandSurfaceDeps) {
     this.deps = deps;
   }
 
   interrupt(options?: Timeout): Promise<void> {
+    if (this.interrupting) return this.interrupting;
     const sendEscape = () => Promise.resolve(this.deps.terminal.sendInput(interruptKey));
-    const { statusEvents, status } = this.deps;
-    return sessionInterrupt(statusEvents, status, sendEscape, options?.timeoutMs);
+    const { statusEvents, status, everReady } = this.deps;
+    const running = sessionInterrupt(
+      statusEvents,
+      status,
+      everReady,
+      sendEscape,
+      options?.timeoutMs,
+    );
+    // Clear the in-flight guard on settle so a later interrupt can run afresh.
+    this.interrupting = running.finally(() => {
+      this.interrupting = undefined;
+    });
+    return this.interrupting;
   }
 
   compact(options?: Timeout): Promise<void> {

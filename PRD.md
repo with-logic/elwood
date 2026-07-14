@@ -541,17 +541,24 @@ may therefore interleave with a prompt's paste and delayed Enter.
 `interrupt` cancels the in-flight turn: the programmatic equivalent of a human
 pressing Escape in the adapter's TUI. An interrupt exists to stop work already
 in flight, so like `sendKeys` it bypasses the control queue and writes Escape
-to the terminal immediately; it never waits behind queued submissions. When
-the session is `running` or `blocked`, Elwood sends a single Escape and the
-returned promise resolves when the session next reaches `ready`, driven by the
-same turn-end and dialog-dismissal signals as a human interrupt (turn-state
-watching and blocked detection above). When no turn is in flight (`starting`
-or `ready`), `interrupt` resolves immediately and MUST NOT write anything:
-Escape at an idle composer is not neutral (Claude clears staged composer text;
-Codex arms its edit-previous-message affordance), so an idle interrupt is a
-safe no-op. If the session does not reach `ready` within `timeoutMs` (default
-10000 ms), the promise rejects with `interrupt_failed`; if the session
-terminates first, it rejects with `session_not_running`.
+to the terminal immediately; it never waits behind queued submissions. Once the
+session has reached initial readiness at least once and is `running` or
+`blocked`, Elwood sends a single Escape and the returned promise resolves when
+the session next reaches `ready`, driven by the same turn-end and
+dialog-dismissal signals as a human interrupt (turn-state watching and blocked
+detection above). When no turn is in flight, `interrupt` resolves immediately
+and MUST NOT write anything: Escape at an idle composer is not neutral (Claude
+clears staged composer text; Codex arms its edit-previous-message affordance),
+so an idle interrupt is a safe no-op. "No turn in flight" covers both an idle
+`ready` session AND the pre-readiness startup window, where the session is
+`running` only because startup is usable, not because a user turn has begun —
+Escape into a booting TUI MUST NOT fire. Concurrent `interrupt` calls coalesce:
+while one interrupt is in flight, a second joins it rather than writing a second
+Escape, which could otherwise land on the composer the first interrupt just made
+idle. If the session does not reach `ready` within `timeoutMs` (default 10000
+ms), the promise rejects with `interrupt_failed`; if the session terminates
+first, it rejects with `session_not_running` — as does an `interrupt` on an
+already-terminated session.
 
 `listModels` and `setModel` drive the adapter's own `/model` picker UI through
 the headless terminal, because neither CLI exposes a stable machine protocol
@@ -1892,7 +1899,7 @@ Each criterion has:
 | C-API-35 | §5.3 §5.7 | `listModels()`/`setModel()` dispatch the picker command even while a turn is in flight (they do not wait for `ready`), so picker automation is not stalled by an in-flight turn such as an MCP-server boot spinner; `compact` and messages still wait for the active turn, and FIFO ordering is preserved. |
 | C-API-36 | §5.3 | A Claude session requested below 100 columns bootstraps at 100 columns, holds pre-ready resizes, and restores the latest requested size before its initial ready queue drains, so narrow visible terminals do not lose their first prompt. |
 | C-API-37 | §5.3 §5.7 | Claude and Codex expose `sendGuidance(message)`: before first readiness and while blocked it queues safely like `sendMessage`; during a post-ready running turn it overtakes readiness-waiting operations and enters the TUI immediately. Guidance serializes with queue-backed prompt/message/command submissions and resolves only after the submitting Enter is dispatched; raw `sendKeys` intentionally bypasses that queue. |
-| C-API-38 | §5.3 §5.7 | `interrupt()` bypasses the control queue and writes Escape immediately while the session is `running` or `blocked`, resolving when the session next reaches `ready`; with no turn in flight it resolves without writing anything; it rejects with `interrupt_failed` after `timeoutMs` (default 10000 ms) and with `session_not_running` when the session terminates first. |
+| C-API-38 | §5.3 §5.7 | `interrupt()` bypasses the control queue and writes a single Escape immediately while the session is `running` or `blocked` AND has reached initial readiness at least once, resolving when the session next reaches `ready`; with no turn in flight — an idle `ready` session or the pre-readiness startup `running` window — it resolves without writing anything; concurrent calls coalesce into one Escape; it rejects with `interrupt_failed` after `timeoutMs` (default 10000 ms) and with `session_not_running` when the session terminates first or is already terminal. |
 | C-API-25 | §5.3 | Promise-returning session methods called after a terminal status reject with `session_not_running` instead of throwing synchronously. |
 | C-API-26 | §5.2 §5.6 | `startOrResumeClaude`/`startOrResumeCodex` resume when possible, fall back to a fresh start only on `state_not_found`, `resume_unavailable`, or `adapter_mismatch`, rethrow all other errors, and report `resumed` in the result. |
 | C-API-27 | §5.7 | `ElwoodAgentSession` is exported and both `ClaudeSession` and `CodexSession` are assignable to it, covering common events, io, commands, and lifecycle. |

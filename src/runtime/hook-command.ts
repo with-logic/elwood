@@ -4,17 +4,15 @@
  * switch when a child hook invokes that executable directly.
  */
 
-/** Quote one argument for the POSIX login shells used by both adapters. */
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
-}
+import { shellQuote } from "./shell.ts";
 
 /** Build a hook command for Node or an Electron-hosted Node main process. */
 export function hookCommand(
   bridgeScriptPath: string,
-  runtimePath = process.execPath,
-  electronRuntime = process.versions["electron"] !== undefined,
+  seams?: { readonly runtimePath?: string; readonly electronRuntime?: boolean },
 ): string {
+  const runtimePath = seams?.runtimePath ?? process.execPath;
+  const electronRuntime = seams?.electronRuntime ?? process.versions["electron"] !== undefined;
   const runAsNode = electronRuntime ? "ELECTRON_RUN_AS_NODE=1 " : "";
   return `${runAsNode}${shellQuote(runtimePath)} ${shellQuote(bridgeScriptPath)}`;
 }

@@ -26,6 +26,8 @@ const stopHook = (cwd: string) => ({
 });
 
 describe("ClaudeSession interrupt", () => {
+  const escapes = (writes: readonly string[]) => writes.filter((w) => w === "\u001b").length;
+
   test("C-API-38 interrupt writes Escape immediately mid-turn and resolves on ready", async () => {
     const cwd = tempDir();
     installFakes();
@@ -41,11 +43,38 @@ describe("ClaudeSession interrupt", () => {
     expect(session.status).toBe("ready");
   });
 
+  test("C-API-38 concurrent interrupts coalesce into a single Escape", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
+    await session.sendMessage("write a long essay");
+    // Two callers race an interrupt: only one Escape may reach the terminal, or
+    // the second would land on the composer the first just made idle.
+    const first = session.interrupt();
+    const second = session.interrupt();
+    await expect.poll(() => escapes(ptys[0]!.writes)).toBe(1);
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, stopHook(cwd));
+    await Promise.all([first, second]);
+    expect(escapes(ptys[0]!.writes)).toBe(1);
+  });
+
   test("C-API-38 interrupt with no turn in flight resolves without writing", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
     await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
+    await session.interrupt();
+    expect(ptys[0]!.writes).toEqual([]);
+  });
+
+  test("C-API-38 interrupt before initial readiness is a no-op on the booting TUI", async () => {
+    const cwd = tempDir();
+    installFakes();
+    // No InstructionsLoaded yet: status is the startup `running` bootstrap, not
+    // a turn. Escape here would perturb the booting TUI, so interrupt no-ops.
+    const session = await startClaude({ cwd });
+    expect(session.status).toBe("running");
     await session.interrupt();
     expect(ptys[0]!.writes).toEqual([]);
   });

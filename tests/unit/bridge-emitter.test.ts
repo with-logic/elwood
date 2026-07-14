@@ -171,4 +171,24 @@ describe("bridge and emitter edges", () => {
     );
     expect(statuses).toEqual(["running"]);
   });
+
+  test("emit delivers to every listener before rethrowing the first failure", () => {
+    const emitter = new TypedEmitter();
+    const seen: string[] = [];
+    // A rogue user listener throwing must not abort delivery to the internal
+    // lifecycle subscriber registered after it (e.g. interrupt/compact settle);
+    // the failure is still surfaced to any enclosing boundary via a rethrow.
+    emitter.on("status", () => {
+      throw new Error("first rogue");
+    });
+    emitter.on("status", (event) => seen.push(event.status));
+    emitter.on("status", () => {
+      throw new Error("second rogue");
+    });
+    expect(() => emitter.emit("status", { elwoodSessionId: "x", status: "ready" })).toThrow(
+      "first rogue",
+    );
+    // Every listener ran despite the earlier throw.
+    expect(seen).toEqual(["ready"]);
+  });
 });

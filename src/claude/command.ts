@@ -4,7 +4,7 @@
  */
 
 import type { StartClaudeOptions } from "../core/types.ts";
-import { loginShellCommand } from "../runtime/shell.ts";
+import { loginShellCommand, shellQuote } from "../runtime/shell.ts";
 
 export function buildClaudeShellCommand(
   settingsPath: string,
@@ -35,8 +35,4 @@ export function shellLaunch(
   command: string,
 ): { readonly command: string; readonly args: readonly string[] } {
   return { command: shell, args: loginShellCommand(command) };
-}
-
-export function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
 }
