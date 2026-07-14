@@ -10,18 +10,27 @@ import {
   trustPromptAllowlist,
 } from "./trust-prompts.ts";
 
+export type { TrustPromptIdFor } from "./trust-prompts.ts";
+
 /**
- * The non-trust startup-prompt labels correlated with their owning agent: the
- * browser-tools onboarding decline is Claude-only (C-CLAUDE-11) and the
- * skip-update prompt is Codex-only (C-CODEX-12). Combined with the per-agent
- * trust ids below, this makes each impossible pairing (Claude + `update`,
- * Codex + `browser_tools`) unrepresentable, matching the §5.4 label table exactly.
+ * The single source of truth for the non-trust startup-prompt labels, keyed by
+ * owning agent: the browser-tools onboarding decline is Claude-only (C-CLAUDE-11)
+ * and the skip-update prompt is Codex-only (C-CODEX-12). Every non-trust union
+ * and the runtime label set below are DERIVED from this table, so they cannot
+ * drift from each other or from the §5.4 label contract. Adding an agent's label
+ * here automatically extends both the type and the validator.
  */
-type NonTrustStartupLabel<A extends ElwoodAgentKind> = A extends "claude"
-  ? "browser_tools"
-  : A extends "codex"
-    ? "update"
-    : never;
+const nonTrustStartupLabels = {
+  claude: ["browser_tools"],
+  codex: ["update"],
+} as const satisfies Record<ElwoodAgentKind, readonly string[]>;
+
+/**
+ * The non-trust startup-prompt labels for one agent, derived from the table so
+ * each impossible pairing (Claude + `update`, Codex + `browser_tools`) stays
+ * unrepresentable, matching the §5.4 label table exactly.
+ */
+type NonTrustStartupLabel<A extends ElwoodAgentKind> = (typeof nonTrustStartupLabels)[A][number];
 
 /**
  * Every startup-prompt label for one agent: its own allowlisted trust ids plus
@@ -33,18 +42,17 @@ export type StartupPromptLabelFor<A extends ElwoodAgentKind> =
   | NonTrustStartupLabel<A>;
 
 /** The full stable startup-prompt label union across all agents (§5.4). */
-export type StartupPromptLabel = TrustPromptId | "browser_tools" | "update";
+export type StartupPromptLabel = TrustPromptId | NonTrustStartupLabel<ElwoodAgentKind>;
 
 /**
  * The complete set of stable startup-prompt labels (§5.4), derived from the trust
- * allowlist plus the two non-trust labels, so the persisted-warning validator and
- * this type can never drift. Used to bound a persisted `startup_prompt_write_failed`
- * label to the allowlist.
+ * allowlist plus the non-trust label table, so the persisted-warning validator,
+ * the unions above, and this set can never drift. Used to bound a persisted
+ * `startup_prompt_write_failed` label to the allowlist.
  */
-const startupPromptLabels: ReadonlySet<string> = new Set<StartupPromptLabel>([
+const startupPromptLabels: ReadonlySet<string> = new Set<string>([
   ...trustPromptAllowlist.map((spec) => spec.id),
-  "browser_tools",
-  "update",
+  ...Object.values(nonTrustStartupLabels).flat(),
 ]);
 
 /** True when `value` is one of the fixed startup-prompt labels (§5.4). */

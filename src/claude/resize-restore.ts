@@ -9,14 +9,16 @@
  */
 
 import type { ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
-import { isResizeErrorCode, type ResizeErrorCode } from "../core/warning-reasons.ts";
+import { boundedErrorToken, isResizeErrorCode } from "../core/warning-reasons.ts";
 
 export function resizeRestoreFailedWarning(
   elwoodSessionId: string,
   size: TerminalSize,
   error: unknown,
 ): ElwoodWarningEvent {
-  const errorCode = normalizeResizeErrorCode(error);
+  // Only an allowlisted resize errno/error-name survives; any raw system message
+  // collapses to `UnknownError` via the shared bounded-token helper (§5.7).
+  const errorCode = boundedErrorToken(error, isResizeErrorCode);
   return {
     elwoodSessionId,
     agent: "claude",
@@ -29,18 +31,4 @@ export function resizeRestoreFailedWarning(
     errorCode,
     raw: `resize_restore_failed cols=${size.cols} rows=${size.rows} code=${errorCode}`,
   };
-}
-
-/**
- * A stable, bounded, ALLOWLISTED code for a resize failure. The cause's `.code`
- * (errno), `Error.name`, and message are system-controlled and could carry an env
- * path, so — mirroring the reap path — only a value on the fixed
- * `RESIZE_ERROR_CODES` allowlist passes through; anything else collapses to
- * `"UnknownError"`, so no raw system message can ever reach persisted state.
- */
-function normalizeResizeErrorCode(error: unknown): ResizeErrorCode {
-  const code = (error as NodeJS.ErrnoException | undefined)?.code;
-  if (isResizeErrorCode(code)) return code;
-  if (error instanceof Error && isResizeErrorCode(error.name)) return error.name;
-  return "UnknownError";
 }

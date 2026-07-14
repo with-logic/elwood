@@ -16,7 +16,11 @@ import { cleanup, makeProject, skipReason, turnsEnabled, waitFor } from "./helpe
 const skipTurnsReason = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
 
 type GuidanceOutcome = {
-  readonly elapsedMs: number;
+  // Status transitions observed from the moment guidance was sent until it
+  // settled. A guidance that BYPASSED readiness settles into the live running
+  // turn without an intervening `ready` transition; one that waited for the turn
+  // to finish would show a `ready` transition first.
+  readonly transitionsDuringGuidance: readonly ElwoodSessionStatus[];
   readonly status: ElwoodSessionStatus;
   readonly screen: string;
 };
@@ -31,12 +35,18 @@ async function guidanceFlow(session: ElwoodAgentSession, marker: string): Promis
     "turn visibly running",
     60_000,
   );
-  const started = Date.now();
-  await session.sendGuidance(`Coordinator intervention: stop the essay. Marker: ${marker}`);
-  // Capture timing and status at the moment guidance resolved; the TUI may not
-  // have redrawn the marker yet, so poll for it before snapshotting the screen.
-  const elapsedMs = Date.now() - started;
+  // Record status transitions across the guidance send. If guidance waited for
+  // the turn to reach `ready` before delivering, a `ready` transition would land
+  // here; a guidance that entered the live running turn shows none.
+  const transitionsDuringGuidance: ElwoodSessionStatus[] = [];
+  const off = session.on("status", (event) => transitionsDuringGuidance.push(event.status));
+  try {
+    await session.sendGuidance(`Coordinator intervention: stop the essay. Marker: ${marker}`);
+  } finally {
+    off();
+  }
   const status = session.status;
+  // The TUI may not have redrawn the marker yet, so poll for it before snapshotting.
   const screen = await waitFor(
     () => {
       const text = session.terminal.snapshot().text;
@@ -45,7 +55,7 @@ async function guidanceFlow(session: ElwoodAgentSession, marker: string): Promis
     "guidance marker on screen",
     30_000,
   );
-  return { elapsedMs, status, screen };
+  return { transitionsDuringGuidance, status, screen };
 }
 
 test("C-API-37 real Claude receives guidance during an active turn", {
@@ -62,7 +72,10 @@ test("C-API-37 real Claude receives guidance during an active turn", {
   });
   try {
     const outcome = await guidanceFlow(session, "ELWOOD_GUIDANCE_CLAUDE_NOW");
-    assert.ok(outcome.elapsedMs < 5_000, "guidance does not wait for turn readiness");
+    assert.ok(
+      !outcome.transitionsDuringGuidance.includes("ready"),
+      "guidance settled into the live running turn without waiting for a ready transition",
+    );
     assert.equal(outcome.status, "running", "the original turn was still active");
     assert.match(outcome.screen, /ELWOOD_GUIDANCE_CLAUDE_NOW/, "live TUI received guidance");
   } finally {
@@ -85,7 +98,10 @@ test("C-API-37 real Codex receives guidance during an active turn", {
   });
   try {
     const outcome = await guidanceFlow(session, "ELWOOD_GUIDANCE_CODEX_NOW");
-    assert.ok(outcome.elapsedMs < 5_000, "guidance does not wait for turn readiness");
+    assert.ok(
+      !outcome.transitionsDuringGuidance.includes("ready"),
+      "guidance settled into the live running turn without waiting for a ready transition",
+    );
     assert.equal(outcome.status, "running", "the original turn was still active");
     assert.match(outcome.screen, /ELWOOD_GUIDANCE_CODEX_NOW/, "live TUI received guidance");
   } finally {

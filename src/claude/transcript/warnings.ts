@@ -6,8 +6,7 @@
  */
 
 import type { ElwoodWarningEvent } from "../../core/types.ts";
-import type { PollErrorReason } from "../../core/warning-reasons.ts";
-import { isPollErrorReason } from "../../core/warning-reasons.ts";
+import { boundedErrorToken, isPollErrorReason } from "../../core/warning-reasons.ts";
 import type { TranscriptDropNotice, TranscriptReadErrorNotice } from "./drops.ts";
 
 /** Human-readable phrase for each bounded drop cause (no raw content). */
@@ -80,7 +79,9 @@ export function transcriptFailureWarning(
   error: unknown,
   phase: TranscriptFailurePhase = "poll",
 ): ElwoodWarningEvent {
-  const reason = boundedErrorName(error);
+  // Only an allowlisted poll error-name/errno survives; any conversation-derived
+  // string collapses to `UnknownError` via the shared bounded-token helper (§5.7).
+  const reason = boundedErrorToken(error, isPollErrorReason);
   return {
     elwoodSessionId,
     agent: "claude",
@@ -92,20 +93,4 @@ export function transcriptFailureWarning(
     phase,
     raw: `transcript_poll_stopped phase=${phase} reason=${reason}`,
   };
-}
-
-/**
- * The escaping error mapped to an ALLOWLISTED reason token. `error.name` and
- * `error.code` are caller-controlled — an activity-listener bug can throw an
- * error whose `name`/`code` embeds conversation text — so sanitizing is not
- * enough. Only a value on the fixed allowlist (`POLL_ERROR_REASONS`: the standard
- * JS error constructors + common Node errnos) passes through; anything else
- * collapses to `"UnknownError"`, so no conversation-derived string can reach
- * persisted state.
- */
-function boundedErrorName(error: unknown): PollErrorReason {
-  const code = (error as { code?: unknown } | null)?.code;
-  if (isPollErrorReason(code)) return code;
-  if (error instanceof Error && isPollErrorReason(error.name)) return error.name;
-  return "UnknownError";
 }

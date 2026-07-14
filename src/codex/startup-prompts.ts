@@ -3,22 +3,10 @@
  * Implements PRD §4.4, §5.5, and §5.7.
  */
 
-import type { StartupPromptLabelFor, StartupPromptOutcome } from "../core/startup-automation.ts";
 import type { SettledStartupOutcome } from "../core/startup-write.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust-responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
-
-/** A Codex startup-prompt label: a Codex trust-prompt id (Claude ids excluded) or `update`. */
-export type CodexStartupPromptLabel = StartupPromptLabelFor<"codex">;
-
-/**
- * Discriminated so the two outcomes can't be confused: an `answered` prompt
- * always carries the `input` sent; an `option_pending` prompt (recognized trust
- * prompt whose option has not rendered yet — transient) never does and is limited
- * to trust ids.
- */
-export type CodexStartupPromptOutcome = StartupPromptOutcome<"codex">;
 
 /** A Codex startup outcome paired with its PTY-write completion (§5.4, §5.7). */
 export type SettledCodexStartupOutcome = SettledStartupOutcome<"codex">;

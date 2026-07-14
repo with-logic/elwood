@@ -1,7 +1,10 @@
 /**
- * Command-surface helpers shared by every adapter session (interrupt +
- * compact + model picker), extracted from AgentSessionBase to keep it within
- * the file-size cap. Implements PRD §5.3.
+ * The session's control surface, shared by every adapter session and extracted
+ * from AgentSessionBase to keep it within the file-size cap. It owns `interrupt`
+ * (direct Escape delivery gated on readiness state, with a timeout and
+ * coalescing of concurrent interrupts, bypassing command submission) alongside
+ * the `compact` and `/model` picker commands (which do go through submission).
+ * Implements PRD §5.3.
  */
 
 import { compactCommand, sessionCompact } from "../core/compact.ts";
@@ -22,9 +25,10 @@ import type { SessionStatusEmitter } from "./session-base-types.ts";
 type Timeout = { readonly timeoutMs?: number };
 
 /**
- * The session primitives the compact + model-picker command surface drives. The
- * picker is a thunk because the concrete adapter sets `picker` in a subclass field
- * initializer that runs AFTER the base constructor, so it is resolved per call.
+ * The session primitives the control surface drives (interrupt readiness/status,
+ * compact submission, and the model picker). The picker is a thunk because the
+ * concrete adapter sets `picker` in a subclass field initializer that runs AFTER
+ * the base constructor, so it is resolved per call.
  */
 export type CommandSurfaceDeps = {
   readonly terminal: ScreenTerminal;
@@ -39,9 +43,12 @@ export type CommandSurfaceDeps = {
 };
 
 /**
- * The compact + /model picker surface, extracted from AgentSessionBase to keep it
- * within the file-size cap. Each call builds the picker IO or compact closures from
- * the injected session primitives (PRD §5.3).
+ * The session's control surface — `interrupt` (direct, readiness-gated Escape
+ * delivery with a timeout and concurrent-interrupt coalescing, bypassing command
+ * submission) plus the `compact` and `/model` picker commands — extracted from
+ * AgentSessionBase to keep it within the file-size cap. Each call builds the
+ * interrupt, picker IO, or compact closures from the injected session primitives
+ * (PRD §5.3).
  */
 export class CommandSurface {
   private readonly deps: CommandSurfaceDeps;

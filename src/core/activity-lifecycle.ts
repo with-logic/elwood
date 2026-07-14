@@ -8,8 +8,7 @@
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity.ts";
 import type { ElwoodSessionStatus } from "./status-categories.ts";
 import type { ElwoodWarningEvent } from "./types.ts";
-import type { ReapErrorCode } from "./warning-reasons.ts";
-import { isReapErrorCode } from "./warning-reasons.ts";
+import { boundedErrorToken, isReapErrorCode } from "./warning-reasons.ts";
 
 export function activityFromStatus(
   agent: ElwoodAgentKind,
@@ -49,7 +48,9 @@ export function reapFailureWarning(
   processGroupId: number,
   error: unknown,
 ): ElwoodWarningEvent {
-  const errorCode = normalizeReapErrorCode(error);
+  // Only an allowlisted reap errno/error-name survives; any raw system message
+  // collapses to `UnknownError` via the shared bounded-token helper (§5.7).
+  const errorCode = boundedErrorToken(error, isReapErrorCode);
   return {
     elwoodSessionId,
     agent,
@@ -61,19 +62,4 @@ export function reapFailureWarning(
     errorCode,
     raw: `reap_failed pgid=${processGroupId} code=${errorCode}`,
   };
-}
-
-/**
- * A stable, bounded, ALLOWLISTED code for a reap failure. The cause's `.code`
- * (errno), `Error.name`, and `String(error)` are all system/caller-controlled and
- * could carry an env path or conversation-derived text, so — mirroring the
- * transcript poll-error path (`boundedErrorName`) — only a value on the fixed
- * `REAP_ERROR_CODES` allowlist passes through; anything else collapses to
- * `"UnknownError"`, so no raw system message can ever reach persisted state.
- */
-function normalizeReapErrorCode(error: unknown): ReapErrorCode {
-  const code = (error as NodeJS.ErrnoException | undefined)?.code;
-  if (isReapErrorCode(code)) return code;
-  if (error instanceof Error && isReapErrorCode(error.name)) return error.name;
-  return "UnknownError";
 }

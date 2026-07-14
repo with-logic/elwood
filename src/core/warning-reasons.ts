@@ -9,6 +9,28 @@
  * from, so a producer, the type, and the validator can never drift apart.
  */
 
+/** The fixed fallback token every bounded error-token allowlist collapses to. */
+export const unknownErrorToken = "UnknownError";
+
+/**
+ * Maps an arbitrary thrown value to a bounded, ALLOWLISTED token, shared by every
+ * content-free warning that carries a normalized error code (reap, transcript
+ * poll, resize restore). An error's `.code` (errno), `Error.name`, and message are
+ * all system/caller-controlled and can embed an env path or conversation text, so
+ * only a value the caller's `allow` guard accepts passes through; anything else —
+ * including a raw system message — collapses to `UnknownError`. This is the single
+ * place the sanitizing rule lives, so no producer can weaken it (§5.7).
+ */
+export function boundedErrorToken<T extends string>(
+  error: unknown,
+  allow: (value: unknown) => value is T,
+): T | typeof unknownErrorToken {
+  const code = (error as { code?: unknown } | null | undefined)?.code;
+  if (allow(code)) return code;
+  if (error instanceof Error && allow(error.name)) return error.name;
+  return unknownErrorToken;
+}
+
 /**
  * The allowlisted tokens for `transcript_poll_stopped.reason`: standard JS error
  * constructor names + common Node filesystem/stream errnos, plus the fixed

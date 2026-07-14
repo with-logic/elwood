@@ -4,7 +4,11 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { interruptKey, sessionInterrupt } from "../../src/core/interrupt.ts";
+import {
+  defaultInterruptTimeoutMs,
+  interruptKey,
+  sessionInterrupt,
+} from "../../src/core/interrupt.ts";
 import type { ElwoodSessionStatus } from "../../src/core/types.ts";
 
 type StatusHandler = (event: { readonly status: ElwoodSessionStatus }) => void;
@@ -27,6 +31,12 @@ function statusEmitter() {
 describe("sessionInterrupt", () => {
   test("C-API-38 the interrupt key is a bare Escape", () => {
     expect(interruptKey).toBe("\u001b");
+  });
+
+  test("C-API-38 the default interrupt timeout is pinned at 10s", () => {
+    // Pinned directly so an accidental change to the default is caught here rather
+    // than silently passing every test that emits `ready` before the timeout fires.
+    expect(defaultInterruptTimeoutMs).toBe(10_000);
   });
 
   const everReady = () => true;
@@ -60,7 +70,7 @@ describe("sessionInterrupt", () => {
     expect(escapes).toBe(0);
   });
 
-  test("C-API-38 a running turn sends Escape and resolves on ready (default timeout)", async () => {
+  test("C-API-38 a running turn sends Escape and resolves on the ready transition", async () => {
     let escapes = 0;
     const emitter = statusEmitter();
     const result = sessionInterrupt(
