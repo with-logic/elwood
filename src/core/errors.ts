@@ -27,6 +27,7 @@ export type ElwoodErrorName =
   | "termination_failed"
   | "teardown_failed"
   | "compact_failed"
+  | "interrupt_failed"
   | "model_automation_failed"
   | "wait_timeout";
 

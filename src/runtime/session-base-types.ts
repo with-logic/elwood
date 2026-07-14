@@ -5,6 +5,7 @@
 
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "../core/activity.ts";
 import type { CompactEmitter } from "../core/compact.ts";
+import { elwoodError } from "../core/errors.ts";
 import type { ElwoodSessionStatus, Unsubscribe } from "../core/types.ts";
 
 type StatusEvent = { readonly elwoodSessionId: string; readonly status: ElwoodSessionStatus };
@@ -19,3 +20,7 @@ export const agentTitles: Readonly<Record<ElwoodAgentKind, string>> = {
   claude: "Claude",
   codex: "Codex",
 };
+
+export function notRunningError(agent: ElwoodAgentKind): Error {
+  return elwoodError("session_not_running", `${agentTitles[agent]} session is not running.`);
+}

@@ -63,6 +63,9 @@ cap does not constrain your state layout.
 - **User keystrokes** should be forwarded with the `Uint8Array` overload of
   `sendKeys` for verbatim delivery; the string overload applies terminal
   input semantics (see README).
+- **Interrupting a turn** (a stop button, the user's Escape) should call
+  `interrupt()` rather than forwarding a raw Escape byte: it no-ops safely
+  when no turn is running and resolves once the session is `ready` again.
 - **Model switching** via `setModel` preserves the user's saved defaults on
   both adapters: Claude applies session-only, and Elwood restores Codex's
   config.toml after the CLI persists its picker selection (watch for the

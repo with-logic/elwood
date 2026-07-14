@@ -1,6 +1,6 @@
 /**
  * Real-agent Escape interrupts produce turn-end signals and live readiness.
- * Implements C-TURN-01, C-TURN-02, C-E2E-02, and C-E2E-03.
+ * Implements C-TURN-01, C-TURN-02, C-API-38, C-E2E-02, and C-E2E-03.
  */
 
 import assert from "node:assert/strict";
@@ -43,7 +43,8 @@ async function interruptFlow(
     "turn visibly running",
     60_000,
   );
-  await session.sendKeys("");
+  // C-API-38: the first-class interrupt writes Escape and resolves on ready.
+  await session.interrupt({ timeoutMs: 60_000 });
   // C-TURN-02: ready returns regardless of whether a Stop hook fires — on a
   // mid-generation Esc none fires (that path is pinned deterministically in
   // the unit tests); near a block boundary the CLI may emit one.

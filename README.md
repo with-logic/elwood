@@ -248,6 +248,7 @@ interface ElwoodLikeSession {
   sendGuidance(message: string): Promise<void>;
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: { cols: number; rows: number }): Promise<void>;
+  interrupt(options?: { readonly timeoutMs?: number }): Promise<void>;
   compact(options?: { readonly timeoutMs?: number }): Promise<void>;
   listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]>;
   setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void>;
@@ -276,6 +277,13 @@ resolves only after the pasted text and submitting Enter have both been written.
 xterm input path; `Uint8Array` writes raw bytes to the PTY. It intentionally
 bypasses the control queue, so an interrupt can interleave with a pending
 paste/Enter sequence.
+
+`interrupt` cancels the in-flight turn — the programmatic Escape keypress. It
+bypasses the control queue and writes Escape immediately when the session is
+`running` or `blocked`, then resolves once the session is `ready` again (or
+rejects with `interrupt_failed` after `timeoutMs`, default 10s). With no turn
+in flight it resolves without touching the terminal, so it is always safe to
+call.
 
 `compact` types the adapter's `/compact` command and resolves when the adapter
 reports completion through its `PostCompact` hook.

@@ -1,0 +1,61 @@
+/**
+ * Shared Escape-interrupt orchestration for adapter sessions.
+ * Implements PRD §5.3, §5.7, and C-API-38.
+ */
+
+import { terminalStatuses } from "../runtime/session-status.ts";
+import { elwoodError } from "./errors.ts";
+import type { ElwoodSessionStatus, Unsubscribe } from "./types.ts";
+
+export const defaultInterruptTimeoutMs = 10_000;
+/** Both adapters cancel a running turn with a bare Escape keypress. */
+export const interruptKey = "\u001b";
+
+export type InterruptEmitter = {
+  on(
+    event: "status",
+    handler: (event: { readonly status: ElwoodSessionStatus }) => void,
+  ): Unsubscribe;
+};
+
+/** Statuses with a turn (or blocking dialog) that Escape can cancel. */
+const interruptibleStatuses = new Set<ElwoodSessionStatus>(["running", "blocked"]);
+
+export function sessionInterrupt(
+  emitter: InterruptEmitter,
+  status: () => ElwoodSessionStatus,
+  sendEscape: () => Promise<void>,
+  timeoutMs: number | undefined,
+): Promise<void> {
+  // No turn in flight: resolve without touching the terminal. Escape at an
+  // idle composer is not neutral (Claude clears staged composer text; Codex
+  // arms its edit-previous-message affordance), so this must send nothing.
+  if (!interruptibleStatuses.has(status())) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const settle = (finish: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      offStatus();
+      finish();
+    };
+    const timer = setTimeout(() => {
+      settle(() =>
+        reject(
+          elwoodError("interrupt_failed", "Interrupt did not return the session to ready in time."),
+        ),
+      );
+    }, timeoutMs ?? defaultInterruptTimeoutMs);
+    const offStatus = emitter.on("status", (event) => {
+      if (event.status === "ready") settle(resolve);
+      if (!terminalStatuses.has(event.status)) return;
+      settle(() =>
+        reject(elwoodError("session_not_running", "Session ended before the interrupt completed.")),
+      );
+    });
+    sendEscape().then(undefined, (error: unknown) => {
+      settle(() => reject(error));
+    });
+  });
+}

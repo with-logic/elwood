@@ -1,10 +1,11 @@
 /**
- * Command-surface helpers shared by every adapter session (compact + model
- * picker), extracted from AgentSessionBase to keep it within the file-size cap.
- * Implements PRD §5.3.
+ * Command-surface helpers shared by every adapter session (interrupt +
+ * compact + model picker), extracted from AgentSessionBase to keep it within
+ * the file-size cap. Implements PRD §5.3.
  */
 
 import { compactCommand, sessionCompact } from "../core/compact.ts";
+import { interruptKey, sessionInterrupt } from "../core/interrupt.ts";
 import {
   listPickerModels,
   type ModelPickerIo,
@@ -15,6 +16,7 @@ import {
 import type { AgentModelOption } from "../core/model-rows.ts";
 import { ignoreInputFailure } from "../core/session-input.ts";
 import type { ScreenTerminal } from "../core/tui-screen.ts";
+import type { ElwoodSessionStatus } from "../core/types.ts";
 import type { SessionStatusEmitter } from "./session-base-types.ts";
 
 type Timeout = { readonly timeoutMs?: number };
@@ -27,6 +29,7 @@ type Timeout = { readonly timeoutMs?: number };
 export type CommandSurfaceDeps = {
   readonly terminal: ScreenTerminal;
   readonly statusEvents: SessionStatusEmitter;
+  readonly status: () => ElwoodSessionStatus;
   readonly picker: () => ModelPickerSpec;
   readonly submit: (
     command: string,
@@ -44,6 +47,12 @@ export class CommandSurface {
 
   constructor(deps: CommandSurfaceDeps) {
     this.deps = deps;
+  }
+
+  interrupt(options?: Timeout): Promise<void> {
+    const sendEscape = () => Promise.resolve(this.deps.terminal.sendInput(interruptKey));
+    const { statusEvents, status } = this.deps;
+    return sessionInterrupt(statusEvents, status, sendEscape, options?.timeoutMs);
   }
 
   compact(options?: Timeout): Promise<void> {

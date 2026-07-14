@@ -1,7 +1,6 @@
 /** Shared adapter session behavior: lifecycle, input, command surface. Implements PRD §5.3, §5.7. */
 import { activityFromStatus, type ElwoodAgentKind } from "../core/activity.ts";
 import { ControlQueue } from "../core/control-queue.ts";
-import { elwoodError } from "../core/errors.ts";
 import type { ModelPickerSpec } from "../core/model-picker.ts";
 import type { AgentModelOption } from "../core/model-rows.ts";
 import { type PasteGuard, writeQueuedInput } from "../core/session-input.ts";
@@ -11,7 +10,7 @@ import { replayWarningSnapshots } from "../core/warning-replay.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import { type SessionRecord, updateSessionStatus, writeSessionRecord } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
-import { agentTitles, type SessionStatusEmitter } from "./session-base-types.ts";
+import { notRunningError, type SessionStatusEmitter } from "./session-base-types.ts";
 import { CommandSurface } from "./session-commands.ts";
 import { SessionReapPolicy } from "./session-reap.ts";
 import {
@@ -43,7 +42,7 @@ export abstract class AgentSessionBase {
   private readonly shutdownCoordinator = new ShutdownCoordinator();
   protected readonly controlQueue = new ControlQueue(
     (input, mode) => writeQueuedInput(this.terminal, input, mode, this.pasteGuard()),
-    () => this.notRunningError(),
+    () => notRunningError(this.agent),
     () => this.submitEvidence("caller_submitted"),
     () => this.status === "running",
   );
@@ -74,6 +73,7 @@ export abstract class AgentSessionBase {
     this.commands = new CommandSurface({
       terminal,
       statusEvents,
+      status: () => this.status,
       picker: () => this.picker,
       submit: (command, kind) => this.controlQueue.send(command, kind),
     });
@@ -109,6 +109,9 @@ export abstract class AgentSessionBase {
       this.terminal.resize(size);
       this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.status));
     });
+  }
+  interrupt(options?: { readonly timeoutMs?: number }): Promise<void> {
+    return this.inSession(() => this.commands.interrupt(options));
   }
   compact(options?: { readonly timeoutMs?: number }): Promise<void> {
     return this.inSession(() => this.commands.compact(options));
@@ -176,7 +179,7 @@ export abstract class AgentSessionBase {
   }
   private inSession<T>(work: () => Promise<T> | T): Promise<T> {
     // Rejects (never throws) after a terminal status (C-API-25).
-    if (terminalStatuses.has(this.status)) return Promise.reject(this.notRunningError());
+    if (terminalStatuses.has(this.status)) return Promise.reject(notRunningError(this.agent));
     return Promise.resolve(work());
   }
   protected persist(record: SessionRecord): void {
@@ -186,9 +189,6 @@ export abstract class AgentSessionBase {
   protected cleanupRuntime(): Promise<void> {
     this.cleanupPromise ??= this.stopRuntime();
     return this.cleanupPromise;
-  }
-  private notRunningError(): Error {
-    return elwoodError("session_not_running", `${agentTitles[this.agent]} session is not running.`);
   }
   private emitStatus(status: ElwoodSessionStatus): void {
     const id = this.elwoodSessionId;
