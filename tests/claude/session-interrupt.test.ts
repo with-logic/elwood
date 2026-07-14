@@ -59,6 +59,28 @@ describe("ClaudeSession interrupt", () => {
     expect(escapes(ptys[0]!.writes)).toBe(1);
   });
 
+  test("C-API-38 Escape interleaves with an in-flight prompt's paste and delayed Enter", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
+    // sendPrompt writes the bracketed paste, then its submitting Enter after a
+    // settle delay. Do NOT await it: interrupt during that window proves raw
+    // Escape bypasses the queue and lands between the paste and the Enter.
+    const prompted = session.sendPrompt("essay");
+    await expect.poll(() => ptys[0]!.writes.length).toBe(1);
+    expect(ptys[0]!.writes[0]).toBe("\u001b[200~essay\u001b[201~");
+    // The interrupt's Escape write is immediate; its promise only settles once
+    // the turn ends, which the Stop hook below drives. Observe writes, don't await.
+    const interrupted = session.interrupt();
+    await expect.poll(() => ptys[0]!.writes.length).toBe(3);
+    await prompted;
+    // paste, then Escape, then the prompt's delayed submitting Enter.
+    expect(ptys[0]!.writes).toEqual(["\u001b[200~essay\u001b[201~", "\u001b", "\r"]);
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, stopHook(cwd));
+    await interrupted;
+  });
+
   test("C-API-38 interrupt with no turn in flight resolves without writing", async () => {
     const cwd = tempDir();
     installFakes();

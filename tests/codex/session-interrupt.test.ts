@@ -44,4 +44,15 @@ describe("CodexSession interrupt", () => {
     await session.interrupt();
     expect(ptys[0]!.writes).toEqual([]);
   });
+
+  test("C-API-38 interrupt before initial readiness is a no-op on the booting TUI", async () => {
+    const cwd = tempDir();
+    installFakes();
+    // No SessionStart yet: status is the startup `running` bootstrap, not a turn.
+    // Escape here would perturb the booting TUI, so interrupt no-ops.
+    const session = await startCodex({ cwd });
+    expect(session.status).toBe("running");
+    await session.interrupt();
+    expect(ptys[0]!.writes).toEqual([]);
+  });
 });
