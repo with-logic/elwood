@@ -64,6 +64,11 @@ describe("startup_prompt_write_failed persistence", () => {
     expect(one({ ...warning, agent: "codex", label: "hook_trust" })).not.toBeNull(); // codex too
     expect(one({ ...warning, source: "lifecycle" })).toBeNull(); // wrong source
     expect(one({ ...warning, agent: "gemini" })).toBeNull(); // unknown agent
+    // §5.4: the label must belong to the FAILING AGENT. An off-agent pairing —
+    // a Codex-only label on Claude, or a Claude-only label on Codex — is rejected
+    // rather than round-tripped as an impossible state.
+    expect(one({ ...warning, agent: "claude", label: "update" })).toBeNull();
+    expect(one({ ...warning, agent: "codex", label: "browser_tools" })).toBeNull();
     // The label is bounded to the fixed startup-prompt label set, so a non-string or
     // a raw (possibly conversation-derived) label is rejected, never round-tripped.
     for (const bad of [5, undefined, "leakedPromptText", "some_unknown_prompt"]) {

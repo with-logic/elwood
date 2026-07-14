@@ -85,7 +85,7 @@ describe("writePastedPrompt", () => {
     expect(writes).toEqual([paste("hello")]);
   });
 
-  test("C-API-37 the submitting Enter is held across poll ticks until the dialog clears", async () => {
+  test("C-API-37 the WHOLE submission (paste included) is held while a dialog blocks", async () => {
     const terminal = fakeTerminal();
     let blocked = true;
     const guard: PasteGuard = {
@@ -93,14 +93,13 @@ describe("writePastedPrompt", () => {
       staged: () => false,
       blocked: () => blocked,
     };
-    // Paste lands, but the settle-delayed Enter must NOT fire while blocked: it
-    // would confirm the dialog instead of submitting the staged paste. Stay
-    // blocked long enough that the guard re-polls at least once (blockedPollMs
-    // is 50ms) before the dialog clears.
+    // A dialog is on screen from the start: NOT EVEN the paste may be written into
+    // it (its bytes could be interpreted as shortcuts). Stay blocked long enough
+    // that the guard re-polls at least once (blockedPollMs is 50ms) before clearing.
     const submitted = writePastedPrompt(terminal, "hello", guard, undefined, 5, 5);
     await sleep(140);
-    expect(terminal.writes).toEqual([paste("hello")]);
-    // Once the dialog clears, a later poll fires the held Enter and resolves.
+    expect(terminal.writes).toEqual([]);
+    // Once the dialog clears, the paste and its submitting Enter both land.
     blocked = false;
     await submitted;
     expect(terminal.writes).toEqual([paste("hello"), "\r"]);

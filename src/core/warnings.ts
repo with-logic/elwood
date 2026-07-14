@@ -5,7 +5,7 @@
  * transcripts, or conversation content.
  */
 
-import type { StartupPromptLabel } from "./startup-automation.ts";
+import type { StartupPromptLabelFor } from "./startup-automation.ts";
 import type {
   DropCause,
   PollErrorReason,
@@ -100,19 +100,8 @@ export type ElwoodWarningEvent =
       readonly phase: PollPhase;
       readonly raw: string;
     }
-  | {
-      readonly elwoodSessionId: string;
-      readonly agent: "claude" | "codex";
-      readonly source: "terminal";
-      readonly code: "startup_prompt_write_failed";
-      readonly severity: "warning";
-      readonly message: string;
-      // The startup-prompt LABEL whose PTY write was rejected — a bounded id from
-      // the fixed startup-prompt label set only, never raw prompt/screen content.
-      // The prompt is left retryable, so a later frame re-attempts the write.
-      readonly label: StartupPromptLabel;
-      readonly raw: string;
-    }
+  | StartupPromptWriteFailed<"claude">
+  | StartupPromptWriteFailed<"codex">
   | {
       readonly elwoodSessionId: string;
       readonly agent: "claude" | "codex";
@@ -143,3 +132,21 @@ export type ElwoodWarningEvent =
       readonly errorCode: ResizeErrorCode;
       readonly raw: string;
     };
+
+/**
+ * A rejected startup-prompt PTY write, discriminated by agent so the LABEL is
+ * agent-correlated: an impossible pairing like Claude + `update` or Codex +
+ * `browser_tools` is unrepresentable (§5.4). The label is a bounded id from the
+ * agent's fixed startup-prompt set only — never raw prompt/screen content — and
+ * the prompt is left retryable so a later frame re-attempts the write.
+ */
+export type StartupPromptWriteFailed<A extends "claude" | "codex"> = {
+  readonly elwoodSessionId: string;
+  readonly agent: A;
+  readonly source: "terminal";
+  readonly code: "startup_prompt_write_failed";
+  readonly severity: "warning";
+  readonly message: string;
+  readonly label: StartupPromptLabelFor<A>;
+  readonly raw: string;
+};

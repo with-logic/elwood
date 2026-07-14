@@ -1152,16 +1152,28 @@ type ElwoodWarningEvent =
       readonly raw: string;
     }
   | {
+      // Agent-discriminated: the LABEL is drawn only from THAT agent's own fixed
+      // startup-prompt labels (§5.4), so an impossible pairing (Claude + `update`,
+      // Codex + `browser_tools`) is unrepresentable and never round-trips through
+      // persisted state. Never carries raw prompt or screen content; the prompt is
+      // left retryable so a later frame re-attempts the write.
       readonly elwoodSessionId: string;
-      readonly agent: "claude" | "codex";
+      readonly agent: "claude";
       readonly source: "terminal";
       readonly code: "startup_prompt_write_failed";
       readonly severity: "warning";
       readonly message: string;
-      // The startup-prompt LABEL whose PTY write was rejected, drawn only from the
-      // fixed startup-prompt label set (§5.4) — never raw prompt or screen content.
-      // The prompt is left retryable, so a later frame re-attempts the write.
-      readonly label: StartupPromptLabel;
+      readonly label: StartupPromptLabelFor<"claude">;
+      readonly raw: string;
+    }
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "codex";
+      readonly source: "terminal";
+      readonly code: "startup_prompt_write_failed";
+      readonly severity: "warning";
+      readonly message: string;
+      readonly label: StartupPromptLabelFor<"codex">;
       readonly raw: string;
     }
   };

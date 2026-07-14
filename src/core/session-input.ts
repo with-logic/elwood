@@ -75,8 +75,14 @@ export async function writePastedPrompt(
   settleDelayMs = pasteSettleDelayMs,
   nudgeDelayMs = pasteNudgeDelayMs,
 ): Promise<void> {
-  // Sanitize FIRST: caller/model text is data, so an embedded end sentinel or
-  // control byte must not escape paste mode into live keystrokes (§5.3).
+  // Hold the WHOLE submission — paste included — while a blocking dialog is on
+  // screen. A dialog can appear before an overtaking guidance's paste dispatches;
+  // pasting caller/model text into it risks the TUI interpreting shortcuts, so no
+  // bytes may reach a dialog until it clears (C-API-37 dialog safety). Only await
+  // when actually blocked, so the common path still writes the paste synchronously.
+  if (guard?.blocked?.()) await waitWhileBlocked(guard);
+  // Sanitize: caller/model text is data, so an embedded end sentinel or control
+  // byte must not escape paste mode into live keystrokes (§5.3).
   await terminal.sendInput(`\u001b[200~${sanitizePasteText(prompt)}\u001b[201~`);
   const schedule = (work: () => void, ms: number) => {
     const timer = setTimeout(work, ms);

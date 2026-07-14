@@ -2,6 +2,7 @@
 
 import {
   type ControlOperationKind,
+  type ControlOperationTraits,
   type ControlQueueError,
   type ControlSubmitMode,
   controlOperationTraits,
@@ -123,32 +124,43 @@ export class ControlQueue {
     if (index < 0) return;
     const operation = this.queue.splice(index, 1)[0] as QueuedOperation;
     if (this.dispatchesWhileNotReady(operation)) this.bypassable -= 1;
+    // Own the queue BEFORE lifecycle work or the write starts, so a throwing
+    // turn-start listener can't leave a started write ownerless and let a
+    // bypass-capable follower interleave with it (C-API-35).
+    this.inFlight = operation;
+    const traits = controlOperationTraits[operation.kind];
     let dispatched: Promise<void>;
     try {
-      dispatched = this.submitNow(operation.input, operation.kind);
+      this.beginSubmission(traits);
+      dispatched = this.submit(operation.input, traits.submitMode, this.armAbort());
     } catch (error) {
-      operation.reject(toError(error));
-      this.drain();
+      this.rollbackSubmission(operation, traits, toError(error));
       return;
     }
     // The write (incl. any delayed command Enter) holds the next drain so
-    // back-to-back queued operations never interleave in the terminal. The
-    // caller settles with the write's outcome; if close() already settled this
-    // operation, the handlers no-op (inFlight was cleared).
-    this.inFlight = operation;
+    // back-to-back queued operations never interleave. close() may have already
+    // settled this operation, in which case these handlers no-op.
     dispatched.then(
       () => this.settleInFlight(operation, () => operation.resolve()),
-      (error: unknown) => this.settleInFlight(operation, () => operation.reject(toError(error))),
+      (error: unknown) => this.rollbackSubmission(operation, traits, toError(error)),
     );
   }
 
-  /**
-   * The queue index of the next operation to dispatch, or -1 if none can. The
-   * head dispatches when ready; otherwise the first operation that dispatches
-   * while not ready (a prompt/command, or bypass-eligible guidance) overtakes
-   * it. When no such overtaker is queued the scan is skipped, keeping a backlog
-   * of held messages amortized O(1) rather than O(n) per enqueue.
-   */
+  // Restore consumed readiness on a failed submission: it never actually started
+  // a turn, so no Stop signal is coming — without this the queue wedges unready.
+  private rollbackSubmission(
+    operation: QueuedOperation,
+    traits: ControlOperationTraits,
+    error: Error,
+  ): void {
+    if (traits.consumesReadiness && !this.closed) this.ready = true;
+    this.settleInFlight(operation, () => operation.reject(error));
+  }
+
+  // Index of the next operation to dispatch, or -1. The head dispatches when
+  // ready; otherwise the first dispatch-while-not-ready operation (a prompt/command
+  // or bypass-eligible guidance) overtakes it. The `bypassable` counter skips the
+  // scan when no overtaker is queued, keeping a message backlog amortized O(1).
   private nextDispatchIndex(): number {
     if (this.ready) return 0;
     if (this.dispatchesWhileNotReady(this.queue[0] as QueuedOperation)) return 0;
@@ -171,17 +183,18 @@ export class ControlQueue {
     this.drain();
   }
 
-  /** Writes the operation and returns a promise for when its write fully lands. */
-  private submitNow(input: string, kind: ControlOperationKind): Promise<void> {
-    const traits = controlOperationTraits[kind];
+  // State-mutating lifecycle (consume readiness, report caller turn) runs BEFORE
+  // the write, so a throwing status listener aborts with nothing yet in flight.
+  private beginSubmission(traits: ControlOperationTraits): void {
     if (traits.consumesReadiness) this.ready = false;
-    // Abort the PRIOR submission's background work (recovery nudges) before the
-    // next one dispatches, so an older nudge can never fire an Enter into this
-    // paste. A submission's own foreground write is already complete by then.
+    if (traits.startsTurn) this.onTurnStarted();
+  }
+
+  // Fresh abort signal per submission; aborting the PRIOR one halts its background
+  // recovery nudges so an older nudge can't fire an Enter into this paste.
+  private armAbort(): AbortSignal {
     this.submitAbort?.abort();
     this.submitAbort = new AbortController();
-    const dispatched = this.submit(input, traits.submitMode, this.submitAbort.signal);
-    if (traits.startsTurn) this.onTurnStarted();
-    return dispatched;
+    return this.submitAbort.signal;
   }
 }

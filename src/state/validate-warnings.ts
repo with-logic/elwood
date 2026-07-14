@@ -7,7 +7,7 @@
  * fails to compile until it is validated here.
  */
 
-import { isStartupPromptLabel } from "../core/startup-automation.ts";
+import { isStartupPromptLabelForAgent } from "../core/startup-automation.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import {
   isDropCause,
@@ -77,12 +77,13 @@ const warningValidators = {
   // so a non-allowlisted (possibly conversation-derived) reason cannot round-trip.
   transcript_poll_stopped: (value) =>
     claudeTerminalBase(value) && isPollErrorReason(value["reason"]) && isPollPhase(value["phase"]),
-  // The `label` is bounded to the fixed startup-prompt label set, so a persisted
-  // failure can never round-trip a raw prompt/screen string as its label (§5.4, §5.7).
+  // The `label` is bounded to the failing AGENT's own startup-prompt labels, so a
+  // persisted failure can neither round-trip a raw prompt/screen string nor an
+  // off-agent pairing (Claude + `update`, Codex + `browser_tools`) (§5.4, §5.7).
   startup_prompt_write_failed: (value) =>
     (value["agent"] === "claude" || value["agent"] === "codex") &&
     terminalBase(value) &&
-    isStartupPromptLabel(value["label"]),
+    isStartupPromptLabelForAgent(value["agent"], value["label"]),
   // Content-free lifecycle diagnostic: the leaked group's pgid (a real leader pid,
   // so a safe integer > 1) + an ALLOWLISTED normalized error code, per agent —
   // never a raw system message (§5.7, C-LIFE-10).

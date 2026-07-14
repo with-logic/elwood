@@ -8,14 +8,14 @@
  */
 
 import type { ElwoodAgentKind } from "./activity.ts";
-import type { StartupPromptLabel, TrustPromptIdFor } from "./startup-automation.ts";
+import type { TrustPromptIdFor } from "./startup-automation.ts";
 import {
   emitStartupPromptActivity,
   type StartupActivityEmitter,
   type StartupPromptLabelFor,
   type StartupPromptOutcome,
 } from "./startup-automation.ts";
-import type { ElwoodWarningEvent } from "./warnings.ts";
+import type { ElwoodWarningEvent, StartupPromptWriteFailed } from "./warnings.ts";
 
 /**
  * A settled startup-prompt automation, discriminated by `outcome.kind` so the
@@ -70,10 +70,16 @@ export function emitSettledStartupOutcomes<A extends "claude" | "codex">(
     // activity is emitted only once the write fulfills, and a rejected write
     // surfaces a bounded warning instead of a false "answered" activity.
     const { outcome, settled } = settledOutcome;
-    settled.then(
-      () => emitStartupPromptActivity(emitter, agent, elwoodSessionId, outcome),
-      () => warnings?.recordWarnings([writeFailedWarning(agent, elwoodSessionId, outcome)]),
-    );
+    // A terminal `.catch` OWNS the derived promise: both continuations call public
+    // event paths that can throw (activity emission rethrows listener failures;
+    // warning recording can fail), and a floated rejection would be an unhandled
+    // rejection that can terminate the host during startup. Swallow it here.
+    settled
+      .then(
+        () => emitStartupPromptActivity(emitter, agent, elwoodSessionId, outcome),
+        () => warnings?.recordWarnings([writeFailedWarning(agent, elwoodSessionId, outcome)]),
+      )
+      .catch(() => undefined);
   }
 }
 
@@ -82,8 +88,10 @@ function writeFailedWarning<A extends "claude" | "codex">(
   elwoodSessionId: string,
   outcome: StartupPromptOutcome<A>,
 ): ElwoodWarningEvent {
-  const label = outcome.prompt as StartupPromptLabel;
-  return {
+  // `outcome.prompt` is already the agent-correlated label, so no cast discards
+  // the correlation: an off-agent (label, agent) pairing cannot be constructed.
+  const label = outcome.prompt;
+  const warning: StartupPromptWriteFailed<A> = {
     elwoodSessionId,
     agent,
     source: "terminal",
@@ -93,4 +101,8 @@ function writeFailedWarning<A extends "claude" | "codex">(
     label,
     raw: `startup_prompt_write_failed label=${label}`,
   };
+  // A concrete `StartupPromptWriteFailed<"claude"|"codex">` IS an ElwoodWarningEvent
+  // member; the widening bridges TS's generic-union assignability gap only (the
+  // agent/label correlation above is already enforced at construction).
+  return warning as ElwoodWarningEvent;
 }

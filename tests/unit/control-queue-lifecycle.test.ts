@@ -1,0 +1,74 @@
+/**
+ * Control-queue submission-lifecycle failure handling: readiness rollback,
+ * turn-start listener throws, and background-nudge abort (PRD §5.3, C-API-19/31/35).
+ */
+
+import { describe, expect, test } from "vitest";
+import { ControlQueue } from "../../src/core/control-queue.ts";
+
+describe("ControlQueue submission lifecycle", () => {
+  test("C-API-19 a rejected first submission restores readiness so later messages still drain", async () => {
+    const submitted: string[] = [];
+    const queue = new ControlQueue(
+      (input) => {
+        submitted.push(input);
+        // The first submission's write rejects; no turn actually started.
+        return input === "bad" ? Promise.reject(new Error("write failed")) : Promise.resolve();
+      },
+      () => new Error("closed"),
+      () => undefined,
+    );
+    queue.markReady();
+    const bad = queue.send("bad", "message");
+    await expect(bad).rejects.toThrow("write failed");
+    // Readiness was restored on the failure, so a later message drains WITHOUT
+    // any Stop/ready signal — the queue is not wedged in a false `running` state.
+    await queue.send("next", "message");
+    expect(submitted).toEqual(["bad", "next"]);
+  });
+
+  test("C-API-35 a throwing turn-start listener aborts before the write, keeping ownership clean", async () => {
+    const submitted: string[] = [];
+    let started = 0;
+    const queue = new ControlQueue(
+      (input) => {
+        submitted.push(input);
+        return Promise.resolve();
+      },
+      () => new Error("closed"),
+      () => {
+        started += 1;
+        if (started === 1) throw new Error("status listener failed");
+      },
+    );
+    queue.markReady();
+    // The first message's turn-start work throws BEFORE its write, so nothing is
+    // written and the operation rejects; the queue stays consistent.
+    await expect(queue.send("first", "message")).rejects.toThrow("status listener failed");
+    expect(submitted).toEqual([]);
+    // A follower still dispatches cleanly (no abandoned in-flight write).
+    await queue.send("second", "message");
+    expect(submitted).toEqual(["second"]);
+  });
+
+  test("C-API-31 the prior submission's abort signal fires before the next dispatches", async () => {
+    // A submission's background recovery nudges are cancelled when the next
+    // operation begins, so an older nudge can't fire an Enter into a later paste.
+    const signals: AbortSignal[] = [];
+    const queue = new ControlQueue(
+      (_input, _mode, signal) => {
+        signals.push(signal);
+        return Promise.resolve();
+      },
+      () => new Error("closed"),
+      () => undefined,
+    );
+    // Picker commands don't consume readiness, so two dispatch back-to-back.
+    await queue.send("/model", "list_models");
+    expect(signals[0]?.aborted).toBe(false);
+    await queue.send("/model", "set_model");
+    // Dispatching the second submission aborts the first's background work.
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
+  });
+});

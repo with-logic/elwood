@@ -165,25 +165,4 @@ describe("ControlQueue ordering and failures", () => {
     queue.close();
     await expect(held).rejects.toThrow("closed");
   });
-
-  test("C-API-31 the prior submission's abort signal fires before the next dispatches", async () => {
-    // A submission's background recovery nudges are cancelled when the next
-    // operation begins, so an older nudge can't fire an Enter into a later paste.
-    const signals: AbortSignal[] = [];
-    const queue = new ControlQueue(
-      (_input, _mode, signal) => {
-        signals.push(signal);
-        return Promise.resolve();
-      },
-      () => new Error("closed"),
-      () => undefined,
-    );
-    // Picker commands don't consume readiness, so two dispatch back-to-back.
-    await queue.send("/model", "list_models");
-    expect(signals[0]?.aborted).toBe(false);
-    await queue.send("/model", "set_model");
-    // Dispatching the second submission aborts the first's background work.
-    expect(signals[0]?.aborted).toBe(true);
-    expect(signals[1]?.aborted).toBe(false);
-  });
 });

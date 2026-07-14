@@ -84,4 +84,25 @@ describe("emitSettledStartupOutcomes", () => {
     await Promise.resolve();
     expect(events).toEqual([]);
   });
+
+  test("a throwing activity listener cannot become an unhandled rejection that crashes startup", async () => {
+    // The success continuation emits activity; if that listener throws, the derived
+    // promise must be OWNED (terminal catch) rather than floated as an unhandled
+    // rejection that could terminate the host. It settles without propagating.
+    const throwingEmit = (_e: "activity", _p: ElwoodActivityEvent): void => {
+      throw new Error("rogue activity listener");
+    };
+    const outcomes: readonly SettledStartupOutcome<"claude">[] = [
+      {
+        outcome: { kind: "answered", prompt: "workspace_trust", input: "1" },
+        settled: Promise.resolve(),
+      },
+    ];
+    expect(() =>
+      emitSettledStartupOutcomes({ emit: throwingEmit }, "claude", "s1", outcomes, sink()),
+    ).not.toThrow();
+    // Let the owned promise settle; no unhandled rejection is produced.
+    await Promise.resolve();
+    await Promise.resolve();
+  });
 });
