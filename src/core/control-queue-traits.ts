@@ -41,6 +41,14 @@ export function dispatchesWhileNotReady(policy: ReadinessPolicy, mayBypass: bool
   }
 }
 
+/** Whether a queued operation may dispatch even though the session is not ready. */
+export function overtakesReadiness(op: {
+  readonly kind: ControlOperationKind;
+  readonly mayBypassReadiness: boolean;
+}): boolean {
+  return dispatchesWhileNotReady(controlOperationTraits[op.kind].readiness, op.mayBypassReadiness);
+}
+
 export type ControlOperationTraits = {
   // True when dispatching this operation submits `caller_submitted` evidence via
   // the queue's turn-started callback. This holds for guidance even when it

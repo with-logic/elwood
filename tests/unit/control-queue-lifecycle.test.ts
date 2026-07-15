@@ -27,6 +27,62 @@ describe("ControlQueue submission lifecycle", () => {
     expect(submitted).toEqual(["bad", "next"]);
   });
 
+  test("C-API-35 a stale rollback does not clobber a markReady that arrived mid-write", async () => {
+    const submitted: string[] = [];
+    let release!: (reject: boolean) => void;
+    const queue = new ControlQueue(
+      (input) => {
+        submitted.push(input);
+        if (input !== "prompt") return Promise.resolve();
+        return new Promise<void>((_resolve, reject) => {
+          release = (r) => (r ? reject(new Error("write failed")) : _resolve());
+        });
+      },
+      () => new Error("closed"),
+      () => undefined,
+    );
+    // A prompt bypasses and dispatches while NOT ready; its write is still pending.
+    const prompt = queue.send("prompt", "prompt");
+    // A real turn-end arrives while the write is in flight → session is ready now.
+    queue.markReady();
+    // The prompt's write THEN fails. Rollback must NOT restore the stale `false`
+    // (the epoch changed), or a queued message would be wedged unready forever.
+    release(true);
+    await expect(prompt).rejects.toThrow("write failed");
+    await queue.send("after", "message");
+    // The message drained because readiness from the mid-write markReady survived.
+    expect(submitted).toEqual(["prompt", "after"]);
+  });
+
+  test("C-API-37 a stale rollback does not re-open readiness after a blocking suspend", async () => {
+    const submitted: string[] = [];
+    let release!: (reject: boolean) => void;
+    const queue = new ControlQueue(
+      (input) => {
+        submitted.push(input);
+        if (input !== "msg") return Promise.resolve();
+        return new Promise<void>((_resolve, reject) => {
+          release = (r) => (r ? reject(new Error("write failed")) : _resolve());
+        });
+      },
+      () => new Error("closed"),
+      () => undefined,
+    );
+    queue.markReady();
+    const msg = queue.send("msg", "message"); // dispatched while ready
+    // A blocking dialog appears while the write is in flight → readiness suspended.
+    queue.suspendReadiness();
+    release(true); // the write then fails
+    await expect(msg).rejects.toThrow("write failed");
+    // Rollback must NOT restore the stale `true`: a follower stays HELD (would
+    // otherwise be written into the dialog), until a real markReady reopens it.
+    const held = queue.send("held", "message");
+    expect(submitted).toEqual(["msg"]);
+    queue.markReady();
+    await held;
+    expect(submitted).toEqual(["msg", "held"]);
+  });
+
   test("C-API-35 a throwing turn-start listener aborts before the write, keeping ownership clean", async () => {
     const submitted: string[] = [];
     let started = 0;

@@ -6,7 +6,7 @@ import {
   type ControlQueueError,
   type ControlSubmitMode,
   controlOperationTraits,
-  dispatchesWhileNotReady,
+  overtakesReadiness,
 } from "./control-queue-traits.ts";
 
 export type {
@@ -21,9 +21,9 @@ export { controlOperationTraits } from "./control-queue-traits.ts";
 import { toError } from "./errors.ts";
 
 /**
- * Writes an operation to the terminal. Resolves only once the submission —
- * including any delayed Enter keystroke — has been dispatched, so the queue
- * does not drain the next operation into a half-written composer.
+ * Writes an operation to the terminal. Resolves only once the submission (incl.
+ * any delayed Enter keystroke) has dispatched, so the queue never drains the next
+ * operation into a half-written composer.
  */
 export type ControlSubmitter = (
   input: string,
@@ -37,7 +37,7 @@ type QueuedOperation = {
   readonly input: string;
   readonly kind: ControlOperationKind;
   // Bypass eligibility is FROZEN at enqueue time: guidance queued before first
-  // readiness (or while blocked) stays message-like all its life (C-API-37).
+  // readiness stays message-like all its life (C-API-37).
   readonly mayBypassReadiness: boolean;
   readonly resolve: () => void;
   readonly reject: (error: Error) => void;
@@ -52,13 +52,16 @@ export class ControlQueue {
   private ready = false;
   private everReady = false;
   private closed = false;
-  // Count of queued operations that can dispatch while not ready (prompts, picker
-  // commands, bypass-eligible guidance). Lets `drain` skip the O(n) overtaker scan
-  // when none exists, so N held messages stay amortized O(1).
+  // Monotonic readiness version, bumped by every lifecycle transition. A failed
+  // submission's rollback restores its snapshot only if the epoch is unchanged, so
+  // a mid-write turn-end/dialog transition is never clobbered (see rollback).
+  private readinessEpoch = 0;
+  // Count of queued operations that can dispatch while not ready; lets `drain` skip
+  // the overtaker scan when none exists (keeps a message backlog amortized O(1)).
   private bypassable = 0;
   /** The operation whose submission (incl. delayed Enter) is still dispatching. */
   private inFlight: QueuedOperation | undefined;
-  /** Aborts the current submission's background recovery nudges when the next starts. */
+  // Aborts the current submission's background recovery nudges when the next starts.
   private submitAbort: AbortController | undefined;
 
   constructor(
@@ -75,8 +78,8 @@ export class ControlQueue {
 
   send(input: string, kind: ControlOperationKind): Promise<void> {
     if (this.closed) return Promise.reject(this.stoppedError());
-    // Freeze bypass eligibility now: guidance only bypasses if the session is
-    // already past initial readiness AND currently mid-turn at enqueue time.
+    // Freeze bypass eligibility now: guidance only bypasses if already past initial
+    // readiness AND mid-turn at enqueue time (C-API-37).
     const mayBypassReadiness =
       controlOperationTraits[kind].readiness === "running_after_ready" &&
       this.everReady &&
@@ -84,7 +87,7 @@ export class ControlQueue {
     return new Promise((resolve, reject) => {
       const operation = { input, kind, mayBypassReadiness, resolve, reject };
       this.queue.push(operation);
-      if (this.dispatchesWhileNotReady(operation)) this.bypassable += 1;
+      if (overtakesReadiness(operation)) this.bypassable += 1;
       this.drain();
     });
   }
@@ -93,6 +96,7 @@ export class ControlQueue {
     if (this.closed) return;
     this.everReady = true;
     this.ready = true;
+    this.readinessEpoch += 1;
     this.drain();
   }
 
@@ -103,13 +107,14 @@ export class ControlQueue {
    */
   suspendReadiness(): void {
     this.ready = false;
+    this.readinessEpoch += 1;
   }
 
   close(): void {
     this.closed = true;
     const error = this.stoppedError();
-    // Reject the still-dispatching operation too: closing while a command's
-    // delayed Enter is pending must fail it now, not let it later resolve.
+    // Reject the still-dispatching operation too: closing mid-write must fail it
+    // now, not let a pending delayed Enter later resolve it.
     const settling = this.inFlight;
     this.inFlight = undefined;
     this.bypassable = 0;
@@ -122,55 +127,52 @@ export class ControlQueue {
     const index = this.nextDispatchIndex();
     if (index < 0) return;
     const operation = this.queue.splice(index, 1)[0] as QueuedOperation;
-    if (this.dispatchesWhileNotReady(operation)) this.bypassable -= 1;
+    if (overtakesReadiness(operation)) this.bypassable -= 1;
     // Own the queue BEFORE lifecycle work or the write starts, so a throwing
     // turn-start listener can't leave a started write ownerless and let a
     // bypass-capable follower interleave (C-API-35).
     this.inFlight = operation;
     const traits = controlOperationTraits[operation.kind];
-    // Snapshot readiness so a failed submission restores the EXACT prior value —
-    // never fabricates `ready` a bypass op (dispatched while not ready) never had.
+    // Snapshot readiness and its epoch so rollback can restore the prior value (see rollback).
     const priorReady = this.ready;
+    const dispatchEpoch = this.readinessEpoch;
     let dispatched: Promise<void>;
     try {
       this.beginSubmission(traits);
       dispatched = this.submit(operation.input, traits.submitMode, this.armAbort());
     } catch (error) {
-      this.rollbackSubmission(operation, priorReady, toError(error));
+      this.rollbackSubmission(operation, priorReady, dispatchEpoch, toError(error));
       return;
     }
-    // The write (incl. any delayed command Enter) holds the next drain so
-    // back-to-back operations never interleave; if close() already settled this, these no-op.
+    // The write holds the next drain so operations never interleave; no-op if close() settled it.
     dispatched.then(
       () => this.settleInFlight(operation, () => operation.resolve()),
-      (error: unknown) => this.rollbackSubmission(operation, priorReady, toError(error)),
+      (error: unknown) =>
+        this.rollbackSubmission(operation, priorReady, dispatchEpoch, toError(error)),
     );
   }
 
-  // Restore the exact prior readiness on a failed submission: it never actually
-  // started a turn, so no Stop signal is coming — without this a readiness-consuming
-  // submission that failed would wedge the queue unready (or, for a bypass op that
-  // ran while not ready, fabricate a readiness it never had).
-  private rollbackSubmission(operation: QueuedOperation, priorReady: boolean, error: Error): void {
-    if (!this.closed) this.ready = priorReady;
+  // Restore readiness on a failed submission (it never started a turn, so no Stop
+  // is coming) — but ONLY if no lifecycle transition bumped the epoch since
+  // dispatch, so a stale snapshot never clobbers a newer markReady/suspend nor
+  // fabricates/re-opens readiness the session never had mid-write (C-API-35/37).
+  private rollbackSubmission(
+    operation: QueuedOperation,
+    priorReady: boolean,
+    dispatchEpoch: number,
+    error: Error,
+  ): void {
+    if (!this.closed && this.readinessEpoch === dispatchEpoch) this.ready = priorReady;
     this.settleInFlight(operation, () => operation.reject(error));
   }
 
-  // Index of the next operation to dispatch, or -1. The head dispatches when
-  // ready; otherwise the first dispatch-while-not-ready operation (prompt/command
-  // or bypass-eligible guidance) overtakes it. `bypassable` skips that scan when
-  // none is queued, so a message backlog stays amortized O(1).
+  // Index of the next operation to dispatch, or -1. Head dispatches when ready;
+  // otherwise the first overtaker goes. `bypassable === 0` skips the scan.
   private nextDispatchIndex(): number {
     if (this.ready) return 0;
-    if (this.dispatchesWhileNotReady(this.queue[0] as QueuedOperation)) return 0;
+    if (overtakesReadiness(this.queue[0] as QueuedOperation)) return 0;
     if (this.bypassable === 0) return -1;
-    return this.queue.findIndex((operation) => this.dispatchesWhileNotReady(operation));
-  }
-
-  /** Whether the operation may dispatch even though the session is not ready. */
-  private dispatchesWhileNotReady(operation: QueuedOperation): boolean {
-    const { readiness } = controlOperationTraits[operation.kind];
-    return dispatchesWhileNotReady(readiness, operation.mayBypassReadiness);
+    return this.queue.findIndex(overtakesReadiness);
   }
 
   private settleInFlight(operation: QueuedOperation, settle: () => void): void {
@@ -182,14 +184,14 @@ export class ControlQueue {
   }
 
   // State-mutating lifecycle (consume readiness, report caller turn) runs BEFORE
-  // the write, so a throwing status listener aborts with nothing yet in flight.
+  // the write, so a throwing status listener aborts with nothing in flight yet.
   private beginSubmission(traits: ControlOperationTraits): void {
     if (traits.consumesReadiness) this.ready = false;
     if (traits.reportsCallerSubmission) this.onTurnStarted();
   }
 
-  // Fresh abort signal per submission; aborting the PRIOR one halts its background
-  // recovery nudges so an older nudge can't fire an Enter into this paste.
+  // Fresh signal per submission; aborting the PRIOR one halts its background
+  // nudges so an older nudge can't fire an Enter into this paste.
   private armAbort(): AbortSignal {
     this.submitAbort?.abort();
     this.submitAbort = new AbortController();
