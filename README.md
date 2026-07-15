@@ -303,6 +303,25 @@ restores the prior default via compare-and-swap afterwards — if the file
 changed in other ways during the switch, Elwood leaves it alone and emits a
 `codex_default_model_persisted` warning instead of clobbering it.
 
+To enumerate available models **without** holding a session — for example to
+populate a UI selector — use the standalone `listClaudeModels`/`listCodexModels`
+functions. Each starts a throwaway session, lists its models, and always tears
+it down (even on failure), leaving the user's saved default and configuration
+untouched:
+
+```ts
+import { listClaudeModels, listCodexModels } from "elwood";
+
+const claudeModels = await listClaudeModels({ cwd: "/path/to/project" });
+const codexModels = await listCodexModels({ cwd: "/path/to/project" });
+// [{ id: "haiku", label: "Haiku", isDefault: false, isCurrent: false, ... }, ...]
+```
+
+They accept the launch-relevant options (`cwd`, `stateDir`, `autoupdate`,
+`hookTimeoutMs`, `strictVersionCheck`, and a `timeoutMs` for the picker
+automation). A start failure surfaces the adapter's normal typed error; a
+picker failure rejects with `model_automation_failed`.
+
 Both adapters also accept a `persona` start option: an instruction message that
 Elwood delivers as the session's guaranteed first user message once the agent
 becomes ready, ahead of anything else you queue. It is never persisted and is

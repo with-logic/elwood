@@ -70,3 +70,7 @@ cap does not constrain your state layout.
   both adapters: Claude applies session-only, and Elwood restores Codex's
   config.toml after the CLI persists its picker selection (watch for the
   `codex_default_model_persisted` warning in the rare concurrent-edit case).
+- **Enumerating models without a session** — to populate a model selector
+  before the user starts a session — use `listClaudeModels`/`listCodexModels`.
+  They spin up a throwaway session, list, and always tear it down, so they cost
+  a few seconds each; cache the result in the parent app if you call them often.

@@ -1,6 +1,6 @@
 /**
  * Real-agent model listing and session-scoped model switching.
- * Implements C-API-23, C-API-24, C-E2E-02, and C-E2E-03.
+ * Implements C-API-23, C-API-24, C-API-41, C-E2E-02, and C-E2E-03.
  */
 
 import assert from "node:assert/strict";
@@ -8,7 +8,14 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { type ClaudeSession, type CodexSession, startClaude, startCodex } from "../../src/index.ts";
+import {
+  type ClaudeSession,
+  type CodexSession,
+  listClaudeModels,
+  listCodexModels,
+  startClaude,
+  startCodex,
+} from "../../src/index.ts";
 import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
 
 test("C-API-23 C-API-24 real Claude lists models and switches session-only", {
@@ -94,5 +101,48 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
   } finally {
     if (configBefore !== undefined) writeFileSync(configPath, configBefore);
     await cleanup(session);
+  }
+});
+
+test("C-API-41 real listClaudeModels returns models without a caller-held session", {
+  skip: skipReason("claude"),
+  timeout: 150_000,
+}, async () => {
+  const project = makeProject("claude");
+  const models = await listClaudeModels({ cwd: project.cwd, stateDir: project.stateDir });
+  assert.ok(models.length >= 3, "session-less probe lists several models");
+  assert.equal(models.filter((model) => model.isCurrent).length, 1);
+  assert.ok(
+    models.some((model) => model.isDefault),
+    "a default row is marked",
+  );
+  assert.ok(models.some((model) => model.id === "haiku"));
+});
+
+test("C-API-41 real listCodexModels returns models and leaves config.toml untouched", {
+  skip: skipReason("codex"),
+  timeout: 150_000,
+}, async () => {
+  const project = makeProject("codex");
+  const configPath = join(homedir(), ".codex", "config.toml");
+  const configBefore = existsSync(configPath) ? readFileSync(configPath, "utf8") : undefined;
+  try {
+    const models = await listCodexModels({ cwd: project.cwd, stateDir: project.stateDir });
+    assert.ok(models.length >= 2, "session-less probe lists several models");
+    assert.equal(models.filter((model) => model.isCurrent).length, 1);
+    assert.equal(models.filter((model) => model.isDefault).length, 1);
+    // The probe only opens and cancels the picker (never applies a selection), so
+    // the user's MODEL defaults are untouched. Codex appends unrelated trust
+    // bookkeeping at boot, so compare the root model keys, not whole bytes.
+    const rootModelKeys = (text: string | undefined) =>
+      (text ?? "").split("\n").filter((line) => /^(model|model_reasoning_effort)\s*=/.test(line));
+    const configAfter = existsSync(configPath) ? readFileSync(configPath, "utf8") : undefined;
+    assert.deepEqual(
+      rootModelKeys(configAfter),
+      rootModelKeys(configBefore),
+      "listCodexModels leaves the user's model defaults untouched",
+    );
+  } finally {
+    if (configBefore !== undefined) writeFileSync(configPath, configBefore);
   }
 });

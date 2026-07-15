@@ -624,6 +624,42 @@ turn that has not completed. Failures to recognize or drive the rendered
 picker reject with `model_automation_failed`; an unknown `id` rejects with the
 same error and includes the available ids in the error details.
 
+Elwood also exposes the model list WITHOUT an active session, for callers that
+only want to enumerate available models (for example to populate a UI selector):
+
+```ts
+type ListModelsOptions = {
+  readonly cwd: string;
+  readonly stateDir?: string;
+  readonly autoupdate?: boolean;
+  readonly hookTimeoutMs?: number;
+  readonly strictVersionCheck?: boolean;
+  readonly timeoutMs?: number;
+};
+
+declare function listClaudeModels(
+  options: ListModelsOptions,
+): Promise<readonly AgentModelOption[]>;
+declare function listCodexModels(
+  options: ListModelsOptions,
+): Promise<readonly AgentModelOption[]>;
+```
+
+Each starts a throwaway session (with `autotrust` implied so a workspace-trust
+prompt cannot stall the probe), waits for it to reach first readiness, calls
+`listModels`, and then ALWAYS tears the session down — including when readiness
+or the picker fails — so no probe session, PTY process tree, or state directory
+is leaked. The returned options are exactly the `listModels` rows, so
+`isCurrent` reflects the throwaway session's launch model and `isDefault`
+reflects the user's configured default. Because the probe opens and cancels the
+picker only (it never selects a row), it leaves the user's saved model default
+untouched, exactly as `listModels` does on a live session (Codex's own boot-time
+config bookkeeping is outside Elwood's control and is not a model change). A
+start failure surfaces the adapter's normal typed start error
+(`claude_not_found`, `codex_start_failed`, and so on); a picker failure rejects
+with `model_automation_failed`. The `timeoutMs` bounds the picker automation as
+it does on a live session; readiness uses the normal startup deadline.
+
 Command submissions (`compact`, `listModels`, `setModel`) MUST NOT consume the
 session's ready transition: typing a slash command does not start a user turn,
 no completion hook will re-arm readiness afterwards, and consuming readiness
@@ -2026,6 +2062,7 @@ Each criterion has:
 | C-API-30 | §5.4 | `tool_call` activity carries the tool's input as a serialized `toolInput` and `tool_result` activity carries the tool's output as a serialized `toolOutput`, sourced from the committed transcript for Claude (`tool_use.input`/`tool_result.content`, per C-CLAUDE-15) and from the transcript for Codex (`arguments`/`output`); absent sources leave the field absent. |
 | C-API-31 | §5.3 | The submitting Enter is a separate PTY write after a settle delay, and bounded re-Enters fire while the rendered composer still shows the staged paste, so a first long prompt cannot be left staged-but-unsubmitted. |
 | C-API-40 | §5.3 | `sendPrompt`/`sendMessage`/`sendGuidance` text is sanitized before it is framed as a bracketed paste: the `ESC [ 200~`/`ESC [ 201~` sentinels and all other C0/C1 control characters except tab, newline, and carriage return are removed, so caller/model text cannot escape paste mode and inject live keystrokes (e.g. an Enter that confirms a permission dialog). `sendKeys` is the raw escape hatch and is never sanitized. |
+| C-API-41 | §5.3 | `listClaudeModels(options)`/`listCodexModels(options)` return the available models WITHOUT a caller-held session: each starts a throwaway session (autotrust implied), waits for first readiness, calls `listModels`, and ALWAYS tears the session down afterward — on success, on a readiness/picker failure, and on a start failure — so no probe session, process tree, or state directory is leaked. The rows are exactly `listModels`' output and the probe leaves the user's saved MODEL default untouched (the picker is opened and cancelled, never applied), just as `listModels` does on a live session. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 

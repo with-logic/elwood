@@ -128,24 +128,24 @@ export class FakePty implements PtyProcess {
     for (const handler of this.exitHandlers) handler(exit);
   }
 
-  async dispatchHook(elwoodSessionId: string, input: Record<string, unknown>) {
-    const { socketPath, token } = this.readBridge(elwoodSessionId);
+  async dispatchHook(elwoodSessionId: string, input: Record<string, unknown>, stateDir?: string) {
+    const { socketPath, token } = this.readBridge(elwoodSessionId, stateDir);
     return await this.dispatchRaw(
       socketPath,
       JSON.stringify({ token, elwoodSessionId, input: JSON.stringify(input) }),
     );
   }
 
-  async dispatchMalformedHook(elwoodSessionId: string) {
-    const { socketPath, token } = this.readBridge(elwoodSessionId);
+  async dispatchMalformedHook(elwoodSessionId: string, stateDir?: string) {
+    const { socketPath, token } = this.readBridge(elwoodSessionId, stateDir);
     return await this.dispatchRaw(
       socketPath,
       JSON.stringify({ token, elwoodSessionId, input: "not-json" }),
     );
   }
 
-  private readBridge(elwoodSessionId: string) {
-    const dir = join(this.options.cwd, ".elwood", "sessions", elwoodSessionId);
+  private readBridge(elwoodSessionId: string, stateDir?: string) {
+    const dir = join(stateDir ?? join(this.options.cwd, ".elwood"), "sessions", elwoodSessionId);
     const script = readFileSync(join(dir, "hook-bridge.mjs"), "utf8");
     return {
       socketPath: /const socketPath = "([^"]+)"/.exec(script)![1]!,

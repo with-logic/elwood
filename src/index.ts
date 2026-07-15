@@ -39,6 +39,7 @@ export type {
   WriteInput,
 } from "./claude/hooks.ts";
 export { claudeHookEventNames } from "./claude/hooks.ts";
+export { listClaudeModels } from "./claude/list-models.ts";
 export { startClaude } from "./claude/session.ts";
 export type { ClaudeSession } from "./claude/session-interface.ts";
 export { resumeClaude } from "./claude/session-resume.ts";
@@ -60,6 +61,7 @@ export type {
   CodexUnknownToolName,
 } from "./codex/hooks.ts";
 export { codexHookEventNames } from "./codex/hooks.ts";
+export { listCodexModels } from "./codex/list-models.ts";
 export { startCodex } from "./codex/session.ts";
 export { resumeCodex } from "./codex/session-resume.ts";
 export type {
@@ -90,6 +92,7 @@ export type {
 } from "./core/agent-session.ts";
 export type { ElwoodErrorName } from "./core/errors.ts";
 export { ElwoodError, elwoodError } from "./core/errors.ts";
+export type { ListModelsOptions } from "./core/list-models.ts";
 export type { AgentModelOption } from "./core/model-rows.ts";
 export type { StartOrResumeResult } from "./core/start-or-resume.ts";
 export type {
