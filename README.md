@@ -324,7 +324,17 @@ const codexModels = await listCodexModels({ cwd: "/path/to/project" });
 They accept the launch-relevant options (`cwd`, `stateDir`, `autoupdate`,
 `hookTimeoutMs`, `strictVersionCheck`, and a `timeoutMs` for the picker
 automation). A start failure surfaces the adapter's normal typed error; a
-picker failure rejects with `model_automation_failed`.
+picker failure rejects with `model_automation_failed` (if tearing the probe
+down then also fails, that secondary failure is attached to the error's
+`cause` so a leaked probe is never invisible).
+
+> **Trust note.** To reach a listable state without a human at the keyboard,
+> the probe starts its throwaway session with `autotrust: true` for the given
+> `cwd` — so it answers the workspace/skill/plugin/MCP trust prompts for that
+> directory automatically. This crosses the same trust boundary a normal
+> `autotrust: true` start does; it is a deliberate, documented exception for
+> the probe (which only opens and cancels the picker and never runs a turn).
+> Point these functions at a directory you already trust.
 
 Both adapters also accept a `persona` start option: an instruction message that
 Elwood delivers as the session's guaranteed first user message once the agent
