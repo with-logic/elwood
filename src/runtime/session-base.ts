@@ -14,7 +14,7 @@ import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { notRunningError, type SessionStatusEmitter } from "./session-base-types.ts";
 import { CommandSurface } from "./session-commands.ts";
 import { SessionReapPolicy } from "./session-reap.ts";
-import { applyResize, persistHeldResize } from "./session-resize.ts";
+import { applyResize, persistHeldResize, restoreHeldResize } from "./session-resize.ts";
 import {
   buildShutdownHost,
   runManagedShutdown,
@@ -41,8 +41,7 @@ export abstract class AgentSessionBase {
   private cleanupPromise: Promise<void> | undefined;
   private pendingShutdown: ShutdownEvidence | undefined;
   private everReady = false; // gates `interrupt` off the startup `running` bootstrap
-  // Serializes stop/kill/teardown so later callers join rather than race (C-LIFE-10).
-  private readonly shutdownCoordinator = new ShutdownCoordinator();
+  private readonly shutdownCoordinator = new ShutdownCoordinator(); // join stop/kill/teardown
   private readonly pasteGuard: PasteGuard = {
     snapshot: () => this.terminal.snapshot().text,
     staged: (s, p) => this.stagedPaste(s, p),
@@ -111,9 +110,11 @@ export abstract class AgentSessionBase {
   resize(size: TerminalSize): Promise<void> {
     return this.inSession(() => applyResize(this.pty, this.terminal, this.persistSize, size));
   }
-  /** Persist a HELD (deferred-physical) resize (C-API-39). */
   protected persistHeldSize(size: TerminalSize): void {
     persistHeldResize(this.pty, this.terminal, this.persistSize, size);
+  }
+  protected restoreHeldSize(size: TerminalSize): void {
+    restoreHeldResize(this.pty, this.terminal, size);
   }
   private readonly persistSize = (size: TerminalSize) =>
     this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.status));
@@ -160,9 +161,8 @@ export abstract class AgentSessionBase {
       this.reapSurvivors();
     }
   }
-  // Best-effort native-exit reap: a failure becomes a durable `reap_failed` warning, never thrown (C-LIFE-10).
   private reapSurvivors(): void {
-    const warning = this.reapPolicy.bestEffort();
+    const warning = this.reapPolicy.bestEffort(); // durable `reap_failed` warning, never a throw
     if (warning) this.recordWarnings([warning]);
   }
   statusDecisions = (): readonly StatusDecision[] => this.statusEngine.decisions();

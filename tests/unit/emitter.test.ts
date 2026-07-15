@@ -63,4 +63,49 @@ describe("TypedEmitter", () => {
     emitter.emit("status", { elwoodSessionId: "x", status: "ready" });
     expect(seen).toEqual([]);
   });
+
+  test("a listener added mid-emit does not fire during the emission in progress", () => {
+    const emitter = new TypedEmitter();
+    const seen: string[] = [];
+    const late = (event: { readonly status: string }) => seen.push(`late:${event.status}`);
+    // The copy-on-write `list` snapshot is frozen when the emission begins, so a
+    // listener the first handler adds only participates in the NEXT emission.
+    emitter.on("status", () => emitter.on("status", late));
+    emitter.emit("status", { elwoodSessionId: "x", status: "running" });
+    expect(seen).toEqual([]);
+    emitter.emit("status", { elwoodSessionId: "x", status: "ready" });
+    expect(seen).toEqual(["late:ready"]);
+  });
+
+  test("registering the same handler twice is a no-op: it fires once and one off removes it", () => {
+    const emitter = new TypedEmitter();
+    let calls = 0;
+    const handler = () => {
+      calls += 1;
+    };
+    emitter.on("status", handler);
+    emitter.on("status", handler); // duplicate registration is ignored
+    emitter.emit("status", { elwoodSessionId: "x", status: "ready" });
+    expect(calls).toBe(1);
+    emitter.off("status", handler);
+    emitter.emit("status", { elwoodSessionId: "x", status: "ready" });
+    expect(calls).toBe(1);
+    // A second off for an already-removed handler is a harmless no-op.
+    emitter.off("status", handler);
+  });
+
+  test("request skips a handler unsubscribed by an earlier request handler", async () => {
+    const emitter = new TypedEmitter();
+    const b = () => "b-result";
+    // The first async handler removes B before B is reached; the immutable `list`
+    // snapshot still contains B, so `request` must consult `live` and skip it.
+    emitter.on("status", () => {
+      emitter.off("status", b);
+      return undefined;
+    });
+    emitter.on("status", b);
+    expect(
+      await emitter.request("status", { elwoodSessionId: "x", status: "ready" }),
+    ).toBeUndefined();
+  });
 });

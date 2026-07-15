@@ -107,6 +107,16 @@ const warningValidators = {
     isPositiveCount(value["requestedRows"]) &&
     isResizeErrorCode(value["errorCode"]) &&
     isString(value["raw"]),
+  // Content-free lifecycle diagnostic: only a bounded, allowlisted `reason`
+  // (`persist`/`listener`) distinguishing the failing stage — never a raw system
+  // message or session content (§5.3, §5.7, C-API-42).
+  initial_ready_fallback: (value) =>
+    value["agent"] === "claude" &&
+    value["source"] === "lifecycle" &&
+    isString(value["elwoodSessionId"]) &&
+    isString(value["message"]) &&
+    (value["reason"] === "persist" || value["reason"] === "listener") &&
+    isString(value["raw"]),
 } satisfies Record<ElwoodWarningEvent["code"], WarningValidator>;
 
 /** A persisted PTY leader process-group id: a real pid, so a safe integer > 1. */

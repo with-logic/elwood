@@ -12,6 +12,7 @@ import type {
   ElwoodEventName,
   ElwoodSessionStatus,
   ElwoodWarningEvent,
+  InitialReadyFallbackReason,
   TerminalSize,
 } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
@@ -20,6 +21,7 @@ import { AgentSessionBase } from "../runtime/session-base.ts";
 import { terminalStatuses } from "../runtime/session-status.ts";
 import { type SessionRecord, updateSessionResumeId } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
+import { initialReadyFallbackWarning } from "./initial-ready-fallback.ts";
 import { claudeModelPicker } from "./model-picker.ts";
 import { resizeRestoreFailedWarning } from "./resize-restore.ts";
 import type { ClaudeSession } from "./session-interface.ts";
@@ -99,25 +101,33 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
    * Readiness advancement is the load-bearing invariant and MUST run even if the
    * restore or its warning delivery throws, or a live session's queued
    * persona/messages would be starved forever (C-API-39, C-API-36). Idempotent:
-   * a late deadline after the hook re-runs neither the restore nor readiness. */
-  async completeInitialReady(): Promise<void> {
-    if (this.initialReadyDone) return;
+   * a late deadline after the hook re-runs neither the restore nor readiness. The
+   * restore is now fully synchronous, but the method keeps its Promise return so
+   * both the hook and deadline call sites can `void`/`await` it uniformly. */
+  completeInitialReady(): Promise<void> {
+    if (this.initialReadyDone) return Promise.resolve();
     this.initialReadyDone = true;
     const wasNarrowBootstrap = this.awaitingInitialReady;
     this.awaitingInitialReady = false;
     try {
-      if (wasNarrowBootstrap) await this.restoreRequestedSize();
+      if (wasNarrowBootstrap) this.restoreRequestedSize();
     } finally {
       this.advanceInitialReady();
     }
+    return Promise.resolve();
   }
-  /** Restore the deferred physical resize; a real failure warns durably. */
-  private async restoreRequestedSize(): Promise<void> {
+  /**
+   * Apply ONLY the deferred physical geometry (PTY + terminal); the requested size
+   * was already durably persisted when `resize` held it, so no re-persist happens
+   * here. Restricting the try to the physical resize means only a genuine native
+   * PTY resize failure — never a redundant persist error after the resize already
+   * succeeded — is reported as staying at bootstrap width (C-API-39). A real
+   * failure warns durably; a closed PTY is a silent no-op inside `restoreHeldSize`.
+   */
+  private restoreRequestedSize(): void {
     try {
-      await super.resize(this.requestedSize);
+      this.restoreHeldSize(this.requestedSize);
     } catch (error) {
-      // A closed PTY is a benign no-op handled in the base resize; reaching here
-      // means a real error, so surface it durably instead of continuing silently.
       // Isolated so a throwing warning/activity listener cannot skip readiness.
       try {
         this.recordWarnings([
@@ -133,8 +143,37 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     try {
       this.submitEvidence("initial_ready");
     } catch {
-      // A persistence/listener failure must not leave queued input starved.
+      // Classify the failure BEFORE releasing the queue: `markReady` drains the
+      // first message and moves the record to `running`, which would mask a
+      // persistence fault. Classification is a bounded, side-effect-free re-persist
+      // of the (still in-memory `ready`) record — it never blocks the release.
+      const reason = this.classifyInitialReadyFailure();
+      // A persistence/listener failure must not leave queued input starved: open
+      // the queue directly, unconditionally, then surface the fallback warning.
       this.controlQueue.markReady();
+      this.warnInitialReadyFallback(reason);
+    }
+  }
+  /**
+   * Classify why recording initial-ready threw by re-persisting the (still `ready`)
+   * record: if it succeeds the original throw was a lifecycle-event LISTENER; if it
+   * throws too, PERSISTENCE itself is failing. Runs before the queue release so the
+   * message-drain `running` write cannot mask a persist fault.
+   */
+  private classifyInitialReadyFailure(): InitialReadyFallbackReason {
+    try {
+      this.persist(this.record);
+      return "listener";
+    } catch {
+      return "persist";
+    }
+  }
+  /** Deliver the fallback diagnostic; isolated so a rogue sink can't re-starve. */
+  private warnInitialReadyFallback(reason: InitialReadyFallbackReason): void {
+    try {
+      this.recordWarnings([initialReadyFallbackWarning(this.elwoodSessionId, reason)]);
+    } catch {
+      // A warning-sink/listener failure must never block readiness release.
     }
   }
   rememberClaudeSessionId(sessionId: string): void {

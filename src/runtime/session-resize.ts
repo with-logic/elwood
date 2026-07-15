@@ -39,3 +39,21 @@ export function persistHeldResize(
 ): void {
   if (pty.resize(terminal.size) !== "closed") persist(size);
 }
+
+/**
+ * Apply a held resize's deferred PHYSICAL geometry (PTY + terminal) at the
+ * initial-ready transition WITHOUT re-persisting — the size was already durably
+ * recorded by `persistHeldResize`. Separating physical restore from persistence
+ * means only a genuine native PTY resize error (not a redundant persist failure)
+ * can be treated as "stayed at bootstrap width"; a closed fd stays a silent no-op
+ * (C-API-39). Returns whether the physical resize applied.
+ */
+export function restoreHeldResize(
+  pty: PtyProcess,
+  terminal: ElwoodTerminal,
+  size: TerminalSize,
+): boolean {
+  if (pty.resize(size) === "closed") return false;
+  terminal.resize(size);
+  return true;
+}

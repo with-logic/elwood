@@ -131,7 +131,28 @@ export type ElwoodWarningEvent =
       readonly requestedRows: number;
       readonly errorCode: ResizeErrorCode;
       readonly raw: string;
+    }
+  | {
+      readonly elwoodSessionId: string;
+      readonly agent: "claude";
+      readonly source: "lifecycle";
+      readonly code: "initial_ready_fallback";
+      readonly severity: "warning";
+      readonly message: string;
+      // Recording the one-shot initial-ready transition threw, so Elwood released
+      // the control queue directly (anti-starvation) while persisted status and
+      // emitted lifecycle events may be stale. Carries only a bounded reason —
+      // never a raw system message or conversation content (§5.3, §5.7, C-API-42).
+      readonly reason: InitialReadyFallbackReason;
+      readonly raw: string;
     };
+
+/**
+ * Why the initial-ready transition fell back to a direct queue release: the
+ * durable status write threw (`persist`), or a lifecycle-event listener threw
+ * after the write (`listener`). Bounded so telemetry never leaks error detail.
+ */
+export type InitialReadyFallbackReason = "persist" | "listener";
 
 /**
  * A rejected startup-prompt PTY write, discriminated by agent so the LABEL is

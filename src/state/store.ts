@@ -18,6 +18,7 @@ import {
 import type { AdapterState, ClaudeLaunchPosture, CodexLaunchPosture } from "./launch-posture.ts";
 import { removeSocketHome, withFreshSocketPath } from "./socket-home.ts";
 import { validateSessionRecord } from "./validate.ts";
+import { applyRecordWriteFault } from "./write-fault.ts";
 
 export type SessionRecord = {
   readonly schemaVersion: 1;
@@ -101,6 +102,7 @@ export function prepareStateDir(
 }
 
 export function writeSessionRecord(record: SessionRecord): void {
+  applyRecordWriteFault(record);
   writePrivateFileAtomic(
     recordPath(record.paths.sessionDir),
     `${JSON.stringify(record, null, 2)}\n`,
@@ -110,11 +112,8 @@ export function writeSessionRecord(record: SessionRecord): void {
 export function readSessionRecord(stateDir: string, id: string): SessionRecord {
   const dir = safeSessionDir(stateDir, id);
   try {
-    const parsed = validateSessionRecord(
-      JSON.parse(readFileSync(recordPath(dir), "utf8")),
-      stateDir,
-      id,
-    );
+    const raw = JSON.parse(readFileSync(recordPath(dir), "utf8"));
+    const parsed = validateSessionRecord(raw, stateDir, id);
     if (!parsed) {
       throw elwoodError("state_corrupt", `Session state is invalid for ${id}`);
     }
