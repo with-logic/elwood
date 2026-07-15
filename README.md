@@ -287,8 +287,10 @@ resolves once the session is `ready` again (or rejects with `interrupt_failed`
 after `timeoutMs`, default 10s). With no turn in flight — an idle `ready`
 session or the pre-readiness startup window — it resolves without touching the
 terminal. Concurrent calls coalesce into a single Escape. On a session that has
-already terminated it rejects with `session_not_running`, like every other
-session method.
+already terminated it rejects with `session_not_running`, like the other input
+and command methods (`sendPrompt`, `sendMessage`, `sendGuidance`, `sendKeys`,
+`resize`, `compact`, `listModels`, `setModel`); `stop`/`kill` are post-exit
+no-ops and `teardown` is idempotent.
 
 `compact` types the adapter's `/compact` command and resolves when the adapter
 reports completion through its `PostCompact` hook.
@@ -305,9 +307,11 @@ changed in other ways during the switch, Elwood leaves it alone and emits a
 
 To enumerate available models **without** holding a session — for example to
 populate a UI selector — use the standalone `listClaudeModels`/`listCodexModels`
-functions. Each starts a throwaway session, lists its models, and always tears
-it down (even on failure), leaving the user's saved default and configuration
-untouched:
+functions. Each starts a throwaway session (from an Elwood-owned temp state
+directory it removes afterward, even if startup fails), lists its models, and
+tears it down. The probe only opens and cancels the picker, so it never applies
+a selection and leaves the user's saved **model default** untouched (Codex's own
+boot-time config bookkeeping is outside Elwood's control):
 
 ```ts
 import { listClaudeModels, listCodexModels } from "elwood";

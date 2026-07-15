@@ -645,11 +645,18 @@ declare function listCodexModels(
 ): Promise<readonly AgentModelOption[]>;
 ```
 
-Each starts a throwaway session (with `autotrust` implied so a workspace-trust
-prompt cannot stall the probe), waits for it to reach first readiness, calls
-`listModels`, and then ALWAYS tears the session down — including when readiness
-or the picker fails — so no probe session, PTY process tree, or state directory
-is leaked. The returned options are exactly the `listModels` rows, so
+Each starts a throwaway session and, as a documented and deliberate exception to
+the opt-in workspace-trust default (§5.1), implies `autotrust: true` so a
+workspace-trust prompt cannot silently stall the probe at `blocked`. This
+exception is scoped: the probe never runs a user turn — it only opens and cancels
+the `/model` picker, then tears the session down — so a trusted workspace's
+integrations are loaded but never exercised. A caller that must NOT auto-trust an
+untrusted workspace should probe from a directory it already trusts. Elwood then
+waits for the session to reach first readiness, calls `listModels`, and ALWAYS
+tears the session down — including when readiness or the picker fails, AND when
+adapter startup itself fails after allocating a state directory — so no probe
+session, PTY process tree, or state directory is ever leaked. The returned
+options are exactly the `listModels` rows, so
 `isCurrent` reflects the throwaway session's launch model and `isDefault`
 reflects the user's configured default. Because the probe opens and cancels the
 picker only (it never selects a row), it leaves the user's saved model default
@@ -2062,7 +2069,7 @@ Each criterion has:
 | C-API-30 | §5.4 | `tool_call` activity carries the tool's input as a serialized `toolInput` and `tool_result` activity carries the tool's output as a serialized `toolOutput`, sourced from the committed transcript for Claude (`tool_use.input`/`tool_result.content`, per C-CLAUDE-15) and from the transcript for Codex (`arguments`/`output`); absent sources leave the field absent. |
 | C-API-31 | §5.3 | The submitting Enter is a separate PTY write after a settle delay, and bounded re-Enters fire while the rendered composer still shows the staged paste, so a first long prompt cannot be left staged-but-unsubmitted. |
 | C-API-40 | §5.3 | `sendPrompt`/`sendMessage`/`sendGuidance` text is sanitized before it is framed as a bracketed paste: the `ESC [ 200~`/`ESC [ 201~` sentinels and all other C0/C1 control characters except tab, newline, and carriage return are removed, so caller/model text cannot escape paste mode and inject live keystrokes (e.g. an Enter that confirms a permission dialog). `sendKeys` is the raw escape hatch and is never sanitized. |
-| C-API-41 | §5.3 | `listClaudeModels(options)`/`listCodexModels(options)` return the available models WITHOUT a caller-held session: each starts a throwaway session (autotrust implied), waits for first readiness, calls `listModels`, and ALWAYS tears the session down afterward — on success, on a readiness/picker failure, and on a start failure — so no probe session, process tree, or state directory is leaked. The rows are exactly `listModels`' output and the probe leaves the user's saved MODEL default untouched (the picker is opened and cancelled, never applied), just as `listModels` does on a live session. |
+| C-API-41 | §5.3 | `listClaudeModels(options)`/`listCodexModels(options)` return the available models WITHOUT a caller-held session: each starts a throwaway session with `autotrust: true` (a documented §5.1 exception — the probe only opens/cancels the picker and never runs a turn), waits for first readiness, calls `listModels`, and ALWAYS removes ALL probe state afterward — on success, on a readiness/picker failure, AND on an adapter start failure that has already allocated a state directory or runtime files — so no probe session, process tree, socket, or state directory is leaked. A readiness/picker error surfaces to the caller with a best-effort teardown attached; the rows are exactly `listModels`' output and the probe leaves the user's saved MODEL default untouched (the picker is opened and cancelled, never applied), just as `listModels` does on a live session. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 

@@ -55,7 +55,10 @@ export function emitSettledStartupOutcomes<A extends "claude" | "codex">(
   emitter: StartupActivityEmitter,
   agent: A,
   elwoodSessionId: string,
-  settledOutcomes: readonly SettledStartupOutcome<A>[],
+  // `NoInfer` blocks inference of `A` from the outcomes, so `A` is pinned by the
+  // `agent` argument alone. Passing Codex outcomes with `agent: "claude"` no
+  // longer widens `A` to the union and cannot construct a cross-agent warning.
+  settledOutcomes: readonly SettledStartupOutcome<NoInfer<A>>[],
   warnings: StartupWarningSink | undefined,
 ): void {
   for (const settledOutcome of settledOutcomes) {
@@ -83,6 +86,9 @@ export function emitSettledStartupOutcomes<A extends "claude" | "codex">(
   }
 }
 
+// `agent` and `outcome` are always the SAME concrete `A` here — the caller
+// (`emitSettledStartupOutcomes`) already pins `A` via NoInfer, so this internal
+// helper needs no extra guard and its correlation is enforced by construction.
 function writeFailedWarning<A extends "claude" | "codex">(
   agent: A,
   elwoodSessionId: string,

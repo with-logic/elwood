@@ -13,10 +13,15 @@ import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers
 
 afterEach(resetFakes);
 
-/** The probe's session id is a random UUID; discover it from its state dir. */
-function probeSessionId(stateDir: string): string {
+/**
+ * The probe creates its OWN temp state dir under the given parent, then a session
+ * under a random UUID. Discover both so the fake can reach the session's bridge.
+ */
+function probeState(parent: string): { stateDir: string; id: string } {
+  const [owned] = readdirSync(parent);
+  const stateDir = join(parent, owned as string);
   const [id] = readdirSync(join(stateDir, "sessions"));
-  return id as string;
+  return { stateDir, id: id as string };
 }
 
 /** Poll a condition without `expect` so it can live in a shared helper. */
@@ -29,12 +34,13 @@ async function until(check: () => boolean): Promise<void> {
 }
 
 /** Drive the fake probe through readiness, the rendered picker, and its close. */
-async function driveProbe(cwd: string, stateDir: string): Promise<void> {
+async function driveProbe(cwd: string, parent: string): Promise<void> {
   await until(() => ptys.length === 1);
   const pty = ptys[0]!;
+  const { stateDir, id } = probeState(parent);
   // Reach readiness via the SessionStart hook (C-API-28), using the probe's state dir.
   await pty.dispatchHook(
-    probeSessionId(stateDir),
+    id,
     {
       hook_event_name: "SessionStart",
       session_id: "codex-1",

@@ -3,11 +3,11 @@
  * Covers PRD §5.3 and C-API-41.
  */
 
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { listClaudeModels } from "../../src/index.ts";
-import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
+import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { asScreen, claudePicker } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
@@ -22,10 +22,15 @@ const instructionsLoaded = (cwd: string) => ({
   load_reason: "session_start",
 });
 
-/** The probe's session id is a random UUID; discover it from its state dir. */
-function probeSessionId(stateDir: string): string {
+/**
+ * The probe creates its OWN temp state dir under the given parent, then a session
+ * under a random UUID. Discover both so the fake can reach the session's bridge.
+ */
+function probeState(parent: string): { stateDir: string; id: string } {
+  const [owned] = readdirSync(parent);
+  const stateDir = join(parent, owned as string);
   const [id] = readdirSync(join(stateDir, "sessions"));
-  return id as string;
+  return { stateDir, id: id as string };
 }
 
 /** Poll a condition without `expect` so it can live in a shared helper. */
@@ -38,12 +43,13 @@ async function until(check: () => boolean): Promise<void> {
 }
 
 /** Drive the fake probe through readiness, the rendered picker, and its close. */
-async function driveProbe(cwd: string, stateDir: string): Promise<void> {
+async function driveProbe(cwd: string, parent: string): Promise<void> {
   // The probe's PTY exists only once startClaude resolves inside listClaudeModels.
   await until(() => ptys.length === 1);
   const pty = ptys[0]!;
+  const { stateDir, id } = probeState(parent);
   // Reach readiness so the probe leaves `waitForStatus(ready)`.
-  await pty.dispatchHook(probeSessionId(stateDir), instructionsLoaded(cwd), stateDir);
+  await pty.dispatchHook(id, instructionsLoaded(cwd), stateDir);
   // listModels opens the picker; feed the rendered rows, then the closed screen.
   await until(() => pty.writes.includes("/model"));
   pty.emitData(asScreen(claudePicker));
@@ -95,5 +101,22 @@ describe("listClaudeModels", () => {
       code: "claude_not_found",
     });
     expect(ptys).toHaveLength(0);
+  });
+
+  test("C-API-41 a start failure AFTER state allocation still removes the probe state dir", async () => {
+    installFakes();
+    const cwd = tempDir();
+    const parent = join(cwd, "state");
+    // The PTY factory throws AFTER startClaude has written the session directory
+    // and runtime files — the exact "already allocated" window C-API-41 must clean.
+    setPtyFactoryForTests(() => {
+      throw new Error("pty failed");
+    });
+    await expect(listClaudeModels({ cwd, stateDir: parent })).rejects.toMatchObject({
+      code: "pty_start_failed",
+    });
+    // The probe removed its OWNED temp dir even though startup failed mid-way, so
+    // nothing it allocated is left under the caller's stateDir (no leak).
+    expect(existsSync(parent) ? readdirSync(parent) : []).toHaveLength(0);
   });
 });

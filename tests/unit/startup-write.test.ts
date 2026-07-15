@@ -20,6 +20,17 @@ function sink(): StartupWarningSink & { warnings: ElwoodWarningEvent[] } {
 }
 
 describe("emitSettledStartupOutcomes", () => {
+  test("C-CLAUDE-16 pairing an agent with the OTHER agent's outcomes does not compile", () => {
+    const codexOutcomes: readonly SettledStartupOutcome<"codex">[] = [
+      { outcome: { kind: "answered", prompt: "update", input: "2" }, settled: Promise.resolve() },
+    ];
+    // NoInfer pins A to `agent`, so a Codex outcome cannot be passed with
+    // `agent: "claude"` — this would otherwise construct a cross-agent warning.
+    // @ts-expect-error cross-agent pairing is rejected at compile time.
+    emitSettledStartupOutcomes({ emit: collect().emit }, "claude", "s1", codexOutcomes, sink());
+    expect(true).toBe(true);
+  });
+
   test("C-CLAUDE-14 a write-less option_pending outcome emits its attention activity immediately", () => {
     const { events, emit } = collect();
     const outcomes: readonly SettledStartupOutcome<"claude">[] = [

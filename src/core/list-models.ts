@@ -3,6 +3,7 @@
  * and always tear it down. Implements PRD §5.3 and C-API-41.
  */
 
+import type { ElwoodAgentSession } from "./agent-session.ts";
 import type { AgentModelOption } from "./model-rows.ts";
 
 /** Launch-relevant options for a throwaway model-listing probe (C-API-41). */
@@ -16,27 +17,59 @@ export type ListModelsOptions = {
   readonly timeoutMs?: number;
 };
 
-/** The throwaway session surface a probe drives: wait for ready, list, tear down. */
-type ProbeSession = {
-  waitForStatus(match: (status: string) => boolean, timeoutMs?: number): Promise<unknown>;
-  listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]>;
-  teardown(): Promise<void>;
+/**
+ * The throwaway session surface a probe drives: wait for ready, list, tear down.
+ * Derived from the public session contract so it uses the SAME closed
+ * `ElwoodSessionStatus` type and cannot drift from the real methods.
+ */
+type ProbeSession = Pick<ElwoodAgentSession, "waitForStatus" | "listModels" | "teardown">;
+
+/** Adapter hooks for a probe: how to start the session and how to remove ALL its state. */
+export type ProbeAdapter<S extends ProbeSession> = {
+  /** Starts the throwaway session against the probe's owned state directory. */
+  readonly start: () => Promise<S>;
+  /**
+   * Removes ALL probe state (its owned temp directory and everything under it).
+   * Runs on EVERY outcome — success, readiness/picker failure, AND a start failure
+   * that already allocated a state directory or runtime files — so nothing leaks
+   * regardless of how far startup got (C-API-41). Best-effort and non-throwing.
+   */
+  readonly removeState: () => void;
 };
 
 /**
- * Runs a throwaway session to its first readiness, lists its models, and ALWAYS
- * tears it down — on success, on a readiness/picker failure, and (via the caller's
- * `start` rejecting) on a start failure — so nothing is leaked (C-API-41). The
- * probe only opens and cancels the picker, so the user's default and config stay
- * untouched. A teardown failure never masks a real list/readiness error.
+ * Runs a throwaway session to its first readiness, lists its models, and cleans
+ * up EVERYTHING it allocated — the session (via `teardown`) and its owned state
+ * directory (via `removeState`) — on every outcome, so nothing is leaked (C-API-41).
+ * The probe only opens and cancels the picker, so the user's default stays
+ * untouched. A teardown/cleanup failure never masks a real list/readiness error.
  */
 export async function probeModels<S extends ProbeSession>(
-  start: () => Promise<S>,
+  adapter: ProbeAdapter<S>,
   options: ListModelsOptions,
 ): Promise<readonly AgentModelOption[]> {
-  // A start failure rejects here BEFORE any session exists, so there is nothing
-  // to tear down: the adapter's own start error surfaces to the caller as-is.
-  const session = await start();
+  let session: S;
+  try {
+    session = await adapter.start();
+  } catch (error) {
+    // Adapter startup can allocate a state directory / runtime files BEFORE the
+    // bridge or PTY fails, so "no returned session" does not mean "nothing
+    // allocated": remove the owned state directory before rethrowing (C-API-41).
+    adapter.removeState();
+    throw error;
+  }
+  try {
+    return await runProbe(session, options);
+  } finally {
+    // Always sweep the owned state directory, even after a successful teardown.
+    adapter.removeState();
+  }
+}
+
+async function runProbe<S extends ProbeSession>(
+  session: S,
+  options: ListModelsOptions,
+): Promise<readonly AgentModelOption[]> {
   let models: readonly AgentModelOption[];
   try {
     await session.waitForStatus((status) => status === "ready");

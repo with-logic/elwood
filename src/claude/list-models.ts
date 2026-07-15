@@ -4,28 +4,34 @@
 
 import { type ListModelsOptions, probeModels } from "../core/list-models.ts";
 import type { AgentModelOption } from "../core/model-rows.ts";
+import { ownedProbeStateDir } from "../core/probe-state.ts";
 import { startClaude } from "./session.ts";
 
 /**
  * Lists the models available to Claude WITHOUT a caller-held session: starts a
- * throwaway session (autotrust implied so a trust prompt cannot stall the probe),
- * lists its models, and always tears it down (C-API-41). The picker is opened and
- * cancelled only, so the user's saved default and configuration stay untouched.
+ * throwaway session (autotrust implied per C-API-41 so a trust prompt cannot stall
+ * the probe), lists its models, and always cleans up — the session AND its owned
+ * temp state directory, even if startup fails after allocating it. The picker is
+ * opened and cancelled only, so the user's saved default stays untouched.
  */
 export function listClaudeModels(options: ListModelsOptions): Promise<readonly AgentModelOption[]> {
+  const state = ownedProbeStateDir("claude", options.stateDir);
   return probeModels(
-    () =>
-      startClaude({
-        cwd: options.cwd,
-        autotrust: true,
-        hooks: {},
-        ...(options.stateDir === undefined ? {} : { stateDir: options.stateDir }),
-        ...(options.autoupdate === undefined ? {} : { autoupdate: options.autoupdate }),
-        ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
-        ...(options.strictVersionCheck === undefined
-          ? {}
-          : { strictVersionCheck: options.strictVersionCheck }),
-      }),
+    {
+      start: () =>
+        startClaude({
+          cwd: options.cwd,
+          stateDir: state.dir,
+          autotrust: true,
+          hooks: {},
+          ...(options.autoupdate === undefined ? {} : { autoupdate: options.autoupdate }),
+          ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
+          ...(options.strictVersionCheck === undefined
+            ? {}
+            : { strictVersionCheck: options.strictVersionCheck }),
+        }),
+      removeState: state.remove,
+    },
     options,
   );
 }
