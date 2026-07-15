@@ -18,7 +18,6 @@ export type ListModelsOptions = {
 
 /** The throwaway session surface a probe drives: wait for ready, list, tear down. */
 type ProbeSession = {
-  readonly status: string;
   waitForStatus(match: (status: string) => boolean, timeoutMs?: number): Promise<unknown>;
   listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]>;
   teardown(): Promise<void>;
