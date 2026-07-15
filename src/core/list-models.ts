@@ -4,6 +4,7 @@
  */
 
 import type { ElwoodAgentSession } from "./agent-session.ts";
+import { errnoCode, toError } from "./errors.ts";
 import type { AgentModelOption } from "./model-rows.ts";
 
 /** Launch-relevant options for a throwaway model-listing probe (C-API-41). */
@@ -77,13 +78,36 @@ async function runProbe<S extends ProbeSession>(
       options.timeoutMs === undefined ? undefined : { timeoutMs: options.timeoutMs },
     );
   } catch (error) {
-    // The list/readiness error is what the caller must see; teardown is
-    // best-effort here so its own failure cannot mask the real one.
-    await session.teardown().catch(() => undefined);
+    // The list/readiness error is what the caller must see, so it stays the thrown
+    // error and teardown never masks it. But a FAILED teardown here can leak a
+    // probe process tree, so surface it as a bounded `cause` rather than silently
+    // discarding it: the caller keeps the primary error AND learns of the leak.
+    await teardownWithoutMasking(session, toError(error));
     throw error;
   }
   // The clean path DOES surface a genuine teardown failure — a leaked probe
   // session is a real defect the caller should learn about (C-API-41).
   await session.teardown();
   return models;
+}
+
+/**
+ * Tear down the probe on the error path without masking the primary error. A
+ * rejecting teardown can leave a probe process tree alive, so instead of
+ * discarding it we attach a bounded diagnostic (the teardown error's allowlisted
+ * errno, or its name) to the primary error's `cause` — visible to the caller,
+ * never overriding the readiness/picker error that actually explains the failure.
+ */
+async function teardownWithoutMasking(session: ProbeSession, primary: Error): Promise<void> {
+  try {
+    await session.teardown();
+  } catch (teardownError) {
+    // `cause` may already be set by the primary error; only fill it when empty so
+    // we never clobber a more specific upstream cause. The token is bounded — an
+    // errno like `EPERM` or the error's constructor name — never a raw message.
+    if (primary.cause === undefined) {
+      const token = errnoCode(teardownError) ?? toError(teardownError).name;
+      primary.cause = `probe_teardown_failed:${token}`;
+    }
+  }
 }
