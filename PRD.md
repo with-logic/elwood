@@ -73,8 +73,12 @@ and lets a user inspect the actual terminal when needed.
 - Using Claude Code print mode (`claude -p`) as the primary control mechanism.
 - Cloud execution, remote hosts, or multi-machine session sync.
 - Full visual parsing of Claude's TUI as the source of truth.
-- Installing, updating, or authenticating Claude Code or Codex. Elwood assumes
-  `claude`/`codex` is installed, on `PATH`, and already authenticated.
+- Installing or updating Claude Code or Codex, or performing the INITIAL
+  authentication for a fresh install. Elwood assumes `claude`/`codex` is
+  installed, on `PATH`, and initially authenticated. Elwood DOES detect a lapsed
+  Claude login and can drive the interactive `/login` re-authentication flow to
+  recover a session whose login expired mid-run (C-CLAUDE-17/18, C-API-43); it
+  never performs the human browser sign-in itself.
 - A first-class multi-session manager. Parent apps own orchestration across
   many sessions.
 - Durable audit logging of terminal or hook activity.
@@ -419,12 +423,49 @@ interface ClaudeSession {
   compact(options?: { readonly timeoutMs?: number }): Promise<void>;
   listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]>;
   setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void>;
+  // Claude-only re-authentication recovery; NOT part of CodexSession or the
+  // common ElwoodAgentSession surface (C-API-43).
+  login(options: ClaudeLoginOptions): Promise<void>;
 
   stop(): Promise<void>;
   kill(): Promise<void>;
   teardown(): Promise<void>;
 }
+
+type ClaudeLoginMethod = "claudeai" | "console" | "third_party";
+
+interface ClaudeLoginOptions {
+  // Which method to pick from the "Select login method" list if it renders;
+  // defaults to "claudeai". Skipped when the list never appears.
+  readonly method?: ClaudeLoginMethod;
+  // Called with the (validated https, approved-host) browser authorization URL
+  // once it is scraped off screen, so the caller can open/show it. Optional.
+  readonly onAuthUrl?: (url: string) => void;
+  // REQUIRED for the default account flow: called when the CLI reaches its
+  // "paste code here" prompt; the returned code is validated then submitted.
+  readonly provideCode: () => string | Promise<string>;
+  readonly timeoutMs?: number; // default 300000
+}
 ```
+
+`login` is Claude-only and drives the interactive `/login` flow to recover a
+session whose login lapsed (C-CLAUDE-18); it is NOT on `CodexSession` or the
+common `ElwoodAgentSession`. It runs as an EXCLUSIVE control-queue transaction:
+it serializes behind and ahead of all other queued operations and no message,
+prompt, model-picker command, or second `login` may interleave with its picker
+keys, authorization code, or Enters. It writes exactly one library-controlled
+Enter after a submitted code, never sends raw keystrokes into a blocking dialog,
+and validates both untrusted inputs — the scraped URL (rejected unless `https:`
+on an approved Anthropic host with no embedded credentials) and the human code
+(rejected as `login_failed` if empty, oversized, or control-bearing). Screen
+stages are recognized only when they NEWLY appear after this `/login` submission,
+so stale on-screen text cannot settle the wrong attempt or disclose the code. It
+resolves only after the CLI reports success AND a fresh `ready` transition proves
+the session is usable again; it rejects with `login_failed` on an explicit
+failure/invalid code or a failing `provideCode` callback, `login_timeout` after
+`timeoutMs`, and `session_not_running` if the session terminates first or is
+already terminal. A flow that self-completes without a code prompt never calls
+`provideCode`.
 
 `sendPrompt` submits a user prompt through the terminal input path, as if a
 human typed or pasted it into Claude and pressed Enter. It MUST support
@@ -1099,6 +1140,21 @@ type ElwoodWarningEvent =
       readonly message: string;
       readonly mcpServerName: string;
       readonly recoveryCommand: string;
+      readonly raw: string;
+    }
+  | {
+      // Claude's login lapsed AFTER the session was usable (C-CLAUDE-18). Content-
+      // free: the message and raw are FIXED canonical strings and the recovery
+      // command is the literal "/login"; no field carries banner or session text.
+      // De-duplicates like every warning, so a session warns at most once for its
+      // login expiring. The session is left alive for in-place recovery via `login`.
+      readonly elwoodSessionId: string;
+      readonly agent: "claude";
+      readonly source: "terminal";
+      readonly code: "login_expired";
+      readonly severity: "warning";
+      readonly message: string;
+      readonly recoveryCommand: "/login";
       readonly raw: string;
     }
   | {

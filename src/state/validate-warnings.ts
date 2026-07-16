@@ -7,6 +7,11 @@
  * fails to compile until it is validated here.
  */
 
+import {
+  LOGIN_EXPIRED_MESSAGE,
+  LOGIN_EXPIRED_RAW,
+  LOGIN_RECOVERY_COMMAND,
+} from "../claude/login-expired.ts";
 import { isStartupPromptLabelForAgent } from "../core/startup-automation.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import {
@@ -51,10 +56,18 @@ const warningValidators = {
     terminalBase(value) &&
     isString(value["mcpServerName"]) &&
     isString(value["recoveryCommand"]),
-  // Content-free auth diagnostic: only the bounded recovery command (`/login`),
-  // never a raw banner or session content (§5.3, §5.7, C-CLAUDE-18).
+  // Content-free auth diagnostic: STRICT — the message/raw must be the exact
+  // canonical constants and no unexpected (content-bearing) key may be present, so
+  // a resumed warning can never smuggle a raw banner or conversation text back to
+  // disk (§5.3, §5.7, §8.3, C-CLAUDE-18).
   login_expired: (value) =>
-    value["agent"] === "claude" && terminalBase(value) && value["recoveryCommand"] === "/login",
+    value["agent"] === "claude" &&
+    value["source"] === "terminal" &&
+    isString(value["elwoodSessionId"]) &&
+    value["recoveryCommand"] === LOGIN_RECOVERY_COMMAND &&
+    value["message"] === LOGIN_EXPIRED_MESSAGE &&
+    value["raw"] === LOGIN_EXPIRED_RAW &&
+    hasOnlyKeys(value, LOGIN_EXPIRED_KEYS),
   mcp_startup_incomplete: (value) =>
     value["agent"] === "codex" &&
     terminalBase(value) &&
@@ -122,6 +135,24 @@ const warningValidators = {
     (value["reason"] === "persist" || value["reason"] === "listener") &&
     isString(value["raw"]),
 } satisfies Record<ElwoodWarningEvent["code"], WarningValidator>;
+
+/** The complete set of keys a `login_expired` warning may carry (no extras). */
+const LOGIN_EXPIRED_KEYS: readonly string[] = [
+  "elwoodSessionId",
+  "agent",
+  "source",
+  "code",
+  "severity",
+  "message",
+  "recoveryCommand",
+  "raw",
+];
+
+/** True when `value` has exactly `keys` and no additional own properties. */
+function hasOnlyKeys(value: WarningFields, keys: readonly string[]): boolean {
+  const own = Object.keys(value);
+  return own.length === keys.length && own.every((k) => keys.includes(k));
+}
 
 /** A persisted PTY leader process-group id: a real pid, so a safe integer > 1. */
 function isProcessGroupId(value: unknown): boolean {

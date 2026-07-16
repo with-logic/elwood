@@ -8,26 +8,30 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
+import { isClaudeReauthRequiredText } from "../../src/claude/login/expiry-screen.ts";
 import {
   LOGIN_RECOVERY_COMMAND,
   LoginExpiredWatcher,
   loginExpiredWarning,
 } from "../../src/claude/login-expired.ts";
-import { isLoginExpiredText } from "../../src/runtime/startup.ts";
 import { createSessionRecord } from "../../src/state/store.ts";
 import { validateSessionRecord } from "../../src/state/validate.ts";
 
 const id = "login-expired-target";
 
-describe("isLoginExpiredText", () => {
+describe("isClaudeReauthRequiredText", () => {
   test("matches the CLI's lapsed/revoked banners and ignores unrelated login text", () => {
-    expect(isLoginExpiredText("Login expired\n Please run /login")).toBe(true);
-    expect(isLoginExpiredText("Session expired. Please run /login to sign in again.")).toBe(true);
-    expect(isLoginExpiredText("OAuth token revoked\n Please run /login")).toBe(true);
-    expect(isLoginExpiredText("Run /login to sign in with your claude.ai account")).toBe(true);
+    expect(isClaudeReauthRequiredText("Login expired\n Please run /login")).toBe(true);
+    expect(isClaudeReauthRequiredText("Session expired. Please run /login to sign in again.")).toBe(
+      true,
+    );
+    expect(isClaudeReauthRequiredText("OAuth token revoked\n Please run /login")).toBe(true);
+    expect(isClaudeReauthRequiredText("Run /login to sign in with your claude.ai account")).toBe(
+      true,
+    );
     // No /login recovery directive → not an expiry banner.
-    expect(isLoginExpiredText("login page loaded")).toBe(false);
-    expect(isLoginExpiredText("expired certificate warning")).toBe(false);
+    expect(isClaudeReauthRequiredText("login page loaded")).toBe(false);
+    expect(isClaudeReauthRequiredText("expired certificate warning")).toBe(false);
   });
 });
 
@@ -76,5 +80,29 @@ describe("C-CLAUDE-18 login_expired validation round-trip", () => {
         validateSessionRecord({ ...record, warnings: [{ ...warning, ...bad }] }, root, id),
       ).toBeNull();
     }
+  });
+
+  test("C-CLAUDE-18 STRICT: a non-canonical message/raw or ANY extra key is rejected", () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-login-strict-"));
+    const record = JSON.parse(
+      JSON.stringify(createSessionRecord({ stateDir: root, cwd: root, id })),
+    ) as Record<string, unknown>;
+    const warning = loginExpiredWarning(id);
+    const validate = (w: Record<string, unknown>) =>
+      validateSessionRecord({ ...record, warnings: [w] }, root, id);
+
+    // The message/raw must be the EXACT canonical constants: a resumed warning may
+    // not smuggle a raw banner or conversation text back to disk.
+    expect(
+      validate({ ...warning, message: "Your login expired: <leaked banner text>" }),
+    ).toBeNull();
+    expect(validate({ ...warning, raw: "login_expired recovery=/login extra=leak" })).toBeNull();
+    // A well-formed warning with ONE unexpected (content-bearing) property fails —
+    // the validator requires exactly the canonical key set, no extras.
+    expect(validate({ ...warning, bannerText: "Login expired\n Please run /login" })).toBeNull();
+    expect(validate({ ...warning, note: "" })).toBeNull();
+    // Removing a required key also fails (exact-key check is symmetric).
+    const { raw: _raw, ...missingRaw } = warning;
+    expect(validate(missingRaw as Record<string, unknown>)).toBeNull();
   });
 });

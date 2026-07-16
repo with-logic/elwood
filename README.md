@@ -324,22 +324,43 @@ human copying an authorization code from a browser, `login` cannot complete
 fully unattended — it brackets the human step:
 
 ```ts
-session.on("warning", async (w) => {
-  if (w.code !== "login_expired") return;
-  await session.login({
-    onAuthUrl: (url) => openInBrowser(url), // optional: the browser sign-in URL
-    provideCode: () => promptHumanForCode(), // required: the code from the browser
-    // method defaults to "claudeai"; timeoutMs defaults to 300000
-  });
+// Keep the event listener SYNCHRONOUS (TypedEmitter ignores returned promises,
+// so an `async` listener's rejection would be unhandled). Launch recovery from a
+// separate function with its own catch.
+session.on("warning", (w) => {
+  if (w.code === "login_expired") void recoverLogin();
 });
+
+async function recoverLogin() {
+  try {
+    await session.login({
+      onAuthUrl: (url) => openInBrowser(url), // optional: the browser sign-in URL
+      provideCode: () => promptHumanForCode(), // required: the code from the browser
+      // method defaults to "claudeai"; timeoutMs defaults to 300000
+    });
+  } catch (err) {
+    // login_failed / login_timeout / session_not_running — decide whether to
+    // retry, tear down, or alert a human. Never rethrow into the event loop.
+    reportLoginFailure(err);
+  }
+}
 ```
 
-`login` submits `/login`, selects the login `method` if the CLI shows its
-method picker, reports the authorization URL via `onAuthUrl`, and — when the CLI
-asks for a code — calls `provideCode` and submits the returned code. It resolves
-once the CLI reports success, and rejects with `login_failed` (an explicit
-failure or an invalid code), `login_timeout`, or `session_not_running`. A flow
-that self-completes without prompting for a code never calls `provideCode`.
+`login` runs as an exclusive transaction: it serializes with every other
+control operation, so nothing interleaves with its picker keys, the secret code,
+or its Enters, and it never sends keystrokes into a blocking dialog. It submits
+`/login`, selects the login `method` if the CLI shows its method picker, reports
+a validated authorization URL (only `https:` on an approved Anthropic host) via
+`onAuthUrl`, and — when the CLI asks for a code — calls `provideCode`, validates
+the returned code (rejecting empty/oversized/control-bearing values), and
+submits it followed by exactly one library-controlled Enter. Screen stages are
+recognized only when they NEWLY appear after the `/login` submission, so stale
+on-screen text can't drive the flow. It resolves only after the CLI reports
+success **and** the session reaches a fresh `ready` state (proving renewed
+usability, not just a banner), and rejects with `login_failed` (an explicit
+failure, an invalid code, or a failing `provideCode`), `login_timeout`, or
+`session_not_running`. A flow that self-completes without prompting for a code
+never calls `provideCode`.
 
 To enumerate available models **without** holding a session — for example to
 populate a UI selector — use the standalone `listClaudeModels`/`listCodexModels`

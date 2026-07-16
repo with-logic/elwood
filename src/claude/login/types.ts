@@ -2,7 +2,15 @@
  * Public option types for the Claude `/login` recovery flow (PRD §5.3, C-API-43).
  */
 
-/** Which login method to pick from the "Select login method" list. */
+/**
+ * Which entry to select from Claude's "Select login method" list. The literals
+ * map to the CLI's menu rows (labels as rendered by claude v2.1.x):
+ * - `claudeai` → "Claude account with subscription" (Pro/Max/Team/Enterprise).
+ * - `console` → "Anthropic Console account" (API usage billing).
+ * - `third_party` → "3rd-party platform" (Amazon Bedrock / Microsoft Foundry /
+ *   Vertex AI). Selecting it only picks that menu row; the subsequent platform
+ *   configuration is outside Elwood's scope.
+ */
 export type ClaudeLoginMethod = "claudeai" | "console" | "third_party";
 
 export type ClaudeLoginOptions = {
@@ -27,13 +35,6 @@ export type ClaudeLoginOptions = {
   readonly provideCode: () => string | Promise<string>;
   /** Bounds the whole flow; defaults to 300000 ms. */
   readonly timeoutMs?: number;
-};
-
-/** Zero-based row index each method occupies in the "Select login method" list. */
-export const loginMethodRow: Readonly<Record<ClaudeLoginMethod, number>> = {
-  claudeai: 0,
-  console: 1,
-  third_party: 2,
 };
 
 export const defaultLoginTimeoutMs = 300_000;

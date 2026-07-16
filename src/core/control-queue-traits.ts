@@ -42,12 +42,31 @@ export function dispatchesWhileNotReady(policy: ReadinessPolicy, mayBypass: bool
   }
 }
 
-/** Whether a queued operation may dispatch even though the session is not ready. */
-export function overtakesReadiness(op: {
+/** The bypass-eligibility shape `overtakesReadiness`/`nextDispatchIndex` read. */
+export type OvertakeCandidate = {
   readonly kind: ControlOperationKind;
   readonly mayBypassReadiness: boolean;
-}): boolean {
+};
+
+/** Whether a queued operation may dispatch even though the session is not ready. */
+export function overtakesReadiness(op: OvertakeCandidate): boolean {
   return dispatchesWhileNotReady(controlOperationTraits[op.kind].readiness, op.mayBypassReadiness);
+}
+
+/**
+ * Index of the next operation to dispatch, or -1. Head dispatches when ready;
+ * otherwise the first overtaker goes. `bypassable === 0` skips the scan when no
+ * queued op can dispatch while not ready (keeps a message backlog amortized O(1)).
+ */
+export function nextDispatchIndex(
+  queue: readonly OvertakeCandidate[],
+  ready: boolean,
+  bypassable: number,
+): number {
+  if (ready) return 0;
+  if (overtakesReadiness(queue[0] as OvertakeCandidate)) return 0;
+  if (bypassable === 0) return -1;
+  return queue.findIndex(overtakesReadiness);
 }
 
 export type ControlOperationTraits = {

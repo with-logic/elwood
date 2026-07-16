@@ -44,10 +44,10 @@ export type ElwoodWarningEvent =
       readonly message: string;
       // A Claude session's login lapsed/was revoked AFTER it was already usable,
       // so it can no longer act until re-authenticated. Content-free: only the
-      // bounded recovery command (`/login`) — never a raw banner or session
+      // FIXED recovery command literal `/login` — never a raw banner or session
       // content. The session stays alive so the caller can recover in place via
       // `session.login()`, tear down, or re-auth out of band (§5.3, C-CLAUDE-18).
-      readonly recoveryCommand: string;
+      readonly recoveryCommand: "/login";
       readonly raw: string;
     }
   | {

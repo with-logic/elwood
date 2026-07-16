@@ -22,7 +22,7 @@ import { terminalStatuses } from "../runtime/session-status.ts";
 import { type SessionRecord, updateSessionResumeId } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { initialReadyFallbackWarning } from "./initial-ready-fallback.ts";
-import { driveLogin } from "./login/driver.ts";
+import { runSessionLogin } from "./login/session-login.ts";
 import type { ClaudeLoginOptions } from "./login/types.ts";
 import { LoginExpiredWatcher, loginExpiredWarning } from "./login-expired.ts";
 import { claudeModelPicker } from "./model-picker.ts";
@@ -40,10 +40,8 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   private readonly bridge: HookBridge;
   private readonly emitter: TypedEmitter;
   private requestedSize: TerminalSize;
-  // Only a session requested BELOW the 100-column startup floor bootstraps wide
-  // and defers its restore to readiness (C-API-36). A session requested at 100+
-  // columns already starts at its exact size, so its pre-ready resizes apply
-  // immediately like any other resize — nothing to hold or restore.
+  // Only a session requested BELOW the 100-column startup floor bootstraps wide and
+  // defers its restore to readiness (C-API-36); a 100+ session resizes immediately.
   private awaitingInitialReady: boolean;
   // Whether the one-shot initial-ready transition has already run (idempotent).
   private initialReadyDone = false;
@@ -83,28 +81,25 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   protected stagedPaste(screen: string): boolean {
     return /\[Pasted text/.test(screen);
   }
-  /** A narrow session holds the PHYSICAL resize until readiness but persists the
-   * requested size now, so a pre-ready exit resumes at the latest geometry, not the
-   * bootstrap width. A wide session (100+ cols) never deferred; it resizes now. */
+  // A narrow session holds the PHYSICAL resize until readiness but persists the
+  // requested size now (a pre-ready exit resumes at the latest geometry, not the
+  // bootstrap width). A wide session (100+ cols) never deferred; it resizes now.
   override resize(size: TerminalSize): Promise<void> {
     if (!(this.awaitingInitialReady && !terminalStatuses.has(this.status))) {
       this.requestedSize = size;
       return super.resize(size);
     }
-    // Non-terminal by the guard above: durably record the size now (unless the
-    // pty is racing exit), and defer the physical resize to readiness. `size`
-    // becomes the requested geometry ONLY if the held persist succeeds — a
-    // rejected persist (e.g. a throwing pty-liveness probe) must NOT be applied
-    // at readiness, and the caller sees the rejection (C-API-25/C-API-39).
+    // Non-terminal here: record the size now (unless the pty is racing exit) and
+    // defer the physical resize. `size` becomes the requested geometry ONLY if the
+    // held persist succeeds; a rejected persist rejects to the caller (C-API-25/39).
     return Promise.resolve().then(() => {
       this.persistHeldSize(size);
       this.requestedSize = size;
     });
   }
-  /** Restore the deferred geometry (narrow sessions only) then advance readiness.
-   * Readiness advancement MUST run even if the restore/its warning throws, or a
-   * live session's queued messages starve forever (C-API-39, C-API-36). Idempotent.
-   * Keeps a Promise return so hook and deadline call sites can `void`/`await` it. */
+  // Restore deferred geometry (narrow only) then advance readiness — which MUST run
+  // even if the restore/warning throws, or queued messages starve (C-API-39/36).
+  // Idempotent; keeps a Promise return so hook + deadline sites `void`/`await` it.
   completeInitialReady(): Promise<void> {
     if (this.initialReadyDone) return Promise.resolve();
     this.initialReadyDone = true;
@@ -117,10 +112,9 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     }
     return Promise.resolve();
   }
-  // Apply ONLY the deferred physical geometry (already durably persisted by
-  // `resize`), so only a genuine native PTY resize failure — not a redundant
-  // persist — reports as staying at bootstrap width (C-API-39). A closed PTY is a
-  // silent no-op inside `restoreHeldSize`; a real failure warns durably.
+  // Apply ONLY the deferred physical geometry (already persisted by `resize`), so
+  // only a genuine native resize failure — not a redundant persist — reports as
+  // staying at bootstrap width (C-API-39). Closed PTY = no-op; real failure warns.
   private restoreRequestedSize(): void {
     try {
       this.restoreHeldSize(this.requestedSize);
@@ -140,9 +134,8 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     try {
       this.submitEvidence("initial_ready");
     } catch {
-      // Classify BEFORE releasing: `markReady` drains the first message to
-      // `running`, masking a persist fault. Then release unconditionally (input
-      // must not starve) and surface the fallback warning.
+      // Classify BEFORE releasing (`markReady` drains to `running`, masking a
+      // persist fault), then release unconditionally and warn.
       const reason = this.classifyInitialReadyFailure();
       this.controlQueue.markReady();
       this.warnInitialReadyFallback(reason);
@@ -176,22 +169,28 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
       activity: (event) => this.emitter.emit("activity", event),
     });
   }
-  // Surface a mid-session login-expiry banner once (C-CLAUDE-18). Gated on prior
-  // readiness — the startup form of the banner is handled fatally upstream — and
-  // edge-detected + key-deduped so a persistent banner warns at most once. Alive.
+  // Surface a mid-session login-expiry banner once (C-CLAUDE-18): gated on prior
+  // readiness (startup handles it fatally), edge-detected + key-deduped. FULLY
+  // non-throwing — it runs in the frame callback's detached continuation, so a
+  // write/listener failure must not become an unhandled rejection or skip
+  // `terminal:data`. The watcher advances only after a durable record, so a
+  // transient failure retries on a later frame rather than being lost.
   noteLoginExpiry(screenText: string): void {
-    if (this.hasBeenReady && this.loginExpiredWatcher.observe(screenText)) {
+    if (!(this.hasBeenReady && this.loginExpiredWatcher.peek(screenText))) return;
+    try {
       this.recordWarnings([loginExpiredWarning(this.elwoodSessionId)]);
+      this.loginExpiredWatcher.commit();
+    } catch {
+      // Un-committed so a later frame retries.
     }
   }
-  /** Drive the interactive `/login` re-authentication flow (C-API-43). */
+  // Drive `/login` re-auth as an exclusive, abort-aware queue transaction
+  // (C-API-43); see login/session-login.ts.
   login(options: ClaudeLoginOptions): Promise<void> {
-    return this.inSession(() =>
-      driveLogin(
-        { terminal: this.terminal, submit: (c) => this.controlQueue.send(c, "login") },
-        options,
-      ),
-    );
+    const onReady = (handler: () => void) =>
+      this.emitter.on("status", (e) => e.status === "ready" && handler());
+    const deps = { controlQueue: this.controlQueue, terminal: this.terminal, onReady };
+    return this.inSession(() => runSessionLogin(deps, options));
   }
   protected async stopRuntime(): Promise<void> {
     await this.bridge.stop();
