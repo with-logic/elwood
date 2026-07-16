@@ -51,25 +51,21 @@ export function runSessionLogin(
 }
 
 // Latch the FIRST `ready` transition after login starts (a fresh usability signal
-// for THIS attempt). Armed before `/login` so `wait()` resolves even if the
-// transition already fired by the time it is awaited.
+// for THIS attempt). Armed before `/login` so a `ready` that fires the instant
+// success renders is never missed: `onReady` resolves a pre-created promise, so
+// `wait()` returns that same settled-or-pending promise with no timing branch.
 function watchFreshReady(deps: LoginSessionDeps, signal: AbortSignal) {
-  let fired = false;
-  let notify: (() => void) | undefined;
-  const off = deps.onReady(() => {
-    fired = true;
-    notify?.();
+  let resolveReady!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    resolveReady = resolve;
   });
+  const off = deps.onReady(() => resolveReady());
   const stop = () => {
     off();
     signal.removeEventListener("abort", stop);
   };
   signal.addEventListener("abort", stop, { once: true });
-  return {
-    stop,
-    wait: (): Promise<void> =>
-      fired ? Promise.resolve() : new Promise<void>((resolve) => (notify = resolve)),
-  };
+  return { stop, wait: (): Promise<void> => ready };
 }
 
 // Write `/login` directly (the exclusive lease already owns the queue): the

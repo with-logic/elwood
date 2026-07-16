@@ -95,11 +95,12 @@ describe("ClaudeSession.login lifecycle (C-API-43)", () => {
 
     const done = session.login({ provideCode: () => "x", timeoutMs: 5_000 });
     await expect.poll(() => ptys[0]!.writes.includes("/login")).toBe(true);
-    // The fresh running→ready transition lands FIRST (latched by the up-front
-    // watch), THEN the success banner renders. `awaitUsable` must resolve on the
-    // already-fired ready instead of hanging for a second transition that never
-    // comes — covering the pre-fired `wait()` path.
+    // The fresh running→ready transition lands and is LATCHED by the up-front
+    // watch BEFORE the success banner renders. Wait for `ready` to be observed
+    // (so the watch has fired) and only THEN show success, so `awaitUsable`'s
+    // `wait()` takes the already-fired fast path instead of a second transition.
     await driveFreshReady(cwd, session);
+    await expect.poll(() => session.status).toBe("ready");
     ptys[0]!.emitData(asScreen("Login successful."));
     await expect(done).resolves.toBeUndefined();
   }, 20_000);
