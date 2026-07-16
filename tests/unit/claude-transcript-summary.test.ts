@@ -90,6 +90,37 @@ describe("C-CLAUDE-15 Claude transcript summarizer", () => {
     ).toEqual([]);
   });
 
+  test("C-CLAUDE-19 an assistant thinking block becomes a reasoning activity carrying its text", () => {
+    expect(
+      summarizeClaudeRecord({
+        type: "assistant",
+        message: {
+          content: [
+            { type: "thinking", thinking: "Let me plan the wave sim...", signature: "sig" },
+            { type: "text", text: "Here is the result." },
+          ],
+        },
+      }),
+    ).toEqual([
+      { kind: "reasoning", label: "thinking", text: "Let me plan the wave sim..." },
+      { kind: "assistant_message", label: "assistant", text: "Here is the result." },
+    ]);
+    // A USER role's thinking (shouldn't happen, but be safe) and empty thinking drop.
+    expect(
+      summarizeClaudeRecord({
+        type: "user",
+        message: { content: [{ type: "thinking", thinking: "x" }] },
+      }),
+    ).toEqual([]);
+    // redacted_thinking (opaque encrypted data, no readable text) yields nothing.
+    expect(
+      summarizeClaudeRecord({
+        type: "assistant",
+        message: { content: [{ type: "redacted_thinking", data: "OPAQUEBLOB" }] },
+      }),
+    ).toEqual([]);
+  });
+
   test("C-CLAUDE-15 UI-chrome records (away-summary recap, status lines) are not messages", () => {
     // Claude Code's "recap" / away-summary and its status lines are rendered TUI
     // chrome the CLI writes as system/attachment records — never a committed

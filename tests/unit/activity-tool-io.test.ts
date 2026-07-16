@@ -89,6 +89,22 @@ describe("Elwood activity tool input/output", () => {
     expect(message.toolUseId).toBeUndefined();
   });
 
+  test("C-CLAUDE-19 a reasoning projection carries its committed thinking text", () => {
+    const reasoning = activityFromClaudeTranscript({
+      elwoodSessionId: "elwood-7",
+      path: "/tmp/t.jsonl",
+      item: {},
+      summary: { kind: "reasoning", label: "thinking", text: "let me plan..." },
+    });
+    expect(reasoning).toMatchObject({
+      kind: "reasoning",
+      source: "transcript",
+      text: "let me plan...",
+      transcriptPath: "/tmp/t.jsonl",
+    });
+    expect(reasoning.toolName).toBeUndefined();
+  });
+
   test("C-CLAUDE-15 the Claude-transcript projection REQUIRES each variant's fields", () => {
     // Finding D: the projection is built by switching on the summary discriminant,
     // so the compiler enforces that an assistant_message carries `text`, a

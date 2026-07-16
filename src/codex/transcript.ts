@@ -113,7 +113,7 @@ export function summarizeTranscriptItem(item: unknown): CodexTranscriptSummary {
   if (type === "function_call") return toolCall(payload);
   if (type === "custom_tool_call") return toolCall(payload);
   if (type === "function_call_output") return toolResult(payload);
-  if (type === "reasoning") return { kind: "reasoning", label: "reasoning" };
+  if (type === "reasoning") return reasoning(payload);
   if (type === "message") return message(payload);
   if (type === "agent_message") return agentMessage(payload);
   return { kind: "other", label: type ?? stringValue(record(item)?.["type"]) ?? "unknown" };
@@ -144,6 +144,34 @@ function message(payload: Record<string, unknown>): CodexTranscriptSummary {
 
 function agentMessage(payload: Record<string, unknown>): CodexTranscriptSummary {
   return { kind: "message", label: "assistant", ...(text(payload["message"]) ?? {}) };
+}
+
+/**
+ * A Codex reasoning item. Human-readable text lives in `summary[]` entries of
+ * type `summary_text`, or (rarely, when reasoning is un-summarized) in `content[]`
+ * entries of type `reasoning_text`; the always-present `encrypted_content` is NOT
+ * readable and is never surfaced. Most items carry an empty `summary` (reasoning
+ * summaries disabled), so `text` is included only when prose is actually present —
+ * otherwise this stays the bare label, exactly as before (PRD §7A.4).
+ */
+function reasoning(payload: Record<string, unknown>): CodexTranscriptSummary {
+  const value =
+    reasoningText(payload["summary"], "summary_text") ??
+    reasoningText(payload["content"], "reasoning_text");
+  return { kind: "reasoning", label: "reasoning", ...(text(value) ?? {}) };
+}
+
+/** Join the `text` of every array entry whose `type` matches; undefined if none. */
+function reasoningText(value: unknown, entryType: string): string | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const parts = value
+    .map((entry) =>
+      stringValue(record(entry)?.["type"]) === entryType
+        ? stringValue(record(entry)?.["text"])
+        : undefined,
+    )
+    .filter((part): part is string => part !== undefined && part.length > 0);
+  return parts.length > 0 ? parts.join("\n") : undefined;
 }
 
 function text(value: unknown): { readonly text: string } | undefined {

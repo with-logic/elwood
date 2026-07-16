@@ -53,6 +53,7 @@ function claudeActivityFields(
   "kind" | "text" | "toolName" | "toolUseId" | "toolInput" | "toolOutput"
 > {
   if (summary.kind === "assistant_message") return { kind: summary.kind, text: summary.text };
+  if (summary.kind === "reasoning") return { kind: summary.kind, text: summary.text };
   if (summary.kind === "tool_call") {
     return {
       kind: summary.kind,

@@ -84,7 +84,48 @@ describe("Codex transcript observation", () => {
     });
     expect(summary({ type: "custom_tool_call", name: "apply_patch" }).label).toBe("apply_patch");
     expect(summary({ type: "function_call_output", call_id: "call_1" }).kind).toBe("tool_result");
-    expect(summary({ type: "reasoning" }).kind).toBe("reasoning");
+    // C-CODEX-18: an empty/absent summary carries no text (the common case).
+    expect(summary({ type: "reasoning" })).toEqual({ kind: "reasoning", label: "reasoning" });
+    expect(summary({ type: "reasoning", summary: [], encrypted_content: "gAAA" })).toEqual({
+      kind: "reasoning",
+      label: "reasoning",
+    });
+    // Populated summary_text entries are joined by newlines into `text`.
+    expect(
+      summary({
+        type: "reasoning",
+        summary: [
+          { type: "summary_text", text: "**Inspecting repo**" },
+          { type: "summary_text", text: "**Running git**" },
+        ],
+        encrypted_content: "gAAA",
+      }),
+    ).toEqual({
+      kind: "reasoning",
+      label: "reasoning",
+      text: "**Inspecting repo**\n**Running git**",
+    });
+    // Entries of a non-matching type (or missing text) are skipped, not joined.
+    expect(
+      summary({
+        type: "reasoning",
+        summary: [
+          { type: "other_kind", text: "ignored" },
+          { type: "summary_text", text: "kept" },
+          { type: "summary_text" },
+        ],
+      }).text,
+    ).toBe("kept");
+    // Un-summarized reasoning falls back to content[].reasoning_text.
+    expect(
+      summary({
+        type: "reasoning",
+        summary: [],
+        content: [{ type: "reasoning_text", text: "full chain of thought" }],
+      }).text,
+    ).toBe("full chain of thought");
+    // encrypted_content alone is never surfaced as readable text.
+    expect(summary({ type: "reasoning", encrypted_content: "gAAAsecret" }).text).toBeUndefined();
     expect(summary({ type: "message", role: "assistant", content: "hi" })).toEqual({
       kind: "message",
       label: "assistant",

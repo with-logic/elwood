@@ -13,6 +13,7 @@ import { stringify } from "../../core/serialize.ts";
  */
 export type ClaudeTranscriptSummary =
   | { readonly kind: "assistant_message"; readonly label: string; readonly text: string }
+  | { readonly kind: "reasoning"; readonly label: string; readonly text: string }
   | {
       readonly kind: "tool_call";
       readonly label: string;
@@ -56,9 +57,23 @@ function summarizeBlock(
   const record = asRecord(block);
   const type = stringValue(record["type"]);
   if (type === "text") return assistantText(role, stringValue(record["text"]) ?? "");
+  if (type === "thinking") return reasoning(role, stringValue(record["thinking"]) ?? "");
   if (type === "tool_use") return [toolCall(record)];
   if (type === "tool_result") return [toolResult(record)];
+  // `redacted_thinking` carries only an opaque encrypted `data` blob (no readable
+  // text), so it is dropped here alongside any other unknown block type.
   return [];
+}
+
+/**
+ * Extended-thinking prose from an assistant `thinking` block (C-CLAUDE-15). Like
+ * assistant text, only ASSISTANT reasoning is surfaced and empty thinking is
+ * dropped. The plaintext is committed to the transcript by the CLI, so it needs no
+ * hook and is surfaced as a `reasoning` activity — mirroring Codex (§5.4, §7A.4).
+ */
+function reasoning(role: ClaudeTranscriptRole, text: string): readonly ClaudeTranscriptSummary[] {
+  if (role !== "assistant" || text.length === 0) return [];
+  return [{ kind: "reasoning", label: "thinking", text }];
 }
 
 /** Assistant prose only: user text is intentionally dropped (hook-sourced). */
