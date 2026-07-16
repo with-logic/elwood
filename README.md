@@ -305,6 +305,42 @@ restores the prior default via compare-and-swap afterwards — if the file
 changed in other ways during the switch, Elwood leaves it alone and emits a
 `codex_default_model_persisted` warning instead of clobbering it.
 
+### Recovering an expired Claude login
+
+If Claude's login lapses, the CLI stops responding and only shows
+"Login expired · Please run /login". Elwood surfaces this so you never get a
+silently-wedged session:
+
+- At **startup**, a login-expired banner rejects `startClaude` with
+  `claude_not_authenticated` (the session is torn down, not reported usable).
+- **Mid-session** — login expiring while the session is live — Elwood emits a
+  typed, content-free `login_expired` warning (and `warning` activity) carrying
+  a `recoveryCommand` of `/login`, and leaves the session **alive** so you can
+  recover in place.
+
+`ClaudeSession.login(options)` drives the interactive `/login` flow to recover
+without restarting the session. Because the default account login ends with a
+human copying an authorization code from a browser, `login` cannot complete
+fully unattended — it brackets the human step:
+
+```ts
+session.on("warning", async (w) => {
+  if (w.code !== "login_expired") return;
+  await session.login({
+    onAuthUrl: (url) => openInBrowser(url), // optional: the browser sign-in URL
+    provideCode: () => promptHumanForCode(), // required: the code from the browser
+    // method defaults to "claudeai"; timeoutMs defaults to 300000
+  });
+});
+```
+
+`login` submits `/login`, selects the login `method` if the CLI shows its
+method picker, reports the authorization URL via `onAuthUrl`, and — when the CLI
+asks for a code — calls `provideCode` and submits the returned code. It resolves
+once the CLI reports success, and rejects with `login_failed` (an explicit
+failure or an invalid code), `login_timeout`, or `session_not_running`. A flow
+that self-completes without prompting for a code never calls `provideCode`.
+
 To enumerate available models **without** holding a session — for example to
 populate a UI selector — use the standalone `listClaudeModels`/`listCodexModels`
 functions. Each starts a throwaway session (from an Elwood-owned temp state

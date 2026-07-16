@@ -41,6 +41,10 @@ export async function assertStartupUsable(input: {
 }
 
 function isAuthFailure(adapter: StartupAdapter, output: string): boolean {
+  // A lapsed/revoked-login banner spans multiple lines ("Login expired" then
+  // "Please run /login"), so it is matched against the WHOLE output, not per line
+  // (C-CLAUDE-17). The other forms are single-line and matched line by line.
+  if (isLoginExpiredText(output)) return true;
   return output.split(/\r?\n/).some((line) => isAuthFailureLine(adapter, line));
 }
 
@@ -49,6 +53,17 @@ function isAuthFailureLine(adapter: StartupAdapter, line: string): boolean {
   if (!/not logged in/i.test(line)) return false;
   if (adapter === "codex" && /\bmcp server\b/i.test(line)) return false;
   return true;
+}
+
+// The lapsed/revoked-session banners the Claude CLI shows, each of which leaves
+// the session unusable until the human re-authenticates. Matched on the recovery
+// directive so an unrelated mention of "login" cannot trip it (C-CLAUDE-17/18).
+const loginExpiredText =
+  /(?:login|session|oauth token)\s+(?:expired|revoked)[\s\S]*?(?:run|please run)\s+\/login|(?:run|please run)\s+\/login\s+to\s+sign in/i;
+
+/** Whether a screen/line shows a lapsed-login banner directing the user to /login. */
+export function isLoginExpiredText(text: string): boolean {
+  return loginExpiredText.test(text);
 }
 
 function readStartupValue<T>(value: StartupValue<T>): T {

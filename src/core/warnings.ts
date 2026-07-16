@@ -37,6 +37,21 @@ export type ElwoodWarningEvent =
     }
   | {
       readonly elwoodSessionId: string;
+      readonly agent: "claude";
+      readonly source: "terminal";
+      readonly code: "login_expired";
+      readonly severity: "warning";
+      readonly message: string;
+      // A Claude session's login lapsed/was revoked AFTER it was already usable,
+      // so it can no longer act until re-authenticated. Content-free: only the
+      // bounded recovery command (`/login`) — never a raw banner or session
+      // content. The session stays alive so the caller can recover in place via
+      // `session.login()`, tear down, or re-auth out of band (§5.3, C-CLAUDE-18).
+      readonly recoveryCommand: string;
+      readonly raw: string;
+    }
+  | {
+      readonly elwoodSessionId: string;
       readonly agent: "codex";
       readonly source: "terminal";
       readonly code: "mcp_startup_incomplete";

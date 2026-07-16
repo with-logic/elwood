@@ -51,6 +51,10 @@ const warningValidators = {
     terminalBase(value) &&
     isString(value["mcpServerName"]) &&
     isString(value["recoveryCommand"]),
+  // Content-free auth diagnostic: only the bounded recovery command (`/login`),
+  // never a raw banner or session content (§5.3, §5.7, C-CLAUDE-18).
+  login_expired: (value) =>
+    value["agent"] === "claude" && terminalBase(value) && value["recoveryCommand"] === "/login",
   mcp_startup_incomplete: (value) =>
     value["agent"] === "codex" &&
     terminalBase(value) &&

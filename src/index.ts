@@ -40,6 +40,7 @@ export type {
 } from "./claude/hooks.ts";
 export { claudeHookEventNames } from "./claude/hooks.ts";
 export { listClaudeModels } from "./claude/list-models.ts";
+export type { ClaudeLoginMethod, ClaudeLoginOptions } from "./claude/login/types.ts";
 export { startClaude } from "./claude/session.ts";
 export type { ClaudeSession } from "./claude/session-interface.ts";
 export { resumeClaude } from "./claude/session-resume.ts";

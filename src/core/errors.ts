@@ -29,6 +29,8 @@ export type ElwoodErrorName =
   | "compact_failed"
   | "interrupt_failed"
   | "model_automation_failed"
+  | "login_failed"
+  | "login_timeout"
   | "wait_timeout";
 
 export class ElwoodError extends Error {

@@ -17,6 +17,7 @@ import type {
   Unsubscribe,
 } from "../core/types.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
+import type { ClaudeLoginOptions } from "./login/types.ts";
 
 export interface ClaudeSession {
   readonly elwoodSessionId: string;
@@ -40,6 +41,8 @@ export interface ClaudeSession {
   compact(options?: { readonly timeoutMs?: number }): Promise<void>;
   listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]>;
   setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void>;
+  /** Drive the interactive `/login` re-authentication flow to recover a lapsed login (C-API-43). */
+  login(options: ClaudeLoginOptions): Promise<void>;
   stop(): Promise<void>;
   kill(): Promise<void>;
   teardown(): Promise<void>;

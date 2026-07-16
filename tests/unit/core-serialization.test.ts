@@ -117,6 +117,29 @@ describe("preflight", () => {
       }),
     ).resolves.toBeUndefined();
   });
+
+  test("C-CLAUDE-17 startup rejects lapsed-login banners that only direct the user to /login", async () => {
+    for (const output of [
+      "Login expired\n Please run /login",
+      "Session expired. Please run /login to sign in again.",
+      "OAuth token revoked\n Please run /login",
+      "Run /login to sign in with your claude.ai account",
+    ]) {
+      await expect(
+        assertStartupUsable({ adapter: "claude", exit: undefined, output, waitMs: 0 }),
+      ).rejects.toMatchObject({ code: "claude_not_authenticated" });
+    }
+    // An unrelated mention of "login" without a /login recovery directive must NOT
+    // be mistaken for an auth failure — the session is usable.
+    await expect(
+      assertStartupUsable({
+        adapter: "claude",
+        exit: undefined,
+        output: "Loading login history for your dashboard",
+        waitMs: 0,
+      }),
+    ).resolves.toBeUndefined();
+  });
 });
 
 describe("settings and command construction", () => {

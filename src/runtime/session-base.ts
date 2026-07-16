@@ -61,7 +61,6 @@ export abstract class AgentSessionBase {
     queueClose: () => this.controlQueue.close(),
     cleanup: () => void this.cleanupRuntime(),
   });
-
   protected constructor(
     agent: ElwoodAgentKind,
     record: SessionRecord,
@@ -86,7 +85,6 @@ export abstract class AgentSessionBase {
       submit: (command, kind) => this.controlQueue.send(command, kind),
     });
   }
-
   get elwoodSessionId(): string {
     return this.record.elwoodSessionId;
   }
@@ -98,6 +96,9 @@ export abstract class AgentSessionBase {
   }
   get warnings(): readonly ElwoodWarningEvent[] {
     return this.record.warnings;
+  }
+  protected get hasBeenReady(): boolean {
+    return this.everReady; // reached readiness at least once (gates mid-session logic)
   }
   sendPrompt = (prompt: string): Promise<void> => this.enqueue(prompt, "prompt");
   sendMessage = (message: string): Promise<void> => this.enqueue(message, "message");
@@ -154,7 +155,6 @@ export abstract class AgentSessionBase {
   }
   submitEvidence = (kind: StatusEvidenceKind): StatusDecision => this.statusEngine.submit(kind);
   submitExit(): StatusDecision {
-    // Terminal status FIRST, reap in `finally`: reach terminal AND reap even if status throws (C-LIFE-10).
     try {
       return this.statusEngine.submit(this.pendingShutdown ?? "terminal_exited");
     } finally {
@@ -173,8 +173,7 @@ export abstract class AgentSessionBase {
     if (event === "terminal:data") this.terminalReplay.replay(handler as never);
     replayWarningSnapshots(this.record.warnings, event, handler as (event: never) => void);
   }
-  private inSession<T>(work: () => Promise<T> | T): Promise<T> {
-    // Rejects, never throws (C-API-25): a terminal status OR a synchronous `work` throw.
+  protected inSession<T>(work: () => Promise<T> | T): Promise<T> {
     if (terminalStatuses.has(this.status)) return Promise.reject(notRunningError(this.agent));
     try {
       return Promise.resolve(work());

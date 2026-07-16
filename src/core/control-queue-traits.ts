@@ -13,7 +13,8 @@ export type ControlOperationKind =
   | "prompt"
   | "compact"
   | "list_models"
-  | "set_model";
+  | "set_model"
+  | "login";
 
 /**
  * When an operation may leave the readiness queue's holding lane.
@@ -99,6 +100,14 @@ export const controlOperationTraits: Readonly<
     submitMode: "command",
   },
   set_model: {
+    reportsCallerSubmission: false,
+    consumesReadiness: false,
+    readiness: "always",
+    submitMode: "command",
+  },
+  // `/login` recovery: a picker command that must dispatch even while the session
+  // is not ready (login has lapsed, so it may never reach `ready` on its own).
+  login: {
     reportsCallerSubmission: false,
     consumesReadiness: false,
     readiness: "always",

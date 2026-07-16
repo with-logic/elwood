@@ -154,11 +154,11 @@ export async function startClaudeFromRecord(
     emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
       recordWarnings: (warnings) => session?.recordWarnings(warnings),
     });
-    // Readiness is hook-backed (`InstructionsLoaded` fires it); the frame only
-    // arms the starvation-deadline fallback so a missing/failed hook bridge
-    // cannot starve the queue forever (C-API-28, see initial-ready.ts).
+    // The frame only arms the starvation-deadline fallback (readiness is hook-backed).
     ready.armDeadline();
     observeRenderedFrame(observers, frame, session);
+    // Surface a mid-session login-expiry banner once (C-CLAUDE-18); no-op pre-readiness.
+    session?.noteLoginExpiry(frame.text);
     emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
   });
   session = new ClaudeSessionImpl(
