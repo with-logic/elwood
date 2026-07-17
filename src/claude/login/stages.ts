@@ -92,7 +92,10 @@ export async function awaitLoginOutcome(
     if (failed(text)) throw elwoodError("login_failed", "Claude /login reported a failure.");
     if (authorizing && !codeSent && codePrompt(text)) {
       codeSent = true;
-      await submitCode(io, options, signal);
+      // Re-check the prompt is STILL the current active screen right before writing
+      // the secret: `provideCode` is async, so the prompt may have vanished while
+      // the human fetched the code — the code must never land in a different screen.
+      await submitCode(io, options, () => codePrompt(io.terminal.snapshot().text), signal);
     }
     await pollDelay(signal);
   }
@@ -127,10 +130,11 @@ function freshInRegion(marker: RegExp, baseline: string): (text: string) => bool
   return (text) => marker.test(activeRegion(text)) && !wasPresent;
 }
 
-/** Ask the caller for the code, validate it, and submit it + one library Enter. */
+/** Ask the caller for the code, validate it, re-check the prompt, then submit it. */
 async function submitCode(
   io: LoginIo,
   options: ClaudeLoginOptions,
+  stillPrompted: () => boolean,
   signal: AbortSignal,
 ): Promise<void> {
   let code: string;
@@ -146,6 +150,15 @@ async function submitCode(
     throw elwoodError(
       "login_failed",
       "The /login authorization code was empty, oversized, or contained control characters.",
+    );
+  }
+  // The paste-code prompt must STILL be the current active screen: if it vanished
+  // while `provideCode` was pending, writing the secret now would land it in a
+  // different screen (e.g. the composer), so fail instead of disclosing it.
+  if (!stillPrompted()) {
+    throw elwoodError(
+      "login_failed",
+      "The /login code prompt was gone before the code could be entered.",
     );
   }
   await write(io, code, signal);

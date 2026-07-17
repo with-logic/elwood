@@ -45,6 +45,28 @@ describe("ClaudeSession.login security (C-API-43)", () => {
     expect(ptys[0]!.writes).not.toContain(hostile);
   });
 
+  test("C-API-43 the code is NOT written if the paste prompt vanishes while provideCode is pending", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    await ready(cwd, session);
+    // `provideCode` is slow (human fetching the code); WHILE it is pending, the
+    // paste prompt disappears (a normal composer replaces it). The code must NOT be
+    // written into that different screen — the flow fails instead of disclosing it.
+    const done = session.login({
+      provideCode: async () => {
+        ptys[0]!.emitData(asScreen("❯ back to the normal composer"));
+        await new Promise((r) => setTimeout(r, 120));
+        return "SECRET-CODE";
+      },
+      timeoutMs: 5_000,
+    });
+    await expect.poll(() => ptys[0]!.writes.includes("/login")).toBe(true);
+    ptys[0]!.emitData(PASTE_SCREEN);
+    await expect(done).rejects.toMatchObject({ code: "login_failed" });
+    expect(ptys[0]!.writes).not.toContain("SECRET-CODE");
+  });
+
   test("C-API-43 a spoofed / off-host / plain-http auth URL is never reported NOR advances to code disclosure", async () => {
     const cwd = tempDir();
     installFakes();
