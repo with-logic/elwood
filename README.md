@@ -362,6 +362,28 @@ failure, an invalid code, or a failing `provideCode`), `login_timeout`, or
 `session_not_running`. A flow that self-completes without prompting for a code
 never calls `provideCode`.
 
+**Security considerations.** `login` layers several defenses so an untrusted
+screen cannot hijack the flow: the transaction holds the control queue
+exclusively (nothing else writes during it), the human code and scraped URL are
+validated (the URL must be `https:` on an exactly-approved Anthropic host with no
+credentials), stage markers are scoped to the screen's active tail and required
+new versus a pre-`/login` baseline, login keystrokes hold while a blocking dialog
+is on screen, and the code prompt is re-checked as still-current immediately
+before the code is written. Two residual limitations remain by design:
+
+- A single frame that renders BOTH a genuine approved-host `claude.ai` OAuth URL
+  AND a paste-code prompt in the active region — i.e. attacker-controlled output
+  that manages to reproduce a real Anthropic OAuth URL during an active login —
+  can still advance the flow. This is a narrow, contrived case (it requires
+  forging a host-valid OAuth URL, not merely a phrase); coherent per-frame dialog
+  identity on a text-only TUI is not attempted. Only run `login` when the session
+  is genuinely at Claude's `/login` prompt, not while untrusted tool/model output
+  is streaming into the terminal.
+- The `/login` screen matchers are version-coupled to the Claude CLI and are
+  covered by unit tests against real captured CLI strings, not by a live-CLI e2e:
+  driving `/login` against a real authenticated session would mutate the
+  developer's auth and cannot run unattended in CI.
+
 To enumerate available models **without** holding a session — for example to
 populate a UI selector — use the standalone `listClaudeModels`/`listCodexModels`
 functions. Each starts a throwaway session (from an Elwood-owned temp state

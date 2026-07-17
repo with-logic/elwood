@@ -467,6 +467,18 @@ failure/invalid code or a failing `provideCode` callback, `login_timeout` after
 already terminal. A flow that self-completes without a code prompt never calls
 `provideCode`.
 
+`login` defends against untrusted on-screen text with layered checks — exclusive
+queue ownership, approved-host/`https:` URL validation, active-tail + baseline
+scoping of stage markers, blocking-dialog write holds, and a re-check that the
+paste prompt is still current immediately before the code is written. Two
+residual limitations are accepted by design: a single frame that renders BOTH a
+genuine approved-host OAuth URL and a paste-code prompt in the active region can
+still advance the flow (coherent per-frame dialog identity on a text-only TUI is
+not attempted — callers should invoke `login` only when the session is genuinely
+at `/login`, not while untrusted output streams), and the version-coupled login
+screen matchers are covered by unit tests against real captured CLI strings
+rather than a live-CLI e2e (which would mutate real auth and cannot run in CI).
+
 `sendPrompt` submits a user prompt through the terminal input path, as if a
 human typed or pasted it into Claude and pressed Enter. It MUST support
 multi-line prompts. The implementation should use bracketed paste or an
