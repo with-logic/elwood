@@ -11,7 +11,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
 import { asScreen } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
-import { driveFreshReady, ready } from "./login-helpers.ts";
+import { driveFreshReady, ready, succeedAndRecover } from "./login-helpers.ts";
 
 afterEach(resetFakes);
 
@@ -39,8 +39,7 @@ describe("ClaudeSession.login lifecycle (C-API-43)", () => {
     expect(ptys[0]!.writes).not.toContain(pasted);
 
     // Drive login to completion; only THEN may the queued message dispatch.
-    ptys[0]!.emitData(asScreen("Login successful."));
-    await driveFreshReady(cwd, session);
+    await succeedAndRecover(cwd, session);
     await done;
     await message;
     expect(ptys[0]!.writes).toContain(pasted);
@@ -83,26 +82,50 @@ describe("ClaudeSession.login lifecycle (C-API-43)", () => {
       timeoutMs: 300,
     });
     await expect.poll(() => ptys[0]!.writes.includes("/login")).toBe(true);
-    ptys[0]!.emitData(asScreen("Paste code here > "));
+    ptys[0]!.emitData(
+      asScreen("Authenticate your account at:\nhttps://claude.ai/oauth/x\nPaste code here > "),
+    );
     await expect(done).rejects.toMatchObject({ code: "login_timeout" });
   });
 
-  test("C-API-43 resolves when the fresh ready fires BEFORE success is detected", async () => {
+  test("C-API-43 the /login write HOLDS while a blocking dialog is on screen", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    await ready(cwd, session);
+    // A blocking dialog is on screen BEFORE login() is called; dialog safety means
+    // NO login keystroke — not even `/login` — may land while blocked (it would
+    // confirm the dialog's highlighted option).
+    ptys[0]!.emitData("Do you want to run this?\r\n ❯ 1. Yes\r\n   3. No\r\n Esc to cancel\r\n");
+    await expect.poll(() => session.status).toBe("blocked");
+
+    const done = session.login({ provideCode: () => "x", timeoutMs: 5_000 });
+    // The whole submission is HELD: `/login` is not written while blocked.
+    await new Promise((r) => setTimeout(r, 200));
+    expect(ptys[0]!.writes).toEqual([]);
+    // The dialog clears; `/login` (and the flow) proceeds and completes.
+    ptys[0]!.emitData(asScreen("Select login method:\n Claude account with subscription"));
+    await expect.poll(() => ptys[0]!.writes.includes("/login")).toBe(true);
+    await succeedAndRecover(cwd, session);
+    await expect(done).resolves.toBeUndefined();
+  }, 20_000);
+
+  test("C-API-43 a ready that fired BEFORE success does not satisfy usability", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
     await ready(cwd, session);
 
-    const done = session.login({ provideCode: () => "x", timeoutMs: 5_000 });
+    const done = session.login({ provideCode: () => "x", timeoutMs: 800 });
     await expect.poll(() => ptys[0]!.writes.includes("/login")).toBe(true);
-    // The fresh running→ready transition lands and is LATCHED by the up-front
-    // watch BEFORE the success banner renders. Wait for `ready` to be observed
-    // (so the watch has fired) and only THEN show success, so `awaitUsable`'s
-    // `wait()` takes the already-fired fast path instead of a second transition.
+    // A running→ready transition happens BEFORE the success banner. `awaitUsable`
+    // waits for a ready STRICTLY AFTER success is detected, so this earlier ready
+    // must NOT resolve login — it times out (no post-success ready ever arrives).
     await driveFreshReady(cwd, session);
     await expect.poll(() => session.status).toBe("ready");
     ptys[0]!.emitData(asScreen("Login successful."));
-    await expect(done).resolves.toBeUndefined();
+    // Deliberately do NOT drive a post-success ready → login times out.
+    await expect(done).rejects.toMatchObject({ code: "login_timeout" });
   }, 20_000);
 
   // A provideCode that throws (an Error OR a bare non-Error value) surfaces
@@ -126,7 +149,9 @@ describe("ClaudeSession.login lifecycle (C-API-43)", () => {
       timeoutMs: 5_000,
     });
     await expect.poll(() => ptys[0]!.writes.includes("/login")).toBe(true);
-    ptys[0]!.emitData(asScreen("Paste code here > "));
+    ptys[0]!.emitData(
+      asScreen("Authenticate your account at:\nhttps://claude.ai/oauth/x\nPaste code here > "),
+    );
     await expect(done).rejects.toMatchObject({ code: "login_failed" });
   });
 });

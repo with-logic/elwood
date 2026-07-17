@@ -182,8 +182,9 @@ export abstract class AgentSessionBase {
     }
   }
   protected persist(record: SessionRecord): void {
-    this.record = record;
+    // Durable write FIRST, commit in-memory only on success, so a failed write leaves the retry a clean re-attempt (C-CLAUDE-18).
     writeSessionRecord(record);
+    this.record = record;
   }
   protected cleanupRuntime(): Promise<void> {
     this.cleanupPromise ??= this.stopRuntime();

@@ -10,11 +10,15 @@ import { afterEach, describe, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
 import { asScreen } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
-import { driveFreshReady, ready } from "./login-helpers.ts";
+import { ready, succeedAndRecover } from "./login-helpers.ts";
 
 afterEach(resetFakes);
 
-const PASTE_SCREEN = asScreen("Paste code here if prompted > ");
+// The real code prompt follows the authorizing (browser URL) stage — the driver
+// only honors a code prompt once it has entered that stage (ordered stages).
+const PASTE_SCREEN = asScreen(
+  "Authenticate your account at:\nhttps://claude.ai/oauth/x\nPaste code here if prompted > ",
+);
 
 // Each hostile code either injects a terminal control byte, is oversized, or empty.
 const hostileCodes: readonly [label: string, code: string][] = [
@@ -62,9 +66,33 @@ describe("ClaudeSession.login security (C-API-43)", () => {
     await expect.poll(() => ptys[0]!.writes.includes("code")).toBe(true);
     // Neither spoofed URL was ever handed to the caller.
     expect(reported).toHaveLength(0);
-    ptys[0]!.emitData(asScreen("Login successful."));
-    await driveFreshReady(cwd, session);
+    await succeedAndRecover(cwd, session);
     await expect(done).resolves.toBeUndefined();
+  });
+
+  // A throwing onAuthUrl (Error OR bare non-Error) surfaces a bounded login_failed,
+  // never escapes raw — exercising both `cause` shapes.
+  const urlThrowers: readonly [label: string, make: () => unknown][] = [
+    ["an Error", () => new Error("browser open failed")],
+    ["a non-Error value", () => "browser string fault"],
+  ];
+  test.each(
+    urlThrowers,
+  )("C-API-43 a throwing onAuthUrl callback (%s) rejects login with login_failed", async (_label, make) => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    await ready(cwd, session);
+    const done = session.login({
+      onAuthUrl: () => {
+        throw make();
+      },
+      provideCode: () => "code",
+      timeoutMs: 5_000,
+    });
+    await expect.poll(() => ptys[0]!.writes.includes("/login")).toBe(true);
+    ptys[0]!.emitData(asScreen("Authenticate your account at:\nhttps://claude.ai/oauth/x"));
+    await expect(done).rejects.toMatchObject({ code: "login_failed" });
   });
 
   test("C-API-43 reports a valid https claude.ai OAuth URL", async () => {
@@ -86,8 +114,7 @@ describe("ClaudeSession.login security (C-API-43)", () => {
     );
     await expect.poll(() => reported.length).toBe(1);
     expect(reported[0]).toBe("https://claude.ai/oauth/authorize?a=1");
-    ptys[0]!.emitData(asScreen("Login successful."));
-    await driveFreshReady(cwd, session);
+    await succeedAndRecover(cwd, session);
     await expect(done).resolves.toBeUndefined();
   });
 
@@ -108,8 +135,7 @@ describe("ClaudeSession.login security (C-API-43)", () => {
     ptys[0]!.emitData(asScreen("Opening browser to authorize…\nPaste code here > "));
     await expect.poll(() => ptys[0]!.writes.includes("code")).toBe(true);
     expect(reported).toHaveLength(0);
-    ptys[0]!.emitData(asScreen("Login successful."));
-    await driveFreshReady(cwd, session);
+    await succeedAndRecover(cwd, session);
     await expect(done).resolves.toBeUndefined();
   });
 

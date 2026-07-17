@@ -29,11 +29,28 @@ export function recordSessionWarnings(
   let current = record;
   for (const warning of warnings) {
     const result = upsertSessionWarning(current, warning);
-    if (result.changed) persist(result.record);
-    if (result.isNew) {
-      emit.warning(warning);
-      emit.activity(activityFromWarning(warning));
-    }
     current = result.record;
+    // Deliver the user-facing signal BEFORE persistence and ISOLATE the two
+    // emits: a disk failure must not drop the warning/activity a caller relies on,
+    // and one throwing listener must not suppress the other event. The first
+    // listener error is rethrown after both fire + persistence is attempted, so an
+    // enclosing boundary still sees it.
+    let firstError: unknown;
+    if (result.isNew) {
+      firstError = deliver(() => emit.warning(warning));
+      firstError = deliver(() => emit.activity(activityFromWarning(warning)), firstError);
+    }
+    if (result.changed) persist(result.record);
+    if (firstError !== undefined) throw firstError;
+  }
+}
+
+/** Run a fan-out step; return the FIRST error seen so both steps always run. */
+function deliver(step: () => void, prior?: unknown): unknown {
+  try {
+    step();
+    return prior;
+  } catch (error) {
+    return prior ?? error;
   }
 }

@@ -15,6 +15,8 @@ import { type ClaudeLoginOptions, defaultLoginTimeoutMs } from "./types.ts";
 
 export type LoginIo = {
   readonly terminal: ScreenTerminal;
+  /** Whether a blocking dialog is on screen; login writes hold while true. */
+  readonly blocked: () => boolean;
   /** Submit the `/login` slash command as an exclusive queue-owned write. */
   readonly submit: (command: string) => Promise<void>;
   /** Resolves when the session next reaches a usable `ready` state after login. */
@@ -39,9 +41,9 @@ export async function driveLogin(
     // flow: sensitive markers must NEWLY appear after `/login` (C-API-43 security).
     const baseline = io.terminal.snapshot().text;
     await io.submit("/login");
-    await selectMethodIfShown(io.terminal, options, signal);
+    await selectMethodIfShown(io, options, signal);
     await reportAuthUrl(io.terminal, options, baseline, signal);
-    await awaitLoginOutcome(io.terminal, options, baseline, signal);
+    await awaitLoginOutcome(io, options, baseline, signal);
     // A success banner alone does not prove usability; wait for a fresh ready state
     // scoped to this attempt before releasing the exclusive lease.
     await io.awaitUsable(timeoutMs, signal);

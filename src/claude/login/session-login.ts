@@ -10,17 +10,18 @@
 import type { ControlQueue } from "../../core/control-queue.ts";
 import { commandEnterDelayMs } from "../../core/session-input.ts";
 import type { ScreenTerminal } from "../../core/tui-screen.ts";
-import { raceSettle } from "./abort.ts";
+import { holdWhileBlocked, raceSettle } from "./abort.ts";
 import { driveLogin } from "./driver.ts";
 import type { ClaudeLoginOptions } from "./types.ts";
 
 export type LoginSessionDeps = {
   readonly controlQueue: ControlQueue;
   readonly terminal: ScreenTerminal;
+  /** Whether a blocking dialog is on screen (login writes hold while true). */
+  readonly blocked: () => boolean;
   /**
-   * Subscribe to `ready` transitions. Returns an unsubscribe. Unlike a snapshot
-   * wait this fires only on a FRESH transition, so `awaitUsable` cannot settle on
-   * a stale pre-login `ready` — it must observe the session become usable again.
+   * Subscribe to `ready` transitions. Returns an unsubscribe. Fires on a fresh
+   * transition, so `awaitUsable` observes the session become usable AFTER auth.
    */
   readonly onReady: (handler: () => void) => () => void;
 };
@@ -30,50 +31,71 @@ export function runSessionLogin(
   options: ClaudeLoginOptions,
 ): Promise<void> {
   return deps.controlQueue.runExclusive("login", async (signal) => {
-    // Arm the fresh-`ready` watch UP FRONT (before `/login`), so a `ready` that
-    // fires the instant success renders can never be missed by `awaitUsable`
-    // subscribing too late. `freshReady` latches the first post-start transition.
-    const freshReady = watchFreshReady(deps, signal);
+    // Watch `ready` transitions from the start of the transaction. `awaitUsable`,
+    // called right after success is detected, waits for the NEXT ready — so only a
+    // transition that follows successful auth proves renewed usability; a ready
+    // seen earlier in the flow (e.g. a stale pre-login one) never counts.
+    const readies = watchReadyCount(deps, signal);
     try {
       await driveLogin(
         {
           terminal: deps.terminal,
-          submit: (command) => submitLoginCommand(deps, command),
-          awaitUsable: (_timeoutMs, s) => raceSettle(freshReady.wait(), s),
+          blocked: deps.blocked,
+          submit: (command) => submitLoginCommand(deps, command, signal),
+          awaitUsable: (_timeoutMs, s) => raceSettle(readies.waitForNext(), s),
         },
         options,
         signal,
       );
     } finally {
-      freshReady.stop();
+      readies.stop();
     }
   });
 }
 
-// Latch the FIRST `ready` transition after login starts (a fresh usability signal
-// for THIS attempt). Armed before `/login` so a `ready` that fires the instant
-// success renders is never missed: `onReady` resolves a pre-created promise, so
-// `wait()` returns that same settled-or-pending promise with no timing branch.
-function watchFreshReady(deps: LoginSessionDeps, signal: AbortSignal) {
-  let resolveReady!: () => void;
-  const ready = new Promise<void>((resolve) => {
-    resolveReady = resolve;
+// Track a monotonic count of `ready` transitions since login started, and let a
+// caller wait for the NEXT ready strictly after the count it captures — so a ready
+// observed before success is never mistaken for post-auth usability.
+function watchReadyCount(deps: LoginSessionDeps, signal: AbortSignal) {
+  let count = 0;
+  const waiters = new Set<() => void>();
+  const off = deps.onReady(() => {
+    count += 1;
+    for (const w of waiters) w();
+    waiters.clear();
   });
-  const off = deps.onReady(() => resolveReady());
   const stop = () => {
     off();
     signal.removeEventListener("abort", stop);
   };
   signal.addEventListener("abort", stop, { once: true });
-  return { stop, wait: (): Promise<void> => ready };
+  return {
+    stop,
+    // Resolve on the NEXT ready strictly after this call (post-success). A ready
+    // that already fired earlier in the flow does not satisfy it.
+    waitForNext: (): Promise<void> => {
+      const baseline = count;
+      return new Promise<void>((resolve) => {
+        const check = () => (count > baseline ? resolve() : waiters.add(check));
+        check();
+      });
+    },
+  };
 }
 
-// Write `/login` directly (the exclusive lease already owns the queue): the
-// command text, a settle delay, then a single Enter — mirroring command mode.
-async function submitLoginCommand(deps: LoginSessionDeps, command: string): Promise<void> {
-  await deps.terminal.sendInput(command);
-  await delay(commandEnterDelayMs);
-  await deps.terminal.sendInput("\r");
+// Write `/login` directly (the exclusive lease already owns the queue): hold while
+// a dialog blocks, then the command text, a settle delay, then a single Enter —
+// mirroring command mode. Every step races the signal so a mid-submission
+// close/timeout settles promptly instead of writing into a dead terminal.
+async function submitLoginCommand(
+  deps: LoginSessionDeps,
+  command: string,
+  signal: AbortSignal,
+): Promise<void> {
+  await holdWhileBlocked(deps.blocked, signal);
+  await raceSettle(Promise.resolve(deps.terminal.sendInput(command)), signal);
+  await raceSettle(delay(commandEnterDelayMs), signal);
+  await raceSettle(Promise.resolve(deps.terminal.sendInput("\r")), signal);
 }
 
 function delay(ms: number): Promise<void> {

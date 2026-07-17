@@ -30,3 +30,14 @@ const authUrlCapture =
 export function extractAuthUrl(text: string): string | undefined {
   return authUrlCapture.exec(text)?.[1];
 }
+
+/**
+ * The ACTIVE region of the screen: the last few non-blank lines, where the CLI's
+ * current prompt/banner lives. Sensitive stage matching (code prompt, success,
+ * failure) is scoped to this tail so unrelated model/repository output scrolled
+ * into the viewport cannot spoof a login stage or trigger code disclosure.
+ */
+export function activeRegion(text: string): string {
+  const lines = text.split("\n").filter((line) => line.trim() !== "");
+  return lines.slice(-6).join("\n");
+}

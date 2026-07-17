@@ -75,3 +75,12 @@ export function pollDelay(signal: AbortSignal): Promise<void> {
     );
   });
 }
+
+/**
+ * Hold until the session is not `blocked`, so a login keystroke never lands in a
+ * blocking dialog (confirming its highlighted option) — dialog safety (C-API-43).
+ * Aborts via the raced signal on timeout/close.
+ */
+export async function holdWhileBlocked(blocked: () => boolean, signal: AbortSignal): Promise<void> {
+  while (blocked()) await pollDelay(signal);
+}

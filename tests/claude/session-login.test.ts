@@ -10,7 +10,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
 import { asScreen } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
-import { ARROW_DOWN, driveFreshReady, ready } from "./login-helpers.ts";
+import { ARROW_DOWN, ready, succeedAndRecover } from "./login-helpers.ts";
 
 afterEach(resetFakes);
 
@@ -49,8 +49,7 @@ describe("ClaudeSession.login correctness (C-API-43)", () => {
     expect(reportedUrl).toBe("https://claude.ai/oauth/authorize?code=x");
     await expect.poll(() => ptys[0]!.writes.includes("AUTH-CODE-123")).toBe(true);
 
-    ptys[0]!.emitData(asScreen("Login successful."));
-    await driveFreshReady(cwd, session);
+    await succeedAndRecover(cwd, session);
     await expect(done).resolves.toBeUndefined();
 
     // Ordered write deltas: /login + its Enter, the picker Enter (no arrow for
@@ -77,8 +76,7 @@ describe("ClaudeSession.login correctness (C-API-43)", () => {
     );
     // console is row 1 → exactly one arrow-down before Enter.
     await expect.poll(() => ptys[0]!.writes.filter((w) => w === ARROW_DOWN).length).toBe(1);
-    ptys[0]!.emitData(asScreen("Login successful."));
-    await driveFreshReady(cwd, session);
+    await succeedAndRecover(cwd, session);
     await expect(done).resolves.toBeUndefined();
     expect(ptys[0]!.writes.filter((w) => w === ARROW_DOWN)).toHaveLength(1);
   });
@@ -98,8 +96,8 @@ describe("ClaudeSession.login correctness (C-API-43)", () => {
       },
     });
     await expect.poll(() => ptys[0]!.writes.includes("/login")).toBe(true);
-    ptys[0]!.emitData(asScreen("Login successful. Logged in as user@example.com"));
-    await driveFreshReady(cwd, session);
+    // No method picker, straight to success (e.g. a browser round-trip completed).
+    await succeedAndRecover(cwd, session);
     await expect(done).resolves.toBeUndefined();
     expect(codeAsked).toBe(false);
   });
@@ -118,8 +116,7 @@ describe("ClaudeSession.login correctness (C-API-43)", () => {
     await new Promise((r) => setTimeout(r, 250));
     expect(session.status).toBe("ready"); // still alive, driver still polling
     ptys[0]!.emitData(asScreen("Select login method:\n Claude account with subscription"));
-    ptys[0]!.emitData(asScreen("Login successful."));
-    await driveFreshReady(cwd, session);
+    await succeedAndRecover(cwd, session);
     await expect(done).resolves.toBeUndefined();
   });
 

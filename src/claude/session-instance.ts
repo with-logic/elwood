@@ -19,7 +19,7 @@ import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import { AgentSessionBase } from "../runtime/session-base.ts";
 import { terminalStatuses } from "../runtime/session-status.ts";
-import { type SessionRecord, updateSessionResumeId } from "../state/store.ts";
+import { type SessionRecord, updateSessionResumeId, updateSessionStatus } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { initialReadyFallbackWarning } from "./initial-ready-fallback.ts";
 import { runSessionLogin } from "./login/session-login.ts";
@@ -141,11 +141,12 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
       this.warnInitialReadyFallback(reason);
     }
   }
-  // Classify the initial-ready throw by re-persisting the (still `ready`) record:
-  // success ⇒ a lifecycle-event LISTENER threw; a throw ⇒ PERSISTENCE is failing.
+  // Classify the initial-ready throw by re-attempting the same `ready` durable
+  // write: success ⇒ a lifecycle LISTENER threw; a throw ⇒ PERSISTENCE is failing.
+  // Explicit ready record — disk-first persist leaves `this.record` un-advanced.
   private classifyInitialReadyFailure(): InitialReadyFallbackReason {
     try {
-      this.persist(this.record);
+      this.persist(updateSessionStatus(this.record, "ready"));
       return "listener";
     } catch {
       return "persist";
@@ -171,10 +172,10 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   }
   // Surface a mid-session login-expiry banner once (C-CLAUDE-18): gated on prior
   // readiness (startup handles it fatally), edge-detected + key-deduped. FULLY
-  // non-throwing — it runs in the frame callback's detached continuation, so a
-  // write/listener failure must not become an unhandled rejection or skip
-  // `terminal:data`. The watcher advances only after a durable record, so a
-  // transient failure retries on a later frame rather than being lost.
+  // non-throwing — runs in the frame callback's detached continuation, so a
+  // write/listener failure can't become an unhandled rejection or skip
+  // `terminal:data`. The watcher commits only after a durable record, so a
+  // transient failure retries on a later frame.
   noteLoginExpiry(screenText: string): void {
     if (!(this.hasBeenReady && this.loginExpiredWatcher.peek(screenText))) return;
     try {
@@ -184,12 +185,12 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
       // Un-committed so a later frame retries.
     }
   }
-  // Drive `/login` re-auth as an exclusive, abort-aware queue transaction
-  // (C-API-43); see login/session-login.ts.
+  // Drive `/login` re-auth as an exclusive, abort-aware queue transaction (C-API-43).
   login(options: ClaudeLoginOptions): Promise<void> {
     const onReady = (handler: () => void) =>
       this.emitter.on("status", (e) => e.status === "ready" && handler());
-    const deps = { controlQueue: this.controlQueue, terminal: this.terminal, onReady };
+    const blocked = () => this.status === "blocked";
+    const deps = { controlQueue: this.controlQueue, terminal: this.terminal, blocked, onReady };
     return this.inSession(() => runSessionLogin(deps, options));
   }
   protected async stopRuntime(): Promise<void> {

@@ -6,6 +6,7 @@
  */
 
 import type { ClaudeSession } from "../../src/index.ts";
+import { asScreen } from "../helpers/model-pickers.ts";
 import { ptys } from "./helpers.ts";
 
 export const ESC = String.fromCharCode(27);
@@ -49,4 +50,18 @@ export async function driveFreshReady(cwd: string, session: ClaudeSession): Prom
     await new Promise((r) => setTimeout(r, 20));
   }
   await ptys[0]!.dispatchHook(session.elwoodSessionId, stopHook(cwd));
+}
+
+/**
+ * Complete a login: render "Login successful.", let the driver's poll CONSUME it
+ * (so `awaitUsable` has begun waiting for the NEXT ready), THEN drive a fresh
+ * running→ready transition. Ordering matters — `awaitUsable` waits for a ready
+ * STRICTLY AFTER success is detected, so the fresh ready must land after the
+ * driver observed success, not before. The settle delay covers the driver's
+ * ~100 ms outcome-poll interval.
+ */
+export async function succeedAndRecover(cwd: string, session: ClaudeSession): Promise<void> {
+  ptys[0]!.emitData(asScreen("Login successful."));
+  await new Promise((r) => setTimeout(r, 250));
+  await driveFreshReady(cwd, session);
 }
