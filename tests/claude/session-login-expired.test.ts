@@ -8,10 +8,14 @@
 import { afterEach, describe, expect, test } from "vitest";
 import type { ClaudeHookEventFor } from "../../src/index.ts";
 import { startClaude } from "../../src/index.ts";
+import { setRecordWriteFaultForTests } from "../../src/state/write-fault.ts";
 import { asScreen } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
-afterEach(resetFakes);
+afterEach(() => {
+  setRecordWriteFaultForTests(undefined);
+  resetFakes();
+});
 
 const instructionsLoaded = (cwd: string) =>
   ({
@@ -83,5 +87,48 @@ describe("ClaudeSession mid-session login expiry (C-CLAUDE-18)", () => {
     ptys[0]!.emitData(EXPIRED);
     await expect.poll(() => session.terminal.snapshot().text.includes("/login")).toBe(true);
     expect(loginWarnings(session)).toHaveLength(1);
+  });
+
+  test("C-CLAUDE-18 a failed durable write does not lose the warning: a later frame RETRIES", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
+
+    // Fail the FIRST login_expired persist. The watcher commits only after a durable
+    // record, so it stays un-committed and a later frame re-attempts — the warning
+    // is not phantom-committed and lost.
+    let faults = 0;
+    setRecordWriteFaultForTests((record) => {
+      if (record.warnings.some((w) => w.code === "login_expired") && faults++ === 0) {
+        throw Object.assign(new Error("disk full"), { code: "ENOSPC" });
+      }
+    });
+    ptys[0]!.emitData(EXPIRED); // first attempt: persist throws, warning un-committed
+    ptys[0]!.emitData(EXPIRED); // later frame: retry succeeds
+    await expect.poll(() => loginWarnings(session).length).toBe(1);
+    expect(faults).toBeGreaterThan(0); // the fault path was actually exercised
+  });
+
+  test("C-CLAUDE-18 a throwing WARNING listener does not suppress the activity nor terminal:data", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    const activities: string[] = [];
+    let terminalData = 0;
+    session.on("warning", () => {
+      throw new Error("rogue warning listener");
+    });
+    session.on("activity", (event) => activities.push(event.kind));
+    session.on("terminal:data", () => {
+      terminalData += 1;
+    });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
+
+    ptys[0]!.emitData(EXPIRED);
+    // The warning listener throws, but the activity fan-out is ISOLATED so the
+    // `warning` activity still fires, and the frame's `terminal:data` still delivers.
+    await expect.poll(() => activities.includes("warning")).toBe(true);
+    expect(terminalData).toBeGreaterThan(0);
   });
 });

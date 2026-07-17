@@ -10,9 +10,11 @@
 import type { ControlQueue } from "../../core/control-queue.ts";
 import { commandEnterDelayMs } from "../../core/session-input.ts";
 import type { ScreenTerminal } from "../../core/tui-screen.ts";
-import { holdWhileBlocked, raceSettle } from "./abort.ts";
+import { abortError, deadlineSignal, holdWhileBlocked, raceSettle } from "./abort.ts";
 import { driveLogin } from "./driver.ts";
-import type { ClaudeLoginOptions } from "./types.ts";
+import { type ClaudeLoginOptions, defaultLoginTimeoutMs } from "./types.ts";
+
+const escapeKey = "\u001b";
 
 export type LoginSessionDeps = {
   readonly controlQueue: ControlQueue;
@@ -30,27 +32,51 @@ export function runSessionLogin(
   deps: LoginSessionDeps,
   options: ClaudeLoginOptions,
 ): Promise<void> {
-  return deps.controlQueue.runExclusive("login", async (signal) => {
-    // Watch `ready` transitions from the start of the transaction. `awaitUsable`,
-    // called right after success is detected, waits for the NEXT ready — so only a
-    // transition that follows successful auth proves renewed usability; a ready
-    // seen earlier in the flow (e.g. a stale pre-login one) never counts.
-    const readies = watchReadyCount(deps, signal);
-    try {
-      await driveLogin(
-        {
-          terminal: deps.terminal,
-          blocked: deps.blocked,
-          submit: (command) => submitLoginCommand(deps, command, signal),
-          awaitUsable: (_timeoutMs, s) => raceSettle(readies.waitForNext(), s),
-        },
-        options,
-        signal,
-      );
-    } finally {
-      readies.stop();
-    }
-  });
+  // Start the OVERALL deadline NOW — before the queue dispatches the exclusive
+  // task — so `timeoutMs` bounds the whole call including any time spent WAITING
+  // behind other queued operations, honoring the `login_timeout after timeoutMs`
+  // contract regardless of queue depth.
+  const timeoutMs = options.timeoutMs ?? defaultLoginTimeoutMs;
+  const controller = new AbortController();
+  const deadline = deadlineSignal(timeoutMs, controller.signal);
+  return deps.controlQueue
+    .runExclusive(
+      "login",
+      async (queueClose) => {
+        // Compose the pre-started deadline with the queue's close signal so the flow
+        // settles on the FIRST of timeout, session close, success, or failure.
+        queueClose.addEventListener("abort", () => controller.abort(), { once: true });
+        const readies = watchReadyCount(deps, deadline.signal);
+        try {
+          await driveLogin(
+            {
+              terminal: deps.terminal,
+              blocked: deps.blocked,
+              submit: (command) => submitLoginCommand(deps, command, deadline.signal),
+              awaitUsable: () => raceSettle(readies.waitForNext(), deadline.signal),
+            },
+            options,
+            deadline.signal,
+          );
+        } catch (error) {
+          // Best-effort: cancel the still-open login UI before releasing the lease,
+          // so a failed/timed-out attempt leaves no dialog for the next queued op to
+          // write into. Never masks the original error.
+          try {
+            await deps.terminal.sendInput(escapeKey);
+          } catch {
+            // A closed terminal makes the cancel a no-op; the original error stands.
+          }
+          throw error;
+        } finally {
+          readies.stop();
+        }
+      },
+      // Drop this login if its deadline fires while it is STILL QUEUED behind other
+      // work, so the timeout bounds queue-wait too.
+      { signal: deadline.signal, error: () => abortError(deadline.signal) },
+    )
+    .finally(() => deadline.cancel());
 }
 
 // Track a monotonic count of `ready` transitions since login started, and let a

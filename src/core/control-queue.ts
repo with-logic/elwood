@@ -21,10 +21,9 @@ export { controlOperationTraits } from "./control-queue-traits.ts";
 
 import { toError } from "./errors.ts";
 
-// Writes an op to the terminal; resolves only once the submission (incl. any
-// delayed Enter) has dispatched, so the next op never drains into a half-written
-// composer. `signal` aborts on the NEXT op / on close, so prior recovery nudges
-// can't fire an Enter into a later paste.
+// Writes an op to the terminal; resolves only once the submission (incl. any delayed
+// Enter) has dispatched, so the next op never drains into a half-written composer.
+// `signal` aborts on the NEXT op / on close (stops prior recovery nudges).
 export type ControlSubmitter = (
   input: string,
   mode: ControlSubmitMode,
@@ -36,8 +35,7 @@ type QueuedOperation = {
   readonly kind: ControlOperationKind;
   // FROZEN at enqueue: guidance queued before first readiness stays message-like (C-API-37).
   readonly mayBypassReadiness: boolean;
-  // An EXCLUSIVE op (e.g. `login`) runs an interactive task holding the queue
-  // in-flight for its whole duration; aborted on close. `input`/submitMode unused.
+  // EXCLUSIVE op (e.g. `login`): runs a task holding the queue for its whole duration (input unused).
   readonly run?: ExclusiveTask;
   readonly resolve: () => void;
   readonly reject: (error: Error) => void;
@@ -45,6 +43,9 @@ type QueuedOperation = {
 
 /** Runs an exclusive interactive task; aborted when the session closes. */
 export type ExclusiveTask = (signal: AbortSignal) => Promise<void>;
+
+/** Drops a still-queued op when `signal` aborts, rejecting it with `error()`. */
+type Cancel = { readonly signal: AbortSignal; readonly error: () => Error };
 
 export class ControlQueue {
   private readonly queue: QueuedOperation[] = [];
@@ -55,11 +56,9 @@ export class ControlQueue {
   private ready = false;
   private everReady = false;
   private closed = false;
-  // Monotonic readiness version bumped by every lifecycle transition; a failed
-  // submission's rollback restores its snapshot only if the epoch is unchanged.
+  // Monotonic readiness version; rollback restores its snapshot only if the epoch is unchanged.
   private readinessEpoch = 0;
-  // Count of queued ops that can dispatch while not ready; lets `drain` skip the
-  // overtaker scan when none exists (keeps a message backlog amortized O(1)).
+  // Count of ops that can dispatch while not ready; lets `drain` skip the overtaker scan (amortized O(1)).
   private bypassable = 0;
   private inFlight: QueuedOperation | undefined; // submission still dispatching (incl. delayed Enter)
   private submitAbort: AbortController | undefined; // aborts prior submission's nudges
@@ -77,8 +76,7 @@ export class ControlQueue {
   }
 
   send(input: string, kind: ControlOperationKind): Promise<void> {
-    // Freeze bypass eligibility: guidance bypasses only if past initial readiness
-    // AND mid-turn at enqueue time (C-API-37).
+    // Freeze bypass eligibility: guidance bypasses only if past initial readiness AND mid-turn (C-API-37).
     const mayBypassReadiness =
       controlOperationTraits[kind].readiness === "running_after_ready" &&
       this.everReady &&
@@ -86,20 +84,31 @@ export class ControlQueue {
     return this.enqueue({ input, kind, mayBypassReadiness });
   }
 
-  // Run an interactive task holding EXCLUSIVE queue ownership for its whole duration
-  // (C-API-43 login): serialized behind queued work, blocking every later op until
-  // it settles, abort-on-close. `login`'s `always` readiness lets it run pre-`ready`.
-  runExclusive(kind: ControlOperationKind, run: ExclusiveTask): Promise<void> {
-    return this.enqueue({ input: "", kind, mayBypassReadiness: false, run });
+  // Run a task holding EXCLUSIVE queue ownership for its whole duration (C-API-43
+  // login), abort-on-close. `cancel` drops+rejects it if aborted while STILL QUEUED
+  // (its deadline elapsing behind other work), so the timeout covers queue-wait too.
+  runExclusive(kind: ControlOperationKind, run: ExclusiveTask, cancel?: Cancel): Promise<void> {
+    return this.enqueue({ input: "", kind, mayBypassReadiness: false, run }, cancel);
   }
 
-  // Push an op, track bypass-eligibility, drain; rejects a post-close enqueue.
-  private enqueue(fields: Omit<QueuedOperation, "resolve" | "reject">): Promise<void> {
+  private dropQueued(operation: QueuedOperation, error: Error): void {
+    const index = this.queue.indexOf(operation);
+    if (index < 0) return; // already dispatched (in flight) — its own signal handles it
+    this.queue.splice(index, 1);
+    this.bypassable -= 1; // cancel-able ops (exclusive login) have `always` readiness → always counted
+    operation.reject(error);
+  }
+
+  private enqueue(op: Omit<QueuedOperation, "resolve" | "reject">, cancel?: Cancel): Promise<void> {
     if (this.closed) return Promise.reject(this.stoppedError());
     return new Promise((resolve, reject) => {
-      const operation = { ...fields, resolve, reject };
+      const operation = { ...op, resolve, reject };
       this.queue.push(operation);
       if (overtakesReadiness(operation)) this.bypassable += 1;
+      if (cancel) {
+        const drop = () => this.dropQueued(operation, cancel.error());
+        cancel.signal.addEventListener("abort", drop, { once: true });
+      }
       this.drain();
     });
   }
@@ -112,8 +121,7 @@ export class ControlQueue {
     this.drain();
   }
 
-  // Suspends readiness so readiness-waiting ops (messages, compact) hold until the
-  // next `markReady`. Used on turn start AND on a blocking dialog; implies no turn.
+  // Suspend readiness so waiting ops (messages, compact) hold until the next `markReady`.
   suspendReadiness(): void {
     this.ready = false;
     this.readinessEpoch += 1;
@@ -122,8 +130,7 @@ export class ControlQueue {
   close(): void {
     this.closed = true;
     const error = this.stoppedError();
-    // Abort the in-flight signal so an exclusive task (login) stops promptly, and
-    // reject the still-dispatching op so a pending delayed Enter can't resolve it.
+    // Abort the in-flight signal (login stops promptly) and reject the still-dispatching op.
     this.submitAbort?.abort();
     const settling = this.inFlight;
     this.inFlight = undefined;
@@ -138,35 +145,29 @@ export class ControlQueue {
     if (index < 0) return;
     const operation = this.queue.splice(index, 1)[0] as QueuedOperation;
     if (overtakesReadiness(operation)) this.bypassable -= 1;
-    // Own the queue BEFORE lifecycle work/write so a throwing turn-start listener
-    // can't leave a started write ownerless for a follower to interleave (C-API-35).
+    // Own the queue BEFORE lifecycle work/write so a throwing listener can't leave a write ownerless (C-API-35).
     this.inFlight = operation;
     const traits = controlOperationTraits[operation.kind];
-    // Snapshot readiness + epoch so rollback can restore the prior value (see rollback).
     const priorReady = this.ready;
     const dispatchEpoch = this.readinessEpoch;
     let dispatched: Promise<void>;
     try {
       this.beginSubmission(traits);
       const signal = this.armAbort();
-      // Exclusive op runs its interactive task (holds the queue); ordinary op writes once.
       dispatched =
         operation.run?.(signal) ?? this.submit(operation.input, traits.submitMode, signal);
     } catch (error) {
       this.rollbackSubmission(operation, priorReady, dispatchEpoch, toError(error));
       return;
     }
-    // The write holds the next drain so operations never interleave; no-op if close() settled it.
+    // The write holds the next drain so ops never interleave; no-op if close() settled it.
     dispatched.then(
       () => this.settleInFlight(operation, () => operation.resolve()),
-      (error: unknown) =>
-        this.rollbackSubmission(operation, priorReady, dispatchEpoch, toError(error)),
+      (e: unknown) => this.rollbackSubmission(operation, priorReady, dispatchEpoch, toError(e)),
     );
   }
 
-  // Restore readiness on a failed submission (no turn started, so no Stop comes) —
-  // but ONLY if no lifecycle transition bumped the epoch since dispatch, so a stale
-  // snapshot never clobbers a newer markReady/suspend (C-API-35/37).
+  // Restore readiness on a failed submission, ONLY if no lifecycle transition bumped the epoch since dispatch (C-API-35/37).
   private rollbackSubmission(
     operation: QueuedOperation,
     priorReady: boolean,
@@ -184,8 +185,7 @@ export class ControlQueue {
     this.drain();
   }
 
-  // Consume-readiness / report-turn lifecycle runs BEFORE the write, so a throwing
-  // status listener aborts with nothing in flight yet.
+  // Consume-readiness / report-turn lifecycle runs BEFORE the write (a throwing status listener aborts with nothing in flight).
   private beginSubmission(traits: ControlOperationTraits): void {
     if (traits.consumesReadiness) this.ready = false;
     if (traits.reportsCallerSubmission) this.onTurnStarted();

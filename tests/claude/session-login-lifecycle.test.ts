@@ -45,10 +45,35 @@ describe("ClaudeSession.login lifecycle (C-API-43)", () => {
     expect(ptys[0]!.writes).toContain(pasted);
     // And it landed strictly AFTER login's writes.
     expect(ptys[0]!.writes.indexOf(pasted)).toBeGreaterThan(ptys[0]!.writes.indexOf("/login"));
-    // This test chains a full startup + login + fresh-ready + a queued message
-    // dispatch, so it needs more than the 5s default under full-suite CPU pressure
-    // (isolation completes in well under a second — the extra budget is scheduling
-    // headroom, not a masked hang).
+    // 20s budget is scheduling headroom for the full chain under CPU pressure (runs
+    // in well under a second in isolation), not a masked hang.
+  }, 20_000);
+
+  test("C-API-43 a SECOND login queues behind the first and does not interleave", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    await ready(cwd, session);
+
+    // First login is in flight and owns the exclusive lease.
+    const first = session.login({ provideCode: () => "first", timeoutMs: 10_000 });
+    await expect.poll(() => ptys[0]!.writes.includes("/login")).toBe(true);
+    ptys[0]!.emitData(asScreen("Select login method:\n Claude account with subscription"));
+    await expect.poll(() => ptys[0]!.writes.includes("\r")).toBe(true);
+
+    // A SECOND login enqueues BEHIND the first — while the first holds the lease it
+    // must NOT write a second `/login` (which would interleave two transactions).
+    // Its own short timeout runs from its call, so it rejects with login_timeout
+    // while still waiting behind the first (never having written anything).
+    const second = session.login({ provideCode: () => "second", timeoutMs: 400 });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(ptys[0]!.writes.filter((w) => w === "/login")).toHaveLength(1); // only the first
+    await expect(second).rejects.toMatchObject({ code: "login_timeout" });
+    expect(ptys[0]!.writes.filter((w) => w === "/login")).toHaveLength(1); // still only one
+
+    // The first still completes normally after the queued second gave up.
+    await succeedAndRecover(cwd, session);
+    await first;
   }, 20_000);
 
   test("C-API-43 killing the session mid-flow rejects login with session_not_running promptly", async () => {
@@ -68,6 +93,24 @@ describe("ClaudeSession.login lifecycle (C-API-43)", () => {
     await session.kill();
     await expect(done).rejects.toMatchObject({ code: "session_not_running" });
     expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("C-API-43 the timeout covers time spent WAITING before the flow can write", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    await ready(cwd, session);
+    // A blocking dialog holds the WHOLE flow before `/login` is even written. The
+    // timeout is measured from the login() CALL, so it must reject with
+    // login_timeout while still held — the deadline covers pre-write wait time, not
+    // only the interactive phase.
+    ptys[0]!.emitData("Do you want to run this?\r\n ❯ 1. Yes\r\n   3. No\r\n Esc to cancel\r\n");
+    await expect.poll(() => session.status).toBe("blocked");
+    const start = Date.now();
+    const done = session.login({ provideCode: () => "x", timeoutMs: 300 });
+    await expect(done).rejects.toMatchObject({ code: "login_timeout" });
+    expect(ptys[0]!.writes).not.toContain("/login"); // never got to write while held
+    expect(Date.now() - start).toBeLessThan(3_000);
   });
 
   test("C-API-43 a hanging provideCode callback still rejects with login_timeout", async () => {

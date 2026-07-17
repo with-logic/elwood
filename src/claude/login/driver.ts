@@ -9,9 +9,8 @@
  */
 
 import type { ScreenTerminal } from "../../core/tui-screen.ts";
-import { deadlineSignal } from "./abort.ts";
-import { awaitLoginOutcome, reportAuthUrl, selectMethodIfShown } from "./stages.ts";
-import { type ClaudeLoginOptions, defaultLoginTimeoutMs } from "./types.ts";
+import { awaitLoginOutcome, selectMethodIfShown } from "./stages.ts";
+import type { ClaudeLoginOptions } from "./types.ts";
 
 export type LoginIo = {
   readonly terminal: ScreenTerminal;
@@ -20,34 +19,29 @@ export type LoginIo = {
   /** Submit the `/login` slash command as an exclusive queue-owned write. */
   readonly submit: (command: string) => Promise<void>;
   /** Resolves when the session next reaches a usable `ready` state after login. */
-  readonly awaitUsable: (timeoutMs: number, signal: AbortSignal) => Promise<void>;
+  readonly awaitUsable: () => Promise<void>;
 };
 
 /**
- * Run the whole `/login` flow. `abort` is the queue's lifecycle signal (session
- * close); it composes with the overall deadline so every await settles on the
- * FIRST of success, failure, timeout, or termination.
+ * Run the whole `/login` flow. `signal` is the caller's combined deadline +
+ * lifecycle signal (started when `login()` was called, so it already bounds queue
+ * wait); every await settles on the FIRST of success, failure, timeout, or close.
  */
 export async function driveLogin(
   io: LoginIo,
   options: ClaudeLoginOptions,
-  abort: AbortSignal,
+  signal: AbortSignal,
 ): Promise<void> {
-  const timeoutMs = options.timeoutMs ?? defaultLoginTimeoutMs;
-  const { signal, cancel } = deadlineSignal(timeoutMs, abort);
-  try {
-    // Baseline the pre-login screen so stale text present BEFORE this attempt (a
-    // model/repo "Paste code here", an old success banner) can never drive the
-    // flow: sensitive markers must NEWLY appear after `/login` (C-API-43 security).
-    const baseline = io.terminal.snapshot().text;
-    await io.submit("/login");
-    await selectMethodIfShown(io, options, signal);
-    await reportAuthUrl(io.terminal, options, baseline, signal);
-    await awaitLoginOutcome(io, options, baseline, signal);
-    // A success banner alone does not prove usability; wait for a fresh ready state
-    // scoped to this attempt before releasing the exclusive lease.
-    await io.awaitUsable(timeoutMs, signal);
-  } finally {
-    cancel();
-  }
+  // Baseline the pre-login screen so stale text present BEFORE this attempt (a
+  // model/repo "Paste code here", an old success banner) can never drive the flow:
+  // sensitive markers must NEWLY appear after `/login` (C-API-43 security).
+  const baseline = io.terminal.snapshot().text;
+  await io.submit("/login");
+  await selectMethodIfShown(io, options, signal);
+  // URL reporting + code entry both live in the outcome poll (the URL can arrive
+  // after the browser phrase), so a URL that appears later is still reported.
+  await awaitLoginOutcome(io, options, baseline, signal);
+  // A success banner alone does not prove usability; wait for a fresh ready state
+  // scoped to this attempt before releasing the exclusive lease.
+  await io.awaitUsable();
 }

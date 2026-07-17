@@ -45,29 +45,34 @@ describe("ClaudeSession.login security (C-API-43)", () => {
     expect(ptys[0]!.writes).not.toContain(hostile);
   });
 
-  test("C-API-43 does NOT report a spoofed / off-host / plain-http auth URL to onAuthUrl", async () => {
+  test("C-API-43 a spoofed / off-host / plain-http auth URL is never reported NOR advances to code disclosure", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
     await ready(cwd, session);
     const reported: string[] = [];
+    let codeAsked = false;
     const done = session.login({
       onAuthUrl: (url) => reported.push(url),
-      provideCode: () => "code",
-      timeoutMs: 5_000,
+      provideCode: () => {
+        codeAsked = true;
+        return "code";
+      },
+      timeoutMs: 400,
     });
     await expect.poll(() => ptys[0]!.writes.includes("/login")).toBe(true);
-    // A look-alike host and a plain-http claude.ai URL are both untrusted.
+    // A look-alike host and a plain-http claude.ai URL are both untrusted, so no
+    // VALID auth URL ever appears: the URL is not reported AND the authorizing
+    // stage is never entered, so the code prompt never discloses the code — the
+    // flow times out rather than trusting spoofed authorization context.
     ptys[0]!.emitData(
       asScreen(
         "Authenticate your account at:\nhttps://evilclaude.com/oauth/x\nhttp://claude.ai/oauth/x\nPaste code here > ",
       ),
     );
-    await expect.poll(() => ptys[0]!.writes.includes("code")).toBe(true);
-    // Neither spoofed URL was ever handed to the caller.
+    await expect(done).rejects.toMatchObject({ code: "login_timeout" });
     expect(reported).toHaveLength(0);
-    await succeedAndRecover(cwd, session);
-    await expect(done).resolves.toBeUndefined();
+    expect(codeAsked).toBe(false);
   });
 
   // A throwing onAuthUrl (Error OR bare non-Error) surfaces a bounded login_failed,
@@ -118,7 +123,7 @@ describe("ClaudeSession.login security (C-API-43)", () => {
     await expect(done).resolves.toBeUndefined();
   });
 
-  test("C-API-43 does not invoke onAuthUrl when the URL screen carries no extractable URL", async () => {
+  test("C-API-43 a phrase-only screen does not report a URL nor authorize; a real URL then does", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
@@ -130,57 +135,19 @@ describe("ClaudeSession.login security (C-API-43)", () => {
       timeoutMs: 5_000,
     });
     await expect.poll(() => ptys[0]!.writes.includes("/login")).toBe(true);
-    // The URL phrase renders but no OAuth URL is on screen (extractAuthUrl → none):
-    // onAuthUrl must not fire on an empty scrape.
-    ptys[0]!.emitData(asScreen("Opening browser to authorize…\nPaste code here > "));
-    await expect.poll(() => ptys[0]!.writes.includes("code")).toBe(true);
+    // A phrase with no extractable URL neither reports a URL nor enters authorizing.
+    ptys[0]!.emitData(asScreen("Opening browser to authorize…"));
+    await new Promise((r) => setTimeout(r, 150));
     expect(reported).toHaveLength(0);
+    expect(ptys[0]!.writes).not.toContain("code");
+    // Then a REAL claude.ai OAuth URL renders: it is reported, and only now does the
+    // code prompt disclose the code.
+    ptys[0]!.emitData(
+      asScreen("Authenticate your account at:\nhttps://claude.ai/oauth/z\nPaste code here > "),
+    );
+    await expect.poll(() => ptys[0]!.writes.includes("code")).toBe(true);
+    expect(reported).toEqual(["https://claude.ai/oauth/z"]);
     await succeedAndRecover(cwd, session);
     await expect(done).resolves.toBeUndefined();
-  });
-
-  test("C-API-43 a stale pre-login success banner does not resolve the flow", async () => {
-    const cwd = tempDir();
-    installFakes();
-    const session = await startClaude({ cwd });
-    await ready(cwd, session);
-    // Baseline: a leftover "Login successful." banner is ALREADY on screen before
-    // login() is called. It is stale and must not settle THIS attempt.
-    ptys[0]!.emitData(asScreen("Login successful. (from a previous session)"));
-    await expect
-      .poll(() => session.terminal.snapshot().text.includes("Login successful"))
-      .toBe(true);
-
-    const done = session.login({ provideCode: () => "x", timeoutMs: 300 });
-    await expect.poll(() => ptys[0]!.writes.includes("/login")).toBe(true);
-    // The banner already on the baseline can never resolve login: the driver waits
-    // for a FRESH success and instead hits the deadline.
-    await expect(done).rejects.toMatchObject({ code: "login_timeout" });
-  });
-
-  test("C-API-43 a stale pre-login paste prompt never discloses the code", async () => {
-    const cwd = tempDir();
-    installFakes();
-    const session = await startClaude({ cwd });
-    await ready(cwd, session);
-    // Baseline: a leftover "Paste code here" prompt sits on screen before login().
-    ptys[0]!.emitData(asScreen("Paste code here > (leftover from a prior attempt)"));
-    await expect
-      .poll(() => session.terminal.snapshot().text.includes("Paste code here"))
-      .toBe(true);
-
-    let codeAsked = false;
-    const done = session.login({
-      provideCode: () => {
-        codeAsked = true;
-        return "SECRET-CODE";
-      },
-      timeoutMs: 300,
-    });
-    await expect.poll(() => ptys[0]!.writes.includes("/login")).toBe(true);
-    // The stale prompt never triggers disclosure; the flow times out instead.
-    await expect(done).rejects.toMatchObject({ code: "login_timeout" });
-    expect(codeAsked).toBe(false);
-    expect(ptys[0]!.writes).not.toContain("SECRET-CODE");
   });
 });

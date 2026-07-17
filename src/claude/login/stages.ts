@@ -60,21 +60,48 @@ export async function selectMethodIfShown(
   await write(io, enter, signal);
 }
 
-/** Scrape and report the authorization URL once it NEWLY appears (validated). */
-export async function reportAuthUrl(
-  terminal: ScreenTerminal,
+/**
+ * Poll to a success/failure outcome: report the authorization URL once a VALID one
+ * appears, and feed a validated code once the code prompt shows AFTER authorizing.
+ * Markers are scoped to the screen's ACTIVE region and required NEW to this attempt
+ * (stale/off-region text can't drive the flow). Critically, the AUTHORIZING stage
+ * requires a valid extracted URL — https on an approved Anthropic host — not merely
+ * the phrase "Authenticate…", so arbitrary model/repo output that echoes the phrase
+ * plus "Paste code here" cannot reach the code stage and disclose the code.
+ */
+export async function awaitLoginOutcome(
+  io: LoginIo,
   options: ClaudeLoginOptions,
   baseline: string,
   signal: AbortSignal,
 ): Promise<void> {
+  const terminal = io.terminal;
+  const succeeded = freshInRegion(loginSucceeded, baseline);
+  const failed = freshInRegion(loginFailed, baseline);
+  const codePrompt = freshInRegion(pasteCodePrompt, baseline);
+  let authorizing = false;
+  let codeSent = false;
+  for (;;) {
+    const text = terminal.snapshot().text;
+    const url = freshAuthUrl(text, baseline);
+    if (url && !authorizing) {
+      authorizing = true;
+      reportUrl(options, url);
+    }
+    if (succeeded(text)) return;
+    if (failed(text)) throw elwoodError("login_failed", "Claude /login reported a failure.");
+    if (authorizing && !codeSent && codePrompt(text)) {
+      codeSent = true;
+      await submitCode(io, options, signal);
+    }
+    await pollDelay(signal);
+  }
+}
+
+// Report the (validated) URL to the untrusted `onAuthUrl` callback; a throw becomes
+// a bounded typed error rather than escaping raw out of the login transaction.
+function reportUrl(options: ClaudeLoginOptions, url: string): void {
   if (!options.onAuthUrl) return;
-  // Only wait a bounded slice: a flow with no URL screen must not stall here.
-  const text = await pollUntil(terminal, signal, (t) => authUrlVisible.test(t) || pastPicker(t));
-  // A URL already on the baseline screen is stale; require a fresh one.
-  const url = safeAuthUrl(extractAuthUrl(text) ?? "");
-  if (!url || url === safeAuthUrl(extractAuthUrl(baseline) ?? "")) return;
-  // The caller's `onAuthUrl` is untrusted: a throw must become a bounded typed
-  // error, never escape raw out of the login transaction.
   try {
     options.onAuthUrl(url);
   } catch (error) {
@@ -84,36 +111,12 @@ export async function reportAuthUrl(
   }
 }
 
-/** Poll to a success/failure outcome, feeding a validated code once if NEWLY prompted. */
-export async function awaitLoginOutcome(
-  io: LoginIo,
-  options: ClaudeLoginOptions,
-  baseline: string,
-  signal: AbortSignal,
-): Promise<void> {
-  const terminal = io.terminal;
-  // Scope each marker to the screen's ACTIVE region and require it NEW to this
-  // attempt: unrelated model/repo text scrolled into the viewport — even newly —
-  // is outside the active prompt region, so it cannot settle the outcome or
-  // trigger code disclosure. The code prompt additionally only acts once the flow
-  // has entered the AUTHORIZING stage (a URL/browser prompt was seen), enforcing
-  // ordered stages so a bare "Paste code here" can never front-run the flow.
-  const succeeded = freshInRegion(loginSucceeded, baseline);
-  const failed = freshInRegion(loginFailed, baseline);
-  const codePrompt = freshInRegion(pasteCodePrompt, baseline);
-  let authorizing = false;
-  let codeSent = false;
-  for (;;) {
-    const text = terminal.snapshot().text;
-    authorizing ||= authUrlVisible.test(activeRegion(text));
-    if (succeeded(text)) return;
-    if (failed(text)) throw elwoodError("login_failed", "Claude /login reported a failure.");
-    if (authorizing && !codeSent && codePrompt(text)) {
-      codeSent = true;
-      await submitCode(io, options, signal);
-    }
-    await pollDelay(signal);
-  }
+// True once a valid, NEW authorization URL is on screen (an approved-host https
+// claude.ai OAuth URL absent from the pre-login baseline) — the trustworthy signal
+// that the real CLI has entered its browser-authorize stage.
+function freshAuthUrl(text: string, baseline: string): string | undefined {
+  const url = safeAuthUrl(extractAuthUrl(text) ?? "");
+  return url !== undefined && url !== safeAuthUrl(extractAuthUrl(baseline) ?? "") ? url : undefined;
 }
 
 // A predicate matching only when the marker is in the current ACTIVE region AND

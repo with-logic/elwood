@@ -153,4 +153,40 @@ describe("ControlQueue submission lifecycle", () => {
     expect(signals[0]?.aborted).toBe(true);
     expect(signals[1]?.aborted).toBe(false);
   });
+
+  test("C-API-43 runExclusive cancel drops a QUEUED task, but is a no-op once dispatched", async () => {
+    const queue = new ControlQueue(
+      () => Promise.resolve(),
+      () => new Error("closed"),
+      () => undefined,
+    );
+    // A first exclusive task holds the lease; a running message keeps it in flight.
+    let releaseFirst!: () => void;
+    const first = queue.runExclusive("login", () => new Promise<void>((r) => (releaseFirst = r)));
+    // A SECOND exclusive task queues behind it; its cancel fires while STILL QUEUED,
+    // so it is dropped and rejected with cancel.error().
+    const queuedCancel = new AbortController();
+    const dropped = queue.runExclusive("login", () => Promise.resolve(), {
+      signal: queuedCancel.signal,
+      error: () => new Error("deadline"),
+    });
+    queuedCancel.abort();
+    await expect(dropped).rejects.toThrow("deadline");
+
+    // A cancel that fires AFTER a task has dispatched (is in flight) is a no-op —
+    // it does not double-reject; the task settles normally when it completes. With
+    // the queue now empty, runExclusive dispatches the task SYNCHRONOUSLY (drain
+    // runs its `run` in the same tick), so it is already in flight on return.
+    const dispatchedCancel = new AbortController();
+    releaseFirst();
+    await first;
+    let releaseThird!: () => void;
+    const third = queue.runExclusive("login", () => new Promise<void>((r) => (releaseThird = r)), {
+      signal: dispatchedCancel.signal,
+      error: () => new Error("late"),
+    });
+    dispatchedCancel.abort(); // already in flight → index < 0 → dropQueued returns, no reject
+    releaseThird();
+    await expect(third).resolves.toBeUndefined();
+  });
 });
