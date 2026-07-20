@@ -5,7 +5,7 @@
 
 import type { ClaudeHookEvent } from "../claude/hooks.ts";
 import type { CodexHookEvent } from "../codex/hooks.ts";
-import type { CodexTranscriptEvent } from "../codex/transcript.ts";
+import { type CodexTranscriptEvent, toolOutputText } from "../codex/transcript.ts";
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity.ts";
 import { stringify } from "./serialize.ts";
 
@@ -43,11 +43,16 @@ function transcriptToolIo(
   event: CodexTranscriptEvent,
   payload: Record<string, unknown>,
 ): Partial<ElwoodActivityEvent> {
+  // A `custom_tool_call` (modern `exec`) carries its command in `input`; a
+  // `function_call` in JSON `arguments`. A `tool_result`'s output is a plain string
+  // or an `input_text[]` array — surface the array's joined readable text, falling
+  // back to a generic serialization for any other shape (C-CODEX-19).
   if (event.summary.kind === "tool_call") {
-    return optional("toolInput", stringify(payload["arguments"]));
+    return optional("toolInput", stringify(payload["input"] ?? payload["arguments"]));
   }
   if (event.summary.kind === "tool_result") {
-    return optional("toolOutput", stringify(payload["output"]));
+    const output = payload["output"];
+    return optional("toolOutput", toolOutputText(output) ?? stringify(output));
   }
   return {};
 }

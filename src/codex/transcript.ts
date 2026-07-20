@@ -113,6 +113,7 @@ export function summarizeTranscriptItem(item: unknown): CodexTranscriptSummary {
   if (type === "function_call") return toolCall(payload);
   if (type === "custom_tool_call") return toolCall(payload);
   if (type === "function_call_output") return toolResult(payload);
+  if (type === "custom_tool_call_output") return toolResult(payload);
   if (type === "reasoning") return reasoning(payload);
   if (type === "message") return message(payload);
   if (type === "agent_message") return agentMessage(payload);
@@ -127,14 +128,29 @@ function webSearch(payload: Record<string, unknown>): CodexTranscriptSummary {
   return { kind: "web_search", label: actionType, ...(text(textValue) ?? {}) };
 }
 
+// A `custom_tool_call` (modern `exec`) carries its command in `input`; a
+// `function_call` in JSON `arguments` — surface whichever holds it (C-CODEX-19).
 function toolCall(payload: Record<string, unknown>): CodexTranscriptSummary {
   const name = stringValue(payload["name"]) ?? "tool";
-  return { kind: "tool_call", label: name, ...(text(payload["arguments"]) ?? {}) };
+  const invocation = text(payload["input"] ?? payload["arguments"]);
+  return { kind: "tool_call", label: name, ...(invocation ?? {}) };
 }
 
 function toolResult(payload: Record<string, unknown>): CodexTranscriptSummary {
   const callId = stringValue(payload["call_id"]) ?? "tool";
-  return { kind: "tool_result", label: callId, ...(text(payload["output"]) ?? {}) };
+  return { kind: "tool_result", label: callId, ...(text(toolOutputText(payload["output"])) ?? {}) };
+}
+
+// A tool result's output is a plain string, or an `{ type:"input_text", text }[]`
+// array (custom_tool_call_output/modern exec) whose text is joined; else nothing
+// (caller falls back to generic serialization) (C-CODEX-19).
+export function toolOutputText(output: unknown): string | undefined {
+  if (typeof output === "string") return output;
+  if (!Array.isArray(output)) return undefined;
+  const parts = output
+    .map((entry) => stringValue(record(entry)?.["text"]))
+    .filter((part): part is string => part !== undefined);
+  return parts.length > 0 ? parts.join("") : undefined;
 }
 
 function message(payload: Record<string, unknown>): CodexTranscriptSummary {
@@ -146,14 +162,9 @@ function agentMessage(payload: Record<string, unknown>): CodexTranscriptSummary 
   return { kind: "message", label: "assistant", ...(text(payload["message"]) ?? {}) };
 }
 
-/**
- * A Codex reasoning item. Human-readable text lives in `summary[]` entries of
- * type `summary_text`, or (rarely, when reasoning is un-summarized) in `content[]`
- * entries of type `reasoning_text`; the always-present `encrypted_content` is NOT
- * readable and is never surfaced. Most items carry an empty `summary` (reasoning
- * summaries disabled), so `text` is included only when prose is actually present —
- * otherwise this stays the bare label, exactly as before (PRD §7A.4).
- */
+// A Codex reasoning item: readable text is `summary[]` `summary_text` entries, or
+// (rarely) `content[]` `reasoning_text`; `encrypted_content` is never surfaced.
+// Most items have an empty summary, so `text` is set only when prose exists (§7A.4).
 function reasoning(payload: Record<string, unknown>): CodexTranscriptSummary {
   const value =
     reasoningText(payload["summary"], "summary_text") ??
@@ -165,11 +176,8 @@ function reasoning(payload: Record<string, unknown>): CodexTranscriptSummary {
 function reasoningText(value: unknown, entryType: string): string | undefined {
   if (!Array.isArray(value)) return undefined;
   const parts = value
-    .map((entry) =>
-      stringValue(record(entry)?.["type"]) === entryType
-        ? stringValue(record(entry)?.["text"])
-        : undefined,
-    )
+    .filter((e) => stringValue(record(e)?.["type"]) === entryType)
+    .map((e) => stringValue(record(e)?.["text"]))
     .filter((part): part is string => part !== undefined && part.length > 0);
   return parts.length > 0 ? parts.join("\n") : undefined;
 }

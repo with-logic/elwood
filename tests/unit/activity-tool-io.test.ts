@@ -6,10 +6,22 @@
 
 import { describe, expect, test } from "vitest";
 import type { ClaudeTranscriptSummary } from "../../src/claude/transcript/summary.ts";
+import { summarizeTranscriptItem } from "../../src/codex/transcript.ts";
 import {
   activityFromClaudeTranscript,
   activityFromCodexTranscript,
 } from "../../src/core/activity.ts";
+
+/** Build a Codex transcript activity end-to-end from a raw payload (real summary path). */
+function codexActivity(payload: Record<string, unknown>) {
+  const item = { type: "response_item", payload };
+  return activityFromCodexTranscript({
+    elwoodSessionId: "e1",
+    path: "/tmp/t.jsonl",
+    item,
+    summary: summarizeTranscriptItem(item),
+  });
+}
 
 const claudeCall = (toolInput?: string) =>
   activityFromClaudeTranscript({
@@ -49,6 +61,32 @@ describe("Elwood activity tool input/output", () => {
     expect(claudeResult.toolOutput).toBe('{"stdout":"file.txt"}');
     expect(codexObjectResult.toolOutput).toBe('{"ok":true}');
     expect(noInput.toolInput).toBeUndefined();
+  });
+
+  test("C-CODEX-19 a Codex exec command and its output reach toolInput/toolOutput end-to-end", () => {
+    // Modern exec: command in `input` (not arguments) reaches toolInput as a tool_call.
+    const execCall = codexActivity({
+      type: "custom_tool_call",
+      name: "exec",
+      call_id: "c1",
+      input: 'const r = await tools.exec_command({cmd:"git status"}); text(r.output);',
+    });
+    expect(execCall).toMatchObject({ kind: "tool_call", toolName: "exec" });
+    expect(execCall.toolInput).toBe(
+      'const r = await tools.exec_command({cmd:"git status"}); text(r.output);',
+    );
+    // Its output (an input_text[] array) reaches toolOutput as joined readable text —
+    // not the raw JSON array wrapper.
+    const execOutput = codexActivity({
+      type: "custom_tool_call_output",
+      call_id: "c1",
+      output: [
+        { type: "input_text", text: "On branch main\n" },
+        { type: "input_text", text: "nothing to commit\n" },
+      ],
+    });
+    expect(execOutput).toMatchObject({ kind: "tool_result" });
+    expect(execOutput.toolOutput).toBe("On branch main\nnothing to commit\n");
   });
 
   test("C-CLAUDE-15 a tool_call keeps its toolUseId and a tool_result omits an absent output", () => {
