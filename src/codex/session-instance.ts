@@ -11,6 +11,7 @@ import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import { AgentSessionBase } from "../runtime/session-base.ts";
 import { type SessionRecord, updateSessionResumeId } from "../state/store.ts";
+import { CLIPBOARD_RESTORE_FAILED_MESSAGE } from "../state/validate-warnings.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { attachCodexImages } from "./attach-images.ts";
 import { codexConfigPath, restoreCodexConfig, snapshotCodexConfig } from "./config-restore.ts";
@@ -104,7 +105,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
         source: "lifecycle",
         code: "clipboard_restore_failed",
         severity: "warning",
-        message: "Elwood could not restore the clipboard after attaching an image.",
+        message: CLIPBOARD_RESTORE_FAILED_MESSAGE,
         raw: "clipboard_restore_failed",
       },
     ]);

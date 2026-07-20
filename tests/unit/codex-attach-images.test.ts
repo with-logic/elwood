@@ -15,6 +15,7 @@ const state = {
   restored: [] as string[],
   setThrows: false,
   restoreOk: true,
+  onSet: undefined as (() => void) | undefined,
 };
 
 vi.mock("../../src/codex/clipboard.ts", () => ({
@@ -29,6 +30,7 @@ vi.mock("../../src/codex/clipboard.ts", () => ({
   },
   setClipboardImage: (path: string) => {
     state.setCalls.push(path);
+    state.onSet?.();
     return state.setThrows ? Promise.reject(new Error("bad image")) : Promise.resolve();
   },
 }));
@@ -46,6 +48,7 @@ beforeEach(() => {
     restored: [],
     setThrows: false,
     restoreOk: true,
+    onSet: undefined,
   });
 });
 afterEach(() => vi.useRealTimers());
@@ -113,15 +116,18 @@ describe("attachCodexImages (C-API-46)", () => {
     expect(state.restored).toEqual(["prior-text"]);
   });
 
-  test("C-API-46 rejects when already aborted, still restoring", async () => {
+  test("C-API-46 an abort during the first image rejects before the Ctrl+V", async () => {
+    const term = fakeTerminal();
     const controller = new AbortController();
-    controller.abort();
-    const done = attachCodexImages(fakeTerminal(), ["/a.png"], controller.signal);
+    // Abort DURING the first image's clipboard set: sendWhenUnblocked's post-loop
+    // recheck then rejects before the Ctrl+V reaches the PTY.
+    state.onSet = () => controller.abort();
+    const done = attachCodexImages(term, ["/a.png", "/b.png"], controller.signal);
     const settled = expect(done).rejects.toMatchObject({ code: "image_attach_failed" });
     await vi.runAllTimersAsync();
     await settled;
-    expect(state.setCalls).toEqual([]);
-    expect(state.restored).toEqual(["prior-text"]);
+    expect(state.setCalls).toEqual(["/a.png"]); // aborted before the second image
+    expect(term.writes).toHaveLength(0); // no Ctrl+V was sent
   });
 
   test("C-API-46 calls onRestoreFailed when the clipboard restore fails", async () => {
@@ -149,5 +155,40 @@ describe("attachCodexImages (C-API-46)", () => {
     await vi.runAllTimersAsync();
     await done;
     expect(term.writes).toEqual([CTRL_V]);
+  });
+
+  test("C-API-46 an already-aborted waiter touches NOTHING under the lock", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      attachCodexImages(fakeTerminal(), ["/a.png"], controller.signal),
+    ).rejects.toMatchObject({ code: "image_attach_failed" });
+    expect(state.restored).toEqual([]); // never even snapshotted
+    expect(state.setCalls).toEqual([]);
+  });
+
+  test("C-API-46 clears the composer after a mid-attach failure", async () => {
+    const term = fakeTerminal(0); // chip never appears → Ctrl+V staged, then times out
+    const done = attachCodexImages(term, ["/a.png"], new AbortController().signal);
+    const settled = expect(done).rejects.toMatchObject({ code: "image_attach_failed" });
+    await vi.runAllTimersAsync();
+    await settled;
+    const clear = `${String.fromCharCode(21)}${String.fromCharCode(11)}`;
+    expect(term.writes).toContain(clear);
+  });
+
+  test("C-API-46 a throwing restore-warning sink does not fail a successful attach", async () => {
+    state.restoreOk = false;
+    const done = attachCodexImages(
+      fakeTerminal(),
+      ["/a.png"],
+      new AbortController().signal,
+      undefined,
+      () => {
+        throw new Error("sink boom");
+      },
+    );
+    await vi.runAllTimersAsync();
+    await expect(done).resolves.toBeUndefined(); // the throwing sink is isolated
   });
 });

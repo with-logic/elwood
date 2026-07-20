@@ -302,9 +302,10 @@ short-lived temp file, removed once the submission is attached.
 
 Attachment is confirmed, never assumed: each image waits for the CLI's
 `[Image #N]` chip, and if it is not confirmed within ~10 s (or the clipboard
-can't be read/written, or the session closes mid-attach) the call rejects with
-`image_attach_failed` and no text is submitted. An attach rejection leaves the
-session ready — it never wedges the queue.
+can't be read/written) the call rejects with `image_attach_failed` and no text is
+submitted. If the session terminates mid-attach the call rejects with
+`session_not_running`, like any queued operation. An attach rejection leaves
+queue readiness unchanged — it never wedges the queue.
 
 Each CLI ingests images through its own native path, so behavior differs:
 

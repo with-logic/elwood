@@ -98,4 +98,18 @@ describe("sendWhenUnblocked (C-API-37)", () => {
     await settled;
     expect(term.sendInput).not.toHaveBeenCalled();
   });
+
+  test("C-API-37 does NOT write when abort lands as the dialog clears in the same poll", async () => {
+    term.sendInput.mockClear();
+    const controller = new AbortController();
+    let blocked = true;
+    const done = sendWhenUnblocked(term, "x", () => blocked, controller.signal);
+    // Simulate the race: within the same sleep the dialog clears AND the signal aborts.
+    blocked = false;
+    controller.abort();
+    const settled = expect(done).rejects.toMatchObject({ code: "image_attach_failed" });
+    await vi.runAllTimersAsync();
+    await settled;
+    expect(term.sendInput).not.toHaveBeenCalled(); // the post-loop recheck caught it
+  });
 });

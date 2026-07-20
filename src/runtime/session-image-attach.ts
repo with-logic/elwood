@@ -8,7 +8,7 @@
  * (C-API-44).
  */
 
-import { resolveImages, validateImages } from "../core/images/index.ts";
+import { materializeImages, validateImages } from "../core/images/index.ts";
 import type { ImageInput } from "../core/images/types.ts";
 
 /** A text-submission kind carried by the control queue. */
@@ -44,7 +44,7 @@ async function runAttach(
   signal: AbortSignal,
 ): Promise<void> {
   const validated = await validateImages(images);
-  const resolved = await resolveImages(validated);
+  const resolved = await materializeImages(validated);
   try {
     await driver(resolved.paths, signal);
   } finally {

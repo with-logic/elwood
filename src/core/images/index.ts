@@ -9,5 +9,5 @@ export {
   imageChipCount,
   waitForImageChip,
 } from "./chip-wait.ts";
-export { type ResolvedImages, resolveImages, validateImages } from "./resolve.ts";
+export { type MaterializedImages, materializeImages, validateImages } from "./resolve.ts";
 export type { ImageFormat, ImageInput, SendOptions } from "./types.ts";

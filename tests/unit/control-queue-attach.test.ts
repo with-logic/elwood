@@ -51,6 +51,32 @@ describe("ControlQueue image attach (C-API-44)", () => {
     expect(turnsStarted).toBe(1);
   });
 
+  test("C-API-44 a throwing turn-start listener after a successful attach still sends the text", async () => {
+    const writes: string[] = [];
+    let throwOnce = true;
+    const queue = new ControlQueue(
+      (input) => {
+        writes.push(input);
+        return Promise.resolve();
+      },
+      () => new Error("closed"),
+      () => {
+        if (throwOnce) {
+          throwOnce = false;
+          throw new Error("turn-start boom"); // throws AFTER images are staged
+        }
+      },
+    );
+    queue.markReady();
+    // The attach ran (images staged); the throwing turn-start must be isolated so
+    // the text still submits and the op resolves, and the next op still drains.
+    await queue.send("hello", "message", () => Promise.resolve());
+    expect(writes).toEqual(["hello"]);
+    queue.markReady(); // a real Stop hook re-marks ready between turns
+    await queue.send("next", "message");
+    expect(writes).toEqual(["hello", "next"]);
+  });
+
   test("C-API-44 a close DURING attach rejects without writing text", async () => {
     const writes: string[] = [];
     const queue = new ControlQueue(

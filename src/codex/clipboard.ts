@@ -56,9 +56,9 @@ export async function snapshotClipboardText(): Promise<string> {
  * warning if the user's prior clipboard may have been lost (C-API-46).
  */
 export async function restoreClipboardText(text: string): Promise<boolean> {
-  const child = run(PBCOPY, [], { timeout: 5_000 });
-  child.child.stdin?.end(text);
   try {
+    const child = run(PBCOPY, [], { timeout: 5_000 });
+    child.child.stdin?.end(text); // inside try so a synchronous spawn/stdin failure can't escape
     await child;
     return true;
   } catch {

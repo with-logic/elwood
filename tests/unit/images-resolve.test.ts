@@ -56,6 +56,36 @@ describe("validateImages (C-API-44)", () => {
     );
   });
 
+  test("C-API-44 rejects a non-array container", async () => {
+    expect(await imageCode(() => validateImages("nope" as never))).toBe("invalid_image");
+    expect(await imageCode(() => validateImages(null as never))).toBe("invalid_image");
+  });
+
+  test("C-API-44 rejects a non-string path value", async () => {
+    expect(await imageCode(() => validateImages([{ path: 42 } as never]))).toBe("invalid_image");
+  });
+
+  test("C-API-44 rejects an entry with BOTH path and data (non-exclusive)", async () => {
+    const mixed = { path: "/x.png", data: PNG, format: "png" } as never;
+    expect(await imageCode(() => validateImages([mixed]))).toBe("invalid_image");
+  });
+
+  test("C-API-44 rejects a non-Uint8Array typed-array as data", async () => {
+    const wrong = { data: new Uint16Array([1, 2, 3]), format: "png" } as never;
+    expect(await imageCode(() => validateImages([wrong]))).toBe("invalid_image");
+  });
+
+  test("C-API-44 rejects an oversized byte input WITHOUT cloning it", async () => {
+    // A get on `.length` of the caller's buffer is fine; the guard must reject
+    // before `Uint8Array.from` clones the whole thing (OOM guard). We assert only
+    // the reject; the no-clone property is a code invariant checked by review.
+    const big = new Uint8Array(imageLimits.maxBytesPerImage + 1);
+    big[0] = 1;
+    expect(await imageCode(() => validateImages([{ data: big, format: "png" }]))).toBe(
+      "invalid_image",
+    );
+  });
+
   test("C-API-44 rejects a prototype-key format via own-key check", async () => {
     expect(
       await imageCode(() => validateImages([{ data: PNG, format: "toString" as never }])),

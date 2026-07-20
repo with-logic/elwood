@@ -18,6 +18,22 @@ export type AttachTerminal = {
 export type BlockedGuard = () => boolean;
 
 const blockedPollMs = 50;
+// Ctrl+U (kill to line start) + Ctrl+K (kill to line end) discard the composer
+// draft on both TUIs, clearing any staged image chips/paths.
+const clearComposerKeys = "\u0015\u000b";
+
+/**
+ * Best-effort discard of any staged composer content (image chips, pasted paths)
+ * after a mid-attach failure, so the rejected submission's images cannot leak
+ * into a later caller's turn. Never throws (C-API-44).
+ */
+export async function clearComposer(terminal: AttachTerminal): Promise<void> {
+  try {
+    await terminal.sendInput(clearComposerKeys);
+  } catch {
+    // Best-effort: a clear failure must not replace the primary attach error.
+  }
+}
 
 /**
  * Sends `data` to the terminal only once no blocking dialog is on screen — a
@@ -35,6 +51,9 @@ export async function sendWhenUnblocked(
     if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
     await delay(blockedPollMs);
   }
+  // Re-check AFTER the loop: an abort that lands as the dialog clears in the same
+  // poll must not let a paste/Ctrl+V reach the PTY on a closing session.
+  if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
   await terminal.sendInput(data);
 }
 

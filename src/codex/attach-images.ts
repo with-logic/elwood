@@ -12,6 +12,7 @@ import {
   type AttachTerminal,
   type BlockedGuard,
   type ChipWaitOptions,
+  clearComposer,
   imageChipCount,
   sendWhenUnblocked,
   waitForImageChip,
@@ -54,19 +55,33 @@ async function attachUnderLock(
   blocked: BlockedGuard | undefined,
   onRestoreFailed: (() => void) | undefined,
 ): Promise<void> {
+  // A waiter that acquired the lock only after its session closed must touch
+  // nothing — check abort FIRST, before snapshotting or mutating the clipboard.
+  if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
   // Snapshot BEFORE mutating; a snapshot failure rejects here so we never
   // overwrite then "restore" an empty string over the user's clipboard.
   const priorClipboard = await snapshotClipboardText();
+  let staged = false;
   try {
     for (const path of paths) {
-      if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
       const before = imageChipCount(terminal.snapshot().text);
       await setClipboardImage(path);
+      // sendWhenUnblocked rejects if the signal is already aborted, so a mid-attach
+      // close is caught here before the Ctrl+V reaches the PTY (C-API-46).
       await sendWhenUnblocked(terminal, CTRL_V, blocked, signal);
+      staged = true;
       await waitForImageChip(terminal, before, signal, chipWait);
     }
+  } catch (error) {
+    if (staged) await clearComposer(terminal); // discard staged chips on failure (C-API-44)
+    throw error;
   } finally {
-    // Best-effort; a failed restore surfaces a content-free warning (C-API-46).
-    if (!(await restoreClipboardText(priorClipboard))) onRestoreFailed?.();
+    // Best-effort and fully isolated: neither the restore nor its warning callback
+    // may reject or mask the primary attach result/error (C-API-46).
+    try {
+      if (!(await restoreClipboardText(priorClipboard))) onRestoreFailed?.();
+    } catch {
+      // A throwing warning sink must not turn a successful attach into a failure.
+    }
   }
 }

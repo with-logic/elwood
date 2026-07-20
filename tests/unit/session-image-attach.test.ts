@@ -1,7 +1,7 @@
 /**
  * Coverage for enqueueSubmission (PRD §5.3, C-API-44): the no-images fast path,
- * up-front validation rejection before queuing, deferred materialization at
- * dispatch, and temp-file cleanup after attach success/failure.
+ * synchronous FIFO enqueue with validation + materialization at DISPATCH (before
+ * any composer input), and temp-file cleanup after attach success/failure.
  */
 
 import { existsSync } from "node:fs";
@@ -102,7 +102,7 @@ describe("enqueueSubmission (C-API-44)", () => {
   });
 
   test("C-API-44 a cleanup failure after a successful attach is swallowed", async () => {
-    // Force resolveImages to hand back a cleanup that rejects; the attach still
+    // Force materializeImages to hand back a cleanup that rejects; the attach still
     // succeeds and the cleanup rejection must not surface to the caller.
     vi.resetModules();
     vi.doMock("../../src/core/images/index.ts", async () => {
@@ -111,7 +111,7 @@ describe("enqueueSubmission (C-API-44)", () => {
       );
       return {
         ...actual,
-        resolveImages: () =>
+        materializeImages: () =>
           Promise.resolve({ paths: ["/x.png"], cleanup: () => Promise.reject(new Error("rm")) }),
       };
     });

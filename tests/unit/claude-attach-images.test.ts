@@ -63,6 +63,16 @@ describe("attachClaudeImages (C-API-45)", () => {
     await settled;
   });
 
+  test("C-API-44 clears the composer after a mid-attach failure (staged paste)", async () => {
+    const term = fakeTerminal(0); // chip never appears → the paste stays staged, then times out
+    const done = attachClaudeImages(term, ["/abs/a.png"], new AbortController().signal);
+    const settled = expect(done).rejects.toMatchObject({ code: "image_attach_failed" });
+    await vi.runAllTimersAsync();
+    await settled;
+    // The last write is the composer-clear (Ctrl+U + Ctrl+K), not left staged.
+    expect(term.writes.at(-1)).toBe(`${String.fromCharCode(21)}${String.fromCharCode(11)}`);
+  });
+
   test("C-API-45 holds the paste while a dialog is blocking, then sends once cleared", async () => {
     const term = fakeTerminal();
     let blocked = true;
@@ -91,7 +101,7 @@ describe("attachClaudeImages (C-API-45)", () => {
     expect(term.writes).toHaveLength(0);
   });
 
-  test("C-API-45 rejects when aborted mid-wait after the first paste", async () => {
+  test("C-API-45 rejects when aborted mid-wait after the first paste, then clears", async () => {
     const term = fakeTerminal(0);
     const controller = new AbortController();
     const done = attachClaudeImages(term, ["/abs/a.png"], controller.signal);
@@ -99,6 +109,9 @@ describe("attachClaudeImages (C-API-45)", () => {
     controller.abort();
     await vi.runAllTimersAsync();
     await settled;
-    expect(term.writes).toHaveLength(1);
+    // The paste went out, then the failure cleared the composer.
+    const clear = `${String.fromCharCode(21)}${String.fromCharCode(11)}`;
+    expect(term.writes[0]?.startsWith(`${ESC}[200~`)).toBe(true);
+    expect(term.writes.at(-1)).toBe(clear);
   });
 });

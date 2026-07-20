@@ -15,8 +15,8 @@ import { join, resolve } from "node:path";
 import { elwoodError } from "../errors.ts";
 import { type ImageFormat, type ImageInput, imageFormatExtension, imageLimits } from "./types.ts";
 
-/** A resolved set of image paths plus the cleanup for any temp files created. */
-export type ResolvedImages = {
+/** A materialized set of image paths plus the cleanup for any temp files created. */
+export type MaterializedImages = {
   readonly paths: readonly string[];
   /** Best-effort removal of temp files; retryable (only clears on success). */
   readonly cleanup: () => Promise<void>;
@@ -32,43 +32,62 @@ export type ResolvedImages = {
 export async function validateImages(
   images: readonly ImageInput[],
 ): Promise<readonly ImageInput[]> {
-  const list = images as readonly unknown[];
-  if (list.length > imageLimits.maxCount)
-    throw elwoodError("invalid_image", `Too many images: ${list.length} > ${imageLimits.maxCount}`);
+  if (!Array.isArray(images)) throw elwoodError("invalid_image", "images must be an array.");
+  if (images.length > imageLimits.maxCount)
+    throw elwoodError(
+      "invalid_image",
+      `Too many images: ${images.length} > ${imageLimits.maxCount}`,
+    );
   const snapshot: ImageInput[] = [];
   let total = 0;
-  for (const entry of list) {
-    const [image, bytes] = await validateOne(entry);
+  for (const entry of images as readonly unknown[]) {
+    const [image, bytes] = await validateOne(entry, total);
     snapshot.push(image);
     total += bytes;
   }
-  if (total > imageLimits.maxBytesTotal)
+  return snapshot;
+}
+
+/** Narrows one entry (exactly one of path/data), returns its copy plus byte size. */
+async function validateOne(
+  entry: unknown,
+  priorTotal: number,
+): Promise<readonly [ImageInput, number]> {
+  const r = entry as { data?: unknown; format?: unknown; path?: unknown } | null;
+  const hasData = !!r && r.data !== undefined;
+  const hasPath = !!r && r.path !== undefined;
+  if (hasData === hasPath)
+    throw elwoodError(
+      "invalid_image",
+      "Image must be exactly one of { path } or { data, format }.",
+    );
+  if (hasData) return validateBytes((r as { data: unknown }).data, r?.format, priorTotal);
+  if (typeof r?.path !== "string")
+    throw elwoodError("invalid_image", "Image path must be a string.");
+  return [{ path: resolve(r.path) }, await validatePath(r.path)];
+}
+
+// Only Uint8Array/Buffer bytes are accepted (other views would truncate/misread),
+// and BOTH size limits are checked BEFORE cloning so an over-limit input never
+// triggers a large duplicate allocation (C-API-44).
+function validateBytes(
+  data: unknown,
+  format: unknown,
+  priorTotal: number,
+): readonly [ImageInput, number] {
+  if (typeof format !== "string" || !Object.hasOwn(imageFormatExtension, format))
+    throw elwoodError("invalid_image", `Unsupported image format: ${String(format)}`);
+  if (!(data instanceof Uint8Array))
+    throw elwoodError("invalid_image", "Image data must be a Uint8Array.");
+  if (data.length === 0) throw elwoodError("invalid_image", "Image data is empty.");
+  if (data.length > imageLimits.maxBytesPerImage)
+    throw elwoodError("invalid_image", "Image data exceeds the per-image size limit.");
+  if (priorTotal + data.length > imageLimits.maxBytesTotal)
     throw elwoodError(
       "invalid_image",
       `Images exceed the ${imageLimits.maxBytesTotal}-byte total.`,
     );
-  return snapshot;
-}
-
-/** Narrows one entry, returns its canonical copy plus its byte size. */
-async function validateOne(entry: unknown): Promise<readonly [ImageInput, number]> {
-  const record = entry as { data?: unknown; format?: unknown; path?: unknown } | null;
-  if (record && ArrayBuffer.isView(record.data)) return validateBytes(record.data, record.format);
-  if (record && typeof record.path === "string") {
-    const size = await validatePath(record.path);
-    return [{ path: resolve(record.path) }, size];
-  }
-  throw elwoodError("invalid_image", "Image must be a { path } or { data, format }.");
-}
-
-function validateBytes(view: ArrayBufferView, format: unknown): readonly [ImageInput, number] {
-  if (typeof format !== "string" || !Object.hasOwn(imageFormatExtension, format))
-    throw elwoodError("invalid_image", `Unsupported image format: ${String(format)}`);
-  const data = Uint8Array.from(view as Uint8Array); // clone so later mutation is inert
-  if (data.length === 0) throw elwoodError("invalid_image", "Image data is empty.");
-  if (data.length > imageLimits.maxBytesPerImage)
-    throw elwoodError("invalid_image", "Image data exceeds the per-image size limit.");
-  return [{ data, format: format as ImageFormat }, data.length];
+  return [{ data: Uint8Array.from(data), format: format as ImageFormat }, data.length];
 }
 
 async function validatePath(path: string): Promise<number> {
@@ -90,10 +109,13 @@ async function validatePath(path: string): Promise<number> {
 
 /**
  * Materializes byte inputs (already validated/snapshotted) to one temp dir and
- * returns every absolute path. A materialize failure removes the temp dir before
- * rethrowing, preserving the original error.
+ * returns every absolute path. A materialize failure (e.g. ENOSPC) removes the
+ * temp dir, then rethrows as the stable typed `image_attach_failed` — never a raw
+ * platform error out of the public send APIs (C-ERR-01/C-API-44).
  */
-export async function resolveImages(images: readonly ImageInput[]): Promise<ResolvedImages> {
+export async function materializeImages(
+  images: readonly ImageInput[],
+): Promise<MaterializedImages> {
   let dir: string | undefined;
   const cleanup = async () => {
     if (!dir) return;
@@ -115,6 +137,8 @@ export async function resolveImages(images: readonly ImageInput[]): Promise<Reso
     return { paths, cleanup };
   } catch (error) {
     await cleanup().catch(() => undefined);
-    throw error;
+    throw elwoodError("image_attach_failed", "Could not materialize an image for attachment.", {
+      cause: error instanceof Error ? error.message : String(error),
+    });
   }
 }

@@ -11,6 +11,7 @@ import {
   type AttachTerminal,
   type BlockedGuard,
   type ChipWaitOptions,
+  clearComposer,
   imageChipCount,
   sendWhenUnblocked,
   waitForImageChip,
@@ -34,11 +35,20 @@ export async function attachClaudeImages(
   signal: AbortSignal,
   blocked?: BlockedGuard,
 ): Promise<void> {
-  for (const path of paths) {
-    if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
-    const before = imageChipCount(terminal.snapshot().text);
-    const paste = `${PASTE_START}${sanitizePasteText(path)}${PASTE_END}`;
-    await sendWhenUnblocked(terminal, paste, blocked, signal);
-    await waitForImageChip(terminal, before, signal, chipWait);
+  let staged = false;
+  try {
+    for (const path of paths) {
+      if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
+      const before = imageChipCount(terminal.snapshot().text);
+      const paste = `${PASTE_START}${sanitizePasteText(path)}${PASTE_END}`;
+      await sendWhenUnblocked(terminal, paste, blocked, signal);
+      staged = true;
+      await waitForImageChip(terminal, before, signal, chipWait);
+    }
+  } catch (error) {
+    // A mid-attach failure clears any staged chips/paths so the rejected images
+    // cannot leak into a later caller's turn (C-API-44).
+    if (staged) await clearComposer(terminal);
+    throw error;
   }
 }

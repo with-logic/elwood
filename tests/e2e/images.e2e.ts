@@ -38,19 +38,16 @@ test("C-E2E-12 Claude attaches a pasted image path (real CLI shows [Image #N])",
       autotrust: true,
     });
     await prepareInteractivePrompt(session, observeSession(session), "claude");
-    // Attach the image and assert the composer shows the chip. The submission
-    // promise is held so its post-teardown rejection never leaks as unhandled.
-    const submitted = session
-      .sendMessage("here is an image", { images: [{ path: image }] })
-      .catch(() => undefined);
+    // Attach the image + text as ONE submission and require it to SUCCEED — the
+    // rejection is NOT swallowed, so a failure to submit the combined turn fails
+    // the test (C-API-44). The chip proves the image reached the composer.
+    const submitted = session.sendMessage("here is an image", { images: [{ path: image }] });
     await waitFor(
       () => (/\[Image #\d/.test(session!.terminal.snapshot().text) ? true : undefined),
       "Claude [Image #N] composer chip",
     );
     assert.match(session.terminal.snapshot().text, /\[Image #\d/);
-    await cleanup(session);
-    session = undefined;
-    await submitted; // settle the held submission after teardown (never unhandled)
+    await submitted; // the combined image+text submission resolves (no swallow)
   } finally {
     await cleanup(session);
   }

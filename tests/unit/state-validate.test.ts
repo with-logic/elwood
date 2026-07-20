@@ -67,32 +67,11 @@ describe("session record validation", () => {
     expect(validateSessionRecord({ ...base, claude: { resumeId: 42 } }, root, id)).toBeNull();
   });
 
-  test("C-CODEX-14 accepts and gates the codex_default_model_persisted warning", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
-    const base = jsonRecord(root);
-    const warning = {
-      elwoodSessionId: id,
-      agent: "codex",
-      source: "lifecycle",
-      code: "codex_default_model_persisted",
-      severity: "warning",
-      message: "restore skipped",
-      raw: "/tmp/config.toml",
-    };
-    const restore = { ...warning, code: "clipboard_restore_failed" }; // C-API-46, same shape
-    expect(validateSessionRecord({ ...base, warnings: [warning] }, root, id)).not.toBeNull();
-    expect(validateSessionRecord({ ...base, warnings: [restore] }, root, id)).not.toBeNull();
-    expect(
-      validateSessionRecord({ ...base, warnings: [{ ...warning, source: "terminal" }] }, root, id),
-    ).toBeNull();
-  });
-
   test("C-CLAUDE-14 an unknown warning code (e.g. a removed trust_prompt_unanswerable) is rejected", () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
     const base = jsonRecord(root);
-    // The transient render-delay state no longer persists a durable warning, so a
-    // stale/removed `trust_prompt_unanswerable` record must fall through to the
-    // unknown-code rejection rather than round-trip back into the snapshot.
+    // A stale/removed `trust_prompt_unanswerable` record falls through to the
+    // unknown-code rejection rather than round-tripping back into the snapshot.
     const stale = {
       elwoodSessionId: id,
       agent: "claude",

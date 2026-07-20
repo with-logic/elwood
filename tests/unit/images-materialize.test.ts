@@ -7,14 +7,14 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
-import { resolveImages } from "../../src/core/images/resolve.ts";
+import { materializeImages } from "../../src/core/images/resolve.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
-describe("resolveImages (C-API-44)", () => {
+describe("materializeImages (C-API-44)", () => {
   test("C-API-44 materializes bytes to temp files and cleans them up", async () => {
-    const { paths, cleanup } = await resolveImages([{ data: PNG, format: "png" }]);
+    const { paths, cleanup } = await materializeImages([{ data: PNG, format: "png" }]);
     const file = paths[0] as string;
     expect(file.endsWith(".png")).toBe(true);
     expect(readFileSync(file)).toEqual(Buffer.from(PNG));
@@ -27,7 +27,10 @@ describe("resolveImages (C-API-44)", () => {
     const dir = tempDirForUnit();
     const file = join(dir, "a.png");
     writeFileSync(file, PNG);
-    const { paths, cleanup } = await resolveImages([{ path: file }, { data: PNG, format: "gif" }]);
+    const { paths, cleanup } = await materializeImages([
+      { path: file },
+      { data: PNG, format: "gif" },
+    ]);
     expect(paths[0]).toBe(file);
     expect((paths[1] as string).endsWith(".gif")).toBe(true);
     await cleanup();
@@ -39,14 +42,14 @@ describe("resolveImages (C-API-44)", () => {
     const dir = tempDirForUnit();
     const file = join(dir, "only.png");
     writeFileSync(file, PNG);
-    const { paths, cleanup } = await resolveImages([{ path: file }]);
+    const { paths, cleanup } = await materializeImages([{ path: file }]);
     expect(paths).toEqual([file]);
     await cleanup(); // dir is undefined → cleanup returns without removing anything
     expect(existsSync(file)).toBe(true);
   });
 
   test("C-API-44 uses the right extension per format", async () => {
-    const { paths, cleanup } = await resolveImages([
+    const { paths, cleanup } = await materializeImages([
       { data: PNG, format: "jpeg" },
       { data: PNG, format: "webp" },
     ]);
@@ -69,14 +72,34 @@ describe("resolveImages (C-API-44)", () => {
         },
       };
     });
-    const { resolveImages: mocked } = await import("../../src/core/images/resolve.ts");
-    await expect(mocked([{ data: PNG, format: "png" }])).rejects.toThrow(/ENOSPC/);
+    const { materializeImages: mocked } = await import("../../src/core/images/resolve.ts");
+    // A raw platform error is wrapped as the stable typed image_attach_failed,
+    // with the underlying reason preserved as a bounded cause (C-ERR-01).
+    await expect(mocked([{ data: PNG, format: "png" }])).rejects.toMatchObject({
+      code: "image_attach_failed",
+      details: { cause: "ENOSPC" },
+    });
     expect(removed.length).toBeGreaterThan(0);
     vi.doUnmock("node:fs/promises");
     vi.resetModules();
   });
 
-  test("C-API-44 a cleanup failure never masks the ORIGINAL materialize error", async () => {
+  test("C-API-44 a non-Error materialize failure is stringified into the cause", async () => {
+    vi.resetModules();
+    vi.doMock("node:fs/promises", async () => {
+      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+      return { ...actual, writeFile: () => Promise.reject("disk-gone") };
+    });
+    const { materializeImages: mocked } = await import("../../src/core/images/resolve.ts");
+    await expect(mocked([{ data: PNG, format: "png" }])).rejects.toMatchObject({
+      code: "image_attach_failed",
+      details: { cause: "disk-gone" },
+    });
+    vi.doUnmock("node:fs/promises");
+    vi.resetModules();
+  });
+
+  test("C-API-44 a cleanup failure never masks the ORIGINAL materialize failure", async () => {
     vi.resetModules();
     vi.doMock("node:fs/promises", async () => {
       const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
@@ -86,8 +109,11 @@ describe("resolveImages (C-API-44)", () => {
         rm: () => Promise.reject(new Error("rm failed")), // cleanup itself throws
       };
     });
-    const { resolveImages: mocked } = await import("../../src/core/images/resolve.ts");
-    await expect(mocked([{ data: PNG, format: "png" }])).rejects.toThrow(/ENOSPC/);
+    const { materializeImages: mocked } = await import("../../src/core/images/resolve.ts");
+    // The rm rejection is swallowed; the typed materialize failure still surfaces.
+    await expect(mocked([{ data: PNG, format: "png" }])).rejects.toMatchObject({
+      code: "image_attach_failed",
+    });
     vi.doUnmock("node:fs/promises");
     vi.resetModules();
   });

@@ -79,13 +79,16 @@ const warningValidators = {
     isString(value["elwoodSessionId"]) &&
     isString(value["message"]) &&
     isString(value["raw"]),
-  // Content-free clipboard-restore-failure diagnostic (no clipboard contents) (C-API-46).
+  // Content-free clipboard-restore-failure diagnostic: canonical fixed message/raw
+  // and an exact key allowlist, so no clipboard contents or extra fields can ride
+  // through this bounded channel on a resumed record (C-API-46).
   clipboard_restore_failed: (value) =>
     value["agent"] === "codex" &&
     value["source"] === "lifecycle" &&
     isString(value["elwoodSessionId"]) &&
-    isString(value["message"]) &&
-    isString(value["raw"]),
+    value["message"] === CLIPBOARD_RESTORE_FAILED_MESSAGE &&
+    value["raw"] === "clipboard_restore_failed" &&
+    hasOnlyKeys(value, CLIPBOARD_RESTORE_FAILED_KEYS),
   transcript_records_dropped: (value) =>
     claudeTerminalBase(value) &&
     isPositiveCount(value["droppedCount"]) &&
@@ -142,6 +145,21 @@ const warningValidators = {
     (value["reason"] === "persist" || value["reason"] === "listener") &&
     isString(value["raw"]),
 } satisfies Record<ElwoodWarningEvent["code"], WarningValidator>;
+
+/** Canonical, content-free copy for the clipboard-restore-failed warning (C-API-46). */
+export const CLIPBOARD_RESTORE_FAILED_MESSAGE =
+  "Elwood could not restore the clipboard after attaching an image.";
+
+/** The complete set of keys a `clipboard_restore_failed` warning may carry. */
+const CLIPBOARD_RESTORE_FAILED_KEYS: readonly string[] = [
+  "elwoodSessionId",
+  "agent",
+  "source",
+  "code",
+  "severity",
+  "message",
+  "raw",
+];
 
 /** The complete set of keys a `login_expired` warning may carry (no extras). */
 const LOGIN_EXPIRED_KEYS: readonly string[] = [
