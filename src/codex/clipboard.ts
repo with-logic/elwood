@@ -50,25 +50,36 @@ export async function snapshotClipboardText(): Promise<string> {
   }
 }
 
-/** Restores clipboard text captured by `snapshotClipboardText` (best-effort). */
-export async function restoreClipboardText(text: string): Promise<void> {
+/**
+ * Restores clipboard text captured by `snapshotClipboardText` (best-effort).
+ * Returns whether the restore succeeded, so the caller can surface a content-free
+ * warning if the user's prior clipboard may have been lost (C-API-46).
+ */
+export async function restoreClipboardText(text: string): Promise<boolean> {
   const child = run(PBCOPY, [], { timeout: 5_000 });
   child.child.stdin?.end(text);
-  await child.catch(() => undefined);
+  try {
+    await child;
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
  * Writes the image file at `path` onto the macOS clipboard as a native image.
- * Rejects with `invalid_image` when the helper fails (unreadable/undecodable
- * file or an osascript failure), so the caller aborts before a paste that would
- * attach nothing (C-API-46).
+ * A file the decoder cannot load is a bad INPUT → `invalid_image`; a pasteboard
+ * write failure, process failure, or timeout is an OS/attach failure →
+ * `image_attach_failed`. Either way the caller aborts before pasting (C-API-46).
  */
 export async function setClipboardImage(path: string): Promise<void> {
   try {
     await run(OSASCRIPT, ["-l", "JavaScript", "-e", SET_IMAGE_JXA, path], { timeout: 10_000 });
   } catch (error) {
     const reason = clipboardErrorReason(error);
-    throw elwoodError("invalid_image", `Could not place image on clipboard: ${reason}`, { path });
+    // The JXA throws "image load failed" only when NSImage cannot decode the file.
+    const code = /image load failed/i.test(reason) ? "invalid_image" : "image_attach_failed";
+    throw elwoodError(code, `Could not place image on clipboard: ${reason}`, { path });
   }
 }
 

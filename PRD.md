@@ -433,16 +433,18 @@ interface ClaudeSession {
 }
 
 interface SendOptions {
-  // Images to attach to this submission. Order-agnostic attached content: the
-  // submission is the text plus this set of images, woven together by the
-  // adapter's native attach path before the text is submitted (C-API-44).
+  // Images to attach to this submission. Attached content: the submission is the
+  // text plus this ordered list of images (images have no position within the
+  // text, but array order determines attachment/chip order), attached by the
+  // adapter's native path before the text is submitted (C-API-44).
   readonly images?: readonly ImageInput[];
 }
 
 // An image to attach, given either as a filesystem path or as in-memory bytes
-// with an explicit format. Bytes are written to a short-lived temp file so the
-// adapter attach paths (which are file- or clipboard-based) have something to
-// read; the temp file is removed after the submission is attached.
+// with an explicit format (never both — the alternatives are mutually exclusive).
+// Bytes are written to a short-lived temp file so the adapter attach paths (which
+// are file- or clipboard-based) have something to read; the temp file is removed
+// (best-effort) after the submission is attached.
 type ImageInput =
   | { readonly path: string }
   | { readonly data: Uint8Array; readonly format: "png" | "jpeg" | "gif" | "webp" };
@@ -575,25 +577,30 @@ human would use in that CLI, as part of the SAME serialized queue operation that
 submits the text, BEFORE the text's submitting Enter, so a single call produces
 a single agent turn carrying both. An image given as bytes is written to a
 short-lived temp file (the adapter attach paths are file- or clipboard-based);
-every such temp file is removed after the submission is attached, on success or
-failure.
+Elwood attempts to remove every such temp file after the submission is attached,
+on success or failure (best-effort — see the residual limitations below).
 
 Inputs are validated and bounded BEFORE any temp file is written or any input
 reaches the composer, and a validation failure rejects the whole call so nothing
 is partially attached. The limits are: at most 16 images per submission; each
 byte input at most 25 MiB and each path input's file at most 25 MiB; at most 50
 MiB total across a submission. A `format` that is not one of `png`/`jpeg`/`gif`/
-`webp`, empty bytes, a `path` that is not a readable regular file (readability is
-its readability checked, not merely its existence), or any count/size past those limits
-reject with `invalid_image`.
+`webp`, empty bytes, a `path` that is not a readable regular file (its readability
+is checked, not merely its existence), or any count/size past those limits
+reject with `invalid_image`. Malformed inputs from JavaScript callers (a non-object
+entry, or one lacking a valid `path`/`data`) also reject with `invalid_image`
+rather than a raw type error.
 
 Image attachment is CONFIRMED, never assumed. For each image Elwood waits for the
-CLI's `[Image #N]` chip to appear; if the chip is not observed within the
-per-image confirmation timeout (10 s), or the OS clipboard cannot be read or
-written, or the session closes mid-attach, the call rejects with
-`image_attach_failed` and Elwood submits NO text and attaches no further images.
-A confirmation timeout therefore surfaces (e.g. on TUI-wording drift) rather than
-silently degrading to a text-only turn.
+CLI's `[Image #N]` chip to appear in the composer region; if the chip is not
+observed within the per-image confirmation timeout (10 s), or the OS clipboard
+cannot be read or written, the call rejects with `image_attach_failed` and Elwood
+submits NO text and attaches no further images. A confirmation timeout therefore
+surfaces (e.g. on TUI-wording drift) rather than silently degrading to a text-only
+turn. A session that TERMINATES mid-attach rejects the call with
+`session_not_running`, like any other queued operation. Chip confirmation is
+scoped to the composer region so unrelated on-screen text containing a literal
+`[Image #N]` cannot spoof it.
 
 The attach path is adapter-specific because the two CLIs ingest images
 differently, and this is a version-coupled TUI behavior verified against real
@@ -617,13 +624,16 @@ CLIs (Claude 2.1.215, codex-cli 0.144.6):
   `sendPrompt`/`sendGuidance` with `images` on a non-macOS Codex session rejects
   with `unsupported_platform` and submits nothing. Restoring the clipboard is
   best-effort and covers text contents; a brief window where the injected image
-  is the clipboard contents is accepted by design.
+  is the clipboard contents is accepted by design. When the restore itself fails,
+  the attach result is unchanged (still success) but Elwood surfaces a content-free
+  `clipboard_restore_failed` warning (no clipboard contents) so the possible loss
+  of the user's prior clipboard is diagnosable rather than silent.
 
 Image attachment carries three accepted residual limitations. First, temp-file
 removal after an attach is best-effort: the primary attach/materialize error is
-always preserved (a cleanup failure never masks it), and a failed removal is
-retryable, but a persistently failing removal leaves a file in the OS temp
-directory for the OS to reap rather than surfacing a distinct error. Second, the
+always preserved (a cleanup failure never masks it), but a failed removal is not
+retried and leaves the file in the OS temp directory for the OS to reap rather
+than surfacing a distinct error. Second, the
 Codex clipboard lock serializes attachments within a SINGLE Elwood process only;
 two Elwood processes sharing one OS clipboard are not coordinated, so a
 cross-process cross-attach remains possible (callers running concurrent
@@ -2055,7 +2065,7 @@ Initial required error names:
 | `login_failed` | The interactive `/login` re-authentication flow reported an explicit failure or an invalid authorization code. |
 | `login_timeout` | The interactive `/login` re-authentication flow did not report success before the timeout. |
 | `invalid_image` | An `images` input is not attachable: an unsupported/absent byte format, empty bytes, a path that is not a readable file, or a total image count/size beyond the documented limits (C-API-44). Raised before any partial input reaches the composer. |
-| `image_attach_failed` | An image could not be confirmed attached: the CLI's `[Image #N]` chip did not appear before the confirmation timeout, the OS clipboard could not be read/written, or the session closed mid-attach. No text is submitted afterward (C-API-44/45/46). |
+| `image_attach_failed` | An image could not be confirmed attached: the CLI's `[Image #N]` chip did not appear before the confirmation timeout, or the OS clipboard could not be read/written. No text is submitted afterward. (A session that TERMINATES mid-attach rejects with `session_not_running`, like any queued op.) (C-API-44/45/46) |
 | `wait_timeout` | A `waitForStatus`/`waitForActivity` call did not observe its condition before the timeout. |
 
 Hook handler failures are normally surfaced as `hookError` events, not thrown
@@ -2229,7 +2239,7 @@ Each criterion has:
 | C-API-41 | §5.3 | `listClaudeModels(options)`/`listCodexModels(options)` return the available models WITHOUT a caller-held session: each starts a throwaway session with `autotrust: true` (a documented §5.1 exception — the probe only opens/cancels the picker and never runs a turn), waits for first readiness, calls `listModels`, and ALWAYS removes ALL probe state afterward — on success, on a readiness/picker failure, AND on an adapter start failure that has already allocated a state directory or runtime files — so no probe session, process tree, socket, or state directory is leaked. A readiness/picker error is the error surfaced to the caller; teardown still runs, and when teardown ITSELF fails (which can leave a probe process tree alive) a bounded diagnostic naming the teardown failure — an allowlisted errno or the error's name, never a raw message — is attached to the surfaced error's `cause`, so a leaked probe is never silently invisible. The rows are exactly `listModels`' output and the probe leaves the user's saved MODEL default untouched (the picker is opened and cancelled, never applied), just as `listModels` does on a live session. |
 | C-API-42 | §5.3 §5.7 | When recording Claude's one-shot initial-ready transition throws, Elwood still releases the control queue directly FIRST so queued persona/caller input is never starved, then surfaces a typed `initial_ready_fallback` warning (content-free: only a bounded `reason` of `persist` or `listener`, distinguishing a durable-status-write failure from a lifecycle-event-listener failure) whose delivery is itself isolated so a rogue warning sink cannot re-starve the queue. |
 | C-API-43 | §5.3 | `ClaudeSession.login(options)` drives the interactive `/login` re-authentication flow to recover a session whose login lapsed (per C-CLAUDE-18) without a caller-held restart. It submits `/login` as a picker command, selects the requested login `method` (default `claudeai`) from the "Select login method" list if that list renders, and scrapes the authorization URL off screen and reports it via the optional `onAuthUrl` callback. Because the default account flow completes with a human-entered authorization code, Elwood awaits the CLI's "paste code" prompt and, when it renders, calls the required `provideCode` callback and submits the returned code as raw input; a flow that self-completes without prompting for a code never calls `provideCode`. `login` resolves once the CLI reports login success AND the session is usable again, and rejects with `login_failed` on an explicit failure/invalid-code banner or with `login_timeout` after `timeoutMs` (default 300000 ms); like every other command method it rejects with `session_not_running` when the session is terminal. It serializes with other queued commands and never sends raw keystrokes into a blocking dialog. |
-| C-API-44 | §5.3 | `sendPrompt`/`sendMessage`/`sendGuidance` accept an optional `images` list (file paths or `{data,format}` bytes) attached to the submission. Images have no position within the text, but the list is ORDERED (array order = attachment/chip order). Elwood attaches every image through the CLI's own native ingestion path, as part of the SAME serialized queue operation that submits the text and BEFORE that text's submitting Enter, so one call yields one agent turn carrying text and all images. Inputs are validated and bounded before any temp file is written or any input reaches the composer: at most 16 images, ≤25 MiB per image and ≤50 MiB total; an unsupported/empty `format`, a `path` that is not a readable regular file (its readability checked, not merely its existence), or any count/size past the limits rejects with `invalid_image`. The lifecycle turn transition is deferred until AFTER a successful attach, so an attach rejection leaves readiness untouched and never wedges the queue. Each image's attach is CONFIRMED by its `[Image #N]` chip; an unconfirmed image (chip not seen within 10 s), a clipboard read/write failure, or a close mid-attach rejects with `image_attach_failed` and submits no text. Bytes are written to a short-lived temp file removed after the submission is attached (on success or failure). |
+| C-API-44 | §5.3 | `sendPrompt`/`sendMessage`/`sendGuidance` accept an optional `images` list (file paths or `{data,format}` bytes) attached to the submission. Images have no position within the text, but the list is ORDERED (array order = attachment/chip order). Elwood attaches every image through the CLI's own native ingestion path, as part of the SAME serialized queue operation that submits the text and BEFORE that text's submitting Enter, so one call yields one agent turn carrying text and all images. Inputs are validated and bounded before any temp file is written or any input reaches the composer: at most 16 images, ≤25 MiB per image and ≤50 MiB total; an unsupported/empty `format`, a `path` that is not a readable regular file (its readability checked, not merely its existence), or any count/size past the limits rejects with `invalid_image`. The lifecycle turn transition is deferred until AFTER a successful attach, so an attach rejection leaves readiness untouched and never wedges the queue. Each image's attach is CONFIRMED by its `[Image #N]` chip in the composer region (so unrelated screen text cannot spoof it); an unconfirmed image (chip not seen within 10 s) or a clipboard read/write failure rejects with `image_attach_failed` and submits no text (a session that terminates mid-attach rejects with `session_not_running`). Bytes are written to a short-lived temp file Elwood attempts to remove after the submission is attached (best-effort; a persistently failing removal falls to OS temp reaping). |
 | C-API-45 | §5.3 | Claude attaches an image by bracketed-pasting its ABSOLUTE path into the composer (the delivery a terminal produces on drag-and-drop); Claude reads and encodes the file itself and shows an `[Image #N]` chip. This is pure PTY text and works on every platform. |
 | C-API-46 | §5.3 | Codex attaches an image from the OS clipboard: Elwood snapshots the user's clipboard ONCE (rejecting with `image_attach_failed` if the snapshot fails, before mutating anything), then for each image in order writes it onto the macOS `NSPasteboard` as a native image (`public.tiff`), sends Ctrl+V, and waits for the `[Image #N]` chip; after all images it restores the single snapshotted clipboard (best-effort, text contents). The whole snapshot/set/paste/confirm/restore sequence holds a process-wide clipboard lock so concurrent Codex sessions cannot cross-attach. A pasted path is NOT an image on Codex. Codex image attachment is macOS-only: `images` on a non-macOS Codex session rejects with `unsupported_platform` and submits nothing. |
 

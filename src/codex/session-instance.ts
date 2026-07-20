@@ -86,9 +86,29 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
     const lastLine = prompt.trim().split("\n").at(-1)?.trim();
     return lastLine !== undefined && lastLine.length > 0 && screen.includes(lastLine);
   }
-  // Codex ingests an interactive image only from the OS clipboard (C-API-46).
+  // Codex ingests an interactive image only from the OS clipboard; the Ctrl+V is
+  // held while a dialog is on screen so it never confirms one (C-API-46/37).
   protected attachImages = (paths: readonly string[], signal: AbortSignal): Promise<void> =>
-    attachCodexImages(this.terminal, paths, signal);
+    attachCodexImages(
+      this.terminal,
+      paths,
+      signal,
+      () => this.status === "blocked",
+      () => this.warnClipboardRestoreFailed(),
+    );
+  private warnClipboardRestoreFailed(): void {
+    this.recordWarnings([
+      {
+        elwoodSessionId: this.elwoodSessionId,
+        agent: "codex",
+        source: "lifecycle",
+        code: "clipboard_restore_failed",
+        severity: "warning",
+        message: "Elwood could not restore the clipboard after attaching an image.",
+        raw: "clipboard_restore_failed",
+      },
+    ]);
+  }
   rememberCodexSessionId(sessionId: string): void {
     if (this.record.codex.resumeId) return;
     this.persist(updateSessionResumeId(this.record, "codex", sessionId));

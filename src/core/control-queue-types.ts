@@ -15,22 +15,34 @@ export type ControlSubmitter = (
   signal: AbortSignal,
 ) => Promise<void>;
 
-/** Runs an exclusive interactive task; aborted when the session closes. */
-export type ExclusiveTask = (signal: AbortSignal) => Promise<void>;
+/** An abortable task run while its queue op holds the queue; aborts on close. */
+export type AbortableQueueTask = (signal: AbortSignal) => Promise<void>;
 
 /** Drops a still-queued op when `signal` aborts, rejecting it with `error()`. */
 export type Cancel = { readonly signal: AbortSignal; readonly error: () => Error };
 
-export type QueuedOperation = {
+type QueuedOperationBase = {
   readonly input: string;
   readonly kind: ControlOperationKind;
   // FROZEN at enqueue: guidance queued before first readiness stays message-like (C-API-37).
   readonly mayBypassReadiness: boolean;
-  // EXCLUSIVE op (e.g. `login`): runs a task holding the queue for its whole duration (input unused).
-  readonly run?: ExclusiveTask;
-  // Attaches images through the adapter's native path BEFORE the text write, in
-  // this same op so nothing interleaves; its failure fails the op (C-API-44).
-  readonly attach?: ExclusiveTask;
   readonly resolve: () => void;
   readonly reject: (error: Error) => void;
+};
+
+// A queued op is EITHER an exclusive-task op (e.g. `login`, holds the queue for
+// its whole run; input unused) OR a text submission that may attach images before
+// the write — never both, so dispatch never has to disambiguate (C-API-19/44).
+export type QueuedOperation = QueuedOperationBase &
+  (
+    | { readonly run: AbortableQueueTask; readonly attach?: never }
+    | { readonly run?: never; readonly attach?: AbortableQueueTask }
+  );
+
+// A queued op before its resolve/reject are attached. Both task fields are
+// optional here (a constructor passes at most one); the stored op is the
+// discriminated `QueuedOperation`, and dispatch checks `run`/`attach` directly.
+export type PendingOperation = Omit<QueuedOperationBase, "resolve" | "reject"> & {
+  readonly run?: AbortableQueueTask | undefined;
+  readonly attach?: AbortableQueueTask | undefined;
 };

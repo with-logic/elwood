@@ -14,15 +14,49 @@ export type AttachTerminal = {
   snapshot(): { readonly text: string };
 };
 
+/** True while a blocking human-decision dialog is on screen (C-API-37 safety). */
+export type BlockedGuard = () => boolean;
+
+const blockedPollMs = 50;
+
+/**
+ * Sends `data` to the terminal only once no blocking dialog is on screen — a
+ * paste path or Ctrl+V must never reach a permission/trust dialog and alter a
+ * human decision. Rejects with `image_attach_failed` if the signal aborts while
+ * held (the session closed) (C-API-37/44).
+ */
+export async function sendWhenUnblocked(
+  terminal: AttachTerminal,
+  data: string,
+  blocked: BlockedGuard | undefined,
+  signal: AbortSignal,
+): Promise<void> {
+  while (blocked?.()) {
+    if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
+    await delay(blockedPollMs);
+  }
+  await terminal.sendInput(data);
+}
+
 export type ChipWaitOptions = {
   readonly settleMs: number;
   readonly timeoutMs: number;
   readonly pollMs: number;
 };
 
-/** Counts `[Image #N]` composer chips; N grows as images are added. */
+// Both CLIs render the image chip on the composer PROMPT line (Codex `›`, Claude
+// `❯`), e.g. `› [Image #1]`. Counting chips only on lines bearing a prompt marker
+// means assistant/tool/transcript output elsewhere that happens to contain a
+// literal `[Image #N]` cannot spoof a confirmation (C-API-44/45/46).
+const promptLine = /^[^\S\r\n]*[›❯]/;
+const chip = /\[Image #\d+\]/g;
+
+/** Counts `[Image #N]` chips on the composer prompt line(s) only. */
 export function imageChipCount(text: string): number {
-  return text.match(/\[Image #\d+\]/g)?.length ?? 0;
+  return text
+    .split("\n")
+    .filter((line) => promptLine.test(line))
+    .reduce((sum, line) => sum + (line.match(chip)?.length ?? 0), 0);
 }
 
 /**

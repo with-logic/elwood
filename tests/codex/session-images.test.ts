@@ -9,13 +9,13 @@
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-const clip = { set: [] as string[], restored: [] as string[] };
+const clip = { set: [] as string[], restored: [] as string[], restoreOk: true };
 vi.mock("../../src/codex/clipboard.ts", () => ({
   clipboardImageSupported: () => true,
   snapshotClipboardText: () => Promise.resolve("prior"),
   restoreClipboardText: (t: string) => {
     clip.restored.push(t);
-    return Promise.resolve();
+    return Promise.resolve(clip.restoreOk);
   },
   setClipboardImage: (p: string) => {
     clip.set.push(p);
@@ -35,12 +35,13 @@ afterEach(() => {
   resetFakes();
   clip.set = [];
   clip.restored = [];
+  clip.restoreOk = true;
 });
 
 /** Emit the `[Image #1]` chip once the Ctrl+V lands so the attach wait resolves. */
 function driveChip(): void {
   const tick = () => {
-    if (ptys[0]!.writes.includes(CTRL_V)) ptys[0]!.emitData("[Image #1]");
+    if (ptys[0]!.writes.includes(CTRL_V)) ptys[0]!.emitData(`[999;1H[K› [Image #1]`);
     else setTimeout(tick, 20);
   };
   setTimeout(tick, 20);
@@ -71,9 +72,29 @@ describe("CodexSession image attachment (C-API-44/46)", () => {
     installFakes();
     const session = await startCodex({ cwd });
     const promise = session.sendMessage("x", { images: [{ path: join(cwd, "missing.png") }] });
-    await expect(promise).rejects.toMatchObject({ code: "invalid_image" });
+    // Attach the rejection handler BEFORE driving readiness (validation rejects at
+    // dispatch), so the rejection is never momentarily unhandled.
+    const settled = expect(promise).rejects.toMatchObject({ code: "invalid_image" });
     await becomeReady(session.elwoodSessionId, cwd);
+    await settled;
     expect(ptys[0]!.writes).toEqual([]);
     expect(clip.set).toEqual([]); // never touched the clipboard
+  });
+
+  test("C-API-46 records a content-free clipboard_restore_failed warning on restore failure", async () => {
+    clip.restoreOk = false;
+    const cwd = tempDir();
+    installFakes();
+    const img = join(cwd, "shot.png");
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(img, PNG);
+    const session = await startCodex({ cwd });
+    const queued = session.sendMessage("describe", { images: [{ path: img }] });
+    await becomeReady(session.elwoodSessionId, cwd);
+    driveChip();
+    await queued;
+    const warning = session.warnings.find((w) => w.code === "clipboard_restore_failed");
+    expect(warning).toBeDefined();
+    expect(warning?.raw).toBe("clipboard_restore_failed"); // content-free, no clipboard data
   });
 });

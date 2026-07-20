@@ -9,8 +9,10 @@
 import { elwoodError } from "../core/errors.ts";
 import {
   type AttachTerminal,
+  type BlockedGuard,
   type ChipWaitOptions,
   imageChipCount,
+  sendWhenUnblocked,
   waitForImageChip,
 } from "../core/images/chip-wait.ts";
 import { sanitizePasteText } from "../core/session-input.ts";
@@ -22,18 +24,21 @@ const chipWait: ChipWaitOptions = { settleMs: 150, timeoutMs: 10_000, pollMs: 10
 /**
  * Pastes each absolute path in order, waiting for the `[Image #N]` chip to
  * confirm before the next paste. A path is sanitized before framing so it cannot
- * escape paste mode (C-API-45). An unconfirmed chip or an abort rejects with
- * `image_attach_failed`; the caller then submits no text.
+ * escape paste mode, and each paste is held while a blocking dialog is on screen
+ * so it never reaches a permission/trust dialog (C-API-37/45). An unconfirmed
+ * chip or an abort rejects with `image_attach_failed`; the caller submits no text.
  */
 export async function attachClaudeImages(
   terminal: AttachTerminal,
   paths: readonly string[],
   signal: AbortSignal,
+  blocked?: BlockedGuard,
 ): Promise<void> {
   for (const path of paths) {
     if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
     const before = imageChipCount(terminal.snapshot().text);
-    await terminal.sendInput(`${PASTE_START}${sanitizePasteText(path)}${PASTE_END}`);
+    const paste = `${PASTE_START}${sanitizePasteText(path)}${PASTE_END}`;
+    await sendWhenUnblocked(terminal, paste, blocked, signal);
     await waitForImageChip(terminal, before, signal, chipWait);
   }
 }

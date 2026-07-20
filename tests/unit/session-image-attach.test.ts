@@ -33,15 +33,33 @@ describe("enqueueSubmission (C-API-44)", () => {
     expect(calls).toBe(1);
   });
 
-  test("C-API-44 rejects on an invalid image BEFORE queuing", async () => {
+  test("C-API-44 enqueues synchronously (FIFO) and rejects an invalid image at dispatch", async () => {
     let queued = false;
+    // The op IS queued (in call order, preserving FIFO); validation runs inside
+    // the queued task at dispatch and rejects the call there.
     await expect(
-      enqueueSubmission([{ data: new Uint8Array(0), format: "png" }], noopDriver, () => {
+      enqueueSubmission([{ data: new Uint8Array(0), format: "png" }], noopDriver, (attach) => {
         queued = true;
-        return Promise.resolve();
+        return runAttach(attach);
       }),
     ).rejects.toMatchObject({ code: "invalid_image" });
-    expect(queued).toBe(false);
+    expect(queued).toBe(true);
+  });
+
+  test("C-API-44 an image submission does not await validation before enqueuing", async () => {
+    // The send() closure runs synchronously in call order (no pre-queue await), so
+    // a later plain submission cannot overtake an image submission.
+    const order: string[] = [];
+    const image = enqueueSubmission([{ data: PNG, format: "png" }], noopDriver, () => {
+      order.push("image");
+      return Promise.resolve();
+    });
+    const plain = enqueueSubmission(undefined, noopDriver, () => {
+      order.push("plain");
+      return Promise.resolve();
+    });
+    await Promise.all([image, plain]);
+    expect(order).toEqual(["image", "plain"]);
   });
 
   test("C-API-44 materializes at dispatch, drives the attach, then cleans temp files", async () => {

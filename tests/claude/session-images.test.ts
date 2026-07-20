@@ -20,7 +20,8 @@ const paste = (text: string) => `${ESC}[200~${text}${ESC}[201~`;
 /**
  * Emits the `[Image #k]` chips one at a time as each path paste lands, so every
  * per-image attach wait observes its own count increase (mirroring how the real
- * CLI adds one chip per pasted path).
+ * CLI adds one chip per pasted path). The chips are rendered on the LAST terminal
+ * row (`ESC[999;1H`) so they land in the composer region the confirmation scans.
  */
 function driveChips(count: number): void {
   let emitted = 0;
@@ -28,7 +29,8 @@ function driveChips(count: number): void {
     const pastes = ptys[0]!.writes.filter((w) => w.includes("[200~")).length;
     while (emitted < pastes && emitted < count) {
       emitted += 1;
-      ptys[0]!.emitData(Array.from({ length: emitted }, (_, i) => `[Image #${i + 1}]`).join(" "));
+      const chips = Array.from({ length: emitted }, (_, i) => `[Image #${i + 1}]`).join(" ");
+      ptys[0]!.emitData(`[999;1H[K❯ ${chips}`);
     }
     if (emitted < count) setTimeout(tick, 20);
   };
@@ -75,10 +77,12 @@ describe("ClaudeSession image attachment (C-API-44/45)", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
-    await expect(
-      session.sendMessage("hi", { images: [{ path: join(cwd, "missing.png") }] }),
-    ).rejects.toMatchObject({ code: "invalid_image" });
+    const promise = session.sendMessage("hi", { images: [{ path: join(cwd, "missing.png") }] });
+    // Attach the rejection handler BEFORE driving readiness (validation rejects at
+    // dispatch), so the rejection is never momentarily unhandled.
+    const settled = expect(promise).rejects.toMatchObject({ code: "invalid_image" });
     await ready(cwd, session.elwoodSessionId);
+    await settled;
     expect(ptys[0]!.writes).toEqual([]);
   });
 

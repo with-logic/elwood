@@ -1,107 +1,78 @@
 /**
- * Resolves ImageInput values to readable absolute file paths for the adapter
- * attach paths (which are file- or clipboard-based). Validation and size limits
- * run BEFORE any temp file is written; byte inputs are materialized to a
- * short-lived temp dir removed by `cleanup`. Async so large writes/metadata
- * lookups never block the event loop on the API hot path.
- * Implements PRD §5.3 (C-API-44).
+ * Validates + snapshots ImageInput values, then materializes them to readable
+ * absolute file paths. Validation narrows from `unknown` (JS callers can pass
+ * anything), enforces the count/size/format/readability limits, and returns a
+ * defensive COPY (byte buffers cloned, paths resolved) so later caller mutation
+ * cannot change what is attached. Materialization is async and deferred to
+ * queue-front. Implements PRD §5.3 (C-API-44).
  */
 
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { access, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { elwoodError } from "../errors.ts";
-import { type ImageInput, imageFormatExtension, imageLimits } from "./types.ts";
+import { type ImageFormat, type ImageInput, imageFormatExtension, imageLimits } from "./types.ts";
 
 /** A resolved set of image paths plus the cleanup for any temp files created. */
 export type ResolvedImages = {
   readonly paths: readonly string[];
-  /** Removes every temp file materialized for this set; safe to call repeatedly. */
+  /** Best-effort removal of temp files; retryable (only clears on success). */
   readonly cleanup: () => Promise<void>;
 };
 
 /**
- * Validates + bounds every input WITHOUT writing anything: rejects with
- * `invalid_image` on an unsupported/empty format, an unreadable path, or a
- * count/size past the documented limits (C-API-44). Run before an image
- * submission is queued so a bad input is rejected before the composer is touched
- * and before any temp file exists.
+ * Validates, bounds, and defensively COPIES every input WITHOUT writing anything.
+ * Narrows each entry from `unknown` so a malformed JS input rejects with
+ * `invalid_image` (never a raw TypeError); clones byte buffers and resolves paths
+ * to absolute form so a later mutation/`cwd` change cannot alter what is attached
+ * (C-API-44). Returns the canonical snapshot to hand to `resolveImages`.
  */
-export async function validateImages(images: readonly ImageInput[]): Promise<void> {
-  await validateAll(images);
-}
-
-/**
- * Materializes byte inputs to one temp dir and returns every absolute path. Meant
- * to run at queue-front (when the op actually dispatches), so pending queued
- * submissions do not accumulate temp-disk usage. Assumes `validateImages` already
- * passed. A materialize failure removes the temp dir before rethrowing, preserving
- * the original error.
- */
-export async function resolveImages(images: readonly ImageInput[]): Promise<ResolvedImages> {
-  let dir: string | undefined;
-  const cleanup = async () => {
-    if (!dir) return;
-    // Remove the temp dir, then null it so the cleanup is idempotent — but only
-    // AFTER a successful removal, so a transient failure stays retryable rather
-    // than leaking the dir silently.
-    await rm(dir, { recursive: true, force: true });
-    dir = undefined;
-  };
-  try {
-    const paths: string[] = [];
-    for (const image of images) {
-      if (image.path !== undefined) {
-        paths.push(resolve(image.path));
-        continue;
-      }
-      dir ??= await mkdtemp(join(tmpdir(), "elwood-image-"));
-      const file = join(dir, `${randomUUID()}.${imageFormatExtension[image.format]}`);
-      await writeFile(file, image.data);
-      paths.push(file);
-    }
-    return { paths, cleanup };
-  } catch (error) {
-    // A materialize failure (disk full) removes the temp dir before rethrow; the
-    // ORIGINAL error is preserved (a cleanup failure never replaces it).
-    await cleanup().catch(() => undefined);
-    throw error;
-  }
-}
-
-async function validateAll(images: readonly ImageInput[]): Promise<void> {
-  if (images.length > imageLimits.maxCount)
-    throw elwoodError(
-      "invalid_image",
-      `Too many images: ${images.length} > ${imageLimits.maxCount}`,
-    );
+export async function validateImages(
+  images: readonly ImageInput[],
+): Promise<readonly ImageInput[]> {
+  const list = images as readonly unknown[];
+  if (list.length > imageLimits.maxCount)
+    throw elwoodError("invalid_image", `Too many images: ${list.length} > ${imageLimits.maxCount}`);
+  const snapshot: ImageInput[] = [];
   let total = 0;
-  for (const image of images) total += await validateImage(image);
+  for (const entry of list) {
+    const [image, bytes] = await validateOne(entry);
+    snapshot.push(image);
+    total += bytes;
+  }
   if (total > imageLimits.maxBytesTotal)
     throw elwoodError(
       "invalid_image",
       `Images exceed the ${imageLimits.maxBytesTotal}-byte total.`,
     );
+  return snapshot;
 }
 
-/** Validates one input and returns its byte size (for the aggregate cap). */
-async function validateImage(image: ImageInput): Promise<number> {
-  if (image.data !== undefined) {
-    if (!(image.format in imageFormatExtension))
-      throw elwoodError("invalid_image", `Unsupported image format: ${image.format}`);
-    if (image.data.length === 0) throw elwoodError("invalid_image", "Image data is empty.");
-    if (image.data.length > imageLimits.maxBytesPerImage)
-      throw elwoodError("invalid_image", "Image data exceeds the per-image size limit.");
-    return image.data.length;
+/** Narrows one entry, returns its canonical copy plus its byte size. */
+async function validateOne(entry: unknown): Promise<readonly [ImageInput, number]> {
+  const record = entry as { data?: unknown; format?: unknown; path?: unknown } | null;
+  if (record && ArrayBuffer.isView(record.data)) return validateBytes(record.data, record.format);
+  if (record && typeof record.path === "string") {
+    const size = await validatePath(record.path);
+    return [{ path: resolve(record.path) }, size];
   }
-  return await validatePath(image.path);
+  throw elwoodError("invalid_image", "Image must be a { path } or { data, format }.");
+}
+
+function validateBytes(view: ArrayBufferView, format: unknown): readonly [ImageInput, number] {
+  if (typeof format !== "string" || !Object.hasOwn(imageFormatExtension, format))
+    throw elwoodError("invalid_image", `Unsupported image format: ${String(format)}`);
+  const data = Uint8Array.from(view as Uint8Array); // clone so later mutation is inert
+  if (data.length === 0) throw elwoodError("invalid_image", "Image data is empty.");
+  if (data.length > imageLimits.maxBytesPerImage)
+    throw elwoodError("invalid_image", "Image data exceeds the per-image size limit.");
+  return [{ data, format: format as ImageFormat }, data.length];
 }
 
 async function validatePath(path: string): Promise<number> {
-  if (!isAbsolute(path) && path.trim() === "")
-    throw elwoodError("invalid_image", "Image path is empty.");
+  if (path.trim() === "") throw elwoodError("invalid_image", "Image path is empty.");
   let size: number;
   try {
     const info = await stat(path);
@@ -115,4 +86,35 @@ async function validatePath(path: string): Promise<number> {
   if (size > imageLimits.maxBytesPerImage)
     throw elwoodError("invalid_image", `Image file exceeds the per-image size limit: ${path}`);
   return size;
+}
+
+/**
+ * Materializes byte inputs (already validated/snapshotted) to one temp dir and
+ * returns every absolute path. A materialize failure removes the temp dir before
+ * rethrowing, preserving the original error.
+ */
+export async function resolveImages(images: readonly ImageInput[]): Promise<ResolvedImages> {
+  let dir: string | undefined;
+  const cleanup = async () => {
+    if (!dir) return;
+    await rm(dir, { recursive: true, force: true });
+    dir = undefined; // cleared only on success → a transient failure stays retryable
+  };
+  try {
+    const paths: string[] = [];
+    for (const image of images) {
+      if (image.path !== undefined) {
+        paths.push(image.path);
+        continue;
+      }
+      dir ??= await mkdtemp(join(tmpdir(), "elwood-image-"));
+      const file = join(dir, `${randomUUID()}.${imageFormatExtension[image.format]}`);
+      await writeFile(file, image.data);
+      paths.push(file);
+    }
+    return { paths, cleanup };
+  } catch (error) {
+    await cleanup().catch(() => undefined);
+    throw error;
+  }
 }

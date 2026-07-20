@@ -14,6 +14,7 @@ const state = {
   setCalls: [] as string[],
   restored: [] as string[],
   setThrows: false,
+  restoreOk: true,
 };
 
 vi.mock("../../src/codex/clipboard.ts", () => ({
@@ -24,7 +25,7 @@ vi.mock("../../src/codex/clipboard.ts", () => ({
   },
   restoreClipboardText: (text: string) => {
     state.restored.push(text);
-    return Promise.resolve();
+    return Promise.resolve(state.restoreOk);
   },
   setClipboardImage: (path: string) => {
     state.setCalls.push(path);
@@ -44,6 +45,7 @@ beforeEach(() => {
     setCalls: [],
     restored: [],
     setThrows: false,
+    restoreOk: true,
   });
 });
 afterEach(() => vi.useRealTimers());
@@ -58,7 +60,9 @@ function fakeTerminal(chipsPerPaste = 1) {
       chips += chipsPerPaste;
     },
     snapshot() {
-      return { text: Array.from({ length: chips }, (_, i) => `[Image #${i + 1}]`).join(" ") };
+      return {
+        text: `› ${Array.from({ length: chips }, (_, i) => `[Image #${i + 1}]`).join(" ")}`,
+      };
     },
   };
 }
@@ -118,5 +122,32 @@ describe("attachCodexImages (C-API-46)", () => {
     await settled;
     expect(state.setCalls).toEqual([]);
     expect(state.restored).toEqual(["prior-text"]);
+  });
+
+  test("C-API-46 calls onRestoreFailed when the clipboard restore fails", async () => {
+    state.restoreOk = false;
+    let warned = 0;
+    const done = attachCodexImages(
+      fakeTerminal(),
+      ["/a.png"],
+      new AbortController().signal,
+      undefined,
+      () => warned++,
+    );
+    await vi.runAllTimersAsync();
+    await done;
+    expect(warned).toBe(1);
+  });
+
+  test("C-API-46 holds Ctrl+V while a dialog blocks, then sends once cleared", async () => {
+    let blocked = true;
+    const term = fakeTerminal();
+    const done = attachCodexImages(term, ["/a.png"], new AbortController().signal, () => blocked);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(term.writes).toHaveLength(0); // Ctrl+V held while blocked
+    blocked = false;
+    await vi.runAllTimersAsync();
+    await done;
+    expect(term.writes).toEqual([CTRL_V]);
   });
 });

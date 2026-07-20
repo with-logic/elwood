@@ -79,6 +79,13 @@ const warningValidators = {
     isString(value["elwoodSessionId"]) &&
     isString(value["message"]) &&
     isString(value["raw"]),
+  // Content-free clipboard-restore-failure diagnostic (no clipboard contents) (C-API-46).
+  clipboard_restore_failed: (value) =>
+    value["agent"] === "codex" &&
+    value["source"] === "lifecycle" &&
+    isString(value["elwoodSessionId"]) &&
+    isString(value["message"]) &&
+    isString(value["raw"]),
   transcript_records_dropped: (value) =>
     claudeTerminalBase(value) &&
     isPositiveCount(value["droppedCount"]) &&

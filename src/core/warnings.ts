@@ -71,6 +71,17 @@ export type ElwoodWarningEvent =
       readonly raw: string;
     }
   | {
+      // Content-free: the clipboard restore after a Codex image attach failed, so
+      // the user's prior clipboard may be lost. No clipboard contents (C-API-46).
+      readonly elwoodSessionId: string;
+      readonly agent: "codex";
+      readonly source: "lifecycle";
+      readonly code: "clipboard_restore_failed";
+      readonly severity: "warning";
+      readonly message: string;
+      readonly raw: string;
+    }
+  | {
       readonly elwoodSessionId: string;
       readonly agent: "claude";
       readonly source: "terminal";

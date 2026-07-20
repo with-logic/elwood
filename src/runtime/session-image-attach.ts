@@ -1,9 +1,11 @@
 /**
- * Builds the per-submission image-attach task handed to the control queue.
- * Validation runs up front (rejecting the whole submission before it is queued or
- * any temp file exists), while byte materialization is deferred to the attach
- * task at queue-front so pending queued submissions accumulate no temp-disk
- * usage. The task always cleans up temp files. Implements PRD §5.3 (C-API-44).
+ * Builds the per-submission image-attach task handed to the control queue. The
+ * submission is enqueued SYNCHRONOUSLY in call order (preserving FIFO). Inside
+ * the queued task, at dispatch, validation narrows + defensively copies the
+ * inputs (so later caller mutation is inert), then byte materialization and the
+ * adapter attach run — so a bad input rejects the op (never wedging the queue)
+ * and pending submissions accumulate no temp-disk usage. Implements PRD §5.3
+ * (C-API-44).
  */
 
 import { resolveImages, validateImages } from "../core/images/index.ts";
@@ -23,28 +25,26 @@ type QueueSend = (attach?: AttachTask) => Promise<void>;
 
 /**
  * Queues a text submission, optionally attaching `images`. With no images it is a
- * plain `send()`. With images it VALIDATES them first (rejecting as
- * `invalid_image` before anything is queued), then queues the op whose attach
- * task — run only when the op reaches the queue front — materializes byte inputs,
- * drives the adapter attach, and always removes temp files (C-API-44).
+ * plain `send()`; the queue call happens synchronously so a later plain
+ * submission cannot overtake an image submission in FIFO order (C-API-44).
  */
-export async function enqueueSubmission(
+export function enqueueSubmission(
   images: readonly ImageInput[] | undefined,
   driver: AttachDriver,
   send: QueueSend,
 ): Promise<void> {
   if (!images || images.length === 0) return send();
-  await validateImages(images);
   return send((signal) => runAttach(images, driver, signal));
 }
 
-/** Materialize → drive the adapter attach → always clean up temp files. */
+/** Validate + snapshot → materialize → drive the adapter attach → clean up temp files. */
 async function runAttach(
   images: readonly ImageInput[],
   driver: AttachDriver,
   signal: AbortSignal,
 ): Promise<void> {
-  const resolved = await resolveImages(images);
+  const validated = await validateImages(images);
+  const resolved = await resolveImages(validated);
   try {
     await driver(resolved.paths, signal);
   } finally {

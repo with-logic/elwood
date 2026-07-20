@@ -19,14 +19,15 @@ export type {
 export { controlOperationTraits } from "./control-queue-traits.ts";
 
 import type {
+  AbortableQueueTask,
   Cancel,
   ControlSubmitter,
-  ExclusiveTask,
+  PendingOperation,
   QueuedOperation,
 } from "./control-queue-types.ts";
 import { toError } from "./errors.ts";
 
-export type { ControlSubmitter, ExclusiveTask } from "./control-queue-types.ts";
+export type { AbortableQueueTask, ControlSubmitter } from "./control-queue-types.ts";
 
 export class ControlQueue {
   private readonly queue: QueuedOperation[] = [];
@@ -37,10 +38,8 @@ export class ControlQueue {
   private ready = false;
   private everReady = false;
   private closed = false;
-  // Monotonic readiness version; rollback restores its snapshot only if the epoch is unchanged.
-  private readinessEpoch = 0;
-  // Count of ops that can dispatch while not ready; lets `drain` skip the overtaker scan (amortized O(1)).
-  private bypassable = 0;
+  private readinessEpoch = 0; // monotonic; rollback restores its snapshot only if the epoch is unchanged
+  private bypassable = 0; // # ops dispatchable while not ready; lets drain skip the overtaker scan
   private inFlight: QueuedOperation | undefined; // submission still dispatching (incl. delayed Enter)
   private submitAbort: AbortController | undefined; // aborts prior submission's nudges
 
@@ -56,19 +55,22 @@ export class ControlQueue {
     this.guidanceMayBypass = guidanceMayBypass;
   }
 
-  send(input: string, kind: ControlOperationKind, attach?: ExclusiveTask): Promise<void> {
+  send(input: string, kind: ControlOperationKind, attach?: AbortableQueueTask): Promise<void> {
     // Freeze bypass eligibility: guidance bypasses only if past initial readiness AND mid-turn (C-API-37).
     const mayBypassReadiness =
       controlOperationTraits[kind].readiness === "running_after_ready" &&
       this.everReady &&
       this.guidanceMayBypass();
-    return this.enqueue({ input, kind, mayBypassReadiness, ...(attach ? { attach } : {}) });
+    return this.enqueue({ input, kind, mayBypassReadiness, attach });
   }
 
-  // Run a task holding EXCLUSIVE queue ownership for its whole duration (C-API-43
-  // login), abort-on-close. `cancel` drops+rejects it if aborted while STILL QUEUED
-  // (its deadline elapsing behind other work), so the timeout covers queue-wait too.
-  runExclusive(kind: ControlOperationKind, run: ExclusiveTask, cancel?: Cancel): Promise<void> {
+  // Hold EXCLUSIVE queue ownership for the task's whole run (C-API-43 login);
+  // `cancel` drops it if aborted while STILL QUEUED.
+  runExclusive(
+    kind: ControlOperationKind,
+    run: AbortableQueueTask,
+    cancel?: Cancel,
+  ): Promise<void> {
     return this.enqueue({ input: "", kind, mayBypassReadiness: false, run }, cancel);
   }
 
@@ -80,10 +82,10 @@ export class ControlQueue {
     operation.reject(error);
   }
 
-  private enqueue(op: Omit<QueuedOperation, "resolve" | "reject">, cancel?: Cancel): Promise<void> {
+  private enqueue(op: PendingOperation, cancel?: Cancel): Promise<void> {
     if (this.closed) return Promise.reject(this.stoppedError());
     return new Promise((resolve, reject) => {
-      const operation = { ...op, resolve, reject };
+      const operation = { ...op, resolve, reject } as QueuedOperation;
       this.queue.push(operation);
       if (overtakesReadiness(operation)) this.bypassable += 1;
       if (cancel) {
@@ -111,7 +113,7 @@ export class ControlQueue {
   close(): void {
     this.closed = true;
     const error = this.stoppedError();
-    // Abort the in-flight signal (login stops promptly) and reject the still-dispatching op.
+    // Abort the in-flight signal and reject the still-dispatching op.
     this.submitAbort?.abort();
     const settling = this.inFlight;
     this.inFlight = undefined;
@@ -126,16 +128,14 @@ export class ControlQueue {
     if (index < 0) return;
     const operation = this.queue.splice(index, 1)[0] as QueuedOperation;
     if (overtakesReadiness(operation)) this.bypassable -= 1;
-    // Own the queue BEFORE lifecycle work/write so a throwing listener can't leave a write ownerless (C-API-35).
-    this.inFlight = operation;
+    this.inFlight = operation; // own the queue before lifecycle/write (C-API-35)
     const traits = controlOperationTraits[operation.kind];
     const priorReady = this.ready;
     const dispatchEpoch = this.readinessEpoch;
     let dispatched: Promise<void>;
     try {
       const signal = this.armAbort();
-      // An image attach defers its lifecycle transition until the attach succeeds
-      // (so a rejection never wedges readiness); every other op transitions now.
+      // An image attach defers its lifecycle to after the attach; others do it now.
       if (!operation.attach) this.beginSubmission(traits);
       dispatched = operation.run
         ? operation.run(signal)
@@ -144,14 +144,14 @@ export class ControlQueue {
       this.rollbackSubmission(operation, priorReady, dispatchEpoch, toError(error));
       return;
     }
-    // The write holds the next drain so ops never interleave; no-op if close() settled it.
+    // The write holds the next drain so ops never interleave; no-op after close().
     dispatched.then(
       () => this.settleInFlight(operation, () => operation.resolve()),
       (e: unknown) => this.rollbackSubmission(operation, priorReady, dispatchEpoch, toError(e)),
     );
   }
 
-  // Restore readiness on a failed submission, ONLY if no lifecycle transition bumped the epoch since dispatch (C-API-35/37).
+  // Restore readiness on failure, only if no lifecycle transition bumped the epoch since dispatch (C-API-35/37).
   private rollbackSubmission(
     operation: QueuedOperation,
     priorReady: boolean,
@@ -169,10 +169,7 @@ export class ControlQueue {
     this.drain();
   }
 
-  // Attach images (if any) FIRST, then the lifecycle transition, then the text
-  // write. Deferring the lifecycle until after a successful attach means a
-  // rejection leaves readiness untouched (no wedge); a close mid-attach (aborted
-  // signal) rejects rather than writing text onto a torn-down session (C-API-19/44).
+  // Attach FIRST, then the deferred lifecycle, then the write: deferring past a successful attach avoids wedging (C-API-19/44).
   private async submitWithAttach(
     operation: QueuedOperation,
     traits: ControlOperationTraits,
@@ -181,14 +178,17 @@ export class ControlQueue {
     if (operation.attach) {
       await operation.attach(signal);
       if (signal.aborted) throw this.stoppedError();
-      this.beginSubmission(traits);
+      try {
+        this.beginSubmission(traits); // readiness consumed before any throw
+      } catch {
+        // Images are staged; a throwing turn-start listener must not strand them.
+      }
     }
     await this.submit(operation.input, traits.submitMode, signal);
   }
 
-  // Consume-readiness / report-turn lifecycle (a throwing status listener aborts with nothing in flight).
   private beginSubmission(traits: ControlOperationTraits): void {
-    if (traits.consumesReadiness) this.ready = false;
+    if (traits.consumesReadiness) this.ready = false; // a throwing listener aborts with nothing in flight
     if (traits.reportsCallerSubmission) this.onTurnStarted();
   }
 

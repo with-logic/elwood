@@ -10,8 +10,10 @@
 import { elwoodError } from "../core/errors.ts";
 import {
   type AttachTerminal,
+  type BlockedGuard,
   type ChipWaitOptions,
   imageChipCount,
+  sendWhenUnblocked,
   waitForImageChip,
 } from "../core/images/chip-wait.ts";
 import {
@@ -30,22 +32,27 @@ const chipWait: ChipWaitOptions = { settleMs: 200, timeoutMs: 10_000, pollMs: 10
  * the user's clipboard text afterward (best-effort). Rejects with
  * `unsupported_platform` on non-macOS BEFORE touching the clipboard, and with
  * `image_attach_failed`/`invalid_image` on a snapshot/set/confirm failure; the
- * caller then submits no text (C-API-46).
+ * caller then submits no text. The Ctrl+V is held while a blocking dialog is on
+ * screen so it never confirms a dialog (C-API-37/46).
  */
 export async function attachCodexImages(
   terminal: AttachTerminal,
   paths: readonly string[],
   signal: AbortSignal,
+  blocked?: BlockedGuard,
+  onRestoreFailed?: () => void,
 ): Promise<void> {
   if (!clipboardImageSupported())
     throw elwoodError("unsupported_platform", "Codex image attachment requires macOS.");
-  await withClipboardLock(() => attachUnderLock(terminal, paths, signal));
+  await withClipboardLock(() => attachUnderLock(terminal, paths, signal, blocked, onRestoreFailed));
 }
 
 async function attachUnderLock(
   terminal: AttachTerminal,
   paths: readonly string[],
   signal: AbortSignal,
+  blocked: BlockedGuard | undefined,
+  onRestoreFailed: (() => void) | undefined,
 ): Promise<void> {
   // Snapshot BEFORE mutating; a snapshot failure rejects here so we never
   // overwrite then "restore" an empty string over the user's clipboard.
@@ -55,10 +62,11 @@ async function attachUnderLock(
       if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
       const before = imageChipCount(terminal.snapshot().text);
       await setClipboardImage(path);
-      await terminal.sendInput(CTRL_V);
+      await sendWhenUnblocked(terminal, CTRL_V, blocked, signal);
       await waitForImageChip(terminal, before, signal, chipWait);
     }
   } finally {
-    await restoreClipboardText(priorClipboard);
+    // Best-effort; a failed restore surfaces a content-free warning (C-API-46).
+    if (!(await restoreClipboardText(priorClipboard))) onRestoreFailed?.();
   }
 }

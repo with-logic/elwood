@@ -24,7 +24,9 @@ function fakeTerminal(chipsPerPaste = 1) {
       chips += chipsPerPaste;
     },
     snapshot() {
-      return { text: Array.from({ length: chips }, (_, i) => `[Image #${i + 1}]`).join(" ") };
+      return {
+        text: `› ${Array.from({ length: chips }, (_, i) => `[Image #${i + 1}]`).join(" ")}`,
+      };
     },
   };
 }
@@ -59,6 +61,24 @@ describe("attachClaudeImages (C-API-45)", () => {
     const settled = expect(done).rejects.toMatchObject({ code: "image_attach_failed" });
     await vi.runAllTimersAsync();
     await settled;
+  });
+
+  test("C-API-45 holds the paste while a dialog is blocking, then sends once cleared", async () => {
+    const term = fakeTerminal();
+    let blocked = true;
+    const done = attachClaudeImages(
+      term,
+      ["/abs/a.png"],
+      new AbortController().signal,
+      () => blocked,
+    );
+    // While blocked, nothing is written to the PTY.
+    await vi.advanceTimersByTimeAsync(200);
+    expect(term.writes).toHaveLength(0);
+    blocked = false;
+    await vi.runAllTimersAsync();
+    await done;
+    expect(term.writes).toHaveLength(1); // paste sent only after the dialog cleared
   });
 
   test("C-API-45 rejects when the signal is already aborted, pasting nothing", async () => {

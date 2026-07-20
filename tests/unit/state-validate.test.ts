@@ -79,7 +79,9 @@ describe("session record validation", () => {
       message: "restore skipped",
       raw: "/tmp/config.toml",
     };
+    const restore = { ...warning, code: "clipboard_restore_failed" }; // C-API-46, same shape
     expect(validateSessionRecord({ ...base, warnings: [warning] }, root, id)).not.toBeNull();
+    expect(validateSessionRecord({ ...base, warnings: [restore] }, root, id)).not.toBeNull();
     expect(
       validateSessionRecord({ ...base, warnings: [{ ...warning, source: "terminal" }] }, root, id),
     ).toBeNull();
@@ -194,6 +196,5 @@ function mcpLoginWarning(): Record<string, unknown> {
 }
 
 function throwPrimitive(value: string): never {
-  // Throws a bare string to exercise non-Error failure normalization.
-  throw value;
+  throw value; // a bare string exercises non-Error failure normalization
 }

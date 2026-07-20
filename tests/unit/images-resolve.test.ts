@@ -4,11 +4,11 @@
  * resolution materializes bytes to temp files and cleans them up.
  */
 
-import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import type { ElwoodError } from "../../src/core/errors.ts";
-import { resolveImages, validateImages } from "../../src/core/images/resolve.ts";
+import { validateImages } from "../../src/core/images/resolve.ts";
 import type { ImageInput } from "../../src/core/images/types.ts";
 import { imageLimits } from "../../src/core/images/types.ts";
 import { tempDirForUnit } from "./helpers.ts";
@@ -32,13 +32,45 @@ describe("ImageInput type exclusivity (C-API-44)", () => {
 });
 
 describe("validateImages (C-API-44)", () => {
-  test("C-API-44 accepts an existing file and supported byte formats", async () => {
+  test("C-API-44 accepts an existing file and supported byte formats, returning a snapshot", async () => {
     const dir = tempDirForUnit();
     const file = join(dir, "shot.png");
     writeFileSync(file, PNG);
-    await expect(
-      validateImages([{ path: file }, { data: PNG, format: "jpeg" }]),
-    ).resolves.toBeUndefined();
+    const snap = await validateImages([{ path: file }, { data: PNG, format: "jpeg" }]);
+    expect(snap).toHaveLength(2);
+    expect((snap[0] as { path: string }).path).toBe(file); // resolved to absolute
+  });
+
+  test("C-API-44 clones byte buffers so later caller mutation is inert", async () => {
+    const bytes = Uint8Array.from(PNG);
+    const [snap] = await validateImages([{ data: bytes, format: "png" }]);
+    bytes[0] = 0; // mutate the caller's buffer after validation
+    expect((snap as { data: Uint8Array }).data[0]).toBe(PNG[0]); // snapshot unchanged
+  });
+
+  test("C-API-44 rejects malformed JS entries with invalid_image, not a raw error", async () => {
+    expect(await imageCode(() => validateImages([null as never]))).toBe("invalid_image");
+    expect(await imageCode(() => validateImages([{} as never]))).toBe("invalid_image");
+    expect(await imageCode(() => validateImages([{ data: "x", format: "png" } as never]))).toBe(
+      "invalid_image",
+    );
+  });
+
+  test("C-API-44 rejects a prototype-key format via own-key check", async () => {
+    expect(
+      await imageCode(() => validateImages([{ data: PNG, format: "toString" as never }])),
+    ).toBe("invalid_image");
+  });
+
+  test("C-API-44 accepts inputs exactly AT each limit (inclusive bounds)", async () => {
+    const atCount = Array.from({ length: imageLimits.maxCount }, () => ({
+      data: PNG,
+      format: "png" as const,
+    }));
+    await expect(validateImages(atCount)).resolves.toHaveLength(imageLimits.maxCount);
+    const atSize = new Uint8Array(imageLimits.maxBytesPerImage);
+    atSize[0] = 1;
+    await expect(validateImages([{ data: atSize, format: "png" }])).resolves.toHaveLength(1);
   });
 
   test("C-API-44 rejects an unsupported byte format", async () => {
@@ -109,87 +141,5 @@ describe("validateImages (C-API-44)", () => {
         { data: half, format: "png" },
       ]),
     ).rejects.toThrow(/total/);
-  });
-});
-
-describe("resolveImages (C-API-44)", () => {
-  test("C-API-44 materializes bytes to temp files and cleans them up", async () => {
-    const { paths, cleanup } = await resolveImages([{ data: PNG, format: "png" }]);
-    const file = paths[0] as string;
-    expect(file.endsWith(".png")).toBe(true);
-    expect(readFileSync(file)).toEqual(Buffer.from(PNG));
-    await cleanup();
-    expect(existsSync(file)).toBe(false);
-    await cleanup(); // idempotent
-  });
-
-  test("C-API-44 resolves an existing path without materializing, mixed with bytes", async () => {
-    const dir = tempDirForUnit();
-    const file = join(dir, "a.png");
-    writeFileSync(file, PNG);
-    const { paths, cleanup } = await resolveImages([{ path: file }, { data: PNG, format: "gif" }]);
-    expect(paths[0]).toBe(file);
-    expect((paths[1] as string).endsWith(".gif")).toBe(true);
-    await cleanup();
-    expect(existsSync(file)).toBe(true); // pre-existing path never removed
-    expect(existsSync(paths[1] as string)).toBe(false);
-  });
-
-  test("C-API-44 path-only images create no temp dir and cleanup is a no-op", async () => {
-    const dir = tempDirForUnit();
-    const file = join(dir, "only.png");
-    writeFileSync(file, PNG);
-    const { paths, cleanup } = await resolveImages([{ path: file }]);
-    expect(paths).toEqual([file]);
-    await cleanup(); // dir is undefined → cleanup returns without removing anything
-    expect(existsSync(file)).toBe(true);
-  });
-
-  test("C-API-44 uses the right extension per format", async () => {
-    const { paths, cleanup } = await resolveImages([
-      { data: PNG, format: "jpeg" },
-      { data: PNG, format: "webp" },
-    ]);
-    expect((paths[0] as string).endsWith(".jpg")).toBe(true);
-    expect((paths[1] as string).endsWith(".webp")).toBe(true);
-    await cleanup();
-  });
-
-  test("C-API-44 cleans up and rethrows the ORIGINAL error when a write fails", async () => {
-    vi.resetModules();
-    const removed: string[] = [];
-    vi.doMock("node:fs/promises", async () => {
-      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
-      return {
-        ...actual,
-        writeFile: () => Promise.reject(new Error("ENOSPC")),
-        rm: (path: string, ...rest: unknown[]) => {
-          removed.push(path);
-          return (actual.rm as (...a: unknown[]) => Promise<void>)(path, ...rest);
-        },
-      };
-    });
-    const { resolveImages: mocked } = await import("../../src/core/images/resolve.ts");
-    await expect(mocked([{ data: PNG, format: "png" }])).rejects.toThrow(/ENOSPC/);
-    expect(removed.length).toBeGreaterThan(0);
-    vi.doUnmock("node:fs/promises");
-    vi.resetModules();
-  });
-
-  test("C-API-44 a cleanup failure never masks the ORIGINAL materialize error", async () => {
-    vi.resetModules();
-    vi.doMock("node:fs/promises", async () => {
-      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
-      return {
-        ...actual,
-        writeFile: () => Promise.reject(new Error("ENOSPC")),
-        rm: () => Promise.reject(new Error("rm failed")), // cleanup itself throws
-      };
-    });
-    const { resolveImages: mocked } = await import("../../src/core/images/resolve.ts");
-    // The rm rejection is swallowed; the ORIGINAL ENOSPC still surfaces.
-    await expect(mocked([{ data: PNG, format: "png" }])).rejects.toThrow(/ENOSPC/);
-    vi.doUnmock("node:fs/promises");
-    vi.resetModules();
   });
 });
