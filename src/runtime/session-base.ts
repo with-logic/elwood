@@ -2,6 +2,7 @@
 import { activityFromStatus, type ElwoodAgentKind } from "../core/activity.ts";
 import { ControlQueue } from "../core/control-queue.ts";
 import { toError } from "../core/errors.ts";
+import type { SendOptions } from "../core/images/types.ts";
 import type { ModelPickerSpec } from "../core/model-picker.ts";
 import type { AgentModelOption } from "../core/model-rows.ts";
 import { type PasteGuard, writeQueuedInput } from "../core/session-input.ts";
@@ -13,13 +14,10 @@ import { type SessionRecord, updateSessionStatus, writeSessionRecord } from "../
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { notRunningError, type SessionStatusEmitter } from "./session-base-types.ts";
 import { CommandSurface } from "./session-commands.ts";
+import { type AttachDriver, enqueueSubmission, type SubmitKind } from "./session-image-attach.ts";
 import { SessionReapPolicy } from "./session-reap.ts";
 import { applyResize, persistHeldResize, restoreHeldResize } from "./session-resize.ts";
-import {
-  buildShutdownHost,
-  runManagedShutdown,
-  type ShutdownEvidence,
-} from "./session-shutdown.ts";
+import { buildShutdownHost, managedShutdown, type ShutdownEvidence } from "./session-shutdown.ts";
 import { terminalStatuses } from "./session-status.ts";
 import { ShutdownCoordinator } from "./shutdown-coordinator.ts";
 import {
@@ -100,11 +98,19 @@ export abstract class AgentSessionBase {
   protected get hasBeenReady(): boolean {
     return this.everReady; // reached readiness at least once (gates mid-session logic)
   }
-  sendPrompt = (prompt: string): Promise<void> => this.enqueue(prompt, "prompt");
-  sendMessage = (message: string): Promise<void> => this.enqueue(message, "message");
-  sendGuidance = (message: string): Promise<void> => this.enqueue(message, "guidance");
-  private enqueue(input: string, kind: "prompt" | "message" | "guidance"): Promise<void> {
-    return this.inSession(() => this.controlQueue.send(input, kind));
+  sendPrompt = (prompt: string, o?: SendOptions) => this.enqueue(prompt, "prompt", o);
+  sendMessage = (message: string, o?: SendOptions) => this.enqueue(message, "message", o);
+  sendGuidance = (message: string, o?: SendOptions) => this.enqueue(message, "guidance", o);
+
+  // Adapter-specific native image attach, run inside the op before the text
+  // write with already-resolved absolute paths (C-API-44).
+  protected abstract attachImages(paths: readonly string[], signal: AbortSignal): Promise<void>;
+
+  private enqueue(input: string, kind: SubmitKind, options?: SendOptions): Promise<void> {
+    const driver: AttachDriver = (paths, signal) => this.attachImages(paths, signal);
+    return enqueueSubmission(options?.images, driver, (attach) =>
+      this.inSession(() => this.controlQueue.send(input, kind, attach)),
+    );
   }
   sendKeys = (input: string | Uint8Array): Promise<void> =>
     this.inSession(() => this.terminal.sendInput(input));
@@ -119,9 +125,8 @@ export abstract class AgentSessionBase {
   }
   private readonly persistSize = (size: TerminalSize) =>
     this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.status));
-  interrupt(options?: { readonly timeoutMs?: number }): Promise<void> {
-    return this.inSession(() => this.commands.interrupt(options));
-  }
+  interrupt = (options?: { readonly timeoutMs?: number }): Promise<void> =>
+    this.inSession(() => this.commands.interrupt(options));
   compact(options?: { readonly timeoutMs?: number }): Promise<void> {
     return this.inSession(() => this.commands.compact(options));
   }
@@ -131,15 +136,10 @@ export abstract class AgentSessionBase {
   setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
     return this.inSession(() => this.commands.setModel(id, options));
   }
-  stop(): Promise<void> {
-    return runManagedShutdown(this.shutdownCoordinator, "stop", () => this.shutdownHost());
-  }
-  kill(): Promise<void> {
-    return runManagedShutdown(this.shutdownCoordinator, "kill", () => this.shutdownHost());
-  }
-  teardown(): Promise<void> {
-    return runManagedShutdown(this.shutdownCoordinator, "teardown", () => this.shutdownHost());
-  }
+  private readonly shutdown = managedShutdown(this.shutdownCoordinator, () => this.shutdownHost());
+  stop = (): Promise<void> => this.shutdown.stop();
+  kill = (): Promise<void> => this.shutdown.kill();
+  teardown = (): Promise<void> => this.shutdown.teardown();
   private shutdownHost() {
     return buildShutdownHost({
       pty: this.pty,

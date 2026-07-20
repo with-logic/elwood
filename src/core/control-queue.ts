@@ -19,33 +19,15 @@ export type {
 } from "./control-queue-traits.ts";
 export { controlOperationTraits } from "./control-queue-traits.ts";
 
+import type {
+  Cancel,
+  ControlSubmitter,
+  ExclusiveTask,
+  QueuedOperation,
+} from "./control-queue-types.ts";
 import { toError } from "./errors.ts";
 
-// Writes an op to the terminal; resolves only once the submission (incl. any delayed
-// Enter) has dispatched, so the next op never drains into a half-written composer.
-// `signal` aborts on the NEXT op / on close (stops prior recovery nudges).
-export type ControlSubmitter = (
-  input: string,
-  mode: ControlSubmitMode,
-  signal: AbortSignal,
-) => Promise<void>;
-
-type QueuedOperation = {
-  readonly input: string;
-  readonly kind: ControlOperationKind;
-  // FROZEN at enqueue: guidance queued before first readiness stays message-like (C-API-37).
-  readonly mayBypassReadiness: boolean;
-  // EXCLUSIVE op (e.g. `login`): runs a task holding the queue for its whole duration (input unused).
-  readonly run?: ExclusiveTask;
-  readonly resolve: () => void;
-  readonly reject: (error: Error) => void;
-};
-
-/** Runs an exclusive interactive task; aborted when the session closes. */
-export type ExclusiveTask = (signal: AbortSignal) => Promise<void>;
-
-/** Drops a still-queued op when `signal` aborts, rejecting it with `error()`. */
-type Cancel = { readonly signal: AbortSignal; readonly error: () => Error };
+export type { ControlSubmitter, ExclusiveTask } from "./control-queue-types.ts";
 
 export class ControlQueue {
   private readonly queue: QueuedOperation[] = [];
@@ -75,13 +57,13 @@ export class ControlQueue {
     this.guidanceMayBypass = guidanceMayBypass;
   }
 
-  send(input: string, kind: ControlOperationKind): Promise<void> {
+  send(input: string, kind: ControlOperationKind, attach?: ExclusiveTask): Promise<void> {
     // Freeze bypass eligibility: guidance bypasses only if past initial readiness AND mid-turn (C-API-37).
     const mayBypassReadiness =
       controlOperationTraits[kind].readiness === "running_after_ready" &&
       this.everReady &&
       this.guidanceMayBypass();
-    return this.enqueue({ input, kind, mayBypassReadiness });
+    return this.enqueue({ input, kind, mayBypassReadiness, ...(attach ? { attach } : {}) });
   }
 
   // Run a task holding EXCLUSIVE queue ownership for its whole duration (C-API-43
@@ -154,8 +136,9 @@ export class ControlQueue {
     try {
       this.beginSubmission(traits);
       const signal = this.armAbort();
-      dispatched =
-        operation.run?.(signal) ?? this.submit(operation.input, traits.submitMode, signal);
+      dispatched = operation.run
+        ? operation.run(signal)
+        : this.submitWithAttach(operation, traits.submitMode, signal);
     } catch (error) {
       this.rollbackSubmission(operation, priorReady, dispatchEpoch, toError(error));
       return;
@@ -183,6 +166,18 @@ export class ControlQueue {
     this.inFlight = undefined;
     settle();
     this.drain();
+  }
+
+  // Attach images (if any) through the adapter path, THEN write the text — both
+  // in this op so a queued submission carries text+images as one turn and no
+  // other op interleaves between the attach and the Enter (C-API-44).
+  private async submitWithAttach(
+    operation: QueuedOperation,
+    mode: ControlSubmitMode,
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (operation.attach) await operation.attach(signal);
+    await this.submit(operation.input, mode, signal);
   }
 
   // Consume-readiness / report-turn lifecycle runs BEFORE the write (a throwing status listener aborts with nothing in flight).

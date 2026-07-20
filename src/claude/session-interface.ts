@@ -4,6 +4,7 @@
  */
 
 import type { ElwoodActivityEvent } from "../core/activity.ts";
+import type { SendOptions } from "../core/images/types.ts";
 import type { AgentModelOption } from "../core/model-rows.ts";
 import type {
   ActivityMatch,
@@ -32,9 +33,9 @@ export interface ClaudeSession {
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): Unsubscribe;
   off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void;
 
-  sendPrompt(prompt: string): Promise<void>;
-  sendMessage(message: string): Promise<void>;
-  sendGuidance(message: string): Promise<void>;
+  sendPrompt(prompt: string, options?: SendOptions): Promise<void>;
+  sendMessage(message: string, options?: SendOptions): Promise<void>;
+  sendGuidance(message: string, options?: SendOptions): Promise<void>;
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): Promise<void>;
   interrupt(options?: { readonly timeoutMs?: number }): Promise<void>;

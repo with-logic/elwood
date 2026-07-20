@@ -243,9 +243,9 @@ interface ElwoodLikeSession {
   waitForStatus(match: (status: ElwoodSessionStatus) => boolean, timeoutMs?: number): Promise<ElwoodSessionStatus>;
   waitForActivity(match: (event: ElwoodActivityEvent) => boolean, timeoutMs?: number): Promise<ElwoodActivityEvent>;
 
-  sendPrompt(prompt: string): Promise<void>;
-  sendMessage(message: string): Promise<void>;
-  sendGuidance(message: string): Promise<void>;
+  sendPrompt(prompt: string, options?: SendOptions): Promise<void>;
+  sendMessage(message: string, options?: SendOptions): Promise<void>;
+  sendGuidance(message: string, options?: SendOptions): Promise<void>;
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: { cols: number; rows: number }): Promise<void>;
   interrupt(options?: { readonly timeoutMs?: number }): Promise<void>;
@@ -274,6 +274,44 @@ is visible. After the session has been ready at least once, guidance sent while
 `running` bypasses readiness and enters the TUI immediately. Guidance remains
 serialized with queue-backed prompts, messages, and commands, and its promise
 resolves only after the pasted text and submitting Enter have both been written.
+
+### Attaching images
+
+`sendPrompt`, `sendMessage`, and `sendGuidance` accept an optional `images` set
+so a submission can carry image content alongside its text — the equivalent of
+pasting or dragging an image into the CLI. It is an attached-content model, not
+interleaving: a submission is its text plus a set of images, and Elwood attaches
+them as part of the same queued turn, before the text is submitted.
+
+```ts
+await session.sendMessage("What's wrong with this screenshot?", {
+  images: [
+    { path: "/abs/path/to/shot.png" },        // an existing image file
+    { data: pngBytes, format: "png" },         // or in-memory bytes
+  ],
+});
+```
+
+`ImageInput` is either `{ path }` (an image file) or `{ data, format }` where
+`format` is `"png" | "jpeg" | "gif" | "webp"`. An unsupported format or an
+unreadable path rejects the call with `invalid_image` before anything reaches
+the composer; byte inputs are written to a short-lived temp file that is removed
+once the submission is attached.
+
+Each CLI ingests images through its own native path, so behavior differs:
+
+- **Claude** reads a pasted absolute image path itself. Elwood bracketed-pastes
+  each path (the same delivery a terminal produces on drag-and-drop), Claude
+  encodes the file, and an `[Image #N]` chip appears. This works on every
+  platform.
+- **Codex** ingests an interactive image only from the OS clipboard (Ctrl+V).
+  Elwood snapshots your clipboard, writes each image onto the macOS pasteboard,
+  sends Ctrl+V, waits for the `[Image #N]` chip, and then restores your prior
+  clipboard. Because it drives the macOS clipboard, **Codex image attachment is
+  macOS-only** — `images` on a non-macOS Codex session rejects with
+  `unsupported_platform` and submits nothing. Restoring the clipboard is
+  best-effort (text contents), and there is a brief window during the attach
+  where the injected image is the clipboard's contents.
 
 `sendKeys` is the immediate escape hatch. Strings flow through the headless
 xterm input path; `Uint8Array` writes raw bytes to the PTY. It intentionally

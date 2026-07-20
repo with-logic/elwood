@@ -21,6 +21,7 @@ import { AgentSessionBase } from "../runtime/session-base.ts";
 import { terminalStatuses } from "../runtime/session-status.ts";
 import { type SessionRecord, updateSessionResumeId, updateSessionStatus } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
+import { attachClaudeImages } from "./attach-images.ts";
 import { initialReadyFallbackWarning } from "./initial-ready-fallback.ts";
 import { runSessionLogin } from "./login/session-login.ts";
 import type { ClaudeLoginOptions } from "./login/types.ts";
@@ -81,6 +82,9 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   protected stagedPaste(screen: string): boolean {
     return /\[Pasted text/.test(screen);
   }
+  // Claude reads a pasted absolute image path itself (C-API-45).
+  protected attachImages = (paths: readonly string[], signal: AbortSignal): Promise<void> =>
+    attachClaudeImages(this.terminal, paths, signal);
   // A narrow session holds the PHYSICAL resize until readiness but persists the
   // requested size now (a pre-ready exit resumes at the latest geometry, not the
   // bootstrap width). A wide session (100+ cols) never deferred; it resizes now.
@@ -97,9 +101,8 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
       this.requestedSize = size;
     });
   }
-  // Restore deferred geometry (narrow only) then advance readiness — which MUST run
-  // even if the restore/warning throws, or queued messages starve (C-API-39/36).
-  // Idempotent; keeps a Promise return so hook + deadline sites `void`/`await` it.
+  // Restore deferred geometry (narrow only) then advance readiness — which MUST run even
+  // if the restore/warning throws, or queued messages starve (C-API-39/36). Idempotent.
   completeInitialReady(): Promise<void> {
     if (this.initialReadyDone) return Promise.resolve();
     this.initialReadyDone = true;
@@ -112,9 +115,8 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     }
     return Promise.resolve();
   }
-  // Apply ONLY the deferred physical geometry (already persisted by `resize`), so
-  // only a genuine native resize failure — not a redundant persist — reports as
-  // staying at bootstrap width (C-API-39). Closed PTY = no-op; real failure warns.
+  // Apply ONLY the deferred physical geometry (already persisted by `resize`), so only
+  // a genuine native resize failure reports as staying at bootstrap width (C-API-39).
   private restoreRequestedSize(): void {
     try {
       this.restoreHeldSize(this.requestedSize);
@@ -129,7 +131,6 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
       }
     }
   }
-  /** Advance to `ready`, falling back to opening the queue directly on failure. */
   private advanceInitialReady(): void {
     try {
       this.submitEvidence("initial_ready");
@@ -141,9 +142,9 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
       this.warnInitialReadyFallback(reason);
     }
   }
-  // Classify the initial-ready throw by re-attempting the same `ready` durable
-  // write: success ⇒ a lifecycle LISTENER threw; a throw ⇒ PERSISTENCE is failing.
-  // Explicit ready record — disk-first persist leaves `this.record` un-advanced.
+  // Re-attempt the `ready` durable write to classify the throw: success ⇒ a lifecycle
+  // LISTENER threw; throw ⇒ PERSISTENCE failing. Explicit record (disk-first persist
+  // leaves `this.record` un-advanced).
   private classifyInitialReadyFailure(): InitialReadyFallbackReason {
     try {
       this.persist(updateSessionStatus(this.record, "ready"));
@@ -152,7 +153,6 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
       return "persist";
     }
   }
-  /** Deliver the fallback diagnostic; isolated so a rogue sink can't re-starve. */
   private warnInitialReadyFallback(reason: InitialReadyFallbackReason): void {
     try {
       this.recordWarnings([initialReadyFallbackWarning(this.elwoodSessionId, reason)]);

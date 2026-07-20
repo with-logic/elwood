@@ -45,6 +45,25 @@ export function buildShutdownHost(deps: ShutdownHostDeps): ShutdownHost {
   return deps;
 }
 
+/** The three public shutdown verbs bound to a coordinator and lazy host. */
+export type ManagedShutdown = {
+  readonly stop: () => Promise<void>;
+  readonly kill: () => Promise<void>;
+  readonly teardown: () => Promise<void>;
+};
+
+/** Binds `stop`/`kill`/`teardown` to one coordinator + lazily-built host (C-LIFE-10). */
+export function managedShutdown(
+  coordinator: ShutdownCoordinator,
+  host: () => ShutdownHost,
+): ManagedShutdown {
+  return {
+    stop: () => runManagedShutdown(coordinator, "stop", host),
+    kill: () => runManagedShutdown(coordinator, "kill", host),
+    teardown: () => runManagedShutdown(coordinator, "teardown", host),
+  };
+}
+
 /** How each public shutdown verb maps onto the coordinator + orchestration call. */
 const shutdownVerbs = {
   stop: (host: ShutdownHost, ctx: ShutdownContext) =>

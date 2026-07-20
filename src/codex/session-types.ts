@@ -4,6 +4,7 @@
  */
 
 import type { ElwoodActivityEvent } from "../core/activity.ts";
+import type { SendOptions } from "../core/images/types.ts";
 import type { AgentModelOption } from "../core/model-rows.ts";
 import type {
   ActivityMatch,
@@ -107,9 +108,9 @@ export interface CodexSession {
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): Unsubscribe;
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void;
 
-  sendPrompt(prompt: string): Promise<void>;
-  sendMessage(message: string): Promise<void>;
-  sendGuidance(message: string): Promise<void>;
+  sendPrompt(prompt: string, options?: SendOptions): Promise<void>;
+  sendMessage(message: string, options?: SendOptions): Promise<void>;
+  sendGuidance(message: string, options?: SendOptions): Promise<void>;
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): Promise<void>;
   interrupt(options?: { readonly timeoutMs?: number }): Promise<void>;

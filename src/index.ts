@@ -93,6 +93,7 @@ export type {
 } from "./core/agent-session.ts";
 export type { ElwoodErrorName } from "./core/errors.ts";
 export { ElwoodError, elwoodError } from "./core/errors.ts";
+export type { ImageFormat, ImageInput, SendOptions } from "./core/images/types.ts";
 export type { ListModelsOptions } from "./core/list-models.ts";
 export type { AgentModelOption } from "./core/model-rows.ts";
 export type { StartOrResumeResult } from "./core/start-or-resume.ts";

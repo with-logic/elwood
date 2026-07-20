@@ -5,6 +5,7 @@
 
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import type { ElwoodActivityEvent } from "./activity.ts";
+import type { SendOptions } from "./images/types.ts";
 import type { AgentModelOption } from "./model-rows.ts";
 import type {
   ActivityMatch,
@@ -63,9 +64,9 @@ export interface ElwoodAgentSession {
     handler: (event: ElwoodCommonEventMap[E]) => void,
   ): void;
 
-  sendPrompt(prompt: string): Promise<void>;
-  sendMessage(message: string): Promise<void>;
-  sendGuidance(message: string): Promise<void>;
+  sendPrompt(prompt: string, options?: SendOptions): Promise<void>;
+  sendMessage(message: string, options?: SendOptions): Promise<void>;
+  sendGuidance(message: string, options?: SendOptions): Promise<void>;
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): Promise<void>;
   interrupt(options?: { readonly timeoutMs?: number }): Promise<void>;

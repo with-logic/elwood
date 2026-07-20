@@ -414,9 +414,9 @@ interface ClaudeSession {
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): Unsubscribe;
   off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void;
 
-  sendPrompt(prompt: string): Promise<void>;
-  sendMessage(message: string): Promise<void>;
-  sendGuidance(message: string): Promise<void>;
+  sendPrompt(prompt: string, options?: SendOptions): Promise<void>;
+  sendMessage(message: string, options?: SendOptions): Promise<void>;
+  sendGuidance(message: string, options?: SendOptions): Promise<void>;
   sendKeys(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): Promise<void>;
   interrupt(options?: { readonly timeoutMs?: number }): Promise<void>;
@@ -431,6 +431,21 @@ interface ClaudeSession {
   kill(): Promise<void>;
   teardown(): Promise<void>;
 }
+
+interface SendOptions {
+  // Images to attach to this submission. Order-agnostic attached content: the
+  // submission is the text plus this set of images, woven together by the
+  // adapter's native attach path before the text is submitted (C-API-44).
+  readonly images?: readonly ImageInput[];
+}
+
+// An image to attach, given either as a filesystem path or as in-memory bytes
+// with an explicit format. Bytes are written to a short-lived temp file so the
+// adapter attach paths (which are file- or clipboard-based) have something to
+// read; the temp file is removed after the submission is attached.
+type ImageInput =
+  | { readonly path: string }
+  | { readonly data: Uint8Array; readonly format: "png" | "jpeg" | "gif" | "webp" };
 
 type ClaudeLoginMethod = "claudeai" | "console" | "third_party";
 
@@ -549,6 +564,42 @@ that are legitimate multi-line text. This sanitization applies only to the
 queued text-submission APIs; `sendKeys` is the explicit raw-input escape hatch
 and is never sanitized. Newlines inside a sanitized paste remain paste content
 (the whole point of bracketed paste) rather than premature submissions.
+
+`sendPrompt`, `sendMessage`, and `sendGuidance` accept an optional `images` set
+(an ordered list of file paths or in-memory bytes with an explicit format). A
+submission is then the text plus that set of attached images — an
+attached-content model, not an interleaving one: images do not have positions
+within the text. Elwood attaches every image through the SAME native ingestion
+path a human would use in that CLI, so the wrapped agent sees them exactly as it
+would a real paste, and attaches them as part of the SAME serialized queue
+operation that submits the text, BEFORE the text's submitting Enter, so a single
+call produces a single agent turn carrying both. An image given as bytes is first
+written to a short-lived temp file (the adapter attach paths are file- or
+clipboard-based); every such temp file is removed after the submission is
+attached, on success or failure. Bytes with an unsupported `format`, or a `path`
+that is not a readable file, reject the call with `invalid_image` before any
+partial input reaches the composer.
+
+The attach path is adapter-specific because the two CLIs ingest images
+differently, and this is a version-coupled TUI behavior verified against real
+CLIs (Claude 2.1.215, codex-cli 0.144.6):
+
+- Claude reads a pasted ABSOLUTE image path itself: Elwood bracketed-pastes each
+  image's absolute path into the composer (the same delivery a terminal produces
+  on drag-and-drop), Claude reads and encodes the file, and the composer shows an
+  `[Image #N]` chip. This is pure PTY text and works on every platform.
+- Codex ingests an interactive image ONLY from the OS clipboard via Ctrl+V (it
+  reads `public.tiff` off the macOS `NSPasteboard`); a pasted path is treated as
+  pasted TEXT, not an image. Elwood therefore attaches Codex images by, for each
+  image in order: snapshotting the user's current clipboard, writing the image
+  onto the clipboard as a native image, sending Ctrl+V, and waiting for the
+  `[Image #N]` chip to confirm the attach — then restoring the snapshotted
+  clipboard after all images are attached. Because this drives the macOS
+  clipboard, Codex image attachment is macOS-only; a `sendMessage`/`sendPrompt`/
+  `sendGuidance` with `images` on a non-macOS Codex session rejects with
+  `unsupported_platform` and submits nothing. Restoring the clipboard is best-effort and
+  covers text contents; a brief window where the injected image is the clipboard
+  contents is accepted by design.
 
 Turn boundaries MUST be observable even when no completion hook fires. Claude
 does not fire a `Stop` hook when a running turn is interrupted (Escape), so
@@ -2144,6 +2195,9 @@ Each criterion has:
 | C-API-41 | §5.3 | `listClaudeModels(options)`/`listCodexModels(options)` return the available models WITHOUT a caller-held session: each starts a throwaway session with `autotrust: true` (a documented §5.1 exception — the probe only opens/cancels the picker and never runs a turn), waits for first readiness, calls `listModels`, and ALWAYS removes ALL probe state afterward — on success, on a readiness/picker failure, AND on an adapter start failure that has already allocated a state directory or runtime files — so no probe session, process tree, socket, or state directory is leaked. A readiness/picker error is the error surfaced to the caller; teardown still runs, and when teardown ITSELF fails (which can leave a probe process tree alive) a bounded diagnostic naming the teardown failure — an allowlisted errno or the error's name, never a raw message — is attached to the surfaced error's `cause`, so a leaked probe is never silently invisible. The rows are exactly `listModels`' output and the probe leaves the user's saved MODEL default untouched (the picker is opened and cancelled, never applied), just as `listModels` does on a live session. |
 | C-API-42 | §5.3 §5.7 | When recording Claude's one-shot initial-ready transition throws, Elwood still releases the control queue directly FIRST so queued persona/caller input is never starved, then surfaces a typed `initial_ready_fallback` warning (content-free: only a bounded `reason` of `persist` or `listener`, distinguishing a durable-status-write failure from a lifecycle-event-listener failure) whose delivery is itself isolated so a rogue warning sink cannot re-starve the queue. |
 | C-API-43 | §5.3 | `ClaudeSession.login(options)` drives the interactive `/login` re-authentication flow to recover a session whose login lapsed (per C-CLAUDE-18) without a caller-held restart. It submits `/login` as a picker command, selects the requested login `method` (default `claudeai`) from the "Select login method" list if that list renders, and scrapes the authorization URL off screen and reports it via the optional `onAuthUrl` callback. Because the default account flow completes with a human-entered authorization code, Elwood awaits the CLI's "paste code" prompt and, when it renders, calls the required `provideCode` callback and submits the returned code as raw input; a flow that self-completes without prompting for a code never calls `provideCode`. `login` resolves once the CLI reports login success AND the session is usable again, and rejects with `login_failed` on an explicit failure/invalid-code banner or with `login_timeout` after `timeoutMs` (default 300000 ms); like every other command method it rejects with `session_not_running` when the session is terminal. It serializes with other queued commands and never sends raw keystrokes into a blocking dialog. |
+| C-API-44 | §5.3 | `sendPrompt`/`sendMessage`/`sendGuidance` accept an optional `images` set (file paths or `{data,format}` bytes) attached to the submission as order-agnostic content. Elwood attaches every image through the CLI's own native ingestion path, as part of the SAME serialized queue operation that submits the text and BEFORE that text's submitting Enter, so one call yields one agent turn carrying text and all images. Bytes are written to a short-lived temp file that is removed after the submission is attached (on success or failure); an unsupported `format` or an unreadable `path` rejects with `invalid_image` before any partial input reaches the composer. |
+| C-API-45 | §5.3 | Claude attaches an image by bracketed-pasting its ABSOLUTE path into the composer (the delivery a terminal produces on drag-and-drop); Claude reads and encodes the file itself and shows an `[Image #N]` chip. This is pure PTY text and works on every platform. |
+| C-API-46 | §5.3 | Codex attaches an image from the OS clipboard: for each image in order Elwood snapshots the user's clipboard, writes the image onto the macOS `NSPasteboard` as a native image (`public.tiff`), sends Ctrl+V, and waits for the `[Image #N]` chip; after all images it restores the snapshotted clipboard (best-effort, text contents). A pasted path is NOT an image on Codex. Codex image attachment is macOS-only: `images` on a non-macOS Codex session rejects with `unsupported_platform` and submits nothing. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 
@@ -2326,6 +2380,8 @@ Each criterion has:
 | C-E2E-08 | §5.4 | A real Claude tool turn surfaces `tool_call` and `tool_result` with `source: "transcript"`, correlated `toolUseId`s, and serialized input/output, and no `tool_call`/`tool_result` is emitted with `source: "hook"` (C-CLAUDE-15). |
 | C-E2E-10 | §5.1 | A real committed Codex turn surfaces exactly one `assistant_message` (with `source: "transcript"`), never a second copy from the `Stop` hook (C-CODEX-16). |
 | C-E2E-11 | §5.3 | A real Codex session with a queued initial persona delivers that message to Codex (a `UserPromptSubmit` with the persona text is observed) rather than swallowing it — the queue is released on `SessionStart`, not on the boot-time composer placeholder (C-API-28). |
+| C-E2E-12 | §5.3 | A real Claude session attaches an image supplied via `sendMessage({ images })` — pasting the absolute path drives the CLI to show its `[Image #N]` chip in the rendered composer — verified against the installed CLI (C-API-45). |
+| C-E2E-13 | §5.3 | A real Codex session on macOS attaches an image supplied via `sendMessage({ images })` — the clipboard-injection + Ctrl+V path drives the CLI to show its `[Image #N]` chip in the rendered composer, and the user's prior clipboard is restored afterward — verified against the installed CLI (C-API-46). |
 | C-E2E-09 | §5.1 | The trust-prompt allowlist recognizes and answers the REAL folder-trust frame the installed Claude CLI renders in a fresh untrusted directory (header-anchored recognition + affirmative-option selection), verified against captured CLI wording; the test skips loudly (logging the captured terminal) if no matchable frame renders, never passing silently. |
 
 ## 15. Open Implementation Notes

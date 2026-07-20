@@ -12,6 +12,7 @@ import type { PtyProcess } from "../pty/types.ts";
 import { AgentSessionBase } from "../runtime/session-base.ts";
 import { type SessionRecord, updateSessionResumeId } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
+import { attachCodexImages } from "./attach-images.ts";
 import { codexConfigPath, restoreCodexConfig, snapshotCodexConfig } from "./config-restore.ts";
 import { codexModelPicker } from "./model-picker.ts";
 import type { CodexHookBridge } from "./session-bridge.ts";
@@ -85,6 +86,9 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
     const lastLine = prompt.trim().split("\n").at(-1)?.trim();
     return lastLine !== undefined && lastLine.length > 0 && screen.includes(lastLine);
   }
+  // Codex ingests an interactive image only from the OS clipboard (C-API-46).
+  protected attachImages = (paths: readonly string[], signal: AbortSignal): Promise<void> =>
+    attachCodexImages(this.terminal, paths, signal);
   rememberCodexSessionId(sessionId: string): void {
     if (this.record.codex.resumeId) return;
     this.persist(updateSessionResumeId(this.record, "codex", sessionId));
