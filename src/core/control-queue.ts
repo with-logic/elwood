@@ -4,7 +4,6 @@ import {
   type ControlOperationKind,
   type ControlOperationTraits,
   type ControlQueueError,
-  type ControlSubmitMode,
   controlOperationTraits,
   nextDispatchIndex,
   overtakesReadiness,
@@ -134,11 +133,13 @@ export class ControlQueue {
     const dispatchEpoch = this.readinessEpoch;
     let dispatched: Promise<void>;
     try {
-      this.beginSubmission(traits);
       const signal = this.armAbort();
+      // An image attach defers its lifecycle transition until the attach succeeds
+      // (so a rejection never wedges readiness); every other op transitions now.
+      if (!operation.attach) this.beginSubmission(traits);
       dispatched = operation.run
         ? operation.run(signal)
-        : this.submitWithAttach(operation, traits.submitMode, signal);
+        : this.submitWithAttach(operation, traits, signal);
     } catch (error) {
       this.rollbackSubmission(operation, priorReady, dispatchEpoch, toError(error));
       return;
@@ -168,25 +169,29 @@ export class ControlQueue {
     this.drain();
   }
 
-  // Attach images (if any) through the adapter path, THEN write the text — both
-  // in this op so a queued submission carries text+images as one turn and no
-  // other op interleaves between the attach and the Enter (C-API-44).
+  // Attach images (if any) FIRST, then the lifecycle transition, then the text
+  // write. Deferring the lifecycle until after a successful attach means a
+  // rejection leaves readiness untouched (no wedge); a close mid-attach (aborted
+  // signal) rejects rather than writing text onto a torn-down session (C-API-19/44).
   private async submitWithAttach(
     operation: QueuedOperation,
-    mode: ControlSubmitMode,
+    traits: ControlOperationTraits,
     signal: AbortSignal,
   ): Promise<void> {
-    if (operation.attach) await operation.attach(signal);
-    await this.submit(operation.input, mode, signal);
+    if (operation.attach) {
+      await operation.attach(signal);
+      if (signal.aborted) throw this.stoppedError();
+      this.beginSubmission(traits);
+    }
+    await this.submit(operation.input, traits.submitMode, signal);
   }
 
-  // Consume-readiness / report-turn lifecycle runs BEFORE the write (a throwing status listener aborts with nothing in flight).
+  // Consume-readiness / report-turn lifecycle (a throwing status listener aborts with nothing in flight).
   private beginSubmission(traits: ControlOperationTraits): void {
     if (traits.consumesReadiness) this.ready = false;
     if (traits.reportsCallerSubmission) this.onTurnStarted();
   }
 
-  // Fresh signal per submission; aborting the PRIOR one halts its background nudges.
   private armAbort(): AbortSignal {
     this.submitAbort?.abort();
     this.submitAbort = new AbortController();

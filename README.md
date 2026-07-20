@@ -277,11 +277,12 @@ resolves only after the pasted text and submitting Enter have both been written.
 
 ### Attaching images
 
-`sendPrompt`, `sendMessage`, and `sendGuidance` accept an optional `images` set
+`sendPrompt`, `sendMessage`, and `sendGuidance` accept an optional `images` list
 so a submission can carry image content alongside its text — the equivalent of
 pasting or dragging an image into the CLI. It is an attached-content model, not
-interleaving: a submission is its text plus a set of images, and Elwood attaches
-them as part of the same queued turn, before the text is submitted.
+interleaving: images have no position within the text, but the list is ordered
+(array order sets attachment/chip order). Elwood attaches them as part of the
+same queued turn, before the text is submitted.
 
 ```ts
 await session.sendMessage("What's wrong with this screenshot?", {
@@ -293,10 +294,17 @@ await session.sendMessage("What's wrong with this screenshot?", {
 ```
 
 `ImageInput` is either `{ path }` (an image file) or `{ data, format }` where
-`format` is `"png" | "jpeg" | "gif" | "webp"`. An unsupported format or an
-unreadable path rejects the call with `invalid_image` before anything reaches
-the composer; byte inputs are written to a short-lived temp file that is removed
-once the submission is attached.
+`format` is `"png" | "jpeg" | "gif" | "webp"`. Inputs are validated and bounded
+before anything reaches the composer — at most 16 images, ≤25 MiB per image and
+≤50 MiB total; an unsupported format or an unreadable path (or a count/size past
+those limits) rejects the call with `invalid_image`. Byte inputs are written to a
+short-lived temp file, removed once the submission is attached.
+
+Attachment is confirmed, never assumed: each image waits for the CLI's
+`[Image #N]` chip, and if it is not confirmed within ~10 s (or the clipboard
+can't be read/written, or the session closes mid-attach) the call rejects with
+`image_attach_failed` and no text is submitted. An attach rejection leaves the
+session ready — it never wedges the queue.
 
 Each CLI ingests images through its own native path, so behavior differs:
 
@@ -305,13 +313,14 @@ Each CLI ingests images through its own native path, so behavior differs:
   encodes the file, and an `[Image #N]` chip appears. This works on every
   platform.
 - **Codex** ingests an interactive image only from the OS clipboard (Ctrl+V).
-  Elwood snapshots your clipboard, writes each image onto the macOS pasteboard,
-  sends Ctrl+V, waits for the `[Image #N]` chip, and then restores your prior
-  clipboard. Because it drives the macOS clipboard, **Codex image attachment is
-  macOS-only** — `images` on a non-macOS Codex session rejects with
-  `unsupported_platform` and submits nothing. Restoring the clipboard is
-  best-effort (text contents), and there is a brief window during the attach
-  where the injected image is the clipboard's contents.
+  Elwood snapshots your clipboard once, writes each image onto the macOS
+  pasteboard, sends Ctrl+V, waits for the `[Image #N]` chip, and then restores
+  your prior clipboard — the whole transaction under a process-wide lock so
+  concurrent Codex sessions can't cross-attach. Because it drives the macOS
+  clipboard, **Codex image attachment is macOS-only** — `images` on a non-macOS
+  Codex session rejects with `unsupported_platform` and submits nothing.
+  Restoring the clipboard is best-effort (text contents), and there is a brief
+  window during the attach where the injected image is the clipboard's contents.
 
 `sendKeys` is the immediate escape hatch. Strings flow through the headless
 xterm input path; `Uint8Array` writes raw bytes to the PTY. It intentionally

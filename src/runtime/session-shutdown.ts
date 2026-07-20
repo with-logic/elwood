@@ -46,7 +46,7 @@ export function buildShutdownHost(deps: ShutdownHostDeps): ShutdownHost {
 }
 
 /** The three public shutdown verbs bound to a coordinator and lazy host. */
-export type ManagedShutdown = {
+type ManagedShutdown = {
   readonly stop: () => Promise<void>;
   readonly kill: () => Promise<void>;
   readonly teardown: () => Promise<void>;
@@ -79,7 +79,7 @@ const shutdownVerbs = {
  * (C-LIFE-10). The host is built lazily inside the coordinated operation, which is
  * told whether the PTY was `alreadySignaled` so a retry never re-signals it.
  */
-export function runManagedShutdown(
+function runManagedShutdown(
   coordinator: ShutdownCoordinator,
   verb: keyof typeof shutdownVerbs,
   host: () => ShutdownHost,

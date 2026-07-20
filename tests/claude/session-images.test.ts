@@ -91,4 +91,25 @@ describe("ClaudeSession image attachment (C-API-44/45)", () => {
     await queued;
     expect(ptys[0]!.writes[0]).toBe(paste("plain"));
   });
+
+  for (const method of ["sendMessage", "sendPrompt", "sendGuidance"] as const) {
+    test(`C-API-44 ${method} attaches the image before its text`, async () => {
+      const cwd = tempDir();
+      installFakes();
+      const img = join(cwd, "shot.png");
+      writeFileSync(img, PNG);
+      const session = await startClaude({ cwd });
+      const queued = session[method]("caption", { images: [{ path: img }] });
+      await ready(cwd, session.elwoodSessionId);
+      driveChips(1);
+      await queued;
+      const writes = ptys[0]!.writes;
+      expect(writes[0]).toBe(paste(img));
+      expect(writes.indexOf(paste("caption"))).toBeGreaterThan(0);
+    }, 20_000);
+  }
+
+  // NB: the "attach failure does not wedge the queue" guarantee (C-API-44) is
+  // proven deterministically at the control-queue unit level rather than here,
+  // where the real 10s chip-confirmation timeout would make the test slow.
 });

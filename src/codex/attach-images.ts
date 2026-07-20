@@ -1,80 +1,64 @@
 /**
  * Codex image attachment: Codex ingests an interactive image only from the OS
  * clipboard via Ctrl+V (it reads `public.tiff` off the macOS NSPasteboard), so
- * for each image Elwood snapshots the clipboard, writes the image onto it, sends
- * Ctrl+V, and waits for the `[Image #N]` chip — then restores the snapshotted
- * clipboard. macOS-only. Implements PRD §5.3 (C-API-46).
+ * Elwood snapshots the clipboard once, then for each image sets it + Ctrl+V +
+ * waits for the `[Image #N]` chip, then restores the snapshot. macOS-only, and
+ * the whole transaction holds a process-wide clipboard lock so concurrent Codex
+ * sessions cannot cross-attach. Implements PRD §5.3 (C-API-46).
  */
 
 import { elwoodError } from "../core/errors.ts";
+import {
+  type AttachTerminal,
+  type ChipWaitOptions,
+  imageChipCount,
+  waitForImageChip,
+} from "../core/images/chip-wait.ts";
 import {
   clipboardImageSupported,
   restoreClipboardText,
   setClipboardImage,
   snapshotClipboardText,
-} from "../core/images/index.ts";
-
-/** The terminal surface the attach needs: send the paste key and read the screen. */
-export type CodexAttachTerminal = {
-  sendInput(data: string): void | Promise<void>;
-  snapshot(): { readonly text: string };
-};
+} from "./clipboard.ts";
+import { withClipboardLock } from "./clipboard-lock.ts";
 
 const CTRL_V = "\u0016"; // Ctrl+V triggers Codex clipboard-image paste
-const settleMs = 200;
-const pollMs = 100;
-const attempts = 40; // ~4s per image before giving up and moving on
-
-/** Counts Codex's `[Image #N]` composer chips; N grows as images are added. */
-function imageChipCount(text: string): number {
-  const matches = text.match(/\[Image #\d+\]/g);
-  return matches ? matches.length : 0;
-}
+const chipWait: ChipWaitOptions = { settleMs: 200, timeoutMs: 10_000, pollMs: 100 };
 
 /**
- * Attaches every image via the clipboard, restoring the user's clipboard text
- * afterward (best-effort). Rejects with `unsupported_platform` on non-macOS
- * BEFORE touching the clipboard, so nothing is pasted there (C-API-46). A
- * per-image `setClipboardImage` failure rejects with `invalid_image`; the
- * clipboard is still restored via the finally.
+ * Attaches every image via the clipboard under a process-wide lock, restoring
+ * the user's clipboard text afterward (best-effort). Rejects with
+ * `unsupported_platform` on non-macOS BEFORE touching the clipboard, and with
+ * `image_attach_failed`/`invalid_image` on a snapshot/set/confirm failure; the
+ * caller then submits no text (C-API-46).
  */
 export async function attachCodexImages(
-  terminal: CodexAttachTerminal,
+  terminal: AttachTerminal,
   paths: readonly string[],
   signal: AbortSignal,
 ): Promise<void> {
   if (!clipboardImageSupported())
     throw elwoodError("unsupported_platform", "Codex image attachment requires macOS.");
-  const priorClipboard = snapshotClipboardText();
-  try {
-    for (const path of paths) {
-      if (signal.aborted) return;
-      const before = imageChipCount(terminal.snapshot().text);
-      setClipboardImage(path);
-      await terminal.sendInput(CTRL_V);
-      await waitForChip(terminal, before, signal);
-    }
-  } finally {
-    restoreClipboardText(priorClipboard);
-  }
+  await withClipboardLock(() => attachUnderLock(terminal, paths, signal));
 }
 
-async function waitForChip(
-  terminal: CodexAttachTerminal,
-  before: number,
+async function attachUnderLock(
+  terminal: AttachTerminal,
+  paths: readonly string[],
   signal: AbortSignal,
 ): Promise<void> {
-  await delay(settleMs);
-  for (let i = 0; i < attempts; i++) {
-    if (signal.aborted) return;
-    if (imageChipCount(terminal.snapshot().text) > before) return;
-    await delay(pollMs);
+  // Snapshot BEFORE mutating; a snapshot failure rejects here so we never
+  // overwrite then "restore" an empty string over the user's clipboard.
+  const priorClipboard = await snapshotClipboardText();
+  try {
+    for (const path of paths) {
+      if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
+      const before = imageChipCount(terminal.snapshot().text);
+      await setClipboardImage(path);
+      await terminal.sendInput(CTRL_V);
+      await waitForImageChip(terminal, before, signal, chipWait);
+    }
+  } finally {
+    await restoreClipboardText(priorClipboard);
   }
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    timer.unref?.();
-  });
 }

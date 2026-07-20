@@ -1,9 +1,8 @@
 /**
  * Coverage for Codex image attach (PRD §5.3, C-API-46): the clipboard is
- * snapshotted, each image is set + Ctrl+V'd + waited for its chip, and the prior
- * clipboard is restored — plus the macOS-only `unsupported_platform` guard and
- * clipboard restoration on a mid-attach failure. The clipboard module is stubbed
- * so this stays hermetic; the real NSPasteboard round-trip is covered elsewhere.
+ * snapshotted once, each image is set + Ctrl+V'd + CONFIRMED by its chip, and the
+ * prior clipboard is restored — plus the macOS-only guard, snapshot-failure
+ * abort, and chip-timeout rejection. The clipboard module is stubbed hermetically.
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -11,18 +10,25 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 const state = {
   supported: true,
   prior: "prior-text",
+  snapshotThrows: false,
   setCalls: [] as string[],
   restored: [] as string[],
   setThrows: false,
 };
 
-vi.mock("../../src/core/images/index.ts", () => ({
+vi.mock("../../src/codex/clipboard.ts", () => ({
   clipboardImageSupported: () => state.supported,
-  snapshotClipboardText: () => state.prior,
-  restoreClipboardText: (text: string) => state.restored.push(text),
+  snapshotClipboardText: () => {
+    if (state.snapshotThrows) return Promise.reject(new Error("no clipboard"));
+    return Promise.resolve(state.prior);
+  },
+  restoreClipboardText: (text: string) => {
+    state.restored.push(text);
+    return Promise.resolve();
+  },
   setClipboardImage: (path: string) => {
     state.setCalls.push(path);
-    if (state.setThrows) throw new Error("bad image");
+    return state.setThrows ? Promise.reject(new Error("bad image")) : Promise.resolve();
   },
 }));
 
@@ -31,11 +37,14 @@ const CTRL_V = String.fromCharCode(22);
 
 beforeEach(() => {
   vi.useFakeTimers();
-  state.supported = true;
-  state.prior = "prior-text";
-  state.setCalls = [];
-  state.restored = [];
-  state.setThrows = false;
+  Object.assign(state, {
+    supported: true,
+    prior: "prior-text",
+    snapshotThrows: false,
+    setCalls: [],
+    restored: [],
+    setThrows: false,
+  });
 });
 afterEach(() => vi.useRealTimers());
 
@@ -55,68 +64,59 @@ function fakeTerminal(chipsPerPaste = 1) {
 }
 
 describe("attachCodexImages (C-API-46)", () => {
-  test("C-API-46 sets each image, sends Ctrl+V, and restores the prior clipboard", async () => {
+  test("C-API-46 sets each image, sends Ctrl+V, confirms, and restores the clipboard", async () => {
     const term = fakeTerminal();
-    const done = attachCodexImages(
-      term,
-      ["/abs/a.png", "/abs/b.png"],
-      new AbortController().signal,
-    );
+    const done = attachCodexImages(term, ["/a.png", "/b.png"], new AbortController().signal);
     await vi.runAllTimersAsync();
     await done;
-    expect(state.setCalls).toEqual(["/abs/a.png", "/abs/b.png"]);
+    expect(state.setCalls).toEqual(["/a.png", "/b.png"]);
     expect(term.writes).toEqual([CTRL_V, CTRL_V]);
     expect(state.restored).toEqual(["prior-text"]);
   });
 
-  test("C-API-46 rejects with unsupported_platform on non-macOS without touching the clipboard", async () => {
+  test("C-API-46 rejects unsupported_platform on non-macOS without touching the clipboard", async () => {
     state.supported = false;
-    const term = fakeTerminal();
     await expect(
-      attachCodexImages(term, ["/abs/a.png"], new AbortController().signal),
+      attachCodexImages(fakeTerminal(), ["/a.png"], new AbortController().signal),
     ).rejects.toMatchObject({ code: "unsupported_platform" });
     expect(state.setCalls).toEqual([]);
     expect(state.restored).toEqual([]);
   });
 
+  test("C-API-46 aborts before mutating when the snapshot fails", async () => {
+    state.snapshotThrows = true;
+    await expect(
+      attachCodexImages(fakeTerminal(), ["/a.png"], new AbortController().signal),
+    ).rejects.toThrow(/no clipboard/);
+    expect(state.setCalls).toEqual([]);
+    expect(state.restored).toEqual([]); // never mutated → nothing to restore
+  });
+
   test("C-API-46 restores the clipboard even when setClipboardImage throws", async () => {
     state.setThrows = true;
-    const term = fakeTerminal();
-    // setClipboardImage throws before any timer wait, so the promise rejects
-    // synchronously — assert it directly without advancing fake timers.
     await expect(
-      attachCodexImages(term, ["/abs/a.png"], new AbortController().signal),
+      attachCodexImages(fakeTerminal(), ["/a.png"], new AbortController().signal),
     ).rejects.toThrow(/bad image/);
-    expect(state.restored).toEqual(["prior-text"]); // finally restored the snapshot
-  });
-
-  test("C-API-46 proceeds when the chip never appears, then restores", async () => {
-    const term = fakeTerminal(0);
-    const done = attachCodexImages(term, ["/abs/a.png"], new AbortController().signal);
-    await vi.runAllTimersAsync();
-    await done;
-    expect(term.writes).toEqual([CTRL_V]);
     expect(state.restored).toEqual(["prior-text"]);
   });
 
-  test("C-API-46 stops before any image when already aborted, still restores", async () => {
-    const term = fakeTerminal();
+  test("C-API-46 rejects image_attach_failed on chip timeout, still restoring", async () => {
+    const term = fakeTerminal(0);
+    const done = attachCodexImages(term, ["/a.png"], new AbortController().signal);
+    const settled = expect(done).rejects.toMatchObject({ code: "image_attach_failed" });
+    await vi.runAllTimersAsync();
+    await settled;
+    expect(state.restored).toEqual(["prior-text"]);
+  });
+
+  test("C-API-46 rejects when already aborted, still restoring", async () => {
     const controller = new AbortController();
     controller.abort();
-    const done = attachCodexImages(term, ["/abs/a.png"], controller.signal);
+    const done = attachCodexImages(fakeTerminal(), ["/a.png"], controller.signal);
+    const settled = expect(done).rejects.toMatchObject({ code: "image_attach_failed" });
     await vi.runAllTimersAsync();
-    await done;
+    await settled;
     expect(state.setCalls).toEqual([]);
     expect(state.restored).toEqual(["prior-text"]);
-  });
-
-  test("C-API-46 aborts the chip wait mid-loop", async () => {
-    const term = fakeTerminal(0);
-    const controller = new AbortController();
-    const done = attachCodexImages(term, ["/abs/a.png"], controller.signal);
-    controller.abort();
-    await vi.runAllTimersAsync();
-    await done;
-    expect(term.writes).toEqual([CTRL_V]);
   });
 });

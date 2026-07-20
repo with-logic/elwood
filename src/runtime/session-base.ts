@@ -98,12 +98,13 @@ export abstract class AgentSessionBase {
   protected get hasBeenReady(): boolean {
     return this.everReady; // reached readiness at least once (gates mid-session logic)
   }
-  sendPrompt = (prompt: string, o?: SendOptions) => this.enqueue(prompt, "prompt", o);
-  sendMessage = (message: string, o?: SendOptions) => this.enqueue(message, "message", o);
-  sendGuidance = (message: string, o?: SendOptions) => this.enqueue(message, "guidance", o);
+  sendPrompt = (prompt: string, options?: SendOptions) => this.enqueue(prompt, "prompt", options);
+  sendMessage = (message: string, options?: SendOptions) =>
+    this.enqueue(message, "message", options);
+  sendGuidance = (message: string, options?: SendOptions) =>
+    this.enqueue(message, "guidance", options);
 
-  // Adapter-specific native image attach, run inside the op before the text
-  // write with already-resolved absolute paths (C-API-44).
+  // Adapter-specific native image attach, run inside the op with resolved paths (C-API-44).
   protected abstract attachImages(paths: readonly string[], signal: AbortSignal): Promise<void>;
 
   private enqueue(input: string, kind: SubmitKind, options?: SendOptions): Promise<void> {
@@ -127,9 +128,8 @@ export abstract class AgentSessionBase {
     this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.status));
   interrupt = (options?: { readonly timeoutMs?: number }): Promise<void> =>
     this.inSession(() => this.commands.interrupt(options));
-  compact(options?: { readonly timeoutMs?: number }): Promise<void> {
-    return this.inSession(() => this.commands.compact(options));
-  }
+  compact = (options?: { readonly timeoutMs?: number }): Promise<void> =>
+    this.inSession(() => this.commands.compact(options));
   listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]> {
     return this.inSession(() => this.commands.listModels(options));
   }

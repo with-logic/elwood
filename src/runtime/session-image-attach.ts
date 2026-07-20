@@ -1,12 +1,12 @@
 /**
- * Builds the per-submission image-attach task handed to the control queue. It
- * resolves ImageInput values to readable paths up front (rejecting the whole
- * submission before any partial input reaches the composer), then returns a task
- * that drives the adapter's native attach path and always cleans up temp files.
- * Implements PRD §5.3 (C-API-44).
+ * Builds the per-submission image-attach task handed to the control queue.
+ * Validation runs up front (rejecting the whole submission before it is queued or
+ * any temp file exists), while byte materialization is deferred to the attach
+ * task at queue-front so pending queued submissions accumulate no temp-disk
+ * usage. The task always cleans up temp files. Implements PRD §5.3 (C-API-44).
  */
 
-import { type ResolvedImages, resolveImages } from "../core/images/index.ts";
+import { resolveImages, validateImages } from "../core/images/index.ts";
 import type { ImageInput } from "../core/images/types.ts";
 
 /** A text-submission kind carried by the control queue. */
@@ -19,63 +19,35 @@ export type AttachTask = (signal: AbortSignal) => Promise<void>;
 export type AttachDriver = (paths: readonly string[], signal: AbortSignal) => Promise<void>;
 
 /** Queues a submission through the control queue, optionally with an attach task. */
-export type QueueSend = (attach?: AttachTask) => Promise<void>;
+type QueueSend = (attach?: AttachTask) => Promise<void>;
 
 /**
- * Queues a text submission, optionally attaching `images`. With no images it is
- * a plain `send()`. With images it resolves them synchronously (a rejection
- * propagates as `invalid_image`/`unsupported_platform` BEFORE anything queues),
- * queues the op with an attach task, and guarantees temp-file cleanup even when
- * the op never dispatches (session terminal) — pasting nothing (C-API-44).
+ * Queues a text submission, optionally attaching `images`. With no images it is a
+ * plain `send()`. With images it VALIDATES them first (rejecting as
+ * `invalid_image` before anything is queued), then queues the op whose attach
+ * task — run only when the op reaches the queue front — materializes byte inputs,
+ * drives the adapter attach, and always removes temp files (C-API-44).
  */
-export function enqueueSubmission(
+export async function enqueueSubmission(
   images: readonly ImageInput[] | undefined,
   driver: AttachDriver,
   send: QueueSend,
 ): Promise<void> {
   if (!images || images.length === 0) return send();
-  let prepared: PreparedAttach;
-  try {
-    prepared = prepareImageAttach(images, driver);
-  } catch (error) {
-    return Promise.reject(error);
-  }
-  let attached = false;
-  return send((signal) => {
-    attached = true;
-    return prepared.attach(signal);
-  }).catch((error: unknown) => {
-    if (!attached) prepared.cleanup(); // op never dispatched → drop temp files, paste nothing
-    throw error;
-  });
+  await validateImages(images);
+  return send((signal) => runAttach(images, driver, signal));
 }
 
-/** A queue attach task plus a standalone cleanup for the not-queued path. */
-export type PreparedAttach = {
-  // Runs the adapter attach then removes temp files (on success or failure).
-  readonly attach: (signal: AbortSignal) => Promise<void>;
-  // Removes temp files WITHOUT driving the attach — used when the op is never
-  // queued (e.g. the session is not running), so nothing is pasted (C-API-44).
-  readonly cleanup: () => void;
-};
-
-/**
- * Resolves `images` now (may throw `invalid_image`/`unsupported_platform`
- * synchronously, before anything is queued), and returns an attach task that
- * runs the driver and then removes any temp files — on success or failure — so
- * the queued op carries text and images as one turn (C-API-44).
- */
-export function prepareImageAttach(
+/** Materialize → drive the adapter attach → always clean up temp files. */
+async function runAttach(
   images: readonly ImageInput[],
   driver: AttachDriver,
-): PreparedAttach {
-  const resolved: ResolvedImages = resolveImages(images);
-  const attach = async (signal: AbortSignal): Promise<void> => {
-    try {
-      await driver(resolved.paths, signal);
-    } finally {
-      resolved.cleanup();
-    }
-  };
-  return { attach, cleanup: resolved.cleanup };
+  signal: AbortSignal,
+): Promise<void> {
+  const resolved = await resolveImages(images);
+  try {
+    await driver(resolved.paths, signal);
+  } finally {
+    await resolved.cleanup().catch(() => undefined);
+  }
 }

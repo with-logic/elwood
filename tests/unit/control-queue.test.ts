@@ -161,39 +161,4 @@ describe("ControlQueue", () => {
     release();
     await second;
   });
-
-  test("C-API-44 runs a send's attach task before its text write", async () => {
-    const events: string[] = [];
-    const queue = new ControlQueue(
-      (input) => {
-        events.push(`text:${input}`);
-        return Promise.resolve();
-      },
-      () => new Error("closed"),
-      () => undefined,
-    );
-    queue.markReady();
-    await queue.send("hello", "message", () => {
-      events.push("attach");
-      return Promise.resolve();
-    });
-    expect(events).toEqual(["attach", "text:hello"]);
-  });
-
-  test("C-API-44 a throwing attach fails the op and never writes the text", async () => {
-    const writes: string[] = [];
-    const queue = new ControlQueue(
-      (input) => {
-        writes.push(input);
-        return Promise.resolve();
-      },
-      () => new Error("closed"),
-      () => undefined,
-    );
-    queue.markReady();
-    await expect(
-      queue.send("hello", "message", () => Promise.reject(new Error("attach boom"))),
-    ).rejects.toThrow(/attach boom/);
-    expect(writes).toEqual([]);
-  });
 });

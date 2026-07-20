@@ -66,25 +66,25 @@ test("C-E2E-13 Codex attaches a clipboard image and restores the clipboard (real
   const image = join(project.cwd, "shot.png");
   copyFileSync(fixture, image);
   const priorClipboard = execFileSync("/usr/bin/pbpaste").toString();
+  // Plant a KNOWN sentinel so we can prove PRODUCTION restored it (not our finally).
+  const sentinel = "elwood-e2e-clipboard-sentinel";
+  execFileSync("/usr/bin/pbcopy", { input: sentinel });
   let session: CodexSession | undefined;
   try {
     session = await startCodex({ cwd: project.cwd, stateDir: project.stateDir, autotrust: true });
     await prepareInteractivePrompt(session, observeSession(session), "codex");
-    const submitted = session
-      .sendMessage("here is an image", { images: [{ path: image }] })
-      .catch(() => undefined);
+    const submitted = session.sendMessage("here is an image", { images: [{ path: image }] });
     await waitFor(
       () => (/\[Image #\d/.test(session!.terminal.snapshot().text) ? true : undefined),
       "Codex [Image #N] composer chip",
     );
     assert.match(session.terminal.snapshot().text, /\[Image #\d/);
-    await cleanup(session);
-    session = undefined;
-    await submitted; // settle the held submission after teardown (never unhandled)
+    await submitted; // the attach completed (chip seen); restoration has run
+    // Production restored the sentinel — the injected image is no longer the
+    // clipboard, proving snapshot-and-restore actually happened (C-API-46).
+    assert.equal(execFileSync("/usr/bin/pbpaste").toString(), sentinel);
   } finally {
     await cleanup(session);
-    // The attach restores the prior clipboard; put back whatever we snapshotted
-    // regardless, so a test failure never leaves the dev's clipboard clobbered.
-    execFileSync("/usr/bin/pbcopy", { input: priorClipboard });
+    execFileSync("/usr/bin/pbcopy", { input: priorClipboard }); // restore dev's real clipboard
   }
 });

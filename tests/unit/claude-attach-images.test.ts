@@ -1,8 +1,8 @@
 /**
  * Coverage for Claude image attach (PRD §5.3, C-API-45): each absolute path is
- * bracketed-pasted, sanitized, and the driver waits for the `[Image #N]` chip to
- * increment before the next paste; it proceeds if the chip never appears and
- * stops on abort. Fake timers keep the settle/poll waits instant.
+ * bracketed-pasted, sanitized, and CONFIRMED by its `[Image #N]` chip; an
+ * unconfirmed chip or an abort REJECTS with image_attach_failed (no silent
+ * text-only degradation). Fake timers keep the settle/poll waits instant.
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -30,7 +30,7 @@ function fakeTerminal(chipsPerPaste = 1) {
 }
 
 describe("attachClaudeImages (C-API-45)", () => {
-  test("C-API-45 bracketed-pastes each absolute path and waits for its chip", async () => {
+  test("C-API-45 bracketed-pastes each absolute path and confirms via its chip", async () => {
     const term = fakeTerminal();
     const done = attachClaudeImages(
       term,
@@ -45,7 +45,7 @@ describe("attachClaudeImages (C-API-45)", () => {
     ]);
   });
 
-  test("C-API-45 sanitizes a path that carries an embedded end sentinel", async () => {
+  test("C-API-45 sanitizes a path carrying an embedded end sentinel", async () => {
     const term = fakeTerminal();
     const done = attachClaudeImages(term, [`/abs/${ESC}[201~x.png`], new AbortController().signal);
     await vi.runAllTimersAsync();
@@ -53,31 +53,32 @@ describe("attachClaudeImages (C-API-45)", () => {
     expect(term.writes[0]).toBe(`${ESC}[200~/abs/[201~x.png${ESC}[201~`);
   });
 
-  test("C-API-45 proceeds when the chip never appears (matcher drift is not a deadlock)", async () => {
+  test("C-API-45 rejects with image_attach_failed when the chip never appears", async () => {
     const term = fakeTerminal(0);
     const done = attachClaudeImages(term, ["/abs/a.png"], new AbortController().signal);
+    const settled = expect(done).rejects.toMatchObject({ code: "image_attach_failed" });
     await vi.runAllTimersAsync();
-    await done;
-    expect(term.writes).toHaveLength(1);
+    await settled;
   });
 
-  test("C-API-45 aborts the poll loop when the signal fires mid-wait", async () => {
-    const term = fakeTerminal(0);
-    const controller = new AbortController();
-    const done = attachClaudeImages(term, ["/abs/a.png"], controller.signal);
-    controller.abort();
-    await vi.runAllTimersAsync();
-    await done;
-    expect(term.writes).toHaveLength(1); // the first paste went out, then the wait bailed
-  });
-
-  test("C-API-45 stops early when the signal is already aborted", async () => {
+  test("C-API-45 rejects when the signal is already aborted, pasting nothing", async () => {
     const term = fakeTerminal();
     const controller = new AbortController();
     controller.abort();
-    const done = attachClaudeImages(term, ["/abs/a.png"], controller.signal);
-    await vi.runAllTimersAsync();
-    await done;
+    await expect(attachClaudeImages(term, ["/abs/a.png"], controller.signal)).rejects.toMatchObject(
+      { code: "image_attach_failed" },
+    );
     expect(term.writes).toHaveLength(0);
+  });
+
+  test("C-API-45 rejects when aborted mid-wait after the first paste", async () => {
+    const term = fakeTerminal(0);
+    const controller = new AbortController();
+    const done = attachClaudeImages(term, ["/abs/a.png"], controller.signal);
+    const settled = expect(done).rejects.toMatchObject({ code: "image_attach_failed" });
+    controller.abort();
+    await vi.runAllTimersAsync();
+    await settled;
+    expect(term.writes).toHaveLength(1);
   });
 });

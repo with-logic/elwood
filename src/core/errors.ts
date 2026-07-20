@@ -32,6 +32,7 @@ export type ElwoodErrorName =
   | "login_failed"
   | "login_timeout"
   | "invalid_image"
+  | "image_attach_failed"
   | "wait_timeout";
 
 export class ElwoodError extends Error {
