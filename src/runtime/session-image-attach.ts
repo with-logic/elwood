@@ -13,7 +13,7 @@ import type { ImageInput } from "../core/images/types.ts";
 export type SubmitKind = "prompt" | "message" | "guidance";
 
 /** An attach step run inside a queued op, before the text write. */
-export type AttachTask = (signal: AbortSignal) => Promise<void>;
+type AttachTask = (signal: AbortSignal) => Promise<void>;
 
 /** Drives an adapter's native attach for already-resolved absolute image paths. */
 export type AttachDriver = (paths: readonly string[], signal: AbortSignal) => Promise<void>;

@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import type { ElwoodError } from "../../src/core/errors.ts";
 import { resolveImages, validateImages } from "../../src/core/images/resolve.ts";
+import type { ImageInput } from "../../src/core/images/types.ts";
 import { imageLimits } from "../../src/core/images/types.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
@@ -20,6 +21,15 @@ function imageCode(fn: () => Promise<unknown>): Promise<string> {
     (error) => (error as ElwoodError).code,
   );
 }
+
+describe("ImageInput type exclusivity (C-API-44)", () => {
+  test("C-API-44 the union rejects a mixed { path, data, format } object at compile time", () => {
+    // @ts-expect-error — path and data are mutually exclusive (never-typed complements),
+    // so a caller cannot smuggle an unvalidated path alongside bytes.
+    const mixed: ImageInput = { path: "/x.png", data: PNG, format: "png" };
+    expect(mixed).toBeDefined(); // runtime is irrelevant; the ts-expect-error is the assertion
+  });
+});
 
 describe("validateImages (C-API-44)", () => {
   test("C-API-44 accepts an existing file and supported byte formats", async () => {

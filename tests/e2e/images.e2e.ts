@@ -1,5 +1,5 @@
 /**
- * Real-CLI image attachment: `sendMessage({ images })` drives each CLI's native
+ * Real-CLI image attachment: `sendMessage(message, { images })` drives each CLI's native
  * ingestion so an `[Image #N]` chip actually renders in the composer. This is the
  * external-system check the feature needs — the attach mechanisms are
  * version-coupled CLI behavior that only a real CLI can validate.

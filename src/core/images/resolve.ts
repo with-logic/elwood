@@ -42,11 +42,13 @@ export async function validateImages(images: readonly ImageInput[]): Promise<voi
  */
 export async function resolveImages(images: readonly ImageInput[]): Promise<ResolvedImages> {
   let dir: string | undefined;
-  let cleaned = false;
   const cleanup = async () => {
-    if (cleaned || !dir) return;
-    cleaned = true;
+    if (!dir) return;
+    // Remove the temp dir, then null it so the cleanup is idempotent — but only
+    // AFTER a successful removal, so a transient failure stays retryable rather
+    // than leaking the dir silently.
     await rm(dir, { recursive: true, force: true });
+    dir = undefined;
   };
   try {
     const paths: string[] = [];
