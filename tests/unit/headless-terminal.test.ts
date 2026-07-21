@@ -3,8 +3,31 @@
  * Covers PRD §4.1, §5.3, and C-API-15.
  */
 
-import { describe, expect, test } from "vitest";
-import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
+import { describe, expect, test, vi } from "vitest";
+import type { PtyProcess } from "../../src/pty/types.ts";
+import { attachPtyTerminal, createHeadlessTerminal } from "../../src/terminal/headless.ts";
+
+/** A minimal fake PTY that lets a test push data into the render pipeline. */
+function fakePty(): {
+  pty: PtyProcess;
+  emit: (data: string) => void;
+  writes: Array<string | Uint8Array>;
+} {
+  let handler: (data: string) => void = () => undefined;
+  const writes: Array<string | Uint8Array> = [];
+  const pty: PtyProcess = {
+    pid: 1,
+    onData: (h) => {
+      handler = h;
+      return () => undefined;
+    },
+    onExit: () => () => undefined,
+    write: (data) => writes.push(data),
+    resize: () => "resized",
+    kill: () => undefined,
+  };
+  return { pty, emit: (data) => handler(data), writes };
+}
 
 describe("headless terminal", () => {
   test("C-API-15 snapshots pad missing buffer lines and ignore writes after dispose", async () => {
@@ -56,5 +79,44 @@ describe("headless terminal", () => {
       throw new Error("PTY closed");
     });
     await expect(failing.writeOutput("\u001b[c")).resolves.toBeUndefined();
+  });
+  test("attachPtyTerminal swallows a throwing render continuation (no unhandled rejection)", async () => {
+    const { pty, emit, writes } = fakePty();
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    process.on("unhandledRejection", onRejection);
+    try {
+      // A throwing onRendered listener must not surface as an unhandled rejection on
+      // normal PTY output — the render continuation's terminal catch owns it.
+      const onRendered = vi.fn(() => {
+        throw new Error("listener boom");
+      });
+      const terminal = attachPtyTerminal({ cols: 10, rows: 3 }, pty, onRendered);
+      emit("hello");
+      await terminal.settled();
+      await new Promise((resolve) => setTimeout(resolve, 0)); // flush the .catch microtask
+      expect(onRendered).toHaveBeenCalledTimes(1);
+      expect(rejections).toEqual([]); // the catch swallowed the throw
+      // Input written to the attached terminal forwards to the wrapped PTY.
+      await terminal.sendInput("k");
+      expect(writes).toContain("k");
+      terminal.dispose();
+    } finally {
+      process.off("unhandledRejection", onRejection);
+    }
+  });
+
+  test("a failed write does not poison subsequent writes", async () => {
+    const terminal = createHeadlessTerminal({ cols: 10, rows: 3 }, () => undefined);
+    // Force the underlying xterm.write to throw ONCE: the returned promise rejects,
+    // but the write queue's never-rejecting tail must keep the next write healthy.
+    const spy = vi.spyOn(terminal.xterm, "write").mockImplementationOnce(() => {
+      throw new Error("xterm boom");
+    });
+    await expect(terminal.writeOutput("boom")).rejects.toThrow("xterm boom");
+    spy.mockRestore();
+    // The chain was not left permanently rejected: a following write resolves.
+    await expect(terminal.writeOutput("ok")).resolves.toBeUndefined();
+    terminal.dispose();
   });
 });
