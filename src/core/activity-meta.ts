@@ -43,12 +43,13 @@ function transcriptToolIo(
   event: CodexTranscriptEvent,
   payload: Record<string, unknown>,
 ): Partial<ElwoodActivityEvent> {
-  // A `custom_tool_call` (modern `exec`) carries its command in `input`; a
-  // `function_call` in JSON `arguments`. A `tool_result`'s output is a plain string
-  // or an `input_text[]` array — surface the array's joined readable text, falling
-  // back to a generic serialization for any other shape (C-CODEX-19).
+  // `toolInput` is the SAME unwrapped command the summary already extracted (the bare
+  // command, not the CLI's JS/JSON harness), so both surfaces agree and the unwrap
+  // logic has one home in the summarizer; it falls back to a generic serialization of
+  // the raw `input`/`arguments` only when the summary carried no text (C-CODEX-19).
   if (event.summary.kind === "tool_call") {
-    return optional("toolInput", stringify(payload["input"] ?? payload["arguments"]));
+    const command = event.summary.text ?? stringify(payload["input"] ?? payload["arguments"]);
+    return optional("toolInput", command);
   }
   if (event.summary.kind === "tool_result") {
     const output = payload["output"];

@@ -33,11 +33,60 @@ function webSearch(payload: Record<string, unknown>): CodexTranscriptSummary {
 }
 
 // A `custom_tool_call` (modern `exec`) carries its command in `input`; a
-// `function_call` in JSON `arguments` — surface whichever holds it (C-CODEX-19).
+// `function_call` in JSON `arguments` — surface whichever holds it, UNWRAPPED from
+// the CLI's JS/JSON harness so consumers see the bare command (C-CODEX-19).
 function toolCall(payload: Record<string, unknown>): CodexTranscriptSummary {
   const name = stringValue(payload["name"]) ?? "tool";
-  const invocation = text(payload["input"] ?? payload["arguments"]);
-  return { kind: "tool_call", label: name, ...(invocation ?? {}) };
+  const raw = payload["input"] ?? payload["arguments"];
+  const command = typeof raw === "string" ? extractCommand(raw) : undefined;
+  return { kind: "tool_call", label: name, ...(text(command ?? raw) ?? {}) };
+}
+
+// Unwrap a Codex exec invocation to the bare command. The modern `exec` tool sends
+// a JS snippet `... tools.exec_command({"cmd":"...", ...}) ...`; older function calls
+// send JSON `arguments` like `{"command":["bash","-lc","..."]}` or `{"cmd":"..."}`.
+// Pull the FIRST embedded JSON object, then read its command; fall back to the raw
+// string when nothing parses so a command is never lost (C-CODEX-19).
+function extractCommand(input: string): string | undefined {
+  const args = firstJsonObject(input);
+  if (!args) return undefined;
+  const command = args["command"] ?? args["cmd"];
+  if (typeof command === "string") return command;
+  if (Array.isArray(command))
+    return command.every((part) => typeof part === "string") ? command.join(" ") : undefined;
+  return undefined;
+}
+
+// Extract and parse the first balanced `{...}` object literal in a string. Codex's
+// exec `cmd` values can themselves contain braces, so scan for a brace-balanced span
+// (respecting string literals/escapes) rather than a greedy regex.
+function firstJsonObject(text: string): Record<string, unknown> | undefined {
+  const start = text.indexOf("{");
+  if (start < 0) return undefined;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") depth += 1;
+    else if (ch === "}" && --depth === 0) return safeJsonRecord(text.slice(start, i + 1));
+  }
+  return undefined;
+}
+
+function safeJsonRecord(json: string): Record<string, unknown> | undefined {
+  try {
+    return record(JSON.parse(json));
+  } catch {
+    return undefined;
+  }
 }
 
 function toolResult(payload: Record<string, unknown>): CodexTranscriptSummary {

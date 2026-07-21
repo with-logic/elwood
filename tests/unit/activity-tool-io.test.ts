@@ -64,17 +64,17 @@ describe("Elwood activity tool input/output", () => {
   });
 
   test("C-CODEX-19 a Codex exec command and its output reach toolInput/toolOutput end-to-end", () => {
-    // Modern exec: command in `input` (not arguments) reaches toolInput as a tool_call.
+    // Modern exec: the JS-wrapped command in `input` reaches toolInput UNWRAPPED — the
+    // bare command, not the `tools.exec_command({...})` harness or its non-command args.
     const execCall = codexActivity({
       type: "custom_tool_call",
       name: "exec",
       call_id: "c1",
-      input: 'const r = await tools.exec_command({cmd:"git status"}); text(r.output);',
+      input:
+        'const r = await tools.exec_command({"cmd":"git status","workdir":"/x","yield_time_ms":10000}); text(r.output);',
     });
     expect(execCall).toMatchObject({ kind: "tool_call", toolName: "exec" });
-    expect(execCall.toolInput).toBe(
-      'const r = await tools.exec_command({cmd:"git status"}); text(r.output);',
-    );
+    expect(execCall.toolInput).toBe("git status");
     // Its output (an input_text[] array) reaches toolOutput as joined readable text —
     // not the raw JSON array wrapper.
     const execOutput = codexActivity({
