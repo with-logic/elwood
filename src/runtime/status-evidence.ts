@@ -89,8 +89,10 @@ export function decideStatus(
 export const maxStatusDecisions = 50;
 
 export type StatusEngineIo = {
-  /** Persist and emit an applied status change. */
-  readonly onStatus: (status: ElwoodSessionStatus) => void;
+  /** Durably persist an applied status change (may throw on a write failure). */
+  readonly persistStatus: (status: ElwoodSessionStatus) => void;
+  /** Deliver status/activity events to listeners (a listener throw propagates). */
+  readonly emitStatus: (status: ElwoodSessionStatus) => void;
   readonly queueRunning: () => void;
   readonly queueReady: () => void;
   /** Suspend queue readiness without implying a new turn (blocked dialog). */
@@ -126,21 +128,23 @@ export class SessionStatusEngine {
 
   private apply(to: ElwoodSessionStatus): void {
     if (to === "running") {
-      // Turn start: suspend queue readiness (own the queue before the write), then
-      // persist the `running` transition. `current` commits ONLY after the durable
-      // write succeeds, so a persist failure leaves the engine at its prior status
-      // (no wedge) and propagates to the caller, which rolls the queue back and
-      // submits no text. onStatus persists first then isolates listener throws, so a
-      // throw here is a genuine persist failure. Observable order is unchanged.
+      // Turn start: suspend queue readiness (own the queue before the write), persist
+      // the `running` transition, and commit `current` — ALL before delivering events.
+      // A persist failure aborts before commit (no wedge; the caller rolls back). A
+      // throwing status LISTENER runs only AFTER durable + in-memory state already
+      // agree, so it can neither split them nor wedge the queue; it still propagates
+      // (C-API-42's initial-ready fallback relies on that). Observable order unchanged.
       this.io.queueRunning();
-      this.io.onStatus(to);
+      this.io.persistStatus(to);
       this.current = to;
+      this.io.emitStatus(to);
       return;
     }
     this.current = to;
     if (to === "ready") {
       // Status lands before the queue drains so drained sends observe "ready".
-      this.io.onStatus(to);
+      this.io.persistStatus(to);
+      this.io.emitStatus(to);
       this.io.queueReady();
       return;
     }
@@ -149,7 +153,8 @@ export class SessionStatusEngine {
       // send cannot write into the dialog. `blocking_prompt_cleared -> ready`
       // is the only path that reopens it.
       this.io.queueBlocked();
-      this.io.onStatus(to);
+      this.io.persistStatus(to);
+      this.io.emitStatus(to);
       return;
     }
     this.io.queueClose();
@@ -158,7 +163,8 @@ export class SessionStatusEngine {
     // would leak the bridge/watcher/terminal (PRD §9.4). `cleanup()` is itself
     // failure-isolated (it floats a retryable promise), so it never re-throws here.
     try {
-      this.io.onStatus(to);
+      this.io.persistStatus(to);
+      this.io.emitStatus(to);
     } finally {
       if (to === "exited") this.io.cleanup();
     }

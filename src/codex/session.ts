@@ -33,7 +33,7 @@ import { currentCodexHookBridgeFactory } from "./session-bridge.ts";
 import { dispatchHook, registerInitialHooks } from "./session-hooks.ts";
 import { CodexSessionImpl } from "./session-instance.ts";
 import { finishCodexExit, writeCodexRuntimeFiles } from "./session-runtime.ts";
-import { createCodexTranscriptWatcher } from "./session-transcript.ts";
+import * as sessionTranscript from "./session-transcript.ts";
 import type { CodexEventMap, CodexSession, StartCodexOptions } from "./session-types.ts";
 import { CodexStartupPromptResponder } from "./startup-prompts.ts";
 
@@ -78,11 +78,13 @@ export async function startCodexFromRecord(
   writeCodexRuntimeFiles(record);
   const emitter = new TypedEmitter<CodexEventMap>();
   registerInitialHooks(emitter, options.hooks);
-  const transcriptWatcher = createCodexTranscriptWatcher(
-    record.elwoodSessionId,
-    emitter,
-    () => session,
-  );
+  const { watcher: transcriptWatcher, flushPendingWarnings } =
+    sessionTranscript.createCodexTranscriptWatcher(
+      record.elwoodSessionId,
+      emitter,
+      () => session,
+      sessionTranscript.codexTranscriptSeedFromWarnings(record.warnings), // continue counts on resume
+    );
   let session: CodexSessionImpl | undefined;
   const bridge = currentCodexHookBridgeFactory()(
     record.paths.socketPath,
@@ -164,6 +166,7 @@ export async function startCodexFromRecord(
     terminalReplay,
     transcriptWatcher,
   );
+  flushPendingWarnings(); // persist any notice buffered before the sink existed (§5.4)
   const id = record.elwoodSessionId;
   const activeSession = session;
   // ONE guarded region for every live-resource step after the session exists

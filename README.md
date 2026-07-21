@@ -520,10 +520,11 @@ intact). Everything else Elwood needs is in the session record. Notes:
   The replay buffer is bounded at **128 KB** (oldest data dropped), so a very
   chatty session replays only the most recent screen history — pair it with
   `session.terminal.snapshot()` if you need current-screen ground truth.
-- Lifecycle is idempotent where it can be: `stop()`/`kill()` after exit are
-  no-ops that preserve the exit status, and `teardown()` is safe to call
-  twice. Input/command methods after any terminal status reject with
-  `session_not_running` (they never throw synchronously).
+- Lifecycle is idempotent where it can be: `stop()`/`kill()` after exit do not
+  re-signal the PTY and preserve the exit status, but they still confirm or retry
+  the process-group reap and may reject with `termination_failed`; `teardown()`
+  is safe to call twice. Input/command methods after any terminal status reject
+  with `session_not_running` (they never throw synchronously).
 - `status` transitions mark every real turn boundary: `running` when a turn
   starts and `ready` when it ends — including turns ended by an Escape
   interrupt, which fires no completion hook. Turn state is derived from the

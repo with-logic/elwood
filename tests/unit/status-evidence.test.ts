@@ -15,7 +15,8 @@ import {
 
 function recordingIo(calls: string[]): StatusEngineIo {
   return {
-    onStatus: (status) => calls.push(`status:${status}`),
+    persistStatus: (status) => calls.push(`persist:${status}`),
+    emitStatus: (status) => calls.push(`status:${status}`),
     queueRunning: () => calls.push("queueRunning"),
     queueReady: () => calls.push("queueReady"),
     queueBlocked: () => calls.push("queueBlocked"),
@@ -134,15 +135,11 @@ describe("SessionStatusEngine", () => {
     engine.submit("initial_ready");
     engine.submit("terminal_exited");
     expect(engine.status).toBe("exited");
-    expect(calls).toEqual([
-      "queueRunning",
-      "status:running",
-      "status:ready",
-      "queueReady",
-      "queueClose",
-      "status:exited",
-      "cleanup",
-    ]);
+    // Each transition persists, commits status (emit), and orders the queue op.
+    expect(calls.join(",")).toBe(
+      "queueRunning,persist:running,status:running,persist:ready,status:ready," +
+        "queueReady,queueClose,persist:exited,status:exited,cleanup",
+    );
   });
 
   test("C-LIFE-02 stop closes the queue without runtime cleanup", () => {
@@ -152,7 +149,7 @@ describe("SessionStatusEngine", () => {
     calls.length = 0;
     const decision = engine.submit("stop_completed");
     expect(decision.to).toBe("stopped");
-    expect(calls).toEqual(["queueClose", "status:stopped"]);
+    expect(calls).toEqual(["queueClose", "persist:stopped", "status:stopped"]);
   });
 
   test("C-ATTN-02 blocked can follow ready, settles to ready, and yields to terminal", () => {
@@ -164,7 +161,7 @@ describe("SessionStatusEngine", () => {
     // The dialog can appear after the working indicator has already cleared.
     expect(engine.submit("blocking_prompt_shown").to).toBe("blocked");
     // Blocked suspends the queue (no send may write into the dialog), not closes it.
-    expect(calls).toEqual(["queueBlocked", "status:blocked"]);
+    expect(calls).toEqual(["queueBlocked", "persist:blocked", "status:blocked"]);
     // Resolving the dialog settles to ready (the composer is waiting again).
     expect(engine.submit("blocking_prompt_cleared").to).toBe("ready");
     // A stale clear with no active block is ignored.

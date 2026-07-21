@@ -27,7 +27,9 @@ vi.mock("../../src/codex/transcript.ts", () => ({
   codexReadErrorWarning: (n: { count: number }) => ({ code: "transcript_read_error", ...n }),
 }));
 
-const { createCodexTranscriptWatcher } = await import("../../src/codex/session-transcript.ts");
+const { createCodexTranscriptWatcher, codexTranscriptSeedFromWarnings } = await import(
+  "../../src/codex/session-transcript.ts"
+);
 const { TypedEmitter } = await import("../../src/events/emitter.ts");
 type Sink = { recordWarnings: (w: readonly unknown[]) => void };
 
@@ -61,5 +63,37 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
     sink = { recordWarnings: (w) => recorded.push(...w) };
     captured.onReadError?.(readNotice); // flushes the buffered drop + records this
     expect(recorded).toHaveLength(2);
+  });
+
+  test("§5.4 flushPendingWarnings persists a LONE early notice with no follow-up", () => {
+    let sink: Sink | undefined;
+    const recorded: unknown[] = [];
+    const { flushPendingWarnings } = createCodexTranscriptWatcher(
+      "s1",
+      emitter(),
+      () => sink as never,
+    );
+    captured.onDrop?.(dropNotice); // buffered before the sink exists
+    sink = { recordWarnings: (w) => recorded.push(...w) };
+    // No second notice ever arrives; the explicit post-construction flush must
+    // still persist the lone buffered notice (blocker: else it strands forever).
+    flushPendingWarnings();
+    expect(recorded).toHaveLength(1);
+    flushPendingWarnings(); // idempotent: nothing left to flush
+    expect(recorded).toHaveLength(1);
+  });
+
+  test("§5.4 codexTranscriptSeedFromWarnings recovers running totals so counts never restart at 0", () => {
+    const seed = codexTranscriptSeedFromWarnings([
+      { code: "transcript_records_dropped", droppedCount: 60, droppedBytes: 4096 },
+      { code: "transcript_read_error", errorCount: 7 },
+      { code: "login_expired" }, // unrelated warnings are ignored
+    ] as never);
+    expect(seed).toEqual({
+      drops: { droppedCount: 60, droppedBytes: 4096 },
+      readErrors: { errorCount: 7 },
+    });
+    // No transcript warnings → empty seed (a fresh session starts at 0).
+    expect(codexTranscriptSeedFromWarnings([])).toEqual({});
   });
 });

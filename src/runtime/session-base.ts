@@ -52,7 +52,9 @@ export abstract class AgentSessionBase {
     () => this.status === "running",
   );
   private readonly statusEngine = new SessionStatusEngine({
-    onStatus: (status) => this.emitStatus(status),
+    persistStatus: (status) => this.persistStatus(status),
+    emitStatus: (status) =>
+      emitStatusEvents(this.statusEvents, this.agent, this.elwoodSessionId, status),
     queueRunning: () => this.controlQueue.suspendReadiness(),
     queueReady: () => this.controlQueue.markReady(),
     queueBlocked: () => this.controlQueue.suspendReadiness(),
@@ -189,12 +191,10 @@ export abstract class AgentSessionBase {
   protected cleanupRuntime(): Promise<void> {
     return this.cleanupLatch.attempt();
   }
-  private emitStatus(status: ElwoodSessionStatus): void {
-    const id = this.elwoodSessionId;
+  // Durable persist, split from emit so the engine commits `current` between them:
+  // persist-fail aborts pre-commit; a later listener throw can't split state (C-API-42).
+  private persistStatus(status: ElwoodSessionStatus): void {
     this.everReady ||= status === "ready";
-    // Durable persist FIRST (a throw = a real turn-start failure); then deliver events
-    // isolated so a throwing listener can't masquerade as a persist failure (§5.3/§6.3).
     this.persist(updateSessionStatus(this.record, status));
-    emitStatusEvents(this.statusEvents, this.agent, id, status);
   }
 }
