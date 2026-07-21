@@ -4,6 +4,7 @@
  */
 
 import { activityFromHookError } from "../core/activity.ts";
+import { raceHookTimeout } from "../core/hook-timeout.ts";
 import type { HookErrorEvent } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { CodexHookEvent, CodexHookResult } from "./hooks.ts";
@@ -28,9 +29,19 @@ export async function requestCodexHook(
       request: (name: string, payload: unknown) => Promise<unknown>;
     };
     const hasListener = requestable.hasListeners(hookName);
-    const result = await withTimeout(requestable.request(hookName, event), timeoutMs);
+    const outcome = await raceHookTimeout(requestable.request(hookName, event), timeoutMs);
+    if (outcome.timedOut) {
+      emitError(emitter, {
+        elwoodSessionId,
+        hookEventName: event.hook_event_name,
+        category: "timeout",
+        message: `Hook handler timed out after ${timeoutMs} ms.`,
+        timeoutMs,
+      });
+      return { result: undefined, failedOpen: true };
+    }
     if (!hasListener) return { result: undefined, failedOpen: false };
-    if (!isCodexHookResult(event, result)) {
+    if (!isCodexHookResult(event, outcome.value)) {
       emitError(emitter, {
         elwoodSessionId,
         hookEventName: event.hook_event_name,
@@ -39,14 +50,13 @@ export async function requestCodexHook(
       });
       return { result: undefined, failedOpen: true };
     }
-    return { result, failedOpen: false };
+    return { result: outcome.value, failedOpen: false };
   } catch (error) {
     emitError(emitter, {
       elwoodSessionId,
       hookEventName: event.hook_event_name,
-      category: error instanceof Error && error.message === "timeout" ? "timeout" : "handler_error",
+      category: "handler_error",
       message: error instanceof Error ? error.message : "Hook handler failed",
-      timeoutMs,
     });
     return { result: undefined, failedOpen: true };
   }
@@ -63,16 +73,4 @@ export function isCodexBlock(result: CodexHookResult): boolean {
 function emitError(emitter: TypedEmitter<CodexEventMap>, event: HookErrorEvent): void {
   emitter.emit("hookError", event);
   emitter.emit("activity", activityFromHookError("codex", event));
-}
-
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeout = setTimeout(() => reject(new Error("timeout")), timeoutMs);
-  });
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    clearTimeout(timeout);
-  }
 }

@@ -27,7 +27,7 @@ export type MaterializedImages = {
  * Narrows each entry from `unknown` so a malformed JS input rejects with
  * `invalid_image` (never a raw TypeError); clones byte buffers and resolves paths
  * to absolute form so a later mutation/`cwd` change cannot alter what is attached
- * (C-API-44). Returns the canonical snapshot to hand to `resolveImages`.
+ * (C-API-44). Returns the canonical snapshot to hand to `materializeImages`.
  */
 export async function validateImages(
   images: readonly ImageInput[],
@@ -61,10 +61,21 @@ async function validateOne(
       "invalid_image",
       "Image must be exactly one of { path } or { data, format }.",
     );
+  // The shape must be EXACTLY the selected variant's keys — no extra own keys — so a
+  // caller cannot smuggle unexpected fields past validation (C-API-44).
+  rejectExtraKeys(r as object, hasData ? ["data", "format"] : ["path"]);
   if (hasData) return validateBytes((r as { data: unknown }).data, r?.format, priorTotal);
   if (typeof r?.path !== "string")
     throw elwoodError("invalid_image", "Image path must be a string.");
-  return [{ path: resolve(r.path) }, await validatePath(r.path)];
+  return [{ path: resolve(r.path) }, await validatePath(r.path, priorTotal)];
+}
+
+/** Rejects an image entry that carries own keys outside its variant's exact shape. */
+function rejectExtraKeys(entry: object, allowed: readonly string[]): void {
+  for (const key of Object.keys(entry)) {
+    if (!allowed.includes(key))
+      throw elwoodError("invalid_image", `Image has an unexpected field: ${key}`);
+  }
 }
 
 // Only Uint8Array/Buffer bytes are accepted (other views would truncate/misread),
@@ -90,7 +101,7 @@ function validateBytes(
   return [{ data: Uint8Array.from(data), format: format as ImageFormat }, data.length];
 }
 
-async function validatePath(path: string): Promise<number> {
+async function validatePath(path: string, priorTotal: number): Promise<number> {
   if (path.trim() === "") throw elwoodError("invalid_image", "Image path is empty.");
   let size: number;
   try {
@@ -104,6 +115,13 @@ async function validatePath(path: string): Promise<number> {
   }
   if (size > imageLimits.maxBytesPerImage)
     throw elwoodError("invalid_image", `Image file exceeds the per-image size limit: ${path}`);
+  // Path images count toward the SAME aggregate ceiling as byte inputs, so a set of
+  // large files cannot bypass the total-size limit that byte inputs enforce (C-API-44).
+  if (priorTotal + size > imageLimits.maxBytesTotal)
+    throw elwoodError(
+      "invalid_image",
+      `Images exceed the ${imageLimits.maxBytesTotal}-byte total.`,
+    );
   return size;
 }
 

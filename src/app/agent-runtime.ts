@@ -85,7 +85,12 @@ export type AgentLaunchOptions = {
   readonly agent: AgentKind;
   readonly cwd: string;
   readonly stateDir?: string;
-  readonly resumeSessionId?: string;
+  /**
+   * The Elwood session id to resume, if any. Named `elwoodSessionId` (not
+   * `resumeId`) because it is the public Elwood id, distinct from an adapter's
+   * internal conversation `resumeId`.
+   */
+  readonly elwoodSessionId?: string;
   readonly size: TerminalSize;
   readonly hooks: AgentHooks;
 };
@@ -163,17 +168,17 @@ function codexHandlers(log: { write(chunk: string): unknown }): CodexHookHandler
 function startClaudeSession(options: AgentLaunchOptions, runtime: AgentRuntime) {
   const base = commonLaunchOptions(options);
   const hooks = options.hooks as ClaudeHookHandlers;
-  return options.resumeSessionId === undefined
+  return options.elwoodSessionId === undefined
     ? runtime.startClaude({ ...base, hooks })
-    : runtime.resumeClaude({ ...base, hooks, elwoodSessionId: options.resumeSessionId });
+    : runtime.resumeClaude({ ...base, hooks, elwoodSessionId: options.elwoodSessionId });
 }
 
 function startCodexSession(options: AgentLaunchOptions, runtime: AgentRuntime) {
   const base = commonLaunchOptions(options);
   const hooks = options.hooks as CodexHookHandlers;
-  return options.resumeSessionId === undefined
+  return options.elwoodSessionId === undefined
     ? runtime.startCodex({ ...base, hooks })
-    : runtime.resumeCodex({ ...base, hooks, elwoodSessionId: options.resumeSessionId });
+    : runtime.resumeCodex({ ...base, hooks, elwoodSessionId: options.elwoodSessionId });
 }
 
 function commonLaunchOptions(options: AgentLaunchOptions) {

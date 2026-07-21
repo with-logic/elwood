@@ -57,7 +57,7 @@ document.getElementById("start").addEventListener("submit", (event) => {
     type: "start",
     agent: String(form.get("agent") || "claude"),
     cwd: String(form.get("cwd") || "."),
-    resumeSessionId: String(form.get("resume") || "") || undefined,
+    elwoodSessionId: String(form.get("resume") || "") || undefined,
     cols: terminal.cols,
     rows: terminal.rows,
   });

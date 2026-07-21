@@ -1296,7 +1296,10 @@ type ElwoodWarningEvent =
     }
   | {
       readonly elwoodSessionId: string;
-      readonly agent: "claude";
+      // Both adapters observe a committed JSONL transcript with a bounded cursor,
+      // so either can lose committed data the same three ways (unparseable,
+      // oversized, unread backlog) and surface it through this same warning.
+      readonly agent: "claude" | "codex";
       readonly source: "terminal";
       readonly code: "transcript_records_dropped";
       readonly severity: "warning";
@@ -1316,7 +1319,9 @@ type ElwoodWarningEvent =
     }
   | {
       readonly elwoodSessionId: string;
-      readonly agent: "claude";
+      // Shared: either adapter's bounded transcript cursor can hit a contained fs
+      // read error (a rotation/removal/permission race) and surface it here.
+      readonly agent: "claude" | "codex";
       readonly source: "terminal";
       readonly code: "transcript_read_error";
       readonly severity: "warning";
@@ -1540,6 +1545,26 @@ same observations are also projected into the adapter-neutral `activity` event
 stream. `CodexTranscriptSummary.kind` values are `message`, `tool_call`,
 `tool_result`, `reasoning`, `web_search`, and `other`.
 
+The Codex transcript reader is bounded exactly as Claude's is. Each read pass
+reads at most a fixed chunk (256 KiB) of new committed bytes rather than the whole
+unread delta, decoding only to the last complete UTF-8 code point so a split
+multibyte character is never corrupted, and a scan pass consumes at most a bounded
+per-pass chunk budget so a large delta streams across poll ticks instead of
+blocking the event loop in one synchronous read of a hundreds-of-MiB file. A
+single un-terminated record may buffer only up to a bounded size (1 MiB); a record
+that exceeds it is discarded through its next newline (so a pathological no-newline
+line can neither exhaust memory nor cause quadratic re-concatenation) and its bytes
+are accounted as an `"oversized"` drop. At teardown — the final flush at PTY exit —
+the reader drains to end only within a bounded chunk budget and a small wall-clock
+slice; whatever is still unread when that bound is spent is accounted as an
+`"unread_backlog"` drop rather than read in a single unbounded synchronous loop, so
+the flush returns to the event loop promptly. Codex data loss is surfaced through
+the SAME content-free `transcript_records_dropped` warning as Claude's (now
+`agent: "codex" | "claude"`), carrying only a loss-incident count, a byte
+magnitude, the bounded `cause` (`"unparseable"`, `"oversized"`, or
+`"unread_backlog"`), and the transcript path — never raw transcript content — with
+the same de-duplication and per-batch persistence semantics described above.
+
 As with Claude, the Codex transcript is the single source of truth for committed
 `assistant_message`, `tool_call`, and `tool_result` activity. The Codex `Stop`,
 `PreToolUse`, and `PostToolUse` hooks MUST NOT also project those activities from
@@ -1647,10 +1672,20 @@ Fail-open does not mean silent. `hookError` must include:
 - `elwoodSessionId`
 - hook event name
 - error category
-- timeout duration when applicable
+- timeout duration when applicable (only for a genuine timeout, never for a
+  handler that throws or rejects)
 - a diagnostic message
 
 It must not persist the full hook payload by default.
+
+The bridge caps the size of a single hook request at 8 MiB (8,388,608 raw
+bytes), counted identically in both the child bridge script and the parent IPC
+server. The cap bounds the request envelope on the wire, before any
+authentication or parsing. A request whose raw bytes exceed the cap fails open
+immediately: the child bridge script emits no decision and exits, and the parent
+server responds with no decision and closes the connection without dispatching to
+any parent handler. An oversized request is unauthenticated local IPC noise and
+does not emit a `hookError`, matching the token-mismatch fail-open.
 
 ### 6.4 Typed hook responses
 
@@ -1993,18 +2028,26 @@ Resume must restore hook routing, generated settings, state metadata, and PTY
 control. Resume must not require callers to know Claude's internal session ID.
 Resume must reject session records owned by another adapter and must fail
 explicitly when the Claude resume id is not available.
-Resume does not replay adapter launch-policy options from the original start in
-the MVP; the resumed agent uses the agent's own conversation state plus current
-Elwood wrapper defaults.
+Resume defaults the launch posture (privilege and tool policy) from the persisted
+session record, as specified in §5.2: a bare `resumeClaude` relaunches with the
+same `permissionMode`, `allowedTools`, `disallowedTools`, and `tools` the session
+started with, so tool restrictions cannot silently loosen across a resume.
+Explicit resume options override the persisted posture field by field, and the
+effective posture is re-persisted. Model and caller config overrides remain
+caller-supplied-per-call and are intentionally not persisted yet.
 
 `resumeCodex` loads the Elwood session record and starts a new wrapper around the
 same logical Codex conversation using `codex resume <SESSION_ID>` when Elwood has
 observed and persisted Codex's session id. Resume must reject session records
 owned by another adapter and must fail explicitly when the Codex resume id is not
 available.
-Resume does not replay adapter launch-policy options from the original start in
-the MVP; the resumed agent uses the agent's own conversation state plus current
-Elwood wrapper defaults.
+Resume defaults the launch posture (sandbox and approval policy) from the
+persisted session record, as specified in §5.2, so a bare `resumeCodex` relaunches
+with the same `sandbox` and `approvalPolicy` the session started with and
+restrictions cannot silently loosen. Explicit resume options override the
+persisted posture field by field, and the effective posture is re-persisted.
+Model and caller config overrides remain caller-supplied-per-call and are
+intentionally not persisted yet.
 
 ### 9.4 Exit
 

@@ -10,7 +10,7 @@ import type { StartClaudeOptions } from "../core/types.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { initialReady } from "../runtime/initial-ready.ts";
-import { assertStartupUsable } from "../runtime/startup.ts";
+import { assertStartupThenRelease, createStartupBuffer } from "../runtime/startup-buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../runtime/startup-cleanup.ts";
 import { secureMkdir } from "../state/files.ts";
 import { claudeLaunchPosture, withClaudeLaunch } from "../state/launch-posture.ts";
@@ -136,7 +136,7 @@ export async function startClaudeFromRecord(
     await cleanupStartupResources({ bridge });
     throw error;
   }
-  let startupOutput = "";
+  const startupOutput = createStartupBuffer();
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   const autotrust = options.autotrust ?? false;
@@ -144,7 +144,7 @@ export async function startClaudeFromRecord(
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
   const turnWatcher = observers.turn;
   const terminal = attachPtyTerminal(startupSize, pty, (data, renderedTerminal) => {
-    startupOutput += data;
+    startupOutput.push(data);
     terminalReplay.push(data);
     const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
     // The write RETURNS its `sendInput` completion (no longer swallowed): the
@@ -187,11 +187,9 @@ export async function startClaudeFromRecord(
           active.submitExit(),
         );
       });
-      await assertStartupUsable({
-        adapter: "claude",
-        exit: () => startupExit,
-        output: () => startupOutput,
-      });
+      // Release the startup buffer once the check settles so no per-session
+      // transcript lingers for the PTY handler's lifetime (§9.4).
+      await assertStartupThenRelease("claude", startupOutput, () => startupExit);
       active.submitEvidence("startup_usable");
     },
     { before: () => ready.cancel(), pty, bridge, terminal, after: () => transcriptWatcher.stop() },

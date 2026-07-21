@@ -12,6 +12,7 @@ import {
   LOGIN_EXPIRED_RAW,
   LOGIN_RECOVERY_COMMAND,
 } from "../claude/login-expired.ts";
+import type { ElwoodAgentKind } from "../core/activity.ts";
 import { isStartupPromptLabelForAgent } from "../core/startup-automation.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import {
@@ -90,30 +91,26 @@ const warningValidators = {
     value["raw"] === "clipboard_restore_failed" &&
     hasOnlyKeys(value, CLIPBOARD_RESTORE_FAILED_KEYS),
   transcript_records_dropped: (value) =>
-    claudeTerminalBase(value) &&
+    sharedTerminalBase(value) &&
     isPositiveCount(value["droppedCount"]) &&
     isCount(value["droppedBytes"]) &&
     isDropCause(value["cause"]) &&
     isString(value["transcriptPath"]),
   transcript_read_error: (value) =>
-    claudeTerminalBase(value) &&
+    sharedTerminalBase(value) &&
     isPositiveCount(value["errorCount"]) &&
     isString(value["lastErrorCode"]) &&
     isString(value["transcriptPath"]),
-  // The `reason` is validated against the SAME allowlist the producer draws from,
-  // so a non-allowlisted (possibly conversation-derived) reason cannot round-trip.
+  // `reason` is validated against the SAME allowlist the producer draws from, so a
+  // non-allowlisted reason cannot round-trip. Poll failures are claude-only.
   transcript_poll_stopped: (value) =>
     claudeTerminalBase(value) && isPollErrorReason(value["reason"]) && isPollPhase(value["phase"]),
   // The `label` is bounded to the failing AGENT's own startup-prompt labels, so a
-  // persisted failure can neither round-trip a raw prompt/screen string nor an
-  // off-agent pairing (Claude + `update`, Codex + `browser_tools`) (§5.4, §5.7).
+  // persisted failure round-trips neither a raw prompt nor an off-agent pairing (§5.4).
   startup_prompt_write_failed: (value) =>
-    (value["agent"] === "claude" || value["agent"] === "codex") &&
-    terminalBase(value) &&
-    isStartupPromptLabelForAgent(value["agent"], value["label"]),
-  // Content-free lifecycle diagnostic: the leaked group's pgid (a real leader pid,
-  // so a safe integer > 1) + an ALLOWLISTED normalized error code, per agent —
-  // never a raw system message (§5.7, C-LIFE-10).
+    sharedTerminalBase(value) && isStartupPromptLabelForAgent(value["agent"], value["label"]),
+  // Content-free lifecycle diagnostic: the leaked group's pgid (a real leader pid, so
+  // a safe integer > 1) + an ALLOWLISTED normalized error code, per agent (§5.7).
   reap_failed: (value) =>
     (value["agent"] === "claude" || value["agent"] === "codex") &&
     value["source"] === "lifecycle" &&
@@ -123,8 +120,7 @@ const warningValidators = {
     isReapErrorCode(value["errorCode"]) &&
     isString(value["raw"]),
   // Content-free lifecycle diagnostic: the size Elwood tried to restore (positive
-  // terminal dimensions) + an ALLOWLISTED normalized error code — never a raw
-  // system message (§5.3, §5.7, C-API-39).
+  // dimensions) + an ALLOWLISTED normalized error code, never a raw message (§5.3).
   resize_restore_failed: (value) =>
     value["agent"] === "claude" &&
     value["source"] === "lifecycle" &&
@@ -135,8 +131,7 @@ const warningValidators = {
     isResizeErrorCode(value["errorCode"]) &&
     isString(value["raw"]),
   // Content-free lifecycle diagnostic: only a bounded, allowlisted `reason`
-  // (`persist`/`listener`) distinguishing the failing stage — never a raw system
-  // message or session content (§5.3, §5.7, C-API-42).
+  // (`persist`/`listener`) distinguishing the failing stage, never content (§5.3).
   initial_ready_fallback: (value) =>
     value["agent"] === "claude" &&
     value["source"] === "lifecycle" &&
@@ -187,6 +182,11 @@ function isProcessGroupId(value: unknown): boolean {
 /** Fields common to every claude-agent terminal warning: agent/source/session/message/raw. */
 function claudeTerminalBase(value: WarningFields): boolean {
   return value["agent"] === "claude" && terminalBase(value);
+}
+
+/** A terminal warning on either adapter (shared drop + startup-prompt shapes). */
+function sharedTerminalBase(v: WarningFields): v is WarningFields & { agent: ElwoodAgentKind } {
+  return (v["agent"] === "claude" || v["agent"] === "codex") && terminalBase(v);
 }
 
 /** The source/session/message/raw fields common to all terminal warnings. */

@@ -7,7 +7,7 @@ import { describe, expect, test } from "vitest";
 import { completeUtf8Length, setProbeTimeoutMsForTests } from "../../src/runtime/probe.ts";
 import { currentCommandRunner, resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { cleanupStartupResources } from "../../src/runtime/startup-cleanup.ts";
-import { runTeardownSteps } from "../../src/runtime/teardown.ts";
+import { runCleanupSteps, runTeardownSteps } from "../../src/runtime/teardown.ts";
 
 describe("C-PERF-03 UTF-8 boundary truncation", () => {
   const euro = Buffer.from("€", "utf8"); // 3 bytes: e2 82 ac
@@ -159,5 +159,37 @@ describe("teardown", () => {
       code: "teardown_failed",
       details: { causes: ["primitive teardown failure"] },
     });
+  });
+
+  test("§9.4 runCleanupSteps runs EVERY step even after an earlier one throws", async () => {
+    const ran: string[] = [];
+    await expect(
+      runCleanupSteps([
+        () => {
+          ran.push("a");
+          throw new Error("bridge stop failed");
+        },
+        () => {
+          ran.push("b"); // must still run despite the earlier throw (no leak)
+        },
+        () => Promise.reject("watcher finish failed"),
+      ]),
+    ).rejects.toThrow(/Runtime cleanup failed: bridge stop failed; watcher finish failed/);
+    expect(ran).toEqual(["a", "b"]);
+  });
+
+  test("§9.4 runCleanupSteps resolves when every step succeeds", async () => {
+    const ran: string[] = [];
+    await expect(
+      runCleanupSteps([
+        () => {
+          ran.push("x");
+        },
+        () => {
+          ran.push("y");
+        },
+      ]),
+    ).resolves.toBeUndefined();
+    expect(ran).toEqual(["x", "y"]);
   });
 });

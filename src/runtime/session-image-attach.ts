@@ -44,10 +44,10 @@ async function runAttach(
   signal: AbortSignal,
 ): Promise<void> {
   const validated = await validateImages(images);
-  const resolved = await materializeImages(validated);
+  const materialized = await materializeImages(validated);
   try {
-    await driver(resolved.paths, signal);
+    await driver(materialized.paths, signal);
   } finally {
-    await resolved.cleanup().catch(() => undefined);
+    await materialized.cleanup().catch(() => undefined);
   }
 }

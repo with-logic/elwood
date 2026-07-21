@@ -6,6 +6,8 @@
 import { existsSync, unlinkSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import type { HookErrorEvent } from "../core/types.ts";
+import { MAX_HOOK_REQUEST_BYTES } from "./limits.ts";
+import { hookEventNameFrom, noDecision, parseBridgeMessage, parseHookInput } from "./parse.ts";
 import type { BridgeProcessResult } from "./types.ts";
 
 export type HookDispatcher = (input: unknown) => Promise<BridgeProcessResult>;
@@ -43,20 +45,30 @@ export class HookBridgeServer {
     const server = createServer((socket) => {
       this.sockets.add(socket);
       let data = "";
+      let bytes = 0;
       let responded = false;
       socket.on("close", () => this.sockets.delete(socket));
       socket.on("error", this.sockets.delete.bind(this.sockets, socket));
-      const respond = async () => {
+      // `respond` can never reject: `handleSafely` always resolves to a decision
+      // (even when the error sink throws), so the `void respond()` call sites
+      // below never leave an unhandled rejection and always fail the socket open.
+      const respond = async (result: BridgeProcessResult | null) => {
         if (responded) return;
         responded = true;
-        const result = await this.handleSafely(data);
-        socket.end(JSON.stringify(result));
+        socket.end(JSON.stringify(result ?? (await this.handleSafely(data))));
       };
-      socket.on("data", (chunk) => {
+      socket.on("data", (chunk: Buffer) => {
+        // Count raw bytes and fail open the instant the request envelope crosses
+        // the cap — before auth or parse — so an unauthenticated sender cannot
+        // force unbounded buffering (PRD §6.3). Scan only the fresh chunk for the
+        // frame terminator instead of rescanning the whole growing buffer.
+        bytes += chunk.length;
+        if (bytes > MAX_HOOK_REQUEST_BYTES) return void respond(noDecision());
+        const framed = chunk.includes(0x0a);
         data += chunk.toString("utf8");
-        if (data.includes("\n")) void respond();
+        if (framed) void respond(null);
       });
-      socket.on("end", () => void respond());
+      socket.on("end", () => void respond(null));
     });
     this.server = server;
     await new Promise<void>((resolve, reject) => {
@@ -87,7 +99,7 @@ export class HookBridgeServer {
     try {
       return await this.handle(data);
     } catch (error) {
-      this.onError({
+      this.reportError({
         hookEventName: "Unknown",
         category: "bridge_error",
         message: error instanceof Error ? error.message : "Hook bridge failed",
@@ -96,10 +108,22 @@ export class HookBridgeServer {
     }
   }
 
+  // Isolate error-sink delivery: the live sink emits `hookError`/`activity`, and
+  // a parent-registered observer that throws must never propagate back out to
+  // prevent the fail-open socket write (PRD §6.3). Swallowing a throwing sink
+  // keeps `handleSafely` — and therefore `respond` — always resolving.
+  private reportError(event: Omit<HookErrorEvent, "elwoodSessionId">): void {
+    try {
+      this.onError(event);
+    } catch {
+      // Swallow: a throwing observer must never block the fail-open write.
+    }
+  }
+
   private async handle(data: string): Promise<BridgeProcessResult> {
     const parsed = parseBridgeMessage(data);
     if (parsed.kind === "malformed") {
-      this.onError({
+      this.reportError({
         hookEventName: "Unknown",
         category: "invalid_input",
         message: "Malformed hook bridge request",
@@ -113,7 +137,7 @@ export class HookBridgeServer {
     }
     const hookInput = parseHookInput(parsed.input);
     if (!this.isHookInput(hookInput)) {
-      this.onError({
+      this.reportError({
         hookEventName: hookEventNameFrom(hookInput),
         category: "invalid_input",
         message: "Invalid hook input",
@@ -122,60 +146,4 @@ export class HookBridgeServer {
     }
     return await this.dispatch(hookInput);
   }
-}
-
-type BridgeMessage =
-  | {
-      readonly kind: "ok";
-      readonly token: string;
-      readonly elwoodSessionId?: string;
-      readonly input: string;
-    }
-  | { readonly kind: "unauthenticated" }
-  | { readonly kind: "malformed" };
-
-function parseBridgeMessage(data: string): BridgeMessage {
-  try {
-    const parsed = JSON.parse(data) as {
-      readonly token?: unknown;
-      readonly elwoodSessionId?: unknown;
-      readonly input?: unknown;
-    };
-    if (parsed.token === undefined) return { kind: "unauthenticated" };
-    if (typeof parsed.token === "string" && typeof parsed.input === "string") {
-      return {
-        kind: "ok",
-        token: parsed.token,
-        input: parsed.input,
-        ...(typeof parsed.elwoodSessionId === "string"
-          ? { elwoodSessionId: parsed.elwoodSessionId }
-          : {}),
-      };
-    }
-    return { kind: "malformed" };
-  } catch {
-    return { kind: "malformed" };
-  }
-}
-
-function parseHookInput(input: string): unknown {
-  try {
-    return JSON.parse(input);
-  } catch {
-    return null;
-  }
-}
-
-function hookEventNameFrom(input: unknown): HookErrorEvent["hookEventName"] {
-  const record =
-    input && typeof input === "object" && !Array.isArray(input)
-      ? (input as Record<string, unknown>)
-      : {};
-  return typeof record["hook_event_name"] === "string"
-    ? (record["hook_event_name"] as HookErrorEvent["hookEventName"])
-    : "Unknown";
-}
-
-function noDecision(): BridgeProcessResult {
-  return { exitCode: 0, stdout: "", stderr: "" };
 }

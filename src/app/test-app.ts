@@ -23,7 +23,8 @@ export type TestAppArgs = {
   readonly agent: AgentKind;
   readonly cwd: string;
   readonly stateDir?: string;
-  readonly resumeSessionId?: string;
+  /** Elwood session id to resume (the public id), not an adapter `resumeId`. */
+  readonly elwoodSessionId?: string;
   readonly size: TerminalSize;
 };
 
@@ -53,13 +54,13 @@ export function parseTestAppArgs(argv: readonly string[]): TestAppArgs {
   const agent = parseAgentKind(readOption(argv, "--agent"));
   const cwd = readOption(argv, "--cwd") ?? process.cwd();
   const stateDir = readOption(argv, "--state-dir");
-  const resumeSessionId = readOption(argv, "--resume");
+  const elwoodSessionId = readOption(argv, "--resume");
   const size = parseSize(readOption(argv, "--size") ?? "189x48");
   return {
     agent,
     cwd,
     ...(stateDir === undefined ? {} : { stateDir }),
-    ...(resumeSessionId === undefined ? {} : { resumeSessionId }),
+    ...(elwoodSessionId === undefined ? {} : { elwoodSessionId }),
     size,
   };
 }

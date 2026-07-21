@@ -13,6 +13,16 @@ const toolEvents = new Set([
   "PermissionDenied",
 ]);
 
+const effortLevels = ["low", "medium", "high", "xhigh", "max"] as const;
+const permissionModes = [
+  "default",
+  "acceptEdits",
+  "plan",
+  "auto",
+  "dontAsk",
+  "bypassPermissions",
+] as const;
+
 export function isClaudeHookInput(value: unknown): value is ClaudeHookEvent {
   if (!isRecord(value)) return false;
   const eventName = value["hook_event_name"];
@@ -23,6 +33,7 @@ export function isClaudeHookInput(value: unknown): value is ClaudeHookEvent {
   ) {
     return false;
   }
+  if (!hasValidCommonFields(value)) return false;
   if (toolEvents.has(eventName)) return hasToolEventFields(eventName, value);
   if (eventName === "SessionStart") return typeof value["source"] === "string";
   if (eventName === "Setup") return isOneOf(value["trigger"], ["init", "maintenance"]);
@@ -56,6 +67,22 @@ export function isClaudeHookInput(value: unknown): value is ClaudeHookEvent {
   if (eventName === "Elicitation") return hasStrings(value, ["mcp_server_name", "message"]);
   if (eventName === "ElicitationResult") return hasStrings(value, ["mcp_server_name", "action"]);
   return false;
+}
+
+// C-HOOK-07 / C-HOOK-17: typed optional common fields present on every hook
+// event must match ClaudeCommonHookFields, not merely be ignored.
+function hasValidCommonFields(value: Readonly<Record<string, unknown>>): boolean {
+  return (
+    optionalString(value["transcript_path"]) &&
+    (value["permission_mode"] === undefined ||
+      isOneOf(value["permission_mode"], permissionModes)) &&
+    isValidEffort(value["effort"])
+  );
+}
+
+function isValidEffort(value: unknown): boolean {
+  if (value === undefined) return true;
+  return isRecord(value) && isOneOf(value["level"], effortLevels);
 }
 
 function hasToolEventFields(eventName: string, value: Readonly<Record<string, unknown>>): boolean {

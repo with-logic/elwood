@@ -6,15 +6,22 @@
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { CodexTranscriptWatcher, summarizeTranscriptItem } from "../../src/codex/transcript.ts";
+import {
+  type CodexDropNotice,
+  CodexTranscriptWatcher,
+  summarizeTranscriptItem,
+} from "../../src/codex/transcript.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
 describe("Codex transcript observation", () => {
-  test("C-API-12 live transcript watcher emits only new JSONL items", () => {
+  test("C-API-12 live transcript watcher emits only new, parseable JSONL items", () => {
     const path = join(tempDirForUnit(), "codex.jsonl");
     const events: unknown[] = [];
+    const drops: CodexDropNotice[] = [];
     writeFileSync(path, `${JSON.stringify(line("response_item", { type: "message" }))}\n`);
-    const watcher = new CodexTranscriptWatcher("e1", (event) => events.push(event));
+    const watcher = new CodexTranscriptWatcher("e1", (event) => events.push(event), {
+      onDrop: (notice) => drops.push(notice),
+    });
     watcher.observe(path);
     appendFileSync(
       path,
@@ -27,13 +34,16 @@ describe("Codex transcript observation", () => {
     watcher.scan();
     watcher.flush();
     watcher.stop();
-    expect(events).toHaveLength(3);
+    // Two parseable items emit; the malformed trailing record is a content-free drop.
+    expect(events).toHaveLength(2);
     expect(events).toContainEqual(
       expect.objectContaining({
         elwoodSessionId: "e1",
         summary: expect.objectContaining({ kind: "web_search", text: "Bowie MD" }),
       }),
     );
+    expect(drops.at(-1)).toMatchObject({ elwoodSessionId: "e1", cause: "unparseable" });
+    expect(drops.at(-1)?.droppedCount).toBeGreaterThanOrEqual(1);
   });
 
   test("C-API-12 watcher handles late files, blank lines, re-observe, and truncation", () => {

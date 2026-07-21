@@ -11,10 +11,17 @@ export function createBrowserToken(): string {
   return randomUUID();
 }
 
+/**
+ * The upgrade guard validates the request host against the port the server is
+ * actually bound to. Because the app may bind an ephemeral port (0 → OS-assigned),
+ * the port is resolved lazily at upgrade time rather than captured at construction.
+ */
+export type PortSource = number | (() => number);
+
 export function createGuardedWebSocketServer(
   server: Server,
   token: string,
-  port: number,
+  port: PortSource,
 ): WebSocketServer {
   return new WebSocketServer({
     server,
@@ -22,8 +29,9 @@ export function createGuardedWebSocketServer(
   });
 }
 
-export function guardUpgrade(token: string, port: number) {
-  return (info: { readonly req: IncomingMessage }) => isAllowedUpgrade(info.req, token, port);
+export function guardUpgrade(token: string, port: PortSource) {
+  return (info: { readonly req: IncomingMessage }) =>
+    isAllowedUpgrade(info.req, token, resolve(port));
 }
 
 export function isAllowedUpgrade(request: IncomingMessage, token: string, port: number): boolean {
@@ -33,6 +41,10 @@ export function isAllowedUpgrade(request: IncomingMessage, token: string, port: 
   if (origin !== undefined && !isLocalOrigin(origin, port)) return false;
   const url = new URL(request.url ?? "/", `http://${host}`);
   return url.searchParams.get("token") === token;
+}
+
+function resolve(port: PortSource): number {
+  return typeof port === "function" ? port() : port;
 }
 
 function isLocalOrigin(origin: string, port: number): boolean {

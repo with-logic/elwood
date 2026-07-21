@@ -41,7 +41,7 @@ export class ControlQueue {
   private readinessEpoch = 0; // monotonic; rollback restores its snapshot only if the epoch is unchanged
   private bypassable = 0; // # ops dispatchable while not ready; lets drain skip the overtaker scan
   private inFlight: QueuedOperation | undefined; // submission still dispatching (incl. delayed Enter)
-  private submitAbort: AbortController | undefined; // aborts prior submission's nudges
+  private submitAbort: AbortController | undefined;
 
   constructor(
     submit: ControlSubmitter,
@@ -64,8 +64,8 @@ export class ControlQueue {
     return this.enqueue({ input, kind, mayBypassReadiness, attach });
   }
 
-  // Hold EXCLUSIVE queue ownership for the task's whole run (C-API-43 login);
-  // `cancel` drops it if aborted while STILL QUEUED.
+  // Hold EXCLUSIVE queue ownership for the task's whole run (C-API-43 login); `cancel`
+  // drops it if aborted while STILL QUEUED.
   runExclusive(
     kind: ControlOperationKind,
     run: AbortableQueueTask,
@@ -169,7 +169,7 @@ export class ControlQueue {
     this.drain();
   }
 
-  // Attach FIRST, then the deferred lifecycle, then the write: deferring past a successful attach avoids wedging (C-API-19/44).
+  // Attach, then deferred lifecycle, then write — deferring past attach avoids wedging (C-API-19/44).
   private async submitWithAttach(
     operation: QueuedOperation,
     traits: ControlOperationTraits,
@@ -179,16 +179,16 @@ export class ControlQueue {
       await operation.attach(signal);
       if (signal.aborted) throw this.stoppedError();
       try {
-        this.beginSubmission(traits); // readiness consumed before any throw
+        this.beginSubmission(traits);
       } catch {
-        // Images are staged; a throwing turn-start listener must not strand them.
+        // isolated: staged images proceed to submit
       }
     }
     await this.submit(operation.input, traits.submitMode, signal);
   }
 
   private beginSubmission(traits: ControlOperationTraits): void {
-    if (traits.consumesReadiness) this.ready = false; // a throwing listener aborts with nothing in flight
+    if (traits.consumesReadiness) this.ready = false;
     if (traits.reportsCallerSubmission) this.onTurnStarted();
   }
 

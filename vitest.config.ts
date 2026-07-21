@@ -9,7 +9,8 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     coverage: {
-      all: false,
+      all: true,
+      include: ["src/**/*.ts"],
       exclude: ["tests/**"],
       provider: "istanbul",
       reporter: ["text", "lcov"],
@@ -24,5 +25,10 @@ export default defineConfig({
     globals: false,
     include: ["tests/**/*.test.ts"],
     setupFiles: ["./tests/helpers/preload.ts"],
+    // Real-timer, PTY-driven conformance tests (e.g. the Codex model-picker flows)
+    // poll for fake-PTY output; under heavy parallel-suite CPU contention the default
+    // 5s ceiling can be hit before the poll settles. 15s gives headroom without
+    // masking a genuine hang, which still fails fast relative to the suite runtime.
+    testTimeout: 15_000,
   },
 });

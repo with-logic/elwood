@@ -4,6 +4,7 @@
  */
 
 import type { ClaudeHookEvent, ClaudeHookEventName, ClaudeHookResult } from "./hooks.ts";
+import { isPermissionUpdateArray } from "./validate-permission-update.ts";
 import { isClaudeToolInputUpdate } from "./validate-tool-update.ts";
 
 const contextResultEvents = new Set<string>(["SessionStart", "Setup", "SubagentStart"]);
@@ -35,7 +36,7 @@ export function isClaudeHookResult(
   if (eventName === "PreToolUse" && "additionalContext" in value) {
     return isPreToolUseResult(eventName, value, toolName);
   }
-  if ("behavior" in value) return isPermissionRequestResult(eventName, value);
+  if ("behavior" in value) return isPermissionRequestResult(eventName, value, toolName);
   if ("retry" in value) return eventName === "PermissionDenied" && value["retry"] === true;
   if ("worktreePath" in value) {
     return eventName === "WorktreeCreate" && typeof value["worktreePath"] === "string";
@@ -74,6 +75,7 @@ function isPreToolUseResult(
 function isPermissionRequestResult(
   eventName: ClaudeHookEventName,
   value: Readonly<Record<string, unknown>>,
+  toolName?: string,
 ): boolean {
   return (
     eventName === "PermissionRequest" &&
@@ -81,9 +83,13 @@ function isPermissionRequestResult(
     isOneOf(value["behavior"], ["allow", "deny"]) &&
     optionalString(value["message"]) &&
     optionalBoolean(value["interrupt"]) &&
-    optionalArray(value["updatedPermissions"]) &&
-    optionalRecord(value["updatedInput"])
+    optionalPermissionUpdates(value["updatedPermissions"]) &&
+    isClaudeToolInputUpdate(toolName, value["updatedInput"])
   );
+}
+
+function optionalPermissionUpdates(value: unknown): boolean {
+  return value === undefined || isPermissionUpdateArray(value);
 }
 
 function isElicitationResult(
@@ -170,14 +176,6 @@ function optionalStringArray(value: unknown): boolean {
 
 function optionalBoolean(value: unknown): boolean {
   return value === undefined || typeof value === "boolean";
-}
-
-function optionalArray(value: unknown): boolean {
-  return value === undefined || Array.isArray(value);
-}
-
-function optionalRecord(value: unknown): boolean {
-  return value === undefined || isRecord(value);
 }
 
 function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {

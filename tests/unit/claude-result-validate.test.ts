@@ -1,11 +1,12 @@
 /**
- * Focused unit coverage for Claude hook result runtime validation.
+ * Focused unit coverage for Claude hook result runtime validation by event.
  * Covers PRD §6.4 and C-HOOK-06.
  */
 
 import { describe, expect, test } from "vitest";
 import type { ClaudeToolInputByName } from "../../src/claude/tool-types.ts";
 import { isClaudeHookResult } from "../../src/claude/validate-result.ts";
+import { updateFor } from "./claude-result-validate-helpers.ts";
 
 describe("Claude hook result validation", () => {
   test("C-HOOK-06 validates hook results by event semantics", () => {
@@ -68,41 +69,14 @@ describe("Claude hook result validation", () => {
     expect(isClaudeHookResult("PostToolUse", { extra: "bad" })).toBe(false);
   });
 
-  test("C-HOOK-09 validates updatedInput keys against the named tool", () => {
-    const agent = { tool_name: "Agent", tool_input: { prompt: "p" } } as const;
-    expect(updateFor(agent, { prompt: "revised" })).toBe(true);
-    expect(updateFor(agent, { command: "no" })).toBe(false);
-    expect(updateFor({ tool_name: "ExitPlanMode", tool_input: {} }, { plan: "steps" })).toBe(true);
-    expect(
-      updateFor({ tool_name: "Glob", tool_input: { pattern: "*.ts" } }, { pattern: "*.tsx" }),
-    ).toBe(true);
-    expect(updateFor({ tool_name: "Read", tool_input: { file_path: "a.ts" } }, { limit: 5 })).toBe(
-      true,
-    );
+  test("C-HOOK-06 an undefined result is accepted and MCP updatedInput is unconstrained", () => {
+    expect(isClaudeHookResult("PreToolUse", undefined)).toBe(true);
+    // Unknown/MCP tools accept any updatedInput record (PRD §6.4).
     expect(
       updateFor(
-        { tool_name: "WebFetch", tool_input: { url: "https://e.test", prompt: "read" } },
-        { url: "https://e2.test" },
-      ),
-    ).toBe(true);
-    expect(
-      updateFor({ tool_name: "WebSearch", tool_input: { query: "docs" } }, { query: "guides" }),
-    ).toBe(true);
-    expect(
-      updateFor(
-        { tool_name: "Write", tool_input: { file_path: "a.ts", content: "x" } },
-        { content: "y" },
+        { tool_name: "mcp__server__tool", tool_input: { raw: true } } as ClaudeToolInputByName,
+        { anything: 42 },
       ),
     ).toBe(true);
   });
 });
-
-function updateFor(
-  tool: ClaudeToolInputByName,
-  updatedInput: Readonly<Record<string, unknown>>,
-): boolean {
-  return isClaudeHookResult(
-    { hook_event_name: "PreToolUse", session_id: "claude-1", cwd: "/tmp/project", ...tool },
-    { permissionDecision: "allow", updatedInput },
-  );
-}

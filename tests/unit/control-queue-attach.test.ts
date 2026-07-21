@@ -68,8 +68,10 @@ describe("ControlQueue image attach (C-API-44)", () => {
       },
     );
     queue.markReady();
-    // The attach ran (images staged); the throwing turn-start must be isolated so
-    // the text still submits and the op resolves, and the next op still drains.
+    // The attach ran (images staged); a throwing turn-start listener is isolated so
+    // the text still submits and the op resolves, and the next op still drains. A
+    // genuine persist failure cannot wedge the session because status-evidence
+    // commits `running` only after the durable write succeeds (persist-first).
     await queue.send("hello", "message", () => Promise.resolve());
     expect(writes).toEqual(["hello"]);
     queue.markReady(); // a real Stop hook re-marks ready between turns

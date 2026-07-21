@@ -5,9 +5,10 @@
 
 import { elwoodError } from "../core/errors.ts";
 
-export async function runTeardownSteps(
+/** Runs every step even if earlier ones reject, returning the collected failure messages. */
+async function attemptAllSteps(
   steps: readonly (() => Promise<void> | void)[],
-): Promise<void> {
+): Promise<readonly string[]> {
   const failures: string[] = [];
   for (const step of steps) {
     try {
@@ -16,9 +17,30 @@ export async function runTeardownSteps(
       failures.push(error instanceof Error ? error.message : String(error));
     }
   }
+  return failures;
+}
+
+export async function runTeardownSteps(
+  steps: readonly (() => Promise<void> | void)[],
+): Promise<void> {
+  const failures = await attemptAllSteps(steps);
   if (failures.length > 0) {
     throw elwoodError("teardown_failed", "Could not fully tear down Elwood session.", {
       causes: failures,
     });
   }
+}
+
+/**
+ * Runs every runtime-cleanup step even if one rejects, so a failing bridge stop still
+ * disposes the terminal and finishes the transcript watcher — no resource is leaked
+ * because an earlier step threw (PRD §9.4). Rejects with an aggregated Error whose
+ * message lists each failure; upstream (`stopRuntime` callers) fold it into their own
+ * typed error (`termination_failed`/`teardown_failed`) so no new public code appears.
+ */
+export async function runCleanupSteps(
+  steps: readonly (() => Promise<void> | void)[],
+): Promise<void> {
+  const failures = await attemptAllSteps(steps);
+  if (failures.length > 0) throw new Error(`Runtime cleanup failed: ${failures.join("; ")}`);
 }

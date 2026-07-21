@@ -24,7 +24,7 @@ describe("local test app", () => {
       agent: "claude",
       cwd: "/tmp/project",
       stateDir: "/tmp/state",
-      resumeSessionId: "e1",
+      elwoodSessionId: "e1",
       size: { cols: 189, rows: 48 },
     });
     expect(parseTestAppArgs(["--agent", "codex", "--cwd", "/tmp/project"]).agent).toBe("codex");

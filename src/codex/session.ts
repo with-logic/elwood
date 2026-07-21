@@ -11,7 +11,7 @@ import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import { TurnStateWatcher } from "../core/turn-state.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
-import { assertStartupUsable } from "../runtime/startup.ts";
+import { assertStartupThenRelease, createStartupBuffer } from "../runtime/startup-buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../runtime/startup-cleanup.ts";
 import { secureMkdir } from "../state/files.ts";
 import { codexLaunchPosture, withCodexLaunch } from "../state/launch-posture.ts";
@@ -33,9 +33,9 @@ import { currentCodexHookBridgeFactory } from "./session-bridge.ts";
 import { dispatchHook, registerInitialHooks } from "./session-hooks.ts";
 import { CodexSessionImpl } from "./session-instance.ts";
 import { finishCodexExit, writeCodexRuntimeFiles } from "./session-runtime.ts";
+import { createCodexTranscriptWatcher } from "./session-transcript.ts";
 import type { CodexEventMap, CodexSession, StartCodexOptions } from "./session-types.ts";
 import { CodexStartupPromptResponder } from "./startup-prompts.ts";
-import { CodexTranscriptWatcher } from "./transcript.ts";
 
 export {
   resetCodexSessionSeamsForTests,
@@ -78,10 +78,11 @@ export async function startCodexFromRecord(
   writeCodexRuntimeFiles(record);
   const emitter = new TypedEmitter<CodexEventMap>();
   registerInitialHooks(emitter, options.hooks);
-  const transcriptWatcher = new CodexTranscriptWatcher(record.elwoodSessionId, (event) => {
-    emitter.emit("codex:transcript", event);
-    emitter.emit("activity", activity.activityFromCodexTranscript(event));
-  });
+  const transcriptWatcher = createCodexTranscriptWatcher(
+    record.elwoodSessionId,
+    emitter,
+    () => session,
+  );
   let session: CodexSessionImpl | undefined;
   const bridge = currentCodexHookBridgeFactory()(
     record.paths.socketPath,
@@ -109,7 +110,7 @@ export async function startCodexFromRecord(
     await cleanupStartupResources({ bridge });
     throw error;
   }
-  let startupOutput = "";
+  const startupOutput = createStartupBuffer();
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   const ready = initialReady(() => {
@@ -131,7 +132,7 @@ export async function startCodexFromRecord(
     options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
     pty,
     (data, renderedTerminal) => {
-      startupOutput += data;
+      startupOutput.push(data);
       terminalReplay.push(data);
       // One snapshot per render: reused for prompt automation, readiness, and
       // detection (input written here only repaints on the next callback).
@@ -185,11 +186,9 @@ export async function startCodexFromRecord(
         };
         finishCodexExit(drainAndEmit, () => activeSession.submitExit());
       });
-      await assertStartupUsable({
-        adapter: "codex",
-        exit: () => startupExit,
-        output: () => startupOutput,
-      });
+      // Release the startup buffer once the check settles so no per-session
+      // transcript lingers for the PTY handler's lifetime (§9.4).
+      await assertStartupThenRelease("codex", startupOutput, () => startupExit);
       activeSession.submitEvidence("startup_usable");
     },
     { before: () => ready.cancel(), pty, bridge, terminal, after: () => transcriptWatcher.stop() },

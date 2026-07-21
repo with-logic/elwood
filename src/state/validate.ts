@@ -8,7 +8,8 @@ import { allStatuses, type ElwoodSessionStatus } from "../core/status-categories
 import type { TerminalSize } from "../core/types.ts";
 import { safeSessionDir } from "./files.ts";
 import type { SessionRecord } from "./store.ts";
-import { isRecord, isString, isStringArray } from "./validate-predicates.ts";
+import { isLaunchPosture } from "./validate-posture.ts";
+import { isRecord, isString } from "./validate-predicates.ts";
 import { isWarningArray } from "./validate-warnings.ts";
 
 export function validateSessionRecord(
@@ -24,7 +25,8 @@ export function validateSessionRecord(
   if (!(isString(value["cwd"]) && isRecord(value["metadata"]))) return null;
   if (!(isString(value["createdAt"]) && isString(value["updatedAt"]))) return null;
   if (!(isStatus(value["status"]) && isWarningArray(value["warnings"]))) return null;
-  if (!(isAdapterState(value["claude"]) && isAdapterState(value["codex"]))) return null;
+  if (!(isAdapterState(value["claude"], "claude") && isAdapterState(value["codex"], "codex")))
+    return null;
   if (!isTerminalSize(value["terminalSize"])) return null;
   if (!hasExpectedPaths(value["paths"], stateDir, id, adapter)) return null;
   return value as SessionRecord;
@@ -49,29 +51,14 @@ function hasExpectedPaths(
   );
 }
 
-function isAdapterState(value: unknown): boolean {
+// C-STATE-13: a persisted launch posture must round-trip; unknown shapes and
+// out-of-union policy values invalidate the record rather than resuming with a
+// corrupted policy. Each adapter's posture is validated against its own union
+// via isLaunchPosture in validate-posture.ts.
+function isAdapterState(value: unknown, adapter: "claude" | "codex"): boolean {
   if (!isRecord(value)) return false;
   if (!(optionalString(value["resumeId"]) && optionalString(value["name"]))) return false;
-  return isLaunchPosture(value["launch"]);
-}
-
-// C-STATE-13: a persisted launch posture must round-trip; unknown shapes
-// invalidate the record rather than resuming with corrupted policy.
-function isLaunchPosture(value: unknown): boolean {
-  if (value === undefined) return true;
-  if (!isRecord(value)) return false;
-  return (
-    optionalString(value["permissionMode"]) &&
-    optionalString(value["sandbox"]) &&
-    optionalString(value["approvalPolicy"]) &&
-    optionalStringArray(value["allowedTools"]) &&
-    optionalStringArray(value["disallowedTools"]) &&
-    optionalStringArray(value["tools"])
-  );
-}
-
-function optionalStringArray(value: unknown): boolean {
-  return value === undefined || isStringArray(value);
+  return isLaunchPosture(value["launch"], adapter);
 }
 
 function isTerminalSize(value: unknown): value is TerminalSize | undefined {

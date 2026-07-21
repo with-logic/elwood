@@ -15,6 +15,7 @@ import { CLIPBOARD_RESTORE_FAILED_MESSAGE } from "../state/validate-warnings.ts"
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { attachCodexImages } from "./attach-images.ts";
 import { codexConfigPath, restoreCodexConfig, snapshotCodexConfig } from "./config-restore.ts";
+import { runCodexModelSwitch } from "./config-transaction.ts";
 import { codexModelPicker } from "./model-picker.ts";
 import type { CodexHookBridge } from "./session-bridge.ts";
 import { stopCodexRuntime } from "./session-cleanup.ts";
@@ -56,9 +57,21 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
   // The Codex CLI persists picker selections into user config.toml; restore
   // the user's prior default after the switch (C-CODEX-14). The live session
   // keeps the switched model because Codex reads its config at launch.
-  override async setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
-    const snapshot = snapshotCodexConfig();
-    await super.setModel(id, options);
+  //
+  // The whole transaction runs under a PROCESS-WIDE config lock (see
+  // config-transaction.ts) so two sessions switching at once cannot interleave
+  // snapshot/restore on the shared file and persist the wrong model, and the
+  // restore still fires when the picker automation rejects AFTER Codex wrote
+  // config.toml — otherwise a late `waitForScreen` timeout would leave the
+  // user's global default changed (C-CODEX-14).
+  override setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
+    return runCodexModelSwitch({
+      snapshot: snapshotCodexConfig,
+      apply: () => super.setModel(id, options),
+      restore: (snapshot) => this.restoreCodexDefault(snapshot),
+    });
+  }
+  private restoreCodexDefault(snapshot: string | undefined): void {
     if (restoreCodexConfig(snapshot) !== "skipped") return;
     this.recordWarnings([
       {

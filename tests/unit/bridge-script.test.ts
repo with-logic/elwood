@@ -1,0 +1,62 @@
+/**
+ * Real child bridge-script fail-open behavior, exercised as a subprocess.
+ * Covers PRD §6.3 (request byte cap / fail-open on overflow in the child).
+ */
+
+import { spawn } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, test } from "vitest";
+import { MAX_HOOK_REQUEST_BYTES } from "../../src/bridge/limits.ts";
+import { bridgeScriptSource } from "../../src/bridge/script.ts";
+import { tempDirForUnit } from "./helpers.ts";
+
+type Ran = { readonly status: number | null; readonly stdout: string; readonly stderr: string };
+
+function runScript(stdin: string, connectible: boolean): Promise<Ran> {
+  const dir = tempDirForUnit();
+  const scriptPath = join(dir, "hook-bridge.mjs");
+  // A socket path that no server is bound to: if the child ever reaches the
+  // connect step it errors and still exits 0. The overflow guard, by contrast,
+  // must exit BEFORE connecting, proving the cap short-circuits reads.
+  const socketPath = connectible ? join(dir, "unbound.sock") : join(dir, "missing", "x.sock");
+  writeFileSync(scriptPath, bridgeScriptSource(socketPath, "token"));
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [scriptPath], {
+      env: { ...process.env, ELWOOD_SESSION_ID: "sess" },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (c) => {
+      stdout += c;
+    });
+    child.stderr.on("data", (c) => {
+      stderr += c;
+    });
+    child.on("error", reject);
+    child.on("exit", (status) => resolve({ status, stdout, stderr }));
+    child.stdin.end(stdin);
+  });
+}
+
+describe("child bridge script fail-open", () => {
+  test("C-HOOK-16 oversized stdin fails open (exit 0, no output) without connecting", async () => {
+    const oversized = "z".repeat(MAX_HOOK_REQUEST_BYTES + 1024);
+    const result = await runScript(oversized, false);
+    // Exits open even though the socket dir does not exist: the read cap fires
+    // before the connection is ever attempted.
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+  }, 20_000);
+
+  test("C-HOOK-16 a within-cap request connects and fails open on connect error", async () => {
+    const result = await runScript(JSON.stringify({ hook_event_name: "Stop" }), true);
+    // No server is listening, so the connection errors; the child still exits 0.
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+  }, 20_000);
+});

@@ -1,8 +1,4 @@
-/**
- * In-memory Claude session object exposed to callers.
- * Implements PRD §4.1, §5, §6, §7, and §8.
- */
-
+/** In-memory Claude session object exposed to callers. Implements PRD §4.1, §5, §6, §7, §8. */
 import type { ElwoodActivityEvent } from "../core/activity.ts";
 import { sessionWaitForActivity, sessionWaitForStatus } from "../core/session-wait.ts";
 import { recordSessionWarnings } from "../core/session-warnings.ts";
@@ -19,6 +15,7 @@ import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import { AgentSessionBase } from "../runtime/session-base.ts";
 import { terminalStatuses } from "../runtime/session-status.ts";
+import { runCleanupSteps } from "../runtime/teardown.ts";
 import { type SessionRecord, updateSessionResumeId, updateSessionStatus } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { attachClaudeImages } from "./attach-images.ts";
@@ -193,8 +190,8 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     const deps = { controlQueue: this.controlQueue, terminal: this.terminal, blocked, onReady };
     return this.inSession(() => runSessionLogin(deps, options));
   }
-  protected async stopRuntime(): Promise<void> {
-    await this.bridge.stop();
-    this.terminal.dispose();
+  protected stopRuntime(): Promise<void> {
+    // Dispose the terminal even if the bridge stop rejects — no first-failure leak (§9.4).
+    return runCleanupSteps([() => this.bridge.stop(), () => this.terminal.dispose()]);
   }
 }

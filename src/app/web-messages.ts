@@ -12,7 +12,8 @@ export type ClientMessage =
       readonly agent?: AgentKind;
       readonly cwd: string;
       readonly stateDir?: string;
-      readonly resumeSessionId?: string;
+      /** Elwood session id to resume (the public id), not an adapter `resumeId`. */
+      readonly elwoodSessionId?: string;
       readonly cols: number;
       readonly rows: number;
     }
@@ -22,6 +23,9 @@ export type ClientMessage =
   | { readonly type: "stop" }
   | { readonly type: "kill" }
   | { readonly type: "teardown" };
+
+/** The message `type` discriminants the browser client may send. */
+export type ClientMessageType = ClientMessage["type"];
 
 export type DebugEventLevel = "info" | "success" | "warn" | "error";
 export type DebugEventKind =
@@ -55,13 +59,7 @@ export type ServerMessage =
   | { readonly type: "status"; readonly status: string }
   | { readonly type: "error"; readonly message: string };
 
-export function parseClientMessage(raw: string): ClientMessage {
-  const parsed = JSON.parse(raw) as ClientMessage;
-  if (!parsed || typeof parsed !== "object" || typeof parsed.type !== "string") {
-    throw new Error("Invalid client message.");
-  }
-  return parsed;
-}
+export { parseClientMessage } from "./web-parse.ts";
 
 export function sizeFrom(input: { readonly cols: number; readonly rows: number }): TerminalSize {
   return { cols: input.cols, rows: input.rows };

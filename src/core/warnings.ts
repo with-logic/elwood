@@ -83,7 +83,8 @@ export type ElwoodWarningEvent =
     }
   | {
       readonly elwoodSessionId: string;
-      readonly agent: "claude";
+      // Shared: either adapter's bounded transcript cursor can drop committed data.
+      readonly agent: "claude" | "codex";
       readonly source: "terminal";
       readonly code: "transcript_records_dropped";
       readonly severity: "warning";
@@ -100,7 +101,7 @@ export type ElwoodWarningEvent =
     }
   | {
       readonly elwoodSessionId: string;
-      readonly agent: "claude";
+      readonly agent: "claude" | "codex";
       readonly source: "terminal";
       readonly code: "transcript_read_error";
       readonly severity: "warning";

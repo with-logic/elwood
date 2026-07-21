@@ -153,7 +153,10 @@ describe("CodexSession hook handling", () => {
       turn_id: "turn-1",
       trigger: "manual",
     });
-    expect(errors).toEqual(["handler_error:handler exploded", "timeout:timeout"]);
+    expect(errors).toEqual([
+      "handler_error:handler exploded",
+      "timeout:Hook handler timed out after 1 ms.",
+    ]);
   });
 });
 

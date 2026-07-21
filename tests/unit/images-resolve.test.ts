@@ -6,7 +6,7 @@
 
 import { chmodSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type { ElwoodError } from "../../src/core/errors.ts";
 import { validateImages } from "../../src/core/images/resolve.ts";
 import type { ImageInput } from "../../src/core/images/types.ts";
@@ -76,14 +76,20 @@ describe("validateImages (C-API-44)", () => {
   });
 
   test("C-API-44 rejects an oversized byte input WITHOUT cloning it", async () => {
-    // A get on `.length` of the caller's buffer is fine; the guard must reject
-    // before `Uint8Array.from` clones the whole thing (OOM guard). We assert only
-    // the reject; the no-clone property is a code invariant checked by review.
+    // The size guard MUST reject before `Uint8Array.from` duplicates the buffer
+    // (OOM guard): moving the clone before the guard would keep this green while
+    // reintroducing the peak-allocation risk, so assert `from` is never called.
     const big = new Uint8Array(imageLimits.maxBytesPerImage + 1);
     big[0] = 1;
-    expect(await imageCode(() => validateImages([{ data: big, format: "png" }]))).toBe(
-      "invalid_image",
-    );
+    const fromSpy = vi.spyOn(Uint8Array, "from");
+    try {
+      expect(await imageCode(() => validateImages([{ data: big, format: "png" }]))).toBe(
+        "invalid_image",
+      );
+      expect(fromSpy).not.toHaveBeenCalled();
+    } finally {
+      fromSpy.mockRestore();
+    }
   });
 
   test("C-API-44 rejects a prototype-key format via own-key check", async () => {
@@ -171,5 +177,24 @@ describe("validateImages (C-API-44)", () => {
         { data: half, format: "png" },
       ]),
     ).rejects.toThrow(/total/);
+  });
+
+  test("C-API-44 PATH images share the aggregate total (no byte-input bypass)", async () => {
+    const dir = tempDirForUnit(); // three ~25MiB files > the shared 50MiB ceiling
+    const big = Buffer.alloc(imageLimits.maxBytesPerImage);
+    const paths = ["a.png", "b.png", "c.png"].map((name) => {
+      const file = join(dir, name);
+      writeFileSync(file, big);
+      return { path: file };
+    });
+    await expect(validateImages(paths)).rejects.toThrow(/total/);
+  });
+
+  test("C-API-44 rejects an entry with an extra own key on either variant", async () => {
+    const bytesExtra = { data: PNG, format: "png", extra: 1 } as never;
+    expect(await imageCode(() => validateImages([bytesExtra]))).toBe("invalid_image");
+    expect(await imageCode(() => validateImages([{ path: "/x.png", extra: 1 } as never]))).toBe(
+      "invalid_image",
+    );
   });
 });

@@ -125,12 +125,19 @@ export class SessionStatusEngine {
   }
 
   private apply(to: ElwoodSessionStatus): void {
-    this.current = to;
     if (to === "running") {
+      // Turn start: suspend queue readiness (own the queue before the write), then
+      // persist the `running` transition. `current` commits ONLY after the durable
+      // write succeeds, so a persist failure leaves the engine at its prior status
+      // (no wedge) and propagates to the caller, which rolls the queue back and
+      // submits no text. onStatus persists first then isolates listener throws, so a
+      // throw here is a genuine persist failure. Observable order is unchanged.
       this.io.queueRunning();
       this.io.onStatus(to);
+      this.current = to;
       return;
     }
+    this.current = to;
     if (to === "ready") {
       // Status lands before the queue drains so drained sends observe "ready".
       this.io.onStatus(to);
@@ -146,7 +153,14 @@ export class SessionStatusEngine {
       return;
     }
     this.io.queueClose();
-    this.io.onStatus(to);
-    if (to === "exited") this.io.cleanup();
+    // On an unsolicited exit, runtime cleanup must run even if persisting or
+    // emitting the `exited` status throws — otherwise a throwing status listener
+    // would leak the bridge/watcher/terminal (PRD §9.4). `cleanup()` is itself
+    // failure-isolated (it floats a retryable promise), so it never re-throws here.
+    try {
+      this.io.onStatus(to);
+    } finally {
+      if (to === "exited") this.io.cleanup();
+    }
   }
 }

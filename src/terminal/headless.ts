@@ -45,7 +45,14 @@ export function attachPtyTerminal(
 ): ElwoodTerminal {
   const terminal = new HeadlessTerminal(size, (input) => pty.write(input));
   const unsubscribe = pty.onData((data) => {
-    void terminal.writeOutput(data).then(() => onRendered(data, terminal));
+    // Own the whole continuation: a throwing public `terminal:data` listener reached
+    // via onRendered, or a render failure, must not surface as an unhandled rejection
+    // on normal PTY output. There is no caller to reject to on the render path, so the
+    // failure is swallowed here (the write itself already can't poison the queue).
+    void terminal
+      .writeOutput(data)
+      .then(() => onRendered(data, terminal))
+      .catch(() => undefined);
   });
   terminal.onDispose(unsubscribe);
   return terminal;
@@ -91,7 +98,11 @@ class HeadlessTerminal implements ElwoodTerminal {
     const write = this.writeQueue.then(
       () => new Promise<void>((resolve) => this.xterm.write(data, resolve)),
     );
-    this.writeQueue = write;
+    // Chain the NEXT write off a never-rejecting tail so a single failed write
+    // (e.g. a synchronous xterm.write throw) cannot poison every subsequent write
+    // by leaving `writeQueue` permanently rejected. The caller still sees the real
+    // result via the returned `write` promise.
+    this.writeQueue = write.catch(() => undefined);
     return write;
   }
 

@@ -56,7 +56,7 @@ describe("app adapter runtime", () => {
         {
           agent: "codex",
           cwd: "/tmp/project",
-          resumeSessionId: "s1",
+          elwoodSessionId: "s1",
           size: { cols: 120, rows: 40 },
           hooks: {},
         },

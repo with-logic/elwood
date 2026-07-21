@@ -1,18 +1,29 @@
 /**
  * Generates the standalone hook bridge script invoked by Claude hooks.
- * Implements PRD §6.2.
+ * Implements PRD §6.2 and §6.3 (request byte cap / fail-open on overflow).
  */
+
+import { MAX_HOOK_REQUEST_BYTES } from "./limits.ts";
 
 export function bridgeScriptSource(socketPath: string, token: string): string {
   return `import net from "node:net";
 
 const socketPath = ${JSON.stringify(socketPath)};
 const token = ${JSON.stringify(token)};
+const maxRequestBytes = ${MAX_HOOK_REQUEST_BYTES};
 const elwoodSessionId = process.env.ELWOOD_SESSION_ID ?? "";
 
+// Cap raw stdin bytes: a hook payload carries arbitrary tool output, so read no
+// more than the shared ceiling and fail open (empty decision, exit 0) the moment
+// the envelope would exceed it (PRD §6.3).
 async function readStdin() {
   let data = "";
-  for await (const chunk of process.stdin) data += chunk;
+  let bytes = 0;
+  for await (const chunk of process.stdin) {
+    bytes += chunk.length;
+    if (bytes > maxRequestBytes) process.exit(0);
+    data += chunk;
+  }
   return data;
 }
 

@@ -1,5 +1,5 @@
 /** Shared adapter session behavior: lifecycle, input, command surface. Implements PRD §5.3, §5.7. */
-import { activityFromStatus, type ElwoodAgentKind } from "../core/activity.ts";
+import type { ElwoodAgentKind } from "../core/activity.ts";
 import { ControlQueue } from "../core/control-queue.ts";
 import { toError } from "../core/errors.ts";
 import type { SendOptions } from "../core/images/types.ts";
@@ -12,6 +12,7 @@ import { replayWarningSnapshots } from "../core/warning-replay.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import { type SessionRecord, updateSessionStatus, writeSessionRecord } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
+import { CleanupLatch } from "./cleanup-latch.ts";
 import { notRunningError, type SessionStatusEmitter } from "./session-base-types.ts";
 import { CommandSurface } from "./session-commands.ts";
 import { type AttachDriver, enqueueSubmission, type SubmitKind } from "./session-image-attach.ts";
@@ -20,11 +21,9 @@ import { applyResize, persistHeldResize, restoreHeldResize } from "./session-res
 import { buildShutdownHost, managedShutdown, type ShutdownEvidence } from "./session-shutdown.ts";
 import { terminalStatuses } from "./session-status.ts";
 import { ShutdownCoordinator } from "./shutdown-coordinator.ts";
-import {
-  SessionStatusEngine,
-  type StatusDecision,
-  type StatusEvidenceKind,
-} from "./status-evidence.ts";
+import { emitStatusEvents } from "./status-emit.ts";
+import type { StatusDecision, StatusEvidenceKind } from "./status-evidence.ts";
+import { SessionStatusEngine } from "./status-evidence.ts";
 
 export abstract class AgentSessionBase {
   protected record: SessionRecord;
@@ -36,7 +35,8 @@ export abstract class AgentSessionBase {
   private readonly commands: CommandSurface;
   private readonly statusEvents: SessionStatusEmitter;
   private readonly terminalReplay: TerminalReplayBuffer;
-  private cleanupPromise: Promise<void> | undefined;
+  // Coalesces cleanup, keeping a FAILED attempt retryable (§9.4); declared before statusEngine.
+  private readonly cleanupLatch = new CleanupLatch(() => this.stopRuntime());
   private pendingShutdown: ShutdownEvidence | undefined;
   private everReady = false; // gates `interrupt` off the startup `running` bootstrap
   private readonly shutdownCoordinator = new ShutdownCoordinator(); // join stop/kill/teardown
@@ -57,7 +57,8 @@ export abstract class AgentSessionBase {
     queueReady: () => this.controlQueue.markReady(),
     queueBlocked: () => this.controlQueue.suspendReadiness(),
     queueClose: () => this.controlQueue.close(),
-    cleanup: () => void this.cleanupRuntime(),
+    // Unsolicited exit has no caller: float so a cleanup rejection is owned, not leaked.
+    cleanup: () => this.cleanupLatch.float(),
   });
   protected constructor(
     agent: ElwoodAgentKind,
@@ -104,9 +105,8 @@ export abstract class AgentSessionBase {
   sendGuidance = (message: string, options?: SendOptions) =>
     this.enqueue(message, "guidance", options);
 
-  // Adapter-specific native image attach, run inside the op with resolved paths (C-API-44).
+  /** Adapter-specific native image attach, run inside the op with resolved paths (C-API-44). */
   protected abstract attachImages(paths: readonly string[], signal: AbortSignal): Promise<void>;
-
   private enqueue(input: string, kind: SubmitKind, options?: SendOptions): Promise<void> {
     const driver: AttachDriver = (paths, signal) => this.attachImages(paths, signal);
     return enqueueSubmission(options?.images, driver, (attach) =>
@@ -187,14 +187,14 @@ export abstract class AgentSessionBase {
     this.record = record;
   }
   protected cleanupRuntime(): Promise<void> {
-    this.cleanupPromise ??= this.stopRuntime();
-    return this.cleanupPromise;
+    return this.cleanupLatch.attempt();
   }
   private emitStatus(status: ElwoodSessionStatus): void {
     const id = this.elwoodSessionId;
     this.everReady ||= status === "ready";
+    // Durable persist FIRST (a throw = a real turn-start failure); then deliver events
+    // isolated so a throwing listener can't masquerade as a persist failure (§5.3/§6.3).
     this.persist(updateSessionStatus(this.record, status));
-    this.statusEvents.emit("status", { elwoodSessionId: id, status });
-    this.statusEvents.emit("activity", activityFromStatus(this.agent, id, status));
+    emitStatusEvents(this.statusEvents, this.agent, id, status);
   }
 }

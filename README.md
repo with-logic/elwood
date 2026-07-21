@@ -337,8 +337,11 @@ session or the pre-readiness startup window — it resolves without touching the
 terminal. Concurrent calls coalesce into a single Escape. On a session that has
 already terminated it rejects with `session_not_running`, like the other input
 and command methods (`sendPrompt`, `sendMessage`, `sendGuidance`, `sendKeys`,
-`resize`, `compact`, `listModels`, `setModel`); `stop`/`kill` are post-exit
-no-ops and `teardown` is idempotent.
+`resize`, `compact`, `listModels`, `setModel`). After exit, `stop`/`kill` do not
+re-signal the PTY (node-pty does not replay exit and the pid may be recycled),
+but they are not no-ops: they still confirm or retry the leader's process-group
+reap and may reject with `termination_failed` if a survivor cannot be reaped.
+`teardown` is idempotent and likewise retries a previously failed reap.
 
 `compact` types the adapter's `/compact` command and resolves when the adapter
 reports completion through its `PostCompact` hook.
@@ -490,10 +493,13 @@ To resume a session across parent-app restarts, persist exactly two things:
 the `elwoodSessionId` and the `stateDir` it lives in (keep that directory
 intact). Everything else Elwood needs is in the session record. Notes:
 
-- Resume does **not** replay launch policy: `model`, `permissionMode`,
-  allowed/disallowed tools, and config overrides are not persisted and must be
-  re-specified if you want them (they are accepted as resume options where
-  supported).
+- Resume **defaults the launch posture from the persisted record**:
+  `permissionMode`, allowed/disallowed tools, and `tools` (Claude) and `sandbox`
+  and `approvalPolicy` (Codex) are persisted at start and re-applied on resume,
+  so tool/privilege restrictions cannot silently loosen. Explicit resume options
+  override the persisted posture field by field, and the effective posture is
+  re-persisted. Only `model` and caller config overrides are non-persisted and
+  must be re-specified per call.
 - `resume*` rejects with `resume_unavailable` when the agent CLI never
   reported its internal conversation id (for Claude, a conversation is only
   resumable after at least one completed turn), `state_not_found` when no

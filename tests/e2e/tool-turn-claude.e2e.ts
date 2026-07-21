@@ -90,14 +90,18 @@ test("C-E2E-02 real Claude turn queues early messages and hooks real tools", {
     assert.ok(pre.input && typeof pre.input === "object");
     assert.ok(post && post.name.length > 0);
     assert.notEqual(post.response, undefined);
-    // C-API-30: real tool io is surfaced on the unified activity stream.
-    const acts = observed.activities as readonly { toolInput?: string; toolOutput?: string }[];
-    assert.ok(
-      acts.some((a) => typeof a.toolInput === "string"),
+    // C-API-30: real tool io is surfaced on the unified activity stream. These
+    // fields come from the ASYNC transcript watcher, which ingests after the
+    // PostToolUse hook fires, so wait for the transcript-sourced activity rather
+    // than asserting synchronously on a hook that has only just been observed.
+    const acts = () =>
+      observed.activities as readonly { toolInput?: string; toolOutput?: string }[];
+    await waitFor(
+      () => (acts().some((a) => typeof a.toolInput === "string") ? true : undefined),
       "activity carries toolInput",
     );
-    assert.ok(
-      acts.some((a) => typeof a.toolOutput === "string"),
+    await waitFor(
+      () => (acts().some((a) => typeof a.toolOutput === "string") ? true : undefined),
       "activity carries toolOutput",
     );
     await waitFor(() => (stops >= 1 ? true : undefined), "first Claude Stop");
