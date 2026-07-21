@@ -7,7 +7,11 @@
 
 export { summarizeTranscriptItem, toolOutputText } from "./transcript/summary.ts";
 export type { CodexTranscriptEvent, CodexTranscriptSummary } from "./transcript/types.ts";
-export { codexDropWarning, codexReadErrorWarning } from "./transcript/warnings.ts";
+export {
+  codexDropWarning,
+  codexPollStoppedWarning,
+  codexReadErrorWarning,
+} from "./transcript/warnings.ts";
 export type {
   CodexDropNotice,
   CodexReadErrorNotice,

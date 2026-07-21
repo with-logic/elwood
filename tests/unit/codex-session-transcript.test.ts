@@ -8,23 +8,30 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 // Capture the notices the factory hands the watcher, so tests can fire them.
 type Notice = ((n: unknown) => void) | undefined;
-const captured: { onDrop: Notice; onReadError: Notice } = {
+const captured: { onDrop: Notice; onReadError: Notice; onPollError: Notice } = {
   onDrop: undefined,
   onReadError: undefined,
+  onPollError: undefined,
 };
 vi.mock("../../src/codex/transcript.ts", () => ({
   CodexTranscriptWatcher: class {
     constructor(
       _id: string,
       _emit: unknown,
-      notices: { onDrop?: (n: unknown) => void; onReadError?: (n: unknown) => void } = {},
+      notices: {
+        onDrop?: (n: unknown) => void;
+        onReadError?: (n: unknown) => void;
+        onPollError?: (n: unknown) => void;
+      } = {},
     ) {
       captured.onDrop = notices.onDrop;
       captured.onReadError = notices.onReadError;
+      captured.onPollError = notices.onPollError;
     }
   },
   codexDropWarning: (n: { count: number }) => ({ code: "transcript_records_dropped", ...n }),
   codexReadErrorWarning: (n: { count: number }) => ({ code: "transcript_read_error", ...n }),
+  codexPollStoppedWarning: (_id: string, _e: unknown) => ({ code: "transcript_poll_stopped" }),
 }));
 
 const { createCodexTranscriptWatcher, codexTranscriptSeedFromWarnings } = await import(
@@ -40,6 +47,7 @@ function emitter() {
 beforeEach(() => {
   captured.onDrop = undefined;
   captured.onReadError = undefined;
+  captured.onPollError = undefined;
 });
 
 const dropNotice = { elwoodSessionId: "s1", count: 1 } as never;
@@ -52,6 +60,14 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
     createCodexTranscriptWatcher("s1", emitter(), () => sink as never);
     captured.onDrop?.(dropNotice);
     expect(recorded).toHaveLength(1);
+  });
+
+  test("§9.4 routes a poll-stopped diagnostic to the sink", () => {
+    const recorded: Array<{ code?: string }> = [];
+    const sink: Sink = { recordWarnings: (w) => recorded.push(...(w as { code?: string }[])) };
+    createCodexTranscriptWatcher("s1", emitter(), () => sink as never);
+    captured.onPollError?.(new Error("boom"));
+    expect(recorded).toEqual([{ code: "transcript_poll_stopped" }]);
   });
 
   test("§5.7 buffers a notice seen before the sink exists, then flushes it with the next", () => {

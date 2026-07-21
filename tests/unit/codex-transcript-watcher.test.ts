@@ -97,15 +97,18 @@ describe("Codex transcript watcher (bounded)", () => {
     const events: CodexTranscriptEvent[] = [];
     const watcher = new CodexTranscriptWatcher("s", (e) => events.push(e));
     watcher.observe(path);
-    // > the 16-chunk per-scan budget of newline-terminated data: one scan cannot
-    // consume it all; a second scan drains the rest.
-    appendFileSync(path, `${JSON.stringify({ type: "message" })}\n`);
-    appendFileSync(path, `${"m".repeat(256 * 1024)}\n`.repeat(17));
+    // 18 JSON records ≈ one 256 KiB chunk each of the 16-chunk budget: scan 1 can't
+    // drain all 18 (a budget regression would, failing the < 18 assertion below).
+    const big = JSON.stringify({ type: "message", pad: "m".repeat(256 * 1024 - 40) });
+    for (let i = 0; i < 18; i += 1) appendFileSync(path, `${big}\n`);
     watcher.scan();
     const afterFirst = events.length;
+    expect(afterFirst).toBeGreaterThan(0);
+    expect(afterFirst).toBeLessThan(18); // budget bounded the first pass — NOT all 18
     watcher.scan();
     watcher.finish();
-    expect(events.length).toBeGreaterThanOrEqual(afterFirst);
+    expect(events.length).toBeGreaterThan(afterFirst); // the second pass made progress
+    expect(events.length).toBe(18); // everything eventually drained
   });
 
   test("C-API-12 a giant no-newline record surfaces an oversized drop, no event", () => {

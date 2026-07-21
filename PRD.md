@@ -1334,7 +1334,7 @@ type ElwoodWarningEvent =
     }
   | {
       readonly elwoodSessionId: string;
-      readonly agent: "claude";
+      readonly agent: "claude" | "codex";
       readonly source: "terminal";
       readonly code: "transcript_poll_stopped";
       readonly severity: "warning";
@@ -1563,7 +1563,14 @@ the SAME content-free `transcript_records_dropped` warning as Claude's (now
 `agent: "codex" | "claude"`), carrying only a loss-incident count, a byte
 magnitude, the bounded `cause` (`"unparseable"`, `"oversized"`, or
 `"unread_backlog"`), and the transcript path — never raw transcript content — with
-the same de-duplication and per-batch persistence semantics described above.
+the same de-duplication and per-batch persistence semantics described above. A
+scan that throws (for example a downstream activity listener that raises) MUST be
+contained rather than escaping the poll timer as an uncaught exception: the Codex
+watcher stops itself and surfaces the SAME content-free `transcript_poll_stopped`
+warning as Claude's (now `agent: "codex" | "claude"`), carrying only an
+allowlisted error `reason` and the `phase`. A resumed Codex session continues its
+running drop/read-error totals from the persisted warnings rather than restarting
+those counts at 0.
 
 As with Claude, the Codex transcript is the single source of truth for committed
 `assistant_message`, `tool_call`, and `tool_result` activity. The Codex `Stop`,
@@ -2367,6 +2374,7 @@ Each criterion has:
 | C-CODEX-17 | §5.4 §5.5 §5.7 | A Codex startup prompt Elwood auto-answers (directory/hook trust, `update` skip) is marked settled and emits its `startup_prompt` activity only after its PTY `sendInput` write fulfills. A rejected write emits NO `startup_prompt` activity, leaves the prompt un-settled so a later frame re-attempts it, and surfaces a bounded, content-free `startup_prompt_write_failed` warning carrying only the prompt label (mirrors C-CLAUDE-16). |
 | C-CODEX-18 | §5.4 §7A.4 | A committed Codex `reasoning` transcript item surfaces its human-readable text on the `reasoning` activity's `text` field: the `text` of every `summary[]` entry of type `summary_text`, or — when the reasoning is un-summarized — every `content[]` entry of type `reasoning_text`, joined by newlines. The always-present `encrypted_content` blob is never readable and is never surfaced. When neither carries prose (the common case with reasoning summaries disabled), the activity carries no `text`, exactly as a bare reasoning marker. |
 | C-CODEX-19 | §5.4 §7A.4 | A committed Codex shell/exec transcript item surfaces the command it ran as `tool_call` activity with its `toolInput`, and its output as `tool_result` activity with its `toolOutput`, across every representation the CLI emits: a `custom_tool_call` (the modern `exec` tool) whose command is a freeform string in `input`, and a `function_call` (`shell`/`exec_command`) whose command is a JSON string in `arguments` — `toolInput` is whichever of `input`/`arguments` is present. A `custom_tool_call_output` is classified as `tool_result` (not `other`), and a result's `output` — a plain string OR an array of `{ type: "input_text", text }` entries — is surfaced as `toolOutput` with the array entries' text joined, so the command and its output are never dropped to a content-free `other` row. |
+| C-CODEX-20 | §5.4 | The Codex transcript reader is BOUNDED like Claude's: it reads in fixed-size chunks, discards any un-terminated record past a max-pending ceiling as an `"oversized"` drop, streams a large backlog across poll ticks under a per-scan chunk budget, and at PTY-exit drains only within a bounded chunk budget and wall-clock slice — accounting leftover bytes as an `"unread_backlog"` drop — so a hundreds-of-MiB transcript never OOMs or blocks the event loop. Lost data is surfaced as the content-free `transcript_records_dropped` warning and a scan that throws is contained as `transcript_poll_stopped` (both `agent: "codex" | "claude"`); a resumed session continues its running drop/read-error totals from persisted warnings rather than restarting at 0. `finish()` is idempotent and terminal — a late `observe()` never restarts polling past `terminal:exit`. |
 
 #### C-HOOK: Hook Bridge Coverage And Semantics (§6)
 

@@ -14,7 +14,12 @@ import type { ElwoodWarningEvent } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { CodexEventMap } from "./session-types.ts";
 import type { CodexTranscriptSeed } from "./transcript/watcher-config.ts";
-import { CodexTranscriptWatcher, codexDropWarning, codexReadErrorWarning } from "./transcript.ts";
+import {
+  CodexTranscriptWatcher,
+  codexDropWarning,
+  codexPollStoppedWarning,
+  codexReadErrorWarning,
+} from "./transcript.ts";
 
 /** The session-side sink that persists, de-duplicates, and replays warnings. */
 export type CodexWarningSink = {
@@ -85,6 +90,7 @@ export function createCodexTranscriptWatcher(
     {
       onDrop: (notice) => route(codexDropWarning(notice)),
       onReadError: (notice) => route(codexReadErrorWarning(notice)),
+      onPollError: (error) => route(codexPollStoppedWarning(elwoodSessionId, error)),
     },
     seed,
   );

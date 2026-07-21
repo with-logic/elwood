@@ -114,7 +114,7 @@ export type ElwoodWarningEvent =
     }
   | {
       readonly elwoodSessionId: string;
-      readonly agent: "claude";
+      readonly agent: "claude" | "codex";
       readonly source: "terminal";
       readonly code: "transcript_poll_stopped";
       readonly severity: "warning";

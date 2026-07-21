@@ -26,9 +26,12 @@ const scanChunksPerScan = 16;
 export class CodexTranscriptWatcher {
   private cursor: CodexTranscriptCursor | undefined;
   private interval: ReturnType<typeof setInterval> | undefined;
+  // A permanent terminal latch: once finished, no scan/flush/observe restarts it.
+  private finished = false;
   private readonly guard: CodexTranscriptFsGuard;
   private readonly drops: CodexDropTracker;
   private readonly lines: CodexLineEmitter;
+  private readonly onPollError: ((error: unknown) => void) | undefined;
   // ONE budget shared across every flush() for a watcher's whole lifetime.
   private readonly terminalBudget: ChunkBudget = newTerminalBudget();
   private readonly scanSliceMs: number | undefined;
@@ -47,24 +50,37 @@ export class CodexTranscriptWatcher {
     );
     this.guard = new CodexTranscriptFsGuard(readErrors);
     this.lines = new CodexLineEmitter(elwoodSessionId, emit, this.drops);
+    this.onPollError = notices.onPollError;
     this.scanSliceMs = notices.scanIntervalMs;
   }
 
   // Begin watching `path`, baselining at its CURRENT end so history is NOT replayed.
-  // No-op if already watching this exact path; a switch to a new path drops the old.
+  // No-op if already watching this exact path or once finished (never restart polling
+  // past a terminal:exit). A switch to a new path drops the old.
   observe(path: string): void {
-    if (this.cursor?.path === path) return;
+    if (this.finished || this.cursor?.path === path) return;
     this.stop();
     this.cursor = this.guard.read(path, () => new CodexTranscriptCursor(path));
     if (!this.cursor) return;
-    this.interval = setInterval(() => this.scan(), this.scanSliceMs ?? scanMs);
+    // A scan() throw (a warning-state write or a throwing drop/activity listener) must
+    // not escape the timer as an uncaught exception — contain it, stop, and route a
+    // bounded diagnostic (non-throwing recovery), mirroring Claude's poll recovery.
+    this.interval = setInterval(() => this.runScan(), this.scanSliceMs ?? scanMs);
     this.interval.unref?.();
+  }
+
+  private runScan(): void {
+    try {
+      this.scan();
+    } catch (error) {
+      this.recoverFromPollError(error);
+    }
   }
 
   // One bounded scan pass: read up to a per-pass chunk budget of new committed bytes
   // (a large delta streams across ticks), emit complete lines, retain the partial.
   scan(): void {
-    if (!this.cursor) return;
+    if (this.finished || !this.cursor) return;
     const budget = { chunks: scanChunksPerScan };
     while (budget.chunks > 0) {
       budget.chunks -= 1;
@@ -78,20 +94,42 @@ export class CodexTranscriptWatcher {
 
   // Bounded terminal flush: drain to EOF against the SHARED terminal budget and a
   // wall-clock slice, dropping any leftover backlog content-free (never an unbounded
-  // synchronous loop), then flush the final partial line.
+  // synchronous loop), then flush the final partial line. No-op once finished so a
+  // second finish() (PTY-exit path + runtime cleanup) cannot re-drain the backlog.
   flush(): void {
-    if (!this.cursor) return;
+    if (this.finished || !this.cursor) return;
     drainToBudget(this.drainContext(), this.cursor, this.terminalBudget);
   }
 
+  // Flush trailing partials, then permanently stop. Idempotent (`finished` gates a
+  // second call) and terminal; `stop()` runs in `finally` so a throwing drain still
+  // clears the timer (no leaked interval).
   finish(): void {
-    this.flush();
-    this.stop();
+    if (this.finished) return;
+    try {
+      this.flush();
+    } finally {
+      this.finished = true;
+      this.stop();
+    }
   }
 
   stop(): void {
     if (this.interval) clearInterval(this.interval);
     this.interval = undefined;
+  }
+
+  // Non-throwing recovery for a failed scan: finish() and the diagnostic can each
+  // throw a listener error (which on the timer path would terminate the host), so
+  // each is contained. finish() already clears the timer in its own `finally`, so a
+  // finish() throw here is simply swallowed — the interval is gone regardless.
+  private recoverFromPollError(error: unknown): void {
+    try {
+      this.finish();
+    } catch {} // finish()'s finally already ran stop(); a drain throw is contained here
+    try {
+      this.onPollError?.(error);
+    } catch {} // a diagnostic listener bug must not resurrect the failure
   }
 
   private drainContext(): DrainContext {

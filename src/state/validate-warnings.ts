@@ -102,9 +102,9 @@ const warningValidators = {
     isString(value["lastErrorCode"]) &&
     isString(value["transcriptPath"]),
   // `reason` is validated against the SAME allowlist the producer draws from, so a
-  // non-allowlisted reason cannot round-trip. Poll failures are claude-only.
+  // non-allowlisted reason cannot round-trip. Both adapters can stop a poll.
   transcript_poll_stopped: (value) =>
-    claudeTerminalBase(value) && isPollErrorReason(value["reason"]) && isPollPhase(value["phase"]),
+    sharedTerminalBase(value) && isPollErrorReason(value["reason"]) && isPollPhase(value["phase"]),
   // The `label` is bounded to the failing AGENT's own startup-prompt labels, so a
   // persisted failure round-trips neither a raw prompt nor an off-agent pairing (§5.4).
   startup_prompt_write_failed: (value) =>
@@ -177,11 +177,6 @@ function hasOnlyKeys(value: WarningFields, keys: readonly string[]): boolean {
 /** A persisted PTY leader process-group id: a real pid, so a safe integer > 1. */
 function isProcessGroupId(value: unknown): boolean {
   return Number.isSafeInteger(value) && (value as number) > 1;
-}
-
-/** Fields common to every claude-agent terminal warning: agent/source/session/message/raw. */
-function claudeTerminalBase(value: WarningFields): boolean {
-  return value["agent"] === "claude" && terminalBase(value);
 }
 
 /** A terminal warning on either adapter (shared drop + startup-prompt shapes). */

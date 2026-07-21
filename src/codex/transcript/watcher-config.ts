@@ -11,6 +11,8 @@ import type { CodexDropNotice, CodexReadErrorNotice, DropSeed, ReadErrorSeed } f
 export type CodexTranscriptNotices = {
   readonly onDrop?: (notice: CodexDropNotice) => void;
   readonly onReadError?: (notice: CodexReadErrorNotice) => void;
+  /** A scan threw and the watcher stopped itself; carries the underlying error. */
+  readonly onPollError?: (error: unknown) => void;
   /** Scan cadence override (defaults to the watcher default); tests use a short interval. */
   readonly scanIntervalMs?: number;
 };

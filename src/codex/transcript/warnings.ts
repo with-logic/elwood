@@ -8,6 +8,7 @@
  */
 
 import type { ElwoodWarningEvent } from "../../core/types.ts";
+import { boundedErrorToken, isPollErrorReason } from "../../core/warning-reasons.ts";
 import type { CodexDropNotice, CodexReadErrorNotice } from "./drops.ts";
 
 /** Human-readable phrase for each bounded drop cause (no raw content). */
@@ -49,5 +50,30 @@ export function codexReadErrorWarning(notice: CodexReadErrorNotice): ElwoodWarni
     lastErrorCode: notice.lastErrorCode,
     transcriptPath: notice.path,
     raw: `transcript_read_error count=${notice.errorCount} code=${notice.lastErrorCode}`,
+  };
+}
+
+/**
+ * A scan threw and the watcher stopped itself. The escaping error can be a
+ * downstream activity-listener exception whose message embeds raw transcript
+ * content, so only a bounded, allowlisted error NAME/errno reaches the persisted
+ * `reason` — never `error.message` (content-free guarantee, §5.4/§8.3).
+ */
+export function codexPollStoppedWarning(
+  elwoodSessionId: string,
+  error: unknown,
+): ElwoodWarningEvent {
+  const reason = boundedErrorToken(error, isPollErrorReason);
+  return {
+    elwoodSessionId,
+    agent: "codex",
+    source: "terminal",
+    code: "transcript_poll_stopped",
+    severity: "warning",
+    message:
+      "Codex transcript polling stopped after a scan error; live activity may be incomplete.",
+    reason,
+    phase: "poll",
+    raw: `transcript_poll_stopped reason=${reason} phase=poll`,
   };
 }
