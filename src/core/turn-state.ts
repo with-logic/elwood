@@ -36,11 +36,24 @@ export class TurnStateWatcher {
     this.replaySettling = resumed;
   }
 
-  /** Consumes facts already classified from the frame (see observeRenderedFrame). */
-  observe(facts: ScreenFacts): TurnEdge | undefined {
+  /** Consumes facts already classified from the frame (see observeRenderedFrame).
+   * `evidenceRunning` — the session is running from EVIDENCE (a caller
+   * submission or hook), not from rendered detection — also releases
+   * settling: a real turn began, so the replay is over by definition, and
+   * holding settling through it would swallow that turn's rendered end-edge
+   * (a message drained at resume-readiness can start its spinner before any
+   * quiet composer frame ever paints). */
+  observe(facts: ScreenFacts, evidenceRunning = false): TurnEdge | undefined {
     if (!this.armed) return undefined;
     if (this.replaySettling) {
-      if (facts.composer_visible && !facts.working_visible) {
+      if (evidenceRunning) {
+        // A real turn is ALREADY running from evidence — release settling and
+        // sync into the running state silently (no "started" edge: the status
+        // engine heard the evidence; re-announcing would be a no-op) so this
+        // turn's END edge is observed like any other.
+        this.replaySettling = false;
+        this.running = true;
+      } else if (facts.composer_visible && !facts.working_visible) {
         this.replaySettling = false; // replay settled — watch normally from here
       }
       return undefined;

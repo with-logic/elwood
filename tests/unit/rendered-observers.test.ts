@@ -33,6 +33,7 @@ function harness(block: boolean) {
     emitActivity: (event: ElwoodActivityEvent) => activities.push(event),
   };
   const session = {
+    status: "ready",
     submitEvidence(kind: StatusEvidenceKind): { readonly to: ElwoodSessionStatus | undefined } {
       submitted.push(kind);
       return { to: kind === "blocking_prompt_shown" && block ? "blocked" : "running" };

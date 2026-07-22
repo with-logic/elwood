@@ -17,6 +17,10 @@ import type { ElwoodStatusDecision, ElwoodStatusEvidence } from "./types.ts";
 
 export type RenderedObserverTarget = {
   submitEvidence(kind: ElwoodStatusEvidence): Pick<ElwoodStatusDecision, "to">;
+  /** The session's current lifecycle status — lets the turn watcher release
+   * resume settling when a turn is already running from EVIDENCE (see
+   * TurnStateWatcher.observe). */
+  readonly status: string;
 };
 
 export type RenderedObservers = {
@@ -37,7 +41,7 @@ export function observeRenderedFrame(
   // Classify the frame once; turn and attention watchers share the reading, and the
   // reading is returned so the caller can drive resume-readiness off the same facts.
   const reading = readScreenFacts(observers.table, frame);
-  const turnEdge = observers.turn.observe(reading.facts);
+  const turnEdge = observers.turn.observe(reading.facts, session?.status === "running");
   if (turnEdge === "started") session?.submitEvidence("rendered_turn_started");
   if (turnEdge === "ended") session?.submitEvidence("rendered_turn_ended");
   const attention = observers.attention.observe(reading);

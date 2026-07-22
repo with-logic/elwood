@@ -129,4 +129,14 @@ describe("C-TURN-04 interrupt end banners", () => {
     );
     expect(prose.facts.interrupt_complete_visible).toBe(false);
   });
+
+  test("evidence-running releases resume settling — a queued turn's rendered end-edge is not swallowed", () => {
+    const watcher = new TurnStateWatcher();
+    watcher.arm(true); // resume: settling
+    // A message drained at resume-readiness starts a REAL turn (evidence sets
+    // running) whose spinner paints before any quiet composer frame.
+    expect(watcher.observe(facts(codexScreenFactTable, codexWorking), true)).toBeUndefined();
+    // Settling released by the evidence — the turn's END edge is observed.
+    expect(watcher.observe(facts(codexScreenFactTable, codexIdle), true)).toBe("ended");
+  });
 });
