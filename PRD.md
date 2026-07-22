@@ -518,13 +518,24 @@ placeholder roughly a second before the TUI accepts input, and it is
 byte-for-byte identical to the ready composer, so a message submitted on the
 composer marker alone races Codex's input loop and is silently swallowed
 (observed: the queued persona never reaches `SessionStart`/`UserPromptSubmit`).
-Elwood therefore never treats the rendered composer as a readiness signal. The
-ONLY fallback is a bounded deadline: a continuously animating screen region (for
-example a failing MCP server's retry spinner) or a session whose readiness hook
-never arrives (a missing or failed hook bridge) must not starve readiness
-forever, so initial readiness fires no later than a fixed deadline after the
-first rendered frame even when no hook ever fires. Subsequent turn readiness
-comes from
+Elwood therefore never treats the rendered composer as a readiness signal on a
+COLD START. On RESUME the contract differs: the CLI is reattaching to an
+already-established conversation, so it does not re-fire its pre-input readiness
+hook (`SessionStart` for Codex; observed), and its input loop is live the moment
+the composer paints — a message submitted when the composer marker first appears
+on resume is accepted, not swallowed (verified against the real CLI). So on a
+resumed session Elwood treats the first rendered composer marker as the readiness
+signal, submitting the first queued message on it rather than waiting out the
+deadline; this brings a resumed session to readiness in roughly a second instead
+of the full deadline. (A resumed adapter whose readiness hook DOES re-fire —
+Claude's `InstructionsLoaded` re-fires on resume — still marks ready on that hook,
+whichever comes first.) The bounded deadline remains the ultimate fallback for
+BOTH start and resume: a continuously animating screen region (for example a
+failing MCP server's retry spinner) or a session whose readiness hook never
+arrives (a missing or failed hook bridge) must not starve readiness forever, so
+initial readiness fires no later than a fixed deadline after the first rendered
+frame even when neither a hook nor (on cold start) any composer signal arrives.
+Subsequent turn readiness comes from
 completion signals such as an unblocked `Stop` hook. Queued messages are
 submitted in FIFO order, one message per ready transition, so back-to-back calls
 do not accidentally paste multiple user turns into one active agent prompt. A
@@ -2282,7 +2293,7 @@ Each criterion has:
 | C-API-25 | §5.3 | Promise-returning session methods called after a terminal status reject with `session_not_running` instead of throwing synchronously. |
 | C-API-26 | §5.2 §5.6 | `startOrResumeClaude`/`startOrResumeCodex` resume when possible, fall back to a fresh start only on `state_not_found`, `resume_unavailable`, or `adapter_mismatch`, rethrow all other errors, and report `resumed` in the result. |
 | C-API-27 | §5.7 | `ElwoodAgentSession` is exported and both `ClaudeSession` and `CodexSession` are assignable to it, covering common events, io, commands, and lifecycle. |
-| C-API-28 | §5.3 | Initial readiness fires from the adapter's pre-input readiness hook — Codex's `SessionStart`, Claude's `InstructionsLoaded`; a bounded deadline after the first rendered frame is the only fallback on BOTH adapters, so a missing or failed readiness hook cannot starve queued persona/messages forever. The deadline fires readiness exactly once (idempotent): a hook arriving after the deadline, or a deadline arriving after the hook, releases the first queued message no more than once. The rendered composer is never a readiness signal — the boot-time composer placeholder alone never releases the first queued message. |
+| C-API-28 | §5.3 | Initial readiness fires from the adapter's pre-input readiness hook — Codex's `SessionStart`, Claude's `InstructionsLoaded`. On a COLD start the rendered composer is never a readiness signal — the boot-time composer placeholder alone never releases the first queued message (it is painted before the input loop is live and would be swallowed). On a RESUME the CLI reattaches to an existing conversation without re-firing its pre-input hook and its input loop is live when the composer paints, so a resumed session fires initial readiness on the FIRST rendered composer marker (or on the readiness hook if it re-fires, whichever is first), reaching readiness in ~1s instead of the full deadline. A bounded deadline after the first rendered frame is the ultimate fallback on BOTH adapters and BOTH start/resume, so a missing/failed readiness hook (and, on cold start, an absent composer signal) cannot starve queued persona/messages forever. Readiness fires exactly once (idempotent): whichever of hook, resume-composer signal, or deadline comes first releases the first queued message, and the others are no-ops. |
 | C-TURN-01 | §5.3 | While a turn runs the session is `running`; when the turn ends by any means — completion, Escape interrupt, or otherwise — the session transitions to `ready` and emits the corresponding `status` activity, on both adapters. |
 | C-TURN-02 | §5.3 | An Escape interrupt of a running turn produces the `ready` transition from rendered TUI state alone, with no dependency on a `Stop` hook. |
 | C-TURN-03 | §5.3 | Turn-state detection uses documented per-adapter indicator constants over `snapshot().text`; redundant edges are idempotent, screens showing neither indicator hold state, and watching activates only after initial readiness. |

@@ -25,7 +25,7 @@ import {
   writeSessionRecord,
 } from "../state/store.ts";
 import { attachPtyTerminal } from "../terminal/headless.ts";
-import { initialReady } from "./initial-ready.ts";
+import { initialReady, markReadyOnResumeComposer } from "./initial-ready.ts";
 import * as preflight from "./preflight.ts";
 import { spawnCodexPty } from "./pty.ts";
 import { codexScreenFactTableForTrustPolicy } from "./screen-table.ts";
@@ -71,6 +71,7 @@ export async function startCodex(options: StartCodexOptions): Promise<CodexSessi
 export async function startCodexFromRecord(
   storedRecord: SessionRecord,
   options: StartCodexOptions,
+  resumed = false,
 ) {
   const record = withFreshSocketPath(storedRecord);
   secureMkdir(record.paths.sessionDir);
@@ -149,11 +150,10 @@ export async function startCodexFromRecord(
       emitSettledStartupOutcomes(emitter, "codex", record.elwoodSessionId, result.outcomes, {
         recordWarnings: (warnings) => session?.recordWarnings(warnings),
       });
-      // Readiness is hook-backed (the `SessionStart` hook fires it); the frame
-      // only arms the starvation-deadline fallback, never releases the queue
-      // on the boot-time composer placeholder (C-API-28, see initial-ready.ts).
+      // Hook-backed readiness + deadline fallback; on resume the first composer also marks ready (C-API-28).
       ready.armDeadline();
-      observeRenderedFrame(observers, frame, session);
+      const reading = observeRenderedFrame(observers, frame, session);
+      markReadyOnResumeComposer(ready, resumed, reading.facts.composer_visible);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );

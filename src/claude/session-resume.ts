@@ -49,16 +49,20 @@ export async function resumeClaude(options: ResumeClaudeOptions): Promise<Claude
   const launch = effectivePosture(checkedRecord.claude.launch, claudeLaunchPosture(options));
   const resumedRecord = withClaudeLaunch(sized, launch);
   writeSessionRecord(resumedRecord);
-  return await startClaudeFromRecord(resumedRecord, {
-    cwd: options.cwd ?? record.cwd,
-    stateDir,
-    ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
-    ...(size === undefined ? {} : { initialSize: size }),
-    ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
-    ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
-    ...launch,
-    ...(options.strictVersionCheck === undefined
-      ? {}
-      : { strictVersionCheck: options.strictVersionCheck }),
-  });
+  return await startClaudeFromRecord(
+    resumedRecord,
+    {
+      cwd: options.cwd ?? record.cwd,
+      stateDir,
+      ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
+      ...(size === undefined ? {} : { initialSize: size }),
+      ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
+      ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
+      ...launch,
+      ...(options.strictVersionCheck === undefined
+        ? {}
+        : { strictVersionCheck: options.strictVersionCheck }),
+    },
+    true, // resumed: mark ready on the first composer marker, symmetric with Codex
+  );
 }

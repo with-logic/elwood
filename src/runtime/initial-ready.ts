@@ -20,6 +20,22 @@ export type InitialReady = {
   readonly mark: () => void;
 };
 
+/**
+ * On RESUME, the CLI reattaches to an existing conversation and does NOT re-fire its
+ * pre-input readiness hook, so waiting for the hook means always waiting out the full
+ * deadline. But a resumed CLI's input loop IS live when the composer paints (verified:
+ * a message submitted then is accepted, not swallowed like the cold-start placeholder),
+ * so the first visible composer marks readiness. Cold start passes `resumed: false` and
+ * this never fires — the composer stays an unsafe signal there (C-API-28).
+ */
+export function markReadyOnResumeComposer(
+  ready: Pick<InitialReady, "mark">,
+  resumed: boolean,
+  composerVisible: boolean,
+): void {
+  if (resumed && composerVisible) ready.mark();
+}
+
 export function initialReady(callback: () => void, maxWaitMs = 10_000): InitialReady {
   let ready = false;
   let deadline: ReturnType<typeof setTimeout> | undefined;

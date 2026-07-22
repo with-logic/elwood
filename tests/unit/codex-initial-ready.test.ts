@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { initialReady } from "../../src/codex/initial-ready.ts";
+import { initialReady, markReadyOnResumeComposer } from "../../src/codex/initial-ready.ts";
 
 describe("initialReady", () => {
   test("C-API-28 mark fires readiness once and replays after a session is attached", () => {
@@ -51,5 +51,31 @@ describe("initialReady", () => {
     const ready = initialReady(() => calls++);
     ready.replay();
     expect(calls).toBe(0);
+  });
+
+  test("C-API-28 on RESUME the first visible composer marks readiness", () => {
+    let calls = 0;
+    const ready = initialReady(() => calls++);
+    markReadyOnResumeComposer(ready, true, false); // composer not up yet: no-op
+    expect(calls).toBe(0);
+    markReadyOnResumeComposer(ready, true, true); // composer visible on resume: ready
+    markReadyOnResumeComposer(ready, true, true); // idempotent
+    expect(calls).toBe(1);
+  });
+
+  test("C-API-28 on a COLD start the composer never marks readiness (would be swallowed)", () => {
+    let calls = 0;
+    const ready = initialReady(() => calls++);
+    markReadyOnResumeComposer(ready, false, true); // not resumed: composer is unsafe
+    expect(calls).toBe(0);
+  });
+
+  test("C-API-28 a resume-composer readiness wins over the pending deadline", async () => {
+    let calls = 0;
+    const ready = initialReady(() => calls++, 100);
+    ready.armDeadline();
+    markReadyOnResumeComposer(ready, true, true);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(calls).toBe(1); // fired once on the composer; the later deadline is a no-op
   });
 });

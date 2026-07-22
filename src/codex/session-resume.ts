@@ -42,16 +42,20 @@ export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSes
   const launch = effectivePosture(checkedRecord.codex.launch, codexLaunchPosture(options));
   const resumedRecord = withCodexLaunch(sized, launch);
   writeSessionRecord(resumedRecord);
-  return await startCodexFromRecord(resumedRecord, {
-    cwd: options.cwd ?? record.cwd,
-    stateDir,
-    ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
-    ...(size === undefined ? {} : { initialSize: size }),
-    ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
-    ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
-    ...launch,
-    ...(options.strictVersionCheck === undefined
-      ? {}
-      : { strictVersionCheck: options.strictVersionCheck }),
-  });
+  return await startCodexFromRecord(
+    resumedRecord,
+    {
+      cwd: options.cwd ?? record.cwd,
+      stateDir,
+      ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
+      ...(size === undefined ? {} : { initialSize: size }),
+      ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
+      ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
+      ...launch,
+      ...(options.strictVersionCheck === undefined
+        ? {}
+        : { strictVersionCheck: options.strictVersionCheck }),
+    },
+    true, // resumed: mark ready on the first composer marker, not the 10s deadline
+  );
 }

@@ -6,7 +6,12 @@
 
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity.ts";
 import { type AttentionWatcher, activityFromAttention } from "./attention.ts";
-import { type RenderedFrame, readScreenFacts, type ScreenFactTable } from "./screen-facts.ts";
+import {
+  type RenderedFrame,
+  readScreenFacts,
+  type ScreenFactReading,
+  type ScreenFactTable,
+} from "./screen-facts.ts";
 import type { TurnStateWatcher } from "./turn-state.ts";
 import type { ElwoodStatusDecision, ElwoodStatusEvidence } from "./types.ts";
 
@@ -28,8 +33,9 @@ export function observeRenderedFrame(
   observers: RenderedObservers,
   frame: RenderedFrame,
   session: RenderedObserverTarget | undefined,
-): void {
-  // Classify the frame once; turn and attention watchers share the reading.
+): ScreenFactReading {
+  // Classify the frame once; turn and attention watchers share the reading, and the
+  // reading is returned so the caller can drive resume-readiness off the same facts.
   const reading = readScreenFacts(observers.table, frame);
   const turnEdge = observers.turn.observe(reading.facts);
   if (turnEdge === "started") session?.submitEvidence("rendered_turn_started");
@@ -43,4 +49,5 @@ export function observeRenderedFrame(
     }
   }
   if (attention?.edge === "cleared") session?.submitEvidence("blocking_prompt_cleared");
+  return reading;
 }

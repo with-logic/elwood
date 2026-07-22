@@ -9,7 +9,7 @@ import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import type { StartClaudeOptions } from "../core/types.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
-import { initialReady } from "../runtime/initial-ready.ts";
+import { initialReady, markReadyOnResumeComposer } from "../runtime/initial-ready.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../runtime/startup-buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../runtime/startup-cleanup.ts";
 import { secureMkdir } from "../state/files.ts";
@@ -78,6 +78,7 @@ export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSe
 export async function startClaudeFromRecord(
   storedRecord: SessionRecord,
   options: StartClaudeOptions,
+  resumed = false,
 ) {
   const record = withFreshSocketPath(storedRecord);
   secureMkdir(record.paths.sessionDir);
@@ -154,9 +155,10 @@ export async function startClaudeFromRecord(
     emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
       recordWarnings: (warnings) => session?.recordWarnings(warnings),
     });
-    // The frame only arms the starvation-deadline fallback (readiness is hook-backed).
+    // Hook-backed readiness + deadline fallback; on resume the first composer also marks ready (C-API-28).
     ready.armDeadline();
-    observeRenderedFrame(observers, frame, session);
+    const reading = observeRenderedFrame(observers, frame, session);
+    markReadyOnResumeComposer(ready, resumed, reading.facts.composer_visible);
     // Surface a mid-session login-expiry banner once (C-CLAUDE-18); no-op pre-readiness.
     session?.noteLoginExpiry(frame.text);
     emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });

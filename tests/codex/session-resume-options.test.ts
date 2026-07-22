@@ -41,6 +41,23 @@ describe("CodexSession resume options", () => {
     expect(resumed.status).toBe("running");
   });
 
+  test("C-API-28 resume reaches ready on the first composer marker (no SessionStart needed)", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startCodex({ cwd });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, sessionStart(cwd, "codex-session-1"));
+    await session.stop();
+    // Resume, then render a composer frame WITHOUT dispatching SessionStart (the CLI
+    // does not re-fire it on resume). On resume the composer marker is a safe readiness
+    // signal, so the session reaches ready without waiting out the deadline.
+    const resumed = await resumeCodex({ cwd, elwoodSessionId: session.elwoodSessionId });
+    expect(resumed.status).not.toBe("ready"); // not ready until the composer renders
+    ptys[1]!.emitData("\u001b[2J\u001b[H› "); // clear + home + composer marker
+    await resumed.terminal.settled(); // flush the write -> render -> readiness chain
+    await new Promise((r) => setImmediate(r));
+    expect(resumed.status).toBe("ready");
+  });
+
   test("C-API-29 resume forwards sandbox and approvalPolicy into the launched command", async () => {
     const cwd = realpathSync(tempDir());
     installFakes();
