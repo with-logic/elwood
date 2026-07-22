@@ -117,7 +117,14 @@ export async function startCodexFromRecord(
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   const ready = initialReady(() => {
-    turnWatcher.arm();
+    // A resume's composer-marked readiness fires BEFORE the transcript replay
+    // finishes repainting — arm in settling mode so replayed frames cannot
+    // fabricate a rendered turn (see TurnStateWatcher.armForResume).
+    if (resumed) {
+      turnWatcher.armForResume();
+    } else {
+      turnWatcher.arm();
+    }
     session?.submitEvidence("initial_ready");
   });
   const autotrust = options.autotrust ?? false;

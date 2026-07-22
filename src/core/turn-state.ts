@@ -14,6 +14,7 @@ export class TurnStateWatcher {
   private running = false;
   private bannerSeen = false;
   private armed = false;
+  private replaySettling = false;
 
   /** Watching starts only after initial readiness so startup spinners that
    * borrow the same wording (Codex MCP boot) cannot fabricate turns. */
@@ -21,9 +22,32 @@ export class TurnStateWatcher {
     this.armed = true;
   }
 
+  /** Resume-mode arming (C-API-28's composer-marked readiness): a resumed CLI
+   * marks ready on its FIRST composer frame, but the transcript replay that
+   * follows repaints prior turns — including footer lines the fact tables
+   * read as `working_visible`. Those flashes are history, not work: emitting
+   * a started/ended pair for them fabricates a phantom turn on EVERY resume
+   * (observed as one false unread per resumed Codex conversation downstream).
+   * So a resume arms in a settling state that swallows rendered turn edges
+   * until the first QUIET composer frame (composer visible, no working
+   * marker) — the replay has finished painting and the screen is genuinely
+   * idle; detection then behaves exactly like a cold start's post-ready
+   * watcher. Evidence-based turns (`caller_submitted`, hooks) are unaffected
+   * throughout. */
+  armForResume(): void {
+    this.armed = true;
+    this.replaySettling = true;
+  }
+
   /** Consumes facts already classified from the frame (see observeRenderedFrame). */
   observe(facts: ScreenFacts): TurnEdge | undefined {
     if (!this.armed) return undefined;
+    if (this.replaySettling) {
+      if (facts.composer_visible && !facts.working_visible) {
+        this.replaySettling = false; // replay settled — watch normally from here
+      }
+      return undefined;
+    }
     if (!this.running && facts.working_visible) {
       this.running = true;
       return "started";

@@ -96,7 +96,14 @@ export async function startClaudeFromRecord(
   // bridge cannot leave queued persona/messages starved forever (PRD §5.3, C-API-28).
   // The callback is one-shot (idempotent), so a late deadline after the hook is a no-op.
   const ready = initialReady(() => {
-    turnWatcher.arm();
+    // A resume's composer-marked readiness fires BEFORE the transcript replay
+    // finishes repainting — arm in settling mode so replayed frames cannot
+    // fabricate a rendered turn (see TurnStateWatcher.armForResume).
+    if (resumed) {
+      turnWatcher.armForResume();
+    } else {
+      turnWatcher.arm();
+    }
     // completeInitialReady advances readiness in a finally and isolates restore +
     // warning failures internally, so its promise never rejects (not awaited).
     void session?.completeInitialReady();

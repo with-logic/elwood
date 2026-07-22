@@ -138,6 +138,28 @@ describe("turn state watching", () => {
     expect(watcher.observe(facts(claudeScreenFactTable, modalDialog))).toBeUndefined();
     expect(watcher.observe(facts(claudeScreenFactTable, claudeIdle))).toBe("ended");
   });
+
+  test("a resume arm swallows the replay's working flash — no phantom turn", () => {
+    // A resumed CLI marks ready on its first composer frame, then repaints
+    // the prior transcript; footer lines in that replay read as working.
+    // Those flashes are history, not work (one phantom per resume otherwise).
+    const watcher = new TurnStateWatcher();
+    watcher.armForResume();
+    expect(watcher.observe(facts(codexScreenFactTable, codexWorking))).toBeUndefined();
+    expect(watcher.observe(facts(codexScreenFactTable, codexWorking))).toBeUndefined();
+    // First QUIET composer frame settles the replay…
+    expect(watcher.observe(facts(codexScreenFactTable, codexIdle))).toBeUndefined();
+    // …after which a REAL turn is watched exactly like a cold start's.
+    expect(watcher.observe(facts(codexScreenFactTable, codexWorking))).toBe("started");
+    expect(watcher.observe(facts(codexScreenFactTable, codexIdle))).toBe("ended");
+  });
+
+  test("a resume arm that opens straight onto a quiet composer settles immediately", () => {
+    const watcher = new TurnStateWatcher();
+    watcher.armForResume();
+    expect(watcher.observe(facts(codexScreenFactTable, codexIdle))).toBeUndefined();
+    expect(watcher.observe(facts(codexScreenFactTable, codexWorking))).toBe("started");
+  });
 });
 
 // Banner lines captured from real interrupted sessions at 46 and 100 cols.
