@@ -58,6 +58,23 @@ describe("CodexSession resume options", () => {
     expect(resumed.status).toBe("ready");
   });
 
+  test("C-API-28 resume does NOT mark ready on a blocking dialog whose caret looks like the composer", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startCodex({ cwd });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, sessionStart(cwd, "codex-session-1"));
+    await session.stop();
+    const resumed = await resumeCodex({ cwd, elwoodSessionId: session.elwoodSessionId });
+    // The first resume frame is an approval DIALOG — its `›` caret is byte-identical to
+    // the composer marker. Readiness must NOT latch, or a draining Enter could approve it.
+    ptys[1]!.emitData(
+      "\u001b[2J\u001b[HWould you like to run the following command?\r\n› 1. Yes\r\nPress enter to confirm or esc to cancel",
+    );
+    await resumed.terminal.settled();
+    await new Promise((r) => setImmediate(r));
+    expect(resumed.status).not.toBe("ready"); // waits for the dialog to clear
+  });
+
   test("C-API-29 resume forwards sandbox and approvalPolicy into the launched command", async () => {
     const cwd = realpathSync(tempDir());
     installFakes();

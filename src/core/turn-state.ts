@@ -16,27 +16,24 @@ export class TurnStateWatcher {
   private armed = false;
   private replaySettling = false;
 
-  /** Watching starts only after initial readiness so startup spinners that
-   * borrow the same wording (Codex MCP boot) cannot fabricate turns. */
-  arm(): void {
+  /**
+   * Watching starts only after initial readiness so startup spinners that borrow the
+   * same wording (Codex MCP boot) cannot fabricate turns.
+   *
+   * On RESUME (C-API-28's composer-marked readiness) the CLI marks ready on its FIRST
+   * composer frame, but the transcript replay that follows repaints prior turns —
+   * including footer lines the fact tables read as `working_visible`. Those flashes are
+   * history, not work: emitting a started/ended pair for them fabricates a phantom turn
+   * on EVERY resume (observed as one false unread per resumed conversation downstream).
+   * So `arm(true)` enters a settling state that swallows rendered turn edges until the
+   * first QUIET composer frame (composer visible, no working marker) — the replay has
+   * finished painting and the screen is genuinely idle; detection then behaves exactly
+   * like a cold start's post-ready watcher. Evidence-based turns (`caller_submitted`,
+   * hooks) are unaffected throughout.
+   */
+  arm(resumed = false): void {
     this.armed = true;
-  }
-
-  /** Resume-mode arming (C-API-28's composer-marked readiness): a resumed CLI
-   * marks ready on its FIRST composer frame, but the transcript replay that
-   * follows repaints prior turns — including footer lines the fact tables
-   * read as `working_visible`. Those flashes are history, not work: emitting
-   * a started/ended pair for them fabricates a phantom turn on EVERY resume
-   * (observed as one false unread per resumed Codex conversation downstream).
-   * So a resume arms in a settling state that swallows rendered turn edges
-   * until the first QUIET composer frame (composer visible, no working
-   * marker) — the replay has finished painting and the screen is genuinely
-   * idle; detection then behaves exactly like a cold start's post-ready
-   * watcher. Evidence-based turns (`caller_submitted`, hooks) are unaffected
-   * throughout. */
-  armForResume(): void {
-    this.armed = true;
-    this.replaySettling = true;
+    this.replaySettling = resumed;
   }
 
   /** Consumes facts already classified from the frame (see observeRenderedFrame). */

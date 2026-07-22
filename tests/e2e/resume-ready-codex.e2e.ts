@@ -42,6 +42,10 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
 
     const startedAt = Date.now();
     resumed = await resumeCodex({ ...opts, elwoodSessionId: id });
+    // Capture status transitions from resume start: the transcript replay must NOT
+    // fabricate a phantom running->ready cycle after readiness (Coal Harbor's symptom).
+    const transitions: string[] = [];
+    resumed.on("status", (e) => transitions.push((e as { status: string }).status));
     await waitFor(() => (resumed?.status === "ready" ? true : undefined), "resumed ready", 30_000);
     const elapsed = Date.now() - startedAt;
     // The 10s deadline was the old floor; the composer path reaches ready well under
@@ -49,6 +53,16 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
     assert.ok(
       elapsed < 8_000,
       `resumed reached ready in ${elapsed}ms (must beat the ~10s deadline)`,
+    );
+    // Let the transcript replay finish painting, then assert no phantom turn fired:
+    // once ready, the settling watcher swallows replayed working-token flashes, so no
+    // spurious `running` transition appears after readiness (no false unread).
+    await new Promise((r) => setTimeout(r, 4_000));
+    const afterReady = transitions.slice(transitions.indexOf("ready") + 1);
+    assert.deepEqual(
+      afterReady,
+      [],
+      `no status transition may follow resume readiness, saw: ${afterReady.join(",")}`,
     );
   } finally {
     await cleanup(resumed);

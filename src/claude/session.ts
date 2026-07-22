@@ -92,20 +92,12 @@ export async function startClaudeFromRecord(
   const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => session, seed);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   // Initial readiness is hook-backed (`InstructionsLoaded` fires `mark`); the first
-  // rendered frame only arms a starvation deadline so a missing or failed hook
-  // bridge cannot leave queued persona/messages starved forever (PRD §5.3, C-API-28).
-  // The callback is one-shot (idempotent), so a late deadline after the hook is a no-op.
+  // frame arms a starvation deadline so a missing/failed hook cannot starve the queue,
+  // and on resume the first composer frame also marks ready (PRD §5.3, C-API-28).
   const ready = initialReady(() => {
-    // A resume's composer-marked readiness fires BEFORE the transcript replay
-    // finishes repainting — arm in settling mode so replayed frames cannot
-    // fabricate a rendered turn (see TurnStateWatcher.armForResume).
-    if (resumed) {
-      turnWatcher.armForResume();
-    } else {
-      turnWatcher.arm();
-    }
-    // completeInitialReady advances readiness in a finally and isolates restore +
-    // warning failures internally, so its promise never rejects (not awaited).
+    turnWatcher.arm(resumed); // resume arms in settling mode (no phantom replay turn)
+    // completeInitialReady advances readiness in a finally, isolating restore/warning
+    // failures internally, so its promise never rejects (not awaited).
     void session?.completeInitialReady();
   });
   const bridge = currentClaudeHookBridgeFactory()(
@@ -165,7 +157,7 @@ export async function startClaudeFromRecord(
     // Hook-backed readiness + deadline fallback; on resume the first composer also marks ready (C-API-28).
     ready.armDeadline();
     const reading = observeRenderedFrame(observers, frame, session);
-    markReadyOnResumeComposer(ready, resumed, reading.facts.composer_visible);
+    markReadyOnResumeComposer(ready, resumed, reading.facts);
     // Surface a mid-session login-expiry banner once (C-CLAUDE-18); no-op pre-readiness.
     session?.noteLoginExpiry(frame.text);
     emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });

@@ -117,14 +117,7 @@ export async function startCodexFromRecord(
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   const ready = initialReady(() => {
-    // A resume's composer-marked readiness fires BEFORE the transcript replay
-    // finishes repainting — arm in settling mode so replayed frames cannot
-    // fabricate a rendered turn (see TurnStateWatcher.armForResume).
-    if (resumed) {
-      turnWatcher.armForResume();
-    } else {
-      turnWatcher.arm();
-    }
+    turnWatcher.arm(resumed); // resume arms in settling mode (no phantom replay turn)
     session?.submitEvidence("initial_ready");
   });
   const autotrust = options.autotrust ?? false;
@@ -160,7 +153,7 @@ export async function startCodexFromRecord(
       // Hook-backed readiness + deadline fallback; on resume the first composer also marks ready (C-API-28).
       ready.armDeadline();
       const reading = observeRenderedFrame(observers, frame, session);
-      markReadyOnResumeComposer(ready, resumed, reading.facts.composer_visible);
+      markReadyOnResumeComposer(ready, resumed, reading.facts);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );
