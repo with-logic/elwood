@@ -55,10 +55,21 @@ test("C-E2E-03 real Codex bounds an oversized transcript record and stays usable
       hooks,
     });
     await waitFor(() => (session?.status === "ready" ? true : undefined), "codex ready", 60_000);
-    // Codex reports the rollout path via its hooks. This test's whole point is the
-    // oversized-record → content-free drop, so we REQUIRE a path to inject into: if
-    // the CLI version never reported one, fail loudly rather than passing green
-    // without exercising the regression at all.
+    // This Codex version fires its SessionStart hook on the FIRST turn, not at boot —
+    // Elwood reaches readiness via its deadline path, and the rollout `transcript_path`
+    // only reaches the caller's hook once the session actually does something. So run
+    // one real turn first to make SessionStart fire and populate the injection target;
+    // a genuinely absent-path CLI still fails loudly on the wait timeout below.
+    await session.sendMessage("Reply exactly: ELWOOD_OK. Do not use tools.");
+    await waitFor(
+      () => (stops > 0 ? true : undefined),
+      "first turn completes (fires SessionStart)",
+    );
+    await waitFor(
+      () => (transcriptPath ? true : undefined),
+      "Codex reported a rollout transcript_path to inject into",
+      15_000,
+    );
     assert.ok(transcriptPath, "Codex reported a rollout transcript_path to inject into");
     // Baseline the drop accounting BEFORE injection, so the assertion can't be
     // satisfied by a pre-existing/unrelated drop (e.g. a parse issue or a teardown
@@ -68,26 +79,36 @@ test("C-E2E-03 real Codex bounds an oversized transcript record and stays usable
     const baseBytes = baseline?.code === "transcript_records_dropped" ? baseline.droppedBytes : 0;
     const baseCount = baseline?.code === "transcript_records_dropped" ? baseline.droppedCount : 0;
     appendFileSync(transcriptPath, OVERSIZED);
-    // The session must remain responsive: a real turn completes rather than the
+    // The session must remain responsive: a second real turn completes rather than the
     // reader blocking the event loop on the huge unread delta.
-    await session.sendMessage("Reply exactly: ELWOOD_OK. Do not use tools.");
-    await waitFor(() => (stops > 0 ? true : undefined), "turn completes after oversized record");
-    assert.equal(session.status, "ready", "session settled to ready, not wedged");
-    // The oversized record MUST surface as a NEW oversized-cause drop warning whose
-    // running totals grew past the baseline (poll ticks account it), and that warning
-    // MUST be content-free — never the injected 'xxxxx' bytes.
-    const isOversizedDelta = (w: ElwoodWarningEvent) =>
-      w.code === "transcript_records_dropped" &&
-      w.cause === "oversized" &&
-      w.droppedBytes > baseBytes &&
-      w.droppedCount > baseCount;
+    const stopsBefore = stops;
+    await session.sendMessage("Reply exactly: ELWOOD_OK2. Do not use tools.");
     await waitFor(
-      () => (session?.warnings.some(isOversizedDelta) ? true : undefined),
-      "oversized record accounted as a new oversized drop warning",
+      () => (stops > stopsBefore ? true : undefined),
+      "second turn completes after oversized record",
+    );
+    assert.equal(session.status, "ready", "session settled to ready, not wedged");
+    // The injected 1.1 MiB un-terminated record MUST surface as a NEW drop whose
+    // running totals grew by roughly its size past the baseline (poll ticks account
+    // it), and that warning MUST be content-free — never the injected 'xxxxx' bytes.
+    // The CAUSE is legitimately either "oversized" (still pending past the 1 MiB
+    // ceiling) or "unparseable" (a later Codex record appended a newline, terminating
+    // the giant line so it parses-then-fails) — both are correct bounded drops of the
+    // same injected record, and which one wins depends on Codex's subsequent writes,
+    // so the assertion accepts either rather than flaking on that timing.
+    const injectedBytes = Buffer.byteLength(OVERSIZED, "utf8");
+    const isInjectedDrop = (w: ElwoodWarningEvent) =>
+      w.code === "transcript_records_dropped" &&
+      (w.cause === "oversized" || w.cause === "unparseable") &&
+      w.droppedCount > baseCount &&
+      w.droppedBytes >= baseBytes + injectedBytes;
+    await waitFor(
+      () => (session?.warnings.some(isInjectedDrop) ? true : undefined),
+      "injected over-ceiling record accounted as a new bounded drop",
       20_000,
     );
-    const drop = session.warnings.find(isOversizedDelta);
-    assert.ok(drop, "a new oversized transcript_records_dropped warning was emitted");
+    const drop = session.warnings.find(isInjectedDrop);
+    assert.ok(drop, "a new transcript_records_dropped warning accounted the injected record");
     assert.ok(!JSON.stringify(drop).includes("xxxxx"), "drop warning is content-free");
   } finally {
     await cleanup(session);
