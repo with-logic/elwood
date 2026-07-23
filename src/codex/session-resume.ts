@@ -3,6 +3,7 @@
  * Implements PRD §5.6, §9.3, and C-API-16.
  */
 
+import { resolve } from "node:path";
 import { elwoodError } from "../core/errors.ts";
 import { codexLaunchPosture, effectivePosture, withCodexLaunch } from "../state/launch-posture.ts";
 import { defaultStateDir, readSessionRecord } from "../state/store.ts";
@@ -11,7 +12,9 @@ import { startCodexFromRecord } from "./session.ts";
 import type { CodexSession, ResumeCodexOptions } from "./session-types.ts";
 
 export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSession> {
-  const stateDir = options.stateDir ?? defaultStateDir(options.cwd ?? process.cwd());
+  // Resolve stateDir to ABSOLUTE ONCE, before any read/await, so a `process.chdir()`
+  // between the record read and the runtime-file writes can't split them (§8.1).
+  const stateDir = resolve(options.stateDir ?? defaultStateDir(options.cwd ?? process.cwd()));
   const record = readSessionRecord(stateDir, options.elwoodSessionId);
   if (record.adapter !== "codex")
     throw elwoodError("adapter_mismatch", "Cannot resume a non-Codex session as Codex.");

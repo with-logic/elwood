@@ -1,5 +1,7 @@
 /** ClaudeSession entry points: preflight, record creation, and socket-home-guarded start. Implements PRD §5, §6, §8, §9. */
+
 import { randomUUID } from "node:crypto";
+import { resolve } from "node:path";
 import { queuePersonaMessage } from "../core/persona.ts";
 import type { StartClaudeOptions } from "../core/types.ts";
 import { withSocketHomeCleanup } from "../runtime/startup-cleanup.ts";
@@ -25,7 +27,7 @@ export {
 export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSession> {
   const strict = options.strictVersionCheck ?? false;
   const warning = await preflightClaude(strict, options.autoupdate ?? false);
-  const stateDir = options.stateDir ?? defaultStateDir(options.cwd);
+  const stateDir = resolve(options.stateDir ?? defaultStateDir(options.cwd));
   prepareStateDir(stateDir, { gitignore: options.stateDir === undefined });
   const createdRecord = createSessionRecord({ cwd: options.cwd, id: randomUUID() });
   const record = withClaudeLaunch(createdRecord, claudeLaunchPosture(options));

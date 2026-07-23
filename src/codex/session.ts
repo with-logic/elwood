@@ -1,5 +1,7 @@
 /** CodexSession entry points: preflight, record creation, and socket-home-guarded start. Implements PRD §5.5, §5.6, §5.7, §7A, §8, §9. */
+
 import { randomUUID } from "node:crypto";
+import { resolve } from "node:path";
 import { queuePersonaMessage } from "../core/persona.ts";
 import { withSocketHomeCleanup } from "../runtime/startup-cleanup.ts";
 import { codexLaunchPosture, withCodexLaunch } from "../state/launch-posture.ts";
@@ -25,7 +27,7 @@ export async function startCodex(options: StartCodexOptions): Promise<CodexSessi
     options.strictVersionCheck ?? false,
     options.autoupdate ?? false,
   );
-  const stateDir = options.stateDir ?? defaultStateDir(options.cwd);
+  const stateDir = resolve(options.stateDir ?? defaultStateDir(options.cwd));
   prepareStateDir(stateDir, { gitignore: options.stateDir === undefined });
   const createdRecord = createSessionRecord({
     cwd: options.cwd,

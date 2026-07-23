@@ -3,6 +3,7 @@
  * Implements PRD §5.2, §9.3, and C-API-16.
  */
 
+import { resolve } from "node:path";
 import { elwoodError } from "../core/errors.ts";
 import type { ResumeClaudeOptions } from "../core/types.ts";
 import {
@@ -16,7 +17,10 @@ import { startClaudeFromRecord } from "./session.ts";
 import type { ClaudeSession } from "./session-interface.ts";
 
 export async function resumeClaude(options: ResumeClaudeOptions): Promise<ClaudeSession> {
-  const stateDir = options.stateDir ?? defaultStateDir(options.cwd ?? process.cwd());
+  // Resolve stateDir to ABSOLUTE ONCE, before any read or `await`: a relative path
+  // re-resolved after a `process.chdir()` between the record read and the runtime-file
+  // writes would read one session and write another's files (PRD §8.1). (C-STATE)
+  const stateDir = resolve(options.stateDir ?? defaultStateDir(options.cwd ?? process.cwd()));
   const record = readSessionRecord(stateDir, options.elwoodSessionId);
   if (record.adapter !== "claude") {
     throw elwoodError("adapter_mismatch", "Cannot resume a non-Claude session as Claude.");

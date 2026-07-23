@@ -3,7 +3,7 @@
  * Covers PRD §5.2, §8.1, and §9.3.
  */
 
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { resumeClaude, startClaude } from "../../src/index.ts";
@@ -87,6 +87,36 @@ describe("ClaudeSession resume options", () => {
       const resumed = await resumeClaude({ elwoodSessionId: session.elwoodSessionId });
       expect(resumed.cwd).toBe(cwd);
       expect(ptys[1]!.options.cwd).toBe(cwd);
+    } finally {
+      process.chdir(previousCwd);
+    }
+  });
+
+  test("§8.1 a RELATIVE stateDir is resolved at the boundary, not re-resolved per op", async () => {
+    // A relative stateDir must be made absolute ONCE at the resume boundary, so a
+    // cwd change after resume returns cannot make a later derived path point elsewhere.
+    const cwd = realpathSync(tempDir());
+    installFakes();
+    const previousCwd = process.cwd();
+    process.chdir(cwd);
+    try {
+      const first = await startClaude({ cwd, stateDir: ".elwood" }); // relative
+      await ptys[0]!.dispatchHook(first.elwoodSessionId, {
+        hook_event_name: "SessionStart",
+        session_id: "claude-rel",
+        cwd,
+        source: "startup",
+      });
+      await first.stop();
+      const resumed = await resumeClaude({
+        elwoodSessionId: first.elwoodSessionId,
+        stateDir: ".elwood",
+      });
+      // Change cwd AFTER resume resolves; teardown must still target the ORIGINAL
+      // absolute location (resolved once), not a path relative to the new cwd.
+      process.chdir(previousCwd);
+      await expect(resumed.teardown()).resolves.toBeUndefined();
+      expect(existsSync(join(cwd, ".elwood", "sessions", resumed.elwoodSessionId))).toBe(false);
     } finally {
       process.chdir(previousCwd);
     }
