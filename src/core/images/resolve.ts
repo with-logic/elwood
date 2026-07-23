@@ -21,7 +21,7 @@ import { type ImageFormat, type ImageInput, imageFormatExtension, imageLimits } 
 export type ImageSnapshot = {
   readonly snapshot: readonly ImageInput[];
   /** Bytes already counted toward the aggregate ceiling from byte inputs. */
-  readonly byteTotal: number;
+  readonly inlineByteTotal: number;
 };
 
 /**
@@ -31,7 +31,7 @@ export type ImageSnapshot = {
  * absolutizes paths so a later mutation/`cwd` change cannot alter what is attached
  * (C-API-44). Because this runs at the public send boundary (before the op is
  * queued), the byte clone captures the caller's buffer AT THE CALL — a mutation
- * after the call is inert. The returned snapshot is handed to `resolvePaths`.
+ * after the call is inert. The returned snapshot is handed to `validateImagePaths`.
  */
 export function snapshotImages(images: readonly ImageInput[]): ImageSnapshot {
   if (!Array.isArray(images)) throw elwoodError("invalid_image", "images must be an array.");
@@ -41,13 +41,13 @@ export function snapshotImages(images: readonly ImageInput[]): ImageSnapshot {
       `Too many images: ${images.length} > ${imageLimits.maxCount}`,
     );
   const snapshot: ImageInput[] = [];
-  let byteTotal = 0;
+  let inlineByteTotal = 0;
   for (const entry of images as readonly unknown[]) {
-    const [image, bytes] = snapshotOne(entry, byteTotal);
+    const [image, bytes] = snapshotOne(entry, inlineByteTotal);
     snapshot.push(image);
-    byteTotal += bytes;
+    inlineByteTotal += bytes;
   }
-  return { snapshot, byteTotal };
+  return { snapshot, inlineByteTotal };
 }
 
 /**
@@ -57,8 +57,8 @@ export function snapshotImages(images: readonly ImageInput[]): ImageSnapshot {
  * Runs at queue dispatch (a stat is I/O); byte cloning already happened in
  * `snapshotImages` at the call, so nothing here depends on caller-held state.
  */
-export async function resolvePaths(snap: ImageSnapshot): Promise<readonly ImageInput[]> {
-  let total = snap.byteTotal;
+export async function validateImagePaths(snap: ImageSnapshot): Promise<readonly ImageInput[]> {
+  let total = snap.inlineByteTotal;
   for (const image of snap.snapshot) {
     if (image.path === undefined) continue;
     total += await validatePath(image.path, total);
@@ -78,7 +78,7 @@ export function validateImages(images: readonly ImageInput[]): Promise<readonly 
   } catch (error) {
     return Promise.reject(error);
   }
-  return resolvePaths(snap);
+  return validateImagePaths(snap);
 }
 
 /** Narrows one entry (exactly one of path/data), returns its copy plus byte size. */

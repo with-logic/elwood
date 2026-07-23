@@ -13,8 +13,8 @@
 import {
   type ImageSnapshot,
   materializeImages,
-  resolvePaths,
   snapshotImages,
+  validateImagePaths,
 } from "../core/images/index.ts";
 import type { ImageInput } from "../core/images/types.ts";
 
@@ -65,8 +65,8 @@ async function runAttach(
   driver: AttachDriver,
   signal: AbortSignal,
 ): Promise<void> {
-  const resolved = await resolvePaths(snapshot);
-  const materialized = await materializeImages(resolved);
+  const validated = await validateImagePaths(snapshot);
+  const materialized = await materializeImages(validated);
   try {
     await driver(materialized.paths, signal);
   } finally {

@@ -12,8 +12,8 @@ export {
 export { type MaterializedImages, materializeImages } from "./materialize.ts";
 export {
   type ImageSnapshot,
-  resolvePaths,
   snapshotImages,
+  validateImagePaths,
   validateImages,
 } from "./resolve.ts";
 export type { ImageFormat, ImageInput, SendOptions } from "./types.ts";
