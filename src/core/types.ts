@@ -76,7 +76,6 @@ export type StartClaudeOptions = {
   readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
-  readonly metadata?: Readonly<Record<string, unknown>>;
   readonly strictVersionCheck?: boolean;
 };
 

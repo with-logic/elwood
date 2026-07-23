@@ -3,7 +3,7 @@
  * failure policies (PRD §5.3, C-LIFE-10):
  *   - `bestEffort()` for the native unsolicited-exit callback: a reap failure must
  *     never throw out of that callback, so it is contained and RETURNED as a
- *     durable `reap_failed` warning (persisted + replayed), never silently dropped.
+ *     live `reap_failed` warning (emitted once when observed), never silently dropped.
  *   - `orThrow()` for an explicit `stop()`/`kill()` on an already-terminal session:
  *     it must NOT swallow — it throws a typed `termination_failed` so the caller
  *     rejects with an ElwoodError (C-ERR-01) and teardown can retry the

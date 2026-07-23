@@ -8,7 +8,7 @@ import type { ElwoodWarningEvent } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { CodexEventMap } from "./session-types.ts";
 
-export function recordCodexWarnings(
+export function emitCodexWarnings(
   warnings: readonly ElwoodWarningEvent[],
   emitter: TypedEmitter<CodexEventMap>,
 ): void {

@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { TranscriptCursor } from "../../src/claude/transcript/cursor.ts";
 import { type DrainContext, drainToBudget } from "../../src/claude/transcript/drain.ts";
-import { DropTracker, type TranscriptDropNotice } from "../../src/claude/transcript/drops.ts";
+import { DropReporter, type TranscriptDropNotice } from "../../src/claude/transcript/drops.ts";
 import { type ClaudeTranscriptEvent, LineEmitter } from "../../src/claude/transcript/emit.ts";
 
 const assistant = (text: string) => ({
@@ -28,12 +28,12 @@ const tmpFile = () => join(mkdtempSync(join(tmpdir(), "elwood-drain-")), "t.json
 function harness(now: () => number = () => 0) {
   const events: ClaudeTranscriptEvent[] = [];
   const drops: TranscriptDropNotice[] = [];
-  const dropTracker = new DropTracker("s1", (d) => drops.push(d));
-  const lines = new LineEmitter("s1", (e) => events.push(e), dropTracker);
+  const dropReporter = new DropReporter("s1", (d) => drops.push(d));
+  const lines = new LineEmitter("s1", (e) => events.push(e), dropReporter);
   const context: DrainContext = {
     readFs: <T>(_path: string, read: () => T) => read(),
     lines,
-    drops: dropTracker,
+    drops: dropReporter,
     sliceMs: 50,
     now,
   };

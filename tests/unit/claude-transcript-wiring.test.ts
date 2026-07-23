@@ -49,7 +49,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     expect(recorded).toEqual([]);
     // The session sink now exists. A SINGLE early warning must flush WITHOUT
     // needing a second diagnostic to trigger it (the lone-warning gap).
-    sink = { recordWarnings: (w) => recorded.push(...w) };
+    sink = { emitWarnings: (w) => recorded.push(...w) };
     flushPendingWarnings();
     expect(recorded.some((w) => w.code === "transcript_records_dropped")).toBe(true);
   });
@@ -66,7 +66,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     writeFileSync(path, "{ bad }\n");
     watcher.scan(); // buffered: no sink yet
     sink = {
-      recordWarnings: (w) => {
+      emitWarnings: (w) => {
         if (!failNext) return void recorded.push(...w);
         failNext = false;
         throw new Error("listener boom");
@@ -89,7 +89,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     const recorded: ElwoodWarningEvent[] = [];
     let failNext = true;
     const sink: WarningSink = {
-      recordWarnings: (w) => {
+      emitWarnings: (w) => {
         if (!failNext) return void recorded.push(...w);
         failNext = false;
         throw new Error("listener boom");
@@ -108,11 +108,11 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     expect(recorded[0]?.code).toBe("transcript_records_dropped");
   });
 
-  test("with a warning sink, a drop is routed through recordWarnings as a live warning", () => {
+  test("with a warning sink, a drop is routed through emitWarnings as a live warning", () => {
     const activities: ElwoodActivityEvent[] = [];
     const emitter = fakeEmitter((a) => activities.push(a));
     const recorded: ElwoodWarningEvent[] = [];
-    const sink: WarningSink = { recordWarnings: (w) => recorded.push(...w) };
+    const sink: WarningSink = { emitWarnings: (w) => recorded.push(...w) };
     const { watcher } = createTranscriptWatcher("s9", emitter, () => sink);
     const path = tmpFile();
     writeFileSync(path, "");
@@ -134,7 +134,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
   test("a contained fs read error is routed to the sink as a transcript_read_error warning", () => {
     const emitter = fakeEmitter();
     const recorded: ElwoodWarningEvent[] = [];
-    const sink: WarningSink = { recordWarnings: (w) => recorded.push(...w) };
+    const sink: WarningSink = { emitWarnings: (w) => recorded.push(...w) };
     const { watcher } = createTranscriptWatcher("s9", emitter, () => sink);
     const path = tmpFile();
     writeFileSync(path, "");
@@ -153,7 +153,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
 
   test("a timer-path listener error is routed to the sink as a transcript_poll_stopped warning", async () => {
     const recorded: ElwoodWarningEvent[] = [];
-    const sink: WarningSink = { recordWarnings: (w) => recorded.push(...w) };
+    const sink: WarningSink = { emitWarnings: (w) => recorded.push(...w) };
     // The transcript event emitter throws — a programming error on the timer path.
     const emitter = fakeEmitter((a) => {
       if (a.kind === "assistant_message") throw new Error("listener bug");

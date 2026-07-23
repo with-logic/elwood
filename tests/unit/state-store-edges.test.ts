@@ -61,7 +61,11 @@ describe("state store edges", () => {
     writeSessionRecord(record, dir);
     let caught: unknown;
     try {
-      removeSessionFiles(root, "raw-remove", "/tmp/x.sock");
+      removeSessionFiles({
+        stateDir: root,
+        elwoodSessionId: "raw-remove",
+        socketPath: "/tmp/x.sock",
+      });
     } catch (error) {
       caught = error;
     }
@@ -78,7 +82,11 @@ describe("state store edges", () => {
     writeSessionRecord(record, dir);
     let caught: unknown;
     try {
-      removeSessionFiles(root, "err-remove", "/tmp/x.sock");
+      removeSessionFiles({
+        stateDir: root,
+        elwoodSessionId: "err-remove",
+        socketPath: "/tmp/x.sock",
+      });
     } catch (error) {
       caught = error;
     }

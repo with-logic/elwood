@@ -12,8 +12,8 @@ import { CodexTranscriptCursor } from "../../src/codex/transcript/cursor.ts";
 import { drainToBudget, newTerminalBudget } from "../../src/codex/transcript/drain.ts";
 import {
   type CodexDropNotice,
-  CodexDropTracker,
-  CodexReadErrorTracker,
+  CodexDropReporter,
+  CodexReadErrorReporter,
 } from "../../src/codex/transcript/drops.ts";
 import { CodexLineEmitter } from "../../src/codex/transcript/emit.ts";
 import { CodexTranscriptFsGuard } from "../../src/codex/transcript/fs-guard.ts";
@@ -23,9 +23,9 @@ import { tempDirForUnit } from "./helpers.ts";
 function harness() {
   const events: CodexTranscriptEvent[] = [];
   const notices: CodexDropNotice[] = [];
-  const drops = new CodexDropTracker("s", (n) => notices.push(n));
+  const drops = new CodexDropReporter("s", (n: CodexDropNotice) => notices.push(n));
   const lines = new CodexLineEmitter("s", (e) => events.push(e), drops);
-  const guard = new CodexTranscriptFsGuard(new CodexReadErrorTracker("s", undefined));
+  const guard = new CodexTranscriptFsGuard(new CodexReadErrorReporter("s", undefined));
   return { events, notices, drops, lines, guard };
 }
 
@@ -54,7 +54,7 @@ describe("Codex bounded terminal drain", () => {
       cursor,
       newTerminalBudget(),
     );
-    expect(notices.filter((n) => n.cause === "unread_backlog")).toHaveLength(1);
+    expect(notices.filter((n: CodexDropNotice) => n.cause === "unread_backlog")).toHaveLength(1);
   });
 
   test("C-CODEX-20 a budget exhausted mid-file surfaces a backlog and a partial drop", () => {
@@ -67,8 +67,8 @@ describe("Codex bounded terminal drain", () => {
     appendFileSync(path, `${"b".repeat(600 * 1024)}\n`);
     const { notices, lines, drops, guard } = harness();
     drainToBudget({ readFs: guard.read.bind(guard), lines, drops }, cursor, { chunks: 1 });
-    expect(notices.some((n) => n.cause === "unread_backlog")).toBe(true);
-    expect(notices.some((n) => n.cause === "unparseable")).toBe(true);
+    expect(notices.some((n: CodexDropNotice) => n.cause === "unread_backlog")).toBe(true);
+    expect(notices.some((n: CodexDropNotice) => n.cause === "unparseable")).toBe(true);
   });
 
   test("C-CODEX-20 a failed remainingBytes probe at the budget edge accounts 0 backlog", () => {
@@ -87,7 +87,7 @@ describe("Codex bounded terminal drain", () => {
       },
     };
     drainToBudget({ readFs: seam.read.bind(seam), lines, drops }, cursor, { chunks: 1 });
-    expect(notices.every((n) => n.cause !== "unread_backlog")).toBe(true);
+    expect(notices.every((n: CodexDropNotice) => n.cause !== "unread_backlog")).toBe(true);
   });
 
   test("C-CODEX-20 a contained fs failure mid-drain stops without accounting", () => {

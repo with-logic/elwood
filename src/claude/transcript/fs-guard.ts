@@ -6,7 +6,7 @@
  * fault stays visible rather than either aborting the host or being swallowed.
  */
 
-import type { ReadErrorTracker } from "./drops.ts";
+import type { ReadErrorReporter } from "./drops.ts";
 
 /**
  * Wraps a synchronous or async transcript read so a thrown/rejected fs error is
@@ -16,10 +16,10 @@ import type { ReadErrorTracker } from "./drops.ts";
  * (§5.4) — so a post-finish rejection is swallowed content-free instead.
  */
 export class TranscriptFsGuard {
-  private readonly readErrors: ReadErrorTracker;
+  private readonly readErrors: ReadErrorReporter;
   private readonly isFinished: () => boolean;
 
-  constructor(readErrors: ReadErrorTracker, isFinished: () => boolean) {
+  constructor(readErrors: ReadErrorReporter, isFinished: () => boolean) {
     this.readErrors = readErrors;
     this.isFinished = isFinished;
   }

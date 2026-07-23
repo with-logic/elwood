@@ -39,7 +39,7 @@ vi.mock("../../src/codex/transcript.ts", () => ({
 
 const { createCodexTranscriptWatcher } = await import("../../src/codex/session-transcript.ts");
 const { TypedEmitter } = await import("../../src/events/emitter.ts");
-type Sink = { recordWarnings: (w: readonly unknown[]) => void };
+type Sink = { emitWarnings: (w: readonly unknown[]) => void };
 
 function emitter() {
   return new TypedEmitter() as never;
@@ -57,7 +57,7 @@ const readNotice = { elwoodSessionId: "s1", count: 1 } as never;
 describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
   test("§5.4 routes a drop notice straight to an available sink", () => {
     const recorded: unknown[] = [];
-    const sink: Sink = { recordWarnings: (w) => recorded.push(...w) };
+    const sink: Sink = { emitWarnings: (w) => recorded.push(...w) };
     createCodexTranscriptWatcher("s1", emitter(), () => sink as never);
     captured.onDrop?.(dropNotice);
     expect(recorded).toHaveLength(1);
@@ -71,7 +71,7 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
     let failNext = true;
     const recorded: unknown[] = [];
     const sink: Sink = {
-      recordWarnings: (w) => {
+      emitWarnings: (w) => {
         if (failNext) {
           failNext = false;
           throw new Error("listener boom");
@@ -88,7 +88,7 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
 
   test("§9.4 routes a poll-stopped diagnostic to the sink", () => {
     const recorded: Array<{ code?: string }> = [];
-    const sink: Sink = { recordWarnings: (w) => recorded.push(...(w as { code?: string }[])) };
+    const sink: Sink = { emitWarnings: (w) => recorded.push(...(w as { code?: string }[])) };
     createCodexTranscriptWatcher("s1", emitter(), () => sink as never);
     captured.onPollError?.(new Error("boom"));
     expect(recorded).toEqual([{ code: "transcript_poll_stopped", phase: "poll" }]);
@@ -100,7 +100,7 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
     createCodexTranscriptWatcher("s1", emitter(), () => sink as never);
     captured.onDrop?.(dropNotice); // no sink yet → buffered, not recorded
     expect(recorded).toHaveLength(0);
-    sink = { recordWarnings: (w) => recorded.push(...w) };
+    sink = { emitWarnings: (w) => recorded.push(...w) };
     captured.onReadError?.(readNotice); // flushes the buffered drop + records this
     expect(recorded).toHaveLength(2);
   });
@@ -114,7 +114,7 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
       () => sink as never,
     );
     captured.onDrop?.(dropNotice); // buffered before the sink exists
-    sink = { recordWarnings: (w) => recorded.push(...w) };
+    sink = { emitWarnings: (w) => recorded.push(...w) };
     // No second notice ever arrives; the explicit post-construction flush must
     // still persist the lone buffered notice (blocker: else it strands forever).
     flushPendingWarnings();
@@ -133,9 +133,9 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
       () => sink as never,
     );
     captured.onDrop?.(dropNotice); // buffered before the sink exists
-    // The sink appears but its first recordWarnings throws.
+    // The sink appears but its first emitWarnings throws.
     sink = {
-      recordWarnings: (w) => {
+      emitWarnings: (w) => {
         if (failNext) {
           failNext = false;
           throw new Error("listener boom");

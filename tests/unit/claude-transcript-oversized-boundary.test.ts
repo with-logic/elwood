@@ -40,19 +40,23 @@ describe("C-CLAUDE-15 over-length discard boundary", () => {
     expect(cursor.takeLines("endB\nok\n").dropped).toBe(false); // B ends: no new drop
   });
 
-  test("Finding A': two consecutive over-length records split across a chunk boundary surface TWO drops", () => {
+  test("two over-length records in one pass coalesce to ONE oversized drop (bounded delivery)", () => {
     // Watcher-level: record A's terminating newline and record B's overflowing first
-    // bytes land in the SAME 256 KiB read chunk. With the cursor's EXPLICIT
-    // per-call `dropped` flag both are surfaced: TWO live oversized drop warnings.
+    // bytes land in the SAME 256 KiB read chunk. The cursor still flags BOTH discards
+    // per-call (see the sibling cursor test), but drop DELIVERY is coalesced per
+    // (path, cause) per pass (§9.2), so the incident surfaces as ONE oversized warning
+    // rather than one synchronous emit per over-length record.
     const path = tmpFile();
     const drops: TranscriptDropNotice[] = [];
-    const watcher = new ClaudeTranscriptWatcher("s1", () => {}, { onDrop: (d) => drops.push(d) });
+    const watcher = new ClaudeTranscriptWatcher("s1", () => {}, {
+      onDrop: (d: TranscriptDropNotice) => drops.push(d),
+    });
     writeFileSync(path, "");
     watcher.observe(path);
     const over = () => "x".repeat(2 * 1024 * 1024);
     writeFileSync(path, `${over()}\n${over()}\n${JSON.stringify(assistant("after"))}\n`);
     watcher.finish();
-    expect(oversized(drops)).toBe(2); // TWO oversized records, not one
+    expect(oversized(drops)).toBe(1); // coalesced: one live oversized warning this pass
     expect(JSON.stringify(drops)).not.toContain("x".repeat(64)); // content-free
   });
 

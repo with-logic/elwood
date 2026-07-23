@@ -95,7 +95,7 @@ describe("ClaudeSession mid-session login expiry (C-CLAUDE-18)", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
-    // The watcher commits the raised edge only after `recordWarnings` returns without
+    // The watcher commits the raised edge only after `emitWarnings` returns without
     // throwing; a warning listener that throws on the FIRST delivery leaves the edge
     // un-committed so a later frame re-attempts — the warning is not lost.
     let throwOnce = true;

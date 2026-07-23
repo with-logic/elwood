@@ -119,7 +119,7 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     } catch (error) {
       // Isolated so a throwing warning/activity listener cannot skip readiness.
       try {
-        this.recordWarnings([
+        this.emitWarnings([
           resizeRestoreFailedWarning(this.elwoodSessionId, this.requestedSize, error),
         ]);
       } catch {
@@ -131,7 +131,7 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     if (this.record.claude.resumeId) return;
     this.persist(updateSessionResumeId(this.record, "claude", sessionId));
   }
-  override recordWarnings(warnings: readonly ElwoodWarningEvent[]): void {
+  override emitWarnings(warnings: readonly ElwoodWarningEvent[]): void {
     emitSessionWarnings(warnings, {
       warning: (event) => this.emitter.emit("warning", event),
       activity: (event) => this.emitter.emit("activity", event),
@@ -146,7 +146,7 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   noteLoginExpiry(screenText: string): void {
     if (!(this.hasBeenReady && this.loginExpiredWatcher.peek(screenText))) return;
     try {
-      this.recordWarnings([loginExpiredWarning(this.elwoodSessionId)]);
+      this.emitWarnings([loginExpiredWarning(this.elwoodSessionId)]);
       this.loginExpiredWatcher.commit();
     } catch {
       // Un-committed so a later frame retries.

@@ -147,6 +147,11 @@ export async function runTeardown(host: ShutdownHost, ctx: ShutdownContext): Pro
     () => host.reapPolicy.reaper.reap(), // No-op once latched; retries a failed reap.
     () => host.cleanupRuntime(),
     () => host.submitEvidence("teardown_completed"),
-    () => removeSessionFiles(host.stateDir, host.elwoodSessionId, host.socketPath),
+    () =>
+      removeSessionFiles({
+        stateDir: host.stateDir,
+        elwoodSessionId: host.elwoodSessionId,
+        socketPath: host.socketPath,
+      }),
   ]);
 }

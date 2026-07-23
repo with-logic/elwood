@@ -9,8 +9,8 @@ import { TranscriptCursor } from "./cursor.ts";
 import type { ChunkBudget, DrainContext } from "./drain.ts";
 import { drainToBudget, newTerminalBudget } from "./drain.ts";
 import {
-  DropTracker,
-  ReadErrorTracker,
+  DropReporter,
+  ReadErrorReporter,
   type TranscriptDropNotice,
   type TranscriptReadErrorNotice,
 } from "./drops.ts";
@@ -34,7 +34,7 @@ export class ClaudeTranscriptWatcher {
   private finished = false;
   // ONE budget shared across every retire() + finish(): terminal work is watcher-bounded (§9.2).
   private readonly terminalBudget: ChunkBudget = newTerminalBudget();
-  private readonly drops: DropTracker;
+  private readonly drops: DropReporter;
   private readonly guard: TranscriptFsGuard;
   private readonly onPollError: ((error: unknown) => void) | undefined;
   private readonly pollIntervalMs: number;
@@ -45,8 +45,8 @@ export class ClaudeTranscriptWatcher {
     emit: (event: ClaudeTranscriptEvent) => void,
     notices: TranscriptNoticeHandlers = {},
   ) {
-    this.drops = new DropTracker(elwoodSessionId, notices.onDrop);
-    const readErrors = new ReadErrorTracker(elwoodSessionId, notices.onReadError);
+    this.drops = new DropReporter(elwoodSessionId, notices.onDrop);
+    const readErrors = new ReadErrorReporter(elwoodSessionId, notices.onReadError);
     this.guard = new TranscriptFsGuard(readErrors, () => this.finished);
     this.onPollError = notices.onPollError;
     this.pollIntervalMs = notices.pollIntervalMs ?? pollMs;
@@ -67,6 +67,7 @@ export class ClaudeTranscriptWatcher {
       // A turn larger than the recovery window surfaces its out-of-window records as
       // one bounded, content-free backlog drop warning so the gap is not silent (§5.4).
       if (tail?.truncated && tail.droppedBytes > 0) this.drops.drop(path, "unread_backlog");
+      this.drops.flushPass(); // deliver this observe's coalesced drops
     }
     this.ensurePolling();
   }
@@ -78,6 +79,7 @@ export class ClaudeTranscriptWatcher {
       if (budget.chunks <= 0) break; // watcher-wide budget spent; resume next tick
       this.scanCursor(cursor, budget);
     }
+    this.drops.flushPass(); // bounded drop delivery: one warning per (path, cause) per scan
   }
 
   // Flush + retire a stopped subagent's transcript (one-shot): drained against the
@@ -110,6 +112,7 @@ export class ClaudeTranscriptWatcher {
         if (changed) this.scanCursor(cursor, budget);
       }
     } finally {
+      this.drops.flushPass(); // bounded drop delivery: one warning per (path, cause) per poll
       this.polling = false;
     }
   }

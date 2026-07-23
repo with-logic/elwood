@@ -36,7 +36,7 @@ function harness(faulted: boolean, agent: "claude" | "codex") {
       markReady: () => {
         queueReleased = true;
       },
-      recordWarnings: (w) => warnings.push(...w),
+      emitWarnings: (w) => warnings.push(...w),
     });
   return { advance, get: () => ({ queueReleased, warnings }) };
 }
@@ -63,7 +63,7 @@ describe("C-API-42 advanceInitialReady with the real status engine", () => {
 
   test("a throwing warning sink cannot re-starve the released queue", () => {
     let released = false;
-    // recordWarnings itself throwing must not block the direct queue release.
+    // emitWarnings itself throwing must not block the direct queue release.
     advanceInitialReady({
       agent: "claude",
       elwoodSessionId: "s1",
@@ -73,7 +73,7 @@ describe("C-API-42 advanceInitialReady with the real status engine", () => {
       markReady: () => {
         released = true;
       },
-      recordWarnings: () => {
+      emitWarnings: () => {
         throw new Error("sink boom");
       },
     });

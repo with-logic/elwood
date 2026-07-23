@@ -12,20 +12,20 @@ import { isClaudeReauthRequiredText } from "./login/expiry-screen.ts";
 
 export const LOGIN_RECOVERY_COMMAND = "/login" as const;
 
-// The FIXED, content-free message and raw token. Exported so the persisted-state
-// validator can require these EXACT values — a resumed warning carrying any other
-// (possibly content-bearing) message/raw is rejected (§8.3, C-CLAUDE-18).
+// The FIXED, content-free message and raw token. These are the canonical values the
+// live `login_expired` warning always carries — never banner or session text
+// (§5.7, C-CLAUDE-18).
 export const LOGIN_EXPIRED_MESSAGE =
   "Claude's login expired mid-session; it cannot act until re-authenticated. Run /login (or session.login()) to recover.";
 export const LOGIN_EXPIRED_RAW = "login_expired recovery=/login";
 
 /**
  * Edge-detects the login-expired banner so the warning fires ONCE per occurrence,
- * with a two-phase peek/commit so state advances only AFTER the warning is durably
- * recorded: `peek` reports whether this frame is a fresh raised edge WITHOUT
+ * with a two-phase peek/commit so state advances only AFTER the warning is
+ * delivered: `peek` reports whether this frame is a fresh raised edge WITHOUT
  * mutating state, and `commit` advances to "present" only once the caller has
- * persisted the warning. A frame with no banner clears the flag immediately (a
- * cleared banner re-arms), so a transient persist failure retries on a later frame
+ * emitted the live warning. A frame with no banner clears the flag immediately (a
+ * cleared banner re-arms), so a transient emit failure retries on a later frame
  * rather than being lost, while a persistent banner still warns only once.
  */
 export class LoginExpiredWatcher {
@@ -42,12 +42,12 @@ export class LoginExpiredWatcher {
     return !this.present;
   }
 
-  /** Advance to "present" after the caller durably records the warning. */
+  /** Advance to "present" after the caller emits the live warning. */
   commit(): void {
     this.present = true;
   }
 
-  /** Single-shot observe (peek + commit) for callers that record unconditionally. */
+  /** Single-shot observe (peek + commit) for callers that emit unconditionally. */
   observe(screenText: string): boolean {
     if (!this.peek(screenText)) return false;
     this.commit();

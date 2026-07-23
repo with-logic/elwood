@@ -30,7 +30,7 @@ describe("C-LIFE-10 codex exit-callback error boundary", () => {
   }
 
   test("C-LIFE-10 a reap failure on codex exit surfaces a live reap_failed warning", async () => {
-    // Routes through the codex warning emit path (recordCodexWarnings), so a leaked
+    // Routes through the codex warning emit path (emitCodexWarnings), so a leaked
     // group is surfaced live, content-free, with pgid + normalized code (never persisted).
     const cwd = tempDir();
     installFakes();

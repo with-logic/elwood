@@ -80,7 +80,7 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 - **A resume could never leave the queue permanently starved by a failed
   transition.** Initial readiness now latches only *after* its callback completes,
-  so a failed durable status write is retried on the next hook/frame/deadline
+  so a throwing readiness callback is retried on the next hook/frame/deadline
   rather than consuming readiness and wedging the queue. (C-API-28)
 
 - **The 8 MiB hook-request cap is now measured identically on both sides.** The
@@ -96,18 +96,12 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
   CJK, accented text) became replacement characters before the hook input was parsed.
   Both sides now accumulate raw bytes and decode once at the frame boundary. (C-HOOK-16)
 
-- **A throwing warning sink never loses a transcript diagnostic and never stops
-  observation.** Warning DELIVERY is now retain-on-throw for the whole session life:
-  each notice is queued before delivery and the flush is contained, so a throwing
-  `recordWarnings` (at any point, not only before the sink exists) is retried on the
-  next scan instead of being lost or escaping into the poll loop and stopping the
-  transcript watcher. The watcher stays live (both adapters).
-
-- **A throwing warning sink never loses the drop/read-error AGGREGATE.** Separately
-  from delivery, the running `transcript_records_dropped` / `transcript_read_error`
-  totals are held until the sink confirms the write, so a failed `session.json`
-  write can't clear the total before the incident is recorded — the next flush
-  re-delivers it (both adapters).
+- **A throwing warning listener never stops transcript observation.** Warning
+  delivery is contained at the emit site, so a throwing `warning`/`activity`
+  listener cannot escape into the poll loop and stop the transcript watcher or
+  wedge frame processing. The watcher stays live (both adapters). Warnings are
+  live-only: a contained failure means that one live warning is not delivered, not
+  that any aggregate is retained or replayed.
 
 - **An empty-ish non-array `images` value now rejects instead of sending silently.**
   An untyped caller passing `""` or `{ length: 0 }` as `images` took a no-image fast
@@ -117,8 +111,7 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 - **`transcript_read_error`'s `lastErrorCode` is always a string (both adapters).** A
   non-string errno `code` (e.g. a numeric code) is normalized to `"UNKNOWN"` instead
-  of round-tripping a number through the string-typed field, which could otherwise
-  fail the persisted record's validation.
+  of round-tripping a number through the string-typed warning field.
 
 - **Transcript reading no longer spins on an incomplete UTF-8 tail.** A partial
   write that ends mid-code-point made the reader re-read the same bytes up to
@@ -140,15 +133,15 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 - **Codex transcript reading is bounded and crash-safe.** The reader reads in
   fixed-size chunks with a max-pending ceiling, streams a large backlog across poll
   ticks, and drains within a bounded budget at exit — a hundreds-of-MiB transcript
-  can no longer OOM or block the event loop. Lost data surfaces as the content-free
-  `transcript_records_dropped` warning; a scan that throws is contained and surfaced
-  as `transcript_poll_stopped` (both now `agent: "codex" | "claude"`); a resumed
-  session continues its running drop/read-error totals rather than restarting at 0.
+  can no longer OOM or block the event loop. Lost data surfaces as the content-free,
+  count-free `transcript_records_dropped` warning (a live event, cause-tagged, not
+  persisted or counted); a scan that throws is contained and surfaced as
+  `transcript_poll_stopped` (both now `agent: "codex" | "claude"`).
   `finish()` is terminal and idempotent. (C-CODEX-20)
 
-- **Guidance/message delivery is never split from status persistence.** A throwing
-  `status` or `activity` listener can no longer leave the persisted session record
-  and the in-memory status disagreeing, nor wedge the queue mid-turn. (C-API-42)
+- **Guidance/message delivery is never wedged by a throwing listener.** A throwing
+  `status` or `activity` listener can no longer wedge the control queue mid-turn:
+  the queue is released first and any warning delivery is isolated. (C-API-42)
 
 - **Runtime cleanup is failure-safe and retryable.** A failed `stop`/`kill`/
   `teardown` no longer latches — a later call retries — and every cleanup step runs

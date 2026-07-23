@@ -6,7 +6,7 @@
  */
 
 import type { TranscriptCursor } from "./cursor.ts";
-import type { DropTracker } from "./drops.ts";
+import type { DropReporter } from "./drops.ts";
 import { type ClaudeTranscriptSummary, summarizeClaudeRecord } from "./summary.ts";
 
 export type ClaudeTranscriptEvent = {
@@ -20,9 +20,9 @@ export type ClaudeTranscriptEvent = {
 export class LineEmitter {
   private readonly elwoodSessionId: string;
   private readonly emit: (event: ClaudeTranscriptEvent) => void;
-  private readonly drops: DropTracker;
+  private readonly drops: DropReporter;
 
-  constructor(id: string, emit: (event: ClaudeTranscriptEvent) => void, drops: DropTracker) {
+  constructor(id: string, emit: (event: ClaudeTranscriptEvent) => void, drops: DropReporter) {
     this.elwoodSessionId = id;
     this.emit = emit;
     this.drops = drops;

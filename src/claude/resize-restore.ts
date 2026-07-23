@@ -1,11 +1,12 @@
 /**
- * The durable, content-free warning for a failed narrow-bootstrap size restore.
+ * The live, content-free warning for a failed narrow-bootstrap size restore.
  * Implements PRD §5.3 and C-API-39: when Claude bootstraps wide and the deferred
  * restore of the latest requested size hits a real (non-closed) PTY resize error,
  * the session stays at its safe bootstrap width and surfaces the risk as a typed
- * `resize_restore_failed` warning instead of silently swallowing it. The warning
- * carries only the size Elwood tried to restore and a normalized, allowlisted
- * error code — never a raw system message or conversation content.
+ * `resize_restore_failed` warning instead of silently swallowing it. The warning is
+ * live-only (emitted once when observed, never persisted) and carries only the size
+ * Elwood tried to restore and a normalized, allowlisted error code — never a raw
+ * system message or conversation content.
  */
 
 import type { ElwoodWarningEvent, TerminalSize } from "../core/types.ts";

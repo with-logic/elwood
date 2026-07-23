@@ -46,9 +46,11 @@ describe("state store", () => {
     mkdirSync(corruptDir, { recursive: true });
     writeFileSync(join(corruptDir, "session.json"), "{");
     expect(elwoodCode(() => readSessionRecord(root, "corrupt"))).toBe("state_corrupt");
-    expect(elwoodCode(() => removeSessionFiles(root, "\0bad", "/tmp/x.sock"))).toBe(
-      "state_not_found",
-    );
+    expect(
+      elwoodCode(() =>
+        removeSessionFiles({ stateDir: root, elwoodSessionId: "\0bad", socketPath: "/tmp/x.sock" }),
+      ),
+    ).toBe("state_not_found");
   });
 
   test("C-STATE the minimal record round-trips only the six kept fields", () => {
@@ -93,7 +95,7 @@ describe("state store", () => {
     const socketPath = join(socketHome, "h.sock");
     expect(existsSync(dir)).toBe(true);
     expect(existsSync(socketHome)).toBe(true);
-    removeSessionFiles(root, "teardown", socketPath);
+    removeSessionFiles({ stateDir: root, elwoodSessionId: "teardown", socketPath });
     expect(existsSync(dir)).toBe(false);
     expect(existsSync(socketHome)).toBe(false);
     // A non-elwood socket home is left untouched (only the derived dir is removed).
@@ -101,7 +103,11 @@ describe("state store", () => {
     const record2 = createSessionRecord({ cwd: root, id: "teardown-2" });
     const dir2 = sessionDir(root, "teardown-2");
     writeSessionRecord(record2, dir2);
-    removeSessionFiles(root, "teardown-2", join(foreignHome, "h.sock"));
+    removeSessionFiles({
+      stateDir: root,
+      elwoodSessionId: "teardown-2",
+      socketPath: join(foreignHome, "h.sock"),
+    });
     expect(existsSync(dir2)).toBe(false);
     expect(existsSync(foreignHome)).toBe(true);
   });

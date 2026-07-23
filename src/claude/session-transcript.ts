@@ -5,14 +5,15 @@
  */
 
 import * as activity from "../core/activity.ts";
-import type { ElwoodWarningEvent } from "../core/types.ts";
+import {
+  createTranscriptWarningRouter,
+  type TranscriptWarningSink,
+} from "../core/transcript/warning-router.ts";
 import { ClaudeTranscriptWatcher } from "./transcript/index.ts";
 import { dropWarning, readErrorWarning, transcriptFailureWarning } from "./transcript/warnings.ts";
 
 /** The session surface the watcher emits warnings through (live-only). */
-export type WarningSink = {
-  recordWarnings(warnings: readonly ElwoodWarningEvent[]): void;
-};
+export type WarningSink = TranscriptWarningSink;
 
 /** The narrow emitter surface the transcript wiring needs (activity only). */
 export type TranscriptActivityEmitter = {
@@ -47,7 +48,7 @@ export type WiredTranscriptWatcher = {
  * `warning`/`activity` contract (live-only, never persisted). The sink is resolved
  * lazily because the session object is constructed after the watcher (PRD §5.7). A
  * diagnostic observed BEFORE the sink exists is BUFFERED and flushed through
- * `recordWarnings` once it does — never silently dropped.
+ * `emitWarnings` once it does — never silently dropped.
  */
 export function createTranscriptWatcher(
   elwoodSessionId: string,
@@ -57,28 +58,11 @@ export function createTranscriptWatcher(
   // omits it and the watcher uses its default cadence. Internal only (not a PRD flag).
   pollIntervalMs?: number,
 ): WiredTranscriptWatcher {
-  // Holds diagnostics observed BEFORE the sink exists (the watcher is built first).
-  // Once the sink exists, a warning is delivered once and NOT retained: warnings are
-  // live-only, so a throwing listener is contained and the warning is dropped — a
-  // human's terminal does not re-show a banner. This bounds `pending` to the
-  // pre-sink startup window; it can never grow under a persistently-throwing listener.
-  const pending: ElwoodWarningEvent[] = [];
-  const flushPendingWarnings = () => {
-    const target = sink?.();
-    if (!target || pending.length === 0) return;
-    const batch = pending.splice(0); // clear FIRST — delivered once, never retried
-    target.recordWarnings(batch);
-  };
-  const route = (warning: ElwoodWarningEvent) => {
-    pending.push(warning);
-    try {
-      flushPendingWarnings();
-    } catch {
-      // Contained: a throwing warning listener must not stop the poll loop (§5.4).
-      // The warning was already removed from `pending`, so it is dropped, not
-      // retried — the watcher stays live.
-    }
-  };
+  // The shared router buffers diagnostics observed BEFORE the sink exists (the watcher
+  // is built first) and delivers each exactly once with clear-before-delivery + throw
+  // containment (see core/transcript/warning-router). `sink` is optional here; when
+  // omitted the router simply buffers with no sink to flush to.
+  const { route, flushPendingWarnings } = createTranscriptWarningRouter(() => sink?.());
   const watcher = new ClaudeTranscriptWatcher(
     elwoodSessionId,
     (event) => emitter.emit("activity", activity.activityFromClaudeTranscript(event)),

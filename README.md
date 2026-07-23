@@ -596,10 +596,12 @@ const resumed = await resumeClaude({
 });
 ```
 
-Resume uses Elwood metadata plus the underlying agent's own resume mechanism.
-If the parent app resumes from a different process working directory, pass the
-original `cwd` or the same explicit `stateDir`; id-only resume discovers the
-project-local state store from the current process working directory.
+Resume uses Elwood's minimal persisted session record plus the underlying agent's
+own resume mechanism. It does not restore a persisted terminal size (that is not
+persisted); pass `initialSize` on resume to set geometry, which otherwise falls
+back to the default. If the parent app resumes from a different process working
+directory, pass the original `cwd` or the same explicit `stateDir`; id-only resume
+discovers the project-local state store from the current process working directory.
 If Elwood never observed the adapter's internal session id, resume fails with
 `resume_unavailable` instead of silently starting a fresh conversation.
 
@@ -610,8 +612,15 @@ auth, global transcripts, user settings, or project settings.
 
 Elwood is deliberately live-first:
 
-- It persists session metadata, adapter kind, resume ids, warnings, paths, and
-  terminal size.
+- The persisted session record is minimal: schema version, `elwoodSessionId`,
+  adapter kind, `cwd`, and per-adapter resume state (the CLI's conversation id +
+  launch posture). Nothing else is written.
+- Session status, timestamps, warnings, terminal size, the hook
+  bridge token, the socket path, and Elwood-owned runtime file paths are NOT
+  persisted. Status and warnings are live-only (delivered on the `status` and
+  `warning` events; there is no `session.warnings` property). Runtime paths are
+  derived on demand; the bridge token and socket home are minted fresh per
+  start/resume and never trusted from disk.
 - It does not persist prompts, PTY output, hook payloads, hook responses, Codex
   transcript items, or derived prompt/tool content.
 - Hook bridge messages are routed over local IPC with per-session tokens.

@@ -7,8 +7,8 @@
 
 export {
   type DropCause,
-  DropTracker as CodexDropTracker,
-  ReadErrorTracker as CodexReadErrorTracker,
+  DropReporter as CodexDropReporter,
+  ReadErrorReporter as CodexReadErrorReporter,
   type TranscriptDropNotice as CodexDropNotice,
   type TranscriptReadErrorNotice as CodexReadErrorNotice,
 } from "../../core/transcript/drops.ts";

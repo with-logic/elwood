@@ -158,14 +158,14 @@ export abstract class AgentSessionBase {
     try {
       return this.statusEngine.submit(this.pendingShutdown ?? "terminal_exited");
     } finally {
-      const warning = this.reapPolicy.bestEffort(); // durable `reap_failed` warning, never a throw
-      if (warning) this.recordWarnings([warning]);
+      const warning = this.reapPolicy.bestEffort(); // live `reap_failed` warning, never a throw
+      if (warning) this.emitWarnings([warning]);
     }
   }
   statusDecisions = (): readonly StatusDecision[] => this.statusEngine.decisions();
   protected abstract stagedPaste(screen: string, prompt: string): boolean;
   protected abstract stopRuntime(): Promise<void>;
-  protected abstract recordWarnings(warnings: readonly ElwoodWarningEvent[]): void;
+  protected abstract emitWarnings(warnings: readonly ElwoodWarningEvent[]): void;
   protected replayFor(event: string, handler: unknown): void {
     if (event === "terminal:data") this.terminalReplay.replay(handler as never);
   }
@@ -178,7 +178,7 @@ export abstract class AgentSessionBase {
     }
   }
   protected persist(record: SessionRecord): void {
-    writeSessionRecord(record, this.runtime.sessionDir); // durable write FIRST, commit on success (C-CLAUDE-18)
+    writeSessionRecord(record, this.runtime.sessionDir); // atomic record write FIRST, commit in-memory on success (§8.2)
     this.record = record;
   }
   protected cleanupRuntime(): Promise<void> {
@@ -190,7 +190,7 @@ export abstract class AgentSessionBase {
       elwoodSessionId: this.elwoodSessionId,
       submitInitialReady: () => this.submitEvidence("initial_ready"),
       markReady: () => this.controlQueue.markReady(),
-      recordWarnings: (w) => this.recordWarnings(w),
+      emitWarnings: (w) => this.emitWarnings(w),
     });
   }
 }

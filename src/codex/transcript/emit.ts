@@ -6,7 +6,7 @@
  */
 
 import type { CodexTranscriptCursor } from "./cursor.ts";
-import type { CodexDropTracker } from "./drops.ts";
+import type { CodexDropReporter } from "./drops.ts";
 import { summarizeTranscriptItem } from "./summary.ts";
 import type { CodexTranscriptEvent } from "./types.ts";
 
@@ -14,9 +14,9 @@ import type { CodexTranscriptEvent } from "./types.ts";
 export class CodexLineEmitter {
   private readonly elwoodSessionId: string;
   private readonly emit: (event: CodexTranscriptEvent) => void;
-  private readonly drops: CodexDropTracker;
+  private readonly drops: CodexDropReporter;
 
-  constructor(id: string, emit: (event: CodexTranscriptEvent) => void, drops: CodexDropTracker) {
+  constructor(id: string, emit: (event: CodexTranscriptEvent) => void, drops: CodexDropReporter) {
     this.elwoodSessionId = id;
     this.emit = emit;
     this.drops = drops;

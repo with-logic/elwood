@@ -1,7 +1,7 @@
 /**
  * Wires the bounded Codex transcript watcher to the session's warning sink.
  * The watcher is constructed BEFORE the session object, so a drop/read-error
- * notice observed early is BUFFERED and flushed through `recordWarnings` (which
+ * notice observed early is BUFFERED and flushed through `emitWarnings` (which
  * emits it as a live `warning` + `activity`) once the sink exists — never dropped.
  * The caller MUST invoke `flushPendingWarnings` right after building the session so
  * a single early notice with no follow-up is not stranded. Warnings are live-only
@@ -9,7 +9,10 @@
  */
 
 import * as activity from "../core/activity.ts";
-import type { ElwoodWarningEvent } from "../core/types.ts";
+import {
+  createTranscriptWarningRouter,
+  type TranscriptWarningSink,
+} from "../core/transcript/warning-router.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { CodexEventMap } from "./session-types.ts";
 import {
@@ -20,9 +23,7 @@ import {
 } from "./transcript.ts";
 
 /** The session-side sink that emits warnings as live `warning` + `activity` events. */
-export type CodexWarningSink = {
-  readonly recordWarnings: (warnings: readonly ElwoodWarningEvent[]) => void;
-};
+export type CodexWarningSink = TranscriptWarningSink;
 
 /** A watcher plus the hook to flush any diagnostics buffered before the sink existed. */
 export type WiredCodexTranscriptWatcher = {
@@ -44,28 +45,10 @@ export function createCodexTranscriptWatcher(
   emitter: TypedEmitter<CodexEventMap>,
   getSink: () => CodexWarningSink | undefined,
 ): WiredCodexTranscriptWatcher {
-  // Holds diagnostics observed BEFORE the sink exists (the watcher is built first).
-  // Once the sink exists, a warning is delivered once and NOT retained: warnings are
-  // live-only, so a throwing listener is contained and the warning is dropped — a
-  // human's terminal does not re-show a banner. This bounds `pending` to the
-  // pre-sink startup window; it can never grow under a persistently-throwing listener.
-  const pending: ElwoodWarningEvent[] = [];
-  const flushPendingWarnings = () => {
-    const sink = getSink();
-    if (!sink || pending.length === 0) return;
-    const batch = pending.splice(0); // clear FIRST — delivered once, never retried
-    sink.recordWarnings(batch);
-  };
-  const route = (warning: ElwoodWarningEvent) => {
-    pending.push(warning);
-    try {
-      flushPendingWarnings();
-    } catch {
-      // Contained: a throwing warning listener must not stop the poll loop
-      // (C-CODEX-20). The warning was already removed from `pending`, so it is
-      // dropped, not retried — the watcher stays live.
-    }
-  };
+  // The shared router buffers diagnostics observed BEFORE the sink exists (the watcher
+  // is built first) and delivers each exactly once with clear-before-delivery + throw
+  // containment (see core/transcript/warning-router).
+  const { route, flushPendingWarnings } = createTranscriptWarningRouter(getSink);
   const watcher = new CodexTranscriptWatcher(
     elwoodSessionId,
     (event) => {

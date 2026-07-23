@@ -22,6 +22,30 @@ export type StartupCleanupResources = {
   readonly terminationTimeouts?: StartupTerminationTimeouts;
 };
 
+/**
+ * Wraps the ENTIRE `start*FromRecord` body so the fresh out-of-tree socket home the
+ * launch minted is removed on ANY failure before the session takes ownership — a
+ * failed state/runtime write, bridge start, PTY start, or guarded post-spawn step
+ * otherwise leaks a `/tmp/elwood-*` directory (§9.1). On success the socket home
+ * transfers to the returned session (teardown removes it). The cleanup is contained
+ * so it never replaces the original startup error.
+ */
+export async function withSocketHomeCleanup<T>(
+  removeSocketHome: () => void,
+  build: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await build();
+  } catch (error) {
+    try {
+      removeSocketHome();
+    } catch {
+      // Secondary: the original startup error is the one that rejects.
+    }
+    throw error;
+  }
+}
+
 // Bounded so a failed startup never hangs on an unresponsive CLI while still
 // giving the leader a chance to exit gracefully before the group SIGKILL reap.
 const startupTermination: StartupTerminationTimeouts = { gracefulMs: 5_000, forceMs: 1_000 };

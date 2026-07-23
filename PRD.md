@@ -268,15 +268,16 @@ type StartClaudeOptions = {
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
   readonly strictVersionCheck?: boolean;
-  readonly metadata?: Readonly<Record<string, unknown>>;
 };
 
 declare function startClaude(options: StartClaudeOptions): Promise<ClaudeSession>;
 ```
 
 `cwd` is the working directory where Claude should start. `stateDir` overrides
-the default Elwood state directory. `name` is stored in Elwood metadata and, for
-Claude, is forwarded to Claude's documented `--name` flag. `hooks` registers
+the default Elwood state directory. `name` is a launch-time convenience: for
+Claude it is forwarded to Claude's documented `--name` flag. It is not persisted
+in Elwood state (§8.2).
+`hooks` registers
 launch-time handlers before Claude starts. When `autoupdate` is true, Elwood
 runs `claude update` from the user's login shell before spawning Claude and
 rechecks the version after the update. The update command runs at most once
@@ -339,8 +340,8 @@ type ResumeClaudeOptions = {
 declare function resumeClaude(options: ResumeClaudeOptions): Promise<ClaudeSession>;
 ```
 
-Resume uses Elwood's durable session metadata to relaunch or reattach the
-wrapped Claude session through Claude Code's own resume mechanism. Callers should
+Resume uses Elwood's minimal persisted session record (§8.2) to relaunch or
+reattach the wrapped Claude session through Claude Code's own resume mechanism. Callers should
 not need Claude's session ID. Because the default state store is project-local,
 callers that resume from a different process working directory must pass the
 original `cwd` or the explicit `stateDir` used at start time. Calling
@@ -355,8 +356,10 @@ If Elwood has not observed and persisted Claude Code's internal session id from
 It must not silently launch a fresh Claude conversation under the same Elwood
 session ID.
 
-Decision note: MVP resume restores the Elwood wrapper, hook routing, terminal
-size, metadata, and the agent's internal conversation resume id. The launch
+Decision note: MVP resume re-establishes the Elwood wrapper, hook routing, and the
+agent's internal conversation resume id. It does NOT restore a persisted terminal
+size — that is not persisted (§8.2); the caller passes
+`initialSize` on resume (it otherwise falls back to the default). The launch
 posture (privilege and tool policy) is persisted in the session record at
 start, and resume defaults to it: a bare `resumeClaude` relaunches with the
 same `permissionMode`, `allowedTools`, `disallowedTools`, and `tools` the
@@ -946,9 +949,8 @@ visual xterm size explicitly.
 Claude sessions requested below 100 columns MUST bootstrap the PTY and headless
 terminal at 100 columns because Claude Code can silently discard input when it
 initializes below that width. Elwood holds only the PHYSICAL pty/terminal resize
-during this bootstrap; a caller `resize` in this window still DURABLY persists the
-requested terminal size immediately, so a session that exits before readiness
-resumes at the latest requested size rather than the bootstrap width. Elwood
+during this bootstrap; a caller `resize` in this window is recorded in memory as
+the latest requested size (terminal size is never persisted, §8.2). Elwood
 restores that latest requested size at the one-shot initial-ready transition,
 before the queued persona or caller message is submitted. Later resizes retain
 their ordinary exact behavior. Codex sessions do not apply this bootstrap.
@@ -1165,7 +1167,6 @@ type StartCodexOptions = {
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
   readonly strictVersionCheck?: boolean;
-  readonly metadata?: Readonly<Record<string, unknown>>;
 };
 
 declare function startCodex(options: StartCodexOptions): Promise<CodexSession>;
@@ -1268,10 +1269,12 @@ shared io, command, and lifecycle methods. Parent-app code generic over "any
 agent session" can be written once against this type; adapter-specific hooks
 and events remain on the concrete types.
 
-Both `ClaudeSession` and `CodexSession` expose `warnings`, a live in-memory
-snapshot of typed non-fatal issues observed by Elwood. Warnings are also emitted
-as `warning` events and projected into the adapter-neutral `activity` stream.
-The MVP warning contract is:
+Both `ClaudeSession` and `CodexSession` deliver typed non-fatal issues observed
+by Elwood through the `warning` event, projected into the adapter-neutral
+`activity` stream. Warnings are LIVE-ONLY: there is no `warnings` snapshot
+property — a warning is emitted once when observed and is never persisted,
+replayed to a late subscriber, or accumulated (§5.7). Consumers collect warnings
+by listening for the `warning` event. The MVP warning contract is:
 
 ```ts
 type ElwoodWarningEvent =
@@ -1299,8 +1302,9 @@ type ElwoodWarningEvent =
       // Claude's login lapsed AFTER the session was usable (C-CLAUDE-18). Content-
       // free: the message and raw are FIXED canonical strings and the recovery
       // command is the literal "/login"; no field carries banner or session text.
-      // De-duplicates like every warning, so a session warns at most once for its
-      // login expiring. The session is left alive for in-place recovery via `login`.
+      // Detection is edge-based: a banner persisting across many frames does not
+      // re-emit, so a session emits this live warning at most once for its login
+      // expiring. The session is left alive for in-place recovery via `login`.
       readonly elwoodSessionId: string;
       readonly agent: "claude";
       readonly source: "terminal";
@@ -1447,9 +1451,9 @@ When Elwood recognizes an allowlisted trust prompt but its affirmative option ha
 not rendered in the current frame yet, it emits a transient `attention` activity
 (labelled with the prompt id) at most once. This is a TRANSIENT render-delay
 state, not a wedge: under the say-yes policy Elwood keeps watching and answers the
-prompt on a later frame once the option paints, so there is deliberately NO durable
-warning persisted for it — persisting one would replay as a permanent "not
-auto-answered" record even after the prompt is successfully answered (C-CLAUDE-14).
+prompt on a later frame once the option paints, so there is deliberately NO
+warning emitted for it — a warning here would read as a "not auto-answered" signal
+even after the prompt is successfully answered (C-CLAUDE-14).
 
 The `transcript_records_dropped` warning is emitted when committed transcript
 records cannot be parsed as JSON, when a single un-terminated record exceeds a
@@ -1502,7 +1506,7 @@ live periodic poll, `"final_flush"` for the final flush at PTY exit — so an
 operator can tell lost trailing activity during shutdown from a live-watcher poll
 failure without a distinct warning code. A
 throwing activity listener during the final flush never prevents `terminal:exit`
-emission, terminal status persistence, or the process-tree reap (C-LIFE-10): the
+emission, the live terminal-status transition, or the process-tree reap (C-LIFE-10): the
 flush runs behind an error boundary and lifecycle completion is guaranteed. Like
 every warning these carry no raw conversation content: only a bounded `cause` or
 `phase` label, an error code or short reason, and the transcript path — no counts
@@ -1917,7 +1921,7 @@ memory only. The persisted fields are exactly:
   privileges.
 
 Nothing else is persisted. In particular Elwood MUST NOT persist session status,
-timestamps, warnings, caller metadata, terminal size, the hook bridge
+timestamps, warnings, terminal size, the hook bridge
 authentication token, the socket path, or any Elwood-owned runtime file paths.
 Status and warnings are live-only (§5.7). Runtime file paths are pure functions of
 the state directory, session id, and adapter, so they are DERIVED on demand rather
@@ -2062,8 +2066,11 @@ secondary and never replaces it.
 `resumeClaude` loads the Elwood session record and starts a new wrapper around
 the same logical Claude conversation using Claude Code's resume mechanism.
 
-Resume must restore hook routing, generated settings, state metadata, and PTY
-control. Resume must not require callers to know Claude's internal session ID.
+Resume must re-establish hook routing, regenerate settings, and re-establish PTY
+control. It does not restore any persisted terminal size (that
+is not persisted, §8.2): the caller passes `initialSize` on resume to set
+geometry, which otherwise falls back to the default. Resume must not require
+callers to know Claude's internal session ID.
 Resume must reject session records owned by another adapter and must fail
 explicitly when the Claude resume id is not available.
 Resume defaults the launch posture (privilege and tool policy) from the persisted
@@ -2090,14 +2097,15 @@ intentionally not persisted yet.
 ### 9.4 Exit
 
 When the agent process exits, Elwood emits terminal/process exit events and
-updates session metadata. It keeps metadata and generated files unless teardown
-is requested.
+updates the live session status. It keeps the persisted session record and
+generated files unless teardown is requested. (Session status is live-only and is
+not written to the record, §8.2.)
 
 Reaping the leader's process group is unconditional on every exit path
 (C-LIFE-10). On an unsolicited PTY exit the terminal status is submitted first,
 then the group is reaped in a `finally`, so transcript-drain, warning-emission, or
 status-listener failures can never skip the reap; a reap failure there surfaces as
-a durable `reap_failed` warning rather than aborting the exit callback. An explicit
+a live `reap_failed` warning rather than aborting the exit callback. An explicit
 `stop()`/`kill()` on an already-terminal session performs only the one-shot
 survivor reap (it does not re-signal the dead PTY — node-pty does not replay the
 exit event, and the pid may already be recycled) and rejects with a typed
@@ -2294,7 +2302,7 @@ Each criterion has:
 | C-API-11 | §5.7 | `CodexSession` exposes the same terminal control and lifecycle methods as `ClaudeSession`. |
 | C-API-12 | §5.4 | Claude and Codex sessions emit adapter-neutral `activity` events for common lifecycle, message, tool, transcript, and hook-error observations, with normalized metadata for common timeline rendering. |
 | C-API-13 | §5.3 | Claude and Codex sessions expose `sendMessage` as the adapter-neutral queued message submission API. |
-| C-API-14 | §5.7 | Sessions emit typed `warning` events (and projected `warning` activities) for non-fatal environment issues. Warnings are LIVE-ONLY: emitted once when observed, never persisted, never replayed to a late subscriber, and never accumulated into a snapshot or running count. |
+| C-API-14 | §5.7 | Sessions emit typed `warning` events (and projected `warning` activities) for non-fatal environment issues. Warnings are LIVE-ONLY: emitted once when observed, never persisted, never replayed to a late subscriber, and never accumulated into a snapshot or running count. A warning known BEFORE the session is returned (the version/preflight warning) is delivered on a deferred tick AFTER `startClaude`/`startCodex` resolves, so a caller that attaches a `warning` listener in the same turn it receives the session still observes it — without restoring general late-subscriber replay. |
 | C-API-15 | §5.3 | Sessions expose a typed headless xterm terminal handle with snapshot and underlying xterm access. |
 | C-API-16 | §5.1 | Omitted `initialSize` defaults to a 189 column by 48 row terminal. |
 | C-API-17 | §5.4 | Hook dispatch emits adapter-neutral hook-result activity, and hook failures also appear in the activity stream. |
@@ -2306,7 +2314,7 @@ Each criterion has:
 | C-API-23 | §5.3 §5.7 | `listModels()` parses the adapter's rendered model picker into typed options with current/default markers, cancels with Escape, and leaves the session model unchanged. |
 | C-API-24 | §5.3 §5.7 | `setModel(id)` switches the session model through cursor navigation; Elwood itself never persists a new default into user-owned configuration (Claude uses the session-only key; the Codex CLI persists its own picker selection, documented as a §4.5 deviation) and unknown ids reject with `model_automation_failed` listing available ids. |
 | C-API-35 | §5.3 §5.7 | `listModels()`/`setModel()` dispatch the picker command even while a turn is in flight (they do not wait for `ready`), so picker automation is not stalled by an in-flight turn such as an MCP-server boot spinner; `compact` and messages still wait for the active turn. Ordering is FIFO except for the documented overtaking of a readiness-waiting head by an immediate operation (a picker command, a `sendPrompt`, or already-ready running-turn guidance); same-class and post-ready ordering stays FIFO, and no two submissions interleave. |
-| C-API-36 | §5.3 | A Claude session requested below 100 columns bootstraps at 100 columns and holds only the PHYSICAL pre-ready resize while still durably persisting each pre-ready requested size immediately (so an exit before readiness resumes at the latest requested size, and multiple pre-ready resizes leave the last one persisted); it restores the latest requested size before its initial ready queue drains, so narrow visible terminals do not lose their first prompt. |
+| C-API-36 | §5.3 | A Claude session requested below 100 columns bootstraps at 100 columns and holds only the PHYSICAL pre-ready resize while recording each pre-ready requested size in memory (multiple pre-ready resizes leave the last one as the latest requested size; terminal size is never persisted, §8.2); it restores the latest requested size before its initial ready queue drains, so narrow visible terminals do not lose their first prompt. |
 | C-API-37 | §5.3 §5.7 | Claude and Codex expose `sendGuidance(message)`: before first readiness and while blocked it queues safely like `sendMessage`; during a post-ready running turn it overtakes readiness-waiting operations and enters the TUI immediately. Guidance serializes with queue-backed prompt/message/command submissions and resolves only after the submitting Enter is dispatched; raw `sendKeys` intentionally bypasses that queue. |
 | C-API-38 | §5.3 §5.7 | `interrupt()` bypasses the control queue and writes a single Escape immediately while the session is `running` or `blocked` AND has reached initial readiness at least once, resolving when the session next reaches `ready`; with no turn in flight — an idle `ready` session or the pre-readiness startup `running` window — it resolves without writing anything; concurrent calls coalesce into one Escape; it rejects with `interrupt_failed` after `timeoutMs` (default 10000 ms) and with `session_not_running` when the session terminates first or is already terminal. |
 | C-API-39 | §5.3 §5.7 | When restoring the latest requested size at Claude's initial-ready transition fails with a real (non-closed) native PTY resize error, Elwood keeps the safe bootstrap width, does not report the resize as applied, and surfaces a typed `resize_restore_failed` warning (content-free: only the requested size and an allowlisted error code), while still releasing the queued persona/caller message so input is never starved; a closed-fd resize at that transition stays a silent no-op. |
@@ -2375,7 +2383,7 @@ Each criterion has:
 | C-CLAUDE-11 | §5.1 | Claude's browser tools onboarding prompt is declined through PTY input regardless of `autotrust`, with `startup_prompt` activity emitted under the `browser_tools` label. |
 | C-CLAUDE-12 | §5.1 | `startClaude` forwards `model` to Claude's `--model` launch flag. |
 | C-CLAUDE-13 | §4.3 | `tools` emits Claude's `--tools` allowlist flag as one comma-separated value, with an empty array encoding `--tools ""` (all tools disabled); it is forwarded across resume like the other tool options. |
-| C-CLAUDE-14 | §5.1 | Under `autotrust`, Claude's allowlisted skill/plugin/MCP trust prompts are each answered once and emit `startup_prompt` activity under their `skill_trust`/`plugin_trust`/`mcp_trust` labels. Recognition is the only guard: a prompt is recognized solely by its HEADER wording on a non-option line (so an option-only trust phrase cannot spoof one), and once recognized Elwood sends the first affirmative option in the current frame — the agent is never left waiting. When a recognized prompt's affirmative option has not rendered in the current frame yet, Elwood emits a fire-once transient `attention` activity and keeps watching so a later frame carrying the option is still answered; this render-delay state is TRANSIENT and no durable warning is persisted for it. An off-allowlist first-run prompt is never auto-answered. Per the say-yes policy there is deliberately no per-dialog region binding, so a second stacked dialog's affirmative in the same frame is an accepted consequence, not a defended boundary. |
+| C-CLAUDE-14 | §5.1 | Under `autotrust`, Claude's allowlisted skill/plugin/MCP trust prompts are each answered once and emit `startup_prompt` activity under their `skill_trust`/`plugin_trust`/`mcp_trust` labels. Recognition is the only guard: a prompt is recognized solely by its HEADER wording on a non-option line (so an option-only trust phrase cannot spoof one), and once recognized Elwood sends the first affirmative option in the current frame — the agent is never left waiting. When a recognized prompt's affirmative option has not rendered in the current frame yet, Elwood emits a fire-once transient `attention` activity and keeps watching so a later frame carrying the option is still answered; this render-delay state is TRANSIENT and no warning is emitted for it. An off-allowlist first-run prompt is never auto-answered. Per the say-yes policy there is deliberately no per-dialog region binding, so a second stacked dialog's affirmative in the same frame is an accepted consequence, not a defended boundary. |
 | C-CLAUDE-15 | §5.4 | Claude `assistant_message`, `tool_call`, and `tool_result` activities are sourced from the committed transcript the CLI writes at `transcript_path`, never from the `Stop` hook's `last_assistant_message`; an un-sent ghost-text / composer draft therefore never becomes an `assistant_message`. |
 | C-CLAUDE-16 | §5.1 §5.4 §5.7 | A Claude startup prompt Elwood auto-answers is marked settled and emits its `startup_prompt` activity only after its PTY `sendInput` write fulfills. A rejected write emits NO `startup_prompt` activity, leaves the prompt un-settled so a later frame re-attempts it, and surfaces a bounded, content-free `startup_prompt_write_failed` warning carrying only the prompt label. |
 | C-CLAUDE-17 | §5.1 | A Claude startup banner showing a lapsed or revoked login that only directs the user to re-run `/login` (`Login expired`, `Session expired`, or `OAuth token revoked`, each paired with a `run /login` recovery hint) is treated as an authentication failure and rejects `startClaude` with `claude_not_authenticated`, exactly like the explicit `not authenticated` banners — the session is torn down rather than reported as usable. Matching is anchored on the `/login` recovery directive so an unrelated mention of "login" does not trip it. |
@@ -2400,7 +2408,7 @@ Each criterion has:
 | C-CODEX-12 | §5.5 | If Codex still shows an interactive update prompt inside the TUI, Elwood selects the skip/continue-without-updating option by label. |
 | C-CODEX-13 | §10 | An immediately failing or unusable Codex process fails with `codex_start_failed` or a more specific typed error. |
 | C-CODEX-14 | §5.3 | `setModel` on Codex restores the user's prior `config.toml` default via compare-and-swap after the CLI persists its picker selection, skipping with the `codex_default_model_persisted` warning instead of clobbering concurrent edits. |
-| C-CODEX-15 | §5.5 | Codex's directory-trust prompt is answered only under `autotrust` (blocking on the human when off); Codex hook trust — Elwood's own integration — is answered regardless of `autotrust` and is NOT classified as blocking. Each is recognized only by its HEADER wording on a non-option line (so an option-only phrase cannot spoof it) and, once recognized, answered from the frame's affirmative option — the agent is never left waiting. When a recognized prompt's affirmative option has not rendered yet, a fire-once transient `attention` activity is emitted and Elwood keeps watching so a later frame answers it; this render-delay state is TRANSIENT and no durable warning is persisted for it. Each is answered once, from the shared allowlist. |
+| C-CODEX-15 | §5.5 | Codex's directory-trust prompt is answered only under `autotrust` (blocking on the human when off); Codex hook trust — Elwood's own integration — is answered regardless of `autotrust` and is NOT classified as blocking. Each is recognized only by its HEADER wording on a non-option line (so an option-only phrase cannot spoof it) and, once recognized, answered from the frame's affirmative option — the agent is never left waiting. When a recognized prompt's affirmative option has not rendered yet, a fire-once transient `attention` activity is emitted and Elwood keeps watching so a later frame answers it; this render-delay state is TRANSIENT and no warning is emitted for it. Each is answered once, from the shared allowlist. |
 | C-CODEX-16 | §5.1 | Codex `assistant_message`, `tool_call`, and `tool_result` activities are sourced only from the committed transcript, never re-projected from the `Stop`/`PreToolUse`/`PostToolUse` hook payloads; those hooks emit plain `hook` activity, so a single reply or tool step is surfaced exactly once (mirrors C-CLAUDE-15). |
 | C-CODEX-17 | §5.4 §5.5 §5.7 | A Codex startup prompt Elwood auto-answers (directory/hook trust, `update` skip) is marked settled and emits its `startup_prompt` activity only after its PTY `sendInput` write fulfills. A rejected write emits NO `startup_prompt` activity, leaves the prompt un-settled so a later frame re-attempts it, and surfaces a bounded, content-free `startup_prompt_write_failed` warning carrying only the prompt label (mirrors C-CLAUDE-16). |
 | C-CODEX-18 | §5.4 §7A.4 | A committed Codex `reasoning` transcript item surfaces its human-readable text on the `reasoning` activity's `text` field: the `text` of every `summary[]` entry of type `summary_text`, or — when the reasoning is un-summarized — every `content[]` entry of type `reasoning_text`, joined by newlines. The always-present `encrypted_content` blob is never readable and is never surfaced. When neither carries prose (the common case with reasoning summaries disabled), the activity carries no `text`, exactly as a bare reasoning marker. |

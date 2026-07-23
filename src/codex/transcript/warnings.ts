@@ -1,10 +1,12 @@
 /**
  * Builds bounded, content-free Codex transcript diagnostic warnings.
  * Implements PRD §7A/§5.4: a dropped record or a contained filesystem read error
- * becomes a typed `warning` carrying only counts and a magnitude or error code —
- * never raw transcript content. Mirrors Claude's transcript/warnings builders so
- * both adapters surface identical, shared `transcript_records_dropped` /
- * `transcript_read_error` warnings.
+ * becomes a typed live `warning` carrying only a bounded cause/phase label and an
+ * error code — never a count, byte magnitude, or raw transcript content. These are
+ * live-only (§5.7): each is emitted once when observed, never persisted, counted,
+ * or replayed. Mirrors Claude's transcript/warnings builders so both adapters
+ * surface identical, shared `transcript_records_dropped` / `transcript_read_error`
+ * warnings.
  */
 
 import { dropWarning, readErrorWarning } from "../../core/transcript/warnings.ts";
@@ -29,7 +31,7 @@ export function codexReadErrorWarning(notice: CodexReadErrorNotice): ElwoodWarni
 /**
  * A scan threw and the watcher stopped itself. The escaping error can be a
  * downstream activity-listener exception whose message embeds raw transcript
- * content, so only a bounded, allowlisted error NAME/errno reaches the persisted
+ * content, so only a bounded, allowlisted error NAME/errno reaches the emitted
  * `reason` — never `error.message` (content-free guarantee, §5.4/§8.3).
  */
 export function codexPollStoppedWarning(

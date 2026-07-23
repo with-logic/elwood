@@ -31,7 +31,7 @@ import type {
   CodexEventName,
   CodexSession,
 } from "./session-types.ts";
-import { recordCodexWarnings } from "./session-warnings.ts";
+import { emitCodexWarnings } from "./session-warnings.ts";
 import type { CodexTranscriptWatcher } from "./transcript.ts";
 
 export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
@@ -84,7 +84,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
   // preserved to the caller, so surface the swallowed restore failure as a bounded
   // diagnostic — otherwise the user gets no signal that config.toml may stay mutated.
   private reportRestoreFailure(error: unknown): void {
-    this.recordWarnings([
+    this.emitWarnings([
       {
         elwoodSessionId: this.elwoodSessionId,
         agent: "codex",
@@ -99,7 +99,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
   }
   private restoreCodexDefault(snapshot: string | undefined): void {
     if (restoreCodexConfig(snapshot) !== "skipped") return;
-    this.recordWarnings([
+    this.emitWarnings([
       {
         elwoodSessionId: this.elwoodSessionId,
         agent: "codex",
@@ -143,7 +143,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
       () => this.warnClipboardRestoreFailed(),
     );
   private warnClipboardRestoreFailed(): void {
-    this.recordWarnings([
+    this.emitWarnings([
       {
         elwoodSessionId: this.elwoodSessionId,
         agent: "codex",
@@ -176,8 +176,8 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
   flushTranscript(): void {
     this.transcriptWatcher?.flush();
   }
-  override recordWarnings(warnings: readonly ElwoodWarningEvent[]): void {
-    recordCodexWarnings(warnings, this.emitter);
+  override emitWarnings(warnings: readonly ElwoodWarningEvent[]): void {
+    emitCodexWarnings(warnings, this.emitter);
   }
   protected async stopRuntime(): Promise<void> {
     await stopCodexRuntime(this.bridge, this.transcriptWatcher, this.terminal);

@@ -1,8 +1,10 @@
 /**
  * Builds bounded, content-free transcript diagnostic warnings.
  * Implements PRD §5.4 (C-CLAUDE-15): a dropped record or a contained filesystem
- * read error becomes a typed `warning` carrying only counts and a magnitude or
- * error code — never raw transcript content.
+ * read error becomes a typed live `warning` carrying only a bounded cause/phase
+ * label and an error code — never a count, byte magnitude, or raw transcript
+ * content. These warnings are live-only (§5.7): each is emitted once when observed
+ * and is never persisted, counted, or replayed.
  */
 
 import {
@@ -39,11 +41,11 @@ const phaseMessage: Record<TranscriptFailurePhase, string> = {
  * flush (lost trailing activity) is distinguishable from a live-watcher poll failure
  * without a separate warning code. The public `transcript_poll_stopped` code is
  * kept (PRD-required), but the builder is named for BOTH phases it now handles.
- * This warning is PERSISTED, and the escaping error can be a downstream
- * activity-listener exception whose message embeds raw transcript items (prompts,
- * tool output, credentials). To honor the content-free warning guarantee
- * (§5.4/§8.3), only a bounded, allowlisted error NAME/errno reaches the persisted
- * fields — never `error.message` or `String(error)`.
+ * This warning is live-only (emitted once when observed, never persisted), and the
+ * escaping error can be a downstream activity-listener exception whose message
+ * embeds raw transcript items (prompts, tool output, credentials). To honor the
+ * content-free warning guarantee (§5.4/§8.3), only a bounded, allowlisted error
+ * NAME/errno reaches the emitted fields — never `error.message` or `String(error)`.
  */
 export function transcriptFailureWarning(
   elwoodSessionId: string,

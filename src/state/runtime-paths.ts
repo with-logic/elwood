@@ -11,6 +11,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { newBridgeToken, safeSessionDir } from "./files.ts";
+import { SOCKET_HOME_PREFIX } from "./socket-home.ts";
 
 /** The in-memory runtime a session binds to for one launch (never persisted). */
 export type SessionRuntime = {
@@ -23,19 +24,23 @@ export type SessionRuntime = {
   readonly bridgeToken: string;
 };
 
+/** The identifying inputs a launch derives its per-launch runtime paths from. */
+export type SessionRuntimeInput = {
+  readonly stateDir: string;
+  readonly elwoodSessionId: string;
+  readonly adapter: "claude" | "codex";
+};
+
 /**
  * Builds the per-launch runtime for a session. The session-dir paths are derived
  * from `(stateDir, id, adapter)`; the socket lives in a fresh mkdtemp home because
  * macOS caps socket paths near 104 bytes (so it cannot live under a caller-structured
  * stateDir), and the bridge token is minted anew so no stale token round-trips.
  */
-export function sessionRuntime(
-  stateDir: string,
-  id: string,
-  adapter: "claude" | "codex",
-): SessionRuntime {
-  const dir = safeSessionDir(stateDir, id);
-  const socketHome = mkdtempSync(join(tmpdir(), "elwood-"));
+export function sessionRuntime(input: SessionRuntimeInput): SessionRuntime {
+  const { stateDir, elwoodSessionId, adapter } = input;
+  const dir = safeSessionDir(stateDir, elwoodSessionId);
+  const socketHome = mkdtempSync(join(tmpdir(), SOCKET_HOME_PREFIX));
   return {
     sessionDir: dir,
     settingsPath: join(dir, `${adapter}-settings.json`),

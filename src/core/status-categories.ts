@@ -1,9 +1,9 @@
 /**
  * Single source of truth for session-status literals and their categories.
- * `ElwoodSessionStatus` is derived from these tuples, and validation and the
- * live/terminal category sets are built from the same source — so adding a
- * status is one edit and cannot silently desync the type, persistence
- * validation, or lifecycle guards.
+ * `ElwoodSessionStatus` is derived from these tuples, and the live/terminal
+ * category sets are built from the same source — so adding a status is one edit
+ * and cannot silently desync the type or lifecycle guards. Status is live-only and
+ * is never persisted (§8.2).
  * Implements PRD §5 lifecycle guarantees.
  */
 

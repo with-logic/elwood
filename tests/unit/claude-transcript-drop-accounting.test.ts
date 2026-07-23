@@ -27,17 +27,22 @@ const assistant = (text: string) => ({
 });
 
 describe("C-CLAUDE-15 watcher-level drop/read-error accounting", () => {
-  test("each malformed line surfaces one live unparseable drop warning", () => {
-    // Every dropped record is its own live warning — no batching, no running count.
+  test("many malformed lines in one pass coalesce to ONE unparseable drop warning", () => {
+    // Drop DELIVERY is bounded per scan pass (§9.2): a chunk can hold millions of
+    // malformed lines, so the pass coalesces them to ONE content-free unparseable
+    // warning per (path, cause) rather than fanning out one synchronous emit per line.
     const path = tmpFile();
     const drops: TranscriptDropNotice[] = [];
-    const watcher = new ClaudeTranscriptWatcher("s1", () => {}, { onDrop: (d) => drops.push(d) });
+    const watcher = new ClaudeTranscriptWatcher("s1", () => {}, {
+      onDrop: (d: TranscriptDropNotice) => drops.push(d),
+    });
     writeFileSync(path, "");
     watcher.observe(path);
     writeFileSync(path, `${Array.from({ length: 3 }, () => "{ bad }").join("\n")}\n`);
     watcher.finish();
-    expect(drops.filter((d) => d.cause === "unparseable")).toHaveLength(3);
-    expect(drops.every((d) => d.elwoodSessionId === "s1" && d.path === path)).toBe(true);
+    expect(drops.filter((d) => d.cause === "unparseable")).toEqual([
+      { elwoodSessionId: "s1", path, cause: "unparseable" },
+    ]);
   });
 
   test("MINOR: a truncated baseline recovery surfaces an unread_backlog drop", () => {

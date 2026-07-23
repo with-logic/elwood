@@ -16,7 +16,7 @@ function collect() {
 
 function sink(): StartupWarningSink & { warnings: ElwoodWarningEvent[] } {
   const warnings: ElwoodWarningEvent[] = [];
-  return { warnings, recordWarnings: (w) => warnings.push(...w) };
+  return { warnings, emitWarnings: (w) => warnings.push(...w) };
 }
 
 describe("emitSettledStartupOutcomes", () => {

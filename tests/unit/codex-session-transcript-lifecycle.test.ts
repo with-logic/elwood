@@ -35,7 +35,7 @@ vi.mock("../../src/codex/transcript.ts", () => ({
 
 const { createCodexTranscriptWatcher } = await import("../../src/codex/session-transcript.ts");
 const { TypedEmitter } = await import("../../src/events/emitter.ts");
-type Sink = { recordWarnings: (w: readonly unknown[]) => void };
+type Sink = { emitWarnings: (w: readonly unknown[]) => void };
 const emitter = () => new TypedEmitter() as never;
 const dropNotice = { elwoodSessionId: "s1", count: 1 } as never;
 const readNotice = { elwoodSessionId: "s1", count: 1 } as never;
@@ -56,7 +56,7 @@ describe("createCodexTranscriptWatcher lifecycle", () => {
     let failing = true;
     const recorded: unknown[] = [];
     const sink: Sink = {
-      recordWarnings: (w) => {
+      emitWarnings: (w) => {
         if (failing) throw new Error("listener boom");
         recorded.push(...w);
       },
@@ -85,7 +85,7 @@ describe("createCodexTranscriptWatcher lifecycle", () => {
     // The FINAL flush throws: afterFlush (terminal:exit) must STILL run + a phase diagnostic.
     finishControl.throws = true;
     const recorded: Array<{ code?: string; phase?: string }> = [];
-    const sink: Sink = { recordWarnings: (w) => recorded.push(...(w as never[])) };
+    const sink: Sink = { emitWarnings: (w) => recorded.push(...(w as never[])) };
     const { finishSafely } = createCodexTranscriptWatcher("s1", emitter(), () => sink as never);
     let afterRan = false;
     finishSafely(() => {

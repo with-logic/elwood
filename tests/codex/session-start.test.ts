@@ -68,7 +68,7 @@ describe("CodexSession startup and terminal control", () => {
     expect(ptys[0]!.writes).toEqual(["2"]);
   });
 
-  test("C-API-14 C-CODEX-09 emits typed Codex MCP startup warnings", async () => {
+  test("C-API-14 C-CODEX-09 emits each Codex MCP startup banner ONCE per occurrence", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startCodex({ cwd });
@@ -76,16 +76,24 @@ describe("CodexSession startup and terminal control", () => {
     const activity: string[] = [];
     session.on("warning", (event) => warningEvents.push(event));
     session.on("activity", (event) => activity.push(event.kind));
+    // First frame carries BOTH banners.
     ptys[0]!.emitData(
       "The linear MCP server is not logged in. Run `codex mcp login linear`.\nMCP startup incomplete (failed: linear)",
     );
-    ptys[0]!.emitData("MCP startup incomplete (failed: linear)");
     await flushTerminal();
-    // Live-only warnings are no longer de-duplicated: each detection fires (§5.7).
-    const notLoggedIn = warningEvents.find((w) => w.code === "mcp_server_not_logged_in");
-    const startupIncomplete = warningEvents.find((w) => w.code === "mcp_startup_incomplete");
-    expect(notLoggedIn).toMatchObject({ mcpServerName: "linear" });
-    expect(startupIncomplete).toMatchObject({
+    // An UNRELATED follow-up frame that does NOT re-show the banners must NOT re-emit
+    // them: "once when observed" means a banner must clear and reappear to fire again,
+    // not replay every later frame off the accumulated buffer (C-API-14, §5.7).
+    ptys[0]!.emitData("just some ordinary output, no banners here");
+    await flushTerminal();
+    // EXACT cardinality: each banner fired exactly once across both frames.
+    const codes = warningEvents.map((w) => w.code);
+    expect(codes.filter((c) => c === "mcp_server_not_logged_in")).toHaveLength(1);
+    expect(codes.filter((c) => c === "mcp_startup_incomplete")).toHaveLength(1);
+    expect(warningEvents.find((w) => w.code === "mcp_server_not_logged_in")).toMatchObject({
+      mcpServerName: "linear",
+    });
+    expect(warningEvents.find((w) => w.code === "mcp_startup_incomplete")).toMatchObject({
       recoveryCommands: ["codex mcp login linear"],
       raw: expect.stringContaining("MCP startup incomplete (failed: linear)"),
     });

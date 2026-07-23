@@ -17,7 +17,7 @@ export type InitialReadyAdvanceDeps = {
   readonly elwoodSessionId: string;
   readonly submitInitialReady: () => void;
   readonly markReady: () => void;
-  readonly recordWarnings: (warnings: readonly ElwoodWarningEvent[]) => void;
+  readonly emitWarnings: (warnings: readonly ElwoodWarningEvent[]) => void;
 };
 
 export function advanceInitialReady(deps: InitialReadyAdvanceDeps): void {
@@ -28,7 +28,7 @@ export function advanceInitialReady(deps: InitialReadyAdvanceDeps): void {
     // the queue unconditionally so queued input is never starved, then warn.
     deps.markReady();
     try {
-      deps.recordWarnings([initialReadyFallbackWarning(deps.agent, deps.elwoodSessionId)]);
+      deps.emitWarnings([initialReadyFallbackWarning(deps.agent, deps.elwoodSessionId)]);
     } catch {
       // A warning-sink/listener failure must never block the readiness release.
     }

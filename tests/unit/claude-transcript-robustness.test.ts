@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import {
   type TranscriptReadErrorNotice as DropsReadErrorNotice,
-  ReadErrorTracker,
+  ReadErrorReporter,
 } from "../../src/claude/transcript/drops.ts";
 import {
   type ClaudeTranscriptEvent,
@@ -105,17 +105,23 @@ describe("C-CLAUDE-15 transcript watcher robustness", () => {
     watcher.stop();
   });
 
-  test("drop notices are content-free and surface one live warning per lost record", () => {
+  test("drop delivery is BOUNDED: many malformed lines in one pass coalesce to one warning", () => {
+    // §9.2: 60 malformed lines in ONE scan/finish pass must not fan out 60 synchronous
+    // warning emissions (a chunk can hold millions). The incident still surfaces — one
+    // content-free `unparseable` drop per (path, cause) per pass — never a running count,
+    // never persisted, never raw content.
     const path = tmpFile();
     const drops: TranscriptDropNotice[] = [];
-    const watcher = new ClaudeTranscriptWatcher("s1", () => {}, { onDrop: (d) => drops.push(d) });
+    const watcher = new ClaudeTranscriptWatcher("s1", () => {}, {
+      onDrop: (d: TranscriptDropNotice) => drops.push(d),
+    });
     writeFileSync(path, "");
     watcher.observe(path);
-    // 60 malformed lines: each surfaces its OWN live drop warning (no running count,
-    // no persistence) — never the raw content of any line.
     writeFileSync(path, `${Array.from({ length: 60 }, () => "{ bad }").join("\n")}\n`);
     watcher.finish();
-    expect(drops.filter((d) => d.cause === "unparseable")).toHaveLength(60);
+    expect(drops.filter((d) => d.cause === "unparseable")).toEqual([
+      { elwoodSessionId: "s1", path, cause: "unparseable" },
+    ]);
     // Content-free: no notice field carries any raw line text.
     expect(JSON.stringify(drops)).not.toContain("bad");
   });
@@ -125,12 +131,12 @@ describe("C-CLAUDE-15 transcript watcher robustness", () => {
     // become "UNKNOWN" rather than round-tripping a number (which would fail the
     // record's validation as state_corrupt). Mirrors the Codex tracker.
     const errs: DropsReadErrorNotice[] = [];
-    const tracker = new ReadErrorTracker("s", (n) => errs.push(n));
-    tracker.record("/t", { code: "EISDIR" });
-    tracker.record("/t", new Error("boom")); // no `.code` → UNKNOWN
-    tracker.record("/t", { code: 5 }); // NUMERIC code must NOT round-trip → UNKNOWN
+    const reporter = new ReadErrorReporter("s", (n: DropsReadErrorNotice) => errs.push(n));
+    reporter.record("/t", { code: "EISDIR" });
+    reporter.record("/t", new Error("boom")); // no `.code` → UNKNOWN
+    reporter.record("/t", { code: 5 }); // NUMERIC code must NOT round-trip → UNKNOWN
     expect(errs.map((e) => e.lastErrorCode)).toEqual(["EISDIR", "UNKNOWN", "UNKNOWN"]);
-    const silent = new ReadErrorTracker("s", undefined);
+    const silent = new ReadErrorReporter("s", undefined);
     expect(() => silent.record("/t", {})).not.toThrow();
   });
 });

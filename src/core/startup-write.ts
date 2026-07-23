@@ -42,7 +42,7 @@ export type SettledStartupOutcome<A extends ElwoodAgentKind> =
 
 /** Where a rejected startup-prompt write is reported. */
 export type StartupWarningSink = {
-  recordWarnings(warnings: readonly ElwoodWarningEvent[]): void;
+  emitWarnings(warnings: readonly ElwoodWarningEvent[]): void;
 };
 
 /**
@@ -80,7 +80,7 @@ export function emitSettledStartupOutcomes<A extends "claude" | "codex">(
     settled
       .then(
         () => emitStartupPromptActivity(emitter, agent, elwoodSessionId, outcome),
-        () => warnings?.recordWarnings([writeFailedWarning(agent, elwoodSessionId, outcome)]),
+        () => warnings?.emitWarnings([writeFailedWarning(agent, elwoodSessionId, outcome)]),
       )
       .catch(() => undefined);
   }

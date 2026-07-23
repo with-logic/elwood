@@ -36,7 +36,7 @@ describe("C-CLAUDE-15 / C-LIFE-10 finishSafely error boundary", () => {
     // abort the PTY-exit callback before terminal:exit/reap); it stops the watcher
     // and surfaces a bounded, content-free transcript_poll_stopped.
     const recorded: ElwoodWarningEvent[] = [];
-    const sink: WarningSink = { recordWarnings: (w) => recorded.push(...w) };
+    const sink: WarningSink = { emitWarnings: (w) => recorded.push(...w) };
     const emitter = fakeEmitter((a) => {
       if (a.kind === "assistant_message") throw new Error("flush listener bug");
     });
@@ -56,7 +56,7 @@ describe("C-CLAUDE-15 / C-LIFE-10 finishSafely error boundary", () => {
   test("runs afterFlush in a finally even when the flush throws", () => {
     // afterFlush carries the terminal:exit/status/reap work; it MUST run whether or
     // not the flush threw, so termination always completes (C-LIFE-10).
-    const sink: WarningSink = { recordWarnings: () => {} };
+    const sink: WarningSink = { emitWarnings: () => {} };
     const emitter = fakeEmitter((a) => {
       if (a.kind === "assistant_message") throw new Error("flush listener bug");
     });
@@ -77,7 +77,7 @@ describe("C-CLAUDE-15 / C-LIFE-10 finishSafely error boundary", () => {
     // the routing throw too, so a diagnostic-listener bug can never block the
     // PTY-exit callback from completing termination.
     const sink: WarningSink = {
-      recordWarnings: () => {
+      emitWarnings: () => {
         throw new Error("sink bug");
       },
     };

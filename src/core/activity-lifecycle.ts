@@ -35,12 +35,11 @@ export function activityFromTerminalExit(
 
 /**
  * A best-effort survivor reap failed on an already-exited PTY (C-LIFE-10): the
- * session still reached a terminal status, so this builds the durable, typed,
+ * session still reached a terminal status, so this builds the live, typed,
  * content-free `reap_failed` warning that surfaces the un-reaped-group risk. It
  * carries the leaked leader's process-group id and a normalized error code (never
- * a raw system message), and is routed through the warning persistence path so it
- * persists, replays to late subscribers, and projects `warning`+`activity` — not
- * a single transient activity thrown out of the native exit callback.
+ * a raw system message), and is delivered once through the live `warning`/`activity`
+ * emit path — not a single transient activity thrown out of the native exit callback.
  */
 export function reapFailureWarning(
   agent: ElwoodAgentKind,

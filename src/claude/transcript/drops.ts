@@ -7,8 +7,8 @@
 
 export {
   type DropCause,
-  DropTracker,
-  ReadErrorTracker,
+  DropReporter,
+  ReadErrorReporter,
   type TranscriptDropNotice,
   type TranscriptReadErrorNotice,
 } from "../../core/transcript/drops.ts";

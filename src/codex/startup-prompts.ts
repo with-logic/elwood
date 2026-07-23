@@ -24,6 +24,12 @@ export class CodexStartupPromptResponder {
   private readonly elwoodSessionId: string;
   private readonly trust: TrustPromptResponder<"codex">;
   private skippedUpdate: boolean;
+  // The banner identities that fired a warning on the PREVIOUS frame. A warning fires
+  // only on the EDGE a banner first appears; a banner still present next frame is NOT
+  // re-emitted (that would replay the same live incident indefinitely, C-API-14). A
+  // banner that clears (drops out of this set) and reappears fires again — a genuinely
+  // new occurrence, matching "once when observed" rather than "replay while on screen".
+  private warnedBanners = new Set<string>();
 
   constructor(elwoodSessionId = "", autotrust = false) {
     this.elwoodSessionId = elwoodSessionId;
@@ -60,8 +66,35 @@ export class CodexStartupPromptResponder {
         outcomes.push({ outcome: { kind: "answered", prompt: "update", input: option }, settled });
       }
     }
-    return { warnings: codexWarningsFromText(this.buffer, this.elwoodSessionId), outcomes };
+    return { warnings: this.newWarnings(screenText), outcomes };
   }
+
+  // Emit warnings only for banners NEWLY appearing on THIS frame, matched against the
+  // CURRENT frame (not the accumulated buffer) so a scrolled-off banner does not replay
+  // every later frame (C-API-14, §5.7). Banners are keyed by a STABLE semantic identity
+  // (code + the server(s) it names), not the raw rendered line — the emulator may render
+  // the same banner with different padding/wrapping across frames, which raw-line keying
+  // would treat as new. `warnedBanners` is reset to this frame's identities, so a banner
+  // that clears (leaves the frame) then reappears fires again as a genuinely new occurrence.
+  private newWarnings(screenText: string): readonly ElwoodWarningEvent[] {
+    const matched = codexWarningsFromText(screenText, this.elwoodSessionId);
+    const fresh = matched.filter((warning) => !this.warnedBanners.has(bannerKey(warning)));
+    this.warnedBanners = new Set(matched.map(bannerKey));
+    return fresh;
+  }
+}
+
+/** The two banner warnings the startup responder parses (an exhaustive pair). */
+type CodexBannerWarning = Extract<
+  ElwoodWarningEvent,
+  { readonly code: "mcp_server_not_logged_in" | "mcp_startup_incomplete" }
+>;
+
+/** A stable identity for a startup banner: its code plus the server(s) it names. */
+function bannerKey(warning: CodexBannerWarning): string {
+  return warning.code === "mcp_server_not_logged_in"
+    ? `login:${warning.mcpServerName}`
+    : `startup:${warning.failedServers.join(",")}`;
 }
 
 export function findNumberedOption(text: string, pattern: RegExp): string | null {
@@ -71,8 +104,8 @@ export function findNumberedOption(text: string, pattern: RegExp): string | null
 export function codexWarningsFromText(
   text: string,
   elwoodSessionId: string,
-): readonly ElwoodWarningEvent[] {
-  const warnings: ElwoodWarningEvent[] = [];
+): readonly CodexBannerWarning[] {
+  const warnings: CodexBannerWarning[] = [];
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     const login = /The ([\w.-]+) MCP server is not logged in\. Run `([^`]+)`\./.exec(line);
@@ -88,7 +121,7 @@ function mcpLoginWarning(
   raw: string,
   mcpServerName: string,
   recoveryCommand: string,
-): ElwoodWarningEvent {
+): CodexBannerWarning {
   return {
     elwoodSessionId,
     agent: "codex",
@@ -106,7 +139,7 @@ function mcpStartupWarning(
   elwoodSessionId: string,
   raw: string,
   failed: string,
-): ElwoodWarningEvent {
+): CodexBannerWarning {
   const failedServers = failed.split(",").map((server) => server.trim());
   return {
     elwoodSessionId,

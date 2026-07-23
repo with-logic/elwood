@@ -101,11 +101,18 @@ export function updateSessionResumeId(
   return { ...record, [adapter]: { ...record[adapter], resumeId } };
 }
 
+/** The identifying inputs for removing a session's derived files and socket home. */
+export type RemoveSessionFilesInput = {
+  readonly stateDir: string;
+  readonly elwoodSessionId: string;
+  readonly socketPath: string;
+};
+
 /** Remove a session's derived directory AND the per-launch socket home (§8.1). */
-export function removeSessionFiles(stateDir: string, id: string, socketPath: string): void {
-  const dir = safeSessionDir(stateDir, id);
+export function removeSessionFiles(input: RemoveSessionFilesInput): void {
+  const dir = safeSessionDir(input.stateDir, input.elwoodSessionId);
   try {
-    removeSocketHome(socketPath);
+    removeSocketHome(input.socketPath);
     rmSync(dir, { recursive: true, force: true });
   } catch (error) {
     throw elwoodError("teardown_failed", "Could not remove Elwood session files.", {

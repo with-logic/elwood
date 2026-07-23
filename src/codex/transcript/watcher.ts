@@ -10,7 +10,7 @@
 import { CodexTranscriptCursor } from "./cursor.ts";
 import type { ChunkBudget, DrainContext } from "./drain.ts";
 import { drainToBudget, newTerminalBudget } from "./drain.ts";
-import { CodexDropTracker, CodexReadErrorTracker } from "./drops.ts";
+import { CodexDropReporter, CodexReadErrorReporter } from "./drops.ts";
 import { CodexLineEmitter } from "./emit.ts";
 import { CodexTranscriptFsGuard } from "./fs-guard.ts";
 import type { CodexTranscriptEvent } from "./types.ts";
@@ -29,7 +29,7 @@ export class CodexTranscriptWatcher {
   // A permanent terminal latch: once finished, no scan/flush/observe restarts it.
   private finished = false;
   private readonly guard: CodexTranscriptFsGuard;
-  private readonly drops: CodexDropTracker;
+  private readonly drops: CodexDropReporter;
   private readonly lines: CodexLineEmitter;
   private readonly onPollError: ((error: unknown) => void) | undefined;
   // ONE budget shared across every flush() for a watcher's whole lifetime.
@@ -41,8 +41,8 @@ export class CodexTranscriptWatcher {
     emit: (event: CodexTranscriptEvent) => void,
     notices: CodexTranscriptNotices = {},
   ) {
-    this.drops = new CodexDropTracker(elwoodSessionId, notices.onDrop);
-    const readErrors = new CodexReadErrorTracker(elwoodSessionId, notices.onReadError);
+    this.drops = new CodexDropReporter(elwoodSessionId, notices.onDrop);
+    const readErrors = new CodexReadErrorReporter(elwoodSessionId, notices.onReadError);
     this.guard = new CodexTranscriptFsGuard(readErrors);
     this.lines = new CodexLineEmitter(elwoodSessionId, emit, this.drops);
     this.onPollError = notices.onPollError;
@@ -84,6 +84,7 @@ export class CodexTranscriptWatcher {
       if (chunk.text.length > 0) this.lines.emitLines(this.cursor.path, chunk.text, this.cursor);
       if (!chunk.canContinueNow) break;
     } // budget exhausted with more to read: the next scan tick resumes here.
+    this.drops.flushPass(); // bounded drop delivery: one warning per (path, cause) per scan
   }
 
   // Bounded terminal flush: drain to EOF against the SHARED terminal budget and a

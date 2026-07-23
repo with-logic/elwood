@@ -1,8 +1,9 @@
 /**
  * The typed non-fatal warning contract shared across adapters.
  * Implements PRD §5.7 and §8.2: every warning is a named variant carrying only
- * bounded diagnostics (counts, codes, recovery hints) and never raw prompts,
- * transcripts, or conversation content.
+ * bounded diagnostics (cause/phase labels, error codes, recovery hints) — no
+ * counts or byte magnitudes — and never raw prompts, transcripts, or conversation
+ * content. Warnings are live-only: emitted once when observed, never persisted.
  */
 
 import type { StartupPromptLabelFor } from "./startup-automation.ts";

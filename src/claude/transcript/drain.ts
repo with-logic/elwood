@@ -12,7 +12,7 @@
  */
 
 import type { TranscriptCursor } from "./cursor.ts";
-import type { DropTracker } from "./drops.ts";
+import type { DropReporter } from "./drops.ts";
 import type { LineEmitter } from "./emit.ts";
 
 /** A mutable chunk budget shared across every cursor drained across a watcher's life. */
@@ -32,7 +32,7 @@ export function newTerminalBudget(): ChunkBudget {
 export type DrainContext = {
   readFs<T>(path: string, read: () => T): T | undefined;
   readonly lines: LineEmitter;
-  readonly drops: DropTracker;
+  readonly drops: DropReporter;
   /** Per-call wall-clock ms cap (defaults to `drainSliceMs`); tests may override. */
   readonly sliceMs?: number;
   /** Monotonic clock (injectable for tests); defaults to `Date.now`. */
@@ -59,6 +59,7 @@ export function drainToBudget(
     if (hasBacklog) context.drops.drop(cursor.path, "unread_backlog");
     context.lines.emitLines(cursor.path, cursor.drainPending());
   }
+  context.drops.flushPass(); // deliver this drain's coalesced drops (bounded fan-out)
 }
 
 // Read one cursor to EOF within the shared budget and the per-call deadline.

@@ -3,8 +3,9 @@
  * extracted to keep AgentSessionBase within the file-size cap. A throwing status
  * listener PROPAGATES here by design: the `initial_ready` transition relies on it
  * to trigger its classify-and-release fallback (C-API-42). The status engine commits
- * `current` BEFORE calling this, so a throw here can never split durable/in-memory
- * status (status-evidence.apply). Implements PRD §5.3.
+ * the live in-memory `current` status BEFORE calling this, so a throw here can never
+ * leave the emitted event disagreeing with that live status (status is live-only,
+ * never persisted, §8.2; status-evidence.apply). Implements PRD §5.3.
  */
 
 import { activityFromStatus, type ElwoodAgentKind } from "../core/activity.ts";
