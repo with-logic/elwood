@@ -83,13 +83,13 @@ describe("Codex bounded cursor", () => {
     // No newline yet: the whole over-length buffer is discarded, a fresh drop begins.
     const started = cursor.takeLines(giant);
     expect(started.lines).toEqual([]);
-    expect(started.dropped).toBe(true);
+    expect(started.startedOversizedDrop).toBe(true);
     // More bytes, still no newline: continuing the same record — not a new drop.
     const cont = cursor.takeLines("more-no-newline");
-    expect(cont.dropped).toBe(false);
+    expect(cont.startedOversizedDrop).toBe(false);
     // The terminating newline ends the discard and a following record is emitted.
     const ended = cursor.takeLines('tail\n{"type":"note"}\n');
-    expect(ended.dropped).toBe(false);
+    expect(ended.startedOversizedDrop).toBe(false);
     expect(ended.lines).toEqual(['{"type":"note"}']);
   });
 
@@ -97,9 +97,10 @@ describe("Codex bounded cursor", () => {
     const cursor = new CodexTranscriptCursor(join(tempDirForUnit(), "e.jsonl"));
     cursor.takeLines("z".repeat(1024 * 1024 + 1)); // start a discard
     const both = cursor.takeLines(`end\n${"w".repeat(1024 * 1024 + 1)}`);
-    // Closed the prior discard AND started a fresh over-length record: `dropped` is
-    // true for the NEW record (the prior was surfaced when it started).
-    expect(both.dropped).toBe(true);
+    // Closed the prior discard AND started a fresh over-length record:
+    // `startedOversizedDrop` is true for the NEW record (the prior was surfaced
+    // when it started).
+    expect(both.startedOversizedDrop).toBe(true);
   });
 
   test("C-CODEX-20 drainPending flushes then clears, remainingBytes reflects the tail", () => {

@@ -27,17 +27,17 @@ describe("C-CLAUDE-15 over-length discard boundary", () => {
   test("Finding A': one chunk that ENDS one over-length record and STARTS the next reports a new drop", () => {
     // The undercount bug at the cursor level: record A's terminating newline is
     // consumed in the SAME call that then buffers a partial record B which itself
-    // overflows. The cursor returns `dropped: true` (a fresh drop began), so the
-    // emitter surfaces B as a SECOND lost record — the two never collapse into one.
+    // overflows. The cursor returns `startedOversizedDrop: true` (a fresh drop began),
+    // so the emitter surfaces B as a SECOND lost record — the two never collapse.
     const path = tmpFile();
     writeFileSync(path, "");
     const cursor = new TranscriptCursor(path);
-    expect(cursor.takeLines(overCap("a")).dropped).toBe(true); // A began (drop)
+    expect(cursor.takeLines(overCap("a")).startedOversizedDrop).toBe(true); // A began (drop)
     // One call: A's closing newline, then B (no newline) which itself overflows.
     const boundary = cursor.takeLines(`endA\n${overCap("b")}`);
-    expect(boundary.dropped).toBe(true); // B began (drop) even though A also ended
+    expect(boundary.startedOversizedDrop).toBe(true); // B began even though A also ended
     expect(boundary.lines).toEqual([]); // nothing complete: B is still un-terminated
-    expect(cursor.takeLines("endB\nok\n").dropped).toBe(false); // B ends: no new drop
+    expect(cursor.takeLines("endB\nok\n").startedOversizedDrop).toBe(false); // B ends: no new drop
   });
 
   test("two over-length records in one pass coalesce to ONE oversized drop (bounded delivery)", () => {

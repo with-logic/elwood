@@ -64,31 +64,48 @@ describe("ClaudeSession mid-session login expiry (C-CLAUDE-18)", () => {
     installFakes();
     const session = await startClaude({ cwd });
     const warnings = collectLoginWarnings(session);
+    // Both banner frames render through the detached `writeOutput(...).then(...)`
+    // chain; count `terminal:data` deliveries so the negative assertion runs only
+    // AFTER both frames have actually reached the login observer — not before.
+    let frames = 0;
+    session.on("terminal:data", () => {
+      frames += 1;
+    });
     // No readiness hook yet: a banner here is the startup case, not mid-session.
     ptys[0]!.emitData(EXPIRED);
     ptys[0]!.emitData(EXPIRED);
-    await Promise.resolve();
+    await expect.poll(() => frames).toBeGreaterThanOrEqual(2);
+    // Both frames were observed by the login path, yet no mid-session warning fired.
     expect(warnings).toHaveLength(0);
   });
 
-  test("edge-detected: a banner that clears and reappears warns at most once", async () => {
+  test("edge-detected: a cleared-then-reappeared banner fires a SECOND edge, exactly once", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
     const warnings = collectLoginWarnings(session);
+    let frames = 0;
+    session.on("terminal:data", () => {
+      frames += 1;
+    });
     await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
 
     ptys[0]!.emitData(EXPIRED);
     await expect.poll(() => warnings.length).toBe(1);
     // Clear the banner, let it be observed (re-arming edge detection), then expire
-    // again. The edge fires once more — but a fresh appearance is a distinct live
-    // occurrence, so a subsequent identical banner across frames does not storm.
+    // again. The re-appearance is a distinct live occurrence, so the edge MUST fire a
+    // second time — poll until it actually arrives rather than merely allowing it.
     ptys[0]!.emitData(NORMAL);
     await expect.poll(() => session.terminal.snapshot().text.includes("back to normal")).toBe(true);
     ptys[0]!.emitData(EXPIRED);
-    await expect.poll(() => session.terminal.snapshot().text.includes("/login")).toBe(true);
-    // A persistent banner never re-fires while raised; the clear/re-raise is a new edge.
-    expect(warnings.length).toBeLessThanOrEqual(2);
+    await expect.poll(() => warnings.length).toBe(2); // the re-raise fired a new edge
+    // The now-persistent banner across a FURTHER frame must NOT re-fire. Wait for that
+    // frame to actually reach the observer (frame count advances) then assert exactly
+    // two (clear→reappear = one new edge; a persistent banner never re-storms).
+    const framesBefore = frames;
+    ptys[0]!.emitData(EXPIRED);
+    await expect.poll(() => frames).toBeGreaterThan(framesBefore);
+    expect(warnings.length).toBe(2);
   });
 
   test("C-CLAUDE-18 a throwing warning listener does NOT duplicate the warning (commit-before-emit)", async () => {

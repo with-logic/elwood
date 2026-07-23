@@ -45,12 +45,14 @@ a draining Enter could approve the dialog. Resume-composer readiness is gated on
 
 **Observe readiness through the signals Elwood sends — never the state file.**
 `session.status`, the `status` event, or `waitForStatus(s => s === "ready")` on
-the live session object. The persisted `session.json` is internal resume state;
-its status/timing lags, may relocate, and is not part of the readiness contract.
-`statusDecisions()` is **live-only, per-instance, never persisted** — on resume
-it is empty at t=0, so `statusDecisions().some(d => d.to === "ready")` is not a
-valid "has this conversation ever been ready" derivation. (Both mistakes were
-real consumer bugs misattributed to a CLI regression.)
+the live session object. The persisted `session.json` holds ONLY what resume
+needs (adapter, cwd, per-adapter resumeId + launch posture); it carries **no
+status or timing at all**, so there is nothing there to poll for readiness.
+Status lives in memory only, on the live session. `statusDecisions()` is likewise
+**live-only, per-instance, never persisted** — on resume it is empty at t=0, so
+`statusDecisions().some(d => d.to === "ready")` is not a valid "has this
+conversation ever been ready" derivation. (Both mistakes were real consumer bugs
+misattributed to a CLI regression.)
 
 ## Resume lifecycle
 

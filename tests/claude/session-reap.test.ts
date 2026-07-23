@@ -1,8 +1,9 @@
 /**
  * Session-level coverage for reap-failure handling on PTY exit.
  * Covers PRD §5.3/§9.4 (C-LIFE-10): a reap failure never keeps the session live,
- * is surfaced durably rather than thrown from the native exit callback, and an
- * explicit shutdown reaps-or-rejects instead of hiding the failure.
+ * is surfaced as a live terminal-status transition rather than thrown from the
+ * native exit callback, and an explicit shutdown reaps-or-rejects instead of hiding
+ * the failure.
  */
 
 import { afterEach, describe, expect, test } from "vitest";

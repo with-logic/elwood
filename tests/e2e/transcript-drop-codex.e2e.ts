@@ -98,6 +98,7 @@ test("C-E2E-03 real Codex bounds an oversized transcript record and stays usable
     // bounded drops of the same injected record.
     const isInjectedDrop = (w: ElwoodWarningEvent) =>
       w.code === "transcript_records_dropped" &&
+      w.transcriptPath === transcriptPath && // must be OUR transcript, not another observed one
       (w.cause === "oversized" || w.cause === "unparseable");
     await waitFor(
       () => (drops.slice(baseDrops).some(isInjectedDrop) ? true : undefined),

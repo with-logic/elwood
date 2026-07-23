@@ -1,9 +1,10 @@
 /**
  * Unit tests for the shared resize helpers, focusing on C-API-39's requirement
- * that the deferred restore separates PHYSICAL geometry from persistence: the
- * held size was already durably recorded, so restore must not re-persist (a
- * redundant persist failure must not masquerade as a bootstrap-width restore
- * failure). Covers PRD §5.3, C-API-39, C-PTY-05.
+ * that the deferred restore only touches PHYSICAL geometry. Terminal size lives in
+ * memory only (it is never persisted), so the held size the restore replays is
+ * already the in-memory source of truth: restore applies it to the two physical
+ * models and takes no persist step whose failure could masquerade as a
+ * bootstrap-width restore failure. Covers PRD §5.3, C-API-39, C-PTY-05.
  */
 
 import { describe, expect, test } from "vitest";
@@ -41,9 +42,10 @@ describe("restoreHeldResize", () => {
   test("C-API-39 applies PTY and terminal geometry and reports applied — WITHOUT persisting", () => {
     const h = harness("resized");
     const size = { cols: 72, rows: 9 };
-    // The helper takes no persist callback at all: the held size is already durable,
-    // so a genuine restore only touches the two physical models. There is no persist
-    // step whose failure could be misreported as a bootstrap-width restore failure.
+    // The helper takes no persist callback at all: the held size is already the
+    // in-memory source of truth (size is never persisted), so a genuine restore only
+    // touches the two physical models. There is no persist step whose failure could be
+    // misreported as a bootstrap-width restore failure.
     const applied = restoreHeldResize(h.pty as PtyProcess, h.terminal as ElwoodTerminal, size);
     expect(applied).toBe(true);
     expect(h.ptyResizes).toEqual([size]);
@@ -61,7 +63,7 @@ describe("restoreHeldResize", () => {
     expect(h.terminalResizes).toEqual([]);
   });
 
-  test("C-API-39 a real native resize error propagates so the caller can warn durably", () => {
+  test("C-API-39 a real native resize error propagates so the caller can surface a live warning", () => {
     const h = harness(Object.assign(new Error("resize failed"), { code: "EIO" }));
     expect(() =>
       restoreHeldResize(h.pty as PtyProcess, h.terminal as ElwoodTerminal, { cols: 72, rows: 9 }),

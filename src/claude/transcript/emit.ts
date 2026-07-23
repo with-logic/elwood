@@ -35,10 +35,10 @@ export class LineEmitter {
       for (const line of text.split(/\r?\n/)) this.emitLine(path, line);
       return;
     }
-    const { lines, dropped } = cursor.takeLines(text);
+    const { lines, startedOversizedDrop } = cursor.takeLines(text);
     // An over-length un-terminated record was discarded, not emitted: surface one
     // live drop warning so the truncation is visible rather than silent (§5.4).
-    if (dropped) this.drops.drop(path, "oversized");
+    if (startedOversizedDrop) this.drops.drop(path, "oversized");
     for (const line of lines) this.emitLine(path, line);
   }
 

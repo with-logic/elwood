@@ -6,9 +6,13 @@
  */
 
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import type { CodexDropNotice, CodexReadErrorNotice } from "../../src/codex/transcript/drops.ts";
 
-type Notice = ((n: unknown) => void) | undefined;
-const captured: { onDrop: Notice; onReadError: Notice; onPollError: Notice } = {
+// Callbacks typed with the PRODUCTION notice shapes so field drift fails the compile.
+type OnDrop = ((n: CodexDropNotice) => void) | undefined;
+type OnReadError = ((n: CodexReadErrorNotice) => void) | undefined;
+type OnPollError = ((e: unknown) => void) | undefined;
+const captured: { onDrop: OnDrop; onReadError: OnReadError; onPollError: OnPollError } = {
   onDrop: undefined,
   onReadError: undefined,
   onPollError: undefined,
@@ -16,17 +20,25 @@ const captured: { onDrop: Notice; onReadError: Notice; onPollError: Notice } = {
 const finishControl = { throws: false };
 vi.mock("../../src/codex/transcript.ts", () => ({
   CodexTranscriptWatcher: class {
-    constructor(_id: string, _emit: unknown, notices: Record<string, (n: unknown) => void> = {}) {
-      captured.onDrop = notices["onDrop"];
-      captured.onReadError = notices["onReadError"];
-      captured.onPollError = notices["onPollError"];
+    constructor(
+      _id: string,
+      _emit: unknown,
+      notices: {
+        onDrop?: (n: CodexDropNotice) => void;
+        onReadError?: (n: CodexReadErrorNotice) => void;
+        onPollError?: (e: unknown) => void;
+      } = {},
+    ) {
+      captured.onDrop = notices.onDrop;
+      captured.onReadError = notices.onReadError;
+      captured.onPollError = notices.onPollError;
     }
     finish() {
       if (finishControl.throws) throw new Error("final flush boom");
     }
   },
-  codexDropWarning: (n: { count: number }) => ({ code: "transcript_records_dropped", ...n }),
-  codexReadErrorWarning: (n: { count: number }) => ({ code: "transcript_read_error", ...n }),
+  codexDropWarning: (n: CodexDropNotice) => ({ code: "transcript_records_dropped", ...n }),
+  codexReadErrorWarning: (n: CodexReadErrorNotice) => ({ code: "transcript_read_error", ...n }),
   codexPollStoppedWarning: (_id: string, _e: unknown, phase = "poll") => ({
     code: "transcript_poll_stopped",
     phase,
@@ -37,8 +49,17 @@ const { createCodexTranscriptWatcher } = await import("../../src/codex/session-t
 const { TypedEmitter } = await import("../../src/events/emitter.ts");
 type Sink = { emitWarnings: (w: readonly unknown[]) => void };
 const emitter = () => new TypedEmitter() as never;
-const dropNotice = { elwoodSessionId: "s1", count: 1 } as never;
-const readNotice = { elwoodSessionId: "s1", count: 1 } as never;
+// Real, count-free production notices (path/cause and path/last-error-code).
+const dropNotice = {
+  elwoodSessionId: "s1",
+  path: "/t/rollout.jsonl",
+  cause: "unparseable",
+} satisfies CodexDropNotice;
+const readNotice = {
+  elwoodSessionId: "s1",
+  path: "/t/rollout.jsonl",
+  lastErrorCode: "EISDIR",
+} satisfies CodexReadErrorNotice;
 
 beforeEach(() => {
   captured.onDrop = undefined;

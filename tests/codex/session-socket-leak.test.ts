@@ -6,15 +6,14 @@
  * Each test isolates `TMPDIR` so the leak check sees only this launch's socket homes.
  */
 
-import { mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { setCodexHookBridgeFactoryForTests } from "../../src/codex/session.ts";
-import { startCodex } from "../../src/index.ts";
+import { resumeCodex, startCodex } from "../../src/index.ts";
 import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
-import { withSocketHomeCleanup } from "../../src/runtime/startup-cleanup.ts";
-import { installFakes, resetFakes, tempDir } from "./helpers.ts";
+import { becomeReady, installFakes, resetFakes, tempDir } from "./helpers.ts";
 
 const realTmp = tmpdir();
 let privateTmp: string | undefined;
@@ -74,15 +73,27 @@ describe("§9.1 a failed Codex start does not leak the socket home", () => {
     expect(socketHomesIn(priv)).toEqual([]);
   });
 
-  test("withSocketHomeCleanup removes the home on a file-write (build) failure", async () => {
+  test("a REAL runtime file-write failure during resume removes the minted socket home", async () => {
+    // Prove the ownership boundary end-to-end, not just the helper: induce an ACTUAL
+    // runtime-file write failure inside `buildCodexSession` (writeCodexRuntimeFiles)
+    // during a real resume, and assert the minted socket home is swept. If those writes
+    // ever moved OUTSIDE `withSocketHomeCleanup`, this leak would resurface.
+    const cwd = tempDir(); // created under the REAL tmp, before we isolate
+    installFakes();
     const priv = isolateTmp();
-    const home = mkdtempSync(join(priv, "elwood-"));
-    await expect(
-      withSocketHomeCleanup(
-        () => rmSync(home, { recursive: true, force: true }),
-        () => Promise.reject(new Error("writeCodexRuntimeFiles failed: ENOSPC")),
-      ),
-    ).rejects.toThrow("ENOSPC");
+    const first = await startCodex({ cwd });
+    await becomeReady(first.elwoodSessionId, cwd); // SessionStart persists the codex resumeId
+    await first.stop(); // stop keeps state (and the stable home) for resume
+    expect(socketHomesIn(priv)).toHaveLength(1);
+    // Plant a DIRECTORY where writeCodexRuntimeFiles will write the bridge script: the
+    // atomic write's final rename onto a non-empty directory throws a real fs error
+    // inside the build body — exactly a failed runtime write.
+    const sessionDir = join(resolve(cwd, ".elwood"), "sessions", first.elwoodSessionId);
+    const bridgeScript = join(sessionDir, "hook-bridge.mjs");
+    rmSync(bridgeScript, { force: true });
+    mkdirSync(join(bridgeScript, "block"), { recursive: true }); // non-empty dir at target
+    await expect(resumeCodex({ elwoodSessionId: first.elwoodSessionId, cwd })).rejects.toThrow();
+    // The boundary removed the socket home the failed resume minted, not left it behind.
     expect(socketHomesIn(priv)).toEqual([]);
   });
 

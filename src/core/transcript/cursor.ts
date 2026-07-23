@@ -23,13 +23,16 @@ const maxPendingBytes = 1024 * 1024;
 export type ChunkRead = { readonly text: string; readonly canContinueNow: boolean };
 
 /**
- * Complete lines from a chunk, plus whether this call discarded an over-length
- * record (`dropped`). A discarded record is surfaced as ONE live drop warning by the
- * emitter — never a running count.
+ * Complete lines from a chunk, plus whether this call BEGAN a new over-length
+ * discard (`startedOversizedDrop`). This is an EDGE trigger: it is true only on the
+ * call that starts losing a fresh oversized record, and false while an already-started
+ * discard continues (including when its terminating newline is finally consumed). The
+ * emitter surfaces exactly ONE live drop warning per oversized record off this edge —
+ * never a running count.
  */
 export type TakenLines = {
   readonly lines: readonly string[];
-  readonly dropped: boolean;
+  readonly startedOversizedDrop: boolean;
 };
 
 /**
@@ -74,15 +77,16 @@ export class BoundedTranscriptCursor {
 
   // Split buffered text into complete lines, retaining any trailing partial. A
   // record past `maxPendingBytes` with no newline is discarded through its next
-  // newline so it can't OOM or re-concat quadratically. `dropped` reports whether
-  // THIS call BEGAN a fresh over-length discard, so the emitter surfaces exactly one
-  // live drop warning per over-length record (a continuation is not a new drop).
+  // newline so it can't OOM or re-concat quadratically. `startedOversizedDrop`
+  // reports whether THIS call BEGAN a fresh over-length discard, so the emitter
+  // surfaces exactly one live drop warning per over-length record (a continuation
+  // is not a new drop).
   takeLines(text: string): TakenLines {
     let rest = text;
     if (this.discarding) {
       const nl = rest.indexOf("\n");
       // Still no newline: the same over-length record continues (not a new drop).
-      if (nl === -1) return { lines: [], dropped: false };
+      if (nl === -1) return { lines: [], startedOversizedDrop: false };
       this.discarding = false;
       rest = rest.slice(nl + 1);
     }
@@ -94,7 +98,7 @@ export class BoundedTranscriptCursor {
       this.pending = ""; // over-length un-terminated record: discard it
       this.discarding = true;
     }
-    return { lines, dropped: startedNew };
+    return { lines, startedOversizedDrop: startedNew };
   }
 
   /** The final buffered partial line (flushed once at teardown), then cleared. */

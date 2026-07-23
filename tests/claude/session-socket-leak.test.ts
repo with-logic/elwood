@@ -11,14 +11,13 @@
  * ONLY this launch's homes — never a parallel worker's — making the assertion exact.
  */
 
-import { mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { setHookBridgeFactoryForTests } from "../../src/claude/session.ts";
 import { resumeClaude, startClaude } from "../../src/index.ts";
 import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
-import { withSocketHomeCleanup } from "../../src/runtime/startup-cleanup.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 const realTmp = tmpdir();
@@ -81,19 +80,33 @@ describe("§9.1 a failed Claude start does not leak the socket home", () => {
     expect(socketHomesIn(priv)).toEqual([]);
   });
 
-  test("withSocketHomeCleanup removes the home on a file-write (build) failure", async () => {
-    // The state/runtime file writes run inside the wrapped build body, so a write
-    // failure there is caught by the SAME boundary. Prove it directly: a build that
-    // throws (as a failed writeSessionRecord/writeRuntimeFiles would) removes the home.
+  test("a REAL runtime file-write failure during resume removes the minted socket home", async () => {
+    // Prove the ownership boundary end-to-end, not just the helper: induce an ACTUAL
+    // runtime-file write failure inside `buildClaudeSession` (writeRuntimeFiles) during
+    // a real resume, and assert the minted socket home is swept. If those writes ever
+    // moved OUTSIDE `withSocketHomeCleanup`, this leak would resurface.
+    const cwd = tempDir(); // created under the REAL tmp, before we isolate
+    installFakes();
     const priv = isolateTmp();
-    const home = mkdtempSync(join(priv, "elwood-")); // stand in for the minted home
-    await expect(
-      withSocketHomeCleanup(
-        () => rmSync(home, { recursive: true, force: true }),
-        () => Promise.reject(new Error("writeSessionRecord failed: ENOSPC")),
-      ),
-    ).rejects.toThrow("ENOSPC");
-    expect(socketHomesIn(priv)).toEqual([]); // the home was removed by the boundary
+    const first = await startClaude({ cwd });
+    await ptys[0]!.dispatchHook(first.elwoodSessionId, {
+      hook_event_name: "SessionStart",
+      session_id: "claude-resume-id",
+      cwd,
+      source: "startup",
+    });
+    await first.stop(); // stop keeps state (and the stable home) for resume
+    expect(socketHomesIn(priv)).toHaveLength(1);
+    // Plant a DIRECTORY where writeRuntimeFiles will try to write the bridge script:
+    // the atomic write's final rename onto a non-empty directory throws a real fs error
+    // inside the build body — exactly a failed runtime write.
+    const sessionDir = join(resolve(cwd, ".elwood"), "sessions", first.elwoodSessionId);
+    const bridgeScript = join(sessionDir, "hook-bridge.mjs");
+    rmSync(bridgeScript, { force: true });
+    mkdirSync(join(bridgeScript, "block"), { recursive: true }); // non-empty dir at target
+    await expect(resumeClaude({ elwoodSessionId: first.elwoodSessionId, cwd })).rejects.toThrow();
+    // The boundary removed the socket home the failed resume minted, not left it behind.
+    expect(socketHomesIn(priv)).toEqual([]);
   });
 
   test("on SUCCESS the socket home persists (ownership transfers to the session)", async () => {

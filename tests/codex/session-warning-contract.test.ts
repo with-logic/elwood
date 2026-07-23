@@ -1,6 +1,7 @@
 /**
  * Conformance tests for the Codex session live-warning contract on the frame path.
- * Covers PRD §5.7/§9.1 (C-API-14, C-API-37):
+ * Covers PRD §5.7/§9.1 (C-API-14 — warnings are live-only; frame containment is the
+ * §5.7 telemetry-isolation property that telemetry must never gate session progress):
  *  - A throwing `warning`/`activity` listener on the hot frame path must NOT wedge the
  *    frame: readiness still reaches ready and `terminal:data` still fires on later frames.
  *  - The preflight/version warning is delivered so a caller subscribing synchronously on
@@ -16,9 +17,7 @@ import { becomeReady, FakePty, installFakes, ptys, resetFakes, tempDir } from ".
 
 afterEach(resetFakes);
 
-const flush = () => new Promise((resolve) => setTimeout(resolve, 25));
-
-describe("C-API-37 Codex frame-path warning containment", () => {
+describe("§5.7 Codex frame-path warning containment (C-API-14 live-only)", () => {
   test("a throwing warning listener does not prevent readiness or terminal:data", async () => {
     const cwd = tempDir();
     installFakes();
@@ -30,16 +29,17 @@ describe("C-API-37 Codex frame-path warning containment", () => {
     const data: string[] = [];
     session.on("terminal:data", (event) => data.push(event.data));
     // A frame that emits a warning (MCP banner) through the throwing listener: the
-    // throw must be contained so the frame still emits terminal:data.
-    ptys[0]!.emitData("The linear MCP server is not logged in. Run `codex mcp login linear`.");
-    await flush();
+    // throw must be contained so the frame still emits terminal:data. Wait on the
+    // observable (the banner frame arriving) rather than a fixed sleep.
+    const banner = "The linear MCP server is not logged in. Run `codex mcp login linear`.";
+    ptys[0]!.emitData(banner);
+    await expect.poll(() => data.some((d) => d.includes("linear"))).toBe(true);
     // Readiness still reaches ready via the SessionStart hook despite the throwing listener.
     await becomeReady(session.elwoodSessionId, cwd);
     await session.waitForStatus((status) => status === "ready", 2_000);
     // A later ordinary frame still emits terminal:data (the frame was not wedged).
     ptys[0]!.emitData("ordinary later output");
-    await flush();
-    expect(data).toContain("ordinary later output");
+    await expect.poll(() => data).toContain("ordinary later output");
     expect(session.status).toBe("ready");
   });
 });
@@ -99,9 +99,14 @@ describe("C-API-14 Codex warnings are live-only (no late replay)", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startCodex({ cwd });
-    // Emit a first warning with NO subscriber attached (its own line so it parses).
+    // Emit a first warning and deterministically wait until it has ACTUALLY fired (into
+    // an early, soon-detached observer) so the "no replay" check below is proven against
+    // a warning that already happened — not merely a sleep that may pre-empt it.
+    const early: string[] = [];
+    const offEarly = session.on("warning", (event) => early.push(event.code));
     ptys[0]!.emitData("The github MCP server is not logged in. Run `codex mcp login github`.\r\n");
-    await flush();
+    await expect.poll(() => early).toContain("mcp_server_not_logged_in");
+    offEarly(); // detach: the github banner is now firmly in the PAST
     // Attach LATE: the prior warning must NOT be replayed.
     const seen: { code: string; server?: string }[] = [];
     session.on("warning", (event) => {
@@ -111,11 +116,9 @@ describe("C-API-14 Codex warnings are live-only (no late replay)", () => {
           : { code: event.code },
       );
     });
-    await flush();
     expect(seen).toEqual([]); // no replay of the github banner
     // A NEW, different banner (distinct line) reaches the late subscriber (and only it).
     ptys[0]!.emitData("The linear MCP server is not logged in. Run `codex mcp login linear`.\r\n");
-    await flush();
-    expect(seen).toEqual([{ code: "mcp_server_not_logged_in", server: "linear" }]);
+    await expect.poll(() => seen).toEqual([{ code: "mcp_server_not_logged_in", server: "linear" }]);
   });
 });

@@ -100,11 +100,12 @@ describe("initialReady", () => {
       calls += 1;
       if (failFirst) {
         failFirst = false;
-        throw new Error("persist boom");
+        throw new Error("listener boom");
       }
     });
-    // First mark throws (a failed durable write): readiness must NOT be consumed.
-    expect(() => ready.mark()).toThrow(/persist boom/);
+    // First mark throws (a throwing readiness-transition listener): readiness must NOT
+    // be consumed, so a later attempt can still fire it.
+    expect(() => ready.mark()).toThrow(/listener boom/);
     // A later attempt (hook/deadline/frame) retries and succeeds — the queue is never
     // permanently starved by one failed transition.
     ready.mark();

@@ -1,6 +1,7 @@
 /**
  * Conformance tests for the Claude session live-warning contract on the frame path.
- * Covers PRD §5.7/§9.1 (C-API-14, C-API-37):
+ * Covers PRD §5.7/§9.1 (C-API-14 — warnings are live-only; frame containment is the
+ * §5.7 telemetry-isolation property that telemetry must never gate session progress):
  *  - A throwing `warning` listener on the hot frame path must NOT wedge the frame:
  *    readiness still reaches ready and `terminal:data` still fires on later frames.
  *  - The preflight/version warning is delivered so a caller subscribing synchronously
@@ -17,8 +18,6 @@ import { FakePty, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-const flush = () => new Promise((resolve) => setTimeout(resolve, 30));
-
 const instructionsLoaded = (cwd: string): ClaudeHookEventFor<"InstructionsLoaded"> => ({
   hook_event_name: "InstructionsLoaded",
   session_id: "claude-1",
@@ -29,7 +28,7 @@ const instructionsLoaded = (cwd: string): ClaudeHookEventFor<"InstructionsLoaded
 });
 const EXPIRED = asScreen("Login expired\n Please run /login");
 
-describe("C-API-37 Claude frame-path warning containment", () => {
+describe("§5.7 Claude frame-path warning containment (C-API-14 live-only)", () => {
   test("a throwing warning listener does not prevent readiness or terminal:data", async () => {
     const cwd = tempDir();
     installFakes();
@@ -47,23 +46,21 @@ describe("C-API-37 Claude frame-path warning containment", () => {
     session.on("terminal:data", (event) => data.push(event.data));
     session.on("status", (event) => statuses.push(event.status));
     // Drive a startup frame; the deferred preflight warning fires into the throwing
-    // listener around now — the throw must be contained so frames keep flowing.
+    // listener around now — the throw must be contained so frames keep flowing. Wait
+    // on the observable (the frame arriving) rather than a fixed sleep.
     ptys[0]!.emitData("startup frame");
-    await flush();
+    await expect.poll(() => data).toContain("startup frame");
     // Readiness still transitions to ready (via the Stop-hook turn boundary) despite the
-    // throwing warning listener — telemetry never gates session progress (C-API-37).
+    // throwing warning listener — telemetry never gates session progress (§5.7).
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       hook_event_name: "Stop",
       session_id: "claude-1",
       cwd,
     });
-    await flush();
+    await expect.poll(() => statuses).toContain("ready"); // readiness still advanced
     // A later ordinary frame still emits terminal:data (the frame path was not wedged).
     ptys[0]!.emitData("ordinary later output");
-    await flush();
-    expect(data).toContain("startup frame");
-    expect(data).toContain("ordinary later output"); // frames kept flowing after the throw
-    expect(statuses).toContain("ready"); // readiness still advanced
+    await expect.poll(() => data).toContain("ordinary later output"); // frames kept flowing
   });
 });
 
@@ -109,15 +106,20 @@ describe("C-API-14 Claude warnings are live-only (no late replay)", () => {
     const cwd = tempDir();
     installFakes();
     setCommandRunnerForTests(() => ({ status: 0, stdout: "unknown build", stderr: "" }));
-    // Start WITHOUT a warning subscriber; the preflight warning fires into no listener.
     const session = await startClaude({ cwd });
+    // Attach an early, soon-detached observer SYNCHRONOUSLY (before the deferred
+    // preflight macrotask fires) and wait until the preflight warning has ACTUALLY
+    // fired into it, so "no replay" below is proven against a warning that already
+    // happened — not merely a sleep that may pre-empt it.
+    const early: string[] = [];
+    const offEarly = session.on("warning", (event) => early.push(event.code));
     await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd)); // reach ready
-    ptys[0]!.emitData("first frame"); // drive the frame; preflight macrotask fires unheard
-    await flush();
+    ptys[0]!.emitData("first frame"); // drive the frame; preflight macrotask fires
+    await expect.poll(() => early).toContain("version_unparseable");
+    offEarly(); // detach: the preflight is now firmly in the PAST
     // Attach LATE: the prior preflight warning must NOT be replayed to this subscriber.
     const codes: string[] = [];
     session.on("warning", (event) => codes.push(event.code));
-    await flush();
     expect(codes).toEqual([]); // no replay of the version_unparseable warning
     // POSITIVE CONTROL: a NEW live warning after subscription MUST still arrive — proving
     // the empty result above is "no replay", not "delivery is broken".

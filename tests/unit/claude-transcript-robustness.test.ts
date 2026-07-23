@@ -47,7 +47,8 @@ describe("C-CLAUDE-15 transcript watcher robustness", () => {
   test("a filesystem error during scan is contained AND surfaced as a bounded diagnostic", () => {
     // Replace the file with a directory: reads now throw a rotation-race-like
     // error that the fs guard must swallow without crashing the timer, while
-    // still surfacing a bounded, content-free read-error notice (count + code).
+    // still surfacing a bounded, content-free read-error notice (path + error code,
+    // never a count).
     const path = tmpFile();
     const events: ClaudeTranscriptEvent[] = [];
     const readErrors: TranscriptReadErrorNotice[] = [];
@@ -61,7 +62,7 @@ describe("C-CLAUDE-15 transcript watcher robustness", () => {
     expect(() => watcher.scan()).not.toThrow();
     expect(events).toEqual([]);
     watcher.finish();
-    // Not silent: a bounded notice carrying the last error code and path (no count).
+    // Not silent: a bounded notice carrying the last error code and path (never a count).
     expect(readErrors.at(-1)).toMatchObject({ elwoodSessionId: "s1", path });
     expect(readErrors.at(-1)!.lastErrorCode).toBeTruthy();
   });
