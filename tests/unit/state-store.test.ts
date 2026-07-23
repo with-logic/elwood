@@ -5,11 +5,13 @@
  */
 
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -110,6 +112,33 @@ describe("state store", () => {
     });
     expect(existsSync(dir2)).toBe(false);
     expect(existsSync(foreignHome)).toBe(true);
+  });
+
+  test("§8.4 a socket-home removal FAILURE still removes the session dir, then reports teardown_failed", () => {
+    // The two removals are independent (attempt-all §8.4): a socket-home rmSync failure
+    // must NOT prevent the session-directory removal that would otherwise leave resumable
+    // metadata + runtime files behind. Force the socket-home removal to fail by making its
+    // PARENT read-only (so rmSync of the home throws EACCES/EPERM), then assert the session
+    // dir is gone anyway and the fault surfaces as teardown_failed.
+    const root = mkdtempSync(join(tmpdir(), "elwood-state-"));
+    prepareStateDir(root);
+    const record = createSessionRecord({ cwd: root, id: "attempt-all" });
+    const dir = sessionDir(root, "attempt-all");
+    writeSessionRecord(record, dir);
+    const socketParent = mkdtempSync(join(tmpdir(), "elwood-parent-"));
+    const socketHome = join(socketParent, "elwood-home");
+    mkdirSync(socketHome, { recursive: true });
+    const socketPath = join(socketHome, "h.sock");
+    chmodSync(socketParent, 0o500); // read-only parent → removing the home throws
+    try {
+      expect(() =>
+        removeSessionFiles({ stateDir: root, elwoodSessionId: "attempt-all", socketPath }),
+      ).toThrow(/Could not remove/); // teardown_failed surfaced
+      expect(existsSync(dir)).toBe(false); // the session dir was STILL removed
+    } finally {
+      chmodSync(socketParent, 0o700);
+      rmSync(socketParent, { recursive: true, force: true });
+    }
   });
 
   test("C-STATE-03 C-STATE-11 custom state directories do not receive or overwrite gitignore files", () => {

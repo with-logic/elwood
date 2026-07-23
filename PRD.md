@@ -2496,7 +2496,7 @@ Each criterion has:
 | C-STATE-10 | §5.2, §5.6 | Resume APIs reject session records whose persisted adapter does not match the requested adapter. |
 | C-STATE-11 | §8.1 | Elwood does not overwrite an existing `.elwood/.gitignore` or create gitignore files in custom `stateDir` directories. |
 | C-STATE-13 | §8.2 | The session record persists the resolved launch posture (privilege and tool policy) at start, validates it on read, and resume updates it to the effective values. |
-| C-STATE-12 | §8.1 | Sessions start successfully with arbitrarily long `stateDir` paths because the hook bridge socket binds in a short Elwood-owned temp home, regenerated per launch and removed at teardown. |
+| C-STATE-12 | §8.1 | Sessions start successfully with arbitrarily long `stateDir` paths because the hook bridge socket binds in a short Elwood-owned temp home. The home is STABLE per session (a bounded fingerprint of the session id), so every start/resume resolves the same one; each launch binds a fresh socket FILE inside it, and teardown removes the whole home so no per-launch socket leaks across restart/resume. |
 | C-LIFE-09 | §9.2 | `autoupdate` runs the adapter's update command at most once per parent process per adapter, so fleet spawns do not race N concurrent same-binary updates. |
 | C-ERR-08 | §10 | Startup failures carry the underlying cause, and errno/syscall/path details when the underlying error provides them. |
 

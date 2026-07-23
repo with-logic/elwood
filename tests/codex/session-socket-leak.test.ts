@@ -1,8 +1,9 @@
 /**
- * Conformance tests: a FAILED Codex start never leaks its per-launch socket home.
- * Covers PRD §9.1 (mirrors the Claude adapter): sessionRuntime mints a fresh
- * out-of-tree `/tmp/elwood-*` socket home before any state/runtime write, bridge
- * start, or PTY start; ANY pre-session failure must remove it (withSocketHomeCleanup).
+ * Conformance tests: a FAILED Codex start never leaks its socket home, and the home is
+ * restart-safe (one STABLE `/tmp/elwood-<fingerprint>` per session, not a leaked
+ * anonymous dir per launch). Covers PRD §9.1/§8.1 (mirrors Claude): the socket binds in
+ * the session's stable home before any state/runtime write, bridge start, or PTY start;
+ * ANY pre-session failure removes it (withSocketHomeCleanup), and teardown sweeps it.
  * Each test isolates `TMPDIR` so the leak check sees only this launch's socket homes.
  */
 
@@ -105,5 +106,22 @@ describe("§9.1 a failed Codex start does not leak the socket home", () => {
     expect(socketHomesIn(priv)).toHaveLength(1);
     await session.teardown();
     expect(socketHomesIn(priv)).toEqual([]);
+  });
+
+  test("§8.1 start→stop→resume→teardown is restart-safe: ONE stable home, fully collected", async () => {
+    // The Codex mirror of the Claude restart-safe regression: a session's home is STABLE
+    // (fingerprint of the id), so a resume — even in a fresh process remembering no prior
+    // path — reuses the SAME home, not a leaked new one. Teardown sweeps every launch.
+    const cwd = tempDir();
+    installFakes();
+    const priv = isolateTmp();
+    const first = await startCodex({ cwd });
+    await becomeReady(first.elwoodSessionId, cwd);
+    await first.stop(); // stop keeps state (and the home) for resume
+    expect(socketHomesIn(priv)).toHaveLength(1);
+    const resumed = await resumeCodex({ elwoodSessionId: first.elwoodSessionId, cwd });
+    expect(socketHomesIn(priv)).toHaveLength(1); // reused the SAME stable home, not two
+    await resumed.teardown();
+    expect(socketHomesIn(priv)).toEqual([]); // the single home (all launches) collected
   });
 });

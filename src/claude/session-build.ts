@@ -49,7 +49,14 @@ export async function buildClaudeSession(
   const emitter = new TypedEmitter();
   registerInitialHooks(emitter, options.hooks);
   let session: ClaudeSessionImpl | undefined;
-  const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => session);
+  // ALL startup-region warnings — startup-prompt (frame path) AND transcript
+  // drop/read-error diagnostics — route through ONE gate that buffers anything emitted
+  // before startClaude resolves and flushes it on a deferred macrotask after return,
+  // so every source stays observable without late-subscriber replay (C-API-14).
+  const warnGate = createStartupWarningGate({
+    emitWarnings: (w) => deliverFrameWarnings(session, w),
+  });
+  const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => warnGate);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   // Initial readiness is hook-backed (`InstructionsLoaded` fires `mark`); the first
   // frame arms a starvation deadline so a missing/failed hook cannot starve the queue,
@@ -106,11 +113,6 @@ export async function buildClaudeSession(
   const promptResponder = new ClaudeStartupPromptResponder(autotrust);
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
   const turnWatcher = observers.turn;
-  // Startup warnings can fire before startClaude resolves (before the caller subscribes);
-  // buffer them in the gate and flush on a deferred macrotask after return (C-API-14).
-  const warnGate = createStartupWarningGate({
-    emitWarnings: (w) => deliverFrameWarnings(session, w),
-  });
   const terminal = attachPtyTerminal(startupSize, pty, (data, renderedTerminal) => {
     startupOutput.push(data);
     terminalReplay.push(data);
@@ -120,7 +122,7 @@ export async function buildClaudeSession(
     // the write fulfills, and a rejected write stays retryable + warns (C-CLAUDE-16).
     const autos = promptResponder.handle(frame.text, (input) => renderedTerminal.sendInput(input));
     // Warning delivery is CONTAINED on the frame path: a throwing `warning`/`activity`
-    // listener must never skip readiness, login detection, or terminal:data (C-API-37).
+    // listener must never skip readiness, login detection, or terminal:data (§5.7).
     emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
       emitWarnings: (warnings) => warnGate.emitWarnings(warnings),
     });

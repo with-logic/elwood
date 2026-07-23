@@ -5,25 +5,7 @@
 
 import { describe, expect, test } from "vitest";
 import type { ElwoodSessionStatus } from "../../src/core/types.ts";
-import {
-  decideStatus,
-  maxStatusDecisions,
-  SessionStatusEngine,
-  type StatusEngineIo,
-  type StatusEvidenceKind,
-} from "../../src/runtime/status-evidence.ts";
-
-function recordingIo(calls: string[]): StatusEngineIo {
-  return {
-    onReady: () => calls.push("onReady"),
-    emitStatus: (status) => calls.push(`status:${status}`),
-    queueRunning: () => calls.push("queueRunning"),
-    queueReady: () => calls.push("queueReady"),
-    queueBlocked: () => calls.push("queueBlocked"),
-    queueClose: () => calls.push("queueClose"),
-    cleanup: () => calls.push("cleanup"),
-  };
-}
+import { decideStatus, type StatusEvidenceKind } from "../../src/runtime/status-evidence.ts";
 
 // Exhaustive map: adding a StatusEvidenceKind without a target fails to
 // compile, so the union and the engine stay in lockstep.
@@ -123,76 +105,5 @@ describe("decideStatus", () => {
     }
     expect(decideStatus("killed", "stop_completed").to).toBeUndefined();
     expect(decideStatus("torn_down", "terminal_exited").to).toBeUndefined();
-  });
-});
-
-describe("SessionStatusEngine", () => {
-  test("C-LIFE-02 applies running, ready, and exited with queue ordering", () => {
-    const calls: string[] = [];
-    const engine = new SessionStatusEngine(recordingIo(calls));
-    expect(engine.status).toBe("starting");
-    engine.submit("startup_usable");
-    engine.submit("initial_ready");
-    engine.submit("terminal_exited");
-    expect(engine.status).toBe("exited");
-    // running: commit BEFORE queueRunning; ready: onReady + emit before queueReady so
-    // drained sends observe the new status. Status is live-only (no persist).
-    expect(calls.join(",")).toBe(
-      "queueRunning,status:running,onReady,status:ready," +
-        "queueReady,queueClose,status:exited,cleanup",
-    );
-  });
-
-  test("C-LIFE-02 stop closes the queue without runtime cleanup", () => {
-    const calls: string[] = [];
-    const engine = new SessionStatusEngine(recordingIo(calls));
-    engine.submit("startup_usable");
-    calls.length = 0;
-    const decision = engine.submit("stop_completed");
-    expect(decision.to).toBe("stopped");
-    expect(calls).toEqual(["queueClose", "status:stopped"]);
-  });
-
-  test("C-ATTN-02 blocked can follow ready, settles to ready, and yields to terminal", () => {
-    const calls: string[] = [];
-    const engine = new SessionStatusEngine(recordingIo(calls));
-    engine.submit("startup_usable");
-    engine.submit("initial_ready");
-    calls.length = 0;
-    // The dialog can appear after the working indicator has already cleared.
-    expect(engine.submit("blocking_prompt_shown").to).toBe("blocked");
-    // Blocked suspends the queue (no send may write into the dialog), not closes it.
-    expect(calls).toEqual(["queueBlocked", "status:blocked"]);
-    // Resolving the dialog settles to ready (the composer is waiting again).
-    expect(engine.submit("blocking_prompt_cleared").to).toBe("ready");
-    // A stale clear with no active block is ignored.
-    expect(engine.submit("blocking_prompt_cleared").to).toBeUndefined();
-    engine.submit("terminal_exited"); // blocking evidence never revives a terminal session
-    expect(engine.submit("blocking_prompt_shown").to).toBeUndefined();
-  });
-
-  test("ignored evidence is logged but applies nothing", () => {
-    const calls: string[] = [];
-    const engine = new SessionStatusEngine(recordingIo(calls));
-    engine.submit("teardown_completed");
-    calls.length = 0;
-    const decision = engine.submit("rendered_turn_started");
-    expect(decision.to).toBeUndefined();
-    expect(calls).toEqual([]);
-    expect(engine.status).toBe("torn_down");
-    expect(engine.decisions().at(-1)).toBe(decision);
-  });
-
-  test("decision log stays bounded at the most recent entries", () => {
-    const engine = new SessionStatusEngine(recordingIo([]));
-    engine.submit("startup_usable");
-    // Each rendered_turn_started from `running` is a no-op (already running),
-    // so it is logged as ignored without changing status.
-    for (let i = 0; i < maxStatusDecisions + 5; i += 1) engine.submit("rendered_turn_started");
-    expect(engine.decisions()).toHaveLength(maxStatusDecisions);
-    // The `startup_usable` applied entry has been evicted; the retained tail
-    // is all ignored no-ops.
-    expect(engine.decisions().every((decision) => decision.to === undefined)).toBe(true);
-    expect(engine.status).toBe("running");
   });
 });

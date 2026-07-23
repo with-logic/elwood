@@ -45,13 +45,20 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   writeCodexRuntimeFiles(runtime);
   const emitter = new TypedEmitter<CodexEventMap>();
   registerInitialHooks(emitter, options.hooks);
+  let session: CodexSessionImpl | undefined;
+  // ALL startup-region warnings — MCP/prompt-write (frame path) AND transcript
+  // drop/read-error diagnostics — route through ONE gate that buffers anything emitted
+  // before startCodex resolves and flushes it on a deferred macrotask after return, so
+  // every source stays observable without late-subscriber replay (C-API-14).
+  const warnGate = createStartupWarningGate({
+    emitWarnings: (w) => deliverFrameWarnings(session, w),
+  });
   const wired = sessionTranscript.createCodexTranscriptWatcher(
     record.elwoodSessionId,
     emitter,
-    () => session,
+    () => warnGate, // transcript diagnostics flow through the same startup gate
   );
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
-  let session: CodexSessionImpl | undefined;
   const bridge = currentCodexHookBridgeFactory()(
     runtime.socketPath,
     runtime.bridgeToken,
@@ -99,13 +106,6 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   };
   const turnWatcher = observers.turn;
   const promptResponder = new CodexStartupPromptResponder(record.elwoodSessionId, autotrust);
-  // Startup warnings (MCP/transcript/prompt-write) can fire BEFORE startCodex resolves,
-  // i.e. before the caller can subscribe. The gate BUFFERS those and flushes them on a
-  // deferred macrotask after return (openAfterReturn below), so they stay observable
-  // without late-subscriber replay; once open it is live pass-through (C-API-14).
-  const warnGate = createStartupWarningGate({
-    emitWarnings: (w) => deliverFrameWarnings(session, w),
-  });
   const terminal = attachPtyTerminal(
     options.initialSize ?? defaultTerminalSize,
     pty,

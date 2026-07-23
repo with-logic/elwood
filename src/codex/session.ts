@@ -23,11 +23,13 @@ export {
 } from "./session-bridge.ts";
 
 export async function startCodex(options: StartCodexOptions): Promise<CodexSession> {
+  // Resolve stateDir to ABSOLUTE before the preflight `await`: a relative path resolved
+  // after the await could point elsewhere if the caller's cwd changed during it (§8.1).
+  const stateDir = resolve(options.stateDir ?? defaultStateDir(options.cwd));
   const warning = await preflight.preflightCodex(
     options.strictVersionCheck ?? false,
     options.autoupdate ?? false,
   );
-  const stateDir = resolve(options.stateDir ?? defaultStateDir(options.cwd));
   prepareStateDir(stateDir, { gitignore: options.stateDir === undefined });
   const createdRecord = createSessionRecord({
     cwd: options.cwd,
@@ -46,10 +48,11 @@ export function startCodexFromRecord(
   resumed: boolean,
   preflightWarning: preflight.CodexPreflightWarning | undefined,
 ) {
-  // The runtime mints a fresh out-of-tree socket home BEFORE any state/runtime write,
-  // bridge start, or PTY start. Wrap the whole build so ANY failure before the session
-  // takes ownership removes that `/tmp/elwood-*` dir (§9.1); on success ownership
-  // transfers to the returned session (teardown removes it via removeSessionFiles).
+  // The runtime binds the socket in the session's STABLE out-of-tree home (a fresh
+  // socket file inside it) BEFORE any state/runtime write, bridge start, or PTY start.
+  // Wrap the whole build so ANY failure before the session takes ownership removes that
+  // `/tmp/elwood-<fingerprint>` home (§9.1); on success ownership transfers to the
+  // returned session (teardown removes it via removeSessionFiles).
   const runtime = sessionRuntime({
     stateDir,
     elwoodSessionId: record.elwoodSessionId,

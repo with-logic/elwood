@@ -23,6 +23,20 @@ function dropWarning(): ElwoodWarningEvent {
   };
 }
 
+function readErrorWarning(): ElwoodWarningEvent {
+  return {
+    elwoodSessionId: "warn-1",
+    agent: "claude",
+    source: "terminal",
+    code: "transcript_read_error",
+    severity: "warning",
+    message: "Contained a transcript read error.",
+    lastErrorCode: "ENOENT",
+    transcriptPath: "/tmp/t.jsonl",
+    raw: "transcript_read_error code=ENOENT",
+  };
+}
+
 function harness() {
   const emitted: string[] = [];
   const emit: WarningEmit = {
@@ -69,6 +83,28 @@ describe("emitSessionWarnings", () => {
     };
     expect(() => emitSessionWarnings([dropWarning()], emit)).toThrow(boom);
     expect(emitted).toEqual(["warning"]);
+  });
+
+  test("a throwing FIRST warning does not drop LATER warnings in the same batch", () => {
+    // The regression for the review's "one listener failure drops later warnings"
+    // finding: warning #1's listener throws, but warning #2 (whose identity was already
+    // consumed upstream and can't be recovered) must STILL be delivered. The first error
+    // is rethrown only after the whole batch fired.
+    const delivered: string[] = [];
+    const boom = new Error("first warning boom");
+    let firstWarning = true;
+    const emit: WarningEmit = {
+      warning: (w) => {
+        if (firstWarning) {
+          firstWarning = false;
+          throw boom;
+        }
+        delivered.push(w.code);
+      },
+      activity: () => undefined,
+    };
+    expect(() => emitSessionWarnings([dropWarning(), readErrorWarning()], emit)).toThrow(boom);
+    expect(delivered).toEqual(["transcript_read_error"]); // the SECOND warning still delivered
   });
 
   test("the FIRST listener error wins when both listeners throw", () => {
