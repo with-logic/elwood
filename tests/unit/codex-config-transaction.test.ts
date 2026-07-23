@@ -82,4 +82,24 @@ describe("runCodexModelSwitch (C-CODEX-14)", () => {
     // onRestoreError is optional — its absence must not change the primary outcome.
     await expect(runCodexModelSwitch(spec)).rejects.toBe(primary);
   });
+
+  test("a THROWING onRestoreError never masks the primary error", async () => {
+    const primary = new Error("model_automation_failed");
+    const { spec } = io({
+      apply: () => Promise.reject(primary),
+      restore: () => {
+        throw new Error("restore blew up too");
+      },
+    });
+    // The reporter itself throws; the transaction must still reject with `primary`,
+    // not the reporter's error — the preservation guarantee is unconditional.
+    await expect(
+      runCodexModelSwitch({
+        ...spec,
+        onRestoreError: () => {
+          throw new Error("reporter exploded");
+        },
+      }),
+    ).rejects.toBe(primary);
+  });
 });

@@ -6,11 +6,21 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { errnoCode } from "../core/errors.ts";
 
 export type ConfigRestoreOutcome = "restored" | "skipped" | "unchanged";
 
 export function codexConfigPath(): string {
   return join(process.env["CODEX_HOME"] ?? join(homedir(), ".codex"), "config.toml");
+}
+
+/**
+ * Builds the CONTENT-FREE `raw` for a swallowed restore-failure warning: the config
+ * path plus a bounded errno code only — never the error message, which could carry
+ * credentials or conversation data if the failure came from a public listener.
+ */
+export function restoreFailureRaw(path: string, error: unknown): string {
+  return `${path} (${errnoCode(error) ?? "UNKNOWN"})`;
 }
 
 export function snapshotCodexConfig(): string | undefined {

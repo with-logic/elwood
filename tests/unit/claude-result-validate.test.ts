@@ -51,6 +51,12 @@ describe("Claude hook result validation", () => {
     expect(isClaudeHookResult("WorktreeRemove", { worktreePath: "/tmp/w" })).toBe(false);
     expect(isClaudeHookResult("Stop", { worktreePath: "/tmp/w" })).toBe(false);
     expect(isClaudeHookResult("Elicitation", { action: "accept" })).toBe(true);
+    expect(isClaudeHookResult("Elicitation", { action: "accept", content: { a: 1 } })).toBe(true);
+    // `content` must be absent or a non-array record: a string/array/null is rejected
+    // rather than serialized as if valid.
+    expect(isClaudeHookResult("Elicitation", { action: "accept", content: "x" })).toBe(false);
+    expect(isClaudeHookResult("Elicitation", { action: "accept", content: [1] })).toBe(false);
+    expect(isClaudeHookResult("Elicitation", { action: "accept", content: null })).toBe(false);
     expect(isClaudeHookResult("Stop", { action: "accept" })).toBe(false);
     expect(isClaudeHookResult("SubagentStop", { decision: "block", reason: "wait" })).toBe(true);
     expect(isClaudeHookResult("Stop", { decision: "block" })).toBe(false);

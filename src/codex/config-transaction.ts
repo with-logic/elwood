@@ -44,9 +44,13 @@ export function runCodexModelSwitch(io: CodexModelSwitch): Promise<void> {
       // When the switch succeeded, a restore failure surfaces on its own. When a
       // primary error is being preserved we cannot also throw the restore failure,
       // but it must NOT vanish — report it so the user learns config.toml may still
-      // be mutated (the alternative, silently dropping it, was the bug).
+      // be mutated (the alternative, silently dropping it, was the bug). The report
+      // is CONTAINED here: a throwing reporter must never replace the primary error
+      // this function guarantees to preserve.
       if (!failed) throw restoreError;
-      io.onRestoreError?.(restoreError);
+      try {
+        io.onRestoreError?.(restoreError);
+      } catch {}
     }
     if (failed) throw primary;
   });

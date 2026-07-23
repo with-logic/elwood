@@ -105,7 +105,10 @@ function isElicitationResult(
   return (
     (eventName === "Elicitation" || eventName === "ElicitationResult") &&
     keysAre(value, ["action", "content"]) &&
-    isOneOf(value["action"], ["accept", "decline", "cancel"])
+    isOneOf(value["action"], ["accept", "decline", "cancel"]) &&
+    // `content` is an OPTIONAL non-array record; a string/array/null must fail
+    // rather than be serialized as if valid (matches ElicitationResult.content).
+    (value["content"] === undefined || isRecord(value["content"]))
   );
 }
 

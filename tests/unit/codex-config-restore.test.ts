@@ -10,6 +10,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import {
   codexConfigPath,
   restoreCodexConfig,
+  restoreFailureRaw,
   snapshotCodexConfig,
 } from "../../src/codex/config-restore.ts";
 
@@ -74,5 +75,15 @@ describe("codex config restore", () => {
   test("codexConfigPath falls back to the home directory", () => {
     delete process.env["CODEX_HOME"];
     expect(codexConfigPath().endsWith("/.codex/config.toml")).toBe(true);
+  });
+
+  test("C-CODEX-14 restoreFailureRaw is content-free: path + bounded errno code only", () => {
+    // An errno error contributes its string code; anything else (a message-only
+    // Error, a non-Error) normalizes to UNKNOWN so no raw message text is persisted.
+    expect(restoreFailureRaw("/c.toml", Object.assign(new Error("x"), { code: "EACCES" }))).toBe(
+      "/c.toml (EACCES)",
+    );
+    expect(restoreFailureRaw("/c.toml", new Error("secret leaked here"))).toBe("/c.toml (UNKNOWN)");
+    expect(restoreFailureRaw("/c.toml", "boom")).toBe("/c.toml (UNKNOWN)");
   });
 });

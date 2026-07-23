@@ -94,6 +94,10 @@ describe("CodexSession setModel", () => {
       await expect(setting).rejects.toMatchObject({ code: "model_automation_failed" });
       // The restore failure did not vanish: it is a bounded content-free warning.
       expect(session.warnings).toMatchObject([{ code: "codex_default_model_persisted" }]);
+      // Content-free: `raw` carries only the config path and a bounded errno code,
+      // never a raw error message (which could leak credentials/conversation data).
+      const raw = String(session.warnings[0]?.raw ?? "");
+      expect(raw).toMatch(/config\.toml \([A-Z]+\)$/);
     } finally {
       chmodSync(configPath, 0o600);
     }

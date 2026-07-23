@@ -14,7 +14,12 @@ import { type SessionRecord, updateSessionResumeId } from "../state/store.ts";
 import { CLIPBOARD_RESTORE_FAILED_MESSAGE } from "../state/validate-warnings.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { attachCodexImages } from "./attach-images.ts";
-import { codexConfigPath, restoreCodexConfig, snapshotCodexConfig } from "./config-restore.ts";
+import {
+  codexConfigPath,
+  restoreCodexConfig,
+  restoreFailureRaw,
+  snapshotCodexConfig,
+} from "./config-restore.ts";
 import { runCodexModelSwitch } from "./config-transaction.ts";
 import { codexModelPicker } from "./model-picker.ts";
 import type { CodexHookBridge } from "./session-bridge.ts";
@@ -85,9 +90,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
         severity: "warning",
         message:
           "Codex may have persisted the picker selection as the user's default model: the model switch failed and restoring config.toml also failed.",
-        // `String(error)` handles both an Error (→ "Error: msg") and a non-Error
-        // reason uniformly, so there is no untested defensive branch here.
-        raw: `${codexConfigPath()}: ${String(error)}`,
+        raw: restoreFailureRaw(codexConfigPath(), error),
       },
     ]);
   }
