@@ -166,7 +166,6 @@ export async function startCodexFromRecord(
     terminalReplay,
     transcriptWatcher,
   );
-  flushPendingWarnings(); // persist any notice buffered before the sink existed (§5.4)
   const id = record.elwoodSessionId;
   const activeSession = session;
   // ONE guarded region for every live-resource step after the session exists
@@ -175,6 +174,7 @@ export async function startCodexFromRecord(
   // watcher, and transcript watcher before rethrowing (PRD §9.1, §9.4). Mirrors Claude.
   await guardStartupRegion(
     async () => {
+      flushPendingWarnings(); // inside the guard: a throwing sink tears down, not leaks (§5.4/§9.4)
       // The `SessionStart` hook releases the first queued message (C-API-28).
       activeSession.setInitialReadyHook(() => ready.mark());
       ready.replay();
@@ -189,8 +189,7 @@ export async function startCodexFromRecord(
         };
         finishCodexExit(drainAndEmit, () => activeSession.submitExit());
       });
-      // Release the startup buffer once the check settles so no per-session
-      // transcript lingers for the PTY handler's lifetime (§9.4).
+      // Release the startup buffer once the check settles (no lingering transcript, §9.4).
       await assertStartupThenRelease("codex", startupOutput, () => startupExit);
       activeSession.submitEvidence("startup_usable");
     },

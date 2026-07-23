@@ -94,4 +94,8 @@ paper over mismatches with `any`.
 1. Update `PRD.md` for spec-visible behavior.
 2. Implement the smallest matching slice in `src/`.
 3. Add conformance tests in `tests/`.
-4. Run `npm run check`.
+4. If the change is consumer-facing (public API, session/lifecycle behavior,
+   activity/event shape, or a bug fix a parent app would notice), add a bullet to
+   `CHANGELOG.md` under `## [Unreleased]`. Skip internal refactors and test-only
+   changes — the changelog is what consumers like Coal Harbor skim.
+5. Run `npm run check`.
