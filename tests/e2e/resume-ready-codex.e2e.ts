@@ -64,6 +64,28 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
       [],
       `no status transition may follow resume readiness, saw: ${afterReady.join(",")}`,
     );
+
+    await cleanup(resumed); // tear the observe-only resume down before the drain resume
+    resumed = undefined;
+
+    // A message queued while still resuming (before ready) must DRAIN once ready — and
+    // a SECOND message must drain after it, proving the queue is live post-resume and
+    // the turn-state watcher tracks real turns without relying on a Stop hook.
+    let stops = 0;
+    resumed = await resumeCodex({
+      ...opts,
+      elwoodSessionId: id,
+      hooks: {
+        Stop: () => {
+          stops += 1;
+        },
+      },
+    });
+    await resumed.sendMessage("Reply exactly: ONE. Do not use tools."); // queued pre-ready
+    await waitFor(() => (stops >= 1 ? true : undefined), "queued-before-ready message drained");
+    await resumed.sendMessage("Reply exactly: TWO. Do not use tools."); // a second, post-ready
+    await waitFor(() => (stops >= 2 ? true : undefined), "second message drained");
+    assert.equal(resumed.status, "ready", "settled to ready after both turns");
   } finally {
     await cleanup(resumed);
     await cleanup(first);
