@@ -10,7 +10,14 @@
 
 import type { CodexApprovalPolicy, CodexSandboxMode } from "../codex/session-types.ts";
 import type { ClaudePermissionMode } from "../core/types.ts";
+import type { ClaudeLaunchPosture, CodexLaunchPosture } from "./launch-posture.ts";
 import { isStringArray } from "./validate-predicates.ts";
+
+// The allowlisted KEYS for each posture, coupled to the public type's keys below so
+// adding a persisted posture field can't compile while the validator silently rejects
+// it on resume (making Elwood reject its own record).
+const claudePostureKeys = ["permissionMode", "allowedTools", "disallowedTools", "tools"] as const;
+const codexPostureKeys = ["sandbox", "approvalPolicy"] as const;
 
 const claudePermissionModes = [
   "default",
@@ -35,9 +42,16 @@ const _permissionModeExact: AssertExact<
 const _sandboxExact: AssertExact<(typeof codexSandboxModes)[number], CodexSandboxMode> = true;
 const _approvalExact: AssertExact<(typeof codexApprovalPolicies)[number], CodexApprovalPolicy> =
   true;
+// The key allowlists must exactly cover their posture type's keys (both directions).
+const _claudeKeysExact: AssertExact<(typeof claudePostureKeys)[number], keyof ClaudeLaunchPosture> =
+  true;
+const _codexKeysExact: AssertExact<(typeof codexPostureKeys)[number], keyof CodexLaunchPosture> =
+  true;
 void _permissionModeExact;
 void _sandboxExact;
 void _approvalExact;
+void _claudeKeysExact;
+void _codexKeysExact;
 
 /**
  * Validates the launch posture for the record's adapter. Codex records must not
@@ -51,7 +65,7 @@ export function isLaunchPosture(value: unknown, adapter: "claude" | "codex"): bo
 
 function isClaudePosture(value: Readonly<Record<string, unknown>>): boolean {
   return (
-    keysAllowed(value, ["permissionMode", "allowedTools", "disallowedTools", "tools"]) &&
+    keysAllowed(value, claudePostureKeys) &&
     optionalOneOf(value["permissionMode"], claudePermissionModes) &&
     optionalStringArray(value["allowedTools"]) &&
     optionalStringArray(value["disallowedTools"]) &&
@@ -61,7 +75,7 @@ function isClaudePosture(value: Readonly<Record<string, unknown>>): boolean {
 
 function isCodexPosture(value: Readonly<Record<string, unknown>>): boolean {
   return (
-    keysAllowed(value, ["sandbox", "approvalPolicy"]) &&
+    keysAllowed(value, codexPostureKeys) &&
     optionalOneOf(value["sandbox"], codexSandboxModes) &&
     optionalOneOf(value["approvalPolicy"], codexApprovalPolicies)
   );

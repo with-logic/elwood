@@ -13,14 +13,15 @@ import {
   type ScreenFactTable,
 } from "./screen-facts.ts";
 import type { TurnStateWatcher } from "./turn-state.ts";
-import type { ElwoodStatusDecision, ElwoodStatusEvidence } from "./types.ts";
+import type { ElwoodSessionStatus, ElwoodStatusDecision, ElwoodStatusEvidence } from "./types.ts";
 
 export type RenderedObserverTarget = {
   submitEvidence(kind: ElwoodStatusEvidence): Pick<ElwoodStatusDecision, "to">;
-  /** The session's current lifecycle status — lets the turn watcher release
-   * resume settling when a turn is already running from EVIDENCE (see
-   * TurnStateWatcher.observe). */
-  readonly status: string;
+  /** The session's current lifecycle status — lets the turn watcher release resume
+   * settling when a turn is already running from EVIDENCE (see
+   * TurnStateWatcher.observe). Typed as the bounded status union so an invalid test
+   * double or typo can't silently disable the `status === "running"` path. */
+  readonly status: ElwoodSessionStatus;
 };
 
 export type RenderedObservers = {
