@@ -55,7 +55,14 @@ export class HookBridgeServer {
       const respond = async (result: BridgeProcessResult | null) => {
         if (responded) return;
         responded = true;
-        socket.end(JSON.stringify(result ?? (await this.handleSafely(data))));
+        // Release the socket the moment we commit to a response: a half-open client
+        // must not keep the socket (and its FD / input budget) alive after it has its
+        // answer. `end()` writes the response then FINs, and `destroy()` on flush
+        // stops reading and releases the FD instead of lingering half-open — a
+        // post-response client write can no longer reach a second dispatch.
+        socket.end(JSON.stringify(result ?? (await this.handleSafely(data))), () =>
+          socket.destroy(),
+        );
       };
       socket.on("data", (chunk: Buffer) => {
         // Count raw bytes and fail open the instant the request envelope crosses

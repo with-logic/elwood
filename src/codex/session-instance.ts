@@ -69,7 +69,27 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
       snapshot: snapshotCodexConfig,
       apply: () => super.setModel(id, options),
       restore: (snapshot) => this.restoreCodexDefault(snapshot),
+      onRestoreError: (error) => this.reportRestoreFailure(error),
     });
+  }
+  // Both the picker automation and the config restore failed: the primary error is
+  // preserved to the caller, so surface the swallowed restore failure as a bounded
+  // diagnostic — otherwise the user gets no signal that config.toml may stay mutated.
+  private reportRestoreFailure(error: unknown): void {
+    this.recordWarnings([
+      {
+        elwoodSessionId: this.elwoodSessionId,
+        agent: "codex",
+        source: "lifecycle",
+        code: "codex_default_model_persisted",
+        severity: "warning",
+        message:
+          "Codex may have persisted the picker selection as the user's default model: the model switch failed and restoring config.toml also failed.",
+        // `String(error)` handles both an Error (→ "Error: msg") and a non-Error
+        // reason uniformly, so there is no untested defensive branch here.
+        raw: `${codexConfigPath()}: ${String(error)}`,
+      },
+    ]);
   }
   private restoreCodexDefault(snapshot: string | undefined): void {
     if (restoreCodexConfig(snapshot) !== "skipped") return;

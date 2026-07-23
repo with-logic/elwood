@@ -53,7 +53,25 @@ describe("runCodexModelSwitch (C-CODEX-14)", () => {
     await expect(runCodexModelSwitch(spec)).rejects.toBe(restoreError);
   });
 
-  test("switch rejects AND restore throws: the PRIMARY error is preserved", async () => {
+  test("switch rejects AND restore throws: PRIMARY preserved, restore failure REPORTED", async () => {
+    const primary = new Error("model_automation_failed");
+    const restoreError = new Error("restore blew up too");
+    const reported: unknown[] = [];
+    const { spec } = io({
+      apply: () => Promise.reject(primary),
+      restore: () => {
+        throw restoreError;
+      },
+    });
+    // The restore failure is contained so it never masks the primary error, but it
+    // must be REPORTED (not silently dropped) so the user learns config may be dirty.
+    await expect(
+      runCodexModelSwitch({ ...spec, onRestoreError: (e) => reported.push(e) }),
+    ).rejects.toBe(primary);
+    expect(reported).toEqual([restoreError]);
+  });
+
+  test("switch rejects AND restore throws with NO reporter: still preserves primary", async () => {
     const primary = new Error("model_automation_failed");
     const { spec } = io({
       apply: () => Promise.reject(primary),
@@ -61,7 +79,7 @@ describe("runCodexModelSwitch (C-CODEX-14)", () => {
         throw new Error("restore blew up too");
       },
     });
-    // The restore failure is contained so it never masks the primary error.
+    // onRestoreError is optional — its absence must not change the primary outcome.
     await expect(runCodexModelSwitch(spec)).rejects.toBe(primary);
   });
 });

@@ -3,7 +3,7 @@
  * Covers PRD §5.7 and C-CODEX-14.
  */
 
-import { readFileSync } from "node:fs";
+import { chmodSync, readFileSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -74,6 +74,29 @@ describe("CodexSession setModel", () => {
     await expect(setting).rejects.toMatchObject({ code: "model_automation_failed" });
     // Restore still ran in the finally: the user's default is back on disk.
     expect(readFileSync(configPath, "utf8")).toBe(userConfig);
+  });
+
+  test("C-CODEX-14 both picker AND restore failing surfaces a bounded diagnostic", async () => {
+    // The picker times out (primary error) AND the restore write fails (config.toml
+    // made read-only): the primary error must still propagate, but the swallowed
+    // restore failure must be REPORTED so the user learns config may stay mutated.
+    const cwd = tempDir();
+    const configPath = sandboxCodexHome(cwd);
+    installFakes();
+    const session = await startCodex({ cwd });
+    await becomeReady(session.elwoodSessionId, cwd);
+    await expect.poll(() => session.status).toBe("ready");
+    const persisted = 'model = "gpt-5.4"\nmodel_reasoning_effort = "medium"\n\n[hooks]\n';
+    const setting = session.setModel("gpt-5.4", { timeoutMs: 1_000 });
+    await driveUntilConfigWritten(configPath, persisted);
+    chmodSync(configPath, 0o400); // the restore write now throws EACCES
+    try {
+      await expect(setting).rejects.toMatchObject({ code: "model_automation_failed" });
+      // The restore failure did not vanish: it is a bounded content-free warning.
+      expect(session.warnings).toMatchObject([{ code: "codex_default_model_persisted" }]);
+    } finally {
+      chmodSync(configPath, 0o600);
+    }
   });
 
   test("C-CODEX-14 two interleaving sessions cannot persist the wrong model", async () => {

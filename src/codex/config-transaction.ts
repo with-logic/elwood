@@ -16,6 +16,13 @@ export type CodexModelSwitch = {
   readonly apply: () => Promise<void>;
   /** Compare-and-swap restore of the snapshot; may warn but should not throw. */
   readonly restore: (snapshot: string | undefined) => void;
+  /**
+   * Reports a restore failure that had to be SWALLOWED because a primary error is
+   * being preserved (both the picker and the restore failed). Without this the user
+   * would get no signal that their global config.toml may remain mutated. Optional;
+   * omitted in tests that don't assert the diagnostic.
+   */
+  readonly onRestoreError?: (error: unknown) => void;
 };
 
 export function runCodexModelSwitch(io: CodexModelSwitch): Promise<void> {
@@ -30,13 +37,16 @@ export function runCodexModelSwitch(io: CodexModelSwitch): Promise<void> {
       primary = error;
     }
     // Restore whether or not the switch rejected, so a late picker timeout that
-    // fired AFTER Codex wrote config.toml still restores the user's default. A
-    // restore failure is contained when there is a primary error to preserve;
-    // when the switch succeeded, a restore failure surfaces on its own.
+    // fired AFTER Codex wrote config.toml still restores the user's default.
     try {
       io.restore(snapshot);
     } catch (restoreError) {
+      // When the switch succeeded, a restore failure surfaces on its own. When a
+      // primary error is being preserved we cannot also throw the restore failure,
+      // but it must NOT vanish — report it so the user learns config.toml may still
+      // be mutated (the alternative, silently dropping it, was the bug).
       if (!failed) throw restoreError;
+      io.onRestoreError?.(restoreError);
     }
     if (failed) throw primary;
   });
