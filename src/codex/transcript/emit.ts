@@ -50,7 +50,7 @@ export class CodexLineEmitter {
   }
 }
 
-/** Returns undefined for a malformed line so the caller can count the drop. */
+/** Returns undefined for a malformed line so the caller can report the drop. */
 function parseLine(line: string): unknown {
   try {
     return JSON.parse(line);
