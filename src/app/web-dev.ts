@@ -72,8 +72,11 @@ export function createWebDevApp(options: WebDevAppOptions = {}): WebDevApp {
   wss.on("connection", (socket) => acceptConnection(socket, sockets, deps));
   return { server, wss, slot, listen: () => listen(server, wss, port), shutdown };
 
-  function shutdown(): Promise<void> {
-    return closeWebDevResources({ server, wss, sockets, session: slot.take() });
+  async function shutdown(): Promise<void> {
+    // closeAndTake refuses new slot work and waits for any in-flight start to settle,
+    // so a session can't be installed after we tear down (no resurrected PTY).
+    const session = await slot.closeAndTake();
+    await closeWebDevResources({ server, wss, sockets, session });
   }
 }
 

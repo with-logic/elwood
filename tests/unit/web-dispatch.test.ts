@@ -80,6 +80,33 @@ describe("web dispatch", () => {
     expect(second.teardownCount).toBe(0);
   });
 
+  test("C-APP-07 a slow data-plane op does not head-of-line block a later frame", async () => {
+    // A slow sendPrompt must NOT hold the slot mutex: a later keys frame has to reach
+    // the session (which has its own control queue) before the prompt resolves.
+    const session = fakeSession("s1");
+    let releasePrompt!: () => void;
+    const promptGate = new Promise<void>((resolve) => {
+      releasePrompt = resolve;
+    });
+    session.sendPrompt = (value: string) => {
+      session.prompts.push(value);
+      return promptGate;
+    };
+    const harness = harnessWith(() => Promise.resolve(session));
+    await start(harness);
+    const prompt = dispatchClientMessage(
+      harness.deps,
+      frame({ type: "prompt", value: "slow" }),
+      harness.report,
+    );
+    // The keys frame resolves while the prompt is still parked — no HOL blocking.
+    await dispatchClientMessage(harness.deps, frame({ type: "keys", value: "x" }), harness.report);
+    expect(session.keys).toEqual(["x"]);
+    releasePrompt();
+    await prompt;
+    expect(session.prompts).toEqual(["slow"]);
+  });
+
   test("C-APP-04 C-APP-07 prompt, keys, and resize reach the active session", async () => {
     const session = fakeSession("s1");
     const harness = harnessWith(() => Promise.resolve(session));

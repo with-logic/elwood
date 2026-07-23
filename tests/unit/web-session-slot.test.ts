@@ -119,6 +119,39 @@ describe("web session slot", () => {
     await expect(failing).rejects.toThrow("boom");
     await expect(slot.run(async () => 7)).resolves.toBe(7);
   });
+
+  test("C-APP-08 closeAndTake refuses new work and returns the in-flight session", async () => {
+    // Shutdown races an in-flight start: closeAndTake must wait for the start to
+    // install its session, return THAT session (so the caller tears it down), and
+    // refuse any later run so a session can't be resurrected after shutdown.
+    const slot = new WebSessionSlot();
+    const session = fakeSession("s1");
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // A start that is mid-flight when shutdown begins.
+    const starting = slot.run(async (s) => {
+      await gate;
+      await s.replace(session);
+    });
+    const closing = slot.closeAndTake(); // begins shutdown while the start is parked
+    release();
+    await starting;
+    expect(await closing).toBe(session); // returned the just-installed session, not null
+    expect(slot.session).toBeNull(); // detached, not left live
+    // Post-close work is refused, so nothing can re-install a session after teardown.
+    await expect(slot.run(async () => 1)).rejects.toThrow(/shutting down/);
+  });
+
+  test("C-APP-08 closeAndTake tolerates an in-flight task that REJECTED", async () => {
+    // If the in-flight slot task rejected, closeAndTake must still settle (swallow the
+    // rejection) and return whatever session is installed, not hang or throw.
+    const slot = new WebSessionSlot();
+    const failing = slot.run(() => Promise.reject(new Error("boom")));
+    await expect(failing).rejects.toThrow("boom");
+    expect(await slot.closeAndTake()).toBeNull();
+  });
 });
 
 function tick(): Promise<void> {

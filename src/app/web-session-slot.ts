@@ -22,6 +22,7 @@ export type TeardownErrorReporter = (elwoodSessionId: string, error: unknown) =>
 export class WebSessionSlot {
   private current: SharedSession | null = null;
   private tail: Promise<unknown> = Promise.resolve();
+  private closed = false;
   private readonly onTeardownError: TeardownErrorReporter | undefined;
 
   // `onTeardownError` surfaces a replaced session's teardown failure (optional; when
@@ -39,9 +40,12 @@ export class WebSessionSlot {
   /**
    * Run `task` with exclusive access to the slot, serialized after every prior
    * task. Concurrent calls queue instead of interleaving, so two `start` frames
-   * can never both install a session against a stale read.
+   * can never both install a session against a stale read. Once the slot is CLOSED
+   * (shutdown began), new work is refused so it cannot install a session after the
+   * final teardown — which would resurrect/leak a PTY past shutdown.
    */
   run<T>(task: (slot: WebSessionSlot) => Promise<T>): Promise<T> {
+    if (this.closed) return Promise.reject(new Error("The session slot is shutting down."));
     const result = this.tail.then(() => task(this));
     // Keep the chain alive even when a task rejects; callers handle their own errors.
     this.tail = result.catch(() => undefined);
@@ -87,5 +91,20 @@ export class WebSessionSlot {
     const active = this.current;
     this.current = null;
     return active;
+  }
+
+  /**
+   * Close the slot for shutdown: refuse all future `run` work, wait for any IN-FLIGHT
+   * slot task (e.g. a start that is mid-`startSession`) to settle, then detach and
+   * return whatever session is installed. Serializing behind the current tail closes
+   * the race where a resolving start installs a session AFTER a bare `take()` already
+   * ran — the returned session (possibly just-installed) is the caller's to tear down.
+   */
+  async closeAndTake(): Promise<SharedSession | null> {
+    this.closed = true;
+    // `this.tail` is already `.catch`-wrapped in `run`, so awaiting it never rejects;
+    // it just lets any in-flight task (e.g. a mid-flight start) finish installing first.
+    await this.tail;
+    return this.take();
   }
 }

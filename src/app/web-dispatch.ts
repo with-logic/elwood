@@ -51,18 +51,31 @@ function route(deps: DispatchDeps, message: ClientMessage): Promise<void> {
   switch (message.type) {
     case "start":
       return deps.slot.run(() => startOrResume(deps, message));
+    // Data-plane ops: resolve the active session UNDER the slot lock, then release it
+    // and await the (possibly slow) I/O on that session — it has its own control queue,
+    // so holding the slot mutex through a slow paste/resize would head-of-line block
+    // every later frame (including the sendKeys escape hatch). See onActiveSession.
     case "prompt":
-      return deps.slot.run(async (slot) => slot.require().sendPrompt(message.value));
+      return onActiveSession(deps, (session) => session.sendPrompt(message.value));
     case "keys":
-      return deps.slot.run(async (slot) => slot.require().sendKeys(message.value));
+      return onActiveSession(deps, (session) => session.sendKeys(message.value));
     case "resize":
-      return deps.slot.run(async (slot) => slot.require().resize(sizeFrom(message)));
+      return onActiveSession(deps, (session) => session.resize(sizeFrom(message)));
     case "stop":
     case "kill":
       return deps.slot.run((slot) => closeActive(slot, message.type));
     case "teardown":
       return deps.slot.run((slot) => teardownActive(slot));
   }
+}
+
+/** Snapshot the active session under the slot lock, release it, then run `work`. */
+async function onActiveSession(
+  deps: DispatchDeps,
+  work: (session: SharedSession) => Promise<void>,
+): Promise<void> {
+  const session = await deps.slot.run(async (slot) => slot.require());
+  await work(session);
 }
 
 async function startOrResume(
