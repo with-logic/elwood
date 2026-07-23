@@ -97,6 +97,44 @@ describe("bridge server fail-open limits", () => {
     expect(dispatched).toBe(1);
   });
 
+  test("C-HOOK-16 a multibyte code point split across chunks is not corrupted", async () => {
+    // The 4-byte 😀 is split across two writes. Decoding each chunk on its own would
+    // insert replacement chars; the server must accumulate bytes and decode once, so
+    // the dispatched hook input carries the intact emoji, not `a���b`.
+    const socketPath = join(tempDirForUnit(), "split-utf8.sock");
+    let resolveInput!: (v: unknown) => void;
+    const gotInput = new Promise<unknown>((resolve) => {
+      resolveInput = resolve;
+    });
+    const server = new HookBridgeServer(
+      socketPath,
+      "token",
+      (parsed) => {
+        resolveInput(parsed);
+        return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+      },
+      () => {},
+      acceptHookInput,
+    );
+    await server.start();
+    const socket = createConnection(socketPath);
+    await new Promise<void>((resolve) => socket.once("connect", resolve));
+    socket.on("data", () => {}); // drain the response so the socket can close cleanly
+    // input carries the emoji; the framed request is a JSON envelope with a hook input.
+    const request = Buffer.from(
+      `${JSON.stringify({ token: "token", input: JSON.stringify({ hook_event_name: "Stop", marker: "a😀b" }) })}\n`,
+      "utf8",
+    );
+    const emojiStart = request.indexOf(Buffer.from("😀", "utf8"));
+    // Write up to the middle of the emoji's bytes, then the rest — straddling chunks.
+    socket.write(request.subarray(0, emojiStart + 2));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    socket.write(request.subarray(emojiStart + 2));
+    const received = await gotInput;
+    await server.stop();
+    expect((received as { marker?: string })?.marker).toBe("a😀b");
+  });
+
   test("C-HOOK-16 an unterminated oversized stream fails open without a frame", async () => {
     const socketPath = join(tempDirForUnit(), "oversized-unterminated.sock");
     let dispatched = 0;

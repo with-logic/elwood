@@ -58,6 +58,31 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
   losing the hook decision. The child now measures the same encoded envelope the
   server does and fails open before connecting, so the two never disagree. (C-HOOK-16)
 
+- **Hook payloads with multibyte characters split across socket chunks are no longer
+  corrupted.** Both the child bridge script and the parent IPC server decoded each
+  byte chunk independently, so a UTF-8 code point straddling two chunks (emoji,
+  CJK, accented text) became replacement characters before the hook input was parsed.
+  Both sides now accumulate raw bytes and decode once at the frame boundary. (C-HOOK-16)
+
+- **A throwing warning sink no longer loses a transcript diagnostic mid-session or
+  stops observation.** The retain-on-throw guarantee previously only held before the
+  session's warning sink existed; once it did, a throwing `recordWarnings` lost the
+  notice and could escape into the poll loop and permanently stop the transcript
+  watcher. Warnings are now queued before delivery and the flush is contained, so a
+  transient sink failure is retried on the next scan and the watcher stays live
+  (both adapters). This corrects an over-broad claim in a prior entry.
+
+- **An empty-ish non-array `images` value now rejects instead of sending silently.**
+  An untyped caller passing `""` or `{ length: 0 }` as `images` took a no-image fast
+  path and the text was sent with no error; only a genuinely absent list (or an empty
+  array) skips attachment now — anything else is validated and rejects `invalid_image`.
+  (C-API-44)
+
+- **Claude's `transcript_read_error` `lastErrorCode` is now normalized to a string.**
+  Matching the Codex fix, a non-string errno `code` (e.g. a numeric code) becomes
+  `"UNKNOWN"` instead of round-tripping a number through the string-typed field
+  (which could fail the persisted record's validation).
+
 - **Transcript reading no longer spins on an incomplete UTF-8 tail.** A partial
   write that ends mid-code-point made the reader re-read the same bytes up to
   64×/second per session; it now reports no-progress and resumes on the next tick

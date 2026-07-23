@@ -26,13 +26,28 @@ describe("enqueueSubmission (C-API-44)", () => {
     expect(attach).toBeUndefined();
   });
 
-  test("C-API-44 with an empty list takes the fast path", async () => {
+  test("C-API-44 with an empty ARRAY takes the fast path", async () => {
     let calls = 0;
     await enqueueSubmission([], noopDriver, () => {
       calls++;
       return Promise.resolve();
     });
     expect(calls).toBe(1);
+  });
+
+  test("C-API-44 a non-array empty-ish value REJECTS, never a silent no-image send", async () => {
+    // An untyped caller passing "" or { length: 0 } must not slip past validation via
+    // the old `length === 0` fast path — both are non-arrays and reject invalid_image.
+    for (const bad of ["", { length: 0 }] as const) {
+      let sent = false;
+      await expect(
+        enqueueSubmission(bad as never, noopDriver, () => {
+          sent = true;
+          return Promise.resolve();
+        }),
+      ).rejects.toMatchObject({ code: "invalid_image" });
+      expect(sent).toBe(false); // never sent as a no-image submission
+    }
   });
 
   test("C-API-44 an invalid image rejects SYNCHRONOUSLY, before it is ever queued", async () => {

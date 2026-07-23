@@ -8,6 +8,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import {
+  type TranscriptReadErrorNotice as DropsReadErrorNotice,
+  ReadErrorTracker,
+} from "../../src/claude/transcript/drops.ts";
+import {
   type ClaudeTranscriptEvent,
   ClaudeTranscriptWatcher,
   type TranscriptDropNotice,
@@ -120,5 +124,19 @@ describe("C-CLAUDE-15 transcript watcher robustness", () => {
     expect(drops.at(-1)!.droppedBytes).toBeGreaterThan(0);
     // Content-free: no notice field carries any raw line text.
     expect(JSON.stringify(drops)).not.toContain("bad");
+  });
+
+  test("C-CLAUDE-15 a NON-string error code normalizes to UNKNOWN (never round-trips a number)", () => {
+    // `lastErrorCode` is a string in the persisted contract; a numeric `code` must
+    // become "UNKNOWN" rather than round-tripping a number (which would fail the
+    // record's validation as state_corrupt). Mirrors the Codex tracker.
+    const errs: DropsReadErrorNotice[] = [];
+    const tracker = new ReadErrorTracker("s", (n) => errs.push(n));
+    tracker.record("/t", { code: "EISDIR" });
+    tracker.record("/t", new Error("boom")); // no `.code` → UNKNOWN
+    tracker.record("/t", { code: 5 }); // NUMERIC code must NOT round-trip → UNKNOWN
+    expect(errs.map((e) => e.lastErrorCode)).toEqual(["EISDIR", "UNKNOWN", "UNKNOWN"]);
+    const silent = new ReadErrorTracker("s", undefined);
+    expect(() => silent.record("/t", {})).not.toThrow();
   });
 });

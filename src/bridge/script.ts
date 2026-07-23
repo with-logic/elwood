@@ -17,14 +17,17 @@ const elwoodSessionId = process.env.ELWOOD_SESSION_ID ?? "";
 // stop buffering once even the RAW input alone already exceeds the ceiling — the
 // JSON-wrapped envelope can only be larger, so it could never pass the real cap.
 async function readStdin() {
-  let data = "";
+  // Collect RAW bytes and decode ONCE after EOF: \`data += chunk\` would decode each
+  // chunk on its own and insert replacement chars whenever a multibyte code point
+  // straddles two chunks, corrupting the hook payload (PRD §6.2).
+  const parts = [];
   let bytes = 0;
   for await (const chunk of process.stdin) {
     bytes += chunk.length;
     if (bytes > maxRequestBytes) process.exit(0);
-    data += chunk;
+    parts.push(chunk);
   }
-  return data;
+  return Buffer.concat(parts).toString("utf8");
 }
 
 const inputText = await readStdin();

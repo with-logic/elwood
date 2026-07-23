@@ -159,7 +159,11 @@ export class ReadErrorTracker {
 
   record(path: string, error: unknown): void {
     this.count += 1;
-    const lastErrorCode = (error as NodeJS.ErrnoException)?.code ?? "UNKNOWN";
+    // `code` is only a string on a real errno; a non-string (e.g. a numeric `code`)
+    // must NOT round-trip as `lastErrorCode`, whose public/persisted type is a string
+    // — else the record fails validation as `state_corrupt` (mirrors Codex).
+    const code = (error as { code?: unknown } | null)?.code;
+    const lastErrorCode = typeof code === "string" ? code : "UNKNOWN";
     // Every contained error updates the persisted count; the warning event that
     // reaches the user is de-duplicated downstream (recordSessionWarnings).
     this.onError?.({

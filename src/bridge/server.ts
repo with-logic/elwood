@@ -44,7 +44,10 @@ export class HookBridgeServer {
     if (existsSync(this.socketPath)) unlinkSync(this.socketPath);
     const server = createServer((socket) => {
       this.sockets.add(socket);
-      let data = "";
+      // Accumulate RAW bytes, not per-chunk strings: decoding each chunk on its own
+      // would insert replacement chars whenever a multibyte code point straddles two
+      // chunks. We decode the whole buffer ONCE, at the frame boundary (PRD §6.2).
+      const chunks: Buffer[] = [];
       let bytes = 0;
       let responded = false;
       socket.on("close", () => this.sockets.delete(socket));
@@ -60,6 +63,7 @@ export class HookBridgeServer {
         // answer. `end()` writes the response then FINs, and `destroy()` on flush
         // stops reading and releases the FD instead of lingering half-open — a
         // post-response client write can no longer reach a second dispatch.
+        const data = Buffer.concat(chunks).toString("utf8"); // decode once, whole
         socket.end(JSON.stringify(result ?? (await this.handleSafely(data))), () =>
           socket.destroy(),
         );
@@ -72,7 +76,7 @@ export class HookBridgeServer {
         bytes += chunk.length;
         if (bytes > MAX_HOOK_REQUEST_BYTES) return void respond(noDecision());
         const framed = chunk.includes(0x0a);
-        data += chunk.toString("utf8");
+        chunks.push(chunk);
         if (framed) void respond(null);
       });
       socket.on("end", () => void respond(null));

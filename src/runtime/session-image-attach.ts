@@ -44,13 +44,18 @@ export function enqueueSubmission(
   driver: AttachDriver,
   send: QueueSend,
 ): Promise<void> {
-  if (!images || images.length === 0) return send();
+  // Fast-path ONLY a truly absent list. Any supplied value — including a non-array
+  // like `""` or a zero-length array-like `{ length: 0 }` from an untyped caller —
+  // must go through snapshotImages so it rejects with `invalid_image` rather than
+  // slipping past validation as a no-image send (C-API-44).
+  if (images === undefined) return send();
   let snapshot: ImageSnapshot;
   try {
-    snapshot = snapshotImages(images); // clone bytes at the call, not at dispatch
+    snapshot = snapshotImages(images); // validates shape + clones bytes at the call
   } catch (error) {
     return Promise.reject(error);
   }
+  if (snapshot.snapshot.length === 0) return send(); // a genuinely empty array: no attach
   return send((signal) => runAttach(snapshot, driver, signal));
 }
 

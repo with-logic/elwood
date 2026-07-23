@@ -95,4 +95,42 @@ describe("child bridge script fail-open", () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   }, 20_000);
+
+  test("C-HOOK-16 a multibyte code point split across stdin chunks is not corrupted", async () => {
+    // The 4-byte 😀 is split across two stdin writes. If the child decoded each chunk
+    // on its own it would insert replacement chars; it must accumulate bytes and
+    // decode once, so the envelope the server receives carries the intact emoji.
+    const dir = tempDirForUnit();
+    const scriptPath = join(dir, "hook-bridge.mjs");
+    const socketPath = join(dir, "srv.sock");
+    let received = "";
+    const server = createServer((socket) => {
+      socket.on("data", (chunk) => {
+        received += chunk.toString("utf8");
+      });
+      socket.end('{"exitCode":0,"stdout":"","stderr":""}');
+    });
+    await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+    try {
+      writeFileSync(scriptPath, bridgeScriptSource(socketPath, "token"));
+      const payload = Buffer.from("a😀b", "utf8");
+      const mid = payload.indexOf(Buffer.from("😀", "utf8")) + 2; // inside the emoji bytes
+      const done = new Promise<void>((resolve, reject) => {
+        const child = spawn(process.execPath, [scriptPath], {
+          env: { ...process.env, ELWOOD_SESSION_ID: "sess" },
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        child.on("error", reject);
+        child.on("exit", () => resolve());
+        child.stdin.write(payload.subarray(0, mid)); // first half, splitting the emoji
+        setTimeout(() => child.stdin.end(payload.subarray(mid)), 10); // the rest
+      });
+      await done;
+      // The server received the envelope; its `input` must be the intact "a😀b".
+      const envelope = JSON.parse(received.trim()) as { input: string };
+      expect(envelope.input).toBe("a😀b");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 20_000);
 });
