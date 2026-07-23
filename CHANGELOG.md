@@ -51,6 +51,13 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
   so a failed durable status write is retried on the next hook/frame/deadline
   rather than consuming readiness and wedging the queue. (C-API-28)
 
+- **The 8 MiB hook-request cap is now measured identically on both sides.** The
+  child bridge script capped RAW stdin while the parent IPC server capped the
+  JSON-wrapped wire envelope, so an escape-heavy hook input (backslash/quote-heavy
+  tool output) could pass the child's cap yet be rejected by the server, silently
+  losing the hook decision. The child now measures the same encoded envelope the
+  server does and fails open before connecting, so the two never disagree. (C-HOOK-16)
+
 - **Transcript reading no longer spins on an incomplete UTF-8 tail.** A partial
   write that ends mid-code-point made the reader re-read the same bytes up to
   64×/second per session; it now reports no-progress and resumes on the next tick

@@ -1703,14 +1703,20 @@ Fail-open does not mean silent. `hookError` must include:
 
 It must not persist the full hook payload by default.
 
-The bridge caps the size of a single hook request at 8 MiB (8,388,608 raw
-bytes), counted identically in both the child bridge script and the parent IPC
-server. The cap bounds the request envelope on the wire, before any
-authentication or parsing. A request whose raw bytes exceed the cap fails open
-immediately: the child bridge script emits no decision and exits, and the parent
-server responds with no decision and closes the connection without dispatching to
-any parent handler. An oversized request is unauthenticated local IPC noise and
-does not emit a `hookError`, matching the token-mismatch fail-open.
+The bridge caps the size of a single hook request at 8 MiB (8,388,608 bytes). The
+cap is measured on the SAME thing in both places: the encoded wire envelope (the
+`{token, elwoodSessionId, input}` JSON plus its framing newline), counted in the
+child bridge script before it connects and in the parent IPC server as bytes
+arrive — so an escape-heavy input whose JSON encoding expands past the ceiling is
+rejected identically by both, never accepted by the child only to be dropped by
+the server. The child additionally bounds raw stdin buffering at the same ceiling
+as an OOM guard (the wrapped envelope can only be larger, so raw input past the cap
+can never yield a valid request). The cap is enforced before any authentication or
+parsing. A request whose encoded envelope exceeds the cap fails open immediately:
+the child bridge script emits no decision and exits, and the parent server responds
+with no decision and closes the connection without dispatching to any parent
+handler. An oversized request is unauthenticated local IPC noise and does not emit
+a `hookError`, matching the token-mismatch fail-open.
 
 ### 6.4 Typed hook responses
 
@@ -2413,7 +2419,7 @@ Each criterion has:
 | C-HOOK-13 | §7A.2 | Codex hook IPC input is runtime-validated before dispatch to parent handlers. |
 | C-HOOK-14 | §7A.2 | Codex `hook_event_name` narrows valid handler response types at compile time. |
 | C-HOOK-15 | §7A.3 | Codex `Stop` marks the session ready only when the Stop event is not blocked. |
-| C-HOOK-16 | §6.2 | Hook IPC waits for a complete framed request before dispatching and fails open on malformed complete requests. |
+| C-HOOK-16 | §6.2 | Hook IPC waits for a complete framed request before dispatching and fails open on malformed complete requests. A single request is capped at exactly 8 MiB (8,388,608 bytes) measured on the ENCODED wire envelope (`{token, elwoodSessionId, input}` JSON plus its framing newline) — the identical byte count in the child bridge script (before it connects) and the parent server (as bytes arrive), so an escape-heavy input whose JSON encoding expands past the cap is rejected by both, never accepted by one and dropped by the other. An over-cap request fails open before auth/parse (child exits with no decision; server responds no-decision and closes) and does not emit a `hookError`. |
 | C-HOOK-17 | §6.4 | Claude hook IPC input validates event-specific payload fields and known tool input schemas before dispatch. |
 
 #### C-HRESP: Hook Response Mapping (§6, §7)

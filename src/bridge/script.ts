@@ -13,9 +13,9 @@ const token = ${JSON.stringify(token)};
 const maxRequestBytes = ${MAX_HOOK_REQUEST_BYTES};
 const elwoodSessionId = process.env.ELWOOD_SESSION_ID ?? "";
 
-// Cap raw stdin bytes: a hook payload carries arbitrary tool output, so read no
-// more than the shared ceiling and fail open (empty decision, exit 0) the moment
-// the envelope would exceed it (PRD §6.3).
+// Read stdin under an OOM guard: a hook payload carries arbitrary tool output, so
+// stop buffering once even the RAW input alone already exceeds the ceiling — the
+// JSON-wrapped envelope can only be larger, so it could never pass the real cap.
 async function readStdin() {
   let data = "";
   let bytes = 0;
@@ -28,6 +28,12 @@ async function readStdin() {
 }
 
 const inputText = await readStdin();
+// The cap the SERVER enforces is on the encoded wire envelope, not raw stdin. Build
+// the exact envelope here and fail open (empty decision, exit 0) if IT exceeds the
+// ceiling, so an escape-heavy input the server would reject is not sent (PRD §6.3):
+// the child and server now measure the identical bytes, not stdin vs. wrapped JSON.
+const request = JSON.stringify({ token, elwoodSessionId, input: inputText }) + "\\n";
+if (Buffer.byteLength(request, "utf8") > maxRequestBytes) process.exit(0);
 const client = net.createConnection({ path: socketPath });
 let response = "";
 let finished = false;
@@ -53,7 +59,7 @@ client.on("error", () => {
 });
 
 client.on("connect", () => {
-  client.end(JSON.stringify({ token, elwoodSessionId, input: inputText }) + "\\n");
+  client.end(request);
 });
 
 client.on("end", finish);
