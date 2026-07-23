@@ -6,7 +6,10 @@
  */
 
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import type { CodexEventMap } from "../../src/codex/session-types.ts";
 import type { CodexDropNotice, CodexReadErrorNotice } from "../../src/codex/transcript/drops.ts";
+import type { ElwoodWarningEvent } from "../../src/core/types.ts";
+import { TypedEmitter } from "../../src/events/emitter.ts";
 
 // Callbacks typed with the PRODUCTION notice shapes so field drift fails the compile.
 type OnDrop = ((n: CodexDropNotice) => void) | undefined;
@@ -37,18 +40,49 @@ vi.mock("../../src/codex/transcript.ts", () => ({
       if (finishControl.throws) throw new Error("final flush boom");
     }
   },
-  codexDropWarning: (n: CodexDropNotice) => ({ code: "transcript_records_dropped", ...n }),
-  codexReadErrorWarning: (n: CodexReadErrorNotice) => ({ code: "transcript_read_error", ...n }),
-  codexPollStoppedWarning: (_id: string, _e: unknown, phase = "poll") => ({
-    code: "transcript_poll_stopped",
-    phase,
-  }),
+  // Full production warning shapes (satisfies the public union) so a drift in
+  // ElwoodWarningEvent breaks the compile here rather than slipping past a partial object.
+  codexDropWarning: (n: CodexDropNotice) =>
+    ({
+      elwoodSessionId: n.elwoodSessionId,
+      agent: "codex",
+      source: "terminal",
+      code: "transcript_records_dropped",
+      severity: "warning",
+      message: "dropped",
+      transcriptPath: n.path,
+      cause: n.cause,
+      raw: "drop",
+    }) satisfies Extract<ElwoodWarningEvent, { code: "transcript_records_dropped" }>,
+  codexReadErrorWarning: (n: CodexReadErrorNotice) =>
+    ({
+      elwoodSessionId: n.elwoodSessionId,
+      agent: "codex",
+      source: "terminal",
+      code: "transcript_read_error",
+      severity: "warning",
+      message: "read error",
+      transcriptPath: n.path,
+      lastErrorCode: n.lastErrorCode,
+      raw: "read",
+    }) satisfies Extract<ElwoodWarningEvent, { code: "transcript_read_error" }>,
+  codexPollStoppedWarning: (id: string, _e: unknown, phase: "poll" | "final_flush" = "poll") =>
+    ({
+      elwoodSessionId: id,
+      agent: "codex",
+      source: "terminal",
+      code: "transcript_poll_stopped",
+      severity: "warning",
+      message: "poll stopped",
+      reason: "UnknownError",
+      phase,
+      raw: "poll",
+    }) satisfies Extract<ElwoodWarningEvent, { code: "transcript_poll_stopped" }>,
 }));
 
 const { createCodexTranscriptWatcher } = await import("../../src/codex/session-transcript.ts");
-const { TypedEmitter } = await import("../../src/events/emitter.ts");
-type Sink = { emitWarnings: (w: readonly unknown[]) => void };
-const emitter = () => new TypedEmitter() as never;
+type Sink = { emitWarnings: (w: readonly ElwoodWarningEvent[]) => void };
+const emitter = (): TypedEmitter<CodexEventMap> => new TypedEmitter<CodexEventMap>();
 // Real, count-free production notices (path/cause and path/last-error-code).
 const dropNotice = {
   elwoodSessionId: "s1",
@@ -75,22 +109,20 @@ describe("createCodexTranscriptWatcher lifecycle", () => {
     // for retry. So when the listener recovers it delivers ONLY the current notice,
     // not a backlog: the pending buffer can never grow under a persistent failure.
     let failing = true;
-    const recorded: unknown[] = [];
+    const recorded: ElwoodWarningEvent[] = [];
     const sink: Sink = {
       emitWarnings: (w) => {
         if (failing) throw new Error("listener boom");
         recorded.push(...w);
       },
     };
-    createCodexTranscriptWatcher("s1", emitter(), () => sink as never);
+    createCodexTranscriptWatcher("s1", emitter(), () => sink);
     for (let i = 0; i < 3; i++) expect(() => captured.onDrop?.(dropNotice)).not.toThrow();
     captured.onReadError?.(readNotice); // also dropped while failing
     failing = false;
     captured.onDrop?.(dropNotice); // recover: delivers ONLY this current notice
     expect(recorded).toHaveLength(1);
-    expect((recorded as Array<{ code: string }>).map((w) => w.code)).toEqual([
-      "transcript_records_dropped",
-    ]);
+    expect(recorded.map((w) => w.code)).toEqual(["transcript_records_dropped"]);
   });
 
   test("C-LIFE-10 finishSafely runs afterFlush after a successful final flush", () => {
@@ -105,15 +137,16 @@ describe("createCodexTranscriptWatcher lifecycle", () => {
   test("C-LIFE-10 a THROWING final flush still runs afterFlush + routes a final_flush diagnostic", () => {
     // The FINAL flush throws: afterFlush (terminal:exit) must STILL run + a phase diagnostic.
     finishControl.throws = true;
-    const recorded: Array<{ code?: string; phase?: string }> = [];
-    const sink: Sink = { emitWarnings: (w) => recorded.push(...(w as never[])) };
-    const { finishSafely } = createCodexTranscriptWatcher("s1", emitter(), () => sink as never);
+    const recorded: ElwoodWarningEvent[] = [];
+    const sink: Sink = { emitWarnings: (w) => recorded.push(...w) };
+    const { finishSafely } = createCodexTranscriptWatcher("s1", emitter(), () => sink);
     let afterRan = false;
     finishSafely(() => {
       afterRan = true;
     });
     expect(afterRan).toBe(true); // terminal:exit emission is NOT skipped
-    expect(recorded).toEqual([{ code: "transcript_poll_stopped", phase: "final_flush" }]);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ code: "transcript_poll_stopped", phase: "final_flush" });
   });
 
   test("C-LIFE-10 finishSafely with no afterFlush is a no-op default", () => {

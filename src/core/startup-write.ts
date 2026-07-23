@@ -65,8 +65,16 @@ export function emitSettledStartupOutcomes<A extends "claude" | "codex">(
     if (settledOutcome.settled === undefined) {
       // An `option_pending` outcome: no write happened, so there is nothing to
       // await — emit its attention activity immediately. The discriminated union
-      // guarantees this branch is only ever `option_pending`.
-      emitStartupPromptActivity(emitter, agent, elwoodSessionId, settledOutcome.outcome);
+      // guarantees this branch is only ever `option_pending`. CONTAIN a throwing
+      // activity listener exactly as the promise-backed branch does: this runs on the
+      // hot startup frame, so an escaping throw would skip the rest of the frame
+      // (readiness/blocking observation, `terminal:data`) and could let an already-armed
+      // readiness deadline drain queued input into an unlatched dialog (C-API-28).
+      try {
+        emitStartupPromptActivity(emitter, agent, elwoodSessionId, settledOutcome.outcome);
+      } catch {
+        // Telemetry must not wedge the frame; the activity is dropped (live-only).
+      }
       continue;
     }
     // An `answered` outcome always carries the write-completion promise: its

@@ -8,15 +8,28 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { createStartupWarningGate, deliverFrameWarnings } from "../../src/core/startup-frame.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
 
-const w = (code: string): ElwoodWarningEvent =>
-  ({ code, elwoodSessionId: "s1" }) as unknown as ElwoodWarningEvent;
+// A COMPLETE, legitimate public warning variant; the per-instance identity travels in a
+// valid field (`raw`) so a change to the warning union breaks these tests instead of
+// slipping past a structural cast.
+const w = (id: string): ElwoodWarningEvent =>
+  ({
+    elwoodSessionId: "s1",
+    agent: "claude",
+    source: "lifecycle",
+    code: "version_unparseable",
+    severity: "warning",
+    message: "could not parse version",
+    raw: id,
+  }) satisfies Extract<ElwoodWarningEvent, { code: "version_unparseable" }>;
+/** The per-instance identity each fixture carries in `raw` (never undefined here). */
+const ids = (ws: readonly ElwoodWarningEvent[]) => ws.map((x) => x.raw ?? "");
 
 afterEach(() => vi.useRealTimers());
 
 describe("deliverFrameWarnings", () => {
   test("delivers a batch, and CONTAINS a throwing listener (frame continues)", () => {
     const seen: string[] = [];
-    deliverFrameWarnings({ emitWarnings: (ws) => seen.push(...ws.map((x) => x.code)) }, [w("a")]);
+    deliverFrameWarnings({ emitWarnings: (ws) => seen.push(...ids(ws)) }, [w("a")]);
     expect(seen).toEqual(["a"]);
     expect(() =>
       deliverFrameWarnings(
@@ -44,7 +57,7 @@ describe("createStartupWarningGate", () => {
     vi.useFakeTimers();
     const seen: string[] = [];
     const gate = createStartupWarningGate({
-      emitWarnings: (ws) => seen.push(...ws.map((x) => x.code)),
+      emitWarnings: (ws) => seen.push(...ids(ws)),
     });
     gate.emitWarnings([w("mcp")]);
     gate.emitWarnings([w("version")]);
@@ -59,7 +72,7 @@ describe("createStartupWarningGate", () => {
     vi.useFakeTimers();
     const seen: string[] = [];
     const gate = createStartupWarningGate({
-      emitWarnings: (ws) => seen.push(...ws.map((x) => x.code)),
+      emitWarnings: (ws) => seen.push(...ids(ws)),
     });
     gate.openAfterReturn();
     vi.runAllTimers(); // opens with an empty buffer
@@ -77,16 +90,18 @@ describe("createStartupWarningGate", () => {
     expect(calls).toBe(0); // empty buffer: the sink is never called
   });
 
-  test("the startup buffer is BOUNDED — excess warnings are dropped", () => {
+  test("delivers EVERY observed startup warning — no silent cap (C-API-14)", () => {
+    // PRD §5.7/C-API-14 defines no overflow exception: a warning is emitted once when
+    // observed. A silent cap could drop the guaranteed `version_unparseable` warning, so
+    // the short-lived startup buffer must retain all of them until it drains next macrotask.
     vi.useFakeTimers();
     const seen: string[] = [];
-    const gate = createStartupWarningGate({
-      emitWarnings: (ws) => seen.push(...ws.map((x) => x.code)),
-    });
-    for (let i = 0; i < 100; i++) gate.emitWarnings([w(`n${i}`)]); // over the 64 ceiling
+    const gate = createStartupWarningGate({ emitWarnings: (ws) => seen.push(...ids(ws)) });
+    for (let i = 0; i < 100; i++) gate.emitWarnings([w(`n${i}`)]);
     gate.openAfterReturn();
     vi.runAllTimers();
-    expect(seen).toHaveLength(64); // bounded; kept live-only
-    expect(seen[0]).toBe("n0"); // the earliest are retained
+    expect(seen).toHaveLength(100); // all delivered, in order
+    expect(seen[0]).toBe("n0");
+    expect(seen[99]).toBe("n99");
   });
 });

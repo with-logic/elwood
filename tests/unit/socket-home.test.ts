@@ -5,16 +5,34 @@
  * live socket.
  */
 
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import {
+  ensureSocketHome,
   ownsSocketHome,
+  removeOwnSocketFile,
   SOCKET_HOME_PREFIX,
   sessionSocketHome,
 } from "../../src/state/socket-home.ts";
 
 const base = { stateDir: "/state/a", elwoodSessionId: "sess-1", adapter: "claude" } as const;
+
+let scratch: string | undefined;
+afterEach(() => {
+  if (scratch) rmSync(scratch, { recursive: true, force: true });
+  scratch = undefined;
+});
+const mode = (path: string) => statSync(path).mode & 0o777;
 
 describe("sessionSocketHome", () => {
   test("is deterministic and stable across launches of the same identity", () => {
@@ -45,5 +63,51 @@ describe("sessionSocketHome", () => {
   test("ownsSocketHome recognizes only homes this scheme minted", () => {
     expect(ownsSocketHome(join(sessionSocketHome(base), "abcd1234.sock"))).toBe(true);
     expect(ownsSocketHome("/tmp/some-other-dir/abcd1234.sock")).toBe(false);
+  });
+});
+
+describe("ensureSocketHome", () => {
+  test("creates a fresh home privately (0700)", () => {
+    scratch = mkdtempSync(join(tmpdir(), "elwood-ensure-"));
+    const home = join(scratch, "home");
+    ensureSocketHome(home);
+    expect(mode(home)).toBe(0o700);
+  });
+
+  test("restores a PRE-EXISTING permissive home to 0700 (§8.1)", () => {
+    // The home is deterministic and reused, so a launch must tighten a home left at a
+    // looser mode — mkdirSync's mode applies only on fresh creation.
+    scratch = mkdtempSync(join(tmpdir(), "elwood-ensure-"));
+    const home = join(scratch, "home");
+    mkdirSync(home);
+    chmodSync(home, 0o755);
+    ensureSocketHome(home);
+    expect(mode(home)).toBe(0o700);
+  });
+
+  test("rejects a planted NON-directory at the predictable path", () => {
+    scratch = mkdtempSync(join(tmpdir(), "elwood-ensure-"));
+    const home = join(scratch, "home");
+    writeFileSync(home, "planted"); // an attacker-planted file where the home would go
+    expect(() => ensureSocketHome(home)).toThrow(/not a private directory/);
+  });
+});
+
+describe("removeOwnSocketFile", () => {
+  test("removes only the launch's own socket file, leaving the shared home", () => {
+    scratch = mkdtempSync(join(tmpdir(), `${SOCKET_HOME_PREFIX}own-`));
+    const sock = join(scratch, "abcd1234.sock");
+    writeFileSync(sock, "");
+    removeOwnSocketFile(sock);
+    expect(existsSync(sock)).toBe(false);
+    expect(existsSync(scratch)).toBe(true); // the shared home survives
+  });
+
+  test("no-ops on a path outside a home this scheme owns", () => {
+    scratch = mkdtempSync(join(tmpdir(), "not-owned-"));
+    const sock = join(scratch, "abcd1234.sock");
+    writeFileSync(sock, "");
+    removeOwnSocketFile(sock); // parent dir lacks the elwood- prefix: untouched
+    expect(existsSync(sock)).toBe(true);
   });
 });

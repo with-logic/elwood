@@ -16,9 +16,10 @@
  */
 
 import { createHash } from "node:crypto";
-import { rmSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { elwoodError } from "../core/errors.ts";
 
 /** The ONE prefix every Elwood socket home carries (shared by creation + cleanup). */
 export const SOCKET_HOME_PREFIX = "elwood-";
@@ -50,9 +51,51 @@ export function ownsSocketHome(socketPath: string): boolean {
 }
 
 /**
+ * Ensures the stable socket home exists and is private (`0700`, PRD §8.1) for THIS
+ * launch. The home is deterministic and reused across a session's launches, so
+ * `mkdirSync(..., { mode })` alone is not enough — its mode applies only when the
+ * directory is freshly created, leaving a pre-existing home at whatever mode it had.
+ * We therefore chmod unconditionally after ensuring it. A pre-existing NON-directory
+ * (or symlink) at the predictable path is rejected rather than trusted, since binding
+ * a socket under an attacker-planted target would escape the private home.
+ */
+export function ensureSocketHome(home: string): void {
+  const existing = lstatIfPresent(home);
+  if (existing && !existing.isDirectory()) {
+    throw elwoodError("hook_bridge_failed", "socket home path is not a private directory", {
+      home,
+    });
+  }
+  mkdirSync(home, { recursive: true, mode: 0o700 });
+  chmodSync(home, 0o700);
+}
+
+function lstatIfPresent(path: string): ReturnType<typeof lstatSync> | undefined {
+  try {
+    return lstatSync(path);
+  } catch {
+    return undefined; // absent: mkdir will create it fresh at 0700
+  }
+}
+
+/**
+ * Removes only THIS launch's own socket file, leaving the shared stable home in place.
+ * Used on failed startup: the home is shared by every concurrent launch of the same
+ * `(stateDir, adapter, session id)`, so a failing launch must NOT remove the whole home
+ * — that would delete a live overlapping launch's bound socket. Leaving an empty home
+ * is safe: it is deterministic, so the session's next start/resume/teardown collects
+ * it. Only removes files under a home this naming scheme owns.
+ */
+export function removeOwnSocketFile(socketPath: string): void {
+  if (!ownsSocketHome(socketPath)) return;
+  rmSync(socketPath, { force: true });
+}
+
+/**
  * Removes a session's ENTIRE stable socket home (every launch's socket file), so a
- * parent restart never leaves earlier launches' sockets undiscoverable. Only removes
- * homes this naming scheme owns; any other layout is left untouched.
+ * parent restart never leaves earlier launches' sockets undiscoverable. Called only on
+ * TEARDOWN — the terminal, single-owner path — never on a failed overlapping launch.
+ * Only removes homes this naming scheme owns; any other layout is left untouched.
  */
 export function removeSocketHome(socketPath: string): void {
   if (!ownsSocketHome(socketPath)) return;

@@ -59,10 +59,11 @@ test("C-STATE-12 real Claude starts and resumes from a 200-char stateDir", {
     // Claude only persists a resumable conversation once a turn has run.
     await session.sendMessage("Reply exactly: OK. Do not use tools.");
     await waitFor(() => (stops > 0 ? true : undefined), "first turn Stop hook");
-    // The socket home is minted fresh under tmpdir (not under the 200-char stateDir),
-    // so its path clears the macOS sun_path cap even with a deeply nested stateDir.
+    // The socket home is created under tmpdir (not under the 200-char stateDir), so its
+    // path clears the macOS sun_path cap even with a deeply nested stateDir. It is STABLE
+    // per session (a fingerprint of its identity), not a fresh mkdtemp per launch.
     const startedHome = [...socketHomes()].find((h) => !homesBefore.has(h));
-    assert.ok(startedHome, "start minted a fresh elwood- socket home under tmpdir");
+    assert.ok(startedHome, "start created the session's elwood- socket home under tmpdir");
     assert.ok(join(startedHome, "h.sock").length < 104, "socket path clears the sun_path cap");
     await session.stop();
     resumed = await resumeClaude({
@@ -79,11 +80,12 @@ test("C-STATE-12 real Claude starts and resumes from a 200-char stateDir", {
       },
     });
     await waitFor(() => (sessionStarts > 1 ? true : undefined), "resumed SessionStart hook");
-    // Resume mints ANOTHER fresh socket home; teardown must remove it.
-    const resumedHome = [...socketHomes()].find((h) => !homesBefore.has(h) && h !== startedHome);
-    assert.ok(resumedHome, "resume minted a fresh socket home");
+    // Resume REUSES the SAME stable home (it is deterministic from the session identity),
+    // not a second one; only the socket FILE inside it is fresh per launch.
+    const extraHome = [...socketHomes()].find((h) => !homesBefore.has(h) && h !== startedHome);
+    assert.equal(extraHome, undefined, "resume reused the stable home, did not mint a second");
     await resumed.teardown();
-    assert.equal(existsSync(resumedHome), false, "teardown removes the socket home");
+    assert.equal(existsSync(startedHome), false, "teardown removes the whole stable home");
   } finally {
     await cleanup(resumed);
     await cleanup(session);

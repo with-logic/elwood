@@ -618,8 +618,10 @@ Elwood is deliberately live-first:
   bridge token, the socket path, and Elwood-owned runtime file paths are NOT
   persisted. Status and warnings are live-only (delivered on the `status` and
   `warning` events; there is no `session.warnings` property). Runtime paths are
-  derived on demand; the bridge token and socket home are minted fresh per
-  start/resume and never trusted from disk.
+  derived on demand; the socket home is a deterministic fingerprint of the session
+  identity (stable across a session's launches), while the bridge token and the
+  socket file inside the home are minted fresh per start/resume and never trusted
+  from disk.
 - It does not persist prompts, PTY output, hook payloads, hook responses, Codex
   transcript items, or derived prompt/tool content.
 - Hook bridge messages are routed over local IPC with per-session tokens.

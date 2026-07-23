@@ -71,6 +71,24 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ### Fixed
 
+- **A failed or slow overlapping launch can no longer break a live session's hook
+  bridge.** The per-session socket home is stable and shared across a session's
+  launches; a failed start/resume now removes only its own socket file, never the
+  whole home, so it cannot delete a concurrently-live launch's bound socket (which
+  would have silently failed every later hook). Teardown still removes the whole
+  home. The home is also restored to private `0700` on every launch and rejects a
+  planted non-directory at its predictable path. (§8.1, §9.1)
+- **A relative `cwd` is resolved once at the start boundary.** `startClaude`/
+  `startCodex` now resolve `cwd` (like `stateDir`) to absolute BEFORE the awaited
+  preflight, so a `process.cwd()` change during preflight can no longer split where
+  state is written and persisted from where the CLI launches. (§8.2)
+- **A transcript drop/read-error warning can no longer fire after `terminal:exit`.**
+  A Claude poll that found the watcher finished mid-pass could still flush that
+  pass's drop past the permanent terminal latch; it now discards the pass. (§5.4)
+- **Every startup warning is delivered.** The startup warning buffer no longer caps
+  silently at 64 entries — a pathological startup can no longer drop the tail
+  (including the guaranteed `version_unparseable` warning). (C-API-14)
+
 - **Resume no longer emits a phantom turn / false "unread".** After a resumed
   session reached readiness, the transcript replay repainted prior turns whose
   footer lines read as "working", fabricating a spurious `running → ready` cycle on

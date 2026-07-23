@@ -34,20 +34,18 @@ export function deliverFrameWarnings(
   }
 }
 
-// A bounded ceiling on warnings buffered during startup: keeps the queue live-only
-// (a pathological startup can't retain unbounded warnings); excess is dropped, matching
-// "a human sees the banner once, then it scrolls away".
-const maxStartupWarnings = 64;
-
 /**
  * A buffer-then-live warning sink for the STARTUP region. Warnings emitted BEFORE the
  * caller can subscribe (during the pre-return startup gate — MCP/transcript/preflight
  * diagnostics) are BUFFERED, then flushed on a deferred macrotask AFTER start resolves,
  * so a caller attaching a `warning` listener in the same turn it receives the session
  * still observes them (C-API-14) — WITHOUT restoring general late-subscriber replay.
- * Once opened, delivery is live pass-through. The buffer is bounded, so it stays
- * live-only. A macrotask (not a microtask) is required: a microtask runs before the
- * caller's post-`await` continuation, so it would fire into no listener.
+ * Once opened, delivery is live pass-through. Every observed startup warning is
+ * delivered: PRD §5.7/C-API-14 defines no overflow exception, and the buffer drains one
+ * macrotask after start resolves, so it is inherently short-lived (the finite set of
+ * startup diagnostics), not an unbounded queue — a silent cap could drop the guaranteed
+ * `version_unparseable` warning. A macrotask (not a microtask) is required: a microtask
+ * runs before the caller's post-`await` continuation, so it would fire into no listener.
  */
 export function createStartupWarningGate(sink: FrameWarningSink): {
   readonly emitWarnings: (warnings: readonly ElwoodWarningEvent[]) => void;
@@ -58,7 +56,7 @@ export function createStartupWarningGate(sink: FrameWarningSink): {
   return {
     emitWarnings: (warnings) => {
       if (open) return deliverFrameWarnings(sink, warnings);
-      for (const w of warnings) if (buffered.length < maxStartupWarnings) buffered.push(w);
+      buffered.push(...warnings);
     },
     openAfterReturn: () => {
       const timer = setTimeout(() => {

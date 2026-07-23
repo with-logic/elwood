@@ -23,22 +23,24 @@ export type StartupCleanupResources = {
 };
 
 /**
- * Wraps the ENTIRE `start*FromRecord` body so the fresh out-of-tree socket home the
+ * Wraps the ENTIRE `start*FromRecord` body so the fresh per-launch socket FILE the
  * launch minted is removed on ANY failure before the session takes ownership — a
  * failed state/runtime write, bridge start, PTY start, or guarded post-spawn step
- * otherwise leaks a `/tmp/elwood-*` directory (§9.1). On success the socket home
- * transfers to the returned session (teardown removes it). The cleanup is contained
- * so it never replaces the original startup error.
+ * otherwise leaks a socket under `/tmp/elwood-*` (§9.1). It removes only THIS launch's
+ * own file, never the shared stable home a concurrent launch may still own; the home is
+ * deterministic, so the session's next start/resume/teardown collects any empty
+ * leftover. On success ownership transfers to the returned session (teardown removes the
+ * whole home). The cleanup is contained so it never replaces the original startup error.
  */
 export async function withSocketHomeCleanup<T>(
-  removeSocketHome: () => void,
+  removeOwnSocketFile: () => void,
   build: () => Promise<T>,
 ): Promise<T> {
   try {
     return await build();
   } catch (error) {
     try {
-      removeSocketHome();
+      removeOwnSocketFile();
     } catch {
       // Secondary: the original startup error is the one that rejects.
     }

@@ -41,6 +41,24 @@ describe("emitSettledStartupOutcomes", () => {
     expect(events[0]).toMatchObject({ kind: "attention", label: "mcp_trust" });
   });
 
+  test("a throwing option_pending listener is CONTAINED (frame continues) — C-API-28", () => {
+    // The synchronous branch runs on the hot startup frame; a throwing activity listener
+    // must not escape (it would skip readiness/blocking observation + terminal:data).
+    let calls = 0;
+    const throwingEmit = (_e: "activity", _p: ElwoodActivityEvent): void => {
+      calls += 1;
+      throw new Error("rogue option_pending listener");
+    };
+    const outcomes: readonly SettledStartupOutcome<"claude">[] = [
+      { outcome: { kind: "option_pending", prompt: "mcp_trust" } },
+      { outcome: { kind: "option_pending", prompt: "workspace_trust" } }, // still attempted
+    ];
+    expect(() =>
+      emitSettledStartupOutcomes({ emit: throwingEmit }, "claude", "s1", outcomes, sink()),
+    ).not.toThrow();
+    expect(calls).toBe(2); // the first throw did not abort the loop
+  });
+
   test("C-CLAUDE-16 an answered outcome emits startup_prompt activity only AFTER the write fulfills", async () => {
     const { events, emit } = collect();
     const warnings = sink();

@@ -79,6 +79,21 @@ describe("C-CLAUDE-15 transcript diagnostic reporters", () => {
     expect(notices).toEqual([]);
   });
 
+  test("discardPass drops the pass WITHOUT delivering (post-terminal latch, §5.4)", () => {
+    // When a poll finds the watcher finished mid-pass, the pass's coalesced drops must
+    // be discarded, not flushed — nothing may emit past terminal:exit. A later fresh
+    // occurrence still delivers, proving discardPass clears rather than permanently mutes.
+    const notices: TranscriptDropNotice[] = [];
+    const reporter = new DropReporter("s1", (n) => notices.push(n));
+    reporter.record("/p");
+    reporter.drop("/q", "oversized");
+    reporter.discardPass();
+    expect(notices).toEqual([]); // the recorded drops were discarded, not emitted
+    reporter.record("/p"); // a new pass records afresh
+    reporter.flushPass();
+    expect(notices).toEqual([{ elwoodSessionId: "s1", path: "/p", cause: "unparseable" }]);
+  });
+
   test("a throwing drop listener does not re-fire the batch on the next pass", () => {
     // flushPass clears the pending batch BEFORE delivery, so a throwing listener
     // drops the warning rather than replaying it forever (live-only, C-API-14).

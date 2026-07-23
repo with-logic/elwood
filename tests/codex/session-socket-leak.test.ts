@@ -1,10 +1,12 @@
 /**
- * Conformance tests: a FAILED Codex start never leaks its socket home, and the home is
- * restart-safe (one STABLE `/tmp/elwood-<fingerprint>` per session, not a leaked
- * anonymous dir per launch). Covers PRD §9.1/§8.1 (mirrors Claude): the socket binds in
- * the session's stable home before any state/runtime write, bridge start, or PTY start;
- * ANY pre-session failure removes it (withSocketHomeCleanup), and teardown sweeps it.
- * Each test isolates `TMPDIR` so the leak check sees only this launch's socket homes.
+ * Conformance tests: a FAILED Codex start never leaks its socket FILE and never removes
+ * a concurrent launch's socket, and the stable home is restart-safe (one
+ * `/tmp/elwood-<fingerprint>` per session, not a leaked anonymous dir per launch). Covers
+ * PRD §9.1/§8.1 (mirrors Claude): a fresh per-launch socket file binds in the session's
+ * stable home before any state/runtime write, bridge start, or PTY start; ANY pre-session
+ * failure removes THIS launch's own file — never the shared home a concurrent launch may
+ * own (withSocketHomeCleanup) — and teardown sweeps the whole home. Each test isolates
+ * `TMPDIR` so the leak checks see only this launch's homes/sockets.
  */
 
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
@@ -27,7 +29,10 @@ afterEach(() => {
 });
 
 function isolateTmp(): string {
-  privateTmp = mkdtempSync(join(realTmp, "elwood-sockhome-"));
+  // Rooted at a SHORT `/tmp`: production adds `elwood-<16hex>/<8>.sock`, and nesting
+  // under the long macOS `os.tmpdir()` overflows the ~104-byte Unix-socket path cap, so
+  // the bridge would fail to `listen` here. See the Claude mirror for the full note.
+  privateTmp = mkdtempSync("/tmp/elwood-sockhome-");
   process.env["TMPDIR"] = privateTmp;
   return privateTmp;
 }
@@ -39,8 +44,17 @@ function socketHomesIn(dir: string): string[] {
     .filter((full) => statSync(full).isDirectory());
 }
 
-describe("§9.1 a failed Codex start does not leak the socket home", () => {
-  test("a bridge-start failure removes the socket home AND shuts down the partial bridge", async () => {
+/** `.sock` files across every socket home under the private tmp — the leak we guard. */
+function socketFilesIn(dir: string): string[] {
+  return socketHomesIn(dir).flatMap((home) =>
+    readdirSync(home)
+      .filter((entry) => entry.endsWith(".sock"))
+      .map((entry) => join(home, entry)),
+  );
+}
+
+describe("§9.1 a failed Codex start does not leak its socket file", () => {
+  test("a bridge-start failure removes its own socket file AND shuts down the partial bridge", async () => {
     const cwd = tempDir(); // created under the REAL tmp, before we isolate
     installFakes();
     let stops = 0;
@@ -57,11 +71,11 @@ describe("§9.1 a failed Codex start does not leak the socket home", () => {
     await expect(startCodex({ cwd })).rejects.toMatchObject({
       code: "hook_bridge_failed", // NOT "stop failed too" — the secondary error is contained
     });
-    expect(socketHomesIn(priv)).toEqual([]);
+    expect(socketFilesIn(priv)).toEqual([]); // the launch's own socket file is gone
     expect(stops).toBe(1); // the partially-started bridge's listener is not leaked
   });
 
-  test("a PTY-start failure removes the socket home", async () => {
+  test("a PTY-start failure removes its own socket file", async () => {
     const cwd = tempDir();
     installFakes();
     setPtyFactoryForTests(() => {
@@ -71,20 +85,46 @@ describe("§9.1 a failed Codex start does not leak the socket home", () => {
     await expect(startCodex({ cwd })).rejects.toMatchObject({
       code: "pty_start_failed",
     });
+    expect(socketFilesIn(priv)).toEqual([]);
+  });
+
+  test("a failing overlapping launch never removes a LIVE launch's socket", async () => {
+    // The stable home is shared by every launch of the same (stateDir, adapter, id). A
+    // failed launch must remove only ITS OWN socket file, not the whole home, or it would
+    // delete a live overlapping launch's bound socket (silent hook failure).
+    const cwd = tempDir();
+    installFakes();
+    const priv = isolateTmp();
+    const live = await startCodex({ cwd }); // A: live, owns a socket in the shared home
+    await becomeReady(live.elwoodSessionId, cwd); // persist the resumeId so B can resume
+    expect(socketFilesIn(priv)).toHaveLength(1);
+    // B: an overlapping resume for the SAME session id whose bridge start fails.
+    setCodexHookBridgeFactoryForTests(() => ({
+      start: () => Promise.reject(new Error("bridge failed")),
+      stop: () => Promise.resolve(),
+    }));
+    await expect(resumeCodex({ elwoodSessionId: live.elwoodSessionId, cwd })).rejects.toMatchObject(
+      { code: "hook_bridge_failed" },
+    );
+    expect(socketFilesIn(priv)).toHaveLength(1); // A's socket survived B's cleanup
+    await live.teardown();
     expect(socketHomesIn(priv)).toEqual([]);
   });
 
-  test("a REAL runtime file-write failure during resume removes the minted socket home", async () => {
+  test("a REAL runtime file-write failure during resume removes the minted socket file", async () => {
     // Prove the ownership boundary end-to-end, not just the helper: induce an ACTUAL
     // runtime-file write failure inside `buildCodexSession` (writeCodexRuntimeFiles)
-    // during a real resume, and assert the minted socket home is swept. If those writes
-    // ever moved OUTSIDE `withSocketHomeCleanup`, this leak would resurface.
+    // during a real resume, and assert the resume's newly minted socket file is swept
+    // while the stopped session's own file is untouched. If those writes ever moved
+    // OUTSIDE `withSocketHomeCleanup`, the resume's file would leak.
     const cwd = tempDir(); // created under the REAL tmp, before we isolate
     installFakes();
     const priv = isolateTmp();
     const first = await startCodex({ cwd });
     await becomeReady(first.elwoodSessionId, cwd); // SessionStart persists the codex resumeId
-    await first.stop(); // stop keeps state (and the stable home) for resume
+    await first.stop(); // stop keeps state + the home; the bridge unlinks its socket file
+    const beforeResume = socketFilesIn(priv);
+    expect(beforeResume).toEqual([]); // no live socket, but the stable home remains
     expect(socketHomesIn(priv)).toHaveLength(1);
     // Plant a DIRECTORY where writeCodexRuntimeFiles will write the bridge script: the
     // atomic write's final rename onto a non-empty directory throws a real fs error
@@ -94,8 +134,8 @@ describe("§9.1 a failed Codex start does not leak the socket home", () => {
     rmSync(bridgeScript, { force: true });
     mkdirSync(join(bridgeScript, "block"), { recursive: true }); // non-empty dir at target
     await expect(resumeCodex({ elwoodSessionId: first.elwoodSessionId, cwd })).rejects.toThrow();
-    // The boundary removed the socket home the failed resume minted, not left it behind.
-    expect(socketHomesIn(priv)).toEqual([]);
+    // The boundary removed only the file the failed resume minted — no net new leak.
+    expect(socketFilesIn(priv)).toEqual(beforeResume);
   });
 
   test("on SUCCESS the socket home persists (ownership transfers to the session)", async () => {

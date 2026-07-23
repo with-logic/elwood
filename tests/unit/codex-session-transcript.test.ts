@@ -5,7 +5,10 @@
  */
 
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import type { CodexEventMap } from "../../src/codex/session-types.ts";
 import type { CodexDropNotice, CodexReadErrorNotice } from "../../src/codex/transcript/drops.ts";
+import type { ElwoodWarningEvent } from "../../src/core/types.ts";
+import { TypedEmitter } from "../../src/events/emitter.ts";
 
 // Capture the notices the factory hands the watcher, so tests can fire them. The
 // callbacks are typed with the PRODUCTION notice shapes so a drift in those fields
@@ -34,20 +37,51 @@ vi.mock("../../src/codex/transcript.ts", () => ({
       captured.onPollError = notices.onPollError;
     }
   },
-  codexDropWarning: (n: CodexDropNotice) => ({ code: "transcript_records_dropped", ...n }),
-  codexReadErrorWarning: (n: CodexReadErrorNotice) => ({ code: "transcript_read_error", ...n }),
-  codexPollStoppedWarning: (_id: string, _e: unknown, phase = "poll") => ({
-    code: "transcript_poll_stopped",
-    phase,
-  }),
+  // Full production warning shapes (satisfies the public union) so a drift in
+  // ElwoodWarningEvent breaks the compile here rather than slipping past a partial object.
+  codexDropWarning: (n: CodexDropNotice) =>
+    ({
+      elwoodSessionId: n.elwoodSessionId,
+      agent: "codex",
+      source: "terminal",
+      code: "transcript_records_dropped",
+      severity: "warning",
+      message: "dropped",
+      transcriptPath: n.path,
+      cause: n.cause,
+      raw: "drop",
+    }) satisfies Extract<ElwoodWarningEvent, { code: "transcript_records_dropped" }>,
+  codexReadErrorWarning: (n: CodexReadErrorNotice) =>
+    ({
+      elwoodSessionId: n.elwoodSessionId,
+      agent: "codex",
+      source: "terminal",
+      code: "transcript_read_error",
+      severity: "warning",
+      message: "read error",
+      transcriptPath: n.path,
+      lastErrorCode: n.lastErrorCode,
+      raw: "read",
+    }) satisfies Extract<ElwoodWarningEvent, { code: "transcript_read_error" }>,
+  codexPollStoppedWarning: (id: string, _e: unknown, phase: "poll" | "final_flush" = "poll") =>
+    ({
+      elwoodSessionId: id,
+      agent: "codex",
+      source: "terminal",
+      code: "transcript_poll_stopped",
+      severity: "warning",
+      message: "poll stopped",
+      reason: "UnknownError",
+      phase,
+      raw: "poll",
+    }) satisfies Extract<ElwoodWarningEvent, { code: "transcript_poll_stopped" }>,
 }));
 
 const { createCodexTranscriptWatcher } = await import("../../src/codex/session-transcript.ts");
-const { TypedEmitter } = await import("../../src/events/emitter.ts");
-type Sink = { emitWarnings: (w: readonly unknown[]) => void };
+type Sink = { emitWarnings: (w: readonly ElwoodWarningEvent[]) => void };
 
-function emitter() {
-  return new TypedEmitter() as never;
+function emitter(): TypedEmitter<CodexEventMap> {
+  return new TypedEmitter<CodexEventMap>();
 }
 
 beforeEach(() => {
@@ -70,9 +104,9 @@ const readNotice = {
 
 describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
   test("§5.4 routes a drop notice straight to an available sink", () => {
-    const recorded: unknown[] = [];
+    const recorded: ElwoodWarningEvent[] = [];
     const sink: Sink = { emitWarnings: (w) => recorded.push(...w) };
-    createCodexTranscriptWatcher("s1", emitter(), () => sink as never);
+    createCodexTranscriptWatcher("s1", emitter(), () => sink);
     captured.onDrop?.(dropNotice);
     expect(recorded).toHaveLength(1);
   });
@@ -83,7 +117,7 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
     // DROPPED — a human's terminal does not re-show a banner, so a later notice
     // delivers only ITSELF, never the earlier dropped one.
     let failNext = true;
-    const recorded: unknown[] = [];
+    const recorded: ElwoodWarningEvent[] = [];
     const sink: Sink = {
       emitWarnings: (w) => {
         if (failNext) {
@@ -93,7 +127,7 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
         recorded.push(...w);
       },
     };
-    createCodexTranscriptWatcher("s1", emitter(), () => sink as never);
+    createCodexTranscriptWatcher("s1", emitter(), () => sink);
     expect(() => captured.onDrop?.(dropNotice)).not.toThrow(); // contained, not rethrown
     expect(recorded).toHaveLength(0); // the throwing delivery dropped its notice...
     captured.onReadError?.(readNotice); // ...and a later notice delivers ONLY itself
@@ -101,17 +135,18 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
   });
 
   test("§9.4 routes a poll-stopped diagnostic to the sink", () => {
-    const recorded: Array<{ code?: string }> = [];
-    const sink: Sink = { emitWarnings: (w) => recorded.push(...(w as { code?: string }[])) };
-    createCodexTranscriptWatcher("s1", emitter(), () => sink as never);
+    const recorded: ElwoodWarningEvent[] = [];
+    const sink: Sink = { emitWarnings: (w) => recorded.push(...w) };
+    createCodexTranscriptWatcher("s1", emitter(), () => sink);
     captured.onPollError?.(new Error("boom"));
-    expect(recorded).toEqual([{ code: "transcript_poll_stopped", phase: "poll" }]);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ code: "transcript_poll_stopped", phase: "poll" });
   });
 
   test("§5.7 buffers a notice seen before the sink exists, then flushes it with the next", () => {
     let sink: Sink | undefined;
-    const recorded: unknown[] = [];
-    createCodexTranscriptWatcher("s1", emitter(), () => sink as never);
+    const recorded: ElwoodWarningEvent[] = [];
+    createCodexTranscriptWatcher("s1", emitter(), () => sink);
     captured.onDrop?.(dropNotice); // no sink yet → buffered, not recorded
     expect(recorded).toHaveLength(0);
     sink = { emitWarnings: (w) => recorded.push(...w) };
@@ -121,12 +156,8 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
 
   test("§5.4 flushPendingWarnings delivers a LONE early notice with no follow-up", () => {
     let sink: Sink | undefined;
-    const recorded: unknown[] = [];
-    const { flushPendingWarnings } = createCodexTranscriptWatcher(
-      "s1",
-      emitter(),
-      () => sink as never,
-    );
+    const recorded: ElwoodWarningEvent[] = [];
+    const { flushPendingWarnings } = createCodexTranscriptWatcher("s1", emitter(), () => sink);
     captured.onDrop?.(dropNotice); // buffered before the sink exists
     sink = { emitWarnings: (w) => recorded.push(...w) };
     // No second notice ever arrives; the explicit post-construction flush must
@@ -140,12 +171,8 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
   test("§5.4 a pre-sink notice is delivered once; if delivery throws it is dropped, not retried", () => {
     let sink: Sink | undefined; // no sink yet, so the notice buffers
     let failNext = true;
-    const recorded: unknown[] = [];
-    const { flushPendingWarnings } = createCodexTranscriptWatcher(
-      "s1",
-      emitter(),
-      () => sink as never,
-    );
+    const recorded: ElwoodWarningEvent[] = [];
+    const { flushPendingWarnings } = createCodexTranscriptWatcher("s1", emitter(), () => sink);
     captured.onDrop?.(dropNotice); // buffered before the sink exists
     // The sink appears but its first emitWarnings throws.
     sink = {

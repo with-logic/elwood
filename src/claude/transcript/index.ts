@@ -112,7 +112,12 @@ export class ClaudeTranscriptWatcher {
         if (changed) this.scanCursor(cursor, budget);
       }
     } finally {
-      this.drops.flushPass(); // bounded drop delivery: one warning per (path, cause) per poll
+      // Deliver this pass's drops ONLY while still live. If finish() ran during the
+      // awaited stat it already drained and emitted terminal:exit; flushing here would
+      // emit a warning/activity AFTER the permanent terminal latch (§5.4). Discard the
+      // unfinished pass instead so nothing escapes past exit.
+      if (this.finished) this.drops.discardPass();
+      else this.drops.flushPass(); // one warning per (path, cause) per poll
       this.polling = false;
     }
   }
