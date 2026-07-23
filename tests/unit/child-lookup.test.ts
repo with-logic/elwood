@@ -53,12 +53,12 @@ describe("C-APP-08 child-process lookup classification", () => {
     // common leaf case. childPids must return [] and NOT invoke the reporter, so only
     // true operational failures reach the debugger.
     const seen: ChildLookupDiagnostic[] = [];
-    const previous = setChildLookupReporter((d) => seen.push(d));
+    const restore = setChildLookupReporter((d) => seen.push(d));
     try {
       expect(childPids(999_999_999)).toEqual([]);
       expect(seen).toEqual([]); // status 1 is normal: no diagnostic surfaced
     } finally {
-      setChildLookupReporter(previous);
+      restore();
     }
   });
 
@@ -67,7 +67,7 @@ describe("C-APP-08 child-process lookup classification", () => {
     // descendant cleanup is skipped — but NOT silently: the reporter fires with the
     // bounded diagnostic (pid + reason + detail) so the gap is visible (C-APP-08).
     const seen: ChildLookupDiagnostic[] = [];
-    const previous = setChildLookupReporter((d) => seen.push(d));
+    const restore = setChildLookupReporter((d) => seen.push(d));
     try {
       const timedOut = childPids(7, () => ({
         error: Object.assign(new Error("timed out"), { code: "ETIMEDOUT" }),
@@ -78,7 +78,7 @@ describe("C-APP-08 child-process lookup classification", () => {
       expect(timedOut).toEqual([]); // no children could be determined
       expect(seen).toEqual([{ pid: 7, reason: "timeout", detail: "ETIMEDOUT" }]);
     } finally {
-      setChildLookupReporter(previous);
+      restore();
     }
   });
 
@@ -86,7 +86,7 @@ describe("C-APP-08 child-process lookup classification", () => {
     // status 0 with stdout carries real child pids; whitespace-split, filtered to
     // positive integers — no diagnostic (a clean success).
     const seen: ChildLookupDiagnostic[] = [];
-    const previous = setChildLookupReporter((d) => seen.push(d));
+    const restore = setChildLookupReporter((d) => seen.push(d));
     try {
       const pids = childPids(1, () => ({
         signal: null,
@@ -96,26 +96,41 @@ describe("C-APP-08 child-process lookup classification", () => {
       expect(pids).toEqual([10, 20]); // negatives and non-numerics dropped
       expect(seen).toEqual([]);
     } finally {
-      setChildLookupReporter(previous);
+      restore();
     }
   });
 
-  test("setChildLookupReporter returns the prior reporter so it can be restored", () => {
-    const first = () => undefined;
-    const previous = setChildLookupReporter(first);
-    const restored = setChildLookupReporter(previous);
-    // Installing `first` then restoring returns `first` — proving the swap round-trips.
-    expect(restored).toBe(first);
-    setChildLookupReporter(previous);
+  test("C-APP-08 the disposer restores the prior reporter only while still installed", () => {
+    const seen: string[] = [];
+    const base = setChildLookupReporter(() => seen.push("base"));
+    const restoreA = setChildLookupReporter(() => seen.push("A"));
+    // Disposing A restores base: a lookup failure now routes to base, not A.
+    restoreA();
+    childPids(7, timeoutRunner());
+    expect(seen).toEqual(["base"]);
+    base();
+  });
+
+  test("C-APP-08 the disposer does NOT clobber a newer registration", () => {
+    const seen: string[] = [];
+    const base = setChildLookupReporter(() => seen.push("base"));
+    const restoreA = setChildLookupReporter(() => seen.push("A"));
+    // A second app (B) takes over AFTER A. A's late disposal must be a no-op — B stays
+    // the target, so a closed app can't redirect a live app's diagnostics back to base.
+    const restoreB = setChildLookupReporter(() => seen.push("B"));
+    restoreA(); // no-op: B is installed, not A
+    childPids(7, timeoutRunner());
+    expect(seen).toEqual(["B"]);
+    restoreB(); // restores A (still installed as the current reporter)
+    restoreA(); // now A is current, so this restores base — global fully unwound
+    base();
   });
 
   test("the DEFAULT reporter writes one bounded, content-free structured line to stderr", () => {
     // The out-of-the-box reporter (before the web app installs its own) must still
     // make a failure visible: a single structured stderr line carrying only bounded
-    // tokens (pid, reason, detail) — never any raw system message or content.
-    // Capture the default by swapping to a no-op and reading back the previous one.
-    const original = setChildLookupReporter(() => undefined);
-    setChildLookupReporter(original); // restore immediately; `original` IS the default
+    // tokens (pid, reason, detail) — never any raw system message or content. Drive it
+    // by causing a real operational failure while no custom reporter is installed.
     const writes: string[] = [];
     const realWrite = process.stderr.write.bind(process.stderr);
     process.stderr.write = ((chunk: string | Uint8Array) => {
@@ -123,7 +138,7 @@ describe("C-APP-08 child-process lookup classification", () => {
       return true;
     }) as typeof process.stderr.write;
     try {
-      original({ pid: 42, reason: "timeout", detail: "ETIMEDOUT" });
+      childPids(42, timeoutRunner());
     } finally {
       process.stderr.write = realWrite;
     }
@@ -133,3 +148,13 @@ describe("C-APP-08 child-process lookup classification", () => {
     expect(writes[0]).toContain("detail=ETIMEDOUT");
   });
 });
+
+/** An injectable pgrep runner that fails operationally (timeout) to trip the reporter. */
+function timeoutRunner() {
+  return () => ({
+    error: Object.assign(new Error("timed out"), { code: "ETIMEDOUT" }),
+    signal: null,
+    status: null,
+    stdout: "",
+  });
+}

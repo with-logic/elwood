@@ -63,7 +63,7 @@ export function createWebDevApp(options: WebDevAppOptions = {}): WebDevApp {
     broadcast,
     startOrResumeSession: options.startOrResumeSession ?? startAgentSession,
   };
-  setChildLookupReporter((d) =>
+  const disposeReporter = setChildLookupReporter((d) =>
     broadcast({
       type: "event",
       entry: events.runtimeErrorEvent(`Child-process lookup failed (${d.reason}).`, d),
@@ -73,6 +73,9 @@ export function createWebDevApp(options: WebDevAppOptions = {}): WebDevApp {
   return { server, wss, slot, listen: () => listen(server, wss, port), shutdown };
 
   async function shutdown(): Promise<void> {
+    // Stop being the child-lookup reporter target (restores the prior reporter, but
+    // only while we're still installed — a newer app that took over is left alone).
+    disposeReporter();
     // closeAndTake refuses new slot work and waits for any in-flight start to settle,
     // so a session can't be installed after we tear down (no resurrected PTY).
     const session = await slot.closeAndTake();

@@ -36,12 +36,17 @@ let reportChildLookup: ChildLookupReporter = (diagnostic) => {
 /**
  * Install a diagnostic reporter for child-process lookup failures so the web app
  * can route them through its bounded structured runtime-error/debugger path
- * (C-APP-08); returns the prior reporter so a caller (or a test) can restore it.
+ * (C-APP-08). Returns an ownership-aware disposer: it restores the PRIOR reporter,
+ * but ONLY while this reporter is still the installed one — so a later app that has
+ * since taken over is never clobbered, and a closed app stops being the target
+ * (avoiding a redirected/dangling global across overlapping app instances).
  */
-export function setChildLookupReporter(reporter: ChildLookupReporter): ChildLookupReporter {
+export function setChildLookupReporter(reporter: ChildLookupReporter): () => void {
   const previous = reportChildLookup;
   reportChildLookup = reporter;
-  return previous;
+  return () => {
+    if (reportChildLookup === reporter) reportChildLookup = previous;
+  };
 }
 
 /** Runs pgrep for `pid`; injectable so a test can drive the failure path. */
