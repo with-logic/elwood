@@ -62,6 +62,28 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
     expect(recorded).toHaveLength(1);
   });
 
+  test("§5.4 an ACTIVE sink that throws does not lose the notice OR escape the poll loop", () => {
+    // The sink already exists (steady-state polling). A throwing recordWarnings must
+    // be contained (route must not throw into the watcher's scan) AND the notice must
+    // stay queued so the next event re-delivers it — the active-sink retry path.
+    let failNext = true;
+    const recorded: unknown[] = [];
+    const sink: Sink = {
+      recordWarnings: (w) => {
+        if (failNext) {
+          failNext = false;
+          throw new Error("persist boom");
+        }
+        recorded.push(...w);
+      },
+    };
+    createCodexTranscriptWatcher("s1", emitter(), () => sink as never);
+    expect(() => captured.onDrop?.(dropNotice)).not.toThrow(); // contained, not rethrown
+    expect(recorded).toHaveLength(0); // the throwing delivery recorded nothing...
+    captured.onReadError?.(readNotice); // ...but a later event re-delivers BOTH notices
+    expect(recorded).toHaveLength(2);
+  });
+
   test("§9.4 routes a poll-stopped diagnostic to the sink", () => {
     const recorded: Array<{ code?: string }> = [];
     const sink: Sink = { recordWarnings: (w) => recorded.push(...(w as { code?: string }[])) };

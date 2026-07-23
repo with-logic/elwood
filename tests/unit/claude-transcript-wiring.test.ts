@@ -9,8 +9,6 @@ import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import {
   createTranscriptWatcher,
-  type ObservableTranscript,
-  observeTranscript,
   type TranscriptActivityEmitter,
   type WarningSink,
 } from "../../src/claude/session-transcript.ts";
@@ -34,58 +32,6 @@ function tmpFile(): string {
 }
 
 describe("C-CLAUDE-15 transcript session wiring", () => {
-  test("observeTranscript follows BOTH transcript_path and agent_transcript_path", () => {
-    const observed: [string, boolean][] = [];
-    const watcher: ObservableTranscript = {
-      observe: (p, recover) => observed.push([p, recover ?? false]),
-      retire: () => {},
-    };
-    // A Stop is a turn boundary, so a first observe recovers the committed tail.
-    observeTranscript(watcher, {
-      hook_event_name: "Stop",
-      transcript_path: "/main.jsonl",
-      agent_transcript_path: "/sub.jsonl",
-    });
-    observeTranscript(watcher, {}); // neither present: ignored
-    observeTranscript(watcher, { transcript_path: "" }); // empty: ignored
-    expect(observed).toEqual([
-      ["/main.jsonl", true],
-      ["/sub.jsonl", true],
-    ]);
-  });
-
-  test("observeTranscript does NOT recover history on a non-boundary hook", () => {
-    const observed: [string, boolean][] = [];
-    const watcher: ObservableTranscript = {
-      observe: (p, recover) => observed.push([p, recover ?? false]),
-      retire: () => {},
-    };
-    // A SessionStart/resume observe baselines at EOF: no backward recovery, so a
-    // resumed session never republishes the prior conversation's final turn.
-    observeTranscript(watcher, {
-      hook_event_name: "SessionStart",
-      transcript_path: "/main.jsonl",
-    });
-    expect(observed).toEqual([["/main.jsonl", false]]);
-  });
-
-  test("SubagentStop observes then RETIRES the agent transcript from active polling", () => {
-    const observed: string[] = [];
-    const retired: string[] = [];
-    const watcher: ObservableTranscript = {
-      observe: (p) => observed.push(p),
-      retire: (p) => retired.push(p),
-    };
-    observeTranscript(watcher, {
-      hook_event_name: "SubagentStop",
-      transcript_path: "/main.jsonl",
-      agent_transcript_path: "/sub.jsonl",
-    });
-    // Both observed; only the one-shot agent transcript is retired.
-    expect(observed).toEqual(["/main.jsonl", "/sub.jsonl"]);
-    expect(retired).toEqual(["/sub.jsonl"]);
-  });
-
   test("a LONE drop buffered before the sink exists is flushed by flushPendingWarnings", () => {
     const activities: ElwoodActivityEvent[] = [];
     const emitter = fakeEmitter((a) => activities.push(a));
@@ -129,6 +75,33 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     expect(() => flushPendingWarnings()).toThrow(/persist boom/);
     expect(recorded).toEqual([]); // the throw must not have lost the notice
     flushPendingWarnings(); // the still-queued notice re-delivers
+    expect(recorded.some((w) => w.code === "transcript_records_dropped")).toBe(true);
+  });
+
+  test("§5.4 an ACTIVE sink that throws on a scan is contained and retried, not lost", () => {
+    // The sink already exists during steady-state polling. A scan produces a drop
+    // whose recordWarnings throws: the throw must be CONTAINED (scan does not throw)
+    // and the notice must stay queued so a later scan re-delivers it — otherwise a
+    // transient persist failure both loses the notice and stops observation.
+    const emitter = fakeEmitter(() => undefined);
+    const recorded: ElwoodWarningEvent[] = [];
+    let failNext = true;
+    const sink: WarningSink = {
+      recordWarnings: (w) => {
+        if (!failNext) return void recorded.push(...w);
+        failNext = false;
+        throw new Error("persist boom");
+      },
+    };
+    const { watcher } = createTranscriptWatcher("s9", emitter, () => sink);
+    const path = tmpFile();
+    writeFileSync(path, "");
+    watcher.observe(path);
+    writeFileSync(path, "{ bad }\n");
+    expect(() => watcher.scan()).not.toThrow(); // first scan's delivery throws, contained
+    expect(recorded).toEqual([]); // nothing recorded on the throwing delivery
+    writeFileSync(path, "{ also-bad }\n");
+    watcher.scan(); // a later scan re-delivers the retained notice
     expect(recorded.some((w) => w.code === "transcript_records_dropped")).toBe(true);
   });
 

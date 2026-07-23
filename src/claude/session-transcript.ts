@@ -93,13 +93,17 @@ export function createTranscriptWatcher(
     pending.length = 0;
   };
   const route = (warning: ElwoodWarningEvent) => {
-    const target = sink?.();
-    if (!target) {
-      pending.push(warning); // sink not ready yet: hold until it is, don't drop
-      return;
+    // ALWAYS enqueue first, then attempt delivery. If the sink is absent OR its
+    // recordWarnings throws, the warning stays in `pending` and is retried on the
+    // next scan/flush — a delivery failure must neither lose the notice nor escape
+    // into the poll loop and permanently stop observation (§5.4).
+    pending.push(warning);
+    try {
+      flushPendingWarnings();
+    } catch {
+      // Contained: the notice is still queued (flushPendingWarnings clears only on
+      // success), so a later scan re-delivers it and the watcher stays live.
     }
-    flushPendingWarnings();
-    target.recordWarnings([warning]);
   };
   const watcher = new ClaudeTranscriptWatcher(
     elwoodSessionId,
