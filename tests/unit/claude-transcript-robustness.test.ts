@@ -127,9 +127,9 @@ describe("C-CLAUDE-15 transcript watcher robustness", () => {
   });
 
   test("C-CLAUDE-15 a NON-string error code normalizes to UNKNOWN (never round-trips a number)", () => {
-    // `lastErrorCode` is a string in the persisted contract; a numeric `code` must
-    // become "UNKNOWN" rather than round-tripping a number (which would fail the
-    // record's validation as state_corrupt). Mirrors the Codex tracker.
+    // `lastErrorCode` is a string in the warning contract; a numeric `code` must
+    // become "UNKNOWN" rather than round-tripping a number through the string-typed
+    // field. Mirrors the Codex reporter.
     const errs: DropsReadErrorNotice[] = [];
     const reporter = new ReadErrorReporter("s", (n: DropsReadErrorNotice) => errs.push(n));
     reporter.record("/t", { code: "EISDIR" });

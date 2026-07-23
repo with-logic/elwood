@@ -1,7 +1,7 @@
 /**
  * Session-level wiring of Claude transcript drop diagnostics.
  * Covers PRD §5.4/§5.7 (C-CLAUDE-15): an unparseable committed record surfaces
- * a persisted `transcript_records_dropped` warning through the warning contract.
+ * a live `transcript_records_dropped` warning through the warning contract.
  */
 
 import { writeFileSync } from "node:fs";
@@ -13,7 +13,7 @@ import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers
 afterEach(resetFakes);
 
 describe("C-CLAUDE-15 Claude transcript drop wiring", () => {
-  test("a malformed committed record surfaces a persisted drop warning", async () => {
+  test("a malformed committed record surfaces a live drop warning", async () => {
     const cwd = tempDir();
     const stateDir = join(tempDir(), "state");
     installFakes();
@@ -77,7 +77,7 @@ describe("C-CLAUDE-15 Claude transcript drop wiring", () => {
     // listener, but the error boundary contains it so termination still completes.
     ptys.at(-1)!.emitExit({ exitCode: 0 });
     expect(exits).toEqual([0]); // terminal:exit still emitted
-    expect(session.status).toBe("exited"); // terminal status still persisted
+    expect(session.status).toBe("exited"); // terminal status still reached
     expect(reapedGroups).toContain(leaderPid); // group still reaped (no leak)
     expect(warnings).toContain("transcript_poll_stopped"); // bounded diagnostic surfaced
   });

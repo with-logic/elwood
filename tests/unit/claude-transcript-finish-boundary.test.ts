@@ -2,7 +2,7 @@
  * Coverage for finishSafely: the final-flush error boundary at PTY exit.
  * Covers PRD §5.3/§5.4 (C-CLAUDE-15, C-LIFE-10): a throwing activity listener or a
  * throwing warning sink during the final transcript flush is contained so the
- * PTY-exit callback can still emit terminal:exit, persist status, and reap.
+ * PTY-exit callback can still emit terminal:exit, transition to terminal status, and reap.
  */
 
 import { mkdtempSync, writeFileSync } from "node:fs";

@@ -3,7 +3,7 @@
  * Implements PRD §7A and §5.4 (C-API-12): committed message/tool/reasoning items
  * are sourced from the JSONL transcript Codex writes; reads are bounded (fixed-size
  * chunks, a max-pending ceiling, a per-scan chunk budget) so a hundreds-of-MiB file
- * never OOMs or blocks the event loop, and lost committed data is accounted through
+ * never OOMs or blocks the event loop, and lost committed data is surfaced through
  * bounded, content-free drop notices.
  */
 

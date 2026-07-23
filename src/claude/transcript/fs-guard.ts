@@ -10,10 +10,11 @@ import type { ReadErrorReporter } from "./drops.ts";
 
 /**
  * Wraps a synchronous or async transcript read so a thrown/rejected fs error is
- * contained and counted. `isFinished` gates async recording: a stat kicked off
- * before finish() can reject AFTER the watcher is terminal, and recording it then
- * would emit/persist activity past `terminal:exit`, breaking the permanent latch
- * (§5.4) — so a post-finish rejection is swallowed content-free instead.
+ * contained and reported as one live, content-free `transcript_read_error` warning.
+ * `isFinished` gates async reporting: a stat kicked off before finish() can reject
+ * AFTER the watcher is terminal, and reporting it then would emit activity past
+ * `terminal:exit`, breaking the permanent latch (§5.4) — so a post-finish rejection
+ * is swallowed content-free instead.
  */
 export class TranscriptFsGuard {
   private readonly readErrors: ReadErrorReporter;

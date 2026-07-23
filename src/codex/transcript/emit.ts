@@ -1,8 +1,9 @@
 /**
- * Parses committed Codex transcript lines into events, counting drops.
+ * Parses committed Codex transcript lines into events, reporting drops.
  * Implements PRD §7A/§5.4 (C-API-12): only committed, parseable records become
- * events; a malformed line or a discarded over-length record is counted through the
- * drop tracker, never emitted.
+ * events; a malformed line or a discarded over-length record is reported through the
+ * drop reporter as a live, count-free warning (coalesced per scan pass), never as an
+ * event of its own.
  */
 
 import type { CodexTranscriptCursor } from "./cursor.ts";

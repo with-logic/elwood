@@ -15,9 +15,9 @@ function reasonOf(error: unknown): string {
 }
 
 describe("C-CLAUDE-15 transcript warning builders", () => {
-  test("transcriptFailureWarning persists only a bounded error name, never the message", () => {
+  test("transcriptFailureWarning carries only a bounded error name, never the message", () => {
     // The escaping error can be a downstream listener exception whose message
-    // embeds raw transcript content; that message must NOT reach persisted
+    // embeds raw transcript content; that message must NOT reach the live
     // fields. Only the bounded error name/errno does.
     const leaky = new Error("secret prompt: my password is hunter2");
     const warning = transcriptFailureWarning("s1", leaky);
@@ -37,7 +37,7 @@ describe("C-CLAUDE-15 transcript warning builders", () => {
     expect(reasonOf(new TypeError("boom"))).toBe("TypeError");
     // A caller-controlled name/code that is NOT on the allowlist — even a
     // plausible-looking identifier — collapses to the fixed token, so no
-    // conversation-derived string can reach persisted state.
+    // conversation-derived string can reach the live warning.
     const exotic = new Error("x");
     exotic.name = "secretPasswordHunter2";
     expect(reasonOf(exotic)).toBe("UnknownError");

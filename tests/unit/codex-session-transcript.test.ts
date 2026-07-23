@@ -105,7 +105,7 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
     expect(recorded).toHaveLength(2);
   });
 
-  test("§5.4 flushPendingWarnings persists a LONE early notice with no follow-up", () => {
+  test("§5.4 flushPendingWarnings delivers a LONE early notice with no follow-up", () => {
     let sink: Sink | undefined;
     const recorded: unknown[] = [];
     const { flushPendingWarnings } = createCodexTranscriptWatcher(
@@ -116,7 +116,7 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
     captured.onDrop?.(dropNotice); // buffered before the sink exists
     sink = { emitWarnings: (w) => recorded.push(...w) };
     // No second notice ever arrives; the explicit post-construction flush must
-    // still persist the lone buffered notice (blocker: else it strands forever).
+    // still deliver the lone buffered notice (blocker: else it strands forever).
     flushPendingWarnings();
     expect(recorded).toHaveLength(1);
     flushPendingWarnings(); // idempotent: nothing left to flush

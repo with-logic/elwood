@@ -3,7 +3,7 @@
  * drop/read-error warning builders.
  * Covers PRD §7A/§5.4: idempotent observe, contained construction/scan failures,
  * the per-scan chunk budget, oversized drops, and content-free codex-tagged
- * warnings that round-trip through persisted-state validation.
+ * live, content-free warnings.
  */
 
 import { appendFileSync, writeFileSync } from "node:fs";

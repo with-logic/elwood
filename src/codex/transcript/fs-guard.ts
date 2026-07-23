@@ -9,7 +9,7 @@
 
 import type { CodexReadErrorReporter } from "./drops.ts";
 
-/** Wraps a synchronous transcript read so a thrown fs error is contained and counted. */
+/** Wraps a sync transcript read so a thrown fs error is contained and reported as one live warning. */
 export class CodexTranscriptFsGuard {
   private readonly readErrors: CodexReadErrorReporter;
 
