@@ -5,16 +5,16 @@
  */
 
 import { describe, expect, test } from "vitest";
+import type { ElwoodEventMap } from "../../src/core/types.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
+import type { SessionStatusEmitter } from "../../src/runtime/session-base-types.ts";
 import { emitStatusEvents } from "../../src/runtime/status-emit.ts";
 
-type MinimalMap = {
-  status: { readonly elwoodSessionId: string; readonly status: "ready" };
-  activity: unknown;
-};
-
-function emitterOf() {
-  return new TypedEmitter<MinimalMap>() as unknown as Parameters<typeof emitStatusEvents>[0];
+// A REAL, fully-typed emitter over the public event map — no cast. If the status or
+// activity payload emitStatusEvents produces ever drifts from the ElwoodEventMap
+// contract, this assignment stops compiling (that is the point of the test).
+function emitterOf(): SessionStatusEmitter {
+  return new TypedEmitter<ElwoodEventMap>();
 }
 
 describe("emitStatusEvents (§5.3)", () => {

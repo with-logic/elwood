@@ -12,48 +12,28 @@ import {
   warningEvent,
 } from "../../src/app/web-events.ts";
 import { summarizeHookEvent } from "../../src/app/web-log.ts";
-import type { ClaudeHookEvent, ElwoodActivityEvent, ElwoodWarningEvent } from "../../src/index.ts";
+import type {
+  ClaudeHookEventFor,
+  ElwoodActivityEvent,
+  ElwoodWarningEvent,
+} from "../../src/index.ts";
 
 describe("browser dev app event helpers", () => {
   test("C-APP-05 summarizes hook events for live logs", () => {
-    expect(summarizeHookEvent(hook({ hook_event_name: "UserPromptSubmit" }))).toBe(
-      "hook UserPromptSubmit",
+    expect(summarizeHookEvent(hooks.userPromptSubmit())).toBe("hook UserPromptSubmit");
+    expect(summarizeHookEvent(hooks.stop("done".repeat(100)))).toContain("hook Stop: ");
+    expect(summarizeHookEvent(hooks.subagentStop("reviewer", "sub done"))).toBe(
+      "hook SubagentStop reviewer: sub done",
     );
-    expect(
-      summarizeHookEvent(
-        hook({ hook_event_name: "Stop", last_assistant_message: "done".repeat(100) }),
-      ),
-    ).toContain("hook Stop: ");
-    expect(
-      summarizeHookEvent(
-        hook({
-          hook_event_name: "SubagentStop",
-          agent_type: "reviewer",
-          last_assistant_message: "sub done",
-        }),
-      ),
-    ).toBe("hook SubagentStop reviewer: sub done");
-    expect(
-      summarizeHookEvent(
-        hook({
-          hook_event_name: "StopFailure",
-          error: "tool_use_rejected",
-          last_assistant_message: "failed",
-        }),
-      ),
-    ).toBe("hook StopFailure tool_use_rejected: failed");
-    expect(
-      summarizeHookEvent(
-        hook({
-          hook_event_name: "Notification",
-          notification_type: "info",
-          message: "heads up",
-        }),
-      ),
-    ).toBe("hook Notification info: heads up");
-    expect(
-      summarizeHookEvent(hook({ hook_event_name: "PostCompact", compact_summary: "summary" })),
-    ).toBe("hook PostCompact: summary");
+    expect(summarizeHookEvent(hooks.stopFailure("tool_use_rejected", "failed"))).toBe(
+      "hook StopFailure tool_use_rejected: failed",
+    );
+    expect(summarizeHookEvent(hooks.notification("info", "heads up"))).toBe(
+      "hook Notification info: heads up",
+    );
+    expect(summarizeHookEvent(hooks.postCompact("manual", "summary"))).toBe(
+      "hook PostCompact: summary",
+    );
     expect(
       summarizeHookEvent({
         hook_event_name: "PostCompact",
@@ -81,7 +61,7 @@ describe("browser dev app event helpers", () => {
       summary: "exit 9 signal 15",
     });
     expect(warningEvent(warning())).toMatchObject({ kind: "warning", badge: "WRN" });
-    expect(hookEvent(hook({ hook_event_name: "Stop" }))).toMatchObject({
+    expect(hookEvent(hooks.stop())).toMatchObject({
       kind: "hook",
       title: "Stop",
     });
@@ -118,14 +98,55 @@ describe("browser dev app event helpers", () => {
   });
 });
 
-function hook(fields: Partial<ClaudeHookEvent>): ClaudeHookEvent {
-  return {
-    hook_event_name: "Notification",
-    session_id: "claude-1",
-    cwd: "/tmp/project",
-    ...fields,
-  } as ClaudeHookEvent;
-}
+// Complete, variant-specific literals — no Partial, no widening cast. Each factory
+// returns exactly one ClaudeHookEventFor<name>, so an impossible event/field
+// combination (a Notification carrying `compact_summary`, a Stop missing a required
+// field) is a compile error at the call site, not silently constructed.
+const common = { session_id: "claude-1", cwd: "/tmp/project" } as const;
+const hooks = {
+  userPromptSubmit: () =>
+    ({
+      ...common,
+      hook_event_name: "UserPromptSubmit",
+      prompt: "hi",
+    }) satisfies ClaudeHookEventFor<"UserPromptSubmit">,
+  stop: (last_assistant_message?: string) =>
+    ({
+      ...common,
+      hook_event_name: "Stop",
+      ...(last_assistant_message === undefined ? {} : { last_assistant_message }),
+    }) satisfies ClaudeHookEventFor<"Stop">,
+  subagentStop: (agent_type: string, last_assistant_message: string) =>
+    ({
+      ...common,
+      hook_event_name: "SubagentStop",
+      agent_id: "sub-1",
+      agent_type,
+      agent_transcript_path: "/tmp/sub.jsonl",
+      last_assistant_message,
+    }) satisfies ClaudeHookEventFor<"SubagentStop">,
+  stopFailure: (error: string, last_assistant_message: string) =>
+    ({
+      ...common,
+      hook_event_name: "StopFailure",
+      error,
+      last_assistant_message,
+    }) satisfies ClaudeHookEventFor<"StopFailure">,
+  notification: (notification_type: string, message: string) =>
+    ({
+      ...common,
+      hook_event_name: "Notification",
+      notification_type,
+      message,
+    }) satisfies ClaudeHookEventFor<"Notification">,
+  postCompact: (trigger: "manual" | "auto", compact_summary: string) =>
+    ({
+      ...common,
+      hook_event_name: "PostCompact",
+      trigger,
+      compact_summary,
+    }) satisfies ClaudeHookEventFor<"PostCompact">,
+} as const;
 
 function activity(kind: ElwoodActivityEvent["kind"]): ElwoodActivityEvent {
   return {
