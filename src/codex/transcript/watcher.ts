@@ -57,9 +57,9 @@ export class CodexTranscriptWatcher {
     this.stop();
     this.cursor = this.guard.read(path, () => new CodexTranscriptCursor(path));
     if (!this.cursor) return;
-    // A scan() throw (a warning-state write or a throwing drop/activity listener) must
-    // not escape the timer as an uncaught exception — contain it, stop, and route a
-    // bounded diagnostic (non-throwing recovery), mirroring Claude's poll recovery.
+    // A scan() throw (a throwing drop/activity/warning listener) must not escape the
+    // timer as an uncaught exception — contain it, stop, and route a bounded live
+    // diagnostic (non-throwing recovery), mirroring Claude's poll recovery.
     this.interval = setInterval(() => this.runScan(), this.scanIntervalMs ?? defaultScanIntervalMs);
     this.interval.unref?.();
   }
