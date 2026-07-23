@@ -50,13 +50,18 @@ export class TurnStateWatcher {
         // A real turn is ALREADY running from evidence — release settling and
         // sync into the running state silently (no "started" edge: the status
         // engine heard the evidence; re-announcing would be a no-op) so this
-        // turn's END edge is observed like any other.
+        // turn's END edge is observed like any other. Do NOT return here: the
+        // CURRENT frame may already be the turn's only end edge (a quiet composer
+        // or interrupt banner that painted exactly as evidence arrived) — fall
+        // through to the end-edge checks so it is not discarded.
         this.replaySettling = false;
         this.running = true;
-      } else if (facts.composer_visible && !facts.working_visible) {
-        this.replaySettling = false; // replay settled — watch normally from here
+      } else {
+        // Without evidence, settling releases only on the first quiet, non-blocking
+        // composer frame — which is not itself an end edge (no turn was running).
+        if (facts.composer_visible && !facts.working_visible) this.replaySettling = false;
+        return undefined;
       }
-      return undefined;
     }
     if (!this.running && facts.working_visible) {
       this.running = true;

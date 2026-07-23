@@ -139,4 +139,13 @@ describe("C-TURN-04 interrupt end banners", () => {
     // Settling released by the evidence — the turn's END edge is observed.
     expect(watcher.observe(facts(codexScreenFactTable, codexIdle), true)).toBe("ended");
   });
+
+  test("evidence-running release evaluates the CURRENT frame — a first idle frame is the end edge", () => {
+    // The turn ended exactly as the running evidence arrived, so the FIRST frame
+    // after release is already the quiet composer. Releasing settling must not
+    // discard it: that idle frame is the turn's only end edge and must fire "ended".
+    const watcher = new TurnStateWatcher();
+    watcher.arm(true); // resume: settling
+    expect(watcher.observe(facts(codexScreenFactTable, codexIdle), true)).toBe("ended");
+  });
 });
