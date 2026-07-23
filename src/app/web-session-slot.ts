@@ -76,8 +76,14 @@ export class WebSessionSlot {
     } catch (error) {
       // A replaced session is being discarded; a failed teardown must not block the
       // incoming session, but it MUST be reported so a stuck PTY/process tree stays
-      // visible (the alternative — silently dropping it — was the bug).
-      this.onTeardownError?.(session.elwoodSessionId, error);
+      // visible. The report is CONTAINED: a throwing reporter (e.g. broadcast during a
+      // socket-close race) must not reject replace() after the new session is installed,
+      // which would leave it unwired (wireSession/announceSession never run).
+      try {
+        this.onTeardownError?.(session.elwoodSessionId, error);
+      } catch {
+        // A throwing reporter must not reject replace() or unwire the new session.
+      }
     }
   }
 

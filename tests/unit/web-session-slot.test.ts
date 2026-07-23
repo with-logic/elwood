@@ -66,7 +66,20 @@ describe("web session slot", () => {
     expect(String(reported[0]?.error)).toContain("teardown failed");
   });
 
-  test("C-APP-08 a failed teardown with NO reporter is still contained", async () => {
+  test("C-APP-08 a THROWING teardown reporter does not reject replace or unwire the new session", async () => {
+    // If the reporter throws (e.g. broadcast during a socket-close race), replace() must
+    // still resolve with the new session installed (else wireSession never runs for it).
+    const slot = new WebSessionSlot(() => {
+      throw new Error("broadcast boom");
+    });
+    const first = fakeSession("s1", { teardownThrows: true });
+    const second = fakeSession("s2");
+    await slot.run((s) => s.replace(first));
+    await expect(slot.run((s) => s.replace(second))).resolves.toBeUndefined();
+    expect(slot.session).toBe(second);
+  });
+
+  test("C-APP-08 a failed teardown with no reporter is still contained", async () => {
     const slot = new WebSessionSlot(); // no reporter wired
     const first = fakeSession("s1", { teardownThrows: true });
     const second = fakeSession("s2");
@@ -121,18 +134,16 @@ describe("web session slot", () => {
   });
 
   test("C-APP-08 closeAndTake refuses new work and returns the in-flight session", async () => {
-    // Shutdown races an in-flight start: closeAndTake must wait for the start to
-    // install its session, return THAT session (so the caller tears it down), and
-    // refuse any later run so a session can't be resurrected after shutdown.
+    // Shutdown races an in-flight start: closeAndTake must wait for the start to install
+    // its session, return THAT session, and refuse later runs (no resurrection).
     const slot = new WebSessionSlot();
     const session = fakeSession("s1");
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    // A start that is mid-flight when shutdown begins.
     const starting = slot.run(async (s) => {
-      await gate;
+      await gate; // a start mid-flight when shutdown begins
       await s.replace(session);
     });
     const closing = slot.closeAndTake(); // begins shutdown while the start is parked
@@ -145,8 +156,7 @@ describe("web session slot", () => {
   });
 
   test("C-APP-08 closeAndTake tolerates an in-flight task that REJECTED", async () => {
-    // If the in-flight slot task rejected, closeAndTake must still settle (swallow the
-    // rejection) and return whatever session is installed, not hang or throw.
+    // A rejected in-flight task must still let closeAndTake settle, not hang or throw.
     const slot = new WebSessionSlot();
     const failing = slot.run(() => Promise.reject(new Error("boom")));
     await expect(failing).rejects.toThrow("boom");
