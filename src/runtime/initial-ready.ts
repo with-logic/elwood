@@ -7,11 +7,13 @@
  * authoritative "initialized and accepting input" signal, fired via `mark`. The
  * rendered composer is NOT a readiness signal on cold start: it paints as a boot
  * placeholder before input is accepted, so releasing the first queued message on it
- * would swallow the message. On RESUME the CLI reattaches to an existing conversation
- * without re-firing that hook, and its input loop is live when the composer paints,
+ * would swallow the message. On RESUME the input loop is live when the composer paints,
  * so `markReadyOnResumeComposer` releases readiness on the first composer marker
  * (verified accepted, not swallowed) — UNLESS a blocking dialog is on screen, whose
- * option caret is byte-identical to the composer marker. `armDeadline` is the ultimate
+ * option caret is byte-identical to the composer marker. The hooks differ on resume:
+ * Codex does NOT re-fire `SessionStart` (so the composer is the fast signal), while
+ * Claude's `InstructionsLoaded` DOES re-fire — so a resumed Claude is a hook/composer
+ * race, whichever arrives first (readiness is idempotent). `armDeadline` is the ultimate
  * fallback for both start and resume so a missing readiness signal never starves the
  * queue forever.
  */

@@ -13,15 +13,15 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ### Changed
 
-- **Resumed sessions reach readiness in ~1s instead of ~10s.** On resume the CLI
-  reattaches to an existing conversation and does not re-fire its pre-input
-  readiness hook (`SessionStart`/`InstructionsLoaded`), so readiness previously
-  fell through to the 10s starvation deadline. A resumed session now marks ready
-  on the first rendered composer frame — verified safe (the input loop is live on
-  resume, unlike the cold-start placeholder). A blocking dialog on that first frame
-  does **not** mark ready (its caret is byte-identical to the composer marker), so
-  readiness waits for the dialog to clear. Cold-start behavior is unchanged.
-  (C-API-28)
+- **Resumed sessions reach readiness in ~1s instead of ~10s.** On resume, Codex does
+  not re-fire its `SessionStart` hook, so readiness previously fell through to the 10s
+  starvation deadline; Claude's `InstructionsLoaded` *does* re-fire on resume. A
+  resumed session now marks ready on whichever arrives first — the readiness hook or
+  the first rendered composer frame (the input loop is live on resume, unlike the
+  cold-start placeholder, so the composer is a safe signal there). A blocking dialog
+  on that first frame does **not** mark ready (its caret is byte-identical to the
+  composer marker), so readiness waits for the dialog to clear. Cold-start behavior
+  is unchanged. (C-API-28)
 
 - **Codex exec tool calls now surface the *bare* command, not the JS harness.**
   The modern Codex `exec` tool wraps its command in a JavaScript snippet
@@ -32,10 +32,14 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
   unwrapped the same way; an unparseable wrapper falls back to the raw string.
   Consumers can drop any client-side unwrapping. (C-CODEX-19)
 
-- **`sendPrompt`, `sendMessage`, and `sendGuidance` all queue until readiness.**
-  All three go through the same control queue and are held until the session is
-  ready (they differ only in readiness policy, per §5.3). Only `sendKeys` writes
-  raw input immediately — it is the deliberate escape hatch and does **not** queue.
+- **`sendPrompt`, `sendMessage`, and `sendGuidance` all serialize on the same control
+  queue — but with different readiness policies (per §5.3), not "all held until
+  ready".** `sendMessage` waits for the next `ready` transition before it submits;
+  `sendPrompt` writes immediately without waiting for turn readiness (it still
+  serializes against other queued ops); `sendGuidance` queues like `sendMessage`
+  before first readiness and while blocked, but during a post-ready running turn it
+  overtakes readiness-waiting operations and enters the TUI immediately. Only
+  `sendKeys` bypasses the queue entirely — the deliberate raw-input escape hatch.
 
 ### Fixed
 
