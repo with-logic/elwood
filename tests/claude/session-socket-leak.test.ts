@@ -1,9 +1,10 @@
 /**
- * Conformance tests: a FAILED Claude start never leaks its per-launch socket home.
- * Covers PRD §9.1: sessionRuntime mints a fresh out-of-tree `/tmp/elwood-*` socket
- * home BEFORE any state/runtime write, bridge start, or PTY start. ANY failure before
- * the session takes ownership must remove that directory (withSocketHomeCleanup); on
- * success ownership transfers to the session and teardown removes it.
+ * Conformance tests: a FAILED Claude start never leaks its socket home, and the home
+ * is restart-safe (one STABLE `/tmp/elwood-<fingerprint>` per session, not a leaked
+ * anonymous dir per launch). Covers PRD §9.1/§8.1: sessionRuntime binds the socket in
+ * the session's stable home BEFORE any state/runtime write, bridge start, or PTY start.
+ * ANY failure before the session takes ownership removes it (withSocketHomeCleanup); on
+ * success ownership transfers and teardown sweeps the whole home.
  *
  * The socket home lands under `os.tmpdir()`, which honors `TMPDIR`. Each test points
  * `TMPDIR` at a FRESH private dir so the "was a socket home left behind?" check sees
@@ -15,10 +16,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { setHookBridgeFactoryForTests } from "../../src/claude/session.ts";
-import { startClaude } from "../../src/index.ts";
+import { resumeClaude, startClaude } from "../../src/index.ts";
 import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { withSocketHomeCleanup } from "../../src/runtime/startup-cleanup.ts";
-import { installFakes, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 const realTmp = tmpdir();
 let privateTmp: string | undefined;
@@ -103,5 +104,29 @@ describe("§9.1 a failed Claude start does not leak the socket home", () => {
     expect(socketHomesIn(priv)).toHaveLength(1); // one live socket home owned by the session
     await session.teardown();
     expect(socketHomesIn(priv)).toEqual([]); // teardown removed it
+  });
+
+  test("§8.1 start→stop→resume→teardown is restart-safe: ONE stable home, fully collected", async () => {
+    // A session's socket home is STABLE (fingerprint of the id), so a resume — even in a
+    // fresh process that remembers no prior path — targets the SAME home rather than
+    // leaking a new anonymous one per launch. stop() keeps it (for resume); teardown
+    // sweeps every launch's socket by removing the one home.
+    const cwd = tempDir();
+    installFakes();
+    const priv = isolateTmp();
+    const first = await startClaude({ cwd });
+    await ptys[0]!.dispatchHook(first.elwoodSessionId, {
+      hook_event_name: "SessionStart",
+      session_id: "claude-restart",
+      cwd,
+      source: "startup",
+    });
+    await first.stop(); // stop keeps state (and the home) for resume
+    expect(socketHomesIn(priv)).toHaveLength(1);
+    const resumed = await resumeClaude({ elwoodSessionId: first.elwoodSessionId, cwd });
+    // Resume reused the SAME stable home — still exactly one, not two leaked dirs.
+    expect(socketHomesIn(priv)).toHaveLength(1);
+    await resumed.teardown();
+    expect(socketHomesIn(priv)).toEqual([]); // the single home (all launches) is gone
   });
 });

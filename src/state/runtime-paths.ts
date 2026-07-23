@@ -7,11 +7,11 @@
  * home + bridge token are minted anew each launch.
  */
 
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { newBridgeToken, safeSessionDir } from "./files.ts";
-import { SOCKET_HOME_PREFIX } from "./socket-home.ts";
+import { sessionSocketHome } from "./socket-home.ts";
 
 /** The in-memory runtime a session binds to for one launch (never persisted). */
 export type SessionRuntime = {
@@ -32,20 +32,23 @@ export type SessionRuntimeInput = {
 };
 
 /**
- * Builds the per-launch runtime for a session. The session-dir paths are derived
- * from `(stateDir, id, adapter)`; the socket lives in a fresh mkdtemp home because
- * macOS caps socket paths near 104 bytes (so it cannot live under a caller-structured
- * stateDir), and the bridge token is minted anew so no stale token round-trips.
+ * Builds the per-launch runtime for a session. Session-dir paths are derived from
+ * `(stateDir, id, adapter)`. The socket lives in the session's STABLE home (outside
+ * stateDir, since macOS caps socket paths near 104 bytes) under a FRESH per-launch
+ * filename, so no stale socket is reused AND every launch's socket sits under the one
+ * home that teardown/stop can sweep — even after a parent restart. The bridge token is
+ * minted anew so no stale token round-trips.
  */
 export function sessionRuntime(input: SessionRuntimeInput): SessionRuntime {
   const { stateDir, elwoodSessionId, adapter } = input;
   const dir = safeSessionDir(stateDir, elwoodSessionId);
-  const socketHome = mkdtempSync(join(tmpdir(), SOCKET_HOME_PREFIX));
+  const socketHome = sessionSocketHome(elwoodSessionId);
+  mkdirSync(socketHome, { recursive: true, mode: 0o700 });
   return {
     sessionDir: dir,
     settingsPath: join(dir, `${adapter}-settings.json`),
     bridgeScriptPath: join(dir, "hook-bridge.mjs"),
-    socketPath: join(socketHome, "h.sock"),
+    socketPath: join(socketHome, `${randomUUID().slice(0, 8)}.sock`),
     bridgeToken: newBridgeToken(),
   };
 }

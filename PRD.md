@@ -1918,12 +1918,16 @@ private.
 The hook bridge's Unix domain socket MUST NOT live under `stateDir`. Socket
 paths are capped near 104 bytes on macOS (`sockaddr_un.sun_path`), so a socket
 inside a caller-structured `stateDir` breaks any parent app with nested state
-layouts. Instead, each launch binds the socket inside a fresh short
-Elwood-owned private (0700) directory under the OS temp dir and regenerates it on
-every start and resume; the socket path is a per-launch runtime value, never
-persisted, so a stale recorded socket path can never be trusted or reused.
-`teardown` removes the socket home along with the session directory. `stateDir`
-length MUST NOT constrain whether a session can start.
+layouts. Instead, each session has a STABLE Elwood-owned private (0700) socket
+home directory under the OS temp dir, named by a bounded, collision-resistant
+fingerprint of the session id — so every start/resume of that session resolves the
+SAME home even after a parent restart (the record persists nothing about it). Each
+launch binds a FRESH socket FILE inside that home, so a stale socket is never
+reused; the socket path is a per-launch runtime value, never persisted, so a
+recorded socket path can never be trusted. `teardown` removes the whole socket
+home (every launch's socket) along with the session directory, so no per-launch
+socket can leak undiscoverably across restart/resume cycles. `stateDir` length
+MUST NOT constrain whether a session can start.
 
 ### 8.2 Session record
 
