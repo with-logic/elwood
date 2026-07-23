@@ -7,7 +7,20 @@
  * merely being an array, so a malformed entry cannot slip through.
  */
 
+import type { ClaudeHookPermissionMode } from "./hook-names.ts";
+import type {
+  PermissionRuleBehavior,
+  PermissionUpdate,
+  PermissionUpdateDestination,
+} from "./permissions.ts";
 import { isRecord, optionalString } from "./validate-shapes.ts";
+
+// `Exact<A, B>` resolves to `A` only when A and B are mutually assignable; otherwise
+// to `never`, so `const _c: Exact<Tuple, Union> = tuple` fails to compile if the
+// runtime allowlist and the public union drift apart in EITHER direction. This is
+// what compile-couples every allowlist below to its canonical PermissionUpdate type,
+// so a newly-added valid member can't compile while being rejected at runtime (§6.4).
+type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? A : never) : never;
 
 const destinations = ["session", "localSettings", "projectSettings", "userSettings"] as const;
 const ruleBehaviors = ["allow", "deny", "ask"] as const;
@@ -19,6 +32,28 @@ const permissionModes = [
   "dontAsk",
   "bypassPermissions",
 ] as const;
+const updateTypes = [
+  "addRules",
+  "replaceRules",
+  "removeRules",
+  "setMode",
+  "addDirectories",
+  "removeDirectories",
+] as const;
+
+// Bidirectional exactness guards (see Exact above). Each stops compiling the moment
+// its allowlist and the public union disagree.
+const _destinationsExact: Exact<(typeof destinations)[number], PermissionUpdateDestination> =
+  destinations[0];
+const _behaviorsExact: Exact<(typeof ruleBehaviors)[number], PermissionRuleBehavior> =
+  ruleBehaviors[0];
+const _modesExact: Exact<(typeof permissionModes)[number], ClaudeHookPermissionMode> =
+  permissionModes[0];
+const _typesExact: Exact<(typeof updateTypes)[number], PermissionUpdate["type"]> = updateTypes[0];
+void _destinationsExact;
+void _behaviorsExact;
+void _modesExact;
+void _typesExact;
 
 export function isPermissionUpdateArray(value: unknown): boolean {
   return Array.isArray(value) && value.every(isPermissionUpdate);
