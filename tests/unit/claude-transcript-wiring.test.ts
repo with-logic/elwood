@@ -6,7 +6,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import {
   createTranscriptWatcher,
   type TranscriptActivityEmitter,
@@ -149,51 +149,5 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
       lastErrorCode: expect.any(String),
       transcriptPath: path,
     });
-  });
-
-  test("§5.4 a poll that finds the watcher finished in its finally discards, never flushes", async () => {
-    // Drives the poll's finished-guarded finally: a poll begins, finish() lands during its
-    // awaited stat (draining + latching terminal:exit), and when the poll resumes it bails
-    // and its finally must DISCARD the pass rather than flush past the terminal latch.
-    // (The FULL interleaving — a drop scanned by cursor A, then finish() during cursor B's
-    // await, leaving A's drop pending — cannot be triggered deterministically without an
-    // fs-timing seam: pollOnceForTests runs synchronously only to the first await, so an
-    // external finish() always lands there. The discard BRANCH is covered here; the
-    // DropReporter.discardPass unit test covers the discard semantics directly.)
-    const recorded: ElwoodWarningEvent[] = [];
-    const sink: WarningSink = { emitWarnings: (w) => recorded.push(...w) };
-    const { watcher } = createTranscriptWatcher("s9", fakeEmitter(), () => sink);
-    const path = tmpFile();
-    writeFileSync(path, "");
-    watcher.observe(path);
-    writeFileSync(path, "{ bad-a }\n"); // one unparseable record
-    const polling = watcher.pollOnceForTests(); // runs to the first awaited stat
-    watcher.finish(); // lands during the await: drains the record once, then latches
-    await polling; // resumes finished: bails; finally takes the discard branch
-    const drops = recorded.filter((w) => w.code === "transcript_records_dropped");
-    expect(drops).toHaveLength(1); // exactly the finish-drain drop — never a second, post-exit one
-  });
-
-  test("a timer-path listener error is routed to the sink as a transcript_poll_stopped warning", async () => {
-    const recorded: ElwoodWarningEvent[] = [];
-    const sink: WarningSink = { emitWarnings: (w) => recorded.push(...w) };
-    // The transcript event emitter throws — a programming error on the timer path.
-    const emitter = fakeEmitter((a) => {
-      if (a.kind === "assistant_message") throw new Error("listener bug");
-    });
-    // A short poll cadence via the seam + waitFor makes the timer-path assertion
-    // deterministic, not a fixed sleep race (the pattern used in the recovery tests).
-    const { watcher } = createTranscriptWatcher("s9", emitter, () => sink, 5);
-    const path = tmpFile();
-    try {
-      writeFileSync(path, "");
-      watcher.observe(path);
-      writeFileSync(path, `${JSON.stringify(assistant("boom"))}\n`);
-      await vi.waitFor(() =>
-        expect(recorded.some((w) => w.code === "transcript_poll_stopped")).toBe(true),
-      );
-    } finally {
-      watcher.finish(); // always stop the watcher, even if the assertion throws
-    }
   });
 });

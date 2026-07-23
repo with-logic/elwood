@@ -39,6 +39,13 @@ export class ClaudeTranscriptWatcher {
   private readonly onPollError: ((error: unknown) => void) | undefined;
   private readonly pollIntervalMs: number;
   private readonly lines: LineEmitter;
+  // Test seam: run after each cursor's scan within a poll pass, so a test can drive the
+  // exact race where an earlier cursor's drop is pending when finish() lands mid-pass.
+  private afterScanForTests: (() => void) | undefined;
+
+  setAfterScanForTests(hook: () => void): void {
+    this.afterScanForTests = hook;
+  }
 
   constructor(
     elwoodSessionId: string,
@@ -110,6 +117,7 @@ export class ClaudeTranscriptWatcher {
         if (this.cursors.get(cursor.path) !== cursor) continue;
         if (budget.chunks <= 0) break; // watcher-wide budget spent this tick
         if (changed) this.scanCursor(cursor, budget);
+        this.afterScanForTests?.(); // test seam: drive finish() between cursors
       }
     } finally {
       // Deliver this pass's drops ONLY while still live. If finish() ran during the

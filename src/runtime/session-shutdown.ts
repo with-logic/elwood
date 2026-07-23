@@ -24,7 +24,7 @@ export type ShutdownHost = {
   readonly pty: PtyProcess;
   readonly stateDir: string;
   readonly elwoodSessionId: string;
-  /** The per-launch socket home to remove alongside the derived session dir (§8.1). */
+  /** This launch's socket path; teardown removes its whole stable home (§8.1). */
   readonly socketPath: string;
   readonly reapPolicy: SessionReapPolicy;
   readonly status: () => import("../core/types.ts").ElwoodSessionStatus;

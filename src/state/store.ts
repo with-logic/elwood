@@ -108,7 +108,7 @@ export type RemoveSessionFilesInput = {
   readonly socketPath: string;
 };
 
-/** Remove a session's derived directory AND the per-launch socket home (§8.1). */
+/** Remove a session's derived directory AND its whole stable socket home (§8.1). */
 export function removeSessionFiles(input: RemoveSessionFilesInput): void {
   const dir = safeSessionDir(input.stateDir, input.elwoodSessionId);
   // Attempt BOTH removals independently (§8.4 attempt-all): a socket-home removal
