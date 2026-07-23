@@ -1,7 +1,8 @@
 /**
  * Serialized single-session slot behavior for the browser dev app.
  * Covers PRD §11 (C-APP-08): two concurrent session-mutating operations must
- * serialize so a replaced session is torn down, never leaked.
+ * serialize so a replaced session is torn down (never leaked), and a discarded
+ * session's teardown failure is reported rather than silently dropped.
  */
 
 import { describe, expect, test } from "vitest";
@@ -26,7 +27,7 @@ describe("web session slot", () => {
     expect(order).toEqual(["first:start", "first:end", "second:start", "second:end"]);
   });
 
-  test("C-APP-08 replace tears down the outgoing session before storing the next", async () => {
+  test("C-APP-08 replace installs the next session then tears down the outgoing one", async () => {
     const slot = new WebSessionSlot();
     const first = fakeSession("s1");
     const second = fakeSession("s2");
@@ -51,12 +52,26 @@ describe("web session slot", () => {
     expect(second.teardownCount).toBe(0);
   });
 
-  test("C-APP-08 a failed teardown of the replaced session does not block replacement", async () => {
-    const slot = new WebSessionSlot();
+  test("C-APP-08 a failed teardown does not block replacement AND is reported", async () => {
+    const reported: Array<{ id: string; error: unknown }> = [];
+    const slot = new WebSessionSlot((id, error) => reported.push({ id, error }));
     const first = fakeSession("s1", { teardownThrows: true });
     const second = fakeSession("s2");
     await slot.run((s) => s.replace(first));
     await slot.run((s) => s.replace(second));
+    expect(slot.session).toBe(second); // the incoming session still took the slot
+    // The discarded session's teardown failure was surfaced, not silently dropped.
+    expect(reported).toHaveLength(1);
+    expect(reported[0]?.id).toBe("s1");
+    expect(String(reported[0]?.error)).toContain("teardown failed");
+  });
+
+  test("C-APP-08 a failed teardown with NO reporter is still contained", async () => {
+    const slot = new WebSessionSlot(); // no reporter wired
+    const first = fakeSession("s1", { teardownThrows: true });
+    const second = fakeSession("s2");
+    await slot.run((s) => s.replace(first));
+    await slot.run((s) => s.replace(second)); // must not reject despite the throw
     expect(slot.session).toBe(second);
   });
 

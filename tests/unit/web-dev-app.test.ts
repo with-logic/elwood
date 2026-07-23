@@ -57,6 +57,34 @@ describe("browser dev app server", () => {
     socket.close();
   });
 
+  test("C-APP-08 a replaced session's failed teardown is broadcast, not silently dropped", async () => {
+    // Start session A (teardown throws), then start B: the slot installs B and tears
+    // down A, whose failure must surface as a runtime error to connected sockets so a
+    // stuck PTY stays visible — never a silent drop.
+    const a = fakeSession("s1", { teardown: () => Promise.reject(new Error("stuck pty")) });
+    const b = fakeSession("s2");
+    const sessions = [a, b];
+    let i = 0;
+    const app = await launch(running, { token: "tok" }, () =>
+      Promise.resolve(sessions[i++] as never),
+    );
+    const socket = await connect(app, "tok");
+    const messages = collect(socket);
+    const startFrame = { type: "start", agent: "codex", cwd: "/w", cols: 80, rows: 24 };
+    socket.send(JSON.stringify(startFrame));
+    await waitFor(() => app.slot.session === a);
+    socket.send(JSON.stringify(startFrame)); // replaces A with B; A's teardown throws
+    const summaryOf = (m: (typeof messages)[number]) =>
+      (m.entry as { summary?: string } | undefined)?.summary ?? "";
+    await waitFor(() =>
+      messages.some(
+        (m) => m.type === "event" && /Session teardown failed \(s1\)/.test(summaryOf(m)),
+      ),
+    );
+    expect(app.slot.session).toBe(b); // B still took the slot
+    socket.close();
+  });
+
   test("C-APP-08 reports a malformed frame to the originating socket without teardown", async () => {
     const app = await launch(running, { token: "tok" });
     const socket = await connect(app, "tok");

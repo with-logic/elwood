@@ -6,6 +6,7 @@
  * re-signaled — node-pty does not replay the exit and the pid may be recycled.
  */
 
+import { elwoodError } from "../core/errors.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import { removeSessionDir, type SessionRecord } from "../state/store.ts";
 import type { SessionReapPolicy } from "./session-reap.ts";
@@ -116,13 +117,29 @@ export async function runShutdown(
   host.claimShutdown(evidence); // Claim the exit before signaling.
   if (mustNotSignal(host, ctx)) {
     host.reapPolicy.orThrow(); // Typed rejection on failure; never swallows.
-    await host.cleanupRuntime();
+    await cleanupOrThrowTermination(host);
     return; // Already signaled / terminal: no new signal, no evidence to submit.
   }
   ctx.markSignaled();
   await terminatePty(host.pty, signal, host.reapPolicy.reaper);
-  await host.cleanupRuntime();
+  await cleanupOrThrowTermination(host);
   host.submitEvidence(evidence);
+}
+
+/**
+ * Runs runtime cleanup, folding its raw aggregate failure into the stable public
+ * `termination_failed` error. `runCleanupSteps` rejects with a bare `Error` on the
+ * assumption that its caller wraps it; `stop()`/`kill()` are that caller, so without
+ * this an untyped Error would escape the public shutdown boundary (PRD §10).
+ */
+async function cleanupOrThrowTermination(host: ShutdownHost): Promise<void> {
+  try {
+    await host.cleanupRuntime();
+  } catch (error) {
+    throw elwoodError("termination_failed", "Could not clean up the Elwood runtime.", {
+      cause: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 /**

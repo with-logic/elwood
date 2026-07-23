@@ -63,7 +63,10 @@ export async function waitFor(predicate: () => boolean, ms = 2000): Promise<void
   }
 }
 
-export function fakeSession(id: string): SharedSession {
+export function fakeSession(
+  id: string,
+  overrides: { readonly teardown?: () => Promise<void> } = {},
+): SharedSession {
   return {
     elwoodSessionId: id,
     cwd: "/w",
@@ -79,6 +82,6 @@ export function fakeSession(id: string): SharedSession {
     resize: () => Promise.resolve(),
     stop: () => Promise.resolve(),
     kill: () => Promise.resolve(),
-    teardown: () => Promise.resolve(),
+    teardown: overrides.teardown ?? (() => Promise.resolve()),
   };
 }

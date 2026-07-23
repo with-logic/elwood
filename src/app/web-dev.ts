@@ -42,12 +42,22 @@ export function createWebDevApp(options: WebDevAppOptions = {}): WebDevApp {
   const cwd = options.cwd ?? process.cwd();
   const port = options.port ?? Number(process.env["ELWOOD_DEV_PORT"] ?? 4317);
   const token = options.token ?? createBrowserToken();
-  const slot = new WebSessionSlot();
   const sockets = new Set<WebSocket>();
+  const broadcast = (message: ServerMessage) => broadcastTo(sockets, message);
+  // A discarded session's teardown failure is broadcast as a runtime error rather
+  // than silently dropped, so a stuck PTY/process tree stays visible in the dev app.
+  const slot = new WebSessionSlot((id, error) =>
+    broadcast({
+      type: "event",
+      entry: events.runtimeErrorEvent(`Session teardown failed (${id}).`, {
+        id,
+        error: String(error),
+      }),
+    }),
+  );
   const server = createServer(createHttpHandler({ cwd, token }));
   // Resolve the port lazily: with port 0 the OS assigns one at listen time.
   const wss = createGuardedWebSocketServer(server, token, () => boundPort(server, port));
-  const broadcast = (message: ServerMessage) => broadcastTo(sockets, message);
   const deps: DispatchDeps = {
     slot,
     broadcast,

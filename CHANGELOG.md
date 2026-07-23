@@ -85,6 +85,13 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
   even if an earlier one throws, so a failing bridge stop never leaks the terminal
   or transcript watcher. (§9.4)
 
+- **A runtime-cleanup failure in `stop()`/`kill()` now rejects with the typed
+  `termination_failed`, not a raw `Error`.** The cleanup aggregator threw a bare
+  `Error` on the assumption its caller wrapped it, but the shutdown boundary awaited
+  it directly — so a failing bridge/watcher/terminal cleanup could escape `stop()`
+  /`kill()` untyped, violating the stable public error contract. It is now folded
+  into `termination_failed` with the underlying reason as `cause`. (§10, C-LIFE-10)
+
 - **Image attachment size limits apply to file-path inputs too.** Path images now
   count toward the same aggregate byte ceiling as byte inputs, and an entry must be
   exactly `{path}` or `{data, format}` (extra keys are rejected). (C-API-44)
