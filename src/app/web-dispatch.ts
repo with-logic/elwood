@@ -2,8 +2,9 @@
  * Client-message dispatch for the browser dev app.
  * Implements PRD §11.
  *
- * Every session-mutating message runs through the shared WebSessionSlot so
- * concurrent frames serialize instead of racing the module-global session. The
+ * Session-mutating messages (start/resume/stop/teardown) and slot lookups run
+ * through the per-app WebSessionSlot so concurrent frames serialize instead of
+ * racing; data-plane work (keys, prompts) releases the slot before its I/O. The
  * dispatch is explicit per known type — there is NO catch-all branch, so an
  * unknown or malformed frame is rejected by the parser and reported as a runtime
  * error rather than silently tearing the session down (teardown is its own type).
@@ -28,7 +29,7 @@ import type { WebSessionSlot } from "./web-session-slot.ts";
 export type DispatchDeps = {
   readonly slot: WebSessionSlot;
   readonly broadcast: (message: ServerMessage) => void;
-  readonly startSession: typeof startAgentSession;
+  readonly startOrResumeSession: typeof startAgentSession;
 };
 
 /** Parse, validate, and dispatch one raw frame; report failures to `report`. */
@@ -83,7 +84,7 @@ async function startOrResume(
   message: Extract<ClientMessage, { readonly type: "start" }>,
 ): Promise<void> {
   const agent = parseAgentKind(message.agent);
-  const session = await deps.startSession({
+  const session = await deps.startOrResumeSession({
     agent,
     cwd: message.cwd,
     size: sizeFrom(message),

@@ -34,7 +34,7 @@ export type WebDevAppOptions = {
   readonly port?: number;
   readonly token?: string;
   /** Injectable session launcher; defaults to the real adapter runtime. */
-  readonly startSession?: typeof startAgentSession;
+  readonly startOrResumeSession?: typeof startAgentSession;
 };
 
 /** Build the dev app's server, WebSocket layer, and session slot without listening. */
@@ -61,7 +61,7 @@ export function createWebDevApp(options: WebDevAppOptions = {}): WebDevApp {
   const deps: DispatchDeps = {
     slot,
     broadcast,
-    startSession: options.startSession ?? startAgentSession,
+    startOrResumeSession: options.startOrResumeSession ?? startAgentSession,
   };
   setChildLookupReporter((d) =>
     broadcast({

@@ -14,13 +14,13 @@ export type StartFn = (options: AgentLaunchOptions) => Promise<SharedSession>;
 export async function launch(
   running: WebDevApp[],
   options: LaunchOptions = {},
-  startSession?: StartFn,
+  startOrResumeSession?: StartFn,
 ): Promise<WebDevApp> {
   const app = createWebDevApp({
     port: 0,
     cwd: "/w",
     ...options,
-    ...(startSession === undefined ? {} : { startSession }),
+    ...(startOrResumeSession === undefined ? {} : { startOrResumeSession }),
   });
   running.push(app);
   await app.listen();

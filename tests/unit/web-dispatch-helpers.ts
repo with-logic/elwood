@@ -29,7 +29,7 @@ export type Harness = {
   readonly deps: {
     readonly slot: WebSessionSlot;
     readonly broadcast: (m: ServerMessage) => void;
-    readonly startSession: (o: AgentLaunchOptions) => Promise<SharedSession>;
+    readonly startOrResumeSession: (o: AgentLaunchOptions) => Promise<SharedSession>;
   };
   readonly broadcasts: ServerMessage[];
   readonly reports: ServerMessage[];
@@ -44,12 +44,12 @@ export function harnessWith(
   const broadcasts: ServerMessage[] = [];
   const reports: ServerMessage[] = [];
   const launches: AgentLaunchOptions[] = [];
-  const startSession = (options: AgentLaunchOptions) => {
+  const startOrResumeSession = (options: AgentLaunchOptions) => {
     launches.push(options);
     return (start ?? (() => Promise.resolve(fakeSession("s1"))))(options);
   };
   return {
-    deps: { slot, broadcast: (m) => broadcasts.push(m), startSession },
+    deps: { slot, broadcast: (m) => broadcasts.push(m), startOrResumeSession },
     broadcasts,
     reports,
     launches,

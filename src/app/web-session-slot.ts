@@ -6,12 +6,14 @@
  * (one is constructed in each `createWebDevApp`), NOT a module global. WebSocket
  * messages arrive fire-and-forget, so two concurrent `start` frames would both
  * launch a session and the second assignment would overwrite (leak) the first's
- * PTY. This slot serializes every session-mutating operation through a promise
- * chain (a lightweight mutex). On `replace`, the incoming session is installed
+ * PTY. This slot serializes slot mutation and lookup through a promise chain (a
+ * lightweight mutex); data-plane callers hold it only long enough to read the
+ * session, not across their I/O. On `replace`, the incoming session is installed
  * first and the outgoing one is then torn down (a DEFERRED teardown, so the slot
  * never reads as occupied by a session that is mid-teardown) — the outgoing PTY is
- * still always killed, and a teardown failure is REPORTED (not silently dropped)
- * so a stuck process tree stays visible.
+ * still always killed, and a teardown failure is reported through the OPTIONAL
+ * `onTeardownError` reporter (when one is wired) so a stuck process tree stays
+ * visible; with no reporter the failure is still contained, never leaked.
  */
 
 import type { SharedSession } from "./agent-runtime.ts";
@@ -101,7 +103,7 @@ export class WebSessionSlot {
 
   /**
    * Close the slot for shutdown: refuse all future `run` work, wait for any IN-FLIGHT
-   * slot task (e.g. a start that is mid-`startSession`) to settle, then detach and
+   * slot task (e.g. a start that is mid-`startOrResumeSession`) to settle, then detach and
    * return whatever session is installed. Serializing behind the current tail closes
    * the race where a resolving start installs a session AFTER a bare `take()` already
    * ran — the returned session (possibly just-installed) is the caller's to tear down.
