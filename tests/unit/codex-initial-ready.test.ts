@@ -110,4 +110,34 @@ describe("initialReady", () => {
     ready.mark();
     expect(calls).toBe(2);
   });
+
+  test("C-API-28 a mark while a dialog is up defers — it fires only once the dialog clears", () => {
+    // A blocking dialog rendered during `starting` never latches `blocked`, so a
+    // hook/deadline mark must NOT drain the queue INTO it; the mark is deferred and
+    // reconciled by retryWhenUnblocked once the dialog clears — never starved.
+    let calls = 0;
+    let blocked = true;
+    const ready = initialReady(
+      () => calls++,
+      10_000,
+      () => blocked,
+    );
+    ready.mark(); // the SessionStart hook fires while the dialog is on screen
+    expect(calls).toBe(0); // deferred, not drained into the dialog
+    ready.retryWhenUnblocked(true); // a redraw, still blocked
+    expect(calls).toBe(0);
+    blocked = false;
+    ready.retryWhenUnblocked(false); // the dialog cleared
+    expect(calls).toBe(1); // the deferred readiness fires now
+    ready.retryWhenUnblocked(false);
+    expect(calls).toBe(1); // idempotent
+  });
+
+  test("C-API-28 retryWhenUnblocked is a no-op when no mark was deferred", () => {
+    // A clear frame with no pending deferred mark must not fabricate readiness.
+    let calls = 0;
+    const ready = initialReady(() => calls++);
+    ready.retryWhenUnblocked(false);
+    expect(calls).toBe(0);
+  });
 });

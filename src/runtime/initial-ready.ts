@@ -24,6 +24,13 @@ export type InitialReady = {
   readonly armDeadline: () => void;
   /** Fire readiness now (one-shot) — the pre-input readiness hook path. */
   readonly mark: () => void;
+  /**
+   * Re-attempt a readiness mark that a hook/deadline requested while a blocking
+   * dialog was on screen. Call per rendered frame with the frame's blocking fact:
+   * once the dialog clears, the deferred readiness fires so the queue is never
+   * drained INTO the dialog and is never permanently starved BY it (C-API-28).
+   */
+  readonly retryWhenUnblocked: (blockingVisible: boolean) => void;
 };
 
 /** The rendered-frame facts the resume-composer readiness path inspects. */
@@ -48,11 +55,25 @@ export function markReadyOnResumeComposer(
   if (resumed && facts.composer_visible && !facts.blocking_prompt_visible) ready.mark();
 }
 
-export function initialReady(callback: () => void, maxWaitMs = 10_000): InitialReady {
+export function initialReady(
+  callback: () => void,
+  maxWaitMs = 10_000,
+  isBlocked: () => boolean = () => false,
+): InitialReady {
   let ready = false;
+  let deferredByBlock = false;
   let deadline: ReturnType<typeof setTimeout> | undefined;
   const mark = () => {
     if (ready) return;
+    // A blocking dialog is on screen (it may have rendered while still `starting`,
+    // so it never latched `blocked`): do NOT release the queue into it. Remember the
+    // request and re-fire it from `retryWhenUnblocked` once the dialog clears — never
+    // latch here, so readiness is neither drained into the dialog nor starved by it.
+    if (isBlocked()) {
+      deferredByBlock = true;
+      return;
+    }
+    deferredByBlock = false;
     // Latch AFTER the callback returns, so if it throws (a failed durable status write
     // or a throwing listener) readiness is NOT consumed and a later hook/deadline/frame
     // retries — a failed transition must never permanently starve the queue (C-API-28).
@@ -64,6 +85,9 @@ export function initialReady(callback: () => void, maxWaitMs = 10_000): InitialR
       if (deadline) clearTimeout(deadline);
     },
     mark,
+    retryWhenUnblocked: (blockingVisible) => {
+      if (!ready && deferredByBlock && !blockingVisible) mark();
+    },
     replay: () => void (ready && callback()),
     // Arms on the first frame regardless of hook arrival, so a missing or failed
     // readiness hook cannot starve readiness forever. The deadline's mark is contained

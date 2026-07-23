@@ -9,7 +9,7 @@ import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import type { StartClaudeOptions } from "../core/types.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
-import { initialReady, markReadyOnResumeComposer } from "../runtime/initial-ready.ts";
+import { createReadinessGate } from "../runtime/session-readiness.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../runtime/startup-buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../runtime/startup-cleanup.ts";
 import { secureMkdir } from "../state/files.ts";
@@ -94,12 +94,12 @@ export async function startClaudeFromRecord(
   // Initial readiness is hook-backed (`InstructionsLoaded` fires `mark`); the first
   // frame arms a starvation deadline so a missing/failed hook cannot starve the queue,
   // and on resume the first composer frame also marks ready (PRD §5.3, C-API-28).
-  const ready = initialReady(() => {
+  const { ready, observeReadinessFrame } = createReadinessGate(() => {
     turnWatcher.arm(resumed); // resume arms in settling mode (no phantom replay turn)
     // completeInitialReady advances readiness in a finally, isolating restore/warning
     // failures internally, so its promise never rejects (not awaited).
     void session?.completeInitialReady();
-  });
+  }, resumed);
   const bridge = currentClaudeHookBridgeFactory()(
     record.paths.socketPath,
     record.bridgeToken,
@@ -157,7 +157,7 @@ export async function startClaudeFromRecord(
     // Hook-backed readiness + deadline fallback; on resume the first composer also marks ready (C-API-28).
     ready.armDeadline();
     const reading = observeRenderedFrame(observers, frame, session);
-    markReadyOnResumeComposer(ready, resumed, reading.facts);
+    observeReadinessFrame(reading.facts); // blocking gate + resume-composer mark
     // Surface a mid-session login-expiry banner once (C-CLAUDE-18); no-op pre-readiness.
     session?.noteLoginExpiry(frame.text);
     emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });

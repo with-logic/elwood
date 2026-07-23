@@ -11,6 +11,7 @@ import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import { TurnStateWatcher } from "../core/turn-state.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
+import { createReadinessGate } from "../runtime/session-readiness.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../runtime/startup-buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../runtime/startup-cleanup.ts";
 import { secureMkdir } from "../state/files.ts";
@@ -25,7 +26,6 @@ import {
   writeSessionRecord,
 } from "../state/store.ts";
 import { attachPtyTerminal } from "../terminal/headless.ts";
-import { initialReady, markReadyOnResumeComposer } from "./initial-ready.ts";
 import * as preflight from "./preflight.ts";
 import { spawnCodexPty } from "./pty.ts";
 import { codexScreenFactTableForTrustPolicy } from "./screen-table.ts";
@@ -116,10 +116,10 @@ export async function startCodexFromRecord(
   const startupOutput = createStartupBuffer();
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
-  const ready = initialReady(() => {
+  const { ready, observeReadinessFrame } = createReadinessGate(() => {
     turnWatcher.arm(resumed); // resume arms in settling mode (no phantom replay turn)
     session?.submitEvidence("initial_ready");
-  });
+  }, resumed);
   const autotrust = options.autotrust ?? false;
   const observers = {
     turn: new TurnStateWatcher(),
@@ -140,9 +140,8 @@ export async function startCodexFromRecord(
       // One snapshot per render: reused for prompt automation, readiness, and
       // detection (input written here only repaints on the next callback).
       const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
-      // The write RETURNS its `sendInput` completion (no longer swallowed): the
-      // responder settles the prompt and its `startup_prompt` activity only after
-      // the write fulfills, and a rejected write stays retryable + warns (C-CODEX-17).
+      // The write RETURNS its `sendInput` completion: the responder settles the prompt +
+      // its activity only after the write fulfills; a rejected write retries + warns (C-CODEX-17).
       const result = promptResponder.handle(frame.text, (input) =>
         renderedTerminal.sendInput(input),
       );
@@ -153,7 +152,7 @@ export async function startCodexFromRecord(
       // Hook-backed readiness + deadline fallback; on resume the first composer also marks ready (C-API-28).
       ready.armDeadline();
       const reading = observeRenderedFrame(observers, frame, session);
-      markReadyOnResumeComposer(ready, resumed, reading.facts);
+      observeReadinessFrame(reading.facts); // blocking gate + resume-composer mark
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );
@@ -168,10 +167,9 @@ export async function startCodexFromRecord(
   );
   const id = record.elwoodSessionId;
   const activeSession = session;
-  // ONE guarded region for every live-resource step after the session exists
-  // (readiness wiring/replay, exit registration, startup assertion, startup evidence):
-  // a failure in ANY of them tears down the now-live PTY, bridge, terminal, readiness
-  // watcher, and transcript watcher before rethrowing (PRD §9.1, §9.4). Mirrors Claude.
+  // ONE guarded region for every live-resource step after the session exists (readiness
+  // wiring/replay, exit registration, startup assertion/evidence): a failure in ANY tears
+  // down the now-live PTY/bridge/terminal/watchers before rethrowing (§9.1/§9.4). Mirrors Claude.
   await guardStartupRegion(
     async () => {
       flushPendingWarnings(); // inside the guard: a throwing sink tears down, not leaks (§5.4/§9.4)
