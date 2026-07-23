@@ -70,6 +70,24 @@ describe("CodexSession trust prompts", () => {
     expect(ptys[0]!.writes).toEqual([]); // nothing auto-answered yet
   });
 
+  test("C-API-28 a throwing option_pending listener does not abort the frame's terminal:data", async () => {
+    // Mirror of the Claude frame regression: the `option_pending` render-delay attention
+    // emits public activity on the hot frame path; a throwing listener there must be
+    // CONTAINED so the same frame still delivers terminal:data (readiness/blocking too).
+    installFakes();
+    const session = await startCodex({ cwd: tempDir(), autotrust: true });
+    let terminalData = 0;
+    session.on("activity", (e) => {
+      if (e.kind === "attention" && e.label === "workspace_trust") throw new Error("listener boom");
+    });
+    session.on("terminal:data", () => {
+      terminalData += 1;
+    });
+    ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. No, quit");
+    await flushTerminal();
+    expect(terminalData).toBeGreaterThan(0); // the frame was not aborted by the throw
+  });
+
   test("C-CODEX-15 a partial frame followed by a complete frame ANSWERS the prompt, no stale warning", async () => {
     installFakes();
     const session = await startCodex({ cwd: tempDir(), autotrust: true });

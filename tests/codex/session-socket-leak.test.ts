@@ -2,10 +2,11 @@
  * Conformance tests: a FAILED Codex start never leaks its socket FILE and never removes
  * a concurrent launch's socket, and the stable home is restart-safe (one
  * `/tmp/elwood-<fingerprint>` per session, not a leaked anonymous dir per launch). Covers
- * PRD §9.1/§8.1 (mirrors Claude): a fresh per-launch socket file binds in the session's
- * stable home before any state/runtime write, bridge start, or PTY start; ANY pre-session
- * failure removes THIS launch's own file — never the shared home a concurrent launch may
- * own (withSocketHomeCleanup) — and teardown sweeps the whole home. Each test isolates
+ * PRD §9.1/§8.1 (mirrors Claude): sessionRuntime ensures the session's stable home and
+ * reserves a fresh per-launch socket PATH inside it; the socket is bound later by
+ * bridge.start() (after the state/runtime files are written). ANY pre-session failure
+ * removes THIS launch's own file — never the shared home a concurrent launch may own
+ * (withSocketHomeCleanup) — and teardown sweeps the whole home. Each test isolates
  * `TMPDIR` so the leak checks see only this launch's homes/sockets.
  */
 

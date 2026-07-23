@@ -46,6 +46,27 @@ describe("ClaudeSession trust-prompt render delay", () => {
     expect(warnings).not.toContain("trust_prompt_unanswerable");
   });
 
+  test("C-API-28 a throwing option_pending listener does not abort the frame's readiness/terminal:data", async () => {
+    // The `option_pending` outcome (a render-delay trust attention) emits public activity
+    // on the hot frame path. A throwing listener there must be CONTAINED so the rest of
+    // the SAME frame still runs — readiness/blocking observation and terminal:data. Drive
+    // it end-to-end through the real session frame, not just the helper.
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd, autotrust: true });
+    let terminalData = 0;
+    session.on("activity", (e) => {
+      if (e.kind === "attention" && e.label === "workspace_trust") throw new Error("listener boom");
+    });
+    session.on("terminal:data", () => {
+      terminalData += 1;
+    });
+    // A header-only frame -> an option_pending attention whose listener throws. The frame
+    // must not abort: terminal:data for this frame must STILL deliver.
+    ptys[0]!.emitData("Do you trust this folder?\r\n");
+    await expect.poll(() => terminalData).toBeGreaterThan(0);
+  });
+
   test("C-CLAUDE-16 a rejected trust-prompt write stays retryable and warns", async () => {
     const cwd = tempDir();
     installFakes();

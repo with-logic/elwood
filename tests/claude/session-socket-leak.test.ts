@@ -2,11 +2,12 @@
  * Conformance tests: a FAILED Claude start never leaks its socket FILE and never removes
  * a concurrent launch's socket, and the stable home is restart-safe (one
  * `/tmp/elwood-<fingerprint>` per session, not a leaked anonymous dir per launch). Covers
- * PRD §9.1/§8.1: sessionRuntime binds a fresh per-launch socket file in the session's
- * stable home BEFORE any state/runtime write, bridge start, or PTY start. ANY failure
- * before the session takes ownership removes THIS launch's own socket file — never the
- * shared home, which a concurrent launch may own — via withSocketHomeCleanup; on success
- * ownership transfers and teardown sweeps the whole home.
+ * PRD §9.1/§8.1: sessionRuntime ensures the session's stable home and reserves a fresh
+ * per-launch socket PATH inside it; the socket is bound later by bridge.start() (after
+ * the state/runtime files are written). ANY failure before the session takes ownership
+ * removes THIS launch's own socket file — never the shared home, which a concurrent
+ * launch may own — via withSocketHomeCleanup; on success ownership transfers and teardown
+ * sweeps the whole home.
  *
  * The socket home lands under `os.tmpdir()`, which honors `TMPDIR`. Each test points
  * `TMPDIR` at a FRESH private dir so the leak checks see ONLY this launch's homes/sockets
