@@ -71,6 +71,17 @@ dependency.
 Conformance tests should name the matching criterion ID in the test title, for
 example `C-EXAMPLE-01 describes the initial project contract`.
 
+## Real CLI Behavior
+
+Elwood drives the real Claude and Codex CLIs, which have undocumented,
+version-coupled behaviors that a green unit suite at 100% coverage does not
+catch. `docs/cli-behavior.md` records the ones we learned empirically — lazy
+Codex hooks, resume readiness and the phantom-turn replay, the composer/dialog
+caret collision, trust-prompt layout, paste sanitization, narrow-terminal footer
+elision, and model-picker persistence. Read it before touching readiness,
+turn-detection, trust, resume, or input paths, and add to it whenever the real
+CLI teaches you something a unit test could not have.
+
 ## Lint And Type Rigor
 
 Biome is the source of truth for formatting and linting. `npm run lint` checks
