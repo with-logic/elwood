@@ -151,12 +151,15 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     });
   });
 
-  test("§5.4 a poll that finds the watcher finished mid-pass emits NOTHING past the latch", async () => {
-    // The race the finished-guarded finally guards: a poll begins, then finish() lands
-    // during its first awaited stat (draining + emitting terminal:exit). When the poll
-    // resumes it must bail AND its finally must not flush any pass drops past the
-    // permanent terminal latch. Here A holds an unparseable record; finish() drains it
-    // once (legitimate, pre-exit), and the resumed poll adds no second, post-exit drop.
+  test("§5.4 a poll that finds the watcher finished in its finally discards, never flushes", async () => {
+    // Drives the poll's finished-guarded finally: a poll begins, finish() lands during its
+    // awaited stat (draining + latching terminal:exit), and when the poll resumes it bails
+    // and its finally must DISCARD the pass rather than flush past the terminal latch.
+    // (The FULL interleaving — a drop scanned by cursor A, then finish() during cursor B's
+    // await, leaving A's drop pending — cannot be triggered deterministically without an
+    // fs-timing seam: pollOnceForTests runs synchronously only to the first await, so an
+    // external finish() always lands there. The discard BRANCH is covered here; the
+    // DropReporter.discardPass unit test covers the discard semantics directly.)
     const recorded: ElwoodWarningEvent[] = [];
     const sink: WarningSink = { emitWarnings: (w) => recorded.push(...w) };
     const { watcher } = createTranscriptWatcher("s9", fakeEmitter(), () => sink);
@@ -166,9 +169,9 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     writeFileSync(path, "{ bad-a }\n"); // one unparseable record
     const polling = watcher.pollOnceForTests(); // runs to the first awaited stat
     watcher.finish(); // lands during the await: drains the record once, then latches
-    await polling; // resumes finished: bails, finally discards, no post-latch emission
+    await polling; // resumes finished: bails; finally takes the discard branch
     const drops = recorded.filter((w) => w.code === "transcript_records_dropped");
-    expect(drops).toHaveLength(1); // exactly the finish-drain drop — never a leaked second
+    expect(drops).toHaveLength(1); // exactly the finish-drain drop — never a second, post-exit one
   });
 
   test("a timer-path listener error is routed to the sink as a transcript_poll_stopped warning", async () => {

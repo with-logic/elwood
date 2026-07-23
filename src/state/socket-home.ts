@@ -10,9 +10,10 @@
  * happen to share an explicit `elwoodSessionId` in different state dirs get DISTINCT
  * homes, so one's teardown can never remove the other's live socket. Each launch binds
  * a FRESH socket FILE inside that home (a per-launch nonce), so a stale socket is never
- * reused, while teardown/stop can still remove ALL of a session's socket files by
- * removing the one stable home — no anonymous per-launch directory can leak
- * undiscoverably across restart/resume cycles.
+ * reused; TEARDOWN removes ALL of a session's socket files by removing the one stable
+ * home, so no anonymous per-launch directory can leak undiscoverably across
+ * restart/resume cycles. (`stop` keeps the home for a later resume — the bridge unlinks
+ * its own socket file on stop; a failed launch removes only its own socket file.)
  */
 
 import { createHash } from "node:crypto";

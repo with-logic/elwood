@@ -52,12 +52,12 @@ export function startCodexFromRecord(
   resumed: boolean,
   preflightWarning: preflight.CodexPreflightWarning | undefined,
 ) {
-  // The runtime binds a FRESH per-launch socket file inside the session's STABLE
-  // out-of-tree home BEFORE any state/runtime write, bridge start, or PTY start. Wrap
-  // the whole build so ANY failure before the session takes ownership removes THIS
-  // launch's own socket file — never the shared home, which a concurrent launch may
-  // own (§9.1). On success ownership transfers to the returned session, whose teardown
-  // removes the whole home via removeSessionFiles.
+  // `sessionRuntime` ensures the session's STABLE out-of-tree home and reserves a FRESH
+  // per-launch socket PATH inside it; the socket is bound later, by `bridge.start()`
+  // (after the state/runtime files are written). Wrap the WHOLE build so ANY failure
+  // before the session takes ownership removes THIS launch's own socket file — never the
+  // shared home, which a concurrent launch may own (§9.1). On success ownership transfers
+  // to the returned session, whose teardown removes the whole home via removeSessionFiles.
   const runtime = sessionRuntime({
     stateDir,
     elwoodSessionId: record.elwoodSessionId,

@@ -20,7 +20,7 @@ export type SessionRuntime = {
   readonly sessionDir: string;
   readonly settingsPath: string;
   readonly bridgeScriptPath: string;
-  /** A fresh, short private temp socket home minted for this launch (§8.1). */
+  /** A fresh, short per-launch socket FILE inside the session's stable home (§8.1). */
   readonly socketPath: string;
   /** A fresh bridge token minted for this launch (§8.2). */
   readonly bridgeToken: string;

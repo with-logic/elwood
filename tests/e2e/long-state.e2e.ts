@@ -11,7 +11,7 @@ import test from "node:test";
 import { type ClaudeSession, resumeClaude, startClaude } from "../../src/index.ts";
 import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
 
-/** The per-launch socket homes Elwood minted (fresh mkdtemp `elwood-*` under tmpdir). */
+/** The stable per-session socket homes (`elwood-<fingerprint>` under tmpdir). */
 function socketHomes(): Set<string> {
   return new Set(
     readdirSync(tmpdir())
