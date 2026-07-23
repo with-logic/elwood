@@ -1,62 +1,24 @@
 /**
- * Bounded filesystem primitives for the transcript cursor.
- * Implements PRD §5.4 (C-CLAUDE-15): stat and range reads used by the cursor to
- * read only NEW committed bytes, decoding to complete UTF-8 boundaries so a split
- * multibyte character is never corrupted and a full-file read never OOMs the host.
+ * Bounded filesystem primitives for the Claude transcript cursor.
+ * Implements PRD §5.4 (C-CLAUDE-15). The forward primitives (stat, forward range
+ * read, the injectable byte seam) are shared with Codex via core/transcript/cursor-io;
+ * this file adds the Claude-only BACKWARD block read used by the baseline-tail scan,
+ * funneling through the SAME shared byte seam so a test still controls all reads.
  */
 
-import { closeSync, openSync, readSync, statSync } from "node:fs";
-import { errnoCode } from "../../core/errors.ts";
+import { readBytes } from "../../core/transcript/cursor-io.ts";
 import { completeUtf8Length } from "../../runtime/probe.ts";
 
-export function byteLen(text: string): number {
-  return Buffer.byteLength(text, "utf8");
-}
-
-export function fileSize(path: string): number {
-  // One stat, no exists-then-stat TOCTOU window: ENOENT means "no file yet",
-  // which is size 0; any other error propagates to the caller's fs guard. The
-  // errno is read through `errnoCode` (object-ness narrowed first), so a thrown
-  // null/non-Error is preserved and rethrown, never replaced by a secondary
-  // TypeError raised while inspecting it (C-ERR-01).
-  try {
-    return statSync(path).size;
-  } catch (error) {
-    if (errnoCode(error) === "ENOENT") return 0;
-    throw error;
-  }
-}
-
-export type RangeRead = { text: string; bytes: number };
-
-/** The injectable read seam: returns the RAW bytes read at `[start, start+length)`. */
-export type ByteReader = (path: string, start: number, length: number) => Buffer;
-
-function realReadBytes(path: string, start: number, length: number): Buffer {
-  const buffer = Buffer.allocUnsafe(length);
-  const fd = openSync(path, "r");
-  try {
-    const read = readSync(fd, buffer, 0, length, start);
-    return buffer.subarray(0, read);
-  } finally {
-    closeSync(fd);
-  }
-}
-
-// Indirection so a test can force a read failure (proving the offset is committed
-// only AFTER a successful read) or count read amplification. All range reads,
-// forward and backward, funnel through this ONE seam.
-let readBytesImpl: ByteReader = realReadBytes;
-export const readBytes: ByteReader = (p, s, l) => readBytesImpl(p, s, l);
-
-// Reads `length` bytes at `start`, decoding only to the last COMPLETE UTF-8 code
-// point (a split multibyte char is left for the next read, not corrupted). Used
-// for FORWARD reads where `start` is an already-committed code-point boundary.
-export function readRange(path: string, start: number, length: number): RangeRead {
-  const bytes = readBytes(path, start, length);
-  const complete = completeUtf8Length(bytes);
-  return { text: bytes.toString("utf8", 0, complete), bytes: complete };
-}
+export {
+  type ByteReader,
+  byteLen,
+  fileSize,
+  type RangeRead,
+  readBytes,
+  readRange,
+  resetByteReaderForTests,
+  setByteReaderForTests,
+} from "../../core/transcript/cursor-io.ts";
 
 /** One backward block: its decoded text and the byte offset it actually begins at. */
 export type BackwardBlock = { readonly text: string; readonly start: number };
@@ -95,11 +57,4 @@ function leadingSkip(bytes: Buffer, over: number): number {
     skip++;
   }
   return skip;
-}
-
-export function setByteReaderForTests(reader: ByteReader): void {
-  readBytesImpl = reader;
-}
-export function resetByteReaderForTests(): void {
-  readBytesImpl = realReadBytes;
 }

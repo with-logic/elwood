@@ -5,51 +5,22 @@
  * error code — never raw transcript content.
  */
 
+import {
+  dropWarning as sharedDropWarning,
+  readErrorWarning as sharedReadErrorWarning,
+} from "../../core/transcript/warnings.ts";
 import type { ElwoodWarningEvent } from "../../core/types.ts";
 import { boundedErrorToken, isPollErrorReason } from "../../core/warning-reasons.ts";
 import type { TranscriptDropNotice, TranscriptReadErrorNotice } from "./drops.ts";
 
-/** Human-readable phrase for each bounded drop cause (no raw content). */
-const causePhrase: Record<TranscriptDropNotice["cause"], string> = {
-  unparseable: "unparseable transcript record(s)",
-  oversized: "over-length transcript record(s)",
-  unread_backlog: "unread transcript backlog",
-};
-
-// `droppedCount` counts LOSS INCIDENTS, not records: each unparseable record, each
-// over-length record, and each unread teardown backlog is exactly ONE incident. A
-// backlog's record count is unknowable (its bytes are the true magnitude), so the
-// message says "loss incident(s)" cause-tagged rather than falsely claiming a
-// record count for a backlog (C-CLAUDE-15 truthful cardinality).
+/** The shared drop warning, tagged for Claude. */
 export function dropWarning(notice: TranscriptDropNotice): ElwoodWarningEvent {
-  return {
-    elwoodSessionId: notice.elwoodSessionId,
-    agent: "claude",
-    source: "terminal",
-    code: "transcript_records_dropped",
-    severity: "warning",
-    message: `Dropped ${notice.droppedCount} transcript loss incident(s) (${notice.droppedBytes} bytes; last cause: ${causePhrase[notice.cause]}).`,
-    droppedCount: notice.droppedCount,
-    droppedBytes: notice.droppedBytes,
-    cause: notice.cause,
-    transcriptPath: notice.path,
-    raw: `transcript_records_dropped count=${notice.droppedCount} bytes=${notice.droppedBytes} cause=${notice.cause}`,
-  };
+  return sharedDropWarning("claude", notice);
 }
 
+/** The shared read-error warning, tagged for Claude. */
 export function readErrorWarning(notice: TranscriptReadErrorNotice): ElwoodWarningEvent {
-  return {
-    elwoodSessionId: notice.elwoodSessionId,
-    agent: "claude",
-    source: "terminal",
-    code: "transcript_read_error",
-    severity: "warning",
-    message: `Contained ${notice.errorCount} transcript read error(s) (last: ${notice.lastErrorCode}).`,
-    errorCount: notice.errorCount,
-    lastErrorCode: notice.lastErrorCode,
-    transcriptPath: notice.path,
-    raw: `transcript_read_error count=${notice.errorCount} code=${notice.lastErrorCode}`,
-  };
+  return sharedReadErrorWarning("claude", notice);
 }
 
 /** Which lifecycle phase surfaced a transcript-processing failure (§5.4). */
