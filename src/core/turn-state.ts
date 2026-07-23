@@ -10,11 +10,26 @@ import type { ScreenFacts } from "./screen-facts.ts";
 
 export type TurnEdge = "started" | "ended";
 
+// Consecutive quiet, non-blocking composer frames required to declare the resume
+// transcript replay finished. The replay repaints working footers in bursts with
+// brief (1-frame) quiet gaps between them; requiring several quiet frames in a row
+// clears those gaps before detection resumes, so a post-replay burst can't fire a
+// phantom turn. A real post-resume turn is EVIDENCE-driven and bypasses settling, so
+// this only delays RENDERED detection by a few poll frames (C-TURN-03).
+const quietFramesToSettle = 5;
+
 export class TurnStateWatcher {
   private running = false;
   private bannerSeen = false;
   private armed = false;
   private replaySettling = false;
+  // Consecutive quiet, non-blocking composer frames seen while settling. The resume
+  // transcript replay repaints working-token footers in BURSTS with brief quiet gaps
+  // between them, so a SINGLE quiet composer frame is not proof the replay finished —
+  // releasing on it lets a later burst fire a phantom `started`. Require the composer
+  // to stay quiet for `quietFramesToSettle` consecutive frames; any working/blocking
+  // frame resets the run to 0 (C-TURN-03, real-Codex resume).
+  private quietStreak = 0;
 
   /**
    * Watching starts only after initial readiness so startup spinners that borrow the
@@ -34,6 +49,7 @@ export class TurnStateWatcher {
   arm(resumed = false): void {
     this.armed = true;
     this.replaySettling = resumed;
+    this.quietStreak = 0;
   }
 
   /** Consumes facts already classified from the frame (see observeRenderedFrame).
@@ -57,13 +73,17 @@ export class TurnStateWatcher {
         this.replaySettling = false;
         this.running = true;
       } else {
-        // Without evidence, settling releases only on the first quiet, NON-BLOCKING
-        // composer frame — which is not itself an end edge (no turn was running). A
-        // blocking dialog's option caret is byte-identical to the composer marker, so
-        // it must NOT release settling: releasing on a dialog frame lets the next
-        // replayed working flash fire a phantom `started` (matches the end-edge gate).
-        if (facts.composer_visible && !facts.working_visible && !facts.blocking_prompt_visible)
-          this.replaySettling = false;
+        // Without evidence, settling releases only after the composer stays QUIET and
+        // non-blocking for `quietFramesToSettle` consecutive frames — one quiet frame
+        // is not enough because the replay repaints working footers in bursts with
+        // brief quiet gaps, and releasing on a lone quiet frame lets the next burst
+        // fire a phantom `started`. A blocking dialog's option caret is byte-identical
+        // to the composer marker, so a blocking frame is NOT quiet and resets the run
+        // (matches the end-edge gate, so queued sends never drain into a dialog).
+        const quiet =
+          facts.composer_visible && !facts.working_visible && !facts.blocking_prompt_visible;
+        this.quietStreak = quiet ? this.quietStreak + 1 : 0;
+        if (this.quietStreak >= quietFramesToSettle) this.replaySettling = false;
         return undefined;
       }
     }

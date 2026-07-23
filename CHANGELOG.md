@@ -47,8 +47,12 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
   session reached readiness, the transcript replay repainted prior turns whose
   footer lines read as "working", fabricating a spurious `running → ready` cycle on
   every resume. Rendered turn edges are now suppressed through the replay until the
-  first quiet, non-blocking composer frame; evidence-based turns (a caller
-  submission, hooks) are unaffected. (C-TURN-03)
+  composer has stayed quiet and non-blocking for a SUSTAINED run of frames — the
+  real Codex CLI repaints those footers in bursts with brief quiet gaps, so
+  releasing on the first quiet frame let a later burst still fire the phantom;
+  a working/blocking frame during suppression resets the run. Evidence-based turns
+  (a caller submission, hooks) are unaffected. Verified against the real Codex CLI.
+  (C-TURN-03)
 
 - **A resume could never leave the queue permanently starved by a failed
   transition.** Initial readiness now latches only *after* its callback completes,

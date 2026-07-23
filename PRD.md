@@ -695,9 +695,13 @@ initial readiness so startup spinners that borrow the same wording cannot
 fabricate turns. On a RESUME the same guard extends to the transcript replay: a
 resumed session that reached readiness on its first composer frame then repaints
 prior turns, whose footer lines carry the working token — so rendered turn edges
-are suppressed until the first quiet, non-blocking composer frame (composer visible,
-no working token, no blocking dialog), after which detection behaves exactly as it
-does post-readiness on a cold start. Explicit running evidence (a caller submission,
+are suppressed until the composer has stayed quiet and non-blocking (composer
+visible, no working token, no blocking dialog) for a SUSTAINED run of consecutive
+frames, not merely one. The replay repaints those footers in bursts separated by
+brief quiet gaps, so a single quiet frame does not prove the replay finished; any
+working or blocking frame during suppression resets the run. Once the quiet run is
+reached, detection behaves exactly as it does post-readiness on a cold start.
+Explicit running evidence (a caller submission,
 a hook) releases that suppression IMMEDIATELY — a real turn has begun, so the replay
 is over by definition — and synchronizes the watcher into the running state without
 re-announcing a start; the CURRENT frame is still evaluated, so if the turn ended

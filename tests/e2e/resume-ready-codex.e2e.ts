@@ -65,7 +65,9 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
       `no status transition may follow resume readiness, saw: ${afterReady.join(",")}`,
     );
 
-    await cleanup(resumed); // tear the observe-only resume down before the drain resume
+    // STOP (not teardown) the observe-only resume: teardown removes the session dir,
+    // which the drain resume below needs. stop() leaves the resumable state intact.
+    await resumed.stop();
     resumed = undefined;
 
     // A message queued while still resuming (before ready) must DRAIN once ready — and

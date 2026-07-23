@@ -7,7 +7,7 @@ import { describe, expect, test } from "vitest";
 import { claudeScreenFactTable } from "../../src/claude/screen-table.ts";
 import { codexScreenFactTable } from "../../src/codex/screen-table.ts";
 import { type RenderedFrame, readScreenFacts } from "../../src/core/screen-facts.ts";
-import { TurnStateWatcher } from "../../src/core/turn-state.ts";
+import { type TurnEdge, TurnStateWatcher } from "../../src/core/turn-state.ts";
 
 const screen = (text: string, title = ""): RenderedFrame => ({ text, title });
 /** The watcher consumes pre-classified facts; classify with the given table. */
@@ -68,6 +68,17 @@ describe("turn state watching", () => {
     expect(watcher.observe(facts(claudeScreenFactTable, claudeIdle))).toBe("ended");
   });
 
+  // The resume replay repaints working footers in BURSTS with brief quiet gaps, so
+  // settling releases only after the composer stays quiet for this many consecutive
+  // frames (kept in sync with turn-state's `quietFramesToSettle`).
+  const quietFramesToSettle = 5;
+  // Feed a full quiet streak and return every edge produced (all must be undefined:
+  // settling emits no edges). The assertion lives in the calling test() per Biome.
+  const settleReplay = (watcher: TurnStateWatcher): Array<TurnEdge | undefined> =>
+    Array.from({ length: quietFramesToSettle }, () =>
+      watcher.observe(facts(codexScreenFactTable, codexIdle)),
+    );
+
   test("a resume arm swallows the replay's working flash — no phantom turn", () => {
     // A resumed CLI marks ready on its first composer frame, then repaints
     // the prior transcript; footer lines in that replay read as working.
@@ -76,17 +87,33 @@ describe("turn state watching", () => {
     watcher.arm(true);
     expect(watcher.observe(facts(codexScreenFactTable, codexWorking))).toBeUndefined();
     expect(watcher.observe(facts(codexScreenFactTable, codexWorking))).toBeUndefined();
-    // First QUIET composer frame settles the replay…
-    expect(watcher.observe(facts(codexScreenFactTable, codexIdle))).toBeUndefined();
+    // A run of QUIET composer frames settles the replay…
+    expect(settleReplay(watcher).every((e) => e === undefined)).toBe(true);
     // …after which a REAL turn is watched exactly like a cold start's.
     expect(watcher.observe(facts(codexScreenFactTable, codexWorking))).toBe("started");
     expect(watcher.observe(facts(codexScreenFactTable, codexIdle))).toBe("ended");
   });
 
-  test("a resume arm that opens straight onto a quiet composer settles immediately", () => {
+  test("a bursty replay — a working flash BETWEEN quiet frames resets the settle streak", () => {
+    // The real-Codex resume symptom: the replay paints working footers in bursts with
+    // 1-frame quiet gaps. A lone quiet frame must NOT release settling, or the next
+    // burst fires a phantom `started` (C-TURN-03). Only a full quiet streak releases.
     const watcher = new TurnStateWatcher();
     watcher.arm(true);
-    expect(watcher.observe(facts(codexScreenFactTable, codexIdle))).toBeUndefined();
+    // Almost a full streak, then a working flash resets it — still settling, no edge.
+    for (let i = 0; i < quietFramesToSettle - 1; i++) {
+      expect(watcher.observe(facts(codexScreenFactTable, codexIdle))).toBeUndefined();
+    }
+    expect(watcher.observe(facts(codexScreenFactTable, codexWorking))).toBeUndefined();
+    // A fresh full streak is required; it releases at the end (no phantom emitted).
+    expect(settleReplay(watcher).every((e) => e === undefined)).toBe(true);
+    expect(watcher.observe(facts(codexScreenFactTable, codexWorking))).toBe("started");
+  });
+
+  test("a resume arm still needs a full quiet streak even opening onto a quiet composer", () => {
+    const watcher = new TurnStateWatcher();
+    watcher.arm(true);
+    expect(settleReplay(watcher).every((e) => e === undefined)).toBe(true);
     expect(watcher.observe(facts(codexScreenFactTable, codexWorking))).toBe("started");
   });
 });
@@ -160,8 +187,10 @@ describe("C-TURN-04 interrupt end banners", () => {
     expect(watcher.observe(facts(claudeScreenFactTable, claudePermission))).toBeUndefined();
     // Still settling: a replayed working flash is swallowed, not a phantom start.
     expect(watcher.observe(facts(claudeScreenFactTable, claudeWorking))).toBeUndefined();
-    // Once the dialog clears to a quiet composer, settling releases normally.
-    expect(watcher.observe(facts(claudeScreenFactTable, claudeIdle))).toBeUndefined();
+    // Once the dialog clears, a FULL quiet streak releases settling normally.
+    for (let i = 0; i < 5; i++) {
+      expect(watcher.observe(facts(claudeScreenFactTable, claudeIdle))).toBeUndefined();
+    }
     expect(watcher.observe(facts(claudeScreenFactTable, claudeWorking))).toBe("started");
   });
 });
