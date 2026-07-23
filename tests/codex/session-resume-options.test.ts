@@ -75,6 +75,26 @@ describe("CodexSession resume options", () => {
     expect(resumed.status).not.toBe("ready"); // waits for the dialog to clear
   });
 
+  test("C-TURN-03 a turn queued during resume ends without Stop and the next message drains", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startCodex({ cwd });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, sessionStart(cwd, "codex-session-1"));
+    await session.stop();
+    const resumed = await resumeCodex({ cwd, elwoodSessionId: session.elwoodSessionId });
+    const first = resumed.sendMessage("queued during resume");
+    ptys[1]!.emitData("\u001b[2J\u001b[H› ");
+    await first;
+    expect(resumed.status).toBe("running");
+    // The queued turn paints before a quiet replay-settling frame. No Stop hook
+    // fires: rendered state alone must retain the end edge and reopen the queue.
+    ptys[1]!.emitData("• Working (3s • esc to interrupt)\r\n› ");
+    ptys[1]!.emitData("\u001b[2J\u001b[H› ");
+    await expect.poll(() => resumed.status).toBe("ready");
+    await resumed.sendMessage("second message drains");
+    expect(ptys[1]!.writes.join("")).toContain("second message drains");
+  });
+
   test("C-API-29 resume forwards sandbox and approvalPolicy into the launched command", async () => {
     const cwd = realpathSync(tempDir());
     installFakes();

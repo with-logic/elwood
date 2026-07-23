@@ -4,7 +4,7 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest";
-import { startClaude } from "../../src/index.ts";
+import { resumeClaude, startClaude } from "../../src/index.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -18,10 +18,33 @@ const instructionsLoaded = (cwd: string) => ({
   load_reason: "session_start",
 });
 
+const sessionStart = (cwd: string) => ({
+  hook_event_name: "SessionStart",
+  session_id: "claude-1",
+  cwd,
+  source: "startup",
+});
+
 const workingFooter = "❯ \r\n  ⏵⏵ bypass permissions · esc to interrupt · ← for agents";
 const idleFooter = "❯ \r\n  ⏵⏵ bypass permissions · ← for agents";
 
 describe("ClaudeSession turn boundaries", () => {
+  test("C-API-28 a resumed permission-dialog caret cannot release readiness", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, sessionStart(cwd));
+    await session.stop();
+    const resumed = await resumeClaude({ cwd, elwoodSessionId: session.elwoodSessionId });
+    ptys[1]!.emitData(
+      "\u001b[2J\u001b[HDo you want to run this tool?\r\n❯ 1. Yes\r\n  2. No\r\nEsc to cancel",
+    );
+    await resumed.terminal.settled();
+    expect(resumed.status).not.toBe("ready");
+    ptys[1]!.emitData(`\u001b[2J\u001b[H${idleFooter}`);
+    await expect.poll(() => resumed.status).toBe("ready");
+  });
+
   test("C-TURN-02 an interrupted turn transitions to ready without a Stop hook", async () => {
     const cwd = tempDir();
     installFakes();
