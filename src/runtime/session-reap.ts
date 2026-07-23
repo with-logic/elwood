@@ -31,7 +31,7 @@ export class SessionReapPolicy {
     this.reaper = new SessionReaper(leaderPid);
   }
 
-  /** Contain a native-exit reap failure as a durable warning; never throw. */
+  /** Contain a native-exit reap failure as a live warning to emit; never throw. */
   bestEffort(): ElwoodWarningEvent | undefined {
     try {
       this.reaper.reap();

@@ -138,11 +138,10 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     });
   }
   // Surface a mid-session login-expiry banner once (C-CLAUDE-18): gated on prior
-  // readiness (startup handles it fatally), edge-detected + key-deduped. FULLY
-  // non-throwing — runs in the frame callback's detached continuation, so a
-  // write/listener failure can't become an unhandled rejection or skip
-  // `terminal:data`. The watcher commits only after a durable record, so a
-  // transient failure retries on a later frame.
+  // readiness (startup handles it fatally), edge-detected. FULLY non-throwing —
+  // runs in the frame callback's detached continuation, so a listener failure
+  // can't become an unhandled rejection or skip `terminal:data`. The edge advances
+  // only after the live warning is emitted, so a transient throw retries next frame.
   noteLoginExpiry(screenText: string): void {
     if (!(this.hasBeenReady && this.loginExpiredWatcher.peek(screenText))) return;
     try {

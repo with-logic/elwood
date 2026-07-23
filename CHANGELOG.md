@@ -19,9 +19,11 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
   across time, and never accumulated into a running count. Consumers must collect
   warnings off the `warning` event (a late subscriber no longer sees a replayed
   snapshot). Transcript drop / read-error warnings lose their `droppedCount` /
-  `droppedBytes` / `errorCount` fields (each lost record or contained read error is
-  one live, content-free warning, keeping its `cause` / `lastErrorCode` label); the
-  `initial_ready_fallback` warning loses its `reason` field. This closes the
+  `droppedBytes` / `errorCount` fields (a content-free live warning keeping its
+  `cause` / `lastErrorCode` label); drops are coalesced per scan pass — many
+  malformed records in one bounded scan surface at most one warning per
+  `(path, cause)` rather than one per record. The `initial_ready_fallback` warning
+  loses its `reason` field. This closes the
   false-unread-on-resume reports at the source: a resumed session no longer replays
   a prior session's stale warnings as if they were live. (C-API-14, C-CLAUDE-15,
   C-API-42)

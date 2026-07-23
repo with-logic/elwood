@@ -22,5 +22,3 @@ export type ElwoodSessionStatus = (typeof allStatusList)[number];
 export const terminalStatuses: ReadonlySet<ElwoodSessionStatus> = new Set(terminalStatusList);
 /** Statuses of a started, not-yet-terminated interactive session. */
 export const liveStatuses: ReadonlySet<ElwoodSessionStatus> = new Set(liveStatusList);
-/** Every valid persisted status, for state-record validation. */
-export const allStatuses: ReadonlySet<ElwoodSessionStatus> = new Set(allStatusList);

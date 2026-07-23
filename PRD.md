@@ -274,9 +274,8 @@ declare function startClaude(options: StartClaudeOptions): Promise<ClaudeSession
 ```
 
 `cwd` is the working directory where Claude should start. `stateDir` overrides
-the default Elwood state directory. `name` is a launch-time convenience: for
-Claude it is forwarded to Claude's documented `--name` flag. It is not persisted
-in Elwood state (§8.2).
+the default Elwood state directory. `name` is a launch-time convenience forwarded
+to Claude's documented `--name` flag; it is not persisted in Elwood state (§8.2).
 `hooks` registers
 launch-time handlers before Claude starts. When `autoupdate` is true, Elwood
 runs `claude update` from the user's login shell before spawning Claude and
@@ -1154,7 +1153,6 @@ valid response shape by hook event name.
 type StartCodexOptions = {
   readonly cwd: string;
   readonly stateDir?: string;
-  readonly name?: string;
   readonly initialSize?: TerminalSize;
   readonly hooks?: CodexHookHandlers;
   readonly persona?: string;
@@ -1510,9 +1508,13 @@ emission, the live terminal-status transition, or the process-tree reap (C-LIFE-
 flush runs behind an error boundary and lifecycle completion is guaranteed. Like
 every warning these carry no raw conversation content: only a bounded `cause` or
 `phase` label, an error code or short reason, and the transcript path — no counts
-and no byte magnitude. They are live-only: each observation emits a `warning` +
-`activity` event and is never persisted, deduplicated across time, or replayed to
-a late subscriber (§5.7, C-CLAUDE-15).
+and no byte magnitude. They are live-only: emitted as a `warning` + `activity`
+event, never persisted, deduplicated across time, or replayed to a late
+subscriber. To keep telemetry off the hot read path, drops are COALESCED per scan
+pass: many malformed records in one bounded scan surface at most one
+`transcript_records_dropped` warning per `(transcript path, cause)` for that pass,
+rather than one synchronous fan-out per record — so pathological input cannot stall
+the event loop with millions of listener calls (§5.7, C-CLAUDE-15).
 
 The `reap_failed` warning is emitted when the best-effort survivor reap on an
 unsolicited PTY exit fails (for example the group SIGKILL returns `EPERM`): the
@@ -2047,12 +2049,13 @@ direct the user to re-run `/login` (`Login expired`, `Session expired`, or
 
 Once the live resources exist (hook bridge, PTY, terminal, and transcript
 watcher), every remaining startup step runs behind a single cleanup boundary: the
-early-warning flush, PTY-exit registration, the readiness/authentication
-assertion, and the startup-usable evidence. If ANY of them fails — including a
-disk or permission error while flushing buffered diagnostics — Elwood tears down
-the now-live PTY, hook bridge, terminal, and transcript watcher before rejecting,
-so a failed `startClaude`/`startCodex` never leaks a live process, IPC endpoint,
-or file watcher. Tearing down the PTY routes through the SAME one-shot
+flush of any transcript diagnostics buffered before the session sink existed
+(emitted as live warnings), PTY-exit registration, the readiness/authentication
+assertion, and the startup-usable evidence. If ANY of them fails, Elwood tears
+down the now-live PTY, hook bridge, terminal, and transcript watcher before
+rejecting, so a failed `startClaude`/`startCodex` never leaks a live process, IPC
+endpoint, or file watcher. (The one-shot version/preflight warning is NOT part of
+this boundary — it is scheduled for delivery AFTER start resolves, per C-API-14.) Tearing down the PTY routes through the SAME one-shot
 process-group reap the normal exit path uses (§9.4, C-LIFE-10): the PTY is
 signaled, its exit is awaited within a bounded window, and the leader's process
 group is SIGKILLed on every path — even if the PTY signal throws — so a

@@ -32,7 +32,6 @@ export type CodexApprovalPolicy = "untrusted" | "on-request" | "never";
 export type StartCodexOptions = {
   readonly cwd: string;
   readonly stateDir?: string;
-  readonly name?: string;
   readonly initialSize?: TerminalSize;
   readonly hooks?: CodexHookHandlers;
   readonly persona?: string;

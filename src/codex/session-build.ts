@@ -66,6 +66,9 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   try {
     await bridge.start();
   } catch (error) {
+    // Best-effort shut down a partially-started bridge so its listener/socket is not
+    // leaked; contained so the original bridge-start error is the one that rejects.
+    await bridge.stop().catch(() => undefined);
     throw elwoodError("hook_bridge_failed", "Could not start Elwood hook bridge.", {
       ...causeDetails(error),
       socketPath: runtime.socketPath,

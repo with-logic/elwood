@@ -46,18 +46,25 @@ function socketHomesIn(dir: string): string[] {
 }
 
 describe("§9.1 a failed Claude start does not leak the socket home", () => {
-  test("a bridge-start failure removes the socket home", async () => {
+  test("a bridge-start failure removes the socket home AND shuts down the partial bridge", async () => {
     const cwd = tempDir(); // created under the REAL tmp, before we isolate
     installFakes();
+    let stops = 0;
     setHookBridgeFactoryForTests(() => ({
       start: () => Promise.reject(new Error("bridge failed")),
-      stop: () => Promise.resolve(),
+      // stop() ALSO rejects: the best-effort shutdown must be contained so the
+      // ORIGINAL bridge-start error is the one that surfaces, not this secondary one.
+      stop: () => {
+        stops += 1;
+        return Promise.reject(new Error("stop failed too"));
+      },
     }));
     const priv = isolateTmp();
     await expect(startClaude({ cwd })).rejects.toMatchObject({
-      code: "hook_bridge_failed",
+      code: "hook_bridge_failed", // NOT "stop failed too" — the secondary error is contained
     });
     expect(socketHomesIn(priv)).toEqual([]);
+    expect(stops).toBe(1); // the partially-started bridge's listener is not leaked
   });
 
   test("a PTY-start failure removes the socket home", async () => {

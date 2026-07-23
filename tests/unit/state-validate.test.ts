@@ -26,6 +26,40 @@ describe("session record validation", () => {
     expect(validateSessionRecord(base, id)).not.toBeNull();
   });
 
+  test("§8.2 strips legacy fields — a validated record carries ONLY the minimal shape", () => {
+    // A schema-v1 record written by an older Elwood carries removed fields (a stale
+    // bridge token / IPC credential, paths, warnings, metadata, terminal size) plus
+    // adapter-state extras (a `name`). validateSessionRecord must return a FRESH
+    // canonical record with none of them, so the next write can never round-trip a
+    // retired credential back onto disk.
+    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const legacy = {
+      ...jsonRecord(root),
+      bridgeToken: "stale-secret",
+      paths: { sessionDir: "/old", socketPath: "/old/h.sock" },
+      warnings: [{ code: "version_unparseable" }],
+      metadata: { anything: 1 },
+      terminalSize: { cols: 80, rows: 24 },
+      status: "ready",
+      createdAt: "2020-01-01T00:00:00.000Z",
+      claude: { resumeId: "c1", name: "old-name", launch: {} },
+      codex: {},
+    };
+    const validated = validateSessionRecord(legacy, id);
+    expect(validated).not.toBeNull();
+    expect(Object.keys(validated ?? {}).sort()).toEqual([
+      "adapter",
+      "claude",
+      "codex",
+      "cwd",
+      "elwoodSessionId",
+      "schemaVersion",
+    ]);
+    // The retained adapter state carries only resumeId + launch — no legacy `name`.
+    expect(Object.keys(validated?.claude ?? {}).sort()).toEqual(["launch", "resumeId"]);
+    expect(JSON.stringify(validated)).not.toContain("stale-secret");
+  });
+
   test("C-STATE-13 validates the persisted launch posture shape", () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
     const base = jsonRecord(root);

@@ -9,13 +9,25 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest";
+import type { ClaudeHookEventFor } from "../../src/index.ts";
 import { startClaude } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
+import { asScreen } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 30));
+
+const instructionsLoaded = (cwd: string): ClaudeHookEventFor<"InstructionsLoaded"> => ({
+  hook_event_name: "InstructionsLoaded",
+  session_id: "claude-1",
+  cwd,
+  file_path: `${cwd}/CLAUDE.md`,
+  memory_type: "Project",
+  load_reason: "session_start",
+});
+const EXPIRED = asScreen("Login expired\n Please run /login");
 
 describe("C-API-37 Claude frame-path warning containment", () => {
   test("a throwing warning listener does not prevent readiness or terminal:data", async () => {
@@ -70,18 +82,24 @@ describe("C-API-14 Claude preflight warning is observable on the returned sessio
 });
 
 describe("C-API-14 Claude warnings are live-only (no late replay)", () => {
-  test("a late subscriber gets no prior warning, then only the next one", async () => {
+  test("a late subscriber gets no prior warning, then ONLY the next live one", async () => {
     const cwd = tempDir();
     installFakes();
     setCommandRunnerForTests(() => ({ status: 0, stdout: "unknown build", stderr: "" }));
     // Start WITHOUT a warning subscriber; the preflight warning fires into no listener.
     const session = await startClaude({ cwd });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd)); // reach ready
     ptys[0]!.emitData("first frame"); // drive the frame; preflight macrotask fires unheard
     await flush();
-    // Attach LATE: the prior preflight warning must NOT be replayed.
+    // Attach LATE: the prior preflight warning must NOT be replayed to this subscriber.
     const codes: string[] = [];
     session.on("warning", (event) => codes.push(event.code));
     await flush();
     expect(codes).toEqual([]); // no replay of the version_unparseable warning
+    // POSITIVE CONTROL: a NEW live warning after subscription MUST still arrive — proving
+    // the empty result above is "no replay", not "delivery is broken".
+    ptys[0]!.emitData(EXPIRED); // a login-expiry banner emits a fresh live warning
+    await expect.poll(() => codes).toContain("login_expired");
+    expect(codes).not.toContain("version_unparseable"); // still never the replayed one
   });
 });

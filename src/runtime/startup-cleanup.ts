@@ -75,8 +75,8 @@ async function reapPtyGroup(pty: PtyProcess, timeouts: StartupTerminationTimeout
 
 /**
  * Runs the post-session-construction startup steps behind ONE cleanup boundary
- * (PRD §9.1, §9.4): if `region` rejects — a disk error in a warning flush, a failed
- * startup assertion, anything — the now-live PTY, bridge, terminal, and any watcher
+ * (PRD §9.1, §9.4): if `region` rejects — a failed startup assertion, a PTY write
+ * fault, anything — the now-live PTY, bridge, terminal, and any watcher
  * are torn down via `cleanupStartupResources` before the original error rethrows, so
  * a rejected `startClaude`/`startCodex` never leaks live resources.
  */
