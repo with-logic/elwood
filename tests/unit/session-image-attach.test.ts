@@ -1,10 +1,12 @@
 /**
- * Coverage for enqueueSubmission (PRD §5.3, C-API-44): the no-images fast path,
- * synchronous FIFO enqueue with validation + materialization at DISPATCH (before
- * any composer input), and temp-file cleanup after attach success/failure.
+ * Coverage for enqueueSubmission (PRD §5.3, C-API-44): the no-images fast path, a
+ * synchronous byte snapshot at the public boundary (so a later caller mutation is
+ * inert and an invalid input rejects before it is queued), synchronous FIFO
+ * enqueue, path-resolution + materialization at dispatch, and temp-file cleanup
+ * after attach success/failure.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { AttachDriver } from "../../src/runtime/session-image-attach.ts";
 import { enqueueSubmission } from "../../src/runtime/session-image-attach.ts";
@@ -33,17 +35,34 @@ describe("enqueueSubmission (C-API-44)", () => {
     expect(calls).toBe(1);
   });
 
-  test("C-API-44 enqueues synchronously (FIFO) and rejects an invalid image at dispatch", async () => {
+  test("C-API-44 an invalid image rejects SYNCHRONOUSLY, before it is ever queued", async () => {
     let queued = false;
-    // The op IS queued (in call order, preserving FIFO); validation runs inside
-    // the queued task at dispatch and rejects the call there.
+    // The byte snapshot runs at the public boundary (before enqueue), so a
+    // malformed input (empty bytes) rejects without ever occupying a queue slot —
+    // it cannot wedge the queue and the send closure is never invoked.
     await expect(
       enqueueSubmission([{ data: new Uint8Array(0), format: "png" }], noopDriver, (attach) => {
         queued = true;
         return runAttach(attach);
       }),
     ).rejects.toMatchObject({ code: "invalid_image" });
-    expect(queued).toBe(true);
+    expect(queued).toBe(false);
+  });
+
+  test("C-API-44 byte buffers are cloned at the call, so a later caller mutation is inert", async () => {
+    const bytes = Uint8Array.from(PNG);
+    let attachedContent: Buffer | undefined;
+    const driver: AttachDriver = (paths) => {
+      attachedContent = readFileSync(paths[0] as string); // the materialized temp file
+      return Promise.resolve();
+    };
+    // The snapshot (byte clone) runs synchronously inside enqueueSubmission, so a
+    // mutation right after the call cannot reach the temp file the attach reads.
+    const done = enqueueSubmission([{ data: bytes, format: "png" }], driver, runAttach);
+    bytes[0] = 0; // mutate the caller's buffer AFTER the synchronous snapshot
+    await done;
+    expect(attachedContent).toEqual(Buffer.from(PNG)); // attached the ORIGINAL bytes
+    expect(bytes[0]).toBe(0); // the caller's own buffer did change — the clone did not
   });
 
   test("C-API-44 an image submission does not await validation before enqueuing", async () => {

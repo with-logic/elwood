@@ -7,7 +7,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
-import { materializeImages } from "../../src/core/images/resolve.ts";
+import { materializeImages } from "../../src/core/images/materialize.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -72,7 +72,7 @@ describe("materializeImages (C-API-44)", () => {
         },
       };
     });
-    const { materializeImages: mocked } = await import("../../src/core/images/resolve.ts");
+    const { materializeImages: mocked } = await import("../../src/core/images/materialize.ts");
     // A raw platform error is wrapped as the stable typed image_attach_failed,
     // with the underlying reason preserved as a bounded cause (C-ERR-01).
     await expect(mocked([{ data: PNG, format: "png" }])).rejects.toMatchObject({
@@ -90,7 +90,7 @@ describe("materializeImages (C-API-44)", () => {
       const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
       return { ...actual, writeFile: () => Promise.reject("disk-gone") };
     });
-    const { materializeImages: mocked } = await import("../../src/core/images/resolve.ts");
+    const { materializeImages: mocked } = await import("../../src/core/images/materialize.ts");
     await expect(mocked([{ data: PNG, format: "png" }])).rejects.toMatchObject({
       code: "image_attach_failed",
       details: { cause: "disk-gone" },
@@ -109,7 +109,7 @@ describe("materializeImages (C-API-44)", () => {
         rm: () => Promise.reject(new Error("rm failed")), // cleanup itself throws
       };
     });
-    const { materializeImages: mocked } = await import("../../src/core/images/resolve.ts");
+    const { materializeImages: mocked } = await import("../../src/core/images/materialize.ts");
     // The rm rejection is swallowed; the typed materialize failure still surfaces.
     await expect(mocked([{ data: PNG, format: "png" }])).rejects.toMatchObject({
       code: "image_attach_failed",

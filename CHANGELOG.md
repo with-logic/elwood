@@ -89,6 +89,17 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
   count toward the same aggregate byte ceiling as byte inputs, and an entry must be
   exactly `{path}` or `{data, format}` (extra keys are rejected). (C-API-44)
 
+- **A `{data}` image buffer is now cloned at the send call, not at queue dispatch.**
+  Previously the defensive clone ran inside the queued op, so a caller that reused
+  or mutated its `Uint8Array` between the `sendMessage`/`sendPrompt`/`sendGuidance`
+  call and the (possibly much later) dispatch could change what got attached — the
+  opposite of the documented guarantee. The clone now happens synchronously at the
+  call. A knock-on: a malformed or over-limit `images` input now rejects
+  synchronously *before* the submission is queued (rather than at dispatch), so it
+  never occupies a queue slot; the promise still rejects with `invalid_image`.
+  Path readability/size checks still run at dispatch (a file made unreadable after
+  the call still rejects). (C-API-44)
+
 - Post-exit `stop()`/`kill()` are documented correctly: they do not re-signal the
   PTY but still confirm/retry the process-group reap and may reject with
   `termination_failed` (they are not silent no-ops).

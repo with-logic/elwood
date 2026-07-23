@@ -1,14 +1,21 @@
 /**
  * Builds the per-submission image-attach task handed to the control queue. The
- * submission is enqueued SYNCHRONOUSLY in call order (preserving FIFO). Inside
- * the queued task, at dispatch, validation narrows + defensively copies the
- * inputs (so later caller mutation is inert), then byte materialization and the
- * adapter attach run — so a bad input rejects the op (never wedging the queue)
- * and pending submissions accumulate no temp-disk usage. Implements PRD §5.3
- * (C-API-44).
+ * inputs are SNAPSHOTTED synchronously at the public boundary (byte buffers cloned
+ * at the call, paths absolutized), so a caller who mutates its buffer after the
+ * call cannot change what is attached — the clone does not wait for queue dispatch.
+ * The submission is then enqueued synchronously in call order (preserving FIFO).
+ * Inside the queued task, at dispatch, the async pass (path readability/size) runs,
+ * then byte materialization and the adapter attach — so a bad input rejects the op
+ * (never wedging the queue) and pending submissions accumulate no temp-disk usage.
+ * Implements PRD §5.3 (C-API-44).
  */
 
-import { materializeImages, validateImages } from "../core/images/index.ts";
+import {
+  type ImageSnapshot,
+  materializeImages,
+  resolvePaths,
+  snapshotImages,
+} from "../core/images/index.ts";
 import type { ImageInput } from "../core/images/types.ts";
 
 /** A text-submission kind carried by the control queue. */
@@ -25,8 +32,12 @@ type QueueSend = (attach?: AttachTask) => Promise<void>;
 
 /**
  * Queues a text submission, optionally attaching `images`. With no images it is a
- * plain `send()`; the queue call happens synchronously so a later plain
- * submission cannot overtake an image submission in FIFO order (C-API-44).
+ * plain `send()`; the queue call happens synchronously so a later plain submission
+ * cannot overtake an image submission in FIFO order. With images, the byte buffers
+ * are cloned SYNCHRONOUSLY here (before the op is queued), so a caller that mutates
+ * its buffer after the call cannot change what is attached. A synchronous snapshot
+ * failure (bad shape, over-limit bytes) surfaces as a REJECTED promise, never a
+ * synchronous throw out of the send API (C-API-44).
  */
 export function enqueueSubmission(
   images: readonly ImageInput[] | undefined,
@@ -34,17 +45,23 @@ export function enqueueSubmission(
   send: QueueSend,
 ): Promise<void> {
   if (!images || images.length === 0) return send();
-  return send((signal) => runAttach(images, driver, signal));
+  let snapshot: ImageSnapshot;
+  try {
+    snapshot = snapshotImages(images); // clone bytes at the call, not at dispatch
+  } catch (error) {
+    return Promise.reject(error);
+  }
+  return send((signal) => runAttach(snapshot, driver, signal));
 }
 
-/** Validate + snapshot → materialize → drive the adapter attach → clean up temp files. */
+/** Resolve paths (async) → materialize → drive the adapter attach → clean up temp files. */
 async function runAttach(
-  images: readonly ImageInput[],
+  snapshot: ImageSnapshot,
   driver: AttachDriver,
   signal: AbortSignal,
 ): Promise<void> {
-  const validated = await validateImages(images);
-  const materialized = await materializeImages(validated);
+  const resolved = await resolvePaths(snapshot);
+  const materialized = await materializeImages(resolved);
   try {
     await driver(materialized.paths, signal);
   } finally {

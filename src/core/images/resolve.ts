@@ -1,37 +1,39 @@
 /**
- * Validates + snapshots ImageInput values, then materializes them to readable
- * absolute file paths. Validation narrows from `unknown` (JS callers can pass
- * anything), enforces the count/size/format/readability limits, and returns a
- * defensive COPY (byte buffers cloned, paths resolved) so later caller mutation
- * cannot change what is attached. Materialization is async and deferred to
- * queue-front. Implements PRD §5.3 (C-API-44).
+ * Validates + snapshots ImageInput values into a canonical copied form.
+ * Snapshotting is SYNCHRONOUS (narrows from `unknown`, enforces count/format/
+ * byte-size limits, CLONES byte buffers, absolutizes paths) so a caller who calls
+ * a send API and then mutates its buffer cannot change what is attached — the clone
+ * happens at the call, not later at queue dispatch. The async pass (filesystem
+ * readability + path sizes) is deferred to queue-front. Materialization to temp
+ * files lives in `materialize.ts`. Implements PRD §5.3 (C-API-44).
  */
 
-import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { access, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { access, stat } from "node:fs/promises";
+import { resolve } from "node:path";
 import { elwoodError } from "../errors.ts";
 import { type ImageFormat, type ImageInput, imageFormatExtension, imageLimits } from "./types.ts";
 
-/** A materialized set of image paths plus the cleanup for any temp files created. */
-export type MaterializedImages = {
-  readonly paths: readonly string[];
-  /** Best-effort removal of temp files; retryable (only clears on success). */
-  readonly cleanup: () => Promise<void>;
+/**
+ * A synchronous snapshot: the canonical copied inputs plus the running byte total
+ * already accounted from BYTE inputs (path sizes are added later, async).
+ */
+export type ImageSnapshot = {
+  readonly snapshot: readonly ImageInput[];
+  /** Bytes already counted toward the aggregate ceiling from byte inputs. */
+  readonly byteTotal: number;
 };
 
 /**
- * Validates, bounds, and defensively COPIES every input WITHOUT writing anything.
- * Narrows each entry from `unknown` so a malformed JS input rejects with
- * `invalid_image` (never a raw TypeError); clones byte buffers and resolves paths
- * to absolute form so a later mutation/`cwd` change cannot alter what is attached
- * (C-API-44). Returns the canonical snapshot to hand to `materializeImages`.
+ * SYNCHRONOUSLY validates, bounds, and defensively COPIES every input without any
+ * filesystem access. Narrows each entry from `unknown` so a malformed JS input
+ * rejects with `invalid_image` (never a raw TypeError); clones byte buffers and
+ * absolutizes paths so a later mutation/`cwd` change cannot alter what is attached
+ * (C-API-44). Because this runs at the public send boundary (before the op is
+ * queued), the byte clone captures the caller's buffer AT THE CALL — a mutation
+ * after the call is inert. The returned snapshot is handed to `resolvePaths`.
  */
-export async function validateImages(
-  images: readonly ImageInput[],
-): Promise<readonly ImageInput[]> {
+export function snapshotImages(images: readonly ImageInput[]): ImageSnapshot {
   if (!Array.isArray(images)) throw elwoodError("invalid_image", "images must be an array.");
   if (images.length > imageLimits.maxCount)
     throw elwoodError(
@@ -39,20 +41,48 @@ export async function validateImages(
       `Too many images: ${images.length} > ${imageLimits.maxCount}`,
     );
   const snapshot: ImageInput[] = [];
-  let total = 0;
+  let byteTotal = 0;
   for (const entry of images as readonly unknown[]) {
-    const [image, bytes] = await validateOne(entry, total);
+    const [image, bytes] = snapshotOne(entry, byteTotal);
     snapshot.push(image);
-    total += bytes;
+    byteTotal += bytes;
   }
-  return snapshot;
+  return { snapshot, byteTotal };
+}
+
+/**
+ * Async completion of validation: for every PATH entry, stat/readability/size are
+ * checked against the SAME aggregate ceiling the byte inputs already consumed. Byte
+ * entries need no filesystem work, so this is a no-op for a byte-only snapshot.
+ * Runs at queue dispatch (a stat is I/O); byte cloning already happened in
+ * `snapshotImages` at the call, so nothing here depends on caller-held state.
+ */
+export async function resolvePaths(snap: ImageSnapshot): Promise<readonly ImageInput[]> {
+  let total = snap.byteTotal;
+  for (const image of snap.snapshot) {
+    if (image.path === undefined) continue;
+    total += await validatePath(image.path, total);
+  }
+  return snap.snapshot;
+}
+
+/**
+ * Validates, bounds, snapshots, then resolves paths — the whole pipeline. A
+ * synchronous snapshot failure surfaces as a rejected promise (not a sync throw)
+ * so every failure mode reaches callers through one `Promise` channel.
+ */
+export function validateImages(images: readonly ImageInput[]): Promise<readonly ImageInput[]> {
+  let snap: ImageSnapshot;
+  try {
+    snap = snapshotImages(images);
+  } catch (error) {
+    return Promise.reject(error);
+  }
+  return resolvePaths(snap);
 }
 
 /** Narrows one entry (exactly one of path/data), returns its copy plus byte size. */
-async function validateOne(
-  entry: unknown,
-  priorTotal: number,
-): Promise<readonly [ImageInput, number]> {
+function snapshotOne(entry: unknown, priorTotal: number): readonly [ImageInput, number] {
   const r = entry as { data?: unknown; format?: unknown; path?: unknown } | null;
   const hasData = !!r && r.data !== undefined;
   const hasPath = !!r && r.path !== undefined;
@@ -67,7 +97,12 @@ async function validateOne(
   if (hasData) return validateBytes((r as { data: unknown }).data, r?.format, priorTotal);
   if (typeof r?.path !== "string")
     throw elwoodError("invalid_image", "Image path must be a string.");
-  return [{ path: resolve(r.path) }, await validatePath(r.path, priorTotal)];
+  // Reject an empty/blank path BEFORE `resolve()` — otherwise `resolve("")` yields
+  // the cwd and the later fs check would misreport it as "not a file" (C-API-44).
+  if (r.path.trim() === "") throw elwoodError("invalid_image", "Image path is empty.");
+  // Path size/readability are checked later (async); absolutize now so the snapshot
+  // pins the file a later `cwd` change cannot move. Byte total is unchanged here.
+  return [{ path: resolve(r.path) }, 0];
 }
 
 /** Rejects an image entry that carries own keys outside its variant's exact shape. */
@@ -102,7 +137,6 @@ function validateBytes(
 }
 
 async function validatePath(path: string, priorTotal: number): Promise<number> {
-  if (path.trim() === "") throw elwoodError("invalid_image", "Image path is empty.");
   let size: number;
   try {
     const info = await stat(path);
@@ -123,40 +157,4 @@ async function validatePath(path: string, priorTotal: number): Promise<number> {
       `Images exceed the ${imageLimits.maxBytesTotal}-byte total.`,
     );
   return size;
-}
-
-/**
- * Materializes byte inputs (already validated/snapshotted) to one temp dir and
- * returns every absolute path. A materialize failure (e.g. ENOSPC) removes the
- * temp dir, then rethrows as the stable typed `image_attach_failed` — never a raw
- * platform error out of the public send APIs (C-ERR-01/C-API-44).
- */
-export async function materializeImages(
-  images: readonly ImageInput[],
-): Promise<MaterializedImages> {
-  let dir: string | undefined;
-  const cleanup = async () => {
-    if (!dir) return;
-    await rm(dir, { recursive: true, force: true });
-    dir = undefined; // cleared only on success → a transient failure stays retryable
-  };
-  try {
-    const paths: string[] = [];
-    for (const image of images) {
-      if (image.path !== undefined) {
-        paths.push(image.path);
-        continue;
-      }
-      dir ??= await mkdtemp(join(tmpdir(), "elwood-image-"));
-      const file = join(dir, `${randomUUID()}.${imageFormatExtension[image.format]}`);
-      await writeFile(file, image.data);
-      paths.push(file);
-    }
-    return { paths, cleanup };
-  } catch (error) {
-    await cleanup().catch(() => undefined);
-    throw elwoodError("image_attach_failed", "Could not materialize an image for attachment.", {
-      cause: error instanceof Error ? error.message : String(error),
-    });
-  }
 }
