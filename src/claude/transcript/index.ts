@@ -68,7 +68,12 @@ export class ClaudeTranscriptWatcher {
       // A turn larger than the recovery window surfaces its out-of-window records as
       // a bounded, content-free backlog loss so the gap is not silent (§5.4).
       if (tail?.truncated && tail.droppedBytes > 0)
-        this.drops.recordBytes(path, tail.droppedBytes, 1, "unread_backlog");
+        this.drops.recordBytes({
+          path,
+          bytes: tail.droppedBytes,
+          incidents: 1,
+          cause: "unread_backlog",
+        });
     }
     this.drops.flush(); // one persist per observe, not one per recovered drop
     this.ensurePolling();

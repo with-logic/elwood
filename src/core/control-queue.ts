@@ -181,7 +181,7 @@ export class ControlQueue {
       try {
         this.beginSubmission(traits);
       } catch {
-        // isolated: staged images proceed to submit
+        // Isolated: images are already staged, so submit the text rather than strand it.
       }
     }
     await this.submit(operation.input, traits.submitMode, signal);

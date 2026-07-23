@@ -49,6 +49,20 @@ export type TranscriptReadErrorNotice = {
 /** Prior running totals recovered from a persisted snapshot when a watcher resumes. */
 export type DropSeed = { readonly droppedCount: number; readonly droppedBytes: number };
 
+/**
+ * One accounted loss observation. A NAMED object (not positional args): `bytes` and
+ * `incidents` are both `number`, so passing them positionally would let a swap
+ * compile and silently corrupt the persisted running totals.
+ */
+export type DropIncident = {
+  readonly path: string;
+  /** Bytes of the dropped data folded into this observation (magnitude, not content). */
+  readonly bytes: number;
+  /** Loss incidents this observation adds (each record/backlog is exactly one). */
+  readonly incidents: number;
+  readonly cause: DropCause;
+};
+
 /** Tracks lost committed data for one watcher and reports the running aggregate. */
 export class DropTracker {
   private count: number;
@@ -79,7 +93,12 @@ export class DropTracker {
 
   /** Account one unparseable committed record (one loss incident); flushed later. */
   record(path: string, line: string): void {
-    this.recordBytes(path, Buffer.byteLength(line, "utf8"), 1, "unparseable");
+    this.recordBytes({
+      path,
+      bytes: Buffer.byteLength(line, "utf8"),
+      incidents: 1,
+      cause: "unparseable",
+    });
   }
 
   // Account `incidents` loss incidents contributing `bytes` under `cause` (each
@@ -87,10 +106,10 @@ export class DropTracker {
   // incident — never a record count, which is unknowable for a backlog). This only
   // advances the IN-MEMORY running count and marks the pending observation dirty;
   // it never touches the sink, so N incidents in one chunk cause 0 persists here —
-  // the batched `flush()` (≤once per slice) is the sole persistence trigger. Both
-  // `incidents` and `cause` are explicit (no defaults) so every call site names the
-  // cardinality and cause it means, never inheriting a silent wrong default.
-  recordBytes(path: string, bytes: number, incidents: number, cause: DropCause): void {
+  // the batched `flush()` (≤once per slice) is the sole persistence trigger. The
+  // args are a NAMED object (not positional): `bytes` and `incidents` are both
+  // numbers, so a positional swap would silently corrupt persisted diagnostics.
+  recordBytes({ path, bytes, incidents, cause }: DropIncident): void {
     this.count += incidents;
     this.droppedBytes += bytes;
     this.pendingPath = path;

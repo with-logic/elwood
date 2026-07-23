@@ -71,7 +71,7 @@ describe("C-CLAUDE-15 transcript diagnostic trackers", () => {
     // OWN cause; the flushed notice carries that cause and the byte magnitude.
     const notices: TranscriptDropNotice[] = [];
     const tracker = new DropTracker("s1", (n) => notices.push(n));
-    tracker.recordBytes("/p", 4096, 1, "unread_backlog");
+    tracker.recordBytes({ path: "/p", bytes: 4096, incidents: 1, cause: "unread_backlog" });
     tracker.flush();
     expect(notices).toEqual([
       {
@@ -90,7 +90,7 @@ describe("C-CLAUDE-15 transcript diagnostic trackers", () => {
     const notices: TranscriptDropNotice[] = [];
     const tracker = new DropTracker("s1", (n) => notices.push(n));
     tracker.record("/p", "{ bad }"); // cause unparseable, +1 record
-    tracker.recordBytes("/p", 500, 1, "unread_backlog"); // latest cause wins
+    tracker.recordBytes({ path: "/p", bytes: 500, incidents: 1, cause: "unread_backlog" }); // latest cause wins
     tracker.flush();
     expect(notices).toEqual([
       {
@@ -111,7 +111,7 @@ describe("C-CLAUDE-15 transcript diagnostic trackers", () => {
     const notices: TranscriptDropNotice[] = [];
     const tracker = new DropTracker("s1", (n) => notices.push(n));
     for (let i = 0; i < 3; i++) tracker.record("/p", "{ bad }"); // 3 unparseable incidents
-    tracker.recordBytes("/p", 9000, 1, "unread_backlog"); // 1 backlog incident
+    tracker.recordBytes({ path: "/p", bytes: 9000, incidents: 1, cause: "unread_backlog" }); // 1 backlog incident
     tracker.flush();
     expect(notices).toHaveLength(1);
     expect(notices[0]).toMatchObject({ droppedCount: 4, cause: "unread_backlog" });

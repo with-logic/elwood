@@ -44,7 +44,12 @@ export class LineEmitter {
     // across one chunk boundary count as TWO, not one — while `continuing`/`ended`
     // add bytes only (records=0), so one record is never counted per chunk.
     if (droppedBytes > 0)
-      this.drops.recordBytes(path, droppedBytes, discard === "started" ? 1 : 0, "oversized");
+      this.drops.recordBytes({
+        path,
+        bytes: droppedBytes,
+        incidents: discard === "started" ? 1 : 0,
+        cause: "oversized",
+      });
     for (const line of lines) this.emitLine(path, line);
   }
 

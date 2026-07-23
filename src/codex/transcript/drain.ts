@@ -51,7 +51,13 @@ export function drainToBudget(
   // An unread teardown backlog is content-free data loss with its OWN cause: the
   // bytes are the true magnitude and the enclosed record count is unknowable, so it
   // counts as exactly ONE loss incident under a truthful cause.
-  if (backlog > 0) context.drops.recordBytes(cursor.path, backlog, 1, "unread_backlog");
+  if (backlog > 0)
+    context.drops.recordBytes({
+      path: cursor.path,
+      bytes: backlog,
+      incidents: 1,
+      cause: "unread_backlog",
+    });
   context.lines.emitLine(cursor.path, cursor.drainPending());
   // Persist the batched aggregate at most ONCE per drain call (not per record).
   context.drops.flush();

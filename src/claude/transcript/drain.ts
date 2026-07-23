@@ -60,7 +60,13 @@ export function drainToBudget(
     // cardinality. `droppedCount` is loss incidents (each unparseable record, each
     // over-length record, and each backlog = 1 incident), so cause + count are both
     // truthful (MAJOR: cause-neutral data-loss accounting, C-CLAUDE-15, PRD §5.4).
-    if (backlog > 0) context.drops.recordBytes(cursor.path, backlog, 1, "unread_backlog");
+    if (backlog > 0)
+      context.drops.recordBytes({
+        path: cursor.path,
+        bytes: backlog,
+        incidents: 1,
+        cause: "unread_backlog",
+      });
     context.lines.emitLines(cursor.path, cursor.drainPending());
   }
   // Persist the batched aggregate at most ONCE per drain call (not per record):

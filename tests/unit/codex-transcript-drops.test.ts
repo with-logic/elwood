@@ -28,7 +28,7 @@ describe("Codex drop + read-error tracking", () => {
       droppedBytes: 40,
     });
     tracker.record("/t", "{bad");
-    tracker.recordBytes("/t", 100, 1, "oversized");
+    tracker.recordBytes({ path: "/t", bytes: 100, incidents: 1, cause: "oversized" });
     expect(notices).toHaveLength(0); // nothing persisted until flush
     tracker.flush();
     expect(notices).toHaveLength(1);
@@ -48,7 +48,7 @@ describe("Codex drop + read-error tracking", () => {
       }
       notices.push(n);
     });
-    tracker.recordBytes("/t", 50, 1, "oversized");
+    tracker.recordBytes({ path: "/t", bytes: 50, incidents: 1, cause: "oversized" });
     // The sink throws — `dirty` must stay set so the total isn't silently dropped.
     expect(() => tracker.flush()).toThrow(/persist boom/);
     expect(notices).toHaveLength(0);
