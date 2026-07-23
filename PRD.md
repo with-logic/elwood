@@ -1340,15 +1340,10 @@ type ElwoodWarningEvent =
       readonly code: "transcript_records_dropped";
       readonly severity: "warning";
       readonly message: string;
-      // Loss-incident count, byte magnitude, and path only — never raw content.
-      // `droppedCount` is loss INCIDENTS (each unparseable record, each over-length
-      // record, and each unread backlog = 1 incident), so a backlog whose record
-      // count is unknowable is never reported as a false record count.
-      readonly droppedCount: number;
-      readonly droppedBytes: number;
       // Why data was lost: an unparseable committed record, an over-length record
-      // discarded through its next newline, or an unread teardown backlog. Bounds
-      // the diagnostic to a fixed token so cause and cardinality are never false.
+      // discarded through its next newline, or an unread teardown backlog. A bounded
+      // label only — no count and no byte magnitude (a live "something couldn't be
+      // displayed" signal, not a running tally).
       readonly cause: "unparseable" | "oversized" | "unread_backlog";
       readonly transcriptPath: string;
       readonly raw: string;
@@ -1362,8 +1357,7 @@ type ElwoodWarningEvent =
       readonly code: "transcript_read_error";
       readonly severity: "warning";
       readonly message: string;
-      // Count, last error code, and path only — never raw transcript content.
-      readonly errorCount: number;
+      // Last error code and path only — never a count, never raw transcript content.
       readonly lastErrorCode: string;
       readonly transcriptPath: string;
       readonly raw: string;
@@ -1468,19 +1462,12 @@ discriminator distinguishes these three sources — `"unparseable"` for a malfor
 committed record, `"oversized"` for an over-length record discarded through its
 next newline, and `"unread_backlog"` for a teardown backlog left unread when the
 drain bound is spent — so the warning never mislabels a valid unread backlog as an
-unparseable record. `droppedCount` counts loss INCIDENTS, not records: each
-unparseable record, each over-length record, and each unread backlog is exactly
-one incident. Records and incidents coincide for unparseable and over-length
-losses, but a backlog encloses an unknowable number of records, so incidents is
-the only cardinality that is uniformly truthful; `droppedBytes` carries the true
-byte magnitude, and the warning message reports "loss incident(s)" cause-tagged
-rather than claiming a record count a backlog cannot supply. Because each
-observation only advances an in-memory running
-count, the persisted snapshot is rewritten at most once per scan pass, per
-teardown-drain call, and at finish — so a chunk holding many malformed records
-causes a bounded number of snapshot writes, not one write per record, while the
-first observation still emits the user-visible `warning` event and the final
-totals are always persisted. That drain is bounded two ways.
+unparseable record. The warning carries no count and no byte magnitude: it is a
+live, content-free signal that some committed activity could not be displayed,
+cause-tagged, emitted when the loss occurs. Elwood keeps no running total of
+dropped records and does not continue any such total across resume — a human at
+the terminal has no loss odometer, and neither does Elwood. That drain is bounded
+two ways.
 First, a single chunk budget is shared across every subagent retirement AND the
 final flush for a watcher's whole lifetime — a retirement never gets a fresh full
 budget — so aggregate terminal read work is watcher-bounded, not per-retire.
@@ -1500,8 +1487,8 @@ larger than that bound, Elwood recovers the committed records that fall within
 the bounded window rather than discarding the whole turn; only the portion beyond
 the window (including the prompt boundary itself) is not recovered, and that
 truncation is surfaced as a bounded, content-free `transcript_records_dropped`
-drop (`cause: "unread_backlog"`, a byte magnitude, no record text) so the
-observability gap is closed rather than silent. A turn larger
+drop (`cause: "unread_backlog"`, no count, no record text) so the observability
+gap is closed rather than silent. A turn larger
 than the recovery bound therefore never silently loses all of its committed
 activity. The `transcript_read_error`
 warning is emitted when a transcript filesystem read is contained (a
@@ -1517,25 +1504,22 @@ failure without a distinct warning code. A
 throwing activity listener during the final flush never prevents `terminal:exit`
 emission, terminal status persistence, or the process-tree reap (C-LIFE-10): the
 flush runs behind an error boundary and lifecycle completion is guaranteed. Like
-every warning these carry no raw conversation content: only running counts, a
-byte magnitude, an error code or short reason, and the transcript path. All are
-de-duplicated, persisted, and emitted through the same `warning`/`activity`
-contract; every observation updates the persisted snapshot count so it stays
-current, while only the first crossing emits a user-visible `warning` event, so a
-repeated observation never emits a duplicate event (C-CLAUDE-15).
+every warning these carry no raw conversation content: only a bounded `cause` or
+`phase` label, an error code or short reason, and the transcript path — no counts
+and no byte magnitude. They are live-only: each observation emits a `warning` +
+`activity` event and is never persisted, deduplicated across time, or replayed to
+a late subscriber (§5.7, C-CLAUDE-15).
 
 The `reap_failed` warning is emitted when the best-effort survivor reap on an
 unsolicited PTY exit fails (for example the group SIGKILL returns `EPERM`): the
 session still reaches its terminal status, but the descendant process group may
-have leaked, so the risk is surfaced durably instead of thrown out of the native
-exit callback. This is a lifecycle warning (`source: "lifecycle"`) carrying only
+have leaked, so the risk is surfaced instead of thrown out of the native exit
+callback. This is a live lifecycle warning (`source: "lifecycle"`) carrying only
 the leaked leader's process-group id and a normalized error code drawn from a
 fixed allowlist (standard error names and common Node errnos; any unrecognized
 value collapses to `UnknownError`) — never a raw system message or a
-caller-controlled string — and it is de-duplicated per leaked process group,
-persisted into the session snapshot, replayed to late subscribers, and projected
-into `activity` through the same `warning`/`activity` contract as every other
-warning. A reap failure on an
+caller-controlled string — emitted once through the `warning`/`activity` contract
+like every other warning, not persisted or replayed. A reap failure on an
 *explicit* `stop()`/`kill()`/`teardown()` is NOT downgraded to this warning: it
 rejects with a typed `termination_failed` error so the caller learns the group
 was not confirmed reaped (C-LIFE-10, C-ERR-01).
@@ -1548,11 +1532,10 @@ queued persona or caller message is still released so a failed restore never
 starves input. This is a lifecycle warning (`source: "lifecycle"`, Claude only)
 carrying only the size Elwood tried to restore and a normalized error code drawn
 from a fixed allowlist (standard error names and common native-resize errnos; any
-unrecognized value collapses to `UnknownError`) — never a raw system message — and
-it is persisted into the session snapshot, replayed to late subscribers, and
-projected into `activity` through the same `warning`/`activity` contract as every
-other warning. A closed-fd resize at this transition is the ordinary benign
-process-exit race and is a silent no-op, not a warning (C-API-39).
+unrecognized value collapses to `UnknownError`) — never a raw system message —
+emitted once through the `warning`/`activity` contract like every other warning,
+not persisted or replayed. A closed-fd resize at this transition is the ordinary
+benign process-exit race and is a silent no-op, not a warning (C-API-39).
 
 A stopped subagent's transcript (`agent_transcript_path` on a `SubagentStop`) is
 a one-shot input: Elwood flushes it once and then retires it from active polling,
@@ -1562,13 +1545,15 @@ exits, the watcher becomes permanently terminal: no scan, emit, or observation
 occurs after `finish()`, so no transcript activity is ever delivered past
 `terminal:exit`.
 
-Warnings are persisted in Elwood session metadata for resume-time inspection,
-but they are not a durable audit log. Repeated observations of the same warning
-should update the session snapshot without emitting duplicate warning events.
-Warning `raw` fields are a narrow exception to the no-raw-content rule: they may
-persist short environment diagnostics needed to explain or recover from startup
-issues, but they must not contain prompts, terminal transcripts, hook payloads,
-or conversation content.
+Warnings are LIVE-ONLY. A warning is emitted once, when observed, as a `warning`
+event and a projected `activity` event, and is never persisted, never replayed to
+a subscriber that attaches later, and never accumulated into a session snapshot or
+running tally. This matches what a human at the terminal experiences: a diagnostic
+banner appears live and then scrolls away; reopening the session does not re-show
+the banners from before. A subscriber receives whatever warnings are emitted after
+it subscribes. Warning `raw` fields still carry only short environment diagnostics
+(never prompts, terminal transcripts, hook payloads, or conversation content), but
+they are live event fields, not persisted state.
 For `mcp_startup_incomplete`, `recoveryCommands` are derived from the failed MCP
 server names as `codex mcp login <server>`. If Codex later emits richer recovery
 metadata, Elwood may prefer the CLI-provided command.
@@ -1596,17 +1581,15 @@ slice; whatever is still unread when that bound is spent is accounted as an
 `"unread_backlog"` drop rather than read in a single unbounded synchronous loop, so
 the flush returns to the event loop promptly. Codex data loss is surfaced through
 the SAME content-free `transcript_records_dropped` warning as Claude's (now
-`agent: "codex" | "claude"`), carrying only a loss-incident count, a byte
-magnitude, the bounded `cause` (`"unparseable"`, `"oversized"`, or
-`"unread_backlog"`), and the transcript path — never raw transcript content — with
-the same de-duplication and per-batch persistence semantics described above. A
+`agent: "codex" | "claude"`), carrying only the bounded `cause` (`"unparseable"`,
+`"oversized"`, or `"unread_backlog"`) and the transcript path — never a count and
+never raw transcript content — as a live event, exactly like Claude's. A
 scan that throws (for example a downstream activity listener that raises) MUST be
 contained rather than escaping the poll timer as an uncaught exception: the Codex
 watcher stops itself and surfaces the SAME content-free `transcript_poll_stopped`
 warning as Claude's (now `agent: "codex" | "claude"`), carrying only an
-allowlisted error `reason` and the `phase`. A resumed Codex session continues its
-running drop/read-error totals from the persisted warnings rather than restarting
-those counts at 0.
+allowlisted error `reason` and the `phase`. Drops and read errors are live-only
+signals; Elwood keeps no running total and continues nothing across resume.
 
 As with Claude, the Codex transcript is the single source of truth for committed
 `assistant_message`, `tool_call`, and `tool_result` activity. The Codex `Stop`,
@@ -1909,46 +1892,47 @@ The hook bridge's Unix domain socket MUST NOT live under `stateDir`. Socket
 paths are capped near 104 bytes on macOS (`sockaddr_un.sun_path`), so a socket
 inside a caller-structured `stateDir` breaks any parent app with nested state
 layouts. Instead, each launch binds the socket inside a fresh short
-Elwood-owned private (0700) directory under the OS temp dir, records that path
-in the session record for diagnostics, and regenerates it on every start and
-resume, so stale recorded socket paths are never trusted or reused. `teardown`
-removes the socket home along with the session directory. `stateDir` length
-MUST NOT constrain whether a session can start.
+Elwood-owned private (0700) directory under the OS temp dir and regenerates it on
+every start and resume; the socket path is a per-launch runtime value, never
+persisted, so a stale recorded socket path can never be trusted or reused.
+`teardown` removes the socket home along with the session directory. `stateDir`
+length MUST NOT constrain whether a session can start.
 
 ### 8.2 Session record
 
-Elwood MUST persist enough metadata to resume or tear down a session after the
-parent app restarts. Required fields include:
+Elwood persists only the minimum needed to resume or tear down a session after
+the parent app restarts. The persisted record is deliberately small: everything a
+running session needs beyond it is regenerated at each start/resume and lives in
+memory only. The persisted fields are exactly:
 
 - schema version;
 - `elwoodSessionId`;
 - adapter kind (`claude` or `codex`);
 - original `cwd`;
-- caller-provided metadata;
-- created/updated timestamps;
-- status;
-- warnings;
-- Claude or Codex resume metadata needed internally;
-- the resolved launch posture: the privilege and tool-policy options the
-  session was launched with (`permissionMode`, `allowedTools`,
-  `disallowedTools`, `tools` for Claude; `sandbox`, `approvalPolicy` for
-  Codex), so resume can re-derive its own launch configuration and consumers
-  can verify what an agent launched with after the fact;
-- generated settings/config path when the adapter uses one;
-- hook bridge routing metadata;
-- hook bridge authentication token;
-- terminal size when known;
-- Elwood-owned runtime file paths.
+- per-adapter resume state: the CLI's own internal conversation id needed to
+  resume, and the resolved launch posture (the privilege and tool-policy options
+  the session was launched with — `permissionMode`, `allowedTools`,
+  `disallowedTools`, `tools` for Claude; `sandbox`, `approvalPolicy` for Codex),
+  so resume re-derives its launch configuration and cannot silently loosen
+  privileges.
+
+Nothing else is persisted. In particular Elwood MUST NOT persist session status,
+timestamps, warnings, caller metadata, terminal size, the hook bridge
+authentication token, the socket path, or any Elwood-owned runtime file paths.
+Status and warnings are live-only (§5.7). Runtime file paths are pure functions of
+the state directory, session id, and adapter, so they are DERIVED on demand rather
+than stored. The bridge authentication token and the socket home are REGENERATED
+on every start and resume and never trusted from disk — a recorded token or socket
+path is never read back.
 
 Elwood-generated session directories MUST be private to the current user
 (`0700`), and generated settings, bridge scripts, and session records MUST be
 written as private files (`0600`) because they can contain local IPC credentials.
 State writes MUST be rename-atomic and fsync-backed where the platform supports
 it. Crash recovery is a product requirement.
-Path fields are validated against the configured `stateDir`; session records are
-not intended to be portable across unrelated state directories. Session IDs are
-opaque path components: absolute paths, path separators, and traversal segments
-are invalid.
+Session records are not intended to be portable across unrelated state
+directories. Session IDs are opaque path components: absolute paths, path
+separators, and traversal segments are invalid.
 
 ### 8.3 What must not be persisted by default
 
@@ -2310,7 +2294,7 @@ Each criterion has:
 | C-API-11 | §5.7 | `CodexSession` exposes the same terminal control and lifecycle methods as `ClaudeSession`. |
 | C-API-12 | §5.4 | Claude and Codex sessions emit adapter-neutral `activity` events for common lifecycle, message, tool, transcript, and hook-error observations, with normalized metadata for common timeline rendering. |
 | C-API-13 | §5.3 | Claude and Codex sessions expose `sendMessage` as the adapter-neutral queued message submission API. |
-| C-API-14 | §5.7 | Sessions expose a typed `warnings` snapshot and emit typed `warning` events for non-fatal environment issues. |
+| C-API-14 | §5.7 | Sessions emit typed `warning` events (and projected `warning` activities) for non-fatal environment issues. Warnings are LIVE-ONLY: emitted once when observed, never persisted, never replayed to a late subscriber, and never accumulated into a snapshot or running count. |
 | C-API-15 | §5.3 | Sessions expose a typed headless xterm terminal handle with snapshot and underlying xterm access. |
 | C-API-16 | §5.1 | Omitted `initialSize` defaults to a 189 column by 48 row terminal. |
 | C-API-17 | §5.4 | Hook dispatch emits adapter-neutral hook-result activity, and hook failures also appear in the activity stream. |
@@ -2395,7 +2379,7 @@ Each criterion has:
 | C-CLAUDE-15 | §5.4 | Claude `assistant_message`, `tool_call`, and `tool_result` activities are sourced from the committed transcript the CLI writes at `transcript_path`, never from the `Stop` hook's `last_assistant_message`; an un-sent ghost-text / composer draft therefore never becomes an `assistant_message`. |
 | C-CLAUDE-16 | §5.1 §5.4 §5.7 | A Claude startup prompt Elwood auto-answers is marked settled and emits its `startup_prompt` activity only after its PTY `sendInput` write fulfills. A rejected write emits NO `startup_prompt` activity, leaves the prompt un-settled so a later frame re-attempts it, and surfaces a bounded, content-free `startup_prompt_write_failed` warning carrying only the prompt label. |
 | C-CLAUDE-17 | §5.1 | A Claude startup banner showing a lapsed or revoked login that only directs the user to re-run `/login` (`Login expired`, `Session expired`, or `OAuth token revoked`, each paired with a `run /login` recovery hint) is treated as an authentication failure and rejects `startClaude` with `claude_not_authenticated`, exactly like the explicit `not authenticated` banners — the session is torn down rather than reported as usable. Matching is anchored on the `/login` recovery directive so an unrelated mention of "login" does not trip it. |
-| C-CLAUDE-18 | §5.3 §5.7 | When a lapsed/revoked-login banner (per C-CLAUDE-17) appears on a Claude session that has ALREADY reached readiness — i.e. login expires mid-session — Elwood surfaces a typed, content-free `login_expired` warning (and its `warning` activity) carrying only a bounded `recoveryCommand` of `/login`. Detection is edge-based so a banner persisting across many frames does not re-emit, and the warning de-duplicates like every other typed warning, so a session warns at most once for its login expiring; the session is left ALIVE (no forced terminal transition) so the caller can recover in place via `session.login()`, tear down, or re-authenticate out of band. |
+| C-CLAUDE-18 | §5.3 §5.7 | When a lapsed/revoked-login banner (per C-CLAUDE-17) appears on a Claude session that has ALREADY reached readiness — i.e. login expires mid-session — Elwood surfaces a typed, content-free `login_expired` warning (and its `warning` activity) carrying only a bounded `recoveryCommand` of `/login`. Detection is edge-based so a banner persisting across many frames does not re-emit, so a session warns at most once for its login expiring; the session is left ALIVE (no forced terminal transition) so the caller can recover in place via `session.login()`, tear down, or re-authenticate out of band. |
 | C-CLAUDE-19 | §5.4 §7A.4 | A committed Claude assistant `thinking` content block surfaces its plaintext extended-thinking as a `reasoning` activity carrying that text, sourced from the committed transcript exactly like `assistant_message` (C-CLAUDE-15) — no hook exposes it. Only ASSISTANT thinking is surfaced and empty thinking is dropped; a `redacted_thinking` block (opaque encrypted `data`, no readable text) produces no activity. |
 
 #### C-CODEX: Codex Startup And Config (§4, §7A, §9)
@@ -2421,7 +2405,7 @@ Each criterion has:
 | C-CODEX-17 | §5.4 §5.5 §5.7 | A Codex startup prompt Elwood auto-answers (directory/hook trust, `update` skip) is marked settled and emits its `startup_prompt` activity only after its PTY `sendInput` write fulfills. A rejected write emits NO `startup_prompt` activity, leaves the prompt un-settled so a later frame re-attempts it, and surfaces a bounded, content-free `startup_prompt_write_failed` warning carrying only the prompt label (mirrors C-CLAUDE-16). |
 | C-CODEX-18 | §5.4 §7A.4 | A committed Codex `reasoning` transcript item surfaces its human-readable text on the `reasoning` activity's `text` field: the `text` of every `summary[]` entry of type `summary_text`, or — when the reasoning is un-summarized — every `content[]` entry of type `reasoning_text`, joined by newlines. The always-present `encrypted_content` blob is never readable and is never surfaced. When neither carries prose (the common case with reasoning summaries disabled), the activity carries no `text`, exactly as a bare reasoning marker. |
 | C-CODEX-19 | §5.4 §7A.4 | A committed Codex shell/exec transcript item surfaces the ACTUAL command it ran as `tool_call` activity with its `toolInput`, and its output as `tool_result` activity with its `toolOutput`, across every representation the CLI emits — and the command is UNWRAPPED from the CLI's invocation machinery so consumers see the bare command, not the harness. The modern `exec` tool is a `custom_tool_call` whose `input` is a JavaScript snippet wrapping the call (e.g. `const r = await tools.exec_command({"cmd":"echo hi","workdir":…,"yield_time_ms":…}); text(r.output);`): Elwood extracts the inner `cmd`/`command` string (a `command` array is joined with spaces) and surfaces THAT as `toolInput`, discarding the JS wrapper and the non-command fields (`workdir`, `yield_time_ms`, `max_output_tokens`). A `function_call` (`shell`/`exec_command`) whose command is a JSON string in `arguments` is likewise unwrapped to its `command`/`cmd`. When the wrapper cannot be parsed, the raw `input`/`arguments` is surfaced unchanged rather than dropped. A `custom_tool_call_output` is classified as `tool_result` (not `other`), and a result's `output` — a plain string OR an array of `{ type: "input_text", text }` entries — is surfaced as `toolOutput` with the array entries' text joined; the `tool_result` `label` carries the `call_id` correlating it to its `tool_call`. So the real command and its output are surfaced as a clean paired call/result, never the JS harness and never a content-free `other` row. |
-| C-CODEX-20 | §5.4 | The Codex transcript reader is BOUNDED like Claude's: it reads in fixed-size chunks, discards any un-terminated record past a max-pending ceiling as an `"oversized"` drop, streams a large backlog across poll ticks under a per-scan chunk budget, and at PTY-exit drains only within a bounded chunk budget and wall-clock slice — accounting leftover bytes as an `"unread_backlog"` drop — so a hundreds-of-MiB transcript never OOMs or blocks the event loop. Lost data is surfaced as the content-free `transcript_records_dropped` warning and a scan that throws is contained as `transcript_poll_stopped` (both `agent: "codex" | "claude"`); a resumed session continues its running drop/read-error totals from persisted warnings rather than restarting at 0. `finish()` is idempotent and terminal — a late `observe()` never restarts polling past `terminal:exit`. |
+| C-CODEX-20 | §5.4 | The Codex transcript reader is BOUNDED like Claude's: it reads in fixed-size chunks, discards any un-terminated record past a max-pending ceiling as an `"oversized"` drop, streams a large backlog across poll ticks under a per-scan chunk budget, and at PTY-exit drains only within a bounded chunk budget and wall-clock slice — accounting leftover bytes as an `"unread_backlog"` drop — so a hundreds-of-MiB transcript never OOMs or blocks the event loop. Lost data is surfaced as the content-free, count-free `transcript_records_dropped` warning (a live event, cause-tagged, not persisted or counted) and a scan that throws is contained as `transcript_poll_stopped` (both `agent: "codex" | "claude"`). `finish()` is idempotent and terminal — a late `observe()` never restarts polling past `terminal:exit`. |
 
 #### C-HOOK: Hook Bridge Coverage And Semantics (§6)
 
