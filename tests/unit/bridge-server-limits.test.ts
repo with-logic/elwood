@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { MAX_HOOK_REQUEST_BYTES } from "../../src/bridge/limits.ts";
 import { HookBridgeServer } from "../../src/bridge/server.ts";
-import { sendBridge, tempDirForUnit } from "./helpers.ts";
+import { sendBridge, sendRaw, tempDirForUnit } from "./helpers.ts";
 
 const acceptHookInput = () => true;
 const input = JSON.stringify({ hook_event_name: "Stop", session_id: "s1", cwd: "/tmp" });
@@ -58,43 +58,44 @@ describe("bridge server fail-open limits", () => {
     expect(errors).toEqual([]);
   });
 
-  test("C-HOOK-16 a responded socket is released and a re-entrant respond is dropped", async () => {
-    // A half-open client must not keep the server-side socket (and its FD / input
-    // budget) alive after it has its answer, and a second respond must be dropped so
-    // one request never dispatches twice. `end(payload)` sends the framed request AND
-    // the client FIN together: the server's framed-`data` respond parks in dispatch
-    // while the client-FIN `end` fires respond a SECOND time, which the `responded`
-    // guard must drop. Dispatch is gated open so the FIN lands mid-await. Once
-    // released, the single response flushes and the socket is destroyed (client
-    // `close`), all without server.stop().
-    const socketPath = join(tempDirForUnit(), "half-open.sock");
+  test("C-HOOK-16 exactly at the cap is accepted; one byte over fails open", async () => {
+    // Pins the exact 8,388,608-byte boundary: a `>` → `>=` regression would flip
+    // acceptance of the at-cap request and stay green without this. Sent as raw bytes
+    // with a client that tolerates the server's mid-write destroy on the over-cap case.
+    const socketPath = join(tempDirForUnit(), "boundary.sock");
     let dispatched = 0;
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
     const server = new HookBridgeServer(
       socketPath,
       "token",
-      async () => {
+      () => {
         dispatched += 1;
-        await gate;
-        return { exitCode: 0, stdout: "ok", stderr: "" };
+        return Promise.resolve({ exitCode: 7, stdout: "ok", stderr: "" });
       },
       () => {},
       acceptHookInput,
     );
     await server.start();
-    const socket = createConnection({ path: socketPath, allowHalfOpen: true });
-    await new Promise<void>((resolve) => socket.once("connect", resolve));
-    const closed = new Promise<void>((resolve) => socket.once("close", resolve));
-    socket.end(`${JSON.stringify({ token: "token", input })}\n`); // framed data + FIN
-    await new Promise((resolve) => setTimeout(resolve, 20)); // let data + end both fire
-    release(); // dispatch resolves; the single response flushes and the socket is destroyed
-    await closed;
+    // A valid framed envelope whose `input` is real hook JSON with a padded field, so
+    // it PARSES and dispatches; pad so the whole request is EXACTLY MAX bytes (the
+    // framing newline is counted). "z" needs no JSON escaping.
+    const build = (padLen: number) => {
+      const input = JSON.stringify({ hook_event_name: "Stop", pad: "z".repeat(padLen) });
+      return `${JSON.stringify({ token: "token", input })}\n`;
+    };
+    const overhead = Buffer.byteLength(build(0), "utf8");
+    const atCap = build(MAX_HOOK_REQUEST_BYTES - overhead);
+    expect(Buffer.byteLength(atCap, "utf8")).toBe(MAX_HOOK_REQUEST_BYTES);
+    expect(JSON.parse(await sendRaw(socketPath, atCap))).toMatchObject({ exitCode: 7 });
+    expect(dispatched).toBe(1); // at-cap dispatched (not failed open)
+    const over = `${atCap.slice(0, -1)}z\n`;
+    expect(Buffer.byteLength(over, "utf8")).toBe(MAX_HOOK_REQUEST_BYTES + 1);
+    expect(JSON.parse(await sendRaw(socketPath, over))).toEqual({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    });
     await server.stop();
-    // The guard dropped respond #2: exactly one dispatch, never a second.
-    expect(dispatched).toBe(1);
+    expect(dispatched).toBe(1); // still 1: the over-cap request did NOT dispatch
   });
 
   test("C-HOOK-16 a multibyte code point split across chunks is not corrupted", async () => {
