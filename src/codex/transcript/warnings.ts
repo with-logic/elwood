@@ -8,7 +8,11 @@
  */
 
 import type { ElwoodWarningEvent } from "../../core/types.ts";
-import { boundedErrorToken, isPollErrorReason } from "../../core/warning-reasons.ts";
+import {
+  boundedErrorToken,
+  isPollErrorReason,
+  type PollPhase,
+} from "../../core/warning-reasons.ts";
 import type { CodexDropNotice, CodexReadErrorNotice } from "./drops.ts";
 
 /** Human-readable phrase for each bounded drop cause (no raw content). */
@@ -62,6 +66,7 @@ export function codexReadErrorWarning(notice: CodexReadErrorNotice): ElwoodWarni
 export function codexPollStoppedWarning(
   elwoodSessionId: string,
   error: unknown,
+  phase: PollPhase = "poll",
 ): ElwoodWarningEvent {
   const reason = boundedErrorToken(error, isPollErrorReason);
   return {
@@ -70,10 +75,12 @@ export function codexPollStoppedWarning(
     source: "terminal",
     code: "transcript_poll_stopped",
     severity: "warning",
+    // `phase` distinguishes a live poll failure from the FINAL flush at exit, so lost
+    // trailing shutdown activity is diagnosable without a distinct warning code (§9.2).
     message:
       "Codex transcript polling stopped after a scan error; live activity may be incomplete.",
     reason,
-    phase: "poll",
-    raw: `transcript_poll_stopped reason=${reason} phase=poll`,
+    phase,
+    raw: `transcript_poll_stopped reason=${reason} phase=${phase}`,
   };
 }

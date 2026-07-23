@@ -93,11 +93,15 @@ export function createTranscriptWatcher(
     pending.length = 0;
   };
   const route = (warning: ElwoodWarningEvent) => {
-    // ALWAYS enqueue first, then attempt delivery. If the sink is absent OR its
-    // recordWarnings throws, the warning stays in `pending` and is retried on the
-    // next scan/flush — a delivery failure must neither lose the notice nor escape
-    // into the poll loop and permanently stop observation (§5.4).
-    pending.push(warning);
+    // COALESCE by code, then attempt delivery. Transcript diagnostics are running
+    // aggregates (a newer same-code warning supersedes the older), so `pending` holds
+    // at most one entry per code — a persistently failing sink cannot grow it
+    // unboundedly (which would make each retry copy a growing list: quadratic). If the
+    // sink is absent OR throws, the coalesced notice stays queued and is retried on the
+    // next scan/flush — never lost, never escaping into the poll loop (§5.4).
+    const at = pending.findIndex((w) => w.code === warning.code);
+    if (at >= 0) pending[at] = warning;
+    else pending.push(warning);
     try {
       flushPendingWarnings();
     } catch {

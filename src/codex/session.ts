@@ -79,13 +79,13 @@ export async function startCodexFromRecord(
   writeCodexRuntimeFiles(record);
   const emitter = new TypedEmitter<CodexEventMap>();
   registerInitialHooks(emitter, options.hooks);
-  const { watcher: transcriptWatcher, flushPendingWarnings } =
-    sessionTranscript.createCodexTranscriptWatcher(
-      record.elwoodSessionId,
-      emitter,
-      () => session,
-      sessionTranscript.codexTranscriptSeedFromWarnings(record.warnings), // continue counts on resume
-    );
+  const wired = sessionTranscript.createCodexTranscriptWatcher(
+    record.elwoodSessionId,
+    emitter,
+    () => session,
+    sessionTranscript.codexTranscriptSeedFromWarnings(record.warnings), // continue counts on resume
+  );
+  const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   let session: CodexSessionImpl | undefined;
   const bridge = currentCodexHookBridgeFactory()(
     record.paths.socketPath,
@@ -118,9 +118,7 @@ export async function startCodexFromRecord(
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   const { ready, observeReadinessFrame } = createReadinessGate(() => {
     turnWatcher.arm(resumed); // resume arms in settling mode (no phantom replay turn)
-    // advanceInitialReady releases the queue directly if recording the transition
-    // throws — the anti-starvation completion boundary, shared with Claude (C-API-42).
-    session?.completeInitialReady();
+    session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
   }, resumed);
   const autotrust = options.autotrust ?? false;
   const observers = {
@@ -139,20 +137,18 @@ export async function startCodexFromRecord(
     (data, renderedTerminal) => {
       startupOutput.push(data);
       terminalReplay.push(data);
-      // One snapshot per render: reused for prompt automation, readiness, and
-      // detection (input written here only repaints on the next callback).
+      // One snapshot per render: reused for prompt automation, readiness, detection.
       const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
-      // The write RETURNS its `sendInput` completion: the responder settles the prompt +
-      // its activity only after the write fulfills; a rejected write retries + warns (C-CODEX-17).
+      // The write RETURNS its completion: the responder settles only after it fulfills;
+      // a rejected write retries + warns (C-CODEX-17).
       const result = promptResponder.handle(frame.text, (input) =>
         renderedTerminal.sendInput(input),
       );
       session?.recordWarnings(result.warnings);
       emitSettledStartupOutcomes(emitter, "codex", record.elwoodSessionId, result.outcomes, {
-        recordWarnings: (warnings) => session?.recordWarnings(warnings),
+        recordWarnings: (w) => session?.recordWarnings(w),
       });
-      // Hook-backed readiness + deadline fallback; on resume the first composer also marks ready (C-API-28).
-      ready.armDeadline();
+      ready.armDeadline(); // hook/deadline readiness; resume composer also marks (C-API-28)
       const reading = observeRenderedFrame(observers, frame, session);
       observeReadinessFrame(reading.facts); // blocking gate + resume-composer mark
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
@@ -178,16 +174,19 @@ export async function startCodexFromRecord(
       // The `SessionStart` hook releases the first queued message (C-API-28).
       activeSession.setInitialReadyHook(() => ready.mark());
       ready.replay();
-      // C-LIFE-10: drain+emit behind an error boundary; submitExit (reaps in `finally`) always runs.
+      // C-LIFE-10: the FINAL flush runs behind finishSafely's boundary, so a throwing
+      // final-flush listener can't skip terminal:exit; submitExit always reaps last.
       pty.onExit((exit) => {
         startupExit = exit;
         ready.cancel();
-        const drainAndEmit = () => {
-          transcriptWatcher.finish();
+        const emitExit = () => {
           emitter.emit("terminal:exit", { elwoodSessionId: id, ...exit });
           emitter.emit("activity", activity.activityFromTerminalExit("codex", id, exit.exitCode));
         };
-        finishCodexExit(drainAndEmit, () => activeSession.submitExit());
+        finishCodexExit(
+          () => finishSafely(emitExit),
+          () => activeSession.submitExit(),
+        );
       });
       // Release the startup buffer once the check settles (no lingering transcript, §9.4).
       await assertStartupThenRelease("codex", startupOutput, () => startupExit);

@@ -31,7 +31,10 @@ vi.mock("../../src/codex/transcript.ts", () => ({
   },
   codexDropWarning: (n: { count: number }) => ({ code: "transcript_records_dropped", ...n }),
   codexReadErrorWarning: (n: { count: number }) => ({ code: "transcript_read_error", ...n }),
-  codexPollStoppedWarning: (_id: string, _e: unknown) => ({ code: "transcript_poll_stopped" }),
+  codexPollStoppedWarning: (_id: string, _e: unknown, phase = "poll") => ({
+    code: "transcript_poll_stopped",
+    phase,
+  }),
 }));
 
 const { createCodexTranscriptWatcher, codexTranscriptSeedFromWarnings } = await import(
@@ -89,7 +92,7 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
     const sink: Sink = { recordWarnings: (w) => recorded.push(...(w as { code?: string }[])) };
     createCodexTranscriptWatcher("s1", emitter(), () => sink as never);
     captured.onPollError?.(new Error("boom"));
-    expect(recorded).toEqual([{ code: "transcript_poll_stopped" }]);
+    expect(recorded).toEqual([{ code: "transcript_poll_stopped", phase: "poll" }]);
   });
 
   test("§5.7 buffers a notice seen before the sink exists, then flushes it with the next", () => {

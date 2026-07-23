@@ -30,6 +30,9 @@ export type CodexWarningSink = {
 export type WiredCodexTranscriptWatcher = {
   readonly watcher: CodexTranscriptWatcher;
   readonly flushPendingWarnings: () => void;
+  /** Drive `watcher.finish()` behind an error boundary, then run `afterFlush` in a
+   * `finally` so a throwing final-flush listener never skips terminal:exit (C-LIFE-10). */
+  readonly finishSafely: (afterFlush?: () => void) => void;
 };
 
 /**
@@ -77,11 +80,16 @@ export function createCodexTranscriptWatcher(
     pending.length = 0;
   };
   const route = (warning: ElwoodWarningEvent) => {
-    // ALWAYS enqueue first, then attempt delivery. If the sink is absent OR its
-    // recordWarnings throws, the warning stays in `pending` and is retried on the
-    // next scan/flush — a delivery failure must neither lose the notice nor escape
-    // into the poll loop and permanently stop observation (§5.4).
-    pending.push(warning);
+    // COALESCE by code, then attempt delivery. Transcript diagnostics are running
+    // aggregates (a newer `transcript_records_dropped`/`transcript_read_error`/
+    // `transcript_poll_stopped` supersedes the older of the same code), so `pending`
+    // holds at most one entry per code — a persistently failing sink cannot grow it
+    // unboundedly (which would make each retry copy a growing list: quadratic). If the
+    // sink is absent OR throws, the coalesced notice stays queued and is retried on
+    // the next scan/flush — never lost, never escaping into the poll loop (§5.4).
+    const at = pending.findIndex((w) => w.code === warning.code);
+    if (at >= 0) pending[at] = warning;
+    else pending.push(warning);
     try {
       flushPendingWarnings();
     } catch {
@@ -102,5 +110,21 @@ export function createCodexTranscriptWatcher(
     },
     seed,
   );
-  return { watcher, flushPendingWarnings };
+  // C-LIFE-10: drive the FINAL flush behind an error boundary, then run `afterFlush`
+  // (terminal:exit emission, status, reap) in a `finally` so a throwing final-flush
+  // listener can NEVER skip terminal:exit. A flush failure is contained and surfaced as
+  // a bounded `transcript_poll_stopped` diagnostic phase-labelled `final_flush` (so lost
+  // trailing shutdown activity is distinguishable from a live poll failure). Mirrors Claude.
+  const finishSafely = (afterFlush: () => void = () => undefined) => {
+    try {
+      watcher.finish();
+    } catch (error) {
+      try {
+        route(codexPollStoppedWarning(elwoodSessionId, error, "final_flush"));
+      } catch {} // a diagnostic-listener bug must not block lifecycle completion
+    } finally {
+      afterFlush();
+    }
+  };
+  return { watcher, flushPendingWarnings, finishSafely };
 }
