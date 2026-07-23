@@ -74,9 +74,9 @@ export function initialReady(
       return;
     }
     deferredByBlock = false;
-    // Latch AFTER the callback returns, so if it throws (a failed durable status write
-    // or a throwing listener) readiness is NOT consumed and a later hook/deadline/frame
-    // retries — a failed transition must never permanently starve the queue (C-API-28).
+    // Latch AFTER the callback returns, so if it throws (a throwing status/activity
+    // listener) readiness is NOT consumed and a later hook/deadline/frame retries —
+    // a failed transition must never permanently starve the queue (C-API-28).
     callback();
     ready = true;
   };

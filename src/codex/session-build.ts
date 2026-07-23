@@ -163,7 +163,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     },
     { before: () => ready.cancel(), pty, bridge, terminal, after: () => transcriptWatcher.stop() },
   );
-  // Deliver the preflight/version warning on a microtask AFTER the session is returned,
+  // Deliver the preflight/version warning on a deferred macrotask AFTER the session is returned,
   // so a caller subscribing to `warning` synchronously still observes it (C-API-14).
   schedulePreflightWarning(session, preflightEvent(id, preflightWarning));
   return session;

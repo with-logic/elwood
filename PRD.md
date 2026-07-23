@@ -400,7 +400,6 @@ interface ClaudeSession {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;
-  readonly warnings: readonly ElwoodWarningEvent[];
   readonly terminal: ElwoodTerminal;
 
   statusDecisions(): readonly ElwoodStatusDecision[];

@@ -92,7 +92,8 @@ export type ElwoodWarningEvent =
       readonly message: string;
       // Why data was lost, bounded to a fixed token: an unparseable committed record,
       // an over-length record discarded through its next newline, or an unread
-      // teardown backlog. One live warning per drop — never a running count.
+      // teardown backlog. Live-only and count-free; drops are coalesced to at most
+      // one warning per (path, cause) per scan pass, not one per record.
       readonly cause: DropCause;
       readonly transcriptPath: string;
       readonly raw: string;

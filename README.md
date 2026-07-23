@@ -236,7 +236,6 @@ interface ElwoodLikeSession {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: "starting" | "running" | "ready" | "blocked" | "stopped" | "exited" | "killed" | "torn_down";
-  readonly warnings: readonly ElwoodWarningEvent[];
   readonly terminal: ElwoodTerminal;
 
   statusDecisions(): readonly ElwoodStatusDecision[];

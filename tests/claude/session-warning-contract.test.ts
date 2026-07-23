@@ -11,9 +11,9 @@
 import { afterEach, describe, expect, test } from "vitest";
 import type { ClaudeHookEventFor } from "../../src/index.ts";
 import { startClaude } from "../../src/index.ts";
-import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
+import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { asScreen } from "../helpers/model-pickers.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { FakePty, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -75,6 +75,29 @@ describe("C-API-14 Claude preflight warning is observable on the returned sessio
     const session = await startClaude({ cwd });
     // Subscribe synchronously in the SAME turn the session is returned — the preflight
     // warning is deferred to a macrotask AFTER start resolves, so it is still observed.
+    const codes: string[] = [];
+    session.on("warning", (event) => codes.push(event.code));
+    await expect.poll(() => codes).toContain("version_unparseable");
+  });
+
+  test("survives ordinary PTY output BEFORE the start promise resolves (the original race)", async () => {
+    // The failure mode the review guarded: real CLI output streams DURING startup,
+    // before the caller has a session to subscribe to. If the preflight fired on a
+    // startup frame it would be consumed unheard. Because it is deferred to AFTER
+    // start resolves, pre-return terminal chatter cannot consume it.
+    const cwd = tempDir();
+    installFakes();
+    setCommandRunnerForTests(() => ({ status: 0, stdout: "unknown build", stderr: "" }));
+    // Emit ordinary startup output on a microtask from the PTY factory, so it fires
+    // during startup (handler attached) BEFORE `startClaude` resolves.
+    setPtyFactoryForTests((options) => {
+      const pty = new FakePty(options);
+      ptys.push(pty);
+      queueMicrotask(() => pty.emitData("streaming startup output\n"));
+      return pty;
+    });
+    const session = await startClaude({ cwd });
+    // Only now can the caller subscribe — the preflight must still arrive.
     const codes: string[] = [];
     session.on("warning", (event) => codes.push(event.code));
     await expect.poll(() => codes).toContain("version_unparseable");
