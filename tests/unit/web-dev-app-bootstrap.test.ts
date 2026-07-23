@@ -44,6 +44,34 @@ describe("browser dev app bootstrap", () => {
     await (installed as unknown as () => Promise<void>)();
   });
 
+  test("C-APP-08 listen() rejects on a bind failure instead of hanging", async () => {
+    // Occupy an ephemeral port, then bind a second app to that SAME port so its
+    // listen emits EADDRINUSE — the promise must REJECT, not hang forever.
+    const first = createWebDevApp({ port: 0 });
+    running.push(first);
+    const port = await first.listen();
+    const second = createWebDevApp({ port });
+    running.push(second);
+    await expect(second.listen()).rejects.toBeDefined();
+  });
+
+  test("C-APP-08 startWebDevApp LOGS a bind failure rather than crashing", async () => {
+    // Occupy a port, then startWebDevApp on it: the internal listen rejects and the
+    // failure handler must log it (not surface as an unhandled rejection).
+    const first = createWebDevApp({ port: 0 });
+    running.push(first);
+    const port = await first.listen();
+    const lines: string[] = [];
+    const second = startWebDevApp({
+      port,
+      installShutdown: () => undefined,
+      log: (l) => lines.push(l),
+    });
+    running.push(second);
+    await waitFor(() => lines.some((l) => l.includes("failed to start")));
+    expect(lines.some((l) => l.includes("failed to start"))).toBe(true);
+  });
+
   test("C-APP-08 bootstrapIfMain returns null unless the module is the entry", () => {
     expect(bootstrapIfMain({ url: "file:///definitely/not/the/entry.ts" })).toBeNull();
   });

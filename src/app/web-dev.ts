@@ -60,7 +60,7 @@ export function createWebDevApp(options: WebDevAppOptions = {}): WebDevApp {
     }),
   );
   wss.on("connection", (socket) => acceptConnection(socket, sockets, deps));
-  return { server, wss, slot, listen: () => listen(server, port), shutdown };
+  return { server, wss, slot, listen: () => listen(server, wss, port), shutdown };
 
   function shutdown(): Promise<void> {
     return closeWebDevResources({ server, wss, sockets, session: slot.take() });
@@ -98,7 +98,12 @@ export function startWebDevApp(options: StartWebDevAppOptions = {}): WebDevApp {
     options.installShutdown ?? ((cleanup: () => Promise<void>) => installHardShutdown({ cleanup }));
   const log = options.log ?? ((line: string) => process.stdout.write(line));
   install(() => app.shutdown());
-  void app.listen().then((port) => log(`Elwood dev app: http://localhost:${port}\n`));
+  void app.listen().then(
+    (port) => log(`Elwood dev app: http://localhost:${port}\n`),
+    // A bind failure surfaces here rather than as an unhandled rejection: log it so
+    // the operator sees why the dev app never came up (e.g. the port is in use).
+    (error: unknown) => log(`Elwood dev app failed to start: ${String(error)}\n`),
+  );
   return app;
 }
 
@@ -106,9 +111,18 @@ function isMainModule(url: string): boolean {
   return argv[1] !== undefined && fileURLToPath(url) === argv[1];
 }
 
-function listen(server: Server, port: number): Promise<number> {
-  return new Promise((resolve) => {
-    server.listen(port, "127.0.0.1", () => resolve(boundPort(server, port)));
+function listen(server: Server, wss: WebSocketServer, port: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    // A bind failure (e.g. EADDRINUSE) emits `error`, NOT the listen callback — so
+    // without this the promise would hang. When `ws` is attached with `{ server }`
+    // it forwards the http server's error to the WebSocketServer instance, so we
+    // must listen THERE (an unhandled wss `error` throws and crashes the dev app).
+    const onError = (error: Error) => reject(error);
+    wss.once("error", onError);
+    server.listen(port, "127.0.0.1", () => {
+      wss.removeListener("error", onError);
+      resolve(boundPort(server, port));
+    });
   });
 }
 

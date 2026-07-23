@@ -5,6 +5,12 @@
 
 import type { ClaudeHookEvent, ClaudeHookEventName, ClaudeHookResult } from "./hooks.ts";
 import { isPermissionUpdateArray } from "./validate-permission-update.ts";
+import {
+  isRecord,
+  optionalBoolean,
+  optionalString,
+  optionalStringArray,
+} from "./validate-shapes.ts";
 import { isClaudeToolInputUpdate } from "./validate-tool-update.ts";
 
 const contextResultEvents = new Set<string>(["SessionStart", "Setup", "SubagentStart"]);
@@ -157,25 +163,6 @@ function isContextResult(value: Readonly<Record<string, unknown>>): boolean {
     optionalString(value["initialUserMessage"]) &&
     optionalStringArray(value["watchPaths"])
   );
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function optionalString(value: unknown): boolean {
-  return value === undefined || typeof value === "string";
-}
-
-function optionalStringArray(value: unknown): boolean {
-  return (
-    value === undefined ||
-    (Array.isArray(value) && value.every((entry) => typeof entry === "string"))
-  );
-}
-
-function optionalBoolean(value: unknown): boolean {
-  return value === undefined || typeof value === "boolean";
 }
 
 function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {

@@ -9,6 +9,7 @@
  */
 
 import {
+  isRecord,
   optionalBoolean,
   optionalNumber,
   optionalString,
@@ -146,8 +147,4 @@ function optionalAnswers(value: unknown): boolean {
     value === undefined ||
     (isRecord(value) && Object.values(value).every((entry) => typeof entry === "string"))
   );
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }

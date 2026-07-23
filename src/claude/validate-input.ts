@@ -4,6 +4,7 @@
  */
 
 import type { ClaudeHookEvent } from "./hooks.ts";
+import { isRecord, optionalBoolean, optionalString } from "./validate-shapes.ts";
 
 const toolEvents = new Set([
   "PreToolUse",
@@ -171,22 +172,10 @@ function hasStrings(value: Readonly<Record<string, unknown>>, keys: readonly str
   return keys.every((key) => typeof value[key] === "string");
 }
 
-function optionalBoolean(value: unknown): boolean {
-  return value === undefined || typeof value === "boolean";
-}
-
-function optionalString(value: unknown): boolean {
-  return value === undefined || typeof value === "string";
-}
-
 function isNullableOptionalString(value: unknown): boolean {
   return value === undefined || value === null || typeof value === "string";
 }
 
 function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {
   return typeof value === "string" && (allowed as readonly string[]).includes(value);
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
