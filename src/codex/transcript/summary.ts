@@ -94,9 +94,10 @@ function toolResult(payload: Record<string, unknown>): CodexTranscriptSummary {
   return { kind: "tool_result", label: callId, ...(text(toolOutputText(payload["output"])) ?? {}) };
 }
 
-// A tool result's output is a plain string, or an `{ type:"input_text", text }[]`
-// array (custom_tool_call_output/modern exec) whose text is joined; else nothing
-// (caller falls back to generic serialization) (C-CODEX-19).
+// Extracts a tool result's text. Accepts a plain string, or an
+// `{ type:"input_text", text }[]` array (custom_tool_call_output/modern exec) whose
+// entry texts are joined. Any other shape returns undefined, and the `toolResult`
+// caller simply omits the text (no generic serialization fallback) (C-CODEX-19).
 export function toolOutputText(output: unknown): string | undefined {
   if (typeof output === "string") return output;
   if (!Array.isArray(output)) return undefined;

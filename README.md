@@ -493,13 +493,15 @@ To resume a session across parent-app restarts, persist exactly two things:
 the `elwoodSessionId` and the `stateDir` it lives in (keep that directory
 intact). Everything else Elwood needs is in the session record. Notes:
 
-- Resume **defaults the launch posture from the persisted record**:
-  `permissionMode`, allowed/disallowed tools, and `tools` (Claude) and `sandbox`
-  and `approvalPolicy` (Codex) are persisted at start and re-applied on resume,
-  so tool/privilege restrictions cannot silently loosen. Explicit resume options
-  override the persisted posture field by field, and the effective posture is
-  re-persisted. Only `model` and caller config overrides are non-persisted and
-  must be re-specified per call.
+- Resume **defaults the launch posture from the persisted record**. ONLY these
+  posture fields are restored: `permissionMode`, allowed/disallowed tools, and
+  `tools` (Claude), and `sandbox` and `approvalPolicy` (Codex) — so tool/privilege
+  restrictions cannot silently loosen. Explicit resume options override the
+  persisted posture field by field, and the effective posture is re-persisted.
+  Everything else is **per-call and does not carry across resume** — you must
+  re-specify it each time. That includes `model`, the hook handlers, and the
+  startup/trust/update options `autotrust`, `autoupdate`, `hookTimeoutMs`, and
+  `strictVersionCheck`. Do not assume startup or trust behavior persists.
 - `resume*` rejects with `resume_unavailable` when the agent CLI never
   reported its internal conversation id (for Claude, a conversation is only
   resumable after at least one completed turn), `state_not_found` when no

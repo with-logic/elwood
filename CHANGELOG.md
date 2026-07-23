@@ -68,13 +68,18 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
   CJK, accented text) became replacement characters before the hook input was parsed.
   Both sides now accumulate raw bytes and decode once at the frame boundary. (C-HOOK-16)
 
-- **A throwing warning sink no longer loses a transcript diagnostic mid-session or
-  stops observation.** The retain-on-throw guarantee previously only held before the
-  session's warning sink existed; once it did, a throwing `recordWarnings` lost the
-  notice and could escape into the poll loop and permanently stop the transcript
-  watcher. Warnings are now queued before delivery and the flush is contained, so a
-  transient sink failure is retried on the next scan and the watcher stays live
-  (both adapters). This corrects an over-broad claim in a prior entry.
+- **A throwing warning sink never loses a transcript diagnostic and never stops
+  observation.** Warning DELIVERY is now retain-on-throw for the whole session life:
+  each notice is queued before delivery and the flush is contained, so a throwing
+  `recordWarnings` (at any point, not only before the sink exists) is retried on the
+  next scan instead of being lost or escaping into the poll loop and stopping the
+  transcript watcher. The watcher stays live (both adapters).
+
+- **A throwing warning sink never loses the drop/read-error AGGREGATE.** Separately
+  from delivery, the running `transcript_records_dropped` / `transcript_read_error`
+  totals are held until the sink confirms the write, so a failed `session.json`
+  write can't clear the total before the incident is recorded — the next flush
+  re-delivers it (both adapters).
 
 - **An empty-ish non-array `images` value now rejects instead of sending silently.**
   An untyped caller passing `""` or `{ length: 0 }` as `images` took a no-image fast
@@ -82,19 +87,15 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
   array) skips attachment now — anything else is validated and rejects `invalid_image`.
   (C-API-44)
 
-- **Claude's `transcript_read_error` `lastErrorCode` is now normalized to a string.**
-  Matching the Codex fix, a non-string errno `code` (e.g. a numeric code) becomes
-  `"UNKNOWN"` instead of round-tripping a number through the string-typed field
-  (which could fail the persisted record's validation).
+- **`transcript_read_error`'s `lastErrorCode` is always a string (both adapters).** A
+  non-string errno `code` (e.g. a numeric code) is normalized to `"UNKNOWN"` instead
+  of round-tripping a number through the string-typed field, which could otherwise
+  fail the persisted record's validation.
 
 - **Transcript reading no longer spins on an incomplete UTF-8 tail.** A partial
   write that ends mid-code-point made the reader re-read the same bytes up to
   64×/second per session; it now reports no-progress and resumes on the next tick
   once the rest of the code point is committed (both adapters).
-
-- **`transcript_read_error`'s `lastErrorCode` is always a string.** A non-string
-  errno `code` (e.g. a numeric code) is now normalized to `"UNKNOWN"` instead of
-  round-tripping a number through the string-typed field.
 
 - **A malformed `images` send on a terminated session rejects `session_not_running`,
   not `invalid_image`.** Image validation used to run before the lifecycle guard, so a
@@ -107,13 +108,6 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
   `invalid_image`, and reservations release as submissions settle. This prevents a slow
   paste/confirmation from letting many legal queued sends retain gigabytes of clones.
   (C-API-44)
-
-- **A throwing warning sink no longer silently loses drop/read-error totals.** If
-  persisting a `transcript_records_dropped` / `transcript_read_error` warning threw
-  (e.g. a failed `session.json` write), the running total was cleared before the
-  write was confirmed and the incident vanished. The buffered notices and the drop
-  aggregate now stay queued until the sink returns, so the next flush re-delivers
-  them rather than dropping them (both adapters).
 
 - **Codex transcript reading is bounded and crash-safe.** The reader reads in
   fixed-size chunks with a max-pending ceiling, streams a large backlog across poll

@@ -1780,8 +1780,13 @@ session is ready for the next prompt. If a `Stop` handler blocks stopping and
 returns feedback to Claude, Elwood must not mark the session ready.
 
 The headless terminal screen model may be used for startup automation,
-environment warnings, diagnostics, or UI hints, but not as the source of truth
-for readiness.
+environment warnings, diagnostics, or UI hints. On a **cold start** it is not the
+source of truth for readiness — a rendered composer there is only a placeholder
+and the hook/deadline path decides readiness. **On resume this is relaxed** (see
+§5.3 and C-API-28): because the input loop is already live, the first rendered,
+quiet, non-blocking composer frame is an accepted readiness source, racing the
+readiness hook and the deadline. A blocking dialog on that frame does not mark
+ready.
 
 ## 7. Claude Tool And Permission Policy
 
