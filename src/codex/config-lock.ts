@@ -6,6 +6,11 @@
  * model persisted as the user's default. This serializes the whole transaction
  * across all sessions in the process. Mirrors clipboard-lock.ts and implements
  * PRD §5.3 setModel restore and C-CODEX-14.
+ *
+ * SCOPE: this lock is PROCESS-LOCAL. Two separate Elwood processes sharing one
+ * `config.toml` can still interleave their transactions — an accepted current
+ * limitation (the compare-and-swap still refuses to clobber an unrelated edit).
+ * Closing it needs an inter-process lock on the resolved path and is separate work.
  */
 
 let tail: Promise<void> = Promise.resolve();

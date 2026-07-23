@@ -791,7 +791,15 @@ at launch. When the compare fails — for example the user edited `config.toml`
 concurrently — Elwood MUST NOT clobber the file; it leaves the CLI's write in
 place and emits the `codex_default_model_persisted` warning so the deviation
 is surfaced rather than silent. Elwood confirms the CLI's own default
-reasoning level for the chosen Codex model.
+reasoning level for the chosen Codex model. The whole snapshot/apply/restore
+transaction holds a process-wide lock so two concurrent `setModel` switches in
+the SAME Elwood process cannot interleave and leave the wrong default. This lock
+is process-local: two SEPARATE Elwood processes sharing one `config.toml` can
+still interleave their transactions. That cross-process race is an accepted
+current limitation (the compare-and-swap still refuses to clobber an unrelated
+edit; the residual risk is a transiently-persisted picker model surviving as the
+default). Closing it requires an inter-process lock on the resolved config path
+and is scoped as separate work.
 `listModels` and `setModel` are transient TUI control: they open and drive the
 adapter's own picker overlay and MUST dispatch even while a turn is in flight
 (for example an MCP-server boot spinner at startup), rather than waiting for
