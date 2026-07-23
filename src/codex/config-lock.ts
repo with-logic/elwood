@@ -13,21 +13,11 @@
  * Closing it needs an inter-process lock on the resolved path and is separate work.
  */
 
-let tail: Promise<void> = Promise.resolve();
+import { createAsyncMutex } from "../core/async-mutex.ts";
 
 /**
  * Runs `task` while holding the config lock: each caller waits for the prior
  * holder to finish before starting, and the lock is released when `task`
  * settles (success or failure), so a failing switch never wedges the queue.
  */
-export function withCodexConfigLock<T>(task: () => Promise<T>): Promise<T> {
-  const run = tail.then(task, task);
-  // Keep the chain alive but swallow errors on the internal tail so one caller's
-  // rejection does not reject the NEXT caller's acquire; the real result/rejection
-  // is returned to THIS caller via `run`.
-  tail = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  return run;
-}
+export const withCodexConfigLock = createAsyncMutex();
