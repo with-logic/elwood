@@ -50,11 +50,15 @@ describe("client message validation", () => {
     });
   });
 
-  test("C-APP-08 rejects non-JSON and non-object frames", () => {
-    expect(() => parseClientMessage("not json")).toThrow("Invalid client message.");
-    expect(() => parseClientMessage("null")).toThrow("Invalid client message.");
-    expect(() => parseClientMessage("42")).toThrow("Invalid client message.");
-    expect(() => parseClientMessage("{}")).toThrow("Invalid client message.");
+  test("C-APP-08 rejects non-JSON and non-object frames with distinct messages", () => {
+    // Invalid JSON, a non-object, and an object missing `type` each get a distinct
+    // descriptive error (the parser promises descriptive errors for the dev app).
+    expect(() => parseClientMessage("not json")).toThrow("Client message is not valid JSON.");
+    expect(() => parseClientMessage("null")).toThrow("Client message must be a JSON object.");
+    expect(() => parseClientMessage("42")).toThrow("Client message must be a JSON object.");
+    expect(() => parseClientMessage("{}")).toThrow(
+      'Client message requires a string "type" field.',
+    );
   });
 
   test("C-APP-08 rejects an unknown type instead of falling through to teardown", () => {

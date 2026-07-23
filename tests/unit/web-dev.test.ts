@@ -36,7 +36,7 @@ describe("browser dev app helpers", () => {
       parseClientMessage('{"type":"start","agent":"codex","cwd":".","cols":80,"rows":24}'),
     ).toMatchObject({ agent: "codex", cwd: ".", cols: 80, rows: 24 });
     expect(sizeFrom({ cols: 120, rows: 40 })).toEqual({ cols: 120, rows: 40 });
-    expect(() => parseClientMessage("null")).toThrow("Invalid client message.");
+    expect(() => parseClientMessage("null")).toThrow("Client message must be a JSON object.");
   });
 
   test("C-APP-08 keeps shutdown handling outside the web server body", () => {

@@ -17,8 +17,11 @@ import type { ClientMessage } from "./web-messages.ts";
  */
 export function parseClientMessage(raw: string): ClientMessage {
   const parsed = decodeJson(raw);
-  if (!isRecord(parsed) || typeof parsed["type"] !== "string") {
-    throw new Error("Invalid client message.");
+  // Distinguish the two malformed shapes (the parser promises descriptive errors):
+  // a non-object payload vs a valid object that lacks a string `type` discriminant.
+  if (!isRecord(parsed)) throw new Error("Client message must be a JSON object.");
+  if (typeof parsed["type"] !== "string") {
+    throw new Error('Client message requires a string "type" field.');
   }
   return validateByType(parsed, parsed["type"]);
 }
@@ -52,8 +55,8 @@ function validateStart(record: Record<string, unknown>): ClientMessage {
     cols: requireNumber(record, "cols", "start"),
     rows: requireNumber(record, "rows", "start"),
     ...optionalAgent(record),
-    ...optionalString(record, "stateDir", "start", "stateDir"),
-    ...optionalString(record, "elwoodSessionId", "start", "elwoodSessionId"),
+    ...optionalString(record, "stateDir", "start"),
+    ...optionalString(record, "elwoodSessionId", "start"),
   };
 }
 
@@ -66,18 +69,19 @@ function optionalAgent(record: Record<string, unknown>): { readonly agent?: Agen
   return { agent: value };
 }
 
+// The output key IS the input key (both call sites passed them identically), so a
+// single `key` parameter avoids the two drifting apart.
 function optionalString<K extends string>(
   record: Record<string, unknown>,
-  key: string,
+  key: K,
   type: string,
-  outKey: K,
 ): Partial<Record<K, string>> {
   const value = record[key];
   if (value === undefined) return {};
   if (typeof value !== "string") {
     throw new Error(`${type} message "${key}" must be a string.`);
   }
-  return { [outKey]: value } as Record<K, string>;
+  return { [key]: value } as Record<K, string>;
 }
 
 function requireString(record: Record<string, unknown>, key: string, type: string): string {
@@ -98,7 +102,7 @@ function decodeJson(raw: string): unknown {
   try {
     return JSON.parse(raw) as unknown;
   } catch {
-    throw new Error("Invalid client message.");
+    throw new Error("Client message is not valid JSON.");
   }
 }
 
