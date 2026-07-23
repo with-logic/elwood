@@ -33,9 +33,11 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
   per-adapter resume state (the CLI's conversation id + launch posture). Session
   status, timestamps, warnings, caller metadata, terminal size, the hook-bridge
   token, the socket path, and Elwood-owned runtime file paths are no longer written.
-  Runtime paths are derived on demand from `(stateDir, id, adapter)`; the bridge
-  token and socket home are minted fresh on every start/resume and never trusted
-  from disk. Behavior for callers is unchanged except that a resumed session no
+  Runtime paths are derived on demand from `(stateDir, id, adapter)`; the socket
+  home is a deterministic fingerprint of that same identity (stable across a
+  session's launches, distinct for a shared explicit id in another state dir),
+  while the bridge token and the socket file inside the home are minted fresh on
+  every start/resume and never trusted from disk. Behavior for callers is unchanged except that a resumed session no
   longer restores a persisted terminal size — pass `initialSize` on resume to set
   geometry (it otherwise falls back to the default). (§8.2)
 
