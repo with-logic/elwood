@@ -50,21 +50,28 @@ test("C-E2E-03 real Codex bounds an oversized transcript record and stays usable
       hooks,
     });
     await waitFor(() => (session?.status === "ready" ? true : undefined), "codex ready", 60_000);
-    // Codex reports the rollout path via its hooks; if the CLI version does not, the
-    // bounding still holds (nothing to inject), so skip the injection but keep the
-    // responsiveness assertion below meaningful.
-    if (transcriptPath) appendFileSync(transcriptPath, OVERSIZED);
+    // Codex reports the rollout path via its hooks. This test's whole point is the
+    // oversized-record → content-free drop, so we REQUIRE a path to inject into: if
+    // the CLI version never reported one, fail loudly rather than passing green
+    // without exercising the regression at all.
+    assert.ok(transcriptPath, "Codex reported a rollout transcript_path to inject into");
+    appendFileSync(transcriptPath, OVERSIZED);
     // The session must remain responsive: a real turn completes rather than the
     // reader blocking the event loop on the huge unread delta.
     await session.sendMessage("Reply exactly: ELWOOD_OK. Do not use tools.");
     await waitFor(() => (stops > 0 ? true : undefined), "turn completes after oversized record");
     assert.equal(session.status, "ready", "session settled to ready, not wedged");
-    // If we injected, the oversized record is accounted as a content-free drop —
-    // never surfaced as transcript content (no 'xxxxx' bytes in any warning).
-    if (transcriptPath) {
-      const drop = session.warnings.find((w) => w.code === "transcript_records_dropped");
-      if (drop) assert.ok(!JSON.stringify(drop).includes("xxxxx"), "drop warning is content-free");
-    }
+    // The oversized record MUST surface as a drop warning (poll ticks account it),
+    // and that warning MUST be content-free — never the injected 'xxxxx' bytes.
+    await waitFor(
+      () =>
+        session?.warnings.some((w) => w.code === "transcript_records_dropped") ? true : undefined,
+      "oversized record accounted as a drop warning",
+      20_000,
+    );
+    const drop = session.warnings.find((w) => w.code === "transcript_records_dropped");
+    assert.ok(drop, "a transcript_records_dropped warning was emitted");
+    assert.ok(!JSON.stringify(drop).includes("xxxxx"), "drop warning is content-free");
   } finally {
     await cleanup(session);
   }

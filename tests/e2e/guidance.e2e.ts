@@ -3,9 +3,12 @@
  * Implements C-API-37, C-E2E-02, and C-E2E-03. Consumption is asserted via the
  * signals the CLIs actually provide for MID-TURN steering — the guidance overtakes
  * readiness (no intervening `ready`), `sendGuidance` resolves after the submitting
- * Enter, and the marker renders in the live TUI. A `UserPromptSubmit` hook is NOT
- * asserted: the real CLIs do not fire it for text injected into an active turn
- * (verified empirically), so requiring it made this suite deterministically red.
+ * Enter, the marker renders in the live TUI, AND the marker is no longer sitting on
+ * the composer prompt line (proving it was SUBMITTED, not merely pasted — a
+ * regression that omits the submitting Enter would leave it staged in the composer).
+ * A `UserPromptSubmit` hook is NOT asserted: the real CLIs do not fire it for text
+ * injected into an active turn (verified empirically), so requiring it made this
+ * suite deterministically red.
  */
 
 import assert from "node:assert/strict";
@@ -30,7 +33,20 @@ type GuidanceOutcome = {
   readonly screen: string;
 };
 
-async function guidanceFlow(session: ElwoodAgentSession, marker: string): Promise<GuidanceOutcome> {
+/** True if the marker is still sitting UNSUBMITTED on the composer prompt-glyph line. */
+function markerStuckInComposer(text: string, glyph: string, marker: string): boolean {
+  for (const line of text.split("\n")) {
+    const trimmed = line.trimStart();
+    if (trimmed.startsWith(glyph) && trimmed.includes(marker)) return true;
+  }
+  return false;
+}
+
+async function guidanceFlow(
+  session: ElwoodAgentSession,
+  marker: string,
+  composerGlyph: string,
+): Promise<GuidanceOutcome> {
   await waitFor(() => (session.status === "ready" ? true : undefined), "initial ready", 60_000);
   await session.sendMessage(
     "Write a detailed 2,000-word essay about terminal history. Do not use tools.",
@@ -63,6 +79,18 @@ async function guidanceFlow(session: ElwoodAgentSession, marker: string): Promis
     "guidance marker on screen",
     30_000,
   );
+  // Prove SUBMISSION, not mere rendering: a regression that pastes the marker but
+  // omits the submitting Enter leaves it sitting on the composer prompt line. After a
+  // real submit the composer is cleared, so the marker must NOT remain in it — screen
+  // echo alone (asserted above) cannot distinguish pasted-but-not-sent.
+  await waitFor(
+    () =>
+      markerStuckInComposer(session.terminal.snapshot().text, composerGlyph, marker)
+        ? undefined
+        : true,
+    "guidance marker submitted (composer cleared, not left staged)",
+    30_000,
+  );
   return { transitionsDuringGuidance, status, screen };
 }
 
@@ -79,7 +107,7 @@ test("C-API-37 real Claude receives guidance during an active turn", {
     hooks: {},
   });
   try {
-    const outcome = await guidanceFlow(session, "ELWOOD_GUIDANCE_CLAUDE_NOW");
+    const outcome = await guidanceFlow(session, "ELWOOD_GUIDANCE_CLAUDE_NOW", "❯");
     assert.ok(
       !outcome.transitionsDuringGuidance.includes("ready"),
       "guidance settled into the live running turn without waiting for a ready transition",
@@ -105,7 +133,7 @@ test("C-API-37 real Codex receives guidance during an active turn", {
     hooks: {},
   });
   try {
-    const outcome = await guidanceFlow(session, "ELWOOD_GUIDANCE_CODEX_NOW");
+    const outcome = await guidanceFlow(session, "ELWOOD_GUIDANCE_CODEX_NOW", "›");
     assert.ok(
       !outcome.transitionsDuringGuidance.includes("ready"),
       "guidance settled into the live running turn without waiting for a ready transition",

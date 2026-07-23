@@ -29,9 +29,20 @@ describe("browser dev app server", () => {
     const app = await launch(running);
     expect(await fetchText(app, "/")).toContain("Elwood Dev");
     expect(await fetchText(app, "/client.js")).toContain("new Terminal");
-    expect(await fetchText(app, "/vendor/xterm.mjs")).toContain("");
-    expect(await fetchText(app, "/vendor/addon-fit.mjs")).toContain("");
-    expect(await fetchText(app, "/vendor/xterm.css")).toContain("");
+    // Assert a real signature per vendor asset, not `toContain("")` (which passes for
+    // any body): an empty or wrong asset would leave the browser app unusable but a
+    // substring-of-"" check green. Each asset must be 200, non-empty, and identifiable.
+    for (const [path, signature] of [
+      ["/vendor/xterm.mjs", "xterm.js authors"],
+      ["/vendor/addon-fit.mjs", "xterm.js authors"],
+      ["/vendor/xterm.css", ".xterm"],
+    ] as const) {
+      const res = await fetchRaw(app, path);
+      expect(res.status).toBe(200);
+      const body = await res.text();
+      expect(body.length).toBeGreaterThan(100);
+      expect(body).toContain(signature);
+    }
     const missing = await fetchRaw(app, "/nope");
     expect(missing.status).toBe(404);
   });

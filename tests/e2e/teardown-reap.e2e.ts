@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { childPids } from "../../src/app/child-lookup.ts";
 import { type ClaudeSession, startClaude } from "../../src/index.ts";
-import { makeProject, skipReason, waitFor } from "./helpers.ts";
+import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
 
 /** True once `pid` no longer exists (signal 0 probe throws ESRCH for a dead pid). */
 function isReaped(pid: number): boolean {
@@ -38,17 +38,23 @@ test("C-LIFE-10 teardown reaps the real Claude process group (no orphan)", {
       },
     },
   });
-  await waitFor(() => (starts > 0 ? true : undefined), "start SessionStart");
-  // The CLI the PTY just spawned is a NEW direct child of this test process.
-  const spawned = childPids(process.pid).filter((pid) => !before.has(pid));
-  assert.ok(spawned.length >= 1, "the agent CLI is a live child of the test process");
-  await session.teardown();
-  // Every spawned leader (and thus its group) must be reaped; poll briefly for the
-  // OS to finish tearing down the process group after teardown resolves.
-  for (const pid of spawned) {
-    await waitFor(() => (isReaped(pid) ? true : undefined), `pid ${pid} reaped`, 20_000);
-    assert.ok(isReaped(pid), `agent pid ${pid} was reaped by teardown`);
+  // A failure in ANY assertion below must not leak the real process group into later
+  // tests: the shared cleanup (teardown → kill fallback) always runs in `finally`.
+  try {
+    await waitFor(() => (starts > 0 ? true : undefined), "start SessionStart");
+    // The CLI the PTY just spawned is a NEW direct child of this test process.
+    const spawned = childPids(process.pid).filter((pid) => !before.has(pid));
+    assert.ok(spawned.length >= 1, "the agent CLI is a live child of the test process");
+    await session.teardown();
+    // Every spawned leader (and thus its group) must be reaped; poll briefly for the
+    // OS to finish tearing down the process group after teardown resolves.
+    for (const pid of spawned) {
+      await waitFor(() => (isReaped(pid) ? true : undefined), `pid ${pid} reaped`, 20_000);
+      assert.ok(isReaped(pid), `agent pid ${pid} was reaped by teardown`);
+    }
+    // Teardown is idempotent and must not reject on a second call after exit.
+    await session.teardown();
+  } finally {
+    await cleanup(session);
   }
-  // Teardown is idempotent and must not reject on a second call after exit.
-  await session.teardown();
 });
