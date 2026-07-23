@@ -7,6 +7,7 @@ import {
   controlOperationTraits,
   nextDispatchIndex,
   overtakesReadiness,
+  runContained,
 } from "./control-queue-traits.ts";
 
 export type {
@@ -38,8 +39,8 @@ export class ControlQueue {
   private ready = false;
   private everReady = false;
   private closed = false;
-  private readinessEpoch = 0; // monotonic; rollback restores its snapshot only if the epoch is unchanged
-  private bypassable = 0; // # ops dispatchable while not ready; lets drain skip the overtaker scan
+  private readinessEpoch = 0; // monotonic; rollback restores its snapshot only if unchanged
+  private bypassable = 0; // # ops dispatchable while not ready (drain skips the overtaker scan)
   private inFlight: QueuedOperation | undefined; // submission still dispatching (incl. delayed Enter)
   private submitAbort: AbortController | undefined;
 
@@ -178,18 +179,17 @@ export class ControlQueue {
     if (operation.attach) {
       await operation.attach(signal);
       if (signal.aborted) throw this.stoppedError();
-      try {
-        this.beginSubmission(traits);
-      } catch {
-        // Isolated: images are already staged, so submit the text rather than strand it.
-      }
+      this.beginSubmission(traits); // contained internally: never throws out of here
     }
     await this.submit(operation.input, traits.submitMode, signal);
   }
 
   private beginSubmission(traits: ControlOperationTraits): void {
     if (traits.consumesReadiness) this.ready = false;
-    if (traits.reportsCallerSubmission) this.onTurnStarted();
+    // Contain a throwing caller_submitted→running status listener: the transition has
+    // already committed, so rethrowing would wedge the queue via a rollback that can't
+    // restore readiness (the epoch moved). Telemetry must not abort the PTY write.
+    if (traits.reportsCallerSubmission) runContained(() => this.onTurnStarted());
   }
 
   private armAbort(): AbortSignal {

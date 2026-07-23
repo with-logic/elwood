@@ -23,25 +23,35 @@ export function validateSessionRecord(value: unknown, id: string): SessionRecord
   if (value["schemaVersion"] !== 1 || value["elwoodSessionId"] !== id) return null;
   if (adapter !== "claude" && adapter !== "codex") return null;
   if (!isString(value["cwd"])) return null;
-  const claude = adapterState<ClaudeLaunchPosture>(value["claude"], "claude");
-  const codex = adapterState<CodexLaunchPosture>(value["codex"], "codex");
+  const claude = adapterState(value["claude"], "claude");
+  const codex = adapterState(value["codex"], "codex");
   if (claude === null || codex === null) return null;
   return { schemaVersion: 1, elwoodSessionId: id, adapter, cwd: value["cwd"], claude, codex };
 }
 
+/** The launch-posture type for each adapter — ties the posture to its adapter literal. */
+type PostureFor<A extends "claude" | "codex"> = A extends "claude"
+  ? ClaudeLaunchPosture
+  : CodexLaunchPosture;
+
 // C-STATE-13: a persisted launch posture must round-trip; unknown shapes and
 // out-of-union policy values invalidate the record rather than resuming with a
-// corrupted policy. Each adapter's posture is validated against its own union via
-// isLaunchPosture. Returns a FRESH adapter-state carrying ONLY resumeId + launch —
-// any legacy extras (e.g. a persisted `name`) are dropped, not carried forward.
-function adapterState<P>(value: unknown, adapter: "claude" | "codex"): AdapterState<P> | null {
+// corrupted policy. The posture type is CORRELATED to the `adapter` argument via
+// `PostureFor<A>`, so `adapterState(v, "codex")` can only produce a Codex-typed
+// state — a mismatched adapter/posture pair cannot compile. Returns a FRESH
+// adapter-state carrying ONLY resumeId + launch; legacy extras (e.g. a persisted
+// `name`) are dropped, not carried forward.
+function adapterState<A extends "claude" | "codex">(
+  value: unknown,
+  adapter: A,
+): AdapterState<PostureFor<A>> | null {
   if (!isRecord(value)) return null;
   const resumeId = value["resumeId"];
   if (!optionalString(resumeId)) return null;
   if (!isLaunchPosture(value["launch"], adapter)) return null;
   return {
     ...(resumeId === undefined ? {} : { resumeId }),
-    ...(value["launch"] === undefined ? {} : { launch: value["launch"] as P }),
+    ...(value["launch"] === undefined ? {} : { launch: value["launch"] as PostureFor<A> }),
   };
 }
 

@@ -83,30 +83,6 @@ describe("ControlQueue submission lifecycle", () => {
     expect(submitted).toEqual(["msg", "held"]);
   });
 
-  test("C-API-35 a throwing turn-start listener aborts before the write, keeping ownership clean", async () => {
-    const submitted: string[] = [];
-    let started = 0;
-    const queue = new ControlQueue(
-      (input) => {
-        submitted.push(input);
-        return Promise.resolve();
-      },
-      () => new Error("closed"),
-      () => {
-        started += 1;
-        if (started === 1) throw new Error("status listener failed");
-      },
-    );
-    queue.markReady();
-    // The first message's turn-start work throws BEFORE its write, so nothing is
-    // written and the operation rejects; the queue stays consistent.
-    await expect(queue.send("first", "message")).rejects.toThrow("status listener failed");
-    expect(submitted).toEqual([]);
-    // A follower still dispatches cleanly (no abandoned in-flight write).
-    await queue.send("second", "message");
-    expect(submitted).toEqual(["second"]);
-  });
-
   test("C-API-07 a failed BYPASS submission never fabricates readiness the session lacked", async () => {
     const submitted: string[] = [];
     let running = false;

@@ -23,14 +23,17 @@ export function emitSessionWarnings(
   warnings: readonly ElwoodWarningEvent[],
   emit: WarningEmit,
 ): void {
+  // EVERY warning (and both of its two events) is attempted, even if an earlier
+  // listener throws — a throwing listener for warning #1 must not silently drop
+  // warnings #2+, whose identities/buffer were already consumed upstream and cannot
+  // be recovered. The FIRST error is retained and rethrown only after the whole batch
+  // fired, so an enclosing boundary still sees a failure without losing siblings.
+  let firstError: unknown;
   for (const warning of warnings) {
-    // ISOLATE the two emits: one throwing listener must not suppress the other
-    // event. The first listener error is rethrown after both fire, so an enclosing
-    // boundary still sees it.
-    let firstError = deliver(() => emit.warning(warning));
+    firstError = deliver(() => emit.warning(warning), firstError);
     firstError = deliver(() => emit.activity(activityFromWarning(warning)), firstError);
-    if (firstError !== undefined) throw firstError;
   }
+  if (firstError !== undefined) throw firstError;
 }
 
 /** Run a fan-out step; return the FIRST error seen so both steps always run. */

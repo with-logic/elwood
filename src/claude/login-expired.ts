@@ -20,13 +20,13 @@ export const LOGIN_EXPIRED_MESSAGE =
 export const LOGIN_EXPIRED_RAW = "login_expired recovery=/login";
 
 /**
- * Edge-detects the login-expired banner so the warning fires ONCE per occurrence,
- * with a two-phase peek/commit so state advances only AFTER the warning is
- * delivered: `peek` reports whether this frame is a fresh raised edge WITHOUT
- * mutating state, and `commit` advances to "present" only once the caller has
- * emitted the live warning. A frame with no banner clears the flag immediately (a
- * cleared banner re-arms), so a transient emit failure retries on a later frame
- * rather than being lost, while a persistent banner still warns only once.
+ * Edge-detects the login-expired banner so the warning fires ONCE per occurrence.
+ * Two-phase peek/commit: `peek` reports whether this frame is a fresh raised edge
+ * WITHOUT mutating state, and `commit` advances to "present". The caller commits
+ * BEFORE the live fan-out (warnings are live-only and fire exactly once — committing
+ * after a throwing listener would re-fire the same incident to listeners that already
+ * received it). A frame with no banner clears the flag immediately, so a banner that
+ * clears and reappears is a genuinely new edge that warns again.
  */
 export class LoginExpiredWatcher {
   private present = false;

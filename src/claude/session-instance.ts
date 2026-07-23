@@ -138,17 +138,21 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     });
   }
   // Surface a mid-session login-expiry banner once (C-CLAUDE-18): gated on prior
-  // readiness (startup handles it fatally), edge-detected. FULLY non-throwing —
-  // runs in the frame callback's detached continuation, so a listener failure
-  // can't become an unhandled rejection or skip `terminal:data`. The edge advances
-  // only after the live warning is emitted, so a transient throw retries next frame.
+  // readiness (startup handles it fatally), edge-detected. FULLY non-throwing — runs
+  // in the frame callback's detached continuation, so a listener failure can't become
+  // an unhandled rejection or skip `terminal:data`. COMMIT the edge BEFORE the live
+  // fan-out: warnings are live-only (fire exactly once), and emitWarnings delivers to
+  // every listener before rethrowing a listener error — committing after would treat
+  // a throwing listener as non-delivery and re-fire the SAME incident to the listeners
+  // that already received it (a duplicate). A throwing listener is contained here.
   noteLoginExpiry(screenText: string): void {
     if (!(this.hasBeenReady && this.loginExpiredWatcher.peek(screenText))) return;
+    this.loginExpiredWatcher.commit();
     try {
       this.emitWarnings([loginExpiredWarning(this.elwoodSessionId)]);
-      this.loginExpiredWatcher.commit();
     } catch {
-      // Un-committed so a later frame retries.
+      // Live-only: a throwing listener is contained and the warning is dropped, not
+      // re-fired — the edge is already committed so a persistent banner warns once.
     }
   }
   // Drive `/login` re-auth as an exclusive, abort-aware queue transaction (C-API-43).

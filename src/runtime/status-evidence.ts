@@ -128,9 +128,10 @@ export class SessionStatusEngine {
 
   private apply(to: ElwoodSessionStatus): void {
     if (to === "running") {
-      // Turn start: commit `current` BEFORE suspending the queue so drained sends
-      // observe the new status. The whole apply is synchronous, so ordering opens no
-      // drain race. A throwing status LISTENER runs only after in-memory state settles.
+      // Turn start: commit `current` and suspend the queue BEFORE the public emit, so a
+      // throwing status LISTENER can never skip the suspend (it runs after). A throwing
+      // caller_submitted listener is additionally CONTAINED in ControlQueue.beginSubmission
+      // so it cannot abort the pending PTY write.
       this.current = to;
       this.io.queueRunning();
       this.io.emitStatus(to);
@@ -138,16 +139,23 @@ export class SessionStatusEngine {
     }
     this.current = to;
     if (to === "ready") {
-      // Status lands before the queue drains so drained sends observe "ready".
+      // `onReady` (a non-throwing latch) runs before listeners so one checking
+      // "has been ready" sees it. The queue reopen is guaranteed in a `finally`: a
+      // throwing status listener must NOT skip queueReady(), or the queue stays
+      // suspended while `current` is already `ready`, so later ready evidence is a
+      // no-op and queued work starves.
       this.io.onReady();
-      this.io.emitStatus(to);
-      this.io.queueReady();
+      try {
+        this.io.emitStatus(to);
+      } finally {
+        this.io.queueReady();
+      }
       return;
     }
     if (to === "blocked") {
-      // A human-decision dialog is on screen: suspend the queue so a queued
-      // send cannot write into the dialog. `blocking_prompt_cleared -> ready`
-      // is the only path that reopens it.
+      // A human-decision dialog is on screen: suspend the queue BEFORE the emit so a
+      // status listener that synchronously calls back cannot drain a queued send into
+      // the dialog. Suspend-first also means a throwing listener can't skip the suspend.
       this.io.queueBlocked();
       this.io.emitStatus(to);
       return;

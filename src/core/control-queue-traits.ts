@@ -133,3 +133,12 @@ export const controlOperationTraits: Readonly<
     submitMode: "command",
   },
 };
+
+/** Run a step, swallowing any throw — telemetry must never control queue progress. */
+export function runContained(step: () => void): void {
+  try {
+    step();
+  } catch {
+    // Contained by design.
+  }
+}

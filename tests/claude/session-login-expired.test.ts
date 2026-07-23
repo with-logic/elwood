@@ -91,26 +91,29 @@ describe("ClaudeSession mid-session login expiry (C-CLAUDE-18)", () => {
     expect(warnings.length).toBeLessThanOrEqual(2);
   });
 
-  test("C-CLAUDE-18 a throwing warning delivery does not lose the edge: a later frame RETRIES", async () => {
+  test("C-CLAUDE-18 a throwing warning listener does NOT duplicate the warning (commit-before-emit)", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
-    // The watcher commits the raised edge only after `emitWarnings` returns without
-    // throwing; a warning listener that throws on the FIRST delivery leaves the edge
-    // un-committed so a later frame re-attempts — the warning is not lost.
-    let throwOnce = true;
-    const delivered: string[] = [];
+    // Warnings are live-only and fire EXACTLY ONCE per occurrence. The edge is committed
+    // BEFORE the live fan-out, so a throwing listener is contained and does NOT re-arm the
+    // edge — a persistent banner across frames must not re-fire the SAME incident to
+    // listeners that already received it. This is the regression for the review's
+    // "throwing listener duplicates login_expired" finding.
+    const throwing: string[] = [];
+    const ok: string[] = [];
     session.on("warning", (w) => {
-      delivered.push(w.code);
-      if (throwOnce) {
-        throwOnce = false;
-        throw new Error("transient listener failure");
-      }
+      throwing.push(w.code);
+      throw new Error("listener always throws"); // a persistently-buggy consumer
     });
+    session.on("warning", (w) => ok.push(w.code)); // a healthy consumer on the SAME event
     await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
-    ptys[0]!.emitData(EXPIRED); // first attempt: listener throws, edge un-committed
-    ptys[0]!.emitData(EXPIRED); // later frame: retry delivers successfully
-    await expect.poll(() => delivered.filter((c) => c === "login_expired").length).toBe(2);
+    expect(session.status).toBe("ready");
+    ptys[0]!.emitData(EXPIRED);
+    ptys[0]!.emitData(EXPIRED); // persistent banner across frames: still ONE occurrence
+    await expect.poll(() => ok.filter((c) => c === "login_expired").length).toBe(1);
+    // The throwing listener also saw it exactly once — no duplicate re-fire despite the throw.
+    expect(throwing.filter((c) => c === "login_expired")).toHaveLength(1);
   });
 
   test("C-CLAUDE-18 a throwing WARNING listener does not suppress the activity nor terminal:data", async () => {

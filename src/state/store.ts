@@ -111,14 +111,28 @@ export type RemoveSessionFilesInput = {
 /** Remove a session's derived directory AND the per-launch socket home (§8.1). */
 export function removeSessionFiles(input: RemoveSessionFilesInput): void {
   const dir = safeSessionDir(input.stateDir, input.elwoodSessionId);
-  try {
-    removeSocketHome(input.socketPath);
-    rmSync(dir, { recursive: true, force: true });
-  } catch (error) {
+  // Attempt BOTH removals independently (§8.4 attempt-all): a socket-home removal
+  // failure must NOT prevent the session-directory removal that leaves resumable
+  // metadata + runtime files behind. Collect the first failure and report it after
+  // both ran, so teardown removes everything it can and still surfaces the fault.
+  let firstError: unknown;
+  firstError = tryRemove(() => removeSocketHome(input.socketPath), firstError);
+  firstError = tryRemove(() => rmSync(dir, { recursive: true, force: true }), firstError);
+  if (firstError !== undefined) {
     throw elwoodError("teardown_failed", "Could not remove Elwood session files.", {
-      cause: error instanceof Error ? error.message : String(error),
+      cause: firstError instanceof Error ? firstError.message : String(firstError),
       sessionDir: dir,
     });
+  }
+}
+
+/** Run a removal step, keeping the FIRST error so every step is still attempted. */
+function tryRemove(step: () => void, prior: unknown): unknown {
+  try {
+    step();
+    return prior;
+  } catch (error) {
+    return prior ?? error;
   }
 }
 
