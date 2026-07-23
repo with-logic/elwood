@@ -30,22 +30,6 @@ export type ShutdownHost = {
   readonly submitEvidence: (kind: StatusEvidenceKind) => void;
 };
 
-/** The session-owned pieces a `ShutdownHost` is assembled from. */
-export type ShutdownHostDeps = {
-  readonly pty: PtyProcess;
-  readonly record: SessionRecord;
-  readonly reapPolicy: SessionReapPolicy;
-  readonly status: () => import("../core/types.ts").ElwoodSessionStatus;
-  readonly claimShutdown: (evidence: ShutdownEvidence) => void;
-  readonly cleanupRuntime: () => Promise<void>;
-  readonly submitEvidence: (kind: StatusEvidenceKind) => void;
-};
-
-/** Assembles the `ShutdownHost` the orchestration drives from a session's own state. */
-export function buildShutdownHost(deps: ShutdownHostDeps): ShutdownHost {
-  return deps;
-}
-
 /** The three public shutdown verbs bound to a coordinator and lazy host. */
 type ManagedShutdown = {
   readonly stop: () => Promise<void>;

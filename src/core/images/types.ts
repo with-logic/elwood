@@ -36,4 +36,10 @@ export const imageLimits = {
   maxCount: 16,
   maxBytesPerImage: 25 * 1024 * 1024,
   maxBytesTotal: 50 * 1024 * 1024,
+  // The aggregate byte ceiling for cloned image bytes held across ALL not-yet-attached
+  // queued submissions on ONE session. A slow paste/confirmation can hold many
+  // submissions in the control queue at once; without this a caller could queue enough
+  // legal 50 MiB submissions to retain gigabytes of clones. A submission whose bytes
+  // would push the session past this ceiling rejects with `invalid_image` (C-API-44).
+  maxQueuedBytes: 200 * 1024 * 1024,
 } as const;

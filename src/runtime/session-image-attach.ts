@@ -10,19 +10,42 @@
  * Implements PRD §5.3 (C-API-44).
  */
 
+import { elwoodError } from "../core/errors.ts";
 import {
   type ImageSnapshot,
   materializeImages,
   snapshotImages,
   validateImagePaths,
 } from "../core/images/index.ts";
-import type { ImageInput } from "../core/images/types.ts";
+import { type ImageInput, imageLimits } from "../core/images/types.ts";
+
+/**
+ * A per-session aggregate byte budget for image clones held across ALL not-yet-attached
+ * queued submissions. Reserved synchronously when a submission's bytes are cloned and
+ * released when it settles, so a slow paste can't let a caller retain gigabytes of
+ * queued clones (C-API-44).
+ */
+export class QueuedImageBudget {
+  private used = 0;
+  private readonly ceiling: number;
+  constructor(ceiling = imageLimits.maxQueuedBytes) {
+    this.ceiling = ceiling;
+  }
+  reserve(bytes: number): void {
+    if (this.used + bytes > this.ceiling)
+      throw elwoodError("invalid_image", "Too many queued image bytes for this session.");
+    this.used += bytes;
+  }
+  release(bytes: number): void {
+    this.used = Math.max(0, this.used - bytes);
+  }
+}
 
 /** A text-submission kind carried by the control queue. */
 export type SubmitKind = "prompt" | "message" | "guidance";
 
 /** An attach step run inside a queued op, before the text write. */
-type AttachTask = (signal: AbortSignal) => Promise<void>;
+export type AttachTask = (signal: AbortSignal) => Promise<void>;
 
 /** Drives an adapter's native attach for already-resolved absolute image paths. */
 export type AttachDriver = (paths: readonly string[], signal: AbortSignal) => Promise<void>;
@@ -43,6 +66,7 @@ export function enqueueSubmission(
   images: readonly ImageInput[] | undefined,
   driver: AttachDriver,
   send: QueueSend,
+  budget?: QueuedImageBudget,
 ): Promise<void> {
   // Fast-path ONLY a truly absent list. Any supplied value — including a non-array
   // like `""` or a zero-length array-like `{ length: 0 }` from an untyped caller —
@@ -52,11 +76,20 @@ export function enqueueSubmission(
   let snapshot: ImageSnapshot;
   try {
     snapshot = snapshotImages(images); // validates shape + clones bytes at the call
+    budget?.reserve(snapshot.inlineByteTotal); // reserve the clone bytes vs the session ceiling
   } catch (error) {
     return Promise.reject(error);
   }
-  if (snapshot.snapshot.length === 0) return send(); // a genuinely empty array: no attach
-  return send((signal) => runAttach(snapshot, driver, signal));
+  const bytes = snapshot.inlineByteTotal;
+  if (snapshot.snapshot.length === 0) {
+    budget?.release(bytes); // nothing to attach: give the reservation back
+    return send();
+  }
+  // Release on EVERY settle path (attach done, reject, or the op never dispatching), so
+  // the clone memory is always accounted back even when a session closes mid-queue.
+  const done = send((signal) => runAttach(snapshot, driver, signal));
+  done.finally(() => budget?.release(bytes)).catch(() => undefined);
+  return done;
 }
 
 /** Resolve paths (async) → materialize → drive the adapter attach → clean up temp files. */

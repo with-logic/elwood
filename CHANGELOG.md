@@ -96,6 +96,18 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
   errno `code` (e.g. a numeric code) is now normalized to `"UNKNOWN"` instead of
   round-tripping a number through the string-typed field.
 
+- **A malformed `images` send on a terminated session rejects `session_not_running`,
+  not `invalid_image`.** Image validation used to run before the lifecycle guard, so a
+  bad image on a stopped/killed/torn-down session reported the wrong error; terminal
+  status now takes precedence. (C-API-25)
+
+- **A per-session ceiling now bounds queued image-clone memory.** Beyond the
+  per-submission 50 MiB limit, at most 200 MiB of cloned image bytes may be held across
+  all not-yet-attached queued submissions; a submission that would exceed it rejects
+  `invalid_image`, and reservations release as submissions settle. This prevents a slow
+  paste/confirmation from letting many legal queued sends retain gigabytes of clones.
+  (C-API-44)
+
 - **A throwing warning sink no longer silently loses drop/read-error totals.** If
   persisting a `transcript_records_dropped` / `transcript_read_error` warning threw
   (e.g. a failed `session.json` write), the running total was cleared before the

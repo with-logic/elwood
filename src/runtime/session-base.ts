@@ -16,10 +16,16 @@ import { CleanupLatch } from "./cleanup-latch.ts";
 import { advanceInitialReady } from "./initial-ready-advance.ts";
 import { notRunningError, type SessionStatusEmitter } from "./session-base-types.ts";
 import { CommandSurface } from "./session-commands.ts";
-import { type AttachDriver, enqueueSubmission, type SubmitKind } from "./session-image-attach.ts";
+import {
+  type AttachDriver,
+  type AttachTask,
+  enqueueSubmission,
+  QueuedImageBudget,
+  type SubmitKind,
+} from "./session-image-attach.ts";
 import { SessionReapPolicy } from "./session-reap.ts";
 import { applyResize, persistHeldResize, restoreHeldResize } from "./session-resize.ts";
-import { buildShutdownHost, managedShutdown, type ShutdownEvidence } from "./session-shutdown.ts";
+import { managedShutdown, type ShutdownEvidence } from "./session-shutdown.ts";
 import { terminalStatuses } from "./session-status.ts";
 import { ShutdownCoordinator } from "./shutdown-coordinator.ts";
 import { emitStatusEvents } from "./status-emit.ts";
@@ -39,7 +45,7 @@ export abstract class AgentSessionBase {
   private readonly cleanupLatch = new CleanupLatch(() => this.stopRuntime());
   private pendingShutdown: ShutdownEvidence | undefined;
   private everReady = false;
-  private readonly shutdownCoordinator = new ShutdownCoordinator(); // join stop/kill/teardown
+  private readonly shutdownCoordinator = new ShutdownCoordinator();
   private readonly pasteGuard: PasteGuard = {
     snapshot: () => this.terminal.snapshot().text,
     staged: (s, p) => this.stagedPaste(s, p),
@@ -105,24 +111,21 @@ export abstract class AgentSessionBase {
   sendGuidance = (msg: string, options?: SendOptions) => this.enqueue(msg, "guidance", options);
   /** Adapter-specific native image attach, in-op, with resolved paths (C-API-44). */
   protected abstract attachImages(paths: readonly string[], signal: AbortSignal): Promise<void>;
+  private readonly imageBudget = new QueuedImageBudget();
   private enqueue(input: string, kind: SubmitKind, options?: SendOptions): Promise<void> {
     const driver: AttachDriver = (paths, signal) => this.attachImages(paths, signal);
-    // inSession FIRST: terminal status wins over image validation (C-API-25/44).
-    return this.inSession(() =>
-      enqueueSubmission(options?.images, driver, (a) => this.controlQueue.send(input, kind, a)),
-    );
+    const send = (a?: AttachTask) => this.controlQueue.send(input, kind, a);
+    return this.inSession(() => enqueueSubmission(options?.images, driver, send, this.imageBudget));
   }
   sendKeys = (input: string | Uint8Array): Promise<void> =>
     this.inSession(() => this.terminal.sendInput(input));
   resize(size: TerminalSize): Promise<void> {
     return this.inSession(() => applyResize(this.pty, this.terminal, this.persistSize, size));
   }
-  protected persistHeldSize(size: TerminalSize): void {
-    persistHeldResize(this.pty, this.terminal, this.persistSize, size);
-  }
-  protected restoreHeldSize(size: TerminalSize): void {
-    restoreHeldResize(this.pty, this.terminal, size);
-  }
+  protected persistHeldSize = (size: TerminalSize) =>
+    void persistHeldResize(this.pty, this.terminal, this.persistSize, size);
+  protected restoreHeldSize = (size: TerminalSize) =>
+    void restoreHeldResize(this.pty, this.terminal, size);
   private readonly persistSize = (size: TerminalSize) =>
     this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.status));
   interrupt = (o?: { readonly timeoutMs?: number }) =>
@@ -133,23 +136,20 @@ export abstract class AgentSessionBase {
   setModel(id: string, o?: { readonly timeoutMs?: number }): Promise<void> {
     return this.inSession(() => this.commands.setModel(id, o));
   }
-  private readonly shutdown = managedShutdown(this.shutdownCoordinator, () => this.shutdownHost());
+  private readonly shutdown = managedShutdown(this.shutdownCoordinator, () => ({
+    pty: this.pty,
+    record: this.record,
+    reapPolicy: this.reapPolicy,
+    status: () => this.status,
+    claimShutdown: (e: ShutdownEvidence) => {
+      this.pendingShutdown ??= e;
+    },
+    cleanupRuntime: () => this.cleanupRuntime(),
+    submitEvidence: (kind: StatusEvidenceKind) => void this.submitEvidence(kind),
+  }));
   stop = (): Promise<void> => this.shutdown.stop();
   kill = (): Promise<void> => this.shutdown.kill();
   teardown = (): Promise<void> => this.shutdown.teardown();
-  private shutdownHost() {
-    return buildShutdownHost({
-      pty: this.pty,
-      record: this.record,
-      reapPolicy: this.reapPolicy,
-      status: () => this.status,
-      claimShutdown: (evidence) => {
-        this.pendingShutdown ??= evidence;
-      },
-      cleanupRuntime: () => this.cleanupRuntime(),
-      submitEvidence: (kind) => void this.submitEvidence(kind),
-    });
-  }
   submitEvidence = (kind: StatusEvidenceKind): StatusDecision => this.statusEngine.submit(kind);
   submitExit(): StatusDecision {
     try {

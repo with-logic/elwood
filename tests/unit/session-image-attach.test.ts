@@ -9,7 +9,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { AttachDriver } from "../../src/runtime/session-image-attach.ts";
-import { enqueueSubmission } from "../../src/runtime/session-image-attach.ts";
+import { enqueueSubmission, QueuedImageBudget } from "../../src/runtime/session-image-attach.ts";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const noopDriver: AttachDriver = () => Promise.resolve();
@@ -155,6 +155,33 @@ describe("enqueueSubmission (C-API-44)", () => {
     ).resolves.toBeUndefined();
     vi.doUnmock("../../src/core/images/index.ts");
     vi.resetModules();
+  });
+
+  test("C-API-44 the per-session budget bounds queued clone bytes and rejects over-ceiling", async () => {
+    // A small ceiling: two ~8-byte submissions held un-attached exceed it. The second
+    // rejects `invalid_image` — the queue can't retain unbounded clones (C-API-44).
+    const budget = new QueuedImageBudget(12); // fits one PNG (8 bytes), not two
+    let release!: () => void;
+    const held = new Promise<void>((r) => {
+      release = r;
+    });
+    const slowDriver: AttachDriver = () => held; // first submission stays un-attached
+    const first = enqueueSubmission([{ data: PNG, format: "png" }], slowDriver, runAttach, budget);
+    // The second submission's bytes would push the session past the ceiling → reject.
+    await expect(
+      enqueueSubmission([{ data: PNG, format: "png" }], noopDriver, runAttach, budget),
+    ).rejects.toMatchObject({ code: "invalid_image" });
+    // Once the first settles, its reservation is released, so a new submission fits again.
+    release();
+    await first;
+    await expect(
+      enqueueSubmission([{ data: PNG, format: "png" }], noopDriver, runAttach, budget),
+    ).resolves.toBeUndefined();
+  });
+
+  test("C-API-44 an empty-array submission releases its (zero) reservation without holding budget", async () => {
+    const budget = new QueuedImageBudget(0); // a 0 ceiling still allows a no-byte send
+    await expect(enqueueSubmission([], noopDriver, runAttach, budget)).resolves.toBeUndefined();
   });
 });
 
