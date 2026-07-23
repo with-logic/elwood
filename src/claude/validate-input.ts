@@ -3,8 +3,14 @@
  * Implements PRD §6.4.
  */
 
+import type { ClaudeEffortLevel, ClaudeHookPermissionMode } from "./hook-names.ts";
 import type { ClaudeHookEvent } from "./hooks.ts";
 import { isRecord, optionalBoolean, optionalString } from "./validate-shapes.ts";
+
+// Compile-time coupling: the runtime allow-lists below must stay EXACTLY the public
+// unions they validate. `AssertEqual` errors if either side gains or loses a member,
+// so a new effort level / permission mode can't silently slip past validation.
+type AssertEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
 
 const toolEvents = new Set([
   "PreToolUse",
@@ -23,6 +29,14 @@ const permissionModes = [
   "dontAsk",
   "bypassPermissions",
 ] as const;
+// These fail to compile if the arrays and the public unions ever drift apart.
+const _effortLevelsCoupled: AssertEqual<(typeof effortLevels)[number], ClaudeEffortLevel> = true;
+const _permissionModesCoupled: AssertEqual<
+  (typeof permissionModes)[number],
+  ClaudeHookPermissionMode
+> = true;
+void _effortLevelsCoupled;
+void _permissionModesCoupled;
 
 export function isClaudeHookInput(value: unknown): value is ClaudeHookEvent {
   if (!isRecord(value)) return false;
