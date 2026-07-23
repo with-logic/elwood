@@ -133,7 +133,7 @@ const warningValidators = {
   // Content-free lifecycle diagnostic: only a bounded, allowlisted `reason`
   // (`persist`/`listener`) distinguishing the failing stage, never content (§5.3).
   initial_ready_fallback: (value) =>
-    value["agent"] === "claude" &&
+    (value["agent"] === "claude" || value["agent"] === "codex") &&
     value["source"] === "lifecycle" &&
     isString(value["elwoodSessionId"]) &&
     isString(value["message"]) &&

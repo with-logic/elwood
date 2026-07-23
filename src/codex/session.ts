@@ -118,7 +118,9 @@ export async function startCodexFromRecord(
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   const { ready, observeReadinessFrame } = createReadinessGate(() => {
     turnWatcher.arm(resumed); // resume arms in settling mode (no phantom replay turn)
-    session?.submitEvidence("initial_ready");
+    // advanceInitialReady releases the queue directly if recording the transition
+    // throws — the anti-starvation completion boundary, shared with Claude (C-API-42).
+    session?.completeInitialReady();
   }, resumed);
   const autotrust = options.autotrust ?? false;
   const observers = {

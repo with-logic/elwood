@@ -13,6 +13,7 @@ import type { PtyProcess } from "../pty/types.ts";
 import { type SessionRecord, updateSessionStatus, writeSessionRecord } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { CleanupLatch } from "./cleanup-latch.ts";
+import { advanceInitialReady } from "./initial-ready-advance.ts";
 import { notRunningError, type SessionStatusEmitter } from "./session-base-types.ts";
 import { CommandSurface } from "./session-commands.ts";
 import { type AttachDriver, enqueueSubmission, type SubmitKind } from "./session-image-attach.ts";
@@ -35,10 +36,9 @@ export abstract class AgentSessionBase {
   private readonly commands: CommandSurface;
   private readonly statusEvents: SessionStatusEmitter;
   private readonly terminalReplay: TerminalReplayBuffer;
-  // Coalesces cleanup, keeping a FAILED attempt retryable (§9.4); declared before statusEngine.
   private readonly cleanupLatch = new CleanupLatch(() => this.stopRuntime());
   private pendingShutdown: ShutdownEvidence | undefined;
-  private everReady = false; // gates `interrupt` off the startup `running` bootstrap
+  private everReady = false;
   private readonly shutdownCoordinator = new ShutdownCoordinator(); // join stop/kill/teardown
   private readonly pasteGuard: PasteGuard = {
     snapshot: () => this.terminal.snapshot().text,
@@ -59,7 +59,6 @@ export abstract class AgentSessionBase {
     queueReady: () => this.controlQueue.markReady(),
     queueBlocked: () => this.controlQueue.suspendReadiness(),
     queueClose: () => this.controlQueue.close(),
-    // Unsolicited exit has no caller: float so a cleanup rejection is owned, not leaked.
     cleanup: () => this.cleanupLatch.float(),
   });
   protected constructor(
@@ -99,14 +98,11 @@ export abstract class AgentSessionBase {
     return this.record.warnings;
   }
   protected get hasBeenReady(): boolean {
-    return this.everReady; // reached readiness at least once (gates mid-session logic)
+    return this.everReady;
   }
   sendPrompt = (prompt: string, options?: SendOptions) => this.enqueue(prompt, "prompt", options);
-  sendMessage = (message: string, options?: SendOptions) =>
-    this.enqueue(message, "message", options);
-  sendGuidance = (message: string, options?: SendOptions) =>
-    this.enqueue(message, "guidance", options);
-
+  sendMessage = (msg: string, options?: SendOptions) => this.enqueue(msg, "message", options);
+  sendGuidance = (msg: string, options?: SendOptions) => this.enqueue(msg, "guidance", options);
   /** Adapter-specific native image attach, run inside the op with resolved paths (C-API-44). */
   protected abstract attachImages(paths: readonly string[], signal: AbortSignal): Promise<void>;
   private enqueue(input: string, kind: SubmitKind, options?: SendOptions): Promise<void> {
@@ -128,15 +124,13 @@ export abstract class AgentSessionBase {
   }
   private readonly persistSize = (size: TerminalSize) =>
     this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.status));
-  interrupt = (options?: { readonly timeoutMs?: number }): Promise<void> =>
-    this.inSession(() => this.commands.interrupt(options));
-  compact = (options?: { readonly timeoutMs?: number }): Promise<void> =>
-    this.inSession(() => this.commands.compact(options));
-  listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]> {
-    return this.inSession(() => this.commands.listModels(options));
-  }
-  setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
-    return this.inSession(() => this.commands.setModel(id, options));
+  interrupt = (o?: { readonly timeoutMs?: number }) =>
+    this.inSession(() => this.commands.interrupt(o));
+  compact = (o?: { readonly timeoutMs?: number }) => this.inSession(() => this.commands.compact(o));
+  listModels = (o?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]> =>
+    this.inSession(() => this.commands.listModels(o));
+  setModel(id: string, o?: { readonly timeoutMs?: number }): Promise<void> {
+    return this.inSession(() => this.commands.setModel(id, o));
   }
   private readonly shutdown = managedShutdown(this.shutdownCoordinator, () => this.shutdownHost());
   stop = (): Promise<void> => this.shutdown.stop();
@@ -160,12 +154,9 @@ export abstract class AgentSessionBase {
     try {
       return this.statusEngine.submit(this.pendingShutdown ?? "terminal_exited");
     } finally {
-      this.reapSurvivors();
+      const warning = this.reapPolicy.bestEffort(); // durable `reap_failed` warning, never a throw
+      if (warning) this.recordWarnings([warning]);
     }
-  }
-  private reapSurvivors(): void {
-    const warning = this.reapPolicy.bestEffort(); // durable `reap_failed` warning, never a throw
-    if (warning) this.recordWarnings([warning]);
   }
   statusDecisions = (): readonly StatusDecision[] => this.statusEngine.decisions();
   protected abstract stagedPaste(screen: string, prompt: string): boolean;
@@ -184,15 +175,24 @@ export abstract class AgentSessionBase {
     }
   }
   protected persist(record: SessionRecord): void {
-    // Durable write FIRST, commit in-memory only on success, so a failed write leaves the retry a clean re-attempt (C-CLAUDE-18).
-    writeSessionRecord(record);
+    writeSessionRecord(record); // durable write FIRST, commit in-memory on success (C-CLAUDE-18)
     this.record = record;
   }
   protected cleanupRuntime(): Promise<void> {
     return this.cleanupLatch.attempt();
   }
-  // Durable persist, split from emit so the engine commits `current` between them:
-  // persist-fail aborts pre-commit; a later listener throw can't split state (C-API-42).
+  protected advanceInitialReady(): void {
+    advanceInitialReady({
+      agent: this.agent,
+      elwoodSessionId: this.elwoodSessionId,
+      record: this.record,
+      submitInitialReady: () => this.submitEvidence("initial_ready"),
+      persist: (r) => this.persist(r),
+      markReady: () => this.controlQueue.markReady(),
+      recordWarnings: (w) => this.recordWarnings(w),
+    });
+  }
+  // Durable persist, split from emit so persist-fail aborts pre-commit (C-API-42).
   private persistStatus(status: ElwoodSessionStatus): void {
     this.everReady ||= status === "ready";
     this.persist(updateSessionStatus(this.record, status));

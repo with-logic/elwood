@@ -161,7 +161,7 @@ export type ElwoodWarningEvent =
     }
   | {
       readonly elwoodSessionId: string;
-      readonly agent: "claude";
+      readonly agent: "claude" | "codex";
       readonly source: "lifecycle";
       readonly code: "initial_ready_fallback";
       readonly severity: "warning";

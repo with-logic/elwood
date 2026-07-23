@@ -8,7 +8,6 @@ import type {
   ElwoodEventName,
   ElwoodSessionStatus,
   ElwoodWarningEvent,
-  InitialReadyFallbackReason,
   TerminalSize,
 } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
@@ -16,10 +15,9 @@ import type { PtyProcess } from "../pty/types.ts";
 import { AgentSessionBase } from "../runtime/session-base.ts";
 import { terminalStatuses } from "../runtime/session-status.ts";
 import { runCleanupSteps } from "../runtime/teardown.ts";
-import { type SessionRecord, updateSessionResumeId, updateSessionStatus } from "../state/store.ts";
+import { type SessionRecord, updateSessionResumeId } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { attachClaudeImages } from "./attach-images.ts";
-import { initialReadyFallbackWarning } from "./initial-ready-fallback.ts";
 import { runSessionLogin } from "./login/session-login.ts";
 import type { ClaudeLoginOptions } from "./login/types.ts";
 import { LoginExpiredWatcher, loginExpiredWarning } from "./login-expired.ts";
@@ -126,35 +124,6 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
       } catch {
         // A warning-sink/listener failure must never block readiness release.
       }
-    }
-  }
-  private advanceInitialReady(): void {
-    try {
-      this.submitEvidence("initial_ready");
-    } catch {
-      // Classify BEFORE releasing (`markReady` drains to `running`, masking a
-      // persist fault), then release unconditionally and warn.
-      const reason = this.classifyInitialReadyFailure();
-      this.controlQueue.markReady();
-      this.warnInitialReadyFallback(reason);
-    }
-  }
-  // Re-attempt the `ready` durable write to classify the throw: success ⇒ a lifecycle
-  // LISTENER threw; throw ⇒ PERSISTENCE failing. Explicit record (disk-first persist
-  // leaves `this.record` un-advanced).
-  private classifyInitialReadyFailure(): InitialReadyFallbackReason {
-    try {
-      this.persist(updateSessionStatus(this.record, "ready"));
-      return "listener";
-    } catch {
-      return "persist";
-    }
-  }
-  private warnInitialReadyFallback(reason: InitialReadyFallbackReason): void {
-    try {
-      this.recordWarnings([initialReadyFallbackWarning(this.elwoodSessionId, reason)]);
-    } catch {
-      // A warning-sink/listener failure must never block readiness release.
     }
   }
   rememberClaudeSessionId(sessionId: string): void {

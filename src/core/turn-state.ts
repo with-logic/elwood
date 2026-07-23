@@ -57,9 +57,13 @@ export class TurnStateWatcher {
         this.replaySettling = false;
         this.running = true;
       } else {
-        // Without evidence, settling releases only on the first quiet, non-blocking
-        // composer frame — which is not itself an end edge (no turn was running).
-        if (facts.composer_visible && !facts.working_visible) this.replaySettling = false;
+        // Without evidence, settling releases only on the first quiet, NON-BLOCKING
+        // composer frame — which is not itself an end edge (no turn was running). A
+        // blocking dialog's option caret is byte-identical to the composer marker, so
+        // it must NOT release settling: releasing on a dialog frame lets the next
+        // replayed working flash fire a phantom `started` (matches the end-edge gate).
+        if (facts.composer_visible && !facts.working_visible && !facts.blocking_prompt_visible)
+          this.replaySettling = false;
         return undefined;
       }
     }

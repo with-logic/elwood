@@ -148,4 +148,20 @@ describe("C-TURN-04 interrupt end banners", () => {
     watcher.arm(true); // resume: settling
     expect(watcher.observe(facts(codexScreenFactTable, codexIdle), true)).toBe("ended");
   });
+
+  test("a blocking dialog during settling does NOT release it — no phantom turn from a later flash", () => {
+    // A permission dialog's `❯ 1. Yes` caret is byte-identical to the composer marker,
+    // so it reads as composer-visible. Without evidence it must NOT release replay
+    // settling (it is not a quiet composer): releasing on the dialog would let the
+    // next replayed working flash fire a phantom `started` (Coal Harbor item 2).
+    const claudePermission = "Do you want to create x?\n ❯ 1. Yes\n   3. No\n Esc to cancel";
+    const watcher = new TurnStateWatcher();
+    watcher.arm(true); // resume: settling
+    expect(watcher.observe(facts(claudeScreenFactTable, claudePermission))).toBeUndefined();
+    // Still settling: a replayed working flash is swallowed, not a phantom start.
+    expect(watcher.observe(facts(claudeScreenFactTable, claudeWorking))).toBeUndefined();
+    // Once the dialog clears to a quiet composer, settling releases normally.
+    expect(watcher.observe(facts(claudeScreenFactTable, claudeIdle))).toBeUndefined();
+    expect(watcher.observe(facts(claudeScreenFactTable, claudeWorking))).toBe("started");
+  });
 });

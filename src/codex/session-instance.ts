@@ -112,6 +112,12 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void {
     this.emitter.off(event, handler);
   }
+  // One-shot initial-ready transition via the shared anti-starvation boundary: a
+  // failed persist/listener releases the queue directly and warns (C-API-42). Codex
+  // has no narrow-bootstrap resize to restore, so this is just the base advance.
+  completeInitialReady(): void {
+    this.advanceInitialReady();
+  }
   waitForStatus(match: (status: ElwoodSessionStatus) => boolean, timeoutMs?: number) {
     return sessionWaitForStatus(this, match, timeoutMs);
   }
