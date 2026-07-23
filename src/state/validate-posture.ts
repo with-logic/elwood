@@ -11,7 +11,7 @@
 import type { CodexApprovalPolicy, CodexSandboxMode } from "../codex/session-types.ts";
 import type { ClaudePermissionMode } from "../core/types.ts";
 import type { ClaudeLaunchPosture, CodexLaunchPosture } from "./launch-posture.ts";
-import { isStringArray } from "./validate-predicates.ts";
+import { isRecord, isStringArray } from "./validate-predicates.ts";
 
 // The allowlisted KEYS for each posture, coupled to the public type's keys below so
 // adding a persisted posture field can't compile while the validator silently rejects
@@ -94,8 +94,4 @@ function optionalOneOf(value: unknown, allowed: readonly string[]): boolean {
 
 function optionalStringArray(value: unknown): boolean {
   return value === undefined || isStringArray(value);
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
