@@ -2,7 +2,7 @@
 import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, elwoodError } from "../core/errors.ts";
 import { observeRenderedFrame } from "../core/rendered-observers.ts";
-import { deliverFrameWarnings, schedulePreflightWarning } from "../core/startup-frame.ts";
+import { createStartupWarningGate, deliverFrameWarnings } from "../core/startup-frame.ts";
 import { emitSettledStartupOutcomes } from "../core/startup-write.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import type { ElwoodWarningEvent, StartClaudeOptions } from "../core/types.ts";
@@ -106,6 +106,11 @@ export async function buildClaudeSession(
   const promptResponder = new ClaudeStartupPromptResponder(autotrust);
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
   const turnWatcher = observers.turn;
+  // Startup warnings can fire before startClaude resolves (before the caller subscribes);
+  // buffer them in the gate and flush on a deferred macrotask after return (C-API-14).
+  const warnGate = createStartupWarningGate({
+    emitWarnings: (w) => deliverFrameWarnings(session, w),
+  });
   const terminal = attachPtyTerminal(startupSize, pty, (data, renderedTerminal) => {
     startupOutput.push(data);
     terminalReplay.push(data);
@@ -117,7 +122,7 @@ export async function buildClaudeSession(
     // Warning delivery is CONTAINED on the frame path: a throwing `warning`/`activity`
     // listener must never skip readiness, login detection, or terminal:data (C-API-37).
     emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
-      emitWarnings: (warnings) => deliverFrameWarnings(session, warnings),
+      emitWarnings: (warnings) => warnGate.emitWarnings(warnings),
     });
     // Hook-backed readiness + deadline fallback; on resume the first composer also marks ready (C-API-28).
     ready.armDeadline();
@@ -162,16 +167,19 @@ export async function buildClaudeSession(
     },
     { before: () => ready.cancel(), pty, bridge, terminal, after: () => transcriptWatcher.stop() },
   );
-  // Deliver the preflight/version warning on a deferred macrotask AFTER the session is returned,
-  // so a caller subscribing to `warning` in the same turn it receives the session still
-  // observes it — without restoring general late-subscriber replay (C-API-14).
-  schedulePreflightWarning(session, preflightEvent(record.elwoodSessionId, preflightWarning));
+  // Buffer the preflight/version warning through the same gate, then open it: buffered
+  // startup warnings AND the preflight flush on one deferred macrotask after return, so
+  // a caller subscribing synchronously observes them all (C-API-14).
+  if (preflightWarning !== undefined) {
+    warnGate.emitWarnings([preflightEvent(record.elwoodSessionId, preflightWarning)]);
+  }
+  warnGate.openAfterReturn();
   return session;
 }
 
 function preflightEvent(
   elwoodSessionId: string,
-  warning: ClaudePreflightWarning | undefined,
-): ElwoodWarningEvent | undefined {
-  return warning === undefined ? undefined : { elwoodSessionId, ...warning };
+  warning: ClaudePreflightWarning,
+): ElwoodWarningEvent {
+  return { elwoodSessionId, ...warning };
 }

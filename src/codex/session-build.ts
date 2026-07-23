@@ -4,7 +4,7 @@ import { AttentionWatcher } from "../core/attention.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, elwoodError } from "../core/errors.ts";
 import { observeRenderedFrame } from "../core/rendered-observers.ts";
-import { deliverFrameWarnings, schedulePreflightWarning } from "../core/startup-frame.ts";
+import { createStartupWarningGate, deliverFrameWarnings } from "../core/startup-frame.ts";
 import { emitSettledStartupOutcomes } from "../core/startup-write.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import { TurnStateWatcher } from "../core/turn-state.ts";
@@ -99,6 +99,13 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   };
   const turnWatcher = observers.turn;
   const promptResponder = new CodexStartupPromptResponder(record.elwoodSessionId, autotrust);
+  // Startup warnings (MCP/transcript/prompt-write) can fire BEFORE startCodex resolves,
+  // i.e. before the caller can subscribe. The gate BUFFERS those and flushes them on a
+  // deferred macrotask after return (openAfterReturn below), so they stay observable
+  // without late-subscriber replay; once open it is live pass-through (C-API-14).
+  const warnGate = createStartupWarningGate({
+    emitWarnings: (w) => deliverFrameWarnings(session, w),
+  });
   const terminal = attachPtyTerminal(
     options.initialSize ?? defaultTerminalSize,
     pty,
@@ -111,9 +118,9 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       // a rejected write retries + warns (C-CODEX-17). Warning delivery is CONTAINED on
       // the frame path so a throwing listener never skips readiness or terminal:data.
       const result = promptResponder.handle(frame.text, (i) => renderedTerminal.sendInput(i));
-      deliverFrameWarnings(session, result.warnings);
+      warnGate.emitWarnings(result.warnings);
       emitSettledStartupOutcomes(emitter, "codex", record.elwoodSessionId, result.outcomes, {
-        emitWarnings: (w) => deliverFrameWarnings(session, w),
+        emitWarnings: (w) => warnGate.emitWarnings(w),
       });
       ready.armDeadline(); // hook/deadline readiness; resume composer also marks (C-API-28)
       const reading = observeRenderedFrame(observers, frame, session);
@@ -163,15 +170,17 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     },
     { before: () => ready.cancel(), pty, bridge, terminal, after: () => transcriptWatcher.stop() },
   );
-  // Deliver the preflight/version warning on a deferred macrotask AFTER the session is returned,
-  // so a caller subscribing to `warning` synchronously still observes it (C-API-14).
-  schedulePreflightWarning(session, preflightEvent(id, preflightWarning));
+  // Buffer the preflight/version warning through the same gate, then open it: buffered
+  // startup warnings (MCP/transcript) AND the preflight all flush on one deferred
+  // macrotask after return, so a caller subscribing synchronously observes them all.
+  if (preflightWarning !== undefined) warnGate.emitWarnings([preflightEvent(id, preflightWarning)]);
+  warnGate.openAfterReturn();
   return session;
 }
 
 function preflightEvent(
   elwoodSessionId: string,
-  warning: CodexPreflightWarning | undefined,
-): ElwoodWarningEvent | undefined {
-  return warning === undefined ? undefined : { elwoodSessionId, ...warning };
+  warning: CodexPreflightWarning,
+): ElwoodWarningEvent {
+  return { elwoodSessionId, ...warning };
 }

@@ -11,8 +11,8 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
-import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
-import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import { becomeReady, FakePty, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -59,6 +59,38 @@ describe("C-API-14 Codex preflight warning is observable on the returned session
     const codes: string[] = [];
     session.on("warning", (event) => codes.push(event.code));
     await expect.poll(() => codes).toContain("version_unparseable");
+  });
+
+  test("C-CODEX-09 an MCP banner during STARTUP (before resolve) is observed once after return", async () => {
+    // The review's finding: an MCP/transcript warning can render during the pre-return
+    // startup gate, when the caller has no session to subscribe to. The startup-warning
+    // gate BUFFERS it and flushes on a deferred macrotask after return, so an immediate
+    // subscriber still sees it exactly once — without late-subscriber replay.
+    const cwd = tempDir();
+    installFakes();
+    // Render the MCP banner DURING startup, from the PTY factory (handler already
+    // attached, before startCodex resolves).
+    setPtyFactoryForTests((options) => {
+      const pty = new FakePty(options);
+      ptys.push(pty);
+      // Emit the banner as soon as the terminal handler attaches (onData), which is
+      // during the pre-return startup gate — so the warning fires before the caller
+      // has a session to subscribe to.
+      const realOnData = pty.onData.bind(pty);
+      pty.onData = (handler) => {
+        const off = realOnData(handler);
+        queueMicrotask(() =>
+          pty.emitData("The linear MCP server is not logged in. Run `codex mcp login linear`."),
+        );
+        return off;
+      };
+      return pty;
+    });
+    const session = await startCodex({ cwd });
+    const codes: string[] = [];
+    session.on("warning", (event) => codes.push(event.code)); // subscribe immediately
+    await expect.poll(() => codes).toContain("mcp_server_not_logged_in");
+    expect(codes.filter((c) => c === "mcp_server_not_logged_in")).toHaveLength(1); // once
   });
 });
 

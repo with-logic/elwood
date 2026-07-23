@@ -34,22 +34,39 @@ export function deliverFrameWarnings(
   }
 }
 
+// A bounded ceiling on warnings buffered during startup: keeps the queue live-only
+// (a pathological startup can't retain unbounded warnings); excess is dropped, matching
+// "a human sees the banner once, then it scrolls away".
+const maxStartupWarnings = 64;
+
 /**
- * Schedules the one-shot preflight/version warning for delivery AFTER the session is
- * returned AND the caller's synchronous continuation runs, so a caller attaching a
- * `warning` listener in the same turn it receives the session still observes it
- * (C-API-14) — without restoring general late-subscriber replay. Delivery is deferred
- * to the next macrotask (not a microtask): a microtask scheduled here runs BEFORE the
- * caller's post-`await` continuation (the caller's continuation is itself queued only
- * when start resolves, after this schedule), so it would fire into no listener. A
- * throwing listener is contained. No-op when there is no preflight warning. The timer
- * is unref'd so a pending delivery never keeps the process alive.
+ * A buffer-then-live warning sink for the STARTUP region. Warnings emitted BEFORE the
+ * caller can subscribe (during the pre-return startup gate — MCP/transcript/preflight
+ * diagnostics) are BUFFERED, then flushed on a deferred macrotask AFTER start resolves,
+ * so a caller attaching a `warning` listener in the same turn it receives the session
+ * still observes them (C-API-14) — WITHOUT restoring general late-subscriber replay.
+ * Once opened, delivery is live pass-through. The buffer is bounded, so it stays
+ * live-only. A macrotask (not a microtask) is required: a microtask runs before the
+ * caller's post-`await` continuation, so it would fire into no listener.
  */
-export function schedulePreflightWarning(
-  sink: FrameWarningSink,
-  warning: ElwoodWarningEvent | undefined,
-): void {
-  if (warning === undefined) return;
-  const timer = setTimeout(() => deliverFrameWarnings(sink, [warning]), 0);
-  timer.unref?.();
+export function createStartupWarningGate(sink: FrameWarningSink): {
+  readonly emitWarnings: (warnings: readonly ElwoodWarningEvent[]) => void;
+  readonly openAfterReturn: () => void;
+} {
+  let open = false;
+  const buffered: ElwoodWarningEvent[] = [];
+  return {
+    emitWarnings: (warnings) => {
+      if (open) return deliverFrameWarnings(sink, warnings);
+      for (const w of warnings) if (buffered.length < maxStartupWarnings) buffered.push(w);
+    },
+    openAfterReturn: () => {
+      const timer = setTimeout(() => {
+        open = true; // subsequent startup-frame warnings deliver live from here on
+        const batch = buffered.splice(0);
+        if (batch.length > 0) deliverFrameWarnings(sink, batch);
+      }, 0);
+      timer.unref?.();
+    },
+  };
 }
