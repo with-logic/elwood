@@ -98,7 +98,7 @@ describe("C-CLAUDE-15 Claude transcript watcher lifecycle", () => {
     const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
     writeRecords(path);
     watcher.observe(path);
-    // Append > 256 KiB of valid records so finish()'s drain loops (chunk.more)
+    // Append > 256 KiB of valid records so finish()'s drain loops (chunk.canContinueNow)
     // across multiple readChunk passes rather than stopping after one.
     const many = Array.from({ length: 4000 }, (_, i) => assistant(`m${i}`));
     appendRecords(path, [], ...many);

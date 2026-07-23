@@ -52,7 +52,7 @@ export function drainToBudget(
   // bytes are the true magnitude and the enclosed record count is unknowable, so it
   // counts as exactly ONE loss incident under a truthful cause.
   if (backlog > 0)
-    context.drops.recordBytes({
+    context.drops.accountDrop({
       path: cursor.path,
       bytes: backlog,
       incidents: 1,
@@ -77,7 +77,7 @@ function drainCursor(
     const chunk = context.readFs(cursor.path, () => cursor.readChunk());
     if (chunk === undefined) return 0; // contained FS failure; nothing to account
     if (chunk.text.length > 0) context.lines.emitLines(cursor.path, chunk.text, cursor);
-    if (!chunk.more) return 0;
+    if (!chunk.canContinueNow) return 0;
   }
   return context.readFs(cursor.path, () => cursor.remainingBytes()) ?? 0;
 }

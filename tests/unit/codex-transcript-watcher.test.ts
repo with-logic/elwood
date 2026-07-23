@@ -29,7 +29,7 @@ function tmp(name = "codex.jsonl"): string {
 }
 
 describe("Codex transcript watcher (bounded)", () => {
-  test("C-API-12 observe is idempotent per path and switches to a new path", () => {
+  test("C-CODEX-20 observe is idempotent per path and switches to a new path", () => {
     const events: CodexTranscriptEvent[] = [];
     const a = tmp("a.jsonl");
     const b = tmp("b.jsonl");
@@ -47,7 +47,7 @@ describe("Codex transcript watcher (bounded)", () => {
     expect(events).toHaveLength(2);
   });
 
-  test("C-API-12 observe contains a cursor-construction failure and stays unset", () => {
+  test("C-CODEX-20 observe contains a cursor-construction failure and stays unset", () => {
     const errs: CodexReadErrorNotice[] = [];
     const watcher = new CodexTranscriptWatcher("s", () => undefined, {
       onReadError: (n) => errs.push(n),
@@ -63,7 +63,7 @@ describe("Codex transcript watcher (bounded)", () => {
     }).not.toThrow();
   });
 
-  test("C-API-12 the scan interval fires and drives a scan tick", async () => {
+  test("C-CODEX-20 the scan interval fires and drives a scan tick", async () => {
     const path = tmp("tick.jsonl");
     writeFileSync(path, "");
     const events: CodexTranscriptEvent[] = [];
@@ -76,7 +76,7 @@ describe("Codex transcript watcher (bounded)", () => {
     expect(events).toHaveLength(1);
   });
 
-  test("C-API-12 a scan with no new bytes emits nothing and no drop", () => {
+  test("C-CODEX-20 a scan with no new bytes emits nothing and no drop", () => {
     const path = tmp("idle.jsonl");
     writeFileSync(path, "");
     const events: CodexTranscriptEvent[] = [];
@@ -85,13 +85,13 @@ describe("Codex transcript watcher (bounded)", () => {
       onDrop: (n) => notices.push(n),
     });
     watcher.observe(path);
-    watcher.scan(); // no growth: readChunk returns empty text, more:false
+    watcher.scan(); // no growth: readChunk returns empty text, canContinueNow:false
     watcher.finish();
     expect(events).toHaveLength(0);
     expect(notices).toHaveLength(0);
   });
 
-  test("C-API-12 scan honors the per-pass chunk budget across ticks", () => {
+  test("C-CODEX-20 scan honors the per-pass chunk budget across ticks", () => {
     const path = tmp("stream.jsonl");
     writeFileSync(path, "");
     const events: CodexTranscriptEvent[] = [];
@@ -111,7 +111,7 @@ describe("Codex transcript watcher (bounded)", () => {
     expect(events.length).toBe(18); // everything eventually drained
   });
 
-  test("C-API-12 a giant no-newline record surfaces an oversized drop, no event", () => {
+  test("C-CODEX-20 a giant no-newline record surfaces an oversized drop, no event", () => {
     const path = tmp("giant.jsonl");
     writeFileSync(path, "");
     const events: CodexTranscriptEvent[] = [];
@@ -127,7 +127,7 @@ describe("Codex transcript watcher (bounded)", () => {
     expect(notices.some((n) => n.cause === "oversized")).toBe(true);
   });
 
-  test("C-API-12 a contained read failure during scan records a read error", () => {
+  test("C-CODEX-20 a contained read failure during scan records a read error", () => {
     const path = tmp("scanfail.jsonl");
     writeFileSync(path, "");
     const errs: CodexReadErrorNotice[] = [];
@@ -161,7 +161,7 @@ describe("Codex transcript warning builders", () => {
     lastErrorCode: "ENOENT",
   });
 
-  test("C-API-12 drop + read-error warnings are content-free and codex-tagged", () => {
+  test("C-CODEX-20 drop + read-error warnings are content-free and codex-tagged", () => {
     expect(drop).toMatchObject({
       agent: "codex",
       source: "terminal",
@@ -175,7 +175,7 @@ describe("Codex transcript warning builders", () => {
     expect(read.raw).toBe("transcript_read_error count=2 code=ENOENT");
   });
 
-  test("C-API-12 codex drop + read-error warnings survive persist→resume", () => {
+  test("C-CODEX-20 codex drop + read-error warnings survive persist→resume", () => {
     // The shared warnings now accept `agent: "codex"`, so a persisted codex drop
     // must round-trip through validation (proving the widened agent branch, §5.4).
     const root = mkdtempSync(join(tmpdir(), "elwood-codex-drop-"));
@@ -191,7 +191,7 @@ describe("Codex transcript warning builders", () => {
     ).toBeNull();
   });
 
-  test("C-API-12 each drop cause has a distinct human phrase", () => {
+  test("C-CODEX-20 each drop cause has a distinct human phrase", () => {
     const phrases = (["unparseable", "oversized", "unread_backlog"] as const).map(
       (cause) => codexDropWarning({ ...dropNotice, cause }).message,
     );

@@ -181,7 +181,7 @@ describe("C-CLAUDE-15 watcher-level drop/read-error accounting", () => {
       }
       drops.push(d);
     });
-    tracker.recordBytes({ path: "/t", bytes: 50, incidents: 1, cause: "oversized" });
+    tracker.accountDrop({ path: "/t", bytes: 50, incidents: 1, cause: "oversized" });
     // The sink throws — `dirty` must stay set so the total isn't silently dropped.
     expect(() => tracker.flush()).toThrow(/persist boom/);
     expect(drops).toHaveLength(0);

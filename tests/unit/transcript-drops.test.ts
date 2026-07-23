@@ -66,12 +66,12 @@ describe("C-CLAUDE-15 transcript diagnostic trackers", () => {
     expect(notices).toEqual([]);
   });
 
-  test("recordBytes carries the given cause and record count into the flushed aggregate", () => {
+  test("accountDrop carries the given cause and record count into the flushed aggregate", () => {
     // The terminal drain accounts an unread backlog as a content-free drop with its
     // OWN cause; the flushed notice carries that cause and the byte magnitude.
     const notices: TranscriptDropNotice[] = [];
     const tracker = new DropTracker("s1", (n) => notices.push(n));
-    tracker.recordBytes({ path: "/p", bytes: 4096, incidents: 1, cause: "unread_backlog" });
+    tracker.accountDrop({ path: "/p", bytes: 4096, incidents: 1, cause: "unread_backlog" });
     tracker.flush();
     expect(notices).toEqual([
       {
@@ -90,7 +90,7 @@ describe("C-CLAUDE-15 transcript diagnostic trackers", () => {
     const notices: TranscriptDropNotice[] = [];
     const tracker = new DropTracker("s1", (n) => notices.push(n));
     tracker.record("/p", "{ bad }"); // cause unparseable, +1 record
-    tracker.recordBytes({ path: "/p", bytes: 500, incidents: 1, cause: "unread_backlog" }); // latest cause wins
+    tracker.accountDrop({ path: "/p", bytes: 500, incidents: 1, cause: "unread_backlog" }); // latest cause wins
     tracker.flush();
     expect(notices).toEqual([
       {
@@ -111,7 +111,7 @@ describe("C-CLAUDE-15 transcript diagnostic trackers", () => {
     const notices: TranscriptDropNotice[] = [];
     const tracker = new DropTracker("s1", (n) => notices.push(n));
     for (let i = 0; i < 3; i++) tracker.record("/p", "{ bad }"); // 3 unparseable incidents
-    tracker.recordBytes({ path: "/p", bytes: 9000, incidents: 1, cause: "unread_backlog" }); // 1 backlog incident
+    tracker.accountDrop({ path: "/p", bytes: 9000, incidents: 1, cause: "unread_backlog" }); // 1 backlog incident
     tracker.flush();
     expect(notices).toHaveLength(1);
     expect(notices[0]).toMatchObject({ droppedCount: 4, cause: "unread_backlog" });

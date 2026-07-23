@@ -45,9 +45,9 @@ function tmpFile(): string {
 function drainAll(cursor: TranscriptCursor): string {
   let out = "";
   for (let budget = 1000; budget > 0; budget--) {
-    const { text, more } = cursor.readChunk();
+    const { text, canContinueNow } = cursor.readChunk();
     out += text;
-    if (!more) break;
+    if (!canContinueNow) break;
   }
   return out;
 }
@@ -137,9 +137,9 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
     const path = tmpFile();
     writeFileSync(path, "one\ntwo\n");
     const cursor = new TranscriptCursor(path); // baselines at EOF (offset = 8)
-    expect(cursor.readChunk()).toEqual({ text: "", more: false }); // nothing new
+    expect(cursor.readChunk()).toEqual({ text: "", canContinueNow: false }); // nothing new
     writeFileSync(path, ""); // truncate to empty: size (0) < offset (8) → from 0
-    expect(cursor.readChunk()).toEqual({ text: "", more: false });
+    expect(cursor.readChunk()).toEqual({ text: "", canContinueNow: false });
     writeFileSync(path, "three\n"); // regrow
     expect(drainAll(cursor)).toBe("three\n"); // only the new content, no replay
   });

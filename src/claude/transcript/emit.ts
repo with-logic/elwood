@@ -44,7 +44,7 @@ export class LineEmitter {
     // across one chunk boundary count as TWO, not one — while `continuing`/`ended`
     // add bytes only (records=0), so one record is never counted per chunk.
     if (droppedBytes > 0)
-      this.drops.recordBytes({
+      this.drops.accountDrop({
         path,
         bytes: droppedBytes,
         incidents: discard === "started" ? 1 : 0,

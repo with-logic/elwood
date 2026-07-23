@@ -61,7 +61,7 @@ export function drainToBudget(
     // over-length record, and each backlog = 1 incident), so cause + count are both
     // truthful (MAJOR: cause-neutral data-loss accounting, C-CLAUDE-15, PRD §5.4).
     if (backlog > 0)
-      context.drops.recordBytes({
+      context.drops.accountDrop({
         path: cursor.path,
         bytes: backlog,
         incidents: 1,
@@ -90,7 +90,7 @@ function drainCursor(
     const chunk = context.readFs(cursor.path, () => cursor.readChunk());
     if (chunk === undefined) return 0; // contained FS failure; nothing to account
     if (chunk.text.length > 0) context.lines.emitLines(cursor.path, chunk.text, cursor);
-    if (!chunk.more) return 0;
+    if (!chunk.canContinueNow) return 0;
   }
   return context.readFs(cursor.path, () => cursor.remainingBytes()) ?? 0;
 }

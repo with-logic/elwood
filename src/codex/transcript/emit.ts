@@ -32,7 +32,7 @@ export class CodexLineEmitter {
     // fresh over-length record (+1) — even when the same chunk ALSO closed a prior
     // discard — while `continuing`/`ended` add bytes only (records=0).
     if (droppedBytes > 0)
-      this.drops.recordBytes({
+      this.drops.accountDrop({
         path,
         bytes: droppedBytes,
         incidents: discard === "started" ? 1 : 0,

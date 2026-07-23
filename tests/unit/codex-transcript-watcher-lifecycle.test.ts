@@ -69,7 +69,7 @@ describe("Codex transcript watcher lifecycle (§5.4/§9.4)", () => {
     expect(events.length).toBe(afterFirstFinish);
   });
 
-  test("§9.4 a throwing final drain still leaves the watcher terminal (timer cleared)", () => {
+  test("C-CODEX-20 §9.4 a throwing final drain still leaves the watcher terminal (timer cleared)", () => {
     const path = tmp();
     // Oversized record: the terminal drain in finish() reports it as a drop; a
     // throwing onDrop makes that drain throw. finish() must still latch `finished`
@@ -115,7 +115,7 @@ describe("Codex transcript watcher lifecycle (§5.4/§9.4)", () => {
     expect(pollErrors.length).toBe(1);
   });
 
-  test("§5.4 codexPollStoppedWarning is content-free, codex-tagged, and persists", () => {
+  test("C-CODEX-20 §5.4 codexPollStoppedWarning is content-free, codex-tagged, and persists", () => {
     // The escaping error's message may embed raw transcript content, so only an
     // allowlisted `reason` token survives — never error.message.
     const warning = codexPollStoppedWarning("s", new Error("secret prompt: hunter2"));

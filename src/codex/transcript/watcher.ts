@@ -87,7 +87,7 @@ export class CodexTranscriptWatcher {
       const chunk = this.guard.read(this.cursor.path, () => this.cursor?.readChunk());
       if (!chunk) break; // contained FS failure or cursor gone; keep last offset
       if (chunk.text.length > 0) this.lines.emitLines(this.cursor.path, chunk.text, this.cursor);
-      if (!chunk.more) break;
+      if (!chunk.canContinueNow) break;
     } // budget exhausted with more to read: the next scan tick resumes here.
     this.drops.flush(); // ≤one persist per scan pass, not one per malformed record
   }

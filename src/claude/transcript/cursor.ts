@@ -16,8 +16,10 @@ const maxChunkBytes = 256 * 1024; // bytes read per scan pass (a large delta str
 // through its next newline (a no-newline giant line can't OOM or re-concat n²).
 const maxPendingBytes = 1024 * 1024;
 
-/** Outcome of a bounded read: the decoded text plus whether more remains to read. */
-export type ChunkRead = { readonly text: string; readonly more: boolean };
+/** Outcome of a bounded read: the decoded text plus whether an immediate next read
+ * can make progress (canContinueNow). An incomplete UTF-8 tail leaves unread bytes
+ * yet returns false: no progress is possible until the rest of the code point lands. */
+export type ChunkRead = { readonly text: string; readonly canContinueNow: boolean };
 
 /**
  * The cursor's over-length-discard state transition across one `takeLines` call,
@@ -95,18 +97,18 @@ export class TranscriptCursor {
     const from = size < this.offset ? 0 : this.offset;
     if (size <= from) {
       this.offset = from;
-      return { text: "", more: false };
+      return { text: "", canContinueNow: false };
     }
     const want = Math.min(maxChunkBytes, size - from);
     const { text, bytes } = readRange(this.path, from, want);
     // Advance by bytes actually consumed (a split code point waits), no drift.
     this.offset = from + bytes;
     // A read that consumed ZERO bytes (the window is entirely an incomplete UTF-8
-    // sequence — a partial write at EOF) made no progress: report `more: false` so
+    // sequence — a partial write at EOF) made no progress: report `canContinueNow: false` so
     // the poll/drain loop stops this pass instead of spinning on the same bytes. The
     // next tick re-reads once the rest of the code point is committed.
     const advanced = bytes > 0;
-    return { text, more: advanced && this.offset < size };
+    return { text, canContinueNow: advanced && this.offset < size };
   }
 
   // Split buffered text into complete lines, retaining any trailing partial. A

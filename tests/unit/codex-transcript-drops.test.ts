@@ -21,14 +21,14 @@ import type { CodexTranscriptEvent } from "../../src/codex/transcript/types.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
 describe("Codex drop + read-error tracking", () => {
-  test("C-API-12 drops advance in memory and persist only on flush; seed continues", () => {
+  test("C-CODEX-20 drops advance in memory and persist only on flush; seed continues", () => {
     const notices: CodexDropNotice[] = [];
     const tracker = new CodexDropTracker("s1", (n) => notices.push(n), {
       droppedCount: 4,
       droppedBytes: 40,
     });
     tracker.record("/t", "{bad");
-    tracker.recordBytes({ path: "/t", bytes: 100, incidents: 1, cause: "oversized" });
+    tracker.accountDrop({ path: "/t", bytes: 100, incidents: 1, cause: "oversized" });
     expect(notices).toHaveLength(0); // nothing persisted until flush
     tracker.flush();
     expect(notices).toHaveLength(1);
@@ -38,7 +38,7 @@ describe("Codex drop + read-error tracking", () => {
     expect(notices).toHaveLength(1);
   });
 
-  test("C-API-12 a throwing onDrop keeps the tracker dirty — the running total is not lost", () => {
+  test("C-CODEX-20 a throwing onDrop keeps the tracker dirty — the running total is not lost", () => {
     let failNext = true;
     const notices: CodexDropNotice[] = [];
     const tracker = new CodexDropTracker("s", (n) => {
@@ -48,7 +48,7 @@ describe("Codex drop + read-error tracking", () => {
       }
       notices.push(n);
     });
-    tracker.recordBytes({ path: "/t", bytes: 50, incidents: 1, cause: "oversized" });
+    tracker.accountDrop({ path: "/t", bytes: 50, incidents: 1, cause: "oversized" });
     // The sink throws — `dirty` must stay set so the total isn't silently dropped.
     expect(() => tracker.flush()).toThrow(/persist boom/);
     expect(notices).toHaveLength(0);
@@ -58,13 +58,13 @@ describe("Codex drop + read-error tracking", () => {
     expect(notices[0]).toMatchObject({ droppedCount: 1, droppedBytes: 50 });
   });
 
-  test("C-API-12 a tracker with no sink and no seed still counts without throwing", () => {
+  test("C-CODEX-20 a tracker with no sink and no seed still counts without throwing", () => {
     const tracker = new CodexDropTracker("s", undefined);
     tracker.record("/t", "x");
     expect(() => tracker.flush()).not.toThrow();
   });
 
-  test("C-API-12 read-error tracker counts, seeds, and normalizes a missing code", () => {
+  test("C-CODEX-20 read-error tracker counts, seeds, and normalizes a missing code", () => {
     const errs: CodexReadErrorNotice[] = [];
     const tracker = new CodexReadErrorTracker("s", (n) => errs.push(n), { errorCount: 2 });
     tracker.record("/t", { code: "EISDIR" });
@@ -78,7 +78,7 @@ describe("Codex drop + read-error tracking", () => {
 });
 
 describe("Codex fs guard", () => {
-  test("C-API-12 contains a sync read failure and records it", () => {
+  test("C-CODEX-20 contains a sync read failure and records it", () => {
     const errs: CodexReadErrorNotice[] = [];
     const guard = new CodexTranscriptFsGuard(new CodexReadErrorTracker("s", (n) => errs.push(n)));
     expect(guard.read("/t", () => 42)).toBe(42);
@@ -100,7 +100,7 @@ function harness() {
 }
 
 describe("Codex line emitter", () => {
-  test("C-API-12 emits parseable lines, skips blanks, drops malformed", () => {
+  test("C-CODEX-20 emits parseable lines, skips blanks, drops malformed", () => {
     const { events, notices, drops, lines } = harness();
     const cursor = new CodexTranscriptCursor(join(tempDirForUnit(), "x.jsonl"));
     lines.emitLines("/p", "", cursor); // empty text early-returns
@@ -111,7 +111,7 @@ describe("Codex line emitter", () => {
     expect(notices.at(-1)).toMatchObject({ cause: "unparseable" });
   });
 
-  test("C-API-12 an over-length record via emitLines is an oversized drop", () => {
+  test("C-CODEX-20 an over-length record via emitLines is an oversized drop", () => {
     const { notices, drops, lines } = harness();
     const cursor = new CodexTranscriptCursor(join(tempDirForUnit(), "x.jsonl"));
     lines.emitLines("/p", "q".repeat(1024 * 1024 + 10), cursor);
@@ -119,7 +119,7 @@ describe("Codex line emitter", () => {
     expect(notices.at(-1)).toMatchObject({ cause: "oversized", droppedCount: 1 });
   });
 
-  test("C-API-12 ENDING a discard reports bytes but no new record (count stays 1)", () => {
+  test("C-CODEX-20 ENDING a discard reports bytes but no new record (count stays 1)", () => {
     const { notices, drops, lines } = harness();
     const cursor = new CodexTranscriptCursor(join(tempDirForUnit(), "x.jsonl"));
     lines.emitLines("/p", "q".repeat(1024 * 1024 + 10), cursor); // starts discard (+1)

@@ -30,7 +30,7 @@ function harness() {
 }
 
 describe("Codex bounded terminal drain", () => {
-  test("C-API-12 drains to EOF within budget and flushes the final partial", () => {
+  test("C-CODEX-20 drains to EOF within budget and flushes the final partial", () => {
     const path = join(tempDirForUnit(), "d.jsonl");
     writeFileSync(path, "");
     const cursor = new CodexTranscriptCursor(path);
@@ -40,7 +40,7 @@ describe("Codex bounded terminal drain", () => {
     expect(events).toHaveLength(1); // the complete record; the partial is a drop
   });
 
-  test("C-API-12 an unread backlog past the wall-clock slice is a content-free drop", () => {
+  test("C-CODEX-20 an unread backlog past the wall-clock slice is a content-free drop", () => {
     const path = join(tempDirForUnit(), "backlog.jsonl");
     writeFileSync(path, "");
     const cursor = new CodexTranscriptCursor(path);
@@ -57,7 +57,7 @@ describe("Codex bounded terminal drain", () => {
     expect(notices.at(-1)).toMatchObject({ cause: "unread_backlog", droppedCount: 1 });
   });
 
-  test("C-API-12 a budget exhausted mid-file leaves a backlog drop", () => {
+  test("C-CODEX-20 a budget exhausted mid-file leaves a backlog drop", () => {
     const path = join(tempDirForUnit(), "budget.jsonl");
     writeFileSync(path, "");
     const cursor = new CodexTranscriptCursor(path);
@@ -72,7 +72,7 @@ describe("Codex bounded terminal drain", () => {
     expect(notices[0]?.droppedBytes).toBeGreaterThan(300 * 1024);
   });
 
-  test("C-API-12 a failed remainingBytes probe at the budget edge accounts 0 backlog", () => {
+  test("C-CODEX-20 a failed remainingBytes probe at the budget edge accounts 0 backlog", () => {
     const path = join(tempDirForUnit(), "edge.jsonl");
     writeFileSync(path, "");
     const cursor = new CodexTranscriptCursor(path);
@@ -92,7 +92,7 @@ describe("Codex bounded terminal drain", () => {
     expect(notices.every((n) => n.cause !== "unread_backlog")).toBe(true);
   });
 
-  test("C-API-12 a contained fs failure mid-drain stops without accounting", () => {
+  test("C-CODEX-20 a contained fs failure mid-drain stops without accounting", () => {
     const path = join(tempDirForUnit(), "fail.jsonl");
     writeFileSync(path, "data\n");
     const cursor = new CodexTranscriptCursor(join(tempDirForUnit(), "empty.jsonl"));

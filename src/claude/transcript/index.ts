@@ -68,7 +68,7 @@ export class ClaudeTranscriptWatcher {
       // A turn larger than the recovery window surfaces its out-of-window records as
       // a bounded, content-free backlog loss so the gap is not silent (§5.4).
       if (tail?.truncated && tail.droppedBytes > 0)
-        this.drops.recordBytes({
+        this.drops.accountDrop({
           path,
           bytes: tail.droppedBytes,
           incidents: 1,
@@ -185,7 +185,7 @@ export class ClaudeTranscriptWatcher {
       const chunk = this.guard.read(cursor.path, () => cursor.readChunk());
       if (chunk === undefined) return; // contained FS failure; keep last offset
       if (chunk.text.length > 0) this.lines.emitLines(cursor.path, chunk.text, cursor);
-      if (!chunk.more) return;
+      if (!chunk.canContinueNow) return;
     } // budget exhausted with more to read: the next poll tick resumes here.
   }
 }

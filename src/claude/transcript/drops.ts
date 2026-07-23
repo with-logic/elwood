@@ -50,11 +50,14 @@ export type TranscriptReadErrorNotice = {
 export type DropSeed = { readonly droppedCount: number; readonly droppedBytes: number };
 
 /**
- * One accounted loss observation. A NAMED object (not positional args): `bytes` and
- * `incidents` are both `number`, so passing them positionally would let a swap
- * compile and silently corrupt the persisted running totals.
+ * A delta folded into the running drop aggregate: continuation `bytes`, an
+ * `incidents` count (which may be 0 while bytes are still added — e.g. an
+ * oversized line's trailing chunks), plus the latest `path`/`cause`. A NAMED
+ * object (not positional args): `bytes` and `incidents` are both `number`, so
+ * passing them positionally would let a swap compile and silently corrupt the
+ * persisted running totals.
  */
-export type DropIncident = {
+export type DropAccountingDelta = {
   readonly path: string;
   /** Bytes of the dropped data folded into this observation (magnitude, not content). */
   readonly bytes: number;
@@ -93,7 +96,7 @@ export class DropTracker {
 
   /** Account one unparseable committed record (one loss incident); flushed later. */
   record(path: string, line: string): void {
-    this.recordBytes({
+    this.accountDrop({
       path,
       bytes: Buffer.byteLength(line, "utf8"),
       incidents: 1,
@@ -109,7 +112,7 @@ export class DropTracker {
   // the batched `flush()` (≤once per slice) is the sole persistence trigger. The
   // args are a NAMED object (not positional): `bytes` and `incidents` are both
   // numbers, so a positional swap would silently corrupt persisted diagnostics.
-  recordBytes({ path, bytes, incidents, cause }: DropIncident): void {
+  accountDrop({ path, bytes, incidents, cause }: DropAccountingDelta): void {
     this.count += incidents;
     this.droppedBytes += bytes;
     this.pendingPath = path;
