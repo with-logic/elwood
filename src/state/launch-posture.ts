@@ -32,7 +32,17 @@ function compact<T extends object>(posture: { [K in keyof T]: T[K] | undefined }
 
 export function claudeLaunchPosture(options: ClaudeLaunchPosture): ClaudeLaunchPosture | undefined {
   const { permissionMode, allowedTools, disallowedTools, tools } = options;
-  return compact({ permissionMode, allowedTools, disallowedTools, tools });
+  // COPY the tool arrays so the persisted posture never aliases the caller's array: a
+  // later mutation of the caller's array must not change what a resume launches with —
+  // otherwise a future resume could gain tools the original process never had
+  // (C-API-32/C-STATE-13). `readonly ClaudeToolRule` entries are strings, so a shallow
+  // copy is a full snapshot.
+  return compact({
+    permissionMode,
+    allowedTools: allowedTools && [...allowedTools],
+    disallowedTools: disallowedTools && [...disallowedTools],
+    tools: tools && [...tools],
+  });
 }
 
 export function codexLaunchPosture(options: CodexLaunchPosture): CodexLaunchPosture | undefined {

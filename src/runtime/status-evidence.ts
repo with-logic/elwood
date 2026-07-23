@@ -128,15 +128,17 @@ export class SessionStatusEngine {
 
   private apply(to: ElwoodSessionStatus): void {
     if (to === "running") {
-      // Turn start: suspend queue readiness (own the queue before the write), persist
-      // the `running` transition, and commit `current` — ALL before delivering events.
-      // A persist failure aborts before commit (no wedge; the caller rolls back). A
-      // throwing status LISTENER runs only AFTER durable + in-memory state already
-      // agree, so it can neither split them nor wedge the queue; it still propagates
-      // (C-API-42's initial-ready fallback relies on that). Observable order unchanged.
-      this.io.queueRunning();
+      // Turn start: PERSIST and commit `current` BEFORE suspending the queue, so a
+      // failed durable write aborts with the readiness epoch UNCHANGED — the caller's
+      // rollback (which only restores readiness when the epoch is unchanged) can then
+      // restore it, instead of the queue staying suspended forever with no PTY turn
+      // written to generate a future ready edge. The whole apply is synchronous, so
+      // persisting first opens no drain race. A throwing status LISTENER runs only
+      // AFTER durable + in-memory state already agree, so it can neither split them nor
+      // wedge the queue; it still propagates (C-API-42's fallback relies on that).
       this.io.persistStatus(to);
       this.current = to;
+      this.io.queueRunning();
       this.io.emitStatus(to);
       return;
     }

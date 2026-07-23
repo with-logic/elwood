@@ -52,4 +52,24 @@ describe("SessionStatusEngine persist/emit split (C-API-42)", () => {
     expect(() => engine.submit("startup_usable")).toThrow(/disk full/);
     expect(engine.status).toBe("starting"); // never committed running
   });
+
+  test("C-API-42 a running-persist failure does NOT suspend the queue (epoch stays for rollback)", () => {
+    // The running transition persists BEFORE queueRunning, so a failed durable write
+    // must NOT call queueRunning() — otherwise the readiness epoch would advance and the
+    // caller's epoch-gated rollback could never restore readiness, wedging the queue.
+    let queueRunningCalls = 0;
+    const io: StatusEngineIo = {
+      persistStatus: (s) => {
+        if (s === "running") throw new Error("disk full");
+      },
+      emitStatus: () => undefined,
+      ...quietQueue,
+      queueRunning: () => {
+        queueRunningCalls += 1;
+      },
+    };
+    const engine = new SessionStatusEngine(io);
+    expect(() => engine.submit("startup_usable")).toThrow(/disk full/);
+    expect(queueRunningCalls).toBe(0); // the queue was never suspended — clean rollback
+  });
 });

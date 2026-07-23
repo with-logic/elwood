@@ -103,12 +103,13 @@ export abstract class AgentSessionBase {
   sendPrompt = (prompt: string, options?: SendOptions) => this.enqueue(prompt, "prompt", options);
   sendMessage = (msg: string, options?: SendOptions) => this.enqueue(msg, "message", options);
   sendGuidance = (msg: string, options?: SendOptions) => this.enqueue(msg, "guidance", options);
-  /** Adapter-specific native image attach, run inside the op with resolved paths (C-API-44). */
+  /** Adapter-specific native image attach, in-op, with resolved paths (C-API-44). */
   protected abstract attachImages(paths: readonly string[], signal: AbortSignal): Promise<void>;
   private enqueue(input: string, kind: SubmitKind, options?: SendOptions): Promise<void> {
     const driver: AttachDriver = (paths, signal) => this.attachImages(paths, signal);
-    return enqueueSubmission(options?.images, driver, (attach) =>
-      this.inSession(() => this.controlQueue.send(input, kind, attach)),
+    // inSession FIRST: terminal status wins over image validation (C-API-25/44).
+    return this.inSession(() =>
+      enqueueSubmission(options?.images, driver, (a) => this.controlQueue.send(input, kind, a)),
     );
   }
   sendKeys = (input: string | Uint8Array): Promise<void> =>
@@ -192,9 +193,8 @@ export abstract class AgentSessionBase {
       recordWarnings: (w) => this.recordWarnings(w),
     });
   }
-  // Durable persist, split from emit so persist-fail aborts pre-commit (C-API-42).
   private persistStatus(status: ElwoodSessionStatus): void {
-    this.everReady ||= status === "ready";
+    this.everReady ||= status === "ready"; // durable persist split from emit (C-API-42)
     this.persist(updateSessionStatus(this.record, status));
   }
 }

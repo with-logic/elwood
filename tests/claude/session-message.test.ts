@@ -117,6 +117,24 @@ describe("ClaudeSession message submission", () => {
     }
   });
 
+  test("C-API-25 a terminated session rejects a MALFORMED-image send as session_not_running", async () => {
+    // Terminal status must take precedence over image validation: a bad `images` on a
+    // stopped session rejects `session_not_running`, NOT `invalid_image` (C-API-25/44).
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    await session.stop();
+    for (const bad of [
+      { data: new Uint8Array(0), format: "png" as const },
+      {} as never,
+      "" as never,
+    ]) {
+      await expect(session.sendMessage("x", { images: [bad] })).rejects.toMatchObject({
+        code: "session_not_running",
+      });
+    }
+  });
+
   test("C-API-21 undelivered persona is discarded when the session stops before ready", async () => {
     const cwd = tempDir();
     installFakes();

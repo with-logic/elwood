@@ -135,9 +135,11 @@ describe("SessionStatusEngine", () => {
     engine.submit("initial_ready");
     engine.submit("terminal_exited");
     expect(engine.status).toBe("exited");
-    // Each transition persists, commits status (emit), and orders the queue op.
+    // running: persist+commit BEFORE queueRunning, so a persist fault leaves the
+    // readiness epoch unchanged for a clean caller rollback (C-API-42). ready/exit
+    // persist+emit before their queue op so drained sends observe the new status.
     expect(calls.join(",")).toBe(
-      "queueRunning,persist:running,status:running,persist:ready,status:ready," +
+      "persist:running,queueRunning,status:running,persist:ready,status:ready," +
         "queueReady,queueClose,persist:exited,status:exited,cleanup",
     );
   });

@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { resumeClaude, startClaude } from "../../src/index.ts";
-import { effectivePosture } from "../../src/state/launch-posture.ts";
+import { claudeLaunchPosture, effectivePosture } from "../../src/state/launch-posture.ts";
 import {
   createSessionRecord,
   prepareStateDir,
@@ -97,5 +97,15 @@ describe("launch posture persistence", () => {
     expect(effectivePosture({ sandbox: "read-only" }, { sandbox: "workspace-write" })).toEqual({
       sandbox: "workspace-write",
     });
+  });
+
+  test("C-STATE-13 the persisted posture does NOT alias the caller's tool arrays", () => {
+    // A caller mutating its own array after start/resume must not change what the
+    // persisted posture (and thus a future resume) launches with (C-API-32).
+    const allowedTools = ["Bash", "Read"];
+    const posture = claudeLaunchPosture({ allowedTools, disallowedTools: [], tools: ["Edit"] });
+    allowedTools.push("Write"); // mutate the caller's array AFTER construction
+    expect(posture?.allowedTools).toEqual(["Bash", "Read"]); // snapshot unchanged
+    expect(posture?.allowedTools).not.toBe(allowedTools); // a distinct array, not aliased
   });
 });
