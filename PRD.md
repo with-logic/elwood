@@ -1920,8 +1920,11 @@ paths are capped near 104 bytes on macOS (`sockaddr_un.sun_path`), so a socket
 inside a caller-structured `stateDir` breaks any parent app with nested state
 layouts. Instead, each session has a STABLE Elwood-owned private (0700) socket
 home directory under the OS temp dir, named by a bounded, collision-resistant
-fingerprint of the session id — so every start/resume of that session resolves the
-SAME home even after a parent restart (the record persists nothing about it). Each
+fingerprint of the session's full identity — its `stateDir`, adapter, and session
+id — so every start/resume of that session resolves the SAME home even after a
+parent restart (the record persists nothing about it), while two sessions that
+share an explicit session id in different state dirs get DISTINCT homes and can
+never sweep each other's live socket. Each
 launch binds a FRESH socket FILE inside that home, so a stale socket is never
 reused; the socket path is a per-launch runtime value, never persisted, so a
 recorded socket path can never be trusted. `teardown` removes the whole socket
@@ -1952,9 +1955,11 @@ timestamps, warnings, terminal size, the hook bridge
 authentication token, the socket path, or any Elwood-owned runtime file paths.
 Status and warnings are live-only (§5.7). Runtime file paths are pure functions of
 the state directory, session id, and adapter, so they are DERIVED on demand rather
-than stored. The bridge authentication token and the socket home are REGENERATED
-on every start and resume and never trusted from disk — a recorded token or socket
-path is never read back.
+than stored. The socket HOME is a deterministic function of that same identity (a
+bounded fingerprint, §8.1), so every launch resolves the same one without storing
+it. The bridge authentication token and the socket FILE inside that home are minted
+FRESH on every start and resume and never trusted from disk — a recorded token or
+socket path is never read back.
 
 Elwood-generated session directories MUST be private to the current user
 (`0700`), and generated settings, bridge scripts, and session records MUST be
@@ -2496,7 +2501,7 @@ Each criterion has:
 | C-STATE-10 | §5.2, §5.6 | Resume APIs reject session records whose persisted adapter does not match the requested adapter. |
 | C-STATE-11 | §8.1 | Elwood does not overwrite an existing `.elwood/.gitignore` or create gitignore files in custom `stateDir` directories. |
 | C-STATE-13 | §8.2 | The session record persists the resolved launch posture (privilege and tool policy) at start, validates it on read, and resume updates it to the effective values. |
-| C-STATE-12 | §8.1 | Sessions start successfully with arbitrarily long `stateDir` paths because the hook bridge socket binds in a short Elwood-owned temp home. The home is STABLE per session (a bounded fingerprint of the session id), so every start/resume resolves the same one; each launch binds a fresh socket FILE inside it, and teardown removes the whole home so no per-launch socket leaks across restart/resume. |
+| C-STATE-12 | §8.1 | Sessions start successfully with arbitrarily long `stateDir` paths because the hook bridge socket binds in a short Elwood-owned temp home. The home is STABLE per session (a bounded fingerprint of the session's full identity — `stateDir`, adapter, and id), so every start/resume resolves the same one while a shared explicit id in a different state dir resolves a DISTINCT home; each launch binds a fresh socket FILE inside it, and teardown removes the whole home so no per-launch socket leaks across restart/resume. |
 | C-LIFE-09 | §9.2 | `autoupdate` runs the adapter's update command at most once per parent process per adapter, so fleet spawns do not race N concurrent same-binary updates. |
 | C-ERR-08 | §10 | Startup failures carry the underlying cause, and errno/syscall/path details when the underlying error provides them. |
 

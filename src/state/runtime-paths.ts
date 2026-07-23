@@ -42,7 +42,7 @@ export type SessionRuntimeInput = {
 export function sessionRuntime(input: SessionRuntimeInput): SessionRuntime {
   const { stateDir, elwoodSessionId, adapter } = input;
   const dir = safeSessionDir(stateDir, elwoodSessionId);
-  const socketHome = sessionSocketHome(elwoodSessionId);
+  const socketHome = sessionSocketHome({ stateDir, elwoodSessionId, adapter });
   mkdirSync(socketHome, { recursive: true, mode: 0o700 });
   return {
     sessionDir: dir,
