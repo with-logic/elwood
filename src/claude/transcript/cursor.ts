@@ -10,7 +10,7 @@ import { BoundedTranscriptCursor } from "../../core/transcript/cursor.ts";
 import { scanBaselineTail } from "./baseline.ts";
 import { fileSize } from "./cursor-io.ts";
 
-export type { ChunkRead, DiscardTransition, TakenLines } from "../../core/transcript/cursor.ts";
+export type { ChunkRead, TakenLines } from "../../core/transcript/cursor.ts";
 export { resetByteReaderForTests, setByteReaderForTests } from "./cursor-io.ts";
 
 /**

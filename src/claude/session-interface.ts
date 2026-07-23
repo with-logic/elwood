@@ -12,7 +12,6 @@ import type {
   ElwoodEventName,
   ElwoodSessionStatus,
   ElwoodStatusDecision,
-  ElwoodWarningEvent,
   StatusMatch,
   TerminalSize,
   Unsubscribe,
@@ -24,7 +23,6 @@ export interface ClaudeSession {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;
-  readonly warnings: readonly ElwoodWarningEvent[];
   readonly terminal: ElwoodTerminal;
   statusDecisions(): readonly ElwoodStatusDecision[];
   waitForStatus(match: StatusMatch, timeoutMs?: number): Promise<ElwoodSessionStatus>;

@@ -73,7 +73,6 @@ export function fakeSession(id: string): FakeSession {
     elwoodSessionId: id,
     cwd: "/w",
     status: "running",
-    warnings: [],
     terminal: {} as never,
     teardownCount: 0,
     stopped: 0,

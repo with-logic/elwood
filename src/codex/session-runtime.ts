@@ -6,12 +6,12 @@
 import { bridgeScriptSource } from "../bridge/script.ts";
 import { finishSessionExit } from "../runtime/session-exit.ts";
 import { writePrivateFileAtomic } from "../state/files.ts";
-import type { SessionRecord } from "../state/store.ts";
+import type { SessionRuntime } from "../state/runtime-paths.ts";
 
-export function writeCodexRuntimeFiles(record: SessionRecord): void {
+export function writeCodexRuntimeFiles(runtime: SessionRuntime): void {
   writePrivateFileAtomic(
-    record.paths.bridgeScriptPath,
-    bridgeScriptSource(record.paths.socketPath, record.bridgeToken),
+    runtime.bridgeScriptPath,
+    bridgeScriptSource(runtime.socketPath, runtime.bridgeToken),
   );
 }
 

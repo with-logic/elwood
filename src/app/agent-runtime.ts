@@ -59,7 +59,6 @@ export type SharedSession = Pick<
   | "elwoodSessionId"
   | "cwd"
   | "status"
-  | "warnings"
   | "terminal"
   | "statusDecisions"
   | "sendPrompt"

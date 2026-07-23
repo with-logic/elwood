@@ -8,7 +8,7 @@
 
 import { elwoodError } from "../core/errors.ts";
 import type { PtyProcess } from "../pty/types.ts";
-import { removeSessionDir, type SessionRecord } from "../state/store.ts";
+import { removeSessionFiles } from "../state/store.ts";
 import type { SessionReapPolicy } from "./session-reap.ts";
 import { terminalStatuses } from "./session-status.ts";
 import type { ShutdownContext, ShutdownCoordinator } from "./shutdown-coordinator.ts";
@@ -22,7 +22,10 @@ export type ShutdownEvidence = "stop_completed" | "kill_completed" | "teardown_c
 /** The session surface the shutdown/teardown orchestration drives. */
 export type ShutdownHost = {
   readonly pty: PtyProcess;
-  readonly record: SessionRecord;
+  readonly stateDir: string;
+  readonly elwoodSessionId: string;
+  /** The per-launch socket home to remove alongside the derived session dir (§8.1). */
+  readonly socketPath: string;
   readonly reapPolicy: SessionReapPolicy;
   readonly status: () => import("../core/types.ts").ElwoodSessionStatus;
   readonly claimShutdown: (evidence: ShutdownEvidence) => void;
@@ -144,6 +147,6 @@ export async function runTeardown(host: ShutdownHost, ctx: ShutdownContext): Pro
     () => host.reapPolicy.reaper.reap(), // No-op once latched; retries a failed reap.
     () => host.cleanupRuntime(),
     () => host.submitEvidence("teardown_completed"),
-    () => removeSessionDir(host.record),
+    () => removeSessionFiles(host.stateDir, host.elwoodSessionId, host.socketPath),
   ]);
 }

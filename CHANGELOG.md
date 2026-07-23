@@ -13,6 +13,30 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ### Changed
 
+- **Warnings are now live-only; the `session.warnings` property is removed.** A
+  warning is emitted once, when observed, as a `warning` event plus its `activity`
+  — it is never persisted, never replayed to a late subscriber, never deduplicated
+  across time, and never accumulated into a running count. Consumers must collect
+  warnings off the `warning` event (a late subscriber no longer sees a replayed
+  snapshot). Transcript drop / read-error warnings lose their `droppedCount` /
+  `droppedBytes` / `errorCount` fields (each lost record or contained read error is
+  one live, content-free warning, keeping its `cause` / `lastErrorCode` label); the
+  `initial_ready_fallback` warning loses its `reason` field. This closes the
+  false-unread-on-resume reports at the source: a resumed session no longer replays
+  a prior session's stale warnings as if they were live. (C-API-14, C-CLAUDE-15,
+  C-API-42)
+
+- **`session.json` is now minimal.** The persisted session record holds only what
+  resume genuinely needs: schema version, `elwoodSessionId`, adapter, `cwd`, and
+  per-adapter resume state (the CLI's conversation id + launch posture). Session
+  status, timestamps, warnings, caller metadata, terminal size, the hook-bridge
+  token, the socket path, and Elwood-owned runtime file paths are no longer written.
+  Runtime paths are derived on demand from `(stateDir, id, adapter)`; the bridge
+  token and socket home are minted fresh on every start/resume and never trusted
+  from disk. Behavior for callers is unchanged except that a resumed session no
+  longer restores a persisted terminal size — pass `initialSize` on resume to set
+  geometry (it otherwise falls back to the default). (§8.2)
+
 - **Resumed sessions reach readiness in ~1s instead of ~10s.** On resume, Codex does
   not re-fire its `SessionStart` hook, so readiness previously fell through to the 10s
   starvation deadline; Claude's `InstructionsLoaded` *does* re-fire on resume. A

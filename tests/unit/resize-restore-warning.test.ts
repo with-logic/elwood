@@ -1,19 +1,13 @@
 /**
- * Focused coverage for the resize-restore-failure warning builder + its persisted
- * validation. Covers PRD §5.3/§5.7 (C-API-39): a `resize_restore_failed` warning
- * carries ONLY an allowlisted normalized error code + the requested size — never a
- * raw system message or an arbitrary `Error.name`/`.code` — and survives a
- * persist→resume round-trip while rejecting malformed shapes.
+ * Focused coverage for the resize-restore-failure warning builder. Covers PRD
+ * §5.3/§5.7 (C-API-39): a `resize_restore_failed` warning carries ONLY an allowlisted
+ * normalized error code + the requested size — never a raw system message or an
+ * arbitrary `Error.name`/`.code`. Live-only (never persisted).
  */
 
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { resizeRestoreFailedWarning } from "../../src/claude/resize-restore.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
-import { createSessionRecord } from "../../src/state/store.ts";
-import { validateSessionRecord } from "../../src/state/validate.ts";
 
 const id = "resize-target";
 
@@ -46,30 +40,6 @@ describe("C-API-39 resizeRestoreFailedWarning error-code allowlist", () => {
       for (const field of Object.values(warning)) {
         expect(String(field)).not.toContain(secret);
       }
-    }
-  });
-});
-
-describe("C-API-39 resize_restore_failed validation round-trip", () => {
-  test("accepts a well-formed warning and gates malformed shapes", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-resize-"));
-    const record = JSON.parse(
-      JSON.stringify(createSessionRecord({ stateDir: root, cwd: root, id })),
-    ) as Record<string, unknown>;
-    const warning = build(Object.assign(new Error("io"), { code: "EIO" }));
-    expect(validateSessionRecord({ ...record, warnings: [warning] }, root, id)).not.toBeNull();
-    // Positive terminal dimensions and an allowlisted error code are required.
-    for (const bad of [
-      { requestedCols: 0 },
-      { requestedRows: -1 },
-      { requestedCols: 1.5 },
-      { errorCode: "not-allowlisted" },
-      { agent: "codex" },
-      { source: "terminal" },
-    ]) {
-      expect(
-        validateSessionRecord({ ...record, warnings: [{ ...warning, ...bad }] }, root, id),
-      ).toBeNull();
     }
   });
 });

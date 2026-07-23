@@ -89,12 +89,9 @@ export type ElwoodWarningEvent =
       readonly code: "transcript_records_dropped";
       readonly severity: "warning";
       readonly message: string;
-      // Count, byte magnitude, and path only — never raw transcript content.
-      readonly droppedCount: number;
-      readonly droppedBytes: number;
-      // Why data was lost, bounded to a fixed token so cause + cardinality are
-      // never false: an unparseable committed record, an over-length record
-      // discarded through its next newline, or an unread teardown backlog.
+      // Why data was lost, bounded to a fixed token: an unparseable committed record,
+      // an over-length record discarded through its next newline, or an unread
+      // teardown backlog. One live warning per drop — never a running count.
       readonly cause: DropCause;
       readonly transcriptPath: string;
       readonly raw: string;
@@ -106,8 +103,8 @@ export type ElwoodWarningEvent =
       readonly code: "transcript_read_error";
       readonly severity: "warning";
       readonly message: string;
-      // Count, last error code, and path only — never raw transcript content.
-      readonly errorCount: number;
+      // Last error code and path only — never raw transcript content. One live
+      // warning per contained read error — never a running count.
       readonly lastErrorCode: string;
       readonly transcriptPath: string;
       readonly raw: string;
@@ -166,20 +163,12 @@ export type ElwoodWarningEvent =
       readonly code: "initial_ready_fallback";
       readonly severity: "warning";
       readonly message: string;
-      // Recording the one-shot initial-ready transition threw, so Elwood released
-      // the control queue directly (anti-starvation) while persisted status and
-      // emitted lifecycle events may be stale. Carries only a bounded reason —
-      // never a raw system message or conversation content (§5.3, §5.7, C-API-42).
-      readonly reason: InitialReadyFallbackReason;
+      // Recording the one-shot initial-ready transition threw (a lifecycle-event
+      // listener), so Elwood released the control queue directly (anti-starvation)
+      // while emitted lifecycle events may be stale. Content-free — never a raw
+      // system message or conversation content (§5.3, §5.7, C-API-42).
       readonly raw: string;
     };
-
-/**
- * Why the initial-ready transition fell back to a direct queue release: the
- * durable status write threw (`persist`), or a lifecycle-event listener threw
- * after the write (`listener`). Bounded so telemetry never leaks error detail.
- */
-export type InitialReadyFallbackReason = "persist" | "listener";
 
 /**
  * A rejected startup-prompt PTY write, discriminated by agent so the LABEL is

@@ -37,7 +37,7 @@ describe("CodexSession startup and terminal control", () => {
     expect(readFileSync(codexConfig, "utf8")).toBe('model="unchanged"\n');
   });
 
-  test("C-ERR-07 version warnings are captured when non-strict parsing fails", async () => {
+  test("C-ERR-07 non-strict unparseable version starts live-only, not persisted", async () => {
     const cwd = tempDir();
     installFakes();
     setCommandRunnerForTests((_command, args) =>
@@ -45,14 +45,18 @@ describe("CodexSession startup and terminal control", () => {
         ? { status: 0, stdout: "--dangerously-bypass-hook-trust", stderr: "" }
         : { status: 0, stdout: "unknown build", stderr: "" },
     );
+    // A non-strict unparseable version surfaces the warning LIVE on the first
+    // caller-observable frame and still boots; §8 forbids persisting it.
     const session = await startCodex({ cwd });
-    const replayedWarnings: string[] = [];
-    const replayedActivity: string[] = [];
-    session.on("warning", (event) => replayedWarnings.push(event.code));
-    session.on("activity", (event) => replayedActivity.push(event.kind));
-    expect(session.warnings).toMatchObject([{ code: "version_unparseable", agent: "codex" }]);
-    expect(replayedWarnings).toEqual(["version_unparseable"]);
-    expect(replayedActivity).toEqual(["warning"]);
+    expect(session.status).toBe("running");
+    const codes: string[] = [];
+    session.on("warning", (event) => codes.push(event.code));
+    ptys[0]!.emitData("ready frame"); // drive the first caller-observable frame
+    await expect.poll(() => codes).toContain("version_unparseable");
+    const dir = join(cwd, ".elwood", "sessions", session.elwoodSessionId);
+    const persisted = readFileSync(join(dir, "session.json"), "utf8");
+    expect(persisted).not.toContain("version_unparseable");
+    expect(persisted).not.toContain("warning");
   });
 
   test("C-CODEX-12 skips Codex TUI update prompts", async () => {
@@ -68,19 +72,23 @@ describe("CodexSession startup and terminal control", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startCodex({ cwd });
-    const warnings: string[] = [];
+    const warningEvents: { code: string; [key: string]: unknown }[] = [];
     const activity: string[] = [];
-    session.on("warning", (event) => warnings.push(event.code));
+    session.on("warning", (event) => warningEvents.push(event));
     session.on("activity", (event) => activity.push(event.kind));
     ptys[0]!.emitData(
       "The linear MCP server is not logged in. Run `codex mcp login linear`.\nMCP startup incomplete (failed: linear)",
     );
     ptys[0]!.emitData("MCP startup incomplete (failed: linear)");
     await flushTerminal();
-    expect(warnings).toEqual(["mcp_server_not_logged_in", "mcp_startup_incomplete"]);
-    expect(session.warnings[0]).toMatchObject({ mcpServerName: "linear" });
-    expect(session.warnings[1]).toMatchObject({ recoveryCommands: ["codex mcp login linear"] });
-    expect(session.warnings[1]!.raw).toContain("MCP startup incomplete (failed: linear)");
+    // Live-only warnings are no longer de-duplicated: each detection fires (§5.7).
+    const notLoggedIn = warningEvents.find((w) => w.code === "mcp_server_not_logged_in");
+    const startupIncomplete = warningEvents.find((w) => w.code === "mcp_startup_incomplete");
+    expect(notLoggedIn).toMatchObject({ mcpServerName: "linear" });
+    expect(startupIncomplete).toMatchObject({
+      recoveryCommands: ["codex mcp login linear"],
+      raw: expect.stringContaining("MCP startup incomplete (failed: linear)"),
+    });
     expect(activity).toContain("warning");
   });
 

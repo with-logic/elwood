@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { resumeCodex, startCodex } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
+import { safeSessionDir } from "../../src/state/files.ts";
 import { createSessionRecord, prepareStateDir, writeSessionRecord } from "../../src/state/store.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -17,13 +18,13 @@ describe("CodexSession resume options", () => {
   test("C-API-10 resume forwards hooks, size, and safety options", async () => {
     const cwd = tempDir();
     installFakes();
-    const session = await startCodex({ cwd, metadata: { ticket: "T-1" }, name: "demo" });
+    const session = await startCodex({ cwd });
     await ptys[0]!.dispatchHook(session.elwoodSessionId, sessionStart(cwd, "codex-session-1"));
     await ptys[0]!.dispatchHook(session.elwoodSessionId, sessionStart(cwd, "codex-session-2"));
     await session.stop();
+    // §8: the minimal record persists only the resume id, never metadata/name.
     expect(readRecord(cwd, session.elwoodSessionId)).toMatchObject({
-      metadata: { ticket: "T-1" },
-      codex: { name: "demo", resumeId: "codex-session-1" },
+      codex: { resumeId: "codex-session-1" },
     });
     const resumed = await resumeCodex({
       cwd,
@@ -100,8 +101,11 @@ describe("CodexSession resume options", () => {
     installFakes();
     const stateDir = join(cwd, ".elwood");
     prepareStateDir(stateDir);
-    const record = createSessionRecord({ stateDir, cwd, id: "codex-priv", adapter: "codex" });
-    writeSessionRecord({ ...record, codex: { resumeId: "codex-session-9" } });
+    const record = createSessionRecord({ cwd, id: "codex-priv", adapter: "codex" });
+    writeSessionRecord(
+      { ...record, codex: { resumeId: "codex-session-9" } },
+      safeSessionDir(stateDir, "codex-priv"),
+    );
     const resumed = await resumeCodex({
       cwd,
       elwoodSessionId: "codex-priv",
@@ -119,14 +123,17 @@ describe("CodexSession resume options", () => {
     installFakes();
     const stateDir = join(cwd, ".elwood");
     prepareStateDir(stateDir);
-    const record = createSessionRecord({ stateDir, cwd, id: "posture-codex", adapter: "codex" });
-    writeSessionRecord({
-      ...record,
-      codex: {
-        resumeId: "codex-session-10",
-        launch: { sandbox: "workspace-write", approvalPolicy: "never" },
+    const record = createSessionRecord({ cwd, id: "posture-codex", adapter: "codex" });
+    writeSessionRecord(
+      {
+        ...record,
+        codex: {
+          resumeId: "codex-session-10",
+          launch: { sandbox: "workspace-write", approvalPolicy: "never" },
+        },
       },
-    });
+      safeSessionDir(stateDir, "posture-codex"),
+    );
     await resumeCodex({ cwd, elwoodSessionId: "posture-codex" });
     const command = ptys[0]!.options.args.join(" ");
     expect(command).toContain("--sandbox 'workspace-write'");
@@ -143,16 +150,21 @@ describe("CodexSession resume options", () => {
     );
     const stateDir = join(cwd, ".elwood");
     prepareStateDir(stateDir);
-    const record = createSessionRecord({ stateDir, cwd, id: "codex-resume", adapter: "codex" });
-    writeSessionRecord({ ...record, codex: { resumeId: "codex-session-9" } });
+    const record = createSessionRecord({ cwd, id: "codex-resume", adapter: "codex" });
+    writeSessionRecord(
+      { ...record, codex: { resumeId: "codex-session-9" } },
+      safeSessionDir(stateDir, "codex-resume"),
+    );
     const previousCwd = process.cwd();
     process.chdir(cwd);
     try {
+      // No cwd/stateDir/size: falls back to process.cwd(), the default state dir, and
+      // the default size. The unparseable version is live-only, never persisted (§8).
       const session = await resumeCodex({ elwoodSessionId: "codex-resume" });
       expect(session.cwd).toBe(cwd);
-      expect(session.warnings).toMatchObject([{ code: "version_unparseable" }]);
       expect(ptys[0]!.size).toEqual({ cols: 189, rows: 48 });
       expect(session.terminal.size).toEqual({ cols: 189, rows: 48 });
+      expect(readRecord(cwd, "codex-resume")).not.toHaveProperty("warnings");
     } finally {
       process.chdir(previousCwd);
     }

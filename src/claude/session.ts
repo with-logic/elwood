@@ -14,17 +14,16 @@ import { assertStartupThenRelease, createStartupBuffer } from "../runtime/startu
 import { cleanupStartupResources, guardStartupRegion } from "../runtime/startup-cleanup.ts";
 import { secureMkdir } from "../state/files.ts";
 import { claudeLaunchPosture, withClaudeLaunch } from "../state/launch-posture.ts";
+import { sessionRuntime } from "../state/runtime-paths.ts";
 import {
   createSessionRecord,
   defaultStateDir,
   prepareStateDir,
   type SessionRecord,
-  upsertSessionWarning,
-  withFreshSocketPath,
   writeSessionRecord,
 } from "../state/store.ts";
 import { attachPtyTerminal } from "../terminal/headless.ts";
-import { preflightClaude } from "./preflight.ts";
+import { type ClaudePreflightWarning, preflightClaude } from "./preflight.ts";
 import {
   currentClaudeHookBridgeFactory,
   resetClaudeHookBridgeFactoryForTests,
@@ -40,11 +39,7 @@ import {
   spawnClaudePty,
   writeRuntimeFiles,
 } from "./session-runtime.ts";
-import {
-  createTranscriptWatcher,
-  observeTranscript,
-  transcriptSeedFromWarnings,
-} from "./session-transcript.ts";
+import { createTranscriptWatcher, observeTranscript } from "./session-transcript.ts";
 import { ClaudeStartupPromptResponder } from "./startup-prompts.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "./startup-size.ts";
 
@@ -57,39 +52,27 @@ export async function startClaude(options: StartClaudeOptions): Promise<ClaudeSe
   const warning = await preflightClaude(strict, options.autoupdate ?? false);
   const stateDir = options.stateDir ?? defaultStateDir(options.cwd);
   prepareStateDir(stateDir, { gitignore: options.stateDir === undefined });
-  const createdRecord = createSessionRecord({
-    stateDir,
-    cwd: options.cwd,
-    id: randomUUID(),
-    ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
-    size: options.initialSize ?? defaultTerminalSize,
-    ...(options.name === undefined ? {} : { name: options.name }),
-  });
-  const posture = withClaudeLaunch(createdRecord, claudeLaunchPosture(options));
-  const record =
-    warning === undefined
-      ? posture
-      : upsertSessionWarning(posture, { elwoodSessionId: posture.elwoodSessionId, ...warning })
-          .record;
-  writeSessionRecord(record);
-  return queuePersonaMessage(await startClaudeFromRecord(record, options), options.persona);
+  const createdRecord = createSessionRecord({ cwd: options.cwd, id: randomUUID() });
+  const record = withClaudeLaunch(createdRecord, claudeLaunchPosture(options));
+  const session = await startClaudeFromRecord(record, stateDir, options, false, warning);
+  return queuePersonaMessage(session, options.persona);
 }
 
 export async function startClaudeFromRecord(
-  storedRecord: SessionRecord,
+  record: SessionRecord,
+  stateDir: string,
   options: StartClaudeOptions,
-  resumed = false,
+  resumed: boolean,
+  preflightWarning: ClaudePreflightWarning | undefined,
 ) {
-  const record = withFreshSocketPath(storedRecord);
-  secureMkdir(record.paths.sessionDir);
-  writeSessionRecord(record);
-  writeRuntimeFiles(record, record.bridgeToken, options);
+  const runtime = sessionRuntime(stateDir, record.elwoodSessionId, "claude");
+  secureMkdir(runtime.sessionDir);
+  writeSessionRecord(record, runtime.sessionDir);
+  writeRuntimeFiles(runtime, options);
   const emitter = new TypedEmitter();
   registerInitialHooks(emitter, options.hooks);
   let session: ClaudeSessionImpl | undefined;
-  // Seed continues a resumed session's running drop/read-error counts, not 0 (§5.4).
-  const seed = transcriptSeedFromWarnings(record.warnings);
-  const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => session, seed);
+  const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => session);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   // Initial readiness is hook-backed (`InstructionsLoaded` fires `mark`); the first
   // frame arms a starvation deadline so a missing/failed hook cannot starve the queue,
@@ -101,8 +84,8 @@ export async function startClaudeFromRecord(
     void session?.completeInitialReady();
   }, resumed);
   const bridge = currentClaudeHookBridgeFactory()(
-    record.paths.socketPath,
-    record.bridgeToken,
+    runtime.socketPath,
+    runtime.bridgeToken,
     record.elwoodSessionId,
     buildClaudeHookHandler({
       record,
@@ -121,17 +104,17 @@ export async function startClaudeFromRecord(
   } catch (error) {
     throw elwoodError("hook_bridge_failed", "Could not start Elwood hook bridge.", {
       ...causeDetails(error),
-      socketPath: record.paths.socketPath,
+      socketPath: runtime.socketPath,
     });
   }
-  const requestedSize = options.initialSize ?? record.terminalSize ?? defaultTerminalSize;
+  const requestedSize = options.initialSize ?? defaultTerminalSize;
   const startupSize = {
     ...requestedSize,
     cols: Math.max(requestedSize.cols, CLAUDE_STARTUP_MIN_COLS),
   };
   let pty: ReturnType<typeof spawnClaudePty>;
   try {
-    pty = spawnClaudePty(record, { ...options, initialSize: startupSize });
+    pty = spawnClaudePty(record, runtime.settingsPath, { ...options, initialSize: startupSize });
   } catch (error) {
     await cleanupStartupResources({ bridge });
     throw error;
@@ -143,9 +126,16 @@ export async function startClaudeFromRecord(
   const promptResponder = new ClaudeStartupPromptResponder(autotrust);
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
   const turnWatcher = observers.turn;
+  let pendingPreflight = preflightWarning;
   const terminal = attachPtyTerminal(startupSize, pty, (data, renderedTerminal) => {
     startupOutput.push(data);
     terminalReplay.push(data);
+    // Surface a preflight/version warning LIVE on the first frame the caller can
+    // observe (live-only, never persisted). A one-shot so it fires exactly once.
+    if (pendingPreflight !== undefined && session) {
+      session.recordWarnings([{ elwoodSessionId: record.elwoodSessionId, ...pendingPreflight }]);
+      pendingPreflight = undefined;
+    }
     const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
     // The write RETURNS its `sendInput` completion (no longer swallowed): the
     // responder settles the prompt and its `startup_prompt` activity only after
@@ -164,6 +154,8 @@ export async function startClaudeFromRecord(
   });
   session = new ClaudeSessionImpl(
     record,
+    stateDir,
+    runtime,
     pty,
     terminal,
     bridge,

@@ -109,9 +109,9 @@ export type HookErrorEvent = {
   readonly timeoutMs?: number;
 };
 
-import type { ElwoodWarningEvent, InitialReadyFallbackReason } from "./warnings.ts";
+import type { ElwoodWarningEvent } from "./warnings.ts";
 
-export type { ElwoodWarningEvent, InitialReadyFallbackReason };
+export type { ElwoodWarningEvent };
 
 export type ElwoodEventMap = {
   readonly "terminal:data": { readonly elwoodSessionId: string; readonly data: string };

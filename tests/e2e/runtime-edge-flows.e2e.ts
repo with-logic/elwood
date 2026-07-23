@@ -7,25 +7,28 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ElwoodError, resumeClaude, resumeCodex } from "../../src/index.ts";
 import { currentPtyFactory } from "../../src/runtime/seams.ts";
-import { createSessionRecord, writeSessionRecord } from "../../src/state/store.ts";
+import { safeSessionDir } from "../../src/state/files.ts";
+import { createSessionRecord, prepareStateDir, writeSessionRecord } from "../../src/state/store.ts";
 import { attachPtyTerminal } from "../../src/terminal/headless.ts";
 import { makeProject, waitFor } from "./helpers.ts";
 
 test("C-E2E-04 rejects cross-adapter resume from persisted state", async () => {
   const project = makeProject("claude");
+  prepareStateDir(project.stateDir);
   const codexRecord = createSessionRecord({
-    stateDir: project.stateDir,
     cwd: project.cwd,
     id: "codex-record",
     adapter: "codex",
   });
-  const claudeRecord = createSessionRecord({
-    stateDir: project.stateDir,
-    cwd: project.cwd,
-    id: "claude-record",
-  });
-  writeSessionRecord({ ...codexRecord, codex: { resumeId: "codex-native" } });
-  writeSessionRecord({ ...claudeRecord, claude: { resumeId: "claude-native" } });
+  const claudeRecord = createSessionRecord({ cwd: project.cwd, id: "claude-record" });
+  writeSessionRecord(
+    { ...codexRecord, codex: { resumeId: "codex-native" } },
+    safeSessionDir(project.stateDir, "codex-record"),
+  );
+  writeSessionRecord(
+    { ...claudeRecord, claude: { resumeId: "claude-native" } },
+    safeSessionDir(project.stateDir, "claude-record"),
+  );
   await assert.rejects(
     () =>
       resumeClaude({

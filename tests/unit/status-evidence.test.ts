@@ -15,7 +15,7 @@ import {
 
 function recordingIo(calls: string[]): StatusEngineIo {
   return {
-    persistStatus: (status) => calls.push(`persist:${status}`),
+    onReady: () => calls.push("onReady"),
     emitStatus: (status) => calls.push(`status:${status}`),
     queueRunning: () => calls.push("queueRunning"),
     queueReady: () => calls.push("queueReady"),
@@ -135,12 +135,11 @@ describe("SessionStatusEngine", () => {
     engine.submit("initial_ready");
     engine.submit("terminal_exited");
     expect(engine.status).toBe("exited");
-    // running: persist+commit BEFORE queueRunning, so a persist fault leaves the
-    // readiness epoch unchanged for a clean caller rollback (C-API-42). ready/exit
-    // persist+emit before their queue op so drained sends observe the new status.
+    // running: commit BEFORE queueRunning; ready: onReady + emit before queueReady so
+    // drained sends observe the new status. Status is live-only (no persist).
     expect(calls.join(",")).toBe(
-      "persist:running,queueRunning,status:running,persist:ready,status:ready," +
-        "queueReady,queueClose,persist:exited,status:exited,cleanup",
+      "queueRunning,status:running,onReady,status:ready," +
+        "queueReady,queueClose,status:exited,cleanup",
     );
   });
 
@@ -151,7 +150,7 @@ describe("SessionStatusEngine", () => {
     calls.length = 0;
     const decision = engine.submit("stop_completed");
     expect(decision.to).toBe("stopped");
-    expect(calls).toEqual(["queueClose", "persist:stopped", "status:stopped"]);
+    expect(calls).toEqual(["queueClose", "status:stopped"]);
   });
 
   test("C-ATTN-02 blocked can follow ready, settles to ready, and yields to terminal", () => {
@@ -163,7 +162,7 @@ describe("SessionStatusEngine", () => {
     // The dialog can appear after the working indicator has already cleared.
     expect(engine.submit("blocking_prompt_shown").to).toBe("blocked");
     // Blocked suspends the queue (no send may write into the dialog), not closes it.
-    expect(calls).toEqual(["queueBlocked", "persist:blocked", "status:blocked"]);
+    expect(calls).toEqual(["queueBlocked", "status:blocked"]);
     // Resolving the dialog settles to ready (the composer is waiting again).
     expect(engine.submit("blocking_prompt_cleared").to).toBe("ready");
     // A stale clear with no active block is ignored.

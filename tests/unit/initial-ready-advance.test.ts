@@ -1,29 +1,24 @@
 /**
  * The shared anti-starvation initial-ready boundary composed with the REAL status
- * engine (PRD §5.3, C-API-42): when the `ready` transition's persist OR listener
+ * engine (PRD §5.3, C-API-42): when the `ready` transition's lifecycle listener
  * throws, the engine has already committed `current = ready`, so a plain retry is a
  * no-op — advanceInitialReady must therefore release the queue DIRECTLY and warn, for
- * BOTH adapters. Reproduces the exact starvation the validator found for Codex.
+ * BOTH adapters. Status is live-only now, so there is no persist failure mode.
  */
 
 import { describe, expect, test } from "vitest";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
 import { advanceInitialReady } from "../../src/runtime/initial-ready-advance.ts";
 import { SessionStatusEngine } from "../../src/runtime/status-evidence.ts";
-import { createSessionRecord } from "../../src/state/store.ts";
 
-const record = createSessionRecord({ stateDir: "/tmp/x", cwd: "/tmp/x", id: "s1" });
-
-/** Build a real engine + advance whose persist/emit fault is injectable. */
-function harness(fault: "persist" | "listener", agent: "claude" | "codex") {
+/** Build a real engine + advance whose ready-listener fault is injectable. */
+function harness(faulted: boolean, agent: "claude" | "codex") {
   let queueReleased = false;
   const warnings: ElwoodWarningEvent[] = [];
   const engine = new SessionStatusEngine({
-    persistStatus: (s) => {
-      if (fault === "persist" && s === "ready") throw new Error("persist boom");
-    },
+    onReady: () => {},
     emitStatus: (s) => {
-      if (fault === "listener" && s === "ready") throw new Error("listener boom");
+      if (faulted && s === "ready") throw new Error("listener boom");
     },
     queueRunning: () => {},
     queueReady: () => {
@@ -37,11 +32,7 @@ function harness(fault: "persist" | "listener", agent: "claude" | "codex") {
     advanceInitialReady({
       agent,
       elwoodSessionId: "s1",
-      record,
       submitInitialReady: () => void engine.submit("initial_ready"),
-      persist: () => {
-        if (fault === "persist") throw new Error("persist boom"); // the classify probe also faults
-      },
       markReady: () => {
         queueReleased = true;
       },
@@ -52,53 +43,40 @@ function harness(fault: "persist" | "listener", agent: "claude" | "codex") {
 
 describe("C-API-42 advanceInitialReady with the real status engine", () => {
   for (const agent of ["claude", "codex"] as const) {
-    test(`${agent}: a READY-PERSIST failure still releases the queue and warns`, () => {
-      const h = harness("persist", agent);
+    test(`${agent}: a READY-LISTENER failure still releases the queue and warns`, () => {
+      const h = harness(true, agent);
       h.advance();
       const { queueReleased, warnings } = h.get();
       expect(queueReleased).toBe(true); // the queue was NOT left starved
-      expect(warnings).toMatchObject([
-        { code: "initial_ready_fallback", agent, reason: "persist" },
-      ]);
-    });
-
-    test(`${agent}: a READY-LISTENER failure still releases the queue and warns`, () => {
-      const h = harness("listener", agent);
-      h.advance();
-      const { queueReleased, warnings } = h.get();
-      expect(queueReleased).toBe(true);
-      expect(warnings).toMatchObject([
-        { code: "initial_ready_fallback", agent, reason: "listener" },
-      ]);
+      expect(warnings).toMatchObject([{ code: "initial_ready_fallback", agent }]);
+      expect(warnings[0]).not.toHaveProperty("reason");
     });
   }
 
   test("a clean ready transition releases the queue via the engine, with no warning", () => {
+    const h = harness(false, "codex");
+    h.advance();
+    const { queueReleased, warnings } = h.get();
+    expect(queueReleased).toBe(true);
+    expect(warnings).toEqual([]); // no fallback on the happy path
+  });
+
+  test("a throwing warning sink cannot re-starve the released queue", () => {
     let released = false;
-    const engine = new SessionStatusEngine({
-      persistStatus: () => {},
-      emitStatus: () => {},
-      queueRunning: () => {},
-      queueReady: () => {
-        released = true;
-      },
-      queueBlocked: () => {},
-      queueClose: () => {},
-      cleanup: () => {},
-    });
-    const warnings: ElwoodWarningEvent[] = [];
+    // recordWarnings itself throwing must not block the direct queue release.
     advanceInitialReady({
-      agent: "codex",
+      agent: "claude",
       elwoodSessionId: "s1",
-      record,
-      submitInitialReady: () => void engine.submit("initial_ready"),
-      persist: () => {},
+      submitInitialReady: () => {
+        throw new Error("submit boom");
+      },
       markReady: () => {
         released = true;
       },
-      recordWarnings: (w) => warnings.push(...w),
+      recordWarnings: () => {
+        throw new Error("sink boom");
+      },
     });
-    expect(released).toBe(true);
-    expect(warnings).toEqual([]); // no fallback on the happy path
+    expect(released).toBe(true); // released despite the throwing sink
   });
 });

@@ -80,18 +80,16 @@ describe("Codex bounded cursor", () => {
   test("C-CODEX-20 takeLines discards an over-length un-terminated record", () => {
     const cursor = new CodexTranscriptCursor(join(tempDirForUnit(), "e.jsonl"));
     const giant = "y".repeat(1024 * 1024 + 5);
-    // No newline yet: the whole over-length buffer is discarded, discard starts.
+    // No newline yet: the whole over-length buffer is discarded, a fresh drop begins.
     const started = cursor.takeLines(giant);
     expect(started.lines).toEqual([]);
-    expect(started.discard).toBe("started");
-    expect(started.droppedBytes).toBe(giant.length);
-    // More bytes, still no newline: continuing (bytes only, no new record).
+    expect(started.dropped).toBe(true);
+    // More bytes, still no newline: continuing the same record — not a new drop.
     const cont = cursor.takeLines("more-no-newline");
-    expect(cont.discard).toBe("continuing");
-    expect(cont.droppedBytes).toBe("more-no-newline".length);
+    expect(cont.dropped).toBe(false);
     // The terminating newline ends the discard and a following record is emitted.
     const ended = cursor.takeLines('tail\n{"type":"note"}\n');
-    expect(ended.discard).toBe("ended");
+    expect(ended.dropped).toBe(false);
     expect(ended.lines).toEqual(['{"type":"note"}']);
   });
 
@@ -99,10 +97,9 @@ describe("Codex bounded cursor", () => {
     const cursor = new CodexTranscriptCursor(join(tempDirForUnit(), "e.jsonl"));
     cursor.takeLines("z".repeat(1024 * 1024 + 1)); // start a discard
     const both = cursor.takeLines(`end\n${"w".repeat(1024 * 1024 + 1)}`);
-    // Closed the prior discard AND started a fresh over-length record: reported as
-    // `started` (+1 for the NEW record; the prior was counted when it started).
-    expect(both.discard).toBe("started");
-    expect(both.droppedBytes).toBeGreaterThan(1024 * 1024);
+    // Closed the prior discard AND started a fresh over-length record: `dropped` is
+    // true for the NEW record (the prior was surfaced when it started).
+    expect(both.dropped).toBe(true);
   });
 
   test("C-CODEX-20 drainPending flushes then clears, remainingBytes reflects the tail", () => {

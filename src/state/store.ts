@@ -1,14 +1,15 @@
 /**
  * Project-local Elwood session metadata persistence.
- * Implements PRD §8.
+ * Implements PRD §8: the record persists ONLY what resume genuinely needs (adapter,
+ * cwd, per-adapter resumeId + launch posture). Paths, bridge token, socket home,
+ * terminal size, status, warnings, metadata, and timestamps are NOT persisted — they
+ * are recomputed at each launch and live in memory only.
  */
 
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { ElwoodError, elwoodError } from "../core/errors.ts";
-import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
 import {
-  newBridgeToken,
   safeSessionDir,
   secureMkdir,
   sharedMkdir,
@@ -16,71 +17,37 @@ import {
   writeSharedFile,
 } from "./files.ts";
 import type { AdapterState, ClaudeLaunchPosture, CodexLaunchPosture } from "./launch-posture.ts";
-import { removeSocketHome, withFreshSocketPath } from "./socket-home.ts";
+import { removeSocketHome } from "./socket-home.ts";
 import { validateSessionRecord } from "./validate.ts";
-import { applyRecordWriteFault } from "./write-fault.ts";
 
 export type SessionRecord = {
   readonly schemaVersion: 1;
   readonly elwoodSessionId: string;
   readonly adapter: "claude" | "codex";
   readonly cwd: string;
-  readonly metadata: Readonly<Record<string, unknown>>;
-  readonly warnings: readonly ElwoodWarningEvent[];
-  readonly createdAt: string;
-  readonly updatedAt: string;
-  readonly status: ElwoodSessionStatus;
   readonly claude: AdapterState<ClaudeLaunchPosture>;
   readonly codex: AdapterState<CodexLaunchPosture>;
-  readonly paths: {
-    readonly sessionDir: string;
-    readonly settingsPath: string;
-    readonly bridgeScriptPath: string;
-    readonly socketPath: string;
-  };
-  readonly bridgeToken: string;
-  readonly terminalSize?: TerminalSize;
 };
 
 export function defaultStateDir(cwd: string): string {
   return join(resolve(cwd), ".elwood");
 }
 
-export { safeSessionDir as sessionDir, withFreshSocketPath };
+export { safeSessionDir as sessionDir };
 
 export function createSessionRecord(input: {
-  readonly stateDir: string;
   readonly cwd: string;
   readonly id: string;
   readonly adapter?: "claude" | "codex";
-  readonly metadata?: Readonly<Record<string, unknown>>;
-  readonly size?: TerminalSize;
-  readonly name?: string;
-  readonly bridgeToken?: string;
 }): SessionRecord {
-  const dir = safeSessionDir(input.stateDir, input.id);
-  const now = new Date().toISOString();
   const adapter = input.adapter ?? "claude";
   return {
     schemaVersion: 1,
     elwoodSessionId: input.id,
     adapter,
     cwd: resolve(input.cwd),
-    metadata: input.metadata ?? {},
-    warnings: [],
-    createdAt: now,
-    updatedAt: now,
-    status: "starting",
-    claude: adapter === "claude" && input.name !== undefined ? { name: input.name } : {},
-    codex: adapter === "codex" && input.name !== undefined ? { name: input.name } : {},
-    paths: {
-      sessionDir: dir,
-      settingsPath: join(dir, `${adapter}-settings.json`),
-      bridgeScriptPath: join(dir, "hook-bridge.mjs"),
-      socketPath: join(dir, "hook.sock"),
-    },
-    bridgeToken: input.bridgeToken ?? newBridgeToken(),
-    ...(input.size === undefined ? {} : { terminalSize: input.size }),
+    claude: {},
+    codex: {},
   };
 }
 
@@ -101,19 +68,16 @@ export function prepareStateDir(
   secureMkdir(join(root, "sessions"));
 }
 
-export function writeSessionRecord(record: SessionRecord): void {
-  applyRecordWriteFault(record);
-  writePrivateFileAtomic(
-    recordPath(record.paths.sessionDir),
-    `${JSON.stringify(record, null, 2)}\n`,
-  );
+/** Persist the record into its derived session directory (not stored on the record). */
+export function writeSessionRecord(record: SessionRecord, sessionDir: string): void {
+  writePrivateFileAtomic(recordPath(sessionDir), `${JSON.stringify(record, null, 2)}\n`);
 }
 
 export function readSessionRecord(stateDir: string, id: string): SessionRecord {
   const dir = safeSessionDir(stateDir, id);
   try {
     const raw = JSON.parse(readFileSync(recordPath(dir), "utf8"));
-    const parsed = validateSessionRecord(raw, stateDir, id);
+    const parsed = validateSessionRecord(raw, id);
     if (!parsed) {
       throw elwoodError("state_corrupt", `Session state is invalid for ${id}`);
     }
@@ -129,69 +93,26 @@ export function readSessionRecord(stateDir: string, id: string): SessionRecord {
   }
 }
 
-export function updateSessionStatus(
-  record: SessionRecord,
-  status: ElwoodSessionStatus,
-): SessionRecord {
-  return { ...record, status, updatedAt: new Date().toISOString() };
-}
-
 export function updateSessionResumeId(
   record: SessionRecord,
   adapter: "claude" | "codex",
   resumeId: string,
 ): SessionRecord {
-  return {
-    ...record,
-    [adapter]: { ...record[adapter], resumeId },
-    updatedAt: new Date().toISOString(),
-  };
+  return { ...record, [adapter]: { ...record[adapter], resumeId } };
 }
 
-export function upsertSessionWarning(
-  record: SessionRecord,
-  warning: ElwoodWarningEvent,
-): { readonly record: SessionRecord; readonly isNew: boolean; readonly changed: boolean } {
-  const key = warningKey(warning);
-  const index = record.warnings.findIndex((existing) => warningKey(existing) === key);
-  const existing = index === -1 ? undefined : record.warnings[index];
-  const changed = JSON.stringify(existing) !== JSON.stringify(warning);
-  const warnings =
-    index === -1
-      ? [...record.warnings, warning]
-      : record.warnings.map((existing, current) => (current === index ? warning : existing));
-  return {
-    record: {
-      ...record,
-      warnings,
-      updatedAt: new Date().toISOString(),
-    },
-    isNew: index === -1,
-    changed,
-  };
-}
-
-export function removeSessionDir(record: SessionRecord): void {
+/** Remove a session's derived directory AND the per-launch socket home (§8.1). */
+export function removeSessionFiles(stateDir: string, id: string, socketPath: string): void {
+  const dir = safeSessionDir(stateDir, id);
   try {
-    removeSocketHome(record);
-    rmSync(record.paths.sessionDir, { recursive: true, force: true });
+    removeSocketHome(socketPath);
+    rmSync(dir, { recursive: true, force: true });
   } catch (error) {
     throw elwoodError("teardown_failed", "Could not remove Elwood session files.", {
       cause: error instanceof Error ? error.message : String(error),
-      sessionDir: record.paths.sessionDir,
+      sessionDir: dir,
     });
   }
-}
-
-function warningKey(warning: ElwoodWarningEvent): string {
-  if (warning.code === "version_unparseable") return `${warning.code}:${warning.agent}`;
-  if ("mcpServerName" in warning) return `${warning.code}:${warning.mcpServerName}`;
-  if ("failedServers" in warning) return `${warning.code}:${warning.failedServers.join(",")}`;
-  // Key reap_failed on code AND pgid: a resume's NEW leaked leader is distinct.
-  if (warning.code === "reap_failed") return `${warning.code}:${warning.processGroupId}`;
-  // Key on code AND label so a different prompt's failed write is a distinct incident.
-  if (warning.code === "startup_prompt_write_failed") return `${warning.code}:${warning.label}`;
-  return warning.code;
 }
 
 function recordPath(dir: string): string {

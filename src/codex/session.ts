@@ -16,13 +16,12 @@ import { assertStartupThenRelease, createStartupBuffer } from "../runtime/startu
 import { cleanupStartupResources, guardStartupRegion } from "../runtime/startup-cleanup.ts";
 import { secureMkdir } from "../state/files.ts";
 import { codexLaunchPosture, withCodexLaunch } from "../state/launch-posture.ts";
+import { sessionRuntime } from "../state/runtime-paths.ts";
 import {
   createSessionRecord,
   defaultStateDir,
   prepareStateDir,
   type SessionRecord,
-  upsertSessionWarning,
-  withFreshSocketPath,
   writeSessionRecord,
 } from "../state/store.ts";
 import { attachPtyTerminal } from "../terminal/headless.ts";
@@ -49,47 +48,37 @@ export async function startCodex(options: StartCodexOptions): Promise<CodexSessi
   const stateDir = options.stateDir ?? defaultStateDir(options.cwd);
   prepareStateDir(stateDir, { gitignore: options.stateDir === undefined });
   const createdRecord = createSessionRecord({
-    stateDir,
     cwd: options.cwd,
     id: randomUUID(),
     adapter: "codex",
-    ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
-    size: options.initialSize ?? defaultTerminalSize,
-    ...(options.name === undefined ? {} : { name: options.name }),
   });
-  const posture = withCodexLaunch(createdRecord, codexLaunchPosture(options));
-  const record =
-    warning === undefined
-      ? posture
-      : upsertSessionWarning(posture, {
-          elwoodSessionId: posture.elwoodSessionId,
-          ...warning,
-        }).record;
-  writeSessionRecord(record);
-  return queuePersonaMessage(await startCodexFromRecord(record, options), options.persona);
+  const record = withCodexLaunch(createdRecord, codexLaunchPosture(options));
+  const session = await startCodexFromRecord(record, stateDir, options, false, warning);
+  return queuePersonaMessage(session, options.persona);
 }
 export async function startCodexFromRecord(
-  storedRecord: SessionRecord,
+  record: SessionRecord,
+  stateDir: string,
   options: StartCodexOptions,
-  resumed = false,
+  resumed: boolean,
+  preflightWarning: preflight.CodexPreflightWarning | undefined,
 ) {
-  const record = withFreshSocketPath(storedRecord);
-  secureMkdir(record.paths.sessionDir);
-  writeSessionRecord(record);
-  writeCodexRuntimeFiles(record);
+  const runtime = sessionRuntime(stateDir, record.elwoodSessionId, "codex");
+  secureMkdir(runtime.sessionDir);
+  writeSessionRecord(record, runtime.sessionDir);
+  writeCodexRuntimeFiles(runtime);
   const emitter = new TypedEmitter<CodexEventMap>();
   registerInitialHooks(emitter, options.hooks);
   const wired = sessionTranscript.createCodexTranscriptWatcher(
     record.elwoodSessionId,
     emitter,
     () => session,
-    sessionTranscript.codexTranscriptSeedFromWarnings(record.warnings), // continue counts on resume
   );
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   let session: CodexSessionImpl | undefined;
   const bridge = currentCodexHookBridgeFactory()(
-    record.paths.socketPath,
-    record.bridgeToken,
+    runtime.socketPath,
+    runtime.bridgeToken,
     record.elwoodSessionId,
     async (input) => dispatchHook(input, emitter, options, record, session),
     (event) => {
@@ -103,12 +92,12 @@ export async function startCodexFromRecord(
   } catch (error) {
     throw elwoodError("hook_bridge_failed", "Could not start Elwood hook bridge.", {
       ...causeDetails(error),
-      socketPath: record.paths.socketPath,
+      socketPath: runtime.socketPath,
     });
   }
   let pty: Awaited<ReturnType<typeof spawnCodexPty>>;
   try {
-    pty = await spawnCodexPty(record, options);
+    pty = await spawnCodexPty(record, runtime.bridgeScriptPath, options);
   } catch (error) {
     await cleanupStartupResources({ bridge });
     throw error;
@@ -131,12 +120,19 @@ export async function startCodexFromRecord(
   };
   const turnWatcher = observers.turn;
   const promptResponder = new CodexStartupPromptResponder(record.elwoodSessionId, autotrust);
+  let pendingPreflight = preflightWarning;
   const terminal = attachPtyTerminal(
-    options.initialSize ?? record.terminalSize ?? defaultTerminalSize,
+    options.initialSize ?? defaultTerminalSize,
     pty,
     (data, renderedTerminal) => {
       startupOutput.push(data);
       terminalReplay.push(data);
+      // Surface a preflight/version warning LIVE on the first frame the caller can
+      // observe (live-only, never persisted). A one-shot so it fires exactly once.
+      if (pendingPreflight !== undefined && session) {
+        session.recordWarnings([{ elwoodSessionId: record.elwoodSessionId, ...pendingPreflight }]);
+        pendingPreflight = undefined;
+      }
       // One snapshot per render: reused for prompt automation, readiness, detection.
       const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
       // The write RETURNS its completion: the responder settles only after it fulfills;
@@ -156,6 +152,8 @@ export async function startCodexFromRecord(
   );
   session = new CodexSessionImpl(
     record,
+    stateDir,
+    runtime,
     pty,
     terminal,
     bridge,

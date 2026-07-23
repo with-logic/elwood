@@ -22,30 +22,30 @@ function throwingKiller(): void {
 }
 
 describe("C-LIFE-10 session reap-failure handling", () => {
-  test("a throwing reaper on exit still reaches 'exited' and surfaces a durable diagnostic", async () => {
+  test("a throwing reaper on exit still reaches 'exited' and surfaces a live diagnostic", async () => {
     // C-LIFE-10: a reap failure on an already-exited PTY must NOT keep the session
-    // live; terminal evidence is submitted first, and the failure surfaces as a
-    // durable `reap_failed` warning (persisted + replayed) carrying the pgid + code
-    // — not a single transient activity thrown out of the native exit callback.
+    // live; terminal evidence is submitted first, and the failure surfaces as a live
+    // `reap_failed` warning (emitted once, on both `warning` and `activity`) carrying
+    // the pgid + code — not a single transient activity thrown out of the exit callback.
     const cwd = tempDir();
     installFakes();
     throwingKiller();
     const session = await startClaude({ cwd });
     const leaderPid = ptys.at(-1)!.pid;
-    ptys.at(-1)!.emitExit({ exitCode: 0 }); // unsolicited exit; reap throws
-    expect(session.status).toBe("exited"); // still terminal despite the reap failure
-    // Persisted into the session snapshot, content-free, with pgid + normalized code.
-    expect(session.warnings).toMatchObject([
-      { code: "reap_failed", source: "lifecycle", processGroupId: leaderPid, errorCode: "EPERM" },
-    ]);
-    // A LATE subscriber still replays it on both warning and activity (not lost).
-    const replayed: string[] = [];
+    // Warnings are live-only (never replayed to late subscribers), so subscribe BEFORE
+    // the exit fires the diagnostic.
+    const warnings: { code: string }[] = [];
     const activityLabels: string[] = [];
-    session.on("warning", (w) => replayed.push(w.code));
+    session.on("warning", (w) => warnings.push(w));
     session.on("activity", (a) => {
       if (a.kind === "warning") activityLabels.push(a.label);
     });
-    expect(replayed).toEqual(["reap_failed"]);
+    ptys.at(-1)!.emitExit({ exitCode: 0 }); // unsolicited exit; reap throws
+    expect(session.status).toBe("exited"); // still terminal despite the reap failure
+    // Content-free, with pgid + normalized code, emitted once live on both channels.
+    expect(warnings).toMatchObject([
+      { code: "reap_failed", source: "lifecycle", processGroupId: leaderPid, errorCode: "EPERM" },
+    ]);
     expect(activityLabels).toEqual(["reap_failed"]);
   });
 

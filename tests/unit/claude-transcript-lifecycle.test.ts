@@ -133,13 +133,13 @@ describe("C-CLAUDE-15 Claude transcript watcher lifecycle", () => {
     writeRecords(path);
     watcher.observe(path);
     // A >1 MiB run with NO newline overflows the pending buffer, so the watcher's
-    // emit pipeline discards it (covers the droppedBytes route). The trailing
+    // emit pipeline discards it (covers the oversized-drop route). The trailing
     // newline + real record then emits normally after the discarded line ends.
     const huge = "y".repeat(1024 * 1024 + 512 * 1024); // 1.5 MiB, no newline
     writeFileSync(path, huge);
     watcher.scan();
     expect(events).toEqual([]); // nothing complete yet; the over-length line dropped
-    expect(drops.at(-1)!.droppedBytes).toBeGreaterThan(1024 * 1024);
+    expect(drops.at(-1)!.cause).toBe("oversized");
     // Append the record after the huge line WITHOUT truncating (grow the file).
     writeFileSync(path, `${huge}\n${JSON.stringify(assistant("ok"))}\n`);
     watcher.finish();

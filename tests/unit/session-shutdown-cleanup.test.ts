@@ -15,7 +15,9 @@ import type { ShutdownContext } from "../../src/runtime/shutdown-coordinator.ts"
 function host(cleanupRuntime: () => Promise<void>): ShutdownHost {
   return {
     pty: {} as never,
-    record: {} as never,
+    stateDir: "/tmp/state",
+    elwoodSessionId: "s1",
+    socketPath: "/tmp/elwood-x/h.sock",
     reapPolicy: { orThrow: () => undefined, reaper: {} as never } as never,
     status: () => "exited",
     claimShutdown: () => undefined,

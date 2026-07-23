@@ -16,6 +16,5 @@ export type {
   CodexDropNotice,
   CodexReadErrorNotice,
   CodexTranscriptNotices,
-  CodexTranscriptSeed,
 } from "./transcript/watcher.ts";
 export { CodexTranscriptWatcher } from "./transcript/watcher.ts";

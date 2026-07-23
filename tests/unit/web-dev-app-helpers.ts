@@ -71,7 +71,6 @@ export function fakeSession(
     elwoodSessionId: id,
     cwd: "/w",
     status: "running",
-    warnings: [],
     terminal: {} as never,
     statusDecisions: () => [],
     on: () => () => {},

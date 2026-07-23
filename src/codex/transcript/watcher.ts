@@ -14,10 +14,10 @@ import { CodexDropTracker, CodexReadErrorTracker } from "./drops.ts";
 import { CodexLineEmitter } from "./emit.ts";
 import { CodexTranscriptFsGuard } from "./fs-guard.ts";
 import type { CodexTranscriptEvent } from "./types.ts";
-import type { CodexTranscriptNotices, CodexTranscriptSeed } from "./watcher-config.ts";
+import type { CodexTranscriptNotices } from "./watcher-config.ts";
 
 export type { CodexDropNotice, CodexReadErrorNotice } from "./drops.ts";
-export type { CodexTranscriptNotices, CodexTranscriptSeed } from "./watcher-config.ts";
+export type { CodexTranscriptNotices } from "./watcher-config.ts";
 
 const defaultScanIntervalMs = 250; // poll cadence: transcript activity is not latency-critical
 /** Read passes per scan (×256 KiB ≈ 4 MiB): a huge delta drains across ticks, not one block. */
@@ -40,14 +40,9 @@ export class CodexTranscriptWatcher {
     elwoodSessionId: string,
     emit: (event: CodexTranscriptEvent) => void,
     notices: CodexTranscriptNotices = {},
-    seed: CodexTranscriptSeed = {},
   ) {
-    this.drops = new CodexDropTracker(elwoodSessionId, notices.onDrop, seed.drops);
-    const readErrors = new CodexReadErrorTracker(
-      elwoodSessionId,
-      notices.onReadError,
-      seed.readErrors,
-    );
+    this.drops = new CodexDropTracker(elwoodSessionId, notices.onDrop);
+    const readErrors = new CodexReadErrorTracker(elwoodSessionId, notices.onReadError);
     this.guard = new CodexTranscriptFsGuard(readErrors);
     this.lines = new CodexLineEmitter(elwoodSessionId, emit, this.drops);
     this.onPollError = notices.onPollError;
@@ -89,7 +84,6 @@ export class CodexTranscriptWatcher {
       if (chunk.text.length > 0) this.lines.emitLines(this.cursor.path, chunk.text, this.cursor);
       if (!chunk.canContinueNow) break;
     } // budget exhausted with more to read: the next scan tick resumes here.
-    this.drops.flush(); // ≤one persist per scan pass, not one per malformed record
   }
 
   // Bounded terminal flush: drain to EOF against the SHARED terminal budget and a

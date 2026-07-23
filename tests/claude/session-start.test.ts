@@ -20,7 +20,6 @@ describe("ClaudeSession startup and terminal control", () => {
     expect(session.elwoodSessionId.length).toBeGreaterThan(0);
     expect(session.cwd).toBe(cwd);
     expect(session.status).toBe("running");
-    expect(session.warnings).toEqual([]);
     expect(ptys[0]!.options.cwd).toBe(cwd);
     expect(ptys[0]!.size).toEqual({ cols: 189, rows: 48 });
     expect(session.terminal.size).toEqual({ cols: 189, rows: 48 });
@@ -42,18 +41,27 @@ describe("ClaudeSession startup and terminal control", () => {
     expect(ptys[0]!.options.args.join(" ")).toContain("--model 'claude-haiku-4-5'");
   });
 
-  test("C-STATE-04 persists caller metadata and session name", async () => {
+  test("C-STATE-04 persists only the minimal near-stateless record", async () => {
     const cwd = tempDir();
     installFakes();
-    const session = await startClaude({ cwd, metadata: { ticket: "ELW-1" }, name: "main" });
+    const session = await startClaude({ cwd });
     const record = JSON.parse(
       readFileSync(
         join(cwd, ".elwood", "sessions", session.elwoodSessionId, "session.json"),
         "utf8",
       ),
     );
-    expect(record.metadata).toEqual({ ticket: "ELW-1" });
-    expect(record.claude.name).toBe("main");
+    // The persisted record carries ONLY what resume needs; no metadata/name/status/
+    // warnings/timestamps/paths/token/size round-trip through disk (near-stateless).
+    expect(Object.keys(record).sort()).toEqual([
+      "adapter",
+      "claude",
+      "codex",
+      "cwd",
+      "elwoodSessionId",
+      "schemaVersion",
+    ]);
+    expect(record).toMatchObject({ schemaVersion: 1, adapter: "claude", cwd });
   });
 
   test("C-CLAUDE-01 preserves project-local Claude settings", async () => {
@@ -116,18 +124,22 @@ describe("ClaudeSession startup and terminal control", () => {
     expect(ptys[0]!.writes).toEqual([]);
   });
 
-  test("C-ERR-07 version warnings are captured when non-strict parsing fails", async () => {
+  test("C-ERR-07 a non-strict version-parse failure surfaces a live warning, not persisted", async () => {
     const cwd = tempDir();
     installFakes();
     setCommandRunnerForTests(() => ({ status: 0, stdout: "unknown build", stderr: "" }));
+    // Non-strict startup proceeds despite an unparseable version. The version warning
+    // is live-only: it surfaces on the first observable frame, never persisted.
     const session = await startClaude({ cwd });
-    const replayedWarnings: string[] = [];
-    const replayedActivity: string[] = [];
-    session.on("warning", (event) => replayedWarnings.push(event.code));
-    session.on("activity", (event) => replayedActivity.push(event.kind));
-    expect(session.warnings).toMatchObject([{ code: "version_unparseable", agent: "claude" }]);
-    expect(replayedWarnings).toEqual(["version_unparseable"]);
-    expect(replayedActivity).toEqual(["warning"]);
+    expect(session.status).toBe("running");
+    const codes: string[] = [];
+    session.on("warning", (event) => codes.push(event.code));
+    ptys[0]!.emitData("❯ ready"); // drive the first caller-observable frame
+    await expect.poll(() => codes).toContain("version_unparseable");
+    const dir = join(cwd, ".elwood", "sessions", session.elwoodSessionId);
+    const record = readFileSync(join(dir, "session.json"), "utf8");
+    expect(record).not.toContain("version_unparseable");
+    expect(record).not.toContain("warning");
   });
 
   test("C-API-05 C-API-06 C-API-07 C-API-13 C-API-19 sends prompts and queued messages", async () => {

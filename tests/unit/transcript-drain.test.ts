@@ -1,7 +1,7 @@
 /**
  * Focused coverage for the bounded terminal drain (retire/finish).
  * Covers PRD §5.4/§9.2 (C-CLAUDE-15): a teardown drain shares ONE chunk budget
- * across cursors; a backlog left unread when the budget is spent is accounted as
+ * across cursors; a backlog left unread when the budget is spent is surfaced as
  * a content-free drop and termination completes rather than a 256 MiB sync loop.
  */
 
@@ -55,10 +55,10 @@ describe("C-CLAUDE-15 bounded terminal drain", () => {
     expect(drops).toEqual([]); // fully drained: no unread backlog to account
   });
 
-  test("a backlog past the budget is accounted as a content-free drop, not read", () => {
+  test("a backlog past the budget is surfaced as a content-free drop, not read", () => {
     // One 256 KiB chunk per budget unit: a 3-chunk delta with a 1-chunk budget
-    // leaves ~2 chunks unread. The drain STOPS and accounts the backlog bytes as a
-    // drop instead of looping to EOF, proving teardown can't run an unbounded loop.
+    // leaves ~2 chunks unread. The drain STOPS and surfaces one unread_backlog drop
+    // instead of looping to EOF, proving teardown can't run an unbounded loop.
     const path = tmpFile();
     writeFileSync(path, "");
     const cursor = new TranscriptCursor(path);
@@ -67,8 +67,8 @@ describe("C-CLAUDE-15 bounded terminal drain", () => {
     writeFileSync(path, `${records.join("\n")}\n`);
     const { context, events, drops } = harness();
     drainToBudget(context, [cursor], { chunks: 1 }); // budget exhausted after one chunk
-    // The unread backlog was accounted (large byte magnitude), not read to EOF.
-    expect(drops.some((d) => d.droppedBytes > 256 * 1024)).toBe(true);
+    // The unread backlog was surfaced as a content-free drop, not read to EOF.
+    expect(drops.some((d) => d.cause === "unread_backlog")).toBe(true);
     // Not everything was read: fewer than all 3 records were emitted (bounded work).
     expect(events.length).toBeLessThan(3);
   });
@@ -103,7 +103,7 @@ describe("C-CLAUDE-15 bounded terminal drain", () => {
     // so a single call can never monopolize the event loop grinding a huge backlog.
     // A monotonic clock jumps PAST the 50ms slice after the first chunk, so the read
     // loop exits on the deadline (not the budget) with the rest of the file unread —
-    // and that unread backlog is accounted as a content-free drop rather than looped.
+    // and that unread backlog is surfaced as a content-free drop rather than looped.
     const path = tmpFile();
     writeFileSync(path, "");
     const cursor = new TranscriptCursor(path);
@@ -116,7 +116,7 @@ describe("C-CLAUDE-15 bounded terminal drain", () => {
     const clock = () => (calls++ === 0 ? 0 : 1_000);
     const { context, events, drops } = harness(clock);
     drainToBudget(context, [cursor], { chunks: 100 }); // budget ample; the SLICE bounds it
-    expect(drops.some((d) => d.droppedBytes > 256 * 1024)).toBe(true); // backlog dropped
+    expect(drops.some((d) => d.cause === "unread_backlog")).toBe(true); // backlog dropped
     expect(events.length).toBeLessThan(4); // slice cut the drain short: not read to EOF
   });
 
@@ -142,6 +142,6 @@ describe("C-CLAUDE-15 bounded terminal drain", () => {
     expect(shared.chunks).toBe(0); // the shared budget is exhausted by the first drain
     drainToBudget(context, [second], shared); // finish: no budget left → all backlog dropped
     // The second cursor read nothing (budget already spent), so its whole backlog is a drop.
-    expect(drops.some((d) => d.path === secondPath && d.droppedBytes > 256 * 1024)).toBe(true);
+    expect(drops.some((d) => d.path === secondPath && d.cause === "unread_backlog")).toBe(true);
   });
 });

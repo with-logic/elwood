@@ -28,6 +28,7 @@ describe("CodexSession setModel", () => {
     const configPath = sandboxCodexHome(cwd);
     installFakes();
     const session = await startCodex({ cwd });
+    const warnings = collectWarnings(session);
     await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
     const setting = session.setModel("gpt-5.4", { timeoutMs: 30_000 });
@@ -37,7 +38,7 @@ describe("CodexSession setModel", () => {
     );
     await setting;
     expect(readFileSync(configPath, "utf8")).toBe(userConfig);
-    expect(session.warnings).toEqual([]);
+    expect(warnings).toEqual([]);
   });
 
   test("C-CODEX-14 setModel warns instead of clobbering concurrent config edits", async () => {
@@ -45,6 +46,7 @@ describe("CodexSession setModel", () => {
     const configPath = sandboxCodexHome(cwd);
     installFakes();
     const session = await startCodex({ cwd });
+    const warnings = collectWarnings(session);
     await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
     const setting = session.setModel("gpt-5.4", { timeoutMs: 30_000 });
@@ -52,7 +54,7 @@ describe("CodexSession setModel", () => {
     await driveSetModel(configPath, concurrent);
     await setting;
     expect(readFileSync(configPath, "utf8")).toBe(concurrent);
-    expect(session.warnings).toMatchObject([{ code: "codex_default_model_persisted" }]);
+    expect(warnings).toMatchObject([{ code: "codex_default_model_persisted" }]);
   });
 
   test("C-CODEX-14 restore runs even when picker automation rejects late", async () => {
@@ -84,6 +86,7 @@ describe("CodexSession setModel", () => {
     const configPath = sandboxCodexHome(cwd);
     installFakes();
     const session = await startCodex({ cwd });
+    const warnings = collectWarnings(session);
     await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
     const persisted = 'model = "gpt-5.4"\nmodel_reasoning_effort = "medium"\n\n[hooks]\n';
@@ -93,10 +96,10 @@ describe("CodexSession setModel", () => {
     try {
       await expect(setting).rejects.toMatchObject({ code: "model_automation_failed" });
       // The restore failure did not vanish: it is a bounded content-free warning.
-      expect(session.warnings).toMatchObject([{ code: "codex_default_model_persisted" }]);
+      expect(warnings).toMatchObject([{ code: "codex_default_model_persisted" }]);
       // Content-free: `raw` carries only the config path and a bounded errno code,
       // never a raw error message (which could leak credentials/conversation data).
-      const raw = String(session.warnings[0]?.raw ?? "");
+      const raw = String(warnings[0]?.raw ?? "");
       expect(raw).toMatch(/config\.toml \([A-Z]+\)$/);
     } finally {
       chmodSync(configPath, 0o600);
@@ -112,6 +115,8 @@ describe("CodexSession setModel", () => {
     const configPath = sandboxCodexHome(cwd);
     installFakes();
     const [a, b] = await Promise.all([startCodex({ cwd }), startCodex({ cwd })]);
+    const warningsA = collectWarnings(a);
+    const warningsB = collectWarnings(b);
     await becomeReadyFor(a.elwoodSessionId, cwd, 0);
     await becomeReadyFor(b.elwoodSessionId, cwd, 1);
     await expect.poll(() => a.status === "ready" && b.status === "ready").toBe(true);
@@ -131,6 +136,15 @@ describe("CodexSession setModel", () => {
     // B snapshotted the RESTORED default (not A's transient model) and restored
     // it, so the final on-disk default is the user's original, not gpt-5.4.
     expect(readFileSync(configPath, "utf8")).toBe(userConfig);
-    expect([...a.warnings, ...b.warnings]).toEqual([]);
+    expect([...warningsA, ...warningsB]).toEqual([]);
   });
 });
+
+/** Collect live `warning` events (warnings are emit-only, never persisted). */
+function collectWarnings(session: {
+  on: (event: "warning", handler: (event: { code: string; raw?: string }) => void) => unknown;
+}): { code: string; raw?: string }[] {
+  const warnings: { code: string; raw?: string }[] = [];
+  session.on("warning", (event) => warnings.push(event));
+  return warnings;
+}

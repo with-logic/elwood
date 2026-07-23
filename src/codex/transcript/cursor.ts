@@ -8,6 +8,5 @@
 export {
   BoundedTranscriptCursor as CodexTranscriptCursor,
   type ChunkRead,
-  type DiscardTransition,
   type TakenLines,
 } from "../../core/transcript/cursor.ts";

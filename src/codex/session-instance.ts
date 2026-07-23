@@ -10,10 +10,11 @@ import type { ElwoodSessionStatus, ElwoodWarningEvent } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import { AgentSessionBase } from "../runtime/session-base.ts";
+import type { SessionRuntime } from "../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../state/store.ts";
-import { CLIPBOARD_RESTORE_FAILED_MESSAGE } from "../state/validate-warnings.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { attachCodexImages } from "./attach-images.ts";
+import { CLIPBOARD_RESTORE_FAILED_MESSAGE } from "./clipboard.ts";
 import {
   codexConfigPath,
   restoreCodexConfig,
@@ -42,6 +43,8 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
 
   constructor(
     record: SessionRecord,
+    stateDir: string,
+    runtime: SessionRuntime,
     pty: PtyProcess,
     terminal: ElwoodTerminal,
     bridge: CodexHookBridge,
@@ -49,7 +52,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
     terminalReplay: TerminalReplayBuffer,
     transcriptWatcher?: CodexTranscriptWatcher,
   ) {
-    super("codex", record, pty, terminal, emitter, terminalReplay);
+    super("codex", record, stateDir, runtime, pty, terminal, emitter, terminalReplay);
     this.bridge = bridge;
     this.emitter = emitter;
     this.transcriptWatcher = transcriptWatcher;
@@ -174,7 +177,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
     this.transcriptWatcher?.flush();
   }
   override recordWarnings(warnings: readonly ElwoodWarningEvent[]): void {
-    recordCodexWarnings(this.record, warnings, (record) => this.persist(record), this.emitter);
+    recordCodexWarnings(warnings, this.emitter);
   }
   protected async stopRuntime(): Promise<void> {
     await stopCodexRuntime(this.bridge, this.transcriptWatcher, this.terminal);

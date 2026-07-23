@@ -39,13 +39,13 @@ describe("CodexSession trust prompts", () => {
   test("C-CODEX-17 a rejected trust-prompt write stays retryable and warns", async () => {
     installFakes();
     const session = await startCodex({ cwd: tempDir(), autotrust: true });
+    const warnings: string[] = [];
+    session.on("warning", (event) => warnings.push(event.code));
     // The PTY rejects the trust answer write: the prompt stays retryable and
     // surfaces the bounded warning rather than being reported as answered.
     ptys[0]!.failOnWrite = "1\r";
     ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. Yes, continue");
-    await expect
-      .poll(() => session.warnings.map((w) => w.code))
-      .toContain("startup_prompt_write_failed");
+    await expect.poll(() => warnings).toContain("startup_prompt_write_failed");
     // Retryable: a later frame re-attempts the answer with a now-succeeding write.
     ptys[0]!.failOnWrite = undefined;
     ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. Yes, continue");
@@ -56,21 +56,25 @@ describe("CodexSession trust prompts", () => {
     installFakes();
     const session = await startCodex({ cwd: tempDir(), autotrust: true });
     const attention: string[] = [];
+    const warnings: string[] = [];
     session.on("activity", (e) => e.kind === "attention" && attention.push(e.label));
+    session.on("warning", (event) => warnings.push(event.code));
     // A recognized directory-trust HEADER whose affirmative option has not rendered
     // yet: the responder emits a fire-once TRANSIENT attention and keeps watching.
     ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. No, quit");
     await flushTerminal();
     expect(attention).toContain("workspace_trust");
-    // No durable wedge warning — the pending state is transient (would answer on a
-    // later frame), so it must not replay a false "not auto-answered" record.
-    expect(session.warnings.map((w) => w.code)).not.toContain("trust_prompt_unanswerable");
+    // No wedge warning — the pending state is transient (would answer on a later
+    // frame), so it must not emit a false "not auto-answered" notice.
+    expect(warnings).not.toContain("trust_prompt_unanswerable");
     expect(ptys[0]!.writes).toEqual([]); // nothing auto-answered yet
   });
 
   test("C-CODEX-15 a partial frame followed by a complete frame ANSWERS the prompt, no stale warning", async () => {
     installFakes();
     const session = await startCodex({ cwd: tempDir(), autotrust: true });
+    const warnings: string[] = [];
+    session.on("warning", (event) => warnings.push(event.code));
     // Frame 1: header only — transient pending, nothing sent.
     ptys[0]!.emitData("Do you trust the contents of this directory?");
     await flushTerminal();
@@ -78,6 +82,6 @@ describe("CodexSession trust prompts", () => {
     ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. Yes, continue");
     await flushTerminal();
     expect(ptys[0]!.writes).toEqual(["1\r"]);
-    expect(session.warnings.map((w) => w.code)).not.toContain("trust_prompt_unanswerable");
+    expect(warnings).not.toContain("trust_prompt_unanswerable");
   });
 });

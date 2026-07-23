@@ -22,7 +22,7 @@ describe("C-CLAUDE-15 Claude transcript drop wiring", () => {
     session.on("warning", (event) => warnings.push(event.code));
     // A Stop hook carries a transcript with one unparseable record. The watcher
     // routes the drop through the session's warning sink, so it is emitted as a
-    // `warning` event AND persisted into the session snapshot (not raw activity).
+    // live `warning` event (not raw activity, never persisted).
     const transcriptPath = join(cwd, "transcript.jsonl");
     // A committed turn (user boundary) followed by an unparseable assistant line:
     // baseline recovery reaches the malformed record after the user boundary.
@@ -34,7 +34,6 @@ describe("C-CLAUDE-15 Claude transcript drop wiring", () => {
       stateDir,
     );
     expect(warnings).toEqual(["transcript_records_dropped"]);
-    expect(session.warnings.map((w) => w.code)).toContain("transcript_records_dropped");
   });
 
   test("C-LIFE-10 a listener throwing on the final flush still yields exit + status + reap", async () => {

@@ -9,6 +9,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { setCodexHookBridgeFactoryForTests } from "../../src/codex/session.ts";
 import { resumeCodex, startCodex } from "../../src/index.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import { safeSessionDir } from "../../src/state/files.ts";
 import { createSessionRecord, prepareStateDir, writeSessionRecord } from "../../src/state/store.ts";
 import { FakePty, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -46,8 +47,8 @@ describe("CodexSession lifecycle", () => {
     const cwd = tempDir();
     const stateDir = join(cwd, ".elwood");
     prepareStateDir(stateDir);
-    const record = createSessionRecord({ stateDir, cwd, id: "claude-record" });
-    writeSessionRecord(record);
+    const record = createSessionRecord({ cwd, id: "claude-record" });
+    writeSessionRecord(record, safeSessionDir(stateDir, record.elwoodSessionId));
     await expect(
       resumeCodex({ cwd, elwoodSessionId: record.elwoodSessionId }),
     ).rejects.toMatchObject({ code: "adapter_mismatch" });

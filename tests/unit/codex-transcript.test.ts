@@ -43,7 +43,6 @@ describe("Codex transcript observation", () => {
       }),
     );
     expect(drops.at(-1)).toMatchObject({ elwoodSessionId: "e1", cause: "unparseable" });
-    expect(drops.at(-1)?.droppedCount).toBeGreaterThanOrEqual(1);
   });
 
   test("C-API-12 watcher handles late files, blank lines, re-observe, and truncation", () => {

@@ -40,10 +40,8 @@ describe("C-CLAUDE-15 transcript watcher robustness", () => {
     expect(
       events.map((e) => (e.summary.kind === "assistant_message" ? e.summary.text : "")),
     ).toEqual(["ok"]);
-    // Bounded, content-free: count + byte magnitude + cause, never the raw line.
-    expect(drops).toEqual([
-      { elwoodSessionId: "s1", path, droppedCount: 1, droppedBytes: 12, cause: "unparseable" },
-    ]);
+    // Bounded, content-free: cause + path only, never the raw line, never a count.
+    expect(drops).toEqual([{ elwoodSessionId: "s1", path, cause: "unparseable" }]);
   });
 
   test("a filesystem error during scan is contained AND surfaced as a bounded diagnostic", () => {
@@ -63,10 +61,8 @@ describe("C-CLAUDE-15 transcript watcher robustness", () => {
     expect(() => watcher.scan()).not.toThrow();
     expect(events).toEqual([]);
     watcher.finish();
-    // Not silent: a bounded notice carrying the count, last error code, and path.
-    // Each contained read attempt increments the count (scan + finish re-read).
+    // Not silent: a bounded notice carrying the last error code and path (no count).
     expect(readErrors.at(-1)).toMatchObject({ elwoodSessionId: "s1", path });
-    expect(readErrors.at(-1)!.errorCount).toBeGreaterThanOrEqual(1);
     expect(readErrors.at(-1)!.lastErrorCode).toBeTruthy();
   });
 
@@ -109,19 +105,17 @@ describe("C-CLAUDE-15 transcript watcher robustness", () => {
     watcher.stop();
   });
 
-  test("drop notices are content-free and carry the running aggregate count", () => {
+  test("drop notices are content-free and surface one live warning per lost record", () => {
     const path = tmpFile();
     const drops: TranscriptDropNotice[] = [];
     const watcher = new ClaudeTranscriptWatcher("s1", () => {}, { onDrop: (d) => drops.push(d) });
     writeFileSync(path, "");
     watcher.observe(path);
-    // 60 malformed lines: each updates the snapshot aggregate (event-level dedup is
-    // downstream in recordSessionWarnings), so the final notice reports the full
-    // running count and byte magnitude — never the raw content of any line.
+    // 60 malformed lines: each surfaces its OWN live drop warning (no running count,
+    // no persistence) — never the raw content of any line.
     writeFileSync(path, `${Array.from({ length: 60 }, () => "{ bad }").join("\n")}\n`);
     watcher.finish();
-    expect(drops.at(-1)).toMatchObject({ droppedCount: 60 });
-    expect(drops.at(-1)!.droppedBytes).toBeGreaterThan(0);
+    expect(drops.filter((d) => d.cause === "unparseable")).toHaveLength(60);
     // Content-free: no notice field carries any raw line text.
     expect(JSON.stringify(drops)).not.toContain("bad");
   });

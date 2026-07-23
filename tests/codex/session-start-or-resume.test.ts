@@ -6,7 +6,8 @@
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { startOrResumeCodex } from "../../src/index.ts";
-import { createSessionRecord, writeSessionRecord } from "../../src/state/store.ts";
+import { safeSessionDir } from "../../src/state/files.ts";
+import { createSessionRecord, prepareStateDir, writeSessionRecord } from "../../src/state/store.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -15,13 +16,13 @@ describe("startOrResumeCodex", () => {
   test("C-API-26 resumes with a resume id and falls back without one", async () => {
     const cwd = tempDir();
     installFakes();
-    const record = createSessionRecord({
-      stateDir: join(cwd, ".elwood"),
-      cwd,
-      id: "resumable",
-      adapter: "codex",
-    });
-    writeSessionRecord({ ...record, codex: { resumeId: "codex-native" } });
+    const stateDir = join(cwd, ".elwood");
+    prepareStateDir(stateDir);
+    const record = createSessionRecord({ cwd, id: "resumable", adapter: "codex" });
+    writeSessionRecord(
+      { ...record, codex: { resumeId: "codex-native" } },
+      safeSessionDir(stateDir, "resumable"),
+    );
     const resumed = await startOrResumeCodex({
       cwd,
       elwoodSessionId: "resumable",

@@ -1,6 +1,7 @@
 /**
  * Focused unit coverage for Elwood session state helpers.
- * Covers PRD §8 and §10.
+ * Covers PRD §8 and §10: the minimal persisted record round-trips only the six kept
+ * fields, and derived files are removed via (stateDir, id, socketPath).
  */
 
 import {
@@ -22,9 +23,8 @@ import {
   defaultStateDir,
   prepareStateDir,
   readSessionRecord,
-  removeSessionDir,
+  removeSessionFiles,
   sessionDir,
-  upsertSessionWarning,
   writeSessionRecord,
 } from "../../src/state/store.ts";
 
@@ -46,28 +46,64 @@ describe("state store", () => {
     mkdirSync(corruptDir, { recursive: true });
     writeFileSync(join(corruptDir, "session.json"), "{");
     expect(elwoodCode(() => readSessionRecord(root, "corrupt"))).toBe("state_corrupt");
-    const invalidWarning = createSessionRecord({ stateDir: root, cwd: root, id: "bad-warning" });
-    writeSessionRecord({
-      ...invalidWarning,
-      warnings: [{ code: "mcp_server_not_logged_in", severity: "warning" } as never],
+    expect(elwoodCode(() => removeSessionFiles(root, "\0bad", "/tmp/x.sock"))).toBe(
+      "state_not_found",
+    );
+  });
+
+  test("C-STATE the minimal record round-trips only the six kept fields", () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-state-"));
+    prepareStateDir(root);
+    const record = createSessionRecord({ cwd: root, id: "minimal", adapter: "codex" });
+    const dir = sessionDir(root, "minimal");
+    writeSessionRecord(record, dir);
+    const roundTripped = readSessionRecord(root, "minimal");
+    expect(roundTripped).toEqual({
+      schemaVersion: 1,
+      elwoodSessionId: "minimal",
+      adapter: "codex",
+      cwd: resolve(root),
+      claude: {},
+      codex: {},
     });
-    expect(elwoodCode(() => readSessionRecord(root, invalidWarning.elwoodSessionId))).toBe(
-      "state_corrupt",
-    );
-    const record = createSessionRecord({ stateDir: root, cwd: root, id: "null-path" });
-    // Absolute foreign socket paths are tolerated: every launch regenerates
-    // the socket home before use (C-STATE-12). Relative paths stay invalid.
-    writeSessionRecord({ ...record, paths: { ...record.paths, socketPath: "/tmp/foreign.sock" } });
-    expect(readSessionRecord(root, record.elwoodSessionId).paths.socketPath).toBe(
-      "/tmp/foreign.sock",
-    );
-    writeSessionRecord({ ...record, paths: { ...record.paths, socketPath: "relative/h.sock" } });
-    expect(elwoodCode(() => readSessionRecord(root, record.elwoodSessionId))).toBe("state_corrupt");
-    expect(
-      elwoodCode(() =>
-        removeSessionDir({ ...record, paths: { ...record.paths, sessionDir: "\0" } }),
-      ),
-    ).toBe("teardown_failed");
+    // No cut fields leak into the persisted JSON.
+    const raw = readFileSync(join(dir, "session.json"), "utf8");
+    for (const cut of [
+      "metadata",
+      "warnings",
+      "createdAt",
+      "updatedAt",
+      "status",
+      "paths",
+      "bridgeToken",
+      "terminalSize",
+    ]) {
+      expect(raw).not.toContain(`"${cut}"`);
+    }
+  });
+
+  test("C-STATE-08 removeSessionFiles removes the derived dir and the socket home", () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-state-"));
+    prepareStateDir(root);
+    const record = createSessionRecord({ cwd: root, id: "teardown" });
+    const dir = sessionDir(root, "teardown");
+    writeSessionRecord(record, dir);
+    // A fresh mkdtemp socket home (elwood-prefixed) is removed alongside the dir.
+    const socketHome = mkdtempSync(join(tmpdir(), "elwood-"));
+    const socketPath = join(socketHome, "h.sock");
+    expect(existsSync(dir)).toBe(true);
+    expect(existsSync(socketHome)).toBe(true);
+    removeSessionFiles(root, "teardown", socketPath);
+    expect(existsSync(dir)).toBe(false);
+    expect(existsSync(socketHome)).toBe(false);
+    // A non-elwood socket home is left untouched (only the derived dir is removed).
+    const foreignHome = mkdtempSync(join(tmpdir(), "other-"));
+    const record2 = createSessionRecord({ cwd: root, id: "teardown-2" });
+    const dir2 = sessionDir(root, "teardown-2");
+    writeSessionRecord(record2, dir2);
+    removeSessionFiles(root, "teardown-2", join(foreignHome, "h.sock"));
+    expect(existsSync(dir2)).toBe(false);
+    expect(existsSync(foreignHome)).toBe(true);
   });
 
   test("C-STATE-03 C-STATE-11 custom state directories do not receive or overwrite gitignore files", () => {
@@ -77,13 +113,12 @@ describe("state store", () => {
     expect(readFileSync(join(projectState, ".gitignore"), "utf8")).toBe("*\n");
     expect(statSync(projectState).mode & 0o777).toBe(0o755);
     expect(statSync(join(projectState, ".gitignore")).mode & 0o777).toBe(0o644);
-    const record = createSessionRecord({ stateDir: root, cwd: root, id: "atomic" });
-    writeSessionRecord(record);
-    expect(readFileSync(join(record.paths.sessionDir, "session.json"), "utf8")).toContain(
-      record.elwoodSessionId,
-    );
-    expect(statSync(record.paths.sessionDir).mode & 0o777).toBe(0o700);
-    expect(statSync(join(record.paths.sessionDir, "session.json")).mode & 0o777).toBe(0o600);
+    const record = createSessionRecord({ cwd: root, id: "atomic" });
+    const dir = sessionDir(projectState, "atomic");
+    writeSessionRecord(record, dir);
+    expect(readFileSync(join(dir, "session.json"), "utf8")).toContain(record.elwoodSessionId);
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
+    expect(statSync(join(dir, "session.json")).mode & 0o777).toBe(0o600);
     writeFileSync(join(projectState, ".gitignore"), "!keep\n");
     prepareStateDir(projectState, { gitignore: true });
     expect(readFileSync(join(projectState, ".gitignore"), "utf8")).toBe("!keep\n");
@@ -102,68 +137,6 @@ describe("state store", () => {
     writePrivateFileAtomic(path, "second");
     expect(readFileSync(path, "utf8")).toBe("second");
     expect(readdirSync(root).filter((entry) => entry.includes(".tmp-"))).toEqual([]);
-  });
-
-  test("C-API-14 warning upserts refresh snapshots without duplicating events", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-state-"));
-    const record = createSessionRecord({ stateDir: root, cwd: root, id: "warning-upsert" });
-    const first = upsertSessionWarning(record, {
-      elwoodSessionId: record.elwoodSessionId,
-      agent: "codex",
-      source: "terminal",
-      code: "mcp_startup_incomplete",
-      severity: "warning",
-      message: "failed once",
-      failedServers: ["linear"],
-      recoveryCommands: ["codex mcp login linear"],
-      raw: "old",
-    });
-    const second = upsertSessionWarning(first.record, {
-      ...first.record.warnings[0]!,
-      message: "failed twice",
-      raw: "new",
-    });
-    expect(first.isNew).toBe(true);
-    expect(second.isNew).toBe(false);
-    expect(second.record.warnings).toHaveLength(1);
-    expect(second.record.warnings[0]).toMatchObject({ message: "failed twice", raw: "new" });
-  });
-
-  test("C-API-14 persisted warning variants validate on read", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-state-"));
-    const record = createSessionRecord({ stateDir: root, cwd: root, id: "warning-variants" });
-    writeSessionRecord({
-      ...record,
-      warnings: [
-        {
-          elwoodSessionId: record.elwoodSessionId,
-          agent: "claude",
-          source: "lifecycle",
-          code: "version_unparseable",
-          severity: "warning",
-          message: "unknown version",
-          raw: "unknown",
-        },
-        {
-          elwoodSessionId: record.elwoodSessionId,
-          agent: "codex",
-          source: "terminal",
-          code: "mcp_startup_incomplete",
-          severity: "warning",
-          message: "failed",
-          failedServers: ["linear"],
-          recoveryCommands: ["codex mcp login linear"],
-          raw: "MCP startup incomplete (failed: linear)",
-        },
-      ],
-    });
-    expect(readSessionRecord(root, record.elwoodSessionId).warnings).toHaveLength(2);
-    const unknown = createSessionRecord({ stateDir: root, cwd: root, id: "unknown-warning" });
-    writeSessionRecord({
-      ...unknown,
-      warnings: [{ code: "future_warning", severity: "warning" } as never],
-    });
-    expect(() => readSessionRecord(root, unknown.elwoodSessionId)).toThrow(ElwoodError);
   });
 });
 

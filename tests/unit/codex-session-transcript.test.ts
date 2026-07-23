@@ -37,9 +37,7 @@ vi.mock("../../src/codex/transcript.ts", () => ({
   }),
 }));
 
-const { createCodexTranscriptWatcher, codexTranscriptSeedFromWarnings } = await import(
-  "../../src/codex/session-transcript.ts"
-);
+const { createCodexTranscriptWatcher } = await import("../../src/codex/session-transcript.ts");
 const { TypedEmitter } = await import("../../src/events/emitter.ts");
 type Sink = { recordWarnings: (w: readonly unknown[]) => void };
 
@@ -65,26 +63,27 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
     expect(recorded).toHaveLength(1);
   });
 
-  test("§5.4 an ACTIVE sink that throws does not lose the notice OR escape the poll loop", () => {
-    // The sink already exists (steady-state polling). A throwing recordWarnings must
-    // be contained (route must not throw into the watcher's scan) AND the notice must
-    // stay queued so the next event re-delivers it — the active-sink retry path.
+  test("§5.4 an ACTIVE sink that throws is contained; the live warning is dropped, not retried", () => {
+    // Warnings are live-only: a throwing listener must be contained (route must not
+    // throw into the watcher's scan) so the poll loop stays live, but the warning is
+    // DROPPED — a human's terminal does not re-show a banner, so a later notice
+    // delivers only ITSELF, never the earlier dropped one.
     let failNext = true;
     const recorded: unknown[] = [];
     const sink: Sink = {
       recordWarnings: (w) => {
         if (failNext) {
           failNext = false;
-          throw new Error("persist boom");
+          throw new Error("listener boom");
         }
         recorded.push(...w);
       },
     };
     createCodexTranscriptWatcher("s1", emitter(), () => sink as never);
     expect(() => captured.onDrop?.(dropNotice)).not.toThrow(); // contained, not rethrown
-    expect(recorded).toHaveLength(0); // the throwing delivery recorded nothing...
-    captured.onReadError?.(readNotice); // ...but a later event re-delivers BOTH notices
-    expect(recorded).toHaveLength(2);
+    expect(recorded).toHaveLength(0); // the throwing delivery dropped its notice...
+    captured.onReadError?.(readNotice); // ...and a later notice delivers ONLY itself
+    expect(recorded).toHaveLength(1);
   });
 
   test("§9.4 routes a poll-stopped diagnostic to the sink", () => {
@@ -124,7 +123,7 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
     expect(recorded).toHaveLength(1);
   });
 
-  test("§5.4 a throwing recordWarnings does NOT lose the buffered notices — a retry re-delivers", () => {
+  test("§5.4 a pre-sink notice is delivered once; if delivery throws it is dropped, not retried", () => {
     let sink: Sink | undefined; // no sink yet, so the notice buffers
     let failNext = true;
     const recorded: unknown[] = [];
@@ -139,29 +138,17 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
       recordWarnings: (w) => {
         if (failNext) {
           failNext = false;
-          throw new Error("persist boom");
+          throw new Error("listener boom");
         }
         recorded.push(...w);
       },
     };
-    expect(() => flushPendingWarnings()).toThrow(/persist boom/);
+    // flushPendingWarnings clears the batch FIRST, so it delivers once then throws
+    // out of the listener; the notice is NOT retained.
+    expect(() => flushPendingWarnings()).toThrow(/listener boom/);
     expect(recorded).toHaveLength(0);
-    // The notice stayed queued: a later flush re-delivers it (not lost).
+    // A later flush has nothing queued — the earlier notice was dropped, not retried.
     flushPendingWarnings();
-    expect(recorded).toHaveLength(1);
-  });
-
-  test("§5.4 codexTranscriptSeedFromWarnings recovers running totals so counts never restart at 0", () => {
-    const seed = codexTranscriptSeedFromWarnings([
-      { code: "transcript_records_dropped", droppedCount: 60, droppedBytes: 4096 },
-      { code: "transcript_read_error", errorCount: 7 },
-      { code: "login_expired" }, // unrelated warnings are ignored
-    ] as never);
-    expect(seed).toEqual({
-      drops: { droppedCount: 60, droppedBytes: 4096 },
-      readErrors: { errorCount: 7 },
-    });
-    // No transcript warnings → empty seed (a fresh session starts at 0).
-    expect(codexTranscriptSeedFromWarnings([])).toEqual({});
+    expect(recorded).toHaveLength(0);
   });
 });

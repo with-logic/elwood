@@ -4,11 +4,21 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { type ClaudeSession, resumeClaude, startClaude } from "../../src/index.ts";
 import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
+
+/** The per-launch socket homes Elwood minted (fresh mkdtemp `elwood-*` under tmpdir). */
+function socketHomes(): Set<string> {
+  return new Set(
+    readdirSync(tmpdir())
+      .filter((name) => name.startsWith("elwood-"))
+      .map((name) => join(tmpdir(), name)),
+  );
+}
 
 test("C-STATE-12 real Claude starts and resumes from a 200-char stateDir", {
   skip: skipReason("claude"),
@@ -26,6 +36,7 @@ test("C-STATE-12 real Claude starts and resumes from a 200-char stateDir", {
   let session: ClaudeSession | undefined;
   let resumed: ClaudeSession | undefined;
   let sessionStarts = 0;
+  const homesBefore = socketHomes();
   try {
     let stops = 0;
     session = await startClaude({
@@ -48,10 +59,11 @@ test("C-STATE-12 real Claude starts and resumes from a 200-char stateDir", {
     // Claude only persists a resumable conversation once a turn has run.
     await session.sendMessage("Reply exactly: OK. Do not use tools.");
     await waitFor(() => (stops > 0 ? true : undefined), "first turn Stop hook");
-    const record = JSON.parse(
-      readFileSync(join(stateDir, "sessions", session.elwoodSessionId, "session.json"), "utf8"),
-    ) as { paths: { socketPath: string } };
-    assert.ok(record.paths.socketPath.length < 104, "socket path clears the sun_path cap");
+    // The socket home is minted fresh under tmpdir (not under the 200-char stateDir),
+    // so its path clears the macOS sun_path cap even with a deeply nested stateDir.
+    const startedHome = [...socketHomes()].find((h) => !homesBefore.has(h));
+    assert.ok(startedHome, "start minted a fresh elwood- socket home under tmpdir");
+    assert.ok(join(startedHome, "h.sock").length < 104, "socket path clears the sun_path cap");
     await session.stop();
     resumed = await resumeClaude({
       cwd: project.cwd,
@@ -67,12 +79,11 @@ test("C-STATE-12 real Claude starts and resumes from a 200-char stateDir", {
       },
     });
     await waitFor(() => (sessionStarts > 1 ? true : undefined), "resumed SessionStart hook");
-    const resumedRecord = JSON.parse(
-      readFileSync(join(stateDir, "sessions", session.elwoodSessionId, "session.json"), "utf8"),
-    ) as { paths: { socketPath: string } };
-    const socketHome = dirname(resumedRecord.paths.socketPath);
+    // Resume mints ANOTHER fresh socket home; teardown must remove it.
+    const resumedHome = [...socketHomes()].find((h) => !homesBefore.has(h) && h !== startedHome);
+    assert.ok(resumedHome, "resume minted a fresh socket home");
     await resumed.teardown();
-    assert.equal(existsSync(socketHome), false, "teardown removes the socket home");
+    assert.equal(existsSync(resumedHome), false, "teardown removes the socket home");
   } finally {
     await cleanup(resumed);
     await cleanup(session);

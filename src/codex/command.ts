@@ -12,6 +12,7 @@ import type { StartCodexOptions } from "./session-types.ts";
 
 export function buildCodexShellCommand(
   record: SessionRecord,
+  bridgeScriptPath: string,
   options: StartCodexOptions,
   capabilities: CodexCliCapabilities = { supportsHookTrustBypass: true },
 ): string {
@@ -23,7 +24,8 @@ export function buildCodexShellCommand(
   if (capabilities.supportsHookTrustBypass) {
     parts.push("--dangerously-bypass-hook-trust");
   }
-  for (const override of hookOverrides(record, options)) parts.push("-c", shellQuote(override));
+  for (const override of hookOverrides(bridgeScriptPath, options))
+    parts.push("-c", shellQuote(override));
   for (const override of options.configOverrides ?? []) parts.push("-c", shellQuote(override));
   parts.push("-c", shellQuote("features.hooks=true"));
   parts.push("-c", shellQuote('hookTrust="trust-all"'));
@@ -39,10 +41,10 @@ function addLaunchFlags(parts: string[], options: StartCodexOptions): void {
   }
 }
 
-function hookOverrides(record: SessionRecord, options: StartCodexOptions): string[] {
+function hookOverrides(bridgeScriptPath: string, options: StartCodexOptions): string[] {
   const timeout = Math.ceil((options.hookTimeoutMs ?? 25_000) / 1000);
   return codexHookEventNames.map((eventName) => {
-    const command = hookCommand(record.paths.bridgeScriptPath);
+    const command = hookCommand(bridgeScriptPath);
     const hook = `{type="command",command=${tomlString(command)},timeout=${timeout}}`;
     const group = `{matcher=${tomlString(matcherFor(eventName))},hooks=[${hook}]}`;
     return `hooks.${eventName}=[${group}]`;

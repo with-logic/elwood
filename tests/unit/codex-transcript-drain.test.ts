@@ -47,29 +47,28 @@ describe("Codex bounded terminal drain", () => {
     appendFileSync(path, `${"a".repeat(600 * 1024)}\n`);
     const { notices, lines, drops, guard } = harness();
     // A clock already past the deadline on the FIRST check: no chunk read, the whole
-    // delta is accounted as an unread_backlog drop.
+    // delta surfaces as one unread_backlog drop.
     let t = 0;
     drainToBudget(
       { readFs: guard.read.bind(guard), lines, drops, sliceMs: 0, now: () => (t += 1000) },
       cursor,
       newTerminalBudget(),
     );
-    expect(notices.at(-1)).toMatchObject({ cause: "unread_backlog", droppedCount: 1 });
+    expect(notices.filter((n) => n.cause === "unread_backlog")).toHaveLength(1);
   });
 
-  test("C-CODEX-20 a budget exhausted mid-file leaves a backlog drop", () => {
+  test("C-CODEX-20 a budget exhausted mid-file surfaces a backlog and a partial drop", () => {
     const path = join(tempDirForUnit(), "budget.jsonl");
     writeFileSync(path, "");
     const cursor = new CodexTranscriptCursor(path);
     // A > 256 KiB record: a 1-chunk budget reads only the first 256 KiB (buffered,
-    // no newline), so the remainder is an unread_backlog incident and the flushed
-    // partial folds a second (unparseable) incident into the SAME batched aggregate.
+    // no newline), so the remainder is one unread_backlog drop and the flushed
+    // partial is a second (unparseable) drop — each its own live warning.
     appendFileSync(path, `${"b".repeat(600 * 1024)}\n`);
     const { notices, lines, drops, guard } = harness();
     drainToBudget({ readFs: guard.read.bind(guard), lines, drops }, cursor, { chunks: 1 });
-    expect(notices).toHaveLength(1); // one batched flush at the end of the drain
-    expect(notices[0]?.droppedCount).toBe(2); // backlog + partial incidents
-    expect(notices[0]?.droppedBytes).toBeGreaterThan(300 * 1024);
+    expect(notices.some((n) => n.cause === "unread_backlog")).toBe(true);
+    expect(notices.some((n) => n.cause === "unparseable")).toBe(true);
   });
 
   test("C-CODEX-20 a failed remainingBytes probe at the budget edge accounts 0 backlog", () => {
@@ -88,7 +87,6 @@ describe("Codex bounded terminal drain", () => {
       },
     };
     drainToBudget({ readFs: seam.read.bind(seam), lines, drops }, cursor, { chunks: 1 });
-    drops.flush();
     expect(notices.every((n) => n.cause !== "unread_backlog")).toBe(true);
   });
 

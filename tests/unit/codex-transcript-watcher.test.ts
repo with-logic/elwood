@@ -6,8 +6,7 @@
  * warnings that round-trip through persisted-state validation.
  */
 
-import { appendFileSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import {
@@ -18,8 +17,6 @@ import type { CodexDropNotice, CodexReadErrorNotice } from "../../src/codex/tran
 import type { CodexTranscriptEvent } from "../../src/codex/transcript/types.ts";
 import { codexDropWarning, codexReadErrorWarning } from "../../src/codex/transcript/warnings.ts";
 import { CodexTranscriptWatcher } from "../../src/codex/transcript/watcher.ts";
-import { createSessionRecord } from "../../src/state/store.ts";
-import { validateSessionRecord } from "../../src/state/validate.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
 afterEach(() => resetByteReaderForTests());
@@ -149,15 +146,12 @@ describe("Codex transcript warning builders", () => {
   const dropNotice: CodexDropNotice = {
     elwoodSessionId: "s",
     path: "/t",
-    droppedCount: 3,
-    droppedBytes: 900,
     cause: "unread_backlog",
   };
   const drop = codexDropWarning(dropNotice);
   const read = codexReadErrorWarning({
     elwoodSessionId: "s",
     path: "/t",
-    errorCount: 2,
     lastErrorCode: "ENOENT",
   });
 
@@ -170,25 +164,14 @@ describe("Codex transcript warning builders", () => {
       transcriptPath: "/t",
     });
     expect(drop.message).toContain("unread transcript backlog");
-    expect(drop.raw).toBe("transcript_records_dropped count=3 bytes=900 cause=unread_backlog");
-    expect(read).toMatchObject({ agent: "codex", code: "transcript_read_error", errorCount: 2 });
-    expect(read.raw).toBe("transcript_read_error count=2 code=ENOENT");
-  });
-
-  test("C-CODEX-20 codex drop + read-error warnings survive persist→resume", () => {
-    // The shared warnings now accept `agent: "codex"`, so a persisted codex drop
-    // must round-trip through validation (proving the widened agent branch, §5.4).
-    const root = mkdtempSync(join(tmpdir(), "elwood-codex-drop-"));
-    const id = "s";
-    const record = JSON.parse(
-      JSON.stringify(createSessionRecord({ stateDir: root, cwd: root, id, adapter: "codex" })),
-    ) as Record<string, unknown>;
-    expect(validateSessionRecord({ ...record, warnings: [drop] }, root, id)).not.toBeNull();
-    expect(validateSessionRecord({ ...record, warnings: [read] }, root, id)).not.toBeNull();
-    // A bogus agent on the same shape is still rejected.
-    expect(
-      validateSessionRecord({ ...record, warnings: [{ ...drop, agent: "gemini" }] }, root, id),
-    ).toBeNull();
+    expect(drop.raw).toBe("transcript_records_dropped cause=unread_backlog");
+    expect(read).toMatchObject({
+      agent: "codex",
+      code: "transcript_read_error",
+      lastErrorCode: "ENOENT",
+      transcriptPath: "/t",
+    });
+    expect(read.raw).toBe("transcript_read_error code=ENOENT");
   });
 
   test("C-CODEX-20 each drop cause has a distinct human phrase", () => {

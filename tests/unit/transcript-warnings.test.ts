@@ -72,46 +72,33 @@ describe("C-CLAUDE-15 transcript warning builders", () => {
   test("dropWarning labels every cause truthfully and never carries content", () => {
     // MAJOR: unparseable, oversized, and unread-backlog losses share ONE code but
     // carry a bounded `cause` discriminator, so a valid unread backlog is never
-    // mislabelled as an unparseable record. The count/bytes are magnitudes only.
+    // mislabelled as an unparseable record. Each drop is one live warning, no counts.
     const cases: Record<DropCause, string> = {
-      unparseable: "unparseable",
-      oversized: "over-length",
+      unparseable: "unparseable transcript record",
+      oversized: "over-length transcript record",
       unread_backlog: "unread transcript backlog",
     };
     for (const cause of Object.keys(cases) as DropCause[]) {
-      const warning = dropWarning({
-        elwoodSessionId: "s1",
-        path: "/tmp/t.jsonl",
-        droppedCount: 2,
-        droppedBytes: 4096,
-        cause,
-      });
+      const warning = dropWarning({ elwoodSessionId: "s1", path: "/tmp/t.jsonl", cause });
       if (warning.code !== "transcript_records_dropped") throw new Error("wrong code");
       expect(warning.cause).toBe(cause);
+      expect(warning.transcriptPath).toBe("/tmp/t.jsonl");
       expect(warning.message).toContain(cases[cause]);
       expect(warning.raw).toContain(`cause=${cause}`);
-      expect(warning.droppedCount).toBe(2);
-      expect(warning.droppedBytes).toBe(4096);
     }
   });
 
-  test("MAJOR: droppedCount is LOSS INCIDENTS, so a backlog never claims a false record count", () => {
-    // `droppedCount` counts loss incidents (each unparseable record, each over-length
-    // record, and each unread backlog = 1 incident), not records — a backlog's
-    // enclosed record count is unknowable. The message must therefore say "loss
-    // incident(s)" and NEVER "transcript record(s)", which would falsely imply the
-    // backlog was one lost record when its bytes are the only truthful magnitude.
-    const backlog = dropWarning({
+  test("a dropped record's warning carries no count or byte magnitude", () => {
+    // Live-only semantics: the warning is content-free AND count-free — a human at
+    // the terminal sees the loss once, not a running total.
+    const warning = dropWarning({
       elwoodSessionId: "s1",
       path: "/tmp/t.jsonl",
-      droppedCount: 1,
-      droppedBytes: 8192,
       cause: "unread_backlog",
     });
-    if (backlog.code !== "transcript_records_dropped") throw new Error("wrong code");
-    expect(backlog.message).toContain("loss incident(s)");
-    expect(backlog.message).not.toContain("transcript record(s)");
-    expect(backlog.message).toContain("unread transcript backlog"); // cause-tagged
-    expect(backlog.message).toContain("8192 bytes"); // the true magnitude
+    if (warning.code !== "transcript_records_dropped") throw new Error("wrong code");
+    expect(warning).not.toHaveProperty("droppedCount");
+    expect(warning).not.toHaveProperty("droppedBytes");
+    expect(warning.message).not.toMatch(/\d/); // no numeric count/byte magnitude
   });
 });

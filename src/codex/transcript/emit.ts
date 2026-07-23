@@ -25,19 +25,10 @@ export class CodexLineEmitter {
   /** Emit complete lines from `text`; the cursor retains any trailing partial line. */
   emitLines(path: string, text: string, cursor: CodexTranscriptCursor): void {
     if (text.length === 0) return;
-    const { lines, droppedBytes, discard } = cursor.takeLines(text);
-    // An over-length un-terminated record was discarded, not emitted: report its
-    // bytes as a drop so the truncation is visible rather than silent (§5.4). The
-    // record COUNT is driven by the cursor's EXPLICIT transition: `started` began a
-    // fresh over-length record (+1) — even when the same chunk ALSO closed a prior
-    // discard — while `continuing`/`ended` add bytes only (records=0).
-    if (droppedBytes > 0)
-      this.drops.accountDrop({
-        path,
-        bytes: droppedBytes,
-        incidents: discard === "started" ? 1 : 0,
-        cause: "oversized",
-      });
+    const { lines, dropped } = cursor.takeLines(text);
+    // An over-length un-terminated record was discarded, not emitted: surface one
+    // live drop warning so the truncation is visible rather than silent (§5.4).
+    if (dropped) this.drops.drop(path, "oversized");
     for (const line of lines) this.emitLine(path, line);
   }
 
@@ -46,7 +37,7 @@ export class CodexLineEmitter {
     if (!line.trim()) return;
     const item = parseLine(line);
     if (item === undefined) {
-      this.drops.record(path, line);
+      this.drops.record(path);
       return;
     }
     this.emit({

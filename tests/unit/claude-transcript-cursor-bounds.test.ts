@@ -175,7 +175,7 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
     const path = tmpFile();
     writeFileSync(path, "");
     const cursor = new TranscriptCursor(path);
-    const clean = (lines: string[]) => ({ lines, droppedBytes: 0, discard: "none" });
+    const clean = (lines: string[]) => ({ lines, dropped: false });
     expect(cursor.takeLines("a\nb\npart")).toEqual(clean(["a", "b"]));
     expect(cursor.takeLines("ial\nc\n")).toEqual(clean(["partial", "c"]));
   });
@@ -187,14 +187,12 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
     const huge = "x".repeat(1024 * 1024 + 10); // >1 MiB, no newline: pending overflows
     const first = cursor.takeLines(huge);
     expect(first.lines).toEqual([]); // nothing complete, and the pending overflowed
-    expect(first.droppedBytes).toBeGreaterThan(1024 * 1024);
-    expect(first.discard).toBe("started"); // a fresh over-length record began (+1)
-    const second = cursor.takeLines("yyyy"); // still discarding: counted, not buffered
-    expect(second).toEqual({ lines: [], droppedBytes: 4, discard: "continuing" });
+    expect(first.dropped).toBe(true); // a fresh over-length record began (one drop)
+    const second = cursor.takeLines("yyyy"); // still discarding: not a new drop
+    expect(second).toEqual({ lines: [], dropped: false });
     // The newline ends the discarded record; content after it resumes normally.
     const third = cursor.takeLines("tail-of-huge\nnext\n");
     expect(third.lines).toEqual(["next"]);
-    expect(third.droppedBytes).toBe("tail-of-huge\n".length);
-    expect(third.discard).toBe("ended"); // consumed the terminating newline (0 new)
+    expect(third.dropped).toBe(false); // consumed the terminating newline (no new drop)
   });
 });

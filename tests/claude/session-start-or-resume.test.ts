@@ -7,7 +7,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { startOrResumeClaude } from "../../src/index.ts";
-import { createSessionRecord, writeSessionRecord } from "../../src/state/store.ts";
+import { createSessionRecord, sessionDir, writeSessionRecord } from "../../src/state/store.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -25,12 +25,11 @@ describe("startOrResumeClaude", () => {
     const cwd = tempDir();
     installFakes();
     const first = await startOrResumeClaude({ cwd });
-    const record = createSessionRecord({
-      stateDir: join(cwd, ".elwood"),
-      cwd,
-      id: "resumable",
-    });
-    writeSessionRecord({ ...record, claude: { resumeId: "claude-native" } });
+    const record = createSessionRecord({ cwd, id: "resumable" });
+    writeSessionRecord(
+      { ...record, claude: { resumeId: "claude-native" } },
+      sessionDir(join(cwd, ".elwood"), "resumable"),
+    );
     const result = await startOrResumeClaude({
       cwd,
       elwoodSessionId: "resumable",
@@ -64,18 +63,16 @@ describe("startOrResumeClaude", () => {
     const missing = await startOrResumeClaude({ cwd, elwoodSessionId: "never-persisted" });
     expect(missing.resumed).toBe(false);
     // resume_unavailable: record exists but no Claude resume id was learned.
-    const record = createSessionRecord({ stateDir: join(cwd, ".elwood"), cwd, id: "no-id" });
-    writeSessionRecord(record);
+    const record = createSessionRecord({ cwd, id: "no-id" });
+    writeSessionRecord(record, sessionDir(join(cwd, ".elwood"), "no-id"));
     const unavailable = await startOrResumeClaude({ cwd, elwoodSessionId: "no-id" });
     expect(unavailable.resumed).toBe(false);
     // adapter_mismatch: the record belongs to Codex.
-    const codexRecord = createSessionRecord({
-      stateDir: join(cwd, ".elwood"),
-      cwd,
-      id: "codex-owned",
-      adapter: "codex",
-    });
-    writeSessionRecord({ ...codexRecord, codex: { resumeId: "codex-native" } });
+    const codexRecord = createSessionRecord({ cwd, id: "codex-owned", adapter: "codex" });
+    writeSessionRecord(
+      { ...codexRecord, codex: { resumeId: "codex-native" } },
+      sessionDir(join(cwd, ".elwood"), "codex-owned"),
+    );
     const mismatch = await startOrResumeClaude({ cwd, elwoodSessionId: "codex-owned" });
     expect(mismatch.resumed).toBe(false);
   });

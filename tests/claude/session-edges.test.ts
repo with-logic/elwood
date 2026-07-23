@@ -20,7 +20,8 @@ describe("ClaudeSession terminal-state edges", () => {
     ptys[0]!.resizeResult = "closed";
     await session.resize({ cols: 20, rows: 10 });
     expect(session.terminal.size).toEqual({ cols: 189, rows: 48 });
-    expect(readRecord(cwd, session.elwoodSessionId).terminalSize).toEqual({ cols: 189, rows: 48 });
+    // Terminal size is never persisted (near-stateless): the record has no size field.
+    expect(readRecord(cwd, session.elwoodSessionId)).not.toHaveProperty("terminalSize");
   });
 
   test("C-STATE-07 stop after process exit keeps the exited status", async () => {
@@ -95,7 +96,7 @@ describe("ClaudeSession terminal-state edges", () => {
       join(cwd, ".elwood", "sessions", session.elwoodSessionId, "session.json"),
       "utf8",
     );
-    // The record persists status but none of the decision-log internals.
+    // Status is live-only (never persisted), and neither are the decision-log internals.
     expect(raw).not.toContain("statusDecisions");
     expect(raw).not.toContain("decisions");
     expect(raw).not.toContain("startup_usable");
@@ -168,12 +169,6 @@ function sessionStart(cwd: string, session_id: string): Record<string, unknown> 
   return { hook_event_name: "SessionStart", session_id, cwd, source: "startup" };
 }
 
-function readRecord(
-  cwd: string,
-  id: string,
-): {
-  readonly claude: { readonly resumeId?: string };
-  readonly terminalSize?: { readonly cols: number; readonly rows: number };
-} {
+function readRecord(cwd: string, id: string): { readonly claude: { readonly resumeId?: string } } {
   return JSON.parse(readFileSync(join(cwd, ".elwood", "sessions", id, "session.json"), "utf8"));
 }

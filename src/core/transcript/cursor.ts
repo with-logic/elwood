@@ -23,23 +23,13 @@ const maxPendingBytes = 1024 * 1024;
 export type ChunkRead = { readonly text: string; readonly canContinueNow: boolean };
 
 /**
- * The cursor's over-length-discard state transition across one `takeLines` call,
- * reported EXPLICITLY so the emitter never infers it from `lines`/`bytes`:
- * - `"none"`: not discarding and did not start (the common case).
- * - `"started"`: this call BEGAN a fresh over-length discard (count one lost record).
- * - `"continuing"`: this call added more bytes to a discard already in progress
- *   (count zero — the same record's continuation, not a new loss).
- * - `"ended"`: this call consumed the discarded record's terminating newline and
- *   is no longer discarding; any over-length bytes reported belong to a NEW record
- *   that also started this call (so it also counts one).
+ * Complete lines from a chunk, plus whether this call discarded an over-length
+ * record (`dropped`). A discarded record is surfaced as ONE live drop warning by the
+ * emitter — never a running count.
  */
-export type DiscardTransition = "none" | "started" | "continuing" | "ended";
-
-/** Complete lines from a chunk, plus over-length drop bytes and the discard transition. */
 export type TakenLines = {
   readonly lines: readonly string[];
-  readonly droppedBytes: number;
-  readonly discard: DiscardTransition;
+  readonly dropped: boolean;
 };
 
 /**
@@ -84,19 +74,15 @@ export class BoundedTranscriptCursor {
 
   // Split buffered text into complete lines, retaining any trailing partial. A
   // record past `maxPendingBytes` with no newline is discarded through its next
-  // newline (its bytes reported) so it can't OOM or re-concat quadratically. The
-  // returned `discard` transition is the cursor's OWN truth, so the emitter counts
-  // exactly one lost record per over-length record even when one chunk both ENDS
-  // one discard and STARTS the next.
+  // newline so it can't OOM or re-concat quadratically. `dropped` reports whether
+  // THIS call BEGAN a fresh over-length discard, so the emitter surfaces exactly one
+  // live drop warning per over-length record (a continuation is not a new drop).
   takeLines(text: string): TakenLines {
-    let dropped = 0;
     let rest = text;
-    const wasDiscarding = this.discarding;
     if (this.discarding) {
       const nl = rest.indexOf("\n");
-      // Still no newline: the same over-length record continues (bytes only, no +1).
-      if (nl === -1) return { lines: [], droppedBytes: byteLen(rest), discard: "continuing" };
-      dropped += byteLen(rest.slice(0, nl + 1));
+      // Still no newline: the same over-length record continues (not a new drop).
+      if (nl === -1) return { lines: [], dropped: false };
       this.discarding = false;
       rest = rest.slice(nl + 1);
     }
@@ -105,11 +91,10 @@ export class BoundedTranscriptCursor {
     this.pending = lines.pop() as string;
     const startedNew = byteLen(this.pending) > maxPendingBytes;
     if (startedNew) {
-      dropped += byteLen(this.pending); // over-length un-terminated record: discard it
-      this.pending = "";
+      this.pending = ""; // over-length un-terminated record: discard it
       this.discarding = true;
     }
-    return { lines, droppedBytes: dropped, discard: transition(wasDiscarding, startedNew) };
+    return { lines, dropped: startedNew };
   }
 
   /** The final buffered partial line (flushed once at teardown), then cleared. */
@@ -126,15 +111,4 @@ export class BoundedTranscriptCursor {
     const size = fileSize(this.path);
     return size > this.offset ? size - this.offset : 0;
   }
-}
-
-// Map (was-discarding, started-a-new-over-length-record) onto the explicit
-// transition the emitter counts from. A `started` always means "this call BEGAN a
-// fresh over-length record" (+1) — even when it ALSO closed a prior discard, since
-// that prior record was counted when IT started. `ended` closed an in-progress
-// discard with no new one (0). `continuing` is returned inline and never here.
-function transition(wasDiscarding: boolean, startedNew: boolean): DiscardTransition {
-  if (startedNew) return "started";
-  if (wasDiscarding) return "ended";
-  return "none";
 }

@@ -21,6 +21,7 @@ import { currentPtyFactory } from "../runtime/seams.ts";
 import { finishSessionExit } from "../runtime/session-exit.ts";
 import { userShell } from "../runtime/shell.ts";
 import { writePrivateFileAtomic } from "../state/files.ts";
+import type { SessionRuntime } from "../state/runtime-paths.ts";
 import type { SessionRecord } from "../state/store.ts";
 import { buildClaudeShellCommand, shellLaunch } from "./command.ts";
 import { claudeScreenFactTableForTrustPolicy } from "./screen-table.ts";
@@ -42,30 +43,27 @@ export function buildClaudeObservers(
   };
 }
 
-export function writeRuntimeFiles(
-  record: SessionRecord,
-  token: string,
-  options: StartClaudeOptions,
-): void {
+export function writeRuntimeFiles(runtime: SessionRuntime, options: StartClaudeOptions): void {
   writePrivateFileAtomic(
-    record.paths.bridgeScriptPath,
-    bridgeScriptSource(record.paths.socketPath, token),
+    runtime.bridgeScriptPath,
+    bridgeScriptSource(runtime.socketPath, runtime.bridgeToken),
   );
   const settings = generateClaudeSettings({
-    bridgeScriptPath: record.paths.bridgeScriptPath,
+    bridgeScriptPath: runtime.bridgeScriptPath,
     options,
     timeoutSeconds: Math.ceil((options.hookTimeoutMs ?? 25_000) / 1000),
   });
-  writePrivateFileAtomic(record.paths.settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+  writePrivateFileAtomic(runtime.settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
 }
 
 export function spawnClaudePty(
   record: SessionRecord,
+  settingsPath: string,
   options: StartClaudeOptions & { readonly initialSize: TerminalSize },
 ): PtyProcess {
   const launch = shellLaunch(
     userShell(),
-    buildClaudeShellCommand(record.paths.settingsPath, options, record.claude.resumeId),
+    buildClaudeShellCommand(settingsPath, options, record.claude.resumeId),
   );
   try {
     return currentPtyFactory()({
@@ -96,7 +94,7 @@ export function registerInitialHooks(
 /**
  * Emit the terminal-exit event and its activity (PRD §5.3 C-LIFE-10). Called from
  * the PTY-exit boundary's `finally` so it always runs, even if the final transcript
- * flush threw — no missed exit event, no unpersisted terminal status.
+ * flush threw — no missed exit event.
  */
 export function emitTerminalExit(
   emitter: TypedEmitter,

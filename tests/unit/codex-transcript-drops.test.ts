@@ -1,9 +1,9 @@
 /**
  * Conformance coverage for Codex transcript drop/read-error accounting, the fs
  * guard, the line emitter, and the bounded terminal drain.
- * Covers PRD §7A/§5.4: content-free drop incidents (unparseable, oversized,
- * unread_backlog), batched persistence that survives a throwing sink, and
- * contained fs failures. The bounded terminal drain lives in a sibling file.
+ * Covers PRD §7A/§5.4: each lost record (unparseable, oversized, unread_backlog)
+ * or contained fs failure surfaces ONE live, content-free notice — no running
+ * count, no persistence. The bounded terminal drain lives in a sibling file.
  */
 
 import { join } from "node:path";
@@ -21,56 +21,31 @@ import type { CodexTranscriptEvent } from "../../src/codex/transcript/types.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
 describe("Codex drop + read-error tracking", () => {
-  test("C-CODEX-20 drops advance in memory and persist only on flush; seed continues", () => {
+  test("C-CODEX-20 each lost record surfaces one live drop notice with its cause", () => {
     const notices: CodexDropNotice[] = [];
-    const tracker = new CodexDropTracker("s1", (n) => notices.push(n), {
-      droppedCount: 4,
-      droppedBytes: 40,
-    });
-    tracker.record("/t", "{bad");
-    tracker.accountDrop({ path: "/t", bytes: 100, incidents: 1, cause: "oversized" });
-    expect(notices).toHaveLength(0); // nothing persisted until flush
-    tracker.flush();
-    expect(notices).toHaveLength(1);
-    expect(notices[0]).toMatchObject({ droppedCount: 6, cause: "oversized" });
-    expect(notices[0]?.droppedBytes).toBe(40 + Buffer.byteLength("{bad") + 100);
-    tracker.flush(); // nothing dirty: no second persist
-    expect(notices).toHaveLength(1);
+    const tracker = new CodexDropTracker("s1", (n) => notices.push(n));
+    tracker.record("/t"); // unparseable
+    tracker.drop("/t", "oversized");
+    expect(notices).toEqual([
+      { elwoodSessionId: "s1", path: "/t", cause: "unparseable" },
+      { elwoodSessionId: "s1", path: "/t", cause: "oversized" },
+    ]);
   });
 
-  test("C-CODEX-20 a throwing onDrop keeps the tracker dirty — the running total is not lost", () => {
-    let failNext = true;
-    const notices: CodexDropNotice[] = [];
-    const tracker = new CodexDropTracker("s", (n) => {
-      if (failNext) {
-        failNext = false;
-        throw new Error("persist boom");
-      }
-      notices.push(n);
-    });
-    tracker.accountDrop({ path: "/t", bytes: 50, incidents: 1, cause: "oversized" });
-    // The sink throws — `dirty` must stay set so the total isn't silently dropped.
-    expect(() => tracker.flush()).toThrow(/persist boom/);
-    expect(notices).toHaveLength(0);
-    // A later flush re-emits the still-pending running total.
-    tracker.flush();
-    expect(notices).toHaveLength(1);
-    expect(notices[0]).toMatchObject({ droppedCount: 1, droppedBytes: 50 });
-  });
-
-  test("C-CODEX-20 a tracker with no sink and no seed still counts without throwing", () => {
+  test("C-CODEX-20 a tracker with no sink still records without throwing", () => {
     const tracker = new CodexDropTracker("s", undefined);
-    tracker.record("/t", "x");
-    expect(() => tracker.flush()).not.toThrow();
+    expect(() => {
+      tracker.record("/t");
+      tracker.drop("/t", "unread_backlog");
+    }).not.toThrow();
   });
 
-  test("C-CODEX-20 read-error tracker counts, seeds, and normalizes a missing code", () => {
+  test("C-CODEX-20 read-error tracker surfaces the code and normalizes a missing/numeric code", () => {
     const errs: CodexReadErrorNotice[] = [];
-    const tracker = new CodexReadErrorTracker("s", (n) => errs.push(n), { errorCount: 2 });
+    const tracker = new CodexReadErrorTracker("s", (n) => errs.push(n));
     tracker.record("/t", { code: "EISDIR" });
     tracker.record("/t", new Error("boom")); // no `.code` → UNKNOWN
     tracker.record("/t", { code: 5 }); // a NUMERIC code must NOT round-trip → UNKNOWN
-    expect(errs.map((e) => e.errorCount)).toEqual([3, 4, 5]);
     expect(errs.map((e) => e.lastErrorCode)).toEqual(["EISDIR", "UNKNOWN", "UNKNOWN"]);
     const silent = new CodexReadErrorTracker("s", undefined);
     expect(() => silent.record("/t", {})).not.toThrow();
@@ -101,32 +76,28 @@ function harness() {
 
 describe("Codex line emitter", () => {
   test("C-CODEX-20 emits parseable lines, skips blanks, drops malformed", () => {
-    const { events, notices, drops, lines } = harness();
+    const { events, notices, lines } = harness();
     const cursor = new CodexTranscriptCursor(join(tempDirForUnit(), "x.jsonl"));
     lines.emitLines("/p", "", cursor); // empty text early-returns
     lines.emitLines("/p", `{"type":"note"}\n   \n{oops}\n`, cursor);
-    drops.flush();
     expect(events).toHaveLength(1);
     expect(events[0]?.summary).toMatchObject({ kind: "other", label: "note" });
     expect(notices.at(-1)).toMatchObject({ cause: "unparseable" });
   });
 
-  test("C-CODEX-20 an over-length record via emitLines is an oversized drop", () => {
-    const { notices, drops, lines } = harness();
+  test("C-CODEX-20 an over-length record via emitLines is one oversized drop", () => {
+    const { notices, lines } = harness();
     const cursor = new CodexTranscriptCursor(join(tempDirForUnit(), "x.jsonl"));
     lines.emitLines("/p", "q".repeat(1024 * 1024 + 10), cursor);
-    drops.flush();
-    expect(notices.at(-1)).toMatchObject({ cause: "oversized", droppedCount: 1 });
+    expect(notices.filter((n) => n.cause === "oversized")).toHaveLength(1);
   });
 
-  test("C-CODEX-20 ENDING a discard reports bytes but no new record (count stays 1)", () => {
-    const { notices, drops, lines } = harness();
+  test("C-CODEX-20 ENDING a discard surfaces no new drop (only the start counted)", () => {
+    const { notices, lines } = harness();
     const cursor = new CodexTranscriptCursor(join(tempDirForUnit(), "x.jsonl"));
-    lines.emitLines("/p", "q".repeat(1024 * 1024 + 10), cursor); // starts discard (+1)
-    // The next chunk ENDS the discard: its tail bytes report with the "ended"
-    // transition, so the emitter adds 0 records — only the tail bytes.
+    lines.emitLines("/p", "q".repeat(1024 * 1024 + 10), cursor); // starts discard (one drop)
+    // The next chunk ENDS the discard: no new over-length record began, so no new drop.
     lines.emitLines("/p", "tail-of-record\n", cursor);
-    drops.flush();
-    expect(notices.at(-1)?.droppedCount).toBe(1);
+    expect(notices.filter((n) => n.cause === "oversized")).toHaveLength(1);
   });
 });

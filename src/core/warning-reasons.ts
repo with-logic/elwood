@@ -1,12 +1,12 @@
 /**
  * The fixed allowlists of bounded reason/error-code tokens carried by content-free
  * warnings, and their derived types + guards.
- * Implements PRD §5.7 and §8.2 (C-CLAUDE-15, C-LIFE-10): the `reason` field of a
+ * Implements PRD §5.7 (C-CLAUDE-15, C-LIFE-10): the `reason` field of a
  * `transcript_poll_stopped` warning and the `errorCode` field of a `reap_failed`
  * warning may carry ONLY a value from a fixed allowlist — never a raw system
- * message or a caller-controlled string. This module is the single source of
- * truth those unions, their producers, and persisted-state validation all derive
- * from, so a producer, the type, and the validator can never drift apart.
+ * message or a caller-controlled string that could leak content into a live
+ * warning. This module is the single source of truth the unions and their
+ * producers derive from, so a producer and its type can never drift apart.
  */
 
 /** The fixed fallback token every bounded error-token allowlist collapses to. */
@@ -77,7 +77,7 @@ export function isPollErrorReason(value: unknown): value is PollErrorReason {
  * constructor names + the process-signalling errnos a group SIGKILL can surface,
  * plus the fixed `UnknownError` fallback any unrecognized value collapses to. A
  * reap failure's error `name`/`.code`/message are caller/system-controlled, so
- * only a value on this allowlist may reach persisted state.
+ * only a value on this allowlist may reach the live warning.
  */
 export const REAP_ERROR_CODES = [
   "UnknownError",
@@ -103,24 +103,18 @@ export function isReapErrorCode(value: unknown): value is ReapErrorCode {
   return typeof value === "string" && reapErrorCodes.has(value);
 }
 
-/** Why transcript data was lost, so cause + cardinality are never mislabeled. */
+/** Why transcript data was lost, so cause is never mislabeled. */
 export const DROP_CAUSES = ["unparseable", "oversized", "unread_backlog"] as const;
 
 /** A bounded `transcript_records_dropped.cause` token. */
 export type DropCause = (typeof DROP_CAUSES)[number];
-
-const dropCauses: ReadonlySet<string> = new Set(DROP_CAUSES);
-
-export function isDropCause(value: unknown): value is DropCause {
-  return typeof value === "string" && dropCauses.has(value);
-}
 
 /**
  * The allowlisted tokens for `resize_restore_failed.errorCode`: standard JS error
  * constructor names + the errnos a native PTY resize can surface, plus the fixed
  * `UnknownError` fallback any unrecognized value collapses to. A resize failure's
  * error `name`/`.code`/message are system-controlled, so only a value on this
- * allowlist may reach persisted state (§5.7).
+ * allowlist may reach the live warning (§5.7).
  */
 export const RESIZE_ERROR_CODES = [
   "UnknownError",
@@ -152,9 +146,3 @@ export const POLL_PHASES = ["poll", "final_flush"] as const;
 
 /** A bounded `transcript_poll_stopped.phase` token. */
 export type PollPhase = (typeof POLL_PHASES)[number];
-
-const pollPhases: ReadonlySet<string> = new Set(POLL_PHASES);
-
-export function isPollPhase(value: unknown): value is PollPhase {
-  return typeof value === "string" && pollPhases.has(value);
-}

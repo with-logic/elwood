@@ -11,6 +11,10 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 const clip = { set: [] as string[], restored: [] as string[], restoreOk: true };
 vi.mock("../../src/codex/clipboard.ts", () => ({
+  // The real message constant lives in this module; keep it so session-instance's
+  // import resolves under the mock (it moved here from the deleted validate-warnings).
+  CLIPBOARD_RESTORE_FAILED_MESSAGE:
+    "Elwood could not restore the clipboard after attaching an image.",
   clipboardImageSupported: () => true,
   snapshotClipboardText: () => Promise.resolve("prior"),
   restoreClipboardText: (t: string) => {
@@ -89,11 +93,13 @@ describe("CodexSession image attachment (C-API-44/46)", () => {
     const { writeFileSync } = await import("node:fs");
     writeFileSync(img, PNG);
     const session = await startCodex({ cwd });
+    const warnings: { code: string; raw: string }[] = [];
+    session.on("warning", (event) => warnings.push(event));
     const queued = session.sendMessage("describe", { images: [{ path: img }] });
     await becomeReady(session.elwoodSessionId, cwd);
     driveChip();
     await queued;
-    const warning = session.warnings.find((w) => w.code === "clipboard_restore_failed");
+    const warning = warnings.find((w) => w.code === "clipboard_restore_failed");
     expect(warning).toBeDefined();
     expect(warning?.raw).toBe("clipboard_restore_failed"); // content-free, no clipboard data
   });

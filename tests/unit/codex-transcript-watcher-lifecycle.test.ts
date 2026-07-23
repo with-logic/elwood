@@ -5,15 +5,12 @@
  * terminal and idempotent, and a late `observe()` never restarts polling past exit.
  */
 
-import { appendFileSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { resetByteReaderForTests } from "../../src/codex/transcript/cursor-io.ts";
 import { codexPollStoppedWarning } from "../../src/codex/transcript/warnings.ts";
 import { CodexTranscriptWatcher } from "../../src/codex/transcript/watcher.ts";
-import { createSessionRecord } from "../../src/state/store.ts";
-import { validateSessionRecord } from "../../src/state/validate.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
 afterEach(() => {
@@ -115,7 +112,7 @@ describe("Codex transcript watcher lifecycle (§5.4/§9.4)", () => {
     expect(pollErrors.length).toBe(1);
   });
 
-  test("C-CODEX-20 §5.4 codexPollStoppedWarning is content-free, codex-tagged, and persists", () => {
+  test("C-CODEX-20 §5.4 codexPollStoppedWarning is content-free and codex-tagged", () => {
     // The escaping error's message may embed raw transcript content, so only an
     // allowlisted `reason` token survives — never error.message.
     const warning = codexPollStoppedWarning("s", new Error("secret prompt: hunter2"));
@@ -125,11 +122,5 @@ describe("Codex transcript watcher lifecycle (§5.4/§9.4)", () => {
       phase: "poll",
     });
     expect(JSON.stringify(warning)).not.toContain("hunter2");
-    // Round-trips through persisted-state validation (proves the widened agent branch).
-    const root = mkdtempSync(join(tmpdir(), "elwood-codex-poll-"));
-    const record = JSON.parse(
-      JSON.stringify(createSessionRecord({ stateDir: root, cwd: root, id: "s", adapter: "codex" })),
-    ) as Record<string, unknown>;
-    expect(validateSessionRecord({ ...record, warnings: [warning] }, root, "s")).not.toBeNull();
   });
 });

@@ -71,7 +71,6 @@ function fakeSession(): SharedSession {
     elwoodSessionId: "s1",
     cwd: "/tmp/project",
     status: "running",
-    warnings: [],
     terminal: fakeTerminal() as never,
     statusDecisions: () => [],
     on: () => () => {},

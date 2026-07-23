@@ -16,9 +16,9 @@ import {
 } from "./drops.ts";
 import { type ClaudeTranscriptEvent, LineEmitter } from "./emit.ts";
 import { TranscriptFsGuard } from "./fs-guard.ts";
-import type { TranscriptNoticeHandlers, TranscriptWatcherSeed } from "./watcher-config.ts";
+import type { TranscriptNoticeHandlers } from "./watcher-config.ts";
 
-export type { TranscriptNoticeHandlers, TranscriptWatcherSeed } from "./watcher-config.ts";
+export type { TranscriptNoticeHandlers } from "./watcher-config.ts";
 export type { ClaudeTranscriptEvent, TranscriptDropNotice, TranscriptReadErrorNotice };
 
 const pollMs = 500; // poll cadence: transcript activity is not latency-critical
@@ -44,10 +44,9 @@ export class ClaudeTranscriptWatcher {
     elwoodSessionId: string,
     emit: (event: ClaudeTranscriptEvent) => void,
     notices: TranscriptNoticeHandlers = {},
-    seed: TranscriptWatcherSeed = {},
   ) {
-    this.drops = new DropTracker(elwoodSessionId, notices.onDrop, seed.drops);
-    const readErrors = new ReadErrorTracker(elwoodSessionId, notices.onReadError, seed.readErrors);
+    this.drops = new DropTracker(elwoodSessionId, notices.onDrop);
+    const readErrors = new ReadErrorTracker(elwoodSessionId, notices.onReadError);
     this.guard = new TranscriptFsGuard(readErrors, () => this.finished);
     this.onPollError = notices.onPollError;
     this.pollIntervalMs = notices.pollIntervalMs ?? pollMs;
@@ -66,16 +65,9 @@ export class ClaudeTranscriptWatcher {
       const tail = this.guard.read(path, () => cursor.baselineTail());
       this.lines.emitLines(path, tail?.text ?? "");
       // A turn larger than the recovery window surfaces its out-of-window records as
-      // a bounded, content-free backlog loss so the gap is not silent (§5.4).
-      if (tail?.truncated && tail.droppedBytes > 0)
-        this.drops.accountDrop({
-          path,
-          bytes: tail.droppedBytes,
-          incidents: 1,
-          cause: "unread_backlog",
-        });
+      // one bounded, content-free backlog drop warning so the gap is not silent (§5.4).
+      if (tail?.truncated && tail.droppedBytes > 0) this.drops.drop(path, "unread_backlog");
     }
-    this.drops.flush(); // one persist per observe, not one per recovered drop
     this.ensurePolling();
   }
 
@@ -86,7 +78,6 @@ export class ClaudeTranscriptWatcher {
       if (budget.chunks <= 0) break; // watcher-wide budget spent; resume next tick
       this.scanCursor(cursor, budget);
     }
-    this.drops.flush(); // ≤one persist per scan pass, not one per malformed record
   }
 
   // Flush + retire a stopped subagent's transcript (one-shot): drained against the
@@ -120,10 +111,6 @@ export class ClaudeTranscriptWatcher {
       }
     } finally {
       this.polling = false;
-      // ≤one persist per poll tick, not one per malformed record. Skipped once
-      // finished (a drop past terminal:exit breaks the latch); finish()'s own drain
-      // flushes the pending aggregate instead (§5.4).
-      if (!this.finished) this.drops.flush();
     }
   }
 

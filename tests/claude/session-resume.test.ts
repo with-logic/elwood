@@ -12,6 +12,7 @@ import { resetPreflightCacheForTests } from "../../src/runtime/update-once.ts";
 import {
   createSessionRecord,
   prepareStateDir,
+  sessionDir,
   updateSessionResumeId,
   writeSessionRecord,
 } from "../../src/state/store.ts";
@@ -35,6 +36,8 @@ describe("ClaudeSession resume options", () => {
     resetPreflightCacheForTests();
     setCommandRunnerForTests(() => ({ status: 0, stdout: "mystery build", stderr: "" }));
     const stops: string[] = [];
+    // A non-strict resume proceeds despite an unparseable version; the version warning
+    // is live-only (emitted during startup, never persisted), so it is not asserted here.
     const resumed = await resumeClaude({
       cwd,
       stateDir,
@@ -45,7 +48,6 @@ describe("ClaudeSession resume options", () => {
       autotrust: true,
       strictVersionCheck: false,
     });
-    expect(resumed.warnings).toMatchObject([{ code: "version_unparseable", agent: "claude" }]);
     expect(ptys[1]!.options.size).toEqual({ cols: 100, rows: 20 });
     await ptys[1]!.dispatchHook(
       resumed.elwoodSessionId,
@@ -95,11 +97,11 @@ describe("ClaudeSession resume options", () => {
     const stateDir = join(cwd, ".elwood");
     prepareStateDir(stateDir);
     const record = updateSessionResumeId(
-      createSessionRecord({ stateDir, cwd, id: "resume-perm" }),
+      createSessionRecord({ cwd, id: "resume-perm" }),
       "claude",
       "claude-resume",
     );
-    writeSessionRecord(record);
+    writeSessionRecord(record, sessionDir(stateDir, record.elwoodSessionId));
     installFakes();
     await resumeClaude({
       cwd,
@@ -120,11 +122,11 @@ describe("ClaudeSession resume options", () => {
     const stateDir = join(cwd, ".elwood");
     prepareStateDir(stateDir);
     const record = updateSessionResumeId(
-      createSessionRecord({ stateDir, cwd, id: "resume-no-size" }),
+      createSessionRecord({ cwd, id: "resume-no-size" }),
       "claude",
       "claude-resume",
     );
-    writeSessionRecord(record);
+    writeSessionRecord(record, sessionDir(stateDir, record.elwoodSessionId));
     installFakes();
     const resumed = await resumeClaude({ cwd, elwoodSessionId: "resume-no-size" });
     expect(ptys[0]!.size).toEqual({ cols: 189, rows: 48 });

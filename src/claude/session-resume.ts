@@ -10,12 +10,7 @@ import {
   effectivePosture,
   withClaudeLaunch,
 } from "../state/launch-posture.ts";
-import {
-  defaultStateDir,
-  readSessionRecord,
-  upsertSessionWarning,
-  writeSessionRecord,
-} from "../state/store.ts";
+import { defaultStateDir, readSessionRecord } from "../state/store.ts";
 import { preflightClaude } from "./preflight.ts";
 import { startClaudeFromRecord } from "./session.ts";
 import type { ClaudeSession } from "./session-interface.ts";
@@ -33,29 +28,19 @@ export async function resumeClaude(options: ResumeClaudeOptions): Promise<Claude
     options.strictVersionCheck ?? false,
     options.autoupdate ?? false,
   );
-  const checkedRecord =
-    warning === undefined
-      ? record
-      : upsertSessionWarning(record, { elwoodSessionId: record.elwoodSessionId, ...warning })
-          .record;
-  const size = options.initialSize ?? checkedRecord.terminalSize;
-  const sized =
-    options.initialSize === undefined
-      ? checkedRecord
-      : { ...checkedRecord, terminalSize: options.initialSize };
-  // Resume defaults to the posture this session launched with; explicit
-  // options override field by field, and the effective posture is
-  // re-persisted (C-API-32, C-STATE-13).
-  const launch = effectivePosture(checkedRecord.claude.launch, claudeLaunchPosture(options));
-  const resumedRecord = withClaudeLaunch(sized, launch);
-  writeSessionRecord(resumedRecord);
+  // Resume defaults to the posture this session launched with; explicit options
+  // override field by field, and the effective posture is re-persisted (C-API-32,
+  // C-STATE-13). Terminal size is not persisted: it falls back to options.initialSize.
+  const launch = effectivePosture(record.claude.launch, claudeLaunchPosture(options));
+  const resumedRecord = withClaudeLaunch(record, launch);
   return await startClaudeFromRecord(
     resumedRecord,
+    stateDir,
     {
       cwd: options.cwd ?? record.cwd,
       stateDir,
       ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
-      ...(size === undefined ? {} : { initialSize: size }),
+      ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),
       ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
       ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
       ...launch,
@@ -64,5 +49,6 @@ export async function resumeClaude(options: ResumeClaudeOptions): Promise<Claude
         : { strictVersionCheck: options.strictVersionCheck }),
     },
     true, // resumed: mark ready on the first composer marker, symmetric with Codex
+    warning,
   );
 }

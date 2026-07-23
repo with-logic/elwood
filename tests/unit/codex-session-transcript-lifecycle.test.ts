@@ -1,6 +1,7 @@
 /**
  * Lifecycle coverage for createCodexTranscriptWatcher (PRD §5.4/§9.2, C-LIFE-10):
- * a persistently failing warning sink coalesces by code (bounded, not quadratic), and
+ * a persistently throwing warning listener is contained and its warnings are dropped
+ * (live-only, never buffered for retry, so the pending buffer never grows), and
  * finishSafely contains a throwing FINAL flush so terminal:exit is never skipped.
  */
 
@@ -47,25 +48,28 @@ beforeEach(() => {
 });
 
 describe("createCodexTranscriptWatcher lifecycle", () => {
-  test("§5.4 a PERSISTENTLY failing sink coalesces by code — pending stays bounded", () => {
-    // The sink fails while 500 same-code drops + a read error accumulate, then recovers.
-    // Same-code drops are running aggregates, so pending keeps only the newest per code
-    // (bounded, not quadratic); on recovery only the coalesced set flushes.
+  test("§5.4 a PERSISTENTLY throwing listener is contained; dropped warnings never accumulate", () => {
+    // Warnings are live-only. A listener that throws on every scan is CONTAINED (the
+    // watcher never throws), and each undelivered warning is DROPPED — never buffered
+    // for retry. So when the listener recovers it delivers ONLY the current notice,
+    // not a backlog: the pending buffer can never grow under a persistent failure.
     let failing = true;
     const recorded: unknown[] = [];
     const sink: Sink = {
       recordWarnings: (w) => {
-        if (failing) throw new Error("persist boom");
+        if (failing) throw new Error("listener boom");
         recorded.push(...w);
       },
     };
     createCodexTranscriptWatcher("s1", emitter(), () => sink as never);
-    for (let i = 0; i < 500; i++) expect(() => captured.onDrop?.(dropNotice)).not.toThrow();
-    captured.onReadError?.(readNotice); // a second, distinct code also accumulates
+    for (let i = 0; i < 3; i++) expect(() => captured.onDrop?.(dropNotice)).not.toThrow();
+    captured.onReadError?.(readNotice); // also dropped while failing
     failing = false;
-    captured.onDrop?.(dropNotice); // recover: drives a successful flush
-    // 500+1 drops coalesced to ONE pending drop + one read error = 2 delivered, not 502.
-    expect(recorded).toHaveLength(2);
+    captured.onDrop?.(dropNotice); // recover: delivers ONLY this current notice
+    expect(recorded).toHaveLength(1);
+    expect((recorded as Array<{ code: string }>).map((w) => w.code)).toEqual([
+      "transcript_records_dropped",
+    ]);
   });
 
   test("C-LIFE-10 finishSafely runs afterFlush after a successful final flush", () => {

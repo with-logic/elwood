@@ -25,15 +25,11 @@ import { tempDirForUnit } from "./helpers.ts";
 describe("Codex core helpers", () => {
   test("C-CODEX-03 command construction reflects launch policy", () => {
     const cwd = tempDirForUnit();
-    const record = createSessionRecord({
-      stateDir: `${cwd}/.elwood`,
-      cwd,
-      id: "s1",
-      adapter: "codex",
-      name: "demo",
-    });
+    const record = createSessionRecord({ cwd, id: "s1", adapter: "codex" });
+    const bridgeScriptPath = `${cwd}/.elwood/sessions/s1/hook-bridge.mjs`;
     const command = buildCodexShellCommand(
       { ...record, codex: { resumeId: "codex-1" } },
+      bridgeScriptPath,
       {
         cwd,
         model: "gpt-5.3-codex",
@@ -57,7 +53,7 @@ describe("Codex core helpers", () => {
     expect(command).toContain("resume");
     expect(command).toContain("command=\"'");
     expect(
-      buildCodexShellCommand(record, { cwd }, { supportsHookTrustBypass: false }),
+      buildCodexShellCommand(record, bridgeScriptPath, { cwd }, { supportsHookTrustBypass: false }),
     ).not.toContain("--dangerously-bypass-hook-trust");
   });
 

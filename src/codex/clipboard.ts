@@ -29,6 +29,10 @@ const SET_IMAGE_JXA =
   "if(!pb.writeObjects($.NSArray.arrayWithObject(img)))" +
   'throw new Error("clipboard write failed");return "ok";}';
 
+/** Canonical, content-free copy for the clipboard-restore-failed warning (C-API-46). */
+export const CLIPBOARD_RESTORE_FAILED_MESSAGE =
+  "Elwood could not restore the clipboard after attaching an image.";
+
 /** True only on macOS, where the NSPasteboard-backed attach path is available. */
 export function clipboardImageSupported(): boolean {
   return process.platform === "darwin";

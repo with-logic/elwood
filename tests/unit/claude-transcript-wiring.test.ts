@@ -54,7 +54,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     expect(recorded.some((w) => w.code === "transcript_records_dropped")).toBe(true);
   });
 
-  test("§5.4 a throwing recordWarnings keeps the buffered notice queued — a retry re-delivers", () => {
+  test("§5.4 a pre-sink notice is delivered once; if delivery throws it is dropped, not retried", () => {
     const emitter = fakeEmitter(() => undefined);
     const recorded: ElwoodWarningEvent[] = [];
     let failNext = true;
@@ -69,20 +69,22 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
       recordWarnings: (w) => {
         if (!failNext) return void recorded.push(...w);
         failNext = false;
-        throw new Error("persist boom");
+        throw new Error("listener boom");
       },
     };
-    expect(() => flushPendingWarnings()).toThrow(/persist boom/);
-    expect(recorded).toEqual([]); // the throw must not have lost the notice
-    flushPendingWarnings(); // the still-queued notice re-delivers
-    expect(recorded.some((w) => w.code === "transcript_records_dropped")).toBe(true);
+    // flushPendingWarnings clears the batch first, delivers once, then throws out of
+    // the listener; the notice is dropped (live-only, not retained for retry).
+    expect(() => flushPendingWarnings()).toThrow(/listener boom/);
+    expect(recorded).toEqual([]);
+    flushPendingWarnings(); // nothing queued — the earlier notice was dropped
+    expect(recorded).toEqual([]);
   });
 
-  test("§5.4 an ACTIVE sink that throws on a scan is contained and retried, not lost", () => {
+  test("§5.4 an ACTIVE sink that throws on a scan is contained; the warning is dropped, not retried", () => {
     // The sink already exists during steady-state polling. A scan produces a drop
-    // whose recordWarnings throws: the throw must be CONTAINED (scan does not throw)
-    // and the notice must stay queued so a later scan re-delivers it — otherwise a
-    // transient persist failure both loses the notice and stops observation.
+    // whose listener throws: the throw must be CONTAINED (scan does not throw) so
+    // observation continues, and the warning is DROPPED — live-only, a human's
+    // terminal does not re-show a banner, so it is never re-delivered on a later scan.
     const emitter = fakeEmitter(() => undefined);
     const recorded: ElwoodWarningEvent[] = [];
     let failNext = true;
@@ -90,7 +92,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
       recordWarnings: (w) => {
         if (!failNext) return void recorded.push(...w);
         failNext = false;
-        throw new Error("persist boom");
+        throw new Error("listener boom");
       },
     };
     const { watcher } = createTranscriptWatcher("s9", emitter, () => sink);
@@ -99,13 +101,14 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     watcher.observe(path);
     writeFileSync(path, "{ bad }\n");
     expect(() => watcher.scan()).not.toThrow(); // first scan's delivery throws, contained
-    expect(recorded).toEqual([]); // nothing recorded on the throwing delivery
+    expect(recorded).toEqual([]); // the dropped warning was NOT retained
     writeFileSync(path, "{ also-bad }\n");
-    watcher.scan(); // a later scan re-delivers the retained notice
-    expect(recorded.some((w) => w.code === "transcript_records_dropped")).toBe(true);
+    watcher.scan(); // a later scan's OWN drop delivers (the first was dropped, not retried)
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]?.code).toBe("transcript_records_dropped");
   });
 
-  test("with a warning sink, a drop is routed through recordWarnings (persist + dedup)", () => {
+  test("with a warning sink, a drop is routed through recordWarnings as a live warning", () => {
     const activities: ElwoodActivityEvent[] = [];
     const emitter = fakeEmitter((a) => activities.push(a));
     const recorded: ElwoodWarningEvent[] = [];
@@ -116,13 +119,13 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     watcher.observe(path);
     writeFileSync(path, "{ bad }\n");
     watcher.finish();
-    // The drop went to the sink (persist/dedup/warning contract), NOT emitted as
+    // The drop went to the sink (live warning/activity contract), NOT emitted as
     // a raw activity by the watcher itself.
     expect(recorded).toHaveLength(1);
     expect(recorded[0]).toMatchObject({
       code: "transcript_records_dropped",
       agent: "claude",
-      droppedCount: 1,
+      cause: "unparseable",
       transcriptPath: path,
     });
     expect(activities).not.toContainEqual(expect.objectContaining({ kind: "warning" }));
@@ -143,7 +146,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     expect(recorded.at(-1)).toMatchObject({
       code: "transcript_read_error",
       agent: "claude",
-      errorCount: expect.any(Number),
+      lastErrorCode: expect.any(String),
       transcriptPath: path,
     });
   });
@@ -157,7 +160,7 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     });
     // A short poll cadence via the seam + waitFor makes the timer-path assertion
     // deterministic, not a fixed sleep race (the pattern used in the recovery tests).
-    const { watcher } = createTranscriptWatcher("s9", emitter, () => sink, {}, 5);
+    const { watcher } = createTranscriptWatcher("s9", emitter, () => sink, 5);
     const path = tmpFile();
     try {
       writeFileSync(path, "");

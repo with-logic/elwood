@@ -1,8 +1,8 @@
 /**
- * Parses committed transcript lines into activity events, counting drops.
+ * Parses committed transcript lines into activity events, surfacing drops live.
  * Implements PRD §5.4 (C-CLAUDE-15): only committed, parseable records become
- * activity; a malformed line or a discarded over-length record is counted, never
- * emitted.
+ * activity; a malformed line or a discarded over-length record is surfaced as one
+ * live drop warning, never emitted as activity.
  */
 
 import type { TranscriptCursor } from "./cursor.ts";
@@ -35,21 +35,10 @@ export class LineEmitter {
       for (const line of text.split(/\r?\n/)) this.emitLine(path, line);
       return;
     }
-    const { lines, droppedBytes, discard } = cursor.takeLines(text);
-    // An over-length un-terminated record was discarded, not emitted: report its
-    // bytes as a drop so the truncation is visible rather than silent (§5.4). The
-    // record COUNT is driven by the cursor's EXPLICIT transition, never inferred:
-    // `started` began a fresh over-length record (+1) — even when the same chunk
-    // ALSO closed a prior discard, so two consecutive over-length records split
-    // across one chunk boundary count as TWO, not one — while `continuing`/`ended`
-    // add bytes only (records=0), so one record is never counted per chunk.
-    if (droppedBytes > 0)
-      this.drops.accountDrop({
-        path,
-        bytes: droppedBytes,
-        incidents: discard === "started" ? 1 : 0,
-        cause: "oversized",
-      });
+    const { lines, dropped } = cursor.takeLines(text);
+    // An over-length un-terminated record was discarded, not emitted: surface one
+    // live drop warning so the truncation is visible rather than silent (§5.4).
+    if (dropped) this.drops.drop(path, "oversized");
     for (const line of lines) this.emitLine(path, line);
   }
 
@@ -57,7 +46,7 @@ export class LineEmitter {
     if (!line.trim()) return;
     const item = parseLine(line);
     if (item === undefined) {
-      this.drops.record(path, line);
+      this.drops.record(path);
       return;
     }
     for (const summary of summarizeClaudeRecord(item)) {

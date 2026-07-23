@@ -4,7 +4,7 @@
  */
 
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity.ts";
-import { type TrustPromptIdFor, trustPromptAllowlist } from "./trust-prompts.ts";
+import type { TrustPromptIdFor } from "./trust-prompts.ts";
 
 export type { TrustPromptIdFor } from "./trust-prompts.ts";
 
@@ -36,28 +36,6 @@ type NonTrustStartupLabel<A extends ElwoodAgentKind> = (typeof nonTrustStartupLa
 export type StartupPromptLabelFor<A extends ElwoodAgentKind> =
   | TrustPromptIdFor<A>
   | NonTrustStartupLabel<A>;
-
-/** Per-agent startup-prompt label sets: an agent's own trust ids plus its non-trust labels. */
-const startupPromptLabelsByAgent: Readonly<Record<ElwoodAgentKind, ReadonlySet<string>>> = {
-  claude: labelsFor("claude"),
-  codex: labelsFor("codex"),
-};
-
-function labelsFor(agent: ElwoodAgentKind): ReadonlySet<string> {
-  return new Set<string>([
-    ...trustPromptAllowlist.filter((spec) => spec.agent === agent).map((spec) => spec.id),
-    ...nonTrustStartupLabels[agent],
-  ]);
-}
-
-/**
- * True when `value` is a startup-prompt label that belongs to `agent`. Bounds a
- * persisted `startup_prompt_write_failed` so an off-agent pairing (Claude +
- * `update`, Codex + `browser_tools`) can never round-trip (§5.4).
- */
-export function isStartupPromptLabelForAgent(agent: ElwoodAgentKind, value: unknown): boolean {
-  return typeof value === "string" && startupPromptLabelsByAgent[agent].has(value);
-}
 
 /**
  * The outcome of handling a startup prompt for agent `A`, discriminated so the

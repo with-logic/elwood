@@ -1,11 +1,10 @@
 /**
- * Shared warning persistence and emission for all adapter sessions.
- * Implements PRD §5.7 and §8.2: warnings are de-duplicated into the session
- * snapshot, persisted when the snapshot changes, and emitted as `warning` +
- * `activity` only on first observation of a given warning key.
+ * Shared live-only warning emission for all adapter sessions.
+ * Implements PRD §5.7: a warning is emitted ONCE when observed, as a `warning`
+ * event plus its `activity`, and is never persisted, replayed, deduplicated, or
+ * counted. This mirrors the human experience — a banner flashes live, then it's gone.
  */
 
-import { type SessionRecord, upsertSessionWarning } from "../state/store.ts";
 import { activityFromWarning, type ElwoodActivityEvent } from "./activity.ts";
 import type { ElwoodWarningEvent } from "./types.ts";
 
@@ -20,27 +19,16 @@ export type WarningEmit = {
   readonly activity: (event: ElwoodActivityEvent) => void;
 };
 
-export function recordSessionWarnings(
-  record: SessionRecord,
+export function emitSessionWarnings(
   warnings: readonly ElwoodWarningEvent[],
-  persist: (record: SessionRecord) => void,
   emit: WarningEmit,
 ): void {
-  let current = record;
   for (const warning of warnings) {
-    const result = upsertSessionWarning(current, warning);
-    current = result.record;
-    // Deliver the user-facing signal BEFORE persistence and ISOLATE the two
-    // emits: a disk failure must not drop the warning/activity a caller relies on,
-    // and one throwing listener must not suppress the other event. The first
-    // listener error is rethrown after both fire + persistence is attempted, so an
-    // enclosing boundary still sees it.
-    let firstError: unknown;
-    if (result.isNew) {
-      firstError = deliver(() => emit.warning(warning));
-      firstError = deliver(() => emit.activity(activityFromWarning(warning)), firstError);
-    }
-    if (result.changed) persist(result.record);
+    // ISOLATE the two emits: one throwing listener must not suppress the other
+    // event. The first listener error is rethrown after both fire, so an enclosing
+    // boundary still sees it.
+    let firstError = deliver(() => emit.warning(warning));
+    firstError = deliver(() => emit.activity(activityFromWarning(warning)), firstError);
     if (firstError !== undefined) throw firstError;
   }
 }

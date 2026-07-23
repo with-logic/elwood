@@ -25,11 +25,7 @@ function readRecord(stateDir: string, id: string): Record<string, { launch?: unk
 
 function resumableRecord(cwd: string, stateDir: string, id: string) {
   prepareStateDir(stateDir);
-  const record = updateSessionResumeId(
-    createSessionRecord({ stateDir, cwd, id }),
-    "claude",
-    "claude-native",
-  );
+  const record = updateSessionResumeId(createSessionRecord({ cwd, id }), "claude", "claude-native");
   return record;
 }
 
@@ -56,13 +52,16 @@ describe("launch posture persistence", () => {
     const cwd = tempDir();
     const stateDir = join(cwd, ".elwood");
     const record = resumableRecord(cwd, stateDir, "posture-bare");
-    writeSessionRecord({
-      ...record,
-      claude: {
-        ...record.claude,
-        launch: { permissionMode: "bypassPermissions", tools: ["Read"] },
+    writeSessionRecord(
+      {
+        ...record,
+        claude: {
+          ...record.claude,
+          launch: { permissionMode: "bypassPermissions", tools: ["Read"] },
+        },
       },
-    });
+      sessionDir(stateDir, "posture-bare"),
+    );
     installFakes();
     await resumeClaude({ cwd, elwoodSessionId: "posture-bare" });
     const args = ptys[0]!.options.args.join(" ");
@@ -74,13 +73,16 @@ describe("launch posture persistence", () => {
     const cwd = tempDir();
     const stateDir = join(cwd, ".elwood");
     const record = resumableRecord(cwd, stateDir, "posture-override");
-    writeSessionRecord({
-      ...record,
-      claude: {
-        ...record.claude,
-        launch: { permissionMode: "bypassPermissions", tools: ["Read"] },
+    writeSessionRecord(
+      {
+        ...record,
+        claude: {
+          ...record.claude,
+          launch: { permissionMode: "bypassPermissions", tools: ["Read"] },
+        },
       },
-    });
+      sessionDir(stateDir, "posture-override"),
+    );
     installFakes();
     await resumeClaude({ cwd, elwoodSessionId: "posture-override", permissionMode: "plan" });
     const args = ptys[0]!.options.args.join(" ");

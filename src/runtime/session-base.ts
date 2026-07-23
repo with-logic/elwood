@@ -8,9 +8,9 @@ import type { AgentModelOption } from "../core/model-rows.ts";
 import { type PasteGuard, writeQueuedInput } from "../core/session-input.ts";
 import type { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
-import { replayWarningSnapshots } from "../core/warning-replay.ts";
 import type { PtyProcess } from "../pty/types.ts";
-import { type SessionRecord, updateSessionStatus, writeSessionRecord } from "../state/store.ts";
+import type { SessionRuntime } from "../state/runtime-paths.ts";
+import { type SessionRecord, writeSessionRecord } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { CleanupLatch } from "./cleanup-latch.ts";
 import { advanceInitialReady } from "./initial-ready-advance.ts";
@@ -24,7 +24,7 @@ import {
   type SubmitKind,
 } from "./session-image-attach.ts";
 import { SessionReapPolicy } from "./session-reap.ts";
-import { applyResize, persistHeldResize, restoreHeldResize } from "./session-resize.ts";
+import { applyResize, restoreHeldResize } from "./session-resize.ts";
 import { managedShutdown, type ShutdownEvidence } from "./session-shutdown.ts";
 import { terminalStatuses } from "./session-status.ts";
 import { ShutdownCoordinator } from "./shutdown-coordinator.ts";
@@ -37,6 +37,8 @@ export abstract class AgentSessionBase {
   readonly terminal: ElwoodTerminal;
   protected abstract readonly picker: ModelPickerSpec;
   private readonly agent: ElwoodAgentKind;
+  private readonly stateDir: string;
+  private readonly runtime: SessionRuntime;
   private readonly pty: PtyProcess;
   private readonly reapPolicy: SessionReapPolicy;
   private readonly commands: CommandSurface;
@@ -58,7 +60,9 @@ export abstract class AgentSessionBase {
     () => this.status === "running",
   );
   private readonly statusEngine = new SessionStatusEngine({
-    persistStatus: (status) => this.persistStatus(status),
+    onReady: () => {
+      this.everReady = true;
+    },
     emitStatus: (status) =>
       emitStatusEvents(this.statusEvents, this.agent, this.elwoodSessionId, status),
     queueRunning: () => this.controlQueue.suspendReadiness(),
@@ -70,6 +74,8 @@ export abstract class AgentSessionBase {
   protected constructor(
     agent: ElwoodAgentKind,
     record: SessionRecord,
+    stateDir: string,
+    runtime: SessionRuntime,
     pty: PtyProcess,
     terminal: ElwoodTerminal,
     statusEvents: SessionStatusEmitter,
@@ -77,6 +83,8 @@ export abstract class AgentSessionBase {
   ) {
     this.agent = agent;
     this.record = record;
+    this.stateDir = stateDir;
+    this.runtime = runtime;
     this.pty = pty;
     this.reapPolicy = new SessionReapPolicy(agent, record.elwoodSessionId, pty.pid);
     this.terminal = terminal;
@@ -100,9 +108,6 @@ export abstract class AgentSessionBase {
   get status(): ElwoodSessionStatus {
     return this.statusEngine.status;
   }
-  get warnings(): readonly ElwoodWarningEvent[] {
-    return this.record.warnings;
-  }
   protected get hasBeenReady(): boolean {
     return this.everReady;
   }
@@ -120,14 +125,10 @@ export abstract class AgentSessionBase {
   sendKeys = (input: string | Uint8Array): Promise<void> =>
     this.inSession(() => this.terminal.sendInput(input));
   resize(size: TerminalSize): Promise<void> {
-    return this.inSession(() => applyResize(this.pty, this.terminal, this.persistSize, size));
+    return this.inSession(() => applyResize(this.pty, this.terminal, size));
   }
-  protected persistHeldSize = (size: TerminalSize) =>
-    void persistHeldResize(this.pty, this.terminal, this.persistSize, size);
   protected restoreHeldSize = (size: TerminalSize) =>
     void restoreHeldResize(this.pty, this.terminal, size);
-  private readonly persistSize = (size: TerminalSize) =>
-    this.persist(updateSessionStatus({ ...this.record, terminalSize: size }, this.status));
   interrupt = (o?: { readonly timeoutMs?: number }) =>
     this.inSession(() => this.commands.interrupt(o));
   compact = (o?: { readonly timeoutMs?: number }) => this.inSession(() => this.commands.compact(o));
@@ -138,7 +139,9 @@ export abstract class AgentSessionBase {
   }
   private readonly shutdown = managedShutdown(this.shutdownCoordinator, () => ({
     pty: this.pty,
-    record: this.record,
+    stateDir: this.stateDir,
+    elwoodSessionId: this.elwoodSessionId,
+    socketPath: this.runtime.socketPath,
     reapPolicy: this.reapPolicy,
     status: () => this.status,
     claimShutdown: (e: ShutdownEvidence) => {
@@ -165,7 +168,6 @@ export abstract class AgentSessionBase {
   protected abstract recordWarnings(warnings: readonly ElwoodWarningEvent[]): void;
   protected replayFor(event: string, handler: unknown): void {
     if (event === "terminal:data") this.terminalReplay.replay(handler as never);
-    replayWarningSnapshots(this.record.warnings, event, handler as (event: never) => void);
   }
   protected inSession<T>(work: () => Promise<T> | T): Promise<T> {
     if (terminalStatuses.has(this.status)) return Promise.reject(notRunningError(this.agent));
@@ -176,7 +178,7 @@ export abstract class AgentSessionBase {
     }
   }
   protected persist(record: SessionRecord): void {
-    writeSessionRecord(record); // durable write FIRST, commit in-memory on success (C-CLAUDE-18)
+    writeSessionRecord(record, this.runtime.sessionDir); // durable write FIRST, commit on success (C-CLAUDE-18)
     this.record = record;
   }
   protected cleanupRuntime(): Promise<void> {
@@ -186,15 +188,9 @@ export abstract class AgentSessionBase {
     advanceInitialReady({
       agent: this.agent,
       elwoodSessionId: this.elwoodSessionId,
-      record: this.record,
       submitInitialReady: () => this.submitEvidence("initial_ready"),
-      persist: (r) => this.persist(r),
       markReady: () => this.controlQueue.markReady(),
       recordWarnings: (w) => this.recordWarnings(w),
     });
-  }
-  private persistStatus(status: ElwoodSessionStatus): void {
-    this.everReady ||= status === "ready"; // durable persist split from emit (C-API-42)
-    this.persist(updateSessionStatus(this.record, status));
   }
 }

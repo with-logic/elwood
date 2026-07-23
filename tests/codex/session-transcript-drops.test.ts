@@ -9,7 +9,7 @@
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { startCodex } from "../../src/index.ts";
+import { type ElwoodWarningEvent, startCodex } from "../../src/index.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -25,8 +25,8 @@ describe("CodexSession transcript drops (§5.4)", () => {
     installFakes();
     writeFileSync(transcript, "");
     const session = await startCodex({ cwd });
-    const warnings: string[] = [];
-    session.on("warning", (event) => warnings.push(event.code));
+    const warnings: ElwoodWarningEvent[] = [];
+    session.on("warning", (event) => warnings.push(event));
     // Start observing the transcript, then write an over-length record with no newline.
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       hook_event_name: "SessionStart",
@@ -41,9 +41,9 @@ describe("CodexSession transcript drops (§5.4)", () => {
     // oversized pending record and fires the drop notice through the session sink.
     ptys[0]!.emitExit({ exitCode: 0 });
     await new Promise((resolve) => setImmediate(resolve));
-    expect(warnings).toContain("transcript_records_dropped");
-    // The warning is content-free: it carries a count/cause, never the record bytes.
-    const dropped = session.warnings.find((w) => w.code === "transcript_records_dropped");
+    expect(warnings.map((w) => w.code)).toContain("transcript_records_dropped");
+    // The warning is content-free: it carries a cause/path, never the record bytes.
+    const dropped = warnings.find((w) => w.code === "transcript_records_dropped");
     expect(dropped).toBeDefined();
     expect(JSON.stringify(dropped)).not.toContain("xxxxx");
   });

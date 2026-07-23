@@ -18,15 +18,16 @@ describe("ClaudeSession trust-prompt render delay", () => {
     installFakes();
     const session = await startClaude({ cwd, autotrust: true });
     const attention: string[] = [];
+    const warnings: string[] = [];
     session.on("activity", (e) => e.kind === "attention" && attention.push(e.label));
+    session.on("warning", (w) => warnings.push(w.code));
     // A recognized folder-trust HEADER whose affirmative option has not rendered
     // yet — the responder emits a fire-once TRANSIENT attention and keeps watching.
     ptys[0]!.emitData("Do you trust this folder?\r\n1. No, cancel\r\n");
     await expect.poll(() => attention).toContain("workspace_trust");
-    // The transient render-delay state persists NO durable warning: it would
-    // otherwise replay a false "not auto-answered" record even after the prompt is
-    // answered on a later frame.
-    expect(session.warnings.map((w) => w.code)).not.toContain("trust_prompt_unanswerable");
+    // The transient render-delay state emits NO warning: it would otherwise surface a
+    // false "not auto-answered" signal even after the prompt is answered on a later frame.
+    expect(warnings).not.toContain("trust_prompt_unanswerable");
     expect(ptys[0]!.writes).toEqual([]); // nothing auto-answered yet
   });
 
@@ -34,26 +35,28 @@ describe("ClaudeSession trust-prompt render delay", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd, autotrust: true });
+    const warnings: string[] = [];
+    session.on("warning", (w) => warnings.push(w.code));
     // Frame 1: header only, option not rendered — transient pending, nothing sent.
     ptys[0]!.emitData("Do you trust this folder?\r\n");
     // Frame 2: the affirmative option now paints — Elwood answers it.
     ptys[0]!.emitData("Do you trust this folder?\r\n1. Yes, I trust this folder\r\n");
     await expect.poll(() => ptys[0]!.writes).toEqual(["1\r"]);
-    // No stale wedge warning lingers after the prompt was successfully answered.
-    expect(session.warnings.map((w) => w.code)).not.toContain("trust_prompt_unanswerable");
+    // No stale wedge warning is emitted after the prompt was successfully answered.
+    expect(warnings).not.toContain("trust_prompt_unanswerable");
   });
 
   test("C-CLAUDE-16 a rejected trust-prompt write stays retryable and warns", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd, autotrust: true });
+    const warnings: string[] = [];
+    session.on("warning", (w) => warnings.push(w.code));
     // The PTY rejects the trust answer write: the prompt must NOT be reported as
     // answered, must stay retryable, and must surface the bounded warning.
     ptys[0]!.failOnWrite = "1\r";
     ptys[0]!.emitData("Do you trust this folder?\r\n1. Yes, I trust this folder\r\n");
-    await expect
-      .poll(() => session.warnings.map((w) => w.code))
-      .toContain("startup_prompt_write_failed");
+    await expect.poll(() => warnings).toContain("startup_prompt_write_failed");
     // Retryable: the next frame re-attempts the answer with a now-succeeding write.
     ptys[0]!.failOnWrite = undefined;
     ptys[0]!.emitData("Do you trust this folder?\r\n1. Yes, I trust this folder\r\n");

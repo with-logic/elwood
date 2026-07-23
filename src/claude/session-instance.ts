@@ -1,7 +1,7 @@
 /** In-memory Claude session object exposed to callers. Implements PRD §4.1, §5, §6, §7, §8. */
 import type { ElwoodActivityEvent } from "../core/activity.ts";
 import { sessionWaitForActivity, sessionWaitForStatus } from "../core/session-wait.ts";
-import { recordSessionWarnings } from "../core/session-warnings.ts";
+import { emitSessionWarnings } from "../core/session-warnings.ts";
 import type { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import type {
   ElwoodEventHandler,
@@ -15,6 +15,7 @@ import type { PtyProcess } from "../pty/types.ts";
 import { AgentSessionBase } from "../runtime/session-base.ts";
 import { terminalStatuses } from "../runtime/session-status.ts";
 import { runCleanupSteps } from "../runtime/teardown.ts";
+import type { SessionRuntime } from "../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { attachClaudeImages } from "./attach-images.ts";
@@ -46,6 +47,8 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
 
   constructor(
     record: SessionRecord,
+    stateDir: string,
+    runtime: SessionRuntime,
     pty: PtyProcess,
     terminal: ElwoodTerminal,
     bridge: HookBridge,
@@ -53,7 +56,7 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     terminalReplay: TerminalReplayBuffer,
     requestedSize: TerminalSize,
   ) {
-    super("claude", record, pty, terminal, emitter, terminalReplay);
+    super("claude", record, stateDir, runtime, pty, terminal, emitter, terminalReplay);
     this.bridge = bridge;
     this.emitter = emitter;
     this.requestedSize = requestedSize;
@@ -80,19 +83,17 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   // Claude reads a pasted absolute path; the paste is held while a dialog shows (C-API-45/37).
   protected attachImages = (paths: readonly string[], signal: AbortSignal): Promise<void> =>
     attachClaudeImages(this.terminal, paths, signal, () => this.status === "blocked");
-  // A narrow session holds the PHYSICAL resize until readiness but persists the
-  // requested size now (a pre-ready exit resumes at the latest geometry, not the
-  // bootstrap width). A wide session (100+ cols) never deferred; it resizes now.
+  // A narrow session holds the PHYSICAL resize until readiness; it just records the
+  // requested geometry now and restores it at the initial-ready transition. A wide
+  // session (100+ cols) never deferred; it resizes now.
   override resize(size: TerminalSize): Promise<void> {
     if (!(this.awaitingInitialReady && !terminalStatuses.has(this.status))) {
       this.requestedSize = size;
       return super.resize(size);
     }
-    // Non-terminal here: record the size now (unless the pty is racing exit) and
-    // defer the physical resize. `size` becomes the requested geometry ONLY if the
-    // held persist succeeds; a rejected persist rejects to the caller (C-API-25/39).
+    // Non-terminal here: capture the requested geometry to restore at readiness
+    // without disturbing the live bootstrap width (C-API-25/39).
     return Promise.resolve().then(() => {
-      this.persistHeldSize(size);
       this.requestedSize = size;
     });
   }
@@ -110,8 +111,8 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     }
     return Promise.resolve();
   }
-  // Apply ONLY the deferred physical geometry (already persisted by `resize`), so only
-  // a genuine native resize failure reports as staying at bootstrap width (C-API-39).
+  // Apply the deferred physical geometry, so only a genuine native resize failure
+  // reports as staying at bootstrap width (C-API-39).
   private restoreRequestedSize(): void {
     try {
       this.restoreHeldSize(this.requestedSize);
@@ -131,7 +132,7 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     this.persist(updateSessionResumeId(this.record, "claude", sessionId));
   }
   override recordWarnings(warnings: readonly ElwoodWarningEvent[]): void {
-    recordSessionWarnings(this.record, warnings, (record) => this.persist(record), {
+    emitSessionWarnings(warnings, {
       warning: (event) => this.emitter.emit("warning", event),
       activity: (event) => this.emitter.emit("activity", event),
     });

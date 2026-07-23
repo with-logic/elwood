@@ -5,13 +5,9 @@
  * arbitrary `Error.name`/`.code`, or a stringified non-Error cause.
  */
 
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { reapFailureWarning } from "../../src/core/activity.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
-import { createSessionRecord, upsertSessionWarning } from "../../src/state/store.ts";
 
 /** Narrow to the `reap_failed` member so its bounded fields are readable. */
 function reap(error: unknown, pgid = 4242): Extract<ElwoodWarningEvent, { code: "reap_failed" }> {
@@ -51,26 +47,18 @@ describe("C-LIFE-10 reapFailureWarning error-code allowlist", () => {
     ] as const) {
       const warning = reap(error);
       expect(warning.errorCode).toBe(expected);
-      // The secret appears in NO persisted field of the warning.
+      // The secret appears in NO field of the warning.
       for (const field of Object.values(warning)) {
         expect(String(field)).not.toContain(secret);
       }
     }
   });
 
-  test("a resume's NEW leaked process group is a distinct warning event", () => {
-    // warningKey includes the pgid: a resumed session with a NEW PTY leader leaks a
-    // different group, so it is a NEW event (isNew) kept alongside the prior group
-    // rather than silently replacing it; the SAME group re-observed dedups.
-    const root = mkdtempSync(join(tmpdir(), "elwood-reap-"));
-    const record = createSessionRecord({ stateDir: root, cwd: root, id: "reap-resume" });
+  test("a NEW leaked process group carries its own pgid on a distinct live warning", () => {
+    // Each reap failure is its own live warning; a resumed session's NEW PTY leader
+    // leaks a different group, surfaced as a distinct warning carrying that pgid.
     const eperm = Object.assign(new Error("x"), { code: "EPERM" });
-    const first = upsertSessionWarning(record, reap(eperm, 4242));
-    const second = upsertSessionWarning(first.record, reap(eperm, 9001));
-    const repeat = upsertSessionWarning(second.record, reap(eperm, 9001));
-    expect([first.isNew, second.isNew, repeat.isNew]).toEqual([true, true, false]);
-    expect(
-      repeat.record.warnings.map((w) => ("processGroupId" in w ? w.processGroupId : 0)),
-    ).toEqual([4242, 9001]);
+    expect(reap(eperm, 4242).processGroupId).toBe(4242);
+    expect(reap(eperm, 9001).processGroupId).toBe(9001);
   });
 });

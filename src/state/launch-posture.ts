@@ -21,7 +21,6 @@ export type CodexLaunchPosture = {
 
 export type AdapterState<Posture> = {
   readonly resumeId?: string;
-  readonly name?: string;
   readonly launch?: Posture;
 };
 

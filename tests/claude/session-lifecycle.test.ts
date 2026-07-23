@@ -7,7 +7,12 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { resumeClaude, startClaude } from "../../src/index.ts";
-import { createSessionRecord, prepareStateDir, writeSessionRecord } from "../../src/state/store.ts";
+import {
+  createSessionRecord,
+  prepareStateDir,
+  sessionDir,
+  writeSessionRecord,
+} from "../../src/state/store.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -29,7 +34,14 @@ describe("ClaudeSession lifecycle", () => {
       stateDir,
     );
     await session.stop();
-    const resumed = await resumeClaude({ cwd, stateDir, elwoodSessionId: session.elwoodSessionId });
+    // Terminal size is not persisted (near-stateless): a resume that wants a size
+    // supplies it, and the narrow session bootstraps wide then restores to it.
+    const resumed = await resumeClaude({
+      cwd,
+      stateDir,
+      elwoodSessionId: session.elwoodSessionId,
+      initialSize: { cols: 44, rows: 12 },
+    });
     expect(resumed.elwoodSessionId).toBe(session.elwoodSessionId);
     expect(ptys).toHaveLength(2);
     expect(ptys[1]!.options.size).toEqual({ cols: 100, rows: 12 });
@@ -53,13 +65,8 @@ describe("ClaudeSession lifecycle", () => {
     const cwd = tempDir();
     const stateDir = join(cwd, ".elwood");
     prepareStateDir(stateDir);
-    const record = createSessionRecord({
-      stateDir,
-      cwd,
-      id: "codex-record",
-      adapter: "codex",
-    });
-    writeSessionRecord(record);
+    const record = createSessionRecord({ cwd, id: "codex-record", adapter: "codex" });
+    writeSessionRecord(record, sessionDir(stateDir, record.elwoodSessionId));
     await expect(
       resumeClaude({ cwd, elwoodSessionId: record.elwoodSessionId }),
     ).rejects.toMatchObject({ code: "adapter_mismatch" });

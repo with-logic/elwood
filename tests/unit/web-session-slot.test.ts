@@ -177,7 +177,6 @@ function fakeSession(id: string, options: FakeOptions = {}): FakeSession {
     elwoodSessionId: id,
     cwd: "/w",
     status: "running",
-    warnings: [],
     terminal: {} as never,
     teardownCount: 0,
     statusDecisions: () => [],

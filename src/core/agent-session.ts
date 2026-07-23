@@ -47,7 +47,6 @@ export interface ElwoodAgentSession {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;
-  readonly warnings: readonly ElwoodWarningEvent[];
   readonly terminal: ElwoodTerminal;
 
   /** Live-only log of recent status decisions, oldest first, for diagnostics. */

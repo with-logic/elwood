@@ -29,9 +29,9 @@ describe("C-LIFE-10 codex exit-callback error boundary", () => {
     });
   }
 
-  test("C-LIFE-10 a reap failure on codex exit persists a durable reap_failed warning", async () => {
-    // Routes through the codex warning persistence path (recordCodexWarnings), so a
-    // leaked group is durably surfaced, content-free, with pgid + normalized code.
+  test("C-LIFE-10 a reap failure on codex exit surfaces a live reap_failed warning", async () => {
+    // Routes through the codex warning emit path (recordCodexWarnings), so a leaked
+    // group is surfaced live, content-free, with pgid + normalized code (never persisted).
     const cwd = tempDir();
     installFakes();
     setGroupKillerForTests({
@@ -40,10 +40,12 @@ describe("C-LIFE-10 codex exit-callback error boundary", () => {
       },
     });
     const session = await startCodex({ cwd });
+    const warnings: { code: string; [key: string]: unknown }[] = [];
+    session.on("warning", (event) => warnings.push(event));
     const pty = ptys[0]!;
     pty.emitExit({ exitCode: 0 });
     expect(session.status).toBe("exited");
-    expect(session.warnings).toMatchObject([
+    expect(warnings).toMatchObject([
       { code: "reap_failed", source: "lifecycle", processGroupId: pty.pid, errorCode: "EPERM" },
     ]);
   });
