@@ -135,6 +135,28 @@ prompt (e.g. hook trust) with a generic "Yes". `src/core/trust-responder.ts`,
   stripped by an editor/pipeline (this once neutered an interrupt e2e). Always
   write the escape sequence form (``), never a raw ESC character.
 
+## Hook bridge socket path length (macOS ~104-byte cap)
+
+macOS caps a Unix domain socket path near 104 bytes (`sockaddr_un.sun_path`); binding
+a longer path fails with `EINVAL`/`Ebadf`-class errors surfaced as `hook_bridge_failed`.
+This is why the bridge socket lives OUTSIDE `stateDir` — a caller nesting Elwood state
+even ~55 chars deep would otherwise make sessions unstartable. The socket home is under
+`os.tmpdir()` (honors `$TMPDIR`); production paths look like
+`/var/folders/xx/…/T/elwood-<16hex>/<8>.sock` (~90 bytes on macOS), under the cap.
+`tests/claude/session-socket.test.ts` guards the invariant against the REAL production
+path with a deeply nested `stateDir`.
+
+**The trap that bit us twice.** The regression was never in production — it was in the
+socket-*leak* tests' `isolateTmp()` helper, which nests a PRIVATE isolation dir under
+`os.tmpdir()` (so a test sees only its own homes) and thereby ADDS a path segment
+production never has. Stacked on the (later) fixed-length `elwood-<16hex>` home name,
+that synthetic path crossed 104 bytes — but only where `os.tmpdir()` is already long
+(macOS `/var/folders/...`). On Linux CI, `os.tmpdir()` is `/tmp`, so it passed there and
+the failure was environment-masked. Fix: root the leak tests' isolation dir at a SHORT
+`/tmp/elwood-sockhome-*`, not under `os.tmpdir()`. If you add any test that mints an
+isolation dir the bridge binds a socket under, keep that root short and assert
+`socketPath.length < 104` so a long-tmp machine can't hide the overflow.
+
 ## Testing against the real CLIs
 
 - `test:e2e` runs **serially** (`--test-concurrency=1`): Codex config-file

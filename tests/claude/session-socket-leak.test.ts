@@ -13,13 +13,14 @@
  * — never a parallel worker's — making the assertions exact.
  */
 
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { setHookBridgeFactoryForTests } from "../../src/claude/session.ts";
 import { resumeClaude, startClaude } from "../../src/index.ts";
 import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import { boundSocketPathLength, socketFilesIn, socketHomesIn } from "../helpers/socket-leak.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 const realTmp = tmpdir();
@@ -44,24 +45,16 @@ function isolateTmp(): string {
   return privateTmp;
 }
 
-/** `elwood-`-prefixed dirs under the private tmp — the socket-home shape. */
-function socketHomesIn(dir: string): string[] {
-  return readdirSync(dir)
-    .filter((entry) => entry.startsWith("elwood-"))
-    .map((entry) => join(dir, entry))
-    .filter((full) => statSync(full).isDirectory());
-}
-
-/** `.sock` files across every socket home under the private tmp — the leak we guard. */
-function socketFilesIn(dir: string): string[] {
-  return socketHomesIn(dir).flatMap((home) =>
-    readdirSync(home)
-      .filter((entry) => entry.endsWith(".sock"))
-      .map((entry) => join(home, entry)),
-  );
-}
-
 describe("§9.1 a failed Claude start does not leak its socket file", () => {
+  test("§8.1 the isolated-tmp bound socket path clears the ~104-byte cap on ANY machine", () => {
+    // Guards the leak-test harness itself: the isolation dir must stay short enough that
+    // <priv>/elwood-<16hex>/<8>.sock clears the macOS sun_path cap. Asserting it here (not
+    // only via a bridge `listen` failure) keeps a long-`os.tmpdir()` machine from masking
+    // an overflow that short-`/tmp` Linux CI would silently pass.
+    const priv = isolateTmp();
+    expect(boundSocketPathLength(priv)).toBeLessThan(104);
+  });
+
   test("a bridge-start failure removes its own socket file AND shuts down the partial bridge", async () => {
     const cwd = tempDir(); // created under the REAL tmp, before we isolate
     installFakes();
