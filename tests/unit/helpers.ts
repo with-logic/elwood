@@ -6,7 +6,7 @@ export function tempDirForUnit(): string {
   return mkdtempSync(join(tmpdir(), "elwood-unit-"));
 }
 
-export async function sendBridge(socketPath: string, payload: string): Promise<string> {
+export function sendBridge(socketPath: string, payload: string): Promise<string> {
   return sendRaw(socketPath, `${payload}\n`);
 }
 

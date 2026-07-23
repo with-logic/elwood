@@ -50,7 +50,9 @@ export function runCodexModelSwitch(io: CodexModelSwitch): Promise<void> {
       if (!failed) throw restoreError;
       try {
         io.onRestoreError?.(restoreError);
-      } catch {}
+      } catch {
+        // A throwing reporter must not replace the primary error we preserve below.
+      }
     }
     if (failed) throw primary;
   });
