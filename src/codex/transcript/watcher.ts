@@ -19,7 +19,7 @@ import type { CodexTranscriptNotices, CodexTranscriptSeed } from "./watcher-conf
 export type { CodexDropNotice, CodexReadErrorNotice } from "./drops.ts";
 export type { CodexTranscriptNotices, CodexTranscriptSeed } from "./watcher-config.ts";
 
-const scanMs = 250; // poll cadence: transcript activity is not latency-critical
+const defaultScanIntervalMs = 250; // poll cadence: transcript activity is not latency-critical
 /** Read passes per scan (×256 KiB ≈ 4 MiB): a huge delta drains across ticks, not one block. */
 const scanChunksPerScan = 16;
 
@@ -34,7 +34,7 @@ export class CodexTranscriptWatcher {
   private readonly onPollError: ((error: unknown) => void) | undefined;
   // ONE budget shared across every flush() for a watcher's whole lifetime.
   private readonly terminalBudget: ChunkBudget = newTerminalBudget();
-  private readonly scanSliceMs: number | undefined;
+  private readonly scanIntervalMs: number | undefined;
 
   constructor(
     elwoodSessionId: string,
@@ -51,7 +51,7 @@ export class CodexTranscriptWatcher {
     this.guard = new CodexTranscriptFsGuard(readErrors);
     this.lines = new CodexLineEmitter(elwoodSessionId, emit, this.drops);
     this.onPollError = notices.onPollError;
-    this.scanSliceMs = notices.scanIntervalMs;
+    this.scanIntervalMs = notices.scanIntervalMs;
   }
 
   // Begin watching `path`, baselining at its CURRENT end so history is NOT replayed.
@@ -65,7 +65,7 @@ export class CodexTranscriptWatcher {
     // A scan() throw (a warning-state write or a throwing drop/activity listener) must
     // not escape the timer as an uncaught exception — contain it, stop, and route a
     // bounded diagnostic (non-throwing recovery), mirroring Claude's poll recovery.
-    this.interval = setInterval(() => this.runScan(), this.scanSliceMs ?? scanMs);
+    this.interval = setInterval(() => this.runScan(), this.scanIntervalMs ?? defaultScanIntervalMs);
     this.interval.unref?.();
   }
 

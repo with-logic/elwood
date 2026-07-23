@@ -7,7 +7,7 @@
  */
 
 import type { AgentKind } from "./agent-runtime.ts";
-import type { ClientMessage } from "./web-messages.ts";
+import type { ClientMessage, ClientMessageType } from "./web-messages.ts";
 
 /**
  * Parse and validate a raw JSON frame into a `ClientMessage`. Parses to
@@ -26,25 +26,44 @@ export function parseClientMessage(raw: string): ClientMessage {
   return validateByType(parsed, parsed["type"]);
 }
 
+// Every `ClientMessageType` must appear here, so a NEW message variant fails to
+// compile until `validateByType` handles it — the parser can never silently reject a
+// type the public union declares. The values are unused; only key-exhaustiveness matters.
+const KNOWN_TYPES = {
+  start: true,
+  prompt: true,
+  keys: true,
+  resize: true,
+  stop: true,
+  kill: true,
+  teardown: true,
+} satisfies Record<ClientMessageType, true>;
+
 function validateByType(record: Record<string, unknown>, type: string): ClientMessage {
-  switch (type) {
+  if (!Object.hasOwn(KNOWN_TYPES, type)) {
+    throw new Error(`Unknown client message type: ${type}`);
+  }
+  const known = type as ClientMessageType;
+  switch (known) {
     case "start":
       return validateStart(record);
     case "prompt":
     case "keys":
-      return { type, value: requireString(record, "value", type) };
+      return { type: known, value: requireString(record, "value", known) };
     case "resize":
       return {
-        type,
-        cols: requireNumber(record, "cols", type),
-        rows: requireNumber(record, "rows", type),
+        type: known,
+        cols: requireNumber(record, "cols", known),
+        rows: requireNumber(record, "rows", known),
       };
     case "stop":
     case "kill":
     case "teardown":
-      return { type };
-    default:
-      throw new Error(`Unknown client message type: ${type}`);
+      return { type: known };
+    // No `default`: the unknown-type guard above already threw, so every remaining
+    // case is a known type. Omitting default makes an UNHANDLED new ClientMessageType
+    // fall through to an implicit `undefined` return, which fails the `: ClientMessage`
+    // return contract at compile time — exhaustiveness without a runtime-dead branch.
   }
 }
 

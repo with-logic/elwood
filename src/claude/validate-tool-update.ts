@@ -22,7 +22,7 @@ export function isClaudeToolInputUpdate(toolName: string | undefined, value: unk
   if (!isRecord(value)) return false;
   if (toolName === "Agent") return isAgentUpdate(value);
   if (toolName === "AskUserQuestion") return isAskUserQuestionUpdate(value);
-  if (toolName === "Bash" || toolName === "PowerShell") return isBashUpdate(value);
+  if (toolName === "Bash" || toolName === "PowerShell") return isShellCommandUpdate(value);
   if (toolName === "Edit") return isEditUpdate(value);
   if (toolName === "ExitPlanMode") return isExitPlanModeUpdate(value);
   if (toolName === "Glob") return isGlobUpdate(value);
@@ -47,7 +47,9 @@ function isAskUserQuestionUpdate(value: Readonly<Record<string, unknown>>): bool
   return partial(value, { questions: optionalQuestions, answers: optionalAnswers });
 }
 
-function isBashUpdate(value: Readonly<Record<string, unknown>>): boolean {
+// Shared by the Bash AND PowerShell tools (same documented input shape); the name
+// makes that shared ownership explicit rather than hiding it behind "Bash".
+function isShellCommandUpdate(value: Readonly<Record<string, unknown>>): boolean {
   return partial(value, {
     command: optionalString,
     description: optionalString,
