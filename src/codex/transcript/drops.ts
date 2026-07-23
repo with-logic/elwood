@@ -126,7 +126,10 @@ export class CodexReadErrorTracker {
 
   record(path: string, error: unknown): void {
     this.count += 1;
-    const lastErrorCode = (error as NodeJS.ErrnoException)?.code ?? "UNKNOWN";
+    // `code` is only a string on a real errno; a non-string (e.g. a numeric `code`)
+    // must NOT round-trip as `lastErrorCode`, whose public/persisted type is a string.
+    const code = (error as { code?: unknown } | null)?.code;
+    const lastErrorCode = typeof code === "string" ? code : "UNKNOWN";
     this.onError?.({
       elwoodSessionId: this.elwoodSessionId,
       path,

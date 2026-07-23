@@ -51,6 +51,15 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
   so a failed durable status write is retried on the next hook/frame/deadline
   rather than consuming readiness and wedging the queue. (C-API-28)
 
+- **Transcript reading no longer spins on an incomplete UTF-8 tail.** A partial
+  write that ends mid-code-point made the reader re-read the same bytes up to
+  64×/second per session; it now reports no-progress and resumes on the next tick
+  once the rest of the code point is committed (both adapters).
+
+- **`transcript_read_error`'s `lastErrorCode` is always a string.** A non-string
+  errno `code` (e.g. a numeric code) is now normalized to `"UNKNOWN"` instead of
+  round-tripping a number through the string-typed field.
+
 - **Codex transcript reading is bounded and crash-safe.** The reader reads in
   fixed-size chunks with a max-pending ceiling, streams a large backlog across poll
   ticks, and drains within a bounded budget at exit — a hundreds-of-MiB transcript

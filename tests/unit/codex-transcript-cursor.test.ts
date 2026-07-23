@@ -49,6 +49,20 @@ describe("Codex bounded cursor", () => {
     expect(cursor.readChunk().more).toBe(false);
   });
 
+  test("C-API-12 a read that consumes ZERO bytes (incomplete UTF-8 tail) reports more:false — no spin", () => {
+    // The file grew by exactly one incomplete-code-point byte (a partial write). The
+    // byte reader returns it, but completeUtf8Length is 0, so the read advances 0 bytes.
+    // readChunk MUST report more:false so the scan loop stops rather than re-reading
+    // the same byte up to 16×/tick until the rest of the code point lands.
+    const path = join(tempDirForUnit(), "partial.jsonl");
+    writeFileSync(path, "");
+    const cursor = new CodexTranscriptCursor(path);
+    appendFileSync(path, Buffer.from([0xc3])); // lead byte of "é", rest not yet written
+    setByteReaderForTests(() => Buffer.from([0xc3]));
+    const chunk = cursor.readChunk();
+    expect(chunk).toEqual({ text: "", more: false }); // no progress, no spin
+  });
+
   test("C-API-12 readChunk restarts at 0 on truncation and reports no growth", () => {
     const path = join(tempDirForUnit(), "trunc.jsonl");
     writeFileSync(path, "aaaa\n");

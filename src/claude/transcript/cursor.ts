@@ -101,7 +101,12 @@ export class TranscriptCursor {
     const { text, bytes } = readRange(this.path, from, want);
     // Advance by bytes actually consumed (a split code point waits), no drift.
     this.offset = from + bytes;
-    return { text, more: this.offset < size };
+    // A read that consumed ZERO bytes (the window is entirely an incomplete UTF-8
+    // sequence — a partial write at EOF) made no progress: report `more: false` so
+    // the poll/drain loop stops this pass instead of spinning on the same bytes. The
+    // next tick re-reads once the rest of the code point is committed.
+    const advanced = bytes > 0;
+    return { text, more: advanced && this.offset < size };
   }
 
   // Split buffered text into complete lines, retaining any trailing partial. A

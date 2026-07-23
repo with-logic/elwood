@@ -51,8 +51,9 @@ describe("Codex drop + read-error tracking", () => {
     const tracker = new CodexReadErrorTracker("s", (n) => errs.push(n), { errorCount: 2 });
     tracker.record("/t", { code: "EISDIR" });
     tracker.record("/t", new Error("boom")); // no `.code` → UNKNOWN
-    expect(errs.map((e) => e.errorCount)).toEqual([3, 4]);
-    expect(errs.map((e) => e.lastErrorCode)).toEqual(["EISDIR", "UNKNOWN"]);
+    tracker.record("/t", { code: 5 }); // a NUMERIC code must NOT round-trip → UNKNOWN
+    expect(errs.map((e) => e.errorCount)).toEqual([3, 4, 5]);
+    expect(errs.map((e) => e.lastErrorCode)).toEqual(["EISDIR", "UNKNOWN", "UNKNOWN"]);
     const silent = new CodexReadErrorTracker("s", undefined);
     expect(() => silent.record("/t", {})).not.toThrow();
   });
