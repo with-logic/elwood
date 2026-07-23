@@ -6,9 +6,28 @@
  * Claude. `updatedInput` is a partial rewrite, so every documented field is
  * optional, but each present field must match the tool's documented value TYPE
  * (not merely be a permitted key). Unknown/MCP tools accept any record.
+ *
+ * Each per-tool table is `satisfies FieldChecks<Input>`, so adding a field to the
+ * public tool input type forces a matching check here (a missing key fails to
+ * compile) — the validator can no longer silently drift from the shape it guards.
  */
 
+import type {
+  AgentInput,
+  AskUserQuestionInput,
+  BashInput,
+  EditInput,
+  ExitPlanModeInput,
+  GlobInput,
+  GrepInput,
+  ReadInput,
+  WebFetchInput,
+  WebSearchInput,
+  WriteInput,
+} from "./tool-types.ts";
 import {
+  type FieldCheck,
+  type FieldChecks,
   isRecord,
   optionalBoolean,
   optionalNumber,
@@ -20,99 +39,95 @@ import {
 export function isClaudeToolInputUpdate(toolName: string | undefined, value: unknown): boolean {
   if (value === undefined) return true;
   if (!isRecord(value)) return false;
-  if (toolName === "Agent") return isAgentUpdate(value);
-  if (toolName === "AskUserQuestion") return isAskUserQuestionUpdate(value);
-  if (toolName === "Bash" || toolName === "PowerShell") return isShellCommandUpdate(value);
-  if (toolName === "Edit") return isEditUpdate(value);
-  if (toolName === "ExitPlanMode") return isExitPlanModeUpdate(value);
-  if (toolName === "Glob") return isGlobUpdate(value);
-  if (toolName === "Grep") return isGrepUpdate(value);
-  if (toolName === "Read") return isReadUpdate(value);
-  if (toolName === "WebFetch") return isWebFetchUpdate(value);
-  if (toolName === "WebSearch") return isWebSearchUpdate(value);
-  if (toolName === "Write") return isWriteUpdate(value);
-  return true;
+  // An unknown/MCP tool (or absent name) has no table, so it accepts any record.
+  const checks = toolChecks[toolName ?? ""];
+  return checks === undefined ? true : partial(value, checks);
 }
 
-function isAgentUpdate(value: Readonly<Record<string, unknown>>): boolean {
-  return partial(value, {
-    prompt: optionalString,
-    description: optionalString,
-    subagent_type: optionalString,
-    model: optionalString,
-  });
-}
+const agentChecks = {
+  prompt: optionalString,
+  description: optionalString,
+  subagent_type: optionalString,
+  model: optionalString,
+} satisfies FieldChecks<AgentInput>;
 
-function isAskUserQuestionUpdate(value: Readonly<Record<string, unknown>>): boolean {
-  return partial(value, { questions: optionalQuestions, answers: optionalAnswers });
-}
+const askUserQuestionChecks = {
+  questions: optionalQuestions,
+  answers: optionalAnswers,
+} satisfies FieldChecks<AskUserQuestionInput>;
 
-// Shared by the Bash AND PowerShell tools (same documented input shape); the name
-// makes that shared ownership explicit rather than hiding it behind "Bash".
-function isShellCommandUpdate(value: Readonly<Record<string, unknown>>): boolean {
-  return partial(value, {
-    command: optionalString,
-    description: optionalString,
-    timeout: optionalNumber,
-    run_in_background: optionalBoolean,
-  });
-}
+// Shared by the Bash AND PowerShell tools (same documented BashInput shape).
+const shellChecks = {
+  command: optionalString,
+  description: optionalString,
+  timeout: optionalNumber,
+  run_in_background: optionalBoolean,
+} satisfies FieldChecks<BashInput>;
 
-function isEditUpdate(value: Readonly<Record<string, unknown>>): boolean {
-  return partial(value, {
-    file_path: optionalString,
-    old_string: optionalString,
-    new_string: optionalString,
-    replace_all: optionalBoolean,
-  });
-}
+const editChecks = {
+  file_path: optionalString,
+  old_string: optionalString,
+  new_string: optionalString,
+  replace_all: optionalBoolean,
+} satisfies FieldChecks<EditInput>;
 
-function isExitPlanModeUpdate(value: Readonly<Record<string, unknown>>): boolean {
-  return partial(value, {
-    allowedPrompts: optionalStringArray,
-    plan: optionalString,
-    planFilePath: optionalString,
-  });
-}
+const exitPlanModeChecks = {
+  allowedPrompts: optionalStringArray,
+  plan: optionalString,
+  planFilePath: optionalString,
+} satisfies FieldChecks<ExitPlanModeInput>;
 
-function isGlobUpdate(value: Readonly<Record<string, unknown>>): boolean {
-  return partial(value, { pattern: optionalString, path: optionalString });
-}
+const globChecks = {
+  pattern: optionalString,
+  path: optionalString,
+} satisfies FieldChecks<GlobInput>;
 
-function isGrepUpdate(value: Readonly<Record<string, unknown>>): boolean {
-  return partial(value, {
-    pattern: optionalString,
-    path: optionalString,
-    glob: optionalString,
-    output_mode: optionalOutputMode,
-    "-i": optionalBoolean,
-    multiline: optionalBoolean,
-  });
-}
+const grepChecks = {
+  pattern: optionalString,
+  path: optionalString,
+  glob: optionalString,
+  output_mode: optionalOutputMode,
+  "-i": optionalBoolean,
+  multiline: optionalBoolean,
+} satisfies FieldChecks<GrepInput>;
 
-function isReadUpdate(value: Readonly<Record<string, unknown>>): boolean {
-  return partial(value, {
-    file_path: optionalString,
-    offset: optionalNumber,
-    limit: optionalNumber,
-  });
-}
+const readChecks = {
+  file_path: optionalString,
+  offset: optionalNumber,
+  limit: optionalNumber,
+} satisfies FieldChecks<ReadInput>;
 
-function isWebFetchUpdate(value: Readonly<Record<string, unknown>>): boolean {
-  return partial(value, { url: optionalString, prompt: optionalString });
-}
+const webFetchChecks = {
+  url: optionalString,
+  prompt: optionalString,
+} satisfies FieldChecks<WebFetchInput>;
 
-function isWebSearchUpdate(value: Readonly<Record<string, unknown>>): boolean {
-  return partial(value, {
-    query: optionalString,
-    allowed_domains: optionalStringArray,
-    blocked_domains: optionalStringArray,
-  });
-}
+const webSearchChecks = {
+  query: optionalString,
+  allowed_domains: optionalStringArray,
+  blocked_domains: optionalStringArray,
+} satisfies FieldChecks<WebSearchInput>;
 
-function isWriteUpdate(value: Readonly<Record<string, unknown>>): boolean {
-  return partial(value, { file_path: optionalString, content: optionalString });
-}
+const writeChecks = {
+  file_path: optionalString,
+  content: optionalString,
+} satisfies FieldChecks<WriteInput>;
+
+/** Maps each known built-in tool name to its field-check table; others accept any record. */
+const toolChecks: Readonly<Record<string, Readonly<Record<string, FieldCheck>>>> = {
+  Agent: agentChecks,
+  AskUserQuestion: askUserQuestionChecks,
+  Bash: shellChecks,
+  PowerShell: shellChecks,
+  Edit: editChecks,
+  ExitPlanMode: exitPlanModeChecks,
+  Glob: globChecks,
+  Grep: grepChecks,
+  Read: readChecks,
+  WebFetch: webFetchChecks,
+  WebSearch: webSearchChecks,
+  Write: writeChecks,
+};
 
 function optionalOutputMode(value: unknown): boolean {
   return (

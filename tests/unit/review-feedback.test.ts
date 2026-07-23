@@ -48,6 +48,8 @@ describe("review feedback regressions", () => {
     expect(isClaudeToolInputUpdate("Grep", { pattern: "x" })).toBe(true);
     expect(isClaudeToolInputUpdate("Bash", { questions: [] })).toBe(false);
     expect(isClaudeToolInputUpdate("mcp__server__tool", { questions: [] })).toBe(true);
+    // A hook with no tool name has no table and accepts any record.
+    expect(isClaudeToolInputUpdate(undefined, { anything: 1 })).toBe(true);
   });
 
   test("C-LIFE-04 lifecycle statuses are monotonic after terminal states", () => {
