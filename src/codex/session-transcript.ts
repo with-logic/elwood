@@ -70,7 +70,11 @@ export function createCodexTranscriptWatcher(
   const pending: ElwoodWarningEvent[] = [];
   const flushPendingWarnings = () => {
     const sink = getSink();
-    if (sink && pending.length > 0) sink.recordWarnings(pending.splice(0));
+    if (!sink || pending.length === 0) return;
+    // Hand the sink a COPY and clear `pending` only AFTER it returns: a throwing
+    // recordWarnings must not lose the buffered notices — they stay queued to retry.
+    sink.recordWarnings([...pending]);
+    pending.length = 0;
   };
   const route = (warning: ElwoodWarningEvent) => {
     const sink = getSink();

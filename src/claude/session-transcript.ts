@@ -86,7 +86,11 @@ export function createTranscriptWatcher(
   const pending: ElwoodWarningEvent[] = [];
   const flushPendingWarnings = () => {
     const target = sink?.();
-    if (target && pending.length > 0) target.recordWarnings(pending.splice(0));
+    if (!target || pending.length === 0) return;
+    // Copy to the sink, clear only AFTER it returns: a throwing recordWarnings must
+    // not lose the buffered notices — they stay queued to retry (§5.4).
+    target.recordWarnings([...pending]);
+    pending.length = 0;
   };
   const route = (warning: ElwoodWarningEvent) => {
     const target = sink?.();

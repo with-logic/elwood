@@ -108,6 +108,30 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     expect(recorded.some((w) => w.code === "transcript_records_dropped")).toBe(true);
   });
 
+  test("§5.4 a throwing recordWarnings keeps the buffered notice queued — a retry re-delivers", () => {
+    const emitter = fakeEmitter(() => undefined);
+    const recorded: ElwoodWarningEvent[] = [];
+    let failNext = true;
+    let sink: WarningSink | undefined; // buffer the notice before the sink exists
+    const { watcher, flushPendingWarnings } = createTranscriptWatcher("s9", emitter, () => sink);
+    const path = tmpFile();
+    writeFileSync(path, "");
+    watcher.observe(path);
+    writeFileSync(path, "{ bad }\n");
+    watcher.scan(); // buffered: no sink yet
+    sink = {
+      recordWarnings: (w) => {
+        if (!failNext) return void recorded.push(...w);
+        failNext = false;
+        throw new Error("persist boom");
+      },
+    };
+    expect(() => flushPendingWarnings()).toThrow(/persist boom/);
+    expect(recorded).toEqual([]); // the throw must not have lost the notice
+    flushPendingWarnings(); // the still-queued notice re-delivers
+    expect(recorded.some((w) => w.code === "transcript_records_dropped")).toBe(true);
+  });
+
   test("with a warning sink, a drop is routed through recordWarnings (persist + dedup)", () => {
     const activities: ElwoodActivityEvent[] = [];
     const emitter = fakeEmitter((a) => activities.push(a));

@@ -94,7 +94,6 @@ export class CodexDropTracker {
   // once per malformed record — while the running count stays current.
   flush(): void {
     if (!this.dirty || this.pendingPath === undefined) return;
-    this.dirty = false;
     this.onDrop?.({
       elwoodSessionId: this.elwoodSessionId,
       path: this.pendingPath,
@@ -102,6 +101,9 @@ export class CodexDropTracker {
       droppedBytes: this.droppedBytes,
       cause: this.pendingCause,
     });
+    // Clear `dirty` only AFTER onDrop returns: a throwing sink must not drop the
+    // running total — the next flush re-emits it rather than losing it silently.
+    this.dirty = false;
   }
 }
 

@@ -99,6 +99,33 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
     expect(recorded).toHaveLength(1);
   });
 
+  test("§5.4 a throwing recordWarnings does NOT lose the buffered notices — a retry re-delivers", () => {
+    let sink: Sink | undefined; // no sink yet, so the notice buffers
+    let failNext = true;
+    const recorded: unknown[] = [];
+    const { flushPendingWarnings } = createCodexTranscriptWatcher(
+      "s1",
+      emitter(),
+      () => sink as never,
+    );
+    captured.onDrop?.(dropNotice); // buffered before the sink exists
+    // The sink appears but its first recordWarnings throws.
+    sink = {
+      recordWarnings: (w) => {
+        if (failNext) {
+          failNext = false;
+          throw new Error("persist boom");
+        }
+        recorded.push(...w);
+      },
+    };
+    expect(() => flushPendingWarnings()).toThrow(/persist boom/);
+    expect(recorded).toHaveLength(0);
+    // The notice stayed queued: a later flush re-delivers it (not lost).
+    flushPendingWarnings();
+    expect(recorded).toHaveLength(1);
+  });
+
   test("§5.4 codexTranscriptSeedFromWarnings recovers running totals so counts never restart at 0", () => {
     const seed = codexTranscriptSeedFromWarnings([
       { code: "transcript_records_dropped", droppedCount: 60, droppedBytes: 4096 },

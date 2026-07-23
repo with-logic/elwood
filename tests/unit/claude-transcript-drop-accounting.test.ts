@@ -14,9 +14,10 @@ import {
   resetMaxRecordsForTests,
   setMaxRecordsForTests,
 } from "../../src/claude/transcript/baseline.ts";
-import type {
-  TranscriptDropNotice,
-  TranscriptReadErrorNotice,
+import {
+  DropTracker,
+  type TranscriptDropNotice,
+  type TranscriptReadErrorNotice,
 } from "../../src/claude/transcript/drops.ts";
 import { ClaudeTranscriptWatcher } from "../../src/claude/transcript/index.ts";
 
@@ -168,5 +169,25 @@ describe("C-CLAUDE-15 watcher-level drop/read-error accounting", () => {
     watcher.finish(); // latch terminal BEFORE the rejection lands
     await polled;
     expect(readErrors).toEqual([]);
+  });
+
+  test("C-CLAUDE-15 a throwing onDrop keeps the tracker dirty — the running total is not lost", () => {
+    let failNext = true;
+    const drops: TranscriptDropNotice[] = [];
+    const tracker = new DropTracker("s1", (d) => {
+      if (failNext) {
+        failNext = false;
+        throw new Error("persist boom");
+      }
+      drops.push(d);
+    });
+    tracker.recordBytes("/t", 50, 1, "oversized");
+    // The sink throws — `dirty` must stay set so the total isn't silently dropped.
+    expect(() => tracker.flush()).toThrow(/persist boom/);
+    expect(drops).toHaveLength(0);
+    // A later flush re-emits the still-pending running total.
+    tracker.flush();
+    expect(drops).toHaveLength(1);
+    expect(drops[0]).toMatchObject({ droppedCount: 1, droppedBytes: 50 });
   });
 });

@@ -60,6 +60,13 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
   errno `code` (e.g. a numeric code) is now normalized to `"UNKNOWN"` instead of
   round-tripping a number through the string-typed field.
 
+- **A throwing warning sink no longer silently loses drop/read-error totals.** If
+  persisting a `transcript_records_dropped` / `transcript_read_error` warning threw
+  (e.g. a failed `session.json` write), the running total was cleared before the
+  write was confirmed and the incident vanished. The buffered notices and the drop
+  aggregate now stay queued until the sink returns, so the next flush re-delivers
+  them rather than dropping them (both adapters).
+
 - **Codex transcript reading is bounded and crash-safe.** The reader reads in
   fixed-size chunks with a max-pending ceiling, streams a large backlog across poll
   ticks, and drains within a bounded budget at exit — a hundreds-of-MiB transcript
