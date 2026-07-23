@@ -61,7 +61,7 @@ export class ControlQueue {
       controlOperationTraits[kind].readiness === "running_after_ready" &&
       this.everReady &&
       this.guidanceMayBypass();
-    return this.enqueue({ input, kind, mayBypassReadiness, attach });
+    return this.enqueue({ input, kind, mayBypassReadiness, ...(attach ? { attach } : {}) });
   }
 
   // Hold EXCLUSIVE queue ownership for the task's whole run (C-API-43 login); `cancel`
@@ -85,7 +85,7 @@ export class ControlQueue {
   private enqueue(op: PendingOperation, cancel?: Cancel): Promise<void> {
     if (this.closed) return Promise.reject(this.stoppedError());
     return new Promise((resolve, reject) => {
-      const operation = { ...op, resolve, reject } as QueuedOperation;
+      const operation: QueuedOperation = { ...op, resolve, reject };
       this.queue.push(operation);
       if (overtakesReadiness(operation)) this.bypassable += 1;
       if (cancel) {

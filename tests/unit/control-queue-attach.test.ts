@@ -7,8 +7,30 @@
 
 import { describe, expect, test } from "vitest";
 import { ControlQueue } from "../../src/core/control-queue.ts";
+import type { PendingOperation } from "../../src/core/control-queue-types.ts";
 
 describe("ControlQueue image attach (C-API-44)", () => {
+  test("C-API-44 the run/attach XOR forbids an op carrying BOTH at compile time", () => {
+    const task = () => Promise.resolve();
+    const attachOnly: PendingOperation = {
+      input: "x",
+      kind: "message",
+      mayBypassReadiness: false,
+      attach: task,
+    };
+    // @ts-expect-error — an op cannot carry BOTH run and attach; dispatch would else
+    // prefer run and silently drop the attachment (the XOR closes that hole).
+    const both: PendingOperation = {
+      input: "",
+      kind: "message",
+      mayBypassReadiness: false,
+      run: task,
+      attach: task,
+    };
+    expect(attachOnly.attach).toBe(task);
+    expect(both).toBeDefined(); // runtime is irrelevant; the ts-expect-error is the assertion
+  });
+
   test("C-API-44 runs a send's attach task before its text write", async () => {
     const events: string[] = [];
     const queue = new ControlQueue(

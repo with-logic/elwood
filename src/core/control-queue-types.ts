@@ -30,19 +30,16 @@ type QueuedOperationBase = {
   readonly reject: (error: Error) => void;
 };
 
-// A queued op is EITHER an exclusive-task op (e.g. `login`, holds the queue for
+// The run/attach XOR: EITHER an exclusive-task op (e.g. `login`, holds the queue for
 // its whole run; input unused) OR a text submission that may attach images before
-// the write — never both, so dispatch never has to disambiguate (C-API-19/44).
-export type QueuedOperation = QueuedOperationBase &
-  (
-    | { readonly run: AbortableQueueTask; readonly attach?: never }
-    | { readonly run?: never; readonly attach?: AbortableQueueTask }
-  );
+// the write — never both, so dispatch never has to disambiguate (C-API-19/44). A
+// caller cannot construct an op with both set (it fails to typecheck).
+type RunOrAttach =
+  | { readonly run: AbortableQueueTask; readonly attach?: never }
+  | { readonly run?: never; readonly attach?: AbortableQueueTask };
 
-// A queued op before its resolve/reject are attached. Both task fields are
-// optional here (a constructor passes at most one); the stored op is the
-// discriminated `QueuedOperation`, and dispatch checks `run`/`attach` directly.
-export type PendingOperation = Omit<QueuedOperationBase, "resolve" | "reject"> & {
-  readonly run?: AbortableQueueTask | undefined;
-  readonly attach?: AbortableQueueTask | undefined;
-};
+export type QueuedOperation = QueuedOperationBase & RunOrAttach;
+
+// A queued op before its resolve/reject are attached — the SAME run/attach XOR, so a
+// pending op can no more carry both fields than a queued one can.
+export type PendingOperation = Omit<QueuedOperationBase, "resolve" | "reject"> & RunOrAttach;
