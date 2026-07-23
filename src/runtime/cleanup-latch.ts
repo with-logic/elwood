@@ -3,12 +3,12 @@
  * PRD §9.4 requires that a settled cleanup failure is not permanently sticky — a
  * later explicit stop/kill/teardown must run a fresh attempt. A plain `??=` cache
  * would latch a rejected promise forever, so this latch clears its cache the moment
- * the attempt rejects. `pending` is therefore only ever the reusable non-rejected
+ * the attempt rejects. `cachedAttempt` is therefore only ever the reusable non-rejected
  * attempt (in flight or successfully settled). Implements PRD §9.4.
  */
 
 export class CleanupLatch {
-  private pending: Promise<void> | undefined;
+  private cachedAttempt: Promise<void> | undefined;
   private readonly run: () => Promise<void>;
 
   constructor(run: () => Promise<void>) {
@@ -24,12 +24,12 @@ export class CleanupLatch {
     // A cached attempt is reused only when it is in flight or already settled
     // SUCCESSFULLY; a rejecting attempt clears the cache below before any other
     // caller can observe it, so no identity guard is needed on the clear.
-    if (this.pending) return this.pending;
+    if (this.cachedAttempt) return this.cachedAttempt;
     const attempt = this.run().catch((error: unknown) => {
-      this.pending = undefined;
+      this.cachedAttempt = undefined;
       throw error;
     });
-    this.pending = attempt;
+    this.cachedAttempt = attempt;
     return attempt;
   }
 

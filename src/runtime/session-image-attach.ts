@@ -81,7 +81,7 @@ export function enqueueSubmission(
     return Promise.reject(error);
   }
   const bytes = snapshot.inlineByteTotal;
-  if (snapshot.snapshot.length === 0) {
+  if (snapshot.images.length === 0) {
     budget?.release(bytes); // nothing to attach: give the reservation back
     return send();
   }
@@ -92,7 +92,7 @@ export function enqueueSubmission(
   return done;
 }
 
-/** Resolve paths (async) → materialize → drive the adapter attach → clean up temp files. */
+/** Validate paths (async) → materialize → drive the adapter attach → clean up temp files. */
 async function runAttach(
   snapshot: ImageSnapshot,
   driver: AttachDriver,

@@ -19,7 +19,7 @@ import { type ImageFormat, type ImageInput, imageFormatExtension, imageLimits } 
  * already accounted from BYTE inputs (path sizes are added later, async).
  */
 export type ImageSnapshot = {
-  readonly snapshot: readonly ImageInput[];
+  readonly images: readonly ImageInput[];
   /** Bytes already counted toward the aggregate ceiling from byte inputs. */
   readonly inlineByteTotal: number;
 };
@@ -40,14 +40,14 @@ export function snapshotImages(images: readonly ImageInput[]): ImageSnapshot {
       "invalid_image",
       `Too many images: ${images.length} > ${imageLimits.maxCount}`,
     );
-  const snapshot: ImageInput[] = [];
+  const copied: ImageInput[] = [];
   let inlineByteTotal = 0;
   for (const entry of images as readonly unknown[]) {
     const [image, bytes] = snapshotOne(entry, inlineByteTotal);
-    snapshot.push(image);
+    copied.push(image);
     inlineByteTotal += bytes;
   }
-  return { snapshot, inlineByteTotal };
+  return { images: copied, inlineByteTotal };
 }
 
 /**
@@ -59,17 +59,18 @@ export function snapshotImages(images: readonly ImageInput[]): ImageSnapshot {
  */
 export async function validateImagePaths(snap: ImageSnapshot): Promise<readonly ImageInput[]> {
   let total = snap.inlineByteTotal;
-  for (const image of snap.snapshot) {
+  for (const image of snap.images) {
     if (image.path === undefined) continue;
     total += await validatePath(image.path, total);
   }
-  return snap.snapshot;
+  return snap.images;
 }
 
 /**
- * Validates, bounds, snapshots, then resolves paths — the whole pipeline. A
- * synchronous snapshot failure surfaces as a rejected promise (not a sync throw)
- * so every failure mode reaches callers through one `Promise` channel.
+ * Snapshots synchronously (validate/bound/copy, paths already absolutized here),
+ * then validates paths asynchronously (readability, file type, size) — the whole
+ * pipeline. A synchronous snapshot failure surfaces as a rejected promise (not a
+ * sync throw) so every failure mode reaches callers through one `Promise` channel.
  */
 export function validateImages(images: readonly ImageInput[]): Promise<readonly ImageInput[]> {
   let snap: ImageSnapshot;
