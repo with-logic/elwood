@@ -37,6 +37,8 @@ export type TurnOptions = {
  * `send`/`stream` turns are serialized so one turn's activity never interleaves with another's;
  * control methods (`interrupt`, `sendKeys`, `stop`, `kill`, …) go through immediately. `on`/`off`
  * may be called before start — buffered and attached on start, so subscribing never forces one.
+ *
+ * Turn-capability (the `hook` oracle) can't be a generic bound — see `AssertStopBoundary`.
  */
 export abstract class SessionBase<S extends ElwoodAgentSession> {
   private live: S | undefined;
@@ -86,11 +88,9 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
 
   /** Stream one turn's simplified content events; ends when the turn settles (C-API-48). */
   stream(prompt: string, options?: TurnOptions): AsyncGenerator<TurnEvent> {
-    // Trigger the lazy start SYNCHRONOUSLY (memoized): this sets `this.starting` before `stream`
-    // returns, so a `close()` racing this call joins the same start and can never miss a session
-    // that a deferred microtask would otherwise launch after `close()` resolved (C-API-51). The
-    // slot is reserved synchronously too (call order, not iteration order — C-API-50); `run`
-    // awaits the SAME start promise, then the predecessor's boundary, before the turn begins.
+    // Trigger the lazy start SYNCHRONOUSLY (memoized) so a `close()` racing this call joins the
+    // same start and can't miss a session a deferred microtask would launch after close (C-API-51).
+    // The slot is reserved synchronously too (call order, not iteration order — C-API-50).
     const starting = this.start();
     return this.turns.enqueue(async () => runTurn(await starting, prompt, options ?? {}));
   }

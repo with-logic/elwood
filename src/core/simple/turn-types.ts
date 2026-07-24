@@ -35,6 +35,13 @@ export type TurnBoundaryContract = {
  * (`keyof extends keyof T` — a renamed/dropped key → `never`) with an assignable value
  * (`Required<T>` reads the type ignoring optionality, so an optional key passes but a type
  * change → `never`). Either drift makes the adapter assertion fail to compile.
+ *
+ * This is the EFFECTIVE turn-capability guard. A `SessionBase<S extends TurnSession>` bound
+ * would NOT enforce hook-capability: TypeScript method-parameter bivariance lets a session whose
+ * `on` lacks the `hook` overload structurally satisfy `TurnSession`, so a generic bound accepts
+ * a hook-less session and silently loses oracle semantics. Instead, each concrete adapter
+ * asserts `AssertStopBoundary<HookEventFor<"Stop">>` on its REAL `Stop` payload, catching the
+ * exact drift that matters. Any new `SessionBase` subclass MUST add the same assertion.
  */
 export type AssertStopBoundary<T> = keyof TurnBoundaryContract extends keyof T
   ? Pick<Required<T>, keyof TurnBoundaryContract & keyof T> extends TurnBoundaryContract
