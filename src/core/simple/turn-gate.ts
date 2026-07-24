@@ -13,9 +13,8 @@
  */
 
 import { elwoodError } from "../errors.ts";
-import type { TurnEvent } from "./events.ts";
+import { type TurnEvent, turnEventBytes } from "./events.ts";
 
-const HEAD_COMPACT_THRESHOLD = 1024; // compact the consumed queue prefix past this many items
 /**
  * Cap on UNCONSUMED events buffered for a slow/paused consumer. A turn has no default
  * whole-turn timeout, so without a bound a hostile or very verbose turn feeding a stalled
@@ -25,15 +24,30 @@ const HEAD_COMPACT_THRESHOLD = 1024; // compact the consumed queue prefix past t
  */
 const MAX_PENDING_EVENTS = 100_000;
 /**
+ * Cap on UNCONSUMED bytes (sum of text/tool payload lengths) buffered for a slow consumer.
+ * The event-count cap alone does not bound memory — a single event can carry an arbitrarily
+ * large agent-controlled string — so a byte high-water mark is the real exhaustion guard.
+ * 64 MiB: far above any legitimate single turn's pending backlog, well below host limits.
+ */
+const MAX_PENDING_BYTES = 64 * 1024 * 1024;
+/**
  * Extra tail (chars) retained beyond the oracle's expected length so a match that straddles
  * the fragment boundary is not missed. The oracle only needs the RECENT tail of the
  * collected assistant text, so `collected` is a bounded rolling window, not the whole turn.
  */
 const ORACLE_TAIL_SLACK = 4096;
+/**
+ * Cap on the oracle's expected-text length (chars). The Stop hook's `last_assistant_message`
+ * is agent-controlled; a hostile huge payload would otherwise size the rolling `collected`
+ * window without limit. Matching only the LAST `EXPECTED_MAX` chars of the expected text is a
+ * safe completeness signal (the transcript still contains that suffix) with bounded memory.
+ */
+const EXPECTED_MAX = 1024 * 1024;
 
 export class TurnGate {
   private readonly queue: TurnEvent[] = [];
   private head = 0; // index of the next unconsumed event (avoids O(n) Array.shift)
+  private pendingBytes = 0; // sum of unconsumed event payload lengths (byte high-water guard)
   private ended = false;
   private error: unknown;
   private wake: (() => void) | undefined;
@@ -45,14 +59,21 @@ export class TurnGate {
   private readonly quietMs: number;
   private readonly catchUpMs: number;
   private readonly maxPending: number;
+  private readonly maxPendingBytes: number;
   private resolveDone!: () => void;
   private rejectDone!: (error: unknown) => void;
   private readonly donePromise: Promise<void>;
 
-  constructor(quietMs: number, catchUpMs: number, maxPendingEvents = MAX_PENDING_EVENTS) {
+  constructor(
+    quietMs: number,
+    catchUpMs: number,
+    maxPendingEvents = MAX_PENDING_EVENTS,
+    maxPendingBytes = MAX_PENDING_BYTES,
+  ) {
     this.quietMs = quietMs;
     this.catchUpMs = catchUpMs;
     this.maxPending = maxPendingEvents;
+    this.maxPendingBytes = maxPendingBytes;
     this.donePromise = new Promise<void>((resolve, reject) => {
       this.resolveDone = resolve;
       this.rejectDone = reject;
@@ -76,18 +97,26 @@ export class TurnGate {
   }
   expectText(text: string | undefined): void {
     const trimmed = text?.trim();
-    this.expected = trimmed ? trimmed : undefined;
+    // Cap the agent-controlled expected text so the rolling `collected` window stays bounded;
+    // its SUFFIX still appears in the transcript, so a suffix match is a valid completeness signal.
+    this.expected = trimmed ? trimmed.slice(-EXPECTED_MAX) : undefined;
     this.reconcile();
   }
   push(event: TurnEvent): void {
     if (this.ended) return;
-    // Bound unconsumed events: a stalled consumer must not let a verbose/hostile turn grow
-    // the buffer without limit (there is no default whole-turn timeout).
-    if (this.queue.length - this.head >= this.maxPending) {
+    // Bound unconsumed events AND bytes: a stalled consumer must not let a verbose/hostile
+    // turn grow the buffer without limit (there is no default whole-turn timeout). The count
+    // cap catches many small events; the byte cap catches a few very large payloads.
+    const bytes = turnEventBytes(event);
+    if (
+      this.queue.length - this.head >= this.maxPending ||
+      this.pendingBytes + bytes > this.maxPendingBytes
+    ) {
       this.fail(elwoodError("wait_timeout", "turn produced too many unconsumed events"));
       return;
     }
     this.queue.push(event);
+    this.pendingBytes += bytes;
     if (this.settled) this.armQuiet(); // new content after ready: re-arm the fallback window
     this.wake?.();
   }
@@ -150,12 +179,14 @@ export class TurnGate {
       while (this.head < this.queue.length) {
         const event = this.queue[this.head] as TurnEvent;
         this.head += 1;
-        if (this.head > HEAD_COMPACT_THRESHOLD) {
-          this.queue.splice(0, this.head); // drop the consumed prefix so the array cannot grow forever
-          this.head = 0;
-        }
+        this.pendingBytes -= turnEventBytes(event);
         yield event;
       }
+      // Fully caught up: reset the backing array in O(1) so consumed events are freed and the
+      // array cannot grow without bound. No mid-stream splice — draining stays O(1) amortised
+      // per event regardless of backlog size (splice(0, head) would re-shift the tail).
+      this.queue.length = 0;
+      this.head = 0;
       if (this.error !== undefined) throw this.error;
       if (this.ended) return;
       await new Promise<void>((resolve) => {

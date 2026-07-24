@@ -31,7 +31,10 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
   timer), with a bounded quiet-window fallback for pure-tool turns. There is no
   whole-turn timeout by default — a turn may run for hours — with an opt-in `timeoutMs`
   ceiling and a tight post-`ready` `catchUpMs` cap (default 10s) that fails fast if the
-  transcript never catches up. (§5.8, C-API-47…52)
+  transcript never catches up. Buffered turn state is bounded (rolling oracle window;
+  unconsumed events capped by both count and total bytes) so a hours-long or verbose
+  turn cannot exhaust the host; the opt-in `timeoutMs` is armed only after submission,
+  so it never rejects a prompt that then submits. (§5.8, C-API-47…53)
 
 ### Deprecated
 

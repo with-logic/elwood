@@ -41,3 +41,16 @@ export function toTurnEvent(event: ElwoodActivityEvent): TurnEvent | undefined {
       return undefined;
   }
 }
+
+/** Approximate payload size (chars) of a turn event, for the gate's pending-byte high-water. */
+export function turnEventBytes(event: TurnEvent): number {
+  switch (event.type) {
+    case "text":
+    case "thinking":
+      return event.text.length;
+    case "tool_call":
+      return event.name.length + (event.input?.length ?? 0);
+    case "tool_result":
+      return (event.name?.length ?? 0) + (event.output?.length ?? 0);
+  }
+}

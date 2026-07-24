@@ -1686,11 +1686,14 @@ final assistant text of the just-completed turn — and Elwood uses it ONLY as a
 completeness signal (never as displayed text, since it can be un-submitted ghost
 text). Once `ready` is observed, the turn ends the instant the transcript-collected
 assistant text CONTAINS that expected text, so it waits exactly as long as the
-transcript needs. When no such signal is available for a turn — a pure-tool turn, or
-an empty/null `last_assistant_message` (e.g. `StopFailure`), or a payload that never
-appears in the transcript — the turn falls back to a bounded quiet-window settle
-after `ready` (no new content for a short window). A terminal status ends the turn
-immediately (it is final). A turn may legitimately run for HOURS (running a test
+transcript needs. When no completeness signal is available for a turn — a pure-tool
+turn, or an empty/null `last_assistant_message` (e.g. `StopFailure`) — the turn falls
+back to a bounded quiet-window settle after `ready` (no new content for a short
+window). When a NON-EMPTY expected text IS present but never appears in the
+transcript within `catchUpMs` of `ready`, the turn does NOT fall back to the quiet
+window: it rejects with `wait_timeout` (a promised completion that never arrives is a
+failure, not a quiet success). A terminal status ends the turn immediately (it is
+final). A turn may legitimately run for HOURS (running a test
 suite, polling a PR), so there is NO whole-turn timeout by default — a still-live turn
 is never failed by a clock; a caller may pass an OPT-IN `timeoutMs` whole-turn
 ceiling. The tight cap is `catchUpMs` (default 10000 ms), armed only ONCE `ready`
@@ -1703,9 +1706,13 @@ by the `turnId` on the activity events it produces; the facade binds its collect
 to that turn so a queued prior turn's output can never bleed into a later one, and it
 subscribes to `activity` BEFORE submitting so no early event of the turn is missed.
 Because a turn has no default timeout, its buffered state is BOUNDED: the oracle
-matches against a rolling window of recent assistant text (not the whole turn), and a
-turn whose UNCONSUMED events exceed an internal cap (a stalled consumer, or a hostile
-turn) fails with `wait_timeout` rather than growing without limit.
+matches against a rolling window of recent assistant text (not the whole turn, and
+capped even when the Stop hook's expected text is itself huge), and a turn whose
+UNCONSUMED events exceed an internal cap — either in COUNT (many small events) or in
+total BYTES (a few very large payloads) — fails with `wait_timeout` rather than
+growing without limit. The byte cap is what actually bounds memory: the count cap
+alone cannot, since a single agent-controlled event may carry an arbitrarily large
+string.
 
 **`stream(prompt, options?)`** returns an async iterable of SIMPLIFIED, typed
 events for exactly one turn, yielded in arrival order and ending when the turn
@@ -2472,11 +2479,12 @@ Each criterion has:
 | C-API-45 | §5.3 | Claude attaches an image by bracketed-pasting its ABSOLUTE path into the composer (the delivery a terminal produces on drag-and-drop); Claude reads and encodes the file itself and shows an `[Image #N]` chip. This is pure PTY text and works on every platform. |
 | C-API-46 | §5.3 | Codex attaches an image from the OS clipboard: Elwood snapshots the user's clipboard ONCE (rejecting with `image_attach_failed` if the snapshot fails, before mutating anything), then for each image in order writes it onto the macOS `NSPasteboard` as a native image (`public.tiff`), sends Ctrl+V, and waits for the `[Image #N]` chip; after all images it restores the single snapshotted clipboard (best-effort, text contents). The whole snapshot/set/paste/confirm/restore sequence holds a process-wide clipboard lock so concurrent Codex sessions cannot cross-attach. A pasted path is NOT an image on Codex. Codex image attachment is macOS-only: `images` on a non-macOS Codex session rejects with `unsupported_platform` and submits nothing. |
 | C-API-47 | §5.8 | The ergonomic `ClaudeSession`/`CodexSession` construct synchronously with the same options as `startClaude`/`startCodex` (with `cwd` defaulting to `process.cwd()`), do NOT start the underlying session at construction, and start it lazily on the first `send`/`stream` or on an explicit `start()`. `start()` is idempotent and concurrent-safe (a second `start()`, or a `send`/`stream` during startup, awaits the same in-flight start), and a startup failure rejects the triggering call with the same typed `ElwoodError` the factory would throw. The started underlying session is exposed via a read-only `session` accessor (undefined until started). |
-| C-API-48 | §5.8 | `stream(prompt, options?)` returns an async iterable that yields the SIMPLIFIED typed events of exactly one turn in arrival order — `{type:"text"}` for `assistant_message`, `{type:"thinking"}` for `reasoning`, `{type:"tool_call",name,input?}` for `tool_call`, `{type:"tool_result",name?,output?}` for `tool_result` — and no other activity kind. The facade subscribes to `activity` BEFORE submitting the prompt (no early event of the turn is missed) and binds collection to the turn's `turnId` (a queued prior turn's activity never bleeds in). The iterator ends via the completeness oracle: once `ready` is observed, it ends the instant the collected assistant text contains the `Stop` hook's `last_assistant_message` (used as a completeness signal only, never displayed); with no such signal it ends after a bounded quiet window; a terminal status ends it IMMEDIATELY. There is NO whole-turn timeout by default (a live turn may run for hours); a caller may pass an opt-in `timeoutMs` ceiling, and a `catchUpMs` cap (default 10000 ms) armed once `ready` fires throws `wait_timeout` if the transcript never catches up. |
+| C-API-48 | §5.8 | `stream(prompt, options?)` returns an async iterable that yields the SIMPLIFIED typed events of exactly one turn in arrival order — `{type:"text"}` for `assistant_message`, `{type:"thinking"}` for `reasoning`, `{type:"tool_call",name,input?}` for `tool_call`, `{type:"tool_result",name?,output?}` for `tool_result` — and no other activity kind. The facade subscribes to `activity` BEFORE submitting the prompt (no early event of the turn is missed) and binds collection to the turn's `turnId` (a queued prior turn's activity never bleeds in). The iterator ends via the completeness oracle: once `ready` is observed, it ends the instant the collected assistant text contains the `Stop` hook's `last_assistant_message` (used as a completeness signal only, never displayed); with no such signal it ends after a bounded quiet window; a terminal status ends it IMMEDIATELY. There is NO whole-turn timeout by default (a live turn may run for hours); a caller may pass an opt-in `timeoutMs` ceiling, ARMED ONLY AFTER submission (a turn begins on submission, so the ceiling never rejects a prompt still queued behind readiness that then submits), and a `catchUpMs` cap (default 10000 ms) armed once `ready` fires throws `wait_timeout` if the transcript never catches up — including when a NON-EMPTY expected text never appears (a promised completion that never arrives is a failure, not a quiet settle). |
 | C-API-49 | §5.8 | `send(prompt, options?)` resolves with the turn's assistant text: the `text` of every `type:"text"` stream event, in order, joined by `\n\n` between distinct assistant messages, and NOTHING else (no thinking or tool text). A turn with no assistant text resolves to the empty string. `send` and `stream` share one turn boundary, so a `send` resolves exactly when the equivalent `stream` iterator ends. |
 | C-API-50 | §5.8 | Ergonomic turns are SERIALIZED: overlapping `send`/`stream` calls queue and run one at a time in call order, so one turn's yielded/collected activity never interleaves with another's. |
-| C-API-51 | §5.8 | `close()` stops the underlying session (falling back to `kill` on a stop failure) and is a no-op when the session never started, so it is safe to call in a `finally`. |
+| C-API-51 | §5.8 | `close()` stops the underlying session (falling back to `kill` on a stop failure) and is a no-op when the session never started, so it is safe to call in a `finally`. When a lazy start is IN FLIGHT, `close()` awaits that same start and stops the resulting session (never orphaning a session whose launch resolves after `close()` returned); a launch that REJECTS leaves nothing to close. When BOTH stop and kill fail, `close()` throws `termination_failed` carrying BOTH the stop `cause` and the kill `killCause` (neither diagnostic is lost). |
 | C-API-52 | §5.8 | `ClaudeSession`/`CodexSession` expose the FULL control surface in addition to `send`/`stream` — `sendMessage`, `sendPrompt`, `sendGuidance`, `sendKeys`, `resize`, `interrupt`, `compact`, `listModels`, `setModel`, `on`/`off`, `waitForStatus`, `waitForActivity`, `stop`/`kill`/`teardown`, and Claude's `login` — each lazy-starting the underlying session on first use and delegating to it. `on`/`off` may be called before start (buffered and attached on start, so subscribing never forces a start); `status` reads `starting` until the session exists; `stop`/`kill`/`teardown` are no-ops before start. Only `send`/`stream` serialize; the control methods go through immediately. `startClaude`/`startCodex` are deprecated in favor of the class but remain functional. |
+| C-API-53 | §5.8 | An ergonomic turn's buffered state is BOUNDED even with no whole-turn timeout: the oracle matches a rolling window of recent assistant text (bounded even when the `Stop` hook's expected text is itself large), and UNCONSUMED events are capped by BOTH count and total bytes. A turn whose pending backlog exceeds either cap fails with `wait_timeout` rather than growing without limit; the byte cap is required because a single event may carry an arbitrarily large agent-controlled payload that the count cap alone would not bound. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 

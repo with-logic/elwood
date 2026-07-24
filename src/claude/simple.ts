@@ -7,7 +7,7 @@
  */
 
 import { SessionBase } from "../core/simple/session.ts";
-import type { TurnBoundaryHook } from "../core/simple/turn.ts";
+import type { AssertStopBoundary } from "../core/simple/turn.ts";
 import type {
   ElwoodEventHandler,
   ElwoodEventName,
@@ -19,10 +19,11 @@ import type { ClaudeLoginOptions } from "./login/types.ts";
 import { startClaude } from "./session.ts";
 import type { ClaudeSessionApi } from "./session-interface.ts";
 
-// Compile-time conformance: the REAL Claude `Stop` hook payload must satisfy the oracle's
-// minimal `TurnBoundaryHook` shape. If the adapter contract drifts (e.g. renames
-// `last_assistant_message`), this fails to compile rather than silently disabling the oracle.
-type _StopSatisfiesBoundary = ClaudeHookEventFor<"Stop"> extends TurnBoundaryHook ? true : never;
+// Compile-time conformance: the REAL Claude `Stop` hook payload must carry the oracle's
+// REQUIRED boundary fields (`last_assistant_message`, `hook_event_name`). If the adapter
+// contract drifts (renames or drops `last_assistant_message`), `AssertStopBoundary` resolves
+// to `never` and this fails to compile rather than silently disabling the completeness oracle.
+type _StopSatisfiesBoundary = AssertStopBoundary<ClaudeHookEventFor<"Stop">>;
 const _stopBoundaryCheck: _StopSatisfiesBoundary = true;
 void _stopBoundaryCheck;
 

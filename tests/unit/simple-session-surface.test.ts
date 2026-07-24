@@ -8,11 +8,12 @@ import { describe, expect, test } from "vitest";
 import { TestSimple } from "./simple-fakes.ts";
 
 describe("SessionBase control surface (C-API-47/51)", () => {
-  test("sendMessage delegates through lazy start (the base's queued-message path)", async () => {
+  test("sendMessage delegates through lazy start and forwards message + options", async () => {
     const s = new TestSimple();
-    await s.sendMessage("direct"); // the base method, not the send()/stream() turn path
+    await s.sendMessage("direct", { images: [] }); // the base method, not the send()/stream() path
     expect(s.launches).toBe(1);
     expect(s.session).toBeDefined();
+    expect(s.underlying.args["sendMessage"]).toEqual(["direct", { images: [] }]); // both forwarded
   });
 
   test("every control method lazy-starts and forwards its arguments faithfully", async () => {

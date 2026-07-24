@@ -10,7 +10,9 @@ import { describe, expect, test } from "vitest";
 import {
   activity,
   collect,
+  deferred,
   drive,
+  FakeTurnSession,
   run,
   runTurn,
   runTurnFake,
@@ -99,10 +101,10 @@ describe("streamTurn timeouts (C-API-48)", () => {
     expect(out.at(-1)).toEqual({ type: "text", text: "THE END" }); // matched → turn ended
   });
 
-  test("a large content burst is drained fully (queue head compaction, no O(n^2))", async () => {
-    // Emit more than the gate's head-compaction threshold (1024) so the consumed-prefix
-    // splice path runs; every event must still be yielded, in order.
-    const N = 1100;
+  test("a large content burst is drained fully and in order (O(1)-amortised drain)", async () => {
+    // Emit far more than any internal batching threshold so the drain's array-reset path runs
+    // repeatedly; every event must still be yielded, in order, with no loss.
+    const N = 5000;
     const s = drive((s) => {
       s.emit("status", { status: "running" });
       for (let i = 0; i < N; i += 1) s.emit("activity", activity({ text: `x${i}`, turnId: "t1" }));
@@ -113,5 +115,44 @@ describe("streamTurn timeouts (C-API-48)", () => {
     expect(out).toHaveLength(N);
     expect(out[0]).toEqual({ type: "text", text: "x0" });
     expect(out[N - 1]).toEqual({ type: "text", text: `x${N - 1}` });
+  });
+
+  test("a single huge payload trips the byte cap even under the event-count cap", async () => {
+    // One event well under the count cap but over the byte high-water must fail: the count cap
+    // alone does not bound memory when a single event carries an arbitrarily large string.
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      s.emit("activity", activity({ text: "z".repeat(5000), turnId: "t1" }));
+    });
+    await expect(
+      collect(runTurnFake(s, { maxPendingEvents: 1000, maxPendingBytes: 1024 }).events),
+    ).rejects.toMatchObject({ code: "wait_timeout" });
+  });
+
+  test("an OPT-IN timeoutMs is armed only AFTER submission — a queued prompt still submits", async () => {
+    // The turn begins on submission (PRD §5.8). If sendMessage is delayed (queued behind
+    // readiness), the whole-turn timer must NOT fire during that wait and reject the caller for
+    // a turn that then submits anyway: the timer starts only once submission resolves.
+    const s = new FakeTurnSession();
+    const send = deferred();
+    s.sendResult = send.promise;
+    s.script = () => {
+      // After submission resolves, the turn completes cleanly via the oracle.
+      s.emit("status", { status: "running" });
+      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "done" });
+      s.emit("status", { status: "ready" });
+      s.emit("activity", activity({ text: "done", turnId: "t1" }));
+    };
+    const turn = runTurn(s as unknown as TurnSession, "go", {
+      timeoutMs: 5,
+      catchUpMs: 5_000,
+      fallbackQuietMs: 20,
+    });
+    // Let the 5ms whole-turn timer's window elapse WHILE submission is still pending.
+    await new Promise((r) => setTimeout(r, 30));
+    expect(s.submissions).toBe(1); // sendMessage was invoked (submission started)...
+    send.resolve(); // ...and only now does it resolve; the timer arms AFTER this
+    // The turn completes normally — the pre-submission delay did NOT trip the whole-turn timeout.
+    expect(await collect(turn.events)).toEqual([{ type: "text", text: "done" }]);
   });
 });

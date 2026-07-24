@@ -17,9 +17,11 @@
  * running (which would let the next turn bind to this turn's trailing events).
  *
  * Timeouts: a turn may run for HOURS (a test suite, a PR poll), so there is NO whole-turn
- * timeout by default; callers may pass an opt-in `timeoutMs`. The tight cap is `catchUpMs`
- * (default 10s), armed only ONCE `ready` fires — the flush should be near-instant, so a
- * longer stall rejects with `wait_timeout`. A terminal status ends the turn at once.
+ * timeout by default; callers may pass an opt-in `timeoutMs`, armed only AFTER submission (a
+ * turn begins on submission — the timer must never reject a caller for a prompt still queued
+ * behind readiness that then submits anyway). The tight cap is `catchUpMs` (default 10s),
+ * armed only ONCE `ready` fires — the flush should be near-instant, so a longer stall rejects
+ * with `wait_timeout`. A terminal status ends the turn at once.
  */
 
 import type { ElwoodAgentSession, ElwoodCommonEventMap } from "../agent-session.ts";
@@ -30,14 +32,37 @@ import { TurnGate } from "./turn-gate.ts";
 
 /**
  * The MINIMAL turn-boundary `hook` fields the completeness oracle reads. Deliberately
- * adapter-neutral (core must not depend on adapter hook types) — each adapter asserts at
- * compile time that its real `Stop` hook payload is assignable to this (see
- * `assertStopHookShape` in the adapter `simple.ts`), so a contract drift is caught.
+ * adapter-neutral (core must not depend on adapter hook types) — the `hook` listener accepts
+ * this loose shape, but each adapter asserts CONFORMANCE against `TurnBoundaryContract` below
+ * so a contract change (renamed/removed `last_assistant_message`) fails to compile.
  */
 export type TurnBoundaryHook = {
   readonly hook_event_name?: string;
   readonly last_assistant_message?: string | null;
 };
+
+/**
+ * The turn-boundary fields the oracle DEPENDS ON. `TurnBoundaryHook` is deliberately loose (a
+ * missing/`null` value just means "no oracle" → quiet settle), but a `Stop` payload that
+ * RENAMED or DROPPED `last_assistant_message` would silently disable the oracle, so
+ * `AssertStopBoundary` enforces each adapter's real `Stop` event still DECLARES these keys.
+ */
+export type TurnBoundaryContract = {
+  readonly hook_event_name: string | undefined;
+  readonly last_assistant_message: string | null | undefined;
+};
+
+/**
+ * Compile-time conformance probe: `true` only if `T` declares every `TurnBoundaryContract` key
+ * (`keyof extends keyof T` — a renamed/dropped key → `never`) with an assignable value
+ * (`Required<T>` reads the type ignoring optionality, so an optional key passes but a type
+ * change → `never`). Either drift makes the adapter assertion fail to compile.
+ */
+export type AssertStopBoundary<T> = keyof TurnBoundaryContract extends keyof T
+  ? Pick<Required<T>, keyof TurnBoundaryContract & keyof T> extends TurnBoundaryContract
+    ? true
+    : never
+  : never;
 
 /**
  * The narrow session surface a turn drives: the common events plus the adapter `hook`
@@ -66,6 +91,8 @@ export type StreamTurnOptions = {
   readonly fallbackQuietMs?: number;
   /** Cap on unconsumed buffered events before failing (default 100000); internal/tests. */
   readonly maxPendingEvents?: number;
+  /** Cap on unconsumed buffered bytes before failing (default 64 MiB); internal/tests. */
+  readonly maxPendingBytes?: number;
 };
 
 /** A running turn: `events` is the consumer view; `completion` resolves at the REAL boundary. */
@@ -90,6 +117,7 @@ export function runTurn(
     options.fallbackQuietMs ?? FALLBACK_QUIET_MS,
     options.catchUpMs ?? CATCH_UP_MS,
     options.maxPendingEvents,
+    options.maxPendingBytes,
   );
   let turnId: string | undefined;
   let bound = false;
@@ -139,16 +167,18 @@ export function runTurn(
   const completion = (async () => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const send = session.sendMessage(prompt); // listeners attached — no early event lost
-      // Arm the opt-in whole-turn ceiling now; the whole turn (including any queue/readiness
-      // wait) is what the caller opted to bound.
+      // A turn BEGINS on submission (PRD §5.8), so the opt-in whole-turn ceiling is armed only
+      // AFTER `sendMessage` resolves. Arming it before submission would let the timer fire —
+      // and reject the caller with `wait_timeout` — while the prompt is still queued behind
+      // readiness and then submits anyway, an observable turn the caller was told timed out.
+      // Pre-submission queue/readiness wait is bounded by the queue's own readiness semantics.
+      await session.sendMessage(prompt); // listeners attached — no early event lost
       if (options.timeoutMs !== undefined) {
         timer = setTimeout(
           () => gate.fail(elwoodError("wait_timeout", "turn timed out")),
           options.timeoutMs,
         );
       }
-      await send;
       await gate.done(); // rejects on fail/timeout — the error is already recorded for `drain`
     } catch (error) {
       // A submit failure on a terminal session ends the turn cleanly (buffered events keep,

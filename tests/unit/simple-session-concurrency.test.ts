@@ -90,11 +90,13 @@ describe("SessionBase turn concurrency (C-API-50)", () => {
   });
 });
 
-/** A facade whose launch is a deferred promise the test resolves, to race close() vs start(). */
+/** A facade whose launch is a deferred promise the test resolves, to race close()/stream vs start(). */
 class DeferredStartSession extends SessionBase<ElwoodAgentSession> {
   readonly underlying = new FakeUnderlying();
+  launches = 0;
   resolveLaunch!: () => void;
   protected launch(): Promise<ElwoodAgentSession> {
+    this.launches += 1;
     return new Promise<ElwoodAgentSession>((resolve) => {
       this.resolveLaunch = () => resolve(this.underlying as unknown as ElwoodAgentSession);
     });
@@ -106,6 +108,25 @@ class DeferredStartSession extends SessionBase<ElwoodAgentSession> {
     return this.subscribe(handler, (session) => session.on(event, handler));
   }
 }
+
+describe("SessionBase send/stream during in-flight start (C-API-47)", () => {
+  test("a stream begun during startup shares the ONE in-flight launch and submits only after it resolves", async () => {
+    const s = new DeferredStartSession();
+    const starting = s.start(); // launch #1 in-flight (deferred)
+    // A stream begun WHILE the launch is pending must not trigger a second launch or submit early.
+    const streamed = collectText(s.stream("hello"));
+    // Give the microtask queue a chance to (wrongly) launch/submit if the wiring were broken.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(s.launches).toBe(1); // shares the SAME in-flight launch — no duplicate
+    expect(s.underlying.sends).toBe(0); // NOTHING submitted before the session exists
+    s.resolveLaunch(); // startup completes
+    await starting;
+    expect(await streamed).toEqual(["t1"]); // the turn then submits and produces its output
+    expect(s.launches).toBe(1); // still exactly one launch across start() + stream()
+    expect(s.underlying.sends).toBe(1); // exactly one submission, after readiness
+  });
+});
 
 describe("SessionBase close() during in-flight start (C-API-51)", () => {
   test("close() awaits the in-flight launch and stops the resulting session (no orphan)", async () => {

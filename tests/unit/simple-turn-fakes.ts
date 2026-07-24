@@ -27,6 +27,7 @@ export class FakeTurnSession {
   private readonly handlers = new Map<string, ((event: unknown) => void)[]>();
   script: () => void = () => {};
   sendResult: Promise<void> = Promise.resolve();
+  submissions = 0; // how many times sendMessage was invoked (proves no late submit is dropped)
   on(event: string, handler: (event: never) => void): () => void {
     const list = this.handlers.get(event) ?? [];
     list.push(handler as (event: unknown) => void);
@@ -37,9 +38,25 @@ export class FakeTurnSession {
     for (const h of this.handlers.get(event) ?? []) h(payload);
   }
   sendMessage(): Promise<void> {
+    this.submissions += 1;
     this.script();
     return this.sendResult;
   }
+}
+
+/** A deferred promise handle, for tests that control exactly when `sendMessage` resolves. */
+export function deferred(): {
+  promise: Promise<void>;
+  resolve: () => void;
+  reject: (e: unknown) => void;
+} {
+  let resolve!: () => void;
+  let reject!: (e: unknown) => void;
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
 
 export function drive(script: (s: FakeTurnSession) => void): FakeTurnSession {

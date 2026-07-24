@@ -1,8 +1,10 @@
 /**
- * The Claude-typed live-session surface: the shape the PTY-backed session object
- * satisfies and that the public `ClaudeSession` class (src/claude/simple.ts) wraps and
- * delegates to. Internal — callers use the `ClaudeSession` class, not this interface.
- * Implements PRD §5 public API.
+ * The Claude-typed live-session surface (`ClaudeSessionApi`): the shape the PTY-backed
+ * session object satisfies. It is the PUBLIC low-level interface returned by the eager
+ * `startClaude`/`resumeClaude` factories and exposed through `ClaudeSession.session`;
+ * `src/index.ts` exports it and the CHANGELOG documents it as the supported low-level type.
+ * Most callers should prefer the ergonomic `ClaudeSession` class (src/claude/simple.ts),
+ * which wraps and delegates to this. Implements PRD §5 public API.
  */
 
 import type { ElwoodActivityEvent } from "../core/activity.ts";

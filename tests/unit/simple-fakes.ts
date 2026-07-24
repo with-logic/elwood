@@ -28,6 +28,7 @@ export class FakeUnderlying {
   status = "ready" as const;
   stops = 0;
   kills = 0;
+  sends = 0; // sendMessage invocations, so a test can prove NO submission happened before start
   readonly calls: string[] = [];
   // The exact arguments each delegated method received, so tests can prove faithful forwarding.
   readonly args: Record<string, unknown[]> = {};
@@ -39,8 +40,9 @@ export class FakeUnderlying {
   off(event: keyof ElwoodCommonEventMap, handler: (e: never) => void) {
     this.emitter.off(event, handler as never);
   }
-  sendMessage(message: string): Promise<void> {
-    void message;
+  sendMessage(message: string, options?: unknown): Promise<void> {
+    this.sends += 1;
+    this.args["sendMessage"] = options === undefined ? [message] : [message, options];
     this.turn += 1;
     this.script(this.emitter, `t${this.turn}`);
     return Promise.resolve();

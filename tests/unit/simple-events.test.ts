@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from "vitest";
 import type { ElwoodActivityEvent, ElwoodActivityKind } from "../../src/core/activity.ts";
-import { toTurnEvent } from "../../src/core/simple/events.ts";
+import { toTurnEvent, turnEventBytes } from "../../src/core/simple/events.ts";
 
 function activity(partial: Partial<ElwoodActivityEvent>): ElwoodActivityEvent {
   return {
@@ -73,5 +73,18 @@ describe("toTurnEvent (C-API-48)", () => {
     for (const kind of nonContent) {
       expect(toTurnEvent(activity({ kind }))).toBeUndefined();
     }
+  });
+});
+
+describe("turnEventBytes (C-API-53 pending-byte accounting)", () => {
+  test("measures each event type's payload, treating absent optional fields as zero", () => {
+    expect(turnEventBytes({ type: "text", text: "hello" })).toBe(5);
+    expect(turnEventBytes({ type: "thinking", text: "hmm" })).toBe(3);
+    // tool_call: name + input; input optional.
+    expect(turnEventBytes({ type: "tool_call", name: "Bash", input: "ls" })).toBe(6);
+    expect(turnEventBytes({ type: "tool_call", name: "Bash" })).toBe(4);
+    // tool_result: name + output, both optional (bare shape → 0).
+    expect(turnEventBytes({ type: "tool_result", name: "Bash", output: "ok" })).toBe(6);
+    expect(turnEventBytes({ type: "tool_result" })).toBe(0);
   });
 });

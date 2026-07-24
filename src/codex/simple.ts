@@ -7,7 +7,7 @@
  */
 
 import { SessionBase } from "../core/simple/session.ts";
-import type { TurnBoundaryHook } from "../core/simple/turn.ts";
+import type { AssertStopBoundary } from "../core/simple/turn.ts";
 import type { Unsubscribe } from "../core/types.ts";
 import type { CodexHookEventFor } from "./hooks.ts";
 import { startCodex } from "./session.ts";
@@ -18,9 +18,11 @@ import type {
   StartCodexOptions,
 } from "./session-types.ts";
 
-// Compile-time conformance: the REAL Codex `Stop` hook payload must satisfy the oracle's
-// minimal `TurnBoundaryHook` shape (mirrors Claude), catching adapter contract drift.
-type _StopSatisfiesBoundary = CodexHookEventFor<"Stop"> extends TurnBoundaryHook ? true : never;
+// Compile-time conformance: the REAL Codex `Stop` hook payload must carry the oracle's
+// REQUIRED boundary fields (mirrors Claude). A renamed/dropped `last_assistant_message` makes
+// `AssertStopBoundary` resolve to `never`, failing compilation instead of silently disabling
+// the completeness oracle.
+type _StopSatisfiesBoundary = AssertStopBoundary<CodexHookEventFor<"Stop">>;
 const _stopBoundaryCheck: _StopSatisfiesBoundary = true;
 void _stopBoundaryCheck;
 
