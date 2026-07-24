@@ -1704,11 +1704,16 @@ stalls past `catchUpMs`, the turn rejects with `wait_timeout` rather than leavin
 caller hanging. Turns
 are serialized: overlapping `send`/`stream` calls queue and run one at a time in call
 order, so a turn's activity never interleaves with another's. Turn isolation rests on
-that SERIALIZATION — the facade holds a turn's serialized slot until the agent reaches
-its real boundary (a `ready` after the turn started, or a terminal status), NOT merely
-until the consumer stops reading — so the next turn never begins while the prior
-agent's activity is still arriving, and it subscribes to `activity` BEFORE submitting
-so no early event of the turn is missed. Where the adapter tags activity with a
+that SERIALIZATION — the facade holds a turn's serialized slot until the AGENT reaches
+its real boundary, NOT merely until the consumer stops reading. On a normal turn that
+boundary is the turn's genuine completion (the transcript caught up / went quiet), which
+lands shortly AFTER `ready` — never bare `ready`, since transcript activity arrives after
+`ready`. On a consumer FAILURE (timeout / catch-up / backlog) the agent may still be
+running — and a silent long-running tool is quiet, not done — so the slot is held until a
+reliable "turn done" signal: a real `ready` (a busy agent is `running`, not ready) or a
+terminal status, then a short transcript-drain settle. A hung agent holds the slot until
+`close()`/`kill()` forces a terminal status. The facade subscribes to `activity` BEFORE
+submitting so no early event of the turn is missed. Where the adapter tags activity with a
 `turnId` (Codex), the facade additionally binds collection to the first turn's id as a
 refinement; Claude transcript activity carries no `turnId`, so for Claude the
 serialized-slot boundary is the sole isolation guarantee (which is why releasing the

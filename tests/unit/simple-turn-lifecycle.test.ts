@@ -88,10 +88,10 @@ describe("streamTurn lifecycle races (C-API-48/51)", () => {
     expect(s.listenerCount()).toBe(0); // no leak even on the failure path
   });
 
-  test("after a consumer TIMEOUT, boundary defers until the transcript goes quiet (agent still flushing)", async () => {
-    // The consumer times out (oracle never matches), but the agent keeps emitting transcript
-    // activity. The serializer boundary must NOT resolve while that activity is still arriving —
-    // releasing early would let the next turn bind to this turn's trailing untagged activity.
+  test("after a consumer TIMEOUT, boundary holds while the agent is `running` (a silent tool is NOT done)", async () => {
+    // The consumer times out but the agent is still `running` (a long-running silent tool). The
+    // serializer boundary must NOT resolve on mere quiet — quiet ≠ done — only on a real `ready`
+    // or terminal. Here `ready` never comes, so the slot stays held (honest backpressure).
     const s = new FakeTurnSession();
     let emit!: (text: string) => void;
     s.script = () => {
@@ -99,8 +99,8 @@ describe("streamTurn lifecycle races (C-API-48/51)", () => {
       emit = (text: string) => s.emit("activity", activity({ text })); // untagged (Claude-like)
     };
     const turn = runTurn(s as unknown as TurnSession, "go", {
-      timeoutMs: 10, // consumer fails fast (no oracle ever matches)
-      catchUpMs: 40, // post-fail quiet window
+      timeoutMs: 10,
+      catchUpMs: 40,
       fallbackQuietMs: 5_000,
     });
     await expect(collect(turn.events)).rejects.toMatchObject({ code: "wait_timeout" }); // consumer failed
@@ -108,14 +108,79 @@ describe("streamTurn lifecycle races (C-API-48/51)", () => {
     void turn.boundary.then(() => {
       resolved = true;
     });
-    // Keep the transcript "alive" past the quiet window: each burst must RE-ARM, deferring boundary.
-    for (let i = 0; i < 4; i += 1) {
-      emit(`late-${i}`);
-      await new Promise((r) => setTimeout(r, 25)); // < catchUpMs, so the quiet timer keeps resetting
-    }
-    expect(resolved).toBe(false); // boundary still held — the agent is still producing
-    // Now go quiet: after catchUpMs with no activity, the boundary finally resolves.
-    await turn.boundary;
+    // Long quiet stretch with the agent still `running` (no `ready`): the boundary must NOT resolve.
+    emit("still-working");
+    await new Promise((r) => setTimeout(r, 120)); // >> catchUpMs/DRAIN — proves quiet alone won't release
+    expect(resolved).toBe(false); // held — a silent running agent is not done
+  });
+
+  test("after a consumer TIMEOUT, a real `ready` (then a drain settle) resolves the boundary", async () => {
+    // The failed turn's agent eventually reaches `ready` — the reliable "turn done" signal. Only
+    // then (after a short transcript-drain settle) does the boundary resolve.
+    const s = new FakeTurnSession();
+    let ready!: () => void;
+    s.script = () => {
+      s.emit("status", { status: "running" });
+      ready = () => s.emit("status", { status: "ready" });
+    };
+    const turn = runTurn(s as unknown as TurnSession, "go", {
+      timeoutMs: 10,
+      catchUpMs: 5_000,
+      fallbackQuietMs: 5_000,
+    });
+    await expect(collect(turn.events)).rejects.toMatchObject({ code: "wait_timeout" });
+    let resolved = false;
+    void turn.boundary.then(() => {
+      resolved = true;
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(resolved).toBe(false); // no `ready` yet → still held
+    ready(); // the agent finishes its turn
+    await turn.boundary; // resolves after the short drain settle
     expect(resolved).toBe(true);
+  });
+
+  test("post-failure: trailing transcript activity after `ready` RE-ARMS the drain before release", async () => {
+    // After the timeout, `ready` arms the drain; a further trailing (untagged) transcript event
+    // must RE-ARM it (a bursty flush), so the boundary lands only once the flush truly stops.
+    const s = new FakeTurnSession();
+    let ready!: () => void;
+    let emit!: (t: string) => void;
+    s.script = () => {
+      s.emit("status", { status: "running" });
+      ready = () => s.emit("status", { status: "ready" });
+      emit = (t: string) => s.emit("activity", activity({ text: t }));
+    };
+    const turn = runTurn(s as unknown as TurnSession, "go", {
+      timeoutMs: 10,
+      catchUpMs: 60, // drain window
+      fallbackQuietMs: 5_000,
+    });
+    await expect(collect(turn.events)).rejects.toMatchObject({ code: "wait_timeout" });
+    let resolved = false;
+    void turn.boundary.then(() => {
+      resolved = true;
+    });
+    ready(); // arms the drain
+    await new Promise((r) => setTimeout(r, 40)); // partway through the drain window
+    emit("trailing"); // RE-ARMS the drain (this exercises the re-arm + draining branches)
+    await new Promise((r) => setTimeout(r, 40)); // still within a fresh drain window
+    expect(resolved).toBe(false); // the re-arm deferred release past the original window
+    await turn.boundary; // now quiet → resolves
+    expect(resolved).toBe(true);
+  });
+
+  test("after a consumer TIMEOUT, a terminal status resolves the boundary immediately", async () => {
+    const s = new FakeTurnSession();
+    let die!: () => void;
+    s.script = () => {
+      s.emit("status", { status: "running" });
+      die = () => s.emit("status", { status: "exited" });
+    };
+    const turn = runTurn(s as unknown as TurnSession, "go", { timeoutMs: 10, catchUpMs: 5_000 });
+    await expect(collect(turn.events)).rejects.toMatchObject({ code: "wait_timeout" });
+    die(); // the agent process is gone — the real boundary, no drain needed
+    await turn.boundary; // resolves (would hang if terminal did not release)
+    expect(s.listenerCount()).toBe(0);
   });
 });
