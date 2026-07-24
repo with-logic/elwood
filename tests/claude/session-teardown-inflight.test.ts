@@ -12,7 +12,7 @@ import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers
 
 afterEach(resetFakes);
 
-describe("ClaudeSession teardown with an interrupted operation", () => {
+describe("ClaudeSessionApi teardown with an interrupted operation", () => {
   test("C-LIFE-11 teardown reaps and completes even when it rejects a QUEUED message", async () => {
     const cwd = tempDir();
     installFakes();

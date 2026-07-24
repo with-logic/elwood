@@ -9,7 +9,7 @@ import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.
 
 afterEach(resetFakes);
 
-describe("CodexSession guidance", () => {
+describe("CodexSessionApi guidance", () => {
   test("C-API-37 queues at startup, then overtakes a running turn through Enter", async () => {
     const cwd = tempDir();
     installFakes();

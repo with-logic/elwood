@@ -17,7 +17,12 @@ import {
 import { homedir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { type ClaudeSession, type CodexSession, startClaude, startCodex } from "../../src/index.ts";
+import {
+  type ClaudeSessionApi,
+  type CodexSessionApi,
+  startClaude,
+  startCodex,
+} from "../../src/index.ts";
 import { cleanup, makeProject, observeSession, skipReason, waitFor } from "./helpers.ts";
 
 const codexAuthPath = join(homedir(), ".codex", "auth.json");
@@ -43,7 +48,7 @@ test("C-E2E-06 project settings hooks and CLAUDE.md load alongside the Elwood br
       },
     })}\n`,
   );
-  let session: ClaudeSession | undefined;
+  let session: ClaudeSessionApi | undefined;
   const instructionPaths: string[] = [];
   let bridgeSessionStarts = 0;
   try {
@@ -112,7 +117,7 @@ test("C-E2E-06 user Codex config.toml hooks fire alongside the Elwood bridge", {
   );
   const previousHome = process.env["CODEX_HOME"];
   process.env["CODEX_HOME"] = codexHome;
-  let session: CodexSession | undefined;
+  let session: CodexSessionApi | undefined;
   let stops = 0;
   try {
     session = await startCodex({

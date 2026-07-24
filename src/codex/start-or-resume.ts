@@ -6,7 +6,7 @@
 import { type StartOrResumeResult, startOrResume } from "../core/start-or-resume.ts";
 import { startCodex } from "./session.ts";
 import { resumeCodex } from "./session-resume.ts";
-import type { CodexSession, StartCodexOptions } from "./session-types.ts";
+import type { CodexSessionApi, StartCodexOptions } from "./session-types.ts";
 
 export type StartOrResumeCodexOptions = StartCodexOptions & {
   readonly elwoodSessionId?: string;
@@ -14,7 +14,7 @@ export type StartOrResumeCodexOptions = StartCodexOptions & {
 
 export function startOrResumeCodex(
   options: StartOrResumeCodexOptions,
-): Promise<StartOrResumeResult<CodexSession>> {
+): Promise<StartOrResumeResult<CodexSessionApi>> {
   const { elwoodSessionId, ...startOptions } = options;
   return startOrResume(
     elwoodSessionId,

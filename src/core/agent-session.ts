@@ -38,7 +38,7 @@ export type ElwoodCommonEventMap = {
 export type ElwoodCommonEventName = keyof ElwoodCommonEventMap;
 
 /**
- * Structural supertype of ClaudeSession and CodexSession. Code generic over
+ * Structural supertype of ClaudeSessionApi and CodexSessionApi. Code generic over
  * "any agent session" can hold either concrete session as this type and use
  * the shared events, io, commands, and lifecycle without adapter-specific
  * generics.

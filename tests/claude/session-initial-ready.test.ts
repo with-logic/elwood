@@ -17,7 +17,7 @@ afterEach(() => {
   resetFakes();
 });
 
-describe("ClaudeSession bounded initial readiness", () => {
+describe("ClaudeSessionApi bounded initial readiness", () => {
   test("C-API-28 the deadline releases the queued message once when InstructionsLoaded never arrives", async () => {
     const cwd = tempDir();
     installFakes();

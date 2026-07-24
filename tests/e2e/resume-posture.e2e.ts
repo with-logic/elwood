@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
-import { type ClaudeSession, resumeClaude, startClaude } from "../../src/index.ts";
+import { type ClaudeSessionApi, resumeClaude, startClaude } from "../../src/index.ts";
 import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
 
 type ClaudeLaunch = {
@@ -31,8 +31,8 @@ test("C-API-32 a restrictive Claude posture survives resume unchanged (real CLI)
   timeout: 180_000,
 }, async () => {
   const project = makeProject("claude");
-  let session: ClaudeSession | undefined;
-  let resumed: ClaudeSession | undefined;
+  let session: ClaudeSessionApi | undefined;
+  let resumed: ClaudeSessionApi | undefined;
   let starts = 0;
   let stops = 0;
   try {

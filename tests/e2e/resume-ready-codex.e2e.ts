@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { type CodexSession, resumeCodex, startCodex } from "../../src/index.ts";
+import { type CodexSessionApi, resumeCodex, startCodex } from "../../src/index.ts";
 import { cleanup, makeProject, skipReason, turnsEnabled, waitFor } from "./helpers.ts";
 
 const skipTurnsReason = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
@@ -25,8 +25,8 @@ test("C-API-28 real Codex resume reaches ready promptly (composer, not the 10s d
     autotrust: true,
     hooks: {},
   };
-  let first: CodexSession | undefined;
-  let resumed: CodexSession | undefined;
+  let first: CodexSessionApi | undefined;
+  let resumed: CodexSessionApi | undefined;
   try {
     first = await startCodex(opts);
     await waitFor(() => (first?.status === "ready" ? true : undefined), "first ready", 60_000);

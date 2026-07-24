@@ -7,7 +7,7 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest";
-import type { ClaudeHookEventFor, ClaudeSession } from "../../src/index.ts";
+import type { ClaudeHookEventFor, ClaudeSessionApi } from "../../src/index.ts";
 import { startClaude } from "../../src/index.ts";
 import { asScreen } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -29,7 +29,7 @@ const EXPIRED = asScreen("Login expired\n Please run /login");
 const NORMAL = asScreen("❯ \n  back to normal");
 
 /** Collect `login_expired` warning codes off the live `warning` event. */
-function collectLoginWarnings(session: ClaudeSession): { code: string }[] {
+function collectLoginWarnings(session: ClaudeSessionApi): { code: string }[] {
   const warnings: { code: string }[] = [];
   session.on("warning", (w) => {
     if (w.code === "login_expired") warnings.push(w);
@@ -37,7 +37,7 @@ function collectLoginWarnings(session: ClaudeSession): { code: string }[] {
   return warnings;
 }
 
-describe("ClaudeSession mid-session login expiry (C-CLAUDE-18)", () => {
+describe("ClaudeSessionApi mid-session login expiry (C-CLAUDE-18)", () => {
   test("surfaces a login_expired warning + activity once, and keeps the session alive", async () => {
     const cwd = tempDir();
     installFakes();

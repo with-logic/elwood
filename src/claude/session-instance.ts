@@ -24,7 +24,7 @@ import type { ClaudeLoginOptions } from "./login/types.ts";
 import { LoginExpiredWatcher, loginExpiredWarning } from "./login-expired.ts";
 import { claudeModelPicker } from "./model-picker.ts";
 import { resizeRestoreFailedWarning } from "./resize-restore.ts";
-import type { ClaudeSession } from "./session-interface.ts";
+import type { ClaudeSessionApi } from "./session-interface.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "./startup-size.ts";
 
 export type HookBridge = {
@@ -32,7 +32,7 @@ export type HookBridge = {
   readonly stop: () => Promise<void>;
 };
 
-export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession {
+export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSessionApi {
   protected readonly picker = claudeModelPicker;
   private readonly bridge: HookBridge;
   private readonly emitter: TypedEmitter;

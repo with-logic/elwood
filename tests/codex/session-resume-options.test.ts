@@ -14,7 +14,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-describe("CodexSession resume options", () => {
+describe("CodexSessionApi resume options", () => {
   test("C-API-10 resume forwards hooks, size, and safety options", async () => {
     const cwd = tempDir();
     installFakes();

@@ -13,7 +13,7 @@ import { FakePty, installFakes, ptys, reapedGroups, resetFakes, tempDir } from "
 
 afterEach(resetFakes);
 
-describe("CodexSession overlapping shutdown", () => {
+describe("CodexSessionApi overlapping shutdown", () => {
   test("C-LIFE-10 concurrent stop + stop signals the PTY once and settles stopped", async () => {
     const cwd = tempDir();
     installFakes();
@@ -47,7 +47,7 @@ describe("CodexSession overlapping shutdown", () => {
   });
 });
 
-describe("CodexSession guarded startup region", () => {
+describe("CodexSessionApi guarded startup region", () => {
   test("C-LIFE-10 a failure in the guarded startup region tears down the live bridge + PTY", async () => {
     // The region spans readiness wiring/replay, exit registration, the startup
     // assertion, and startup evidence — all AFTER the bridge/PTY/terminal are live. A

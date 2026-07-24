@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { numberedOptions } from "../../src/core/terminal-options.ts";
 import { TrustPromptResponder } from "../../src/core/trust-responder.ts";
-import { type ClaudeSession, startClaude } from "../../src/index.ts";
+import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
 
 /**
@@ -58,7 +58,7 @@ type Capture =
  * we don't recognize) we return "unmatched" so the caller SKIPS LOUDLY rather than
  * failing — the point of C-E2E-09 is to catch drift, not to be brittle.
  */
-async function captureTrustFrame(session: ClaudeSession): Promise<Capture> {
+async function captureTrustFrame(session: ClaudeSessionApi): Promise<Capture> {
   try {
     return await waitFor(
       () => {
@@ -123,7 +123,7 @@ test("C-E2E-09 the allowlist recognizes and the autotrust path clears the REAL C
   // gate. So drive a SECOND fresh, untrusted session WITH autotrust and assert it
   // reaches readiness — the "never block, always say yes" policy end-to-end.
   const trusted = makeProject("claude");
-  let autoSession: ClaudeSession | undefined;
+  let autoSession: ClaudeSessionApi | undefined;
   try {
     autoSession = await startClaude({
       cwd: trusted.cwd,

@@ -12,7 +12,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-describe("ClaudeSession startup and terminal control", () => {
+describe("ClaudeSessionApi startup and terminal control", () => {
   test("C-API-01 C-CLAUDE-02 C-LIFE-01 C-LIFE-05 C-STATE-01 C-API-16 starts with generated state and default terminal size", async () => {
     const cwd = tempDir();
     installFakes();

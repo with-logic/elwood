@@ -8,7 +8,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { type ClaudeSession, resumeClaude, startClaude } from "../../src/index.ts";
+import { type ClaudeSessionApi, resumeClaude, startClaude } from "../../src/index.ts";
 import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
 
 /** The stable per-session socket homes (`elwood-<fingerprint>` under tmpdir). */
@@ -33,8 +33,8 @@ test("C-STATE-12 real Claude starts and resumes from a 200-char stateDir", {
     "elwood",
   );
   assert.ok(stateDir.length >= 180, `repro stateDir is long enough (${stateDir.length})`);
-  let session: ClaudeSession | undefined;
-  let resumed: ClaudeSession | undefined;
+  let session: ClaudeSessionApi | undefined;
+  let resumed: ClaudeSessionApi | undefined;
   let sessionStarts = 0;
   const homesBefore = socketHomes();
   try {

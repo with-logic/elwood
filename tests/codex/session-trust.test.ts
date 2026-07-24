@@ -10,7 +10,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 afterEach(resetFakes);
 const flushTerminal = () => new Promise((resolve) => setTimeout(resolve, 25));
 
-describe("CodexSession trust prompts", () => {
+describe("CodexSessionApi trust prompts", () => {
   test("C-CODEX-06 C-CODEX-15 trusts hooks via the TUI prompt and does NOT block", async () => {
     // autotrust OFF, but hook trust (Elwood's own integration) is still answered
     // — and because it is answered it must never block (C-ATTN-03).

@@ -20,7 +20,7 @@ afterEach(() => {
   restoreCodexHome();
 });
 
-describe("CodexSession model picker", () => {
+describe("CodexSessionApi model picker", () => {
   test("C-API-23 listModels drives the picker through the readiness queue", async () => {
     const cwd = tempDir();
     installFakes();

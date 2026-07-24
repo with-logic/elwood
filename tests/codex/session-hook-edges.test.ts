@@ -9,7 +9,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-describe("CodexSession hook dispatch edges", () => {
+describe("CodexSessionApi hook dispatch edges", () => {
   test("C-HRESP-09 continue:false Stop results keep Codex running", async () => {
     const cwd = tempDir();
     installFakes();

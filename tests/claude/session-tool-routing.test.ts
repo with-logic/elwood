@@ -11,7 +11,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-describe("ClaudeSession object-form tool hook routing", () => {
+describe("ClaudeSessionApi object-form tool hook routing", () => {
   test("C-HOOK-10 routes unknown tool names to the unknown handler", async () => {
     const cwd = tempDir();
     installFakes();

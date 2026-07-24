@@ -11,7 +11,7 @@ import { appendFileSync } from "node:fs";
 import test from "node:test";
 import {
   type CodexHookHandlers,
-  type CodexSession,
+  type CodexSessionApi,
   type ElwoodWarningEvent,
   startCodex,
 } from "../../src/index.ts";
@@ -34,7 +34,7 @@ test("C-E2E-03 real Codex bounds an oversized transcript record and stays usable
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("codex");
-  let session: CodexSession | undefined;
+  let session: CodexSessionApi | undefined;
   let transcriptPath: string | undefined;
   let stops = 0;
   const hooks: CodexHookHandlers = {

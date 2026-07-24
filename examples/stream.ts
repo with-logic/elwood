@@ -4,9 +4,9 @@
  * `send` is just this generator drained for text; `stream` is the same turn, live.
  */
 
-import { SimpleClaudeSession } from "../src/index.ts";
+import { ClaudeSession } from "../src/index.ts";
 
-const session = new SimpleClaudeSession({ autotrust: true });
+const session = new ClaudeSession({ autotrust: true });
 try {
   for await (const event of session.stream("List the files here, then summarize the project.")) {
     switch (event.type) {

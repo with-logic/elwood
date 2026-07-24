@@ -47,7 +47,7 @@ async function readySession(cwd: string) {
   return session;
 }
 
-describe("ClaudeSession paste sanitization through public APIs (C-API-40)", () => {
+describe("ClaudeSessionApi paste sanitization through public APIs (C-API-40)", () => {
   test("C-API-40 sendPrompt strips the embedded sentinel and control bytes before framing", async () => {
     const cwd = tempDir();
     const session = await readySession(cwd);

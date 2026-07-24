@@ -11,7 +11,7 @@ npm run example:minimal
 ```
 
 ```ts
-const session = new SimpleCodexSession({ autotrust: true });
+const session = new CodexSession({ autotrust: true });
 const joke = await session.send("Tell me a joke that involves a dog.");
 const rewrite = await session.send("Now rewrite it to be about a cat.");
 await session.close();

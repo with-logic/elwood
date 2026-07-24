@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   type CodexHookHandlers,
-  type CodexSession,
+  type CodexSessionApi,
   ElwoodError,
   startCodex,
 } from "../../src/index.ts";
@@ -30,7 +30,7 @@ test("C-E2E-03 real Codex turn queues early messages and hooks real tools", {
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("codex");
-  let session: CodexSession | undefined;
+  let session: CodexSessionApi | undefined;
   const prompts: string[] = [];
   const preTools: ToolSeen[] = [];
   const postTools: ToolSeen[] = [];

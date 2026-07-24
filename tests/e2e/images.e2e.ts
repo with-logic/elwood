@@ -11,7 +11,12 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
-import { type ClaudeSession, type CodexSession, startClaude, startCodex } from "../../src/index.ts";
+import {
+  type ClaudeSessionApi,
+  type CodexSessionApi,
+  startClaude,
+  startCodex,
+} from "../../src/index.ts";
 import {
   cleanup,
   makeProject,
@@ -30,7 +35,7 @@ test("C-E2E-12 Claude attaches a pasted image path (real CLI shows [Image #N])",
   const project = makeProject("claude");
   const image = join(project.cwd, "shot.png");
   copyFileSync(fixture, image);
-  let session: ClaudeSession | undefined;
+  let session: ClaudeSessionApi | undefined;
   try {
     session = await startClaude({
       cwd: project.cwd,
@@ -66,7 +71,7 @@ test("C-E2E-13 Codex attaches a clipboard image and restores the clipboard (real
   // Plant a KNOWN sentinel so we can prove PRODUCTION restored it (not our finally).
   const sentinel = "elwood-e2e-clipboard-sentinel";
   execFileSync("/usr/bin/pbcopy", { input: sentinel });
-  let session: CodexSession | undefined;
+  let session: CodexSessionApi | undefined;
   try {
     session = await startCodex({ cwd: project.cwd, stateDir: project.stateDir, autotrust: true });
     await prepareInteractivePrompt(session, observeSession(session), "codex");

@@ -1,5 +1,5 @@
 /**
- * Conformance for ClaudeSession.login — the interactive `/login` recovery flow
+ * Conformance for ClaudeSessionApi.login — the interactive `/login` recovery flow
  * (PRD §5.3, C-API-43). Exercised through the real control queue + fake PTY: it
  * submits /login, drives the method picker, scrapes the auth URL, feeds a pasted
  * code when the CLI asks for one, and resolves only after a FRESH `ready` state
@@ -14,7 +14,7 @@ import { ARROW_DOWN, ready, succeedAndRecover } from "./login-helpers.ts";
 
 afterEach(resetFakes);
 
-describe("ClaudeSession.login correctness (C-API-43)", () => {
+describe("ClaudeSessionApi.login correctness (C-API-43)", () => {
   test("C-API-43 full happy path: picker, URL, code, one Enter, then a fresh ready", async () => {
     const cwd = tempDir();
     installFakes();

@@ -17,7 +17,7 @@ import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers
 
 afterEach(resetFakes);
 
-describe("ClaudeSession lifecycle", () => {
+describe("ClaudeSessionApi lifecycle", () => {
   test("C-API-03 C-LIFE-04 C-STATE-02 C-STATE-04 resumes from caller-provided Elwood metadata", async () => {
     const cwd = tempDir();
     const stateDir = join(tempDir(), "state");

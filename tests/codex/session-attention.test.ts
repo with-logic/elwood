@@ -11,7 +11,7 @@ afterEach(resetFakes);
 
 const trustPrompt = "Do you trust the contents of this directory?\r\n› 1. Yes, continue\r\n";
 
-describe("CodexSession attention wiring", () => {
+describe("CodexSessionApi attention wiring", () => {
   test("C-ATTN-03 an auto-answered Codex trust prompt does not block", async () => {
     const cwd = tempDir();
     installFakes();

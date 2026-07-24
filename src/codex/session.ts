@@ -1,4 +1,4 @@
-/** CodexSession entry points: preflight, record creation, and socket-home-guarded start. Implements PRD §5.5, §5.6, §5.7, §7A, §8, §9. */
+/** CodexSessionApi entry points: preflight, record creation, and socket-home-guarded start. Implements PRD §5.5, §5.6, §5.7, §7A, §8, §9. */
 
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
@@ -15,14 +15,20 @@ import {
 } from "../state/store.ts";
 import * as preflight from "./preflight.ts";
 import { buildCodexSession } from "./session-build.ts";
-import type { CodexSession, StartCodexOptions } from "./session-types.ts";
+import type { CodexSessionApi, StartCodexOptions } from "./session-types.ts";
 
 export {
   resetCodexSessionSeamsForTests,
   setCodexHookBridgeFactoryForTests,
 } from "./session-bridge.ts";
 
-export async function startCodex(rawOptions: StartCodexOptions): Promise<CodexSession> {
+/**
+ * @deprecated Prefer the `CodexSession` class (`new CodexSession(options)`), which starts
+ * lazily and exposes both `send`/`stream` and this full control surface. `startCodex`
+ * remains the low-level eager factory and is used internally; it will be removed once the
+ * sole consumer migrates.
+ */
+export async function startCodex(rawOptions: StartCodexOptions): Promise<CodexSessionApi> {
   // Resolve BOTH cwd and stateDir to ABSOLUTE before the preflight `await`: a relative
   // path resolved after the await could point elsewhere if the caller's (or preflight's)
   // process.cwd() changed during it, splitting where state is written from where the CLI

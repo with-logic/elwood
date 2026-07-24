@@ -9,8 +9,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
-  type ClaudeSession,
-  type CodexSession,
+  type ClaudeSessionApi,
+  type CodexSessionApi,
   listClaudeModels,
   listCodexModels,
   startClaude,
@@ -23,7 +23,7 @@ test("C-API-23 C-API-24 real Claude lists models and switches session-only", {
   timeout: 150_000,
 }, async () => {
   const project = makeProject("claude");
-  let session: ClaudeSession | undefined;
+  let session: ClaudeSessionApi | undefined;
   try {
     session = await startClaude({
       cwd: project.cwd,
@@ -62,7 +62,7 @@ test("C-API-23 C-API-24 real Codex lists models and switches session-scoped", {
   // (PRD §5.3 deviation note), so snapshot and restore it around this test.
   const configPath = join(homedir(), ".codex", "config.toml");
   const configBefore = existsSync(configPath) ? readFileSync(configPath, "utf8") : undefined;
-  let session: CodexSession | undefined;
+  let session: CodexSessionApi | undefined;
   try {
     session = await startCodex({
       cwd: project.cwd,

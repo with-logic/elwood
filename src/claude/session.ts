@@ -1,4 +1,4 @@
-/** ClaudeSession entry points: preflight, record creation, and socket-home-guarded start. Implements PRD §5, §6, §8, §9. */
+/** ClaudeSessionApi entry points: preflight, record creation, and socket-home-guarded start. Implements PRD §5, §6, §8, §9. */
 
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
@@ -17,14 +17,20 @@ import {
   setHookBridgeFactoryForTests,
 } from "./session-bridge.ts";
 import { buildClaudeSession } from "./session-build.ts";
-import type { ClaudeSession } from "./session-interface.ts";
+import type { ClaudeSessionApi } from "./session-interface.ts";
 
 export {
   resetClaudeHookBridgeFactoryForTests as resetClaudeSessionSeamsForTests,
   setHookBridgeFactoryForTests,
 };
 
-export async function startClaude(rawOptions: StartClaudeOptions): Promise<ClaudeSession> {
+/**
+ * @deprecated Prefer the `ClaudeSession` class (`new ClaudeSession(options)`), which starts
+ * lazily and exposes both `send`/`stream` and this full control surface. `startClaude`
+ * remains the low-level eager factory and is used internally; it will be removed once the
+ * sole consumer migrates.
+ */
+export async function startClaude(rawOptions: StartClaudeOptions): Promise<ClaudeSessionApi> {
   // Resolve BOTH cwd and stateDir to ABSOLUTE before the preflight `await`: a relative
   // path resolved after the await could point elsewhere if the caller's (or preflight's)
   // process.cwd() changed during it, splitting where state is written from where the CLI

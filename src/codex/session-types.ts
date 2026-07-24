@@ -91,7 +91,7 @@ export type CodexEventHandler<E extends CodexEventName> = (
     : undefined
   : void;
 
-export interface CodexSession {
+export interface CodexSessionApi {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;

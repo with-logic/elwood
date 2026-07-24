@@ -4,9 +4,9 @@
  * assistant's text as a string (PRD §5.8).
  */
 
-import { SimpleCodexSession } from "../src/index.ts";
+import { CodexSession } from "../src/index.ts";
 
-const session = new SimpleCodexSession({ autotrust: true });
+const session = new CodexSession({ autotrust: true });
 try {
   process.stdout.write(`${await session.send("Tell me a joke that involves a dog.")}\n`);
   process.stdout.write(`${await session.send("Now rewrite it to be about a cat.")}\n`);

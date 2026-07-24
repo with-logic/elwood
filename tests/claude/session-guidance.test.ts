@@ -28,7 +28,7 @@ const stopHook = (cwd: string) =>
     stop_hook_active: false,
   }) satisfies ClaudeHookEventFor<"Stop">;
 
-describe("ClaudeSession guidance", () => {
+describe("ClaudeSessionApi guidance", () => {
   test("C-API-37 queues at startup, then overtakes a running turn through Enter", async () => {
     const cwd = tempDir();
     installFakes();

@@ -8,7 +8,7 @@
 import type { ElwoodActivityEvent } from "../activity.ts";
 
 /** A simplified turn event surfaced by `stream` (a stable facade over activity kinds). */
-export type SimpleTurnEvent =
+export type TurnEvent =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "thinking"; readonly text: string }
   | { readonly type: "tool_call"; readonly name: string; readonly input?: string }
@@ -19,7 +19,7 @@ export type SimpleTurnEvent =
  * that are NOT turn content (lifecycle, hook, warning, attention, status, …). Only the
  * four content kinds cross the facade boundary, keeping the public union stable.
  */
-export function toSimpleTurnEvent(event: ElwoodActivityEvent): SimpleTurnEvent | undefined {
+export function toTurnEvent(event: ElwoodActivityEvent): TurnEvent | undefined {
   switch (event.kind) {
     case "assistant_message":
       return { type: "text", text: event.text ?? "" };

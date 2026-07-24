@@ -48,7 +48,7 @@ async function ready(cwd: string, elwoodSessionId: string): Promise<void> {
   });
 }
 
-describe("ClaudeSession image attachment (C-API-44/45)", () => {
+describe("ClaudeSessionApi image attachment (C-API-44/45)", () => {
   test("C-API-45 pastes each image path before the text in one turn", async () => {
     const cwd = tempDir();
     installFakes();

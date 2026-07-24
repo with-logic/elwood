@@ -1,4 +1,4 @@
-/** Builds a live ClaudeSession from a record + runtime. Implements PRD §5, §6, §8, §9. */
+/** Builds a live ClaudeSessionApi from a record + runtime. Implements PRD §5, §6, §8, §9. */
 import { defaultTerminalSize } from "../core/defaults.ts";
 import { causeDetails, elwoodError } from "../core/errors.ts";
 import { observeRenderedFrame } from "../core/rendered-observers.ts";

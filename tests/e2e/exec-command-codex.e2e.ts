@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { type CodexSession, startCodex } from "../../src/index.ts";
+import { type CodexSessionApi, startCodex } from "../../src/index.ts";
 import {
   cleanup,
   e2eTimeoutMs,
@@ -33,7 +33,7 @@ test("C-CODEX-19 real Codex exec surfaces the bare command and output (unwrapped
   timeout: e2eTimeoutMs + 60_000,
 }, async () => {
   const project = makeProject("codex");
-  let session: CodexSession | undefined;
+  let session: CodexSessionApi | undefined;
   try {
     session = await startCodex({
       cwd: project.cwd,

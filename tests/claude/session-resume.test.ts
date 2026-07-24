@@ -20,7 +20,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-describe("ClaudeSession resume options", () => {
+describe("ClaudeSessionApi resume options", () => {
   test("C-API-03 C-LIFE-04 C-ERR-07 resume honors per-resume overrides", async () => {
     const cwd = tempDir();
     const stateDir = join(tempDir(), "state");

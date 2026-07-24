@@ -10,7 +10,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-describe("CodexSession lifecycle edges", () => {
+describe("CodexSessionApi lifecycle edges", () => {
   test("C-API-11 resize resolves without rendering when the PTY is closed", async () => {
     const cwd = tempDir();
     installFakes();

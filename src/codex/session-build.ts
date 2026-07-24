@@ -1,4 +1,4 @@
-/** Builds a live CodexSession from a record + runtime. Implements PRD §5.5, §5.6, §5.7, §7A, §8, §9. */
+/** Builds a live CodexSessionApi from a record + runtime. Implements PRD §5.5, §5.6, §5.7, §7A, §8, §9. */
 import * as activity from "../core/activity.ts";
 import { AttentionWatcher } from "../core/attention.ts";
 import { defaultTerminalSize } from "../core/defaults.ts";

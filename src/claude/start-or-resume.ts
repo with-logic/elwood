@@ -6,7 +6,7 @@
 import { type StartOrResumeResult, startOrResume } from "../core/start-or-resume.ts";
 import type { StartClaudeOptions } from "../core/types.ts";
 import { startClaude } from "./session.ts";
-import type { ClaudeSession } from "./session-interface.ts";
+import type { ClaudeSessionApi } from "./session-interface.ts";
 import { resumeClaude } from "./session-resume.ts";
 
 export type StartOrResumeClaudeOptions = StartClaudeOptions & {
@@ -15,7 +15,7 @@ export type StartOrResumeClaudeOptions = StartClaudeOptions & {
 
 export function startOrResumeClaude(
   options: StartOrResumeClaudeOptions,
-): Promise<StartOrResumeResult<ClaudeSession>> {
+): Promise<StartOrResumeResult<ClaudeSessionApi>> {
   const { elwoodSessionId, ...startOptions } = options;
   return startOrResume(
     elwoodSessionId,

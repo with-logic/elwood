@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { childPids } from "../../src/app/child-lookup.ts";
-import { type ClaudeSession, startClaude } from "../../src/index.ts";
+import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
 
 /** True once `pid` no longer exists (signal 0 probe throws ESRCH for a dead pid). */
@@ -28,7 +28,7 @@ test("C-LIFE-10 teardown reaps the real Claude process group (no orphan)", {
   const project = makeProject("claude");
   const before = new Set(childPids(process.pid));
   let starts = 0;
-  const session: ClaudeSession = await startClaude({
+  const session: ClaudeSessionApi = await startClaude({
     cwd: project.cwd,
     stateDir: project.stateDir,
     autotrust: true,

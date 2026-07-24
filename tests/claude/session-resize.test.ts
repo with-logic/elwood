@@ -35,7 +35,7 @@ async function reachReady(cwd: string, id: string): Promise<void> {
   });
 }
 
-describe("ClaudeSession narrow-bootstrap resize", () => {
+describe("ClaudeSessionApi narrow-bootstrap resize", () => {
   test("C-API-19 C-API-36 bootstraps wide, holds resizes in memory, then restores the latest", async () => {
     const cwd = tempDir();
     installFakes();

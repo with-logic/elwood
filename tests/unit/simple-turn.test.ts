@@ -1,147 +1,142 @@
 /**
- * Unit coverage for one ergonomic turn (PRD §5.8, C-API-48/49): stream binds to the
- * turn's activity, ends on the post-work settle (not the idle `ready` at submit), keeps a
- * queued prior turn's events out, joins send() text with blank lines, and times out.
+ * Unit coverage for one ergonomic turn (PRD §5.8, C-API-48/49): the turn ends
+ * DETERMINISTICALLY when the transcript catches up to the Stop hook's expected text (the
+ * completeness oracle), falls back to a bounded quiet window when there is no oracle, binds
+ * to the turn's `turnId`, and drops post-end activity. Timeout paths live in the sibling
+ * `simple-turn-timeout.test.ts`.
  */
 
 import { describe, expect, test } from "vitest";
-import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
-import type { ElwoodCommonEventMap } from "../../src/core/agent-session.ts";
-import { streamTurn, type TurnSession } from "../../src/core/simple/turn.ts";
-import { TypedEmitter } from "../../src/events/emitter.ts";
+import { activity, drive, run } from "./simple-turn-fakes.ts";
 
-type Emitter = TypedEmitter<ElwoodCommonEventMap>;
+describe("streamTurn completeness oracle (C-API-48)", () => {
+  test("ends when the transcript catches up to the Stop hook's expected text", async () => {
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "HELLO" }); // oracle set
+      s.emit("status", { status: "ready" }); // settles, but text not yet arrived
+      // The transcript lags: the assistant text arrives AFTER ready — the turn waits for it.
+      queueMicrotask(() => s.emit("activity", activity({ text: "HELLO", turnId: "t1" })));
+    });
+    expect(await run(s)).toEqual([{ type: "text", text: "HELLO" }]);
+  });
 
-function activity(partial: Partial<ElwoodActivityEvent>): ElwoodActivityEvent {
-  return {
-    elwoodSessionId: "s1",
-    agent: "claude",
-    source: "transcript",
-    kind: "assistant_message",
-    label: "assistant",
-    ...partial,
-  };
-}
+  test("waits for the FULL expected text across streamed chunks, then ends", async () => {
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "LINE ONE\nLINE TWO" });
+      s.emit("status", { status: "ready" });
+      s.emit("activity", activity({ text: "LINE ONE\n", turnId: "t1" })); // partial — not yet complete
+      s.emit("activity", activity({ text: "LINE TWO", turnId: "t1" })); // now the transcript matches
+    });
+    expect(await run(s)).toEqual([
+      { type: "text", text: "LINE ONE\n" },
+      { type: "text", text: "LINE TWO" },
+    ]);
+  });
 
-/** A fake session whose `sendMessage` runs a scripted turn against the emitter. */
-function fakeSession(emitter: Emitter, onSend: () => void): TurnSession {
-  return {
-    status: "ready",
-    on: (event, handler) => emitter.on(event, handler),
-    sendMessage: () => {
-      onSend();
-      return Promise.resolve();
-    },
-  };
-}
-
-async function collect(gen: AsyncGenerator<unknown>): Promise<unknown[]> {
-  const out: unknown[] = [];
-  for await (const ev of gen) out.push(ev);
-  return out;
-}
-
-describe("streamTurn (C-API-48)", () => {
-  test("yields a turn's text/thinking/tool events, ending on the post-work settle", async () => {
-    const emitter: Emitter = new TypedEmitter<ElwoodCommonEventMap>();
-    const session = fakeSession(emitter, () => {
-      emitter.emit("status", { elwoodSessionId: "s1", status: "running" });
-      emitter.emit("activity", activity({ kind: "reasoning", text: "hmm", turnId: "t1" }));
-      emitter.emit(
+  test("yields thinking/tool events; oracle ends the turn once the text arrives", async () => {
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      s.emit("activity", activity({ kind: "reasoning", text: "hmm", turnId: "t1" }));
+      s.emit(
         "activity",
         activity({ kind: "tool_call", toolName: "Bash", toolInput: "ls", turnId: "t1" }),
       );
-      emitter.emit(
+      s.emit(
         "activity",
-        activity({ kind: "tool_result", toolName: "Bash", toolOutput: "a\nb", turnId: "t1" }),
+        activity({ kind: "tool_result", toolName: "Bash", toolOutput: "a", turnId: "t1" }),
       );
-      emitter.emit("activity", activity({ text: "done", turnId: "t1" }));
-      emitter.emit("status", { elwoodSessionId: "s1", status: "ready" }); // post-work settle
+      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "done" });
+      s.emit("status", { status: "ready" });
+      s.emit("activity", activity({ text: "done", turnId: "t1" }));
     });
-    expect(await collect(streamTurn(session, "go", undefined, 5))).toEqual([
+    expect(await run(s)).toEqual([
       { type: "thinking", text: "hmm" },
       { type: "tool_call", name: "Bash", input: "ls" },
-      { type: "tool_result", name: "Bash", output: "a\nb" },
+      { type: "tool_result", name: "Bash", output: "a" },
       { type: "text", text: "done" },
     ]);
   });
 
-  test("the idle `ready` at submit does NOT end the turn before any work runs", async () => {
-    const emitter: Emitter = new TypedEmitter<ElwoodCommonEventMap>();
-    const session = fakeSession(emitter, () => {
-      // A stray `ready` before the turn starts must be ignored (not-yet-started).
-      emitter.emit("status", { elwoodSessionId: "s1", status: "ready" });
-      emitter.emit("status", { elwoodSessionId: "s1", status: "running" });
-      emitter.emit("activity", activity({ text: "answer", turnId: "t1" }));
-      emitter.emit("status", { elwoodSessionId: "s1", status: "ready" });
+  test("no oracle (empty Stop text) → bounded quiet-window settle after ready", async () => {
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      s.emit("activity", activity({ text: "answer", turnId: "t1" }));
+      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "" }); // no oracle
+      s.emit("status", { status: "ready" });
     });
-    expect(await collect(streamTurn(session, "go", undefined, 5))).toEqual([
-      { type: "text", text: "answer" },
+    expect(await run(s)).toEqual([{ type: "text", text: "answer" }]); // ends after the quiet window
+  });
+
+  test("no-oracle: trailing content after ready RE-ARMS the quiet window (kept, then settles)", async () => {
+    // With no oracle, a content event that lands after `ready` while a quiet timer is already
+    // pending must clear+re-arm it (so trailing text is kept) and still settle once quiet.
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "" }); // no oracle
+      s.emit("status", { status: "ready" }); // arms the quiet timer
+      s.emit("activity", activity({ text: "first", turnId: "t1" })); // re-arms (clears pending timer)
+      s.emit("activity", activity({ text: "second", turnId: "t1" })); // re-arms again
+    });
+    expect(await run(s)).toEqual([
+      { type: "text", text: "first" },
+      { type: "text", text: "second" },
     ]);
+  });
+
+  test("pure-tool turn with NO Stop hook at all → quiet-window settle", async () => {
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      s.emit(
+        "activity",
+        activity({ kind: "tool_call", toolName: "Bash", toolInput: "ls", turnId: "t1" }),
+      );
+      s.emit("status", { status: "ready" }); // no hook, no assistant text
+    });
+    expect(await run(s)).toEqual([{ type: "tool_call", name: "Bash", input: "ls" }]);
+  });
+
+  test("the idle `ready` at submit does NOT end the turn before any work runs", async () => {
+    const s = drive((s) => {
+      s.emit("status", { status: "ready" }); // stray pre-start ready (not-yet-started)
+      s.emit("status", { status: "running" });
+      s.emit("activity", activity({ text: "answer", turnId: "t1" }));
+      s.emit("status", { status: "ready" });
+    });
+    expect(await run(s)).toEqual([{ type: "text", text: "answer" }]);
   });
 
   test("a queued PRIOR turn's activity (different turnId) never bleeds in", async () => {
-    const emitter: Emitter = new TypedEmitter<ElwoodCommonEventMap>();
-    const session = fakeSession(emitter, () => {
-      emitter.emit("status", { elwoodSessionId: "s1", status: "running" });
-      emitter.emit("activity", activity({ text: "MINE", turnId: "t2" })); // binds to t2
-      emitter.emit("activity", activity({ text: "STALE", turnId: "t1" })); // other turn
-      emitter.emit("activity", activity({ text: "MINE2", turnId: "t2" }));
-      emitter.emit("status", { elwoodSessionId: "s1", status: "ready" });
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      s.emit("activity", activity({ text: "MINE", turnId: "t2" })); // binds to t2
+      s.emit("activity", activity({ text: "STALE", turnId: "t1" })); // other turn
+      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "MINE" });
+      s.emit("status", { status: "ready" });
     });
-    expect(await collect(streamTurn(session, "go", undefined, 5))).toEqual([
-      { type: "text", text: "MINE" },
-      { type: "text", text: "MINE2" },
-    ]);
+    expect(await run(s)).toEqual([{ type: "text", text: "MINE" }]);
   });
 
-  test("ends without error when the turn settles via a TERMINAL status", async () => {
-    const emitter: Emitter = new TypedEmitter<ElwoodCommonEventMap>();
-    const session = fakeSession(emitter, () => {
-      emitter.emit("status", { elwoodSessionId: "s1", status: "running" });
-      emitter.emit("activity", activity({ text: "partial", turnId: "t1" }));
-      emitter.emit("status", { elwoodSessionId: "s1", status: "exited" }); // ends immediately
-      emitter.emit("status", { elwoodSessionId: "s1", status: "ready" }); // stray post-end settle: ignored
+  test("a terminal status ends the turn at once; a stray later `ready` is ignored", async () => {
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      s.emit("activity", activity({ text: "partial", turnId: "t1" }));
+      s.emit("status", { status: "exited" }); // terminal ends immediately
+      s.emit("status", { status: "ready" }); // stray post-end settle: ignored
+      s.emit("activity", activity({ text: "LATE", turnId: "t1" })); // dropped
     });
-    expect(await collect(streamTurn(session, "go", undefined, 5))).toEqual([
-      { type: "text", text: "partial" },
-    ]);
+    expect(await run(s)).toEqual([{ type: "text", text: "partial" }]);
   });
 
-  test("trailing content within the settle grace IS included (transcript lag)", async () => {
-    // The `ready` settle for a transcript-sourced turn can precede the last assistant
-    // text. A content event arriving within the grace window defers the end and is kept.
-    const emitter: Emitter = new TypedEmitter<ElwoodCommonEventMap>();
-    const session = fakeSession(emitter, () => {
-      emitter.emit("status", { elwoodSessionId: "s1", status: "running" });
-      emitter.emit("status", { elwoodSessionId: "s1", status: "ready" }); // settle first...
-      emitter.emit("activity", activity({ text: "trailing", turnId: "t1" })); // ...text lags
+  test("a non-Stop hook is ignored; a Stop with null text sets no oracle (quiet settle)", async () => {
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      s.emit("hook", { hook_event_name: "PreToolUse" }); // not a turn boundary — ignored
+      s.emit("activity", activity({ text: "answer", turnId: "t1" }));
+      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: null }); // null → no oracle
+      s.emit("status", { status: "ready" });
     });
-    expect(await collect(streamTurn(session, "go", undefined, 30))).toEqual([
-      { type: "text", text: "trailing" },
-    ]);
-  });
-
-  test("a late activity arriving AFTER the grace has elapsed is dropped (end latched)", async () => {
-    const emitter: Emitter = new TypedEmitter<ElwoodCommonEventMap>();
-    const session = fakeSession(emitter, () => {
-      emitter.emit("status", { elwoodSessionId: "s1", status: "running" });
-      emitter.emit("activity", activity({ text: "answer", turnId: "t1" }));
-      emitter.emit("status", { elwoodSessionId: "s1", status: "exited" }); // terminal: ends NOW
-      emitter.emit("activity", activity({ text: "LATE", turnId: "t1" })); // after end: dropped
-    });
-    expect(await collect(streamTurn(session, "go", undefined, 5))).toEqual([
-      { type: "text", text: "answer" },
-    ]);
-  });
-
-  test("a deadline breach throws wait_timeout from the iterator", async () => {
-    const emitter: Emitter = new TypedEmitter<ElwoodCommonEventMap>();
-    const session = fakeSession(emitter, () => {
-      emitter.emit("status", { elwoodSessionId: "s1", status: "running" }); // never settles
-    });
-    await expect(collect(streamTurn(session, "go", 10))).rejects.toMatchObject({
-      code: "wait_timeout",
-    });
+    expect(await run(s)).toEqual([{ type: "text", text: "answer" }]); // quiet-window fallback ends it
   });
 });

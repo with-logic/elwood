@@ -9,9 +9,9 @@ import { codexLaunchPosture, effectivePosture, withCodexLaunch } from "../state/
 import { defaultStateDir, readSessionRecord } from "../state/store.ts";
 import * as preflight from "./preflight.ts";
 import { startCodexFromRecord } from "./session.ts";
-import type { CodexSession, ResumeCodexOptions } from "./session-types.ts";
+import type { CodexSessionApi, ResumeCodexOptions } from "./session-types.ts";
 
-export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSession> {
+export async function resumeCodex(options: ResumeCodexOptions): Promise<CodexSessionApi> {
   // Resolve stateDir to ABSOLUTE ONCE, before any read/await, so a `process.chdir()`
   // between the record read and the runtime-file writes can't split them (§8.1).
   const stateDir = resolve(options.stateDir ?? defaultStateDir(options.cwd ?? process.cwd()));

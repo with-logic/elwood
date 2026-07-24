@@ -18,7 +18,7 @@ afterEach(resetFakes);
 // so the bounded cursor discards it as an over-length un-terminated record.
 const OVERSIZED_RECORD = `{"junk":"${"x".repeat(1_100_000)}"`;
 
-describe("CodexSession transcript drops (§5.4)", () => {
+describe("CodexSessionApi transcript drops (§5.4)", () => {
   test("§5.4 an oversized transcript record surfaces a content-free drop warning on the session", async () => {
     const cwd = tempDir();
     const transcript = join(cwd, "codex.jsonl");

@@ -22,7 +22,7 @@ afterEach(() => {
   restoreCodexHome();
 });
 
-describe("CodexSession setModel", () => {
+describe("CodexSessionApi setModel", () => {
   test("C-CODEX-14 setModel restores the user's persisted default", async () => {
     const cwd = tempDir();
     const configPath = sandboxCodexHome(cwd);

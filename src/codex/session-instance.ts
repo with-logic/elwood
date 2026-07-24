@@ -29,12 +29,12 @@ import type {
   CodexEventHandler,
   CodexEventMap,
   CodexEventName,
-  CodexSession,
+  CodexSessionApi,
 } from "./session-types.ts";
 import { emitCodexWarnings } from "./session-warnings.ts";
 import type { CodexTranscriptWatcher } from "./transcript.ts";
 
-export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
+export class CodexSessionImpl extends AgentSessionBase implements CodexSessionApi {
   protected readonly picker = codexModelPicker;
   private readonly bridge: CodexHookBridge;
   private readonly emitter: TypedEmitter<CodexEventMap>;

@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import test from "node:test";
-import { type ClaudeHookHandlers, type ClaudeSession, startClaude } from "../../src/index.ts";
+import { type ClaudeHookHandlers, type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import {
   assertJson,
   claudePostToolEvent,
@@ -29,7 +29,7 @@ test("C-E2E-02 real Claude bridge handles typed hook responses", {
   timeout: e2eTimeoutMs,
 }, async () => {
   const project = makeProject("claude");
-  let session: ClaudeSession | undefined;
+  let session: ClaudeSessionApi | undefined;
   const hooks: ClaudeHookHandlers = {
     SessionStart: () => ({ additionalContext: "session context", watchPaths: ["README.md"] }),
     Setup: () => ({ additionalContext: "setup context" }),
@@ -160,7 +160,7 @@ test("C-E2E-02 real Claude bridge handles typed hook responses", {
   }
 
   async function expectClaude(
-    active: ClaudeSession,
+    active: ClaudeSessionApi,
     input: JsonObject,
     path: readonly string[],
     expected: unknown,

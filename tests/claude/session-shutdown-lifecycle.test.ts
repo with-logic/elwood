@@ -10,7 +10,7 @@ import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers
 
 afterEach(resetFakes);
 
-describe("ClaudeSession overlapping shutdown", () => {
+describe("ClaudeSessionApi overlapping shutdown", () => {
   test("C-LIFE-10 concurrent stop + stop signals the PTY once and settles stopped", async () => {
     // Overlapping shutdowns must not each snapshot a non-terminal status and race
     // into terminatePty: the coordinator lets the first own the shutdown and the

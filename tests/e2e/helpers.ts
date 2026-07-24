@@ -7,10 +7,10 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ClaudeSession, CodexSession } from "../../src/index.ts";
+import type { ClaudeSessionApi, CodexSessionApi } from "../../src/index.ts";
 
 export type AgentName = "claude" | "codex";
-export type E2eSession = ClaudeSession | CodexSession;
+export type E2eSession = ClaudeSessionApi | CodexSessionApi;
 
 // The suite emulates an agent launched from the user's own terminal. When the
 // suite itself runs nested inside a Claude Code session, claude >= 2.1.201

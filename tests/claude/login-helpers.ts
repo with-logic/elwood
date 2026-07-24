@@ -1,11 +1,11 @@
 /**
- * Shared fixtures for the ClaudeSession.login conformance suites (C-API-43).
+ * Shared fixtures for the ClaudeSessionApi.login conformance suites (C-API-43).
  * Provides readiness bootstrap plus a helper that drives a FRESH `ready`
  * transition — the signal `login()` now waits for after "Login successful."
  * before it resolves (a success banner alone no longer proves usability).
  */
 
-import type { ClaudeSession } from "../../src/index.ts";
+import type { ClaudeSessionApi } from "../../src/index.ts";
 import { asScreen } from "../helpers/model-pickers.ts";
 import { ptys } from "./helpers.ts";
 
@@ -31,7 +31,7 @@ export const stopHook = (cwd: string) => ({
 });
 
 /** Reach initial readiness via the InstructionsLoaded hook. */
-export async function ready(cwd: string, session: ClaudeSession): Promise<void> {
+export async function ready(cwd: string, session: ClaudeSessionApi): Promise<void> {
   await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
 }
 
@@ -44,7 +44,7 @@ export async function ready(cwd: string, session: ClaudeSession): Promise<void> 
  * wait for the final `ready` itself (a queued follow-up op can immediately flip
  * the session back to `running`); callers synchronize on the `login()` promise.
  */
-export async function driveFreshReady(cwd: string, session: ClaudeSession): Promise<void> {
+export async function driveFreshReady(cwd: string, session: ClaudeSessionApi): Promise<void> {
   while (session.status !== "running") {
     ptys[0]!.emitData(WORKING_FOOTER);
     await new Promise((r) => setTimeout(r, 20));
@@ -60,7 +60,7 @@ export async function driveFreshReady(cwd: string, session: ClaudeSession): Prom
  * driver observed success, not before. The settle delay covers the driver's
  * ~100 ms outcome-poll interval.
  */
-export async function succeedAndRecover(cwd: string, session: ClaudeSession): Promise<void> {
+export async function succeedAndRecover(cwd: string, session: ClaudeSessionApi): Promise<void> {
   ptys[0]!.emitData(asScreen("Login successful."));
   await new Promise((r) => setTimeout(r, 250));
   await driveFreshReady(cwd, session);

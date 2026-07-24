@@ -15,7 +15,7 @@ import { FakePty, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-describe("CodexSession lifecycle", () => {
+describe("CodexSessionApi lifecycle", () => {
   test("C-API-10 persists Codex session id observed from SessionStart", async () => {
     const cwd = tempDir();
     installFakes();

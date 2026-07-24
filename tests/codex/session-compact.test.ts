@@ -9,7 +9,7 @@ import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.
 
 afterEach(resetFakes);
 
-describe("CodexSession compact", () => {
+describe("CodexSessionApi compact", () => {
   test("C-API-22 compact types /compact after readiness and resolves on PostCompact", async () => {
     const cwd = tempDir();
     installFakes();

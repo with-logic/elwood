@@ -1,5 +1,7 @@
 /**
- * Public ClaudeSession interface: the Claude-typed session surface callers use.
+ * The Claude-typed live-session surface: the shape the PTY-backed session object
+ * satisfies and that the public `ClaudeSession` class (src/claude/simple.ts) wraps and
+ * delegates to. Internal — callers use the `ClaudeSession` class, not this interface.
  * Implements PRD §5 public API.
  */
 
@@ -19,7 +21,7 @@ import type {
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import type { ClaudeLoginOptions } from "./login/types.ts";
 
-export interface ClaudeSession {
+export interface ClaudeSessionApi {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;

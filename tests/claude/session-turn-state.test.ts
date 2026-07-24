@@ -28,7 +28,7 @@ const sessionStart = (cwd: string) => ({
 const workingFooter = "❯ \r\n  ⏵⏵ bypass permissions · esc to interrupt · ← for agents";
 const idleFooter = "❯ \r\n  ⏵⏵ bypass permissions · ← for agents";
 
-describe("ClaudeSession turn boundaries", () => {
+describe("ClaudeSessionApi turn boundaries", () => {
   test("C-API-28 a resumed permission-dialog caret cannot release readiness", async () => {
     const cwd = tempDir();
     installFakes();
@@ -70,7 +70,7 @@ describe("ClaudeSession turn boundaries", () => {
 
 const interruptBanner46 = "  ⎿  Interrupted· What should Claude do \r\n❯ ";
 
-describe("ClaudeSession narrow-width turn boundaries", () => {
+describe("ClaudeSessionApi narrow-width turn boundaries", () => {
   test("C-TURN-04 the interrupt banner ends the turn when the footer is elided", async () => {
     const cwd = tempDir();
     installFakes();
