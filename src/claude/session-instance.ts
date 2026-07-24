@@ -64,8 +64,12 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   }
 
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>) {
+    // REGISTER before replaying buffered `terminal:data`: a throwing replay handler must still be
+    // subscribed for FUTURE data (otherwise startup telemetry silently disappears). Replay is of
+    // already-buffered past data and runs synchronously, so no live event interleaves.
+    const unsubscribe = this.emitter.on(event, handler);
     this.replayFor(event, handler);
-    return this.emitter.on(event, handler);
+    return unsubscribe;
   }
   off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void {
     this.emitter.off(event, handler);

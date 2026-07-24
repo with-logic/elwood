@@ -62,7 +62,7 @@ describe("SessionBase turn concurrency (C-API-50)", () => {
         attempt += 1;
         return attempt === 1
           ? Promise.reject(new Error("start boom"))
-          : Promise.resolve(this.underlying as unknown as ElwoodAgentSession);
+          : Promise.resolve(this.underlying);
       }
     }
     const s = new FlakyStart();
@@ -72,21 +72,45 @@ describe("SessionBase turn concurrency (C-API-50)", () => {
     expect(await collectText(s.stream("second"))).toEqual(["t1"]); // fresh underlying, turn 1
   });
 
-  test("abandoning a stream early does not bleed into the next turn", async () => {
+  test("abandoning a stream mid-turn holds B until A's real boundary; A's trailing UNTAGGED activity never bleeds into B", async () => {
     const s = new TestSimple();
-    // Turn A emits two text chunks; we break after the first, abandoning A mid-stream.
-    s.underlying.script = (emitter, turnId) => {
-      emitter.emit("status", { elwoodSessionId: "s1", status: "running" });
-      emitter.emit("activity", activity({ text: `${turnId}-a`, turnId }));
-      emitter.emit("activity", activity({ text: `${turnId}-b`, turnId }));
-      emitter.emit("status", { elwoodSessionId: "s1", status: "ready" });
+    const em = s.underlying.emitter;
+    // Turn A: running + ONE untagged (Claude-like) event, then it STAYS running — no ready. The
+    // test drives A's trailing activity + boundary by hand, so we can abandon A while it's live.
+    let aStarted = false;
+    s.underlying.script = () => {
+      aStarted = true;
+      em.emit("status", { elwoodSessionId: "s1", status: "running" });
+      em.emit("activity", activity({ text: "A-first" })); // NO turnId — Claude transcript style
     };
-    const firstOfA = await first(s.stream("A")); // consume one event, then break
-    expect(firstOfA).toEqual({ type: "text", text: "t1-a" });
-    // The NEXT turn must be turn 2 and see ONLY its own output — never A's trailing "t1-b".
-    const b: string[] = [];
-    for await (const ev of s.stream("B")) if (ev.type === "text") b.push(ev.text);
-    expect(b).toEqual(["t2-a", "t2-b"]); // turn 2's own text, no leftover from abandoned turn 1
+    const firstOfA = await first(s.stream("A")); // consume one event, then break (abandon A)
+    expect(firstOfA).toEqual({ type: "text", text: "A-first" });
+    expect(aStarted).toBe(true);
+
+    // Start B. Its submission must NOT happen yet — A has not reached a real boundary.
+    const bText: string[] = [];
+    const bDone = (async () => {
+      for await (const ev of s.stream("B")) if (ev.type === "text") bText.push(ev.text);
+    })();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(s.underlying.sends).toBe(1); // ONLY A submitted — B is still held behind A's slot
+
+    // A's TRAILING untagged activity arrives AFTER abandonment. It must be discarded, never
+    // collected into B (the danger the missing turnId makes real). Then A reaches ready → boundary.
+    em.emit("activity", activity({ text: "A-trailing" }));
+    em.emit("status", { elwoodSessionId: "s1", status: "ready" }); // A's real boundary (after drain)
+
+    // Now B may run. Script B's own turn (no Stop hook reaches this fake, so it settles via the
+    // quiet window after `ready`).
+    s.underlying.script = () => {
+      em.emit("status", { elwoodSessionId: "s1", status: "running" });
+      em.emit("activity", activity({ text: "B-only" }));
+      em.emit("status", { elwoodSessionId: "s1", status: "ready" });
+    };
+    await bDone;
+    expect(s.underlying.sends).toBe(2); // B submitted only after A settled
+    expect(bText).toEqual(["B-only"]); // B saw ONLY its own text — never A-first or A-trailing
   });
 });
 
@@ -98,7 +122,7 @@ class DeferredStartSession extends SessionBase<ElwoodAgentSession> {
   protected launch(): Promise<ElwoodAgentSession> {
     this.launches += 1;
     return new Promise<ElwoodAgentSession>((resolve) => {
-      this.resolveLaunch = () => resolve(this.underlying as unknown as ElwoodAgentSession);
+      this.resolveLaunch = () => resolve(this.underlying);
     });
   }
   on<E extends keyof ElwoodCommonEventMap>(

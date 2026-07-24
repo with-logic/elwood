@@ -5,9 +5,23 @@
  */
 
 import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
-import type { ElwoodAgentSession, ElwoodCommonEventMap } from "../../src/core/agent-session.ts";
+import type {
+  ElwoodAgentSession,
+  ElwoodCommonEventMap,
+  ElwoodCommonEventName,
+} from "../../src/core/agent-session.ts";
+import type { SendOptions } from "../../src/core/images/types.ts";
+import type { AgentModelOption } from "../../src/core/model-rows.ts";
 import { SessionBase } from "../../src/core/simple/session.ts";
+import type {
+  ActivityMatch,
+  ElwoodSessionStatus,
+  StatusMatch,
+  TerminalSize,
+  Unsubscribe,
+} from "../../src/core/types.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
+import type { ElwoodTerminal } from "../../src/terminal/headless.ts";
 
 export type Emitter = TypedEmitter<ElwoodCommonEventMap>;
 
@@ -22,10 +36,17 @@ export function activity(partial: Partial<ElwoodActivityEvent>): ElwoodActivityE
   };
 }
 
-/** A controllable underlying session: scripts a turn per sendMessage, records delegations. */
-export class FakeUnderlying {
+/**
+ * A controllable underlying session that scripts a turn per `sendMessage` and records
+ * delegations. It genuinely `implements ElwoodAgentSession` (no `as unknown as` at the launch
+ * boundary), so a signature change in the real interface fails these tests to COMPILE.
+ */
+export class FakeUnderlying implements ElwoodAgentSession {
   readonly emitter: Emitter = new TypedEmitter<ElwoodCommonEventMap>();
-  status = "ready" as const;
+  readonly elwoodSessionId = "s1";
+  readonly cwd = "/fake";
+  readonly terminal = { snapshot: () => "", write: () => {} } as unknown as ElwoodTerminal;
+  status: ElwoodSessionStatus = "ready";
   stops = 0;
   kills = 0;
   sends = 0; // sendMessage invocations, so a test can prove NO submission happened before start
@@ -34,37 +55,62 @@ export class FakeUnderlying {
   readonly args: Record<string, unknown[]> = {};
   private turn = 0;
   script: (emitter: Emitter, turnId: string) => void = defaultScript;
-  on(event: keyof ElwoodCommonEventMap, handler: (e: never) => void) {
-    return this.emitter.on(event, handler as never);
+  statusDecisions() {
+    return [];
   }
-  off(event: keyof ElwoodCommonEventMap, handler: (e: never) => void) {
-    this.emitter.off(event, handler as never);
+  on<E extends ElwoodCommonEventName>(
+    event: E,
+    handler: (e: ElwoodCommonEventMap[E]) => void,
+  ): Unsubscribe {
+    return this.emitter.on(event, handler);
   }
-  sendMessage(message: string, options?: unknown): Promise<void> {
+  off<E extends ElwoodCommonEventName>(
+    event: E,
+    handler: (e: ElwoodCommonEventMap[E]) => void,
+  ): void {
+    this.emitter.off(event, handler);
+  }
+  sendMessage(message: string, options?: SendOptions): Promise<void> {
     this.sends += 1;
     this.args["sendMessage"] = options === undefined ? [message] : [message, options];
     this.turn += 1;
     this.script(this.emitter, `t${this.turn}`);
     return Promise.resolve();
   }
-  sendPrompt = (...a: unknown[]) => this.record("sendPrompt", a);
-  sendGuidance = (...a: unknown[]) => this.record("sendGuidance", a);
-  sendKeys = (...a: unknown[]) => this.record("sendKeys", a);
-  resize = (...a: unknown[]) => this.record("resize", a);
-  interrupt = (...a: unknown[]) => this.record("interrupt", a);
-  compact = (...a: unknown[]) => this.record("compact", a);
-  setModel = (...a: unknown[]) => this.record("setModel", a);
-  teardown = (...a: unknown[]) => this.record("teardown", a);
-  listModels(...a: unknown[]): Promise<readonly never[]> {
-    this.record("listModels", a);
+  sendPrompt(prompt: string, options?: SendOptions): Promise<void> {
+    return this.record("sendPrompt", options === undefined ? [prompt] : [prompt, options]);
+  }
+  sendGuidance(message: string, options?: SendOptions): Promise<void> {
+    return this.record("sendGuidance", options === undefined ? [message] : [message, options]);
+  }
+  sendKeys(input: string | Uint8Array): Promise<void> {
+    return this.record("sendKeys", [input]);
+  }
+  resize(size: TerminalSize): Promise<void> {
+    return this.record("resize", [size]);
+  }
+  interrupt(options?: { readonly timeoutMs?: number }): Promise<void> {
+    return this.record("interrupt", [options]);
+  }
+  compact(options?: { readonly timeoutMs?: number }): Promise<void> {
+    return this.record("compact", [options]);
+  }
+  setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
+    return this.record("setModel", [id, options]);
+  }
+  teardown(): Promise<void> {
+    return this.record("teardown", []);
+  }
+  listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]> {
+    void this.record("listModels", [options]);
     return Promise.resolve([]);
   }
-  waitForStatus(...a: unknown[]): Promise<string> {
-    this.record("waitForStatus", a);
+  waitForStatus(match: StatusMatch, timeoutMs?: number): Promise<ElwoodSessionStatus> {
+    void this.record("waitForStatus", timeoutMs === undefined ? [match] : [match, timeoutMs]);
     return Promise.resolve("ready");
   }
-  waitForActivity(...a: unknown[]): Promise<unknown> {
-    this.record("waitForActivity", a);
+  waitForActivity(match: ActivityMatch, timeoutMs?: number): Promise<ElwoodActivityEvent> {
+    void this.record("waitForActivity", timeoutMs === undefined ? [match] : [match, timeoutMs]);
     return Promise.resolve(activity({ text: "x" }));
   }
   stop(): Promise<void> {
@@ -94,7 +140,7 @@ export class TestSimple extends SessionBase<ElwoodAgentSession> {
   readonly underlying = new FakeUnderlying();
   protected launch(): Promise<ElwoodAgentSession> {
     this.launches += 1;
-    return Promise.resolve(this.underlying as unknown as ElwoodAgentSession);
+    return Promise.resolve(this.underlying); // no cast — FakeUnderlying implements the interface
   }
   on<E extends keyof ElwoodCommonEventMap>(
     event: E,

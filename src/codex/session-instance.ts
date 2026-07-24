@@ -59,8 +59,11 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   }
 
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {
+    // REGISTER before replaying buffered `terminal:data` (mirrors Claude): a throwing replay
+    // handler must still be subscribed for FUTURE data. Replay is synchronous, so nothing interleaves.
+    const unsubscribe = this.emitter.on(event, handler);
     this.replayFor(event as string, handler);
-    return this.emitter.on(event, handler);
+    return unsubscribe;
   }
   // The Codex CLI persists picker selections into user config.toml; restore
   // the user's prior default after the switch (C-CODEX-14). The live session
