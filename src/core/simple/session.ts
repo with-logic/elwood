@@ -22,14 +22,9 @@ import type { TurnEvent } from "./events.ts";
 import { SubscriptionRegistry } from "./subscriptions.ts";
 import { runTurn } from "./turn.ts";
 import { TurnQueue } from "./turn-queue.ts";
+import type { TurnOptions } from "./turn-types.ts";
 
-/** Per-call turn options (public subset of the runner's options). */
-export type TurnOptions = {
-  /** Opt-in whole-turn ceiling → `wait_timeout`. Default NONE — a turn may run for hours. */
-  readonly timeoutMs?: number;
-  /** Cap on transcript catch-up AFTER `ready` (default 10s); a stalled flush → `wait_timeout`. */
-  readonly catchUpMs?: number;
-};
+export type { TurnOptions } from "./turn-types.ts";
 
 /**
  * One public session over an Elwood agent. Constructed synchronously; the underlying session
@@ -105,9 +100,8 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
   }
 
   /**
-   * Subscribe via a typed `attach` closure (built by the subclass's adapter-typed `on`, so
-   * event↔payload correlation is preserved with no cast). See {@link SubscriptionRegistry.add}
-   * for the buffer/attach lifecycle and the phase-safe disposer.
+   * Subscribe via a typed `attach` closure (built by the subclass's adapter-typed `on`, no cast).
+   * See {@link SubscriptionRegistry.add} for the buffer/attach lifecycle and phase-safe disposer.
    */
   protected subscribe(
     event: unknown,
@@ -122,8 +116,10 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
     this.subscriptions.removeByKey(event, handler);
   }
 
-  // Control surface: each awaits lazy start, then delegates. Only `send`/`stream` serialize;
-  // these go straight through (an `interrupt` must reach a running turn, not queue behind it).
+  // Control surface: each awaits lazy start, then delegates; only `send`/`stream` serialize (an
+  // `interrupt` must reach a running turn, not queue behind it). NOTE: the turn-PRODUCING raw
+  // methods (`sendMessage`/`sendPrompt`/`sendGuidance`) are NOT in the ergonomic queue — don't
+  // call them concurrently with an in-flight `send`/`stream` (the produced turn would interleave).
   async sendPrompt(prompt: string, options?: SendOptions): Promise<void> {
     return (await this.start()).sendPrompt(prompt, options);
   }

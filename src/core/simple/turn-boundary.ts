@@ -23,10 +23,13 @@ export class TurnBoundary {
   private consumerFailed = false;
   private drainTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly onReach: () => void;
+  private readonly drainMs: number;
 
-  /** `onReach` runs once the boundary lands (e.g. to attempt listener cleanup). */
-  constructor(onReach: () => void) {
+  /** `onReach` runs once the boundary lands (e.g. to attempt listener cleanup). `drainMs` is the
+   *  post-failure `ready` drain window (default `DRAIN_MS`; overridable for tests). */
+  constructor(onReach: () => void, drainMs = DRAIN_MS) {
     this.onReach = onReach;
+    this.drainMs = drainMs;
     this.promise = new Promise<void>((resolve) => {
       this.resolve = resolve;
     });
@@ -55,7 +58,7 @@ export class TurnBoundary {
   armDrain(): void {
     if (this.reached || !this.consumerFailed) return;
     if (this.drainTimer) clearTimeout(this.drainTimer);
-    this.drainTimer = setTimeout(() => this.reach(), DRAIN_MS);
+    this.drainTimer = setTimeout(() => this.reach(), this.drainMs);
     this.drainTimer.unref?.();
   }
 

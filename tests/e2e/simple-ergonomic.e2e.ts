@@ -88,6 +88,16 @@ test("C-E2E-15 CodexSession.stream yields a real tool_call/tool_result pair and 
       .map((event) => event.text)
       .join("");
     assert.ok(text.trim().length > 0, "stream yielded assistant text after the tool result");
+    // Prove the DETERMINISTIC workspace read actually happened: the planted marker must appear in
+    // the tool result's output and/or the assistant text — not merely "some tool call, some text".
+    const toolOutput = seen
+      .filter((e): e is Extract<TurnEvent, { type: "tool_result" }> => e.type === "tool_result")
+      .map((e) => e.output ?? "")
+      .join("");
+    assert.ok(
+      toolOutput.includes("elwood-marker") || text.includes("elwood-marker"),
+      "the planted MARKER.txt content was read via the tool and surfaced in the turn",
+    );
   } finally {
     await session.close();
   }

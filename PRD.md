@@ -1703,7 +1703,13 @@ fires: the agent is done, so the transcript flush should be near-instant — if 
 stalls past `catchUpMs`, the turn rejects with `wait_timeout` rather than leaving the
 caller hanging. Turns
 are serialized: overlapping `send`/`stream` calls queue and run one at a time in call
-order, so a turn's activity never interleaves with another's. Turn isolation rests on
+order, so a turn's activity never interleaves with another's. This serialization covers
+the ergonomic `send`/`stream` turns only. The raw turn-producing control methods
+(`sendMessage`, `sendPrompt`, `sendGuidance`) submit immediately and are NOT part of
+the ergonomic turn queue, so calling one CONCURRENTLY with an in-flight `send`/`stream`
+turn is unsupported — its produced turn can interleave with the ergonomic turn's
+collection. Use one mode at a time: the ergonomic `send`/`stream`, or the raw
+turn-producing methods, not both concurrently. Turn isolation rests on
 that SERIALIZATION — the facade holds a turn's serialized slot until the AGENT reaches
 its real boundary, NOT merely until the consumer stops reading. On a normal turn that
 boundary is the turn's genuine completion (the transcript caught up / went quiet), which

@@ -127,6 +127,7 @@ describe("streamTurn lifecycle races (C-API-48/51)", () => {
       timeoutMs: 10,
       catchUpMs: 5_000,
       fallbackQuietMs: 5_000,
+      drainMs: 40,
     });
     await expect(collect(turn.events)).rejects.toMatchObject({ code: "wait_timeout" });
     let resolved = false;
@@ -141,8 +142,9 @@ describe("streamTurn lifecycle races (C-API-48/51)", () => {
   });
 
   test("post-failure: trailing transcript activity after `ready` RE-ARMS the drain before release", async () => {
-    // After the timeout, `ready` arms the drain; a further trailing (untagged) transcript event
-    // must RE-ARM it (a bursty flush), so the boundary lands only once the flush truly stops.
+    // After the timeout, `ready` arms the drain (drainMs=50); a trailing event emitted just before
+    // that deadline must RE-ARM it, so the boundary is still UNRESOLVED past the original deadline
+    // and only lands after a fresh drain window with no further activity.
     const s = new FakeTurnSession();
     let ready!: () => void;
     let emit!: (t: string) => void;
@@ -153,20 +155,21 @@ describe("streamTurn lifecycle races (C-API-48/51)", () => {
     };
     const turn = runTurn(s as unknown as TurnSession, "go", {
       timeoutMs: 10,
-      catchUpMs: 60, // drain window
+      catchUpMs: 5_000,
       fallbackQuietMs: 5_000,
+      drainMs: 50,
     });
     await expect(collect(turn.events)).rejects.toMatchObject({ code: "wait_timeout" });
     let resolved = false;
     void turn.boundary.then(() => {
       resolved = true;
     });
-    ready(); // arms the drain
-    await new Promise((r) => setTimeout(r, 40)); // partway through the drain window
-    emit("trailing"); // RE-ARMS the drain (this exercises the re-arm + draining branches)
-    await new Promise((r) => setTimeout(r, 40)); // still within a fresh drain window
-    expect(resolved).toBe(false); // the re-arm deferred release past the original window
-    await turn.boundary; // now quiet → resolves
+    ready(); // arms a 50ms drain
+    await new Promise((r) => setTimeout(r, 40)); // just BEFORE the original 50ms deadline
+    emit("trailing"); // RE-ARMS → a fresh 50ms window starts now
+    await new Promise((r) => setTimeout(r, 30)); // now PAST the original deadline (40+30=70 > 50)
+    expect(resolved).toBe(false); // WITHOUT re-arm this would already be resolved → proves re-arm
+    await turn.boundary; // the fresh window elapses with no more activity → resolves
     expect(resolved).toBe(true);
   });
 

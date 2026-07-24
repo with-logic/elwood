@@ -92,7 +92,7 @@ export function runTurn(
     offHook();
     offStatus();
   };
-  const boundary = new TurnBoundary(maybeCleanup);
+  const boundary = new TurnBoundary(maybeCleanup, options.drainMs);
   // The gate's SUCCESSFUL settle means the transcript drained — the real boundary. Its rejection
   // (a consumer failure) does NOT reach it here; a post-failure `ready`/terminal does.
   gate.done().then(

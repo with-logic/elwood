@@ -62,6 +62,14 @@ export type TurnSession = Pick<ElwoodAgentSession, "status" | "sendMessage"> & {
   on(event: "hook", handler: (event: TurnBoundaryHook) => void): () => void;
 };
 
+/** Per-call PUBLIC turn options (the caller-facing subset of `StreamTurnOptions`). */
+export type TurnOptions = {
+  /** Opt-in whole-turn ceiling → `wait_timeout`. Default NONE — a turn may run for hours. */
+  readonly timeoutMs?: number;
+  /** Cap on transcript catch-up AFTER `ready` (default 10s); a stalled flush → `wait_timeout`. */
+  readonly catchUpMs?: number;
+};
+
 export type StreamTurnOptions = {
   /** Optional whole-turn ceiling; default NONE — a live turn may run for hours. */
   readonly timeoutMs?: number;
@@ -73,6 +81,8 @@ export type StreamTurnOptions = {
   readonly maxPendingEvents?: number;
   /** Cap on unconsumed buffered bytes before failing (default 64 MiB); internal/tests. */
   readonly maxPendingBytes?: number;
+  /** Post-failure `ready` transcript-drain settle (default 750ms); internal/tests. */
+  readonly drainMs?: number;
 };
 
 /** A running turn: `events`/`completion` are the consumer view; `boundary` gates the serializer. */
