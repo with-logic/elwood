@@ -61,10 +61,12 @@ describe("ClaudeSession (C-API-47/50/51)", () => {
   test("login() delegates to the live session's re-authentication flow (C-API-43)", async () => {
     installFakes();
     const session = new ClaudeSession({ cwd: tempDir(), autotrust: true });
-    // The fake login flow times out quickly; we only need to prove login() lazy-starts
-    // and delegates. Any resolution/rejection is fine — it reached the live session.
+    // Prove login() lazy-starts AND actually drives the live re-auth flow, not just startup: the
+    // real flow submits `/login` to the PTY. A no-op wrapper `login` would leave `writes` empty.
     await session.login({ provideCode: () => "x", timeoutMs: 200 }).catch(() => undefined);
     expect(session.session).toBeDefined();
+    const pty = ptys.at(-1);
+    expect(pty?.writes.some((w) => w.includes("/login"))).toBe(true); // the live flow ran, not a no-op
     await session.close();
   });
 

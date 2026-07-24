@@ -7,7 +7,7 @@
  */
 
 import { SessionBase } from "../core/simple/session.ts";
-import type { AssertStopBoundary, TurnSession } from "../core/simple/turn.ts";
+import type { AssertStopBoundary } from "../core/simple/turn.ts";
 import type {
   ElwoodEventHandler,
   ElwoodEventName,
@@ -19,20 +19,16 @@ import type { ClaudeLoginOptions } from "./login/types.ts";
 import { startClaude } from "./session.ts";
 import type { ClaudeSessionApi } from "./session-interface.ts";
 
-// Compile-time conformance: the REAL Claude `Stop` hook payload must carry the oracle's
-// REQUIRED boundary fields (`last_assistant_message`, `hook_event_name`). If the adapter
-// contract drifts (renames or drops `last_assistant_message`), `AssertStopBoundary` resolves
-// to `never` and this fails to compile rather than silently disabling the completeness oracle.
+// Compile-time TURN-CAPABILITY guard: the completeness oracle reads the `Stop` hook's
+// `last_assistant_message`, so the REAL Claude `Stop` payload must carry the oracle's required
+// fields. `AssertStopBoundary` resolves to `never` — failing compilation — if that contract
+// drifts (renames/drops/retypes the field), catching the exact way an adapter could silently
+// lose oracle semantics. (A `SessionBase<S extends TurnSession>` bound cannot enforce this:
+// method-parameter bivariance lets a hook-less `on` structurally satisfy the `hook` overload,
+// so this concrete-payload assertion — not a generic bound — is the effective guard.)
 type _StopSatisfiesBoundary = AssertStopBoundary<ClaudeHookEventFor<"Stop">>;
 const _stopBoundaryCheck: _StopSatisfiesBoundary = true;
 void _stopBoundaryCheck;
-
-// Compile-time conformance: the live Claude API must be TURN-CAPABLE — i.e. carry the `hook`
-// event the completeness oracle subscribes to. `SessionBase`'s structural bound alone would
-// let a session without `hook` pass; this asserts the CONCRETE API type has it.
-type _ApiIsTurnCapable = ClaudeSessionApi extends TurnSession ? true : never;
-const _turnCapableCheck: _ApiIsTurnCapable = true;
-void _turnCapableCheck;
 
 /** Options for `ClaudeSession`: the low-level `startClaude` options with an optional `cwd`. */
 export type ClaudeSessionOptions = Omit<StartClaudeOptions, "cwd"> & { readonly cwd?: string };

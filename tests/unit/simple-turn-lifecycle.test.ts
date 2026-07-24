@@ -87,4 +87,35 @@ describe("streamTurn lifecycle races (C-API-48/51)", () => {
     await turn.boundary;
     expect(s.listenerCount()).toBe(0); // no leak even on the failure path
   });
+
+  test("after a consumer TIMEOUT, boundary defers until the transcript goes quiet (agent still flushing)", async () => {
+    // The consumer times out (oracle never matches), but the agent keeps emitting transcript
+    // activity. The serializer boundary must NOT resolve while that activity is still arriving —
+    // releasing early would let the next turn bind to this turn's trailing untagged activity.
+    const s = new FakeTurnSession();
+    let emit!: (text: string) => void;
+    s.script = () => {
+      s.emit("status", { status: "running" });
+      emit = (text: string) => s.emit("activity", activity({ text })); // untagged (Claude-like)
+    };
+    const turn = runTurn(s as unknown as TurnSession, "go", {
+      timeoutMs: 10, // consumer fails fast (no oracle ever matches)
+      catchUpMs: 40, // post-fail quiet window
+      fallbackQuietMs: 5_000,
+    });
+    await expect(collect(turn.events)).rejects.toMatchObject({ code: "wait_timeout" }); // consumer failed
+    let resolved = false;
+    void turn.boundary.then(() => {
+      resolved = true;
+    });
+    // Keep the transcript "alive" past the quiet window: each burst must RE-ARM, deferring boundary.
+    for (let i = 0; i < 4; i += 1) {
+      emit(`late-${i}`);
+      await new Promise((r) => setTimeout(r, 25)); // < catchUpMs, so the quiet timer keeps resetting
+    }
+    expect(resolved).toBe(false); // boundary still held — the agent is still producing
+    // Now go quiet: after catchUpMs with no activity, the boundary finally resolves.
+    await turn.boundary;
+    expect(resolved).toBe(true);
+  });
 });

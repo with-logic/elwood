@@ -126,6 +126,17 @@ describe("SessionBase send/stream during in-flight start (C-API-47)", () => {
     expect(s.launches).toBe(1); // still exactly one launch across start() + stream()
     expect(s.underlying.sends).toBe(1); // exactly one submission, after readiness
   });
+
+  test("stream(); close() in that exact order (launch unresolved) stops the eventual session — no orphan", async () => {
+    const s = new DeferredStartSession();
+    const streamed = collectText(s.stream("hello")); // reserves a slot AND triggers the start
+    const closing = s.close(); // immediately after — must join the start `stream()` just triggered
+    s.resolveLaunch(); // the launch resolves AFTER both stream() and close() were issued
+    await closing;
+    await streamed.catch(() => undefined); // the abandoned/closed turn may reject — that's fine
+    expect(s.launches).toBe(1); // the synchronous start() from stream() is the one launch
+    expect(s.underlying.stops).toBe(1); // close() stopped the eventual session — nothing orphaned
+  });
 });
 
 describe("SessionBase close() during in-flight start (C-API-51)", () => {

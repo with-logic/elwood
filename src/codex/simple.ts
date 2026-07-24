@@ -7,7 +7,7 @@
  */
 
 import { SessionBase } from "../core/simple/session.ts";
-import type { AssertStopBoundary, TurnSession } from "../core/simple/turn.ts";
+import type { AssertStopBoundary } from "../core/simple/turn.ts";
 import type { Unsubscribe } from "../core/types.ts";
 import type { CodexHookEventFor } from "./hooks.ts";
 import { startCodex } from "./session.ts";
@@ -18,19 +18,14 @@ import type {
   StartCodexOptions,
 } from "./session-types.ts";
 
-// Compile-time conformance: the REAL Codex `Stop` hook payload must carry the oracle's
-// REQUIRED boundary fields (mirrors Claude). A renamed/dropped `last_assistant_message` makes
-// `AssertStopBoundary` resolve to `never`, failing compilation instead of silently disabling
-// the completeness oracle.
+// Compile-time TURN-CAPABILITY guard (mirrors Claude): the completeness oracle reads the `Stop`
+// hook's `last_assistant_message`, so the REAL Codex `Stop` payload must carry the oracle's
+// required fields. A renamed/dropped/retyped field makes `AssertStopBoundary` resolve to `never`,
+// failing compilation instead of silently disabling the oracle. (A generic `TurnSession` base
+// bound cannot enforce this — method bivariance — so this concrete-payload check is the guard.)
 type _StopSatisfiesBoundary = AssertStopBoundary<CodexHookEventFor<"Stop">>;
 const _stopBoundaryCheck: _StopSatisfiesBoundary = true;
 void _stopBoundaryCheck;
-
-// Compile-time conformance: the live Codex API must be TURN-CAPABLE (carry the `hook` event the
-// oracle subscribes to) — `SessionBase`'s structural bound alone would not require it.
-type _ApiIsTurnCapable = CodexSessionApi extends TurnSession ? true : never;
-const _turnCapableCheck: _ApiIsTurnCapable = true;
-void _turnCapableCheck;
 
 /** Options for `CodexSession`: the low-level `startCodex` options with an optional `cwd`. */
 export type CodexSessionOptions = Omit<StartCodexOptions, "cwd"> & { readonly cwd?: string };

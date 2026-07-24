@@ -11,10 +11,14 @@
  * pure-tool turn, or an empty/`null` `last_assistant_message`) the turn ends after a
  * bounded quiet window with no new content.
  *
- * The runner is DECOUPLED from the consumer generator: it runs eagerly to the real turn
- * boundary and its `completion` promise resolves only THEN, so a consumer that abandons
- * the stream early cannot release the turn's serialized slot while the agent is still
- * running (which would let the next turn bind to this turn's trailing events).
+ * The runner is DECOUPLED from the consumer generator. Its `completion` promise ALWAYS
+ * resolves (the turn's error, if any, reaches the consumer via `events`), signalling only that
+ * the CONSUMER has settled. The serializer instead holds its slot on the separate `boundary`
+ * promise, which resolves only when the AGENT genuinely settles — the gate's successful end
+ * (oracle/quiet, i.e. the transcript drained) or a terminal status, NOT bare `ready` (Claude
+ * transcript activity arrives after `ready`) and NOT a consumer failure while the agent runs.
+ * So abandoning or timing out a stream can never release the slot while the agent is still
+ * producing, which would let the next turn bind to this turn's trailing (untagged) events.
  *
  * Timeouts: a turn may run for HOURS (a test suite, a PR poll), so there is NO whole-turn
  * timeout by default; callers may pass an opt-in `timeoutMs`, armed only AFTER submission (a
@@ -46,17 +50,19 @@ const CATCH_UP_MS = 10_000;
 
 /**
  * Start a turn: attach listeners, submit the prompt, and drive the gate to the turn's real
- * boundary. Returns the consumer `events` generator and a `completion` promise that the
- * serializer holds its slot on (so the next turn never starts before this one settles).
+ * boundary. Returns the consumer `events` generator, an always-resolving `completion` signal,
+ * and the `boundary` promise the serializer holds its slot on (so the next turn never starts
+ * before the AGENT settles — see `RunningTurn` and the file docstring).
  */
 export function runTurn(
   session: TurnSession,
   prompt: string,
   options: StreamTurnOptions = {},
 ): RunningTurn {
+  const catchUpMs = options.catchUpMs ?? CATCH_UP_MS;
   const gate = new TurnGate(
     options.fallbackQuietMs ?? FALLBACK_QUIET_MS,
-    options.catchUpMs ?? CATCH_UP_MS,
+    catchUpMs,
     options.maxPendingEvents,
     options.maxPendingBytes,
   );
@@ -68,6 +74,8 @@ export function runTurn(
   // the prior turn to its real boundary before this one starts) is why no explicit
   // "is this my submission" gate is needed: there are no prior-turn events left to mis-collect.
   let started = false;
+  let consumerSettled = false;
+  let consumerFailed = false;
 
   const offActivity = session.on("activity", (event) => {
     const simple = toTurnEvent(event);
@@ -83,6 +91,7 @@ export function runTurn(
       gate.push(simple);
       if (simple.type === "text") gate.observeText(simple.text);
     }
+    armPostFailQuiet(); // post-failure transcript flush is still activity — defers the quiet boundary
   });
   const offHook = session.on("hook", (event) => {
     // The Stop hook is the turn boundary and carries the expected final assistant text.
@@ -90,21 +99,38 @@ export function runTurn(
     if (event.hook_event_name === "Stop")
       gate.expectText(event.last_assistant_message ?? undefined);
   });
-  // The REAL agent boundary: resolves on a terminal status, or a `ready` after the turn started.
-  // It is INDEPENDENT of the consumer gate — a consumer-facing failure (timeout, catch-up,
-  // backlog) does NOT resolve it, so the serializer keeps this turn's slot until the agent
-  // genuinely settles and can never let the next turn bind to this turn's still-arriving activity.
+  // The REAL agent boundary — the point past which a NEXT turn can safely start. It is NOT bare
+  // `ready`: Claude transcript activity arrives AFTER `ready`, so releasing there would let the
+  // next turn bind to this turn's still-arriving (untagged) activity. It is instead the moment
+  // the turn GENUINELY settles — the gate's successful `end()` (oracle matched / quiet window
+  // elapsed / terminal), i.e. the transcript has drained — or a terminal status. On a
+  // consumer-facing FAILURE (timeout/catch-up/backlog) the agent may still be flushing, so the
+  // boundary is deferred: a terminal status, or a sustained post-failure quiet window, releases it.
   let resolveBoundary!: () => void;
   const boundary = new Promise<void>((resolve) => {
     resolveBoundary = resolve;
   });
   let boundaryReached = false;
+  let postFailQuietTimer: ReturnType<typeof setTimeout> | undefined;
   const reachBoundary = () => {
     if (boundaryReached) return;
     boundaryReached = true;
+    if (postFailQuietTimer) clearTimeout(postFailQuietTimer);
     resolveBoundary();
     maybeCleanup();
   };
+  // After a consumer failure the gate is dead but the agent's transcript may still be draining;
+  // re-arm a quiet window on each further activity/status so the boundary lands once it stops.
+  const armPostFailQuiet = () => {
+    if (boundaryReached || !consumerFailed) return;
+    if (postFailQuietTimer) clearTimeout(postFailQuietTimer);
+    postFailQuietTimer = setTimeout(reachBoundary, catchUpMs);
+    postFailQuietTimer.unref?.();
+  };
+  // The gate's SUCCESSFUL settle (oracle matched / quiet window / terminal end) means the
+  // transcript has drained — the real boundary. Its rejection (a consumer failure) does NOT
+  // resolve the boundary here; the post-fail quiet watcher / a terminal status does.
+  gate.done().then(reachBoundary, () => undefined);
 
   const offStatus = session.on("status", ({ status }) => {
     if (status === "running") started = true;
@@ -112,13 +138,10 @@ export function runTurn(
       gate.end();
       return reachBoundary(); // agent is gone — the real boundary, regardless of consumer state
     }
-    if (status === "ready" && started) {
-      gate.settle();
-      reachBoundary(); // the agent completed a turn (reached ready after starting) — real boundary
-    }
+    if (status === "ready" && started) gate.settle(); // begins oracle/quiet checks; boundary waits
+    armPostFailQuiet(); // a post-failure status still counts as activity for the quiet watcher
   });
 
-  let consumerSettled = false;
   // Listeners are removed only once BOTH the consumer has settled AND the real boundary is
   // reached: the boundary observer must outlive a consumer failure (a timed-out turn whose agent
   // is still running), and the consumer view must outlive an early boundary (buffered drain).
@@ -139,22 +162,33 @@ export function runTurn(
       // AFTER `sendMessage` resolves — never rejecting a prompt still queued behind readiness
       // that then submits. Pre-submission wait is bounded by the queue's readiness semantics.
       await session.sendMessage(prompt); // listeners attached — no early event lost
-      if (options.timeoutMs !== undefined) {
-        timer = setTimeout(
-          () => gate.fail(elwoodError("wait_timeout", "turn timed out")),
-          options.timeoutMs,
-        );
-      }
-      await gate.done(); // rejects on fail/timeout — the error is already recorded for `drain`
     } catch (error) {
-      // The SUBMISSION itself failed, so no agent turn is in flight and no status transition is
-      // coming for it: fail the consumer with the typed error AND reach the boundary (else the
-      // serializer waits forever). If a terminal status already ended the gate (a benign race),
-      // `gate.fail`/`reachBoundary` are idempotent no-ops and the buffered events stand;
-      // otherwise a submit-on-a-dead-session `session_not_running` propagates to the consumer
-      // (C-API-25) — a typed `ElwoodError` the adapter already threw, not a duck-typed shape.
+      // The SUBMISSION itself failed, so NO agent turn is in flight and no status transition is
+      // coming: fail the consumer with the typed error AND reach the boundary at once (else the
+      // serializer waits forever). A terminal-status race is a benign idempotent no-op (buffered
+      // events stand); otherwise a submit-on-a-dead-session `session_not_running` propagates to
+      // the consumer (C-API-25) — a typed `ElwoodError` the adapter threw, not a duck-typed shape.
       gate.fail(toError(error));
       reachBoundary();
+      consumerSettled = true;
+      maybeCleanup();
+      return;
+    }
+    if (options.timeoutMs !== undefined) {
+      timer = setTimeout(
+        () => gate.fail(elwoodError("wait_timeout", "turn timed out")),
+        options.timeoutMs,
+      );
+    }
+    try {
+      await gate.done(); // resolves on genuine settle (→ boundary); rejects on consumer failure
+    } catch {
+      // A consumer failure (timeout/catch-up/backlog) AFTER submission: the agent turn ran and may
+      // still be flushing its transcript, so the boundary is NOT reached now. Mark the failure and
+      // arm the post-fail quiet watcher — a later terminal status or a sustained quiet window
+      // releases the serialized slot, so the next turn never binds to this turn's trailing activity.
+      consumerFailed = true;
+      armPostFailQuiet();
     } finally {
       if (timer) clearTimeout(timer);
       consumerSettled = true;
