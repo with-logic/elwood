@@ -13,7 +13,10 @@
  * reused; TEARDOWN removes ALL of a session's socket files by removing the one stable
  * home, so no anonymous per-launch directory can leak undiscoverably across
  * restart/resume cycles. (`stop` keeps the home for a later resume — the bridge unlinks
- * its own socket file on stop; a failed launch removes only its own socket file.)
+ * its own socket file on stop; a failed START removes only its own socket file, so an
+ * overlapping failed launch never disturbs a live one.) Because teardown removes the
+ * WHOLE home, two live sessions sharing a full identity concurrently is unsupported
+ * (PRD §8.1) — a given identity has at most one live session at a time.
  */
 
 import { createHash } from "node:crypto";

@@ -1929,8 +1929,14 @@ launch binds a FRESH socket FILE inside that home, so a stale socket is never
 reused; the socket path is a per-launch runtime value, never persisted, so a
 recorded socket path can never be trusted. `teardown` removes the whole socket
 home (every launch's socket) along with the session directory, so no per-launch
-socket can leak undiscoverably across restart/resume cycles. `stateDir` length
-MUST NOT constrain whether a session can start.
+socket can leak undiscoverably across restart/resume cycles. Because `teardown`
+removes the whole home, running two live sessions that share a full identity
+(`stateDir`, adapter, and session id) concurrently is UNSUPPORTED — they would
+also share the session directory, record file, and resume id, and one's teardown
+would remove the other's live socket. A given session identity has at most one
+live session at a time; a failed START (not a teardown) removes only its own
+socket file, so an overlapping failed launch never disturbs a live one. `stateDir`
+length MUST NOT constrain whether a session can start.
 
 ### 8.2 Session record
 
