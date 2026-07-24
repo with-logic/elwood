@@ -38,8 +38,10 @@ export type TurnOptions = {
   readonly catchUpMs?: number;
 };
 
-/** A buffered `on`/`off` subscription, (re)applied to the live session once started. */
-type PendingSub = { readonly event: string; readonly handler: (event: never) => unknown };
+/** A buffered subscription: `attach` (built with full types by the subclass) applies it on
+ * start; `key` (the handler) identifies it for `off`. Storing the closure keeps event↔payload
+ * correlation intact — no `as never` at the buffer boundary. */
+type PendingSub<S> = { readonly key: unknown; readonly attach: (session: S) => Unsubscribe };
 
 /**
  * One public session over an Elwood agent. Constructed synchronously; the underlying
@@ -53,7 +55,7 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
   private live: S | undefined;
   private starting: Promise<S> | undefined;
   private readonly turns = new TurnQueue();
-  private readonly pendingSubs: PendingSub[] = [];
+  private readonly pendingSubs: PendingSub<S>[] = [];
 
   /** Boots the underlying session. Called at most once; the base memoizes the result. */
   protected abstract launch(): Promise<S>;
@@ -73,7 +75,7 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
     if (this.live) return Promise.resolve(this.live);
     this.starting ??= this.launch().then(
       (session) => {
-        for (const sub of this.pendingSubs) session.on(sub.event as never, sub.handler as never);
+        for (const sub of this.pendingSubs) sub.attach(session);
         this.live = session;
         this.starting = undefined;
         return session;
@@ -103,21 +105,21 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
   }
 
   /**
-   * Subscribe to a live session event. Buffered before start and attached on start, so
-   * subscribing never forces a start; returns an `Unsubscribe` that works either way. The
-   * public, adapter-typed `on`/`off` in each subclass delegate here.
+   * Subscribe via a typed `attach` closure (built by the subclass's adapter-typed `on`, so
+   * event↔payload correlation is preserved with no cast at this boundary). `key` identifies
+   * the subscription for `unsubscribe`. Buffered before start and attached on start, so
+   * subscribing never forces a start; returns an `Unsubscribe` that works either way.
    */
-  protected subscribe(event: string, handler: (event: never) => unknown): Unsubscribe {
-    if (this.live) return this.live.on(event as never, handler as never);
-    this.pendingSubs.push({ event, handler });
-    return () => this.unsubscribe(event, handler);
+  protected subscribe(key: unknown, attach: (session: S) => Unsubscribe): Unsubscribe {
+    if (this.live) return attach(this.live);
+    this.pendingSubs.push({ key, attach });
+    return () => this.unsubscribe(key);
   }
 
-  /** Unsubscribe a handler, whether buffered (pre-start) or live. */
-  protected unsubscribe(event: string, handler: (event: never) => unknown): void {
-    const index = this.pendingSubs.findIndex((s) => s.event === event && s.handler === handler);
+  /** Unsubscribe a buffered (pre-start) subscription; live subscriptions detach via `attach`'s Unsubscribe. */
+  protected unsubscribe(key: unknown): void {
+    const index = this.pendingSubs.findIndex((s) => s.key === key);
     if (index >= 0) this.pendingSubs.splice(index, 1);
-    this.live?.off(event as never, handler as never);
   }
 
   // Control surface: each awaits lazy start, then delegates. Only `send`/`stream` serialize;

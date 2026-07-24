@@ -7,15 +7,24 @@
  */
 
 import { SessionBase } from "../core/simple/session.ts";
+import type { TurnBoundaryHook } from "../core/simple/turn.ts";
 import type {
   ElwoodEventHandler,
   ElwoodEventName,
   StartClaudeOptions,
   Unsubscribe,
 } from "../core/types.ts";
+import type { ClaudeHookEventFor } from "./hook-events.ts";
 import type { ClaudeLoginOptions } from "./login/types.ts";
 import { startClaude } from "./session.ts";
 import type { ClaudeSessionApi } from "./session-interface.ts";
+
+// Compile-time conformance: the REAL Claude `Stop` hook payload must satisfy the oracle's
+// minimal `TurnBoundaryHook` shape. If the adapter contract drifts (e.g. renames
+// `last_assistant_message`), this fails to compile rather than silently disabling the oracle.
+type _StopSatisfiesBoundary = ClaudeHookEventFor<"Stop"> extends TurnBoundaryHook ? true : never;
+const _stopBoundaryCheck: _StopSatisfiesBoundary = true;
+void _stopBoundaryCheck;
 
 /** Options for `ClaudeSession`: the low-level `startClaude` options with an optional `cwd`. */
 export type ClaudeSessionOptions = Omit<StartClaudeOptions, "cwd"> & { readonly cwd?: string };
@@ -34,10 +43,13 @@ export class ClaudeSession extends SessionBase<ClaudeSessionApi> {
 
   /** Typed event subscription over the Claude event map (buffered before start). */
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): Unsubscribe {
-    return this.subscribe(event, handler as (event: never) => unknown);
+    // The attach closure captures the fully-typed (event, handler) pair — no cast crosses the
+    // base's buffer boundary, so the event↔payload correlation is preserved.
+    return this.subscribe(handler, (session) => session.on(event, handler));
   }
   off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void {
-    this.unsubscribe(event, handler as (event: never) => unknown);
+    this.unsubscribe(handler); // remove a still-buffered subscription
+    this.session?.off(event, handler); // detach a live one (typed — no cast)
   }
 
   /** Drive the interactive `/login` re-authentication flow (Claude-only, C-API-43). */

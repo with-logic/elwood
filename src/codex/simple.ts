@@ -7,7 +7,9 @@
  */
 
 import { SessionBase } from "../core/simple/session.ts";
+import type { TurnBoundaryHook } from "../core/simple/turn.ts";
 import type { Unsubscribe } from "../core/types.ts";
+import type { CodexHookEventFor } from "./hooks.ts";
 import { startCodex } from "./session.ts";
 import type {
   CodexEventHandler,
@@ -15,6 +17,12 @@ import type {
   CodexSessionApi,
   StartCodexOptions,
 } from "./session-types.ts";
+
+// Compile-time conformance: the REAL Codex `Stop` hook payload must satisfy the oracle's
+// minimal `TurnBoundaryHook` shape (mirrors Claude), catching adapter contract drift.
+type _StopSatisfiesBoundary = CodexHookEventFor<"Stop"> extends TurnBoundaryHook ? true : never;
+const _stopBoundaryCheck: _StopSatisfiesBoundary = true;
+void _stopBoundaryCheck;
 
 /** Options for `CodexSession`: the low-level `startCodex` options with an optional `cwd`. */
 export type CodexSessionOptions = Omit<StartCodexOptions, "cwd"> & { readonly cwd?: string };
@@ -33,9 +41,10 @@ export class CodexSession extends SessionBase<CodexSessionApi> {
 
   /** Typed event subscription over the Codex event map (buffered before start). */
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): Unsubscribe {
-    return this.subscribe(event, handler as (event: never) => unknown);
+    return this.subscribe(handler, (session) => session.on(event, handler));
   }
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void {
-    this.unsubscribe(event, handler as (event: never) => unknown);
+    this.unsubscribe(handler); // remove a still-buffered subscription
+    this.session?.off(event, handler); // detach a live one (typed — no cast)
   }
 }

@@ -98,12 +98,13 @@ export class TestSimple extends SessionBase<ElwoodAgentSession> {
     event: E,
     handler: (e: ElwoodCommonEventMap[E]) => void,
   ) {
-    return this.subscribe(event, handler as (e: never) => unknown);
+    return this.subscribe(handler, (session) => session.on(event, handler));
   }
   off<E extends keyof ElwoodCommonEventMap>(
     event: E,
     handler: (e: ElwoodCommonEventMap[E]) => void,
   ) {
-    this.unsubscribe(event, handler as (e: never) => unknown);
+    this.unsubscribe(handler);
+    this.session?.off(event, handler);
   }
 }

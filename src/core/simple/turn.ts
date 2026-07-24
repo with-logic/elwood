@@ -28,8 +28,13 @@ import { terminalStatuses } from "../status-categories.ts";
 import { type TurnEvent, toTurnEvent } from "./events.ts";
 import { TurnGate } from "./turn-gate.ts";
 
-/** The turn-boundary `hook` fields the completeness oracle reads (both adapters emit them). */
-type TurnBoundaryHook = {
+/**
+ * The MINIMAL turn-boundary `hook` fields the completeness oracle reads. Deliberately
+ * adapter-neutral (core must not depend on adapter hook types) — each adapter asserts at
+ * compile time that its real `Stop` hook payload is assignable to this (see
+ * `assertStopHookShape` in the adapter `simple.ts`), so a contract drift is caught.
+ */
+export type TurnBoundaryHook = {
   readonly hook_event_name?: string;
   readonly last_assistant_message?: string | null;
 };
