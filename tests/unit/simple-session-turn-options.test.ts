@@ -71,4 +71,21 @@ describe("SessionBase turn options + no-default-timeout (C-API-48/49)", () => {
     await vi.advanceTimersByTimeAsync(5_001); // cross the caller-supplied ceiling
     expect(await rejected).toBe("wait_timeout"); // the option was forwarded and honored
   });
+
+  test("control methods go through IMMEDIATELY while a `send`/`stream` turn is still running (C-API-52)", async () => {
+    const s = new StallingSession();
+    // Begin a stream turn and pull its first event so the turn is demonstrably in flight (running).
+    const gen = s.stream("go");
+    const first = await gen.next(); // yields the "partial" event → the turn is now running
+    expect(first.value).toEqual({ type: "text", text: "partial" });
+    // The turn never reaches `ready` (StallingSession), so if controls QUEUED behind it they would
+    // hang. They must reach the live session immediately instead.
+    await s.interrupt({ timeoutMs: 1 });
+    await s.sendKeys("x");
+    expect(s.underlying.calls).toContain("interrupt"); // delivered without waiting for the turn
+    expect(s.underlying.calls).toContain("sendKeys");
+    // Cleanup: end the turn.
+    s.underlying.emitter.emit("status", { elwoodSessionId: "s1", status: "exited" });
+    await drain(gen);
+  });
 });
