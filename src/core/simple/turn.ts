@@ -59,6 +59,8 @@ export type StreamTurnOptions = {
   readonly catchUpMs?: number;
   /** Quiet-window for a no-oracle turn to settle after `ready` (default 750ms). */
   readonly fallbackQuietMs?: number;
+  /** Cap on unconsumed buffered events before failing (default 100000); internal/tests. */
+  readonly maxPendingEvents?: number;
 };
 
 /** A running turn: `events` is the consumer view; `completion` resolves at the REAL boundary. */
@@ -82,6 +84,7 @@ export function runTurn(
   const gate = new TurnGate(
     options.fallbackQuietMs ?? FALLBACK_QUIET_MS,
     options.catchUpMs ?? CATCH_UP_MS,
+    options.maxPendingEvents,
   );
   let turnId: string | undefined;
   let bound = false;

@@ -15,33 +15,36 @@ describe("SessionBase control surface (C-API-47/51)", () => {
     expect(s.session).toBeDefined();
   });
 
-  test("every control method lazy-starts and delegates to the live session", async () => {
+  test("every control method lazy-starts and forwards its arguments faithfully", async () => {
     const s = new TestSimple();
-    await s.sendPrompt("p");
-    await s.sendGuidance("g");
-    await s.sendKeys("k");
-    await s.resize({ cols: 80, rows: 24 });
-    await s.interrupt();
-    await s.compact();
-    await s.setModel("m");
-    expect(await s.listModels()).toEqual([]);
-    expect(await s.waitForStatus(() => true)).toBe("ready");
-    await s.waitForActivity(() => true);
+    // Distinctive arguments per method, so a wrapper that dropped/altered any would be caught.
+    const statusMatch = (s: string) => s === "ready";
+    const activityMatch = (e: { kind: string }) => e.kind === "assistant_message";
+    const size = { cols: 80, rows: 24 };
+    const bytes = new Uint8Array([1, 2, 3]);
+    await s.sendPrompt("prompt-x", { images: [] });
+    await s.sendGuidance("guide-y", { images: [] });
+    await s.sendKeys(bytes);
+    await s.resize(size);
+    await s.interrupt({ timeoutMs: 111 });
+    await s.compact({ timeoutMs: 222 });
+    await s.setModel("model-z", { timeoutMs: 333 });
+    await s.listModels({ timeoutMs: 444 });
+    await s.waitForStatus(statusMatch, 555);
+    await s.waitForActivity(activityMatch, 666);
     await s.teardown();
     expect(s.launches).toBe(1); // all delegated through ONE lazy start
-    expect(s.underlying.calls).toEqual([
-      "sendPrompt",
-      "sendGuidance",
-      "sendKeys",
-      "resize",
-      "interrupt",
-      "compact",
-      "setModel",
-      "listModels",
-      "waitForStatus",
-      "waitForActivity",
-      "teardown",
-    ]);
+    const a = s.underlying.args;
+    expect(a["sendPrompt"]).toEqual(["prompt-x", { images: [] }]);
+    expect(a["sendGuidance"]).toEqual(["guide-y", { images: [] }]);
+    expect(a["sendKeys"]).toEqual([bytes]);
+    expect(a["resize"]).toEqual([size]);
+    expect(a["interrupt"]).toEqual([{ timeoutMs: 111 }]);
+    expect(a["compact"]).toEqual([{ timeoutMs: 222 }]);
+    expect(a["setModel"]).toEqual(["model-z", { timeoutMs: 333 }]);
+    expect(a["listModels"]).toEqual([{ timeoutMs: 444 }]);
+    expect(a["waitForStatus"]).toEqual([statusMatch, 555]);
+    expect(a["waitForActivity"]).toEqual([activityMatch, 666]);
   });
 
   test("stop()/kill()/teardown() before start are no-ops; after start they delegate", async () => {

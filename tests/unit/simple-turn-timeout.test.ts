@@ -1,7 +1,9 @@
 /**
- * Unit coverage for the ergonomic turn's timeout model (PRD §5.8, C-API-48): NO default
- * whole-turn timeout (a live turn may run for hours); an opt-in `timeoutMs` ceiling; and a
- * tight post-`ready` `catchUpMs` cap that fires if the transcript never catches up.
+ * Unit coverage for the ergonomic turn's timeout + bounding model (PRD §5.8, C-API-48): NO
+ * default whole-turn timeout (a live turn may run for hours); an opt-in `timeoutMs` ceiling;
+ * a tight post-`ready` `catchUpMs` cap; and the memory bounds (pending-event cap, rolling
+ * oracle window, queue head compaction) that keep a verbose/hours-long turn from growing
+ * without limit.
  */
 
 import { describe, expect, test } from "vitest";
@@ -69,5 +71,47 @@ describe("streamTurn timeouts (C-API-48)", () => {
     await expect(
       collect(runTurnFake(s, { catchUpMs: 20, fallbackQuietMs: 5_000 }).events),
     ).rejects.toMatchObject({ code: "wait_timeout" });
+  });
+
+  test("a stalled consumer past the pending-event cap fails with wait_timeout", async () => {
+    // With a tiny cap, a turn that buffers more events than the cap (consumer not draining)
+    // must fail rather than grow the buffer without bound.
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      for (let i = 0; i < 10; i += 1) s.emit("activity", activity({ text: `x${i}`, turnId: "t1" }));
+    });
+    await expect(collect(runTurnFake(s, { maxPendingEvents: 3 }).events)).rejects.toMatchObject({
+      code: "wait_timeout",
+    });
+  });
+
+  test("the oracle still matches after the collected text is truncated to its rolling window", async () => {
+    // A very long turn: `collected` is a bounded rolling window, but the expected text (which
+    // arrives last) is still found because the window retains the recent tail.
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "THE END" });
+      s.emit("status", { status: "ready" });
+      s.emit("activity", activity({ text: "x".repeat(20000), turnId: "t1" })); // huge fragment
+      s.emit("activity", activity({ text: "THE END", turnId: "t1" })); // the expected tail
+    });
+    const out = (await run(s)) as { type: string; text: string }[];
+    expect(out.at(-1)).toEqual({ type: "text", text: "THE END" }); // matched → turn ended
+  });
+
+  test("a large content burst is drained fully (queue head compaction, no O(n^2))", async () => {
+    // Emit more than the gate's head-compaction threshold (1024) so the consumed-prefix
+    // splice path runs; every event must still be yielded, in order.
+    const N = 1100;
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      for (let i = 0; i < N; i += 1) s.emit("activity", activity({ text: `x${i}`, turnId: "t1" }));
+      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: `x${N - 1}` });
+      s.emit("status", { status: "ready" });
+    });
+    const out = (await run(s)) as { type: string; text: string }[];
+    expect(out).toHaveLength(N);
+    expect(out[0]).toEqual({ type: "text", text: "x0" });
+    expect(out[N - 1]).toEqual({ type: "text", text: `x${N - 1}` });
   });
 });

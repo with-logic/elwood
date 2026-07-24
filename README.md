@@ -12,16 +12,32 @@ the process interactive, uses the user's normal shell environment, and treats
 hooks/transcripts as the control and observability layer.
 
 ```ts
-import { startCodex } from "elwood";
+import { CodexSession } from "elwood";
 
-const session = await startCodex({ cwd: "/path/to/project" });
+// Construct synchronously; the session starts lazily on the first turn.
+const session = new CodexSession({ cwd: "/path/to/project" });
 
-session.on("activity", (event) => {
-  console.log(event.agent, event.kind, event.label, event.text ?? "");
-});
+// `send` returns the assistant's reply as a string; a follow-up keeps context.
+const summary = await session.send("Summarize this repo's test strategy in two sentences.");
+const risks = await session.send("Now list the biggest gaps you'd address first.");
 
-await session.sendMessage("Inspect this repo and summarize the test strategy.");
+await session.close();
 ```
+
+Want the intermediate steps as they happen? Iterate `stream` for typed events —
+`thinking`, `tool_call`, `tool_result`, `text`:
+
+```ts
+for await (const event of session.stream("Run the test suite and report failures.")) {
+  if (event.type === "text") process.stdout.write(event.text);
+  // event.type is also "thinking" | "tool_call" | "tool_result"
+}
+```
+
+`ClaudeSession` / `CodexSession` are the primary API. Each also exposes the full
+low-level control surface (`sendMessage`, `on`, `interrupt`, `waitForStatus`,
+`stop`/`kill`/`teardown`, …). The eager `startClaude` / `startCodex` factories are
+**deprecated** in favor of the classes but remain available for advanced use.
 
 `PRD.md` is the source of truth for observable behavior. If README, tests, or
 implementation disagree with the PRD, the PRD wins.
@@ -145,10 +161,14 @@ tree on Ctrl-C. npm remains the project script runner. The examples import from
 local source while the package is private; published consumers should import the
 same symbols from `elwood`.
 
-## Quick Start: Claude
+## Low-level: Claude
+
+These examples use the eager `startClaude` factory to show the raw control surface
+and every option. For most code, prefer `new ClaudeSession(...)` (above), which
+starts lazily and exposes the same surface plus `send`/`stream`.
 
 ```ts
-import { startClaude } from "elwood";
+import { startClaude } from "elwood"; // deprecated; prefer `new ClaudeSession(...)`
 
 const claude = await startClaude({
   cwd: "/path/to/project",
@@ -187,10 +207,10 @@ session-scoped settings passed via `--settings`. Elwood does not mutate
 answer Claude's workspace trust prompt through the PTY; leave it false when a
 human should make that security decision.
 
-## Quick Start: Codex
+## Low-level: Codex
 
 ```ts
-import { startCodex } from "elwood";
+import { startCodex } from "elwood"; // deprecated; prefer `new CodexSession(...)`
 
 const codex = await startCodex({
   cwd: "/path/to/project",

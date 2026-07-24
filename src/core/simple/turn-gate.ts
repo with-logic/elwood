@@ -16,6 +16,20 @@ import { elwoodError } from "../errors.ts";
 import type { TurnEvent } from "./events.ts";
 
 const HEAD_COMPACT_THRESHOLD = 1024; // compact the consumed queue prefix past this many items
+/**
+ * Cap on UNCONSUMED events buffered for a slow/paused consumer. A turn has no default
+ * whole-turn timeout, so without a bound a hostile or very verbose turn feeding a stalled
+ * consumer could exhaust the host. Past this many pending events the turn fails with a
+ * typed `wait_timeout` rather than growing without limit. Large enough that a normally
+ * draining consumer never hits it.
+ */
+const MAX_PENDING_EVENTS = 100_000;
+/**
+ * Extra tail (chars) retained beyond the oracle's expected length so a match that straddles
+ * the fragment boundary is not missed. The oracle only needs the RECENT tail of the
+ * collected assistant text, so `collected` is a bounded rolling window, not the whole turn.
+ */
+const ORACLE_TAIL_SLACK = 4096;
 
 export class TurnGate {
   private readonly queue: TurnEvent[] = [];
@@ -30,13 +44,15 @@ export class TurnGate {
   private catchUpTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly quietMs: number;
   private readonly catchUpMs: number;
+  private readonly maxPending: number;
   private resolveDone!: () => void;
   private rejectDone!: (error: unknown) => void;
   private readonly donePromise: Promise<void>;
 
-  constructor(quietMs: number, catchUpMs: number) {
+  constructor(quietMs: number, catchUpMs: number, maxPendingEvents = MAX_PENDING_EVENTS) {
     this.quietMs = quietMs;
     this.catchUpMs = catchUpMs;
+    this.maxPending = maxPendingEvents;
     this.donePromise = new Promise<void>((resolve, reject) => {
       this.resolveDone = resolve;
       this.rejectDone = reject;
@@ -53,7 +69,9 @@ export class TurnGate {
   }
 
   observeText(text: string): void {
-    this.collected += text;
+    // BOUNDED rolling window: the oracle only needs the recent tail of the assistant text to
+    // find the expected substring, so a very long turn does not retain the whole transcript.
+    this.collected = (this.collected + text).slice(-this.oracleWindow());
     this.reconcile();
   }
   expectText(text: string | undefined): void {
@@ -63,9 +81,19 @@ export class TurnGate {
   }
   push(event: TurnEvent): void {
     if (this.ended) return;
+    // Bound unconsumed events: a stalled consumer must not let a verbose/hostile turn grow
+    // the buffer without limit (there is no default whole-turn timeout).
+    if (this.queue.length - this.head >= this.maxPending) {
+      this.fail(elwoodError("wait_timeout", "turn produced too many unconsumed events"));
+      return;
+    }
     this.queue.push(event);
     if (this.settled) this.armQuiet(); // new content after ready: re-arm the fallback window
     this.wake?.();
+  }
+  /** The rolling-window size for oracle matching: the expected text plus straddle slack. */
+  private oracleWindow(): number {
+    return (this.expected?.length ?? 0) + ORACLE_TAIL_SLACK;
   }
   /** `ready` observed — begin completion checks and arm the post-ready catch-up cap. */
   settle(): void {

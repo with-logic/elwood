@@ -1702,6 +1702,10 @@ order, so a turn's activity never interleaves with another's. Each turn is ident
 by the `turnId` on the activity events it produces; the facade binds its collection
 to that turn so a queued prior turn's output can never bleed into a later one, and it
 subscribes to `activity` BEFORE submitting so no early event of the turn is missed.
+Because a turn has no default timeout, its buffered state is BOUNDED: the oracle
+matches against a rolling window of recent assistant text (not the whole turn), and a
+turn whose UNCONSUMED events exceed an internal cap (a stalled consumer, or a hostile
+turn) fails with `wait_timeout` rather than growing without limit.
 
 **`stream(prompt, options?)`** returns an async iterable of SIMPLIFIED, typed
 events for exactly one turn, yielded in arrival order and ending when the turn

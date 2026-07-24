@@ -156,20 +156,4 @@ describe("streamTurn completeness oracle (C-API-48)", () => {
     s.sendResult = Promise.reject(new Error("pty write failed"));
     await expect(run(s)).rejects.toThrow(/pty write failed/);
   });
-
-  test("a large content burst is drained fully (queue head compaction, no O(n^2))", async () => {
-    // Emit more than the gate's head-compaction threshold (1024) so the consumed-prefix
-    // splice path runs; every event must still be yielded, in order.
-    const N = 1100;
-    const s = drive((s) => {
-      s.emit("status", { status: "running" });
-      for (let i = 0; i < N; i += 1) s.emit("activity", activity({ text: `x${i}`, turnId: "t1" }));
-      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: `x${N - 1}` });
-      s.emit("status", { status: "ready" });
-    });
-    const out = (await run(s)) as { type: string; text: string }[];
-    expect(out).toHaveLength(N);
-    expect(out[0]).toEqual({ type: "text", text: "x0" });
-    expect(out[N - 1]).toEqual({ type: "text", text: `x${N - 1}` });
-  });
 });

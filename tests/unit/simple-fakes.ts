@@ -29,6 +29,8 @@ export class FakeUnderlying {
   stops = 0;
   kills = 0;
   readonly calls: string[] = [];
+  // The exact arguments each delegated method received, so tests can prove faithful forwarding.
+  readonly args: Record<string, unknown[]> = {};
   private turn = 0;
   script: (emitter: Emitter, turnId: string) => void = defaultScript;
   on(event: keyof ElwoodCommonEventMap, handler: (e: never) => void) {
@@ -43,24 +45,24 @@ export class FakeUnderlying {
     this.script(this.emitter, `t${this.turn}`);
     return Promise.resolve();
   }
-  sendPrompt = () => this.record("sendPrompt");
-  sendGuidance = () => this.record("sendGuidance");
-  sendKeys = () => this.record("sendKeys");
-  resize = () => this.record("resize");
-  interrupt = () => this.record("interrupt");
-  compact = () => this.record("compact");
-  setModel = () => this.record("setModel");
-  teardown = () => this.record("teardown");
-  listModels(): Promise<readonly never[]> {
-    this.calls.push("listModels");
+  sendPrompt = (...a: unknown[]) => this.record("sendPrompt", a);
+  sendGuidance = (...a: unknown[]) => this.record("sendGuidance", a);
+  sendKeys = (...a: unknown[]) => this.record("sendKeys", a);
+  resize = (...a: unknown[]) => this.record("resize", a);
+  interrupt = (...a: unknown[]) => this.record("interrupt", a);
+  compact = (...a: unknown[]) => this.record("compact", a);
+  setModel = (...a: unknown[]) => this.record("setModel", a);
+  teardown = (...a: unknown[]) => this.record("teardown", a);
+  listModels(...a: unknown[]): Promise<readonly never[]> {
+    this.record("listModels", a);
     return Promise.resolve([]);
   }
-  waitForStatus(): Promise<string> {
-    this.calls.push("waitForStatus");
+  waitForStatus(...a: unknown[]): Promise<string> {
+    this.record("waitForStatus", a);
     return Promise.resolve("ready");
   }
-  waitForActivity(): Promise<unknown> {
-    this.calls.push("waitForActivity");
+  waitForActivity(...a: unknown[]): Promise<unknown> {
+    this.record("waitForActivity", a);
     return Promise.resolve(activity({ text: "x" }));
   }
   stop(): Promise<void> {
@@ -71,8 +73,9 @@ export class FakeUnderlying {
     this.kills += 1;
     return Promise.resolve();
   }
-  private record(name: string): Promise<void> {
+  private record(name: string, a: unknown[]): Promise<void> {
     this.calls.push(name);
+    this.args[name] = a;
     return Promise.resolve();
   }
 }
