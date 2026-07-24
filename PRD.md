@@ -270,7 +270,7 @@ type StartClaudeOptions = {
   readonly strictVersionCheck?: boolean;
 };
 
-declare function startClaude(options: StartClaudeOptions): Promise<ClaudeSession>;
+declare function startClaude(options: StartClaudeOptions): Promise<ClaudeSessionApi>;
 ```
 
 `cwd` is the working directory where Claude should start. `stateDir` overrides
@@ -336,7 +336,7 @@ type ResumeClaudeOptions = {
   readonly strictVersionCheck?: boolean;
 };
 
-declare function resumeClaude(options: ResumeClaudeOptions): Promise<ClaudeSession>;
+declare function resumeClaude(options: ResumeClaudeOptions): Promise<ClaudeSessionApi>;
 ```
 
 Resume uses Elwood's minimal persisted session record (§8.2) to relaunch or
@@ -378,7 +378,7 @@ type StartOrResumeClaudeOptions = StartClaudeOptions & {
 
 declare function startOrResumeClaude(
   options: StartOrResumeClaudeOptions,
-): Promise<{ readonly session: ClaudeSession; readonly resumed: boolean }>;
+): Promise<{ readonly session: ClaudeSessionApi; readonly resumed: boolean }>;
 ```
 
 When `elwoodSessionId` is set, `startOrResumeClaude` attempts a resume,
@@ -393,10 +393,10 @@ ran so callers can re-persist a new `elwoodSessionId` after a fallback.
 `startOrResumeCodex` behaves identically for Codex. `persona` follows its
 normal rules: delivered on a fresh start, never re-sent on resume.
 
-### 5.3 ClaudeSession
+### 5.3 ClaudeSessionApi (the raw live session)
 
 ```ts
-interface ClaudeSession {
+interface ClaudeSessionApi {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;
@@ -1166,7 +1166,7 @@ type StartCodexOptions = {
   readonly strictVersionCheck?: boolean;
 };
 
-declare function startCodex(options: StartCodexOptions): Promise<CodexSession>;
+declare function startCodex(options: StartCodexOptions): Promise<CodexSessionApi>;
 ```
 
 Elwood sets the PTY working directory and also passes Codex `--cd <cwd>` so
@@ -1216,7 +1216,7 @@ type ResumeCodexOptions = {
   readonly strictVersionCheck?: boolean;
 };
 
-declare function resumeCodex(options: ResumeCodexOptions): Promise<CodexSession>;
+declare function resumeCodex(options: ResumeCodexOptions): Promise<CodexSessionApi>;
 ```
 
 Resume uses Elwood's durable session metadata to relaunch `codex resume` with
@@ -1243,9 +1243,9 @@ at start and resume defaults to it, so a bare `resumeCodex` relaunches with the
 same sandbox and approval policy the session started with; explicit resume
 options override field by field and the effective posture is re-persisted.
 
-### 5.7 CodexSession
+### 5.7 CodexSessionApi (the raw live session)
 
-`CodexSession` exposes the same control surface as `ClaudeSession`: typed event
+`CodexSessionApi` exposes the same control surface as `ClaudeSessionApi`: typed event
 subscription, `statusDecisions`, `waitForStatus`, `waitForActivity`,
 `sendPrompt`, `sendMessage`, `sendGuidance`, `sendKeys`, `resize`, `interrupt`,
 `compact`, `listModels`, `setModel`, `stop`, `kill`, and `teardown`. Prompt
@@ -2094,7 +2094,7 @@ project/user settings that Elwood did not create.
 6. Start the local hook IPC endpoint.
 7. Spawn the user's shell in a PTY.
 8. Launch `claude` from that shell with generated settings and session env.
-9. Return a `ClaudeSession` object once the process and bridge are ready.
+9. Return a `ClaudeSessionApi` object once the process and bridge are ready.
 
 `startCodex` performs the analogous startup sequence for Codex:
 
@@ -2107,7 +2107,7 @@ project/user settings that Elwood did not create.
 7. Spawn the user's shell in a PTY.
 8. Launch `codex` from that shell with generated `--config` hook overrides and
    session env.
-9. Return a `CodexSession` object once the process and bridge are ready.
+9. Return a `CodexSessionApi` object once the process and bridge are ready.
 
 ### 9.2 Compatibility checks
 
@@ -2413,7 +2413,7 @@ Each criterion has:
 
 | ID | Section | Criterion |
 |---|---:|---|
-| C-API-01 | §5.1 | `startClaude({ cwd })` returns a `ClaudeSession` with a stable non-empty `elwoodSessionId`. |
+| C-API-01 | §5.1 | `startClaude({ cwd })` returns a `ClaudeSessionApi` with a stable non-empty `elwoodSessionId`. |
 | C-API-02 | §5.1 | `startClaude` accepts launch-time hook handlers before Claude starts. |
 | C-API-03 | §5.2 | `resumeClaude({ elwoodSessionId })` resumes using Elwood metadata without requiring a Claude session ID from the caller, provided project-local state is discoverable from the current process cwd or caller-supplied `cwd`/`stateDir`. |
 | C-API-04 | §5.3 | `ClaudeSession` exposes `sendPrompt`, `sendKeys`, `resize`, `stop`, `kill`, and `teardown`. |
@@ -2421,7 +2421,7 @@ Each criterion has:
 | C-API-06 | §5.3 | `sendPrompt` supports multi-line prompt text as one submitted user prompt. |
 | C-API-07 | §5.3 | Calling `sendPrompt` while Claude is busy writes input immediately rather than waiting for turn readiness, serializes against queue-backed prompt/message/command submissions, and resolves after its submitting Enter is dispatched; terminated sessions may still fail with `session_not_running`. |
 | C-API-08 | §5.4 | Consumers can subscribe and unsubscribe from typed session events. |
-| C-API-09 | §5.5 | `startCodex({ cwd })` returns a `CodexSession` with a stable non-empty `elwoodSessionId`. |
+| C-API-09 | §5.5 | `startCodex({ cwd })` returns a `CodexSessionApi` with a stable non-empty `elwoodSessionId`. |
 | C-API-10 | §5.6 | `resumeCodex({ elwoodSessionId })` resumes using Elwood metadata without requiring a Codex session ID from the caller, provided project-local state is discoverable from the current process cwd or caller-supplied `cwd`/`stateDir`. |
 | C-API-11 | §5.7 | `CodexSession` exposes the same terminal control and lifecycle methods as `ClaudeSession`. |
 | C-API-12 | §5.4 | Claude and Codex sessions emit adapter-neutral `activity` events for common lifecycle, message, tool, transcript, and hook-error observations, with normalized metadata for common timeline rendering. |
@@ -2444,7 +2444,7 @@ Each criterion has:
 | C-API-39 | §5.3 §5.7 | When restoring the latest requested size at Claude's initial-ready transition fails with a real (non-closed) native PTY resize error, Elwood keeps the safe bootstrap width, does not report the resize as applied, and surfaces a typed `resize_restore_failed` warning (content-free: only the requested size and an allowlisted error code), while still releasing the queued persona/caller message so input is never starved; a closed-fd resize at that transition stays a silent no-op. |
 | C-API-25 | §5.3 | Promise-returning session methods called after a terminal status reject with `session_not_running` instead of throwing synchronously. |
 | C-API-26 | §5.2 §5.6 | `startOrResumeClaude`/`startOrResumeCodex` resume when possible, fall back to a fresh start only on `state_not_found`, `resume_unavailable`, or `adapter_mismatch`, rethrow all other errors, and report `resumed` in the result. |
-| C-API-27 | §5.7 | `ElwoodAgentSession` is exported and both `ClaudeSession` and `CodexSession` are assignable to it, covering common events, io, commands, and lifecycle. |
+| C-API-27 | §5.7 | `ElwoodAgentSession` is exported and both `ClaudeSessionApi` and `CodexSessionApi` (the raw live sessions the `ClaudeSession`/`CodexSession` classes wrap) are assignable to it, covering common events, io, commands, and lifecycle. |
 | C-API-28 | §5.3 | Initial readiness fires from the adapter's pre-input readiness hook — Codex's `SessionStart`, Claude's `InstructionsLoaded`. On a COLD start the rendered composer is never a readiness signal — the boot-time composer placeholder alone never releases the first queued message (it is painted before the input loop is live and would be swallowed). On a RESUME the CLI reattaches to an existing conversation without re-firing its pre-input hook and its input loop is live when the composer paints, so a resumed session fires initial readiness on the FIRST rendered composer marker (or on the readiness hook if it re-fires, whichever is first), reaching readiness in ~1s instead of the full deadline. A blocking dialog's option caret is byte-identical to the composer marker, so the resume-composer path does NOT fire while a blocking dialog is on screen — readiness waits for the dialog to clear, so a draining queued message can never approve it. This dialog gate applies to EVERY readiness source, not just the resume-composer path: a blocking dialog on screen — including one that first rendered while the session was still `starting`, before it could latch the `blocked` status — defers a hook OR deadline readiness mark too, so no readiness source ever drains the queue into a dialog. The deferred mark is reconciled the moment a rendered frame shows the dialog cleared (readiness is neither drained into the dialog nor permanently starved by it). A bounded deadline after the first rendered frame is the ultimate fallback on BOTH adapters and BOTH start/resume, so a missing/failed readiness hook (and, on cold start, an absent composer signal) cannot starve queued persona/messages forever. Readiness fires exactly once (idempotent): whichever of hook, resume-composer signal, or deadline comes first releases the first queued message, and the others are no-ops. |
 | C-TURN-01 | §5.3 | While a turn runs the session is `running`; when the turn ends by any means — completion, Escape interrupt, or otherwise — the session transitions to `ready` and emits the corresponding `status` activity, on both adapters. |
 | C-TURN-02 | §5.3 | An Escape interrupt of a running turn produces the `ready` transition from rendered TUI state alone, with no dependency on a `Stop` hook. |
@@ -2660,7 +2660,7 @@ Each criterion has:
 | C-E2E-13 | §5.3 | A real Codex session on macOS attaches an image supplied via `sendMessage(message, { images })` — the clipboard-injection + Ctrl+V path drives the CLI to show its `[Image #N]` chip in the rendered composer, and the user's prior clipboard is restored afterward — verified against the installed CLI (C-API-46). |
 | C-E2E-09 | §5.1 | The trust-prompt allowlist recognizes and answers the REAL folder-trust frame the installed Claude CLI renders in a fresh untrusted directory (header-anchored recognition + affirmative-option selection), verified against captured CLI wording; the test skips loudly (logging the captured terminal) if no matchable frame renders, never passing silently. |
 | C-E2E-14 | §5.8 | Against a REAL Claude (or Codex) CLI, a lazily-started `ClaudeSession`/`CodexSession` answers two sequential `send` calls: the first returns non-empty assistant text, and the second — referring back to the first — returns text consistent with retained conversation context, proving `send` collects a turn's assistant text and the ergonomic layer preserves multi-turn context (C-API-47, C-API-49). |
-| C-E2E-15 | §5.8 | Against a REAL CLI, `stream(prompt)` for a task that uses a tool yields the turn's simplified typed events (at least one `text`, and the `tool_call`/`tool_result` pair when a tool runs) in arrival order and ends when the turn settles, verified against the installed CLI (C-API-48). |
+| C-E2E-15 | §5.8 | Against a REAL CLI, `stream(prompt)` for a task that DETERMINISTICALLY uses a workspace tool (reading a planted file) yields the turn's simplified typed events in arrival order — a `tool_call` FOLLOWED by its `tool_result`, and at least one `text` — and ends when the turn settles, verified against the installed CLI (C-API-48). |
 
 ## 15. Open Implementation Notes
 

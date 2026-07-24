@@ -57,6 +57,17 @@ describe("SessionBase control surface (C-API-47/51)", () => {
     expect(s.underlying.kills).toBe(1);
   });
 
+  test("close() when BOTH stop and kill fail throws termination_failed with both causes", async () => {
+    const s = new TestSimple();
+    await s.start();
+    s.underlying.stop = () => Promise.reject(new Error("stop boom"));
+    s.underlying.kill = () => Promise.reject(new Error("kill boom"));
+    await expect(s.close()).rejects.toMatchObject({
+      code: "termination_failed",
+      details: { cause: "stop boom", killCause: "kill boom" },
+    });
+  });
+
   test("status getter is `starting` before start, then reflects the live session", async () => {
     const s = new TestSimple();
     expect(s.status).toBe("starting");

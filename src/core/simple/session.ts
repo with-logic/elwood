@@ -8,6 +8,7 @@
 
 import type { ElwoodActivityEvent } from "../activity.ts";
 import type { ElwoodAgentSession } from "../agent-session.ts";
+import { elwoodError, toError } from "../errors.ts";
 import type { SendOptions } from "../images/types.ts";
 import type { AgentModelOption } from "../model-rows.ts";
 import type {
@@ -18,7 +19,8 @@ import type {
   Unsubscribe,
 } from "../types.ts";
 import type { TurnEvent } from "./events.ts";
-import { streamTurn } from "./turn.ts";
+import { runTurn } from "./turn.ts";
+import { TurnQueue } from "./turn-queue.ts";
 
 /** Per-call turn options. */
 export type TurnOptions = {
@@ -50,8 +52,7 @@ type PendingSub = { readonly event: string; readonly handler: (event: never) => 
 export abstract class SessionBase<S extends ElwoodAgentSession> {
   private live: S | undefined;
   private starting: Promise<S> | undefined;
-  // The tail of the serialized-turn chain: each turn awaits the previous one settling.
-  private tail: Promise<unknown> = Promise.resolve();
+  private readonly turns = new TurnQueue();
   private readonly pendingSubs: PendingSub[] = [];
 
   /** Boots the underlying session. Called at most once; the base memoizes the result. */
@@ -70,18 +71,26 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
   /** Start the underlying session eagerly. Idempotent and concurrent-safe (C-API-47). */
   start(): Promise<S> {
     if (this.live) return Promise.resolve(this.live);
-    this.starting ??= this.launch().then((session) => {
-      for (const sub of this.pendingSubs) session.on(sub.event as never, sub.handler as never);
-      this.live = session;
-      this.starting = undefined;
-      return session;
-    });
+    this.starting ??= this.launch().then(
+      (session) => {
+        for (const sub of this.pendingSubs) session.on(sub.event as never, sub.handler as never);
+        this.live = session;
+        this.starting = undefined;
+        return session;
+      },
+      (error) => {
+        this.starting = undefined; // a failed start is RETRYABLE — clear so a later call re-launches
+        throw error;
+      },
+    );
     return this.starting;
   }
 
   /** Stream one turn's simplified content events; ends when the turn settles (C-API-48). */
   stream(prompt: string, options?: TurnOptions): AsyncGenerator<TurnEvent> {
-    return this.serialize((session) => streamTurn(session, prompt, options ?? {}));
+    // The slot is reserved SYNCHRONOUSLY here (call order, not iteration order — C-API-50);
+    // `run` starts the turn only after the predecessor settles and this session has started.
+    return this.turns.enqueue(async () => runTurn(await this.start(), prompt, options ?? {}));
   }
 
   /** Send one turn and resolve with its assistant text, `\n\n`-joined (C-API-49). */
@@ -149,13 +158,28 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
     return (await this.start()).waitForActivity(match, timeoutMs);
   }
 
-  /** Stop the underlying session (falling back to `kill`); a no-op if it never started. */
+  /**
+   * Stop the underlying session (falling back to `kill`); a no-op if it never started.
+   * Awaits an IN-FLIGHT lazy start so a start racing this `close()` cannot orphan a live
+   * session (C-API-51). A launch that rejects leaves nothing to close.
+   */
   async close(): Promise<void> {
-    if (!this.live) return;
+    const live =
+      this.live ?? (this.starting ? await this.starting.catch(() => undefined) : undefined);
+    if (!live) return;
     try {
-      await this.live.stop();
-    } catch {
-      await this.live.kill();
+      await live.stop();
+    } catch (stopError) {
+      try {
+        await live.kill();
+      } catch (killError) {
+        // Both shutdown paths failed: surface the ORIGINAL stop failure with the kill
+        // failure attached, so a repeated cleanup/reap problem stays diagnosable.
+        throw elwoodError("termination_failed", "close() failed to stop or kill the session", {
+          cause: toError(stopError).message,
+          killCause: toError(killError).message,
+        });
+      }
     }
   }
 
@@ -170,27 +194,5 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
   /** Tear down the underlying session; a no-op if it never started. */
   async teardown(): Promise<void> {
     await this.live?.teardown();
-  }
-
-  /**
-   * Serialize a turn onto the tail: start the session (lazy), then run `body` only after
-   * every prior turn has fully settled, so turns never overlap (C-API-50). Returned as an
-   * async generator so `stream` stays lazy — nothing runs until the caller iterates.
-   */
-  private async *serialize(
-    body: (session: S) => AsyncGenerator<TurnEvent>,
-  ): AsyncGenerator<TurnEvent> {
-    const prior = this.tail;
-    let release!: () => void;
-    this.tail = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    try {
-      await prior; // wait for the previous turn to fully settle before starting this one
-      const session = await this.start();
-      yield* body(session);
-    } finally {
-      release();
-    }
   }
 }

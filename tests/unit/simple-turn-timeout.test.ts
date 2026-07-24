@@ -10,7 +10,8 @@ import {
   collect,
   drive,
   run,
-  streamTurn,
+  runTurn,
+  runTurnFake,
   type TurnSession,
 } from "./simple-turn-fakes.ts";
 
@@ -23,7 +24,8 @@ describe("streamTurn timeouts (C-API-48)", () => {
       s.emit("status", { status: "ready" });
       s.emit("activity", activity({ text: "ok", turnId: "t1" })); // matches the oracle → ends
     });
-    expect(await collect(streamTurn(s as unknown as TurnSession, "go"))).toEqual([
+    // Call runTurn with NO options object → exercises the `options = {}` default + defaults.
+    expect(await collect(runTurn(s as unknown as TurnSession, "go").events)).toEqual([
       { type: "text", text: "ok" },
     ]);
   });
@@ -50,9 +52,9 @@ describe("streamTurn timeouts (C-API-48)", () => {
     const s = drive((s) => {
       s.emit("status", { status: "running" }); // never settles
     });
-    await expect(
-      collect(streamTurn(s as unknown as TurnSession, "go", { timeoutMs: 10 })),
-    ).rejects.toMatchObject({ code: "wait_timeout" });
+    await expect(collect(runTurnFake(s, { timeoutMs: 10 }).events)).rejects.toMatchObject({
+      code: "wait_timeout",
+    });
   });
 
   test("SAFETY NET: oracle set but the transcript NEVER catches up → catchUpMs fires after ready", async () => {
@@ -65,9 +67,7 @@ describe("streamTurn timeouts (C-API-48)", () => {
       s.emit("activity", activity({ text: "something else", turnId: "t1" })); // never matches
     });
     await expect(
-      collect(
-        streamTurn(s as unknown as TurnSession, "go", { catchUpMs: 20, fallbackQuietMs: 5_000 }),
-      ),
+      collect(runTurnFake(s, { catchUpMs: 20, fallbackQuietMs: 5_000 }).events),
     ).rejects.toMatchObject({ code: "wait_timeout" });
   });
 });

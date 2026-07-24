@@ -4,7 +4,7 @@
  */
 
 import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
-import { streamTurn, type TurnSession } from "../../src/core/simple/turn.ts";
+import { runTurn, type TurnSession } from "../../src/core/simple/turn.ts";
 
 export function activity(partial: Partial<ElwoodActivityEvent>): ElwoodActivityEvent {
   return {
@@ -17,11 +17,16 @@ export function activity(partial: Partial<ElwoodActivityEvent>): ElwoodActivityE
   };
 }
 
-/** A scriptable fake session: emit activity/status/hook events to drive one turn. */
+/**
+ * A scriptable fake session. The runner marks `submitted` before calling `sendMessage`, so
+ * the scripted turn events (emitted during the call) are correctly attributed to this turn.
+ * `sendResult` lets a test make submission reject (e.g. a terminal `session_not_running`).
+ */
 export class FakeTurnSession {
   status = "ready" as const;
   private readonly handlers = new Map<string, ((event: unknown) => void)[]>();
   script: () => void = () => {};
+  sendResult: Promise<void> = Promise.resolve();
   on(event: string, handler: (event: never) => void): () => void {
     const list = this.handlers.get(event) ?? [];
     list.push(handler as (event: unknown) => void);
@@ -33,7 +38,7 @@ export class FakeTurnSession {
   }
   sendMessage(): Promise<void> {
     this.script();
-    return Promise.resolve();
+    return this.sendResult;
   }
 }
 
@@ -49,8 +54,20 @@ export async function collect(gen: AsyncGenerator<unknown>): Promise<unknown[]> 
   return out;
 }
 
-/** Run a turn with fast test timings (small quiet window, generous catch-up). */
-export const run = (s: FakeTurnSession, fallbackQuietMs = 20) =>
-  collect(streamTurn(s as unknown as TurnSession, "go", { fallbackQuietMs, catchUpMs: 5_000 }));
+/** Run a turn with fast test timings (small quiet window, generous catch-up); returns events. */
+export function run(s: FakeTurnSession, fallbackQuietMs = 20): Promise<unknown[]> {
+  return collect(
+    runTurn(s as unknown as TurnSession, "go", { fallbackQuietMs, catchUpMs: 5_000 }).events,
+  );
+}
 
-export { streamTurn, type TurnSession };
+/** Run a turn and return both its events and completion promise (for lifecycle assertions). */
+export function runTurnFake(s: FakeTurnSession, options: Record<string, number> = {}) {
+  return runTurn(s as unknown as TurnSession, "go", {
+    fallbackQuietMs: 20,
+    catchUpMs: 5_000,
+    ...options,
+  });
+}
+
+export { runTurn, type TurnSession };

@@ -118,11 +118,12 @@ describe("streamTurn completeness oracle (C-API-48)", () => {
     expect(await run(s)).toEqual([{ type: "text", text: "MINE" }]);
   });
 
-  test("a terminal status ends the turn at once; a stray later `ready` is ignored", async () => {
+  test("a terminal status ends the turn at once; a second terminal + stray `ready` are ignored", async () => {
     const s = drive((s) => {
       s.emit("status", { status: "running" });
       s.emit("activity", activity({ text: "partial", turnId: "t1" }));
-      s.emit("status", { status: "exited" }); // terminal ends immediately
+      s.emit("status", { status: "exited" }); // terminal ends immediately (end #1)
+      s.emit("status", { status: "killed" }); // a SECOND terminal — end() is idempotent, ignored
       s.emit("status", { status: "ready" }); // stray post-end settle: ignored
       s.emit("activity", activity({ text: "LATE", turnId: "t1" })); // dropped
     });
@@ -138,5 +139,37 @@ describe("streamTurn completeness oracle (C-API-48)", () => {
       s.emit("status", { status: "ready" });
     });
     expect(await run(s)).toEqual([{ type: "text", text: "answer" }]); // quiet-window fallback ends it
+  });
+
+  test("submit rejecting with session_not_running ENDS the turn cleanly (no throw)", async () => {
+    // A terminal session's queued submission rejects `session_not_running`; the turn must end
+    // WITHOUT error and keep any buffered content (here none), not throw at the consumer.
+    const s = drive(() => {});
+    s.sendResult = Promise.reject(
+      Object.assign(new Error("session not running"), { code: "session_not_running" }),
+    );
+    expect(await run(s)).toEqual([]);
+  });
+
+  test("submit rejecting with any OTHER error becomes the turn's failure", async () => {
+    const s = drive(() => {});
+    s.sendResult = Promise.reject(new Error("pty write failed"));
+    await expect(run(s)).rejects.toThrow(/pty write failed/);
+  });
+
+  test("a large content burst is drained fully (queue head compaction, no O(n^2))", async () => {
+    // Emit more than the gate's head-compaction threshold (1024) so the consumed-prefix
+    // splice path runs; every event must still be yielded, in order.
+    const N = 1100;
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      for (let i = 0; i < N; i += 1) s.emit("activity", activity({ text: `x${i}`, turnId: "t1" }));
+      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: `x${N - 1}` });
+      s.emit("status", { status: "ready" });
+    });
+    const out = (await run(s)) as { type: string; text: string }[];
+    expect(out).toHaveLength(N);
+    expect(out[0]).toEqual({ type: "text", text: "x0" });
+    expect(out[N - 1]).toEqual({ type: "text", text: `x${N - 1}` });
   });
 });

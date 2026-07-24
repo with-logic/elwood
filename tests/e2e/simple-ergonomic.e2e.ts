@@ -5,6 +5,8 @@
  */
 
 import assert from "node:assert/strict";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 import {
   ClaudeSession,
@@ -44,11 +46,12 @@ test("C-E2E-14 ClaudeSession.send collects assistant text and retains context", 
   }
 });
 
-test("C-E2E-15 CodexSession.stream yields simplified typed events and ends on settle", {
+test("C-E2E-15 CodexSession.stream yields a real tool_call/tool_result pair and assistant text, then ends", {
   skip: skipReason("codex") ?? skipTurns,
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("codex");
+  writeFileSync(join(project.cwd, "MARKER.txt"), "elwood-marker\n"); // a file the tool must read
   const options: CodexSessionOptions = {
     cwd: project.cwd,
     stateDir: project.stateDir,
@@ -57,8 +60,10 @@ test("C-E2E-15 CodexSession.stream yields simplified typed events and ends on se
   const session = new CodexSession(options);
   const seen: TurnEvent[] = [];
   try {
+    // A task that requires a real workspace tool (read the file), so the stream produces a
+    // deterministic tool_call → tool_result before the assistant text.
     for await (const event of session.stream(
-      "Reply with just one short sentence: hello from Elwood stream.",
+      "Read the file MARKER.txt in the current directory using your tools, then reply with just its contents.",
     )) {
       seen.push(event);
       // Every yielded event is one of the four simplified content shapes, nothing else.
@@ -70,12 +75,17 @@ test("C-E2E-15 CodexSession.stream yields simplified typed events and ends on se
         `unexpected stream event type: ${(event as { type: string }).type}`,
       );
     }
-    // The iterator ended (turn settled). At least one text event carried the reply.
+    // The iterator ended (turn settled). Assert a tool_call was followed by its tool_result,
+    // and assistant text was yielded — the full stream contract, not just "some text".
+    const callIndex = seen.findIndex((e) => e.type === "tool_call");
+    const resultIndex = seen.findIndex((e) => e.type === "tool_result");
+    assert.ok(callIndex >= 0, "stream yielded a tool_call for the file read");
+    assert.ok(resultIndex > callIndex, "the tool_result followed its tool_call, in order");
     const text = seen
       .filter((event): event is Extract<TurnEvent, { type: "text" }> => event.type === "text")
       .map((event) => event.text)
       .join("");
-    assert.ok(text.trim().length > 0, "stream yielded assistant text before ending");
+    assert.ok(text.trim().length > 0, "stream yielded assistant text after the tool result");
   } finally {
     await session.close();
   }

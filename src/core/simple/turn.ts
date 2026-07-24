@@ -1,27 +1,29 @@
 /**
- * One ergonomic turn: submit a prompt and stream its simplified content events until the
- * transcript has caught up to the completed turn (PRD §5.8, C-API-48/49).
+ * One ergonomic turn: submit a prompt and drive the agent turn to its REAL boundary,
+ * feeding a gate the consumer reads (PRD §5.8, C-API-48/49/50).
  *
  * The turn boundary is a COMPLETENESS ORACLE, not a timer. A turn's assistant text is
  * transcript-sourced (C-CLAUDE-15) and the transcript is written ASYNCHRONOUSLY, arriving
- * shortly AFTER the `ready` status. But the turn-boundary `Stop` hook carries
- * `last_assistant_message` — the final assistant text of the just-completed turn. We use
- * that ONLY as a completeness signal (never as displayed text — it can be ghost text): the
- * turn ends once the transcript-collected assistant text CONTAINS it. When there is no such
- * signal (a pure-tool turn, an empty/StopFailure payload, or a payload that never appears)
- * the turn ends after a bounded quiet window with no new content.
+ * shortly AFTER the `ready` status. The turn-boundary `Stop` hook carries
+ * `last_assistant_message` — the final assistant text of the just-completed turn — used
+ * ONLY as a completeness signal (never displayed — it can be ghost text): the turn ends
+ * once the transcript-collected assistant text CONTAINS it. With no such signal (a
+ * pure-tool turn, or an empty/`null` `last_assistant_message`) the turn ends after a
+ * bounded quiet window with no new content.
  *
- * Timeouts: a turn may legitimately run for HOURS (running a test suite, polling a PR), so
- * there is NO whole-turn timeout by default — a still-live turn is never failed by a clock;
- * a dead session ends it via terminal status, and callers may pass an opt-in `timeoutMs`.
- * The tight cap is `catchUpMs` (default 10s), armed ONLY once `ready` fires: the agent is
- * done, so the transcript flush should be near-instant — if it stalls past `catchUpMs`,
- * something broke and the turn rejects with `wait_timeout` rather than leave the caller
- * hanging. A terminal status always ends the turn at once.
+ * The runner is DECOUPLED from the consumer generator: it runs eagerly to the real turn
+ * boundary and its `completion` promise resolves only THEN, so a consumer that abandons
+ * the stream early cannot release the turn's serialized slot while the agent is still
+ * running (which would let the next turn bind to this turn's trailing events).
+ *
+ * Timeouts: a turn may run for HOURS (a test suite, a PR poll), so there is NO whole-turn
+ * timeout by default; callers may pass an opt-in `timeoutMs`. The tight cap is `catchUpMs`
+ * (default 10s), armed only ONCE `ready` fires — the flush should be near-instant, so a
+ * longer stall rejects with `wait_timeout`. A terminal status ends the turn at once.
  */
 
 import type { ElwoodAgentSession, ElwoodCommonEventMap } from "../agent-session.ts";
-import { elwoodError } from "../errors.ts";
+import { elwoodError, toError } from "../errors.ts";
 import { terminalStatuses } from "../status-categories.ts";
 import { type TurnEvent, toTurnEvent } from "./events.ts";
 import { TurnGate } from "./turn-gate.ts";
@@ -59,18 +61,37 @@ export type StreamTurnOptions = {
   readonly fallbackQuietMs?: number;
 };
 
-export async function* streamTurn(
+/** A running turn: `events` is the consumer view; `completion` resolves at the REAL boundary. */
+export type RunningTurn = {
+  /** The turn's simplified content events; abandoning this does NOT stop the turn. */
+  readonly events: AsyncGenerator<TurnEvent>;
+  /** Resolves when the agent turn reaches its real boundary; rejects on failure/timeout. */
+  readonly completion: Promise<void>;
+};
+
+/**
+ * Start a turn: attach listeners, submit the prompt, and drive the gate to the turn's real
+ * boundary. Returns the consumer `events` generator and a `completion` promise that the
+ * serializer holds its slot on (so the next turn never starts before this one settles).
+ */
+export function runTurn(
   session: TurnSession,
   prompt: string,
   options: StreamTurnOptions = {},
-): AsyncGenerator<TurnEvent> {
+): RunningTurn {
   const gate = new TurnGate(
     options.fallbackQuietMs ?? FALLBACK_QUIET_MS,
     options.catchUpMs ?? CATCH_UP_MS,
   );
   let turnId: string | undefined;
   let bound = false;
-  let started = false; // the turn only ends on a settle once it has demonstrably started
+  // The turn only ENDS on a settle once it has demonstrably STARTED — a `running` status or
+  // the first content event — so the idle `ready` the session sits at when the prompt is
+  // submitted does not end the turn before any work runs. This (with the serializer holding
+  // the prior turn to its real boundary before this one starts) is why no explicit
+  // "is this my submission" gate is needed: there are no prior-turn events left to mis-collect.
+  let started = false;
+
   const offActivity = session.on("activity", (event) => {
     const simple = toTurnEvent(event);
     if (!bound && simple) {
@@ -80,8 +101,8 @@ export async function* streamTurn(
     }
     if (simple && (event.turnId === undefined || event.turnId === turnId)) {
       // Queue the event FIRST, then feed the oracle: observeText can end() the turn, and
-      // push() drops events once ended — so the text that COMPLETES the turn must be
-      // enqueued before the completion check runs.
+      // push() drops events once ended — so the text that COMPLETES the turn is enqueued
+      // before the completion check runs.
       gate.push(simple);
       if (simple.type === "text") gate.observeText(simple.text);
     }
@@ -97,22 +118,43 @@ export async function* streamTurn(
     if (terminalStatuses.has(status)) return gate.end();
     if (status === "ready" && started) gate.settle();
   });
-  // Opt-in whole-turn ceiling only (default: none — a live turn is never failed by a clock).
-  const timer =
-    options.timeoutMs === undefined
-      ? undefined
-      : setTimeout(
-          () => gate.fail(elwoodError("wait_timeout", "turn timed out")),
-          options.timeoutMs,
-        );
-  try {
-    await session.sendMessage(prompt); // submit AFTER listeners attach, so no early event is lost
-    yield* gate.drain();
-  } finally {
-    if (timer) clearTimeout(timer);
+
+  const cleanup = () => {
     gate.dispose();
     offActivity();
     offHook();
     offStatus();
-  }
+  };
+
+  // Drive the turn's lifecycle EAGERLY and independently of the consumer: submit, then wait
+  // for the gate to reach the real boundary. Runs to completion even if the consumer breaks.
+  const completion = (async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const send = session.sendMessage(prompt); // listeners attached — no early event lost
+      // Arm the opt-in whole-turn ceiling now; the whole turn (including any queue/readiness
+      // wait) is what the caller opted to bound.
+      if (options.timeoutMs !== undefined) {
+        timer = setTimeout(
+          () => gate.fail(elwoodError("wait_timeout", "turn timed out")),
+          options.timeoutMs,
+        );
+      }
+      await send;
+      await gate.done(); // rejects on fail/timeout — the error is already recorded for `drain`
+    } catch (error) {
+      // A submit failure on a terminal session ends the turn cleanly (buffered events keep,
+      // iterator ends without error); any other submit error becomes the turn's failure. The
+      // error reaches the consumer via `gate.drain()`, so `completion` only SIGNALS that the
+      // turn settled (it always resolves — never an unhandled rejection for a caller that
+      // ignores it, e.g. an abandoning consumer whose slot the serializer still awaits).
+      if ((error as { code?: string })?.code === "session_not_running") gate.end();
+      else gate.fail(toError(error));
+    } finally {
+      if (timer) clearTimeout(timer);
+      cleanup();
+    }
+  })();
+
+  return { events: gate.drain(), completion };
 }

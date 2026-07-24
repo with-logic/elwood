@@ -5,16 +5,21 @@
  * `settle()` (on `ready`) begins completion checks and arms a `catchUpMs` failure cap. The
  * turn ends when the collected assistant text CONTAINS the Stop hook's expected text (the
  * completeness oracle), or — with no expected text — after `quietMs` of no new content; if
- * neither happens within `catchUpMs` of `ready`, it fails with `wait_timeout`. `end()`/
- * `fail()` are immediate; `drain()` finishes only once the queue is also empty, so a
- * completion racing ahead of the last buffered event never truncates the turn.
+ * neither happens within `catchUpMs` of `ready`, it fails with `wait_timeout`. `end()` and
+ * `fail()` are IDEMPOTENT (first completion wins — a later timer can never overwrite a
+ * success). `done()` resolves/rejects at that first completion for the turn runner; the
+ * separate `drain()` generator is the consumer view and finishes only once the queue is
+ * also empty, so a completion racing ahead of the last buffered event never truncates it.
  */
 
 import { elwoodError } from "../errors.ts";
 import type { TurnEvent } from "./events.ts";
 
+const HEAD_COMPACT_THRESHOLD = 1024; // compact the consumed queue prefix past this many items
+
 export class TurnGate {
   private readonly queue: TurnEvent[] = [];
+  private head = 0; // index of the next unconsumed event (avoids O(n) Array.shift)
   private ended = false;
   private error: unknown;
   private wake: (() => void) | undefined;
@@ -25,10 +30,26 @@ export class TurnGate {
   private catchUpTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly quietMs: number;
   private readonly catchUpMs: number;
+  private resolveDone!: () => void;
+  private rejectDone!: (error: unknown) => void;
+  private readonly donePromise: Promise<void>;
 
   constructor(quietMs: number, catchUpMs: number) {
     this.quietMs = quietMs;
     this.catchUpMs = catchUpMs;
+    this.donePromise = new Promise<void>((resolve, reject) => {
+      this.resolveDone = resolve;
+      this.rejectDone = reject;
+    });
+    this.donePromise.catch(() => {
+      // Swallow: `done()` may reject before/without a runner awaiting it (e.g. an early
+      // failure); the error still reaches the consumer via `drain()`. No unhandled rejection.
+    });
+  }
+
+  /** Resolves at the real turn boundary; rejects on failure/timeout. For the turn runner. */
+  done(): Promise<void> {
+    return this.donePromise;
   }
 
   observeText(text: string): void {
@@ -57,18 +78,24 @@ export class TurnGate {
     this.catchUpTimer.unref?.();
     this.reconcile();
   }
+  /** Complete the turn (idempotent — the first completion wins). */
   end(): void {
+    if (this.ended) return;
     this.dispose();
     this.ended = true;
+    this.resolveDone();
     this.wake?.();
   }
+  /** Fail the turn (idempotent — a late timer cannot overwrite an already-committed end). */
   fail(error: unknown): void {
+    if (this.ended) return;
     this.dispose();
     this.error = error;
     this.ended = true;
+    this.rejectDone(error);
     this.wake?.();
   }
-  /** Clear every timer (idempotent); called on end/fail and on generator teardown. */
+  /** Clear every timer (idempotent); called on end/fail. */
   dispose(): void {
     if (this.quietTimer) clearTimeout(this.quietTimer);
     if (this.catchUpTimer) clearTimeout(this.catchUpTimer);
@@ -92,7 +119,15 @@ export class TurnGate {
   }
   async *drain(): AsyncGenerator<TurnEvent> {
     for (;;) {
-      while (this.queue.length > 0) yield this.queue.shift() as TurnEvent;
+      while (this.head < this.queue.length) {
+        const event = this.queue[this.head] as TurnEvent;
+        this.head += 1;
+        if (this.head > HEAD_COMPACT_THRESHOLD) {
+          this.queue.splice(0, this.head); // drop the consumed prefix so the array cannot grow forever
+          this.head = 0;
+        }
+        yield event;
+      }
       if (this.error !== undefined) throw this.error;
       if (this.ended) return;
       await new Promise<void>((resolve) => {
