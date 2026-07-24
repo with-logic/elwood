@@ -63,6 +63,41 @@ describe("SubscriptionRegistry (C-API-52)", () => {
     expect(session.count()).toBe(1); // the later subscription still attached (thrower left no live sub)
   });
 
+  test("a registration that SELF-DISPOSES during replay is detached, not leaked", () => {
+    // `attach` (which replays consumer code) synchronously disposes this very registration before
+    // its live unsubscribe is stored. attachAll must detach it immediately so the listener never
+    // leaks — and must still attach the following registration.
+    const reg = new SubscriptionRegistry<ReturnType<typeof makeSession>>();
+    const later = () => {};
+    let dispose!: () => void;
+    const selfDisposing = () => {};
+    dispose = reg.add("status", selfDisposing, (s) => {
+      const live = s.on(selfDisposing);
+      dispose(); // reentrant self-dispose during attach/replay — before `live` is stored by the base
+      return live;
+    });
+    reg.add("status", later, (s) => s.on(later)); // must still attach after the self-disposer
+    const session = makeSession();
+    reg.attachAll(session);
+    expect(session.count()).toBe(1); // only `later` remains live — the self-disposed one detached
+  });
+
+  test("a registration ADDED during another's replay attaches exactly once", () => {
+    // `attach` replays consumer code that subscribes a NEW handler. attachAll must not re-attach
+    // that reentrant addition via its own snapshot loop (it self-attaches through the live path).
+    const reg = new SubscriptionRegistry<ReturnType<typeof makeSession>>();
+    const reentrant = () => {};
+    const trigger = () => {};
+    reg.add("status", trigger, (s) => {
+      const live = s.on(trigger);
+      reg.add("status", reentrant, (ses) => ses.on(reentrant)); // reentrant add during replay
+      return live;
+    });
+    const session = makeSession();
+    reg.attachAll(session);
+    expect(session.count()).toBe(2); // trigger + reentrant, each attached EXACTLY once (no double)
+  });
+
   test("off(event, handler) removes only the matching (event, handler); double-dispose is a no-op", () => {
     const reg = new SubscriptionRegistry<ReturnType<typeof makeSession>>();
     const session = makeSession();

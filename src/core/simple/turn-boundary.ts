@@ -20,7 +20,7 @@ export class TurnBoundary {
   readonly promise: Promise<void>;
   private resolve!: () => void;
   private reached = false;
-  private failed = false;
+  private consumerFailed = false;
   private drainTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly onReach: () => void;
 
@@ -41,9 +41,9 @@ export class TurnBoundary {
     this.onReach();
   }
 
-  /** Mark the consumer failed: the boundary now waits for a real `ready`/terminal, not quiet. */
-  markFailed(): void {
-    this.failed = true;
+  /** Mark that the consumer turn failed: the boundary now waits for a real `ready`/terminal, not quiet. */
+  markConsumerFailed(): void {
+    this.consumerFailed = true;
   }
 
   /**
@@ -53,7 +53,7 @@ export class TurnBoundary {
    * the boundary is reached.
    */
   armDrain(): void {
-    if (this.reached || !this.failed) return;
+    if (this.reached || !this.consumerFailed) return;
     if (this.drainTimer) clearTimeout(this.drainTimer);
     this.drainTimer = setTimeout(() => this.reach(), DRAIN_MS);
     this.drainTimer.unref?.();

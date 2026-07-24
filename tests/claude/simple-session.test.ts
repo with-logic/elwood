@@ -38,6 +38,25 @@ describe("ClaudeSession (C-API-47/50/51)", () => {
     }
   });
 
+  test("SNAPSHOTS cwd at construction: a chdir before lazy launch does not move the project", async () => {
+    installFakes();
+    const previous = process.cwd();
+    const dirA = tempDir();
+    const dirB = tempDir();
+    process.chdir(dirA);
+    try {
+      const session = new ClaudeSession(); // default cwd captured NOW = dirA
+      const expectedCwd = process.cwd(); // the resolved/canonical dirA at construction time
+      process.chdir(dirB); // move the process BEFORE the first use
+      const live = await session.start(); // lazy launch — must still target dirA, not dirB
+      expect(live.cwd).toBe(expectedCwd);
+      expect(live.cwd).not.toBe(process.cwd()); // and definitely NOT the current (moved) dir
+      await session.close();
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
   test("a delegated control method (resize) lazy-starts the real session; on/off actually wire through", async () => {
     installFakes();
     const session = new ClaudeSession({ cwd: tempDir(), autotrust: true });

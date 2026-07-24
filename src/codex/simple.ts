@@ -6,6 +6,7 @@
  * factory.
  */
 
+import { resolveSessionPaths } from "../core/simple/resolve-paths.ts";
 import { SessionBase } from "../core/simple/session.ts";
 import type { AssertStopBoundary } from "../core/simple/turn.ts";
 import type { Unsubscribe } from "../core/types.ts";
@@ -31,15 +32,17 @@ void _stopBoundaryCheck;
 export type CodexSessionOptions = Omit<StartCodexOptions, "cwd"> & { readonly cwd?: string };
 
 export class CodexSession extends SessionBase<CodexSessionApi> {
-  private readonly options: CodexSessionOptions;
+  private readonly options: StartCodexOptions;
 
   constructor(options: CodexSessionOptions = {}) {
     super();
-    this.options = options;
+    // SNAPSHOT cwd + relative stateDir at CONSTRUCTION (see resolveSessionPaths): a chdir between
+    // construction and lazy launch must not change which project is launched or where state lands.
+    this.options = resolveSessionPaths(options);
   }
 
   protected launch(): Promise<CodexSessionApi> {
-    return startCodex({ ...this.options, cwd: this.options.cwd ?? process.cwd() });
+    return startCodex(this.options);
   }
 
   /** Typed event subscription over the Codex event map (buffered before start). */

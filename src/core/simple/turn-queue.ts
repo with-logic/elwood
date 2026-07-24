@@ -2,8 +2,10 @@
  * Serializes ergonomic turns in CALL order (PRD §5.8, C-API-50). A turn's slot is reserved
  * SYNCHRONOUSLY when `enqueue` is called (not when the generator is iterated), so
  * `stream("a"); stream("b")` submits a before b even if b is consumed first. Each turn holds
- * its slot until its REAL boundary (the runner's `completion`), so a consumer that abandons
- * a stream early never lets the next turn bind to this turn's still-arriving trailing events.
+ * its slot until its REAL boundary (`RunningTurn.boundary` — the agent genuinely settled, NOT
+ * the consumer-facing `completion`, which can resolve on a timeout while the agent still runs),
+ * so a consumer that abandons or times out a stream never lets the next turn bind to this turn's
+ * still-arriving trailing events.
  */
 
 import type { TurnEvent } from "./events.ts";
@@ -18,7 +20,7 @@ export class TurnQueue {
    * (via `run`) as soon as the predecessor settles — EAGERLY, independent of whether the
    * consumer iterates — so a turn whose consumer is not yet reading still runs in call order
    * and does not deadlock a later turn that IS being consumed. The slot is held until the
-   * turn's real `completion`; the returned generator only reads the started turn's events.
+   * turn's real `boundary`; the returned generator only reads the started turn's events.
    */
   enqueue(run: () => Promise<RunningTurn>): AsyncGenerator<TurnEvent> {
     const predecessor = this.tail;

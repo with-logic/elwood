@@ -6,6 +6,11 @@
 
 import { ClaudeSession } from "../src/index.ts";
 
+/** Compile-time exhaustiveness guard: reaching this with a real value means a case is missing. */
+function assertNever(value: never): never {
+  throw new Error(`unhandled turn event: ${JSON.stringify(value)}`);
+}
+
 const session = new ClaudeSession({ autotrust: true });
 try {
   for await (const event of session.stream("List the files here, then summarize the project.")) {
@@ -22,6 +27,10 @@ try {
       case "text":
         process.stdout.write(event.text);
         break;
+      default:
+        // Exhaustiveness: adding a new TurnEvent variant makes this fail to compile, so the
+        // canonical example can never silently ignore a newly-surfaced event kind.
+        assertNever(event);
     }
   }
   process.stdout.write("\n");

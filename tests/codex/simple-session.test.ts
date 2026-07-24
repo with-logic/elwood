@@ -36,6 +36,23 @@ describe("CodexSession (C-API-47/51)", () => {
     }
   });
 
+  test("SNAPSHOTS cwd at construction: a chdir before lazy launch does not move the project", async () => {
+    installFakes();
+    const previous = process.cwd();
+    process.chdir(tempDir());
+    try {
+      const simple = new CodexSession(); // default cwd captured NOW
+      const expectedCwd = process.cwd();
+      process.chdir(tempDir()); // move the process BEFORE first use
+      const session = await simple.start();
+      expect(session.cwd).toBe(expectedCwd); // still the construction-time dir
+      expect(session.cwd).not.toBe(process.cwd());
+      await simple.close();
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
   test("typed on()/off() actually deliver and detach through the live session", async () => {
     installFakes();
     const session = new CodexSession({ cwd: tempDir(), autotrust: true });

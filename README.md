@@ -34,10 +34,13 @@ for await (const event of session.stream("Run the test suite and report failures
 }
 ```
 
-`ClaudeSession` / `CodexSession` are the primary API. Each also exposes the full
-low-level control surface (`sendMessage`, `on`, `interrupt`, `waitForStatus`,
-`stop`/`kill`/`teardown`, …). The eager `startClaude` / `startCodex` factories are
-**deprecated** in favor of the classes but remain available for advanced use.
+`ClaudeSession` / `CodexSession` are the primary API. Each also delegates the
+operational and lifecycle METHODS of the low-level session (`sendMessage`, `on`/`off`,
+`interrupt`, `waitForStatus`, `stop`/`kill`/`teardown`, …). Raw identity/diagnostic
+MEMBERS not proxied by the wrapper (`elwoodSessionId`, `cwd`, `terminal`,
+`statusDecisions()`) are reachable via `session.session` after startup. The eager
+`startClaude` / `startCodex` factories are **deprecated** in favor of the classes but
+remain available for advanced use.
 
 `PRD.md` is the source of truth for observable behavior. If README, tests, or
 implementation disagree with the PRD, the PRD wins.
@@ -166,8 +169,10 @@ same symbols from `elwood`.
 ## Low-level: Claude
 
 These examples use the eager `startClaude` factory to show the raw control surface
-and every option. For most code, prefer `new ClaudeSession(...)` (above), which
-starts lazily and exposes the same surface plus `send`/`stream`.
+and every option. For most code, prefer `new ClaudeSession(...)` (above), which starts
+lazily and adds `send`/`stream`; it delegates the control/lifecycle methods and exposes
+the raw session (for `elwoodSessionId`, `cwd`, `terminal`, `statusDecisions()`) via
+`session.session` after startup.
 
 ```ts
 import { startClaude } from "elwood"; // deprecated; prefer `new ClaudeSession(...)`

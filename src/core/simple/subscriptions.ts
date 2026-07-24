@@ -45,19 +45,27 @@ export class SubscriptionRegistry<S> {
   }
 
   /**
-   * Bind to the started session and attach every buffered registration, storing each live
-   * detach. Each attach is CONTAINED: a throwing consumer handler (e.g. a `terminal:data` replay
-   * consumer) must not abort the caller — the session is already live and owned — nor block
-   * later subscriptions. Called exactly once, after the caller has committed the live session.
+   * Bind to the started session and attach every buffered registration, storing each live detach.
+   * Reentrancy-safe: `attach` can synchronously replay consumer code that itself `add`s or
+   * disposes a subscription, so we iterate a SNAPSHOT (a reentrant `add` attaches itself once, via
+   * the `this.live` path in `add`, and is not re-attached by this loop) and store the live detach
+   * only if the registration still exists — otherwise a self-dispose during replay would leak the
+   * listener, so we invoke the detach immediately. Each attach is CONTAINED: a throwing consumer
+   * handler must not abort the caller (the session is already live and owned) nor block later ones.
    */
   attachAll(session: S): void {
     this.live = session;
-    for (const reg of this.registrations) {
+    for (const reg of [...this.registrations]) {
+      let live: Unsubscribe | undefined;
       try {
-        reg.live = reg.attach(session);
+        live = reg.attach(session);
       } catch {
         // Swallow a consumer attach/replay throw so it neither orphans the session nor fails start.
+        continue;
       }
+      if (this.registrations.includes(reg))
+        reg.live = live; // still registered — keep its live detach
+      else live(); // disposed reentrantly during replay — detach now so the listener never leaks
     }
   }
 

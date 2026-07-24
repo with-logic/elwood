@@ -6,6 +6,7 @@
  * `startClaude` factory.
  */
 
+import { resolveSessionPaths } from "../core/simple/resolve-paths.ts";
 import { SessionBase } from "../core/simple/session.ts";
 import type { AssertStopBoundary } from "../core/simple/turn.ts";
 import type {
@@ -34,15 +35,18 @@ void _stopBoundaryCheck;
 export type ClaudeSessionOptions = Omit<StartClaudeOptions, "cwd"> & { readonly cwd?: string };
 
 export class ClaudeSession extends SessionBase<ClaudeSessionApi> {
-  private readonly options: ClaudeSessionOptions;
+  private readonly options: StartClaudeOptions;
 
   constructor(options: ClaudeSessionOptions = {}) {
     super();
-    this.options = options;
+    // SNAPSHOT the working directory (and resolve any relative stateDir against it) at
+    // CONSTRUCTION, not at lazy launch: a `process.chdir()` between `new ClaudeSession()` and the
+    // first use must not change which project is launched/auto-trusted or where state is written.
+    this.options = resolveSessionPaths(options);
   }
 
   protected launch(): Promise<ClaudeSessionApi> {
-    return startClaude({ ...this.options, cwd: this.options.cwd ?? process.cwd() });
+    return startClaude(this.options);
   }
 
   /** Typed event subscription over the Claude event map (buffered before start). */

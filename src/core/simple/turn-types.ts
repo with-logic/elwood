@@ -80,15 +80,19 @@ export type RunningTurn = {
   /** The turn's simplified content events; abandoning this does NOT stop the turn. */
   readonly events: AsyncGenerator<TurnEvent>;
   /**
-   * Always-resolving settlement signal for the CONSUMER: resolves once the iterator has settled
-   * (its error, if any, is carried by `events`, never thrown here). Distinct from `boundary`.
+   * Always-resolving GATE-settlement signal. The runner drives it EAGERLY — it resolves when the
+   * gate settles (success or a consumer-facing failure) whether or not `events` was ever
+   * consumed; the turn's error, if any, is carried by `events`, never thrown here. It is NOT the
+   * serializer boundary (a timeout/backlog failure settles this while the agent still runs) — use
+   * `boundary` for that. Named `completion` because it marks the consumer's view of the turn done.
    */
   readonly completion: Promise<void>;
   /**
-   * Resolves only when the AGENT reaches its real boundary — a terminal status, or a `ready`
-   * after the turn started. It does NOT resolve on a consumer-facing failure (`timeoutMs`,
-   * `catchUpMs`, backlog): the agent may still be running, so the serializer must keep this
-   * turn's slot until the agent genuinely settles, or the next turn would bind to its activity.
+   * The serializer's slot-release signal: resolves only when the AGENT genuinely settles. On the
+   * SUCCESS path that is the gate's real end (the transcript drained); on a consumer FAILURE it is
+   * a real `ready` (a busy agent is `running`, not ready) or a terminal status, then a short drain.
+   * It does NOT resolve on the consumer failure itself, so the next turn never binds this turn's
+   * still-arriving activity.
    */
   readonly boundary: Promise<void>;
 };

@@ -130,7 +130,7 @@ export function runTurn(
     }
     if (status === "ready" && started) {
       sawReady = true;
-      gate.settle(); // success path: begins oracle/quiet checks; boundary waits for the genuine end
+      gate.observeReady(); // success path: begins oracle/quiet checks; boundary waits for the genuine end
       boundary.armDrain(); // failure path: agent reached ready → drain then release the slot
     }
   });
@@ -166,7 +166,7 @@ export function runTurn(
       // Consumer failure after submission: the agent turn ran and may not be done, so the boundary
       // waits for a real `ready`/terminal (not a quiet window). If `ready` was ALREADY seen (a
       // catch-up failure — agent idle, transcript stalled), arm the drain now; no `ready` re-fires.
-      boundary.markFailed();
+      boundary.markConsumerFailed();
       if (sawReady) boundary.armDrain();
     } finally {
       if (timer) clearTimeout(timer);
