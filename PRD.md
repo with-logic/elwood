@@ -1665,9 +1665,13 @@ same live session object (typed `ClaudeSessionApi`/`CodexSessionApi`) the class 
 
 **Construction (lazy start).** `ClaudeSession` / `CodexSession` are constructed
 synchronously with the same options as the factory, except `cwd` defaults to
-`process.cwd()` so `new ClaudeSession()` is valid. The underlying session is NOT
-started at construction; it starts lazily on the first `send`/`stream`/control call
-(or an explicit `start()`), so a caller never has to reason about start ordering. A
+`process.cwd()` so `new ClaudeSession()` is valid (the working directory and any
+relative `stateDir` are snapshotted at construction, so a later `process.chdir()`
+cannot move the target project). The underlying session is NOT started at
+construction; it starts lazily on the first `send`/`stream` or OPERATIONAL control
+call (or an explicit `start()`), so a caller never has to reason about start ordering.
+The SHUTDOWN methods `stop`/`kill`/`teardown` are the exception — they do NOT start a
+session, and are no-ops before start (so `close()` is safe in a `finally`). A
 startup failure surfaces from that first call (or from `start()`), rejecting with the
 same typed `ElwoodError` the factory would throw. `start()` is idempotent and
 concurrent-safe (a second `start()`, or any lazy-starting call during startup, awaits

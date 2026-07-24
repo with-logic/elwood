@@ -62,7 +62,7 @@ describe("SessionBase turn options + no-default-timeout (C-API-48/49)", () => {
     expect(settled).toBe(true);
   });
 
-  test("a facade-supplied timeoutMs reaches runTurn and ends the stalled turn", async () => {
+  test("a facade-supplied timeoutMs reaches runTurn (via stream) and ends the stalled turn", async () => {
     const s = new StallingSession();
     const rejected = drain(s.stream("go", { timeoutMs: 5_000 })).then(
       () => "resolved",
@@ -70,6 +70,20 @@ describe("SessionBase turn options + no-default-timeout (C-API-48/49)", () => {
     );
     await vi.advanceTimersByTimeAsync(5_001); // cross the caller-supplied ceiling
     expect(await rejected).toBe("wait_timeout"); // the option was forwarded and honored
+  });
+
+  test("the `send` path ALSO forwards its options to runTurn, not just `stream` (both public paths)", async () => {
+    // C-API-49: send and stream share one turn boundary and pass the SAME options object to the
+    // runner. Prove `send` (not only `stream`) forwards it — a dropped `options ?? {}` on the send
+    // path would leave this hanging. (Both `timeoutMs` and `catchUpMs` ride that same object; the
+    // per-option behavior of `catchUpMs` is pinned at the runner level in simple-turn-timeout.)
+    const s = new StallingSession();
+    const rejected = s.send("go", { timeoutMs: 4_000 }).then(
+      () => "resolved",
+      (e: { code?: string }) => e.code,
+    );
+    await vi.advanceTimersByTimeAsync(4_001);
+    expect(await rejected).toBe("wait_timeout"); // send forwarded its options object to runTurn
   });
 
   test("control methods go through IMMEDIATELY while a `send`/`stream` turn is still running (C-API-52)", async () => {

@@ -4,6 +4,7 @@
  */
 
 import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
+import type { TurnEvent } from "../../src/core/simple/events.ts";
 import {
   runTurn,
   type StreamTurnOptions,
@@ -92,14 +93,14 @@ export function drive(script: (s: FakeTurnSession) => void): FakeTurnSession {
   return s;
 }
 
-export async function collect(gen: AsyncGenerator<unknown>): Promise<unknown[]> {
-  const out: unknown[] = [];
+export async function collect(gen: AsyncGenerator<TurnEvent>): Promise<TurnEvent[]> {
+  const out: TurnEvent[] = [];
   for await (const ev of gen) out.push(ev);
   return out;
 }
 
 /** Run a turn with fast test timings (small quiet window, generous catch-up); returns events. */
-export function run(s: FakeTurnSession, fallbackQuietMs = 20): Promise<unknown[]> {
+export function run(s: FakeTurnSession, fallbackQuietMs = 20): Promise<TurnEvent[]> {
   return collect(runTurn(s, "go", { fallbackQuietMs, catchUpMs: 5_000 }).events);
 }
 
