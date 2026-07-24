@@ -87,4 +87,12 @@ describe("turnEventBytes (C-API-53 pending-byte accounting)", () => {
     expect(turnEventBytes({ type: "tool_result", name: "Bash", output: "ok" })).toBe(6);
     expect(turnEventBytes({ type: "tool_result" })).toBe(0);
   });
+
+  test("counts UTF-8 BYTES, not UTF-16 code units — multibyte text exceeds its .length", () => {
+    // "界" is one code unit (.length === 1) but three UTF-8 bytes: the cap must measure bytes so
+    // multibyte agent text cannot exceed the documented ceiling by counting code units.
+    expect("界".length).toBe(1);
+    expect(turnEventBytes({ type: "text", text: "界" })).toBe(3);
+    expect(turnEventBytes({ type: "tool_result", name: "界", output: "界界" })).toBe(9);
+  });
 });

@@ -24,84 +24,25 @@
  * with `wait_timeout`. A terminal status ends the turn at once.
  */
 
-import type { ElwoodAgentSession, ElwoodCommonEventMap } from "../agent-session.ts";
 import { elwoodError, toError } from "../errors.ts";
 import { terminalStatuses } from "../status-categories.ts";
-import { type TurnEvent, toTurnEvent } from "./events.ts";
+import { toTurnEvent } from "./events.ts";
 import { TurnGate } from "./turn-gate.ts";
+import type { RunningTurn, StreamTurnOptions, TurnSession } from "./turn-types.ts";
 
-/**
- * The MINIMAL turn-boundary `hook` fields the completeness oracle reads. Deliberately
- * adapter-neutral (core must not depend on adapter hook types) — the `hook` listener accepts
- * this loose shape, but each adapter asserts CONFORMANCE against `TurnBoundaryContract` below
- * so a contract change (renamed/removed `last_assistant_message`) fails to compile.
- */
-export type TurnBoundaryHook = {
-  readonly hook_event_name?: string;
-  readonly last_assistant_message?: string | null;
-};
-
-/**
- * The turn-boundary fields the oracle DEPENDS ON. `TurnBoundaryHook` is deliberately loose (a
- * missing/`null` value just means "no oracle" → quiet settle), but a `Stop` payload that
- * RENAMED or DROPPED `last_assistant_message` would silently disable the oracle, so
- * `AssertStopBoundary` enforces each adapter's real `Stop` event still DECLARES these keys.
- */
-export type TurnBoundaryContract = {
-  readonly hook_event_name: string | undefined;
-  readonly last_assistant_message: string | null | undefined;
-};
-
-/**
- * Compile-time conformance probe: `true` only if `T` declares every `TurnBoundaryContract` key
- * (`keyof extends keyof T` — a renamed/dropped key → `never`) with an assignable value
- * (`Required<T>` reads the type ignoring optionality, so an optional key passes but a type
- * change → `never`). Either drift makes the adapter assertion fail to compile.
- */
-export type AssertStopBoundary<T> = keyof TurnBoundaryContract extends keyof T
-  ? Pick<Required<T>, keyof TurnBoundaryContract & keyof T> extends TurnBoundaryContract
-    ? true
-    : never
-  : never;
-
-/**
- * The narrow session surface a turn drives: the common events plus the adapter `hook`
- * event (whose `Stop` payload's `last_assistant_message` is the completeness oracle). Any
- * Elwood session satisfies this — both `ElwoodEventMap` and `CodexEventMap` carry `hook`.
- */
-export type TurnSession = Pick<ElwoodAgentSession, "status" | "sendMessage"> & {
-  on<E extends keyof ElwoodCommonEventMap>(
-    event: E,
-    handler: (event: ElwoodCommonEventMap[E]) => void,
-  ): () => void;
-  on(event: "hook", handler: (event: TurnBoundaryHook) => void): () => void;
-};
+export type {
+  AssertStopBoundary,
+  RunningTurn,
+  StreamTurnOptions,
+  TurnBoundaryContract,
+  TurnBoundaryHook,
+  TurnSession,
+} from "./turn-types.ts";
 
 /** Quiet window (ms) after `ready` for a no-oracle turn to settle once content stops. */
 const FALLBACK_QUIET_MS = 750;
 /** Cap (ms) on the POST-`ready` transcript catch-up: a stalled flush bails, not hangs. */
 const CATCH_UP_MS = 10_000;
-
-export type StreamTurnOptions = {
-  /** Optional whole-turn ceiling; default NONE — a live turn may run for hours. */
-  readonly timeoutMs?: number;
-  /** Cap on transcript catch-up after `ready` (default 10s); a stalled flush → `wait_timeout`. */
-  readonly catchUpMs?: number;
-  /** Quiet-window for a no-oracle turn to settle after `ready` (default 750ms). */
-  readonly fallbackQuietMs?: number;
-  /** Cap on unconsumed buffered events before failing (default 100000); internal/tests. */
-  readonly maxPendingEvents?: number;
-  /** Cap on unconsumed buffered bytes before failing (default 64 MiB); internal/tests. */
-  readonly maxPendingBytes?: number;
-};
-
-/** A running turn: `events` is the consumer view; `completion` resolves at the REAL boundary. */
-export type RunningTurn = {
-  /** The turn's simplified content events; abandoning this does NOT stop the turn. */
-  readonly events: AsyncGenerator<TurnEvent>;
-  /** Resolves when the agent turn reaches its real boundary; rejects on failure/timeout. */
-  readonly completion: Promise<void>;
-};
 
 /**
  * Start a turn: attach listeners, submit the prompt, and drive the gate to the turn's real
@@ -149,29 +90,54 @@ export function runTurn(
     if (event.hook_event_name === "Stop")
       gate.expectText(event.last_assistant_message ?? undefined);
   });
+  // The REAL agent boundary: resolves on a terminal status, or a `ready` after the turn started.
+  // It is INDEPENDENT of the consumer gate — a consumer-facing failure (timeout, catch-up,
+  // backlog) does NOT resolve it, so the serializer keeps this turn's slot until the agent
+  // genuinely settles and can never let the next turn bind to this turn's still-arriving activity.
+  let resolveBoundary!: () => void;
+  const boundary = new Promise<void>((resolve) => {
+    resolveBoundary = resolve;
+  });
+  let boundaryReached = false;
+  const reachBoundary = () => {
+    if (boundaryReached) return;
+    boundaryReached = true;
+    resolveBoundary();
+    maybeCleanup();
+  };
+
   const offStatus = session.on("status", ({ status }) => {
     if (status === "running") started = true;
-    if (terminalStatuses.has(status)) return gate.end();
-    if (status === "ready" && started) gate.settle();
+    if (terminalStatuses.has(status)) {
+      gate.end();
+      return reachBoundary(); // agent is gone — the real boundary, regardless of consumer state
+    }
+    if (status === "ready" && started) {
+      gate.settle();
+      reachBoundary(); // the agent completed a turn (reached ready after starting) — real boundary
+    }
   });
 
-  const cleanup = () => {
+  let consumerSettled = false;
+  // Listeners are removed only once BOTH the consumer has settled AND the real boundary is
+  // reached: the boundary observer must outlive a consumer failure (a timed-out turn whose agent
+  // is still running), and the consumer view must outlive an early boundary (buffered drain).
+  const maybeCleanup = () => {
+    if (!(consumerSettled && boundaryReached)) return;
     gate.dispose();
     offActivity();
     offHook();
     offStatus();
   };
 
-  // Drive the turn's lifecycle EAGERLY and independently of the consumer: submit, then wait
-  // for the gate to reach the real boundary. Runs to completion even if the consumer breaks.
+  // Drive the consumer lifecycle EAGERLY and independently of iteration: submit, then wait for
+  // the gate to settle. Always resolves — the turn error reaches the consumer via `events`.
   const completion = (async () => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       // A turn BEGINS on submission (PRD §5.8), so the opt-in whole-turn ceiling is armed only
-      // AFTER `sendMessage` resolves. Arming it before submission would let the timer fire —
-      // and reject the caller with `wait_timeout` — while the prompt is still queued behind
-      // readiness and then submits anyway, an observable turn the caller was told timed out.
-      // Pre-submission queue/readiness wait is bounded by the queue's own readiness semantics.
+      // AFTER `sendMessage` resolves — never rejecting a prompt still queued behind readiness
+      // that then submits. Pre-submission wait is bounded by the queue's readiness semantics.
       await session.sendMessage(prompt); // listeners attached — no early event lost
       if (options.timeoutMs !== undefined) {
         timer = setTimeout(
@@ -181,18 +147,20 @@ export function runTurn(
       }
       await gate.done(); // rejects on fail/timeout — the error is already recorded for `drain`
     } catch (error) {
-      // A submit failure on a terminal session ends the turn cleanly (buffered events keep,
-      // iterator ends without error); any other submit error becomes the turn's failure. The
-      // error reaches the consumer via `gate.drain()`, so `completion` only SIGNALS that the
-      // turn settled (it always resolves — never an unhandled rejection for a caller that
-      // ignores it, e.g. an abandoning consumer whose slot the serializer still awaits).
-      if ((error as { code?: string })?.code === "session_not_running") gate.end();
-      else gate.fail(toError(error));
+      // The SUBMISSION itself failed, so no agent turn is in flight and no status transition is
+      // coming for it: fail the consumer with the typed error AND reach the boundary (else the
+      // serializer waits forever). If a terminal status already ended the gate (a benign race),
+      // `gate.fail`/`reachBoundary` are idempotent no-ops and the buffered events stand;
+      // otherwise a submit-on-a-dead-session `session_not_running` propagates to the consumer
+      // (C-API-25) — a typed `ElwoodError` the adapter already threw, not a duck-typed shape.
+      gate.fail(toError(error));
+      reachBoundary();
     } finally {
       if (timer) clearTimeout(timer);
-      cleanup();
+      consumerSettled = true;
+      maybeCleanup();
     }
   })();
 
-  return { events: gate.drain(), completion };
+  return { events: gate.drain(), completion, boundary };
 }

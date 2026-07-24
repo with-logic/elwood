@@ -7,7 +7,7 @@
  */
 
 import { SessionBase } from "../core/simple/session.ts";
-import type { AssertStopBoundary } from "../core/simple/turn.ts";
+import type { AssertStopBoundary, TurnSession } from "../core/simple/turn.ts";
 import type { Unsubscribe } from "../core/types.ts";
 import type { CodexHookEventFor } from "./hooks.ts";
 import { startCodex } from "./session.ts";
@@ -26,6 +26,12 @@ type _StopSatisfiesBoundary = AssertStopBoundary<CodexHookEventFor<"Stop">>;
 const _stopBoundaryCheck: _StopSatisfiesBoundary = true;
 void _stopBoundaryCheck;
 
+// Compile-time conformance: the live Codex API must be TURN-CAPABLE (carry the `hook` event the
+// oracle subscribes to) — `SessionBase`'s structural bound alone would not require it.
+type _ApiIsTurnCapable = CodexSessionApi extends TurnSession ? true : never;
+const _turnCapableCheck: _ApiIsTurnCapable = true;
+void _turnCapableCheck;
+
 /** Options for `CodexSession`: the low-level `startCodex` options with an optional `cwd`. */
 export type CodexSessionOptions = Omit<StartCodexOptions, "cwd"> & { readonly cwd?: string };
 
@@ -43,10 +49,11 @@ export class CodexSession extends SessionBase<CodexSessionApi> {
 
   /** Typed event subscription over the Codex event map (buffered before start). */
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): Unsubscribe {
-    return this.subscribe(handler, (session) => session.on(event, handler));
+    // Keyed by (event, handler) so the disposer works before AND after start and `off` scopes
+    // to the exact event even when a handler is reused; the closure keeps types (no cast).
+    return this.subscribe(event, handler, (session) => session.on(event, handler));
   }
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void {
-    this.unsubscribe(handler); // remove a still-buffered subscription
-    this.session?.off(event, handler); // detach a live one (typed — no cast)
+    this.unsubscribe(event, handler);
   }
 }

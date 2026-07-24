@@ -32,10 +32,23 @@ export class FakeTurnSession {
     const list = this.handlers.get(event) ?? [];
     list.push(handler as (event: unknown) => void);
     this.handlers.set(event, list);
-    return () => {};
+    // A REAL unsubscribe: removes the exact handler, so a test can assert the runner cleans up
+    // its activity/hook/status listeners (a no-op disposer would mask a per-turn listener leak).
+    return () => {
+      const current = this.handlers.get(event);
+      if (!current) return;
+      const at = current.indexOf(handler as (event: unknown) => void);
+      if (at >= 0) current.splice(at, 1);
+    };
+  }
+  /** Total live listeners across all events — must return to 0 once a turn settles. */
+  listenerCount(): number {
+    let total = 0;
+    for (const list of this.handlers.values()) total += list.length;
+    return total;
   }
   emit(event: string, payload: unknown): void {
-    for (const h of this.handlers.get(event) ?? []) h(payload);
+    for (const h of [...(this.handlers.get(event) ?? [])]) h(payload);
   }
   sendMessage(): Promise<void> {
     this.submissions += 1;

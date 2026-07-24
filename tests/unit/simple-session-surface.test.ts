@@ -46,6 +46,7 @@ describe("SessionBase control surface (C-API-47/51)", () => {
     expect(a["listModels"]).toEqual([{ timeoutMs: 444 }]);
     expect(a["waitForStatus"]).toEqual([statusMatch, 555]);
     expect(a["waitForActivity"]).toEqual([activityMatch, 666]);
+    expect(s.underlying.calls).toContain("teardown"); // teardown reached the live session too
   });
 
   test("stop()/kill()/teardown() before start are no-ops; after start they delegate", async () => {

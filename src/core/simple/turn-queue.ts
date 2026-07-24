@@ -28,13 +28,14 @@ export class TurnQueue {
     });
     // Start the turn as its slot comes up, decoupled from consumption. The predecessor's tail
     // ALWAYS resolves (a failed turn still releases its slot below), so a prior turn's failure
-    // never blocks a later turn. Hold this slot until the agent turn's real boundary, then
-    // release it — even if start rejected (nothing to hold, but the chain must not wedge).
+    // never blocks a later turn. Hold this slot until the agent turn's real BOUNDARY — NOT its
+    // consumer `completion`: a consumer-facing failure (timeout/catch-up/backlog) resolves
+    // `completion` while the agent may still be running, so releasing on `completion` would let
+    // the next turn bind to this turn's still-arriving activity. `boundary` resolves only when
+    // the agent genuinely settles (ready/terminal), even after a consumer failure.
     const started = predecessor.then(() => run());
     void started.then(
-      // `runTurn`'s completion ALWAYS resolves (it never re-throws — the turn error reaches the
-      // consumer via the events generator), so releasing on it never leaves the chain wedged.
-      (turn) => turn.completion.then(releaseSlot),
+      (turn) => turn.boundary.then(releaseSlot),
       () => releaseSlot(), // `run()` (i.e. session start) rejected: nothing to hold, free the slot
     );
     return drainStarted(started);

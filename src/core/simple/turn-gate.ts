@@ -15,39 +15,28 @@
 import { elwoodError } from "../errors.ts";
 import { type TurnEvent, turnEventBytes } from "./events.ts";
 
-/**
- * Cap on UNCONSUMED events buffered for a slow/paused consumer. A turn has no default
- * whole-turn timeout, so without a bound a hostile or very verbose turn feeding a stalled
- * consumer could exhaust the host. Past this many pending events the turn fails with a
- * typed `wait_timeout` rather than growing without limit. Large enough that a normally
- * draining consumer never hits it.
- */
+// Cap on UNCONSUMED events buffered for a slow/paused consumer; past it the turn fails with a
+// typed `wait_timeout` rather than growing without limit (a turn has no default whole-turn
+// timeout). Large enough that a normally draining consumer never hits it.
 const MAX_PENDING_EVENTS = 100_000;
-/**
- * Cap on UNCONSUMED bytes (sum of text/tool payload lengths) buffered for a slow consumer.
- * The event-count cap alone does not bound memory — a single event can carry an arbitrarily
- * large agent-controlled string — so a byte high-water mark is the real exhaustion guard.
- * 64 MiB: far above any legitimate single turn's pending backlog, well below host limits.
- */
+// Cap on UNCONSUMED UTF-8 bytes for a slow consumer. The count cap alone cannot bound memory —
+// a single event may carry an arbitrarily large agent-controlled string — so this byte
+// high-water is the real exhaustion guard. 64 MiB: far above any legitimate backlog.
 const MAX_PENDING_BYTES = 64 * 1024 * 1024;
-/**
- * Extra tail (chars) retained beyond the oracle's expected length so a match that straddles
- * the fragment boundary is not missed. The oracle only needs the RECENT tail of the
- * collected assistant text, so `collected` is a bounded rolling window, not the whole turn.
- */
+// Extra tail (chars) kept beyond the oracle's expected length so a match straddling a fragment
+// boundary is not missed; the oracle only needs the RECENT tail, so `collected` stays bounded.
 const ORACLE_TAIL_SLACK = 4096;
-/**
- * Cap on the oracle's expected-text length (chars). The Stop hook's `last_assistant_message`
- * is agent-controlled; a hostile huge payload would otherwise size the rolling `collected`
- * window without limit. Matching only the LAST `EXPECTED_MAX` chars of the expected text is a
- * safe completeness signal (the transcript still contains that suffix) with bounded memory.
- */
+// Cap on the agent-controlled expected-text length (chars) so a hostile huge `last_assistant_
+// message` cannot size the rolling window without limit; a suffix match still signals completeness.
 const EXPECTED_MAX = 1024 * 1024;
 
+/** A queued event with its precomputed UTF-8 byte size, so drain never re-encodes it. */
+type Queued = { readonly event: TurnEvent; readonly bytes: number };
+
 export class TurnGate {
-  private readonly queue: TurnEvent[] = [];
+  private readonly queue: Queued[] = [];
   private head = 0; // index of the next unconsumed event (avoids O(n) Array.shift)
-  private pendingBytes = 0; // sum of unconsumed event payload lengths (byte high-water guard)
+  private pendingBytes = 0; // sum of unconsumed event UTF-8 byte sizes (byte high-water guard)
   private ended = false;
   private error: unknown;
   private wake: (() => void) | undefined;
@@ -100,6 +89,13 @@ export class TurnGate {
     // Cap the agent-controlled expected text so the rolling `collected` window stays bounded;
     // its SUFFIX still appears in the transcript, so a suffix match is a valid completeness signal.
     this.expected = trimmed ? trimmed.slice(-EXPECTED_MAX) : undefined;
+    // Installing a NON-EMPTY oracle after `ready` (the Stop hook can lag the `ready` status)
+    // must cancel any quiet-window fallback already armed: the promised text now governs
+    // completion, so the turn must wait for it (or the catch-up cap), not settle on quiet.
+    if (this.expected !== undefined && this.quietTimer) {
+      clearTimeout(this.quietTimer);
+      this.quietTimer = undefined;
+    }
     this.reconcile();
   }
   push(event: TurnEvent): void {
@@ -115,14 +111,20 @@ export class TurnGate {
       this.fail(elwoodError("wait_timeout", "turn produced too many unconsumed events"));
       return;
     }
-    this.queue.push(event);
+    this.queue.push({ event, bytes });
     this.pendingBytes += bytes;
     if (this.settled) this.armQuiet(); // new content after ready: re-arm the fallback window
     this.wake?.();
   }
-  /** The rolling-window size for oracle matching: the expected text plus straddle slack. */
+  /**
+   * The rolling-window size for oracle matching. Before the oracle is installed we must retain
+   * enough tail for the LARGEST expected text that could still arrive (`EXPECTED_MAX`): the Stop
+   * hook can lag the transcript, so text seen before `expectText` would otherwise be truncated
+   * below the (later) expected length and never match — a false `wait_timeout`. Once the oracle
+   * is known, the window shrinks to exactly what that expected text needs plus straddle slack.
+   */
   private oracleWindow(): number {
-    return (this.expected?.length ?? 0) + ORACLE_TAIL_SLACK;
+    return (this.expected?.length ?? EXPECTED_MAX) + ORACLE_TAIL_SLACK;
   }
   /** `ready` observed — begin completion checks and arm the post-ready catch-up cap. */
   settle(): void {
@@ -177,10 +179,10 @@ export class TurnGate {
   async *drain(): AsyncGenerator<TurnEvent> {
     for (;;) {
       while (this.head < this.queue.length) {
-        const event = this.queue[this.head] as TurnEvent;
+        const queued = this.queue[this.head] as Queued;
         this.head += 1;
-        this.pendingBytes -= turnEventBytes(event);
-        yield event;
+        this.pendingBytes -= queued.bytes; // precomputed on push — no re-encode here
+        yield queued.event;
       }
       // Fully caught up: reset the backing array in O(1) so consumed events are freed and the
       // array cannot grow without bound. No mid-stream splice — draining stays O(1) amortised

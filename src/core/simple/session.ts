@@ -19,45 +19,36 @@ import type {
   Unsubscribe,
 } from "../types.ts";
 import type { TurnEvent } from "./events.ts";
+import { SubscriptionRegistry } from "./subscriptions.ts";
 import { runTurn } from "./turn.ts";
 import { TurnQueue } from "./turn-queue.ts";
 
-/** Per-call turn options. */
+/** Per-call turn options (public subset of the runner's options). */
 export type TurnOptions = {
-  /**
-   * Optional whole-turn ceiling before rejecting with `wait_timeout`. Default NONE — a
-   * turn may legitimately run for hours (running a test suite, polling a PR), so a live
-   * turn is never failed by a clock; a dead session ends it via terminal status.
-   */
+  /** Opt-in whole-turn ceiling → `wait_timeout`. Default NONE — a turn may run for hours. */
   readonly timeoutMs?: number;
-  /**
-   * Cap on the transcript catch-up AFTER the agent reaches `ready` (default 10s). The
-   * flush should be near-instant; a longer stall means something broke, so the turn
-   * rejects with `wait_timeout` rather than leaving the caller hanging.
-   */
+  /** Cap on transcript catch-up AFTER `ready` (default 10s); a stalled flush → `wait_timeout`. */
   readonly catchUpMs?: number;
 };
 
-/** A buffered subscription: `attach` (built with full types by the subclass) applies it on
- * start; `key` (the handler) identifies it for `off`. Storing the closure keeps event↔payload
- * correlation intact — no `as never` at the buffer boundary. */
-type PendingSub<S> = { readonly key: unknown; readonly attach: (session: S) => Unsubscribe };
-
 /**
- * One public session over an Elwood agent. Constructed synchronously; the underlying
- * session starts lazily on the first `send`/`stream`/control call (or explicit `start()`).
- * `send`/`stream` turns are serialized so one turn's activity never interleaves with
- * another's; control methods (`interrupt`, `sendKeys`, `stop`, `kill`, …) go through
- * immediately. `on`/`off` may be called before start — subscriptions are buffered and
- * attached when the session starts, so subscribing never forces a start.
+ * One public session over an Elwood agent. Constructed synchronously; the underlying session
+ * starts lazily on the first `send`/`stream`/control call (or explicit `start()`).
+ * `send`/`stream` turns are serialized so one turn's activity never interleaves with another's;
+ * control methods (`interrupt`, `sendKeys`, `stop`, `kill`, …) go through immediately. `on`/`off`
+ * may be called before start — buffered and attached on start, so subscribing never forces one.
  */
 export abstract class SessionBase<S extends ElwoodAgentSession> {
   private live: S | undefined;
   private starting: Promise<S> | undefined;
   private readonly turns = new TurnQueue();
-  private readonly pendingSubs: PendingSub<S>[] = [];
+  private readonly subscriptions = new SubscriptionRegistry<S>();
 
-  /** Boots the underlying session. Called at most once; the base memoizes the result. */
+  /**
+   * Boots the underlying session. Single-flight: the base memoizes an in-flight start so
+   * concurrent callers share it — but a launch that REJECTS is retryable, so `launch` may be
+   * called again after a prior failure (never while one is still in flight or after success).
+   */
   protected abstract launch(): Promise<S>;
 
   /** The started underlying session, or `undefined` before the first start. */
@@ -75,9 +66,14 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
     if (this.live) return Promise.resolve(this.live);
     this.starting ??= this.launch().then(
       (session) => {
-        for (const sub of this.pendingSubs) sub.attach(session);
+        // COMMIT the launched session BEFORE attaching buffered subscriptions: `attach` runs
+        // consumer code (and `terminal:data` synchronously replays startup output), which may
+        // throw. If it did so before `live` were set, the start would reject with a live PTY
+        // that `close()` could never see — an orphaned CLI process. `attachAll` contains each
+        // attach so a throwing consumer handler cannot abort the start or orphan the session.
         this.live = session;
         this.starting = undefined;
+        this.subscriptions.attachAll(session);
         return session;
       },
       (error) => {
@@ -90,9 +86,13 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
 
   /** Stream one turn's simplified content events; ends when the turn settles (C-API-48). */
   stream(prompt: string, options?: TurnOptions): AsyncGenerator<TurnEvent> {
-    // The slot is reserved SYNCHRONOUSLY here (call order, not iteration order — C-API-50);
-    // `run` starts the turn only after the predecessor settles and this session has started.
-    return this.turns.enqueue(async () => runTurn(await this.start(), prompt, options ?? {}));
+    // Trigger the lazy start SYNCHRONOUSLY (memoized): this sets `this.starting` before `stream`
+    // returns, so a `close()` racing this call joins the same start and can never miss a session
+    // that a deferred microtask would otherwise launch after `close()` resolved (C-API-51). The
+    // slot is reserved synchronously too (call order, not iteration order — C-API-50); `run`
+    // awaits the SAME start promise, then the predecessor's boundary, before the turn begins.
+    const starting = this.start();
+    return this.turns.enqueue(async () => runTurn(await starting, prompt, options ?? {}));
   }
 
   /** Send one turn and resolve with its assistant text, `\n\n`-joined (C-API-49). */
@@ -106,20 +106,20 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
 
   /**
    * Subscribe via a typed `attach` closure (built by the subclass's adapter-typed `on`, so
-   * event↔payload correlation is preserved with no cast at this boundary). `key` identifies
-   * the subscription for `unsubscribe`. Buffered before start and attached on start, so
-   * subscribing never forces a start; returns an `Unsubscribe` that works either way.
+   * event↔payload correlation is preserved with no cast). See {@link SubscriptionRegistry.add}
+   * for the buffer/attach lifecycle and the phase-safe disposer.
    */
-  protected subscribe(key: unknown, attach: (session: S) => Unsubscribe): Unsubscribe {
-    if (this.live) return attach(this.live);
-    this.pendingSubs.push({ key, attach });
-    return () => this.unsubscribe(key);
+  protected subscribe(
+    event: unknown,
+    handler: unknown,
+    attach: (session: S) => Unsubscribe,
+  ): Unsubscribe {
+    return this.subscriptions.add(event, handler, attach);
   }
 
-  /** Unsubscribe a buffered (pre-start) subscription; live subscriptions detach via `attach`'s Unsubscribe. */
-  protected unsubscribe(key: unknown): void {
-    const index = this.pendingSubs.findIndex((s) => s.key === key);
-    if (index >= 0) this.pendingSubs.splice(index, 1);
+  /** Remove the registration matching BOTH event and handler (so a reused handler is scoped right). */
+  protected unsubscribe(event: unknown, handler: unknown): void {
+    this.subscriptions.removeByKey(event, handler);
   }
 
   // Control surface: each awaits lazy start, then delegates. Only `send`/`stream` serialize;

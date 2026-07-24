@@ -7,7 +7,7 @@
  */
 
 import { SessionBase } from "../core/simple/session.ts";
-import type { AssertStopBoundary } from "../core/simple/turn.ts";
+import type { AssertStopBoundary, TurnSession } from "../core/simple/turn.ts";
 import type {
   ElwoodEventHandler,
   ElwoodEventName,
@@ -27,6 +27,13 @@ type _StopSatisfiesBoundary = AssertStopBoundary<ClaudeHookEventFor<"Stop">>;
 const _stopBoundaryCheck: _StopSatisfiesBoundary = true;
 void _stopBoundaryCheck;
 
+// Compile-time conformance: the live Claude API must be TURN-CAPABLE — i.e. carry the `hook`
+// event the completeness oracle subscribes to. `SessionBase`'s structural bound alone would
+// let a session without `hook` pass; this asserts the CONCRETE API type has it.
+type _ApiIsTurnCapable = ClaudeSessionApi extends TurnSession ? true : never;
+const _turnCapableCheck: _ApiIsTurnCapable = true;
+void _turnCapableCheck;
+
 /** Options for `ClaudeSession`: the low-level `startClaude` options with an optional `cwd`. */
 export type ClaudeSessionOptions = Omit<StartClaudeOptions, "cwd"> & { readonly cwd?: string };
 
@@ -45,12 +52,14 @@ export class ClaudeSession extends SessionBase<ClaudeSessionApi> {
   /** Typed event subscription over the Claude event map (buffered before start). */
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): Unsubscribe {
     // The attach closure captures the fully-typed (event, handler) pair — no cast crosses the
-    // base's buffer boundary, so the event↔payload correlation is preserved.
-    return this.subscribe(handler, (session) => session.on(event, handler));
+    // base's buffer boundary, so the event↔payload correlation is preserved. The base keys the
+    // registration by (event, handler), so the returned disposer works before AND after start.
+    return this.subscribe(event, handler, (session) => session.on(event, handler));
   }
   off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void {
-    this.unsubscribe(handler); // remove a still-buffered subscription
-    this.session?.off(event, handler); // detach a live one (typed — no cast)
+    // Remove the registration matching this exact (event, handler) — detaching a live sub if
+    // attached — so a handler reused across events is unsubscribed from the right one only.
+    this.unsubscribe(event, handler);
   }
 
   /** Drive the interactive `/login` re-authentication flow (Claude-only, C-API-43). */

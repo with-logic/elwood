@@ -20,7 +20,9 @@ import { e2eTimeoutMs, makeProject, skipReason, turnsEnabled } from "./helpers.t
 const skipTurns = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
 
 test("C-E2E-14 ClaudeSession.send collects assistant text and retains context", {
-  skip: skipReason("claude") ?? skipTurns,
+  // `||` not `??`: skipReason returns `false` (not null) when the CLI IS available, so `??`
+  // would swallow the `skipTurns` opt-out on machines that have the CLI installed.
+  skip: skipReason("claude") || skipTurns,
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("claude");
@@ -47,7 +49,7 @@ test("C-E2E-14 ClaudeSession.send collects assistant text and retains context", 
 });
 
 test("C-E2E-15 CodexSession.stream yields a real tool_call/tool_result pair and assistant text, then ends", {
-  skip: skipReason("codex") ?? skipTurns,
+  skip: skipReason("codex") || skipTurns,
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("codex");

@@ -6,7 +6,7 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 import { CodexSession } from "../../src/index.ts";
-import { installFakes, resetFakes, tempDir } from "./helpers.ts";
+import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -36,14 +36,22 @@ describe("CodexSession (C-API-47/51)", () => {
     }
   });
 
-  test("typed on()/off() wire through the buffered subscription path", async () => {
+  test("typed on()/off() actually deliver and detach through the live session", async () => {
     installFakes();
     const session = new CodexSession({ cwd: tempDir(), autotrust: true });
-    const handler = () => {};
-    session.on("status", handler); // buffered pre-start (typed wrapper)
-    session.off("status", handler); // typed off wrapper removes it
+    const seen: string[] = [];
+    const handler = (e: { status: string }) => seen.push(e.status); // buffered pre-start
+    session.on("status", handler);
     await session.start();
-    session.on("activity", () => {}); // live-path on() after start
+    const pty = ptys.at(-1);
+    expect(pty).toBeDefined();
+    seen.length = 0;
+    pty?.emitExit({ exitCode: 0 }); // a real status transition on the live session
+    expect(seen.length).toBeGreaterThan(0); // the buffered handler attached on start and FIRED
+    const before = seen.length;
+    session.off("status", handler); // typed off must DETACH the live subscription
+    pty?.emitExit({ exitCode: 0 });
+    expect(seen.length).toBe(before); // no further delivery after off()
     await session.close();
   });
 });

@@ -38,16 +38,23 @@ describe("ClaudeSession (C-API-47/50/51)", () => {
     }
   });
 
-  test("a delegated control method (resize) lazy-starts the real session; on/off wire through", async () => {
+  test("a delegated control method (resize) lazy-starts the real session; on/off actually wire through", async () => {
     installFakes();
     const session = new ClaudeSession({ cwd: tempDir(), autotrust: true });
-    const handler = () => {};
-    session.on("status", handler); // buffered pre-start subscription (typed wrapper)
-    session.off("status", handler); // typed off wrapper removes it
-    void ptys;
+    const seen: string[] = [];
+    const handler = (e: { status: string }) => seen.push(e.status); // buffered pre-start subscription
+    session.on("status", handler);
     await session.resize({ cols: 90, rows: 30 }); // delegated method that lazy-starts (no readiness wait)
     expect(session.session).toBeDefined();
-    session.on("activity", () => {}); // live-path on() after start
+    const pty = ptys.at(-1); // the launched PTY drives the live session's status events
+    expect(pty).toBeDefined();
+    seen.length = 0;
+    pty?.emitExit({ exitCode: 0 }); // a real status transition on the live session
+    expect(seen.length).toBeGreaterThan(0); // the buffered handler was attached on start and FIRED
+    const before = seen.length;
+    session.off("status", handler); // typed off wrapper must DETACH the live subscription
+    pty?.emitExit({ exitCode: 0 });
+    expect(seen.length).toBe(before); // no further delivery after off() — genuinely detached
     await session.close();
   });
 

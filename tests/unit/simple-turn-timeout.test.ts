@@ -75,6 +75,39 @@ describe("streamTurn timeouts (C-API-48)", () => {
     ).rejects.toMatchObject({ code: "wait_timeout" });
   });
 
+  test("ready-BEFORE-Stop: a late non-empty oracle cancels the quiet timer and governs completion", async () => {
+    // `ready` arrives before the (lagging) Stop hook, arming the quiet-window fallback. The
+    // later NON-EMPTY oracle must CANCEL that quiet timer so the turn waits for the promised
+    // text (or catch-up), never settling on quiet before the text arrives. Here the text never
+    // comes, so the turn must reject with wait_timeout — NOT succeed on the (short) quiet window.
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      s.emit("status", { status: "ready" }); // ready first — arms the quiet timer
+      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "PROMISED" }); // late oracle
+      s.emit("activity", activity({ text: "something else", turnId: "t1" })); // never matches
+    });
+    await expect(
+      // Quiet window (10ms) is much shorter than catch-up (60ms): if the quiet timer were NOT
+      // cancelled, the turn would wrongly SUCCEED at ~10ms. It must instead reject at catch-up.
+      collect(runTurnFake(s, { fallbackQuietMs: 10, catchUpMs: 60 }).events),
+    ).rejects.toMatchObject({ code: "wait_timeout" });
+  });
+
+  test("text arriving BEFORE a long Stop oracle (>4096 chars) is not truncated → no false timeout", async () => {
+    // Realistic Claude ordering: a long assistant activity arrives BEFORE its Stop hook. The
+    // pre-oracle window must retain more than the old 4096-char slack, or the prefix is lost and
+    // the later (long) expected text can never match, falsely timing out an already-complete turn.
+    const body = "A".repeat(8000); // > ORACLE_TAIL_SLACK (4096)
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      s.emit("activity", activity({ text: body, turnId: "t1" })); // arrives BEFORE the Stop hook
+      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: body }); // full text is the oracle
+      s.emit("status", { status: "ready" });
+    });
+    const out = (await run(s)) as { type: string; text: string }[];
+    expect(out).toEqual([{ type: "text", text: body }]); // matched the retained pre-oracle text → ended
+  });
+
   test("a stalled consumer past the pending-event cap fails with wait_timeout", async () => {
     // With a tiny cap, a turn that buffers more events than the cap (consumer not draining)
     // must fail rather than grow the buffer without bound.

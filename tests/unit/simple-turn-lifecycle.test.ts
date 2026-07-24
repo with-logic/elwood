@@ -58,4 +58,33 @@ describe("streamTurn lifecycle races (C-API-48/51)", () => {
     expect(await collect(turn.events)).toEqual([{ type: "text", text: "ok" }]); // success stands
     await expect(turn.completion).resolves.toBeUndefined();
   });
+
+  test("the runner removes ALL its listeners once the turn settles (success)", async () => {
+    const s = new FakeTurnSession();
+    s.script = () => {
+      s.emit("status", { status: "running" });
+      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "ok" });
+      s.emit("status", { status: "ready" });
+      s.emit("activity", activity({ text: "ok", turnId: "t1" }));
+    };
+    const turn = runTurn(s as unknown as TurnSession, "go", {
+      catchUpMs: 5_000,
+      fallbackQuietMs: 20,
+    });
+    await collect(turn.events);
+    await turn.boundary;
+    expect(s.listenerCount()).toBe(0); // activity + hook + status listeners all detached
+  });
+
+  test("the runner removes ALL its listeners once the turn settles (failure)", async () => {
+    const s = new FakeTurnSession();
+    s.sendResult = Promise.reject(new Error("pty write failed"));
+    const turn = runTurn(s as unknown as TurnSession, "go", {
+      catchUpMs: 5_000,
+      fallbackQuietMs: 20,
+    });
+    await expect(collect(turn.events)).rejects.toThrow(/pty write failed/);
+    await turn.boundary;
+    expect(s.listenerCount()).toBe(0); // no leak even on the failure path
+  });
 });

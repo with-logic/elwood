@@ -42,15 +42,23 @@ export function toTurnEvent(event: ElwoodActivityEvent): TurnEvent | undefined {
   }
 }
 
-/** Approximate payload size (chars) of a turn event, for the gate's pending-byte high-water. */
+/** UTF-8 byte length of a string (agent text may be multibyte; `.length` counts code units). */
+function utf8Bytes(value: string): number {
+  return Buffer.byteLength(value, "utf8");
+}
+
+/** UTF-8 payload size (bytes) of a turn event, for the gate's pending-byte high-water mark. */
 export function turnEventBytes(event: TurnEvent): number {
   switch (event.type) {
     case "text":
     case "thinking":
-      return event.text.length;
+      return utf8Bytes(event.text);
     case "tool_call":
-      return event.name.length + (event.input?.length ?? 0);
+      return utf8Bytes(event.name) + (event.input === undefined ? 0 : utf8Bytes(event.input));
     case "tool_result":
-      return (event.name?.length ?? 0) + (event.output?.length ?? 0);
+      return (
+        (event.name === undefined ? 0 : utf8Bytes(event.name)) +
+        (event.output === undefined ? 0 : utf8Bytes(event.output))
+      );
   }
 }

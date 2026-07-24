@@ -140,8 +140,10 @@ under Node so `node-pty` can own a real interactive PTY reliably.
 
 ## Runnable Examples
 
-For the smallest real usage sample, run the minimal example. It starts Codex
-headlessly, sends one message, logs structured activity, and exits:
+For the smallest real usage sample, run the minimal example. It constructs a
+`CodexSession`, which starts Codex lazily on the first `send`, then makes two
+ergonomic `send` calls — an initial prompt and a follow-up that refers back to it —
+printing each assistant response, and closes the session:
 
 ```sh
 npm run example:minimal

@@ -105,7 +105,7 @@ class DeferredStartSession extends SessionBase<ElwoodAgentSession> {
     event: E,
     handler: (e: ElwoodCommonEventMap[E]) => void,
   ) {
-    return this.subscribe(handler, (session) => session.on(event, handler));
+    return this.subscribe(event, handler, (session) => session.on(event, handler));
   }
 }
 

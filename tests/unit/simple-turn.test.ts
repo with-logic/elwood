@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { elwoodError } from "../../src/core/errors.ts";
 import { activity, drive, run } from "./simple-turn-fakes.ts";
 
 describe("streamTurn completeness oracle (C-API-48)", () => {
@@ -141,14 +142,12 @@ describe("streamTurn completeness oracle (C-API-48)", () => {
     expect(await run(s)).toEqual([{ type: "text", text: "answer" }]); // quiet-window fallback ends it
   });
 
-  test("submit rejecting with session_not_running ENDS the turn cleanly (no throw)", async () => {
-    // A terminal session's queued submission rejects `session_not_running`; the turn must end
-    // WITHOUT error and keep any buffered content (here none), not throw at the consumer.
+  test("submit on an already-dead session REJECTS with session_not_running (C-API-25)", async () => {
+    // No turn ever runs (no terminal STATUS arrives); the submission itself rejects because the
+    // session is already terminal. The turn must PROPAGATE that typed error, not resolve to "".
     const s = drive(() => {});
-    s.sendResult = Promise.reject(
-      Object.assign(new Error("session not running"), { code: "session_not_running" }),
-    );
-    expect(await run(s)).toEqual([]);
+    s.sendResult = Promise.reject(elwoodError("session_not_running", "session is not running"));
+    await expect(run(s)).rejects.toMatchObject({ code: "session_not_running" });
   });
 
   test("submit rejecting with any OTHER error becomes the turn's failure", async () => {
