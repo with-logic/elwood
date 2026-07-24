@@ -46,6 +46,10 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ### Changed
 
+- **A `terminal:data` subscriber added after startup is now registered BEFORE its
+  buffered output is replayed.** A subscriber handler that throws while processing the
+  replayed startup buffer stays subscribed for future terminal data instead of being
+  silently dropped. Behavior is unchanged for non-throwing handlers.
 - **Warnings are now live-only; the `session.warnings` property is removed.** A
   warning is emitted once, when observed, as a `warning` event plus its `activity`
   — it is never persisted, never replayed to a late subscriber, never deduplicated
