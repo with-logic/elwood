@@ -8,6 +8,7 @@
 import { describe, expect, test } from "vitest";
 import type { ElwoodAgentSession, ElwoodCommonEventMap } from "../../src/core/agent-session.ts";
 import { SessionBase } from "../../src/core/simple/session.ts";
+import { defaultBoundarySignal } from "../../src/core/simple/turn.ts";
 import { activity, FakeUnderlying, TestSimple } from "./simple-fakes.ts";
 
 async function first(gen: AsyncGenerator<unknown>): Promise<unknown> {
@@ -64,6 +65,7 @@ describe("SessionBase turn concurrency (C-API-50)", () => {
           ? Promise.reject(new Error("start boom"))
           : Promise.resolve(this.underlying);
       }
+      protected readBoundarySignal = defaultBoundarySignal;
     }
     const s = new FlakyStart();
     // The first stream's turn cannot start (launch rejects) — the error surfaces to the consumer.
@@ -125,6 +127,7 @@ class DeferredStartSession extends SessionBase<ElwoodAgentSession> {
       this.resolveLaunch = () => resolve(this.underlying);
     });
   }
+  protected readBoundarySignal = defaultBoundarySignal;
   on<E extends keyof ElwoodCommonEventMap>(
     event: E,
     handler: (e: ElwoodCommonEventMap[E]) => void,
@@ -182,6 +185,7 @@ describe("SessionBase close() during in-flight start (C-API-51)", () => {
           rejectLaunch = reject;
         });
       }
+      protected readBoundarySignal = defaultBoundarySignal;
     }
     const s = new FailingStart();
     const starting = s.start(); // in-flight

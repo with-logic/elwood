@@ -31,17 +31,33 @@ export type TurnBoundaryContract = {
 };
 
 /**
+ * NORMALIZES a raw adapter `hook` event into the core's completeness signal: the expected final
+ * assistant text of the just-completed turn, or `undefined` when the event is not a turn boundary
+ * (or carries no such text → quiet-window settle). This is the ONE seam where adapter hook shape
+ * meets the adapter-neutral runner: `runTurn` consumes only this normalized signal, never raw
+ * `hook_event_name`/`last_assistant_message`, so the core is not coupled to adapter hook fields.
+ * Each `SessionBase` subclass supplies its own reader (a compile-time REQUIREMENT), so a new
+ * adapter cannot wire up turns without providing one.
+ */
+export type BoundarySignalReader = (hookEvent: TurnBoundaryHook) => string | undefined;
+
+/** The default reader: the `Stop` hook's `last_assistant_message` is the completeness signal. */
+export const defaultBoundarySignal: BoundarySignalReader = (event) =>
+  event.hook_event_name === "Stop" ? (event.last_assistant_message ?? undefined) : undefined;
+
+/**
  * Compile-time conformance probe: `true` only if `T` declares every `TurnBoundaryContract` key
  * (`keyof extends keyof T` — a renamed/dropped key → `never`) with an assignable value
  * (`Required<T>` reads the type ignoring optionality, so an optional key passes but a type
  * change → `never`). Either drift makes the adapter assertion fail to compile.
  *
- * This is the EFFECTIVE turn-capability guard. A `SessionBase<S extends TurnSession>` bound
- * would NOT enforce hook-capability: TypeScript method-parameter bivariance lets a session whose
- * `on` lacks the `hook` overload structurally satisfy `TurnSession`, so a generic bound accepts
- * a hook-less session and silently loses oracle semantics. Instead, each concrete adapter
- * asserts `AssertStopBoundary<HookEventFor<"Stop">>` on its REAL `Stop` payload, catching the
- * exact drift that matters. Any new `SessionBase` subclass MUST add the same assertion.
+ * One of two turn-capability guards. `SessionBase` requires each subclass to implement the
+ * abstract `readBoundarySignal` (a hook→expected-text normalizer), so the runner never reads raw
+ * adapter hook fields and a new adapter cannot wire turns WITHOUT a boundary reader. This
+ * assertion is the complement: it pins the adapter's REAL `Stop` payload so `readBoundarySignal`'s
+ * field access can't drift silently. (A `SessionBase<S extends TurnSession>` bound would NOT
+ * enforce hook-capability — method-parameter bivariance lets a hook-less `on` satisfy the `hook`
+ * overload — which is why the abstract method + this assertion, not a generic bound, are the guard.)
  */
 export type AssertStopBoundary<T> = keyof TurnBoundaryContract extends keyof T
   ? Pick<Required<T>, keyof TurnBoundaryContract & keyof T> extends TurnBoundaryContract
@@ -83,6 +99,12 @@ export type StreamTurnOptions = {
   readonly maxPendingBytes?: number;
   /** Post-failure `ready` transcript-drain settle (default 750ms); internal/tests. */
   readonly drainMs?: number;
+  /**
+   * Normalizes an adapter `hook` event into the completeness signal (default:
+   * `defaultBoundarySignal`, the `Stop` hook's `last_assistant_message`). `SessionBase` subclasses
+   * pass their own so the runner never reads raw adapter hook fields.
+   */
+  readonly readBoundarySignal?: BoundarySignalReader;
 };
 
 /** A running turn: `events`/`completion` are the consumer view; `boundary` gates the serializer. */

@@ -1690,7 +1690,9 @@ shortly AFTER the `ready` status. The boundary is therefore a COMPLETENESS ORACL
 not a timer: the turn-boundary `Stop` hook carries `last_assistant_message` — the
 final assistant text of the just-completed turn — and Elwood uses it ONLY as a
 completeness signal (never as displayed text, since it can be un-submitted ghost
-text). Once `ready` is observed, the turn ends the instant the transcript-collected
+text). Each adapter NORMALIZES its raw hook into that signal (an expected-text string
+or none), so the adapter-neutral turn runner reads the normalized signal, never raw
+provider hook field names. Once `ready` is observed, the turn ends the instant the transcript-collected
 assistant text CONTAINS that expected text, so it waits exactly as long as the
 transcript needs. When no completeness signal is available for a turn — a pure-tool
 turn, or an empty/null `last_assistant_message` (e.g. `StopFailure`) — the turn falls

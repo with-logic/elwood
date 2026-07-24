@@ -37,16 +37,23 @@ import { terminalStatuses } from "../status-categories.ts";
 import { toTurnEvent } from "./events.ts";
 import { TurnBoundary } from "./turn-boundary.ts";
 import { TurnGate } from "./turn-gate.ts";
-import type { RunningTurn, StreamTurnOptions, TurnSession } from "./turn-types.ts";
+import {
+  defaultBoundarySignal,
+  type RunningTurn,
+  type StreamTurnOptions,
+  type TurnSession,
+} from "./turn-types.ts";
 
 export type {
   AssertStopBoundary,
+  BoundarySignalReader,
   RunningTurn,
   StreamTurnOptions,
   TurnBoundaryContract,
   TurnBoundaryHook,
   TurnSession,
 } from "./turn-types.ts";
+export { defaultBoundarySignal } from "./turn-types.ts";
 
 /** Quiet window (ms) after `ready` for a no-oracle turn to settle once content stops. */
 const FALLBACK_QUIET_MS = 750;
@@ -116,11 +123,12 @@ export function runTurn(
     }
     if (boundary.draining) boundary.armDrain(); // trailing post-failure flush re-arms the drain
   });
+  const readBoundarySignal = options.readBoundarySignal ?? defaultBoundarySignal;
   const offHook = session.on("hook", (event) => {
-    // The Stop hook is the turn boundary and carries the expected final assistant text.
-    // Used as a completeness ORACLE only (never displayed — respects C-CLAUDE-15).
-    if (event.hook_event_name === "Stop")
-      gate.expectText(event.last_assistant_message ?? undefined);
+    // The adapter NORMALIZES its raw hook into the completeness signal (the expected final
+    // assistant text). The core reads only that — never raw hook fields. Used as a completeness
+    // ORACLE only (never displayed — respects C-CLAUDE-15).
+    gate.expectText(readBoundarySignal(event));
   });
   const offStatus = session.on("status", ({ status }) => {
     if (status === "running") started = true;

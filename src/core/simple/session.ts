@@ -22,18 +22,18 @@ import type { TurnEvent } from "./events.ts";
 import { SubscriptionRegistry } from "./subscriptions.ts";
 import { runTurn } from "./turn.ts";
 import { TurnQueue } from "./turn-queue.ts";
-import type { TurnOptions } from "./turn-types.ts";
+import type { BoundarySignalReader, TurnOptions } from "./turn-types.ts";
 
 export type { TurnOptions } from "./turn-types.ts";
 
 /**
  * One public session over an Elwood agent. Constructed synchronously; the underlying session
- * starts lazily on the first `send`/`stream`/control call (or explicit `start()`).
+ * starts lazily on the first `send`/`stream`/operational call (or explicit `start()`).
  * `send`/`stream` turns are serialized so one turn's activity never interleaves with another's;
  * control methods (`interrupt`, `sendKeys`, `stop`, `kill`, …) go through immediately. `on`/`off`
  * may be called before start — buffered and attached on start, so subscribing never forces one.
- *
- * Turn-capability (the `hook` oracle) can't be a generic bound — see `AssertStopBoundary`.
+ * Turn-capability is enforced by the abstract `readBoundarySignal` + each adapter's
+ * `AssertStopBoundary`, not a generic type bound (method bivariance defeats that).
  */
 export abstract class SessionBase<S extends ElwoodAgentSession> {
   private live: S | undefined;
@@ -47,6 +47,14 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
    * called again after a prior failure (never while one is still in flight or after success).
    */
   protected abstract launch(): Promise<S>;
+
+  /**
+   * Normalizes this adapter's raw `hook` event into the turn completeness signal (the expected
+   * final assistant text, or `undefined` when it is not a turn boundary). Abstract so a new adapter
+   * MUST supply one — keeping the runner decoupled from adapter hook fields. Adapters assign
+   * `defaultBoundarySignal` unless they differ. (Signal-only; never displayed — C-CLAUDE-15.)
+   */
+  protected abstract readonly readBoundarySignal: BoundarySignalReader;
 
   /** The started underlying session, or `undefined` before the first start. */
   get session(): S | undefined {
@@ -87,7 +95,11 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
     // same start and can't miss a session a deferred microtask would launch after close (C-API-51).
     // The slot is reserved synchronously too (call order, not iteration order — C-API-50).
     const starting = this.start();
-    return this.turns.enqueue(async () => runTurn(await starting, prompt, options ?? {}));
+    // Pass THIS adapter's normalizer so the runner reads only the signal, not raw hook fields.
+    const readBoundarySignal = this.readBoundarySignal;
+    return this.turns.enqueue(() =>
+      starting.then((s) => runTurn(s, prompt, { ...(options ?? {}), readBoundarySignal })),
+    );
   }
 
   /** Send one turn and resolve with its assistant text, `\n\n`-joined (C-API-49). */
@@ -99,10 +111,7 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
     return chunks.join("\n\n");
   }
 
-  /**
-   * Subscribe via a typed `attach` closure (built by the subclass's adapter-typed `on`, no cast).
-   * See {@link SubscriptionRegistry.add} for the buffer/attach lifecycle and phase-safe disposer.
-   */
+  /** Subscribe via a typed `attach` closure (no cast). See {@link SubscriptionRegistry.add}. */
   protected subscribe(
     event: unknown,
     handler: unknown,
@@ -116,10 +125,9 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
     this.subscriptions.removeByKey(event, handler);
   }
 
-  // Control surface: each awaits lazy start, then delegates; only `send`/`stream` serialize (an
-  // `interrupt` must reach a running turn, not queue behind it). NOTE: the turn-PRODUCING raw
-  // methods (`sendMessage`/`sendPrompt`/`sendGuidance`) are NOT in the ergonomic queue — don't
-  // call them concurrently with an in-flight `send`/`stream` (the produced turn would interleave).
+  // Control surface: each awaits lazy start, then delegates; only `send`/`stream` serialize. NOTE:
+  // the turn-PRODUCING raw methods (`sendMessage`/`sendPrompt`/`sendGuidance`) are NOT in the
+  // ergonomic queue — don't call them concurrently with an in-flight `send`/`stream` (§5.8).
   async sendPrompt(prompt: string, options?: SendOptions): Promise<void> {
     return (await this.start()).sendPrompt(prompt, options);
   }
@@ -141,10 +149,8 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
   async compact(options?: { readonly timeoutMs?: number }): Promise<void> {
     return (await this.start()).compact(options);
   }
-  async listModels(options?: {
-    readonly timeoutMs?: number;
-  }): Promise<readonly AgentModelOption[]> {
-    return (await this.start()).listModels(options);
+  async listModels(o?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]> {
+    return (await this.start()).listModels(o);
   }
   async setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
     return (await this.start()).setModel(id, options);
@@ -157,9 +163,9 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
   }
 
   /**
-   * Stop the underlying session (falling back to `kill`); a no-op if it never started.
-   * Awaits an IN-FLIGHT lazy start so a start racing this `close()` cannot orphan a live
-   * session (C-API-51). A launch that rejects leaves nothing to close.
+   * Stop the underlying session (falling back to `kill`); a no-op if it never started. Awaits an
+   * IN-FLIGHT lazy start so a racing start can't orphan a live session; a rejected launch = nothing
+   * to close (C-API-51).
    */
   async close(): Promise<void> {
     const live =
@@ -181,15 +187,13 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
     }
   }
 
-  /** Stop the underlying session; a no-op if it never started. */
+  // stop/kill/teardown: delegate to the live session; a no-op if it never started (C-API-52).
   async stop(): Promise<void> {
     await this.live?.stop();
   }
-  /** Kill the underlying session; a no-op if it never started. */
   async kill(): Promise<void> {
     await this.live?.kill();
   }
-  /** Tear down the underlying session; a no-op if it never started. */
   async teardown(): Promise<void> {
     await this.live?.teardown();
   }

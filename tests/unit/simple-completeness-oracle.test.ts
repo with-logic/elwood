@@ -6,6 +6,7 @@
 
 import { describe, expect, test } from "vitest";
 import { CompletenessOracle } from "../../src/core/simple/completeness-oracle.ts";
+import { defaultBoundarySignal } from "../../src/core/simple/turn.ts";
 
 const EXPECTED_MAX = 1024 * 1024; // must mirror the constant in completeness-oracle.ts
 
@@ -46,5 +47,22 @@ describe("CompletenessOracle", () => {
     expect(o.matched).toBe(false);
     o.observeText("...FINAL");
     expect(o.matched).toBe(true); // the recent tail still contains the expected text
+  });
+});
+
+describe("defaultBoundarySignal (adapter hook → completeness signal)", () => {
+  test("extracts last_assistant_message from a Stop hook", () => {
+    expect(defaultBoundarySignal({ hook_event_name: "Stop", last_assistant_message: "DONE" })).toBe(
+      "DONE",
+    );
+  });
+  test("returns undefined for a non-Stop hook", () => {
+    expect(defaultBoundarySignal({ hook_event_name: "PreToolUse" })).toBeUndefined();
+  });
+  test("returns undefined for a Stop hook with null/absent message (→ quiet settle)", () => {
+    expect(
+      defaultBoundarySignal({ hook_event_name: "Stop", last_assistant_message: null }),
+    ).toBeUndefined();
+    expect(defaultBoundarySignal({ hook_event_name: "Stop" })).toBeUndefined();
   });
 });

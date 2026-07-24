@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ElwoodAgentSession, ElwoodCommonEventMap } from "../../src/core/agent-session.ts";
 import { SessionBase } from "../../src/core/simple/session.ts";
+import { defaultBoundarySignal } from "../../src/core/simple/turn.ts";
 import { activity, FakeUnderlying } from "./simple-fakes.ts";
 
 /** A facade whose underlying session STARTS a turn (emits `running`) but never settles it. */
@@ -23,8 +24,9 @@ class StallingSession extends SessionBase<ElwoodAgentSession> {
     };
   }
   protected launch(): Promise<ElwoodAgentSession> {
-    return Promise.resolve(this.underlying as unknown as ElwoodAgentSession);
+    return Promise.resolve(this.underlying);
   }
+  protected readBoundarySignal = defaultBoundarySignal;
   on<E extends keyof ElwoodCommonEventMap>(
     event: E,
     handler: (e: ElwoodCommonEventMap[E]) => void,

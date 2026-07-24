@@ -13,6 +13,7 @@ import type {
 import type { SendOptions } from "../../src/core/images/types.ts";
 import type { AgentModelOption } from "../../src/core/model-rows.ts";
 import { SessionBase } from "../../src/core/simple/session.ts";
+import { defaultBoundarySignal } from "../../src/core/simple/turn.ts";
 import type {
   ActivityMatch,
   ElwoodSessionStatus,
@@ -142,6 +143,7 @@ export class TestSimple extends SessionBase<ElwoodAgentSession> {
     this.launches += 1;
     return Promise.resolve(this.underlying); // no cast — FakeUnderlying implements the interface
   }
+  protected readBoundarySignal = defaultBoundarySignal;
   on<E extends keyof ElwoodCommonEventMap>(
     event: E,
     handler: (e: ElwoodCommonEventMap[E]) => void,

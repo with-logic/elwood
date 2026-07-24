@@ -8,7 +8,7 @@
 
 import { resolveSessionPaths } from "../core/simple/resolve-paths.ts";
 import { SessionBase } from "../core/simple/session.ts";
-import type { AssertStopBoundary } from "../core/simple/turn.ts";
+import { type AssertStopBoundary, defaultBoundarySignal } from "../core/simple/turn.ts";
 import type {
   ElwoodEventHandler,
   ElwoodEventName,
@@ -48,6 +48,9 @@ export class ClaudeSession extends SessionBase<ClaudeSessionApi> {
   protected launch(): Promise<ClaudeSessionApi> {
     return startClaude(this.options);
   }
+
+  /** Claude's `Stop` hook carries `last_assistant_message` — the standard completeness signal. */
+  protected readBoundarySignal = defaultBoundarySignal;
 
   /** Typed event subscription over the Claude event map (buffered before start). */
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): Unsubscribe {
