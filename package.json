@@ -31,6 +31,7 @@
     "dev:app": "exec node --no-warnings src/app/dev.ts",
     "dev:web": "exec node --no-warnings scripts/dev-web.ts",
     "example:minimal": "exec node --no-warnings scripts/run-example.ts examples/minimal.ts",
+    "example:stream": "exec node --no-warnings scripts/run-example.ts examples/stream.ts",
     "example:full": "exec node --no-warnings scripts/run-example.ts examples/full.ts"
   },
   "devDependencies": {

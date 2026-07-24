@@ -44,6 +44,7 @@ export type { ClaudeLoginMethod, ClaudeLoginOptions } from "./claude/login/types
 export { startClaude } from "./claude/session.ts";
 export type { ClaudeSession } from "./claude/session-interface.ts";
 export { resumeClaude } from "./claude/session-resume.ts";
+export { type SimpleClaudeOptions, SimpleClaudeSession } from "./claude/simple.ts";
 export { type StartOrResumeClaudeOptions, startOrResumeClaude } from "./claude/start-or-resume.ts";
 export type {
   CodexCommandToolInput,
@@ -75,6 +76,7 @@ export type {
   ResumeCodexOptions,
   StartCodexOptions,
 } from "./codex/session-types.ts";
+export { type SimpleCodexOptions, SimpleCodexSession } from "./codex/simple.ts";
 export { type StartOrResumeCodexOptions, startOrResumeCodex } from "./codex/start-or-resume.ts";
 export type {
   CodexTranscriptEvent,
@@ -96,6 +98,8 @@ export { ElwoodError, elwoodError } from "./core/errors.ts";
 export type { ImageFormat, ImageInput, SendOptions } from "./core/images/types.ts";
 export type { ListModelsOptions } from "./core/list-models.ts";
 export type { AgentModelOption } from "./core/model-rows.ts";
+export type { SimpleTurnEvent } from "./core/simple/events.ts";
+export type { SimpleTurnOptions } from "./core/simple/session.ts";
 export type { StartOrResumeResult } from "./core/start-or-resume.ts";
 export type {
   ActivityMatch,

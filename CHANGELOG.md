@@ -11,6 +11,20 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ## [Unreleased]
 
+### Added
+
+- **Ergonomic `SimpleClaudeSession` / `SimpleCodexSession` (`send` / `stream`).** A
+  thin facade over the existing factories for the common shapes. Construct
+  synchronously (`cwd` defaults to `process.cwd()`); the underlying session starts
+  lazily on the first turn (or an explicit `start()`). `await session.send(prompt)`
+  returns the turn's assistant text as a string (every `assistant_message`, joined by
+  a blank line — no thinking or tool text). `for await (const ev of session.stream(prompt))`
+  yields simplified typed events — `{type:"text"|"thinking"|"tool_call"|"tool_result"}` —
+  as they arrive, ending when the turn settles. Turns are serialized. `send` is just
+  `stream` drained for text. `close()` stops the session (safe in a `finally`). This
+  is additive — the low-level `startClaude`/`startCodex` API is unchanged. (§5.8,
+  C-API-47…51)
+
 ### Changed
 
 - **Warnings are now live-only; the `session.warnings` property is removed.** A

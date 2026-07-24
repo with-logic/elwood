@@ -1647,6 +1647,72 @@ status. Parent applications should not receive delayed transcript activity after
 the session has already emitted `terminal:exit`, `exited`, `stopped`, or
 `killed`.
 
+### 5.8 Ergonomic session API — `send` and `stream`
+
+The `start*`/`resume*` factories plus the session control surface (§5.3, §5.7)
+are the precise, low-level API. On top of them Elwood provides an ERGONOMIC
+convenience layer for the common "ask a question, get an answer" and "watch the
+work" shapes. It is a thin facade over the primitives — it adds no new lifecycle
+or persistence behavior and reads only public events — and it is adapter-neutral
+(one shape for Claude and Codex).
+
+**Construction (lazy start).** `SimpleClaudeSession` / `SimpleCodexSession` are
+constructed synchronously with the same options as `startClaude`/`startCodex`,
+except `cwd` defaults to `process.cwd()` so `new SimpleClaudeSession()` is valid.
+The underlying session is NOT started at construction; it starts lazily on the
+first `send`/`stream` (or an explicit `start()`), so a caller never has to reason
+about start ordering. A startup failure surfaces from that first call (or from
+`start()`), rejecting with the same typed `ElwoodError` the factory would throw.
+An explicit `async start(): Promise<void>` is also provided for apps that need to
+start eagerly and surface startup errors before the first turn; it is idempotent
+and concurrent-safe (a second `start()`, or a `send`/`stream` during startup,
+awaits the same in-flight start). The started underlying session is reachable via
+a read-only `session` accessor (undefined until started) for callers that need the
+full control surface.
+
+**Turn boundary.** A "turn" begins when a `send`/`stream` submits its prompt and
+ends when the session settles to `ready` (or reaches a terminal status, or a
+per-call `timeoutMs` elapses — default 300000 ms — which rejects with
+`wait_timeout`). Because a turn's assistant text is transcript-sourced and can
+arrive just AFTER the `ready` settle, the turn ends only after a brief quiet grace
+following `ready` (`settleGraceMs`, default 750 ms); a content event within that
+window defers the end so trailing text is not truncated. A terminal status ends the
+turn immediately (it is final). Turns are serialized: overlapping `send`/`stream`
+calls queue and run one at a time in call order, so a turn's activity never
+interleaves with another's. Each turn is identified by the `turnId` on the activity
+events it produces; the facade binds its collection to that turn so a queued prior
+turn's output can never bleed into a later one, and it subscribes to `activity`
+BEFORE submitting so no early event of the turn is missed.
+
+**`stream(prompt, options?)`** returns an async iterable of SIMPLIFIED, typed
+events for exactly one turn, yielded in arrival order and ending when the turn
+settles:
+
+- `{ type: "text"; text }` — an assistant message (`assistant_message`).
+- `{ type: "thinking"; text }` — reasoning/thinking (`reasoning`).
+- `{ type: "tool_call"; name; input? }` — a tool invocation (`tool_call`).
+- `{ type: "tool_result"; name?; output? }` — a tool result (`tool_result`).
+
+Other internal activity kinds (lifecycle, hook, warning, attention, status) are
+NOT yielded — `stream` is the turn's content, not its telemetry (those remain on
+the `activity`/`warning` events of the underlying `session`). The simplified union
+is a stable public contract insulated from the richer internal
+`ElwoodActivityEvent` shape. If the turn ends by terminal exit rather than
+`ready`, the iterator ends without error; a `timeoutMs` breach throws
+`wait_timeout` from the iterator.
+
+**`send(prompt, options?): Promise<string>`** is defined AS `stream` drained for
+text: it concatenates the `text` of every `type: "text"` event of the turn, in
+order, joined by a blank line (`\n\n`) between distinct assistant messages, and
+resolves with that string when the turn settles. It never includes thinking or
+tool text. A turn that produces no assistant text resolves to the empty string.
+`send` and `stream` share one turn-boundary definition, so their completion and
+text-collection semantics are identical.
+
+**Teardown.** `close()` stops the underlying session (falling back to `kill` on a
+stop failure) and is a no-op if the session never started; it is the ergonomic
+counterpart to `stop`/`kill`/`teardown` and safe to call in a `finally`.
+
 ## 6. Claude Hook Bridge
 
 ### 6.1 Required hook coverage
@@ -2382,6 +2448,11 @@ Each criterion has:
 | C-API-44 | §5.3 | `sendPrompt`/`sendMessage`/`sendGuidance` accept an optional `images` list (file paths or `{data,format}` bytes) attached to the submission. Images have no position within the text, but the list is ORDERED (array order = attachment/chip order). Elwood attaches every image through the CLI's own native ingestion path, as part of the SAME serialized queue operation that submits the text and BEFORE that text's submitting Enter, so one call yields one agent turn carrying text and all images. Inputs are validated and bounded before any temp file is written or any input reaches the composer: at most 16 images, ≤25 MiB per image and ≤50 MiB total; an unsupported/empty `format`, a `path` that is not a readable regular file (its readability checked, not merely its existence), or any count/size past the limits rejects with `invalid_image`. A non-array `images`, an entry that is not exactly one of `{path}`/`{data,format}`, a non-string `path`, or non-`Uint8Array` `data` also rejects with `invalid_image` (never a raw type error). Every input is defensively SNAPSHOTTED — byte buffers cloned, paths absolutized — SYNCHRONOUSLY at the public send boundary, BEFORE the op is enqueued, so a caller that mutates its buffer (or changes `cwd`) after the call cannot change what is attached; the shape, format, count, and byte-size limits are enforced in that same synchronous pass, so a malformed or over-limit input rejects with `invalid_image` before it ever occupies a queue slot. The remaining filesystem checks that need I/O — a path's readability, regular-file-ness, and size against the per-image and shared aggregate ceilings — run inside the queued op at dispatch (so a path made unreadable after the call still rejects, and no temp file is written for a still-queued submission). The synchronous snapshot completes before the queue insertion, so an image submission is still enqueued in call order and a later plain submission cannot overtake it. Beyond the per-submission 50 MiB ceiling, a PER-SESSION aggregate ceiling (200 MiB) bounds the cloned image bytes held across ALL not-yet-attached queued submissions at once: a submission whose clone would push the session past that ceiling rejects with `invalid_image`, and each submission's reserved bytes are released when it settles (attach done, reject, or the session closing), so a slow paste/confirmation cannot let a caller retain unbounded queued-clone memory. Because a send on a TERMINAL session is guarded first, a malformed/over-limit `images` on a stopped/killed/torn-down session rejects with `session_not_running` (the terminal contract), not `invalid_image`. The lifecycle turn transition is deferred until AFTER a successful attach, so an attach rejection leaves readiness untouched and never wedges the queue; a raw materialization failure (e.g. disk-full) is surfaced as the typed `image_attach_failed`, not a raw platform error. Each image's attach is CONFIRMED by its `[Image #N]` chip on the composer prompt-glyph line (so unrelated screen text cannot spoof it); an unconfirmed image (chip not seen within 10 s) or a clipboard read/write failure rejects with `image_attach_failed`, submits no text, and best-effort clears the composer draft so staged images do not leak into a later turn (a session that terminates mid-attach rejects with `session_not_running`). Bytes are written to a short-lived temp file Elwood attempts to remove after the submission is attached (best-effort; a persistently failing removal falls to OS temp reaping). |
 | C-API-45 | §5.3 | Claude attaches an image by bracketed-pasting its ABSOLUTE path into the composer (the delivery a terminal produces on drag-and-drop); Claude reads and encodes the file itself and shows an `[Image #N]` chip. This is pure PTY text and works on every platform. |
 | C-API-46 | §5.3 | Codex attaches an image from the OS clipboard: Elwood snapshots the user's clipboard ONCE (rejecting with `image_attach_failed` if the snapshot fails, before mutating anything), then for each image in order writes it onto the macOS `NSPasteboard` as a native image (`public.tiff`), sends Ctrl+V, and waits for the `[Image #N]` chip; after all images it restores the single snapshotted clipboard (best-effort, text contents). The whole snapshot/set/paste/confirm/restore sequence holds a process-wide clipboard lock so concurrent Codex sessions cannot cross-attach. A pasted path is NOT an image on Codex. Codex image attachment is macOS-only: `images` on a non-macOS Codex session rejects with `unsupported_platform` and submits nothing. |
+| C-API-47 | §5.8 | The ergonomic `SimpleClaudeSession`/`SimpleCodexSession` construct synchronously with the same options as `startClaude`/`startCodex` (with `cwd` defaulting to `process.cwd()`), do NOT start the underlying session at construction, and start it lazily on the first `send`/`stream` or on an explicit `start()`. `start()` is idempotent and concurrent-safe (a second `start()`, or a `send`/`stream` during startup, awaits the same in-flight start), and a startup failure rejects the triggering call with the same typed `ElwoodError` the factory would throw. The started underlying session is exposed via a read-only `session` accessor (undefined until started). |
+| C-API-48 | §5.8 | `stream(prompt, options?)` returns an async iterable that yields the SIMPLIFIED typed events of exactly one turn in arrival order — `{type:"text"}` for `assistant_message`, `{type:"thinking"}` for `reasoning`, `{type:"tool_call",name,input?}` for `tool_call`, `{type:"tool_result",name?,output?}` for `tool_result` — and no other activity kind. The facade subscribes to `activity` BEFORE submitting the prompt (no early event of the turn is missed) and binds collection to the turn's `turnId` (a queued prior turn's activity never bleeds in). The iterator ends after the turn settles to `ready` and a quiet `settleGraceMs` window (default 750 ms) passes with no further content — a content event within the window defers the end so transcript-lagged trailing text is kept — or IMMEDIATELY on a terminal status; a per-call `timeoutMs` (default 300000 ms) breach throws `wait_timeout` from the iterator. |
+| C-API-49 | §5.8 | `send(prompt, options?)` resolves with the turn's assistant text: the `text` of every `type:"text"` stream event, in order, joined by `\n\n` between distinct assistant messages, and NOTHING else (no thinking or tool text). A turn with no assistant text resolves to the empty string. `send` and `stream` share one turn boundary, so a `send` resolves exactly when the equivalent `stream` iterator ends. |
+| C-API-50 | §5.8 | Ergonomic turns are SERIALIZED: overlapping `send`/`stream` calls queue and run one at a time in call order, so one turn's yielded/collected activity never interleaves with another's. |
+| C-API-51 | §5.8 | `close()` stops the underlying session (falling back to `kill` on a stop failure) and is a no-op when the session never started, so it is safe to call in a `finally`. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 
@@ -2568,6 +2639,8 @@ Each criterion has:
 | C-E2E-12 | §5.3 | A real Claude session attaches an image supplied via `sendMessage(message, { images })` — pasting the absolute path drives the CLI to show its `[Image #N]` chip in the rendered composer — verified against the installed CLI (C-API-45). |
 | C-E2E-13 | §5.3 | A real Codex session on macOS attaches an image supplied via `sendMessage(message, { images })` — the clipboard-injection + Ctrl+V path drives the CLI to show its `[Image #N]` chip in the rendered composer, and the user's prior clipboard is restored afterward — verified against the installed CLI (C-API-46). |
 | C-E2E-09 | §5.1 | The trust-prompt allowlist recognizes and answers the REAL folder-trust frame the installed Claude CLI renders in a fresh untrusted directory (header-anchored recognition + affirmative-option selection), verified against captured CLI wording; the test skips loudly (logging the captured terminal) if no matchable frame renders, never passing silently. |
+| C-E2E-14 | §5.8 | Against a REAL Claude (or Codex) CLI, a lazily-started `SimpleClaudeSession`/`SimpleCodexSession` answers two sequential `send` calls: the first returns non-empty assistant text, and the second — referring back to the first — returns text consistent with retained conversation context, proving `send` collects a turn's assistant text and the ergonomic layer preserves multi-turn context (C-API-47, C-API-49). |
+| C-E2E-15 | §5.8 | Against a REAL CLI, `stream(prompt)` for a task that uses a tool yields the turn's simplified typed events (at least one `text`, and the `tool_call`/`tool_result` pair when a tool runs) in arrival order and ends when the turn settles, verified against the installed CLI (C-API-48). |
 
 ## 15. Open Implementation Notes
 
