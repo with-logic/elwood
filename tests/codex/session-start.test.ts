@@ -12,7 +12,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-describe("CodexSession startup and terminal control", () => {
+describe("CodexSessionApi startup and terminal control", () => {
   test("C-API-09 C-CODEX-01 C-CODEX-02 starts Codex with generated hook config", async () => {
     const cwd = tempDir();
     mkdirSync(join(cwd, ".codex"), { recursive: true });

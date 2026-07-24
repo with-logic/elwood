@@ -11,8 +11,45 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ## [Unreleased]
 
+### Added
+
+- **`ClaudeSession` / `CodexSession` classes are now the primary API.** One class per
+  adapter exposes BOTH the ergonomic `send`/`stream` convenience AND the full control
+  surface (`sendMessage`, `sendPrompt`, `sendGuidance`, `sendKeys`, `resize`,
+  `interrupt`, `compact`, `listModels`, `setModel`, `on`/`off`, `waitForStatus`,
+  `waitForActivity`, `stop`/`kill`/`teardown`, Claude's `login`), and every method is
+  lazy-start-aware. Construct synchronously (`cwd` defaults to `process.cwd()`, so
+  `new ClaudeSession()` is valid); the underlying session starts lazily on first use
+  (or an explicit `start()`). `on`/`off` may be called before start (buffered, attached
+  on start). `await session.send(prompt)` returns the turn's assistant text as a string
+  (every `assistant_message`, `\n\n`-joined; no thinking/tool text).
+  `for await (const ev of session.stream(prompt))` yields simplified typed events —
+  `{type:"text"|"thinking"|"tool_call"|"tool_result"}` — as they arrive. `send` is
+  `stream` drained for text; turns are serialized; `close()` stops the session (safe in
+  a `finally`). The turn boundary is DETERMINISTIC: it ends the instant the transcript
+  catches up to the `Stop` hook's expected final text (a completeness oracle, not a
+  timer), with a bounded quiet-window fallback for pure-tool turns. There is no
+  whole-turn timeout by default — a turn may run for hours — with an opt-in `timeoutMs`
+  ceiling and a tight post-`ready` `catchUpMs` cap (default 10s) that fails fast if the
+  transcript never catches up. Buffered turn state is bounded (rolling oracle window;
+  unconsumed events capped by both count and total UTF-8 bytes) so an hours-long or
+  verbose turn cannot exhaust the host; the opt-in `timeoutMs` is armed only after submission,
+  so it never rejects a prompt that then submits. (§5.8, C-API-47…53)
+
+### Deprecated
+
+- **`startClaude` / `startCodex` are deprecated** in favor of the `ClaudeSession` /
+  `CodexSession` classes (which lazily wrap the same session). They remain functional
+  and internally used; migrate to `new ClaudeSession(options)`. The low-level session
+  interface type is now exported as `ClaudeSessionApi` / `CodexSessionApi` (the class
+  owns the `ClaudeSession` / `CodexSession` name).
+
 ### Changed
 
+- **A `terminal:data` subscriber added after startup is now registered BEFORE its
+  buffered output is replayed.** A subscriber handler that throws while processing the
+  replayed startup buffer stays subscribed for future terminal data instead of being
+  silently dropped. Behavior is unchanged for non-throwing handlers.
 - **Warnings are now live-only; the `session.warnings` property is removed.** A
   warning is emitted once, when observed, as a `warning` event plus its `activity`
   — it is never persisted, never replayed to a late subscriber, never deduplicated

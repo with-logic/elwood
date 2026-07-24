@@ -1,5 +1,5 @@
 /**
- * Wires a ClaudeSession's primitives into the `/login` driver (PRD §5.3,
+ * Wires a ClaudeSessionApi's primitives into the `/login` driver (PRD §5.3,
  * C-API-43). Runs the flow as an EXCLUSIVE control-queue task: a fresh-`ready`
  * watch is armed up front so `awaitUsable` resolves only on a post-start `ready`
  * transition (renewed usability, not a stale banner), `/login` and all interactive

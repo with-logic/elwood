@@ -11,7 +11,7 @@ import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.
 
 afterEach(resetFakes);
 
-describe("CodexSession message submission", () => {
+describe("CodexSessionApi message submission", () => {
   test("C-API-19 first sendMessage waits for the SessionStart readiness hook", async () => {
     const cwd = tempDir();
     installFakes();

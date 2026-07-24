@@ -26,7 +26,7 @@ async function reachReady(cwd: string, id: string): Promise<void> {
   });
 }
 
-describe("ClaudeSession initial-ready fallback (C-API-42)", () => {
+describe("ClaudeSessionApi initial-ready fallback (C-API-42)", () => {
   test("C-API-42 a throwing ready-status listener still releases the queue and warns", async () => {
     const cwd = tempDir();
     installFakes();

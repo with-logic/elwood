@@ -1,5 +1,5 @@
 /**
- * Provenance/baseline conformance for ClaudeSession.login (PRD §5.3, C-API-43):
+ * Provenance/baseline conformance for ClaudeSessionApi.login (PRD §5.3, C-API-43):
  * stale text present BEFORE this attempt (a leftover success banner or paste
  * prompt), and a single spoof frame that renders an authorization phrase and the
  * code prompt together, must NEVER drive the flow or disclose the authorization
@@ -14,7 +14,7 @@ import { ready } from "./login-helpers.ts";
 
 afterEach(resetFakes);
 
-describe("ClaudeSession.login baseline & provenance (C-API-43)", () => {
+describe("ClaudeSessionApi.login baseline & provenance (C-API-43)", () => {
   test("C-API-43 a stale pre-login success banner does not resolve the flow", async () => {
     const cwd = tempDir();
     installFakes();

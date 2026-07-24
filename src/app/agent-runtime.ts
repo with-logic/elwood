@@ -7,11 +7,11 @@ import {
   type ClaudeHookEvent,
   type ClaudeHookHandlers,
   type ClaudeHookResult,
-  type ClaudeSession,
+  type ClaudeSessionApi,
   type CodexHookEvent,
   type CodexHookHandlers,
   type CodexHookResult,
-  type CodexSession,
+  type CodexSessionApi,
   claudeHookEventNames,
   codexHookEventNames,
   type ElwoodActivityEvent,
@@ -55,7 +55,7 @@ export type CommonEventMap = {
 export type CommonEventName = keyof CommonEventMap;
 export type CommonEventHandler<E extends CommonEventName> = (event: CommonEventMap[E]) => void;
 export type SharedSession = Pick<
-  ClaudeSession | CodexSession,
+  ClaudeSessionApi | CodexSessionApi,
   | "elwoodSessionId"
   | "cwd"
   | "status"

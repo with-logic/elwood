@@ -1,5 +1,5 @@
 /**
- * Lifecycle & concurrency conformance for ClaudeSession.login (PRD §5.3,
+ * Lifecycle & concurrency conformance for ClaudeSessionApi.login (PRD §5.3,
  * C-API-43). Login runs as an EXCLUSIVE control-queue task: a concurrent
  * sendMessage cannot interleave its keystrokes with the secret code or picker
  * keys, a session that terminates mid-flow rejects the flow PROMPTLY (close()
@@ -17,7 +17,7 @@ afterEach(resetFakes);
 
 const PASTED = (text: string) => `\u001b[200~${text}\u001b[201~`;
 
-describe("ClaudeSession.login lifecycle (C-API-43)", () => {
+describe("ClaudeSessionApi.login lifecycle (C-API-43)", () => {
   test("C-API-43 a concurrent sendMessage does NOT interleave with an in-flight login", async () => {
     const cwd = tempDir();
     installFakes();

@@ -20,7 +20,7 @@ const stopHook = (cwd: string) =>
     stop_hook_active: false,
   }) satisfies CodexHookEventFor<"Stop">;
 
-describe("CodexSession interrupt", () => {
+describe("CodexSessionApi interrupt", () => {
   test("C-API-38 interrupt writes Escape immediately mid-turn and resolves on ready", async () => {
     const cwd = tempDir();
     installFakes();

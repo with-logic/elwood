@@ -28,7 +28,7 @@ const stopHook = (cwd: string) =>
     stop_hook_active: false,
   }) satisfies ClaudeHookEventFor<"Stop">;
 
-describe("ClaudeSession interrupt", () => {
+describe("ClaudeSessionApi interrupt", () => {
   const escapes = (writes: readonly string[]) => writes.filter((w) => w === "\u001b").length;
 
   test("C-API-38 interrupt writes Escape immediately mid-turn and resolves on ready", async () => {

@@ -9,7 +9,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-describe("ClaudeSession hook errors", () => {
+describe("ClaudeSessionApi hook errors", () => {
   test("C-API-17 C-HOOK-04 emits hookError and fails open on timeout", async () => {
     const cwd = tempDir();
     installFakes();

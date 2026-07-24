@@ -9,7 +9,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-describe("CodexSession hook handling", () => {
+describe("CodexSessionApi hook handling", () => {
   test("C-HOOK-12 C-HOOK-15 fails open and marks ready on unblocked Stop", async () => {
     const cwd = tempDir();
     installFakes();

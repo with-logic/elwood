@@ -19,7 +19,7 @@ const instructionsLoaded = (cwd: string) => ({
   load_reason: "session_start",
 });
 
-describe("ClaudeSession model picker", () => {
+describe("ClaudeSessionApi model picker", () => {
   test("C-API-23 listModels drives the picker through the readiness queue", async () => {
     const cwd = tempDir();
     installFakes();

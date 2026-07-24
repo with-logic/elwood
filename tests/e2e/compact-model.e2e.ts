@@ -5,7 +5,12 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { type ClaudeSession, type CodexSession, startClaude, startCodex } from "../../src/index.ts";
+import {
+  type ClaudeSessionApi,
+  type CodexSessionApi,
+  startClaude,
+  startCodex,
+} from "../../src/index.ts";
 import {
   cleanup,
   e2eTimeoutMs,
@@ -22,7 +27,7 @@ test("C-CLAUDE-12 C-API-22 real Claude starts on the requested model and compact
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("claude");
-  let session: ClaudeSession | undefined;
+  let session: ClaudeSessionApi | undefined;
   let sessionStartModel: string | undefined;
   const compactHooks: string[] = [];
   let stops = 0;
@@ -73,7 +78,7 @@ test("C-API-22 real Codex compacts through the readiness queue", {
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("codex");
-  let session: CodexSession | undefined;
+  let session: CodexSessionApi | undefined;
   const compactHooks: string[] = [];
   let stops = 0;
   try {

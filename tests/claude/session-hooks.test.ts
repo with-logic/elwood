@@ -9,7 +9,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-describe("ClaudeSession hook handling", () => {
+describe("ClaudeSessionApi hook handling", () => {
   test("C-HOOK-03 fails open when no hook handler is registered", async () => {
     const cwd = tempDir();
     installFakes();

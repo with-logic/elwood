@@ -29,12 +29,12 @@ import type {
   CodexEventHandler,
   CodexEventMap,
   CodexEventName,
-  CodexSession,
+  CodexSessionApi,
 } from "./session-types.ts";
 import { emitCodexWarnings } from "./session-warnings.ts";
 import type { CodexTranscriptWatcher } from "./transcript.ts";
 
-export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
+export class CodexSessionImpl extends AgentSessionBase implements CodexSessionApi {
   protected readonly picker = codexModelPicker;
   private readonly bridge: CodexHookBridge;
   private readonly emitter: TypedEmitter<CodexEventMap>;
@@ -59,8 +59,11 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSession {
   }
 
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {
+    // REGISTER before replaying buffered `terminal:data` (mirrors Claude): a throwing replay
+    // handler must still be subscribed for FUTURE data. Replay is synchronous, so nothing interleaves.
+    const unsubscribe = this.emitter.on(event, handler);
     this.replayFor(event as string, handler);
-    return this.emitter.on(event, handler);
+    return unsubscribe;
   }
   // The Codex CLI persists picker selections into user config.toml; restore
   // the user's prior default after the switch (C-CODEX-14). The live session

@@ -1,5 +1,5 @@
 /**
- * Adversarial conformance for ClaudeSession.login (PRD §5.3, C-API-43 security).
+ * Adversarial conformance for ClaudeSessionApi.login (PRD §5.3, C-API-43 security).
  * The scraped browser URL and the human authorization code are UNTRUSTED: a code
  * that could inject terminal control bytes is never written and fails the flow; a
  * spoofed / off-host / plain-http URL is never reported to the caller; and stale
@@ -29,7 +29,7 @@ const hostileCodes: readonly [label: string, code: string][] = [
   ["empty", ""],
 ];
 
-describe("ClaudeSession.login security (C-API-43)", () => {
+describe("ClaudeSessionApi.login security (C-API-43)", () => {
   test.each(
     hostileCodes,
   )("C-API-43 rejects a hostile code (%s) and never writes it to the PTY", async (_label, hostile) => {

@@ -9,7 +9,7 @@ import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.
 
 afterEach(resetFakes);
 
-describe("CodexSession turn boundaries", () => {
+describe("CodexSessionApi turn boundaries", () => {
   test("C-TURN-02 an interrupted turn transitions to ready without a Stop hook", async () => {
     const cwd = tempDir();
     installFakes();

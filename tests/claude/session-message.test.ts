@@ -11,7 +11,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-describe("ClaudeSession message submission", () => {
+describe("ClaudeSessionApi message submission", () => {
   test("C-API-19 first sendMessage waits for InstructionsLoaded readiness", async () => {
     const cwd = tempDir();
     installFakes();

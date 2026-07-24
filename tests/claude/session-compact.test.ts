@@ -18,7 +18,7 @@ const instructionsLoaded = (cwd: string) => ({
   load_reason: "session_start",
 });
 
-describe("ClaudeSession compact", () => {
+describe("ClaudeSessionApi compact", () => {
   test("C-API-22 compact types /compact after readiness and resolves on PostCompact", async () => {
     const cwd = tempDir();
     installFakes();

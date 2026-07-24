@@ -12,7 +12,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-describe("ClaudeSession terminal-state edges", () => {
+describe("ClaudeSessionApi terminal-state edges", () => {
   test("C-PTY-05 ignores resize races against an already-closed PTY", async () => {
     const cwd = tempDir();
     installFakes();

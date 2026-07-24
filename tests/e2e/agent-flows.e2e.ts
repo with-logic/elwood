@@ -7,9 +7,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   type ClaudeHookHandlers,
-  type ClaudeSession,
+  type ClaudeSessionApi,
   type CodexHookHandlers,
-  type CodexSession,
+  type CodexSessionApi,
   resumeClaude,
   resumeCodex,
   startClaude,
@@ -36,8 +36,8 @@ test("C-E2E-02 real Claude session supports core public flows", {
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("claude");
-  let session: ClaudeSession | undefined;
-  let resumed: ClaudeSession | undefined;
+  let session: ClaudeSessionApi | undefined;
+  let resumed: ClaudeSessionApi | undefined;
   const hooksSeen: string[] = [];
   const hooks: ClaudeHookHandlers = {
     SessionStart: (event) => {
@@ -112,8 +112,8 @@ test("C-E2E-03 real Codex session supports core public flows", {
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("codex");
-  let session: CodexSession | undefined;
-  let resumed: CodexSession | undefined;
+  let session: CodexSessionApi | undefined;
+  let resumed: CodexSessionApi | undefined;
   const hooksSeen: string[] = [];
   const hooks: CodexHookHandlers = {
     SessionStart: (event) => {

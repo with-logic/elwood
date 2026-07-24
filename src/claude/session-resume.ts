@@ -14,9 +14,9 @@ import {
 import { defaultStateDir, readSessionRecord } from "../state/store.ts";
 import { preflightClaude } from "./preflight.ts";
 import { startClaudeFromRecord } from "./session.ts";
-import type { ClaudeSession } from "./session-interface.ts";
+import type { ClaudeSessionApi } from "./session-interface.ts";
 
-export async function resumeClaude(options: ResumeClaudeOptions): Promise<ClaudeSession> {
+export async function resumeClaude(options: ResumeClaudeOptions): Promise<ClaudeSessionApi> {
   // Resolve stateDir to ABSOLUTE ONCE, before any read or `await`: a relative path
   // re-resolved after a `process.chdir()` between the record read and the runtime-file
   // writes would read one session and write another's files (PRD §8.1). (C-STATE)

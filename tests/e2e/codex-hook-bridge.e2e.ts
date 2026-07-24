@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
-import { type CodexHookHandlers, type CodexSession, startCodex } from "../../src/index.ts";
+import { type CodexHookHandlers, type CodexSessionApi, startCodex } from "../../src/index.ts";
 import {
   assertJson,
   codexToolEvent,
@@ -30,7 +30,7 @@ test("C-E2E-03 real Codex bridge handles typed hook responses", {
   timeout: e2eTimeoutMs,
 }, async () => {
   const project = makeProject("codex");
-  let session: CodexSession | undefined;
+  let session: CodexSessionApi | undefined;
   const transcript = join(project.cwd, "codex-transcript.jsonl");
   writeFileSync(transcript, "");
   const hooks: CodexHookHandlers = {
@@ -158,7 +158,7 @@ test("C-E2E-03 real Codex bridge handles typed hook responses", {
   }
 
   async function expectCodex(
-    active: CodexSession,
+    active: CodexSessionApi,
     input: JsonObject,
     path: readonly string[],
     expected: unknown,

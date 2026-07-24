@@ -16,7 +16,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSyn
 import { homedir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { type CodexSession, startCodex } from "../../src/index.ts";
+import { type CodexSessionApi, startCodex } from "../../src/index.ts";
 import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
 
 const codexAuthPath = join(homedir(), ".codex", "auth.json");
@@ -29,7 +29,7 @@ function rootModelKeys(configPath: string): readonly string[] {
   return text.split("\n").filter((line) => /^(model|model_reasoning_effort)\s*=/.test(line));
 }
 
-async function startReady(): Promise<CodexSession> {
+async function startReady(): Promise<CodexSessionApi> {
   const project = makeProject("codex");
   const session = await startCodex({
     cwd: project.cwd,
@@ -59,8 +59,8 @@ test("C-CODEX-14 concurrent Codex model switches restore the user default (real 
   const defaultsBefore = rootModelKeys(configPath);
   const previousHome = process.env["CODEX_HOME"];
   process.env["CODEX_HOME"] = codexHome;
-  let a: CodexSession | undefined;
-  let b: CodexSession | undefined;
+  let a: CodexSessionApi | undefined;
+  let b: CodexSessionApi | undefined;
   try {
     [a, b] = await Promise.all([startReady(), startReady()]);
     const models = await a.listModels();

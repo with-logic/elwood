@@ -51,7 +51,7 @@ function driveChip(): void {
   setTimeout(tick, 20);
 }
 
-describe("CodexSession image attachment (C-API-44/46)", () => {
+describe("CodexSessionApi image attachment (C-API-44/46)", () => {
   for (const method of ["sendMessage", "sendPrompt", "sendGuidance"] as const) {
     test(`C-API-46 ${method} sets the image, sends Ctrl+V, then the text`, async () => {
       const cwd = tempDir();

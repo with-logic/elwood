@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   type ClaudeHookHandlers,
-  type ClaudeSession,
+  type ClaudeSessionApi,
   ElwoodError,
   startClaude,
 } from "../../src/index.ts";
@@ -31,7 +31,7 @@ test("C-E2E-02 real Claude turn queues early messages and hooks real tools", {
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("claude");
-  let session: ClaudeSession | undefined;
+  let session: ClaudeSessionApi | undefined;
   const prompts: string[] = [];
   const preTools: ToolSeen[] = [];
   const postTools: ToolSeen[] = [];

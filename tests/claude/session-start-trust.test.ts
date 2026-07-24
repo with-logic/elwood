@@ -12,7 +12,7 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-describe("ClaudeSession trust-prompt render delay", () => {
+describe("ClaudeSessionApi trust-prompt render delay", () => {
   test("C-CLAUDE-14 a not-yet-rendered option emits a TRANSIENT attention, persists NO durable warning", async () => {
     const cwd = tempDir();
     installFakes();

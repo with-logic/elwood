@@ -15,7 +15,7 @@ import { FakePty, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-describe("ClaudeSession errors", () => {
+describe("ClaudeSessionApi errors", () => {
   test("C-HOOK-07 C-HOOK-16 emits hookError and fails open on malformed hook input", async () => {
     const cwd = tempDir();
     installFakes();

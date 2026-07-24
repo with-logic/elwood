@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
-import { type ClaudeSession, startClaude } from "../../src/index.ts";
+import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import {
   cleanup,
   e2eTimeoutMs,
@@ -25,7 +25,7 @@ test("C-E2E-07 real Claude assistant_message comes from the committed transcript
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("claude");
-  let session: ClaudeSession | undefined;
+  let session: ClaudeSessionApi | undefined;
   try {
     session = await startClaude({
       cwd: project.cwd,
@@ -71,7 +71,7 @@ test("C-E2E-08 real Claude tool_call/tool_result come from the committed transcr
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("claude");
-  let session: ClaudeSession | undefined;
+  let session: ClaudeSessionApi | undefined;
   try {
     session = await startClaude({
       cwd: project.cwd,

@@ -24,7 +24,7 @@ import type { ClaudeLoginOptions } from "./login/types.ts";
 import { LoginExpiredWatcher, loginExpiredWarning } from "./login-expired.ts";
 import { claudeModelPicker } from "./model-picker.ts";
 import { resizeRestoreFailedWarning } from "./resize-restore.ts";
-import type { ClaudeSession } from "./session-interface.ts";
+import type { ClaudeSessionApi } from "./session-interface.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "./startup-size.ts";
 
 export type HookBridge = {
@@ -32,7 +32,7 @@ export type HookBridge = {
   readonly stop: () => Promise<void>;
 };
 
-export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession {
+export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSessionApi {
   protected readonly picker = claudeModelPicker;
   private readonly bridge: HookBridge;
   private readonly emitter: TypedEmitter;
@@ -64,8 +64,12 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   }
 
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>) {
+    // REGISTER before replaying buffered `terminal:data`: a throwing replay handler must still be
+    // subscribed for FUTURE data (otherwise startup telemetry silently disappears). Replay is of
+    // already-buffered past data and runs synchronously, so no live event interleaves.
+    const unsubscribe = this.emitter.on(event, handler);
     this.replayFor(event, handler);
-    return this.emitter.on(event, handler);
+    return unsubscribe;
   }
   off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void {
     this.emitter.off(event, handler);
