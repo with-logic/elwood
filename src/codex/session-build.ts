@@ -8,7 +8,6 @@ import { createStartupWarningGate, deliverFrameWarnings } from "../core/startup-
 import { emitSettledStartupOutcomes } from "../core/startup-write.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import { TurnStateWatcher } from "../core/turn-state.ts";
-import type { ElwoodWarningEvent } from "../core/types.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { createReadinessGate } from "../runtime/session-readiness.ts";
@@ -178,9 +177,13 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   return session;
 }
 
+// `CodexPreflightWarning` is a DISTRIBUTED union (see DistributiveOmit / the Claude twin), so
+// re-attaching `elwoodSessionId` reconstructs each union member arm-by-arm.
+type WithSessionId<W> = W extends unknown ? W & { readonly elwoodSessionId: string } : never;
+
 function preflightEvent(
   elwoodSessionId: string,
   warning: CodexPreflightWarning,
-): ElwoodWarningEvent {
+): WithSessionId<CodexPreflightWarning> {
   return { elwoodSessionId, ...warning };
 }

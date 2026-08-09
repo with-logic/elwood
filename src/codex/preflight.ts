@@ -5,22 +5,26 @@
 
 import { elwoodError, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
+import { type DistributiveOmit, updateFailedWarning } from "../core/update-warning.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
 import {
   cachedAutoupdate,
   cachedVersionRead,
+  dedupeInFlight,
   invalidateVersionRead,
 } from "../runtime/update-once.ts";
 
 export const minimumCodexVersion = "0.124.0";
 export type CodexCliCapabilities = { readonly supportsHookTrustBypass: boolean };
-export type CodexPreflightWarning = Omit<
-  Extract<ElwoodWarningEvent, { readonly code: "version_unparseable" }>,
+export type CodexPreflightWarning = DistributiveOmit<
+  Extract<ElwoodWarningEvent, { readonly code: "version_unparseable" | "agent_update_failed" }>,
   "elwoodSessionId"
 >;
-let cachedCapabilities: CodexCliCapabilities | undefined;
-let inFlightCapabilities: Promise<CodexCliCapabilities> | undefined;
+// Single-entry cache for the capability probe. `dedupeInFlight` shares one in-flight `codex --help`
+// across concurrent first spawns AND evicts on rejection, so a transient `--help` failure does not
+// poison every later Codex start in the process (C-LIFE-11) — a later start re-probes.
+const capabilityProbe = new Map<"codex", Promise<CodexCliCapabilities>>();
 
 export async function preflightCodex(
   strictVersionCheck: boolean,
@@ -32,11 +36,12 @@ export async function preflightCodex(
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
   let result = await readCodexVersion();
+  let updateError: unknown;
   if (autoupdate) {
-    // Every autoupdate caller awaits the single shared update, then re-reads
-    // the same post-update version — so no concurrent caller validates a
-    // stale pre-update result or races a second update.
-    await cachedAutoupdate("codex", runCodexUpdate);
+    // Best-effort: the shared update never rejects; on failure we re-read and fall through to the
+    // compatibility gate — fatal only when the INSTALLED CLI is below the minimum (C-LIFE-11).
+    const outcome = await cachedAutoupdate("codex", runCodexUpdate);
+    if (!outcome.ok) updateError = outcome.error;
     result = await readCodexVersion();
   }
   const version = parseCodexVersion(result.stdout);
@@ -53,7 +58,8 @@ export async function preflightCodex(
       { version, minimumCodexVersion },
     );
   }
-  return undefined;
+  // Installed CLI is compatible: a failed best-effort update is a warning, not a start failure.
+  return updateError === undefined ? undefined : updateFailedWarning("codex", version, updateError);
 }
 
 async function runCodexUpdate(): Promise<void> {
@@ -61,11 +67,10 @@ async function runCodexUpdate(): Promise<void> {
   if (result.status !== 0) {
     throw elwoodError("codex_update_failed", "`codex update` failed.", probeFailureDetails(result));
   }
-  // The update may have changed the binary; drop the cached version read and
-  // the capability cache so every caller re-detects against the new binary.
+  // The update SUCCEEDED and may have changed the binary; drop the cached version read and the
+  // capability cache so every caller re-detects against the new binary. (Not reached on failure.)
   invalidateVersionRead("codex");
-  cachedCapabilities = undefined;
-  inFlightCapabilities = undefined;
+  capabilityProbe.clear();
 }
 
 async function readCodexVersion(): Promise<CommandResult> {
@@ -91,13 +96,10 @@ export function parseCodexVersion(output: string): string | null {
   return /(\d+\.\d+\.\d+)/.exec(output)?.[1] ?? null;
 }
 
-export async function detectCodexCliCapabilities(): Promise<CodexCliCapabilities> {
-  if (cachedCapabilities) return cachedCapabilities;
-  // Cache the in-flight probe so concurrent first Codex spawns share one
-  // `codex --help` subprocess rather than each launching its own.
-  inFlightCapabilities ??= detectCapabilities();
-  cachedCapabilities = await inFlightCapabilities;
-  return cachedCapabilities;
+export function detectCodexCliCapabilities(): Promise<CodexCliCapabilities> {
+  // Shared once across concurrent first spawns; a rejected probe is evicted so a later start
+  // re-probes rather than inheriting the failure.
+  return dedupeInFlight(capabilityProbe, "codex", detectCapabilities);
 }
 
 async function detectCapabilities(): Promise<CodexCliCapabilities> {
@@ -112,8 +114,7 @@ async function detectCapabilities(): Promise<CodexCliCapabilities> {
 }
 
 export function resetCodexPreflightCacheForTests(): void {
-  cachedCapabilities = undefined;
-  inFlightCapabilities = undefined;
+  capabilityProbe.clear();
 }
 
 function compareVersions(left: string, right: string): number {

@@ -157,7 +157,7 @@ describe("autoupdate dedupe", () => {
     resetRuntimeSeamsForTests();
   });
 
-  test("C-PERF-04 concurrent autoupdate callers share one update failure", async () => {
+  test("C-PERF-04 concurrent autoupdate callers share ONE update failure without rejecting (C-LIFE-11)", async () => {
     let updates = 0;
     setPlatformForTests("darwin");
     setCommandRunnerForTests((_command, args) => {
@@ -165,15 +165,19 @@ describe("autoupdate dedupe", () => {
         updates += 1;
         return { status: 1, stdout: "", stderr: "failed" };
       }
-      return { status: 0, stdout: "2.1.144", stderr: "" };
+      return { status: 0, stdout: "2.1.144", stderr: "" }; // installed == min → compatible
     });
     const results = await Promise.allSettled([
       preflightClaude(false, true),
       preflightClaude(false, true),
     ]);
-    // Both callers reject from the single shared update failure.
-    expect(results.every((r) => r.status === "rejected")).toBe(true);
-    expect(updates).toBe(1);
+    // Best-effort: the shared update fails ONCE, but neither caller rejects — both warn and
+    // continue (the installed CLI meets the minimum). This is the fleet-death regression fixed.
+    expect(results.every((r) => r.status === "fulfilled")).toBe(true);
+    for (const r of results) {
+      if (r.status === "fulfilled") expect(r.value).toMatchObject({ code: "agent_update_failed" });
+    }
+    expect(updates).toBe(1); // still exactly one shared update attempt
     resetRuntimeSeamsForTests();
   });
 });

@@ -7,6 +7,7 @@
  */
 
 import type { StartupPromptLabelFor } from "./startup-automation.ts";
+import type { AgentUpdateFailedWarning } from "./warning-lifecycle.ts";
 import type {
   DropCause,
   PollErrorReason,
@@ -25,6 +26,7 @@ export type ElwoodWarningEvent =
       readonly message: string;
       readonly raw: string;
     }
+  | AgentUpdateFailedWarning
   | {
       readonly elwoodSessionId: string;
       readonly agent: "codex";
@@ -43,11 +45,10 @@ export type ElwoodWarningEvent =
       readonly code: "login_expired";
       readonly severity: "warning";
       readonly message: string;
-      // A Claude session's login lapsed/was revoked AFTER it was already usable,
-      // so it can no longer act until re-authenticated. Content-free: only the
-      // FIXED recovery command literal `/login` — never a raw banner or session
-      // content. The session stays alive so the caller can recover in place via
-      // `session.login()`, tear down, or re-auth out of band (§5.3, C-CLAUDE-18).
+      // A Claude session's login lapsed/was revoked AFTER it was usable, so it can no longer act
+      // until re-authenticated. Content-free: only the FIXED literal `/login` recovery command,
+      // never a raw banner or session content. The session stays alive so the caller can recover
+      // in place via `session.login()`, tear down, or re-auth out of band (§5.3, C-CLAUDE-18).
       readonly recoveryCommand: "/login";
       readonly raw: string;
     }
@@ -72,8 +73,8 @@ export type ElwoodWarningEvent =
       readonly raw: string;
     }
   | {
-      // Content-free: the clipboard restore after a Codex image attach failed, so
-      // the user's prior clipboard may be lost. No clipboard contents (C-API-46).
+      // Content-free: the clipboard restore after a Codex image attach failed, so the user's
+      // prior clipboard may be lost. No clipboard contents (C-API-46).
       readonly elwoodSessionId: string;
       readonly agent: "codex";
       readonly source: "lifecycle";

@@ -5,6 +5,7 @@
 
 import { elwoodError, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
+import { type DistributiveOmit, updateFailedWarning } from "../core/update-warning.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
 import {
@@ -14,8 +15,8 @@ import {
 } from "../runtime/update-once.ts";
 
 export const minimumClaudeVersion = "2.1.144";
-export type ClaudePreflightWarning = Omit<
-  Extract<ElwoodWarningEvent, { readonly code: "version_unparseable" }>,
+export type ClaudePreflightWarning = DistributiveOmit<
+  Extract<ElwoodWarningEvent, { readonly code: "version_unparseable" | "agent_update_failed" }>,
   "elwoodSessionId"
 >;
 
@@ -29,11 +30,13 @@ export async function preflightClaude(
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
   let result = await readClaudeVersion();
+  let updateError: unknown;
   if (autoupdate) {
-    // Every autoupdate caller awaits the single shared update, then re-reads
-    // the same post-update version — so no concurrent caller validates a
-    // stale pre-update result or races a second update.
-    await cachedAutoupdate("claude", runClaudeUpdate);
+    // Best-effort: every caller shares the single update attempt, which NEVER rejects. On failure
+    // we re-read the installed version and fall through to the compatibility gate — a failed
+    // update is only fatal when the INSTALLED CLI is below the minimum (C-LIFE-11).
+    const outcome = await cachedAutoupdate("claude", runClaudeUpdate);
+    if (!outcome.ok) updateError = outcome.error;
     result = await readClaudeVersion();
   }
   const version = parseVersion(result.stdout);
@@ -53,7 +56,11 @@ export async function preflightClaude(
       },
     );
   }
-  return undefined;
+  // Installed CLI is compatible: a failed best-effort update is a warning (naming the installed
+  // version that will be used), not a start failure.
+  return updateError === undefined
+    ? undefined
+    : updateFailedWarning("claude", version, updateError);
 }
 
 async function runClaudeUpdate(): Promise<void> {
@@ -65,8 +72,9 @@ async function runClaudeUpdate(): Promise<void> {
       probeFailureDetails(result),
     );
   }
-  // The update may have changed the binary; drop the cached read so every
-  // caller re-reads the post-update version.
+  // The update SUCCEEDED and may have changed the binary; drop the cached read so every caller
+  // re-reads the post-update version. (On failure this is not reached — the installed version
+  // stands and its cached read is still valid.)
   invalidateVersionRead("claude");
 }
 

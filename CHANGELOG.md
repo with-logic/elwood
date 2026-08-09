@@ -11,6 +11,26 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ## [Unreleased]
 
+### Fixed
+
+- **Autoupdate is now best-effort and never fails a start on its own.** When
+  `autoupdate: true` and `claude update` / `codex update` fails (a flaky network,
+  a partial native-installer download, contention during a fleet launch), Elwood no
+  longer rejects `startClaude`/`startCodex` with `claude_update_failed` /
+  `codex_update_failed`. If the INSTALLED CLI still meets the minimum version, the
+  session starts from it and Elwood emits a live `agent_update_failed` warning (safe
+  diagnostics only: installed version, an allowlisted error code, bounded stderr).
+  Startup fails only when the installed version is actually below the minimum. The
+  warning is zero-burden — a consumer that does not subscribe to `warning` is
+  unaffected and the session still reaches `ready`. (§9.2, C-LIFE-11)
+- **A failed shared update no longer poisons the process.** A once-per-process
+  update/probe cache that rejected was retained and replayed, so one failed
+  `claude update` could reject every concurrent roster start AND every later start
+  until the process restarted. Cached probes (autoupdate, version read, capability
+  detection) now never retain a rejected result: concurrent callers share one attempt
+  and a later caller re-attempts rather than inheriting the failure. (§9.2,
+  C-LIFE-09/11)
+
 ### Added
 
 - **`ClaudeSession` / `CodexSession` classes are now the primary API.** One class per
