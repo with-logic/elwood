@@ -72,7 +72,7 @@ describe("Codex capability detection", () => {
     resetRuntimeSeamsForTests();
   });
 
-  test("C-PERF-03 a bounded codex update probe fails with cause/errno", async () => {
+  test("C-PERF-03 a bounded codex update probe is best-effort: warns with errno, not fatal", async () => {
     resetCodexPreflightCacheForTests();
     setPlatformForTests("darwin");
     setCommandRunnerForTests((_command, args) =>
@@ -85,9 +85,12 @@ describe("Codex capability detection", () => {
           }
         : { status: 0, stdout: "codex-cli 0.132.0", stderr: "" },
     );
-    await expect(preflightCodex(false, true)).rejects.toMatchObject({
-      code: "codex_update_failed",
-      details: { cause: "probe timed out after 15000 ms", errno: "ETIMEDOUT" },
+    // The bounded update is contained: the installed 0.132.0 is compatible, so preflight resolves
+    // with the `agent_update_failed` warning carrying the timeout errno — never a start failure.
+    await expect(preflightCodex(false, true)).resolves.toMatchObject({
+      code: "agent_update_failed",
+      errorCode: "ETIMEDOUT",
+      installedVersion: "0.132.0",
     });
     resetRuntimeSeamsForTests();
   });

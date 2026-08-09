@@ -5,7 +5,7 @@ import { observeRenderedFrame } from "../core/rendered-observers.ts";
 import { createStartupWarningGate, deliverFrameWarnings } from "../core/startup-frame.ts";
 import { emitSettledStartupOutcomes } from "../core/startup-write.ts";
 import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
-import type { ElwoodWarningEvent, StartClaudeOptions } from "../core/types.ts";
+import type { StartClaudeOptions } from "../core/types.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
 import { createReadinessGate } from "../runtime/session-readiness.ts";
@@ -179,9 +179,13 @@ export async function buildClaudeSession(
   return session;
 }
 
+// `ClaudePreflightWarning` is a DISTRIBUTED union (see DistributiveOmit), so re-attaching
+// `elwoodSessionId` reconstructs each `ElwoodWarningEvent` member arm-by-arm.
+type WithSessionId<W> = W extends unknown ? W & { readonly elwoodSessionId: string } : never;
+
 function preflightEvent(
   elwoodSessionId: string,
   warning: ClaudePreflightWarning,
-): ElwoodWarningEvent {
+): WithSessionId<ClaudePreflightWarning> {
   return { elwoodSessionId, ...warning };
 }

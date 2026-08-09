@@ -1288,6 +1288,21 @@ type ElwoodWarningEvent =
     }
   | {
       readonly elwoodSessionId: string;
+      readonly agent: "claude" | "codex";
+      readonly source: "lifecycle";
+      readonly code: "agent_update_failed";
+      readonly severity: "warning";
+      readonly message: string;
+      // Best-effort `claude update` / `codex update` failed, but the INSTALLED CLI
+      // still meets the minimum, so the session started from it. Safe diagnostics
+      // only: the installed version in use and an allowlisted error code (a probe
+      // timeout/`errno`); never terminal transcripts, prompts, tokens, or secrets.
+      readonly installedVersion: string;
+      readonly errorCode: string;
+      readonly raw: string;
+    }
+  | {
+      readonly elwoodSessionId: string;
       readonly agent: "codex";
       readonly source: "terminal";
       readonly code: "mcp_server_not_logged_in";
@@ -2155,11 +2170,28 @@ minimum supported Codex CLI version is `0.124.0`.
 
 If `autoupdate` is true, Elwood first verifies that the CLI exists, then runs
 the adapter's update command, then reads the version again before enforcing the
-minimum version. If the installed agent version is below the minimum after that
-optional update step, startup fails with a typed error that names the required
-version and feature. If the version cannot be parsed, Elwood records a typed
-`version_unparseable` warning and continues by default, with an option for
-callers to make this fatal.
+minimum version. The update step is BEST-EFFORT maintenance, not a control gate:
+if the update command itself fails (nonzero exit, timeout, or a subprocess
+error), Elwood MUST NOT fail startup on that basis. Instead it re-reads the
+installed version and enforces the minimum as usual — if the installed CLI still
+meets the minimum, Elwood records a typed `agent_update_failed` warning and
+starts the session normally from the installed binary; only if the installed
+version is below the minimum does startup fail (with the same typed
+compatibility error below). A failed update is attempted at most once per parent
+process and MUST NOT be retried per start, nor may one failed shared update
+reject or poison any other otherwise-compatible start in the roster. If the
+installed agent version is below the minimum after that optional update step,
+startup fails with a typed error that names the required version and feature. If
+the version cannot be parsed, Elwood records a typed `version_unparseable`
+warning and continues by default, with an option for callers to make this fatal.
+
+The `agent_update_failed` warning carries only safe diagnostics — the adapter,
+the installed version that will be used, the update command's exit status, an
+allowlisted error code (e.g. a timeout/`errno`), and bounded captured stderr —
+never terminal transcripts, prompts, tokens, or environment secrets. Like all
+warnings it is live-only and requires no consumer handling: a caller that does
+not subscribe to the `warning` event is unaffected and the session still reaches
+`ready`.
 
 Version checks and optional `claude update` / `codex update` commands must run
 through the user's configured macOS login shell so PATH resolves as it would in
@@ -2172,10 +2204,17 @@ event loop: a parent that spawns a roster of sessions must not serialize their
 preflights on a single thread. Elwood reads each adapter's `--version` at most
 once per parent process — concurrent first reads share a single subprocess, and
 later reads reuse the cached result — mirroring the once-per-process autoupdate
-dedupe (C-LIFE-09). The cached read is invalidated after an `autoupdate` update
-so the post-update version is re-read. When `autoupdate` is set, concurrent
+dedupe (C-LIFE-09). The cached read is invalidated after a successful `autoupdate`
+update so the post-update version is re-read. When `autoupdate` is set, concurrent
 callers share one update and all validate the same post-update version, so no
-caller proceeds on a stale pre-update version or races a second update.
+caller proceeds on a stale pre-update version or races a second update. Because
+the update is best-effort, a FAILED shared update is likewise shared once — every
+concurrent caller observes the same failure, re-reads the installed version, and
+proceeds through the compatibility gate; the failure is never cached in a way that
+rejects those callers or poisons a later start. More generally, any per-process
+cached probe (version read, capability detection, update) that fails is not
+retained as a rejected result: a later caller re-attempts rather than inheriting
+the prior failure.
 
 Each probe is bounded so a broken or hostile CLI on PATH cannot hang or flood
 the host: a probe that does not exit within a default timeout (15 seconds) or
@@ -2185,14 +2224,17 @@ a UTF-8 code-point boundary — an incomplete trailing sequence is dropped — s
 the decoded output re-encodes to at most the cap rather than growing via a
 replacement character. This applies to every
 non-PTY probe — `--version`, `--help` capability detection, and
-`claude update` / `codex update`. A bounded (or otherwise failed) probe
-surfaces through that probe's existing public error name — `--version` and
-`--help` failures as `claude_start_failed` / `codex_start_failed`, update
-failures as `claude_update_failed` / `codex_update_failed` — and the underlying
-reason is preserved in the error `details` as `cause` (and `errno`, e.g.
-`ETIMEDOUT` on timeout or `E2BIG` on overflow) alongside any `stderr`. A killed
-probe is signaled only because Elwood aborted it; a probe that exits or fails
-to spawn on its own is not signaled.
+`claude update` / `codex update`. A `--version`/`--help` failure (bounded or
+otherwise) surfaces through that probe's existing public error name —
+`claude_start_failed` / `codex_start_failed` — with the underlying reason
+preserved in the error `details` as `cause` (and `errno`, e.g. `ETIMEDOUT` on
+timeout or `E2BIG` on overflow) alongside any `stderr`. An UPDATE failure
+(`claude update` / `codex update`), being best-effort maintenance, does NOT
+surface as a start-blocking error; it is contained and surfaces as the live
+`agent_update_failed` warning carrying the same bounded diagnostics (exit status,
+`errno`, `stderr`), while startup continues through the compatibility gate. A
+killed probe is signaled only because Elwood aborted it; a probe that exits or
+fails to spawn on its own is not signaled.
 
 After spawning the PTY, Elwood waits briefly for immediate process exits or
 known authentication/startup failure banners before reporting the session as
@@ -2303,12 +2345,12 @@ Initial required error names:
 | `unsupported_platform` | The current OS is not supported by the implementation. |
 | `claude_not_found` | `claude` could not be resolved or spawned. |
 | `claude_start_failed` | Claude started but exited or failed before the session was usable. |
-| `claude_update_failed` | `claude update` failed before session startup. |
+| `claude_update_failed` | `claude update` failed. Best-effort: contained by the autoupdate preflight and surfaced as the `agent_update_failed` warning (never thrown out of `startClaude` when the installed CLI meets the minimum). |
 | `claude_not_authenticated` | Startup output or status indicates Claude is not authenticated. |
 | `claude_version_unsupported` | Installed Claude version lacks required features. |
 | `codex_not_found` | `codex` could not be resolved or spawned. |
 | `codex_start_failed` | Codex started but exited or failed before the session was usable. |
-| `codex_update_failed` | `codex update` failed before session startup. |
+| `codex_update_failed` | `codex update` failed. Best-effort: contained by the autoupdate preflight and surfaced as the `agent_update_failed` warning (never thrown out of `startCodex` when the installed CLI meets the minimum). |
 | `codex_not_authenticated` | Startup output or status indicates Codex is not authenticated. |
 | `codex_version_unsupported` | Installed Codex version lacks required features. |
 | `state_not_found` | A requested Elwood session record does not exist. |
@@ -2530,7 +2572,7 @@ Each criterion has:
 |---|---|---|
 | C-PERF-01 | §9.2 | Version/capability probes run asynchronously and never block the host process's event loop, so a roster of concurrent spawns does not serialize on a single thread. |
 | C-PERF-02 | §9.2 | Each adapter's `--version` is read at most once per parent process; concurrent first reads share a single subprocess, later reads reuse the cached result, and the cache is invalidated after `autoupdate`. |
-| C-PERF-03 | §9.2 | Any non-PTY probe (`--version`, `--help`, `update`) that exceeds the default runtime timeout (15s) or per-stream byte cap (1,000,000 bytes) is killed and surfaces through that probe's public error name (`*_start_failed` for version/help, `*_update_failed` for update) with `cause`/`errno` (`ETIMEDOUT`/`E2BIG`) preserved in `details`; probes that exit or fail to spawn on their own are not signaled. |
+| C-PERF-03 | §9.2 | Any non-PTY probe (`--version`, `--help`, `update`) that exceeds the default runtime timeout (15s) or per-stream byte cap (1,000,000 bytes) is killed. A killed/failed `--version`/`--help` probe surfaces through `*_start_failed` with `cause`/`errno` (`ETIMEDOUT`/`E2BIG`) preserved in `details`; a killed/failed `update` probe is best-effort and instead surfaces the live `agent_update_failed` warning (same bounded diagnostics) without blocking startup. Probes that exit or fail to spawn on their own are not signaled. |
 | C-PERF-04 | §9.2 | With `autoupdate`, concurrent callers share one update and all validate the same post-update version; none proceeds on a stale pre-update version or races a second update. |
 
 #### C-CLAUDE: Claude Startup And Settings (§4, §7, §9)
@@ -2636,7 +2678,8 @@ Each criterion has:
 | C-STATE-11 | §8.1 | Elwood does not overwrite an existing `.elwood/.gitignore` or create gitignore files in custom `stateDir` directories. |
 | C-STATE-13 | §8.2 | The session record persists the resolved launch posture (privilege and tool policy) at start, validates it on read, and resume updates it to the effective values. |
 | C-STATE-12 | §8.1 | Sessions start successfully with arbitrarily long `stateDir` paths because the hook bridge socket binds in a short Elwood-owned temp home. The home is STABLE per session (a bounded fingerprint of the session's full identity — `stateDir`, adapter, and id), so every start/resume resolves the same one while a shared explicit id in a different state dir resolves a DISTINCT home; each launch binds a fresh socket FILE inside it, and teardown removes the whole home so no per-launch socket leaks across restart/resume. |
-| C-LIFE-09 | §9.2 | `autoupdate` runs the adapter's update command at most once per parent process per adapter, so fleet spawns do not race N concurrent same-binary updates. |
+| C-LIFE-09 | §9.2 | `autoupdate` runs the adapter's update command at most once per parent process per adapter, so fleet spawns do not race N concurrent same-binary updates. A FAILED shared update is shared once too — concurrent callers observe the same failure and proceed through the compatibility gate — and is not retried per start nor retained as a rejected result that poisons later starts. |
+| C-LIFE-11 | §9.2 | Autoupdate is BEST-EFFORT: when the update command fails but the installed CLI still meets the minimum version, startup emits a live `agent_update_failed` warning (safe diagnostics only) and reaches `ready` from the installed binary; startup fails only when the installed version is below the minimum. No per-process cached probe (version read, capability detection, update) retains a rejected result — a later caller re-attempts rather than inheriting a prior failure. |
 | C-ERR-08 | §10 | Startup failures carry the underlying cause, and errno/syscall/path details when the underlying error provides them. |
 
 #### C-LIFE: Lifecycle Controls (§5, §9)
