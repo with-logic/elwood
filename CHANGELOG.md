@@ -13,6 +13,21 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ### Fixed
 
+- **Claude's `Not logged in · Run /login` sign-out is now detected mid-session.**
+  A ready Claude session that gets logged out mid-run renders `Not logged in`
+  (paired with a `run /login` hint) — a different wording than the `Login expired`
+  / `Session expired` / `OAuth token revoked` banners Elwood already recognized.
+  That form previously went undetected mid-session, so no `login_expired` warning
+  fired. It now surfaces the same content-free `login_expired` warning (+ `warning`
+  activity), leaving the session alive to recover via `session.login()`. (§5.3/§5.7,
+  C-CLAUDE-17/18)
+- **Codex's in-TUI update prompt is now re-skipped on the restart loop.** Elwood
+  always skips Codex's interactive "update available" prompt (it never selects
+  "Update now"; the real update is the `autoupdate` preflight). The skip was latched
+  once per session, so if Codex restarted and the SAME update screen reappeared — the
+  update did not take — the session got stuck looping on it. The skip is now
+  edge-triggered: it re-arms when the update screen leaves the frame and re-skips the
+  reappearance. (§5.5, C-CODEX-12)
 - **Autoupdate is now best-effort and never fails a start on its own.** When
   `autoupdate: true` and `claude update` / `codex update` fails (a flaky network,
   a partial native-installer download, contention during a fleet launch), Elwood no

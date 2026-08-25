@@ -1185,6 +1185,11 @@ When `autoupdate` is true, Elwood runs `codex update` from the user's login
 shell before spawning Codex and rechecks the version after the update. If Codex
 later shows an interactive update prompt inside the TUI, Elwood skips that
 prompt through PTY input, including Codex's cursor-addressed update screen.
+Elwood never selects "Update now" inside the live TUI (an in-TUI update restarts
+Codex out from under the session); the real update is the preflight `codex update`
+above, and the in-TUI prompt is always skipped. The skip is edge-triggered, so if
+the same update screen reappears after a restart — the update did not take — Elwood
+skips it again rather than leaving the session stuck looping on it (C-CODEX-12).
 `strictVersionCheck` makes unparseable Codex versions fatal instead of
 warning-and-continuing.
 
@@ -2243,8 +2248,9 @@ failures without turning `startClaude` or `startCodex` into a readiness wait for
 the first agent prompt. Authentication banner matching is best-effort and should
 cover the common `not authenticated`, `login required`, `authentication failed`,
 and non-MCP `not logged in` forms, as well as lapsed-session banners that only
-direct the user to re-run `/login` (`Login expired`, `Session expired`, or
-`OAuth token revoked`, each paired with a `run /login` recovery hint).
+direct the user to re-run `/login` (`Login expired`, `Session expired`,
+`OAuth token revoked`, or `Not logged in`, each paired with a `run /login`
+recovery hint).
 
 Once the live resources exist (hook bridge, PTY, terminal, and transcript
 watcher), every remaining startup step runs behind a single cleanup boundary: the
@@ -2595,7 +2601,7 @@ Each criterion has:
 | C-CLAUDE-14 | §5.1 | Under `autotrust`, Claude's allowlisted skill/plugin/MCP trust prompts are each answered once and emit `startup_prompt` activity under their `skill_trust`/`plugin_trust`/`mcp_trust` labels. Recognition is the only guard: a prompt is recognized solely by its HEADER wording on a non-option line (so an option-only trust phrase cannot spoof one), and once recognized Elwood sends the first affirmative option in the current frame — the agent is never left waiting. When a recognized prompt's affirmative option has not rendered in the current frame yet, Elwood emits a fire-once transient `attention` activity and keeps watching so a later frame carrying the option is still answered; this render-delay state is TRANSIENT and no warning is emitted for it. An off-allowlist first-run prompt is never auto-answered. Per the say-yes policy there is deliberately no per-dialog region binding, so a second stacked dialog's affirmative in the same frame is an accepted consequence, not a defended boundary. |
 | C-CLAUDE-15 | §5.4 | Claude `assistant_message`, `tool_call`, and `tool_result` activities are sourced from the committed transcript the CLI writes at `transcript_path`, never from the `Stop` hook's `last_assistant_message`; an un-sent ghost-text / composer draft therefore never becomes an `assistant_message`. |
 | C-CLAUDE-16 | §5.1 §5.4 §5.7 | A Claude startup prompt Elwood auto-answers is marked settled and emits its `startup_prompt` activity only after its PTY `sendInput` write fulfills. A rejected write emits NO `startup_prompt` activity, leaves the prompt un-settled so a later frame re-attempts it, and surfaces a bounded, content-free `startup_prompt_write_failed` warning carrying only the prompt label. |
-| C-CLAUDE-17 | §5.1 | A Claude startup banner showing a lapsed or revoked login that only directs the user to re-run `/login` (`Login expired`, `Session expired`, or `OAuth token revoked`, each paired with a `run /login` recovery hint) is treated as an authentication failure and rejects `startClaude` with `claude_not_authenticated`, exactly like the explicit `not authenticated` banners — the session is torn down rather than reported as usable. Matching is anchored on the `/login` recovery directive so an unrelated mention of "login" does not trip it. |
+| C-CLAUDE-17 | §5.1 | A Claude startup banner showing a lapsed, revoked, or absent login that only directs the user to re-run `/login` (`Login expired`, `Session expired`, `OAuth token revoked`, or `Not logged in`, each paired with a `run /login` recovery hint) is treated as an authentication failure and rejects `startClaude` with `claude_not_authenticated`, exactly like the explicit `not authenticated` banners — the session is torn down rather than reported as usable. Matching is anchored on the `/login` recovery directive so an unrelated mention of "login" does not trip it. |
 | C-CLAUDE-18 | §5.3 §5.7 | When a lapsed/revoked-login banner (per C-CLAUDE-17) appears on a Claude session that has ALREADY reached readiness — i.e. login expires mid-session — Elwood surfaces a typed, content-free `login_expired` warning (and its `warning` activity) carrying only a bounded `recoveryCommand` of `/login`. Detection is edge-based so a banner persisting across many frames does not re-emit, so a session warns at most once for its login expiring; the session is left ALIVE (no forced terminal transition) so the caller can recover in place via `session.login()`, tear down, or re-authenticate out of band. |
 | C-CLAUDE-19 | §5.4 §7A.4 | A committed Claude assistant `thinking` content block surfaces its plaintext extended-thinking as a `reasoning` activity carrying that text, sourced from the committed transcript exactly like `assistant_message` (C-CLAUDE-15) — no hook exposes it. Only ASSISTANT thinking is surfaced and empty thinking is dropped; a `redacted_thinking` block (opaque encrypted `data`, no readable text) produces no activity. |
 
@@ -2614,7 +2620,7 @@ Each criterion has:
 | C-CODEX-09 | §5.7 | Codex MCP startup warnings are parsed from terminal output into typed warning events with server names and recovery commands. |
 | C-CODEX-10 | §9.2 | `autoupdate: true` rechecks the Codex version after running `codex update`. |
 | C-CODEX-11 | §5.5 | `autotrust: true` answers Codex's directory trust prompt through PTY input and emits `startup_prompt` activity. |
-| C-CODEX-12 | §5.5 | If Codex still shows an interactive update prompt inside the TUI, Elwood selects the skip/continue-without-updating option by label. |
+| C-CODEX-12 | §5.5 | If Codex still shows an interactive update prompt inside the TUI, Elwood selects the skip/continue-without-updating option by label. The skip is EDGE-triggered: a persistent update screen is answered once (not re-answered every frame), but the skip RE-ARMS once the update screen leaves the frame, so an update prompt that REAPPEARS after Codex restarts (e.g. the update did not take and the same screen returns) is skipped again rather than leaving the session stuck on it. |
 | C-CODEX-13 | §10 | An immediately failing or unusable Codex process fails with `codex_start_failed` or a more specific typed error. |
 | C-CODEX-14 | §5.3 | `setModel` on Codex restores the user's prior `config.toml` default via compare-and-swap after the CLI persists its picker selection, skipping with the `codex_default_model_persisted` warning instead of clobbering concurrent edits. |
 | C-CODEX-15 | §5.5 | Codex's directory-trust prompt is answered only under `autotrust` (blocking on the human when off); Codex hook trust — Elwood's own integration — is answered regardless of `autotrust` and is NOT classified as blocking. Each is recognized only by its HEADER wording on a non-option line (so an option-only phrase cannot spoof it) and, once recognized, answered from the frame's affirmative option — the agent is never left waiting. When a recognized prompt's affirmative option has not rendered yet, a fire-once transient `attention` activity is emitted and Elwood keeps watching so a later frame answers it; this render-delay state is TRANSIENT and no warning is emitted for it. Each is answered once, from the shared allowlist. |

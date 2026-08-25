@@ -5,14 +5,23 @@
  * Claude login area (not generic startup infra) because it is Claude-specific and
  * version-coupled to that CLI's wording (v2.1.x).
  *
- * Recognized as two INDEPENDENT linear searches (no unbounded backtracking, since
- * this runs on every rendered frame): a lapsed-login phrase AND a `/login`
- * recovery directive both present, or the self-contained "run /login to sign in"
- * directive on its own. Anchoring on the directive stops an unrelated mention of
- * "login" from tripping it.
+ * Recognized as INDEPENDENT linear searches (no unbounded backtracking, since
+ * this runs on every rendered frame): a lapsed-or-absent-login phrase AND a
+ * `/login` recovery directive both present, or the self-contained
+ * "run /login to sign in" directive on its own. Anchoring on the directive stops
+ * an unrelated mention of "login" from tripping it.
+ *
+ * The lapsed-login phrase covers a session that expired/was revoked mid-run
+ * (`Login expired`, `Session expired`, `OAuth token revoked`) as well as an
+ * outright signed-out session (`Not logged in`, which Claude renders when auth is
+ * dropped entirely). All four are the same recovery for the caller — re-run
+ * `/login` — so they map to one banner. The startup path already flags the
+ * single-line `not logged in` form; recognizing it here closes the MID-SESSION gap
+ * (a ready session that logs out and shows "Not logged in · Run /login").
  */
 
-const lapsedLoginPhrase = /(?:login|session|oauth token)\s+(?:expired|revoked)/i;
+const lapsedLoginPhrase =
+  /(?:(?:login|session|oauth token)\s+(?:expired|revoked)|not\s+logged\s+in)/i;
 const runLoginDirective = /(?:run|please run)\s+\/login/i;
 const runLoginToSignIn = /(?:run|please run)\s+\/login\s+to\s+sign in/i;
 

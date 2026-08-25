@@ -18,6 +18,22 @@ export type CodexStartupPromptResult = {
 
 const maxBufferLength = 6_000;
 const updateOptionPattern = /continue\s*without\s*updat|skip|not\s*now|later/i;
+// The update screen's own banner phrasing (verified against codex-cli: "Update
+// available", "A new version of Codex is available", "Update now"). Used ONLY to
+// decide whether the CURRENT frame is still the update screen so the skip latch can
+// re-arm once it clears — it is deliberately narrow so ordinary agent output that
+// merely says "update" does not keep us latched on a screen we already left.
+const updateScreenBanner = /update\s+available|new\s+version|update\s+now/i;
+
+/**
+ * Whether THIS frame is still showing the update screen. True when the frame carries
+ * the update banner, or a numbered skip option is on screen (the banner and its
+ * options can render in separate frames, so either alone counts as "still on it").
+ */
+function currentFrameShowsUpdatePrompt(frameText: string): boolean {
+  if (updateScreenBanner.test(frameText)) return true;
+  return findNumberedOption(frameText, updateOptionPattern) !== null;
+}
 
 export class CodexStartupPromptResponder {
   private buffer: string;
@@ -52,7 +68,21 @@ export class CodexStartupPromptResponder {
       outcomes.push({ outcome: { kind: "option_pending", prompt: trust.prompt } });
     }
     // Skipping an available update is not a trust decision, so it stays here.
-    if (!this.skippedUpdate && /update/i.test(this.buffer)) {
+    // The skip is EDGE-triggered and scoped to the CURRENT frame's update screen:
+    // `skippedUpdate` latches after a successful skip so a persistent update screen is
+    // not re-answered every frame, but it RE-ARMS the moment the update screen leaves
+    // the frame. That breaks the observed restart loop — Codex restarts itself, the
+    // update does not take, and the SAME update screen reappears; a cleared frame
+    // between the two appearances (Codex's restart draws a normal composer) re-arms us
+    // to skip the reappearance. Gating the attempt on the CURRENT frame (not just the
+    // accumulated buffer) also means a re-armed benign frame that merely mentions
+    // "update" never re-fires a skip against a stale buffered option — only a frame
+    // actually showing the update screen does. The buffer is still consulted to LOCATE
+    // the option, since Codex can split the banner and its numbered options across two
+    // consecutive frames.
+    const onUpdateScreen = currentFrameShowsUpdatePrompt(screenText);
+    if (!onUpdateScreen) this.skippedUpdate = false;
+    if (onUpdateScreen && !this.skippedUpdate) {
       const option = findNumberedOption(this.buffer, updateOptionPattern);
       if (option) {
         // Settle OPTIMISTICALLY but keep the skip retryable if the write is

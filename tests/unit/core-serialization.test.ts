@@ -124,6 +124,9 @@ describe("preflight", () => {
       "Session expired. Please run /login to sign in again.",
       "OAuth token revoked\n Please run /login",
       "Run /login to sign in with your claude.ai account",
+      // The signed-out banner, both inline and spanning lines (C-CLAUDE-17).
+      "Not logged in · Run /login",
+      "⚠ Not logged in\n  Please run /login",
     ]) {
       await expect(
         assertStartupUsable({ adapter: "claude", exit: undefined, output, waitMs: 0 }),
