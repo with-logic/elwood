@@ -150,10 +150,13 @@ describe("settings and command construction", () => {
     const command = buildClaudeShellCommand("/tmp/settings.json", {
       cwd: "/tmp/project",
       permissionMode: "plan",
+      reasoningEffort: "high",
       allowedTools: ["Bash", "Read"],
       tools: ["Bash", "Read", "Edit"],
       name: "demo",
     });
+    // C-CLAUDE-20: forwarded to Claude's --effort flag.
+    expect(command).toContain("--effort 'high'");
     expect(command).toContain("--permission-mode 'plan'");
     expect(command).toContain("--allowedTools 'Bash,Read'");
     // C-CLAUDE-13: --tools is a true allowlist; empty means all disabled.

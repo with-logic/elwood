@@ -98,6 +98,7 @@ export { ElwoodError, elwoodError } from "./core/errors.ts";
 export type { ImageFormat, ImageInput, SendOptions } from "./core/images/types.ts";
 export type { ListModelsOptions } from "./core/list-models.ts";
 export type { AgentModelOption } from "./core/model-rows.ts";
+export type { ClaudeReasoningEffort, CodexReasoningEffort } from "./core/reasoning-effort.ts";
 export type { TurnEvent } from "./core/simple/events.ts";
 export type { TurnOptions } from "./core/simple/session.ts";
 export type { StartOrResumeResult } from "./core/start-or-resume.ts";

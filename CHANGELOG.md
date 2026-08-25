@@ -48,6 +48,19 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ### Added
 
+- **`reasoningEffort` is now a first-class start/resume option on both adapters.**
+  `startClaude`/`resumeClaude` accept `reasoningEffort?: ClaudeReasoningEffort`
+  (`low`/`medium`/`high`/`xhigh`/`max`), forwarded to Claude's `--effort` flag;
+  `startCodex`/`resumeCodex` accept `reasoningEffort?: CodexReasoningEffort`
+  (`none`/`minimal`/`low`/`medium`/`high`/`xhigh`/`max`), forwarded as the reserved
+  `-c model_reasoning_effort=<value>` override (applied after caller `configOverrides`
+  so it wins a duplicate). The two enums differ per CLI; Elwood validates the value
+  against the adapter's enum BEFORE spawn and rejects an out-of-enum value with the
+  typed `claude_invalid_reasoning_effort` / `codex_invalid_reasoning_effort` error
+  (Codex otherwise fails server-side only at the first turn). Effort is independent of
+  `model`, applies to the launched session only, and is NOT persisted — a resume must
+  re-supply it, exactly like `model`. Both enums are exported. (§5.1/§5.5, §5.2/§5.6,
+  C-CLAUDE-20, C-CODEX-21)
 - **`ClaudeSession` / `CodexSession` classes are now the primary API.** One class per
   adapter exposes BOTH the ergonomic `send`/`stream` convenience AND the full control
   surface (`sendMessage`, `sendPrompt`, `sendGuidance`, `sendKeys`, `resize`,

@@ -47,6 +47,10 @@ export async function resumeClaude(options: ResumeClaudeOptions): Promise<Claude
       ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),
       ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
       ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
+      // Reasoning effort is NOT persisted posture — re-supply it per resume (C-CLAUDE-20).
+      ...(options.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: options.reasoningEffort }),
       ...launch,
       ...(options.strictVersionCheck === undefined
         ? {}

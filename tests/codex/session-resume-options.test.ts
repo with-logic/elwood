@@ -111,10 +111,12 @@ describe("CodexSessionApi resume options", () => {
       elwoodSessionId: "codex-priv",
       sandbox: "danger-full-access",
       approvalPolicy: "never",
+      reasoningEffort: "xhigh", // re-supplied per resume (C-CODEX-21), not persisted
     });
     const command = ptys[0]!.options.args.join(" ");
     expect(command).toContain("--sandbox 'danger-full-access'");
     expect(command).toContain("--ask-for-approval 'never'");
+    expect(command).toContain('model_reasoning_effort="xhigh"');
     expect(resumed.status).toBe("running");
   });
 

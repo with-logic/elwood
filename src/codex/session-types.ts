@@ -6,6 +6,7 @@
 import type { ElwoodActivityEvent } from "../core/activity.ts";
 import type { SendOptions } from "../core/images/types.ts";
 import type { AgentModelOption } from "../core/model-rows.ts";
+import type { CodexReasoningEffort } from "../core/reasoning-effort.ts";
 import type {
   ActivityMatch,
   ElwoodSessionStatus,
@@ -36,6 +37,7 @@ export type StartCodexOptions = {
   readonly hooks?: CodexHookHandlers;
   readonly persona?: string;
   readonly model?: string;
+  readonly reasoningEffort?: CodexReasoningEffort;
   readonly profile?: string;
   readonly sandbox?: CodexSandboxMode;
   readonly approvalPolicy?: CodexApprovalPolicy;
@@ -52,6 +54,7 @@ export type ResumeCodexOptions = {
   readonly stateDir?: string;
   readonly hooks?: CodexHookHandlers;
   readonly initialSize?: TerminalSize;
+  readonly reasoningEffort?: CodexReasoningEffort;
   readonly sandbox?: CodexSandboxMode;
   readonly approvalPolicy?: CodexApprovalPolicy;
   readonly autoupdate?: boolean;

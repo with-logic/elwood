@@ -140,11 +140,13 @@ describe("ClaudeSessionApi resume options", () => {
       allowedTools: ["Read"],
       disallowedTools: ["Bash", "WebSearch"],
       tools: ["Read", "Edit"],
+      reasoningEffort: "high", // re-supplied per resume (C-CLAUDE-20), not persisted
     });
     expect(ptys[0]!.options.args.join(" ")).toContain("--permission-mode 'bypassPermissions'");
     expect(ptys[0]!.options.args.join(" ")).toContain("--allowedTools 'Read'");
     expect(ptys[0]!.options.args.join(" ")).toContain("--disallowedTools 'Bash,WebSearch'");
     expect(ptys[0]!.options.args.join(" ")).toContain("--tools 'Read,Edit'");
+    expect(ptys[0]!.options.args.join(" ")).toContain("--effort 'high'");
   });
 
   test("C-API-16 resume falls back to the default terminal size", async () => {

@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { queuePersonaMessage } from "../core/persona.ts";
+import { claudeReasoningEfforts, validateReasoningEffort } from "../core/reasoning-effort.ts";
 import type { StartClaudeOptions } from "../core/types.ts";
 import { withSocketHomeCleanup } from "../runtime/startup-cleanup.ts";
 import { claudeLaunchPosture, withClaudeLaunch } from "../state/launch-posture.ts";
@@ -54,6 +55,13 @@ export function startClaudeFromRecord(
   resumed: boolean,
   preflightWarning: ClaudePreflightWarning | undefined,
 ) {
+  // Validate the effort enum before any spawn (C-CLAUDE-20): both start and resume
+  // funnel through here, so a bad value fails fast at the single chokepoint.
+  validateReasoningEffort(
+    options.reasoningEffort,
+    claudeReasoningEfforts,
+    "claude_invalid_reasoning_effort",
+  );
   // `sessionRuntime` ensures the session's STABLE out-of-tree home and reserves a FRESH
   // per-launch socket PATH inside it; the socket is bound later, by `bridge.start()`
   // (after the state/runtime files are written). Wrap the WHOLE build so ANY failure

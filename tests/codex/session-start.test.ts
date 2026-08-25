@@ -19,7 +19,12 @@ describe("CodexSessionApi startup and terminal control", () => {
     const codexConfig = join(cwd, ".codex", "config.toml");
     writeFileSync(codexConfig, 'model="unchanged"\n');
     installFakes();
-    const session = await startCodex({ cwd, model: "gpt-5.3-codex", sandbox: "workspace-write" });
+    const session = await startCodex({
+      cwd,
+      model: "gpt-5.3-codex",
+      reasoningEffort: "xhigh",
+      sandbox: "workspace-write",
+    });
     const command = ptys[0]!.options.args.join(" ");
     expect(session.elwoodSessionId.length).toBeGreaterThan(0);
     expect(session.cwd).toBe(cwd);
@@ -30,6 +35,7 @@ describe("CodexSessionApi startup and terminal control", () => {
     expect(command).toContain("--cd");
     expect(command).toContain("--model");
     expect(command).toContain("--sandbox");
+    expect(command).toContain('model_reasoning_effort="xhigh"');
     expect(command).toContain("--dangerously-bypass-hook-trust");
     expect(command).toContain("hookTrust");
     expect(command).toContain("hooks.Stop");

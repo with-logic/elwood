@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { queuePersonaMessage } from "../core/persona.ts";
+import { codexReasoningEfforts, validateReasoningEffort } from "../core/reasoning-effort.ts";
 import { withSocketHomeCleanup } from "../runtime/startup-cleanup.ts";
 import { codexLaunchPosture, withCodexLaunch } from "../state/launch-posture.ts";
 import { sessionRuntime } from "../state/runtime-paths.ts";
@@ -58,6 +59,14 @@ export function startCodexFromRecord(
   resumed: boolean,
   preflightWarning: preflight.CodexPreflightWarning | undefined,
 ) {
+  // Validate the effort enum before any spawn (C-CODEX-21): both start and resume funnel
+  // through here. Codex validates server-side (a bad value fails at the first turn), so
+  // this turns a deferred provider error into a fast, clear start-time rejection.
+  validateReasoningEffort(
+    options.reasoningEffort,
+    codexReasoningEfforts,
+    "codex_invalid_reasoning_effort",
+  );
   // `sessionRuntime` ensures the session's STABLE out-of-tree home and reserves a FRESH
   // per-launch socket PATH inside it; the socket is bound later, by `bridge.start()`
   // (after the state/runtime files are written). Wrap the WHOLE build so ANY failure
