@@ -94,6 +94,19 @@ misattributed to a CLI regression.)
   after done — do not treat spinner presence as a reliable per-frame liveness bit
   at tiny sizes.
 
+## Codex transcript replies
+
+**Codex 0.149.1 writes committed replies as phased `message` response items, not
+`agent_message` items.** The assistant's commentary and final reply are separate
+`response_item` records whose payloads use `type: "message"` and a `content[]`
+array of `{ type: "output_text", text }` entries. Only the assistant record with
+`phase: "final_answer"` is the committed room reply; `phase: "commentary"` is
+progress narration, and user/developer message records are inputs. Current
+sessions emit no legacy `agent_message` duplicate, so treating `content` as a
+plain string silently drops the reply text. The transcript adapter therefore
+extracts `output_text` only from assistant `final_answer` records while retaining
+legacy string/`agent_message` support. C-CODEX-16.
+
 ## Model selection persistence
 
 - **Codex persists `/model` picker selections into the user `config.toml`.**

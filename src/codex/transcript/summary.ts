@@ -109,7 +109,24 @@ export function toolOutputText(output: unknown): string | undefined {
 
 function message(payload: Record<string, unknown>): CodexTranscriptSummary {
   const role = stringValue(payload["role"]) ?? "message";
-  return { kind: "message", label: role, ...(text(payload["content"]) ?? {}) };
+  const value = assistantMessageText(payload, role);
+  return value === undefined
+    ? { kind: "other", label: role }
+    : { kind: "message", label: role, text: value };
+}
+
+function assistantMessageText(payload: Record<string, unknown>, role: string): string | undefined {
+  if (role !== "assistant") return undefined;
+  const phase = stringValue(payload["phase"]);
+  if (phase !== undefined && phase !== "final_answer") return undefined;
+  const content = payload["content"];
+  if (typeof content === "string") return content;
+  if (phase !== "final_answer" || !Array.isArray(content)) return undefined;
+  const parts = content
+    .filter((entry) => stringValue(record(entry)?.["type"]) === "output_text")
+    .map((entry) => stringValue(record(entry)?.["text"]))
+    .filter((part): part is string => part !== undefined);
+  return parts.length > 0 ? parts.join("") : undefined;
 }
 
 function agentMessage(payload: Record<string, unknown>): CodexTranscriptSummary {

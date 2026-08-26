@@ -13,6 +13,14 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ### Fixed
 
+- **Modern Codex final replies now carry their text on `assistant_message`
+  activity.** Codex 0.149.1 writes replies as assistant `message` response items
+  with `phase: "final_answer"` and `content[].output_text`; Elwood previously
+  expected a plain string (or a legacy `agent_message` duplicate), so consumers
+  received a textless event and could silently discard the reply. Elwood now
+  extracts the full final-answer text—including `@mentions`—while keeping
+  commentary and user/developer transcript records out of assistant activity.
+  (§5.4/§7A.4, C-API-12/C-CODEX-16)
 - **Claude's `Not logged in · Run /login` sign-out is now detected mid-session.**
   A ready Claude session that gets logged out mid-run renders `Not logged in`
   (paired with a `run /login` hint) — a different wording than the `Login expired`

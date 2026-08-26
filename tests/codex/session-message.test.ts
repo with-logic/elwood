@@ -32,7 +32,7 @@ describe("CodexSessionApi message submission", () => {
     expect(session.status).toBe("running");
   });
 
-  test("C-API-20 flushes transcript activity before terminal exit", async () => {
+  test("C-API-20 C-CODEX-16 flushes modern final-answer text before terminal exit", async () => {
     const cwd = tempDir();
     const transcript = join(cwd, "codex.jsonl");
     installFakes();
@@ -40,7 +40,8 @@ describe("CodexSessionApi message submission", () => {
     const session = await startCodex({ cwd });
     const order: string[] = [];
     session.on("activity", (event) => {
-      if (event.source === "transcript" && event.kind === "assistant_message") order.push("tx");
+      if (event.source === "transcript" && event.kind === "assistant_message")
+        order.push(`tx:${event.text}`);
       if (event.kind === "terminal_exit") order.push("exit");
       if (event.kind === "status" && event.status === "exited") order.push("exited");
     });
@@ -52,9 +53,12 @@ describe("CodexSessionApi message submission", () => {
       model: "gpt-5.3-codex",
       source: "startup",
     });
-    appendFileSync(transcript, `${JSON.stringify(item("agent_message", { message: "done" }))}\n`);
+    appendFileSync(
+      transcript,
+      `${JSON.stringify(finalAnswer("Done. @Tech Lead please review."))}\n`,
+    );
     ptys[0]!.emitExit({ exitCode: 0 });
-    expect(order).toEqual(["tx", "exit", "exited"]);
+    expect(order).toEqual(["tx:Done. @Tech Lead please review.", "exit", "exited"]);
   });
 
   test("C-API-20 flushes transcript activity before Stop readiness", async () => {
@@ -115,6 +119,14 @@ describe("CodexSessionApi message submission", () => {
 
 function item(type: string, payload: Record<string, unknown>) {
   return { type: "response_item", payload: { type, ...payload } };
+}
+
+function finalAnswer(text: string) {
+  return item("message", {
+    role: "assistant",
+    phase: "final_answer",
+    content: [{ type: "output_text", text }],
+  });
 }
 
 function observeTranscript(elwoodSessionId: string, cwd: string, transcript: string) {

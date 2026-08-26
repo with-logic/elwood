@@ -77,7 +77,7 @@ describe("Codex transcript observation", () => {
     expect(summary({ type: "function_call" }).label).toBe("tool");
     expect(summary({ type: "function_call_output" }).label).toBe("tool");
     expect(summary({ type: "message", content: ["hi"] })).toEqual({
-      kind: "message",
+      kind: "other",
       label: "message",
     });
     expect(summary({ type: "agent_message", message: 7 })).toEqual({
@@ -140,6 +140,36 @@ describe("Codex transcript observation", () => {
       label: "assistant",
       text: "hi",
     });
+    expect(
+      finalAnswer([
+        { type: "output_text", text: "Done. " },
+        { type: "input_text", text: "ignored" },
+        { type: "output_text", text: "@Tech Lead please review." },
+        { type: "output_text" },
+      ]),
+    ).toEqual({
+      kind: "message",
+      label: "assistant",
+      text: "Done. @Tech Lead please review.",
+    });
+    expect(
+      summary({
+        type: "message",
+        role: "assistant",
+        phase: "commentary",
+        content: [{ type: "output_text", text: "Working on it." }],
+      }),
+    ).toEqual({ kind: "other", label: "assistant" });
+    expect(
+      summary({
+        type: "message",
+        role: "user",
+        phase: "final_answer",
+        content: [{ type: "output_text", text: "not an assistant reply" }],
+      }),
+    ).toEqual({ kind: "other", label: "user" });
+    expect(finalAnswer(7)).toEqual({ kind: "other", label: "assistant" });
+    expect(finalAnswer([])).toEqual({ kind: "other", label: "assistant" });
     expect(summary({ type: "agent_message", message: "hello" }).text).toBe("hello");
     expect(summary({ type: "web_search_call", action: { type: "open_page", url: "u" } })).toEqual({
       kind: "web_search",
@@ -156,6 +186,10 @@ describe("Codex transcript observation", () => {
 
 function summary(payload: Record<string, unknown>) {
   return summarizeTranscriptItem(line("response_item", payload));
+}
+
+function finalAnswer(content: unknown) {
+  return summary({ type: "message", role: "assistant", phase: "final_answer", content });
 }
 
 function line(type: string, payload: Record<string, unknown>) {
