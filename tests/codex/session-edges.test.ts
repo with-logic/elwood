@@ -46,4 +46,15 @@ describe("CodexSessionApi lifecycle edges", () => {
     expect(ptys[0]!.killSignals).toEqual([]);
     expect(statuses).toEqual(["exited"]);
   });
+
+  test("C-CODEX-21 an out-of-enum reasoningEffort rejects before spawn", async () => {
+    installFakes();
+    await expect(
+      startCodex({ cwd: tempDir(), reasoningEffort: "bogus" as never }),
+    ).rejects.toMatchObject({
+      code: "codex_invalid_reasoning_effort",
+      message: expect.stringContaining("bogus"),
+    });
+    expect(ptys).toHaveLength(0); // validation happens before the launch — no PTY spawned
+  });
 });

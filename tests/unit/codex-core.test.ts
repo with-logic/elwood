@@ -33,6 +33,7 @@ describe("Codex core helpers", () => {
       {
         cwd,
         model: "gpt-5.3-codex",
+        reasoningEffort: "xhigh",
         profile: "work",
         sandbox: "workspace-write",
         approvalPolicy: "never",
@@ -45,6 +46,15 @@ describe("Codex core helpers", () => {
     expect(command).toContain("--ask-for-approval 'never'");
     expect(command).toContain(`--cd '${record.cwd}'`);
     expect(command).toContain("-c 'model=\"gpt-5.3-codex\"'");
+    // C-CODEX-21: forwarded as a `-c model_reasoning_effort` override, AFTER caller
+    // configOverrides (so it wins a duplicate) but BEFORE the reserved hook keys.
+    expect(command).toContain("-c 'model_reasoning_effort=\"xhigh\"'");
+    expect(command.indexOf("model_reasoning_effort")).toBeGreaterThan(
+      command.indexOf("-c 'model=\"gpt-5.3-codex\"'"),
+    );
+    expect(command.lastIndexOf("features.hooks=true")).toBeGreaterThan(
+      command.indexOf("model_reasoning_effort"),
+    );
     expect(command.lastIndexOf("features.hooks=true")).toBeGreaterThan(command.indexOf("model="));
     expect(command.lastIndexOf("hookTrust")).toBeGreaterThan(command.indexOf("model="));
     expect(command.lastIndexOf("hookTrust")).toBeGreaterThan(

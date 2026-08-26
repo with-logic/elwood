@@ -27,6 +27,12 @@ export function buildCodexShellCommand(
   for (const override of hookOverrides(bridgeScriptPath, options))
     parts.push("-c", shellQuote(override));
   for (const override of options.configOverrides ?? []) parts.push("-c", shellQuote(override));
+  // Reasoning effort is validated before spawn (C-CODEX-21) and applied AFTER caller
+  // overrides so it wins over a hand-rolled `model_reasoning_effort` duplicate. Emitted
+  // as a bare TOML string value; the enum members contain no TOML-special characters.
+  if (options.reasoningEffort) {
+    parts.push("-c", shellQuote(`model_reasoning_effort="${options.reasoningEffort}"`));
+  }
   parts.push("-c", shellQuote("features.hooks=true"));
   parts.push("-c", shellQuote('hookTrust="trust-all"'));
   return parts.join(" ");

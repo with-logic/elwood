@@ -13,6 +13,7 @@ import type {
 } from "../claude/hooks.ts";
 import type { CodexHookEventName } from "../codex/hook-names.ts";
 import type { ElwoodActivityEvent } from "./activity.ts";
+import type { ClaudeReasoningEffort } from "./reasoning-effort.ts";
 
 export type TerminalSize = {
   readonly cols: number;
@@ -68,6 +69,7 @@ export type StartClaudeOptions = {
   readonly hooks?: ClaudeHookHandlers;
   readonly persona?: string;
   readonly model?: string;
+  readonly reasoningEffort?: ClaudeReasoningEffort;
   readonly permissionMode?: ClaudePermissionMode;
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];
@@ -85,6 +87,7 @@ export type ResumeClaudeOptions = {
   readonly stateDir?: string;
   readonly hooks?: ClaudeHookHandlers;
   readonly initialSize?: TerminalSize;
+  readonly reasoningEffort?: ClaudeReasoningEffort;
   readonly permissionMode?: ClaudePermissionMode;
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];

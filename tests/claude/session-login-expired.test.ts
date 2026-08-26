@@ -59,6 +59,24 @@ describe("ClaudeSessionApi mid-session login expiry (C-CLAUDE-18)", () => {
     expect(session.status).toBe("ready");
   });
 
+  test("C-CLAUDE-18 detects a mid-session 'Not logged in · Run /login' sign-out banner", async () => {
+    // The reported gap: a READY Claude session that gets logged out shows
+    // "Not logged in · Run /login" — a different wording than the expiry banners —
+    // and previously went undetected mid-session. It is the same recovery, so it
+    // must surface the same content-free login_expired warning.
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    const warnings = collectLoginWarnings(session);
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
+    expect(session.status).toBe("ready");
+
+    ptys[0]!.emitData(asScreen("⚠ Not logged in · Run /login"));
+    await expect.poll(() => warnings.length).toBe(1);
+    expect(warnings[0]).toMatchObject({ code: "login_expired", recoveryCommand: "/login" });
+    expect(session.status).toBe("ready"); // left alive to recover in place
+  });
+
   test("a login banner BEFORE readiness does not warn (startup handles that fatally)", async () => {
     const cwd = tempDir();
     installFakes();

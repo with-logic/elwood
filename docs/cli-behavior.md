@@ -121,6 +121,58 @@ select a destructive-rider affirmative, and never answer a specific-affirmative
 prompt (e.g. hook trust) with a generic "Yes". `src/core/trust-responder.ts`,
 `src/core/trust-prompts.ts`, verified by `tests/e2e/trust-prompt-claude.e2e.ts`.
 
+## Codex in-TUI update prompt (and the restart loop)
+
+Independent of the `autoupdate` preflight (`codex update` run before spawn), the
+Codex TUI can show its OWN "update available" prompt at launch. Elwood **always
+skips it** — it never selects "Update now" — because letting the live TUI update
+itself restarts Codex out from under the PTY session. The real update is the
+preflight; the in-TUI prompt is a nuisance to dismiss.
+
+**The trap (reported against the field, 2026-08):** an in-TUI update that a human
+"accepts" (or that Elwood used to leave latched) restarts Codex, the update does
+**not** take (a partial download, a managed install, contention), and the SAME
+update screen returns — an infinite loop stuck on the update screen. The fix is an
+**edge-triggered** skip: skip once per appearance, and RE-ARM the moment the update
+screen leaves the frame, so a reappearance after the restart is skipped again
+rather than sitting latched forever. Edge-detection mirrors the login watcher.
+
+Two version-coupled wrinkles this cost us:
+
+- The skip-attempt is gated on the **current frame** still showing the update
+  screen (its banner OR a numbered skip option), even though the option is located
+  in the accumulated buffer (Codex can split the banner and its options across two
+  consecutive frames). Gating the *attempt* on the buffer alone means a re-armed
+  benign frame that merely says "update" re-fires a skip against a **stale buffered
+  option** — a real bug we hit while building this. `src/codex/startup-prompts.ts`,
+  `currentFrameShowsUpdatePrompt`, C-CODEX-12.
+- Option labels drift by version. Older codex (0.132/0.133) rendered a numbered
+  dialog ("1. Update now / 2. Skip / 3. Skip until next version"). In the installed
+  0.149.1 binary, the upgrade notice strings extracted from the native binary read
+  like a **passive banner** (`<version> to update.` +
+  `https://github.com/openai/codex for installation options.`) rather than a
+  numbered dialog — so the interactive dialog is not guaranteed on every version.
+  The skip is written ONLY when a numbered skip option is actually present
+  (`findNumberedOption` → null ⇒ no write), so a passive banner is a harmless no-op.
+  The match set (`updateOptionPattern`, `updateScreenBanner`) is unit-tested against
+  captured layouts, NOT against a live update event (which requires an actually-stale
+  binary to trigger). If Codex changes the dialog wording, this is the first thing
+  to re-capture.
+
+## Claude "Not logged in" is a distinct re-auth banner from "Login expired"
+
+Claude's mid-session re-auth banners are NOT one string. Besides the lapsed/revoked
+forms (`Login expired`, `Session expired`, `OAuth token revoked`), a session whose
+auth is dropped entirely renders **`Not logged in · Run /login`**. The reauth
+matcher (`isClaudeReauthRequiredText`, `src/claude/login/expiry-screen.ts`) must
+recognize all of them — anchored on the `/login` recovery directive so an unrelated
+mention of "login" (or a Codex MCP "not logged in" line) does not trip it. The
+startup path already flagged the single-line `not logged in`; the gap was
+MID-SESSION (a ready session logging out), where only the reauth matcher runs.
+C-CLAUDE-17/18. Verified against the banner text the field reported; there is no
+live-CLI e2e (it would mutate real auth), so the matchers are unit-tested against
+captured strings.
+
 ## Input / paste
 
 - Caller and LLM text sent via `sendPrompt`/`sendMessage`/`sendGuidance` is

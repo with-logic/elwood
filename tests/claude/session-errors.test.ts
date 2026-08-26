@@ -79,6 +79,17 @@ describe("ClaudeSessionApi errors", () => {
     });
   });
 
+  test("C-CLAUDE-20 an out-of-enum reasoningEffort rejects before spawn", async () => {
+    installFakes();
+    await expect(
+      // `ultra` is a Codex-only-ish value, never valid for Claude's --effort enum.
+      startClaude({ cwd: tempDir(), reasoningEffort: "ultra" as never }),
+    ).rejects.toMatchObject({
+      code: "claude_invalid_reasoning_effort",
+      message: expect.stringContaining("ultra"),
+    });
+  });
+
   test("C-CLAUDE-05 C-ERR-01 missing Claude fails with typed error", async () => {
     installFakes();
     setCommandRunnerForTests(() => ({

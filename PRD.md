@@ -261,6 +261,7 @@ type StartClaudeOptions = {
   readonly hooks?: ClaudeHookHandlers;
   readonly persona?: string;
   readonly model?: string;
+  readonly reasoningEffort?: ClaudeReasoningEffort;
   readonly permissionMode?: ClaudePermissionMode;
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];
@@ -271,6 +272,8 @@ type StartClaudeOptions = {
   readonly hookTimeoutMs?: number;
   readonly strictVersionCheck?: boolean;
 };
+
+type ClaudeReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max";
 
 declare function startClaude(options: StartClaudeOptions): Promise<ClaudeSessionApi>;
 ```
@@ -292,6 +295,16 @@ accepts Claude's documented launch values: `default`, `acceptEdits`, `plan`,
 `model` is forwarded to Claude's documented `--model` launch flag so the
 session starts on the requested model. Elwood does not validate the value;
 Claude owns model-name resolution and its own failure behavior.
+
+`reasoningEffort`, when set, is forwarded to Claude's documented `--effort`
+launch flag so the session starts at the requested reasoning effort. Unlike
+`model`, the value is a fixed per-CLI enum, so Elwood validates it against the
+`ClaudeReasoningEffort` set BEFORE spawning and rejects an out-of-enum value with
+the typed `claude_invalid_reasoning_effort` error (listing the valid values), so a
+typo fails fast at start rather than deferring to the CLI. The effort applies to
+the current session only and is NOT persisted by Elwood; a resumed session must
+re-supply it (§5.2), consistent with `model`. Reasoning effort and model are
+independent axes on Claude (the flag is separate from `--model`).
 
 `autotrust` is an opt-in convenience for embedded/headless parent apps.
 When true, Elwood detects Claude's first-party workspace trust prompt in the
@@ -328,6 +341,7 @@ type ResumeClaudeOptions = {
   readonly stateDir?: string;
   readonly hooks?: ClaudeHookHandlers;
   readonly initialSize?: TerminalSize;
+  readonly reasoningEffort?: ClaudeReasoningEffort;
   readonly permissionMode?: ClaudePermissionMode;
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];
@@ -367,8 +381,10 @@ same `permissionMode`, `allowedTools`, `disallowedTools`, and `tools` the
 session started with, so tool restrictions cannot silently loosen across a
 resume. Explicit resume options override the persisted posture field by
 field, and the effective posture is re-persisted. Other adapter launch policy
-such as model and caller config overrides remains caller-supplied-per-call and
-is intentionally not persisted yet.
+such as model, reasoning effort, and caller config overrides remains
+caller-supplied-per-call and is intentionally not persisted yet — a resumed
+session that wants a non-default reasoning effort must re-supply `reasoningEffort`,
+exactly as it must re-supply `model`.
 
 Because every persisting parent writes the same try-resume-else-start dance,
 Elwood provides it directly:
@@ -1158,6 +1174,7 @@ type StartCodexOptions = {
   readonly hooks?: CodexHookHandlers;
   readonly persona?: string;
   readonly model?: string;
+  readonly reasoningEffort?: CodexReasoningEffort;
   readonly profile?: string;
   readonly sandbox?: "read-only" | "workspace-write" | "danger-full-access";
   readonly approvalPolicy?: "untrusted" | "on-request" | "never";
@@ -1168,11 +1185,35 @@ type StartCodexOptions = {
   readonly strictVersionCheck?: boolean;
 };
 
+type CodexReasoningEffort =
+  | "none"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max";
+
 declare function startCodex(options: StartCodexOptions): Promise<CodexSessionApi>;
 ```
 
 Elwood sets the PTY working directory and also passes Codex `--cd <cwd>` so
 Codex's own session state and the shell's current directory agree.
+
+`reasoningEffort`, when set, is forwarded as the Codex `-c
+model_reasoning_effort=<value>` config override so the session starts at the
+requested reasoning effort. Codex validates this value SERVER-SIDE — an
+out-of-enum value launches successfully and then fails at the first turn with a
+provider error — so Elwood validates it against the `CodexReasoningEffort` set
+BEFORE spawning and rejects an out-of-enum value with the typed
+`codex_invalid_reasoning_effort` error (listing the valid values), turning a
+deferred mid-session failure into a fast, clear start-time rejection. Reasoning
+effort and model are independent axes programmatically (effort is its own `-c`
+key); Elwood emits the reserved `model_reasoning_effort` override AFTER caller
+`configOverrides`, so `reasoningEffort` wins over a hand-rolled duplicate. The
+effort applies to the launched session only and is NOT persisted by Elwood (the
+config-restore teardown already strips a root `model_reasoning_effort`, §5.3); a
+resumed session must re-supply it (§5.6), consistent with `model`.
 
 `configOverrides` contains raw Codex `key=value` overrides passed through
 `--config` after Elwood's generated hook command config so callers can
@@ -1185,6 +1226,11 @@ When `autoupdate` is true, Elwood runs `codex update` from the user's login
 shell before spawning Codex and rechecks the version after the update. If Codex
 later shows an interactive update prompt inside the TUI, Elwood skips that
 prompt through PTY input, including Codex's cursor-addressed update screen.
+Elwood never selects "Update now" inside the live TUI (an in-TUI update restarts
+Codex out from under the session); the real update is the preflight `codex update`
+above, and the in-TUI prompt is always skipped. The skip is edge-triggered, so if
+the same update screen reappears after a restart — the update did not take — Elwood
+skips it again rather than leaving the session stuck looping on it (C-CODEX-12).
 `strictVersionCheck` makes unparseable Codex versions fatal instead of
 warning-and-continuing.
 
@@ -1210,6 +1256,7 @@ type ResumeCodexOptions = {
   readonly stateDir?: string;
   readonly hooks?: CodexHookHandlers;
   readonly initialSize?: TerminalSize;
+  readonly reasoningEffort?: CodexReasoningEffort;
   readonly sandbox?: CodexSandboxMode;
   readonly approvalPolicy?: CodexApprovalPolicy;
   readonly autoupdate?: boolean;
@@ -2243,8 +2290,9 @@ failures without turning `startClaude` or `startCodex` into a readiness wait for
 the first agent prompt. Authentication banner matching is best-effort and should
 cover the common `not authenticated`, `login required`, `authentication failed`,
 and non-MCP `not logged in` forms, as well as lapsed-session banners that only
-direct the user to re-run `/login` (`Login expired`, `Session expired`, or
-`OAuth token revoked`, each paired with a `run /login` recovery hint).
+direct the user to re-run `/login` (`Login expired`, `Session expired`,
+`OAuth token revoked`, or `Not logged in`, each paired with a `run /login`
+recovery hint).
 
 Once the live resources exist (hook bridge, PTY, terminal, and transcript
 watcher), every remaining startup step runs behind a single cleanup boundary: the
@@ -2348,11 +2396,13 @@ Initial required error names:
 | `claude_update_failed` | `claude update` failed. Best-effort: contained by the autoupdate preflight and surfaced as the `agent_update_failed` warning (never thrown out of `startClaude` when the installed CLI meets the minimum). |
 | `claude_not_authenticated` | Startup output or status indicates Claude is not authenticated. |
 | `claude_version_unsupported` | Installed Claude version lacks required features. |
+| `claude_invalid_reasoning_effort` | `reasoningEffort` was not one of the valid `ClaudeReasoningEffort` values; rejected before spawn. |
 | `codex_not_found` | `codex` could not be resolved or spawned. |
 | `codex_start_failed` | Codex started but exited or failed before the session was usable. |
 | `codex_update_failed` | `codex update` failed. Best-effort: contained by the autoupdate preflight and surfaced as the `agent_update_failed` warning (never thrown out of `startCodex` when the installed CLI meets the minimum). |
 | `codex_not_authenticated` | Startup output or status indicates Codex is not authenticated. |
 | `codex_version_unsupported` | Installed Codex version lacks required features. |
+| `codex_invalid_reasoning_effort` | `reasoningEffort` was not one of the valid `CodexReasoningEffort` values; rejected before spawn (Codex would otherwise fail server-side at the first turn). |
 | `state_not_found` | A requested Elwood session record does not exist. |
 | `state_corrupt` | A session record exists but cannot be parsed or validated. |
 | `adapter_mismatch` | A resume request targeted a session record owned by another adapter. |
@@ -2534,7 +2584,7 @@ Each criterion has:
 | C-ATTN-03 | §5.3 | Startup prompts Elwood answers automatically never produce `blocked`; a workspace trust prompt left unanswered because `autotrust` is false does. |
 | C-API-33 | §5.3 | `statusDecisions()` returns a live-only log of at most the 50 most recent status decisions, oldest first, each recording the evidence, the from/to statuses (`to` undefined when ignored), and a human-readable reason; it is never persisted and carries no prompt, terminal, or hook payload content. |
 | C-API-34 | §5.3 | `waitForStatus`/`waitForActivity` resolve from current state or the next matching event, reject with `wait_timeout` after the timeout (default 60000 ms), and reject with `session_not_running` when the session reaches an unwaited terminal status first; both unsubscribe on settle. |
-| C-API-29 | §5.2 §5.6 | Resume accepts the same launch-policy options as start and forwards them into the relaunched command: `resumeClaude` forwards `permissionMode`, `allowedTools`, `disallowedTools`, and `tools`; `resumeCodex` forwards `sandbox` and `approvalPolicy`. A resumed agent stays exactly as privileged and as tool-restricted as it started. |
+| C-API-29 | §5.2 §5.6 | Resume accepts the same launch-policy options as start and forwards them into the relaunched command: `resumeClaude` forwards `permissionMode`, `allowedTools`, `disallowedTools`, `tools`, and `reasoningEffort`; `resumeCodex` forwards `sandbox`, `approvalPolicy`, and `reasoningEffort`. A resumed agent stays exactly as privileged and as tool-restricted as it started, and applies a re-supplied reasoning effort (which Elwood does not persist across resume). |
 | C-API-32 | §5.2 §5.6 | Resume defaults launch-policy options from the record's persisted posture; explicit resume options override field by field, and the effective posture is re-persisted. |
 | C-API-30 | §5.4 | `tool_call` activity carries the tool's input as a serialized `toolInput` and `tool_result` activity carries the tool's output as a serialized `toolOutput`, sourced from the committed transcript for Claude (`tool_use.input`/`tool_result.content`, per C-CLAUDE-15) and from the transcript for Codex (`arguments`/`output`); absent sources leave the field absent. |
 | C-API-31 | §5.3 | The submitting Enter is a separate PTY write after a settle delay, and bounded re-Enters fire while the rendered composer still shows the staged paste, so a first long prompt cannot be left staged-but-unsubmitted. |
@@ -2595,9 +2645,10 @@ Each criterion has:
 | C-CLAUDE-14 | §5.1 | Under `autotrust`, Claude's allowlisted skill/plugin/MCP trust prompts are each answered once and emit `startup_prompt` activity under their `skill_trust`/`plugin_trust`/`mcp_trust` labels. Recognition is the only guard: a prompt is recognized solely by its HEADER wording on a non-option line (so an option-only trust phrase cannot spoof one), and once recognized Elwood sends the first affirmative option in the current frame — the agent is never left waiting. When a recognized prompt's affirmative option has not rendered in the current frame yet, Elwood emits a fire-once transient `attention` activity and keeps watching so a later frame carrying the option is still answered; this render-delay state is TRANSIENT and no warning is emitted for it. An off-allowlist first-run prompt is never auto-answered. Per the say-yes policy there is deliberately no per-dialog region binding, so a second stacked dialog's affirmative in the same frame is an accepted consequence, not a defended boundary. |
 | C-CLAUDE-15 | §5.4 | Claude `assistant_message`, `tool_call`, and `tool_result` activities are sourced from the committed transcript the CLI writes at `transcript_path`, never from the `Stop` hook's `last_assistant_message`; an un-sent ghost-text / composer draft therefore never becomes an `assistant_message`. |
 | C-CLAUDE-16 | §5.1 §5.4 §5.7 | A Claude startup prompt Elwood auto-answers is marked settled and emits its `startup_prompt` activity only after its PTY `sendInput` write fulfills. A rejected write emits NO `startup_prompt` activity, leaves the prompt un-settled so a later frame re-attempts it, and surfaces a bounded, content-free `startup_prompt_write_failed` warning carrying only the prompt label. |
-| C-CLAUDE-17 | §5.1 | A Claude startup banner showing a lapsed or revoked login that only directs the user to re-run `/login` (`Login expired`, `Session expired`, or `OAuth token revoked`, each paired with a `run /login` recovery hint) is treated as an authentication failure and rejects `startClaude` with `claude_not_authenticated`, exactly like the explicit `not authenticated` banners — the session is torn down rather than reported as usable. Matching is anchored on the `/login` recovery directive so an unrelated mention of "login" does not trip it. |
+| C-CLAUDE-17 | §5.1 | A Claude startup banner showing a lapsed, revoked, or absent login that only directs the user to re-run `/login` (`Login expired`, `Session expired`, `OAuth token revoked`, or `Not logged in`, each paired with a `run /login` recovery hint) is treated as an authentication failure and rejects `startClaude` with `claude_not_authenticated`, exactly like the explicit `not authenticated` banners — the session is torn down rather than reported as usable. Matching is anchored on the `/login` recovery directive so an unrelated mention of "login" does not trip it. |
 | C-CLAUDE-18 | §5.3 §5.7 | When a lapsed/revoked-login banner (per C-CLAUDE-17) appears on a Claude session that has ALREADY reached readiness — i.e. login expires mid-session — Elwood surfaces a typed, content-free `login_expired` warning (and its `warning` activity) carrying only a bounded `recoveryCommand` of `/login`. Detection is edge-based so a banner persisting across many frames does not re-emit, so a session warns at most once for its login expiring; the session is left ALIVE (no forced terminal transition) so the caller can recover in place via `session.login()`, tear down, or re-authenticate out of band. |
 | C-CLAUDE-19 | §5.4 §7A.4 | A committed Claude assistant `thinking` content block surfaces its plaintext extended-thinking as a `reasoning` activity carrying that text, sourced from the committed transcript exactly like `assistant_message` (C-CLAUDE-15) — no hook exposes it. Only ASSISTANT thinking is surfaced and empty thinking is dropped; a `redacted_thinking` block (opaque encrypted `data`, no readable text) produces no activity. |
+| C-CLAUDE-20 | §5.1 §5.2 | `reasoningEffort`, when supplied to `startClaude`/`resumeClaude`, is validated against the `ClaudeReasoningEffort` enum (`low`, `medium`, `high`, `xhigh`, `max`) before spawn — an out-of-enum value rejects with `claude_invalid_reasoning_effort` (message listing the valid values) and no process is spawned — and a valid value is forwarded to Claude's `--effort` launch flag. It is independent of `model`, applies to the launched session only, and is not persisted across resume (a resume must re-supply it). |
 
 #### C-CODEX: Codex Startup And Config (§4, §7A, §9)
 
@@ -2614,7 +2665,7 @@ Each criterion has:
 | C-CODEX-09 | §5.7 | Codex MCP startup warnings are parsed from terminal output into typed warning events with server names and recovery commands. |
 | C-CODEX-10 | §9.2 | `autoupdate: true` rechecks the Codex version after running `codex update`. |
 | C-CODEX-11 | §5.5 | `autotrust: true` answers Codex's directory trust prompt through PTY input and emits `startup_prompt` activity. |
-| C-CODEX-12 | §5.5 | If Codex still shows an interactive update prompt inside the TUI, Elwood selects the skip/continue-without-updating option by label. |
+| C-CODEX-12 | §5.5 | If Codex still shows an interactive update prompt inside the TUI, Elwood selects the skip/continue-without-updating option by label. The skip is EDGE-triggered: a persistent update screen is answered once (not re-answered every frame), but the skip RE-ARMS once the update screen leaves the frame, so an update prompt that REAPPEARS after Codex restarts (e.g. the update did not take and the same screen returns) is skipped again rather than leaving the session stuck on it. |
 | C-CODEX-13 | §10 | An immediately failing or unusable Codex process fails with `codex_start_failed` or a more specific typed error. |
 | C-CODEX-14 | §5.3 | `setModel` on Codex restores the user's prior `config.toml` default via compare-and-swap after the CLI persists its picker selection, skipping with the `codex_default_model_persisted` warning instead of clobbering concurrent edits. |
 | C-CODEX-15 | §5.5 | Codex's directory-trust prompt is answered only under `autotrust` (blocking on the human when off); Codex hook trust — Elwood's own integration — is answered regardless of `autotrust` and is NOT classified as blocking. Each is recognized only by its HEADER wording on a non-option line (so an option-only phrase cannot spoof it) and, once recognized, answered from the frame's affirmative option — the agent is never left waiting. When a recognized prompt's affirmative option has not rendered yet, a fire-once transient `attention` activity is emitted and Elwood keeps watching so a later frame answers it; this render-delay state is TRANSIENT and no warning is emitted for it. Each is answered once, from the shared allowlist. |
@@ -2622,6 +2673,7 @@ Each criterion has:
 | C-CODEX-17 | §5.4 §5.5 §5.7 | A Codex startup prompt Elwood auto-answers (directory/hook trust, `update` skip) is marked settled and emits its `startup_prompt` activity only after its PTY `sendInput` write fulfills. A rejected write emits NO `startup_prompt` activity, leaves the prompt un-settled so a later frame re-attempts it, and surfaces a bounded, content-free `startup_prompt_write_failed` warning carrying only the prompt label (mirrors C-CLAUDE-16). |
 | C-CODEX-18 | §5.4 §7A.4 | A committed Codex `reasoning` transcript item surfaces its human-readable text on the `reasoning` activity's `text` field: the `text` of every `summary[]` entry of type `summary_text`, or — when the reasoning is un-summarized — every `content[]` entry of type `reasoning_text`, joined by newlines. The always-present `encrypted_content` blob is never readable and is never surfaced. When neither carries prose (the common case with reasoning summaries disabled), the activity carries no `text`, exactly as a bare reasoning marker. |
 | C-CODEX-19 | §5.4 §7A.4 | A committed Codex shell/exec transcript item surfaces the ACTUAL command it ran as `tool_call` activity with its `toolInput`, and its output as `tool_result` activity with its `toolOutput`, across every representation the CLI emits — and the command is UNWRAPPED from the CLI's invocation machinery so consumers see the bare command, not the harness. The modern `exec` tool is a `custom_tool_call` whose `input` is a JavaScript snippet wrapping the call (e.g. `const r = await tools.exec_command({"cmd":"echo hi","workdir":…,"yield_time_ms":…}); text(r.output);`): Elwood extracts the inner `cmd`/`command` string (a `command` array is joined with spaces) and surfaces THAT as `toolInput`, discarding the JS wrapper and the non-command fields (`workdir`, `yield_time_ms`, `max_output_tokens`). A `function_call` (`shell`/`exec_command`) whose command is a JSON string in `arguments` is likewise unwrapped to its `command`/`cmd`. When the wrapper cannot be parsed, the raw `input`/`arguments` is surfaced unchanged rather than dropped. A `custom_tool_call_output` is classified as `tool_result` (not `other`), and a result's `output` — a plain string OR an array of `{ type: "input_text", text }` entries — is surfaced as `toolOutput` with the array entries' text joined; the `tool_result` `label` carries the `call_id` correlating it to its `tool_call`. So the real command and its output are surfaced as a clean paired call/result, never the JS harness and never a content-free `other` row. |
+| C-CODEX-21 | §5.5 §5.6 | `reasoningEffort`, when supplied to `startCodex`/`resumeCodex`, is validated against the `CodexReasoningEffort` enum (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`) before spawn — an out-of-enum value rejects with `codex_invalid_reasoning_effort` (message listing the valid values) and no process is spawned — and a valid value is forwarded as the reserved `-c model_reasoning_effort=<value>` override, applied AFTER caller `configOverrides` so it wins over a hand-rolled duplicate. It is independent of `model`, applies to the launched session only, and is not persisted across resume (a resume must re-supply it). |
 | C-CODEX-20 | §5.4 | The Codex transcript reader is BOUNDED like Claude's: it reads in fixed-size chunks, discards any un-terminated record past a max-pending ceiling as an `"oversized"` drop, streams a large backlog across poll ticks under a per-scan chunk budget, and at PTY-exit drains only within a bounded chunk budget and wall-clock slice — accounting leftover bytes as an `"unread_backlog"` drop — so a hundreds-of-MiB transcript never OOMs or blocks the event loop. Lost data is surfaced as the content-free, count-free `transcript_records_dropped` warning (a live event, cause-tagged, not persisted or counted) and a scan that throws is contained as `transcript_poll_stopped` (both `agent: "codex" | "claude"`). `finish()` is idempotent and terminal — a late `observe()` never restarts polling past `terminal:exit`. |
 
 #### C-HOOK: Hook Bridge Coverage And Semantics (§6)

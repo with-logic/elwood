@@ -14,6 +14,8 @@ export function buildClaudeShellCommand(
   const parts = ["exec", "claude", "--settings", shellQuote(settingsPath)];
   if (resumeId) parts.push("--resume", shellQuote(resumeId));
   if (options.model) parts.push("--model", shellQuote(options.model));
+  // Validated before spawn in the preflight (C-CLAUDE-20); forwarded verbatim here.
+  if (options.reasoningEffort) parts.push("--effort", shellQuote(options.reasoningEffort));
   if (options.permissionMode) {
     parts.push("--permission-mode", shellQuote(options.permissionMode));
   }

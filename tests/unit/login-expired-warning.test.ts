@@ -24,9 +24,15 @@ describe("isClaudeReauthRequiredText", () => {
     expect(isClaudeReauthRequiredText("Run /login to sign in with your claude.ai account")).toBe(
       true,
     );
+    // C-CLAUDE-17: an outright signed-out session ("Not logged in · Run /login")
+    // is the same recovery and must be caught mid-session, not just at startup.
+    expect(isClaudeReauthRequiredText("Not logged in · Run /login")).toBe(true);
+    expect(isClaudeReauthRequiredText("⚠ Not logged in\n  Please run /login")).toBe(true);
     // No /login recovery directive → not an expiry banner.
     expect(isClaudeReauthRequiredText("login page loaded")).toBe(false);
     expect(isClaudeReauthRequiredText("expired certificate warning")).toBe(false);
+    // "Not logged in" WITHOUT a /login directive must not trip the banner (anchored on recovery).
+    expect(isClaudeReauthRequiredText("Not logged in to the linear MCP server")).toBe(false);
   });
 });
 

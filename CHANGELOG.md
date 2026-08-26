@@ -13,6 +13,21 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ### Fixed
 
+- **Claude's `Not logged in · Run /login` sign-out is now detected mid-session.**
+  A ready Claude session that gets logged out mid-run renders `Not logged in`
+  (paired with a `run /login` hint) — a different wording than the `Login expired`
+  / `Session expired` / `OAuth token revoked` banners Elwood already recognized.
+  That form previously went undetected mid-session, so no `login_expired` warning
+  fired. It now surfaces the same content-free `login_expired` warning (+ `warning`
+  activity), leaving the session alive to recover via `session.login()`. (§5.3/§5.7,
+  C-CLAUDE-17/18)
+- **Codex's in-TUI update prompt is now re-skipped on the restart loop.** Elwood
+  always skips Codex's interactive "update available" prompt (it never selects
+  "Update now"; the real update is the `autoupdate` preflight). The skip was latched
+  once per session, so if Codex restarted and the SAME update screen reappeared — the
+  update did not take — the session got stuck looping on it. The skip is now
+  edge-triggered: it re-arms when the update screen leaves the frame and re-skips the
+  reappearance. (§5.5, C-CODEX-12)
 - **Autoupdate is now best-effort and never fails a start on its own.** When
   `autoupdate: true` and `claude update` / `codex update` fails (a flaky network,
   a partial native-installer download, contention during a fleet launch), Elwood no
@@ -33,6 +48,19 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ### Added
 
+- **`reasoningEffort` is now a first-class start/resume option on both adapters.**
+  `startClaude`/`resumeClaude` accept `reasoningEffort?: ClaudeReasoningEffort`
+  (`low`/`medium`/`high`/`xhigh`/`max`), forwarded to Claude's `--effort` flag;
+  `startCodex`/`resumeCodex` accept `reasoningEffort?: CodexReasoningEffort`
+  (`none`/`minimal`/`low`/`medium`/`high`/`xhigh`/`max`), forwarded as the reserved
+  `-c model_reasoning_effort=<value>` override (applied after caller `configOverrides`
+  so it wins a duplicate). The two enums differ per CLI; Elwood validates the value
+  against the adapter's enum BEFORE spawn and rejects an out-of-enum value with the
+  typed `claude_invalid_reasoning_effort` / `codex_invalid_reasoning_effort` error
+  (Codex otherwise fails server-side only at the first turn). Effort is independent of
+  `model`, applies to the launched session only, and is NOT persisted — a resume must
+  re-supply it, exactly like `model`. Both enums are exported. (§5.1/§5.5, §5.2/§5.6,
+  C-CLAUDE-20, C-CODEX-21)
 - **`ClaudeSession` / `CodexSession` classes are now the primary API.** One class per
   adapter exposes BOTH the ergonomic `send`/`stream` convenience AND the full control
   surface (`sendMessage`, `sendPrompt`, `sendGuidance`, `sendKeys`, `resize`,
