@@ -144,15 +144,10 @@ The implementation should use the user's login shell and interactive/login flags
 appropriate for that shell. For the common zsh case, this is expected to behave
 like an interactive login shell and load the user's normal startup files.
 
-This interactive login form (`-l -i` for zsh) applies to the **agent PTY**. The
-one-shot, non-PTY preflight probes (`--version`, `update`, `--help`) instead use
-a **login-only** shell (`-l`, without the interactive flag): the login form
-resolves the user's PATH, while dropping the interactive flag skips the
-expensive interactive startup (`.zshrc`/prompt setup) that a one-shot probe does
-not need. This keeps probes off the host's critical path. The trade-off: a user
-who sets PATH only in interactive startup files (not login files) could have a
-probe fail to resolve the CLI; PATH belongs in login files for exactly this
-reason, and the agent PTY still uses the full interactive login shell.
+This interactive login form (`-l -i` for zsh) applies to both the **agent PTY**
+and one-shot, non-PTY preflight probes (`--version`, `update`, `--help`). The
+same shell startup files MUST resolve the CLI for every lifecycle operation so
+preflight, update, launch, and resume cannot operate on different installations.
 
 Elwood MUST provide diagnostics or tests proving that environment variables from
 the user's shell startup are visible to the launched agent process.
@@ -2241,9 +2236,9 @@ not subscribe to the `warning` event is unaffected and the session still reaches
 `ready`.
 
 Version checks and optional `claude update` / `codex update` commands must run
-through the user's configured macOS login shell so PATH resolves as it would in
-a normal Terminal.app session; they use the login-only (non-interactive) form
-(see §4.2). Elwood uses the user's configured login shell rather than trusting
+through the user's configured macOS interactive login shell so PATH resolves as
+it would in a normal Terminal.app session (see §4.2). Elwood uses the user's
+configured login shell rather than trusting
 an inherited `SHELL` environment override from the parent process.
 
 These probes MUST run asynchronously and MUST NOT block the host process's
@@ -2614,7 +2609,7 @@ Each criterion has:
 | C-PTY-05 | §5.3 | `resize({ cols, rows })` resizes both the underlying PTY and the headless terminal model, while closed-fd resize races during process exit are ignored. |
 | C-PTY-06 | §9.4 | Process exit emits a terminal/process exit event and updates session status. |
 | C-PTY-07 | §4.1 | Cursor-addressed PTY output renders into the headless xterm snapshot before startup prompt detection runs. |
-| C-PTY-08 | §4.2 §9.2 | Non-PTY CLI probes (`--version`, `update`, `--help`) run in a login-only shell (no interactive flag), while the agent PTY uses the interactive login shell. |
+| C-PTY-08 | §4.2 §9.2 | Non-PTY CLI probes (`--version`, `update`, `--help`) and the agent PTY run through the same interactive login shell, so every lifecycle operation resolves the same CLI installation. |
 
 #### C-PERF: Startup Performance (§9)
 

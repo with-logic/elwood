@@ -17,10 +17,8 @@ describe("user shell", () => {
     expect(loginShellCommand("codex")).toEqual(["-l", "-i", "-c", "codex"]);
   });
 
-  test("C-PTY-08 the agent PTY uses an interactive login shell; probes are login-only", () => {
-    // PTY launch keeps -i (matches Terminal.app); one-shot probes drop it.
+  test("C-PTY-08 the agent PTY and probes use the same interactive login shell", () => {
     expect(loginShellCommand("claude")).toEqual(["-l", "-i", "-c", "claude"]);
-    expect(probeShellCommand("claude --version")).toEqual(["-l", "-c", "claude --version"]);
-    expect(probeShellCommand("claude --version")).not.toContain("-i");
+    expect(probeShellCommand("claude --version")).toEqual(["-l", "-i", "-c", "claude --version"]);
   });
 });

@@ -22,12 +22,7 @@ export function loginShellCommand(command: string): readonly string[] {
   return ["-l", "-i", "-c", command];
 }
 
-/**
- * Login (non-interactive) shell for one-shot preflight probes (`--version`,
- * `update`, `--help`). `-l` resolves the user's PATH from login files; dropping
- * `-i` skips the expensive interactive `.zshrc`/prompt setup a probe never
- * needs, so probes stay fast and off the host's critical path (§9.2).
- */
+/** Interactive login shell for probes, keeping CLI resolution identical to the agent PTY. */
 export function probeShellCommand(command: string): readonly string[] {
-  return ["-l", "-c", command];
+  return loginShellCommand(command);
 }
