@@ -82,7 +82,7 @@ const useMcpOption = new RegExp(`^${notDecline}.*\\buse this(?:.*\\bMCP)? server
 const trustHooksOption = new RegExp(`^${notDecline}.*\\btrust\\b.*\\b(hooks?|all)\\b`, "i");
 
 /**
- * The allowlist. Wording verified against claude 2.1.205 and codex-cli 0.142.5.
+ * The allowlist. Wording verified against claude 2.1.205–2.1.252 and codex-cli 0.142.5.
  * `workspace`/`directory` trust are the folder-trust gates; `skill`, `plugin`,
  * and `mcp` cover the CLI's first-run trust prompts for loading third-party
  * skills, plugins, and MCP servers under a full-trust launch.
@@ -150,10 +150,9 @@ export const trustPromptAllowlist = [
 /**
  * True when `spec`'s HEADER wording appears on a NON-option line of `frame`. This
  * is the ONE shared, option-aware recognizer: the responder and the screen-fact
- * blocking rules both go through it, so a numbered option whose label merely
- * contains a trust phrase (e.g. "1. Trust the plugin?") is never recognized as a
- * trust prompt. Matching against joined non-option lines also keeps a header that
- * wrapped across physical rows matching (PRD §5.1).
+ * blocking rules both go through it, so a numbered or cursor-selectable option
+ * whose label merely contains a trust phrase is never recognized as a prompt.
+ * Matching joined non-option lines also keeps wrapped headers matchable (§5.1).
  */
 export function trustPromptHeaderVisible(frame: string, spec: TrustPromptBase): boolean {
   return spec.headerPattern.test(nonOptionText(frame));

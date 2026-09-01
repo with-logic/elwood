@@ -23,9 +23,10 @@ export class ClaudeStartupPromptResponder {
   handle(
     screenText: string,
     write: (input: string) => TrustWriteResult,
+    readFrame?: () => string,
   ): readonly SettledStartupOutcome<"claude">[] {
     const settled: SettledStartupOutcome<"claude">[] = [];
-    const trust = this.trust.handle(screenText, write);
+    const trust = this.trust.handle(screenText, write, readFrame);
     if (trust?.kind === "answered") {
       settled.push({ outcome: { kind: "answered", ...trust.automation }, settled: trust.settled });
     } else if (trust?.kind === "option_pending") {

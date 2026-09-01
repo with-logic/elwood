@@ -118,21 +118,42 @@ legacy string/`agent_message` support. C-CODEX-16.
 
 ## Trust prompts
 
-The real Claude folder-trust prompt renders as **one dialog** spanning
-header → blank line(s) → descriptive prose → options, and the header question
-**wraps across physical rows** on a narrow terminal. A matcher MUST:
+The real Claude folder-trust prompt renders as **one dialog** spanning header →
+blank line(s) → descriptive prose → options, and the header question **wraps
+across physical rows** on a narrow terminal. Its option format is version-coupled:
+
+- Claude 2.1.206 used numbered rows with the affirmative first
+  (`❯ 1. Yes, I trust this folder / 2. No, exit`).
+- Claude 2.1.252 uses unnumbered cursor rows with the safe decline selected first
+  (`❯ No, exit / Yes, I trust this folder`). Accepting requires ArrowDown + Enter;
+  sending the old numeric answer leaves the dialog waiting.
+
+The workspace gate is independent of tool permission policy: it still appears
+under both `--permission-mode bypassPermissions` and the exact
+`--dangerously-skip-permissions` flag (verified against 2.1.252). A matcher MUST:
 
 - match against the dialog's **joined** non-option lines, never line-by-line, and
   never treat a blank line as a dialog boundary;
 - anchor on a non-option **header** line whose pattern matches the question
   wording — an option-only phrase (e.g. "trust this folder", which appears in the
   "Yes" option) must never anchor a prompt (anti-spoofing).
+- treat the whole numbered or cursor-selectable block as the option region,
+  including unselected rows above the cursor, then either send the old option
+  number or navigate from the rendered cursor to the affirmative and press Enter.
 
 Under `autotrust`, detect-and-approve: if a trust prompt is detected, answer yes
 rather than leave the agent hanging on the gate. Keep the cheap safety: never
 select a destructive-rider affirmative, and never answer a specific-affirmative
 prompt (e.g. hook trust) with a generic "Yes". `src/core/trust-responder.ts`,
 `src/core/trust-prompts.ts`, verified by `tests/e2e/trust-prompt-claude.e2e.ts`.
+
+**Do not equate `autotrust` with “not blocking” until the write clears the real
+screen.** Trust rules are omitted from human-blocking classification under
+`autotrust`, because automation owns the gate. If option parsing drifts and writes
+nothing, the 10 s initial-ready starvation deadline can otherwise report `ready`
+over a still-visible trust dialog. C-E2E-09 therefore requires both `ready` and a
+cleared trust screen; a complete but unanswerable real frame is a failure, not a
+skip.
 
 ## Codex in-TUI update prompt (and the restart loop)
 

@@ -113,14 +113,20 @@ export async function buildClaudeSession(
   const promptResponder = new ClaudeStartupPromptResponder(autotrust);
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
   const turnWatcher = observers.turn;
+  let latestRenderedText = "";
   const terminal = attachPtyTerminal(startupSize, pty, (data, renderedTerminal) => {
     startupOutput.push(data);
     terminalReplay.push(data);
-    const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
+    latestRenderedText = renderedTerminal.snapshot().text;
+    const frame = { text: latestRenderedText, title: renderedTerminal.title };
     // The write RETURNS its `sendInput` completion (no longer swallowed): the
     // responder settles the prompt and its `startup_prompt` activity only after
     // the write fulfills, and a rejected write stays retryable + warns (C-CLAUDE-16).
-    const autos = promptResponder.handle(frame.text, (input) => renderedTerminal.sendInput(input));
+    const autos = promptResponder.handle(
+      frame.text,
+      (input) => renderedTerminal.sendInput(input),
+      () => latestRenderedText,
+    );
     // Warning delivery is CONTAINED on the frame path: a throwing `warning`/`activity`
     // listener must never skip readiness, login detection, or terminal:data (§5.7).
     emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {

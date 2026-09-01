@@ -74,20 +74,6 @@ describe("ClaudeSessionApi startup and terminal control", () => {
     expect(readFileSync(settingsPath, "utf8")).toBe('{"permissions":{"allow":["Read"]}}\n');
   });
 
-  test("C-CLAUDE-10 autotrust answers Claude workspace prompts", async () => {
-    const cwd = tempDir();
-    installFakes();
-    const session = await startClaude({ cwd, autotrust: true });
-    const activity: string[] = [];
-    session.on("activity", (event) => activity.push(`${event.kind}:${event.label}`));
-    ptys[0]!.emitData(
-      "Quick safety check: Is this a project you created or one you trust?\r\n1. Yes, I trust this folder",
-    );
-    await flushTerminal();
-    expect(ptys[0]!.writes).toEqual(["1\r"]);
-    expect(activity).toContain("startup_prompt:workspace_trust");
-  });
-
   test("C-ATTN-03 an auto-answered trust prompt does not block the session", async () => {
     const cwd = tempDir();
     installFakes();

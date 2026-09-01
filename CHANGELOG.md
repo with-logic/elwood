@@ -13,6 +13,16 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ### Fixed
 
+- **Claude's current cursor-style workspace trust prompt is auto-approved again.**
+  Claude 2.1.252 replaced the older numbered, affirmative-first layout with an
+  unnumbered menu that defaults to `No, exit`; the responder recognized its header
+  but found no numbered affirmative, wrote nothing, and the readiness fallback
+  could report `ready` over the still-visible gate. Elwood now supports both
+  layouts, navigates cursor menus to the affirmative before Enter, keeps their
+  entire option region out of header recognition, and verifies the real trust
+  screen clears before readiness. The gate remains independent of Claude's
+  `bypassPermissions` / `--dangerously-skip-permissions` policy. (§5.1/§5.3,
+  C-CLAUDE-10/C-CLAUDE-14/C-E2E-09)
 - **Modern Codex final replies now carry their text on `assistant_message`
   activity.** Codex 0.149.1 writes replies as assistant `message` response items
   with `phase: "final_answer"` and `content[].output_text`; Elwood previously

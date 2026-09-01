@@ -6,13 +6,31 @@
  * frame once the option paints, leaving no stale record.
  */
 
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { startClaude } from "../../src/index.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
 describe("ClaudeSessionApi trust-prompt render delay", () => {
+  test("C-CLAUDE-10 autotrust navigates the current cursor prompt before reporting it answered", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd, autotrust: true });
+    const activity: string[] = [];
+    session.on("activity", (event) => activity.push(`${event.kind}:${event.label}`));
+    ptys[0]!.emitData(
+      "Quick safety check: Is this a project you created or one you trust?\r\n\r\n❯ No, exit\r\n  Yes, I trust this folder",
+    );
+    await vi.waitFor(() => expect(ptys[0]!.writes).toEqual(["\u001b[B"]));
+    ptys[0]!.emitData(
+      "\u001b[2J\u001b[HQuick safety check: Is this a project you created or one you trust?\r\n\r\n  No, exit\r\n❯ Yes, I trust this folder",
+    );
+    await vi.waitFor(() => expect(ptys[0]!.writes).toEqual(["\u001b[B", "\r"]));
+    ptys[0]!.emitData("\u001b[2J\u001b[HClaude ready\r\n❯ ");
+    await vi.waitFor(() => expect(activity).toContain("startup_prompt:workspace_trust"));
+  });
+
   test("C-CLAUDE-14 a not-yet-rendered option emits a TRANSIENT attention, persists NO durable warning", async () => {
     const cwd = tempDir();
     installFakes();

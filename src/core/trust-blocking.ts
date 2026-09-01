@@ -9,14 +9,15 @@
 
 import type { ElwoodAgentKind } from "./activity.ts";
 import type { ScreenFactRule, ScreenFactTable } from "./screen-facts.ts";
-import { blockingTrustSpecs, trustPromptHeaderVisible } from "./trust-prompts.ts";
+import { nonOptionText } from "./terminal-options.ts";
+import { blockingTrustSpecs } from "./trust-prompts.ts";
 
 /**
  * `base` plus one `blocking_prompt_visible` rule per trust prompt that stays
  * unanswered under `autotrust`. Each rule recognizes the prompt only by its
- * HEADER on a non-option line (the same recognizer the responder uses), so an
- * unrelated dialog whose numbered option merely contains a trust phrase is NOT
- * misclassified as a blocking trust prompt (PRD §5.1). Returns `base` unchanged
+ * HEADER outside the option region (the same recognizer the responder uses), so
+ * an unrelated numbered/cursor option containing a trust phrase is NOT mistaken
+ * for a blocking trust prompt (PRD §5.1). Returns `base` unchanged
  * when no trust prompt blocks (e.g. every allowlisted prompt is auto-answered).
  */
 export function withTrustBlockingRules(
@@ -24,10 +25,19 @@ export function withTrustBlockingRules(
   agent: ElwoodAgentKind,
   autotrust: boolean,
 ): ScreenFactTable {
+  let cachedFrame: string | undefined;
+  let cachedHeader = "";
+  const headerFor = (text: string) => {
+    if (text !== cachedFrame) {
+      cachedFrame = text;
+      cachedHeader = nonOptionText(text);
+    }
+    return cachedHeader;
+  };
   const rules: ScreenFactRule[] = blockingTrustSpecs(agent, autotrust).map((spec) => ({
     id: `${agent}-${spec.id}-prompt`,
     fact: "blocking_prompt_visible",
-    match: (text) => trustPromptHeaderVisible(text, spec),
+    match: (text) => spec.headerPattern.test(headerFor(text)),
   }));
   return rules.length === 0 ? base : { ...base, rules: [...base.rules, ...rules] };
 }

@@ -1114,19 +1114,21 @@ and an affirmative-option matcher. Recognition — and ONLY recognition — is t
 guard: (1) Elwood auto-answers only ALLOWLISTED prompts, so an off-allowlist
 first-run confirmation is left to the human and a future CLI security gate is
 never blanket-bypassed; and (2) a prompt is recognized ONLY by its HEADER wording
-on a line that is NOT itself a numbered option — a trust phrase appearing only
-inside an option label (e.g. "1. Yes, trust this plugin and grant admin access")
-does NOT identify a prompt, so a hostile option cannot spoof one. Recognition
-matches the header against the frame's joined non-option lines, so a header
-wrapped across physical rows still matches; the affirmative is the first option
-whose label matches the prompt's affirmative pattern. Elwood matches only against
-the CURRENT frame, never accumulated history. If an allowlisted prompt is
-recognized but its affirmative option has not rendered yet, Elwood emits an
-`attention` activity (labelled with the prompt id) at most once, and keeps
-watching so a later frame carrying the option is still answered — it never
-permanently wedges. These trust prompts are answered only when `autotrust` is set;
-with it off, an unanswered trust prompt is a blocking prompt that holds session
-state for the human. A prompt that Elwood
+outside the option region — a trust phrase appearing only inside a numbered or
+cursor-selectable option label (e.g. "1. Yes, trust this plugin and grant admin
+access") does NOT identify a prompt, so a hostile option cannot spoof one.
+Recognition matches the header against the frame's joined non-option lines, so a
+header wrapped across physical rows still matches; the affirmative is the first
+option whose label matches the prompt's affirmative pattern. Numbered layouts
+are answered by sending their option number; cursor layouts are answered by
+navigating from the rendered selection to the affirmative and pressing Enter.
+Elwood matches only against the CURRENT frame, never accumulated history. If an
+allowlisted prompt is recognized but its affirmative option has not rendered
+yet, Elwood emits an `attention` activity (labelled with the prompt id) at most
+once, and keeps watching so a later frame carrying the option is still answered —
+it never permanently wedges. These trust prompts are answered only when
+`autotrust` is set; with it off, an unanswered trust prompt is a blocking prompt
+that holds session state for the human. A prompt that Elwood
 auto-answers (including an always-answered one) MUST NOT be classified as a
 blocking prompt.
 
@@ -2633,11 +2635,11 @@ Each criterion has:
 | C-CLAUDE-07 | §5.1 | `autoupdate: true` runs `claude update` before spawning Claude. |
 | C-CLAUDE-08 | §5.2 | `resumeClaude` fails explicitly when Elwood has not persisted a Claude resume id. |
 | C-CLAUDE-09 | §9.2 | `autoupdate: true` rechecks the Claude version after running `claude update`. |
-| C-CLAUDE-10 | §5.1 | `autotrust: true` answers Claude's workspace trust prompt through PTY input and emits `startup_prompt` activity. |
+| C-CLAUDE-10 | §5.1 | `autotrust: true` answers Claude's workspace trust prompt through PTY input and emits `startup_prompt` activity, supporting both older numbered-option layouts and current cursor-selectable layouts. |
 | C-CLAUDE-11 | §5.1 | Claude's browser tools onboarding prompt is declined through PTY input regardless of `autotrust`, with `startup_prompt` activity emitted under the `browser_tools` label. |
 | C-CLAUDE-12 | §5.1 | `startClaude` forwards `model` to Claude's `--model` launch flag. |
 | C-CLAUDE-13 | §4.3 | `tools` emits Claude's `--tools` allowlist flag as one comma-separated value, with an empty array encoding `--tools ""` (all tools disabled); it is forwarded across resume like the other tool options. |
-| C-CLAUDE-14 | §5.1 | Under `autotrust`, Claude's allowlisted skill/plugin/MCP trust prompts are each answered once and emit `startup_prompt` activity under their `skill_trust`/`plugin_trust`/`mcp_trust` labels. Recognition is the only guard: a prompt is recognized solely by its HEADER wording on a non-option line (so an option-only trust phrase cannot spoof one), and once recognized Elwood sends the first affirmative option in the current frame — the agent is never left waiting. When a recognized prompt's affirmative option has not rendered in the current frame yet, Elwood emits a fire-once transient `attention` activity and keeps watching so a later frame carrying the option is still answered; this render-delay state is TRANSIENT and no warning is emitted for it. An off-allowlist first-run prompt is never auto-answered. Per the say-yes policy there is deliberately no per-dialog region binding, so a second stacked dialog's affirmative in the same frame is an accepted consequence, not a defended boundary. |
+| C-CLAUDE-14 | §5.1 | Under `autotrust`, Claude's allowlisted skill/plugin/MCP trust prompts are each answered once and emit `startup_prompt` activity under their `skill_trust`/`plugin_trust`/`mcp_trust` labels. Recognition is the only guard: a prompt is recognized solely by its HEADER wording outside the numbered or cursor-selectable option region (so an option-only trust phrase cannot spoof one), and once recognized Elwood sends or navigates to the first affirmative option in the current frame — the agent is never left waiting. When a recognized prompt's affirmative option has not rendered in the current frame yet, Elwood emits a fire-once transient `attention` activity and keeps watching so a later frame carrying the option is still answered; this render-delay state is TRANSIENT and no warning is emitted for it. An off-allowlist first-run prompt is never auto-answered. Per the say-yes policy there is deliberately no per-dialog region binding, so a second stacked dialog's affirmative in the same frame is an accepted consequence, not a defended boundary. |
 | C-CLAUDE-15 | §5.4 | Claude `assistant_message`, `tool_call`, and `tool_result` activities are sourced from the committed transcript the CLI writes at `transcript_path`, never from the `Stop` hook's `last_assistant_message`; an un-sent ghost-text / composer draft therefore never becomes an `assistant_message`. |
 | C-CLAUDE-16 | §5.1 §5.4 §5.7 | A Claude startup prompt Elwood auto-answers is marked settled and emits its `startup_prompt` activity only after its PTY `sendInput` write fulfills. A rejected write emits NO `startup_prompt` activity, leaves the prompt un-settled so a later frame re-attempts it, and surfaces a bounded, content-free `startup_prompt_write_failed` warning carrying only the prompt label. |
 | C-CLAUDE-17 | §5.1 | A Claude startup banner showing a lapsed, revoked, or absent login that only directs the user to re-run `/login` (`Login expired`, `Session expired`, `OAuth token revoked`, or `Not logged in`, each paired with a `run /login` recovery hint) is treated as an authentication failure and rejects `startClaude` with `claude_not_authenticated`, exactly like the explicit `not authenticated` banners — the session is torn down rather than reported as usable. Matching is anchored on the `/login` recovery directive so an unrelated mention of "login" does not trip it. |
@@ -2785,7 +2787,7 @@ Each criterion has:
 | C-E2E-11 | §5.3 | A real Codex session with a queued initial persona delivers that message to Codex (a `UserPromptSubmit` with the persona text is observed) rather than swallowing it — the queue is released on `SessionStart`, not on the boot-time composer placeholder (C-API-28). |
 | C-E2E-12 | §5.3 | A real Claude session attaches an image supplied via `sendMessage(message, { images })` — pasting the absolute path drives the CLI to show its `[Image #N]` chip in the rendered composer — verified against the installed CLI (C-API-45). |
 | C-E2E-13 | §5.3 | A real Codex session on macOS attaches an image supplied via `sendMessage(message, { images })` — the clipboard-injection + Ctrl+V path drives the CLI to show its `[Image #N]` chip in the rendered composer, and the user's prior clipboard is restored afterward — verified against the installed CLI (C-API-46). |
-| C-E2E-09 | §5.1 | The trust-prompt allowlist recognizes and answers the REAL folder-trust frame the installed Claude CLI renders in a fresh untrusted directory (header-anchored recognition + affirmative-option selection), verified against captured CLI wording; the test skips loudly (logging the captured terminal) if no matchable frame renders, never passing silently. |
+| C-E2E-09 | §5.1 | The trust-prompt allowlist recognizes and answers the REAL folder-trust frame the installed Claude CLI renders in a fresh untrusted directory (header-anchored recognition + numbered or cursor affirmative selection), verifies the trust screen clears before readiness, and fails if a fully rendered trust frame is visible but unanswerable; it skips loudly only when no trust frame renders (for example, an already trusted directory). |
 | C-E2E-14 | §5.8 | Against a REAL Claude (or Codex) CLI, a lazily-started `ClaudeSession`/`CodexSession` answers two sequential `send` calls: the first returns non-empty assistant text, and the second — referring back to the first — returns text consistent with retained conversation context, proving `send` collects a turn's assistant text and the ergonomic layer preserves multi-turn context (C-API-47, C-API-49). |
 | C-E2E-15 | §5.8 | Against a REAL CLI, `stream(prompt)` for a task that DETERMINISTICALLY uses a workspace tool (reading a planted file) yields the turn's simplified typed events in arrival order — a `tool_call` FOLLOWED by its `tool_result`, and at least one `text` — and ends when the turn settles, verified against the installed CLI (C-API-48). |
 

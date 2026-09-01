@@ -7,7 +7,7 @@
  * refusal. Covers PRD §5.1 (C-CLAUDE-14, C-CODEX-15).
  */
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { TrustPromptResponder } from "../../src/core/trust-responder.ts";
 
 describe("trust-prompt automation security", () => {
@@ -70,6 +70,81 @@ describe("trust-prompt automation security", () => {
       }),
     ).toBeUndefined();
     expect(writes).toEqual([]);
+  });
+
+  test("C-CLAUDE-14 an unnumbered option above the cursor cannot spoof a trust header", () => {
+    const writes: string[] = [];
+    const frame = "Unrecognized migration\n  Do you trust this folder?\n❯ No, cancel";
+    expect(
+      new TrustPromptResponder("claude", true).handle(frame, (input) => {
+        writes.push(input);
+      }),
+    ).toBeUndefined();
+    expect(writes).toEqual([]);
+  });
+
+  test("C-CLAUDE-14 cursor navigation fails closed without live screen reads", async () => {
+    const frame = "Do you trust this folder?\n❯ No\n  Yes, I trust this folder";
+    const result = new TrustPromptResponder("claude", true).handle(frame, () => undefined);
+    if (result?.kind !== "answered") return;
+    await expect(result.settled).rejects.toThrow("requires live screen reads");
+  });
+
+  test("C-CLAUDE-14 cursor navigation never continues into a replacement screen", async () => {
+    const initial = "Do you trust this folder?\n❯ No\n  Yes, I trust this folder";
+    let frame = initial;
+    const result = new TrustPromptResponder("claude", true).handle(
+      initial,
+      () => {
+        frame = "Different prompt\n❯ Yes, proceed";
+      },
+      () => frame,
+    );
+    if (result?.kind !== "answered") return;
+    await expect(result.settled).rejects.toThrow("disappeared before confirmation");
+
+    const replaced = new TrustPromptResponder("claude", true).handle(
+      initial,
+      () => undefined,
+      () => "Different prompt\n❯ Yes, proceed",
+    );
+    if (replaced?.kind !== "answered") return;
+    await expect(replaced.settled).rejects.toThrow("disappeared before confirmation");
+  });
+
+  test("C-CLAUDE-14 unchanged or partial cursor frames time out and stay retryable", async () => {
+    vi.useFakeTimers();
+    try {
+      const initial = "Do you trust this folder?\n❯ No\n  Yes, I trust this folder";
+      const started = Date.now();
+      const responder = new TrustPromptResponder("claude", true);
+      const result = responder.handle(
+        initial,
+        () => undefined,
+        () => (Date.now() - started < 300 ? initial : "Do you trust this folder?"),
+      );
+      expect(result?.kind).toBe("answered");
+      if (result?.kind !== "answered") return;
+      const rejected = expect(result.settled).rejects.toThrow("Cursor trust navigation timed out");
+      await vi.runAllTimersAsync();
+      await rejected;
+      let retryFrame = initial;
+      const retry = responder.handle(
+        initial,
+        (input) => {
+          retryFrame =
+            input === "\u001b[B"
+              ? "Do you trust this folder?\n  No\n❯ Yes, I trust this folder"
+              : "Ready";
+        },
+        () => retryFrame,
+      );
+      expect(retry?.kind).toBe("answered");
+      await vi.runAllTimersAsync();
+      if (retry?.kind === "answered") await retry.settled;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("C-CLAUDE-14 the ONLY guard is allowlisted + non-option-header recognition", () => {

@@ -15,8 +15,8 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { numberedOptions } from "../../src/core/terminal-options.ts";
-import { TrustPromptResponder } from "../../src/core/trust-responder.ts";
+import { optionKeystrokes, selectableOptions } from "../../src/core/terminal-options.ts";
+import { TrustPromptResponder, trustPromptVisible } from "../../src/core/trust-responder.ts";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
 
@@ -26,20 +26,62 @@ import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
  * write callback is REAL (not a no-op): we assert the affirmative keystroke it
  * received, proving the responder both recognizes the frame AND emits input.
  */
-function trustInputFor(frame: string): string | undefined {
+async function trustInputFor(frame: string): Promise<string | undefined> {
   const responder = new TrustPromptResponder("claude", true);
-  let written: string | undefined;
-  const result = responder.handle(frame, (input) => {
-    written = input;
-  });
+  const written: string[] = [];
+  let rendered = frame;
+  const result = responder.handle(
+    frame,
+    (input) => {
+      written.push(input);
+      rendered = advancePromptFrame(rendered, input);
+    },
+    () => rendered,
+  );
   if (result?.kind !== "answered" || result.automation.prompt !== "workspace_trust")
     return undefined;
-  return written;
+  await result.settled;
+  return written.join("");
 }
 
-/** The affirmative ("Yes"-family) option number the real frame renders, if any. */
-function affirmativeOptionNumber(frame: string): string | undefined {
-  return numberedOptions(frame).find((o) => /\byes\b|proceed|trust/i.test(o.label))?.number;
+/** The raw PTY keys needed to select the real frame's affirmative option, if any. */
+function affirmativeOptionKeys(frame: string): string | undefined {
+  const option = selectableOptions(frame).find((candidate) =>
+    /\byes\b|proceed|trust/i.test(candidate.label),
+  );
+  return option === undefined ? undefined : optionKeystrokes(option).join("");
+}
+
+/** Minimal repaint model for the direct responder check; live wiring is tested below. */
+function advancePromptFrame(frame: string, input: string): string {
+  if (input === "\r" || /^\d+\r$/.test(input)) return "";
+  const lines = frame.split("\n");
+  const selectedRow = lines.findIndex((line) => /^(\s*)[❯›]\s+/.test(line));
+  if (selectedRow < 0) return frame;
+  const selected = /^(\s*)[❯›](\s+)(.*)$/.exec(lines[selectedRow] as string);
+  if (selected === null) return frame;
+  const targetRow = selectedRow + (input === "\u001b[A" ? -1 : 1);
+  const target = lines[targetRow];
+  if (target === undefined) return frame;
+  const labelColumn = (selected[1] as string).length + 1 + (selected[2] as string).length;
+  lines[selectedRow] = `${" ".repeat(labelColumn)}${selected[3] as string}`;
+  lines[targetRow] = `${selected[1] as string}❯${selected[2] as string}${target.trim()}`;
+  return lines.join("\n");
+}
+
+/** True for known and wording-drifted variants of Claude's rendered folder-trust screen. */
+function folderTrustScreenVisible(frame: string): boolean {
+  return (
+    trustPromptVisible(frame, "claude") ||
+    (/Accessing workspace:/i.test(frame) && /trust this folder/i.test(frame))
+  );
+}
+
+/** A complete folder-trust screen whose options have painted, answerable or not. */
+function completeFolderTrustScreenVisible(frame: string): boolean {
+  return (
+    folderTrustScreenVisible(frame) && /[❯›].*(?:yes|no)/i.test(frame) && /\byes\b/i.test(frame)
+  );
 }
 
 /** An answerable real trust frame, an auto-trusted "ready", or no matchable frame. */
@@ -51,8 +93,8 @@ type Capture =
 /**
  * Capture the real folder-trust frame once it is ANSWERABLE (its affirmative
  * option has painted), or "ready" if the CLI reached ready first (auto-trusted).
- * A bare trust HEADER paints before its numbered options, so we keep waiting until
- * the responder can actually answer — otherwise we'd capture a partial frame that
+ * A bare trust HEADER paints before its options, so we keep waiting until the
+ * responder can actually answer — otherwise we'd capture a partial frame that
  * is "option_pending" (options not yet rendered) and mistake it for a wording
  * mismatch. On timeout (a trust-ish frame that never became answerable, or wording
  * we don't recognize) we return "unmatched" so the caller SKIPS LOUDLY rather than
@@ -61,9 +103,15 @@ type Capture =
 async function captureTrustFrame(session: ClaudeSessionApi): Promise<Capture> {
   try {
     return await waitFor(
-      () => {
+      async () => {
         const text = session.terminal.snapshot().text;
-        if (trustInputFor(text) !== undefined) return { kind: "answerable", frame: text } as const;
+        if ((await trustInputFor(text)) !== undefined)
+          return { kind: "answerable", frame: text } as const;
+        if (completeFolderTrustScreenVisible(text)) {
+          throw new Error(
+            `Claude rendered a complete but unanswerable folder-trust frame:\n${text}`,
+          );
+        }
         if (session.status === "ready") return { kind: "ready" } as const;
         return undefined;
       },
@@ -110,10 +158,10 @@ test("C-E2E-09 the allowlist recognizes and the autotrust path clears the REAL C
     // rendered for its "Yes/proceed/trust" option, followed by Enter. This would
     // catch a regression that selected a decline option (C-E2E-09 requires the
     // affirmative option against the captured wording).
-    const input = trustInputFor(capture.frame);
-    const expected = affirmativeOptionNumber(capture.frame);
+    const input = await trustInputFor(capture.frame);
+    const expected = affirmativeOptionKeys(capture.frame);
     assert.ok(expected, "the captured frame renders an affirmative option");
-    assert.equal(input, `${expected}\r`, "responder selects the real affirmative option");
+    assert.equal(input, expected, "responder selects the real affirmative option");
   } finally {
     await cleanup(captureSession);
   }
@@ -131,11 +179,19 @@ test("C-E2E-09 the allowlist recognizes and the autotrust path clears the REAL C
       autotrust: true,
     });
     await waitFor(
-      () => (autoSession?.status === "ready" ? true : undefined),
-      "autotrust session clears the trust gate and reaches ready",
+      () => {
+        if (autoSession?.status !== "ready") return undefined;
+        return folderTrustScreenVisible(autoSession.terminal.snapshot().text) ? undefined : true;
+      },
+      "autotrust session clears the visible trust gate before reaching ready",
       120_000,
     );
     assert.equal(autoSession.status, "ready", "autotrust cleared the real folder-trust gate");
+    assert.equal(
+      folderTrustScreenVisible(autoSession.terminal.snapshot().text),
+      false,
+      "ready never masks a still-visible folder-trust gate",
+    );
   } finally {
     await cleanup(autoSession);
   }
