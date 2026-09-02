@@ -6,6 +6,14 @@
 import type { ModelPickerSpec } from "../core/model-picker.ts";
 import { claudeModelPickerHeader, parseClaudeModelPicker } from "../core/model-rows.ts";
 import { waitForScreen } from "../core/tui-screen.ts";
+import {
+  isClaudeIdleComposer,
+  parseClaudeSwitchConfirmation,
+} from "./model-switch-confirmation.ts";
+
+const enterKey = "\r";
+const arrowDown = "\u001b[B";
+const arrowUp = "\u001b[A";
 
 export const claudeModelPicker: ModelPickerSpec = {
   agent: "claude",
@@ -15,11 +23,54 @@ export const claudeModelPicker: ModelPickerSpec = {
   // selection as the user's default for new sessions, which §4.5 forbids.
   apply: async (io, timeoutMs) => {
     await io.terminal.sendInput("s");
+    const next = await waitForScreen(
+      io.terminal,
+      (text) => cacheConfirmationWithCursor(text) || isClaudeIdleComposer(text),
+      timeoutMs,
+      "claude model switch confirmation or idle composer",
+    );
+    const confirmation = parseClaudeSwitchConfirmation(next);
+    if (confirmation?.isCacheWarning === true) {
+      const delta = confirmation.affirmativeIndex - confirmation.selectedIndex;
+      const key = delta > 0 ? arrowDown : arrowUp;
+      for (let step = 0; step < Math.abs(delta); step += 1) await io.terminal.sendInput(key);
+      if (delta !== 0) {
+        await waitForScreen(
+          io.terminal,
+          affirmativeCacheConfirmation,
+          timeoutMs,
+          "claude cache confirmation cursor on the affirmative action",
+        );
+      }
+      await waitForScreen(
+        io.terminal,
+        affirmativeCacheConfirmation,
+        timeoutMs,
+        "active Claude cache confirmation before apply",
+      );
+      await io.terminal.sendInput(enterKey);
+    }
     await waitForScreen(
       io.terminal,
-      (text) => !claudeModelPickerHeader.test(text),
+      (text) =>
+        isClaudeIdleComposer(text) &&
+        parseClaudeSwitchConfirmation(text) === undefined &&
+        !claudeModelPickerHeader.test(text),
       timeoutMs,
-      "claude model picker to close after apply",
+      "claude idle composer after model switch",
     );
   },
 };
+
+function cacheConfirmationWithCursor(text: string): boolean {
+  const confirmation = parseClaudeSwitchConfirmation(text);
+  return confirmation?.isCacheWarning === true && confirmation.selectedIndex >= 0;
+}
+
+function affirmativeCacheConfirmation(text: string): boolean {
+  const confirmation = parseClaudeSwitchConfirmation(text);
+  return (
+    confirmation?.isCacheWarning === true &&
+    confirmation.selectedIndex === confirmation.affirmativeIndex
+  );
+}

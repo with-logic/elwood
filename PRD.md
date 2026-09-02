@@ -811,7 +811,18 @@ the requested row through cursor navigation. Elwood itself MUST NOT persist a
 new default model into the user's configuration (§4.5): for Claude it applies
 with the session-only key rather than Enter, and it never selects rows via
 number keys because Claude's number shortcut immediately saves the choice as
-the user's default. For Codex, the Codex CLI itself persists the confirmed
+the user's default. Claude may next show its built-in `Switch model?` or
+`Change effort level?` cache warning before applying the session-only change.
+When the dialog carries Claude's standard cache-warning copy, Elwood MUST find
+the rendered affirmative row across numbered and unnumbered layouts, navigate
+to it from the rendered cursor position, confirm it, and resolve `setModel`
+only after the dialog has cleared and the idle composer has returned. Recognition
+MUST use one bottom-most, contiguous dialog region and revalidate that live
+region before confirmation; transcript text elsewhere in the viewport cannot
+supply cache-warning copy, action rows, or a composer signal. A confirmation
+requested by a `PreModelSwitch` hook is NOT the built-in cache warning: Elwood
+MUST leave that decision to the human and keep it classified as a blocking
+prompt. For Codex, the Codex CLI itself persists the confirmed
 picker selection (model and reasoning effort) into the user's `config.toml` —
 there is no session-only affordance — so Elwood compensates: it snapshots
 `config.toml` before opening the picker and, after the switch is confirmed,
@@ -2588,7 +2599,7 @@ Each criterion has:
 | C-API-21 | §5.1 §5.5 | A caller-provided `persona` is submitted as the session's first user message on the first ready transition, ahead of caller-queued messages; it is not persisted and not re-sent on resume. |
 | C-API-22 | §5.3 §5.7 | `compact()` submits the adapter's `/compact` command through the readiness queue, resolves on the adapter's `PostCompact` hook, rejects with `compact_failed` on timeout, and rejects with `session_not_running` if the session terminates first. |
 | C-API-23 | §5.3 §5.7 | `listModels()` parses the adapter's rendered model picker into typed options with current/default markers, cancels with Escape, and leaves the session model unchanged. |
-| C-API-24 | §5.3 §5.7 | `setModel(id)` switches the session model through cursor navigation; Elwood itself never persists a new default into user-owned configuration (Claude uses the session-only key; the Codex CLI persists its own picker selection, documented as a §4.5 deviation) and unknown ids reject with `model_automation_failed` listing available ids. |
+| C-API-24 | §5.3 §5.7 | `setModel(id)` switches the session model through cursor navigation; Elwood itself never persists a new default into user-owned configuration (Claude uses the session-only key; the Codex CLI persists its own picker selection, documented as a §4.5 deviation) and unknown ids reject with `model_automation_failed` listing available ids. When Claude interposes its built-in model- or effort-cache warning, Elwood selects the affirmative row from one bottom-most contiguous live dialog across numbered/unnumbered layouts, revalidates it before confirmation, and resolves only after the idle composer returns; transcript text cannot participate and a `PreModelSwitch` hook confirmation remains human-controlled. |
 | C-API-35 | §5.3 §5.7 | `listModels()`/`setModel()` dispatch the picker command even while a turn is in flight (they do not wait for `ready`), so picker automation is not stalled by an in-flight turn such as an MCP-server boot spinner; `compact` and messages still wait for the active turn. Ordering is FIFO except for the documented overtaking of a readiness-waiting head by an immediate operation (a picker command, a `sendPrompt`, or already-ready running-turn guidance); same-class and post-ready ordering stays FIFO, and no two submissions interleave. |
 | C-API-36 | §5.3 | A Claude session requested below 100 columns bootstraps at 100 columns and holds only the PHYSICAL pre-ready resize while recording each pre-ready requested size in memory (multiple pre-ready resizes leave the last one as the latest requested size; terminal size is never persisted, §8.2); it restores the latest requested size before its initial ready queue drains, so narrow visible terminals do not lose their first prompt. |
 | C-API-37 | §5.3 §5.7 | Claude and Codex expose `sendGuidance(message)`: before first readiness and while blocked it queues safely like `sendMessage`; during a post-ready running turn it overtakes readiness-waiting operations and enters the TUI immediately. Guidance serializes with queue-backed prompt/message/command submissions and resolves only after the submitting Enter is dispatched; raw `sendKeys` intentionally bypasses that queue. |
@@ -2606,6 +2617,7 @@ Each criterion has:
 | C-ATTN-01 | §5.3 | A tool permission dialog rendered mid-turn transitions the session to `blocked` and emits an `attention` activity whose label names the matched screen-fact rule ids, on both adapters. |
 | C-ATTN-02 | §5.3 | A session enters `blocked` from either `running` or `ready` when a blocking dialog appears, and settles to `ready` when the dialog resolves; blocking evidence never moves a session out of a terminal status. |
 | C-ATTN-03 | §5.3 | Startup prompts Elwood answers automatically never produce `blocked`; a workspace trust prompt left unanswered because `autotrust` is false does. |
+| C-ATTN-04 | §5.3 | Claude's model/effort switch confirmation dialogs are blocking prompts even though their selection caret resembles the composer marker. The built-in cache warning is automatically confirmed only as part of `setModel`; hook-requested confirmations remain blocked for a human decision. |
 | C-API-33 | §5.3 | `statusDecisions()` returns a live-only log of at most the 50 most recent status decisions, oldest first, each recording the evidence, the from/to statuses (`to` undefined when ignored), and a human-readable reason; it is never persisted and carries no prompt, terminal, or hook payload content. |
 | C-API-34 | §5.3 | `waitForStatus`/`waitForActivity` resolve from current state or the next matching event, reject with `wait_timeout` after the timeout (default 60000 ms), and reject with `session_not_running` when the session reaches an unwaited terminal status first; both unsubscribe on settle. |
 | C-API-29 | §5.2 §5.6 | Resume accepts the same launch-policy options as start and forwards them into the relaunched command: `resumeClaude` forwards `permissionMode`, `allowedTools`, `disallowedTools`, `tools`, and `reasoningEffort`; `resumeCodex` forwards `sandbox`, `approvalPolicy`, and `reasoningEffort`. A resumed agent stays exactly as privileged and as tool-restricted as it started, and applies a re-supplied reasoning effort (which Elwood does not persist across resume). |

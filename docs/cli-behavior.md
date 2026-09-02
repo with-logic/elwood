@@ -115,6 +115,22 @@ legacy string/`agent_message` support. C-CODEX-16.
   concurrent external edit.
 - **Claude number keys in its picker instantly persist the user default** — never
   send them. Claude's `s` selection is session-only.
+- **Claude 2.1.258 may interpose a cache warning after that `s` key.** The same
+  component renders either `Switch model?` or `Change effort level?`, followed by
+  the stable cache explanation that the next response re-reads full history and
+  action rows `Yes, switch to …` / `No, go back`. The effort copy can disagree
+  about the target (`Switching to high` while the action says `xhigh`), so do not
+  compare target labels. Layouts may use `❯` or `›`, with or without option
+  numbers. The switch has NOT applied when this dialog appears: select the
+  affirmative from its rendered cursor, press Enter, and wait for the idle
+  composer before resolving `setModel`. A `PreModelSwitch` hook can use the same
+  dialog shell with its own confirmation reason; it remains blocking and MUST NOT
+  be auto-accepted. Scope every title, copy, and option match to the bottom-most
+  contiguous dialog and revalidate it before Enter: the transcript may itself
+  quote an old warning (including a bare `❯`/`›` line), and whole-viewport matching
+  can otherwise splice that stale text into a live hook dialog or mistake it for
+  the returned composer. C-API-24, C-ATTN-04. Verified from the installed 2.1.258
+  native binary and field-captured model/effort dialogs.
 
 ## Trust prompts
 

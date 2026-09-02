@@ -18,6 +18,54 @@ export const claudePickerCursorOnHaiku = claudePicker
   .replace("   ❯ 3. Fable ✔ ", "     3. Fable ✔ ")
   .replace("     5. Haiku ", "   ❯ 5. Haiku ");
 
+export const claudeModelCacheConfirmationOnNo = [
+  "Switch model?",
+  "Your next response will be slower and use more tokens",
+  "This conversation is cached for the current model. Switching to Haiku means the full history",
+  "gets re-read on your next message.",
+  "  Yes, switch to Haiku",
+  "❯ No, go back",
+].join("\n");
+
+export const claudeModelCacheConfirmationOnYes = claudeModelCacheConfirmationOnNo
+  .replace("  Yes, switch to Haiku", "❯ Yes, switch to Haiku")
+  .replace("❯ No, go back", "  No, go back");
+
+export const claudeModelCacheConfirmationYesBelow = claudeModelCacheConfirmationOnNo.replace(
+  "  Yes, switch to Haiku\n❯ No, go back",
+  "❯ No, go back\n  Yes, switch to Haiku",
+);
+
+export const claudeModelCacheConfirmationYesBelowSelected = claudeModelCacheConfirmationYesBelow
+  .replace("❯ No, go back", "  No, go back")
+  .replace("  Yes, switch to Haiku", "❯ Yes, switch to Haiku");
+
+export const claudeEffortCacheConfirmation = [
+  "Change effort level?",
+  "Your next response will be slower and use more tokens",
+  "This conversation is cached for the current effort level. Switching to high means the full",
+  "history gets re-read on your next message.",
+  "› 1. Yes, switch to xhigh",
+  "  2. No, go back",
+].join("\n");
+
+export const claudeHookSwitchConfirmation = [
+  "Switch model?",
+  "A PreModelSwitch hook asked you to confirm",
+  "› 1. Yes, switch to Opus",
+  "  2. No, go back",
+].join("\n");
+
+export const claudeHookSwitchConfirmationWithCacheReason = [
+  "Switch model?",
+  "A PreModelSwitch hook asked you to confirm",
+  "Your next response will be slower and use more tokens",
+  "This conversation is cached for the current model. Switching to Opus means the full history",
+  "gets re-read on your next message.",
+  "› 1. Yes, switch to Opus",
+  "  2. No, go back",
+].join("\n");
+
 export const codexPickerCurrentIsDefault = [
   "  Select Model and Effort",
   "  Access legacy models by running codex -m <model_name> or in your config.toml",

@@ -10,6 +10,11 @@ import {
   codexScreenFactTableForTrustPolicy,
 } from "../../src/codex/screen-table.ts";
 import { hasScreenFact, type RenderedFrame, readScreenFacts } from "../../src/core/screen-facts.ts";
+import {
+  claudeEffortCacheConfirmation,
+  claudeHookSwitchConfirmation,
+  claudeModelCacheConfirmationOnNo,
+} from "../helpers/model-pickers.ts";
 
 const screen = (text: string, title = ""): RenderedFrame => ({ text, title });
 // Footers captured from real sessions (claude 2.1.201, codex-cli 0.142.5).
@@ -102,6 +107,17 @@ describe("screen fact tables", () => {
         .blocking_prompt_visible,
     ).toBe(true);
     expect(readScreenFacts(tracked, screen("› ")).facts.blocking_prompt_visible).toBe(false);
+  });
+
+  test("C-ATTN-04 Claude model and effort confirmations are blocking prompts", () => {
+    const blocked = (text: string) =>
+      readScreenFacts(claudeScreenFactTable, screen(text)).facts.blocking_prompt_visible;
+    expect(blocked(claudeModelCacheConfirmationOnNo)).toBe(true);
+    expect(blocked(claudeEffortCacheConfirmation)).toBe(true);
+    expect(blocked(claudeHookSwitchConfirmation)).toBe(true);
+    expect(blocked("Switch model?\nLoading actions…")).toBe(false);
+    expect(blocked(`${claudeEffortCacheConfirmation}\n› `)).toBe(false);
+    expect(blocked("Claude said: Change effort level? Yes, switch to xhigh")).toBe(false);
   });
 
   test("hasScreenFact evaluates a single fact across screen and title regions", () => {

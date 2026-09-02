@@ -13,6 +13,17 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ### Fixed
 
+- **Claude model switches now complete through model/effort cache warnings.**
+  Claude 2.1.258 may interpose `Switch model?` or `Change effort level?` after
+  Elwood applies a session-only picker choice; Elwood previously treated that
+  dialog as successful picker closure and returned while the session was still
+  waiting. Elwood now recognizes numbered and unnumbered variants, navigates
+  from the rendered cursor to the affirmative action, confirms the built-in
+  cache warning, and waits for the idle composer before resolving `setModel`.
+  Recognition is scoped to the bottom-most live dialog and revalidated before
+  Enter, so transcript text cannot spoof a cache warning or composer. Hook-requested
+  `PreModelSwitch` confirmations remain blocking and human-controlled. (§5.3,
+  C-API-24/C-ATTN-04)
 - **Concurrent Codex starts no longer race global npm updates.** Codex's live
   update dialog is now input-blocking until its rendered frame clears, so queued
   persona/caller input cannot press Enter on the default "Update now" action when
