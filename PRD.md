@@ -282,8 +282,16 @@ runs `claude update` from the user's login shell before spawning Claude and
 rechecks the version after the update. The update command runs at most once
 per parent process per adapter, so a parent spawning a roster of sessions at
 launch does not run N concurrent same-binary updates (C-LIFE-09); later
-sessions in the same process reuse the already-updated binary. `strictVersionCheck` makes unparseable
-Claude versions fatal instead of warning-and-continuing. `permissionMode`
+sessions in the same process reuse the already-updated binary. Separate Elwood
+parent processes for the same macOS user also coordinate through an atomic,
+per-adapter lease in a stable account cache independent of each process's temporary
+directory: one process runs the global updater while contenders wait asynchronously
+for it to finish, then skip their duplicate attempt and re-read the installed
+version. The lease records its owner and generation; an old owner cannot remove a
+successor's lease, a live owner is never evicted solely because of elapsed time,
+and a crashed owner's stale lease is recoverable after a fixed bound longer than
+the update probe's own timeout. `strictVersionCheck` makes unparseable Claude
+versions fatal instead of warning-and-continuing. `permissionMode`
 accepts Claude's documented launch values: `default`, `acceptEdits`, `plan`,
 `auto`, `dontAsk`, and `bypassPermissions`.
 
@@ -1227,7 +1235,14 @@ Elwood never selects "Update now" inside the live TUI (an in-TUI update restarts
 Codex out from under the session); the real update is the preflight `codex update`
 above, and the in-TUI prompt is always skipped. The skip is edge-triggered, so if
 the same update screen reappears after a restart — the update did not take — Elwood
-skips it again rather than leaving the session stuck looping on it (C-CODEX-12).
+skips it again rather than leaving the session stuck looping on it. While an
+update screen remains rendered, Elwood treats it as input-blocking even after the
+skip key is written: readiness and queued persona/caller input stay suspended until
+the screen clears. A captured first-party banner that renders before its options
+therefore fails safe, and a following safe-option-only frame remains latched as the
+same prompt; generic agent prose containing "update available" does not activate
+the blocker. This prevents a queued Enter from selecting Codex's default "Update
+now" action (C-CODEX-12).
 `strictVersionCheck` makes unparseable Codex versions fatal instead of
 warning-and-continuing.
 
@@ -2248,17 +2263,29 @@ event loop: a parent that spawns a roster of sessions must not serialize their
 preflights on a single thread. Elwood reads each adapter's `--version` at most
 once per parent process — concurrent first reads share a single subprocess, and
 later reads reuse the cached result — mirroring the once-per-process autoupdate
-dedupe (C-LIFE-09). The cached read is invalidated after a successful `autoupdate`
-update so the post-update version is re-read. When `autoupdate` is set, concurrent
-callers share one update and all validate the same post-update version, so no
-caller proceeds on a stale pre-update version or races a second update. Because
-the update is best-effort, a FAILED shared update is likewise shared once — every
-concurrent caller observes the same failure, re-reads the installed version, and
-proceeds through the compatibility gate; the failure is never cached in a way that
-rejects those callers or poisons a later start. More generally, any per-process
-cached probe (version read, capability detection, update) that fails is not
-retained as a rejected result: a later caller re-attempts rather than inheriting
-the prior failure.
+dedupe (C-LIFE-09). The cached version and adapter-capability reads are invalidated
+after every coordinated update attempt, including a failed or peer-owned attempt,
+because a failed installer may still have partially changed the binary. When
+`autoupdate` is set, concurrent callers share one update and all validate the same
+post-attempt version, so no caller proceeds on a stale pre-update version or races
+a second update. This mutual exclusion also applies across separate Elwood parent
+processes for the same macOS user and adapter: an atomic lease names the adapter in
+a stable per-account cache independent of `TMPDIR`; contenders wait without
+blocking the event loop, then invalidate their local caches and continue without
+running a duplicate update. The lease records the owner's process id and a unique
+generation. Cleanup removes only the generation it owns, a live owner is never
+evicted solely because the stale bound elapsed, and recovery of a dead owner's
+lease is itself serialized before removal, so neither cleanup nor concurrent stale
+recovery can evict a successor. Within one parent process, a FAILED shared update
+is likewise shared once — every concurrent caller observes the same failure,
+re-reads the installed version, and proceeds through the compatibility gate; the
+failure is never cached in a way that rejects those callers or poisons a later
+start. A contender in another parent process does not receive the owner's live
+warning event; after the lease releases it re-reads and validates the installed
+binary without retrying the failed update. More generally, any per-process cached
+probe (version read, capability detection, update) that fails is not retained as a
+rejected result: a later caller re-attempts rather than inheriting the prior
+failure.
 
 Each probe is bounded so a broken or hostile CLI on PATH cannot hang or flood
 the host: a probe that does not exit within a default timeout (15 seconds) or
@@ -2618,9 +2645,9 @@ Each criterion has:
 | ID | PRD | Criterion |
 |---|---|---|
 | C-PERF-01 | §9.2 | Version/capability probes run asynchronously and never block the host process's event loop, so a roster of concurrent spawns does not serialize on a single thread. |
-| C-PERF-02 | §9.2 | Each adapter's `--version` is read at most once per parent process; concurrent first reads share a single subprocess, later reads reuse the cached result, and the cache is invalidated after `autoupdate`. |
+| C-PERF-02 | §9.2 | Each adapter's `--version` is read at most once per parent process; concurrent first reads share a single subprocess, later reads reuse the cached result, and the cache is invalidated after every coordinated `autoupdate` attempt, including a failed or peer-owned attempt. |
 | C-PERF-03 | §9.2 | Any non-PTY probe (`--version`, `--help`, `update`) that exceeds the default runtime timeout (15s) or per-stream byte cap (1,000,000 bytes) is killed. A killed/failed `--version`/`--help` probe surfaces through `*_start_failed` with `cause`/`errno` (`ETIMEDOUT`/`E2BIG`) preserved in `details`; a killed/failed `update` probe is best-effort and instead surfaces the live `agent_update_failed` warning (same bounded diagnostics) without blocking startup. Probes that exit or fail to spawn on their own are not signaled. |
-| C-PERF-04 | §9.2 | With `autoupdate`, concurrent callers share one update and all validate the same post-update version; none proceeds on a stale pre-update version or races a second update. |
+| C-PERF-04 | §9.2 | With `autoupdate`, concurrent callers in one parent process share one update, and separate Elwood parent processes for the same macOS user and adapter serialize through an atomic lease in a stable account cache independent of `TMPDIR`. A contender waits asynchronously for the active updater, skips its duplicate attempt, invalidates its local caches, and validates the installed version; none races a second global update. The lease records owner identity and a unique generation: a live owner is never evicted solely because the stale bound elapsed, dead-owner recovery is serialized, and cleanup cannot remove a successor generation. |
 
 #### C-CLAUDE: Claude Startup And Settings (§4, §7, §9)
 
@@ -2662,7 +2689,7 @@ Each criterion has:
 | C-CODEX-09 | §5.7 | Codex MCP startup warnings are parsed from terminal output into typed warning events with server names and recovery commands. |
 | C-CODEX-10 | §9.2 | `autoupdate: true` rechecks the Codex version after running `codex update`. |
 | C-CODEX-11 | §5.5 | `autotrust: true` answers Codex's directory trust prompt through PTY input and emits `startup_prompt` activity. |
-| C-CODEX-12 | §5.5 | If Codex still shows an interactive update prompt inside the TUI, Elwood selects the skip/continue-without-updating option by label. The skip is EDGE-triggered: a persistent update screen is answered once (not re-answered every frame), but the skip RE-ARMS once the update screen leaves the frame, so an update prompt that REAPPEARS after Codex restarts (e.g. the update did not take and the same screen returns) is skipped again rather than leaving the session stuck on it. |
+| C-CODEX-12 | §5.5 | If Codex still shows an interactive update prompt inside the TUI, Elwood selects the skip/continue-without-updating option by label. The skip is EDGE-triggered: a persistent update screen is answered once (not re-answered every frame), but the skip RE-ARMS once the update screen leaves the frame, so an update prompt that REAPPEARS after Codex restarts (e.g. the update did not take and the same screen returns) is skipped again rather than leaving the session stuck on it. Every recognized update screen is input-blocking until its rendered frame clears: a captured first-party banner blocks before its options render, and a following safe-option-only continuation frame stays latched as the same prompt. Generic agent prose containing "update available" and Codex's passive installation notice do not activate the blocker. Readiness and queued persona/caller input therefore cannot select the default "Update now" action. |
 | C-CODEX-13 | §10 | An immediately failing or unusable Codex process fails with `codex_start_failed` or a more specific typed error. |
 | C-CODEX-14 | §5.3 | `setModel` on Codex restores the user's prior `config.toml` default via compare-and-swap after the CLI persists its picker selection, skipping with the `codex_default_model_persisted` warning instead of clobbering concurrent edits. |
 | C-CODEX-15 | §5.5 | Codex's directory-trust prompt is answered only under `autotrust` (blocking on the human when off); Codex hook trust — Elwood's own integration — is answered regardless of `autotrust` and is NOT classified as blocking. Each is recognized only by its HEADER wording on a non-option line (so an option-only phrase cannot spoof it) and, once recognized, answered from the frame's affirmative option — the agent is never left waiting. When a recognized prompt's affirmative option has not rendered yet, a fire-once transient `attention` activity is emitted and Elwood keeps watching so a later frame answers it; this render-delay state is TRANSIENT and no warning is emitted for it. Each is answered once, from the shared allowlist. |
@@ -2727,8 +2754,8 @@ Each criterion has:
 | C-STATE-11 | §8.1 | Elwood does not overwrite an existing `.elwood/.gitignore` or create gitignore files in custom `stateDir` directories. |
 | C-STATE-13 | §8.2 | The session record persists the resolved launch posture (privilege and tool policy) at start, validates it on read, and resume updates it to the effective values. |
 | C-STATE-12 | §8.1 | Sessions start successfully with arbitrarily long `stateDir` paths because the hook bridge socket binds in a short Elwood-owned temp home. The home is STABLE per session (a bounded fingerprint of the session's full identity — `stateDir`, adapter, and id), so every start/resume resolves the same one while a shared explicit id in a different state dir resolves a DISTINCT home; each launch binds a fresh socket FILE inside it, and teardown removes the whole home so no per-launch socket leaks across restart/resume. |
-| C-LIFE-09 | §9.2 | `autoupdate` runs the adapter's update command at most once per parent process per adapter, so fleet spawns do not race N concurrent same-binary updates. A FAILED shared update is shared once too — concurrent callers observe the same failure and proceed through the compatibility gate — and is not retried per start nor retained as a rejected result that poisons later starts. |
-| C-LIFE-11 | §9.2 | Autoupdate is BEST-EFFORT: when the update command fails but the installed CLI still meets the minimum version, startup emits a live `agent_update_failed` warning (safe diagnostics only) and reaches `ready` from the installed binary; startup fails only when the installed version is below the minimum. No per-process cached probe (version read, capability detection, update) retains a rejected result — a later caller re-attempts rather than inheriting a prior failure. |
+| C-LIFE-09 | §9.2 | `autoupdate` runs the adapter's update command at most once per parent process per adapter, so fleet spawns do not race N concurrent same-binary updates. Separate Elwood parent processes for the same macOS user and adapter also hold an atomic cross-process lease around that global update; contenders wait asynchronously, skip the duplicate update, invalidate their own caches, and validate the installed binary after the owner settles. The stable per-account lease records owner identity and generation, never evicts a live owner solely for age, serializes dead-owner recovery, and cannot be removed by an old owner after a successor claims it. A FAILED in-process shared update is shared once too — concurrent callers observe the same failure and proceed through the compatibility gate — and is not retried per start nor retained as a rejected result that poisons later starts. |
+| C-LIFE-11 | §9.2 | Autoupdate is BEST-EFFORT: when the update command fails but the installed CLI still meets the minimum version, startup emits a live `agent_update_failed` warning (safe diagnostics only) and reaches `ready` from the installed binary; startup fails only when the installed version is below the minimum. Version and capability caches are invalidated even after a failed attempt because the installer may have partially changed the binary. No per-process cached probe (version read, capability detection, update) retains a rejected result — a later caller re-attempts rather than inheriting a prior failure. |
 | C-ERR-08 | §10 | Startup failures carry the underlying cause, and errno/syscall/path details when the underlying error provides them. |
 
 #### C-LIFE: Lifecycle Controls (§5, §9)

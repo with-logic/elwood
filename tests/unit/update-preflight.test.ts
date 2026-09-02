@@ -17,10 +17,12 @@ import {
 import {
   resetAutoupdateForTests,
   resetPreflightCacheForTests,
+  setUpdateCoordinatorForTests,
 } from "../../src/runtime/update-once.ts";
 
 function resetPreflight(): void {
   resetAutoupdateForTests();
+  setUpdateCoordinatorForTests((_adapter, update) => update());
   resetPreflightCacheForTests();
 }
 
@@ -87,6 +89,21 @@ describe("CLI autoupdate preflight", () => {
       code: "claude_version_unsupported",
     });
     resetRuntimeSeamsForTests();
+  });
+
+  test("C-LIFE-11 a failed update validates a freshly changed installed version", async () => {
+    const versions = ["2.1.223", "2.1.1"];
+    setPlatformForTests("darwin");
+    setCommandRunnerForTests((_command, args) =>
+      args.join(" ").includes("claude update")
+        ? { status: 1, stdout: "", stderr: "partially replaced" }
+        : { status: 0, stdout: versions.shift() ?? "2.1.1", stderr: "" },
+    );
+    await expect(preflightClaude(false, true)).rejects.toMatchObject({
+      code: "claude_version_unsupported",
+      details: { found: "2.1.1" },
+    });
+    expect(versions).toHaveLength(0);
   });
 
   test("C-CLAUDE-09 validates the post-update version; a missing binary after update is fatal", async () => {

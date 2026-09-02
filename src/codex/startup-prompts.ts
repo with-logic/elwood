@@ -7,6 +7,7 @@ import type { SettledStartupOutcome } from "../core/startup-write.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust-responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
+import { CodexUpdatePromptTracker, codexUpdateOptionPattern } from "./update-prompt.ts";
 
 /** A Codex startup outcome paired with its PTY-write completion (§5.4, §5.7). */
 export type SettledCodexStartupOutcome = SettledStartupOutcome<"codex">;
@@ -17,28 +18,12 @@ export type CodexStartupPromptResult = {
 };
 
 const maxBufferLength = 6_000;
-const updateOptionPattern = /continue\s*without\s*updat|skip|not\s*now|later/i;
-// The update screen's own banner phrasing (verified against codex-cli: "Update
-// available", "A new version of Codex is available", "Update now"). Used ONLY to
-// decide whether the CURRENT frame is still the update screen so the skip latch can
-// re-arm once it clears — it is deliberately narrow so ordinary agent output that
-// merely says "update" does not keep us latched on a screen we already left.
-const updateScreenBanner = /update\s+available|new\s+version|update\s+now/i;
-
-/**
- * Whether THIS frame is still showing the update screen. True when the frame carries
- * the update banner, or a numbered skip option is on screen (the banner and its
- * options can render in separate frames, so either alone counts as "still on it").
- */
-function currentFrameShowsUpdatePrompt(frameText: string): boolean {
-  if (updateScreenBanner.test(frameText)) return true;
-  return findNumberedOption(frameText, updateOptionPattern) !== null;
-}
 
 export class CodexStartupPromptResponder {
   private buffer: string;
   private readonly elwoodSessionId: string;
   private readonly trust: TrustPromptResponder<"codex">;
+  private readonly updatePrompt = new CodexUpdatePromptTracker();
   private skippedUpdate: boolean;
   // The banner identities that fired a warning on the PREVIOUS frame. A warning fires
   // only on the EDGE a banner first appears; a banner still present next frame is NOT
@@ -80,10 +65,10 @@ export class CodexStartupPromptResponder {
     // actually showing the update screen does. The buffer is still consulted to LOCATE
     // the option, since Codex can split the banner and its numbered options across two
     // consecutive frames.
-    const onUpdateScreen = currentFrameShowsUpdatePrompt(screenText);
+    const onUpdateScreen = this.updatePrompt.observe(screenText);
     if (!onUpdateScreen) this.skippedUpdate = false;
     if (onUpdateScreen && !this.skippedUpdate) {
-      const option = findNumberedOption(this.buffer, updateOptionPattern);
+      const option = findNumberedOption(this.buffer, codexUpdateOptionPattern);
       if (option) {
         // Settle OPTIMISTICALLY but keep the skip retryable if the write is
         // rejected, so a later frame re-attempts it rather than falsely reporting

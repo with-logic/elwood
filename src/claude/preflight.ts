@@ -8,11 +8,7 @@ import type { ElwoodWarningEvent } from "../core/types.ts";
 import { type DistributiveOmit, updateFailedWarning } from "../core/update-warning.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
-import {
-  cachedAutoupdate,
-  cachedVersionRead,
-  invalidateVersionRead,
-} from "../runtime/update-once.ts";
+import { cachedAutoupdate, cachedVersionRead } from "../runtime/update-once.ts";
 
 export const minimumClaudeVersion = "2.1.144";
 export type ClaudePreflightWarning = DistributiveOmit<
@@ -29,16 +25,18 @@ export async function preflightClaude(
   if (currentPlatform() !== "darwin") {
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
-  let result = await readClaudeVersion();
   let updateError: unknown;
   if (autoupdate) {
     // Best-effort: every caller shares the single update attempt, which NEVER rejects. On failure
     // we re-read the installed version and fall through to the compatibility gate — a failed
     // update is only fatal when the INSTALLED CLI is below the minimum (C-LIFE-11).
-    const outcome = await cachedAutoupdate("claude", runClaudeUpdate);
+    const outcome = await cachedAutoupdate("claude", async () => {
+      await readClaudeVersion(); // verify existence only after owning the cross-process lease
+      await runClaudeUpdate();
+    });
     if (!outcome.ok) updateError = outcome.error;
-    result = await readClaudeVersion();
   }
+  const result = await readClaudeVersion();
   const version = parseVersion(result.stdout);
   if (!version) {
     if (strictVersionCheck) {
@@ -72,10 +70,6 @@ async function runClaudeUpdate(): Promise<void> {
       probeFailureDetails(result),
     );
   }
-  // The update SUCCEEDED and may have changed the binary; drop the cached read so every caller
-  // re-reads the post-update version. (On failure this is not reached — the installed version
-  // stands and its cached read is still valid.)
-  invalidateVersionRead("claude");
 }
 
 async function readClaudeVersion(): Promise<CommandResult> {

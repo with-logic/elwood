@@ -5,7 +5,10 @@
 
 import { describe, expect, test } from "vitest";
 import { claudeScreenFactTable } from "../../src/claude/screen-table.ts";
-import { codexScreenFactTable } from "../../src/codex/screen-table.ts";
+import {
+  codexScreenFactTable,
+  codexScreenFactTableForTrustPolicy,
+} from "../../src/codex/screen-table.ts";
 import { hasScreenFact, type RenderedFrame, readScreenFacts } from "../../src/core/screen-facts.ts";
 
 const screen = (text: string, title = ""): RenderedFrame => ({ text, title });
@@ -73,6 +76,32 @@ describe("screen fact tables", () => {
     expect(
       hasScreenFact(codexScreenFactTable, { text: modalDialog, title: "" }, "composer_visible"),
     ).toBe(false);
+  });
+
+  test("C-CODEX-12 Codex update screens block input without matching ordinary update prose", () => {
+    const blocked = (text: string) =>
+      readScreenFacts(codexScreenFactTable, screen(text)).facts.blocking_prompt_visible;
+    // A first-party banner blocks before its options paint, so a new layout fails safe.
+    expect(blocked("Update available! 0.151.0 -> 0.152.0")).toBe(true);
+    // Cursor-addressed rendering can leave only the complete option set in the viewport.
+    expect(blocked("› 1. Update now (runs `npm install`)\n  2. Skip until next version")).toBe(
+      true,
+    );
+    // Neither half alone is enough to reinterpret ordinary agent text as a dialog.
+    expect(blocked("Please update now after the tests pass.")).toBe(false);
+    expect(blocked("The release notes say update available for all users.")).toBe(false);
+    expect(blocked("0.149.1 to update.\nhttps://github.com/openai/codex")).toBe(false);
+    expect(blocked("1. Skip this optional cleanup")).toBe(false);
+    const tracked = codexScreenFactTableForTrustPolicy(true);
+    expect(
+      readScreenFacts(tracked, screen("Update available! 0.151.0 -> 0.152.0\n1. Update now")).facts
+        .blocking_prompt_visible,
+    ).toBe(true);
+    expect(
+      readScreenFacts(tracked, screen("2. Skip\n3. Skip until next version")).facts
+        .blocking_prompt_visible,
+    ).toBe(true);
+    expect(readScreenFacts(tracked, screen("› ")).facts.blocking_prompt_visible).toBe(false);
   });
 
   test("hasScreenFact evaluates a single fact across screen and title regions", () => {

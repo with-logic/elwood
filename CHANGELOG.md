@@ -13,6 +13,18 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ### Fixed
 
+- **Concurrent Codex starts no longer race global npm updates.** Codex's live
+  update dialog is now input-blocking until its rendered frame clears, so queued
+  persona/caller input cannot press Enter on the default "Update now" action when
+  a prompt layout is partial or drifts. Elwood still skips every recognized safe
+  option automatically. Separately, `autoupdate` now holds an atomic per-user,
+  per-adapter cross-process lease around the global updater; another Elwood host
+  waits asynchronously, skips its duplicate install, and validates the resulting
+  binary. The lease uses a stable account cache across differing `TMPDIR` values,
+  records its owner/generation so live or successor updates cannot be evicted,
+  and recovers dead owners safely. Failed partial installs also invalidate version
+  and capability caches before validation. Coal Harbor and other consumers need
+  no API or configuration changes. (§5.5/§9.2, C-CODEX-12/C-PERF-04/C-LIFE-09)
 - **Claude's current cursor-style workspace trust prompt is auto-approved again.**
   Claude 2.1.252 replaced the older numbered, affirmative-first layout with an
   unnumbered menu that defaults to `No, exit`; the responder recognized its header

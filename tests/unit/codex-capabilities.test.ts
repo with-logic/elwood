@@ -3,7 +3,7 @@
  * Covers PRD §9.2, C-CODEX-06, C-PERF-02, and C-PERF-03.
  */
 
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test } from "vitest";
 import {
   detectCodexCliCapabilities,
   preflightCodex,
@@ -14,6 +14,19 @@ import {
   setCommandRunnerForTests,
   setPlatformForTests,
 } from "../../src/runtime/seams.ts";
+import {
+  resetAutoupdateForTests,
+  resetPreflightCacheForTests,
+  setUpdateCoordinatorForTests,
+} from "../../src/runtime/update-once.ts";
+
+beforeEach(() => {
+  resetAutoupdateForTests();
+  setUpdateCoordinatorForTests((_adapter, update) => update());
+  resetPreflightCacheForTests();
+  resetCodexPreflightCacheForTests();
+  resetRuntimeSeamsForTests();
+});
 
 describe("Codex capability detection", () => {
   test("C-CODEX-06 detects hook trust bypass support from login shell help", async () => {
@@ -50,6 +63,48 @@ describe("Codex capability detection", () => {
     expect(helpReads).toBe(1);
     resetCodexPreflightCacheForTests();
     resetRuntimeSeamsForTests();
+  });
+
+  test("C-PERF-02 a settled autoupdate does not repeatedly evict capabilities", async () => {
+    let helpReads = 0;
+    let updates = 0;
+    setPlatformForTests("darwin");
+    setCommandRunnerForTests((_command, args) => {
+      const command = args.join(" ");
+      if (command.includes("--help")) {
+        helpReads += 1;
+        return { status: 0, stdout: "codex help", stderr: "" };
+      }
+      if (command.includes("codex update")) updates += 1;
+      return { status: 0, stdout: "codex-cli 0.132.0", stderr: "" };
+    });
+    await detectCodexCliCapabilities();
+    await preflightCodex(false, true);
+    await detectCodexCliCapabilities();
+    await preflightCodex(false, true);
+    await detectCodexCliCapabilities();
+    expect({ helpReads, updates }).toEqual({ helpReads: 2, updates: 1 });
+  });
+
+  test("C-LIFE-11 a failed autoupdate also evicts stale capabilities", async () => {
+    let helpReads = 0;
+    setPlatformForTests("darwin");
+    setCommandRunnerForTests((_command, args) => {
+      const command = args.join(" ");
+      if (command.includes("--help")) {
+        helpReads += 1;
+        return { status: 0, stdout: "codex help", stderr: "" };
+      }
+      return command.includes("codex update")
+        ? { status: 1, stdout: "", stderr: "partially replaced" }
+        : { status: 0, stdout: "codex-cli 0.132.0", stderr: "" };
+    });
+    await detectCodexCliCapabilities();
+    await expect(preflightCodex(false, true)).resolves.toMatchObject({
+      code: "agent_update_failed",
+    });
+    await detectCodexCliCapabilities();
+    expect(helpReads).toBe(2);
   });
 
   test("C-PERF-03 a bounded --help probe fails as codex_start_failed with cause", async () => {

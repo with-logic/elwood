@@ -17,14 +17,17 @@ import {
   setPlatformForTests,
 } from "../../src/runtime/seams.ts";
 import {
+  cachedAutoupdate,
   cachedVersionRead,
   dedupeInFlight,
   resetAutoupdateForTests,
   resetPreflightCacheForTests,
+  setUpdateCoordinatorForTests,
 } from "../../src/runtime/update-once.ts";
 
 function resetPreflight(): void {
   resetAutoupdateForTests();
+  setUpdateCoordinatorForTests((_adapter, update) => update());
   resetPreflightCacheForTests();
   resetCodexPreflightCacheForTests();
 }
@@ -115,5 +118,17 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
     const ok = dedupeInFlight(cache, "k", () => Promise.resolve("value"));
     await expect(ok).resolves.toBe("value");
     expect(cache.get("k")).toBe(ok); // the successful entry survives (identity-guarded eviction)
+  });
+
+  test("autoupdate finalization failures are contained as outcomes", async () => {
+    await expect(
+      cachedAutoupdate(
+        "codex",
+        () => Promise.resolve(),
+        () => {
+          throw new Error("cache invalidation failed");
+        },
+      ),
+    ).resolves.toMatchObject({ ok: false, error: new Error("cache invalidation failed") });
   });
 });

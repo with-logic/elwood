@@ -6,6 +6,7 @@
 
 import type { ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust-blocking.ts";
+import { CodexUpdatePromptTracker, codexUpdatePromptVisible } from "./update-prompt.ts";
 
 /**
  * Verified against codex-cli 0.142.5. The working spinner renders
@@ -41,6 +42,11 @@ export const codexScreenFactTable: ScreenFactTable = {
       fact: "blocking_prompt_visible",
       all: [/Would you like to|Allow command\?/i, /Press enter to confirm or esc to cancel/i],
     },
+    {
+      id: "codex-update-prompt",
+      fact: "blocking_prompt_visible",
+      match: codexUpdatePromptVisible,
+    },
   ],
 };
 
@@ -50,5 +56,18 @@ export const codexScreenFactTable: ScreenFactTable = {
  * `blockingTrustSpecs` already excludes it even when autotrust is off.
  */
 export function codexScreenFactTableForTrustPolicy(autotrust: boolean): ScreenFactTable {
-  return withTrustBlockingRules(codexScreenFactTable, "codex", autotrust);
+  const updatePrompt = new CodexUpdatePromptTracker();
+  const tracked = {
+    ...codexScreenFactTable,
+    rules: codexScreenFactTable.rules.map((rule) =>
+      rule.id === "codex-update-prompt"
+        ? {
+            id: "codex-update-prompt",
+            fact: "blocking_prompt_visible",
+            match: updatePrompt.observe.bind(updatePrompt),
+          }
+        : rule,
+    ),
+  } satisfies ScreenFactTable;
+  return withTrustBlockingRules(tracked, "codex", autotrust);
 }

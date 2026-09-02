@@ -14,10 +14,12 @@ import {
 import {
   resetAutoupdateForTests,
   resetPreflightCacheForTests,
+  setUpdateCoordinatorForTests,
 } from "../../src/runtime/update-once.ts";
 
 function resetPreflight(): void {
   resetAutoupdateForTests();
+  setUpdateCoordinatorForTests((_adapter, update) => update());
   resetPreflightCacheForTests();
 }
 

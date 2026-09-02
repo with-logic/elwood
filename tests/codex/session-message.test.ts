@@ -12,6 +12,25 @@ import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.
 afterEach(resetFakes);
 
 describe("CodexSessionApi message submission", () => {
+  test("C-CODEX-12 an update prompt blocks queued persona input until the screen clears", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startCodex({ cwd, persona: "Never update from the live TUI." });
+    ptys[0]!.emitData("Update available! 0.151.0 -> 0.152.0\r\n  1. Update now");
+    await session.terminal.settled();
+    // Current Codex releases can repaint only the safe continuation choices.
+    ptys[0]!.emitData("\u001b[2J\u001b[H  2. Skip\r\n  3. Skip until next version");
+    await session.terminal.settled();
+    await becomeReady(session.elwoodSessionId, cwd);
+    await new Promise((resolve) => setImmediate(resolve));
+    // The safe option is written, but no persona paste/Enter reaches the rendered dialog.
+    expect(ptys[0]!.writes).toEqual(["2"]);
+    ptys[0]!.emitData("\u001b[2J\u001b[H› ");
+    await session.terminal.settled();
+    await expect.poll(() => ptys[0]!.writes.length).toBeGreaterThan(1);
+    expect(ptys[0]!.writes).toContain("\u001b[200~Never update from the live TUI.\u001b[201~");
+  });
+
   test("C-API-19 first sendMessage waits for the SessionStart readiness hook", async () => {
     const cwd = tempDir();
     installFakes();

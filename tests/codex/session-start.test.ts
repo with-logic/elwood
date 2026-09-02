@@ -65,15 +65,6 @@ describe("CodexSessionApi startup and terminal control", () => {
     expect(persisted).not.toContain("warning");
   });
 
-  test("C-CODEX-12 skips Codex TUI update prompts", async () => {
-    const cwd = tempDir();
-    installFakes();
-    await startCodex({ cwd });
-    ptys[0]!.emitData("Update available\r\n  1. Update now\r\n  2. Continue without updating");
-    await flushTerminal();
-    expect(ptys[0]!.writes).toEqual(["2"]);
-  });
-
   test("C-API-14 C-CODEX-09 emits each Codex MCP startup banner ONCE per occurrence", async () => {
     const cwd = tempDir();
     installFakes();

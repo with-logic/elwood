@@ -8,12 +8,7 @@ import type { ElwoodWarningEvent } from "../core/types.ts";
 import { type DistributiveOmit, updateFailedWarning } from "../core/update-warning.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
-import {
-  cachedAutoupdate,
-  cachedVersionRead,
-  dedupeInFlight,
-  invalidateVersionRead,
-} from "../runtime/update-once.ts";
+import { cachedAutoupdate, cachedVersionRead, dedupeInFlight } from "../runtime/update-once.ts";
 
 export const minimumCodexVersion = "0.124.0";
 export type CodexCliCapabilities = { readonly supportsHookTrustBypass: boolean };
@@ -35,15 +30,21 @@ export async function preflightCodex(
   if (currentPlatform() !== "darwin") {
     throw elwoodError("unsupported_platform", "Elwood currently supports macOS only.");
   }
-  let result = await readCodexVersion();
   let updateError: unknown;
   if (autoupdate) {
     // Best-effort: the shared update never rejects; on failure we re-read and fall through to the
     // compatibility gate — fatal only when the INSTALLED CLI is below the minimum (C-LIFE-11).
-    const outcome = await cachedAutoupdate("codex", runCodexUpdate);
+    const outcome = await cachedAutoupdate(
+      "codex",
+      async () => {
+        await readCodexVersion(); // verify existence only after owning the cross-process lease
+        await runCodexUpdate();
+      },
+      () => capabilityProbe.clear(),
+    );
     if (!outcome.ok) updateError = outcome.error;
-    result = await readCodexVersion();
   }
+  const result = await readCodexVersion();
   const version = parseCodexVersion(result.stdout);
   if (!version) {
     if (strictVersionCheck) {
@@ -67,10 +68,6 @@ async function runCodexUpdate(): Promise<void> {
   if (result.status !== 0) {
     throw elwoodError("codex_update_failed", "`codex update` failed.", probeFailureDetails(result));
   }
-  // The update SUCCEEDED and may have changed the binary; drop the cached version read and the
-  // capability cache so every caller re-detects against the new binary. (Not reached on failure.)
-  invalidateVersionRead("codex");
-  capabilityProbe.clear();
 }
 
 async function readCodexVersion(): Promise<CommandResult> {

@@ -173,13 +173,13 @@ rather than sitting latched forever. Edge-detection mirrors the login watcher.
 
 Two version-coupled wrinkles this cost us:
 
-- The skip-attempt is gated on the **current frame** still showing the update
-  screen (its banner OR a numbered skip option), even though the option is located
-  in the accumulated buffer (Codex can split the banner and its options across two
-  consecutive frames). Gating the *attempt* on the buffer alone means a re-armed
-  benign frame that merely says "update" re-fires a skip against a **stale buffered
-  option** — a real bug we hit while building this. `src/codex/startup-prompts.ts`,
-  `currentFrameShowsUpdatePrompt`, C-CODEX-12.
+- The skip-attempt is gated by a per-session prompt tracker, even though the
+  option is located in the accumulated buffer. Codex can split the distinctive
+  versioned banner and its options across consecutive screen replacements; once
+  the banner activates the tracker, a safe-option-only continuation remains the
+  same blocking prompt. A definite non-update frame clears it. Matching the
+  accumulated buffer alone lets benign later prose re-fire against a **stale
+  buffered option** — a real bug we hit while building this. C-CODEX-12.
 - Option labels drift by version. Older codex (0.132/0.133) rendered a numbered
   dialog ("1. Update now / 2. Skip / 3. Skip until next version"). In the installed
   0.149.1 binary, the upgrade notice strings extracted from the native binary read
@@ -188,10 +188,35 @@ Two version-coupled wrinkles this cost us:
   numbered dialog — so the interactive dialog is not guaranteed on every version.
   The skip is written ONLY when a numbered skip option is actually present
   (`findNumberedOption` → null ⇒ no write), so a passive banner is a harmless no-op.
-  The match set (`updateOptionPattern`, `updateScreenBanner`) is unit-tested against
-  captured layouts, NOT against a live update event (which requires an actually-stale
-  binary to trigger). If Codex changes the dialog wording, this is the first thing
-  to re-capture.
+  The match set (`src/codex/update-prompt.ts`) is unit-tested against captured
+  layouts, NOT against a live update event (which requires an actually-stale binary
+  to trigger). If Codex changes the dialog wording, this is the first thing to
+  re-capture.
+
+**Concurrent-start failure (verified against codex-cli 0.152.1, 2026-09):** the
+native TUI updater prints `Updating Codex via ...` and runs the same global npm
+installer as the preflight. If queued startup input confirms its default "Update
+now" action while another host is updating, npm races creation of the shared
+`bin/codex` symlink and one installer fails with `EEXIST`. Update screens are
+therefore input-blocking facts, not only responder hints: readiness and paste
+submission remain suspended until the rendered update frame clears, even after
+the skip key is written. The prompt recognizer accepts the known first-party
+versioned banner before options paint, plus option-only frames when BOTH "Update
+now" and a safe skip/later choice are present. Once active, a safe-option-only
+continuation stays latched until a definite non-update frame. Generic agent prose
+containing "update available" and the actual 0.149.1 passive installation notice
+do not block.
+
+The preflight adds a second boundary because global installers can also race
+across separate Elwood parent processes. A per-user/per-adapter atomic lease in
+the account cache (independent of `TMPDIR`) surrounds the required existence check
+and updater. Contenders wait without blocking the event loop, then invalidate
+their local version and capability caches and validate the installed binary
+without launching another updater. The lease records a PID and unique generation:
+a live owner is never evicted solely because the 30 s stale bound elapsed,
+dead-owner recovery is serialized, and cleanup removes only the generation it
+owns. Caches are invalidated after failed attempts too because npm can partially
+mutate the installation before returning nonzero.
 
 ## Claude "Not logged in" is a distinct re-auth banner from "Login expired"
 
