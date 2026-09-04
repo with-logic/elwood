@@ -29,6 +29,7 @@ export type ShutdownHost = {
   readonly reapPolicy: SessionReapPolicy;
   readonly status: () => import("../core/types.ts").ElwoodSessionStatus;
   readonly claimShutdown: (evidence: ShutdownEvidence) => void;
+  readonly clearLoops: (reason: "kill" | "teardown") => Promise<void>;
   readonly cleanupRuntime: () => Promise<void>;
   readonly submitEvidence: (kind: StatusEvidenceKind) => void;
 };
@@ -57,7 +58,7 @@ const shutdownVerbs = {
   stop: (host: ShutdownHost, ctx: ShutdownContext) =>
     runShutdown(host, "SIGTERM", "stop_completed", ctx),
   kill: (host: ShutdownHost, ctx: ShutdownContext) =>
-    runShutdown(host, "SIGKILL", "kill_completed", ctx),
+    runPermanentShutdown(host, "kill", () => runShutdown(host, "SIGKILL", "kill_completed", ctx)),
   teardown: (host: ShutdownHost, ctx: ShutdownContext) => runTeardown(host, ctx),
 } as const;
 
@@ -138,20 +139,44 @@ async function cleanupOrThrowTermination(host: ShutdownHost): Promise<void> {
 export async function runTeardown(host: ShutdownHost, ctx: ShutdownContext): Promise<void> {
   host.claimShutdown("teardown_completed");
   const shouldSignal = () => !mustNotSignal(host, ctx);
-  await runTeardownSteps([
-    () => {
-      if (!shouldSignal()) return undefined;
-      ctx.markSignaled();
-      return terminatePty(host.pty, "SIGKILL", host.reapPolicy.reaper);
-    },
-    () => host.reapPolicy.reaper.reap(), // No-op once latched; retries a failed reap.
-    () => host.cleanupRuntime(),
-    () => host.submitEvidence("teardown_completed"),
-    () =>
-      removeSessionFiles({
-        stateDir: host.stateDir,
-        elwoodSessionId: host.elwoodSessionId,
-        socketPath: host.socketPath,
-      }),
-  ]);
+  await runPermanentShutdown(host, "teardown", () =>
+    runTeardownSteps([
+      () => {
+        if (!shouldSignal()) return undefined;
+        ctx.markSignaled();
+        return terminatePty(host.pty, "SIGKILL", host.reapPolicy.reaper);
+      },
+      () => host.reapPolicy.reaper.reap(), // No-op once latched; retries a failed reap.
+      () => host.cleanupRuntime(),
+      () => host.submitEvidence("teardown_completed"),
+      () =>
+        removeSessionFiles({
+          stateDir: host.stateDir,
+          elwoodSessionId: host.elwoodSessionId,
+          socketPath: host.socketPath,
+        }),
+    ]),
+  );
+}
+
+/** Clear durable loops first, but always finish process/file cleanup before rejecting. */
+async function runPermanentShutdown(
+  host: ShutdownHost,
+  reason: "kill" | "teardown",
+  cleanup: () => Promise<void>,
+): Promise<void> {
+  let loopFailure: unknown;
+  let cleanupFailure: unknown;
+  try {
+    await host.clearLoops(reason);
+  } catch (error) {
+    loopFailure = error;
+  }
+  try {
+    await cleanup();
+  } catch (error) {
+    cleanupFailure = error;
+  }
+  if (loopFailure !== undefined) throw loopFailure;
+  if (cleanupFailure !== undefined) throw cleanupFailure;
 }

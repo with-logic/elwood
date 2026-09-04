@@ -79,6 +79,6 @@ describe("C-CLAUDE-15 Claude transcript drop wiring", () => {
     expect(exits).toEqual([0]); // terminal:exit still emitted
     expect(session.status).toBe("exited"); // terminal status still reached
     expect(reapedGroups).toContain(leaderPid); // group still reaped (no leak)
-    expect(warnings).toContain("transcript_poll_stopped"); // bounded diagnostic surfaced
+    await expect.poll(() => warnings).toContain("transcript_poll_stopped");
   });
 });

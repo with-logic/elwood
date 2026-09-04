@@ -15,6 +15,7 @@ import type { PtyProcess } from "../pty/types.ts";
 import { AgentSessionBase } from "../runtime/session-base.ts";
 import { terminalStatuses } from "../runtime/session-status.ts";
 import { runCleanupSteps } from "../runtime/teardown.ts";
+import type { PersistedLoopDefinition } from "../state/loop-store.ts";
 import type { SessionRuntime } from "../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
@@ -55,8 +56,19 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     emitter: TypedEmitter,
     terminalReplay: TerminalReplayBuffer,
     requestedSize: TerminalSize,
+    loopDefinitions: readonly PersistedLoopDefinition[],
   ) {
-    super("claude", record, stateDir, runtime, pty, terminal, emitter, terminalReplay);
+    super(
+      "claude",
+      record,
+      stateDir,
+      runtime,
+      pty,
+      terminal,
+      emitter,
+      terminalReplay,
+      loopDefinitions,
+    );
     this.bridge = bridge;
     this.emitter = emitter;
     this.requestedSize = requestedSize;

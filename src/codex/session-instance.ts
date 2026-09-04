@@ -10,6 +10,7 @@ import type { ElwoodSessionStatus, ElwoodWarningEvent } from "../core/types.ts";
 import type { TypedEmitter } from "../events/emitter.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import { AgentSessionBase } from "../runtime/session-base.ts";
+import type { PersistedLoopDefinition } from "../state/loop-store.ts";
 import type { SessionRuntime } from "../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../state/store.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
@@ -50,9 +51,20 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     bridge: CodexHookBridge,
     emitter: TypedEmitter<CodexEventMap>,
     terminalReplay: TerminalReplayBuffer,
-    transcriptWatcher?: CodexTranscriptWatcher,
+    transcriptWatcher: CodexTranscriptWatcher | undefined,
+    loopDefinitions: readonly PersistedLoopDefinition[],
   ) {
-    super("codex", record, stateDir, runtime, pty, terminal, emitter, terminalReplay);
+    super(
+      "codex",
+      record,
+      stateDir,
+      runtime,
+      pty,
+      terminal,
+      emitter,
+      terminalReplay,
+      loopDefinitions,
+    );
     this.bridge = bridge;
     this.emitter = emitter;
     this.transcriptWatcher = transcriptWatcher;

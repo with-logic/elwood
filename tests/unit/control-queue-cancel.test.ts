@@ -9,6 +9,22 @@ import { type ControlDispatchNotification, ControlQueue } from "../../src/core/c
 const loopOrigin = { kind: "loop", loopId: "loop-1" } as const;
 
 describe("ControlQueue cancellation and attribution", () => {
+  test("an already-aborted cancellation never drains into the submitter", async () => {
+    const cancel = new AbortController();
+    cancel.abort();
+    const queue = new ControlQueue(
+      () => Promise.reject(new Error("must not submit")),
+      () => new Error("closed"),
+      () => undefined,
+    );
+    queue.markReady();
+    await expect(
+      queue.send("scheduled", "message", undefined, {
+        cancel: { signal: cancel.signal, error: () => new Error("already cancelled") },
+      }),
+    ).rejects.toThrow("already cancelled");
+  });
+
   test("C-LOOP-17 cancels a readiness-waiting loop message without dispatch", async () => {
     const submitted: string[] = [];
     const notifications: ControlDispatchNotification[] = [];

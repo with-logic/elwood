@@ -71,6 +71,16 @@ describe("writePastedPrompt", () => {
     expect(terminal.writes).not.toContain("\r");
   });
 
+  test("C-LOOP-17 cancellation while a dialog blocks writes no prompt", async () => {
+    const terminal = fakeTerminal();
+    const controller = new AbortController();
+    const guard: PasteGuard = { snapshot: () => "", staged: () => false, blocked: () => true };
+    const submitted = writePastedPrompt(terminal, "scheduled", guard, controller.signal, 1, 1);
+    controller.abort(new Error("cancelled while blocked"));
+    await expect(submitted).rejects.toThrow("cancelled while blocked");
+    expect(terminal.writes).toEqual([]);
+  });
+
   test("C-API-31 a submitted prompt is never nudged", async () => {
     const terminal = fakeTerminal();
     const guard: PasteGuard = {

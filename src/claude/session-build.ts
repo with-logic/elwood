@@ -8,6 +8,7 @@ import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import type { StartClaudeOptions } from "../core/types.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
+import { loadRuntimeLoopDefinitions } from "../runtime/loop-restore.ts";
 import { createReadinessGate } from "../runtime/session-readiness.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../runtime/startup-buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../runtime/startup-cleanup.ts";
@@ -45,6 +46,7 @@ export async function buildClaudeSession(
   const { record, stateDir, runtime, options, resumed, preflightWarning } = input;
   secureMkdir(runtime.sessionDir);
   writeSessionRecord(record, runtime.sessionDir);
+  const loopDefinitions = loadRuntimeLoopDefinitions(stateDir, record.elwoodSessionId);
   writeRuntimeFiles(runtime, options);
   const emitter = new TypedEmitter();
   registerInitialHooks(emitter, options.hooks);
@@ -150,6 +152,7 @@ export async function buildClaudeSession(
     emitter,
     terminalReplay,
     requestedSize,
+    loopDefinitions,
   );
   const active = session;
   // ONE guarded region for every live-resource step after the session exists (flush,

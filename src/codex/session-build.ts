@@ -10,6 +10,7 @@ import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import { TurnStateWatcher } from "../core/turn-state.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
+import { loadRuntimeLoopDefinitions } from "../runtime/loop-restore.ts";
 import { createReadinessGate } from "../runtime/session-readiness.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../runtime/startup-buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../runtime/startup-cleanup.ts";
@@ -41,6 +42,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const { record, stateDir, runtime, options, resumed, preflightWarning } = input;
   secureMkdir(runtime.sessionDir);
   writeSessionRecord(record, runtime.sessionDir);
+  const loopDefinitions = loadRuntimeLoopDefinitions(stateDir, record.elwoodSessionId);
   writeCodexRuntimeFiles(runtime);
   const emitter = new TypedEmitter<CodexEventMap>();
   registerInitialHooks(emitter, options.hooks);
@@ -137,6 +139,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     emitter,
     terminalReplay,
     transcriptWatcher,
+    loopDefinitions,
   );
   const id = record.elwoodSessionId;
   const activeSession = session;

@@ -45,6 +45,19 @@ describe("LoopScheduler idle cadence", () => {
     expect(harness.submissions).toHaveLength(2);
   });
 
+  test("ready raw caller activity restarts idle time without waiting for a status edge", async () => {
+    const harness = new SchedulerHarness();
+    const scheduler = new LoopScheduler(harness.options([idle(harness.clock)]));
+    scheduler.start();
+    scheduler.ready();
+    await harness.clock.advance(IDLE_LOOP_INTERVAL_MS - 1);
+    scheduler.activity("caller");
+    await harness.clock.advance(IDLE_LOOP_INTERVAL_MS - 1);
+    expect(harness.submissions).toEqual([]);
+    await harness.clock.advance(1);
+    expect(harness.submissions).toHaveLength(1);
+  });
+
   test("C-LOOP-06 caller activity during a loop turn replaces its origin rearm", async () => {
     const harness = new SchedulerHarness();
     const scheduler = new LoopScheduler(harness.options([idle(harness.clock)]));

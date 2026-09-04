@@ -8,6 +8,7 @@ import type {
   PendingOperation,
   QueuedOperation,
 } from "./control-queue-types.ts";
+import { toError } from "./errors.ts";
 
 /** Shared mutable state for the serialized control queue. */
 export abstract class ControlQueueState {
@@ -84,7 +85,7 @@ export abstract class ControlQueueState {
   }
 
   protected abortError(signal: AbortSignal): Error {
-    return signal.reason instanceof Error ? signal.reason : this.stoppedError();
+    return toError(signal.reason);
   }
 
   protected abstract drain(): void;

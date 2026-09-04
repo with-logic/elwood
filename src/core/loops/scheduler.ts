@@ -1,7 +1,4 @@
-/**
- * Adapter-neutral recurring-loop scheduler state machine.
- * Implements PRD §5.9 and C-LOOP-04 through C-LOOP-20.
- */
+/** Adapter-neutral recurring-loop state machine (PRD §5.9, C-LOOP-04 through C-LOOP-20). */
 
 import { runContained } from "../control-queue-traits.ts";
 import { elwoodError } from "../errors.ts";
@@ -83,6 +80,7 @@ export class LoopScheduler {
 
   activity(origin: LoopActivityOrigin): void {
     if (origin !== "caller") return;
+    const remainReady = this.delivery.readyNow;
     this.delivery.markRunning();
     for (const entry of this.state.entries()) {
       if (entry.definition.mode !== "idle") continue;
@@ -92,15 +90,16 @@ export class LoopScheduler {
       entry.dueAt = undefined;
     }
     this.delivery.cancelIf((id) => this.state.get(id)?.definition.mode === "idle");
+    if (remainReady) this.ready();
   }
 
   create(rawRequest: unknown): ElwoodLoopSnapshot {
     if (!this.live) throw elwoodError("session_not_running", "Session is not running.");
     this.pruneExpired(true);
+    const request = validateLoopRequest(rawRequest);
     if (this.state.entries().length >= MAX_ACTIVE_LOOPS) {
       throw elwoodError("loop_limit_reached", "Loop limit reached.");
     }
-    const request = validateLoopRequest(rawRequest);
     const definition = createLoopDefinition(request, this.options.createId(), this.options.now());
     this.persist([...this.state.definitions(), definition], definition.id);
     this.state.commit([...this.state.definitions(), definition]);
@@ -135,7 +134,12 @@ export class LoopScheduler {
 
   clear(reason: "kill" | "teardown"): void {
     const definitions = this.state.definitions();
-    if (definitions.length > 0) this.persist([], undefined);
+    try {
+      if (definitions.length > 0) this.persist([], undefined);
+    } catch (error) {
+      this.pause();
+      throw error;
+    }
     this.live = false;
     this.timers.clear();
     this.delivery.pause();
