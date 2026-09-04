@@ -97,6 +97,14 @@ export type { ElwoodErrorName } from "./core/errors.ts";
 export { ElwoodError, elwoodError } from "./core/errors.ts";
 export type { ImageFormat, ImageInput, SendOptions } from "./core/images/types.ts";
 export type { ListModelsOptions } from "./core/list-models.ts";
+export { parseLoopCommand } from "./core/loops/parser.ts";
+export type {
+  ElwoodLoopEvent,
+  ElwoodLoopEventSnapshot,
+  ElwoodLoopRequest,
+  ElwoodLoopSnapshot,
+  ElwoodLoopState,
+} from "./core/loops/types.ts";
 export type { AgentModelOption } from "./core/model-rows.ts";
 export type { ClaudeReasoningEffort, CodexReasoningEffort } from "./core/reasoning-effort.ts";
 export type { TurnEvent } from "./core/simple/events.ts";
