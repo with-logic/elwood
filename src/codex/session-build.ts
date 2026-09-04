@@ -10,7 +10,7 @@ import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import { TurnStateWatcher } from "../core/turn-state.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
-import { loadRuntimeLoopDefinitions } from "../runtime/loop-restore.ts";
+import { loadRuntimeLoopDefinitions as loadLoops } from "../runtime/loop-restore.ts";
 import { createReadinessGate } from "../runtime/session-readiness.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../runtime/startup-buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../runtime/startup-cleanup.ts";
@@ -42,7 +42,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const { record, stateDir, runtime, options, resumed, preflightWarning } = input;
   secureMkdir(runtime.sessionDir);
   writeSessionRecord(record, runtime.sessionDir);
-  const loopDefinitions = loadRuntimeLoopDefinitions(stateDir, record.elwoodSessionId);
+  const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId) : [];
   writeCodexRuntimeFiles(runtime);
   const emitter = new TypedEmitter<CodexEventMap>();
   registerInitialHooks(emitter, options.hooks);
@@ -143,11 +143,13 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   );
   const id = record.elwoodSessionId;
   const activeSession = session;
+  const beforeCleanup = () => activeSession.pauseLoopsForStartupCleanup(ready.cancel);
   // ONE guarded region for every live-resource step after the session exists (readiness
   // wiring/replay, exit registration, startup assertion/evidence): a failure in ANY tears
   // down the now-live PTY/bridge/terminal/watchers before rethrowing (§9.1/§9.4). Mirrors Claude.
   await guardStartupRegion(
     async () => {
+      activeSession.startLoops();
       flushPendingWarnings(); // inside the guard: a throwing sink tears down, not leaks (§5.4/§9.4)
       // The `SessionStart` hook releases the first queued message (C-API-28).
       activeSession.setInitialReadyHook(() => ready.mark());
@@ -170,7 +172,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       await assertStartupThenRelease("codex", startupOutput, () => startupExit);
       activeSession.submitEvidence("startup_usable");
     },
-    { before: () => ready.cancel(), pty, bridge, terminal, after: () => transcriptWatcher.stop() },
+    { before: beforeCleanup, pty, bridge, terminal, after: () => transcriptWatcher.stop() },
   );
   // Buffer the preflight/version warning through the same gate, then open it: buffered
   // startup warnings (MCP/transcript) AND the preflight all flush on one deferred

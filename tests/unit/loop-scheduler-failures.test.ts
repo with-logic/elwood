@@ -97,7 +97,7 @@ describe("LoopScheduler failures", () => {
     );
   });
 
-  test("C-LOOP-10 expiry timer scheduling failures are contained and reported", () => {
+  test("C-LOOP-10 transient expiry timer failures rearm while live", async () => {
     const harness = new SchedulerHarness();
     const base = harness.options();
     let first = true;
@@ -114,9 +114,12 @@ describe("LoopScheduler failures", () => {
     scheduler.start();
     const loop = scheduler.create({ mode: "fixed", intervalMs: 60_000, message: "safe" });
     expect(loop.state).toBe("scheduled");
+    expect(harness.clock.pending).toBe(2);
     expect(harness.events).toContainEqual(
       expect.objectContaining({ kind: "failed", phase: "scheduling" }),
     );
+    await harness.clock.advance(loop.expiresAt - harness.clock.nowMs);
+    expect(scheduler.list()).toEqual([]);
   });
 
   test("C-LOOP-10 persistence failures preserve active definitions and snapshots", () => {
@@ -132,5 +135,20 @@ describe("LoopScheduler failures", () => {
       phase: "persistence",
       snapshot: { id: "fixed" },
     });
+  });
+
+  test("C-LOOP-10 startup prune failures stay silent before liveness", () => {
+    const harness = new SchedulerHarness();
+    const scheduler = new LoopScheduler(
+      harness.options([
+        fixed(harness.clock, { id: "expired", expiresAt: harness.clock.nowMs }),
+        fixed(harness.clock, { id: "active" }),
+      ]),
+    );
+    harness.persistError = new Error("disk full");
+    expect(() => scheduler.start()).toThrowError(
+      expect.objectContaining({ code: "loop_persistence_failed", details: {} }),
+    );
+    expect(harness.events).toEqual([]);
   });
 });

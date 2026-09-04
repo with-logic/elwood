@@ -24,6 +24,22 @@ describe("CodexSessionApi recurring loops", () => {
     expect(await session.listLoops()).toHaveLength(1);
     await session.cancelLoop(loop.id);
     expect(await session.listLoops()).toEqual([]);
+    const { message, ...redactedSnapshot } = loop;
+    expect(message).toBe("check status");
+    expect(events).toEqual([
+      {
+        kind: "created",
+        loopId: loop.id,
+        at: loop.createdAt,
+        snapshot: redactedSnapshot,
+      },
+      {
+        kind: "cancelled",
+        loopId: loop.id,
+        at: expect.any(Number),
+        reason: "caller",
+      },
+    ]);
     expect(JSON.stringify(events)).not.toContain("check status");
   });
 

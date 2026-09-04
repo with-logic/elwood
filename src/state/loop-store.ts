@@ -5,28 +5,12 @@
 
 import { lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { elwoodError } from "../core/errors.ts";
+import { elwoodError, errnoCode } from "../core/errors.ts";
+import type { LoopDefinition } from "../core/loops/scheduler-state.ts";
 import { safeSessionDir, writePrivateFileAtomic } from "./files.ts";
 import { LOOP_SIDECAR_SCHEMA_VERSION, validateLoopSidecar } from "./validate-loops.ts";
 
-export type PersistedLoopDefinition =
-  | {
-      readonly id: string;
-      readonly message: string;
-      readonly mode: "fixed";
-      readonly intervalMs: number;
-      readonly jitterMs: number;
-      readonly createdAt: number;
-      readonly expiresAt: number;
-    }
-  | {
-      readonly id: string;
-      readonly message: string;
-      readonly mode: "idle";
-      readonly jitterMs: number;
-      readonly createdAt: number;
-      readonly expiresAt: number;
-    };
+export type PersistedLoopDefinition = LoopDefinition;
 
 const LOOP_SIDECAR_NAME = "loops.json";
 
@@ -40,7 +24,7 @@ export function readLoopDefinitions(
   try {
     metadata = lstatSync(path);
   } catch (error) {
-    if (isMissing(error)) return [];
+    if (errnoCode(error) === "ENOENT") return [];
     throw corruptState(elwoodSessionId);
   }
   const expectedUid = process.getuid?.();
@@ -79,11 +63,6 @@ export function writeLoopDefinitions(
   );
 }
 
-/** Persist the canonical empty state without deleting the resumable session record. */
-export function clearLoopDefinitions(stateDir: string, elwoodSessionId: string): void {
-  writeLoopDefinitions(stateDir, elwoodSessionId, []);
-}
-
 /** Remove definitions expired at or before `now`, without mutating the input. */
 export function pruneExpiredLoopDefinitions(
   definitions: readonly PersistedLoopDefinition[],
@@ -94,10 +73,6 @@ export function pruneExpiredLoopDefinitions(
 
 function sidecarPath(stateDir: string, elwoodSessionId: string): string {
   return join(safeSessionDir(stateDir, elwoodSessionId), LOOP_SIDECAR_NAME);
-}
-
-function isMissing(error: unknown): boolean {
-  return Boolean(error && typeof error === "object" && "code" in error && error.code === "ENOENT");
 }
 
 function corruptState(elwoodSessionId: string): Error {

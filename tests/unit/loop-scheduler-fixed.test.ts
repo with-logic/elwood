@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from "vitest";
 import { LoopScheduler } from "../../src/core/loops/scheduler.ts";
-import { flushPromises, SchedulerHarness } from "./loop-scheduler-harness.ts";
+import { fixed, flushPromises, SchedulerHarness } from "./loop-scheduler-harness.ts";
 
 describe("LoopScheduler fixed cadence", () => {
   test("C-LOOP-05 delays first fire and re-anchors after committed submission", async () => {
@@ -47,5 +47,19 @@ describe("LoopScheduler fixed cadence", () => {
     scheduler.ready();
     await flushPromises();
     expect(harness.submissions).toHaveLength(2);
+  });
+
+  test("C-LOOP-09 promotes reverse-inserted exact ties before selecting by ID", async () => {
+    const harness = new SchedulerHarness();
+    const scheduler = new LoopScheduler(
+      harness.options([
+        fixed(harness.clock, { id: "z", jitterMs: 0 }),
+        fixed(harness.clock, { id: "a", jitterMs: 0 }),
+      ]),
+    );
+    scheduler.start();
+    scheduler.ready();
+    await harness.clock.advance(60_000);
+    expect(harness.submissions[0]?.id).toBe("a");
   });
 });

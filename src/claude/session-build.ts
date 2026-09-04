@@ -8,7 +8,7 @@ import { TerminalReplayBuffer } from "../core/terminal-replay.ts";
 import type { StartClaudeOptions } from "../core/types.ts";
 import { TypedEmitter } from "../events/emitter.ts";
 import type { PtyExit } from "../pty/types.ts";
-import { loadRuntimeLoopDefinitions } from "../runtime/loop-restore.ts";
+import { loadRuntimeLoopDefinitions as loadLoops } from "../runtime/loop-restore.ts";
 import { createReadinessGate } from "../runtime/session-readiness.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../runtime/startup-buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../runtime/startup-cleanup.ts";
@@ -46,7 +46,7 @@ export async function buildClaudeSession(
   const { record, stateDir, runtime, options, resumed, preflightWarning } = input;
   secureMkdir(runtime.sessionDir);
   writeSessionRecord(record, runtime.sessionDir);
-  const loopDefinitions = loadRuntimeLoopDefinitions(stateDir, record.elwoodSessionId);
+  const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId) : [];
   writeRuntimeFiles(runtime, options);
   const emitter = new TypedEmitter();
   registerInitialHooks(emitter, options.hooks);
@@ -155,11 +155,12 @@ export async function buildClaudeSession(
     loopDefinitions,
   );
   const active = session;
-  // ONE guarded region for every live-resource step after the session exists (flush,
-  // exit registration, startup assertion, startup evidence): a failure in ANY of them
+  const beforeCleanup = () => active.pauseLoopsForStartupCleanup(ready.cancel);
+  // Guard every live-resource step after session creation: a failure in any of them
   // tears down the now-live PTY, bridge, terminal, and watcher first (PRD §9.1, §9.4).
   await guardStartupRegion(
     async () => {
+      active.startLoops();
       flushPendingWarnings(); // sink now exists: flush any early-buffered diagnostic (§5.7)
       // A hook or deadline that fired before the session existed submitted nothing
       // (evidence is `session?.`-guarded); replay it now the session can consume it.
@@ -171,12 +172,11 @@ export async function buildClaudeSession(
           active.submitExit(),
         );
       });
-      // Release the startup buffer once the check settles so no per-session
-      // transcript lingers for the PTY handler's lifetime (§9.4).
+      // Release the startup buffer once the check settles (§9.4).
       await assertStartupThenRelease("claude", startupOutput, () => startupExit);
       active.submitEvidence("startup_usable");
     },
-    { before: () => ready.cancel(), pty, bridge, terminal, after: () => transcriptWatcher.stop() },
+    { before: beforeCleanup, pty, bridge, terminal, after: () => transcriptWatcher.stop() },
   );
   // Buffer the preflight/version warning through the same gate, then open it: buffered
   // startup warnings AND the preflight flush on one deferred macrotask after return, so

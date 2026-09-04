@@ -29,6 +29,7 @@ export type ShutdownHost = {
   readonly reapPolicy: SessionReapPolicy;
   readonly status: () => import("../core/types.ts").ElwoodSessionStatus;
   readonly claimShutdown: (evidence: ShutdownEvidence) => void;
+  readonly pauseLoops: () => void;
   readonly clearLoops: (reason: "kill" | "teardown") => Promise<void>;
   readonly cleanupRuntime: () => Promise<void>;
   readonly submitEvidence: (kind: StatusEvidenceKind) => void;
@@ -58,7 +59,7 @@ const shutdownVerbs = {
   stop: (host: ShutdownHost, ctx: ShutdownContext) =>
     runShutdown(host, "SIGTERM", "stop_completed", ctx),
   kill: (host: ShutdownHost, ctx: ShutdownContext) =>
-    runPermanentShutdown(host, "kill", () => runShutdown(host, "SIGKILL", "kill_completed", ctx)),
+    runKillShutdown(host, () => runShutdown(host, "SIGKILL", "kill_completed", ctx)),
   teardown: (host: ShutdownHost, ctx: ShutdownContext) => runTeardown(host, ctx),
 } as const;
 
@@ -179,4 +180,11 @@ async function runPermanentShutdown(
   }
   if (loopFailure !== undefined) throw loopFailure;
   if (cleanupFailure !== undefined) throw cleanupFailure;
+}
+
+/** Kill stops live timers first, but keeps durable definitions until termination succeeds. */
+async function runKillShutdown(host: ShutdownHost, cleanup: () => Promise<void>): Promise<void> {
+  host.pauseLoops();
+  await cleanup();
+  await host.clearLoops("kill");
 }

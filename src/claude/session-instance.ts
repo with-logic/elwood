@@ -162,7 +162,7 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   // a throwing listener as non-delivery and re-fire the SAME incident to the listeners
   // that already received it (a duplicate). A throwing listener is contained here.
   noteLoginExpiry(screenText: string): void {
-    if (!(this.hasBeenReady && this.loginExpiredWatcher.peek(screenText))) return;
+    if (!(this.everReady && this.loginExpiredWatcher.peek(screenText))) return;
     this.loginExpiredWatcher.commit();
     try {
       this.emitWarnings([loginExpiredWarning(this.elwoodSessionId)]);

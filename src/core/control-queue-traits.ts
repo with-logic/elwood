@@ -4,6 +4,7 @@
  * repo convention of separating static tables from behavior (PRD §5.3).
  */
 
+import { runContained } from "./contained.ts";
 import type {
   Cancel,
   ControlDispatchNotification,
@@ -140,15 +141,6 @@ export const controlOperationTraits: Readonly<
     submitMode: "command",
   },
 };
-
-/** Run a step, swallowing any throw — telemetry must never control queue progress. */
-export function runContained(step: () => void): void {
-  try {
-    step();
-  } catch {
-    // Contained by design.
-  }
-}
 
 /** Owns abort-listener cleanup and the one in-flight cancellation marker. */
 export class ControlCancellation {

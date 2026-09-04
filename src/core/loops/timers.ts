@@ -39,7 +39,7 @@ export class LoopTimerBank {
   }
 
   cancelLoop(loopId: string): void {
-    this.cancel(`due:${loopId}`);
+    this.cancelDue(loopId);
     this.cancel(`expiry:${loopId}`);
   }
 
@@ -93,7 +93,7 @@ export class LoopTiming {
     }
   }
 
-  armExpiry(entry: LoopRuntimeEntry): void {
+  armExpiry(entry: LoopRuntimeEntry, retry = true): void {
     try {
       this.timers.arm(
         "expiry",
@@ -103,6 +103,7 @@ export class LoopTiming {
       );
     } catch {
       this.options.fail(entry);
+      if (retry && this.options.live()) this.armExpiry(entry, false);
     }
   }
 
@@ -120,6 +121,13 @@ export class LoopTiming {
     entry.state = "due";
     entry.dueAt = dueAt;
     entry.nextDueAt = undefined;
+    for (const scheduled of this.options.state.entries()) {
+      if (scheduled.state !== "scheduled" || scheduled.nextDueAt === undefined) continue;
+      if (scheduled.nextDueAt > dueAt) continue;
+      scheduled.state = "due";
+      scheduled.dueAt = scheduled.nextDueAt;
+      scheduled.nextDueAt = undefined;
+    }
     this.options.pump();
   }
 }

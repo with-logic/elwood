@@ -18,7 +18,6 @@ import { describe, expect, test, vi } from "vitest";
 import { ElwoodError } from "../../src/core/errors.ts";
 import { LOOP_EXPIRATION_MS } from "../../src/core/loops/constants.ts";
 import {
-  clearLoopDefinitions,
   pruneExpiredLoopDefinitions,
   readLoopDefinitions,
   writeLoopDefinitions,
@@ -93,7 +92,7 @@ describe("loop sidecar store", () => {
       definitions[1],
     ]);
     writeLoopDefinitions(root, id, definitions);
-    clearLoopDefinitions(root, id);
+    writeLoopDefinitions(root, id, []);
     expect(readLoopDefinitions(root, id)).toEqual([]);
   });
 

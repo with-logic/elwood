@@ -108,6 +108,59 @@ describe("LoopScheduler lifecycle", () => {
     expect(empty.writes).toEqual([]);
   });
 
+  test("C-LOOP-16 stopped management stays silent", () => {
+    const harness = new SchedulerHarness();
+    const scheduler = new LoopScheduler(harness.options());
+    scheduler.start();
+    const cancelled = scheduler.create({ mode: "idle", message: "cancel" });
+    scheduler.create({ mode: "idle", message: "clear" });
+    harness.events.length = 0;
+
+    scheduler.pause();
+    scheduler.cancel(cancelled.id);
+    scheduler.clear("kill");
+
+    expect(harness.events).toEqual([]);
+  });
+
+  test("C-LOOP-13 delivery expires a due loop before its timer callback runs", () => {
+    const harness = new SchedulerHarness();
+    const callbacks: (() => void)[] = [];
+    const scheduler = new LoopScheduler({
+      ...harness.options([
+        fixed(harness.clock, { expiresAt: harness.clock.nowMs + 60_000, jitterMs: 0 }),
+      ]),
+      schedule: (run) => {
+        callbacks.push(run);
+        return { cancel: () => undefined };
+      },
+    });
+    scheduler.start();
+    scheduler.ready();
+    harness.clock.nowMs += 60_000;
+    callbacks[1]!();
+    expect(harness.submissions).toEqual([]);
+    expect(scheduler.list()).toEqual([]);
+    expect(harness.events.at(-1)).toMatchObject({ kind: "expired", loopId: "fixed" });
+  });
+
+  test("C-LOOP-13 pruning uses one clock instant", () => {
+    const harness = new SchedulerHarness();
+    const values = [100, 100, 100, 101, 102];
+    const scheduler = new LoopScheduler({
+      ...harness.options([
+        fixed(harness.clock, { id: "expired", expiresAt: 101 }),
+        fixed(harness.clock, { id: "edge", expiresAt: 102 }),
+      ]),
+      now: () => values.shift() as number,
+    });
+    scheduler.start();
+    scheduler.list();
+
+    expect(harness.writes.at(-1)?.map(({ id }) => id)).toEqual(["edge"]);
+    expect(harness.events.at(-1)).toMatchObject({ kind: "expired", at: 101 });
+  });
+
   test("C-LOOP-13 expiry wins when submission settles at the boundary", async () => {
     const harness = new SchedulerHarness();
     let resolve!: () => void;

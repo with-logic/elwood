@@ -13,23 +13,27 @@ describe("LoopScheduler race branches", () => {
     let resolve!: () => void;
     let reject!: (error: Error) => void;
     const state = dueState(harness);
+    const armDue = vi.fn();
+    const expire = vi.fn();
+    const fail = vi.fn();
+    const emit = vi.fn();
     const delivery = new LoopDelivery({
       state,
       now: harness.clock.now,
       submit: () => new Promise<void>((yes, no) => ([resolve, reject] = [yes, no])),
-      armDue: vi.fn(),
-      expire: vi.fn(),
-      fail: vi.fn(),
-      emit: vi.fn(),
+      armDue,
+      expire,
+      fail,
+      emit,
     });
     delivery.markReady();
     delivery.pump(true);
     delivery.cancelIf(() => false);
     delivery.cancel("other");
     delivery.cancelIf(() => true);
+    state.commit([]);
     resolve();
     await flushPromises();
-
     state.commit([fixed(harness.clock)]);
     state.get("fixed")!.state = "due";
     state.get("fixed")!.dueAt = harness.clock.nowMs;
@@ -38,7 +42,6 @@ describe("LoopScheduler race branches", () => {
     state.commit([]);
     reject(new Error("removed"));
     await flushPromises();
-
     state.commit([fixed(harness.clock)]);
     state.get("fixed")!.state = "due";
     state.get("fixed")!.dueAt = harness.clock.nowMs;
@@ -47,8 +50,12 @@ describe("LoopScheduler race branches", () => {
     state.commit([]);
     resolve();
     await flushPromises();
+    expect(state.entries()).toEqual([]);
+    expect(armDue).not.toHaveBeenCalled();
+    expect(expire).not.toHaveBeenCalled();
+    expect(fail).not.toHaveBeenCalled();
+    expect(emit).not.toHaveBeenCalled();
   });
-
   test("submission expiry wins and caller cancellation clears an active idle origin", async () => {
     const harness = new SchedulerHarness();
     let now = harness.clock.nowMs;
@@ -74,7 +81,6 @@ describe("LoopScheduler race branches", () => {
     await flushPromises();
     expect(expire).toHaveBeenCalledWith("fixed");
   });
-
   test("start, stale expiry, paused expiry, and list pruning stay idempotent", () => {
     const harness = new SchedulerHarness();
     const callbacks: (() => void)[] = [];
@@ -91,7 +97,6 @@ describe("LoopScheduler race branches", () => {
     scheduler.activity("caller");
     scheduler.cancel("fixed");
     callbacks[0]!();
-
     const paused = new LoopScheduler({
       ...harness.options([fixed(harness.clock, { expiresAt: harness.clock.nowMs + 10 })]),
       schedule: (run) => {
@@ -104,14 +109,12 @@ describe("LoopScheduler race branches", () => {
     callbacks.at(-1)!();
     expect(paused.list()).toEqual([]);
   });
-
   test("omitted definitions and live list-pruning cover fresh scheduler branches", () => {
     const harness = new SchedulerHarness();
     const { definitions: _definitions, ...options } = harness.options();
     const fresh = new LoopScheduler(options);
     fresh.ready();
     fresh.clear("kill");
-
     let now = harness.clock.nowMs;
     const pruning = new LoopScheduler({
       ...harness.options([fixed(harness.clock, { expiresAt: now + 1 })]),
@@ -123,7 +126,6 @@ describe("LoopScheduler race branches", () => {
     expect(pruning.list()).toEqual([]);
     expect(harness.events).toContainEqual(expect.objectContaining({ kind: "expired" }));
   });
-
   test("batch persistence failure reports active IDs without request contents", () => {
     const harness = new SchedulerHarness();
     const scheduler = new LoopScheduler(harness.options([fixed(harness.clock)]));
@@ -139,13 +141,14 @@ describe("LoopScheduler race branches", () => {
     });
   });
 });
-
 describe("LoopTiming defensive callbacks", () => {
-  test("a stopped scheduler does not retry a failed timer", () => {
+  test("a stopped scheduler does not retry failed due or expiry timers", () => {
     const harness = new SchedulerHarness();
     const state = new LoopSchedulerState([fixed(harness.clock)]);
+    let calls = 0;
     const timing = new LoopTiming(
       new LoopTimerBank(() => {
+        calls += 1;
         throw new Error("timer");
       }),
       {
@@ -158,8 +161,9 @@ describe("LoopTiming defensive callbacks", () => {
       },
     );
     timing.armDue(state.get("fixed")!, harness.clock.nowMs);
+    timing.armExpiry(state.get("fixed")!);
+    expect(calls).toBe(2);
   });
-
   test("stale due callbacks ignore missing and non-live definitions", () => {
     const harness = new SchedulerHarness();
     const callbacks: (() => void)[] = [];
@@ -188,7 +192,6 @@ describe("LoopTiming defensive callbacks", () => {
     callbacks[1]!();
   });
 });
-
 function dueState(harness: SchedulerHarness): LoopSchedulerState {
   const state = new LoopSchedulerState([fixed(harness.clock)]);
   state.get("fixed")!.state = "due";

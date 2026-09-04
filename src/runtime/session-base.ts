@@ -14,7 +14,6 @@ import { applyResize, restoreHeldResize } from "./session-resize.ts";
 import { SessionShutdownBinding } from "./session-shutdown-binding.ts";
 import { terminalStatuses } from "./session-status.ts";
 import { createSessionStatusEngine } from "./session-status-wiring.ts";
-
 export abstract class AgentSessionBase {
   protected record: Base.SessionRecord;
   readonly terminal: Base.ElwoodTerminal;
@@ -28,7 +27,7 @@ export abstract class AgentSessionBase {
   private readonly loops: SessionLoops;
   private readonly cleanupLatch = new CleanupLatch(() => this.stopRuntime());
   private readonly shutdown: SessionShutdownBinding;
-  private everReady = false;
+  protected everReady = false;
   private readonly pasteGuard: Base.PasteGuard = {
     snapshot: () => this.terminal.snapshot().text,
     staged: (s, p) => this.stagedPaste(s, p),
@@ -109,20 +108,15 @@ export abstract class AgentSessionBase {
   get status(): Base.ElwoodSessionStatus {
     return this.statusEngine.status;
   }
-  protected get hasBeenReady(): boolean {
-    return this.everReady;
-  }
   sendPrompt = (prompt: string, options?: Base.SendOptions) =>
     this.enqueue(prompt, "prompt", options);
   sendMessage = (msg: string, options?: Base.SendOptions) => this.enqueue(msg, "message", options);
   sendGuidance = (msg: string, options?: Base.SendOptions) =>
     this.enqueue(msg, "guidance", options);
-  createLoop = (request: Base.ElwoodLoopRequest): Promise<Base.ElwoodLoopSnapshot> =>
+  createLoop = (request: Base.ElwoodLoopRequest) =>
     this.inSession(() => this.loops.create(request));
-  listLoops = (): Promise<readonly Base.ElwoodLoopSnapshot[]> =>
-    this.inSession(() => this.loops.list(), true);
-  cancelLoop = (loopId: string): Promise<void> =>
-    this.inSession(() => this.loops.cancel(loopId), true);
+  listLoops = () => this.inSession(() => this.loops.list(), true);
+  cancelLoop = (loopId: string) => this.inSession(() => this.loops.cancel(loopId), true);
   protected abstract attachImages(paths: readonly string[], signal: AbortSignal): Promise<void>;
   private readonly imageBudget = new QueuedImageBudget();
   private enqueue(input: string, kind: Base.SubmitKind, options?: Base.SendOptions): Promise<void> {
@@ -152,6 +146,11 @@ export abstract class AgentSessionBase {
     this.loops.pause();
     return this.shutdown.stop();
   };
+  startLoops = (): void => this.loops.start();
+  pauseLoopsForStartupCleanup(cancelReadiness: () => void): void {
+    cancelReadiness();
+    this.loops.pause();
+  }
   kill = (): Promise<void> => this.shutdown.kill();
   teardown = (): Promise<void> => this.shutdown.teardown();
   submitEvidence = (kind: Base.StatusEvidenceKind): Base.StatusDecision =>

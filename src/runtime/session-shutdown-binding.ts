@@ -35,6 +35,7 @@ export class SessionShutdownBinding {
       claimShutdown: (evidence) => {
         this.pending ??= evidence;
       },
+      pauseLoops: () => input.loops.pause(),
       clearLoops: async (reason) => input.loops.clear(reason),
       cleanupRuntime: input.cleanupRuntime,
       submitEvidence: input.submitEvidence,

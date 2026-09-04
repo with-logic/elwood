@@ -1,5 +1,6 @@
 /** Serialized adapter controls with readiness semantics (PRD §5.3/§5.9). */
 
+import { runContained } from "./contained.ts";
 import { ControlQueueState } from "./control-queue-state.ts";
 import {
   type ControlOperationKind,
@@ -9,7 +10,6 @@ import {
   nextDispatchIndex,
   notifyDispatch,
   overtakesReadiness,
-  runContained,
 } from "./control-queue-traits.ts";
 import type {
   AbortableQueueTask,

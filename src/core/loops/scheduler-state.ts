@@ -172,29 +172,22 @@ export function persistLoopDefinitions(
   state: LoopSchedulerState,
   options: Pick<LoopSchedulerOptions, "now" | "persist">,
   definitions: readonly LoopDefinition[],
-  loopId: string | undefined,
+  impact: {
+    readonly affectedLoopIds: readonly string[];
+    readonly errorLoopId?: string;
+  },
   emit: (event: ElwoodLoopEvent) => void,
 ): void {
   try {
     options.persist(definitions);
   } catch {
-    const entries = loopId ? [state.get(loopId)].filter(Boolean) : state.entries();
-    if (loopId && entries.length === 0)
-      emit(loopFailureEvent(loopId, options.now(), "persistence"));
-    for (const entry of entries) {
-      emit(
-        loopFailureEvent(
-          (entry as LoopRuntimeEntry).definition.id,
-          options.now(),
-          "persistence",
-          entry as LoopRuntimeEntry,
-        ),
-      );
+    for (const loopId of impact.affectedLoopIds) {
+      emit(loopFailureEvent(loopId, options.now(), "persistence", state.get(loopId)));
     }
     throw elwoodError(
       "loop_persistence_failed",
       "Loop persistence failed.",
-      loopId ? { loopId } : {},
+      impact.errorLoopId ? { loopId: impact.errorLoopId } : {},
     );
   }
 }

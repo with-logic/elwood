@@ -42,6 +42,7 @@ function host(
     reapPolicy: { orThrow: () => undefined, reaper: {} as never } as never,
     status: () => "exited",
     claimShutdown: () => undefined,
+    pauseLoops: () => undefined,
     clearLoops: () => Promise.resolve(),
     cleanupRuntime,
     submitEvidence: () => undefined,
@@ -82,9 +83,10 @@ describe("runShutdown runtime-cleanup failure (C-LIFE-10)", () => {
 });
 
 describe("permanent loop clearing (C-LOOP-14/C-LOOP-19)", () => {
-  test("stop preserves loops while kill clears them before attempt-all cleanup", async () => {
+  test("stop preserves loops while a successful kill pauses then clears them", async () => {
     const calls: string[] = [];
     const shutdownHost = host(async () => void calls.push("cleanup"), {
+      pauseLoops: () => void calls.push("pause"),
       clearLoops: async (reason) => void calls.push(`clear:${reason}`),
       reapPolicy: { orThrow: () => void calls.push("reap"), reaper: {} as never } as never,
     });
@@ -93,12 +95,37 @@ describe("permanent loop clearing (C-LOOP-14/C-LOOP-19)", () => {
     expect(calls).toEqual(["reap", "cleanup"]);
     calls.length = 0;
     await shutdown.kill();
-    expect(calls).toEqual(["clear:kill", "reap", "cleanup"]);
+    expect(calls).toEqual(["pause", "reap", "cleanup", "clear:kill"]);
   });
 
-  test("kill preserves loop_persistence_failed but still reaps and cleans runtime", async () => {
+  test("a failed kill preserves loops and retries clearing only after cleanup succeeds", async () => {
+    const calls: string[] = [];
+    let cleanupAttempts = 0;
+    const shutdownHost = host(
+      () => {
+        calls.push("cleanup");
+        cleanupAttempts += 1;
+        return cleanupAttempts === 1
+          ? Promise.reject(new Error("cleanup failed"))
+          : Promise.resolve();
+      },
+      {
+        pauseLoops: () => void calls.push("pause"),
+        clearLoops: async () => void calls.push("clear"),
+        reapPolicy: { orThrow: () => void calls.push("reap"), reaper: {} as never } as never,
+      },
+    );
+    const shutdown = managedShutdown(new ShutdownCoordinator(), () => shutdownHost);
+    await expect(shutdown.kill()).rejects.toMatchObject({ code: "termination_failed" });
+    expect(calls).toEqual(["pause", "reap", "cleanup"]);
+    await shutdown.kill();
+    expect(calls).toEqual(["pause", "reap", "cleanup", "pause", "reap", "cleanup", "clear"]);
+  });
+
+  test("kill reports loop persistence failure after cleanup succeeds", async () => {
     const calls: string[] = [];
     const shutdownHost = host(async () => void calls.push("cleanup"), {
+      pauseLoops: () => void calls.push("pause"),
       clearLoops: () => {
         calls.push("clear");
         return Promise.reject(
@@ -107,15 +134,31 @@ describe("permanent loop clearing (C-LOOP-14/C-LOOP-19)", () => {
       },
       reapPolicy: { orThrow: () => void calls.push("reap"), reaper: {} as never } as never,
     });
-    const shutdown = managedShutdown(new ShutdownCoordinator(), () => shutdownHost);
-    await expect(shutdown.kill()).rejects.toMatchObject({ code: "loop_persistence_failed" });
-    expect(calls).toEqual(["clear", "reap", "cleanup"]);
+    await expect(
+      managedShutdown(new ShutdownCoordinator(), () => shutdownHost).kill(),
+    ).rejects.toMatchObject({
+      code: "loop_persistence_failed",
+    });
+    expect(calls).toEqual(["pause", "reap", "cleanup", "clear"]);
   });
 
   test("kill still reports termination failure when loop clearing succeeds", async () => {
     const shutdownHost = host(() => Promise.reject(new Error("cleanup failed")));
     const shutdown = managedShutdown(new ShutdownCoordinator(), () => shutdownHost);
     await expect(shutdown.kill()).rejects.toMatchObject({ code: "termination_failed" });
+  });
+
+  test("teardown reports cleanup failure when loop clearing succeeds", async () => {
+    const shutdownHost = host(() => Promise.reject(new Error("cleanup failed")), {
+      reapPolicy: {
+        orThrow: () => undefined,
+        reaper: { reap: () => Promise.resolve() },
+      } as never,
+    });
+    await expect(runTeardown(shutdownHost, signaledCtx)).rejects.toMatchObject({
+      code: "teardown_failed",
+      details: { causes: ["cleanup failed"] },
+    });
   });
 
   test("teardown preserves loop_persistence_failed but still removes session files", async () => {

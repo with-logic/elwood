@@ -46,11 +46,14 @@ export class SessionLoops {
         }),
       emit: (event) => input.emitter.emit("loop", event),
     });
+  }
+
+  /** Start durable scheduling only after the session's startup cleanup boundary exists. */
+  start(): void {
     this.scheduler.start();
   }
 
   turnStarted(origin: ControlSubmissionOrigin): void {
-    if (origin.kind === "caller") this.scheduler.running();
     this.scheduler.activity(origin.kind);
   }
 

@@ -17,7 +17,6 @@ import type {
   Unsubscribe,
 } from "../types.ts";
 import type { TurnEvent } from "./events.ts";
-import { delegateCancelLoop, delegateCreateLoop, delegateListLoops } from "./loop-controls.ts";
 import { SubscriptionRegistry } from "./subscriptions.ts";
 import { runTurn } from "./turn.ts";
 import { TurnQueue } from "./turn-queue.ts";
@@ -153,13 +152,13 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
     return (await this.start()).waitForActivity(match, timeoutMs);
   }
   createLoop(request: ElwoodLoopRequest) {
-    return delegateCreateLoop(this.start(), request);
+    return this.start().then((live) => live.createLoop(request));
   }
   listLoops() {
-    return delegateListLoops(this.start());
+    return this.start().then((live) => live.listLoops());
   }
   cancelLoop(loopId: string) {
-    return delegateCancelLoop(this.start(), loopId);
+    return this.start().then((live) => live.cancelLoop(loopId));
   }
 
   /**

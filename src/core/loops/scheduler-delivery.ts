@@ -4,10 +4,11 @@
  */
 
 import { elwoodError } from "../errors.ts";
-import type {
-  LoopRuntimeEntry,
-  LoopSchedulerOptions,
-  LoopSchedulerState,
+import {
+  type LoopRuntimeEntry,
+  type LoopSchedulerOptions,
+  type LoopSchedulerState,
+  redactLoop,
 } from "./scheduler-state.ts";
 import type { ElwoodLoopEvent } from "./types.ts";
 
@@ -50,6 +51,10 @@ export class LoopDelivery {
     if (!(live && this.readyState) || this.candidate) return;
     const entry = this.options.state.due()[0];
     if (!entry) return;
+    if (entry.definition.expiresAt <= this.options.now()) {
+      this.options.expire(entry.definition.id);
+      return;
+    }
     const candidate = {
       id: entry.definition.id,
       dueAt: entry.dueAt as number,
@@ -101,7 +106,7 @@ export class LoopDelivery {
       loopId: candidate.id,
       scheduledDueAt: candidate.dueAt,
       submittedAt: this.options.now(),
-      snapshot: submittedSnapshot(entry),
+      snapshot: { ...redactLoop(entry), state: "submitted" },
     });
   }
 
@@ -115,11 +120,6 @@ export class LoopDelivery {
     this.options.armDue(entry, this.options.now());
     this.pump(live);
   }
-}
-
-function submittedSnapshot(entry: LoopRuntimeEntry) {
-  const { message: _message, ...definition } = entry.definition;
-  return { ...definition, state: "submitted" as const };
 }
 
 function cancelledError(loopId: string): Error {
