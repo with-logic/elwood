@@ -10,10 +10,11 @@ import { TestSimple } from "./simple-fakes.ts";
 describe("SessionBase control surface (C-API-47/51)", () => {
   test("sendMessage delegates through lazy start and forwards message + options", async () => {
     const s = new TestSimple();
-    await s.sendMessage("direct", { images: [] }); // the base method, not the send()/stream() path
+    await s.sendMessage("/loop 1m literal", { images: [] });
     expect(s.launches).toBe(1);
     expect(s.session).toBeDefined();
-    expect(s.underlying.args["sendMessage"]).toEqual(["direct", { images: [] }]); // both forwarded
+    expect(s.underlying.args["sendMessage"]).toEqual(["/loop 1m literal", { images: [] }]);
+    expect(s.underlying.args["createLoop"]).toBeUndefined();
   });
 
   test("every control method lazy-starts and forwards its arguments faithfully", async () => {
@@ -47,6 +48,19 @@ describe("SessionBase control surface (C-API-47/51)", () => {
     expect(a["waitForStatus"]).toEqual([statusMatch, 555]);
     expect(a["waitForActivity"]).toEqual([activityMatch, 666]);
     expect(s.underlying.calls).toContain("teardown"); // teardown reached the live session too
+  });
+
+  test("C-LOOP-01 loop management lazy-starts and delegates exact arguments", async () => {
+    const s = new TestSimple();
+    const request = { mode: "idle" as const, message: "check progress" };
+    const created = await s.createLoop(request);
+    expect(created).toEqual(s.underlying.loopSnapshot);
+    expect(await s.listLoops()).toEqual([s.underlying.loopSnapshot]);
+    await s.cancelLoop("loop-1");
+    expect(s.launches).toBe(1);
+    expect(s.underlying.args["createLoop"]).toEqual([request]);
+    expect(s.underlying.args["listLoops"]).toEqual([]);
+    expect(s.underlying.args["cancelLoop"]).toEqual(["loop-1"]);
   });
 
   test("stop()/kill()/teardown() before start are no-ops; after start they delegate", async () => {

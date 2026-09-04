@@ -5,8 +5,10 @@
 
 import type { ElwoodActivityEvent } from "../core/activity.ts";
 import type { SendOptions } from "../core/images/types.ts";
+import type { ElwoodLoopEvent } from "../core/loops/types.ts";
 import type { AgentModelOption } from "../core/model-rows.ts";
 import type { CodexReasoningEffort } from "../core/reasoning-effort.ts";
+import type { LoopControls } from "../core/simple/loop-controls.ts";
 import type {
   ActivityMatch,
   ElwoodSessionStatus,
@@ -73,6 +75,7 @@ export type CodexEventMap = {
   readonly status: { readonly elwoodSessionId: string; readonly status: ElwoodSessionStatus };
   readonly activity: ElwoodActivityEvent;
   readonly warning: ElwoodWarningEvent;
+  readonly loop: ElwoodLoopEvent;
   readonly hook: CodexHookEvent;
   readonly "codex:transcript": CodexTranscriptEvent;
   readonly hookError: HookErrorEvent;
@@ -94,7 +97,7 @@ export type CodexEventHandler<E extends CodexEventName> = (
     : undefined
   : void;
 
-export interface CodexSessionApi {
+export interface CodexSessionApi extends LoopControls {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;

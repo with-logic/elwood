@@ -6,7 +6,9 @@
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import type { ElwoodActivityEvent } from "./activity.ts";
 import type { SendOptions } from "./images/types.ts";
+import type { ElwoodLoopEvent } from "./loops/types.ts";
 import type { AgentModelOption } from "./model-rows.ts";
+import type { LoopControls } from "./simple/loop-controls.ts";
 import type {
   ActivityMatch,
   ElwoodSessionStatus,
@@ -32,6 +34,7 @@ export type ElwoodCommonEventMap = {
   };
   readonly activity: ElwoodActivityEvent;
   readonly warning: ElwoodWarningEvent;
+  readonly loop: ElwoodLoopEvent;
   readonly hookError: HookErrorEvent;
 };
 
@@ -43,7 +46,7 @@ export type ElwoodCommonEventName = keyof ElwoodCommonEventMap;
  * the shared events, io, commands, and lifecycle without adapter-specific
  * generics.
  */
-export interface ElwoodAgentSession {
+export interface ElwoodAgentSession extends LoopControls {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;

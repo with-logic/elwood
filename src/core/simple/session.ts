@@ -1,15 +1,13 @@
 /**
- * The adapter-neutral session base (PRD §5.8): a single public session object with both
- * the ergonomic `send`/`stream` API and the full low-level control surface, all
- * lazy-start-aware. Constructed synchronously; the underlying PTY-backed session starts
- * lazily on the first use (or an explicit `start()`). A thin wrapper — it adds no
- * lifecycle or persistence behavior and delegates every method to the live session.
+ * Adapter-neutral lazy facade for ergonomic turns and the low-level control surface.
+ * Implements PRD §5.8.
  */
 
 import type { ElwoodActivityEvent } from "../activity.ts";
 import type { ElwoodAgentSession } from "../agent-session.ts";
 import { elwoodError, toError } from "../errors.ts";
 import type { SendOptions } from "../images/types.ts";
+import type { ElwoodLoopRequest } from "../loops/types.ts";
 import type { AgentModelOption } from "../model-rows.ts";
 import type {
   ActivityMatch,
@@ -19,6 +17,7 @@ import type {
   Unsubscribe,
 } from "../types.ts";
 import type { TurnEvent } from "./events.ts";
+import { delegateCancelLoop, delegateCreateLoop, delegateListLoops } from "./loop-controls.ts";
 import { SubscriptionRegistry } from "./subscriptions.ts";
 import { runTurn } from "./turn.ts";
 import { TurnQueue } from "./turn-queue.ts";
@@ -26,15 +25,7 @@ import type { BoundarySignalReader, TurnOptions } from "./turn-types.ts";
 
 export type { TurnOptions } from "./turn-types.ts";
 
-/**
- * One public session over an Elwood agent. Constructed synchronously; the underlying session
- * starts lazily on the first `send`/`stream`/operational call (or explicit `start()`).
- * `send`/`stream` turns are serialized so one turn's activity never interleaves with another's;
- * control methods (`interrupt`, `sendKeys`, `stop`, `kill`, …) go through immediately. `on`/`off`
- * may be called before start — buffered and attached on start, so subscribing never forces one.
- * Turn-capability is enforced by the abstract `readBoundarySignal` + each adapter's
- * `AssertStopBoundary`, not a generic type bound (method bivariance defeats that).
- */
+/** Lazy public session over one Elwood agent; only ergonomic turns serialize. */
 export abstract class SessionBase<S extends ElwoodAgentSession> {
   private live: S | undefined;
   private starting: Promise<S> | undefined;
@@ -160,6 +151,15 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
   }
   async waitForActivity(match: ActivityMatch, timeoutMs?: number): Promise<ElwoodActivityEvent> {
     return (await this.start()).waitForActivity(match, timeoutMs);
+  }
+  createLoop(request: ElwoodLoopRequest) {
+    return delegateCreateLoop(this.start(), request);
+  }
+  listLoops() {
+    return delegateListLoops(this.start());
+  }
+  cancelLoop(loopId: string) {
+    return delegateCancelLoop(this.start(), loopId);
   }
 
   /**

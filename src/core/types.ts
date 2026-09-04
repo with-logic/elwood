@@ -13,6 +13,7 @@ import type {
 } from "../claude/hooks.ts";
 import type { CodexHookEventName } from "../codex/hook-names.ts";
 import type { ElwoodActivityEvent } from "./activity.ts";
+import type { ElwoodLoopEvent } from "./loops/types.ts";
 import type { ClaudeReasoningEffort } from "./reasoning-effort.ts";
 
 export type TerminalSize = {
@@ -128,6 +129,7 @@ export type ElwoodEventMap = {
   };
   readonly activity: ElwoodActivityEvent;
   readonly warning: ElwoodWarningEvent;
+  readonly loop: ElwoodLoopEvent;
   readonly hook: ClaudeHookEvent;
   readonly hookError: HookErrorEvent;
 } & {

@@ -4,8 +4,15 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest";
-import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
-import { startClaude, startCodex } from "../../src/index.ts";
+import {
+  type CodexEventMap,
+  type ElwoodAgentSession,
+  type ElwoodCommonEventMap,
+  type ElwoodEventMap,
+  type ElwoodLoopEvent,
+  startClaude,
+  startCodex,
+} from "../../src/index.ts";
 import {
   installFakes as installClaudeFakes,
   resetFakes as resetClaudeFakes,
@@ -23,6 +30,20 @@ afterEach(() => {
 });
 
 describe("ElwoodAgentSession", () => {
+  test("C-LOOP-01/C-LOOP-16 common events expose the redacted loop union", () => {
+    const event: ElwoodCommonEventMap["loop"] = {
+      kind: "cancelled",
+      loopId: "loop-1",
+      at: 1,
+      reason: "caller",
+    };
+    const sameEvent: ElwoodLoopEvent = event;
+    const claudeEvent: ElwoodEventMap["loop"] = sameEvent;
+    const codexEvent: CodexEventMap["loop"] = sameEvent;
+    expect(sameEvent.loopId).toBe("loop-1");
+    expect(claudeEvent).toEqual(codexEvent);
+  });
+
   test("C-API-27 both adapters satisfy the common session type", async () => {
     const cwd = tempDir();
     installClaudeFakes();

@@ -11,6 +11,7 @@ import type {
   ElwoodCommonEventName,
 } from "../../src/core/agent-session.ts";
 import type { SendOptions } from "../../src/core/images/types.ts";
+import type { ElwoodLoopRequest, ElwoodLoopSnapshot } from "../../src/core/loops/types.ts";
 import type { AgentModelOption } from "../../src/core/model-rows.ts";
 import { SessionBase } from "../../src/core/simple/session.ts";
 import { defaultBoundarySignal } from "../../src/core/simple/turn.ts";
@@ -54,6 +55,15 @@ export class FakeUnderlying implements ElwoodAgentSession {
   readonly calls: string[] = [];
   // The exact arguments each delegated method received, so tests can prove faithful forwarding.
   readonly args: Record<string, unknown[]> = {};
+  readonly loopSnapshot: ElwoodLoopSnapshot = {
+    id: "loop-1",
+    message: "check progress",
+    mode: "idle",
+    jitterMs: 1,
+    createdAt: 1,
+    expiresAt: 2,
+    state: "waiting",
+  };
   private turn = 0;
   script: (emitter: Emitter, turnId: string) => void = defaultScript;
   statusDecisions() {
@@ -113,6 +123,17 @@ export class FakeUnderlying implements ElwoodAgentSession {
   waitForActivity(match: ActivityMatch, timeoutMs?: number): Promise<ElwoodActivityEvent> {
     void this.record("waitForActivity", timeoutMs === undefined ? [match] : [match, timeoutMs]);
     return Promise.resolve(activity({ text: "x" }));
+  }
+  createLoop(request: ElwoodLoopRequest): Promise<ElwoodLoopSnapshot> {
+    void this.record("createLoop", [request]);
+    return Promise.resolve(this.loopSnapshot);
+  }
+  listLoops(): Promise<readonly ElwoodLoopSnapshot[]> {
+    void this.record("listLoops", []);
+    return Promise.resolve([this.loopSnapshot]);
+  }
+  cancelLoop(loopId: string): Promise<void> {
+    return this.record("cancelLoop", [loopId]);
   }
   stop(): Promise<void> {
     this.stops += 1;
