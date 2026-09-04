@@ -38,10 +38,16 @@ immediately; write it into the xterm like any other chunk.
   resumable session exists (`state_not_found` / `resume_unavailable` /
   `adapter_mismatch`) and reports which path ran.
 - **Removal:** call `teardown()` — it removes Elwood-owned state (session
-  record, generated settings, bridge script, socket home) without touching the
+  record, loop sidecar, generated settings, bridge script, socket home) without touching the
   agent CLI's own user data.
 - **Shutdown:** `stop()` for graceful, `kill()` for wedged sessions. Both are
-  safe after the process already exited.
+  safe after the process already exited. Stop and unexpected exit preserve
+  loop definitions for resume; kill clears them permanently.
+
+Recurring loops are owned by Elwood and need no parent timer. Use
+`createLoop`/`listLoops`/`cancelLoop`; resume restores unexpired definitions with
+fresh clocks and no catch-up. Use the opt-in `parseLoopCommand` helper for a
+shared `/loop` UX, since ordinary send methods keep slash-prefixed text literal.
 
 `stateDir` can be arbitrarily deep: the hook bridge socket binds in a short
 Elwood-owned temp home, not under `stateDir`, so macOS's ~104-byte socket path

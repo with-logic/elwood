@@ -61,9 +61,12 @@ and lets a user inspect the actual terminal when needed.
   fails at runtime.
 - Send prompts through terminal input exactly as a human would, including
   multi-line prompts.
-- Persist only session metadata needed for resume and cleanup.
-- Avoid persisting raw terminal contents, user prompts, hook payloads, or
-  conversation logs by default.
+- Persist only session metadata needed for resume and cleanup, plus loop
+  definitions that a caller explicitly creates as durable automation state.
+- Avoid persisting raw terminal contents, ordinary user prompts, hook payloads,
+  or conversation logs by default. A loop prompt is the narrow exception: its
+  exact text is persisted because explicit recurring automation cannot be
+  restored without it.
 - Provide a small local test app for manual development and acceptance testing.
 
 ### 2.2 Non-Goals
@@ -445,6 +448,9 @@ interface ClaudeSessionApi {
   compact(options?: { readonly timeoutMs?: number }): Promise<void>;
   listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]>;
   setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void>;
+  createLoop(request: ElwoodLoopRequest): Promise<ElwoodLoopSnapshot>;
+  listLoops(): Promise<readonly ElwoodLoopSnapshot[]>;
+  cancelLoop(loopId: string): Promise<void>;
   // Claude-only re-authentication recovery; NOT part of CodexSession or the
   // common ElwoodAgentSession surface (C-API-43).
   login(options: ClaudeLoginOptions): Promise<void>;
@@ -1016,10 +1022,11 @@ embed their own visual xterm.js instance should feed it the replayed and live
 `terminal:data` chunks; Elwood does not require sharing the same JavaScript
 terminal object between Node and the browser.
 
-`stop` attempts graceful process termination while preserving Elwood metadata for
-resume. It should wait for process exit for a bounded grace period, then escalate
+`stop` attempts graceful process termination while preserving Elwood metadata and
+loop definitions for resume. It should wait for process exit for a bounded grace period, then escalate
 to force termination so callers do not get a terminal status while the process is
-still indefinitely alive. `kill` force-terminates the process. `teardown` removes
+still indefinitely alive. `kill` force-terminates the process and permanently
+clears its loop definitions. `teardown` removes
 Elwood-owned state for the session and must not remove Claude-owned transcripts,
 auth, or project/user settings that Elwood did not create.
 
@@ -1055,6 +1062,7 @@ must still surface.
 - `status`: session lifecycle/status changes.
 - `warning`: typed non-fatal adapter or environment issues observed during the
   session, such as Codex MCP startup warnings.
+- `loop`: adapter-neutral recurring-loop lifecycle and failure events (§5.9).
 - `activity`: adapter-neutral live events for common observability, including
   lifecycle changes, user messages, assistant messages, reasoning, tool calls,
   tool results, web search, notifications, warnings, startup prompt automation,
@@ -1320,7 +1328,8 @@ options override field by field and the effective posture is re-persisted.
 `CodexSessionApi` exposes the same control surface as `ClaudeSessionApi`: typed event
 subscription, `statusDecisions`, `waitForStatus`, `waitForActivity`,
 `sendPrompt`, `sendMessage`, `sendGuidance`, `sendKeys`, `resize`, `interrupt`,
-`compact`, `listModels`, `setModel`, `stop`, `kill`, and `teardown`. Prompt
+`compact`, `listModels`, `setModel`, `createLoop`, `listLoops`, `cancelLoop`,
+`stop`, `kill`, and `teardown`. Prompt
 submission and raw input semantics are the same as Claude: Elwood writes to
 the PTY as a human would. `sendGuidance` follows the state-aware intervention
 contract in §5.3. `interrupt` follows the §5.3 contract — Codex also cancels a
@@ -1332,7 +1341,7 @@ Codex's `Select Model and Effort` picker.
 The package also exports `ElwoodAgentSession`, a structural supertype both
 concrete session types satisfy, covering the shared identity/status
 properties, the common event names (`terminal:data`, `terminal:exit`,
-`status`, `activity`, `warning`, `hookError`), the diagnostics and wait
+`status`, `activity`, `warning`, `loop`, `hookError`), the diagnostics and wait
 helpers (`statusDecisions`, `waitForStatus`, `waitForActivity`), and the
 shared io, command, and lifecycle methods. Parent-app code generic over "any
 agent session" can be written once against this type; adapter-specific hooks
@@ -1740,8 +1749,9 @@ the session has already emitted `terminal:exit`, `exited`, `stopped`, or
 adapter that exposes BOTH the ergonomic `send`/`stream` convenience (for the common
 "ask a question, get an answer" and "watch the work" shapes) AND the full low-level
 control surface (`sendMessage`, `sendPrompt`, `sendGuidance`, `sendKeys`, `resize`,
-`interrupt`, `compact`, `listModels`, `setModel`, `on`/`off`, `waitForStatus`,
-`waitForActivity`, `stop`/`kill`/`teardown`, and Claude's `login`). Every method is
+`interrupt`, `compact`, `listModels`, `setModel`, `createLoop`, `listLoops`,
+`cancelLoop`, `on`/`off`, `waitForStatus`, `waitForActivity`,
+`stop`/`kill`/`teardown`, and Claude's `login`). Every method is
 lazy-start-aware. The class is a thin wrapper over the same PTY-backed session the
 `start*` factories build — it adds no new lifecycle or persistence behavior and reads
 only public events. The `startClaude`/`startCodex` factories remain as the low-level
@@ -1765,7 +1775,8 @@ buffered and attached when the session starts, so subscribing never forces a sta
 and `status` reads `starting` until the underlying session exists. The started
 underlying session is reachable via a read-only `session` accessor (undefined until
 started) for callers that need the raw object. Only `send`/`stream` turns serialize
-with one another; control methods (`interrupt`, `sendKeys`, `stop`, `kill`, …) go
+with one another; control methods (`interrupt`, `sendKeys`, `createLoop`,
+`listLoops`, `cancelLoop`, `stop`, `kill`, …) go
 through immediately so an intervention reaches a running turn rather than queuing.
 
 **Turn boundary.** A "turn" begins when a `send`/`stream` submits its prompt and
@@ -1852,6 +1863,177 @@ text-collection semantics are identical.
 **Teardown.** `close()` stops the underlying session (falling back to `kill` on a
 stop failure) and is a no-op if the session never started; it is the ergonomic
 counterpart to `stop`/`kill`/`teardown` and safe to call in a `finally`.
+
+### 5.9 Recurring session loops
+
+Elwood, not either wrapped CLI, owns recurring prompt scheduling. Claude and
+Codex expose the same typed operations on their raw session APIs, the common
+`ElwoodAgentSession` surface, and the lazy session classes. No operation forwards
+an adapter-native scheduling command.
+
+```ts
+type ElwoodLoopRequest =
+  | {
+      readonly mode: "fixed";
+      readonly intervalMs: number;
+      readonly message: string;
+    }
+  | {
+      readonly mode: "idle";
+      readonly message: string;
+    };
+
+type ElwoodLoopState = "waiting" | "scheduled" | "due" | "submitted";
+
+interface ElwoodLoopSnapshot {
+  readonly id: string;
+  readonly message: string;
+  readonly mode: "fixed" | "idle";
+  readonly intervalMs?: number;
+  readonly jitterMs: number;
+  readonly createdAt: number;
+  readonly expiresAt: number;
+  readonly state: ElwoodLoopState;
+  readonly nextDueAt?: number;
+}
+
+type ElwoodLoopEventSnapshot = Omit<ElwoodLoopSnapshot, "message">;
+
+type ElwoodLoopEvent =
+  | {
+      readonly kind: "created";
+      readonly loopId: string;
+      readonly at: number;
+      readonly snapshot: ElwoodLoopEventSnapshot;
+    }
+  | {
+      readonly kind: "fired";
+      readonly loopId: string;
+      readonly scheduledDueAt: number;
+      readonly submittedAt: number;
+      readonly snapshot: ElwoodLoopEventSnapshot & { readonly state: "submitted" };
+    }
+  | {
+      readonly kind: "cancelled";
+      readonly loopId: string;
+      readonly at: number;
+      readonly reason: "caller" | "kill" | "teardown";
+    }
+  | {
+      readonly kind: "expired";
+      readonly loopId: string;
+      readonly at: number;
+    }
+  | {
+      readonly kind: "failed";
+      readonly loopId: string;
+      readonly at: number;
+      readonly phase: "persistence" | "scheduling" | "submission";
+      readonly snapshot?: ElwoodLoopEventSnapshot;
+      readonly code: "loop_persistence_failed" | "loop_submission_failed";
+      readonly message: string;
+    };
+
+declare function parseLoopCommand(command: string): ElwoodLoopRequest | undefined;
+```
+
+All `at`, `createdAt`, `expiresAt`, `nextDueAt`, `scheduledDueAt`, and
+`submittedAt` values are Unix epoch milliseconds. `intervalMs` and `jitterMs`
+are integer milliseconds. `intervalMs` is present only for fixed loops, and
+`nextDueAt` is present only while a live loop is `scheduled`. `listLoops()`
+returns immutable snapshots ordered by `createdAt`, then `id`.
+
+Creation is always explicit. `parseLoopCommand` is a package-root helper for
+callers that choose slash-command UX; it does not schedule anything. It returns
+`undefined` when the input is not an exact `/loop` command. After `/loop`, it
+treats the first whitespace-delimited token as an interval only when the token
+is a positive integer followed by exactly `s`, `m`, `h`, or `d`; it converts
+that token to `intervalMs` and uses the remaining text as the message. Otherwise
+the entire remainder is an idle-loop message. A recognized command with an
+empty or over-limit message, a fixed interval outside the allowed range, or a
+numeric conversion that is not a safe integer fails with `invalid_loop`.
+`sendMessage` and `sendPrompt` never call this parser: `/loop ...` sent through
+either method remains an ordinary literal message.
+
+`createLoop` accepts the same readonly discriminated request. Messages must
+contain between 1 and 65,536 UTF-8 bytes. A fixed `intervalMs` must be an integer
+of at least 60,000 and less than 604,800,000 (seven days). Each session may have
+at most 50 unexpired loop definitions; the fifty-first creation fails with
+`loop_limit_reached` and leaves every existing loop unchanged. Invalid request
+shapes or values fail with `invalid_loop`. Creation requires a live session;
+the lazy classes start under their existing lazy-start contract before creating
+a loop.
+
+Every loop expires exactly seven wall-clock days after its original creation,
+including time when no process is running. A fixed interval close to that
+horizon can therefore expire without submitting once. Each loop receives a
+stable, delay-only jitter offset derived from its ID at creation:
+`0..min(10% of the cadence interval, 30,000 ms)`. For an idle loop the cadence
+interval is the fixed five-minute idle threshold. The offset is never negative,
+so a loop cannot fire earlier than its requested cadence. The exact offset is
+persisted and is authoritative after restore; resume does not re-derive it.
+
+A fixed loop first becomes due one full `intervalMs + jitterMs` after creation.
+After it submits, its next clock begins at the actual submission time, not the
+old phase. An idle loop becomes due after five continuous minutes without
+non-loop session activity, plus its jitter. Any non-loop activity resets every
+idle loop. A loop-generated turn rearms only its originating idle loop, from the
+`ready` transition that completes that turn; it does not reset or restrict peer
+idle loops.
+
+Due work uses the ordinary readiness-safe message path. It observes the current
+session permissions and every blocking-dialog gate at submission time, including
+the effective posture of a resumed session rather than the posture that existed
+when the loop was created. A due loop waits while the session is running,
+blocked, or otherwise unable to accept a message, then submits at most once on a
+ready transition. Missed occurrences never accumulate. Due loops submit
+serially, one committed turn per ready transition, ordered by due time and then
+stable `id`; latency may grow with the number of due loops and agent turn time,
+with no separate wall-clock delivery deadline. A candidate that settles before
+committing a turn releases the next due candidate immediately while readiness
+remains available.
+
+If the process stops or exits before a due prompt is submitted, its transient
+due state is discarded and its definition becomes `waiting` for resume. A live
+scheduling or submission failure emits a `failed` loop event and rearms the
+loop from a fresh cadence unless the session has become non-live, in which case
+the persisted definition waits for resume. Expiry observed before submission
+wins over a pending due state. Live expiry emits `expired`; resume and loop
+management on a stopped or exited session silently prune expired definitions
+before returning.
+
+`cancelLoop` removes one known definition and prevents every future submission.
+If the loop already committed its prompt, cancellation does not interrupt that
+active agent turn. An unknown, expired, cancelled, or otherwise finished ID
+fails with `loop_not_found` and cannot affect another loop. `listLoops` and
+`cancelLoop` remain available on stopped or exited raw sessions; `createLoop`
+does not. The lazy wrappers apply the existing lazy-start behavior to all three
+methods when no underlying session exists yet.
+
+The `loop` event is live-only and follows the union above. `created` carries a
+redacted snapshot and event time. `fired` carries a redacted `submitted`
+snapshot, scheduled due time, and actual submission time. `cancelled` carries
+only ID, time, and `caller | kill | teardown` reason. `expired` carries only ID
+and time. `failed` carries ID, time, phase, a stable code, a bounded safe message,
+and a redacted snapshot only while the loop remains active. Neither a loop event
+nor an error detail may contain the stored prompt or serialized request; a loop
+is identified only by ID.
+
+`stop`, unexpected agent exit, and parent-process failure preserve definitions
+for resume. A successful `kill` permanently clears every loop definition and
+emits `cancelled` with reason `kill` for live definitions; `teardown` removes the
+sidecar with all other Elwood-owned session state and uses reason `teardown` for
+live definitions. An already-submitted turn is not interrupted merely because
+its originating definition is removed. Resume silently removes definitions that
+expired during downtime, preserves each surviving ID and jitter, discards all
+missed runs, and starts every surviving fixed or idle clock fresh from restored
+session readiness. No catch-up delivery or prior timer phase is restored.
+
+Stable failures are `invalid_loop`, `loop_limit_reached`, `loop_not_found`,
+`loop_persistence_failed`, and `loop_submission_failed`. Write-side persistence
+failures use `loop_persistence_failed`; live scheduling and scheduled-message
+submission failures use `loop_submission_failed` plus the event phase that
+distinguishes them. Sidecar read/ownership/mode failures use `state_corrupt`.
 
 ## 6. Claude Hook Bridge
 
@@ -2146,7 +2328,8 @@ length MUST NOT constrain whether a session can start.
 
 ### 8.2 Session record
 
-Elwood persists only the minimum needed to resume or tear down a session after
+The schema-version-1 core session record persists only the minimum needed to
+resume or tear down a session after
 the parent app restarts. The persisted record is deliberately small: everything a
 running session needs beyond it is regenerated at each start/resume and lives in
 memory only. The persisted fields are exactly:
@@ -2162,7 +2345,7 @@ memory only. The persisted fields are exactly:
   so resume re-derives its launch configuration and cannot silently loosen
   privileges.
 
-Nothing else is persisted. In particular Elwood MUST NOT persist session status,
+Nothing else is persisted in the core record. In particular it MUST NOT persist session status,
 timestamps, warnings, terminal size, the hook bridge
 authentication token, the socket path, or any Elwood-owned runtime file paths.
 Status and warnings are live-only (§5.7). Runtime file paths are pure functions of
@@ -2182,10 +2365,23 @@ Session records are not intended to be portable across unrelated state
 directories. Session IDs are opaque path components: absolute paths, path
 separators, and traversal segments are invalid.
 
+Loop definitions are stored separately so existing schema-version-1 session
+records remain backward-readable. A versioned loop sidecar under the same
+owner-only session directory contains exactly each validated loop's stable ID,
+mode, message, fixed interval when applicable, stable jitter, creation time, and
+expiration time; it contains no timer, due state, submission state, or prior
+phase. An absent sidecar means that the session has no loops. The sidecar uses
+rename-atomic, fsync-backed writes under the same crash-recovery rules and MUST
+be mode `0600`. On every read Elwood rejects malformed data, a sidecar not owned
+by the current user, or any group/world permission bits as `state_corrupt`; it
+must never restore or execute those definitions.
+
 ### 8.3 What must not be persisted by default
 
-Elwood MUST NOT persist raw PTY input/output, prompts, terminal transcripts,
-hook payloads, hook responses, or conversation content by default.
+Elwood MUST NOT persist raw PTY input/output, ordinary prompts, terminal
+transcripts, hook payloads, hook responses, or conversation content by default.
+The exact prompt in a caller-created loop is an explicit, narrow exception: it
+is durable automation state in the loop sidecar, not an observed chat transcript.
 
 Hook events are live-only by default. Terminal data is live-only by default.
 
@@ -2195,6 +2391,9 @@ core state must not become a transcript store.
 ### 8.4 Cleanup
 
 Runtime files needed for resume/debugging are kept by default after `stop`.
+Loop definitions are likewise kept after `stop`, unexpected exit, or process
+failure. `kill` permanently removes all loop definitions while preserving the
+ordinary session record; a later resume has no loops.
 
 `teardown` removes all Elwood-owned traces for that session, including session
 metadata, generated settings/config, bridge route records, sockets, and
@@ -2379,11 +2578,19 @@ persisted posture field by field, and the effective posture is re-persisted.
 Model and caller config overrides remain caller-supplied-per-call and are
 intentionally not persisted yet.
 
+For either adapter, resume validates the loop sidecar before starting the agent,
+silently removes definitions whose seven-day wall-clock expiry passed during
+downtime, and restores surviving definitions with the same IDs and persisted
+jitter. It restores no timer or due state: every surviving cadence starts fresh
+from the resumed session's first readiness, using that launch's current
+permissions and blocking-dialog posture, and no missed run is replayed.
+
 ### 9.4 Exit
 
 When the agent process exits, Elwood emits terminal/process exit events and
 updates the live session status. It keeps the persisted session record and
-generated files unless teardown is requested. (Session status is live-only and is
+generated files, including loop definitions, unless kill or teardown is
+requested. Any unsubmitted due state is discarded. (Session status is live-only and is
 not written to the record, §8.2.)
 
 Reaping the leader's process group is unconditional on every exit path
@@ -2455,6 +2662,11 @@ Initial required error names:
 | `invalid_image` | An `images` input is not attachable: an unsupported/absent byte format, empty bytes, a path that is not a readable file, or a total image count/size beyond the documented limits (C-API-44). Raised before any partial input reaches the composer. |
 | `image_attach_failed` | An image could not be confirmed attached: the CLI's `[Image #N]` chip did not appear before the confirmation timeout, or the OS clipboard could not be read/written. No text is submitted afterward. (A session that TERMINATES mid-attach rejects with `session_not_running`, like any queued op.) (C-API-44/45/46) |
 | `wait_timeout` | A `waitForStatus`/`waitForActivity` call did not observe its condition before the timeout. |
+| `invalid_loop` | A loop request or recognized `/loop` command violates the documented shape, interval, or UTF-8 message bounds. |
+| `loop_limit_reached` | Creating a loop would exceed 50 unexpired definitions; existing loops are unchanged. |
+| `loop_not_found` | Cancellation targeted an unknown or already-finished loop ID. |
+| `loop_persistence_failed` | A loop-sidecar write required by creation, cancellation, kill, expiry, or teardown did not complete safely. |
+| `loop_submission_failed` | Live loop scheduling or readiness-safe prompt submission failed; details identify only the loop ID. |
 
 Hook handler failures are normally surfaced as `hookError` events, not thrown
 from the hook bridge path.
@@ -2638,6 +2850,32 @@ Each criterion has:
 | C-API-51 | §5.8 | `close()` stops the underlying session (falling back to `kill` on a stop failure) and is a no-op when the session never started, so it is safe to call in a `finally`. When a lazy start is IN FLIGHT, `close()` awaits that same start and stops the resulting session (never orphaning a session whose launch resolves after `close()` returned); a launch that REJECTS leaves nothing to close. When BOTH stop and kill fail, `close()` throws `termination_failed` carrying BOTH the stop `cause` and the kill `killCause` (neither diagnostic is lost). |
 | C-API-52 | §5.8 | `ClaudeSession`/`CodexSession` expose the FULL control surface in addition to `send`/`stream`, in THREE categories. (1) OPERATIONAL methods — `sendMessage`, `sendPrompt`, `sendGuidance`, `sendKeys`, `resize`, `interrupt`, `compact`, `listModels`, `setModel`, `waitForStatus`, `waitForActivity`, and Claude's `login` — lazy-start the underlying session on first use and delegate to it. (2) `on`/`off` BUFFER before start (attached on start, so subscribing never forces a start). (3) SHUTDOWN methods — `stop`/`kill`/`teardown` — only delegate when a live session already exists and are no-ops before start (so `close()` is safe in a `finally`). `status` reads `starting` until the session exists. Only `send`/`stream` serialize; operational control methods go through immediately (not queued behind a running turn). `startClaude`/`startCodex` are deprecated in favor of the class but remain functional. |
 | C-API-53 | §5.8 | An ergonomic turn's buffered state is BOUNDED even with no whole-turn timeout: the oracle matches a rolling window of recent assistant text (bounded even when the `Stop` hook's expected text is itself large, and large enough BEFORE the oracle is installed to retain text that arrives ahead of a lagging `Stop` hook), and UNCONSUMED events are capped by BOTH count and total UTF-8 bytes. A turn whose pending backlog exceeds either cap fails with `wait_timeout` rather than growing without limit; the byte cap is required because a single event may carry an arbitrarily large agent-controlled payload that the count cap alone would not bound. |
+
+#### C-LOOP: Recurring Session Loops (§5.9, §8, §9, §10)
+
+| ID | Section | Criterion |
+|---|---:|---|
+| C-LOOP-01 | §5.9 | Raw Claude/Codex sessions, `ElwoodAgentSession`, and both lazy classes expose async `createLoop`, `listLoops`, and `cancelLoop` with adapter-neutral behavior and no native scheduler command. |
+| C-LOOP-02 | §5.9 | `ElwoodLoopRequest` is a readonly fixed/idle union; `parseLoopCommand` is explicit and package-root exported, while `sendMessage`/`sendPrompt` preserve literal `/loop` text. |
+| C-LOOP-03 | §5.9 | The parser recognizes only a positive integer plus `s`, `m`, `h`, or `d` as the first-token interval; every other remainder is an idle message. |
+| C-LOOP-04 | §5.9 | Fixed intervals are `>= 60,000` and `< 604,800,000` ms, messages are 1..65,536 UTF-8 bytes, and a fifty-first unexpired loop fails without eviction. |
+| C-LOOP-05 | §5.9 | A fixed loop first becomes due after its full interval plus delay-only jitter and submits only through the ordinary readiness-safe path. |
+| C-LOOP-06 | §5.9 | Idle loops use five continuous non-loop-activity-free minutes plus jitter; non-loop activity resets all, while a completed loop turn rearms only its origin and leaves peers eligible. |
+| C-LOOP-07 | §5.9 | Stable jitter is derived from ID at creation, falls in `0..min(10% cadence, 30s)`, never advances a due time, and is persisted as restore authority. |
+| C-LOOP-08 | §5.9 | A due loop blocked by liveness/readiness submits at most once at the next ready transition; missed occurrences do not accumulate and stop/exit discards transient due state. |
+| C-LOOP-09 | §5.9 | Due loops commit serially, one per ready transition, ordered by due time then ID; fixed clocks restart from submission and idle origin clocks from completing readiness. |
+| C-LOOP-10 | §5.9 | Live scheduling/submission failure emits redacted failure evidence and rearms fresh unless the session is non-live, when the persisted definition waits for resume. |
+| C-LOOP-11 | §8.2 | The loop sidecar stores stable identity, cadence, exact prompt, jitter, creation, and expiry but no live timer or transient scheduling state. |
+| C-LOOP-12 | §5.9 §9.3 | Resume discards missed runs and starts fresh clocks for surviving definitions from restored readiness. |
+| C-LOOP-13 | §5.9 | Loops expire seven wall-clock days after original creation; expiry beats pending submission, emits live only, and is pruned silently during resume or stopped/exited management. |
+| C-LOOP-14 | §5.9 §8.4 | Stop, unexpected exit, and process failure preserve loops; kill clears them permanently; teardown removes them with session state. |
+| C-LOOP-15 | §5.9 | `listLoops` orders immutable snapshots by creation then ID and exposes exact message, cadence, interval when fixed, jitter, times, state, and only a scheduled next-due time. |
+| C-LOOP-16 | §5.4 §5.9 | `loop` events match the specified `created`/`fired`/`cancelled`/`expired`/`failed` union and never contain a stored message or serialized request. |
+| C-LOOP-17 | §5.9 | Cancelling a known loop removes its definition and all future submissions without interrupting an already-committed active turn. |
+| C-LOOP-18 | §5.9 | Cancelling an unknown or finished loop fails with `loop_not_found` and cannot affect a different loop. |
+| C-LOOP-19 | §5.9 §10 | Loop validation, capacity, cancellation, persistence, and scheduling/submission use the five stable loop error names; diagnostics identify only loop ID. |
+| C-LOOP-20 | §5.9 | Listing/cancellation work on stopped/exited raw sessions, creation requires live state, lazy methods retain lazy-start semantics, and delivery uses current readiness/security posture. |
+| C-LOOP-21 | §8.2 | Core schema-version-1 records remain readable; absent sidecar means no loops, while the versioned `0600`, current-user-owned sidecar rejects malformed/unsafe reads as `state_corrupt`. |
 
 #### C-PTY: Terminal Process Behavior (§4, §9)
 

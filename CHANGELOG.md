@@ -89,6 +89,20 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ### Added
 
+- **Claude and Codex now share persisted recurring session loops.** Raw,
+  common, and lazy session surfaces expose `createLoop`, `listLoops`, and
+  `cancelLoop`; the package-root `parseLoopCommand` helper maps explicit
+  `/loop <message>` and `/loop <interval> <message>` UX into readonly idle/fixed
+  requests without changing literal `sendMessage`/`sendPrompt` behavior. Loops
+  use readiness-safe, serial delivery, deterministic delay-only jitter, a
+  five-minute idle cadence or bounded fixed cadence, a 50-loop/session limit,
+  65,536-byte messages, and seven-day wall-clock expiry. A redacted `loop`
+  event reports created/fired/cancelled/expired/failed lifecycle without prompt
+  text. Definitions live in a private versioned sidecar: stop/exit/crash preserve
+  them and resume starts fresh clocks with no catch-up, while kill clears them
+  and teardown removes them. Stable loop errors cover validation, capacity,
+  not-found cancellation, persistence, and scheduling/submission failures.
+  (§5.9/§8/§9/§10, C-LOOP-01…21)
 - **`reasoningEffort` is now a first-class start/resume option on both adapters.**
   `startClaude`/`resumeClaude` accept `reasoningEffort?: ClaudeReasoningEffort`
   (`low`/`medium`/`high`/`xhigh`/`max`), forwarded to Claude's `--effort` flag;

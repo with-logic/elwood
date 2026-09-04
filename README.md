@@ -36,7 +36,7 @@ for await (const event of session.stream("Run the test suite and report failures
 
 `ClaudeSession` / `CodexSession` are the primary API. Each also delegates the
 operational and lifecycle METHODS of the low-level session (`sendMessage`, `on`/`off`,
-`interrupt`, `waitForStatus`, `stop`/`kill`/`teardown`, …). Raw identity/diagnostic
+`interrupt`, recurring-loop management, `waitForStatus`, `stop`/`kill`/`teardown`, …). Raw identity/diagnostic
 MEMBERS not proxied by the wrapper (`elwoodSessionId`, `cwd`, `terminal`,
 `statusDecisions()`) are reachable via `session.session` after startup. The eager
 `startClaude` / `startCodex` factories are **deprecated** in favor of the classes but
@@ -66,8 +66,9 @@ Elwood provides the adapter layer a parent app needs:
 - **Embeddable terminal stream.** Parent apps can render the same PTY output in
   their own xterm.js view when a user wants to see the underlying agent.
 - **Session metadata.** Elwood stores the minimum metadata needed to resume or
-  tear down an Elwood session without persisting prompts, terminal output, hook
-  payloads, or transcript content.
+  tear down a session. Ordinary prompts, terminal output, hook payloads, and
+  transcripts stay live-only; explicitly created recurring-loop prompts are
+  persisted in a private sidecar so those automations survive resume.
 
 The first supported adapters are Claude Code and Codex CLI. The API is designed
 so additional agentic CLIs can join the same control model later.
@@ -278,11 +279,42 @@ interface ElwoodLikeSession {
   compact(options?: { readonly timeoutMs?: number }): Promise<void>;
   listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]>;
   setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void>;
+  createLoop(request: ElwoodLoopRequest): Promise<ElwoodLoopSnapshot>;
+  listLoops(): Promise<readonly ElwoodLoopSnapshot[]>;
+  cancelLoop(loopId: string): Promise<void>;
   stop(): Promise<void>;
   kill(): Promise<void>;
   teardown(): Promise<void>;
 }
 ```
+
+### Recurring loops
+
+Elwood schedules loops itself, so Claude and Codex behave the same. The typed
+API supports fixed intervals and five-minute-idle cadence, multiple loops per
+session, inspection, and cancellation:
+
+```ts
+const fixed = await session.createLoop({
+  mode: "fixed",
+  intervalMs: 5 * 60_000,
+  message: "Check the deployment and report regressions.",
+});
+await session.createLoop({ mode: "idle", message: "Continue with the next useful task." });
+
+console.log(await session.listLoops());
+await session.cancelLoop(fixed.id);
+```
+
+`parseLoopCommand("/loop 5m check the deployment")` returns the same fixed
+request shape; `/loop check the deployment` returns an idle request. Parsing is
+opt-in: `sendMessage("/loop ...")` still sends literal text. Fixed intervals are
+one minute to less than seven days. Loops use stable delay-only jitter, expire
+after seven wall-clock days, and never replay missed runs after resume.
+
+`stop()` and unexpected exits preserve definitions. `kill()` clears them, and
+`teardown()` removes them with the session. Subscribe to `loop` for redacted
+`created`, `fired`, `cancelled`, `expired`, and `failed` lifecycle events.
 
 Use `sendMessage` for the adapter-neutral chat-loop operation. If the session is
 ready, it writes immediately through the PTY. If the session is alive but busy,
@@ -538,6 +570,9 @@ intact). Everything else Elwood needs is in the session record. Notes:
   error names, rethrowing everything else (e.g. `state_corrupt`), and
   returning `{ session, resumed }` so you can re-persist a fresh id after a
   fallback.
+- Explicit loop definitions are restored with the same IDs and jitter, but with
+  fresh clocks from the resumed session's first real readiness. Expired loops
+  are pruned and missed runs are never replayed.
 
 ### Event delivery guarantees
 
@@ -592,6 +627,7 @@ Core event families:
 | `hook:<Name>` | Hook-specific handler registration with typed response guidance. |
 | `hookError` | Handler timeout, thrown handler, invalid input, invalid response, or bridge error. Hooks fail open. |
 | `warning` | Non-fatal environment issue, such as unparseable versions or Codex MCP startup warnings. |
+| `loop` | Redacted adapter-neutral lifecycle for persisted recurring prompts. |
 | `terminal:data` | Raw PTY output for a visual terminal renderer. |
 | `terminal:exit` | PTY process exit. |
 | `status` | Session status change. |
@@ -641,6 +677,9 @@ Elwood is deliberately live-first:
 - The persisted session record is minimal: schema version, `elwoodSessionId`,
   adapter kind, `cwd`, and per-adapter resume state (the CLI's conversation id +
   launch posture). Nothing else is written.
+- Explicit loop definitions live in a separate versioned, owner-only `0600`
+  sidecar. It stores the loop message and cadence metadata, but no live timer,
+  due state, or submission state.
 - Session status, timestamps, warnings, terminal size, the hook
   bridge token, the socket path, and Elwood-owned runtime file paths are NOT
   persisted. Status and warnings are live-only (delivered on the `status` and
@@ -649,8 +688,9 @@ Elwood is deliberately live-first:
   identity (stable across a session's launches), while the bridge token and the
   socket file inside the home are minted fresh per start/resume and never trusted
   from disk.
-- It does not persist prompts, PTY output, hook payloads, hook responses, Codex
-  transcript items, or derived prompt/tool content.
+- It does not persist ordinary prompts, PTY output, hook payloads, hook
+  responses, Codex transcript items, or derived prompt/tool content. The exact
+  message in an explicitly created loop is the sole prompt exception.
 - Hook bridge messages are routed over local IPC with per-session tokens.
 - Hook handling fails open by default so a parent-app bug does not deadlock the
   wrapped agent.
