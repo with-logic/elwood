@@ -4,6 +4,13 @@
  * repo convention of separating static tables from behavior (PRD §5.3).
  */
 
+import type {
+  Cancel,
+  ControlDispatchNotification,
+  ControlDispatchObserver,
+  QueuedOperation,
+} from "./control-queue-types.ts";
+
 export type ControlQueueError = () => Error;
 /** How an operation's text is written to the terminal (not a domain name). */
 export type ControlSubmitMode = "pasted_input" | "command";
@@ -140,5 +147,47 @@ export function runContained(step: () => void): void {
     step();
   } catch {
     // Contained by design.
+  }
+}
+
+/** Owns abort-listener cleanup and the one in-flight cancellation marker. */
+export class ControlCancellation {
+  private readonly hooks = new Map<QueuedOperation, () => void>();
+  private cancelled: { operation: QueuedOperation; error: Error } | undefined;
+
+  listen(operation: QueuedOperation, cancel: Cancel, drop: (error: Error) => void): void {
+    const listener = () => drop(cancel.error());
+    cancel.signal.addEventListener("abort", listener, { once: true });
+    this.hooks.set(operation, () => cancel.signal.removeEventListener("abort", listener));
+    if (cancel.signal.aborted) listener();
+  }
+
+  mark(operation: QueuedOperation, error: Error): void {
+    this.cancelled = { operation, error };
+  }
+
+  errorFor(operation: QueuedOperation): Error | undefined {
+    return this.cancelled?.operation === operation ? this.cancelled.error : undefined;
+  }
+
+  remove(operation: QueuedOperation): void {
+    this.hooks.get(operation)?.();
+    this.hooks.delete(operation);
+    if (this.cancelled?.operation === operation) this.cancelled = undefined;
+  }
+
+  clear(): void {
+    this.cancelled = undefined;
+  }
+}
+
+/** Emits queue settlement telemetry without allowing observers to control flow. */
+export function notifyDispatch(
+  observer: ControlDispatchObserver,
+  operation: QueuedOperation,
+  kind: ControlDispatchNotification["kind"],
+): void {
+  if (operation.notifyDispatch) {
+    runContained(() => observer({ kind, operationKind: operation.kind, origin: operation.origin }));
   }
 }

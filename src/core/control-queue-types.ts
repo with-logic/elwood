@@ -21,11 +21,33 @@ export type AbortableQueueTask = (signal: AbortSignal) => Promise<void>;
 /** Drops a still-queued op when `signal` aborts, rejecting it with `error()`. */
 export type Cancel = { readonly signal: AbortSignal; readonly error: () => Error };
 
+/** Internal provenance for activity and recurring-loop scheduling decisions. */
+export type ControlSubmissionOrigin =
+  | { readonly kind: "caller" }
+  | { readonly kind: "loop"; readonly loopId: string };
+
+/** Contained notification emitted when a queued text operation settles. */
+export type ControlDispatchNotification = {
+  readonly kind: "committed" | "failed" | "cancelled";
+  readonly operationKind: ControlOperationKind;
+  readonly origin: ControlSubmissionOrigin;
+};
+
+export type ControlDispatchObserver = (notification: ControlDispatchNotification) => void;
+
+/** Optional internal controls for an attributed, cancellable text submission. */
+export type ControlSendOptions = {
+  readonly cancel?: Cancel;
+  readonly origin?: ControlSubmissionOrigin;
+};
+
 type QueuedOperationBase = {
   readonly input: string;
   readonly kind: ControlOperationKind;
   // FROZEN at enqueue: guidance queued before first readiness stays message-like (C-API-37).
   readonly mayBypassReadiness: boolean;
+  readonly origin: ControlSubmissionOrigin;
+  readonly notifyDispatch: boolean;
   readonly resolve: () => void;
   readonly reject: (error: Error) => void;
 };

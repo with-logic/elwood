@@ -51,13 +51,24 @@ describe("writePastedPrompt", () => {
       staged: (screen) => screen.includes("[Pasted text"),
     };
     const controller = new AbortController();
-    writePastedPrompt(terminal, "old", guard, controller.signal, 5, 5);
-    // The next submission begins: aborting must halt this prompt's nudges even
-    // though its staged chip is still on screen.
+    await writePastedPrompt(terminal, "old", guard, controller.signal, 5, 5);
+    // The next submission begins after this prompt committed: aborting must halt
+    // its background nudges even though its staged chip is still on screen.
     controller.abort();
     await sleep(40);
     // Only the first submitting Enter landed; no background nudge fired.
     expect(terminal.writes.filter((w) => w === "\r")).toHaveLength(1);
+  });
+
+  test("C-LOOP-17 cancellation after paste clears the composer before the first Enter", async () => {
+    const terminal = fakeTerminal();
+    const controller = new AbortController();
+    const submitted = writePastedPrompt(terminal, "scheduled", undefined, controller.signal, 50, 5);
+    expect(terminal.writes).toEqual([paste("scheduled")]);
+    controller.abort(new Error("cancelled"));
+    await expect(submitted).rejects.toThrow("cancelled");
+    expect(terminal.writes).toEqual([paste("scheduled"), "\u0015\u000b"]);
+    expect(terminal.writes).not.toContain("\r");
   });
 
   test("C-API-31 a submitted prompt is never nudged", async () => {

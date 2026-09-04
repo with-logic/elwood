@@ -16,6 +16,8 @@ describe("ControlQueue image attach (C-API-44)", () => {
       input: "x",
       kind: "message",
       mayBypassReadiness: false,
+      origin: { kind: "caller" },
+      notifyDispatch: true,
       attach: task,
     };
     // @ts-expect-error — an op cannot carry BOTH run and attach; dispatch would else
@@ -24,6 +26,8 @@ describe("ControlQueue image attach (C-API-44)", () => {
       input: "",
       kind: "message",
       mayBypassReadiness: false,
+      origin: { kind: "caller" },
+      notifyDispatch: true,
       run: task,
       attach: task,
     };
