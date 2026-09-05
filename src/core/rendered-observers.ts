@@ -48,7 +48,7 @@ export function observeRenderedFrame(
   const attention = observers.attention.observe(reading);
   if (attention?.edge === "raised") {
     const decision = session?.submitEvidence("blocking_prompt_shown");
-    if (decision?.to === "blocked") {
+    if (session === undefined || decision?.to === "blocked") {
       const { agent, elwoodSessionId } = observers;
       observers.emitActivity(activityFromAttention(agent, elwoodSessionId, attention.ruleIds));
     }

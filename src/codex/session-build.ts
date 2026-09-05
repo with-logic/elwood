@@ -92,6 +92,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const startupOutput = createStartupBuffer();
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
+  terminalReplay.captureStartupAttention(emitter);
   const { ready, observeReadinessFrame } = createReadinessGate(() => {
     turnWatcher.arm(resumed); // resume arms in settling mode (no phantom replay turn)
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
@@ -179,6 +180,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   // macrotask after return, so a caller subscribing synchronously observes them all.
   if (preflightWarning !== undefined) warnGate.emitWarnings([preflightEvent(id, preflightWarning)]);
   warnGate.openAfterReturn();
+  terminalReplay.releaseStartupAttentionAfterReturn();
   return session;
 }
 

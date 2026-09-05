@@ -31,7 +31,15 @@ export {
  * remains the low-level eager factory and is used internally; it will be removed once the
  * sole consumer migrates.
  */
-export async function startClaude(rawOptions: StartClaudeOptions): Promise<ClaudeSessionApi> {
+export function startClaude(rawOptions: StartClaudeOptions): Promise<ClaudeSessionApi> {
+  return startClaudeWithId(rawOptions, randomUUID());
+}
+
+/** Internal deterministic-identity start used by owners that must clean failed launch state. */
+export async function startClaudeWithId(
+  rawOptions: StartClaudeOptions,
+  elwoodSessionId: string,
+): Promise<ClaudeSessionApi> {
   // Resolve BOTH cwd and stateDir to ABSOLUTE before the preflight `await`: a relative
   // path resolved after the await could point elsewhere if the caller's (or preflight's)
   // process.cwd() changed during it, splitting where state is written from where the CLI
@@ -42,7 +50,7 @@ export async function startClaude(rawOptions: StartClaudeOptions): Promise<Claud
   const strict = options.strictVersionCheck ?? false;
   const warning = await preflightClaude(strict, options.autoupdate ?? false);
   prepareStateDir(stateDir, { gitignore: options.stateDir === undefined });
-  const createdRecord = createSessionRecord({ cwd: options.cwd, id: randomUUID() });
+  const createdRecord = createSessionRecord({ cwd: options.cwd, id: elwoodSessionId });
   const record = withClaudeLaunch(createdRecord, claudeLaunchPosture(options));
   const session = await startClaudeFromRecord(record, stateDir, options, false, warning);
   return queuePersonaMessage(session, options.persona);

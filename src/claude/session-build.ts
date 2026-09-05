@@ -111,6 +111,7 @@ export async function buildClaudeSession(
   const startupOutput = createStartupBuffer();
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
+  terminalReplay.captureStartupAttention(emitter);
   const autotrust = options.autotrust ?? false;
   const promptResponder = new ClaudeStartupPromptResponder(autotrust);
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
@@ -178,13 +179,12 @@ export async function buildClaudeSession(
     },
     { before: beforeCleanup, pty, bridge, terminal, after: () => transcriptWatcher.stop() },
   );
-  // Buffer the preflight/version warning through the same gate, then open it: buffered
-  // startup warnings AND the preflight flush on one deferred macrotask after return, so
-  // a caller subscribing synchronously observes them all (C-API-14).
+  // Open buffered startup warnings after return so synchronous subscribers see them (C-API-14).
   if (preflightWarning !== undefined) {
     warnGate.emitWarnings([preflightEvent(record.elwoodSessionId, preflightWarning)]);
   }
   warnGate.openAfterReturn();
+  terminalReplay.releaseStartupAttentionAfterReturn();
   return session;
 }
 

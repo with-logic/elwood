@@ -169,6 +169,7 @@ export abstract class AgentSessionBase {
   protected abstract emitWarnings(warnings: readonly Base.ElwoodWarningEvent[]): void;
   protected replayFor(event: string, handler: unknown): void {
     if (event === "terminal:data") this.terminalReplay.replay(handler as never);
+    if (event === "activity") this.terminalReplay.replayAttention(handler as never);
   }
   protected inSession<T>(work: () => Promise<T> | T, allowTerminal = false): Promise<T> {
     if (!allowTerminal && terminalStatuses.has(this.status)) {

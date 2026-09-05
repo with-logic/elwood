@@ -167,8 +167,7 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
    * to close (C-API-51).
    */
   async close(): Promise<void> {
-    const live =
-      this.live ?? (this.starting ? await this.starting.catch(() => undefined) : undefined);
+    const live = await this.settledSession();
     if (!live) return;
     try {
       await live.stop();
@@ -185,7 +184,6 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
       }
     }
   }
-
   // stop/kill/teardown: delegate to the live session; a no-op if it never started (C-API-52).
   async stop(): Promise<void> {
     await this.live?.stop();
@@ -195,5 +193,8 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
   }
   async teardown(): Promise<void> {
     await this.live?.teardown();
+  }
+  protected async settledSession(): Promise<S | undefined> {
+    return this.live ?? (this.starting ? await this.starting.catch(() => undefined) : undefined);
   }
 }

@@ -29,7 +29,15 @@ export {
  * remains the low-level eager factory and is used internally; it will be removed once the
  * sole consumer migrates.
  */
-export async function startCodex(rawOptions: StartCodexOptions): Promise<CodexSessionApi> {
+export function startCodex(rawOptions: StartCodexOptions): Promise<CodexSessionApi> {
+  return startCodexWithId(rawOptions, randomUUID());
+}
+
+/** Internal deterministic-identity start used by owners that must clean failed launch state. */
+export async function startCodexWithId(
+  rawOptions: StartCodexOptions,
+  elwoodSessionId: string,
+): Promise<CodexSessionApi> {
   // Resolve BOTH cwd and stateDir to ABSOLUTE before the preflight `await`: a relative
   // path resolved after the await could point elsewhere if the caller's (or preflight's)
   // process.cwd() changed during it, splitting where state is written from where the CLI
@@ -44,7 +52,7 @@ export async function startCodex(rawOptions: StartCodexOptions): Promise<CodexSe
   prepareStateDir(stateDir, { gitignore: options.stateDir === undefined });
   const createdRecord = createSessionRecord({
     cwd: options.cwd,
-    id: randomUUID(),
+    id: elwoodSessionId,
     adapter: "codex",
   });
   const record = withCodexLaunch(createdRecord, codexLaunchPosture(options));

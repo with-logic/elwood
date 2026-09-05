@@ -4,6 +4,7 @@
  */
 
 import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
+import type { SendOptions } from "../../src/core/images/types.ts";
 import type { TurnEvent } from "../../src/core/simple/events.ts";
 import {
   runTurn,
@@ -45,6 +46,7 @@ export class FakeTurnSession implements TurnSession {
   script: () => void = () => {};
   sendResult: Promise<void> = Promise.resolve();
   submissions = 0; // how many times sendMessage was invoked (proves no late submit is dropped)
+  sentOptions: SendOptions | undefined;
   on<E extends keyof FakeEventMap>(
     event: E,
     handler: (event: FakeEventMap[E]) => void,
@@ -65,8 +67,9 @@ export class FakeTurnSession implements TurnSession {
   emit<E extends keyof FakeEventMap>(event: E, payload: FakeEventMap[E]): void {
     for (const h of [...this.handlers[event]]) h(payload);
   }
-  sendMessage(): Promise<void> {
+  sendMessage(_message: string, options?: SendOptions): Promise<void> {
     this.submissions += 1;
+    this.sentOptions = options;
     this.script();
     return this.sendResult;
   }

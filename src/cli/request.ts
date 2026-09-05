@@ -3,9 +3,7 @@
  * Implements PRD §12A.1/§12A.2/§12A.4 and C-CLI-03/C-CLI-04/C-CLI-06/C-CLI-14.
  */
 
-import { stat } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
-import { validateImages } from "../core/images/resolve.ts";
+import { resolve } from "node:path";
 import { resolveConfigPath, resolveStateDir } from "./config/paths.ts";
 import { readConfig } from "./config/store.ts";
 import { parseDuration } from "./duration.ts";
@@ -26,11 +24,12 @@ import {
   cliOutputModes,
   codexApprovalPolicies,
   codexSandboxModes,
-  type EffectiveRunRequest,
   type ParsedRunCommand,
   type RequestContext,
   type ResolvedRunRequest,
 } from "./types.ts";
+
+export { finalizeRunRequest } from "./request-finalize.ts";
 
 export async function resolveRunRequest(
   parsed: ParsedRunCommand,
@@ -39,7 +38,8 @@ export async function resolveRunRequest(
   const config = readConfig(resolveConfigPath(context.env, context.invocationCwd, context.homeDir));
   const env = decodeEnvironment(context.env);
   const agent = choice(parsed.flags.agent, env.agent, config.agent, cliAgents, "agent") ?? "codex";
-  validateSpecificFlags(parsed, env, agent);
+  const resuming = parsed.flags.resume !== undefined;
+  if (!resuming) validateSpecificFlags(parsed, env, agent);
   const output =
     choice(parsed.flags.output, env.output, config.output, cliOutputModes, "output") ?? "text";
   const stream = parsed.flags.stream ?? env.stream ?? config.stream ?? false;
@@ -61,7 +61,19 @@ export async function resolveRunRequest(
   ) {
     throw usage("An explicit persona cannot be used when resuming a session.");
   }
-  const agentConfig = config[agent];
+  const modelOverride = parsed.flags.model ?? env.model;
+  const effortOverride = parsed.flags.reasoningEffort ?? env.reasoningEffort;
+  const agentOptions = {
+    claude: {
+      ...optional(optionalNonBlank(modelOverride ?? config.claude?.model, "model"), "model"),
+      ...optional(effortOverride ?? config.claude?.reasoningEffort, "reasoningEffort"),
+    },
+    codex: {
+      ...optional(optionalNonBlank(modelOverride ?? config.codex?.model, "model"), "model"),
+      ...optional(effortOverride ?? config.codex?.reasoningEffort, "reasoningEffort"),
+    },
+  };
+  const selected = agentOptions[agent];
   const permissionMode = choice(
     parsed.flags.claudePermissionMode,
     env.claudePermissionMode,
@@ -97,22 +109,22 @@ export async function resolveRunRequest(
     verbose: parsed.flags.verbose ?? env.verbose ?? config.verbose ?? false,
     stream,
     ...(persona !== undefined && { persona: nonBlank(persona, "persona") }),
+    ...optional(selected.model, "model"),
     ...optional(
-      optionalNonBlank(parsed.flags.model ?? env.model ?? agentConfig?.model, "model"),
-      "model",
-    ),
-    ...optional(
-      reasoning(
-        agent,
-        parsed.flags.reasoningEffort ?? env.reasoningEffort ?? agentConfig?.reasoningEffort,
-      ),
+      resuming ? selected.reasoningEffort : reasoning(agent, selected.reasoningEffort),
       "reasoningEffort",
     ),
-    ...(agent === "claude" && { permissionMode: permissionMode ?? "dontAsk" }),
-    ...(agent === "codex" && {
-      sandbox: sandbox ?? "workspace-write",
-      approvalPolicy: approvalPolicy ?? "never",
-    }),
+    agentOptions,
+    claudeOptionsExplicit:
+      parsed.flags.claudePermissionMode !== undefined || env.claudePermissionMode !== undefined,
+    codexOptionsExplicit:
+      parsed.flags.codexSandbox !== undefined ||
+      parsed.flags.codexApprovalPolicy !== undefined ||
+      env.codexSandbox !== undefined ||
+      env.codexApprovalPolicy !== undefined,
+    ...optional(permissionMode ?? (agent === "claude" ? "dontAsk" : undefined), "permissionMode"),
+    ...optional(sandbox ?? (agent === "codex" ? "workspace-write" : undefined), "sandbox"),
+    ...optional(approvalPolicy ?? (agent === "codex" ? "never" : undefined), "approvalPolicy"),
     ...(cwd === undefined
       ? parsed.flags.resume === undefined
         ? { cwd: resolve(context.invocationCwd) }
@@ -124,35 +136,6 @@ export async function resolveRunRequest(
     ...optional(optionalNonBlank(parsed.flags.resume, "resume"), "resume"),
     ephemeral: parsed.flags.ephemeral ?? false,
   };
-}
-
-export async function finalizeRunRequest(
-  draft: ResolvedRunRequest,
-  stored?: { readonly agent: CliAgent; readonly cwd: string },
-): Promise<EffectiveRunRequest> {
-  if (draft.resume !== undefined && stored === undefined)
-    throw usage("Stored session data is required to resolve a resume.");
-  if (
-    stored !== undefined &&
-    draft.explicitAgent !== undefined &&
-    draft.explicitAgent !== stored.agent
-  )
-    throw usage("The explicit agent conflicts with the stored session adapter.");
-  const agent = stored?.agent ?? draft.agent;
-  const cwd = draft.cwd ?? stored?.cwd;
-  if (cwd === undefined) throw usage("The effective workspace could not be resolved.");
-  if (!isAbsolute(cwd)) throw usage("The effective workspace must be absolute.");
-  const info = await stat(cwd).catch(() => undefined);
-  if (info?.isDirectory() !== true)
-    throw usage("The effective workspace must be an existing directory.");
-  const uid = process.getuid?.();
-  if (uid !== undefined && info.uid !== uid)
-    throw usage("The effective workspace must be owned by the current user.");
-  const images = await validateImages(
-    draft.imagePaths.map((path) => ({ path: resolve(cwd, nonBlank(path, "image")) })),
-  );
-  const { imagePaths: _imagePaths, cwd: _cwd, ...rest } = draft;
-  return { ...rest, agent, cwd, images };
 }
 
 function validateSpecificFlags(parsed: ParsedRunCommand, env: EnvSettings, agent: CliAgent): void {

@@ -88,6 +88,16 @@ describe("SessionBase turn options + no-default-timeout (C-API-48/49)", () => {
     expect(await rejected).toBe("wait_timeout"); // send forwarded its options object to runTurn
   });
 
+  test("C-CLI-04 forwards ordered images through the normalized turn submission", async () => {
+    const s = new StallingSession();
+    const images = [{ path: "/tmp/first.png" }, { path: "/tmp/second.png" }] as const;
+    const turn = drain(s.stream("inspect", { images, timeoutMs: 1 }));
+    const rejection = expect(turn).rejects.toMatchObject({ code: "wait_timeout" });
+    await vi.advanceTimersByTimeAsync(2);
+    await rejection;
+    expect(s.underlying.args["sendMessage"]).toEqual(["inspect", { images }]);
+  });
+
   test("control methods go through IMMEDIATELY while a `send`/`stream` turn is still running (C-API-52)", async () => {
     const s = new StallingSession();
     // Begin a stream turn and pull its first event so the turn is demonstrably in flight (running).

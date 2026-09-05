@@ -6,6 +6,7 @@
  */
 
 import type { ElwoodAgentSession, ElwoodCommonEventMap } from "../agent-session.ts";
+import type { ImageInput } from "../images/types.ts";
 import type { TurnEvent } from "./events.ts";
 
 /**
@@ -84,6 +85,8 @@ export type TurnOptions = {
   readonly timeoutMs?: number;
   /** Cap on transcript catch-up AFTER `ready` (default 10s); a stalled flush → `wait_timeout`. */
   readonly catchUpMs?: number;
+  /** Readable images attached, in order, to this same user turn. */
+  readonly images?: readonly ImageInput[];
 };
 
 export type StreamTurnOptions = {
@@ -91,6 +94,8 @@ export type StreamTurnOptions = {
   readonly timeoutMs?: number;
   /** Cap on transcript catch-up after `ready` (default 10s); a stalled flush → `wait_timeout`. */
   readonly catchUpMs?: number;
+  /** Readable images attached, in order, to this same user turn. */
+  readonly images?: readonly ImageInput[];
   /** Quiet-window for a no-oracle turn to settle after `ready` (default 750ms). */
   readonly fallbackQuietMs?: number;
   /** Cap on unconsumed buffered events before failing (default 100000); internal/tests. */

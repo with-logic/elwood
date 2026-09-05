@@ -68,8 +68,12 @@ describe("observeRenderedFrame", () => {
     expect(activities).toHaveLength(0);
   });
 
-  test("tolerates a missing session before construction completes", () => {
-    const { observers } = harness(true);
+  test("C-CLI-05 preserves stable attention before session construction completes", () => {
+    const { observers, activities } = harness(true);
     expect(() => observeRenderedFrame(observers, screen(claudeWorking), undefined)).not.toThrow();
+    observeRenderedFrame(observers, screen(claudePermission), undefined);
+    expect(activities).toEqual([
+      expect.objectContaining({ kind: "attention", label: "claude-permission-dialog" }),
+    ]);
   });
 });

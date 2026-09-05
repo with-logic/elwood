@@ -134,6 +134,9 @@ export type ResolvedRunRequest = {
   readonly persona?: string;
   readonly model?: string;
   readonly reasoningEffort?: string;
+  readonly agentOptions?: Readonly<Record<CliAgent, EffectiveAgentOptions>>;
+  readonly claudeOptionsExplicit?: boolean;
+  readonly codexOptionsExplicit?: boolean;
   readonly permissionMode?: ClaudePermissionMode;
   readonly sandbox?: CodexSandboxMode;
   readonly approvalPolicy?: CodexApprovalPolicy;
@@ -145,9 +148,26 @@ export type ResolvedRunRequest = {
   readonly ephemeral: boolean;
 };
 
-export type EffectiveRunRequest = Omit<ResolvedRunRequest, "cwd" | "imagePaths"> & {
+export type EffectiveRunRequest = Omit<
+  ResolvedRunRequest,
+  | "cwd"
+  | "imagePaths"
+  | "agentOptions"
+  | "claudeOptionsExplicit"
+  | "codexOptionsExplicit"
+  | "model"
+  | "reasoningEffort"
+  | "permissionMode"
+  | "sandbox"
+  | "approvalPolicy"
+> & {
   readonly cwd: string;
   readonly images: readonly ImageInput[];
+  readonly model?: string;
+  readonly reasoningEffort?: string;
+  readonly permissionMode?: ClaudePermissionMode;
+  readonly sandbox?: CodexSandboxMode;
+  readonly approvalPolicy?: CodexApprovalPolicy;
 };
 
 export class CliValidationError extends Error {

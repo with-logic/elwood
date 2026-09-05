@@ -1,7 +1,9 @@
 /**
- * Live-only terminal replay buffer for late subscribers.
- * Implements PRD §5.3 and §8.3.
+ * Live-only startup replay for terminal data and pre-return attention.
+ * Implements PRD §5.3, §8.3, and C-CLI-05.
  */
+
+import type { ElwoodActivityEvent } from "./activity.ts";
 
 type TerminalDataEvent = {
   readonly elwoodSessionId: string;
@@ -13,6 +15,8 @@ export class TerminalReplayBuffer {
   private readonly maxBytes: number;
   private readonly chunks: string[] = [];
   private size = 0;
+  private readonly startupAttention: ElwoodActivityEvent[] = [];
+  private stopAttentionCapture: (() => void) | undefined;
 
   constructor(elwoodSessionId: string, maxBytes = 128_000) {
     this.elwoodSessionId = elwoodSessionId;
@@ -35,5 +39,29 @@ export class TerminalReplayBuffer {
   replay(handler: (event: TerminalDataEvent) => unknown): void {
     if (this.chunks.length === 0) return;
     handler({ elwoodSessionId: this.elwoodSessionId, data: this.chunks.join("") });
+  }
+
+  /** Capture stable attention activities until the eager start promise has returned. */
+  captureStartupAttention(source: {
+    on(event: "activity", handler: (event: ElwoodActivityEvent) => void): () => void;
+  }): void {
+    this.stopAttentionCapture = source.on("activity", (event) => {
+      if (event.kind === "attention") this.startupAttention.push(event);
+    });
+  }
+
+  /** Replay pre-return attention to a synchronously attached lazy-facade subscriber. */
+  replayAttention(handler: (event: ElwoodActivityEvent) => unknown): void {
+    for (const event of this.startupAttention) handler(event);
+  }
+
+  /** End the narrow replay window on a macrotask after the start promise resolves. */
+  releaseStartupAttentionAfterReturn(): void {
+    const timer = setTimeout(() => {
+      this.stopAttentionCapture?.();
+      this.stopAttentionCapture = undefined;
+      this.startupAttention.length = 0;
+    }, 0);
+    timer.unref?.();
   }
 }

@@ -150,7 +150,10 @@ export function runTurn(
     try {
       // A turn BEGINS on submission (PRD §5.8), so the opt-in ceiling is armed only AFTER
       // `sendMessage` resolves — never rejecting a prompt still queued behind readiness.
-      await session.sendMessage(prompt); // listeners attached — no early event lost
+      await session.sendMessage(
+        prompt,
+        options.images === undefined ? undefined : { images: options.images },
+      ); // listeners attached — no early event lost
     } catch (error) {
       // The SUBMISSION failed → no agent turn is in flight and no status transition is coming:
       // fail the consumer with the typed error AND reach the boundary at once (else the

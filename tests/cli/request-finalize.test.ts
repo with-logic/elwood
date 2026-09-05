@@ -70,4 +70,38 @@ describe("final request workspaces", () => {
     await expect(finalizeRunRequest(draft(root))).resolves.toMatchObject({ cwd: root });
     absent.mockRestore();
   });
+
+  test("validates explicit adapter posture after stored adapter selection", async () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
+    await expect(
+      finalizeRunRequest(draft(root, { claudeOptionsExplicit: true }), {
+        agent: "codex",
+        cwd: root,
+      }),
+    ).rejects.toThrow(/Claude permission/iu);
+    await expect(
+      finalizeRunRequest(draft(root, { codexOptionsExplicit: true }), {
+        agent: "claude",
+        cwd: root,
+      }),
+    ).rejects.toThrow(/Codex launch/iu);
+  });
+
+  test("finalizes legacy selected options and default Codex posture", async () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
+    const {
+      sandbox: _sandbox,
+      approvalPolicy: _approval,
+      ...withoutPosture
+    } = draft(root, {
+      model: "gpt",
+      reasoningEffort: "high",
+    });
+    await expect(finalizeRunRequest(withoutPosture as ResolvedRunRequest)).resolves.toMatchObject({
+      model: "gpt",
+      reasoningEffort: "high",
+      sandbox: "workspace-write",
+      approvalPolicy: "never",
+    });
+  });
 });
