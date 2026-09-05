@@ -6,7 +6,7 @@
 import type { ElwoodSessionStatus } from "../../core/types.ts";
 import type { CliAgent } from "../types.ts";
 
-export type CliCleanupAction = "preserve" | "teardown";
+export type CliCleanupAction = "none" | "preserve" | "teardown";
 export type CliCleanup = {
   readonly action: CliCleanupAction;
   readonly status: "succeeded" | "failed";
@@ -15,7 +15,7 @@ export type CliCleanup = {
 
 export type CliTerminalBase = {
   readonly schemaVersion: 1;
-  readonly agent: CliAgent | null;
+  readonly agent: CliAgent;
   readonly response: string;
   readonly sessionId: string | null;
   readonly durationMs: number;

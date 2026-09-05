@@ -48,7 +48,7 @@ describe("CLI output edges", () => {
       await jsonl.finish({
         schemaVersion: 1,
         type: "error",
-        agent: null,
+        agent: "codex",
         response: "",
         sessionId: null,
         durationMs: 0,
