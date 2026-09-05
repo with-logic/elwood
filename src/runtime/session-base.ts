@@ -1,6 +1,7 @@
 /** Shared adapter session behavior: lifecycle, input, command surface. Implements PRD §5.3, §5.7. */
 import { ControlQueue } from "../core/control-queue.ts";
 import { toError } from "../core/errors.ts";
+import { registerPrivateOutputSecrets } from "../core/private-output-secrets.ts";
 import { writeQueuedInput } from "../core/session-input.ts";
 import { writeSessionRecord } from "../state/store.ts";
 import { CleanupLatch } from "./cleanup-latch.ts";
@@ -54,6 +55,7 @@ export abstract class AgentSessionBase {
     terminalReplay: Base.TerminalReplayBuffer,
     loopDefinitions: readonly Base.PersistedLoopDefinition[],
   ) {
+    registerPrivateOutputSecrets(this, [runtime.bridgeToken]);
     this.agent = agent;
     this.record = record;
     this.runtime = runtime;
@@ -185,9 +187,7 @@ export abstract class AgentSessionBase {
     writeSessionRecord(record, this.runtime.sessionDir); // atomic record write FIRST, commit in-memory on success (§8.2)
     this.record = record;
   }
-  protected cleanupRuntime(): Promise<void> {
-    return this.cleanupLatch.attempt();
-  }
+  protected cleanupRuntime = (): Promise<void> => this.cleanupLatch.attempt();
   protected advanceInitialReady(): void {
     advanceInitialReady({
       agent: this.agent,
