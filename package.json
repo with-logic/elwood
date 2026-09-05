@@ -5,27 +5,38 @@
   "description": "Spec-driven TypeScript project.",
   "type": "module",
   "files": [
-    "src",
+    "dist",
     "docs",
+    "CHANGELOG.md",
     "README.md",
     "PRD.md"
   ],
-  "module": "src/index.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     }
+  },
+  "bin": {
+    "elwood": "./dist/cli/entry.js"
+  },
+  "engines": {
+    "node": ">=24"
   },
   "scripts": {
     "start": "node --no-warnings src/index.ts",
+    "build": "tsc -p tsconfig.build.json && node scripts/postbuild.mjs",
+    "prepare": "npm run build",
     "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "check:lines": "node --no-warnings scripts/check-lines.ts",
-    "check": "npm run typecheck && npm run lint && npm run check:lines && npm test",
+    "check": "npm run build && npm run typecheck && npm run lint && npm run check:lines && npm test",
     "check:all": "npm run check && npm run test:e2e",
     "test:e2e": "exec node --no-warnings --experimental-test-coverage --test-coverage-include='src/**/*.ts' --test-coverage-exclude='src/app/**' --test-coverage-exclude='tests/**' --test-timeout=240000 --test-concurrency=1 --test tests/e2e/*.e2e.ts",
     "dev:app": "exec node --no-warnings src/app/dev.ts",

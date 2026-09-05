@@ -2755,6 +2755,142 @@ gate that runs the default `npm run check` gate and then `npm run test:e2e`.
 `check:all` does not change the composition of `npm run check`; the default gate
 remains free of real-agent dependencies.
 
+## 12A. Headless Command-Line Interface
+
+Elwood ships a compiled JavaScript executable named `elwood` for macOS and
+Node.js 24 or newer. Local, git, and packed-tarball installs MUST run emitted
+JavaScript from `dist`; an installed package MUST NOT depend on Node's native
+TypeScript loading. The package's root import MUST likewise resolve to emitted
+JavaScript and declarations.
+
+### 12A.1 Commands and input
+
+The primary form is `elwood [options] [prompt...]`. `elwood run [options]
+[prompt...]` is an exact explicit equivalent. `help`, `run`, and `config` are
+commands only when they are the first argument before `--`; prompt words are
+otherwise joined with spaces. `elwood help`, `elwood --help`, and `elwood
+--version` MUST complete without reading user configuration or launching an
+agent.
+
+A new session defaults to Codex and the invocation directory. `-C`/`--cwd`
+overrides that directory. Elwood MUST fail when the selected adapter is
+unavailable and MUST NOT silently fall back to another adapter.
+
+Non-empty piped stdin is appended to positional prompt text after one blank
+line; terminal stdin is never read. Whitespace-only input is a usage error.
+Combined input has an 8 MiB UTF-8 limit that is enforced incrementally before
+session creation. Repeatable `--image <path>` flags attach readable files, in
+flag order, to the same user turn; paths resolve from the effective workspace.
+
+### 12A.2 Execution and lifecycle
+
+CLI turns use the public normalized turn boundary and preserve normal login
+shell, workspace, instruction, settings, skill, MCP, and hook behavior. By
+default Elwood answers only the folder/directory and extension trust classes
+documented in §5.1. `--no-trust` disables that authorization but does not
+disable Codex's required Elwood-owned hook trust. Any other recognized blocking
+prompt fails as `blocked_prompt` and reports only its stable rule label.
+
+The built-in non-interactive launch posture is Claude `dontAsk`, and Codex
+`workspace-write` with approval policy `never`. Flags and global configuration
+may select the adapter, model, reasoning effort, persona, state directory,
+Claude permission mode, Codex sandbox, and Codex approval policy. An
+adapter-specific option is a usage error for an incompatible adapter.
+
+Turns have no whole-invocation timeout by default. `--timeout` accepts a
+positive safe integer followed by `ms`, `s`, `m`, or `h`; its deadline spans
+launch, persona setup, and the user turn. Signal handlers are active before
+launch. The first `SIGINT` requests interruption and cleanup, a repeated
+`SIGINT` force-kills the process tree, and an interrupted invocation exits 130.
+
+A new invocation tears down its state after every outcome. `--keep` instead
+preserves it after stop-or-kill cleanup and reports its session ID on stderr in
+text mode. A resume uses `--resume <id>` to load exactly the stored adapter and
+cwd; it never falls back to a new conversation. Explicit adapter conflicts are
+usage errors. Before launch, resumed state and its cwd MUST satisfy the private,
+owner-matched, regular-file and directory constraints in §12A.5. Resume
+preserves state after every outcome unless `--ephemeral` requests teardown.
+
+A persona applies only to a new session. Elwood runs it as a separate completed
+setup turn and discards that turn's response before observing the user turn.
+Explicit persona plus resume is a usage error. An agent process exit before
+CLI-requested cleanup is `agent_exited`, including a zero-status exit. Response
+data already collected remains available on later failure.
+
+Cleanup runs exactly once. A cleanup failure never masks a primary usage,
+agent, timeout, or interruption outcome, and it changes an otherwise successful
+invocation to failure.
+
+### 12A.3 Output protocols
+
+Stdout is a protocol channel. Human diagnostics, warnings, progress, cleanup
+failures, and text-mode preserved-session notices go only to stderr. Production
+output MUST exclude raw PTY frames, raw hook payloads, terminal screen contents,
+stacks, bridge credentials, and terminal escape sequences.
+
+Text is the default output. It writes only the final assistant response, with
+one trailing newline when non-empty and zero bytes for an empty response.
+`--verbose` adds sanitized lifecycle and normalized progress to stderr without
+changing stdout. `--stream` is text-only, emits assistant chunks once with one
+blank line between distinct messages, preserves partial output on failure, and
+adds one trailing newline when non-empty.
+
+`--output json` emits one version-1 terminal result or error document containing
+the record type, adapter, accumulated response, nullable session ID, integer
+duration in milliseconds, and cleanup outcome. `--output jsonl` emits
+monotonically sequenced version-1 normalized text, thinking, tool, status, and
+warning records, followed by exactly one terminal result or error record with
+the accumulated response. A parseable, explicit structured-output selection
+also represents argument, configuration, and runtime failures in that protocol.
+
+All writes MUST honor stream backpressure. Downstream `EPIPE` stops output and
+cleans up without an uncaught diagnostic. Consumer closure exits 0 unless an
+earlier primary outcome already established a nonzero status.
+
+### 12A.4 Configuration
+
+The user config path is a non-empty `$ELWOOD_CONFIG`, otherwise
+`$XDG_CONFIG_HOME/elwood/config.json` when the XDG base is absolute and
+non-empty, otherwise `~/.config/elwood/config.json`. V1 does not read
+project-local configuration.
+
+Configuration is a strict version-1 JSON object. Documented keys are
+`schemaVersion`, `agent`, `output`, `timeout`, `trust`, `stateDir`, `verbose`,
+`stream`, `persona`, `claude.model`, `claude.reasoningEffort`,
+`claude.permissionMode`, `codex.model`, `codex.reasoningEffort`,
+`codex.sandbox`, and `codex.approvalPolicy`. Config MUST NOT set prompt, cwd,
+keep, ephemeral, resume ID, or images.
+
+Supported environment variables are `ELWOOD_AGENT`, `ELWOOD_OUTPUT`,
+`ELWOOD_TIMEOUT`, `ELWOOD_TRUST`, `ELWOOD_STATE_DIR`, `ELWOOD_VERBOSE`,
+`ELWOOD_STREAM`, `ELWOOD_PERSONA`, `ELWOOD_MODEL`,
+`ELWOOD_REASONING_EFFORT`, `ELWOOD_CLAUDE_PERMISSION_MODE`,
+`ELWOOD_CODEX_SANDBOX`, and `ELWOOD_CODEX_APPROVAL_POLICY`. Boolean variables
+accept only `true` or `false`. Precedence is command-line flags, environment,
+user configuration, then built-in defaults.
+
+`elwood config path`, `show`, `get`, `set`, and `unset` manage documented dotted
+keys without launching an agent. Mutations are atomic and silent on success;
+config parsing and writes reject unknown keys, unknown schema versions,
+symlinks, non-regular files, wrong ownership, and non-private permissions.
+
+### 12A.5 State, failures, and compatibility
+
+CLI-owned state defaults to `$XDG_STATE_HOME/elwood` when that base is absolute,
+otherwise `~/.local/state/elwood`. It never defaults to the invocation
+workspace. CLI state directories and records MUST be private, owner-matched,
+regular where applicable, symlink-safe, and atomically written. One session
+identity supports at most one live owner; concurrent exact resumes may fail on
+the adapter's underlying startup conflict in v1.
+
+Exit status is 0 for success or consumer closure, 1 for agent or cleanup
+failure, 2 for usage or configuration failure, 124 for timeout, and 130 for
+interruption. A primary nonzero status survives cleanup failure. Text errors are
+concise and go to stderr; verbose mode may include a sanitized stack that still
+obeys §12A.3. Static arguments, environment, config, cwd, image, and option
+compatibility MUST be validated before session creation whenever validation
+does not require a stored resume record.
+
 ## 13. Implementation Latitude
 
 The following are implementation choices unless they affect the public behavior
@@ -3047,6 +3183,28 @@ Each criterion has:
 | C-APP-09 | §11 | The web dev app emits structured debugger entries for hooks, activity, warnings, hook errors, lifecycle status, terminal exits, and runtime errors. |
 | C-APP-10 | §11 | The web dev app renders filterable, visually delineated debugger rows with a formatted JSON detail inspector. |
 | C-APP-11 | §11 | Runnable example package scripts execute PTY-owning TypeScript examples under a Node supervisor, remain invokable through `npm run`, and do not mirror raw wrapped-agent terminal output into the caller's shell. |
+
+#### C-CLI: Headless Command-Line Interface (§12A)
+
+| ID | Section | Criterion |
+|---|---:|---|
+| C-CLI-01 | §12A | Local, git, and packed-tarball installs expose an executable `elwood` bin and an importable library entry backed only by emitted JavaScript and declarations under `dist`, on Node.js 24 or newer. |
+| C-CLI-02 | §12A.1 | Direct and explicit `run` forms are equivalent; help and version complete without config reads or agent launch, and reserved command words are commands only in first-argument position before `--`. |
+| C-CLI-03 | §12A.1 | New sessions default to Codex and the invocation cwd, explicit cwd overrides it, an unavailable selected adapter never falls back, and resume defaults to its validated stored adapter and cwd. |
+| C-CLI-04 | §12A.1 | Positional and piped input compose with one blank line, terminal stdin is not read, whitespace-only input fails before launch, UTF-8 input is incrementally limited to 8 MiB, and ordered image flags attach on the user turn. |
+| C-CLI-05 | §12A.2 | A CLI turn preserves Elwood's real interactive environment and auto-authorizes only its documented trust classes; disabled or unrecognized trust automation fails as `blocked_prompt` without submitting into the dialog. |
+| C-CLI-06 | §12A.2 | Built-in and selected per-agent permission, sandbox, approval, model, effort, and persona settings validate against the effective adapter before launch. |
+| C-CLI-07 | §12A.2 | An optional duration bounds launch, setup, and turn; first and repeated `SIGINT` perform interrupt then force-kill behavior; timeout and interruption exit 124 and 130 respectively. |
+| C-CLI-08 | §12A.2 §12A.5 | New state tears down unless kept, resumed state preserves unless ephemeral, exact resume never falls back, and persona is one discarded new-session setup turn that is rejected on resume. |
+| C-CLI-09 | §12A.2 | Premature agent exit and cleanup failure retain collected response data; cleanup runs once, never replaces a primary failure, and changes otherwise-successful execution to status 1. |
+| C-CLI-10 | §12A.3 | Default text output contains only the final response with exact newline semantics; verbose output stays on stderr, and streamed text is emitted once with partial output retained on failure. |
+| C-CLI-11 | §12A.3 | JSON emits one version-1 terminal document and JSONL emits ordered normalized records plus exactly one terminal record, including structured validation errors when explicitly selected. |
+| C-CLI-12 | §12A.3 | Output excludes terminal and secret-bearing internals, honors backpressure, and treats downstream `EPIPE` as graceful consumer closure followed by cleanup. |
+| C-CLI-13 | §12A.4 | Config path resolution follows explicit, absolute XDG, then home fallback order; config is strict version 1 with only documented keys, and project-local config is ignored. |
+| C-CLI-14 | §12A.4 | Flag, environment, config, and built-in precedence is deterministic, environment booleans are strict, and config path/show/get/set/unset never launches an agent. |
+| C-CLI-15 | §12A.4 §12A.5 | Config and state reads and writes enforce private ownership, regular-file, symlink-safety, and atomicity constraints. |
+| C-CLI-16 | §12A.5 | CLI state defaults to the absolute XDG state base or `~/.local/state/elwood`, never the workspace, and one session identity has at most one live owner. |
+| C-CLI-17 | §12A.5 | Success, agent/cleanup failure, usage/config failure, timeout, and interruption map to statuses 0, 1, 2, 124, and 130 without cleanup masking a primary status. |
 
 #### C-E2E: Real Adapter Flows (§12)
 
