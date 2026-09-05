@@ -11,8 +11,30 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ## [Unreleased]
 
+### Added
+
+- **The `elwood` CLI can now mirror the live agent TUI in the current terminal.**
+  `--head` sends the agent's ordered raw VT/ANSI stream to terminal stderr while
+  preserving the final text or JSON result on stdout, including cursor-addressed
+  redraws, alternate screens, colors, spinners, and OSC title changes. It follows
+  terminal resizes, restores terminal modes on every handled outcome, and treats
+  Ctrl-C like the existing interrupt lifecycle. The display is intentionally
+  view-only and cannot be combined with `--stream`, `--verbose`, or JSONL.
+  Pending terminal writes are bounded by bytes and frame count, so a stalled
+  terminal becomes a clean run failure instead of an unbounded memory queue.
+  An argument-free `elwood` invocation now prints help instead of waiting for a
+  prompt. (§12A.1/§12A.6, C-CLI-02/C-CLI-18)
+
 ### Fixed
 
+- **Codex's startup update dialog no longer wedges headed or headless runs.**
+  Codex 0.153.x can paint its numbered update menu before its input loop accepts
+  the first safe Skip hotkey. Elwood now retries that hotkey for a bounded interval
+  only after revalidating the complete current update dialog, and the CLI no longer
+  mistakes the responder-owned dialog's replayed blocking edge for a human prompt.
+  A persistent or unanswerable update dialog now fails and cleans up boundedly even
+  without `--timeout`; no retry can escape into the composer or another dialog.
+  (§5.5/§12A.2, C-CODEX-12/C-CLI-05)
 - **Headless turns now survive real-CLI startup, resume, and teardown races.**
   Codex 0.153.3 can accept the 10-second fallback paste into its cold-start
   placeholder, swallow it during a later boot repaint, and appear to finish an

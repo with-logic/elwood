@@ -62,6 +62,7 @@ function claudeLaunch(
     stateDir: request.stateDir,
     autotrust: request.trust,
     permissionMode: request.permissionMode ?? "dontAsk",
+    ...optional(request.initialSize, "initialSize"),
     ...optional(claudeEffort(request.reasoningEffort), "reasoningEffort"),
   };
   if (request.resume !== undefined)
@@ -86,6 +87,7 @@ function codexLaunch(
     autotrust: request.trust,
     sandbox: request.sandbox ?? "workspace-write",
     approvalPolicy: request.approvalPolicy ?? "never",
+    ...optional(request.initialSize, "initialSize"),
     ...optional(codexEffort(request.reasoningEffort), "reasoningEffort"),
   };
   if (request.resume !== undefined)

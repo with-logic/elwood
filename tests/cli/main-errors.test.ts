@@ -9,9 +9,9 @@ import { elwoodError } from "../../src/core/errors.ts";
 import { mainDependencies, mainHarness, resolvedRequest } from "./main-fakes.ts";
 
 describe("CLI main failures", () => {
-  test("C-CLI-17 empty terminal input is a text usage error", async () => {
+  test("C-CLI-02/C-CLI-17 explicit run with empty terminal input is a usage error", async () => {
     const h = mainHarness();
-    expect(await main([], h.context)).toBe(2);
+    expect(await main(["run"], h.context)).toBe(2);
     expect(h.stdout.value).toBe("");
     expect(h.stderr.value).toContain("invalid_arguments");
   });
@@ -106,7 +106,7 @@ describe("CLI main failures", () => {
     const times = [10, 5];
     expect(
       await main(
-        [],
+        ["run"],
         h.context,
         mainDependencies({ resolve: resolveRunRequest, now: () => times.shift() ?? 5 }),
       ),

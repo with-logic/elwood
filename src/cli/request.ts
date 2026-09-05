@@ -44,6 +44,11 @@ export async function resolveRunRequest(
     choice(parsed.flags.output, env.output, config.output, cliOutputModes, "output") ?? "text";
   const stream = parsed.flags.stream ?? env.stream ?? config.stream ?? false;
   if (stream && output !== "text") throw usage("--stream is valid only with text output.");
+  const head = parsed.flags.head ?? false;
+  const verbose = parsed.flags.verbose ?? env.verbose ?? config.verbose ?? false;
+  if (head && (stream || verbose || output === "jsonl")) {
+    throw usage("--head cannot be combined with --stream, --verbose, or JSONL output.");
+  }
   validateLifecycle(parsed);
   const timeout = parsed.flags.timeout ?? env.timeout ?? config.timeout;
   const cwd =
@@ -106,8 +111,9 @@ export async function resolveRunRequest(
       stateDirValue === undefined
         ? resolveStateDir(context.env, context.homeDir)
         : resolve(context.invocationCwd, nonBlank(stateDirValue, "stateDir")),
-    verbose: parsed.flags.verbose ?? env.verbose ?? config.verbose ?? false,
+    verbose,
     stream,
+    head,
     ...(persona !== undefined && { persona: nonBlank(persona, "persona") }),
     ...optional(selected.model, "model"),
     ...optional(

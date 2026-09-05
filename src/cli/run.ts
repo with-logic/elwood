@@ -6,12 +6,14 @@
 import { privateOutputSecrets } from "../core/private-output-secrets.ts";
 import { blockingTrustSpecs, trustPromptAllowlist } from "../core/trust-prompts.ts";
 import type { ElwoodSessionStatus } from "../core/types.ts";
+import type { HeadedDisplay } from "./head/display.ts";
 import { CliLifecycle, type CliLifecycleClock, type CliSignalSource } from "./lifecycle.ts";
 import type { CliTerminalRecord } from "./output/types.ts";
 import { RunOutput } from "./run-output.ts";
 import type { CliSessionFacade } from "./session.ts";
 import type { AsyncOutputSink } from "./stream.ts";
 import type { EffectiveRunRequest } from "./types.ts";
+import { CodexUpdateAttentionGuard } from "./update-attention.ts";
 
 export type ExecuteRunIo = {
   readonly stdout: AsyncOutputSink;
@@ -20,6 +22,7 @@ export type ExecuteRunIo = {
 export type ExecuteRunDependencies = {
   readonly signals: CliSignalSource;
   readonly clock?: CliLifecycleClock;
+  readonly head?: HeadedDisplay;
 };
 
 export async function executeRun(
@@ -33,10 +36,22 @@ export async function executeRun(
     consumerClosed: () => lifecycle.closeConsumer(),
     failed: (error) => lifecycle.fail(error),
   });
-  const unsubscribers = subscribe(request, session, lifecycle, output);
+  const head = dependencies.head;
+  const updateAttention =
+    request.agent === "codex"
+      ? new CodexUpdateAttentionGuard(session, lifecycle, dependencies.clock)
+      : undefined;
+  const unsubscribers = subscribe(request, session, lifecycle, output, head, updateAttention);
+  let resizeEnabled = false;
   lifecycle.start();
   try {
+    head?.start({
+      interrupt: () => lifecycle.interrupt(),
+      resize: (size) => (resizeEnabled ? session.resize(size) : undefined),
+      failed: (error) => lifecycle.fail(error),
+    });
     lifecycle.beginLaunch();
+    resizeEnabled = true;
     const setup = await lifecycle.race(session.setup());
     if (setup.completed) {
       const live = session.session;
@@ -47,6 +62,9 @@ export async function executeRun(
   } catch (error) {
     lifecycle.fail(error);
   }
+  resizeEnabled = false;
+  updateAttention?.dispose();
+  await head?.close();
   const cleanup = await lifecycle.cleanup();
   const terminal = terminalRecord(request, session, lifecycle, cleanup, output);
   try {
@@ -74,17 +92,40 @@ function subscribe(
   session: CliSessionFacade,
   lifecycle: CliLifecycle,
   output: RunOutput,
+  head: HeadedDisplay | undefined,
+  updateAttention: CodexUpdateAttentionGuard | undefined,
 ): readonly (() => void)[] {
-  return [
+  const common = [
     session.on("activity", (event) => {
-      if (event.kind === "attention" && attentionNeedsHuman(request, event.label)) {
+      if (event.kind === "attention" && event.label === "codex-update-prompt") {
+        if (updateAttention === undefined) lifecycle.block(event.label);
+        else updateAttention.attention();
+      } else if (event.kind === "attention" && attentionNeedsHuman(request, event.label)) {
         lifecycle.block(event.label);
       }
+      if (event.kind === "startup_prompt" && event.label === "update") {
+        updateAttention?.succeeded();
+      }
     }),
-    session.on("status", ({ status }) => output.status(statusRecord(status))),
-    session.on("warning", (event) => output.warning(event)),
+    session.on("status", ({ status }) => {
+      updateAttention?.status(status);
+      output.status(statusRecord(status));
+    }),
+    session.on("warning", (event) => {
+      if (
+        event.code === "startup_prompt_write_failed" &&
+        event.agent === "codex" &&
+        event.label === "update"
+      ) {
+        updateAttention?.writeFailed();
+      }
+      output.warning(event);
+    }),
     session.on("terminal:exit", () => lifecycle.agentExited()),
   ];
+  return head === undefined
+    ? common
+    : [...common, session.on("terminal:data", ({ data }) => head.write(data))];
 }
 
 function attentionNeedsHuman(request: EffectiveRunRequest, label: string): boolean {

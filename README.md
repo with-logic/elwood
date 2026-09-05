@@ -146,7 +146,8 @@ Positional words are joined with spaces. Non-empty piped stdin is appended after
 one blank line, so a short instruction can accompany a large document or diff.
 Terminal stdin is not read. Repeat `--image` to attach multiple images in order.
 Input is capped at 8 MiB, and durations accept positive integer `ms`, `s`, `m`,
-or `h` values.
+or `h` values. Running `elwood` with no arguments prints the same documentation
+as `elwood --help`; explicit `elwood run` still requires prompt input.
 
 ### Defaults and configuration
 
@@ -206,6 +207,34 @@ ANSI terminal frames, raw hook payloads, screen contents, bridge credentials,
 and stacks are excluded from production output. Writes honor backpressure, and
 a downstream pipe closing early triggers cleanup without an uncaught `EPIPE`.
 
+### Live terminal view
+
+Add `--head` when you want to watch the real agent interface while retaining a
+pipeline-friendly final result:
+
+```sh
+elwood --head "Run the test suite and fix the failure"
+elwood --head --output json "Review this repository" >result.json
+elwood --head --agent claude "Explain the architecture"
+```
+
+The display stays in the current terminal and receives the raw PTY byte stream on
+stderr. It is a real VT/ANSI mirror, so full-screen layouts, cursor-addressed
+updates, alternate-screen buffers, colors, spinners, and title changes render as
+they do in the underlying Claude or Codex client. Stdout remains only the final
+text or JSON protocol and can be redirected independently. Pending display work
+is capped at 4 MiB or 1,024 frames; a terminal that remains backpressured fails
+the run cleanly after draining accepted bytes instead of growing memory without
+bound.
+
+Head mode is deliberately view-only: while attached, ordinary keyboard, mouse,
+paste, and terminal-response bytes are discarded; Ctrl-C still interrupts using
+Elwood's normal first-interrupt/repeated-force-kill lifecycle. Terminal resizes
+propagate to the agent. Elwood restores raw/cooked input state, mouse and paste
+modes, attributes, cursor visibility, and the main screen before printing the
+final result. Both stdin and stderr must be terminals, and `--head` cannot be
+combined with `--stream`, `--verbose`, or `--output jsonl`.
+
 ### Continuation and cleanup
 
 New runs are ephemeral unless `--keep` is supplied. A kept text run reports its
@@ -240,6 +269,10 @@ workspace/extension approvals. Any other recognized dialog fails safely as
 Piped text and image paths are prompt input with the same authority as text typed
 by the caller. Do not combine untrusted input with broad filesystem permissions.
 Global config is never loaded from the repository being opened.
+
+Head mode renders agent-controlled terminal escape sequences verbatim, just as
+running the selected interactive CLI directly would. Use it only with agents and
+workspaces you trust to control the current terminal display.
 
 ## Try It Locally
 

@@ -52,7 +52,11 @@ describe("CLI adapter launch mapping", () => {
   test("new Claude carries posture/model/effort and uses the preallocated identity", async () => {
     const h = harness();
     const launch = createCliLaunch(
-      request("claude", { model: "sonnet", reasoningEffort: "high" }),
+      request("claude", {
+        model: "sonnet",
+        reasoningEffort: "high",
+        initialSize: { cols: 117, rows: 39 },
+      }),
       "new-claude",
       h.dependencies,
     );
@@ -68,6 +72,7 @@ describe("CLI adapter launch mapping", () => {
           autotrust: false,
           permissionMode: "plan",
           reasoningEffort: "high",
+          initialSize: { cols: 117, rows: 39 },
           model: "sonnet",
         },
       },
@@ -119,7 +124,11 @@ describe("CLI adapter launch mapping", () => {
 
   test("exact Codex resume has no start or model fallback", async () => {
     const h = harness();
-    const launch = createCliLaunch(request("codex", { resume: "saved" }), "saved", h.dependencies);
+    const launch = createCliLaunch(
+      request("codex", { resume: "saved", initialSize: { cols: 91, rows: 27 } }),
+      "saved",
+      h.dependencies,
+    );
     await expect(launch()).rejects.toThrow("resumeCodex");
     expect(h.prepared).toEqual([]);
     expect(h.calls[0]).toEqual({
@@ -130,6 +139,7 @@ describe("CLI adapter launch mapping", () => {
         autotrust: false,
         sandbox: "read-only",
         approvalPolicy: "on-request",
+        initialSize: { cols: 91, rows: 27 },
         elwoodSessionId: "saved",
       },
     });

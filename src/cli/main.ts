@@ -6,6 +6,8 @@
 import { ElwoodError } from "../core/errors.ts";
 import { parseCliArgs } from "./args.ts";
 import { runConfigCommand } from "./config/commands.ts";
+import { HeadedDisplay } from "./head/display.ts";
+import type { CliHeadTarget } from "./head/types.ts";
 import { cliHelp } from "./help.ts";
 import type { CliSignalSource } from "./lifecycle.ts";
 import { writeJson } from "./output/json.ts";
@@ -13,6 +15,7 @@ import { JsonlRenderer } from "./output/jsonl.ts";
 import { createCliSanitizer } from "./output/sanitize.ts";
 import type { CliError } from "./output/types.ts";
 import { resolveRunRequest } from "./request.ts";
+import { optional, usage } from "./request-values.ts";
 import type { executeRun } from "./run.ts";
 import type { prepareCliSession } from "./session.ts";
 import { AsyncOutputSink, type CliWritable } from "./stream.ts";
@@ -33,6 +36,7 @@ export type CliMainContext = {
   readonly invocationCwd: string;
   readonly homeDir: string;
   readonly signals: CliSignalSource;
+  readonly head?: CliHeadTarget;
 };
 export type CliMainDependencies = {
   readonly version: () => string;
@@ -67,6 +71,7 @@ export async function main(
   const startedAt = dependencies.now();
   let output = explicitStructuredOutput(args) ?? "text";
   let agent = agentHint(args);
+  let head: HeadedDisplay | undefined;
   try {
     const parsed = parseCliArgs(args);
     if (parsed.command === "help") {
@@ -84,15 +89,24 @@ export async function main(
     const resolved = await dependencies.resolve(parsed, context);
     output = resolved.output;
     agent = resolved.agent;
-    const prepared = await dependencies.prepare(resolved);
+    if (resolved.head === true) {
+      if (context.head === undefined) {
+        throw usage("--head requires terminal stdin and stderr.");
+      }
+      head = new HeadedDisplay(context.head);
+    }
+    const prepared = await dependencies.prepare(
+      head === undefined ? resolved : { ...resolved, initialSize: head.initialSize },
+    );
     agent = prepared.request.agent;
     return await dependencies.execute(
       prepared.request,
       prepared.session,
       { stdout, stderr },
-      { signals: context.signals },
+      { signals: context.signals, ...optional(head, "head") },
     );
   } catch (error) {
+    await head?.close();
     const failure = cliFailure(error);
     await renderFailure(
       output,
@@ -104,6 +118,7 @@ export async function main(
     ).catch(() => undefined);
     return failure.exitCode;
   } finally {
+    await head?.close();
     await Promise.all([stdout.flush(), stderr.flush()]);
     stdout.dispose();
     stderr.dispose();

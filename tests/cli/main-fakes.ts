@@ -2,8 +2,10 @@
  * Shared side-effect-free command contexts and dependencies for CLI routing tests.
  */
 
+import type { CliHeadTarget } from "../../src/cli/head/types.ts";
 import type { CliMainContext, CliMainDependencies } from "../../src/cli/main.ts";
 import type { EffectiveRunRequest, ResolvedRunRequest } from "../../src/cli/types.ts";
+import type { TerminalSize } from "../../src/core/types.ts";
 import { FakeCliSession, FakeSignals, MemoryWriter } from "./run-fakes.ts";
 
 export const resolvedRequest = (
@@ -58,7 +60,27 @@ export function mainHarness() {
     homeDir: "/home/test",
     signals: new FakeSignals(),
   };
-  return { stdout, stderr, context };
+  return {
+    stdout,
+    stderr,
+    context,
+    headTarget: (size: TerminalSize) => fakeHeadTarget(size),
+  };
+}
+
+function fakeHeadTarget(initialSize: TerminalSize) {
+  const output = new MemoryWriter();
+  const target: CliHeadTarget = {
+    output,
+    size: () => initialSize,
+    isRaw: () => false,
+    setRawMode: () => undefined,
+    resume: () => undefined,
+    pause: () => undefined,
+    onInput: () => () => undefined,
+    onResize: () => () => undefined,
+  };
+  return { output, target };
 }
 
 export function mainDependencies(

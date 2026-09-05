@@ -124,6 +124,10 @@ export class CliLifecycle {
     this.clearDeadline();
   }
 
+  interrupt(): void {
+    this.onSigint();
+  }
+
   private record(failure: CliFailure): boolean {
     if (this.failureValue !== undefined || this.consumerClosedValue) return false;
     this.failureValue = failure;

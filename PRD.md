@@ -1272,8 +1272,17 @@ skip key is written: readiness and queued persona/caller input stay suspended un
 the screen clears. A captured first-party banner that renders before its options
 therefore fails safe, and a following safe-option-only frame remains latched as the
 same prompt; generic agent prose containing "update available" does not activate
-the blocker. This prevents a queued Enter from selecting Codex's default "Update
-now" action (C-CODEX-12).
+the blocker. Because current Codex versions can paint this menu before their input
+loop reliably accepts the first key, Elwood retries the safe numbered choice for a
+bounded interval. Before every write it re-reads the current frame and requires the
+still-active first-party prompt generation plus that frame's safe numbered option;
+this includes an option-only continuation belonging to a previously captured banner.
+It stops without another write once that generation clears or changes, and fails the
+startup operation if the update prompt remains but its safe option disappears or the
+retry interval is exhausted. A blocked update screen therefore becomes a bounded run
+failure even when the caller supplied no whole-run timeout; delayed input cannot
+reach the restored composer or a replacement dialog. This prevents a queued Enter
+from selecting Codex's default "Update now" action (C-CODEX-12).
 `strictVersionCheck` makes unparseable Codex versions fatal instead of
 warning-and-continuing.
 
@@ -2782,7 +2791,9 @@ The primary form is `elwood [options] [prompt...]`. `elwood run [options]
 commands only when they are the first argument before `--`; prompt words are
 otherwise joined with spaces. `elwood help`, `elwood --help`, and `elwood
 --version` MUST complete without reading user configuration or launching an
-agent.
+agent. An invocation with no arguments is another exact help form and MUST NOT
+read piped or terminal stdin. `elwood run` remains an explicit run and therefore
+requires prompt input.
 
 A new session defaults to Codex and the invocation directory. `-C`/`--cwd`
 overrides that directory. Elwood MUST fail when the selected adapter is
@@ -2902,6 +2913,49 @@ concise and go to stderr; verbose mode may include a sanitized stack that still
 obeys §12A.3. Static arguments, environment, config, cwd, image, and option
 compatibility MUST be validated before session creation whenever validation
 does not require a stored resume record.
+
+### 12A.6 Same-terminal head mode
+
+`--head` is an opt-in, view-only terminal mirror for a run. It requires both a
+terminal stdin and terminal stderr; the latter is the dedicated display channel,
+so stdout retains the selected text or JSON protocol and may still be redirected.
+The flag is invocation-only: it has no environment or configuration equivalent.
+An unavailable controlling terminal is a usage failure detected before session
+creation. Because the headed display exclusively owns the terminal while the
+turn runs, `--head` is incompatible with `--stream`, `--verbose`, and JSONL's
+live record protocol. It remains compatible with final text and JSON output.
+
+Head mode MUST render the raw `terminal:data` stream verbatim to terminal stderr
+after Elwood's required headless xterm render. It is a VT/ANSI terminal mirror,
+not a line-oriented log: cursor-addressed repainting, alternate-screen buffers,
+colors, cursor visibility, and other full-screen TUI control sequences MUST
+remain intact. Raw frames remain excluded from stdout and from redirected
+stderr because head mode requires that display channel to be a terminal.
+
+Before launch, Elwood MUST size the agent PTY and headless terminal from the
+headed terminal's positive integer columns and rows, falling back to the normal
+Elwood terminal size for missing or invalid dimensions. During the run,
+terminal resize events MUST resize both models through the public session
+operation. Display writes MUST preserve order and honor backpressure. Because the
+PTY producer cannot be paused at this boundary, Elwood MUST cap outstanding display
+work at 4 MiB of UTF-8 data or 1,024 frames, whichever comes first. Crossing either
+limit fails the run, stops accepting display frames, drains every already-accepted
+byte in order, and performs the normal terminal restoration and cleanup before the
+final nonzero result.
+
+While attached, Elwood temporarily puts terminal stdin into raw mode and
+discards ordinary keyboard, mouse, paste, and terminal-response bytes: v1 head
+mode is observational, not interactive. Every Ctrl-C byte follows the same
+first-interrupt/repeated-force-kill lifecycle as SIGINT. On every normal,
+failure, timeout, or interruption outcome, Elwood MUST remove its input and
+resize listeners, restore terminal stdin's prior raw/cooked mode, flush pending
+display writes, reset attributes, disable mouse and bracketed-paste modes, show
+the cursor, and leave the alternate screen before emitting the final stdout
+protocol. `SIGKILL` cannot provide process-level terminal restoration. If the
+host has already closed the terminal input handle, Elwood contains that handle's
+terminal-gone error; the parent shell or terminal owner is then the only remaining
+authority able to restore its modes, and that lost handle does not replace a
+completed agent result with a runtime failure.
 
 ## 13. Implementation Latitude
 
@@ -3087,7 +3141,7 @@ Each criterion has:
 | C-CODEX-09 | §5.7 | Codex MCP startup warnings are parsed from terminal output into typed warning events with server names and recovery commands. |
 | C-CODEX-10 | §9.2 | `autoupdate: true` rechecks the Codex version after running `codex update`. |
 | C-CODEX-11 | §5.5 | `autotrust: true` answers Codex's directory trust prompt through PTY input and emits `startup_prompt` activity. |
-| C-CODEX-12 | §5.5 | If Codex still shows an interactive update prompt inside the TUI, Elwood selects the skip/continue-without-updating option by label. The skip is EDGE-triggered: a persistent update screen is answered once (not re-answered every frame), but the skip RE-ARMS once the update screen leaves the frame, so an update prompt that REAPPEARS after Codex restarts (e.g. the update did not take and the same screen returns) is skipped again rather than leaving the session stuck on it. Every recognized update screen is input-blocking until its rendered frame clears: a captured first-party banner blocks before its options render, and a following safe-option-only continuation frame stays latched as the same prompt. Generic agent prose containing "update available" and Codex's passive installation notice do not activate the blocker. Readiness and queued persona/caller input therefore cannot select the default "Update now" action. |
+| C-CODEX-12 | §5.5 | If Codex still shows an interactive update prompt inside the TUI, Elwood selects the skip/continue-without-updating option by label. The skip is EDGE-triggered: a persistent update screen starts one bounded response operation (not one per rendered frame), but that operation re-reads the current rendered frame before every retry and writes only when the original first-party prompt generation remains active and the frame exposes its safe numbered choice. It stops without writing when the generation clears or changes and fails boundedly if that prompt loses its safe choice or exhausts retries; the CLI converts an unanswerable blocked update into `blocked_prompt` even without a whole-run timeout. The skip RE-ARMS once the update screen leaves the frame, so an update prompt that REAPPEARS after Codex restarts (e.g. the update did not take and the same screen returns) is skipped again rather than leaving the session stuck on it. Every recognized update screen is input-blocking until its rendered frame clears: a captured first-party banner blocks before its options render, and a following safe-option-only continuation frame stays latched as the same prompt. Generic agent prose containing "update available" and Codex's passive installation notice do not activate the blocker. Readiness and queued persona/caller input therefore cannot select the default "Update now" action. |
 | C-CODEX-13 | §10 | An immediately failing or unusable Codex process fails with `codex_start_failed` or a more specific typed error. |
 | C-CODEX-14 | §5.3 | `setModel` on Codex restores the user's prior `config.toml` default via compare-and-swap after the CLI persists its picker selection, skipping with the `codex_default_model_persisted` warning instead of clobbering concurrent edits. |
 | C-CODEX-15 | §5.5 | Codex's directory-trust prompt is answered only under `autotrust` (blocking on the human when off); Codex hook trust — Elwood's own integration — is answered regardless of `autotrust` and is NOT classified as blocking. Each is recognized only by its HEADER wording on a non-option line (so an option-only phrase cannot spoof it) and, once recognized, answered from the frame's affirmative option — the agent is never left waiting. When a recognized prompt's affirmative option has not rendered yet, a fire-once transient `attention` activity is emitted and Elwood keeps watching so a later frame answers it; this render-delay state is TRANSIENT and no warning is emitted for it. Each is answered once, from the shared allowlist. |
@@ -3201,7 +3255,7 @@ Each criterion has:
 | ID | Section | Criterion |
 |---|---:|---|
 | C-CLI-01 | §12A | Local, git, and packed-tarball installs expose an executable `elwood` bin and an importable library entry backed only by emitted JavaScript and declarations under `dist`, on Node.js 24 or newer. |
-| C-CLI-02 | §12A.1 | Direct and explicit `run` forms are equivalent; help and version complete without config reads or agent launch, and reserved command words are commands only in first-argument position before `--`. |
+| C-CLI-02 | §12A.1 | Direct and explicit `run` forms are equivalent; an argument-free invocation, help, and version complete without stdin/config reads or agent launch; `elwood run` still requires input; and reserved command words are commands only in first-argument position before `--`. |
 | C-CLI-03 | §12A.1 | New sessions default to Codex and the invocation cwd, explicit cwd overrides it, an unavailable selected adapter never falls back, and resume defaults to its validated stored adapter and cwd. |
 | C-CLI-04 | §12A.1 | Positional and piped input compose with one blank line, terminal stdin is not read, whitespace-only input fails before launch, UTF-8 input is incrementally limited to 8 MiB, and ordered image flags attach on the user turn. |
 | C-CLI-05 | §12A.2 | A CLI turn preserves Elwood's real interactive environment and auto-authorizes only its documented trust classes; disabled or unrecognized trust automation fails as `blocked_prompt` without submitting into the dialog. |
@@ -3217,6 +3271,7 @@ Each criterion has:
 | C-CLI-15 | §12A.4 §12A.5 | Config and state reads and writes enforce private ownership, regular-file, symlink-safety, and atomicity constraints. |
 | C-CLI-16 | §12A.5 | CLI state defaults to the absolute XDG state base or `~/.local/state/elwood`, never the workspace, and one session identity has at most one live owner. |
 | C-CLI-17 | §12A.5 | Success, agent/cleanup failure, usage/config failure, timeout, and interruption map to statuses 0, 1, 2, 124, and 130 without cleanup masking a primary status. |
+| C-CLI-18 | §12A.6 | `--head` fails before launch without terminal stdin/stderr; otherwise it mirrors ordered raw PTY bytes (including full-screen VT/ANSI control sequences) only to terminal stderr, uses and follows its size, keeps final text/JSON stdout clean, treats raw Ctrl-C like SIGINT, and restores terminal input/display modes before final output on every handled outcome. Outstanding mirror work is capped at 4 MiB or 1,024 frames; overflow fails the run after draining accepted bytes and restoring the terminal instead of growing memory without bound. A terminal-gone error from an input handle already closed by its host is contained because only that host can then restore the terminal, and it does not replace a completed result. |
 
 #### C-E2E: Real Adapter Flows (§12)
 

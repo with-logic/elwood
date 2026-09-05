@@ -3,7 +3,8 @@
  * Implements PRD §5.5 and C-CODEX-12 for both prompt automation and input blocking.
  */
 
-import { numberedOptions } from "../core/terminal-options.ts";
+import { nonOptionText, numberedOptions } from "../core/terminal-options.ts";
+import type { TrustWriteResult } from "../core/trust-responder.ts";
 
 export const codexUpdateOptionPattern = /continue\s*without\s*updat|skip|not\s*now|later/i;
 const updateScreenBanner =
@@ -26,14 +27,69 @@ export function codexUpdatePromptVisible(frameText: string): boolean {
 /** Keeps a split prompt blocking until a frame with no update evidence clears it. */
 export class CodexUpdatePromptTracker {
   private active = false;
+  private generation = 0;
 
   observe(frameText: string): boolean {
-    if (codexUpdatePromptVisible(frameText)) this.active = true;
-    else if (!(this.active && hasSafeUpdateOption(frameText))) this.active = false;
+    if (codexUpdatePromptVisible(frameText)) {
+      if (!this.active) this.generation += 1;
+      this.active = true;
+    } else if (!(this.active && isSafeUpdateContinuation(frameText))) {
+      if (this.active) this.generation += 1;
+      this.active = false;
+    }
     return this.active;
+  }
+
+  /** Captures the current prompt generation so an async retry cannot enter a later dialog. */
+  currentFramePredicate(): (frameText: string) => boolean {
+    const generation = this.generation;
+    return (frameText) =>
+      this.active &&
+      this.generation === generation &&
+      (codexUpdatePromptVisible(frameText) || isSafeUpdateContinuation(frameText));
   }
 }
 
-function hasSafeUpdateOption(frameText: string): boolean {
-  return numberedOptions(frameText).some((option) => codexUpdateOptionPattern.test(option.label));
+function isSafeUpdateContinuation(frameText: string): boolean {
+  if (nonOptionText(frameText).trim() !== "") return false;
+  return numberedOptions(frameText).some((option) =>
+    /continue\s*without\s*updat|skip/i.test(option.label),
+  );
+}
+
+const retryIntervalMs = 250;
+const retryTimeoutMs = 5_000;
+
+/** Retries a possibly swallowed startup hotkey only while its safe option remains visible. */
+export async function writeCodexUpdateSkip(
+  option: string,
+  write: (input: string) => TrustWriteResult,
+  readFrame?: () => string,
+  currentUpdateFrame: (frameText: string) => boolean = codexUpdatePromptVisible,
+): Promise<void> {
+  if (readFrame === undefined) {
+    await write(option);
+    return;
+  }
+  const deadline = Date.now() + retryTimeoutMs;
+  while (Date.now() < deadline) {
+    const frame = readFrame();
+    if (!currentUpdateFrame(frame)) return;
+    const safeOption = numberedOptions(frame).find((candidate) =>
+      codexUpdateOptionPattern.test(candidate.label),
+    );
+    if (safeOption === undefined) {
+      throw new Error("Codex update prompt no longer exposes a safe skip option.");
+    }
+    await write(safeOption.number);
+    await wait(retryIntervalMs);
+  }
+  throw new Error("Codex update prompt did not clear after safe-option retries.");
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    timer.unref();
+  });
 }

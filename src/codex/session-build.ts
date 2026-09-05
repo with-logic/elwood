@@ -119,7 +119,11 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       // The write RETURNS its completion: the responder settles only after it fulfills;
       // a rejected write retries + warns (C-CODEX-17). Warning delivery is CONTAINED on
       // the frame path so a throwing listener never skips readiness or terminal:data.
-      const result = promptResponder.handle(frame.text, (i) => renderedTerminal.sendInput(i));
+      const result = promptResponder.handle(
+        frame.text,
+        (i) => renderedTerminal.sendInput(i),
+        () => renderedTerminal.snapshot().text,
+      );
       warnGate.emitWarnings(result.warnings);
       emitSettledStartupOutcomes(emitter, "codex", record.elwoodSessionId, result.outcomes, {
         emitWarnings: (w) => warnGate.emitWarnings(w),

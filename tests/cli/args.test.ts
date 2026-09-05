@@ -17,8 +17,10 @@ describe("CLI argument grammar", () => {
   });
 
   test("C-CLI-02 reserves command words only in first position", () => {
+    expect(parseCliArgs([])).toEqual({ command: "help" });
     expect(parseCliArgs(["help"])).toEqual({ command: "help" });
     expect(parseCliArgs(["config", "show"])).toEqual({ command: "config", args: ["show"] });
+    expect(parseCliArgs(["run"])).toMatchObject({ command: "run", promptWords: [] });
   });
 
   test("C-CLI-04 retains repeated images, equals options, and explicitness", () => {
@@ -52,6 +54,7 @@ describe("CLI argument grammar", () => {
       "state",
       "--verbose",
       "--stream",
+      "--head",
       "--persona",
       "careful",
       "--model",
@@ -79,6 +82,7 @@ describe("CLI argument grammar", () => {
         stateDir: "state",
         verbose: true,
         stream: true,
+        head: true,
         persona: "careful",
         model: "m",
         reasoningEffort: "high",

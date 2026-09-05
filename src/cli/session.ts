@@ -10,7 +10,7 @@ import type { TurnEvent } from "../core/simple/events.ts";
 import { SessionBase } from "../core/simple/session.ts";
 import { defaultBoundarySignal } from "../core/simple/turn.ts";
 import type { TurnOptions } from "../core/simple/turn-types.ts";
-import type { ElwoodSessionStatus, Unsubscribe } from "../core/types.ts";
+import type { ElwoodSessionStatus, TerminalSize, Unsubscribe } from "../core/types.ts";
 import { readPrivateSessionRecord, removeSessionIdentity } from "../state/private-session.ts";
 import type { SessionRecord } from "../state/store.ts";
 import { finalizeRunRequest } from "./request.ts";
@@ -48,6 +48,7 @@ export interface CliSessionFacade {
     handler: (event: ElwoodCommonEventMap[E]) => void,
   ): Unsubscribe;
   interrupt(options?: { readonly timeoutMs?: number }): Promise<void>;
+  resize(size: TerminalSize): Promise<void>;
   close(): Promise<void>;
   kill(): Promise<void>;
   teardown(): Promise<void>;

@@ -4,11 +4,12 @@
  * retryable and its `settled` promise rejects, so no false "answered" is emitted.
  */
 
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   CodexStartupPromptResponder,
   type SettledCodexStartupOutcome,
 } from "../../src/codex/startup-prompts.ts";
+import { writeCodexUpdateSkip } from "../../src/codex/update-prompt.ts";
 
 function outcomesOf(settled: readonly SettledCodexStartupOutcome[]) {
   return settled.map((entry) => entry.outcome);
@@ -19,6 +20,113 @@ async function drain(settled: readonly SettledCodexStartupOutcome[]): Promise<vo
 }
 
 describe("Codex startup prompt retry on rejected write", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  test("C-CODEX-12 stops retrying as soon as the update screen clears", async () => {
+    const prompt = "Update available! 0.153.3 -> 0.153.4\n› 1. Update now\n  2. Skip";
+    let frame = prompt;
+    const writes: string[] = [];
+    const result = writeCodexUpdateSkip(
+      "2",
+      (input) => {
+        writes.push(input);
+        frame = "› Ready";
+      },
+      () => frame,
+    );
+    await vi.runAllTimersAsync();
+    await result;
+    expect(writes).toEqual(["2"]);
+  });
+
+  test("C-CODEX-12 re-reads a renumbered safe option before every retry", async () => {
+    const prompt = "Update available! 0.153.3 -> 0.153.4\n› 1. Update now\n  2. Skip";
+    let frame = prompt;
+    const writes: string[] = [];
+    const result = writeCodexUpdateSkip(
+      "2",
+      (input) => {
+        writes.push(input);
+        frame = writes.length === 1 ? `${prompt.replace("2. Skip", "3. Not now")}` : "› Ready";
+      },
+      () => frame,
+    );
+    await vi.runAllTimersAsync();
+    await result;
+    expect(writes).toEqual(["2", "3"]);
+  });
+
+  test("C-CODEX-12 never retries into a replacement dialog", async () => {
+    const prompt = "Update available! 0.153.3 -> 0.153.4\n› 1. Update now\n  2. Skip";
+    let frame = prompt;
+    const writes: string[] = [];
+    const result = writeCodexUpdateSkip(
+      "2",
+      (input) => {
+        writes.push(input);
+        frame = "Enable new context cache?\n  1. Reset cache\n› 2. Later";
+      },
+      () => frame,
+    );
+    await vi.runAllTimersAsync();
+    await result;
+    expect(writes).toEqual(["2"]);
+  });
+
+  test("C-CODEX-12 fails if the live update screen loses its safe option", async () => {
+    const prompt = "Update available! 0.153.3 -> 0.153.4\n› 1. Update now\n  2. Skip";
+    let frame = prompt;
+    const result = writeCodexUpdateSkip(
+      "2",
+      () => {
+        frame = "Update available! 0.153.3 -> 0.153.4\n› 1. Update now";
+      },
+      () => frame,
+    );
+    const rejection = expect(result).rejects.toThrow(
+      "Codex update prompt no longer exposes a safe skip option.",
+    );
+    await vi.runAllTimersAsync();
+    await rejection;
+  });
+
+  test("C-CODEX-12 retries a swallowed skip only while its safe option stays visible", async () => {
+    const responder = new CodexStartupPromptResponder("s1");
+    const prompt = "Update available! 0.153.3 -> 0.153.4\n› 1. Update now\n  2. Skip";
+    let frame = prompt;
+    const writes: string[] = [];
+    const handled = responder.handle(
+      prompt,
+      (input) => {
+        writes.push(input);
+        if (writes.length === 2) frame = "› Ready";
+      },
+      () => frame,
+    );
+    const settled = handled.outcomes[0]?.settled;
+    await vi.runAllTimersAsync();
+    await settled;
+    expect(writes).toEqual(["2", "2"]);
+  });
+
+  test("C-CODEX-12 bounds retries when the safe update option never clears", async () => {
+    const writes: string[] = [];
+    const result = writeCodexUpdateSkip(
+      "2",
+      (input) => {
+        writes.push(input);
+      },
+      () => "Update available! 0.153.3 -> 0.153.4\n  1. Update now\n› 2. Skip",
+    );
+    const rejection = expect(result).rejects.toThrow(
+      "Codex update prompt did not clear after safe-option retries.",
+    );
+    await vi.runAllTimersAsync();
+    await rejection;
+    expect(writes).toHaveLength(20);
+  });
+
   test("C-CODEX-17 a REJECTED update-skip write stays retryable and never resolves as answered", async () => {
     const responder = new CodexStartupPromptResponder("s1");
     const frame = "Update available\n  1. Update now\n  2. Continue without updating";

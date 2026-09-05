@@ -20,6 +20,7 @@ const options = {
   "state-dir": { type: "string" },
   verbose: { type: "boolean" },
   stream: { type: "boolean" },
+  head: { type: "boolean" },
   persona: { type: "string" },
   model: { type: "string" },
   "reasoning-effort": { type: "string" },
@@ -44,6 +45,7 @@ const optionKeys: Readonly<Record<string, RunOptionKey | undefined>> = {
   "state-dir": "stateDir",
   verbose: "verbose",
   stream: "stream",
+  head: "head",
   persona: "persona",
   model: "model",
   "reasoning-effort": "reasoningEffort",
@@ -58,6 +60,7 @@ const optionKeys: Readonly<Record<string, RunOptionKey | undefined>> = {
 };
 
 export function parseCliArgs(argv: readonly string[]): ParsedCliCommand {
+  if (argv.length === 0) return { command: "help" };
   if (argv[0] === "help") return { command: "help" };
   if (argv[0] === "config") return { command: "config", args: argv.slice(1) };
   const runArgs = argv[0] === "run" ? argv.slice(1) : argv;
@@ -99,6 +102,7 @@ function flagsFrom(values: Readonly<Record<string, unknown>>): RunFlags {
     ...(typeof values["state-dir"] === "string" && { stateDir: values["state-dir"] }),
     ...(values["verbose"] === true && { verbose: true }),
     ...(values["stream"] === true && { stream: true }),
+    ...(values["head"] === true && { head: true }),
     ...(typeof values["persona"] === "string" && { persona: values["persona"] }),
     ...(typeof values["model"] === "string" && { model: values["model"] }),
     ...(typeof values["reasoning-effort"] === "string" && {

@@ -106,6 +106,7 @@ describe("executeRun", () => {
   test.each([
     { agent: "claude" as const, trust: true, label: "workspace_trust" },
     { agent: "codex" as const, trust: false, label: "hook_trust" },
+    { agent: "codex" as const, trust: false, label: "codex-update-prompt" },
   ])("C-CLI-05 auto-owned $label attention waits for its responder", async (owned) => {
     const session = new FakeCliSession();
     session.setupWork = async (current) => {

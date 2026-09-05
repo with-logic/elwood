@@ -230,6 +230,12 @@ Two version-coupled wrinkles this cost us:
   numbered dialog — so the interactive dialog is not guaranteed on every version.
   The skip is written ONLY when a numbered skip option is actually present
   (`findNumberedOption` → null ⇒ no write), so a passive banner is a harmless no-op.
+  Every retry revalidates that the frame still belongs to the captured first-party
+  update-prompt generation and uses the safe option's current number. This preserves
+  the known safe-option-only continuation layout without letting a cleared/reappeared
+  prompt or replacement dialog inherit a stale digit. A prompt that remains blocking
+  but cannot be safely answered becomes `blocked_prompt` after the bounded
+  responder/grace window, including runs without a whole-invocation timeout.
   The match set (`src/codex/update-prompt.ts`) is unit-tested against captured
   layouts, NOT against a live update event (which requires an actually-stale binary
   to trigger). If Codex changes the dialog wording, this is the first thing to
@@ -332,11 +338,51 @@ trust and update dialogs, Claude cache confirmations, and final-answer transcrip
 phases—also applies to headless runs.
 
 This matters when debugging an apparently silent command: raw terminal frames are
-never a fallback output channel. Use `--verbose` for sanitized lifecycle progress
-and run the real-CLI e2e rather than adding screen scraping at the process boundary.
+never a fallback output channel. Use `--verbose` for sanitized lifecycle progress,
+or opt into the raw current-terminal mirror with `--head`, and run the real-CLI e2e
+rather than adding screen scraping at the process boundary.
 The compiled-bin smoke runs each agent in a separate child process so `--keep`
 followed by `--resume --ephemeral` exercises persisted continuation, not an
 in-memory session accidentally surviving in the test runner. C-CLI-01/10/11/12.
+
+## Same-terminal headed display
+
+`--head` must forward `terminal:data` bytes, not snapshots or parsed lines. Real
+Codex 0.153.3 and Claude 2.1.261 both continuously repaint with cursor-addressing,
+erase operations, spinner frames, cursor visibility, synchronized-output markers,
+and OSC title changes; Claude also uses save/restore cursor operations. Re-rendering
+normalized text cannot reproduce either TUI. The raw stream goes to terminal stderr
+so final text/JSON stdout remains redirectable.
+
+Raw delivery remains byte-exact but not unbounded: at most 4 MiB or 1,024 pending
+frames may wait behind terminal backpressure. Elwood accepts no later frames after
+overflow, drains the accepted prefix in order, restores the terminal, and returns a
+normal nonzero result. This keeps a stalled terminal from turning a repaint-heavy TUI
+into unbounded retained promises and buffers.
+
+The outer stdin is put into raw mode while attached. This is required even though
+v1 is view-only: otherwise terminal protocol replies and mouse/paste bytes can echo
+into the display or leak into a parent shell. All input is discarded except Ctrl-C,
+which enters the existing interrupt/kill lifecycle. On completion, restore the input
+mode and emit a defensive VT reset before the final stdout record.
+
+Two real-PTY edges were invisible to the unit fixtures:
+
+- Codex's update dialog can raise a rendered blocking edge before the responder's
+  safe Skip takes effect, and startup-attention replay can deliver that old edge to
+  the CLI afterward. The CLI must ignore only this exact automation-owned label;
+  generic permission dialogs still fail as `blocked_prompt`.
+- Codex 0.153.3 can paint the numbered menu before its input loop accepts the first
+  hotkey. A successful PTY write therefore does not prove the dialog cleared. The
+  responder runs one bounded retry operation while a safe numbered option remains
+  on the current rendered frame; once it disappears, no delayed key can reach the
+  composer. Some PTY hosts close their input side before process completion and
+  then return `EIO` from `setRawMode(false)`; contain only terminal-gone restoration
+  errors because that host is already the sole remaining terminal-mode owner.
+
+Verified manually in a real PTY with successful headed turns on Codex 0.153.3 and
+Claude 2.1.261, including terminal restoration and clean JSON terminal records.
+C-CLI-18/C-CODEX-12.
 
 ## Testing against the real CLIs
 

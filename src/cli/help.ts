@@ -34,6 +34,7 @@ Continuation and output:
   --resume <id>               Resume the stored agent and workspace exactly
   --ephemeral                 Tear down a resumed session afterward
   --output <text|json|jsonl>  Select stdout protocol (default: text)
+  --head                      Mirror the full agent TUI in this terminal
   --stream                    Stream assistant messages in text mode
   --verbose                   Write sanitized progress to stderr
   --state-dir <path>          Override CLI-owned state storage

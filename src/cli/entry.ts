@@ -8,6 +8,7 @@
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { createProcessHeadTarget } from "./head/process.ts";
 import { type CliMainContext, type CliMainDependencies, main } from "./main.ts";
 import type { CliWritable } from "./stream.ts";
 
@@ -55,6 +56,7 @@ function isSameFile(modulePath: string, entryPath: string): boolean {
 }
 
 function processContext(proc: CliProcess, userHome: string): CliMainContext {
+  const head = createProcessHeadTarget(proc.stdin, proc.stderr);
   return {
     stdout: proc.stdout,
     stderr: proc.stderr,
@@ -73,6 +75,7 @@ function processContext(proc: CliProcess, userHome: string): CliMainContext {
         };
       },
     },
+    ...(head === undefined ? {} : { head }),
   };
 }
 

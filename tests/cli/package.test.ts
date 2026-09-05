@@ -29,9 +29,22 @@ function fakeProcess(argv: readonly string[]): {
 } {
   const stdout = new MemoryWriter();
   const stderr = new MemoryWriter();
+  Object.assign(stderr, {
+    isTTY: true,
+    columns: 100,
+    rows: 30,
+    on: () => undefined,
+    off: () => undefined,
+  });
   const listeners = new Set<() => void>();
   const stdin = {
     isTTY: true,
+    isRaw: false,
+    setRawMode: () => undefined,
+    resume: () => undefined,
+    pause: () => undefined,
+    on: () => undefined,
+    off: () => undefined,
     async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {},
   };
   return {
@@ -111,6 +124,9 @@ describe("installed CLI package", () => {
       encoding: "utf8",
     });
     expect(help).toContain("Usage: elwood");
+    expect(execFileSync(process.execPath, ["dist/cli/entry.js"], { encoding: "utf8" })).toContain(
+      "Usage: elwood",
+    );
   });
 
   test("C-CLI-01 packed package runs through the installed bin symlink and imports", () => {

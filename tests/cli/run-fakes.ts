@@ -9,7 +9,7 @@ import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
 import type { ElwoodCommonEventMap } from "../../src/core/agent-session.ts";
 import type { TurnEvent } from "../../src/core/simple/events.ts";
 import type { TurnOptions } from "../../src/core/simple/turn-types.ts";
-import type { ElwoodSessionStatus, Unsubscribe } from "../../src/core/types.ts";
+import type { ElwoodSessionStatus, TerminalSize, Unsubscribe } from "../../src/core/types.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 import { FakeUnderlying } from "../unit/simple-fakes.ts";
 
@@ -24,6 +24,7 @@ export class FakeCliSession implements CliSessionFacade {
   teardowns = 0;
   interrupts = 0;
   kills = 0;
+  readonly resizes: TerminalSize[] = [];
   cleanupError: Error | undefined;
   events: readonly TurnEvent[] = [{ type: "text", text: "ok" }];
   setupWork: (session: FakeCliSession) => Promise<void> = async (session) => {
@@ -66,6 +67,10 @@ export class FakeCliSession implements CliSessionFacade {
   }
   interrupt(): Promise<void> {
     this.interrupts += 1;
+    return Promise.resolve();
+  }
+  resize(size: TerminalSize): Promise<void> {
+    this.resizes.push(size);
     return Promise.resolve();
   }
   close(): Promise<void> {

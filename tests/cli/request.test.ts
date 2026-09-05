@@ -41,7 +41,16 @@ describe("effective CLI request", () => {
     mkdirSync(workspace);
     writeFileSync(join(workspace, "a.png"), "a");
     writeFileSync(join(workspace, "b.png"), "b");
-    const parsed = parseCliArgs(["-C", "workspace", "--image", "a.png", "--image", "b.png", "go"]);
+    const parsed = parseCliArgs([
+      "-C",
+      "workspace",
+      "--head",
+      "--image",
+      "a.png",
+      "--image",
+      "b.png",
+      "go",
+    ]);
     if (parsed.command !== "run") throw new Error("expected run");
     const draft = await resolveRunRequest(parsed, {
       env: {},
@@ -55,6 +64,7 @@ describe("effective CLI request", () => {
       { path: join(workspace, "a.png") },
       { path: join(workspace, "b.png") },
     ]);
+    expect("head" in request).toBe(false);
   });
 
   test("C-CLI-03 snapshots the invocation cwd for a new session", async () => {
@@ -86,10 +96,17 @@ describe("effective CLI request", () => {
       "go",
     ]);
     const structured = parseCliArgs(["--output", "json", "--stream", "go"]);
+    const headedStream = parseCliArgs(["--head", "--stream", "go"]);
+    const headedVerbose = parseCliArgs(["--head", "--verbose", "go"]);
+    const headedJsonl = parseCliArgs(["--head", "--output", "jsonl", "go"]);
     if (incompatible.command !== "run" || structured.command !== "run") {
       throw new Error("expected runs");
     }
     await expect(resolveRunRequest(incompatible, context)).rejects.toThrow(/Claude/iu);
     await expect(resolveRunRequest(structured, context)).rejects.toThrow(/stream/iu);
+    for (const headed of [headedStream, headedVerbose, headedJsonl]) {
+      if (headed.command !== "run") throw new Error("expected headed run");
+      await expect(resolveRunRequest(headed, context)).rejects.toThrow(/head/iu);
+    }
   });
 });

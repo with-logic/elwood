@@ -73,6 +73,7 @@ function effectiveRequest(
     agentOptions: _agentOptions,
     claudeOptionsExplicit: _claudeExplicit,
     codexOptionsExplicit: _codexExplicit,
+    head: _head,
     ...rest
   } = draft;
   return {

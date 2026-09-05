@@ -8,11 +8,12 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { executeDefaultCliRun, main, prepareDefaultCliSession } from "../../src/cli/main.ts";
 import type { ParsedRunCommand } from "../../src/cli/types.ts";
-import { mainDependencies, mainHarness, resolvedRequest } from "./main-fakes.ts";
+import { effectiveRequest, mainDependencies, mainHarness, resolvedRequest } from "./main-fakes.ts";
+import { FakeCliSession } from "./run-fakes.ts";
 
 describe("CLI main routing", () => {
   test.each(
-    ["help", "--help", "-h"].map((arg) => ({ args: [arg] })),
+    [[], ["help"], ["--help"], ["-h"]].map((args) => ({ args })),
   )("C-CLI-02 $args bypasses config and execution", async ({ args }) => {
     const h = mainHarness();
     const dependencies = mainDependencies({
@@ -21,6 +22,39 @@ describe("CLI main routing", () => {
     expect(await main(args, h.context, dependencies)).toBe(0);
     expect(h.stdout.value).toContain("Usage: elwood");
     expect(h.stderr.value).toBe("");
+  });
+
+  test("C-CLI-18 requires a terminal and passes its size and display to execution", async () => {
+    const unavailable = mainHarness();
+    const dependencies = mainDependencies({
+      resolve: () => Promise.resolve(resolvedRequest({ head: true })),
+      prepare: () => Promise.reject(new Error("must not prepare")),
+    });
+    expect(await main(["--head", "go"], unavailable.context, dependencies)).toBe(2);
+    expect(unavailable.stderr.value).toContain("terminal stdin and stderr");
+
+    const available = mainHarness();
+    const terminal = available.headTarget({ cols: 117, rows: 39 });
+    const prepared = effectiveRequest({ initialSize: { cols: 117, rows: 39 } });
+    let executionSize: { readonly cols: number; readonly rows: number } | undefined;
+    expect(
+      await main(
+        ["--head", "go"],
+        { ...available.context, head: terminal.target },
+        mainDependencies({
+          resolve: () => Promise.resolve(resolvedRequest({ head: true })),
+          prepare: (draft) => {
+            expect(draft.initialSize).toEqual({ cols: 117, rows: 39 });
+            return Promise.resolve({ request: prepared, session: new FakeCliSession() });
+          },
+          execute: (_request, _session, _io, execution) => {
+            executionSize = execution.head?.initialSize;
+            return Promise.resolve(0);
+          },
+        }),
+      ),
+    ).toBe(0);
+    expect(executionSize).toEqual({ cols: 117, rows: 39 });
   });
 
   test.each(

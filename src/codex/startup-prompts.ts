@@ -7,7 +7,11 @@ import type { SettledStartupOutcome } from "../core/startup-write.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust-responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
-import { CodexUpdatePromptTracker, codexUpdateOptionPattern } from "./update-prompt.ts";
+import {
+  CodexUpdatePromptTracker,
+  codexUpdateOptionPattern,
+  writeCodexUpdateSkip,
+} from "./update-prompt.ts";
 
 /** A Codex startup outcome paired with its PTY-write completion (§5.4, §5.7). */
 export type SettledCodexStartupOutcome = SettledStartupOutcome<"codex">;
@@ -41,12 +45,16 @@ export class CodexStartupPromptResponder {
     this.skippedUpdate = false;
   }
 
-  handle(screenText: string, write: (input: string) => TrustWriteResult): CodexStartupPromptResult {
+  handle(
+    screenText: string,
+    write: (input: string) => TrustWriteResult,
+    readFrame?: () => string,
+  ): CodexStartupPromptResult {
     const outcomes: SettledCodexStartupOutcome[] = [];
     this.buffer = `${this.buffer}\n${screenText}`.slice(-maxBufferLength);
     // Trust prompts are matched against the CURRENT frame only: a stale phrase in
     // the accumulated buffer must never pair with a different dialog's answer.
-    const trust = this.trust.handle(screenText, write);
+    const trust = this.trust.handle(screenText, write, readFrame);
     if (trust?.kind === "answered") {
       outcomes.push({ outcome: { kind: "answered", ...trust.automation }, settled: trust.settled });
     } else if (trust?.kind === "option_pending") {
@@ -74,7 +82,12 @@ export class CodexStartupPromptResponder {
         // rejected, so a later frame re-attempts it rather than falsely reporting
         // the update as skipped (C-CODEX-17).
         this.skippedUpdate = true;
-        const settled = Promise.resolve(write(option)).catch((error: unknown) => {
+        const settled = writeCodexUpdateSkip(
+          option,
+          write,
+          readFrame,
+          this.updatePrompt.currentFramePredicate(),
+        ).catch((error: unknown) => {
           this.skippedUpdate = false;
           throw error;
         });
