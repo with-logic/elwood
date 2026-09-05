@@ -8,18 +8,43 @@ import {
   constants,
   fstatSync,
   lstatSync,
+  mkdirSync,
   openSync,
   readFileSync,
   type Stats,
 } from "node:fs";
 import { join, resolve } from "node:path";
-import { ElwoodError, elwoodError } from "../core/errors.ts";
+import { ElwoodError, elwoodError, errnoCode } from "../core/errors.ts";
 import { assertSessionId, safeSessionDir } from "./files.ts";
 import { sessionSocketHome } from "./socket-home.ts";
 import { removeSessionFiles, type SessionRecord } from "./store.ts";
 import { validateSessionRecord } from "./validate.ts";
 
 export type SessionOwner = { readonly uid: number };
+
+/** Create or validate the CLI state root without following a planted root symlink. */
+export function ensurePrivateStateRoot(
+  stateDir: string,
+  owner: SessionOwner = { uid: process.getuid!() },
+): void {
+  const root = resolve(stateDir);
+  ensurePrivateDirectory(root, owner);
+  ensurePrivateDirectory(join(root, "sessions"), owner);
+}
+
+function ensurePrivateDirectory(path: string, owner: SessionOwner): void {
+  let fd: number | undefined;
+  try {
+    mkdirSync(path, { recursive: true, mode: 0o700 });
+    fd = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+    assertPrivateDirectory(fstatSync(fd), owner);
+  } catch (error) {
+    if (error instanceof ElwoodError) throw error;
+    throw corrupt("root");
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
 
 /** Read one CLI-owned record without following links or trusting shared metadata. */
 export function readPrivateSessionRecord(
@@ -41,7 +66,7 @@ export function readPrivateSessionRecord(
     if (!parsed) throw corrupt(id);
     return parsed;
   } catch (error) {
-    if (isErrno(error, "ENOENT"))
+    if (errnoCode(error) === "ENOENT")
       throw elwoodError("state_not_found", `No Elwood session found for ${id}`);
     if (error instanceof ElwoodError) throw error;
     throw corrupt(id);
@@ -56,12 +81,25 @@ export function removeSessionIdentity(
   id: string,
   adapter: "claude" | "codex",
 ): void {
+  const root = resolve(stateDir);
+  assertPrivateDirectoryIfPresent(root);
+  assertPrivateDirectoryIfPresent(join(root, "sessions"));
   const socketHome = sessionSocketHome({
-    stateDir: resolve(stateDir),
+    stateDir: root,
     elwoodSessionId: id,
     adapter,
   });
   removeSessionFiles({ stateDir, elwoodSessionId: id, socketPath: join(socketHome, "owned.sock") });
+}
+
+function assertPrivateDirectoryIfPresent(path: string): void {
+  try {
+    assertPrivateDirectory(lstatSync(path), { uid: process.getuid!() });
+  } catch (error) {
+    if (errnoCode(error) === "ENOENT") return;
+    if (error instanceof ElwoodError) throw error;
+    throw corrupt("root");
+  }
 }
 
 function assertPrivateDirectory(stat: Stats, owner: SessionOwner): void {
@@ -80,8 +118,4 @@ function assertPrivate(stat: Stats, owner: SessionOwner): void {
 
 function corrupt(id: string): ElwoodError {
   return elwoodError("state_corrupt", `Session state is not private or valid for ${id}`);
-}
-
-function isErrno(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }

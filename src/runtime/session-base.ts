@@ -13,7 +13,6 @@ import { SessionLoops } from "./session-loops.ts";
 import { SessionReapPolicy } from "./session-reap.ts";
 import { applyResize, restoreHeldResize } from "./session-resize.ts";
 import { SessionShutdownBinding } from "./session-shutdown-binding.ts";
-import { terminalStatuses } from "./session-status.ts";
 import { createSessionStatusEngine } from "./session-status-wiring.ts";
 export abstract class AgentSessionBase {
   protected record: Base.SessionRecord;
@@ -158,10 +157,11 @@ export abstract class AgentSessionBase {
   submitEvidence = (kind: Base.StatusEvidenceKind): Base.StatusDecision =>
     this.statusEngine.submit(kind);
   submitExit(): Base.StatusDecision {
+    const evidence = this.shutdown.exitEvidence();
     try {
-      return this.statusEngine.submit(this.shutdown.exitEvidence());
+      return this.statusEngine.submit(evidence);
     } finally {
-      const warning = this.reapPolicy.bestEffort(); // live `reap_failed` warning, never a throw
+      const warning = evidence === "terminal_exited" ? this.reapPolicy.bestEffort() : undefined;
       if (warning) this.emitWarnings([warning]);
     }
   }
@@ -174,7 +174,7 @@ export abstract class AgentSessionBase {
     if (event === "activity") this.terminalReplay.replayAttention(handler as never);
   }
   protected inSession<T>(work: () => Promise<T> | T, allowTerminal = false): Promise<T> {
-    if (!allowTerminal && terminalStatuses.has(this.status)) {
+    if (!allowTerminal && Base.terminalStatuses.has(this.status)) {
       return Promise.reject(Base.notRunningError(this.agent));
     }
     try {

@@ -18,6 +18,7 @@ import type { TurnEvent } from "./events.ts";
 export type TurnBoundaryHook = {
   readonly hook_event_name?: string;
   readonly last_assistant_message?: string | null;
+  readonly prompt?: string;
 };
 
 /**
@@ -42,9 +43,17 @@ export type TurnBoundaryContract = {
  */
 export type BoundarySignalReader = (hookEvent: TurnBoundaryHook) => string | undefined;
 
+/** Normalizes shared hook evidence into positive acceptance for one exact prompt. */
+export type AcceptanceSignalReader = (hookEvent: TurnBoundaryHook, prompt: string) => boolean;
+
 /** The default reader: the `Stop` hook's `last_assistant_message` is the completeness signal. */
 export const defaultBoundarySignal: BoundarySignalReader = (event) =>
   event.hook_event_name === "Stop" ? (event.last_assistant_message ?? undefined) : undefined;
+
+/** Shared Claude/Codex acceptance: the matching submit hook or any Stop boundary. */
+export const defaultAcceptanceSignal: AcceptanceSignalReader = (event, prompt) =>
+  event.hook_event_name === "Stop" ||
+  (event.hook_event_name === "UserPromptSubmit" && event.prompt === prompt);
 
 /**
  * Compile-time conformance probe: `true` only if `T` declares every `TurnBoundaryContract` key
@@ -96,7 +105,7 @@ export type StreamTurnOptions = {
   readonly catchUpMs?: number;
   /** Readable images attached, in order, to this same user turn. */
   readonly images?: readonly ImageInput[];
-  /** Quiet-window for a no-oracle turn to settle after `ready` (default 750ms). */
+  /** Quiet-window for a no-oracle turn to settle after `ready` (default 2000ms). */
   readonly fallbackQuietMs?: number;
   /** Cap on unconsumed buffered events before failing (default 100000); internal/tests. */
   readonly maxPendingEvents?: number;

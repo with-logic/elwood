@@ -117,6 +117,130 @@ of `npm run check`.
 Source and test files under `src/`, `tests/`, and `scripts/` must stay at or
 below 200 lines.
 
+## Headless CLI
+
+The package also installs an `elwood` executable for one-shot shell work. Build
+and link this checkout while the package remains private:
+
+```sh
+npm install
+npm run build
+npm link
+
+elwood "What's the weather today in Seattle?"
+```
+
+`elwood "prompt"` uses Codex in the current directory, waits for one complete
+turn, prints only the final assistant response to stdout, then tears the session
+down. `elwood run "prompt"` is the same command in explicit form. Select Claude
+when desired; Elwood never silently falls back to another agent:
+
+```sh
+elwood --agent claude "Summarize this repository"
+git diff | elwood "Review this diff and list only correctness risks"
+elwood --image screenshot.png "Explain this failure"
+elwood -C ../service --timeout 10m "Run the tests and diagnose failures"
+```
+
+Positional words are joined with spaces. Non-empty piped stdin is appended after
+one blank line, so a short instruction can accompany a large document or diff.
+Terminal stdin is not read. Repeat `--image` to attach multiple images in order.
+Input is capped at 8 MiB, and durations accept positive integer `ms`, `s`, `m`,
+or `h` values.
+
+### Defaults and configuration
+
+`elwood config` manages one strict global JSON file; project-local configuration
+is deliberately unsupported. The default path is `$ELWOOD_CONFIG`, then an
+absolute `$XDG_CONFIG_HOME/elwood/config.json`, then
+`~/.config/elwood/config.json`:
+
+```sh
+elwood config path
+elwood config show
+elwood config set agent claude
+elwood config set timeout 10m
+elwood config get agent
+elwood config unset timeout
+```
+
+Supported keys are `agent`, `output`, `timeout`, `trust`, `stateDir`, `verbose`,
+`stream`, `persona`, `claude.model`, `claude.reasoningEffort`,
+`claude.permissionMode`, `codex.model`, `codex.reasoningEffort`, `codex.sandbox`,
+and `codex.approvalPolicy` (`schemaVersion` is always `1`). Values are typed and
+unknown keys are rejected.
+
+Precedence is flags, environment, global config, then built-ins. Environment
+names are `ELWOOD_AGENT`, `ELWOOD_OUTPUT`, `ELWOOD_TIMEOUT`, `ELWOOD_TRUST`,
+`ELWOOD_STATE_DIR`, `ELWOOD_VERBOSE`, `ELWOOD_STREAM`, `ELWOOD_PERSONA`,
+`ELWOOD_MODEL`, `ELWOOD_REASONING_EFFORT`, `ELWOOD_CLAUDE_PERMISSION_MODE`,
+`ELWOOD_CODEX_SANDBOX`, and `ELWOOD_CODEX_APPROVAL_POLICY`. Boolean environment
+values are exactly `true` or `false`.
+
+Run `elwood --help` for the full flag list. Useful launch controls include
+`--model`, `--reasoning-effort`, `--persona`, `--claude-permission-mode`,
+`--codex-sandbox`, `--codex-approval-policy`, `--state-dir`, `--verbose`, and
+`--trust` / `--no-trust`. The built-in non-interactive posture is Claude
+`dontAsk`, or Codex `workspace-write` with approval policy `never`.
+
+### Output and pipelines
+
+Text is the default output protocol. Diagnostics and verbose progress go to
+stderr, never into the answer on stdout. `--stream` emits assistant text as it
+arrives; it is intentionally valid only with text output.
+
+For programs, `--output json` emits one version-1 terminal document. Its stable
+fields are `schemaVersion`, `type`, `agent`, `response`, `sessionId`,
+`durationMs`, `cleanup`, and, on failure, `error`. `--output jsonl` emits
+monotonically sequenced version-1 `text`, `thinking`, `tool`, `status`, and
+`warning` records followed by exactly one `result` or `error` record:
+
+```sh
+answer=$(elwood "Name the primary package in this repository")
+elwood --output json "Summarize this project" | jq -r .response
+elwood --output jsonl "Run the tests" | jq -c 'select(.type == "tool")'
+elwood --stream --verbose "Implement the smallest safe fix"
+```
+
+ANSI terminal frames, raw hook payloads, screen contents, bridge credentials,
+and stacks are excluded from production output. Writes honor backpressure, and
+a downstream pipe closing early triggers cleanup without an uncaught `EPIPE`.
+
+### Continuation and cleanup
+
+New runs are ephemeral unless `--keep` is supplied. A kept text run reports its
+session ID on stderr; JSON and JSONL include it in the terminal record:
+
+```sh
+first=$(elwood --keep --output json "Remember that the release color is teal")
+id=$(printf '%s' "$first" | jq -r .sessionId)
+elwood --resume "$id" "What is the release color?"
+elwood --resume "$id" --ephemeral "Finish this conversation"
+```
+
+Resume uses the exact stored agent and workspace; a conflicting explicit agent
+is rejected. Resumed sessions stay preserved after success or failure unless
+`--ephemeral` requests teardown. CLI state defaults to absolute
+`$XDG_STATE_HOME/elwood` or `~/.local/state/elwood`; its private records contain
+resume metadata, not ordinary prompts or output.
+
+Exit status is `0` for success or a closed consumer, `1` for agent/runtime or
+cleanup failure, `2` for usage/configuration failure, `124` for timeout, and
+`130` for interruption. The first Ctrl-C requests a clean interrupt; a repeated
+Ctrl-C force-kills before cleanup.
+
+### Trust and security
+
+Headless mode is non-interactive. With the default `--trust`, Elwood answers only
+its allowlisted workspace-directory and extension trust dialogs (plus the
+Elwood-owned Codex hook trust needed for operation). `--no-trust` disables the
+workspace/extension approvals. Any other recognized dialog fails safely as
+`blocked_prompt` instead of hanging or guessing.
+
+Piped text and image paths are prompt input with the same authority as text typed
+by the caller. Do not combine untrusted input with broad filesystem permissions.
+Global config is never loaded from the repository being opened.
+
 ## Try It Locally
 
 Elwood includes two local test apps.

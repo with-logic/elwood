@@ -23,6 +23,7 @@ export type { SessionRuntime } from "../state/runtime-paths.ts";
 export type { SessionRecord } from "../state/store.ts";
 export type { ElwoodTerminal } from "../terminal/headless.ts";
 export type { AttachDriver, AttachTask, SubmitKind } from "./session-image-attach.ts";
+export { terminalStatuses } from "./session-status.ts";
 export type { SessionStatusEngine, StatusDecision, StatusEvidenceKind } from "./status-evidence.ts";
 
 type StatusEvent = { readonly elwoodSessionId: string; readonly status: ElwoodSessionStatus };

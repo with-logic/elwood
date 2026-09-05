@@ -108,6 +108,22 @@ describe("streamTurn completeness oracle (C-API-48)", () => {
     expect(await run(s)).toEqual([{ type: "text", text: "answer" }]);
   });
 
+  test("C-API-48 replays a deadline-swallowed submission instead of returning empty", async () => {
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      if (s.submissions === 1) {
+        s.emit("status", { status: "ready" }); // boot repaint; no positive acceptance
+        return;
+      }
+      s.emit("hook", { hook_event_name: "UserPromptSubmit", prompt: "go" });
+      s.emit("activity", activity({ text: "accepted", turnId: "t2" }));
+      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "accepted" });
+      s.emit("status", { status: "ready" });
+    });
+    expect(await run(s)).toEqual([{ type: "text", text: "accepted" }]);
+    expect(s.submissions).toBe(2);
+  });
+
   test("a queued PRIOR turn's activity (different turnId) never bleeds in", async () => {
     const s = drive((s) => {
       s.emit("status", { status: "running" });

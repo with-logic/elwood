@@ -51,6 +51,7 @@ export interface CliSessionFacade {
   close(): Promise<void>;
   kill(): Promise<void>;
   teardown(): Promise<void>;
+  preservedSessionId(): string | null;
 }
 
 const defaults: CliSessionDependencies = {
@@ -86,6 +87,7 @@ export class HeadlessCliSession
   private readonly request: EffectiveRunRequest;
   private readonly launchSession: () => Promise<ElwoodAgentSession>;
   private setupPromise: Promise<void> | undefined;
+  private pendingLaunch: Promise<ElwoodAgentSession> | undefined;
 
   constructor(request: EffectiveRunRequest, id: string, launch: () => Promise<ElwoodAgentSession>) {
     super();
@@ -98,7 +100,17 @@ export class HeadlessCliSession
 
   protected readonly readBoundarySignal = defaultBoundarySignal;
 
-  protected async launch(): Promise<ElwoodAgentSession> {
+  protected launch(): Promise<ElwoodAgentSession> {
+    const pending = this.validatedLaunch();
+    this.pendingLaunch = pending;
+    void pending.then(
+      () => this.clearPendingLaunch(),
+      () => this.clearPendingLaunch(),
+    );
+    return pending;
+  }
+
+  private async validatedLaunch(): Promise<ElwoodAgentSession> {
     const session = await this.launchSession();
     if (session.elwoodSessionId !== this.id) {
       await session.kill().catch(() => undefined);
@@ -119,10 +131,33 @@ export class HeadlessCliSession
     return this.subscribe(event, handler, (session) => session.on(event, handler));
   }
 
-  override async teardown(): Promise<void> {
-    const live = await this.settledSession();
+  override teardown(): Promise<void> {
+    const live = this.session;
     if (live !== undefined) return live.teardown();
-    removeSessionIdentity(this.request.stateDir, this.id, this.agent);
+    this.deferPendingCleanup("teardown");
+    return Promise.resolve().then(() => {
+      removeSessionIdentity(this.request.stateDir, this.id, this.agent);
+    });
+  }
+
+  override close(): Promise<void> {
+    const live = this.session;
+    if (live !== undefined) return this.closeLiveSession(live);
+    if (this.pendingLaunch !== undefined && this.preservedSessionId() === null) {
+      return this.teardown();
+    }
+    this.deferPendingCleanup("close");
+    return Promise.resolve();
+  }
+
+  preservedSessionId(): string | null {
+    try {
+      const record = readPrivateSessionRecord(this.request.stateDir, this.id);
+      if (record.adapter !== this.agent || !record[record.adapter].resumeId) return null;
+      return this.id;
+    } catch {
+      return null;
+    }
   }
 
   private async performSetup(): Promise<void> {
@@ -130,6 +165,32 @@ export class HeadlessCliSession
     if (this.resumed && this.request.model !== undefined) await this.setModel(this.request.model);
     if (!this.resumed && this.request.persona !== undefined) {
       await this.send(this.request.persona);
+    }
+  }
+
+  private clearPendingLaunch(): void {
+    this.pendingLaunch = undefined;
+  }
+
+  private deferPendingCleanup(action: "close" | "teardown"): void {
+    if (this.pendingLaunch === undefined) return;
+    void this.start().then(
+      async (live) => {
+        await (action === "teardown" ? live.teardown() : this.closeLiveSession(live)).catch(
+          () => undefined,
+        );
+      },
+      () => {
+        if (action === "teardown") this.removeIdentityAfterFailedLaunch();
+      },
+    );
+  }
+
+  private removeIdentityAfterFailedLaunch(): void {
+    try {
+      removeSessionIdentity(this.request.stateDir, this.id, this.agent);
+    } catch {
+      // The synchronous cleanup already reported its failure; this late retry is best-effort.
     }
   }
 }

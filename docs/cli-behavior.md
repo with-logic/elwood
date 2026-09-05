@@ -23,6 +23,17 @@ Because `SessionStart` is Elwood's authoritative Codex readiness signal
 comes from that hook, bounded by a **10 s starvation deadline** armed on the
 first render frame (`src/runtime/initial-ready.ts`, `maxWaitMs = 10_000`). C-API-28.
 
+**Codex 0.153.3 can still swallow the deadline-released first paste under load.**
+Its cold composer may accept the paste visually, repaint another startup spinner,
+clear the prompt without firing `SessionStart` or `UserPromptSubmit`, and then
+return to the idle composer. That produces the same rendered `running → ready`
+shape as a completed empty turn. Do not solve this with a longer arbitrary
+deadline or raw-screen output. The ergonomic turn owner requires positive
+acceptance (`UserPromptSubmit`, turn content, or `Stop`) before consuming the
+idle edge; after the normal quiet window it replays the same submission at the
+now-live composer at most twice, then raises `wait_timeout`. Verified by the
+compiled CLI smoke against Codex 0.153.3. C-API-48.
+
 **Claude re-fires `InstructionsLoaded`/`SessionStart` on resume; Codex does
 not.** So a resumed Claude session reaches ready fast via its hook, while a
 resumed Codex session would otherwise wait out the full 10 s deadline (the
@@ -73,6 +84,12 @@ misattributed to a CLI regression.)
   quiet frame is not proof it finished. Evidence-driven turns (a caller
   submission, a hook) bypass settling immediately. `src/core/turn-state.ts`,
   C-TURN-03.
+- **A caller submission can precede the resumed composer's repaint.** The old
+  idle composer may remain visible briefly after `caller_submitted`; that frame
+  is not a turn end. Resume settling now synchronizes to current rendered work
+  and waits until a working frame has established the real turn (an interrupt
+  completion banner remains a valid immediate end). This fixed empty resumed
+  Claude responses observed through the compiled headless command. C-TURN-03.
 - **Claude ≥ 2.1.201 skips conversation persistence for NESTED instances** (when
   `CLAUDECODE` / `CLAUDE_CODE_*` are in the environment) → resume finds nothing.
   The e2e helpers strip these vars (`tests/e2e/helpers.ts`); real terminals are
@@ -173,6 +190,13 @@ over a still-visible trust dialog. C-E2E-09 therefore requires both `ready` and 
 cleared trust screen; a complete but unanswerable real frame is a failure, not a
 skip.
 
+The responder emits one transient `attention` when a recognized header paints
+before its affirmative option. A headless owner must ignore that transient only
+when its trust policy already authorizes the exact allowlisted prompt; `--no-trust`
+and generic permission dialogs remain human blocks. The startup replay buffer can
+deliver this attention after the responder has already continued, so treating
+every attention event as fatal produces a false `blocked_prompt`.
+
 ## Codex in-TUI update prompt (and the restart loop)
 
 Independent of the `autoupdate` preflight (`codex update` run before spawn), the
@@ -236,6 +260,17 @@ dead-owner recovery is serialized, and cleanup removes only the generation it
 owns. Caches are invalidated after failed attempts too because npm can partially
 mutate the installation before returning nonzero.
 
+## macOS PTY teardown
+
+After a Codex PTY leader exits on macOS, signalling its process group can return
+`EPERM` for a few scheduler ticks before the same group reports `ESRCH`. Treating
+that first result as permanent made otherwise-successful headless runs end as
+`cleanup_failed`. After Elwood has observed the PTY exit, process-group reaping
+therefore retries only this transient `EPERM` four times at 25 ms intervals;
+other errors, pre-exit errors, and persistent `EPERM` still fail. Controlled
+shutdown also leaves the reap to its owning termination path instead of emitting
+a competing best-effort warning. Verified against Codex 0.153.3 on macOS.
+
 ## Claude "Not logged in" is a distinct re-auth banner from "Login expired"
 
 Claude's mid-session re-auth banners are NOT one string. Besides the lapsed/revoked
@@ -285,6 +320,23 @@ the failure was environment-masked. Fix: root the leak tests' isolation dir at a
 `/tmp/elwood-sockhome-*`, not under `os.tmpdir()`. If you add any test that mints an
 isolation dir the bridge binds a socket under, keep that root short and assert
 `socketPath.length < 104` so a long-tmp machine can't hide the overflow.
+
+## Headless command still drives the interactive TUI
+
+The production `elwood` command is intentionally not a wrapper around either
+agent's print/exec mode. It launches the same interactive PTY as the library,
+waits on Elwood's established readiness and turn boundaries, and converts only
+normalized activity into its text, JSON, or JSONL stdout protocol. Consequently,
+every version-coupled behavior above—lazy Codex hooks, resume transcript settling,
+trust and update dialogs, Claude cache confirmations, and final-answer transcript
+phases—also applies to headless runs.
+
+This matters when debugging an apparently silent command: raw terminal frames are
+never a fallback output channel. Use `--verbose` for sanitized lifecycle progress
+and run the real-CLI e2e rather than adding screen scraping at the process boundary.
+The compiled-bin smoke runs each agent in a separate child process so `--keep`
+followed by `--resume --ephemeral` exercises persisted continuation, not an
+in-memory session accidentally surviving in the test runner. C-CLI-01/10/11/12.
 
 ## Testing against the real CLIs
 

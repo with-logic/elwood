@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from "vitest";
 import { CompletenessOracle } from "../../src/core/simple/completeness-oracle.ts";
-import { defaultBoundarySignal } from "../../src/core/simple/turn.ts";
+import { defaultAcceptanceSignal, defaultBoundarySignal } from "../../src/core/simple/turn.ts";
 
 const EXPECTED_MAX = 1024 * 1024; // must mirror the constant in completeness-oracle.ts
 
@@ -64,5 +64,18 @@ describe("defaultBoundarySignal (adapter hook → completeness signal)", () => {
       defaultBoundarySignal({ hook_event_name: "Stop", last_assistant_message: null }),
     ).toBeUndefined();
     expect(defaultBoundarySignal({ hook_event_name: "Stop" })).toBeUndefined();
+  });
+});
+
+describe("defaultAcceptanceSignal", () => {
+  test("accepts Stop or an exact UserPromptSubmit and rejects other hooks/prompts", () => {
+    expect(defaultAcceptanceSignal({ hook_event_name: "Stop" }, "go")).toBe(true);
+    expect(
+      defaultAcceptanceSignal({ hook_event_name: "UserPromptSubmit", prompt: "go" }, "go"),
+    ).toBe(true);
+    expect(
+      defaultAcceptanceSignal({ hook_event_name: "UserPromptSubmit", prompt: "other" }, "go"),
+    ).toBe(false);
+    expect(defaultAcceptanceSignal({ hook_event_name: "PreToolUse" }, "go")).toBe(false);
   });
 });

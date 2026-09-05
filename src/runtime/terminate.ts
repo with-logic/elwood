@@ -3,12 +3,14 @@
  * Implements PRD §5.3 and §9.4.
  */
 
-import { causeDetails, ElwoodError, elwoodError } from "../core/errors.ts";
+import { causeDetails, ElwoodError, elwoodError, errnoCode } from "../core/errors.ts";
 import type { PtyProcess } from "../pty/types.ts";
 import type { SessionReaper } from "./reap-tree.ts";
 
 type TerminationTimeouts = { readonly gracefulMs: number; readonly forceMs: number };
 const defaultTimeouts: TerminationTimeouts = { gracefulMs: 5_000, forceMs: 1_000 };
+const POST_EXIT_REAP_RETRIES = 4;
+const POST_EXIT_REAP_RETRY_MS = 25;
 
 /**
  * Signal the PTY, wait for exit, and reap the leader's process group. The reap is
@@ -26,6 +28,7 @@ export async function terminatePty(
   timeouts: TerminationTimeouts = defaultTimeouts,
 ): Promise<void> {
   let terminationError: unknown;
+  let observedExit = false;
   try {
     const timeoutMs = signal === "SIGTERM" ? timeouts.gracefulMs : timeouts.forceMs;
     const exited = await waitForExitAfterSignal(pty, signal, timeoutMs);
@@ -35,6 +38,7 @@ export async function terminatePty(
       !exited && signal === "SIGTERM"
         ? await waitForExitAfterSignal(pty, "SIGKILL", timeouts.forceMs)
         : exited;
+    observedExit = escalated;
     if (!escalated) {
       const failedSignal = signal === "SIGTERM" ? "SIGKILL" : signal;
       terminationError = elwoodError(
@@ -54,12 +58,26 @@ export async function terminatePty(
   // as a typed `termination_failed` so the caller always rejects with an
   // ElwoodError, never a bare EPERM (PRD §10, C-ERR-01).
   try {
-    reaper.reap();
+    await reapAfterTermination(reaper, observedExit);
   } catch (reapError) {
     if (terminationError === undefined) throw reapOnlyFailed(reapError);
     throw bothFailed(terminationError, reapError);
   }
   if (terminationError !== undefined) throw terminationError;
+}
+
+async function reapAfterTermination(reaper: SessionReaper, observedExit: boolean): Promise<void> {
+  let retries = observedExit ? POST_EXIT_REAP_RETRIES : 0;
+  while (true) {
+    try {
+      reaper.reap();
+      return;
+    } catch (error) {
+      if (errnoCode(error) !== "EPERM" || retries === 0) throw error;
+      retries -= 1;
+      await new Promise((resolve) => setTimeout(resolve, POST_EXIT_REAP_RETRY_MS));
+    }
+  }
 }
 
 /**

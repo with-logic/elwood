@@ -13,6 +13,17 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ### Fixed
 
+- **Headless turns now survive real-CLI startup, resume, and teardown races.**
+  Codex 0.153.3 can accept the 10-second fallback paste into its cold-start
+  placeholder, swallow it during a later boot repaint, and appear to finish an
+  empty turn; ergonomic turns now require positive submission evidence, replay
+  an unaccepted prompt at most twice, and fail explicitly instead of reporting
+  false success. A resumed Claude turn no longer treats its stale composer as
+  an immediate end before real work paints. The headless owner also ignores
+  transient attention from trust prompts it is already authorized to answer,
+  and macOS teardown retries the short-lived post-exit `EPERM` process-group
+  window instead of surfacing `cleanup_failed`. (§5.3/§5.8/§12A, C-API-48,
+  C-TURN-03, C-CLI-05/09)
 - **Claude model switches now complete through model/effort cache warnings.**
   Claude 2.1.258 may interpose `Switch model?` or `Change effort level?` after
   Elwood applies a session-only picker choice; Elwood previously treated that
@@ -89,6 +100,15 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ### Added
 
+- **Elwood now ships a first-party headless `elwood` command.** The short
+  `elwood "prompt"` form and explicit `elwood run` form execute one real Claude
+  Code or Codex turn with clean text, JSON, JSONL, or streaming output. The CLI
+  supports stdin and ordered images, global typed config with flag/environment
+  precedence, model/reasoning/persona controls, non-interactive trust and
+  permission policy, exact keep/resume/ephemeral continuation, bounded timeouts,
+  signal-safe cleanup, backpressure, and stable exit statuses. Its compiled ESM
+  executable is included in installed package artifacts; no TypeScript loader or
+  parent-app integration is required. (§12A, C-CLI-01…17)
 - **Claude and Codex now share persisted recurring session loops.** Raw,
   common, and lazy session surfaces expose `createLoop`, `listLoops`, and
   `cancelLoop`; the package-root `parseLoopCommand` helper maps explicit

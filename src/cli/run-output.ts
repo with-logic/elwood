@@ -53,9 +53,15 @@ export class RunOutput {
     return this.responseParts.join("\n\n");
   }
 
+  sanitize(value: string): string {
+    return this.clean(value);
+  }
+
   turn(event: TurnEvent): Promise<void> {
     const record = progressFromTurn(event, this.clean);
-    if (record.type === "text") this.responseParts.push(record.text);
+    if (record.type === "text" && !(this.request.output === "text" && this.request.stream)) {
+      this.responseParts.push(record.text);
+    }
     return this.enqueue(record);
   }
 

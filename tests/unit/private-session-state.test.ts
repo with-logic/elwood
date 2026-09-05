@@ -104,4 +104,24 @@ describe("private CLI session state", () => {
     removeSessionIdentity(saved.stateDir, "remove", "codex");
     expect(existsSync(saved.dir)).toBe(false);
   });
+
+  test("C-CLI-15 cleanup refuses linked state paths", () => {
+    expect(() => removeSessionIdentity("\0", "invalid-path", "codex")).toThrow(/private/iu);
+
+    const linkedRoot = fixture("linked-cleanup");
+    const alias = join(linkedRoot.root, "cleanup-alias");
+    symlinkSync(linkedRoot.stateDir, alias);
+    expect(() => removeSessionIdentity(alias, "linked-cleanup", "codex")).toThrow(/private/iu);
+    expect(existsSync(linkedRoot.dir)).toBe(true);
+
+    const root = mkdtempSync(join(tmpdir(), "elwood-private-cleanup-"));
+    const stateDir = join(root, "state");
+    const target = join(root, "target-sessions");
+    mkdirSync(stateDir, { mode: 0o700 });
+    mkdirSync(target, { mode: 0o700 });
+    symlinkSync(target, join(stateDir, "sessions"));
+    expect(() => removeSessionIdentity(stateDir, "linked-sessions-cleanup", "codex")).toThrow(
+      /private/iu,
+    );
+  });
 });

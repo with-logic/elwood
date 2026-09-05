@@ -32,6 +32,7 @@ export class FakeCliSession implements CliSessionFacade {
   streamWork: (session: FakeCliSession) => Promise<void> = async () => {};
   cleanupWork: (session: FakeCliSession) => void = () => {};
   turnOptions: TurnOptions | undefined;
+  resumable = true;
 
   get status(): ElwoodSessionStatus {
     return this.started ? this.underlying.status : "starting";
@@ -80,6 +81,9 @@ export class FakeCliSession implements CliSessionFacade {
     this.teardowns += 1;
     this.cleanupWork(this);
     return this.cleanupError === undefined ? Promise.resolve() : Promise.reject(this.cleanupError);
+  }
+  preservedSessionId(): string | null {
+    return this.resumable ? this.id : null;
   }
   emitActivity(partial: Partial<ElwoodActivityEvent>): void {
     this.emitter.emit("activity", {

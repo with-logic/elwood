@@ -66,6 +66,7 @@ function dependencies(id = "new-id"): CliSessionDependencies {
     readRecord: readPrivateSessionRecord,
     finalize: finalizeRunRequest,
     launch: {
+      prepareStateRoot: () => undefined,
       startClaude: unavailable,
       resumeClaude: unavailable,
       startCodex: unavailable,
@@ -100,7 +101,7 @@ describe("headless CLI session", () => {
     );
     const first = session.setup();
     const second = session.setup();
-    await vi.advanceTimersByTimeAsync(751);
+    await vi.advanceTimersByTimeAsync(2_001);
     await Promise.all([first, second]);
     expect(live.sends).toBe(1);
     expect(live.args["sendMessage"]?.[0]).toBe("be concise");

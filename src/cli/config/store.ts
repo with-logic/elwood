@@ -19,6 +19,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname } from "node:path";
+import { errnoCode } from "../../core/errors.ts";
 import { type CliConfig, CliValidationError } from "../types.ts";
 import { parseConfigText } from "./codec.ts";
 
@@ -31,7 +32,7 @@ export function readConfig(path: string, identity = currentIdentity()): CliConfi
     assertPrivateFile(fstatSync(fd), identity);
     return parseConfigText(readFileSync(fd, "utf8"));
   } catch (error) {
-    if (isErrno(error, "ENOENT")) return { schemaVersion: 1 };
+    if (errnoCode(error) === "ENOENT") return { schemaVersion: 1 };
     if (error instanceof CliValidationError) throw error;
     throw invalid("Could not safely read Elwood config.");
   } finally {
@@ -40,7 +41,8 @@ export function readConfig(path: string, identity = currentIdentity()): CliConfi
 }
 
 export function writeConfig(path: string, config: CliConfig, identity = currentIdentity()): void {
-  parseConfigText(JSON.stringify(config));
+  const document = `${JSON.stringify(config, null, 2)}\n`;
+  parseConfigText(document);
   assertExistingTarget(path, identity);
   const parent = dirname(path);
   mkdirSync(parent, { recursive: true, mode: 0o700 });
@@ -52,7 +54,7 @@ export function writeConfig(path: string, config: CliConfig, identity = currentI
       constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
       0o600,
     );
-    writeFileSync(fd, `${JSON.stringify(config, null, 2)}\n`);
+    writeFileSync(fd, document);
     fsyncSync(fd);
     closeSync(fd);
     fd = undefined;
@@ -70,7 +72,7 @@ function assertExistingTarget(path: string, identity: ConfigIdentity): void {
   try {
     assertPrivateFile(lstatSync(path), identity);
   } catch (error) {
-    if (isErrno(error, "ENOENT")) return;
+    if (errnoCode(error) === "ENOENT") return;
     if (error instanceof CliValidationError) throw error;
     throw invalid("Could not inspect Elwood config.");
   }
@@ -96,10 +98,6 @@ function syncDirectory(path: string): void {
 
 function currentIdentity(): ConfigIdentity {
   return { uid: process.getuid!() };
-}
-
-function isErrno(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
 function invalid(message: string): CliValidationError {

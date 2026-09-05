@@ -4,9 +4,9 @@
  */
 
 import { privateOutputSecrets } from "../core/private-output-secrets.ts";
+import { blockingTrustSpecs, trustPromptAllowlist } from "../core/trust-prompts.ts";
 import type { ElwoodSessionStatus } from "../core/types.ts";
 import { CliLifecycle, type CliLifecycleClock, type CliSignalSource } from "./lifecycle.ts";
-import { createCliSanitizer } from "./output/sanitize.ts";
 import type { CliTerminalRecord } from "./output/types.ts";
 import { RunOutput } from "./run-output.ts";
 import type { CliSessionFacade } from "./session.ts";
@@ -33,7 +33,7 @@ export async function executeRun(
     consumerClosed: () => lifecycle.closeConsumer(),
     failed: (error) => lifecycle.fail(error),
   });
-  const unsubscribers = subscribe(session, lifecycle, output);
+  const unsubscribers = subscribe(request, session, lifecycle, output);
   lifecycle.start();
   try {
     lifecycle.beginLaunch();
@@ -48,8 +48,7 @@ export async function executeRun(
     lifecycle.fail(error);
   }
   const cleanup = await lifecycle.cleanup();
-  await output.flush();
-  const terminal = terminalRecord(request, session, lifecycle, cleanup, output.response);
+  const terminal = terminalRecord(request, session, lifecycle, cleanup, output);
   try {
     await output.finish(terminal);
   } catch (error) {
@@ -57,9 +56,6 @@ export async function executeRun(
   }
   lifecycle.dispose();
   for (const unsubscribe of unsubscribers) unsubscribe();
-  await Promise.all([io.stdout.flush(), io.stderr.flush()]);
-  io.stdout.dispose();
-  io.stderr.dispose();
   return lifecycle.failure?.exitCode ?? 0;
 }
 
@@ -74,18 +70,30 @@ async function consumeTurn(
 }
 
 function subscribe(
+  request: EffectiveRunRequest,
   session: CliSessionFacade,
   lifecycle: CliLifecycle,
   output: RunOutput,
 ): readonly (() => void)[] {
   return [
     session.on("activity", (event) => {
-      if (event.kind === "attention") lifecycle.block(event.label);
+      if (event.kind === "attention" && attentionNeedsHuman(request, event.label)) {
+        lifecycle.block(event.label);
+      }
     }),
     session.on("status", ({ status }) => output.status(statusRecord(status))),
     session.on("warning", (event) => output.warning(event)),
     session.on("terminal:exit", () => lifecycle.agentExited()),
   ];
+}
+
+function attentionNeedsHuman(request: EffectiveRunRequest, label: string): boolean {
+  const matches = (prompt: (typeof trustPromptAllowlist)[number]) =>
+    prompt.agent === request.agent && prompt.id === label;
+  return (
+    !trustPromptAllowlist.some(matches) ||
+    blockingTrustSpecs(request.agent, request.trust).some(matches)
+  );
 }
 
 function statusRecord(status: ElwoodSessionStatus) {
@@ -97,16 +105,14 @@ function terminalRecord(
   session: CliSessionFacade,
   lifecycle: CliLifecycle,
   cleanup: Awaited<ReturnType<CliLifecycle["cleanup"]>>,
-  response: string,
+  output: RunOutput,
 ): CliTerminalRecord {
-  const clean = createCliSanitizer(
-    session.session === undefined ? [] : privateOutputSecrets(session.session),
-  );
+  const response = output.response;
   const base = {
     schemaVersion: 1 as const,
     agent: request.agent,
-    response: clean(response),
-    sessionId: cleanup.action === "preserve" ? session.id : null,
+    response,
+    sessionId: cleanup.action === "preserve" ? session.preservedSessionId() : null,
     durationMs: lifecycle.durationMs(),
     cleanup,
   };
@@ -116,6 +122,6 @@ function terminalRecord(
     : {
         ...base,
         type: "error",
-        error: { code: failure.code, message: clean(failure.message) },
+        error: { code: failure.code, message: output.sanitize(failure.message) },
       };
 }

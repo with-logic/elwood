@@ -1,5 +1,5 @@
 /**
- * Adapter launch mapping coverage (PRD §12A.2, C-CLI-05/C-CLI-06/C-CLI-08).
+ * Adapter launch mapping coverage (PRD §12A.2/§12A.5, C-CLI-05/C-CLI-06/C-CLI-08/C-CLI-15).
  */
 
 import { describe, expect, test } from "vitest";
@@ -33,17 +33,19 @@ function request(
 function harness() {
   const calls: Array<{ readonly name: string; readonly options: unknown; readonly id?: string }> =
     [];
+  const prepared: string[] = [];
   const fail = (name: string, options: unknown, id?: string): Promise<never> => {
     calls.push({ name, options, ...(id === undefined ? {} : { id }) });
     return Promise.reject(new Error(name));
   };
   const dependencies: CliLaunchDependencies = {
+    prepareStateRoot: (stateDir) => prepared.push(stateDir),
     startClaude: (options, id) => fail("startClaude", options, id),
     resumeClaude: (options) => fail("resumeClaude", options),
     startCodex: (options, id) => fail("startCodex", options, id),
     resumeCodex: (options) => fail("resumeCodex", options),
   };
-  return { calls, dependencies };
+  return { calls, dependencies, prepared };
 }
 
 describe("CLI adapter launch mapping", () => {
@@ -55,6 +57,7 @@ describe("CLI adapter launch mapping", () => {
       h.dependencies,
     );
     await expect(launch()).rejects.toThrow("startClaude");
+    expect(h.prepared).toEqual(["/state"]);
     expect(h.calls).toEqual([
       {
         name: "startClaude",
@@ -75,6 +78,7 @@ describe("CLI adapter launch mapping", () => {
     const h = harness();
     const launch = createCliLaunch(request("claude", { resume: "saved" }), "saved", h.dependencies);
     await expect(launch()).rejects.toThrow("resumeClaude");
+    expect(h.prepared).toEqual([]);
     expect(h.calls).toEqual([
       {
         name: "resumeClaude",
@@ -97,6 +101,7 @@ describe("CLI adapter launch mapping", () => {
       h.dependencies,
     );
     await expect(launch()).rejects.toThrow("startCodex");
+    expect(h.prepared).toEqual(["/state"]);
     expect(h.calls[0]).toEqual({
       name: "startCodex",
       id: "new-codex",
@@ -116,6 +121,7 @@ describe("CLI adapter launch mapping", () => {
     const h = harness();
     const launch = createCliLaunch(request("codex", { resume: "saved" }), "saved", h.dependencies);
     await expect(launch()).rejects.toThrow("resumeCodex");
+    expect(h.prepared).toEqual([]);
     expect(h.calls[0]).toEqual({
       name: "resumeCodex",
       options: {

@@ -13,13 +13,18 @@ export async function readPromptInput(
 ): Promise<string> {
   const positional = promptWords.join(" ");
   let byteCount = Buffer.byteLength(positional);
+  let separatorCounted = positional === "";
   assertWithinLimit(byteCount);
   const chunks: Buffer[] = [];
   if (stdin.isTTY !== true) {
     for await (const chunk of stdin.source) {
       const buffer = typeof chunk === "string" ? Buffer.from(chunk) : Buffer.from(chunk);
       byteCount += buffer.byteLength;
-      assertWithinLimit(byteCount + separatorBytes(positional, chunks, buffer));
+      if (!separatorCounted && buffer.byteLength > 0) {
+        byteCount += 2;
+        separatorCounted = true;
+      }
+      assertWithinLimit(byteCount);
       chunks.push(buffer);
     }
   }
@@ -30,10 +35,6 @@ export async function readPromptInput(
     throw new CliValidationError("invalid_arguments", "A non-empty prompt is required.");
   }
   return prompt;
-}
-
-function separatorBytes(positional: string, prior: readonly Buffer[], next: Buffer): number {
-  return positional !== "" && (prior.length > 0 || next.byteLength > 0) ? 2 : 0;
 }
 
 function assertWithinLimit(bytes: number): void {

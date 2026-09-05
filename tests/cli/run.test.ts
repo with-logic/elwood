@@ -66,6 +66,23 @@ describe("executeRun", () => {
     expect(session.teardowns).toBe(1);
   });
 
+  test.each([
+    { resumable: false, expected: null, case: "unpersisted" },
+    { resumable: true, expected: "s1", case: "resumable" },
+  ])("C-CLI-08 failed startup reports a $case kept identity truthfully", async (example) => {
+    const session = new FakeCliSession();
+    session.resumable = example.resumable;
+    session.setupWork = () => Promise.reject(elwoodError("codex_start_failed", "Could not start."));
+    const streams = io();
+    await executeRun(request({ keep: true, output: "json" }), session, streams.value, {
+      signals: new FakeSignals(),
+    });
+    expect(JSON.parse(streams.stdout.value)).toMatchObject({
+      sessionId: example.expected,
+      cleanup: { action: "preserve", status: "succeeded" },
+    });
+  });
+
   test("C-CLI-05 blocking attention stops before user submission", async () => {
     const session = new FakeCliSession();
     session.setupWork = async (current) => {
@@ -83,6 +100,45 @@ describe("executeRun", () => {
       message: "Blocked prompt: claude-permission-dialog.",
     });
     expect(session.turnOptions).toBeUndefined();
+    expect(session.kills).toBe(1);
+  });
+
+  test.each([
+    { agent: "claude" as const, trust: true, label: "workspace_trust" },
+    { agent: "codex" as const, trust: false, label: "hook_trust" },
+  ])("C-CLI-05 auto-owned $label attention waits for its responder", async (owned) => {
+    const session = new FakeCliSession();
+    session.setupWork = async (current) => {
+      await current.start();
+      current.emitActivity({ label: owned.label });
+    };
+    const streams = io();
+    expect(
+      await executeRun(
+        request({ agent: owned.agent, trust: owned.trust }),
+        session,
+        streams.value,
+        {
+          signals: new FakeSignals(),
+        },
+      ),
+    ).toBe(0);
+    expect(streams.stdout.value).toBe("ok\n");
+    expect(session.kills).toBe(0);
+  });
+
+  test("C-CLI-05 no-trust leaves workspace trust blocking", async () => {
+    const session = new FakeCliSession();
+    session.setupWork = async (current) => {
+      await current.start();
+      current.emitActivity({ label: "workspace_trust" });
+    };
+    const streams = io();
+    expect(
+      await executeRun(request({ agent: "claude", trust: false }), session, streams.value, {
+        signals: new FakeSignals(),
+      }),
+    ).toBe(1);
     expect(session.kills).toBe(1);
   });
 

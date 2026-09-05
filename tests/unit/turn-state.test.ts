@@ -167,12 +167,14 @@ describe("C-TURN-04 interrupt end banners", () => {
     expect(watcher.observe(facts(codexScreenFactTable, codexIdle), true)).toBe("ended");
   });
 
-  test("evidence-running release evaluates the CURRENT frame — a first idle frame is the end edge", () => {
-    // The turn ended exactly as the running evidence arrived, so the FIRST frame
-    // after release is already the quiet composer. Releasing settling must not
-    // discard it: that idle frame is the turn's only end edge and must fire "ended".
+  test("evidence-running release does not mistake the stale resume composer for turn end", () => {
+    // Caller-submitted evidence can arrive while the stale idle composer is still
+    // painted. It releases replay settling, but cannot end the new turn until real
+    // working evidence has appeared.
     const watcher = new TurnStateWatcher();
     watcher.arm(true); // resume: settling
+    expect(watcher.observe(facts(codexScreenFactTable, codexIdle), true)).toBeUndefined();
+    expect(watcher.observe(facts(codexScreenFactTable, codexWorking), true)).toBe("started");
     expect(watcher.observe(facts(codexScreenFactTable, codexIdle), true)).toBe("ended");
   });
 

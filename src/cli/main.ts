@@ -13,8 +13,8 @@ import { JsonlRenderer } from "./output/jsonl.ts";
 import { createCliSanitizer } from "./output/sanitize.ts";
 import type { CliError } from "./output/types.ts";
 import { resolveRunRequest } from "./request.ts";
-import { executeRun } from "./run.ts";
-import { prepareCliSession } from "./session.ts";
+import type { executeRun } from "./run.ts";
+import type { prepareCliSession } from "./session.ts";
 import { AsyncOutputSink, type CliWritable } from "./stream.ts";
 import {
   type CliAgent,
@@ -42,11 +42,17 @@ export type CliMainDependencies = {
   readonly now: () => number;
 };
 
+export const prepareDefaultCliSession: typeof prepareCliSession = async (...args) =>
+  (await import("./session.ts")).prepareCliSession(...args);
+
+export const executeDefaultCliRun: typeof executeRun = async (...args) =>
+  (await import("./run.ts")).executeRun(...args);
+
 const defaults: CliMainDependencies = {
   version: readCliVersion,
   resolve: resolveRunRequest,
-  prepare: prepareCliSession,
-  execute: executeRun,
+  prepare: prepareDefaultCliSession,
+  execute: executeDefaultCliRun,
   now: Date.now,
 };
 

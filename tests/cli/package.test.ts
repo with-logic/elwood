@@ -3,7 +3,18 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { accessSync, constants, readFileSync } from "node:fs";
+import {
+  accessSync,
+  constants,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, test } from "vitest";
 import { bootstrapCliIfMain, type CliProcess, runCli } from "../../src/cli/entry.ts";
 import { main } from "../../src/cli/main.ts";
@@ -77,6 +88,19 @@ describe("installed CLI package", () => {
     expect(bootstrapCliIfMain({ url: "file:///tmp/elwood-entry.js" }, noEntry.proc)).toBeNull();
     const direct = fakeProcess(["node", "entry", "--help"]);
     await expect(runCli(direct.proc)).resolves.toBe(0);
+
+    const fixture = mkdtempSync(join(process.cwd(), ".tmp-elwood-entry-"));
+    try {
+      const entryPath = join(process.cwd(), "dist", "cli", "entry.js");
+      const linkedPath = join(fixture, "elwood");
+      symlinkSync(entryPath, linkedPath);
+      const linked = fakeProcess(["node", linkedPath, "--help"]);
+      await expect(
+        bootstrapCliIfMain({ url: pathToFileURL(entryPath).href }, linked.proc, undefined, "/tmp"),
+      ).resolves.toBe(0);
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
   });
 
   test("C-CLI-01 emitted entry is executable JavaScript with declarations", () => {
@@ -87,5 +111,45 @@ describe("installed CLI package", () => {
       encoding: "utf8",
     });
     expect(help).toContain("Usage: elwood");
+  });
+
+  test("C-CLI-01 packed package runs through the installed bin symlink and imports", () => {
+    const fixture = mkdtempSync(join(process.cwd(), ".tmp-elwood-package-"));
+    try {
+      const packOutput = execFileSync(
+        "npm",
+        ["pack", "--ignore-scripts", "--json", "--pack-destination", fixture],
+        { encoding: "utf8" },
+      );
+      const packed = JSON.parse(packOutput) as [{ readonly filename: string }];
+      const packageDir = join(fixture, "consumer", "node_modules", "elwood");
+      const binDir = join(fixture, "consumer", "node_modules", ".bin");
+      mkdirSync(packageDir, { recursive: true });
+      mkdirSync(binDir, { recursive: true });
+      execFileSync("tar", [
+        "-xzf",
+        join(fixture, packed[0].filename),
+        "-C",
+        packageDir,
+        "--strip-components=1",
+      ]);
+      const binPath = join(binDir, "elwood");
+      symlinkSync("../elwood/dist/cli/entry.js", binPath);
+
+      expect(readlinkSync(binPath)).toBe("../elwood/dist/cli/entry.js");
+      expect(execFileSync(binPath, ["--help"], { encoding: "utf8" })).toContain("Usage: elwood");
+      expect(
+        execFileSync(
+          process.execPath,
+          ["--input-type=module", "--eval", "await import('elwood')"],
+          {
+            cwd: join(fixture, "consumer"),
+            encoding: "utf8",
+          },
+        ),
+      ).toBe("");
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
   });
 });

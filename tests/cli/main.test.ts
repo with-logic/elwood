@@ -6,7 +6,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { main } from "../../src/cli/main.ts";
+import { executeDefaultCliRun, main, prepareDefaultCliSession } from "../../src/cli/main.ts";
 import type { ParsedRunCommand } from "../../src/cli/types.ts";
 import { mainDependencies, mainHarness, resolvedRequest } from "./main-fakes.ts";
 
@@ -63,5 +63,27 @@ describe("CLI main routing", () => {
     h.stdout.value = "";
     expect(await main(["config", "get", "agent"], context, dependencies)).toBe(0);
     expect(h.stdout.value).toBe("claude\n");
+  });
+
+  test("run-only dependencies lazy-load after routing", async () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-main-lazy-"));
+    const prepared = mainHarness();
+    expect(
+      await main(["go"], prepared.context, {
+        ...mainDependencies(),
+        resolve: () =>
+          Promise.resolve(resolvedRequest({ cwd: root, stateDir: join(root, "state") })),
+        prepare: prepareDefaultCliSession,
+      }),
+    ).toBe(0);
+
+    const executed = mainHarness();
+    expect(
+      await main(["go"], executed.context, {
+        ...mainDependencies(),
+        execute: executeDefaultCliRun,
+      }),
+    ).toBe(0);
+    expect(executed.stdout.value).toBe("ok\n");
   });
 });

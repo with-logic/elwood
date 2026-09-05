@@ -161,14 +161,14 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
     return this.start().then((live) => live.cancelLoop(loopId));
   }
 
-  /**
-   * Stop the underlying session (falling back to `kill`); a no-op if it never started. Awaits an
-   * IN-FLIGHT lazy start so a racing start can't orphan a live session; a rejected launch = nothing
-   * to close (C-API-51).
-   */
+  /** Stop the underlying session, joining an in-flight lazy start (C-API-51). */
   async close(): Promise<void> {
     const live = await this.settledSession();
     if (!live) return;
+    await this.closeLiveSession(live);
+  }
+  /** Stop one known-live session, preserving the public close fallback and diagnostics. */
+  protected async closeLiveSession(live: S): Promise<void> {
     try {
       await live.stop();
     } catch (stopError) {

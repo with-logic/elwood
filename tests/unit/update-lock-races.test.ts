@@ -11,11 +11,12 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { coordinatedAutoupdate, updateLockPath } from "../../src/runtime/update-lock.ts";
 
 const races = vi.hoisted(() => ({
-  claimDelayMs: 0,
+  claimUntilRelease: false,
   claimDelayStarted: false,
   contendedRename: false,
   createRecoveryAfterOwner: false,
   mutateMovedOwner: false,
+  ownerReleased: false,
   pretendRecoveryExists: false,
 }));
 
@@ -25,13 +26,10 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     ...actual,
     mkdir: (...args: Parameters<typeof actual.mkdir>) => {
       const path = String(args[0]);
-      if (races.claimDelayMs > 0 && path.endsWith(".lock")) {
-        const delayMs = races.claimDelayMs;
-        races.claimDelayMs = 0;
+      if (races.claimUntilRelease && path.endsWith(".lock")) {
+        races.claimUntilRelease = false;
         races.claimDelayStarted = true;
-        return new Promise((resolve) => setTimeout(resolve, delayMs)).then(() =>
-          actual.mkdir(...args),
-        );
+        return waitForOwnerRelease().then(() => actual.mkdir(...args));
       }
       return actual.mkdir(...args);
     },
@@ -50,6 +48,11 @@ vi.mock("node:fs/promises", async (importOriginal) => {
           "99999998:11111111-1111-4111-8111-111111111111",
         );
       }
+      return result;
+    },
+    rmdir: async (...args: Parameters<typeof actual.rmdir>) => {
+      const result = await actual.rmdir(...args);
+      if (String(args[0]).endsWith(".lock")) races.ownerReleased = true;
       return result;
     },
     stat: (...args: Parameters<typeof actual.stat>) => {
@@ -73,18 +76,19 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 });
 
 beforeEach(() => {
-  races.claimDelayMs = 0;
+  races.claimUntilRelease = false;
   races.claimDelayStarted = false;
   races.contendedRename = false;
   races.createRecoveryAfterOwner = false;
   races.mutateMovedOwner = false;
+  races.ownerReleased = false;
   races.pretendRecoveryExists = false;
 });
 
 test("a delayed claimant observes a peer completion and skips its duplicate", async () => {
   const root = await sandbox("completion");
   const attempts: string[] = [];
-  races.claimDelayMs = 30;
+  races.claimUntilRelease = true;
   const delayed = run(root, () => attempts.push("delayed"));
   while (!races.claimDelayStarted) await new Promise((resolve) => setImmediate(resolve));
   const winner = run(root, () => attempts.push("winner"));
@@ -133,6 +137,10 @@ function run(root: string, update: () => void): Promise<void> {
     },
     { root, pollMs: 1, staleMs: 1 },
   );
+}
+
+async function waitForOwnerRelease(): Promise<void> {
+  while (!races.ownerReleased) await new Promise((resolve) => setImmediate(resolve));
 }
 
 function sandbox(label: string): Promise<string> {

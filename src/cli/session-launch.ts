@@ -1,6 +1,6 @@
 /**
  * Adapter launch mapping for the headless CLI session facade.
- * Implements PRD §12A.2 and C-CLI-05/C-CLI-06/C-CLI-08.
+ * Implements PRD §12A.2/§12A.5 and C-CLI-05/C-CLI-06/C-CLI-08/C-CLI-15.
  */
 
 import { startClaudeWithId } from "../claude/session.ts";
@@ -16,9 +16,12 @@ import {
   claudeReasoningEfforts,
   codexReasoningEfforts,
 } from "../core/reasoning-effort.ts";
+import { ensurePrivateStateRoot } from "../state/private-session.ts";
+import { optional } from "./request-values.ts";
 import type { EffectiveRunRequest } from "./types.ts";
 
 export type CliLaunchDependencies = {
+  readonly prepareStateRoot: (stateDir: string) => void;
   readonly startClaude: (
     options: Parameters<typeof startClaudeWithId>[0],
     id: string,
@@ -32,6 +35,7 @@ export type CliLaunchDependencies = {
 };
 
 export const defaultCliLaunchDependencies: CliLaunchDependencies = {
+  prepareStateRoot: ensurePrivateStateRoot,
   startClaude: startClaudeWithId,
   resumeClaude,
   startCodex: startCodexWithId,
@@ -58,15 +62,17 @@ function claudeLaunch(
     stateDir: request.stateDir,
     autotrust: request.trust,
     permissionMode: request.permissionMode ?? "dontAsk",
-    ...defined(claudeEffort(request.reasoningEffort), "reasoningEffort"),
+    ...optional(claudeEffort(request.reasoningEffort), "reasoningEffort"),
   };
   if (request.resume !== undefined)
     return () => dependencies.resumeClaude({ ...common, elwoodSessionId: id });
-  return () =>
-    dependencies.startClaude(
+  return async () => {
+    dependencies.prepareStateRoot(request.stateDir);
+    return await dependencies.startClaude(
       { ...common, ...(request.model === undefined ? {} : { model: request.model }) },
       id,
     );
+  };
 }
 
 function codexLaunch(
@@ -80,15 +86,17 @@ function codexLaunch(
     autotrust: request.trust,
     sandbox: request.sandbox ?? "workspace-write",
     approvalPolicy: request.approvalPolicy ?? "never",
-    ...defined(codexEffort(request.reasoningEffort), "reasoningEffort"),
+    ...optional(codexEffort(request.reasoningEffort), "reasoningEffort"),
   };
   if (request.resume !== undefined)
     return () => dependencies.resumeCodex({ ...common, elwoodSessionId: id });
-  return () =>
-    dependencies.startCodex(
+  return async () => {
+    dependencies.prepareStateRoot(request.stateDir);
+    return await dependencies.startCodex(
       { ...common, ...(request.model === undefined ? {} : { model: request.model }) },
       id,
     );
+  };
 }
 
 function claudeEffort(value: string | undefined): ClaudeReasoningEffort | undefined {
@@ -99,8 +107,4 @@ function claudeEffort(value: string | undefined): ClaudeReasoningEffort | undefi
 function codexEffort(value: string | undefined): CodexReasoningEffort | undefined {
   if (value === undefined) return undefined;
   return codexReasoningEfforts.find((effort) => effort === value);
-}
-
-function defined<K extends string, V>(value: V | undefined, key: K): { readonly [P in K]?: V } {
-  return value === undefined ? {} : ({ [key]: value } as { readonly [P in K]?: V });
 }

@@ -5,6 +5,7 @@
  * Implements PRD §12A and C-CLI-01/C-CLI-02/C-CLI-07/C-CLI-12.
  */
 
+import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { type CliMainContext, type CliMainDependencies, main } from "./main.ts";
@@ -40,8 +41,17 @@ export function bootstrapCliIfMain(
   dependencies?: CliMainDependencies,
   userHome?: string,
 ): Promise<number> | null {
-  if (proc.argv[1] === undefined || fileURLToPath(meta.url) !== proc.argv[1]) return null;
+  if (proc.argv[1] === undefined || !isSameFile(fileURLToPath(meta.url), proc.argv[1])) return null;
   return runCli(proc, dependencies, userHome);
+}
+
+function isSameFile(modulePath: string, entryPath: string): boolean {
+  if (modulePath === entryPath) return true;
+  try {
+    return realpathSync(modulePath) === realpathSync(entryPath);
+  } catch {
+    return false;
+  }
 }
 
 function processContext(proc: CliProcess, userHome: string): CliMainContext {

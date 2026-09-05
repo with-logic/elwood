@@ -95,6 +95,7 @@ describe("RunOutput", () => {
     await h.output.turn({ type: "tool_call", name: "exec" });
     await h.output.turn({ type: "tool_result", output: "done token" });
     await h.output.turn({ type: "text", text: "one token" });
+    expect(h.output.response).toBe(""); // streaming does not retain a duplicate response
     await h.output.finish(terminal({ response: "one [REDACTED]" }));
     expect(h.stdout.value).toBe("one [REDACTED]\n");
     expect(h.stderr.value).toContain("[status] running\n[warning version_unparseable]");
