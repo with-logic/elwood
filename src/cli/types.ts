@@ -1,0 +1,166 @@
+/**
+ * Shared types for CLI parsing, configuration, and effective requests.
+ * Implements PRD §12A.1/§12A.2/§12A.4 and C-CLI-02 through C-CLI-16.
+ */
+
+import type { CodexApprovalPolicy, CodexSandboxMode } from "../codex/session-types.ts";
+import type { ImageInput } from "../core/images/types.ts";
+import type { CodexReasoningEffort } from "../core/reasoning-effort.ts";
+import type { ClaudePermissionMode } from "../core/types.ts";
+
+export const cliAgents = ["claude", "codex"] as const;
+export const cliOutputModes = ["text", "json", "jsonl"] as const;
+export const claudePermissionModes = [
+  "default",
+  "acceptEdits",
+  "plan",
+  "auto",
+  "dontAsk",
+  "bypassPermissions",
+] as const satisfies readonly ClaudePermissionMode[];
+export const codexSandboxModes = [
+  "read-only",
+  "workspace-write",
+  "danger-full-access",
+] as const satisfies readonly CodexSandboxMode[];
+export const codexApprovalPolicies = [
+  "untrusted",
+  "on-request",
+  "never",
+] as const satisfies readonly CodexApprovalPolicy[];
+
+export type CliAgent = (typeof cliAgents)[number];
+export type CliOutputMode = (typeof cliOutputModes)[number];
+export type CliEnvironment = Readonly<Record<string, string | undefined>>;
+
+export type AgentConfig = {
+  readonly model?: string;
+  readonly reasoningEffort?: string;
+};
+
+export type CliConfig = {
+  readonly schemaVersion: 1;
+  readonly agent?: CliAgent;
+  readonly output?: CliOutputMode;
+  readonly timeout?: string;
+  readonly trust?: boolean;
+  readonly stateDir?: string;
+  readonly verbose?: boolean;
+  readonly stream?: boolean;
+  readonly persona?: string;
+  readonly claude?: AgentConfig & { readonly permissionMode?: ClaudePermissionMode };
+  readonly codex?: AgentConfig & {
+    readonly sandbox?: CodexSandboxMode;
+    readonly approvalPolicy?: CodexApprovalPolicy;
+  };
+};
+
+export type RunOptionKey =
+  | "agent"
+  | "output"
+  | "timeout"
+  | "trust"
+  | "stateDir"
+  | "verbose"
+  | "stream"
+  | "persona"
+  | "model"
+  | "reasoningEffort"
+  | "claudePermissionMode"
+  | "codexSandbox"
+  | "codexApprovalPolicy"
+  | "cwd"
+  | "images"
+  | "keep"
+  | "resume"
+  | "ephemeral";
+
+export type RunFlags = {
+  readonly agent?: string;
+  readonly output?: string;
+  readonly timeout?: string;
+  readonly trust?: boolean;
+  readonly stateDir?: string;
+  readonly verbose?: boolean;
+  readonly stream?: boolean;
+  readonly persona?: string;
+  readonly model?: string;
+  readonly reasoningEffort?: string;
+  readonly claudePermissionMode?: string;
+  readonly codexSandbox?: string;
+  readonly codexApprovalPolicy?: string;
+  readonly cwd?: string;
+  readonly images: readonly string[];
+  readonly keep?: boolean;
+  readonly resume?: string;
+  readonly ephemeral?: boolean;
+};
+
+export type ParsedRunCommand = {
+  readonly command: "run";
+  readonly flags: RunFlags;
+  readonly explicit: ReadonlySet<RunOptionKey>;
+  readonly promptWords: readonly string[];
+};
+
+export type ParsedCliCommand =
+  | ParsedRunCommand
+  | { readonly command: "help" }
+  | { readonly command: "version" }
+  | { readonly command: "config"; readonly args: readonly string[] };
+
+export type PromptStdin = {
+  readonly isTTY?: boolean;
+  readonly source: AsyncIterable<string | Uint8Array>;
+};
+
+export type RequestContext = {
+  readonly env: CliEnvironment;
+  readonly invocationCwd: string;
+  readonly homeDir: string;
+  readonly stdin: PromptStdin;
+};
+
+export type ResolvedRunRequest = {
+  readonly agent: CliAgent;
+  readonly explicitAgent?: CliAgent;
+  readonly output: CliOutputMode;
+  readonly outputExplicit: boolean;
+  readonly timeoutMs?: number;
+  readonly trust: boolean;
+  readonly stateDir: string;
+  readonly verbose: boolean;
+  readonly stream: boolean;
+  readonly persona?: string;
+  readonly model?: string;
+  readonly reasoningEffort?: string;
+  readonly permissionMode?: ClaudePermissionMode;
+  readonly sandbox?: CodexSandboxMode;
+  readonly approvalPolicy?: CodexApprovalPolicy;
+  readonly cwd?: string;
+  readonly imagePaths: readonly string[];
+  readonly prompt: string;
+  readonly keep: boolean;
+  readonly resume?: string;
+  readonly ephemeral: boolean;
+};
+
+export type EffectiveRunRequest = Omit<ResolvedRunRequest, "cwd" | "imagePaths"> & {
+  readonly cwd: string;
+  readonly images: readonly ImageInput[];
+};
+
+export class CliValidationError extends Error {
+  override readonly name = "CliValidationError";
+  readonly code: "invalid_arguments" | "invalid_config";
+
+  constructor(code: "invalid_arguments" | "invalid_config", message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+export type EffectiveAgentOptions = {
+  readonly model?: string;
+  readonly reasoningEffort?: string | CodexReasoningEffort;
+};
