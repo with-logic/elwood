@@ -27,6 +27,12 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ### Fixed
 
+- **Headed runs no longer suspend themselves or leave the invoking terminal unusable.**
+  Interactive version and capability probes now run in an isolated process session,
+  preventing their shell-managed commands from stealing the real terminal's foreground
+  process group. `--head` can therefore restore cooked input and display modes before
+  returning to an interactive shell, without a cleanup-time `SIGTTOU` stop or leaked
+  terminal-protocol replies. (§12A.6, C-CLI-18)
 - **Codex's startup update dialog no longer wedges headed or headless runs.**
   Codex 0.153.x can paint its numbered update menu before its input loop accepts
   the first safe Skip hotkey. Elwood now retries that hotkey for a bounded interval

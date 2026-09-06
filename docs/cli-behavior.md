@@ -366,7 +366,7 @@ into the display or leak into a parent shell. All input is discarded except Ctrl
 which enters the existing interrupt/kill lifecycle. On completion, restore the input
 mode and emit a defensive VT reset before the final stdout record.
 
-Two real-PTY edges were invisible to the unit fixtures:
+Three real-PTY edges were invisible to the unit fixtures:
 
 - Codex's update dialog can raise a rendered blocking edge before the responder's
   safe Skip takes effect, and startup-attention replay can deliver that old edge to
@@ -379,8 +379,14 @@ Two real-PTY edges were invisible to the unit fixtures:
   composer. Some PTY hosts close their input side before process completion and
   then return `EIO` from `setRawMode(false)`; contain only terminal-gone restoration
   errors because that host is already the sole remaining terminal-mode owner.
+- Interactive login-shell probes can give their external command control of the
+  caller's real terminal, then exit without restoring its foreground process group.
+  A headed run subsequently restoring cooked mode is stopped by `SIGTTOU` before its
+  defensive VT reset, leaving terminal query replies to leak into the resumed shell.
+  Run probes in a detached process session so they keep interactive PATH resolution
+  without participating in the caller terminal's job control.
 
-Verified manually in a real PTY with successful headed turns on Codex 0.153.3 and
+Verified manually in a real PTY with successful headed turns on Codex 0.153.4 and
 Claude 2.1.261, including terminal restoration and clean JSON terminal records.
 C-CLI-18/C-CODEX-12.
 

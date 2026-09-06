@@ -74,7 +74,11 @@ export function completeUtf8Length(bytes: Buffer): number {
 
 export function runProbe(command: string, args: readonly string[]): Promise<CommandResult> {
   return new Promise((resolve) => {
-    const child = spawn(command, [...args]);
+    // Probe shells are interactive so they load the same user PATH as the PTY launch. Give
+    // them a fresh session: an interactive shell otherwise enables job control on Elwood's
+    // controlling terminal and can leave its short-lived command's process group in the
+    // foreground, causing headed cleanup to stop on SIGTTOU before restoring terminal modes.
+    const child = spawn(command, [...args], { detached: true });
     const out = new CappedBuffer();
     const err = new CappedBuffer();
     let settled = false;
