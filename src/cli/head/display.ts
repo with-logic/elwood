@@ -5,7 +5,7 @@ import type { CliHeadTarget, HeadedDisplayHandlers } from "./types.ts";
 
 export const terminalRestore =
   "\u001b[?2026l\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1006l" +
-  "\u001b[?2004l\u001b[0m\u001b[?25h\u001b[?1049l";
+  "\u001b[?2004l\u001b[0m\u001b[?25h\u001b[<u\u001b[?1049l";
 export const maxPendingHeadBytes = 4 * 1024 * 1024;
 export const maxPendingHeadWrites = 1024;
 

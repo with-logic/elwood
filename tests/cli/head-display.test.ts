@@ -94,6 +94,17 @@ describe("headed CLI display", () => {
     expect(failed).toHaveBeenCalledOnce();
   });
 
+  test("C-CLI-18 restores enhanced keyboard input before leaving the alternate screen", async () => {
+    const target = new FakeHeadTarget();
+    const display = new HeadedDisplay(target);
+    display.start({ interrupt: vi.fn(), resize: vi.fn(), failed: vi.fn() });
+    display.write("\u001b[>7u");
+
+    await display.close();
+
+    expect(target.output.value.endsWith("\u001b[<u\u001b[?1049l")).toBe(true);
+  });
+
   test("closing an unused display is side-effect free", async () => {
     const target = new FakeHeadTarget();
     const display = new HeadedDisplay(target);

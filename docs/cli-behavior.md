@@ -366,7 +366,7 @@ into the display or leak into a parent shell. All input is discarded except Ctrl
 which enters the existing interrupt/kill lifecycle. On completion, restore the input
 mode and emit a defensive VT reset before the final stdout record.
 
-Three real-PTY edges were invisible to the unit fixtures:
+Four real-PTY edges were invisible to the unit fixtures:
 
 - Codex's update dialog can raise a rendered blocking edge before the responder's
   safe Skip takes effect, and startup-attention replay can deliver that old edge to
@@ -385,6 +385,11 @@ Three real-PTY edges were invisible to the unit fixtures:
   defensive VT reset, leaving terminal query replies to leak into the resumed shell.
   Run probes in a detached process session so they keep interactive PATH resolution
   without participating in the caller terminal's job control.
+- Current agent TUIs push Kitty keyboard enhancements with `CSI > flags u`. Head mode
+  stops mirroring before agent teardown, so it cannot rely on the agent's matching
+  cleanup sequence reaching the physical terminal. The defensive reset must emit
+  `CSI < u` before leaving the alternate screen; otherwise every later shell keystroke
+  can remain encoded as a `CSI u` key event, making even a typed `reset` unusable.
 
 Verified manually in a real PTY with successful headed turns on Codex 0.153.4 and
 Claude 2.1.261, including terminal restoration and clean JSON terminal records.
