@@ -6,20 +6,44 @@
 import { isAbsolute, join, resolve } from "node:path";
 import type { CliEnvironment } from "../types.ts";
 
+export type CliPathResolution = {
+  readonly path: string;
+  readonly source: "ELWOOD_CONFIG" | "XDG_CONFIG_HOME" | "XDG_STATE_HOME" | "home directory";
+};
+
 export function resolveConfigPath(
   env: CliEnvironment,
   invocationCwd: string,
   homeDir: string,
 ): string {
+  return resolveConfigLocation(env, invocationCwd, homeDir).path;
+}
+
+export function resolveConfigLocation(
+  env: CliEnvironment,
+  invocationCwd: string,
+  homeDir: string,
+): CliPathResolution {
   const explicit = nonEmpty(env["ELWOOD_CONFIG"]);
-  if (explicit !== undefined) return resolve(invocationCwd, explicit);
+  if (explicit !== undefined)
+    return { path: resolve(invocationCwd, explicit), source: "ELWOOD_CONFIG" };
   const xdg = absoluteBase(env["XDG_CONFIG_HOME"]);
-  return join(xdg ?? join(homeDir, ".config"), "elwood", "config.json");
+  return {
+    path: join(xdg ?? join(homeDir, ".config"), "elwood", "config.json"),
+    source: xdg === undefined ? "home directory" : "XDG_CONFIG_HOME",
+  };
 }
 
 export function resolveStateDir(env: CliEnvironment, homeDir: string): string {
+  return resolveStateLocation(env, homeDir).path;
+}
+
+export function resolveStateLocation(env: CliEnvironment, homeDir: string): CliPathResolution {
   const xdg = absoluteBase(env["XDG_STATE_HOME"]);
-  return join(xdg ?? join(homeDir, ".local", "state"), "elwood");
+  return {
+    path: join(xdg ?? join(homeDir, ".local", "state"), "elwood"),
+    source: xdg === undefined ? "home directory" : "XDG_STATE_HOME",
+  };
 }
 
 function absoluteBase(value: string | undefined): string | undefined {

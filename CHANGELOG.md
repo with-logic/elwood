@@ -13,6 +13,17 @@ Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md
 
 ### Added
 
+- **The `elwood` CLI now explains and cleanly overrides its effective behavior.**
+  `--no-stream` and `--no-verbose` reverse inherited boolean defaults,
+  `--no-defaults` bypasses saved config and `ELWOOD_*` run settings, and
+  `elwood config effective` reports validated launch/output values with their
+  provenance without starting an agent. Routine warnings now reach stderr for
+  text and JSON runs, `--verbose` is a concise elapsed progress view, and
+  `--debug` retains full sanitized event detail. JSONL records include elapsed
+  timing plus tool-call correlation IDs when available. Help, validation errors,
+  resume/persona/ephemeral wording, and the new scripting guide now make defaults,
+  recovery actions, and lifecycle effects explicit. (§5.8/§12A,
+  C-API-48/C-CLI-02/03/08/10/11/14/19/20)
 - **The `elwood` CLI can now mirror the live agent TUI in the current terminal.**
   `--head` sends the agent's ordered raw VT/ANSI stream to terminal stderr while
   preserving the final text or JSON result on stdout, including cursor-addressed

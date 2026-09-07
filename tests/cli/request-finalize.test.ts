@@ -1,10 +1,11 @@
 /** Final request workspace validation. Covers PRD C-CLI-03/C-CLI-04. */
 
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
-import { finalizeRunRequest } from "../../src/cli/request.ts";
+import { parseCliArgs } from "../../src/cli/args.ts";
+import { finalizeRunRequest, resolveRunSettings } from "../../src/cli/request.ts";
 import type { ResolvedRunRequest } from "../../src/cli/types.ts";
 
 type DraftOverrides = Omit<Partial<ResolvedRunRequest>, "cwd"> & {
@@ -56,8 +57,32 @@ describe("final request workspaces", () => {
     await expect(finalizeRunRequest(draft(root, { cwd: "relative" }))).rejects.toThrow(
       /absolute/iu,
     );
-    await expect(finalizeRunRequest(draft(root, { cwd: join(root, "missing") }))).rejects.toThrow(
-      /existing directory/iu,
+    const missing = join(root, "missing");
+    await expect(finalizeRunRequest(draft(root, { cwd: missing }))).rejects.toThrow(
+      `Workspace '${missing}' does not exist.`,
+    );
+  });
+
+  test("C-CLI-03 resume cannot override its stored workspace", async () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
+    const other = mkdtempSync(join(tmpdir(), "elwood-request-finalize-other-"));
+    await expect(
+      finalizeRunRequest(draft(root, { resume: "s", cwd: other, cwdExplicit: true }), {
+        agent: "codex",
+        cwd: root,
+      }),
+    ).rejects.toThrow(/--cwd cannot be used with --resume/iu);
+  });
+
+  test("identifies non-directory and uninspectable workspaces", async () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
+    const file = join(root, "file");
+    writeFileSync(file, "x");
+    await expect(finalizeRunRequest(draft(root, { cwd: file }))).rejects.toThrow(
+      `Workspace '${file}' is not a directory.`,
+    );
+    await expect(finalizeRunRequest(draft(root, { cwd: "/\0" }))).rejects.toThrow(
+      "could not be inspected",
     );
   });
 
@@ -102,6 +127,35 @@ describe("final request workspaces", () => {
       reasoningEffort: "high",
       sandbox: "workspace-write",
       approvalPolicy: "never",
+    });
+  });
+
+  test("C-CLI-19 records stored-session and adapter-default provenance", async () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
+    const parsed = parseCliArgs(["--resume", "s"]);
+    if (parsed.command !== "run") throw new Error("expected run");
+    const resolved = resolveRunSettings(parsed, { env: {}, homeDir: root, invocationCwd: root });
+    const claude = await finalizeRunRequest(resolved, { agent: "claude", cwd: root });
+    expect(claude.resolution?.sources).toMatchObject({
+      agent: "stored session s",
+      workspace: "stored session s",
+      permissionMode: "built-in",
+      sandbox: "not applicable",
+      approvalPolicy: "not applicable",
+    });
+
+    const config = join(root, "config.json");
+    writeFileSync(config, JSON.stringify({ schemaVersion: 1, agent: "claude" }), { mode: 0o600 });
+    const configured = resolveRunSettings(parsed, {
+      env: { ELWOOD_CONFIG: config },
+      homeDir: root,
+      invocationCwd: root,
+    });
+    const codex = await finalizeRunRequest(configured, { agent: "codex", cwd: root });
+    expect(codex.resolution?.sources).toMatchObject({
+      permissionMode: "not applicable",
+      sandbox: "built-in",
+      approvalPolicy: "built-in",
     });
   });
 });

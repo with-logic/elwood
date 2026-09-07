@@ -12,7 +12,7 @@ import { cliHelp } from "./help.ts";
 import type { CliSignalSource } from "./lifecycle.ts";
 import { writeJson } from "./output/json.ts";
 import { JsonlRenderer } from "./output/jsonl.ts";
-import { createCliSanitizer } from "./output/sanitize.ts";
+import { createCliSanitizer, formatDiagnosticValue } from "./output/sanitize.ts";
 import type { CliError } from "./output/types.ts";
 import { resolveRunRequest } from "./request.ts";
 import { optional, usage } from "./request-values.ts";
@@ -155,8 +155,8 @@ async function renderFailure(
     error: { code: clean(failure.code), message: clean(failure.message) },
   };
   if (output === "json") await writeJson(stdout, record);
-  else if (output === "jsonl") await new JsonlRenderer(stdout).finish(record);
-  else await stderr.write(`elwood: ${record.error.code}: ${record.error.message}\n`);
+  else if (output === "jsonl") await new JsonlRenderer(stdout, () => durationMs).finish(record);
+  else await stderr.write(`elwood: ${formatDiagnosticValue(record.error.message, clean)}\n`);
 }
 
 function explicitStructuredOutput(args: readonly string[]): CliOutputMode | undefined {

@@ -125,17 +125,24 @@ describe("effective request edges", () => {
     [["--ephemeral", "go"], /requires --resume/iu],
     [["--keep", "--resume", "s", "go"], /only valid/iu],
     [["--resume", "s", "--persona", "p", "go"], /persona/iu],
-    [["--agent", "claude", "--codex-sandbox", "read-only", "go"], /Codex launch/iu],
-    [["--agent", "claude", "--codex-approval-policy", "never", "go"], /Codex launch/iu],
-    [["--agent", "codex", "--claude-permission-mode", "plan", "go"], /Claude permission/iu],
+    [["--agent", "claude", "--codex-sandbox", "read-only", "go"], /--codex-sandbox/iu],
+    [["--agent", "claude", "--codex-approval-policy", "never", "go"], /--codex-approval/iu],
+    [["--agent", "codex", "--claude-permission-mode", "plan", "go"], /--claude-permission/iu],
     [["--agent", "bad", "go"], /agent must be one/iu],
     [["--output", "bad", "go"], /output must be one/iu],
     [["--reasoning-effort", "minimal", "--agent", "claude", "go"], /reasoningEffort/iu],
     [["--state-dir", " ", "go"], /stateDir/iu],
     [["--model", " ", "go"], /model/iu],
     [["--resume", " ", "go"], /resume/iu],
+    [["--resume", "s", "--cwd", ".", "go"], /--cwd cannot be used with --resume/iu],
   ])("rejects incompatible invocation %#", async (argv, message) => {
     await expect(resolveRunRequest(run(argv), context(sandbox()))).rejects.toThrow(message);
+  });
+
+  test("rejects debug head mode alongside the other unsupported combinations", async () => {
+    await expect(
+      resolveRunRequest(run(["--head", "--debug", "go"]), context(sandbox())),
+    ).rejects.toThrow(/--head cannot be combined with --debug/iu);
   });
 
   test("rejects agent-specific environment for the selected adapter", async () => {
@@ -148,7 +155,7 @@ describe("effective request edges", () => {
           ELWOOD_CODEX_SANDBOX: "read-only",
         }),
       ),
-    ).rejects.toThrow(/Codex launch/iu);
+    ).rejects.toThrow(/ELWOOD_CODEX_SANDBOX.*--no-defaults/iu);
     await expect(
       resolveRunRequest(
         run(["go"]),
@@ -157,6 +164,6 @@ describe("effective request edges", () => {
           ELWOOD_CLAUDE_PERMISSION_MODE: "plan",
         }),
       ),
-    ).rejects.toThrow(/Claude permission/iu);
+    ).rejects.toThrow(/ELWOOD_CLAUDE_PERMISSION_MODE.*--no-defaults/iu);
   });
 });

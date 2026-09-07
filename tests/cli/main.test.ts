@@ -2,10 +2,11 @@
  * Metadata, config, and run-routing tests for the side-effect-free CLI main (PRD §12A.1).
  */
 
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
+import { cliConfigHelp } from "../../src/cli/help.ts";
 import { executeDefaultCliRun, main, prepareDefaultCliSession } from "../../src/cli/main.ts";
 import type { ParsedRunCommand } from "../../src/cli/types.ts";
 import { effectiveRequest, mainDependencies, mainHarness, resolvedRequest } from "./main-fakes.ts";
@@ -97,6 +98,28 @@ describe("CLI main routing", () => {
     h.stdout.value = "";
     expect(await main(["config", "get", "agent"], context, dependencies)).toBe(0);
     expect(h.stdout.value).toBe("claude\n");
+  });
+
+  test("C-CLI-02 all config help forms bypass even malformed saved config", async () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-main-config-help-"));
+    const config = join(root, "nested", "config.json");
+    mkdirSync(join(root, "nested"));
+    writeFileSync(config, "not json", { mode: 0o600 });
+    for (const args of [
+      ["help"],
+      ["--help"],
+      ["-h"],
+      ["effective", "--help"],
+      ["effective", "-h"],
+    ]) {
+      const h = mainHarness();
+      expect(
+        await main(["config", ...args], { ...h.context, env: { ELWOOD_CONFIG: config } }),
+      ).toBe(0);
+      expect(h.stdout.value).toBe(cliConfigHelp);
+      expect(h.stderr.value).toBe("");
+      expect(readFileSync(config, "utf8")).toBe("not json");
+    }
   });
 
   test("run-only dependencies lazy-load after routing", async () => {

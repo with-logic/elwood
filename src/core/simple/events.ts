@@ -11,8 +11,18 @@ import type { ElwoodActivityEvent } from "../activity.ts";
 export type TurnEvent =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "thinking"; readonly text: string }
-  | { readonly type: "tool_call"; readonly name: string; readonly input?: string }
-  | { readonly type: "tool_result"; readonly name?: string; readonly output?: string };
+  | {
+      readonly type: "tool_call";
+      readonly name: string;
+      readonly input?: string;
+      readonly toolCallId?: string;
+    }
+  | {
+      readonly type: "tool_result";
+      readonly name?: string;
+      readonly output?: string;
+      readonly toolCallId?: string;
+    };
 
 /**
  * Maps an internal activity event to a simplified turn event, or `undefined` for kinds
@@ -30,12 +40,14 @@ export function toTurnEvent(event: ElwoodActivityEvent): TurnEvent | undefined {
         type: "tool_call",
         name: event.toolName ?? event.label,
         ...(event.toolInput === undefined ? {} : { input: event.toolInput }),
+        ...(event.toolUseId === undefined ? {} : { toolCallId: event.toolUseId }),
       };
     case "tool_result":
       return {
         type: "tool_result",
         ...(event.toolName === undefined ? {} : { name: event.toolName }),
         ...(event.toolOutput === undefined ? {} : { output: event.toolOutput }),
+        ...(event.toolUseId === undefined ? {} : { toolCallId: event.toolUseId }),
       };
     default:
       return undefined;
@@ -54,11 +66,16 @@ export function turnEventBytes(event: TurnEvent): number {
     case "thinking":
       return utf8Bytes(event.text);
     case "tool_call":
-      return utf8Bytes(event.name) + (event.input === undefined ? 0 : utf8Bytes(event.input));
+      return (
+        utf8Bytes(event.name) +
+        (event.input === undefined ? 0 : utf8Bytes(event.input)) +
+        (event.toolCallId === undefined ? 0 : utf8Bytes(event.toolCallId))
+      );
     case "tool_result":
       return (
         (event.name === undefined ? 0 : utf8Bytes(event.name)) +
-        (event.output === undefined ? 0 : utf8Bytes(event.output))
+        (event.output === undefined ? 0 : utf8Bytes(event.output)) +
+        (event.toolCallId === undefined ? 0 : utf8Bytes(event.toolCallId))
       );
   }
 }

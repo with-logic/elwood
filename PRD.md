@@ -2791,9 +2791,11 @@ The primary form is `elwood [options] [prompt...]`. `elwood run [options]
 commands only when they are the first argument before `--`; prompt words are
 otherwise joined with spaces. `elwood help`, `elwood --help`, and `elwood
 --version` MUST complete without reading user configuration or launching an
-agent. An invocation with no arguments is another exact help form and MUST NOT
-read piped or terminal stdin. `elwood run` remains an explicit run and therefore
-requires prompt input.
+agent. `elwood config --help` and `elwood config help` MUST likewise print
+config-specific help without reading configuration. An invocation with no
+arguments is another exact top-level help form and MUST NOT read piped or terminal
+stdin. `elwood run` remains an explicit run and therefore requires prompt input,
+including when that input comes only from piped stdin.
 
 A new session defaults to Codex and the invocation directory. `-C`/`--cwd`
 overrides that directory. Elwood MUST fail when the selected adapter is
@@ -2826,17 +2828,21 @@ launch, persona setup, and the user turn. Signal handlers are active before
 launch. The first `SIGINT` requests interruption and cleanup, a repeated
 `SIGINT` force-kills the process tree, and an interrupted invocation exits 130.
 
-A new invocation tears down its state after every outcome. `--keep` instead
-preserves it after stop-or-kill cleanup and reports its session ID on stderr in
-text mode. A resume uses `--resume <id>` to load exactly the stored adapter and
-cwd; it never falls back to a new conversation. Explicit adapter conflicts are
-usage errors. Before launch, resumed state and its cwd MUST satisfy the private,
+A new invocation tears down its Elwood-owned state after every outcome; teardown
+does not undo workspace changes or remove history owned by the underlying agent.
+`--keep` instead preserves it after stop-or-kill cleanup and reports its session
+ID on stderr in text mode. A resume uses `--resume <id>` to load exactly the
+stored adapter and cwd; it never falls back to a new conversation, and `--cwd`
+is therefore rejected with `--resume` rather than overriding the stored
+workspace. Explicit adapter conflicts are usage errors. Before launch, resumed state and its cwd MUST satisfy the private,
 owner-matched, regular-file and directory constraints in §12A.5. Resume
 preserves state after every outcome unless `--ephemeral` requests teardown.
 
 A persona applies only to a new session. Elwood runs it as a separate completed
-setup turn and discards that turn's response before observing the user turn.
-Explicit persona plus resume is a usage error. An agent process exit before
+setup turn and discards that turn's response before observing the user turn. It
+is a real agent turn: tools and other side effects performed during persona setup
+remain even though its assistant response is omitted from CLI output. Explicit
+persona plus resume is a usage error. An agent process exit before
 CLI-requested cleanup is `agent_exited`, including a zero-status exit. Response
 data already collected remains available on later failure.
 
@@ -2851,19 +2857,26 @@ failures, and text-mode preserved-session notices go only to stderr. Production
 output MUST exclude raw PTY frames, raw hook payloads, terminal screen contents,
 stacks, bridge credentials, and terminal escape sequences.
 
-Text is the default output. It writes only the final assistant response, with
-one trailing newline when non-empty and zero bytes for an empty response.
-`--verbose` adds sanitized lifecycle and normalized progress to stderr without
-changing stdout. `--stream` is text-only, emits assistant chunks once with one
+Text is the default output. It writes the combined assistant response — every
+observed assistant text message in order, separated by one blank line — with one
+trailing newline when non-empty and zero bytes for an empty response. Concise,
+sanitized warnings are written to stderr by default for text and JSON runs;
+JSONL represents them only as ordered warning records to avoid duplicate
+diagnostics. `--verbose` adds concise elapsed-time phase, tool-name, and cleanup
+progress to stderr without replaying assistant or thinking text. `--debug` emits
+full sanitized normalized event details to stderr and is intended for diagnosis
+rather than routine progress. `--stream` is text-only, emits assistant chunks once with one
 blank line between distinct messages, preserves partial output on failure, and
 adds one trailing newline when non-empty.
 
 `--output json` emits one version-1 terminal result or error document containing
-the record type, adapter, accumulated response, nullable session ID, integer
+the record type, adapter, combined response, nullable session ID, integer
 duration in milliseconds, and cleanup outcome. `--output jsonl` emits
 monotonically sequenced version-1 normalized text, thinking, tool, status, and
 warning records, followed by exactly one terminal result or error record with
-the accumulated response. A parseable, explicit structured-output selection
+the combined response. Every JSONL record includes a non-negative integer
+`elapsedMs`; tool records include a sanitized `toolCallId` when the adapter
+provides one so calls and results can be paired. A parseable, explicit structured-output selection
 also represents argument, configuration, and runtime failures in that protocol.
 
 All writes MUST honor stream backpressure. Downstream `EPIPE` stops output and
@@ -2892,8 +2905,26 @@ Supported environment variables are `ELWOOD_AGENT`, `ELWOOD_OUTPUT`,
 accept only `true` or `false`. Precedence is command-line flags, environment,
 user configuration, then built-in defaults.
 
+Boolean settings inherited from environment or configuration remain reversible
+per invocation: `--no-stream` and `--no-verbose` explicitly select false with
+normal flag precedence. `--no-defaults` ignores the user configuration document
+and every `ELWOOD_*` run-setting variable for that invocation, while retaining
+command-line flags, built-in defaults, the normal home/XDG state-location rules,
+and the selected agent's inherited process environment.
+
 `elwood config path`, `show`, `get`, `set`, and `unset` manage documented dotted
-keys without launching an agent. Mutations are atomic and silent on success;
+keys without launching an agent; `show` prints only the saved document.
+`elwood config effective [run options]` resolves and validates launch/output
+settings without reading prompt input or starting an agent, then prints one
+version-1 JSON document containing the config path and whether it was loaded,
+plus the effective agent, model, workspace, timeout, output controls (including
+`head`), state directory, and adapter permission posture. Claude posture includes
+`permissionMode`, `allowedTools`, `disallowedTools`, and `tools`; exact resume
+inspection merges persisted posture by the same field-by-field rules as launch so
+the document reports the tool policy the resumed process will receive. Every
+reported setting includes its source (`--flag`, `ELWOOD_*`, the saved config path
+and key, stored session, invocation context, built-in, unset, or not applicable).
+Mutations are atomic and silent on success;
 config parsing and writes reject unknown keys, unknown schema versions,
 symlinks, non-regular files, wrong ownership, and non-private permissions.
 
@@ -2909,8 +2940,12 @@ the adapter's underlying startup conflict in v1.
 Exit status is 0 for success or consumer closure, 1 for agent or cleanup
 failure, 2 for usage or configuration failure, 124 for timeout, and 130 for
 interruption. A primary nonzero status survives cleanup failure. Text errors are
-concise and go to stderr; verbose mode may include a sanitized stack that still
-obeys §12A.3. Static arguments, environment, config, cwd, image, and option
+concise and go to stderr while structured protocols retain stable error codes.
+Unknown long options identify the token and suggest the nearest documented
+option when the match is unambiguous. Validation messages identify relevant
+paths and name the inherited environment/config source when it explains a
+conflict, together with a concrete recovery flag when one exists. Debug mode may
+include sanitized event detail but never weakens §12A.3. Static arguments, environment, config, cwd, image, and option
 compatibility MUST be validated before session creation whenever validation
 does not require a stored resume record.
 
@@ -2922,7 +2957,7 @@ so stdout retains the selected text or JSON protocol and may still be redirected
 The flag is invocation-only: it has no environment or configuration equivalent.
 An unavailable controlling terminal is a usage failure detected before session
 creation. Because the headed display exclusively owns the terminal while the
-turn runs, `--head` is incompatible with `--stream`, `--verbose`, and JSONL's
+turn runs, `--head` is incompatible with `--stream`, `--verbose`, `--debug`, and JSONL's
 live record protocol. It remains compatible with final text and JSON output.
 
 Head mode MUST render the raw `terminal:data` stream verbatim to terminal stderr
@@ -3046,7 +3081,7 @@ Each criterion has:
 | C-API-45 | §5.3 | Claude attaches an image by bracketed-pasting its ABSOLUTE path into the composer (the delivery a terminal produces on drag-and-drop); Claude reads and encodes the file itself and shows an `[Image #N]` chip. This is pure PTY text and works on every platform. |
 | C-API-46 | §5.3 | Codex attaches an image from the OS clipboard: Elwood snapshots the user's clipboard ONCE (rejecting with `image_attach_failed` if the snapshot fails, before mutating anything), then for each image in order writes it onto the macOS `NSPasteboard` as a native image (`public.tiff`), sends Ctrl+V, and waits for the `[Image #N]` chip; after all images it restores the single snapshotted clipboard (best-effort, text contents). The whole snapshot/set/paste/confirm/restore sequence holds a process-wide clipboard lock so concurrent Codex sessions cannot cross-attach. A pasted path is NOT an image on Codex. Codex image attachment is macOS-only: `images` on a non-macOS Codex session rejects with `unsupported_platform` and submits nothing. |
 | C-API-47 | §5.8 | The ergonomic `ClaudeSession`/`CodexSession` construct synchronously with the same options as `startClaude`/`startCodex` (with `cwd` defaulting to `process.cwd()`), do NOT start the underlying session at construction, and start it lazily on the first `send`/`stream` or on an explicit `start()`. `start()` is idempotent and concurrent-safe (a second `start()`, or a `send`/`stream` during startup, awaits the same in-flight start), and a startup failure rejects the triggering call with the same typed `ElwoodError` the factory would throw. The started underlying session is exposed via a read-only `session` accessor (undefined until started). |
-| C-API-48 | §5.8 | `stream(prompt, options?)` returns an async iterable that yields the SIMPLIFIED typed events of exactly one turn in arrival order — `{type:"text"}` for `assistant_message`, `{type:"thinking"}` for `reasoning`, `{type:"tool_call",name,input?}` for `tool_call`, `{type:"tool_result",name?,output?}` for `tool_result` — and no other activity kind. The facade subscribes to `activity` BEFORE submitting the prompt (no early event of the turn is missed); turn isolation rests on SERIALIZATION — the serialized slot is held until the agent reaches its real boundary (not until the consumer stops reading) so a prior turn's activity never bleeds into the next — with `turnId` binding as an additional refinement where the adapter tags it (Codex; Claude transcript activity has none). An idle `ready` may complete the turn only after positive acceptance from `UserPromptSubmit`, turn content, or `Stop`; an unaccepted idle transition waits the no-oracle quiet window, replays the same submission at most twice, and then fails with `wait_timeout` instead of reporting an empty success. The iterator ends via the completeness oracle: once an accepted `ready` is observed, it ends the instant the collected assistant text contains the `Stop` hook's `last_assistant_message` (used as a completeness signal only, never displayed); with no such signal it ends after a bounded quiet window; a terminal status ends it IMMEDIATELY. There is NO whole-turn timeout by default (a live turn may run for hours); a caller may pass an opt-in `timeoutMs` ceiling, ARMED ONLY AFTER submission (a turn begins on submission, so the ceiling never rejects a prompt still queued behind readiness that then submits), and a `catchUpMs` cap (default 10000 ms) armed once an accepted `ready` fires throws `wait_timeout` if the transcript never catches up — including when a NON-EMPTY expected text never appears (a promised completion that never arrives is a failure, not a quiet settle). |
+| C-API-48 | §5.8 | `stream(prompt, options?)` returns an async iterable that yields the SIMPLIFIED typed events of exactly one turn in arrival order — `{type:"text"}` for `assistant_message`, `{type:"thinking"}` for `reasoning`, `{type:"tool_call",name,input?,toolCallId?}` for `tool_call`, `{type:"tool_result",name?,output?,toolCallId?}` for `tool_result` — and no other activity kind. A tool event carries the adapter's normalized `toolUseId` as `toolCallId` when available so calls and results can be correlated. The facade subscribes to `activity` BEFORE submitting the prompt (no early event of the turn is missed); turn isolation rests on SERIALIZATION — the serialized slot is held until the agent reaches its real boundary (not until the consumer stops reading) so a prior turn's activity never bleeds into the next — with `turnId` binding as an additional refinement where the adapter tags it (Codex; Claude transcript activity has none). An idle `ready` may complete the turn only after positive acceptance from `UserPromptSubmit`, turn content, or `Stop`; an unaccepted idle transition waits the no-oracle quiet window, replays the same submission at most twice, and then fails with `wait_timeout` instead of reporting an empty success. The iterator ends via the completeness oracle: once an accepted `ready` is observed, it ends the instant the collected assistant text contains the `Stop` hook's `last_assistant_message` (used as a completeness signal only, never displayed); with no such signal it ends after a bounded quiet window; a terminal status ends it IMMEDIATELY. There is NO whole-turn timeout by default (a live turn may run for hours); a caller may pass an opt-in `timeoutMs` ceiling, ARMED ONLY AFTER submission (a turn begins on submission, so the ceiling never rejects a prompt still queued behind readiness that then submits), and a `catchUpMs` cap (default 10000 ms) armed once an accepted `ready` fires throws `wait_timeout` if the transcript never catches up — including when a NON-EMPTY expected text never appears (a promised completion that never arrives is a failure, not a quiet settle). |
 | C-API-49 | §5.8 | `send(prompt, options?)` resolves with the turn's assistant text: the `text` of every `type:"text"` stream event, in order, joined by `\n\n` between distinct assistant messages, and NOTHING else (no thinking or tool text). A turn with no assistant text resolves to the empty string. `send` and `stream` share one turn boundary, so a `send` resolves exactly when the equivalent `stream` iterator ends. |
 | C-API-50 | §5.8 | Ergonomic turns are SERIALIZED: overlapping `send`/`stream` calls queue and run one at a time in call order, so one turn's yielded/collected activity never interleaves with another's. |
 | C-API-51 | §5.8 | `close()` stops the underlying session (falling back to `kill` on a stop failure) and is a no-op when the session never started, so it is safe to call in a `finally`. When a lazy start is IN FLIGHT, `close()` awaits that same start and stops the resulting session (never orphaning a session whose launch resolves after `close()` returned); a launch that REJECTS leaves nothing to close. When BOTH stop and kill fail, `close()` throws `termination_failed` carrying BOTH the stop `cause` and the kill `killCause` (neither diagnostic is lost). |
@@ -3255,23 +3290,25 @@ Each criterion has:
 | ID | Section | Criterion |
 |---|---:|---|
 | C-CLI-01 | §12A | Local, git, and packed-tarball installs expose an executable `elwood` bin and an importable library entry backed only by emitted JavaScript and declarations under `dist`, on Node.js 24 or newer. |
-| C-CLI-02 | §12A.1 | Direct and explicit `run` forms are equivalent; an argument-free invocation, help, and version complete without stdin/config reads or agent launch; `elwood run` still requires input; and reserved command words are commands only in first-argument position before `--`. |
-| C-CLI-03 | §12A.1 | New sessions default to Codex and the invocation cwd, explicit cwd overrides it, an unavailable selected adapter never falls back, and resume defaults to its validated stored adapter and cwd. |
+| C-CLI-02 | §12A.1 | Direct and explicit `run` forms are equivalent; an argument-free invocation, top-level/config help, and version complete without stdin/config reads or agent launch; `elwood run` still requires input; and reserved command words are commands only in first-argument position before `--`. |
+| C-CLI-03 | §12A.1 | New sessions default to Codex and the invocation cwd, explicit cwd overrides it, an unavailable selected adapter never falls back, and resume uses its validated stored adapter and cwd exactly while rejecting `--cwd`. |
 | C-CLI-04 | §12A.1 | Positional and piped input compose with one blank line, terminal stdin is not read, whitespace-only input fails before launch, UTF-8 input is incrementally limited to 8 MiB, and ordered image flags attach on the user turn. |
 | C-CLI-05 | §12A.2 | A CLI turn preserves Elwood's real interactive environment and auto-authorizes only its documented trust classes; disabled or unrecognized trust automation fails as `blocked_prompt` without submitting into the dialog. |
 | C-CLI-06 | §12A.2 | Built-in and selected per-agent permission, sandbox, approval, model, effort, and persona settings validate against the effective adapter before launch. |
 | C-CLI-07 | §12A.2 | An optional duration bounds launch, setup, and turn; first and repeated `SIGINT` perform interrupt then force-kill behavior; timeout and interruption exit 124 and 130 respectively. |
-| C-CLI-08 | §12A.2 §12A.5 | New state tears down unless kept, resumed state preserves unless ephemeral, exact resume never falls back, and persona is one discarded new-session setup turn that is rejected on resume. |
+| C-CLI-08 | §12A.2 §12A.5 | New Elwood state tears down unless kept, resumed state preserves unless ephemeral, exact resume never falls back, teardown does not undo workspace/agent-owned state, and persona is one output-discarded but side-effect-capable new-session setup turn that is rejected on resume. |
 | C-CLI-09 | §12A.2 | Premature agent exit and cleanup failure retain collected response data; cleanup runs once, never replaces a primary failure, and changes otherwise-successful execution to status 1. |
-| C-CLI-10 | §12A.3 | Default text output contains only the final response with exact newline semantics; verbose output stays on stderr, and streamed text is emitted once with partial output retained on failure. |
-| C-CLI-11 | §12A.3 | JSON emits one version-1 terminal document and JSONL emits ordered normalized records plus exactly one terminal record, including structured validation errors when explicitly selected. |
+| C-CLI-10 | §12A.3 | Default text output contains only the combined observed assistant messages with exact separator/newline semantics; text/JSON warnings surface concisely on stderr; verbose emits concise elapsed progress without assistant/thinking duplication; debug detail stays on stderr; and streamed text is emitted once with partial output retained on failure. |
+| C-CLI-11 | §12A.3 | JSON emits one version-1 terminal document and JSONL emits ordered normalized records plus exactly one terminal record, including structured validation errors when explicitly selected; every JSONL record has `elapsedMs` and tool records carry `toolCallId` when available. |
 | C-CLI-12 | §12A.3 | Output excludes terminal and secret-bearing internals, honors backpressure, and treats downstream `EPIPE` as graceful consumer closure followed by cleanup. |
 | C-CLI-13 | §12A.4 | Config path resolution follows explicit, absolute XDG, then home fallback order; config is strict version 1 with only documented keys, and project-local config is ignored. |
-| C-CLI-14 | §12A.4 | Flag, environment, config, and built-in precedence is deterministic, environment booleans are strict, and config path/show/get/set/unset never launches an agent. |
+| C-CLI-14 | §12A.4 | Flag, environment, config, and built-in precedence is deterministic, environment booleans are strict, negative flags reverse inherited stream/verbose values, `--no-defaults` bypasses Elwood run defaults, and config path/show/get/set/unset/effective never launches an agent. |
 | C-CLI-15 | §12A.4 §12A.5 | Config and state reads and writes enforce private ownership, regular-file, symlink-safety, and atomicity constraints. |
 | C-CLI-16 | §12A.5 | CLI state defaults to the absolute XDG state base or `~/.local/state/elwood`, never the workspace, and one session identity has at most one live owner. |
 | C-CLI-17 | §12A.5 | Success, agent/cleanup failure, usage/config failure, timeout, and interruption map to statuses 0, 1, 2, 124, and 130 without cleanup masking a primary status. |
-| C-CLI-18 | §12A.6 | `--head` fails before launch without terminal stdin/stderr; otherwise it mirrors ordered raw PTY bytes (including full-screen VT/ANSI control sequences) only to terminal stderr, uses and follows its size, keeps final text/JSON stdout clean, treats raw Ctrl-C like SIGINT, and restores terminal input/display modes before final output on every handled outcome. Outstanding mirror work is capped at 4 MiB or 1,024 frames; overflow fails the run after draining accepted bytes and restoring the terminal instead of growing memory without bound. A terminal-gone error from an input handle already closed by its host is contained because only that host can then restore the terminal, and it does not replace a completed result. |
+| C-CLI-18 | §12A.6 | `--head` fails before launch without terminal stdin/stderr and rejects stream/verbose/debug/JSONL; otherwise it mirrors ordered raw PTY bytes (including full-screen VT/ANSI control sequences) only to terminal stderr, uses and follows its size, keeps final text/JSON stdout clean, treats raw Ctrl-C like SIGINT, and restores terminal input/display modes before final output on every handled outcome. Outstanding mirror work is capped at 4 MiB or 1,024 frames; overflow fails the run after draining accepted bytes and restoring the terminal instead of growing memory without bound. A terminal-gone error from an input handle already closed by its host is contained because only that host can then restore the terminal, and it does not replace a completed result. |
+| C-CLI-19 | §12A.4 | `config effective` prints validated effective launch/output values (including `head` and the full Claude tool posture) with config location/load state and per-setting provenance, supports exact stored resume inspection using the same posture merge as launch, reads no prompt input, and starts no agent. |
+| C-CLI-20 | §12A.5 | Text validation errors use user-facing language, identify relevant paths and inherited-setting sources, suggest an unambiguous nearby long option, and retain the stable structured error code. |
 
 #### C-E2E: Real Adapter Flows (§12)
 

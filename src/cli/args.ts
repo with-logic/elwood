@@ -4,6 +4,7 @@
  */
 
 import { parseArgs } from "node:util";
+import { argumentErrorMessage } from "./arg-errors.ts";
 import {
   CliValidationError,
   type ParsedCliCommand,
@@ -19,7 +20,11 @@ const options = {
   "no-trust": { type: "boolean" },
   "state-dir": { type: "string" },
   verbose: { type: "boolean" },
+  "no-verbose": { type: "boolean" },
   stream: { type: "boolean" },
+  "no-stream": { type: "boolean" },
+  debug: { type: "boolean" },
+  "no-defaults": { type: "boolean" },
   head: { type: "boolean" },
   persona: { type: "string" },
   model: { type: "string" },
@@ -44,7 +49,11 @@ const optionKeys: Readonly<Record<string, RunOptionKey | undefined>> = {
   "no-trust": "trust",
   "state-dir": "stateDir",
   verbose: "verbose",
+  "no-verbose": "verbose",
   stream: "stream",
+  "no-stream": "stream",
+  debug: "debug",
+  "no-defaults": "ignoreDefaults",
   head: "head",
   persona: "persona",
   model: "model",
@@ -74,12 +83,9 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliCommand {
     });
     if (parsed.values.help === true) return { command: "help" };
     if (parsed.values.version === true) return { command: "version" };
-    if (parsed.values.trust === true && parsed.values["no-trust"] === true) {
-      throw new CliValidationError(
-        "invalid_arguments",
-        "--trust and --no-trust cannot be combined.",
-      );
-    }
+    rejectBooleanPair(parsed.values, "trust", "no-trust");
+    rejectBooleanPair(parsed.values, "stream", "no-stream");
+    rejectBooleanPair(parsed.values, "verbose", "no-verbose");
     return {
       command: "run",
       flags: flagsFrom(parsed.values),
@@ -88,7 +94,7 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliCommand {
     };
   } catch (error) {
     if (error instanceof CliValidationError) throw error;
-    throw new CliValidationError("invalid_arguments", String(error));
+    throw new CliValidationError("invalid_arguments", argumentErrorMessage(error));
   }
 }
 
@@ -101,7 +107,11 @@ function flagsFrom(values: Readonly<Record<string, unknown>>): RunFlags {
     ...(values["no-trust"] === true && { trust: false }),
     ...(typeof values["state-dir"] === "string" && { stateDir: values["state-dir"] }),
     ...(values["verbose"] === true && { verbose: true }),
+    ...(values["no-verbose"] === true && { verbose: false }),
     ...(values["stream"] === true && { stream: true }),
+    ...(values["no-stream"] === true && { stream: false }),
+    ...(values["debug"] === true && { debug: true }),
+    ...(values["no-defaults"] === true && { ignoreDefaults: true }),
     ...(values["head"] === true && { head: true }),
     ...(typeof values["persona"] === "string" && { persona: values["persona"] }),
     ...(typeof values["model"] === "string" && { model: values["model"] }),
@@ -121,6 +131,19 @@ function flagsFrom(values: Readonly<Record<string, unknown>>): RunFlags {
     ...(typeof values["resume"] === "string" && { resume: values["resume"] }),
     ...(values["ephemeral"] === true && { ephemeral: true }),
   };
+}
+
+function rejectBooleanPair(
+  values: Readonly<Record<string, unknown>>,
+  positive: string,
+  negative: string,
+): void {
+  if (values[positive] === true && values[negative] === true) {
+    throw new CliValidationError(
+      "invalid_arguments",
+      `--${positive} and --${negative} cannot be combined.`,
+    );
+  }
 }
 
 function explicitOptions(

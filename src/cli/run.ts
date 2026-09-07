@@ -32,10 +32,16 @@ export async function executeRun(
   dependencies: ExecuteRunDependencies,
 ): Promise<number> {
   const lifecycle = new CliLifecycle(request, session, dependencies.signals, dependencies.clock);
-  const output = new RunOutput(request, io.stdout, io.stderr, {
-    consumerClosed: () => lifecycle.closeConsumer(),
-    failed: (error) => lifecycle.fail(error),
-  });
+  const output = new RunOutput(
+    request,
+    io.stdout,
+    io.stderr,
+    {
+      consumerClosed: () => lifecycle.closeConsumer(),
+      failed: (error) => lifecycle.fail(error),
+    },
+    () => lifecycle.durationMs(),
+  );
   const head = dependencies.head;
   const updateAttention =
     request.agent === "codex"
@@ -44,6 +50,7 @@ export async function executeRun(
   const unsubscribers = subscribe(request, session, lifecycle, output, head, updateAttention);
   let resizeEnabled = false;
   lifecycle.start();
+  output.starting();
   try {
     head?.start({
       interrupt: () => lifecycle.interrupt(),
@@ -56,6 +63,7 @@ export async function executeRun(
     if (setup.completed) {
       const live = session.session;
       if (live !== undefined) output.setSecrets(privateOutputSecrets(live));
+      output.runningPrompt();
       const turn = consumeTurn(request, session, output);
       await lifecycle.race(turn);
     }
@@ -66,9 +74,8 @@ export async function executeRun(
   updateAttention?.dispose();
   await head?.close();
   const cleanup = await lifecycle.cleanup();
-  const terminal = terminalRecord(request, session, lifecycle, cleanup, output);
   try {
-    await output.finish(terminal);
+    await output.finish(() => terminalRecord(request, session, lifecycle, cleanup, output));
   } catch (error) {
     lifecycle.fail(error);
   }

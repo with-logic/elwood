@@ -22,3 +22,11 @@ export function createCliSanitizer(secrets: readonly string[] = []): (value: str
     return safe;
   };
 }
+
+/** Sanitize an untrusted diagnostic field and keep it on one visible terminal line. */
+export function formatDiagnosticValue(
+  value: string,
+  sanitize: (value: string) => string = createCliSanitizer(),
+): string {
+  return sanitize(value).replaceAll("\\", "\\\\").replaceAll("\t", "\\t").replaceAll("\n", "\\n");
+}

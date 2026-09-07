@@ -33,6 +33,12 @@ describe("CLI output edges", () => {
       name: "read",
       content: "done",
     });
+    expect(progressFromTurn({ type: "tool_result", toolCallId: "u1" }, clean)).toEqual({
+      schemaVersion: 1,
+      type: "tool",
+      phase: "result",
+      toolCallId: "u1",
+    });
   });
 
   test("closed sinks suppress all later text and JSONL output", async () => {
@@ -42,7 +48,7 @@ describe("CLI output edges", () => {
     const text = new StreamingTextRenderer(sink);
     expect(await text.message("later")).toBe(false);
     expect(await text.finish()).toBe(false);
-    const jsonl = new JsonlRenderer(sink);
+    const jsonl = new JsonlRenderer(sink, () => 0);
     expect(await jsonl.progress({ schemaVersion: 1, type: "thinking", text: "x" })).toBe(false);
     expect(
       await jsonl.finish({

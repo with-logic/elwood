@@ -61,7 +61,7 @@ describe("CLI output protocols", () => {
     expect(JSON.parse(jsonWriter.value)).toEqual(terminal());
 
     const lines = new Writer();
-    const jsonl = new JsonlRenderer(new AsyncOutputSink(lines));
+    const jsonl = new JsonlRenderer(new AsyncOutputSink(lines), () => 42);
     await jsonl.progress({ schemaVersion: 1, type: "text", text: "ok" });
     await jsonl.finish(terminal());
     expect(await jsonl.progress({ schemaVersion: 1, type: "status", status: "ready" })).toBe(false);
@@ -71,8 +71,8 @@ describe("CLI output protocols", () => {
       .split("\n")
       .map((line) => JSON.parse(line));
     expect(records).toEqual([
-      { schemaVersion: 1, type: "text", text: "ok", sequence: 1 },
-      { ...terminal(), sequence: 2 },
+      { schemaVersion: 1, type: "text", text: "ok", sequence: 1, elapsedMs: 42 },
+      { ...terminal(), sequence: 2, elapsedMs: 42 },
     ]);
   });
 
@@ -87,12 +87,18 @@ describe("CLI output protocols", () => {
     expect(progressFromTurn({ type: "thinking", text: "why" }, clean)).toMatchObject({
       type: "thinking",
     });
-    expect(progressFromTurn({ type: "tool_call", name: "exec", input: "pwd" }, clean)).toEqual({
+    expect(
+      progressFromTurn(
+        { type: "tool_call", name: "exec", input: "pwd", toolCallId: "call-1" },
+        clean,
+      ),
+    ).toEqual({
       schemaVersion: 1,
       type: "tool",
       phase: "call",
       name: "exec",
       content: "pwd",
+      toolCallId: "call-1",
     });
     expect(progressFromTurn({ type: "tool_result" }, clean)).toEqual({
       schemaVersion: 1,

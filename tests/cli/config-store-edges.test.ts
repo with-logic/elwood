@@ -33,6 +33,7 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 import { readConfig, writeConfig } from "../../src/cli/config/store.ts";
+import { CliValidationError } from "../../src/cli/types.ts";
 
 const root = () => mkdtempSync(join(tmpdir(), "elwood-config-fault-"));
 const config = { schemaVersion: 1 } as const;
@@ -50,7 +51,12 @@ describe("CLI config store failures", () => {
     fault.mode = "inspect";
     expect(() => writeConfig(join(directory, "config.json"), config)).toThrow(/inspect/iu);
     fault.mode = "read";
-    expect(() => readConfig(join(directory, "read-error.json"))).toThrow(/safely read/iu);
+    const path = join(directory, "read-error.json");
+    const error = readError(path);
+    expect(error).toMatchObject({
+      code: "invalid_config",
+      message: `Elwood config ${JSON.stringify(path)} could not be safely read.`,
+    });
     fault.mode = "none";
   });
 
@@ -63,3 +69,13 @@ describe("CLI config store failures", () => {
     expect(() => writeConfig(link, config)).toThrow(/regular file/iu);
   });
 });
+
+function readError(path: string): CliValidationError {
+  try {
+    readConfig(path);
+  } catch (error) {
+    if (error instanceof CliValidationError) return error;
+    throw error;
+  }
+  throw new Error("Expected config read to fail.");
+}

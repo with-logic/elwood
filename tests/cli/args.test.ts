@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { argumentErrorMessage } from "../../src/cli/arg-errors.ts";
 import { parseCliArgs } from "../../src/cli/args.ts";
 
 describe("CLI argument grammar", () => {
@@ -53,7 +54,9 @@ describe("CLI argument grammar", () => {
       "--state-dir",
       "state",
       "--verbose",
-      "--stream",
+      "--no-stream",
+      "--debug",
+      "--no-defaults",
       "--head",
       "--persona",
       "careful",
@@ -81,7 +84,9 @@ describe("CLI argument grammar", () => {
         trust: true,
         stateDir: "state",
         verbose: true,
-        stream: true,
+        stream: false,
+        debug: true,
+        ignoreDefaults: true,
         head: true,
         persona: "careful",
         model: "m",
@@ -99,11 +104,41 @@ describe("CLI argument grammar", () => {
     expect(parseCliArgs(["prompt"])).toMatchObject({ flags: { images: [] } });
   });
 
+  test("C-CLI-14 negative flags reverse inherited booleans", () => {
+    expect(parseCliArgs(["--no-stream", "--no-verbose", "prompt"])).toMatchObject({
+      command: "run",
+      flags: { stream: false, verbose: false },
+    });
+  });
+
+  test("C-CLI-20 unknown options use user-facing suggestions", () => {
+    expect(() => parseCliArgs(["--verbsoe"])).toThrowError(
+      "Unknown option '--verbsoe'. Did you mean '--verbose'?",
+    );
+    expect(() => parseCliArgs(["--no-verbsoe"])).toThrowError(
+      "Unknown option '--no-verbsoe'. Did you mean '--no-verbose'?",
+    );
+    expect(() => parseCliArgs(["--zzzzzz"])).toThrowError("Unknown option '--zzzzzz'.");
+  });
+
+  test("C-CLI-20 parser fallbacks stay concise for non-errors and short options", () => {
+    expect(argumentErrorMessage("private")).toBe("Could not parse command-line arguments.");
+    expect(
+      argumentErrorMessage(
+        Object.assign(new Error("Unknown option '-z'"), {
+          code: "ERR_PARSE_ARGS_UNKNOWN_OPTION",
+        }),
+      ),
+    ).toBe("Unknown option '-z'.");
+  });
+
   test.each([
     ["--unknown"],
     ["--agent"],
     ["--trust", "--no-trust", "prompt"],
+    ["--stream", "--no-stream", "prompt"],
+    ["--verbose", "--no-verbose", "prompt"],
   ])("C-CLI-06 rejects malformed options: %j", (...argv) => {
-    expect(() => parseCliArgs(argv)).toThrowError(/option|trust/iu);
+    expect(() => parseCliArgs(argv)).toThrowError(/option|trust|combined/iu);
   });
 });

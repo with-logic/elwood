@@ -35,6 +35,22 @@ function io(stdout = new MemoryWriter(), stderr = new MemoryWriter()) {
   };
 }
 
+function failWriteLater(writer: MemoryWriter, writeNumber: number): void {
+  const write = writer.write.bind(writer);
+  writer.write = (value, callback) => {
+    if (writer.writes + 1 !== writeNumber) return write(value, callback);
+    writer.writes += 1;
+    queueMicrotask(() => callback(new Error("stderr failed")));
+    return true;
+  };
+}
+
+function terminalOutput(output: "json" | "jsonl", value: string): unknown {
+  if (output === "json") return JSON.parse(value);
+  const lines = value.trim().split("\n");
+  return JSON.parse(lines[lines.length - 1] ?? "null");
+}
+
 describe("executeRun failure boundaries", () => {
   test("C-CLI-09 cleanup failure keeps response and changes success to failure", async () => {
     const session = new FakeCliSession();
@@ -46,7 +62,7 @@ describe("executeRun failure boundaries", () => {
       }),
     ).toBe(1);
     expect(streams.stdout.value).toBe("ok\n");
-    expect(streams.stderr.value).toBe("elwood: cleanup_failed: Cleanup failed.\n");
+    expect(streams.stderr.value).toBe("elwood: Cleanup failed.\n");
   });
 
   test("C-CLI-12 runtime credentials are redacted from the response", async () => {
@@ -97,22 +113,71 @@ describe("executeRun failure boundaries", () => {
   });
 
   test("progress output failure becomes the terminal primary error", async () => {
+    for (const output of ["json", "jsonl"] as const) {
+      const session = new FakeCliSession();
+      session.streamWork = (current) => {
+        current.emitter.emit("status", { elwoodSessionId: "s1", status: "ready" });
+        return Promise.resolve();
+      };
+      const streams = io();
+      streams.stderr.write = (_value, callback) => {
+        callback(new Error("stderr failed"));
+        return true;
+      };
+      expect(
+        await executeRun(request({ output, verbose: true }), session, streams.value, {
+          signals: new FakeSignals(),
+        }),
+      ).toBe(1);
+      expect(terminalOutput(output, streams.stdout.value)).toMatchObject({
+        type: "error",
+        error: { code: "runtime_error" },
+      });
+    }
+  });
+
+  test("delayed completion diagnostic failure changes JSON and JSONL terminal records", async () => {
+    for (const output of ["json", "jsonl"] as const) {
+      const session = new FakeCliSession();
+      const streams = io();
+      failWriteLater(streams.stderr, 3);
+      expect(
+        await executeRun(request({ output, verbose: true }), session, streams.value, {
+          signals: new FakeSignals(),
+        }),
+      ).toBe(1);
+      expect(terminalOutput(output, streams.stdout.value)).toMatchObject({
+        type: "error",
+        error: { code: "runtime_error" },
+      });
+    }
+  });
+
+  test("warnings emitted during cleanup are flushed before the terminal record", async () => {
     const session = new FakeCliSession();
-    session.streamWork = (current) => {
-      current.emitter.emit("status", { elwoodSessionId: "s1", status: "ready" });
-      return Promise.resolve();
+    session.cleanupWork = (current) => {
+      current.emitter.emit("warning", {
+        elwoodSessionId: "s1",
+        agent: "codex",
+        source: "lifecycle",
+        code: "version_unparseable",
+        severity: "warning",
+        message: "cleanup warning",
+        raw: "raw",
+      });
     };
     const streams = io();
-    streams.stderr.write = (_value, callback) => {
-      callback(new Error("stderr failed"));
-      return true;
-    };
     expect(
-      await executeRun(request({ output: "json", verbose: true }), session, streams.value, {
+      await executeRun(request({ output: "jsonl" }), session, streams.value, {
         signals: new FakeSignals(),
       }),
-    ).toBe(1);
-    expect(JSON.parse(streams.stdout.value).error.code).toBe("runtime_error");
+    ).toBe(0);
+    expect(
+      streams.stdout.value
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line).type),
+    ).toEqual(["text", "warning", "result"]);
   });
 
   test("terminal output failure is contained after cleanup", async () => {

@@ -7,7 +7,9 @@ import type { CodexApprovalPolicy, CodexSandboxMode } from "../codex/session-typ
 import type { ImageInput } from "../core/images/types.ts";
 import type { CodexReasoningEffort } from "../core/reasoning-effort.ts";
 import type { ClaudePermissionMode, TerminalSize } from "../core/types.ts";
+import type { CliRequestResolution } from "./resolution-types.ts";
 
+export type { CliRequestResolution, CliSettingSources } from "./resolution-types.ts";
 export const cliAgents = ["claude", "codex"] as const;
 export const cliOutputModes = ["text", "json", "jsonl"] as const;
 export const claudePermissionModes = [
@@ -63,6 +65,8 @@ export type RunOptionKey =
   | "stateDir"
   | "verbose"
   | "stream"
+  | "debug"
+  | "ignoreDefaults"
   | "head"
   | "persona"
   | "model"
@@ -84,6 +88,8 @@ export type RunFlags = {
   readonly stateDir?: string;
   readonly verbose?: boolean;
   readonly stream?: boolean;
+  readonly debug?: boolean;
+  readonly ignoreDefaults?: boolean;
   readonly head?: boolean;
   readonly persona?: string;
   readonly model?: string;
@@ -133,6 +139,7 @@ export type ResolvedRunRequest = {
   readonly stateDir: string;
   readonly verbose: boolean;
   readonly stream: boolean;
+  readonly debug?: boolean;
   readonly head?: boolean;
   readonly initialSize?: TerminalSize;
   readonly persona?: string;
@@ -145,11 +152,13 @@ export type ResolvedRunRequest = {
   readonly sandbox?: CodexSandboxMode;
   readonly approvalPolicy?: CodexApprovalPolicy;
   readonly cwd?: string;
+  readonly cwdExplicit?: boolean;
   readonly imagePaths: readonly string[];
   readonly prompt: string;
   readonly keep: boolean;
   readonly resume?: string;
   readonly ephemeral: boolean;
+  readonly resolution?: CliRequestResolution;
 };
 
 export type EffectiveRunRequest = Omit<

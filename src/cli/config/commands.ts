@@ -3,9 +3,12 @@
  * Implements PRD §12A.4 and C-CLI-14/C-CLI-15.
  */
 
+import { cliConfigHelp } from "../help.ts";
+import { usage } from "../request-values.ts";
 import type { AsyncOutputSink } from "../stream.ts";
-import { type CliEnvironment, CliValidationError } from "../types.ts";
+import type { CliEnvironment } from "../types.ts";
 import { getConfigValue, setConfigValue, unsetConfigValue } from "./codec.ts";
+import { writeEffectiveConfig } from "./effective.ts";
 import { resolveConfigPath } from "./paths.ts";
 import { readConfig, writeConfig } from "./store.ts";
 
@@ -22,6 +25,18 @@ export async function runConfigCommand(
   context: ConfigCommandContext,
 ): Promise<void> {
   const [command, ...rest] = args;
+  if ((command === "help" || command === "--help" || command === "-h") && rest.length === 0) {
+    await context.stdout.write(cliConfigHelp);
+    return;
+  }
+  if (command === "effective") {
+    if (rest.length === 1 && (rest[0] === "--help" || rest[0] === "-h")) {
+      await context.stdout.write(cliConfigHelp);
+      return;
+    }
+    await writeEffectiveConfig(rest, context);
+    return;
+  }
   const path = resolveConfigPath(context.env, context.invocationCwd, context.homeDir);
   if (command === "path" && rest.length === 0) {
     await context.stdout.write(`${path}\n`);
@@ -47,14 +62,10 @@ export async function runConfigCommand(
     writeConfig(path, unsetConfigValue(readConfig(path), required(rest[0], "key")));
     return;
   }
-  throw usage("Usage: elwood config <path|show|get|set|unset> [key] [value]");
+  throw usage("Usage: elwood config <path|show|effective|get|set|unset> [key] [value]");
 }
 
 function required(value: string | undefined, label: string): string {
   if (value === undefined || value.trim() === "") throw usage(`Config ${label} is required.`);
   return value;
-}
-
-function usage(message: string): CliValidationError {
-  return new CliValidationError("invalid_arguments", message);
 }

@@ -35,9 +35,18 @@ export type CliProgressRecord =
   | {
       readonly schemaVersion: 1;
       readonly type: "tool";
-      readonly phase: "call" | "result";
+      readonly phase: "call";
+      readonly name: string;
+      readonly content?: string;
+      readonly toolCallId?: string;
+    }
+  | {
+      readonly schemaVersion: 1;
+      readonly type: "tool";
+      readonly phase: "result";
       readonly name?: string;
       readonly content?: string;
+      readonly toolCallId?: string;
     }
   | {
       readonly schemaVersion: 1;
@@ -52,7 +61,7 @@ export type CliProgressRecord =
     };
 
 export type CliJsonlRecord =
-  | (CliProgressRecord & { readonly sequence: number })
-  | (CliTerminalRecord & { readonly sequence: number });
+  | (CliProgressRecord & { readonly sequence: number; readonly elapsedMs: number })
+  | (CliTerminalRecord & { readonly sequence: number; readonly elapsedMs: number });
 
 export type CliTextSanitizer = (value: string) => string;

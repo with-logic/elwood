@@ -5,15 +5,23 @@
 import { describe, expect, test } from "vitest";
 import { main } from "../../src/cli/main.ts";
 import { resolveRunRequest } from "../../src/cli/request.ts";
+import { CliValidationError } from "../../src/cli/types.ts";
 import { elwoodError } from "../../src/core/errors.ts";
 import { mainDependencies, mainHarness, resolvedRequest } from "./main-fakes.ts";
 
 describe("CLI main failures", () => {
+  test("C-CLI-18 unknown options are actionable and suggest close matches", async () => {
+    const h = mainHarness();
+    expect(await main(["--verbsoe"], h.context)).toBe(2);
+    expect(h.stdout.value).toBe("");
+    expect(h.stderr.value).toBe("elwood: Unknown option '--verbsoe'. Did you mean '--verbose'?\n");
+  });
+
   test("C-CLI-02/C-CLI-17 explicit run with empty terminal input is a usage error", async () => {
     const h = mainHarness();
     expect(await main(["run"], h.context)).toBe(2);
     expect(h.stdout.value).toBe("");
-    expect(h.stderr.value).toContain("invalid_arguments");
+    expect(h.stderr.value).toBe("elwood: A non-empty prompt is required.\n");
   });
 
   test("C-CLI-11 explicit JSON preserves agent hint on argument failure", async () => {
@@ -67,6 +75,24 @@ describe("CLI main failures", () => {
       expect(h.stdout.value).toBe("");
       expect(h.stderr.value).toContain("elwood:");
     }
+  });
+
+  test("C-CLI-20 text failures keep dynamic values on one diagnostic line", async () => {
+    const h = mainHarness();
+    expect(
+      await main(
+        ["go"],
+        h.context,
+        mainDependencies({
+          resolve: () =>
+            Promise.reject(
+              new CliValidationError("invalid_arguments", "Workspace 'bad\npath' does not exist."),
+            ),
+        }),
+      ),
+    ).toBe(2);
+    expect(h.stdout.value).toBe("");
+    expect(h.stderr.value).toBe("elwood: Workspace 'bad\\npath' does not exist.\n");
   });
 
   test("resolved output handles typed and unknown startup failures", async () => {

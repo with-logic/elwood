@@ -76,9 +76,21 @@ export function choice<V extends string>(
   return value as V;
 }
 
+export function requiredChoice<V extends string>(
+  value: string,
+  valid: readonly V[],
+  label: string,
+): V {
+  return choice(value, undefined, undefined, valid, label) as V;
+}
+
 export function nonBlank(value: string, label: string): string {
   if (value.trim() === "") throw usage(`${label} must not be empty.`);
   return value;
+}
+
+export function optionalNonBlank(value: string | undefined, label: string): string | undefined {
+  return value === undefined ? undefined : nonBlank(value, label);
 }
 
 export function optional<K extends string, V>(

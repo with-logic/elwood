@@ -21,6 +21,7 @@ export function progressFromTurn(event: TurnEvent, clean: CliTextSanitizer): Cli
         phase: "call",
         name: clean(event.name),
         ...(event.input === undefined ? {} : { content: clean(event.input) }),
+        ...(event.toolCallId === undefined ? {} : { toolCallId: clean(event.toolCallId) }),
       };
     case "tool_result":
       return {
@@ -29,6 +30,7 @@ export function progressFromTurn(event: TurnEvent, clean: CliTextSanitizer): Cli
         phase: "result",
         ...(event.name === undefined ? {} : { name: clean(event.name) }),
         ...(event.output === undefined ? {} : { content: clean(event.output) }),
+        ...(event.toolCallId === undefined ? {} : { toolCallId: clean(event.toolCallId) }),
       };
   }
 }
@@ -43,7 +45,7 @@ export function progressFromActivity(event: ElwoodActivityEvent): CliProgressRec
 export function progressFromWarning(
   event: ElwoodWarningEvent,
   clean: CliTextSanitizer,
-): CliProgressRecord {
+): Extract<CliProgressRecord, { readonly type: "warning" }> {
   return {
     schemaVersion: 1,
     type: "warning",

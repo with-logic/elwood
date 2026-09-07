@@ -17,6 +17,7 @@ import { describe, expect, test } from "vitest";
 import { decodeConfig, parseConfigValue, setConfigValue } from "../../src/cli/config/codec.ts";
 import { resolveConfigPath, resolveStateDir } from "../../src/cli/config/paths.ts";
 import { readConfig, writeConfig } from "../../src/cli/config/store.ts";
+import { CliValidationError } from "../../src/cli/types.ts";
 
 const sandbox = () => mkdtempSync(join(tmpdir(), "elwood-cli-config-"));
 
@@ -74,6 +75,14 @@ describe("CLI config", () => {
     expect(readFileSync(path, "utf8")).toMatch(/"schemaVersion": 1/u);
   });
 
+  test("C-CLI-20 identifies the selected path for malformed config", () => {
+    const path = join(sandbox(), "malformed.json");
+    writeFileSync(path, "not JSON\n", { mode: 0o600 });
+    const error = readError(path);
+    expect(error.code).toBe("invalid_config");
+    expect(error.message).toBe(`Elwood config ${JSON.stringify(path)}: Config is not valid JSON.`);
+  });
+
   test.each(["symlink", "permissive", "wrong-owner"])("C-CLI-15 rejects %s config", (variant) => {
     const root = sandbox();
     const real = join(root, "real.json");
@@ -88,6 +97,25 @@ describe("CLI config", () => {
     } else {
       uid += 1;
     }
-    expect(() => readConfig(path, { uid })).toThrow(/config/iu);
+    const error = readError(path, uid);
+    expect(error.code).toBe("invalid_config");
+    expect(error.message).toContain(`Elwood config ${JSON.stringify(path)}`);
+    expect(error.message).toMatch(
+      variant === "symlink"
+        ? /could not be safely read|regular file, not a symlink/iu
+        : variant === "permissive"
+          ? /permissions must be owner-only/iu
+          : /owned by the current user/iu,
+    );
   });
 });
+
+function readError(path: string, uid = process.getuid!()): CliValidationError {
+  try {
+    readConfig(path, { uid });
+  } catch (error) {
+    if (error instanceof CliValidationError) return error;
+    throw error;
+  }
+  throw new Error("Expected config read to fail.");
+}

@@ -29,9 +29,14 @@ describe("toTurnEvent (C-API-48)", () => {
       type: "thinking",
       text: "hmm",
     });
-    expect(toTurnEvent(activity({ kind: "tool_call", toolName: "Bash", toolInput: "ls" }))).toEqual(
-      { type: "tool_call", name: "Bash", input: "ls" },
-    );
+    expect(
+      toTurnEvent(
+        activity({ kind: "tool_call", toolName: "Bash", toolInput: "ls", toolUseId: "u1" }),
+      ),
+    ).toEqual({ type: "tool_call", name: "Bash", input: "ls", toolCallId: "u1" });
+    expect(
+      toTurnEvent(activity({ kind: "tool_result", toolOutput: "ok", toolUseId: "u1" })),
+    ).toEqual({ type: "tool_result", output: "ok", toolCallId: "u1" });
   });
 
   test("omits absent tool fields; falls back to label for a nameless tool_call", () => {
@@ -86,6 +91,8 @@ describe("turnEventBytes (C-API-53 pending-byte accounting)", () => {
     // tool_result: name + output, both optional (bare shape → 0).
     expect(turnEventBytes({ type: "tool_result", name: "Bash", output: "ok" })).toBe(6);
     expect(turnEventBytes({ type: "tool_result" })).toBe(0);
+    expect(turnEventBytes({ type: "tool_call", name: "Bash", toolCallId: "u1" })).toBe(6);
+    expect(turnEventBytes({ type: "tool_result", toolCallId: "u1" })).toBe(2);
   });
 
   test("counts UTF-8 BYTES, not UTF-16 code units — multibyte text exceeds its .length", () => {

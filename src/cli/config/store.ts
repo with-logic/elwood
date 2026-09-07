@@ -24,17 +24,23 @@ import { type CliConfig, CliValidationError } from "../types.ts";
 import { parseConfigText } from "./codec.ts";
 
 export type ConfigIdentity = { readonly uid: number };
+export type ConfigReadResult = { readonly config: CliConfig; readonly loaded: boolean };
 
 export function readConfig(path: string, identity = currentIdentity()): CliConfig {
+  return readConfigWithStatus(path, identity).config;
+}
+
+export function readConfigWithStatus(path: string, identity = currentIdentity()): ConfigReadResult {
   let fd: number | undefined;
   try {
     fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     assertPrivateFile(fstatSync(fd), identity);
-    return parseConfigText(readFileSync(fd, "utf8"));
+    return { config: parseConfigText(readFileSync(fd, "utf8")), loaded: true };
   } catch (error) {
-    if (errnoCode(error) === "ENOENT") return { schemaVersion: 1 };
-    if (error instanceof CliValidationError) throw error;
-    throw invalid("Could not safely read Elwood config.");
+    if (errnoCode(error) === "ENOENT") return { config: { schemaVersion: 1 }, loaded: false };
+    if (error instanceof CliValidationError)
+      throw new CliValidationError(error.code, `${configLabel(path)}: ${error.message}`);
+    throw invalid(`${configLabel(path)} could not be safely read.`);
   } finally {
     if (fd !== undefined) closeSync(fd);
   }
@@ -102,4 +108,8 @@ function currentIdentity(): ConfigIdentity {
 
 function invalid(message: string): CliValidationError {
   return new CliValidationError("invalid_config", message);
+}
+
+function configLabel(path: string): string {
+  return `Elwood config ${JSON.stringify(path)}`;
 }

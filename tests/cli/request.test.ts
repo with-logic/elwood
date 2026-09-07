@@ -35,6 +35,73 @@ describe("effective CLI request", () => {
     expect(draft).toMatchObject({ agent: "codex", timeoutMs: 300_000, trust: false });
   });
 
+  test("C-CLI-14 negative flags and no-defaults make inherited settings reversible", async () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-cli-request-"));
+    const configPath = join(root, "config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({ schemaVersion: 1, agent: "claude", verbose: true, stream: true }),
+      { mode: 0o600 },
+    );
+    const inherited = parseCliArgs(["--output", "json", "--no-stream", "--no-verbose", "go"]);
+    const isolated = parseCliArgs(["--no-defaults", "go"]);
+    if (inherited.command !== "run" || isolated.command !== "run") throw new Error("expected run");
+    const context = {
+      env: { ELWOOD_CONFIG: configPath, ELWOOD_AGENT: "claude", ELWOOD_STREAM: "true" },
+      homeDir: root,
+      invocationCwd: root,
+      stdin: { isTTY: true, source: stdin() },
+    } as const;
+    await expect(resolveRunRequest(inherited, context)).resolves.toMatchObject({
+      agent: "claude",
+      output: "json",
+      stream: false,
+      verbose: false,
+    });
+    await expect(resolveRunRequest(isolated, context)).resolves.toMatchObject({
+      agent: "codex",
+      output: "text",
+      stream: false,
+      verbose: false,
+    });
+  });
+
+  test("C-CLI-20 incompatibility errors identify inherited sources and recovery flags", async () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-cli-request-"));
+    const context = {
+      env: { ELWOOD_STREAM: "true" },
+      homeDir: root,
+      invocationCwd: root,
+      stdin: { isTTY: true, source: stdin() },
+    } as const;
+    const parsed = parseCliArgs(["--output", "json", "go"]);
+    if (parsed.command !== "run") throw new Error("expected run");
+    await expect(resolveRunRequest(parsed, context)).rejects.toThrow(
+      "Streaming is enabled by ELWOOD_STREAM; JSON output requires streaming to be disabled. Use --no-stream.",
+    );
+  });
+
+  test("C-CLI-19 provenance distinguishes positive flags and environment values", async () => {
+    const root = mkdtempSync(join(tmpdir(), "elwood-cli-request-"));
+    const flagged = parseCliArgs(["--trust", "--debug", "go"]);
+    const inherited = parseCliArgs(["go"]);
+    if (flagged.command !== "run" || inherited.command !== "run") throw new Error("expected run");
+    const first = await resolveRunRequest(flagged, {
+      env: {},
+      homeDir: root,
+      invocationCwd: root,
+      stdin: { isTTY: true, source: stdin() },
+    });
+    const second = await resolveRunRequest(inherited, {
+      env: { ELWOOD_TRUST: "false" },
+      homeDir: root,
+      invocationCwd: root,
+      stdin: { isTTY: true, source: stdin() },
+    });
+    expect(first.resolution?.sources).toMatchObject({ trust: "--trust", debug: "--debug" });
+    expect(second.resolution?.sources.trust).toBe("ELWOOD_TRUST");
+  });
+
   test("C-CLI-03/C-CLI-04 finalizes cwd and ordered images before launch", async () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-cli-request-"));
     const workspace = join(root, "workspace");

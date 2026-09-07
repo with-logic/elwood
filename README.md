@@ -11,6 +11,9 @@ The important constraint: the agent should not know it is wrapped. Elwood keeps
 the process interactive, uses the user's normal shell environment, and treats
 hooks/transcripts as the control and observability layer.
 
+Using the executable from shell scripts? Start with the
+[CLI quickstart and scripting guide](docs/cli-scripting.md).
+
 ```ts
 import { CodexSession } from "elwood";
 
@@ -31,6 +34,7 @@ Want the intermediate steps as they happen? Iterate `stream` for typed events â€
 for await (const event of session.stream("Run the test suite and report failures.")) {
   if (event.type === "text") process.stdout.write(event.text);
   // event.type is also "thinking" | "tool_call" | "tool_result"
+  // Tool calls/results include toolCallId when the adapter exposes one.
 }
 ```
 
@@ -131,8 +135,9 @@ elwood "What's the weather today in Seattle?"
 ```
 
 `elwood "prompt"` uses Codex in the current directory, waits for one complete
-turn, prints only the final assistant response to stdout, then tears the session
-down. `elwood run "prompt"` is the same command in explicit form. Select Claude
+turn, prints the combined observed assistant text messages to stdout, then tears
+its Elwood session state down. It does not undo files the agent changed or remove
+history owned by the agent CLI. `elwood run "prompt"` is the same command in explicit form. Select Claude
 when desired; Elwood never silently falls back to another agent:
 
 ```sh
@@ -159,6 +164,8 @@ absolute `$XDG_CONFIG_HOME/elwood/config.json`, then
 ```sh
 elwood config path
 elwood config show
+elwood config effective
+elwood config effective --agent claude --output json
 elwood config set agent claude
 elwood config set timeout 10m
 elwood config get agent
@@ -171,7 +178,15 @@ Supported keys are `agent`, `output`, `timeout`, `trust`, `stateDir`, `verbose`,
 and `codex.approvalPolicy` (`schemaVersion` is always `1`). Values are typed and
 unknown keys are rejected.
 
-Precedence is flags, environment, global config, then built-ins. Environment
+`config show` prints only the saved file. `config effective` validates and prints
+the resolved launch/output values, their individual sources, the config path,
+and whether that file was loadedâ€”without reading a prompt or starting an agent.
+
+Precedence is flags, environment, global config, then built-ins. `--no-stream`
+and `--no-verbose` reverse inherited true values. `--no-defaults` ignores the
+saved config and all `ELWOOD_*` run-setting variables for a reproducible
+invocation while leaving the selected agent's ordinary process environment
+alone. Environment
 names are `ELWOOD_AGENT`, `ELWOOD_OUTPUT`, `ELWOOD_TIMEOUT`, `ELWOOD_TRUST`,
 `ELWOOD_STATE_DIR`, `ELWOOD_VERBOSE`, `ELWOOD_STREAM`, `ELWOOD_PERSONA`,
 `ELWOOD_MODEL`, `ELWOOD_REASONING_EFFORT`, `ELWOOD_CLAUDE_PERMISSION_MODE`,
@@ -180,28 +195,41 @@ values are exactly `true` or `false`.
 
 Run `elwood --help` for the full flag list. Useful launch controls include
 `--model`, `--reasoning-effort`, `--persona`, `--claude-permission-mode`,
-`--codex-sandbox`, `--codex-approval-policy`, `--state-dir`, `--verbose`, and
+`--codex-sandbox`, `--codex-approval-policy`, `--state-dir`, `--verbose`, `--debug`, and
 `--trust` / `--no-trust`. The built-in non-interactive posture is Claude
 `dontAsk`, or Codex `workspace-write` with approval policy `never`.
 
 ### Output and pipelines
 
-Text is the default output protocol. Diagnostics and verbose progress go to
-stderr, never into the answer on stdout. `--stream` emits assistant text as it
-arrives; it is intentionally valid only with text output.
+Text is the default output protocol. Concise warnings and diagnostics go to
+stderr by default, never into the answer on stdout. `--verbose` adds compact
+elapsed phase, tool-name, warning, and cleanup progress suitable for routine use;
+it does not repeat assistant or thinking text. `--debug` adds full sanitized
+normalized event details. `--stream` emits assistant text as it arrives and is
+intentionally valid only with text output; use `--no-stream` when config enabled
+streaming but a script needs JSON.
 
 For programs, `--output json` emits one version-1 terminal document. Its stable
 fields are `schemaVersion`, `type`, `agent`, `response`, `sessionId`,
 `durationMs`, `cleanup`, and, on failure, `error`. `--output jsonl` emits
 monotonically sequenced version-1 `text`, `thinking`, `tool`, `status`, and
-`warning` records followed by exactly one `result` or `error` record:
+`warning` records followed by exactly one `result` or `error` record. Every JSONL
+record includes `elapsedMs`; tool records include `toolCallId` when the adapter
+provides one:
 
 ```sh
 answer=$(elwood "Name the primary package in this repository")
-elwood --output json "Summarize this project" | jq -r .response
+set -o pipefail
+elwood --output json "Summarize this project" | jq -er 'select(.type == "result") | .response'
 elwood --output jsonl "Run the tests" | jq -c 'select(.type == "tool")'
 elwood --stream --verbose "Implement the smallest safe fix"
 ```
+
+Always inspect the process status and terminal record type in scripts: a failed
+turn can retain a useful partial `response`. A bare `| jq -r .response` can hide
+that failure when shell pipeline failure propagation is disabled. The
+[scripting guide](docs/cli-scripting.md) includes complete JSON/JSONL examples,
+exit codes, and Bash/Zsh recipes.
 
 ANSI terminal frames, raw hook payloads, screen contents, bridge credentials,
 and stacks are excluded from production output. Writes honor backpressure, and
@@ -233,7 +261,7 @@ Elwood's normal first-interrupt/repeated-force-kill lifecycle. Terminal resizes
 propagate to the agent. Elwood restores raw/cooked input state, mouse and paste
 modes, attributes, cursor visibility, and the main screen before printing the
 final result. Both stdin and stderr must be terminals, and `--head` cannot be
-combined with `--stream`, `--verbose`, or `--output jsonl`.
+combined with `--stream`, `--verbose`, `--debug`, or `--output jsonl`.
 
 ### Continuation and cleanup
 
@@ -247,16 +275,27 @@ elwood --resume "$id" "What is the release color?"
 elwood --resume "$id" --ephemeral "Finish this conversation"
 ```
 
-Resume uses the exact stored agent and workspace; a conflicting explicit agent
-is rejected. Resumed sessions stay preserved after success or failure unless
-`--ephemeral` requests teardown. CLI state defaults to absolute
+Resume uses the exact stored agent and workspace; conflicting `--agent` and any
+`--cwd` are rejected. Resumed sessions stay preserved after success or failure unless
+`--ephemeral` requests teardown. Ephemeral teardown removes Elwood's session
+record and loop definitions; it does not undo workspace changes or delete
+conversation history owned by Claude or Codex. CLI state defaults to absolute
 `$XDG_STATE_HOME/elwood` or `~/.local/state/elwood`; its private records contain
 resume metadata, not ordinary prompts or output.
+
+Before launching, `elwood config effective [run options]` prints the resolved
+settings and where each came from. The JSON includes `head` and, for Claude,
+the effective `permissionMode`, `allowedTools`, `disallowedTools`, and `tools`;
+resume inspection reports persisted tool rules with stored-session provenance.
 
 Exit status is `0` for success or a closed consumer, `1` for agent/runtime or
 cleanup failure, `2` for usage/configuration failure, `124` for timeout, and
 `130` for interruption. The first Ctrl-C requests a clean interrupt; a repeated
 Ctrl-C force-kills before cleanup.
+
+`--persona` runs an actual extra agent turn before the requested turn. Elwood
+discards that setup turn's answer, but any tools it invokes or files it changes
+remain. It is therefore supported only for new sessions, never `--resume`.
 
 ### Trust and security
 

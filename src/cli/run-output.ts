@@ -8,9 +8,10 @@ import type { ElwoodWarningEvent } from "../core/types.ts";
 import { writeJson } from "./output/json.ts";
 import { JsonlRenderer } from "./output/jsonl.ts";
 import { progressFromTurn, progressFromWarning } from "./output/records.ts";
-import { createCliSanitizer } from "./output/sanitize.ts";
+import { createCliSanitizer, formatDiagnosticValue } from "./output/sanitize.ts";
 import { StreamingTextRenderer, writeFinalText } from "./output/text.ts";
 import type { CliProgressRecord, CliTerminalRecord, CliTextSanitizer } from "./output/types.ts";
+import { completionLine, conciseLine, debugLine, warningLine } from "./run-output-lines.ts";
 import type { AsyncOutputSink } from "./stream.ts";
 import type { EffectiveRunRequest } from "./types.ts";
 
@@ -24,6 +25,7 @@ export class RunOutput {
   private readonly stdout: AsyncOutputSink;
   private readonly stderr: AsyncOutputSink;
   private readonly hooks: RunOutputHooks;
+  private readonly elapsedMs: () => number;
   private clean: CliTextSanitizer = createCliSanitizer();
   private readonly responseParts: string[] = [];
   private readonly jsonl: JsonlRenderer;
@@ -36,12 +38,14 @@ export class RunOutput {
     stdout: AsyncOutputSink,
     stderr: AsyncOutputSink,
     hooks: RunOutputHooks,
+    elapsedMs: () => number,
   ) {
     this.request = request;
     this.stdout = stdout;
     this.stderr = stderr;
     this.hooks = hooks;
-    this.jsonl = new JsonlRenderer(stdout);
+    this.elapsedMs = elapsedMs;
+    this.jsonl = new JsonlRenderer(stdout, elapsedMs);
     this.streamed = new StreamingTextRenderer(stdout);
   }
 
@@ -70,22 +74,44 @@ export class RunOutput {
   }
 
   warning(event: ElwoodWarningEvent): void {
-    void this.enqueue(progressFromWarning(event, this.clean));
+    if (this.ended) return;
+    const record = progressFromWarning(event, this.clean);
+    if (this.request.output !== "jsonl" && !this.request.verbose && this.request.debug !== true) {
+      this.queueDiagnostic(warningLine(record, this.diagnosticValue));
+      return;
+    }
+    void this.enqueue(record);
+  }
+
+  starting(): void {
+    this.progress(
+      `Starting ${agentName(this.request.agent)} in ${this.diagnosticValue(this.request.cwd)}`,
+    );
+  }
+
+  runningPrompt(): void {
+    this.progress("Running prompt");
   }
 
   async flush(): Promise<void> {
     await this.tail;
   }
 
-  async finish(record: CliTerminalRecord): Promise<void> {
+  async finish(terminalRecord: () => CliTerminalRecord): Promise<void> {
     this.ended = true;
     await this.flush();
+    if (this.request.verbose || this.request.debug === true) {
+      await this.observeDiagnostic(
+        this.timed(completionLine(terminalRecord(), this.diagnosticValue)),
+      );
+    }
+    const record = terminalRecord();
     if (this.request.output === "json") await this.observeWrite(writeJson(this.stdout, record));
     else if (this.request.output === "jsonl") await this.observeWrite(this.jsonl.finish(record));
     else if (this.request.stream) await this.observeWrite(this.streamed.finish());
     else await this.observeWrite(writeFinalText(this.stdout, record.response));
     if (this.request.output === "text" && record.type === "error" && !this.stdout.closed) {
-      await this.stderr.write(`elwood: ${record.error.code}: ${record.error.message}\n`);
+      await this.observeDiagnostic(`elwood: ${this.diagnosticValue(record.error.message)}\n`);
     }
     if (
       this.request.output === "text" &&
@@ -93,7 +119,7 @@ export class RunOutput {
       record.sessionId !== null &&
       record.cleanup.status === "succeeded"
     ) {
-      await this.stderr.write(`elwood: session ${record.sessionId}\n`);
+      await this.observeDiagnostic(`elwood: session ${this.diagnosticValue(record.sessionId)}\n`);
     }
   }
 
@@ -103,7 +129,13 @@ export class RunOutput {
       if (this.request.output === "jsonl") await this.observeWrite(this.jsonl.progress(record));
       if (this.request.stream && record.type === "text")
         await this.observeWrite(this.streamed.message(record.text));
-      if (this.request.verbose) await this.stderr.write(verboseLine(record));
+      const jsonlWarning = this.request.output === "jsonl" && record.type === "warning";
+      if (!jsonlWarning && this.request.debug === true)
+        await this.stderr.write(this.timed(debugLine(record, this.diagnosticValue)));
+      else if (!jsonlWarning && this.request.verbose) {
+        const line = conciseLine(record, this.diagnosticValue);
+        if (line !== undefined) await this.stderr.write(this.timed(line));
+      }
     });
     this.tail = pending.catch((error) => this.hooks.failed(error));
     return this.tail;
@@ -112,19 +144,31 @@ export class RunOutput {
   private async observeWrite(write: Promise<boolean>): Promise<void> {
     if (!(await write)) this.hooks.consumerClosed();
   }
+
+  private progress(message: string): void {
+    if (!this.request.verbose && this.request.debug !== true) return;
+    this.queueDiagnostic(this.timed(`${message}\n`));
+  }
+
+  private queueDiagnostic(line: string): void {
+    const pending = this.tail.then(async () => {
+      await this.stderr.write(line);
+    });
+    this.tail = pending.catch((error) => this.hooks.failed(error));
+  }
+
+  private timed(line: string): string {
+    return `[${(Math.max(0, Math.trunc(this.elapsedMs())) / 1_000).toFixed(1)}s] ${line}`;
+  }
+
+  private async observeDiagnostic(line: string): Promise<void> {
+    await this.stderr.write(line).catch(this.hooks.failed);
+  }
+
+  private readonly diagnosticValue = (value: string): string =>
+    formatDiagnosticValue(value, this.clean);
 }
 
-function verboseLine(record: CliProgressRecord): string {
-  switch (record.type) {
-    case "text":
-      return `[assistant] ${record.text}\n`;
-    case "thinking":
-      return `[thinking] ${record.text}\n`;
-    case "tool":
-      return `[tool ${record.phase}] ${record.name ?? "unknown"}${record.content === undefined ? "" : ` ${record.content}`}\n`;
-    case "status":
-      return `[status] ${record.status}\n`;
-    case "warning":
-      return `[warning ${record.code}] ${record.message}\n`;
-  }
+function agentName(agent: EffectiveRunRequest["agent"]): string {
+  return agent === "codex" ? "Codex" : "Claude";
 }
