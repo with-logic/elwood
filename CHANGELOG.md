@@ -247,6 +247,11 @@ First public release.
 ### Changed
 
 - Published as `@with-logic/elwood` under the MIT license.
+- The published package runs no install scripts. `dist/` is built before publish
+  (`prepublishOnly`) and shipped in the tarball, so `npm install -g
+  @with-logic/elwood` needs no build step and raises no npm allow-scripts
+  prompt for Elwood itself. Working from a checkout now requires an explicit
+  `npm run build` before `npm link`.
 - Warnings are live-only events. Nothing is persisted, replayed, or counted;
   there is no `session.warnings` property.
 - The persisted session record holds only schema version, `elwoodSessionId`,

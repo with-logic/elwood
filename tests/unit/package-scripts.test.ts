@@ -42,7 +42,13 @@ describe("package scripts", () => {
     expect(packageJson.scripts?.["build"]).toBe(
       "tsc -p tsconfig.build.json && node scripts/postbuild.mjs",
     );
-    expect(packageJson.scripts?.["prepare"]).toBe("npm run build");
+    // `dist` ships in the tarball and is built before publish, so an install runs
+    // NO scripts of its own: `npm install -g` needs no build step and raises no
+    // allow-scripts prompt for Elwood (C-CLI-01).
+    expect(packageJson.scripts?.["prepublishOnly"]).toBe("npm run build");
+    expect(packageJson.scripts?.["prepare"]).toBeUndefined();
+    expect(packageJson.scripts?.["install"]).toBeUndefined();
+    expect(packageJson.scripts?.["postinstall"]).toBeUndefined();
     expect(packageJson.scripts?.["check"]).toMatch(/^npm run build &&/u);
     expect(packageJson.main).toBe("./dist/index.js");
     expect(packageJson.module).toBe("./dist/index.js");

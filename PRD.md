@@ -3514,7 +3514,7 @@ Each criterion has:
 
 | ID | Section | Criterion |
 |---|---:|---|
-| C-CLI-01 | §12A | Local, git, and packed-tarball installs expose an executable `elwood` bin and an importable library entry backed only by emitted JavaScript and declarations under `dist`, on Node.js 24 or newer. |
+| C-CLI-01 | §12A | Local, git, and packed-tarball installs expose an executable `elwood` bin and an importable library entry backed only by emitted JavaScript and declarations under `dist`, on Node.js 24 or newer. The published package declares NO install scripts of its own (`prepare`, `install`, `postinstall`): `dist` is built before publish and shipped in the tarball, so `npm install -g @with-logic/elwood` yields a working executable without building and without an install-script approval prompt for Elwood. |
 | C-CLI-02 | §12A.1 | Direct and explicit `run` forms are equivalent; an argument-free invocation, top-level/config help, and version complete without stdin/config reads or agent launch; `elwood run` still requires input; and reserved command words are commands only in first-argument position before `--`. |
 | C-CLI-03 | §12A.1 | New sessions default to the invocation cwd and, when nothing selects an agent, to the first available of Claude then Codex (C-CLI-21); explicit cwd overrides the workspace, an unavailable selected adapter never falls back, and resume uses its validated stored adapter and cwd exactly while rejecting `--cwd`. |
 | C-CLI-04 | §12A.1 | Positional and piped input compose with one blank line, terminal stdin is not read, whitespace-only input fails before launch, UTF-8 input is incrementally limited to 8 MiB, and ordered image flags attach on the user turn. |

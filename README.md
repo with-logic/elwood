@@ -30,8 +30,11 @@ continues. Pass `strictVersionCheck: true` to fail closed instead.
 npm install @with-logic/elwood
 ```
 
-The package installs an `elwood` executable for the headless CLI. To work from a
-checkout instead, run `npm install && npm run build && npm link`.
+The package installs an `elwood` executable for the headless CLI. It ships a
+prebuilt `dist/`, so a global install runs no build step and no install scripts
+of its own. To work from a checkout instead, run
+`npm install && npm run build && npm link`; the build is explicit because
+`dist/` is not committed.
 
 ## Quickstart: library
 
