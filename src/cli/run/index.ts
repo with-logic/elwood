@@ -4,7 +4,6 @@
  */
 
 import { privateOutputSecrets } from "../../core/private-output-secrets.ts";
-import { blockingTrustSpecs, trustPromptAllowlist } from "../../core/trust/prompts.ts";
 import type { ElwoodSessionStatus } from "../../core/types.ts";
 import type { HeadedDisplay } from "../head/display.ts";
 import { CliLifecycle, type CliLifecycleClock, type CliSignalSource } from "../lifecycle/index.ts";
@@ -14,6 +13,7 @@ import type { AsyncOutputSink } from "../stream.ts";
 import type { EffectiveRunRequest } from "../types.ts";
 import { CodexUpdateAttentionGuard } from "../update-attention.ts";
 import { RunOutput } from "./output.ts";
+import { subscribeRunEvents } from "./subscribe.ts";
 
 export type ExecuteRunIo = {
   readonly stdout: AsyncOutputSink;
@@ -47,7 +47,17 @@ export async function executeRun(
     request.agent === "codex"
       ? new CodexUpdateAttentionGuard(session, lifecycle, dependencies.clock)
       : undefined;
-  const unsubscribers = subscribe(request, session, lifecycle, output, head, updateAttention);
+  const unsubscribers = subscribeRunEvents(
+    request,
+    session,
+    lifecycle,
+    {
+      status: (status) => output.status(statusRecord(status)),
+      warning: (event) => output.warning(event),
+    },
+    head,
+    updateAttention,
+  );
   let resizeEnabled = false;
   lifecycle.start();
   output.starting();
@@ -92,56 +102,6 @@ async function consumeTurn(
   for await (const event of session.stream(request.prompt, { images: request.images })) {
     await output.turn(event);
   }
-}
-
-function subscribe(
-  request: EffectiveRunRequest,
-  session: CliSessionFacade,
-  lifecycle: CliLifecycle,
-  output: RunOutput,
-  head: HeadedDisplay | undefined,
-  updateAttention: CodexUpdateAttentionGuard | undefined,
-): readonly (() => void)[] {
-  const common = [
-    session.on("activity", (event) => {
-      if (event.kind === "attention" && event.label === "codex-update-prompt") {
-        if (updateAttention === undefined) lifecycle.block(event.label);
-        else updateAttention.attention();
-      } else if (event.kind === "attention" && attentionNeedsHuman(request, event.label)) {
-        lifecycle.block(event.label);
-      }
-      if (event.kind === "startup_prompt" && event.label === "update") {
-        updateAttention?.succeeded();
-      }
-    }),
-    session.on("status", ({ status }) => {
-      updateAttention?.status(status);
-      output.status(statusRecord(status));
-    }),
-    session.on("warning", (event) => {
-      if (
-        event.code === "startup_prompt_write_failed" &&
-        event.agent === "codex" &&
-        event.label === "update"
-      ) {
-        updateAttention?.writeFailed();
-      }
-      output.warning(event);
-    }),
-    session.on("terminal:exit", () => lifecycle.agentExited()),
-  ];
-  return head === undefined
-    ? common
-    : [...common, session.on("terminal:data", ({ data }) => head.write(data))];
-}
-
-function attentionNeedsHuman(request: EffectiveRunRequest, label: string): boolean {
-  const matches = (prompt: (typeof trustPromptAllowlist)[number]) =>
-    prompt.agent === request.agent && prompt.id === label;
-  return (
-    !trustPromptAllowlist.some(matches) ||
-    blockingTrustSpecs(request.agent, request.trust).some(matches)
-  );
 }
 
 function statusRecord(status: ElwoodSessionStatus) {

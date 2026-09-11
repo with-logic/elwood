@@ -1,9 +1,11 @@
 /**
  * Parses Elwood's hybrid direct/explicit command grammar without side effects.
- * Implements PRD §12A.1 and C-CLI-02/C-CLI-04/C-CLI-06.
+ * Implements PRD §12A.1/§12A.7-§12A.10 and C-CLI-02/C-CLI-04/C-CLI-06/C-CLI-23.
  */
 
 import { parseArgs } from "node:util";
+import { parseSubcommand } from "../args-commands.ts";
+import { isCliSubcommand } from "../command-types.ts";
 import {
   CliValidationError,
   type ParsedCliCommand,
@@ -17,7 +19,12 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliCommand {
   if (argv.length === 0) return { command: "help" };
   if (argv[0] === "help") return { command: "help" };
   if (argv[0] === "config") return { command: "config", args: argv.slice(1) };
-  const runArgs = argv[0] === "run" ? argv.slice(1) : argv;
+  if (isCliSubcommand(argv[0])) return parseSubcommand(argv[0], argv.slice(1), parseRunArgs);
+  return parseRunArgs(argv[0] === "run" ? argv.slice(1) : argv);
+}
+
+/** Parse run-grammar arguments (after any command word) into a run, help, or version. */
+export function parseRunArgs(runArgs: readonly string[]): ParsedCliCommand {
   try {
     const parsed = parseArgs({
       args: runArgs,

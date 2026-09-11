@@ -62,6 +62,30 @@ describe("CLI process adapter", () => {
   });
 });
 
+test("C-CLI-23 binds terminal stdout so interactive mode can require a TTY", async () => {
+  const stdout = Object.assign(new MemoryWriter(), { isTTY: true });
+  const proc: CliProcess = {
+    argv: ["node", "entry", "interactive"],
+    stdout,
+    stderr: new MemoryWriter(),
+    stdin: { isTTY: true, async *[Symbol.asyncIterator]() {} },
+    env: {},
+    cwd: () => "/workspace",
+    on: () => undefined,
+    off: () => undefined,
+    exitCode: undefined,
+  };
+  let seen: boolean | undefined;
+  const dependencies = mainDependencies({
+    interactive: (_parsed, context) => {
+      seen = context.stdoutIsTTY;
+      return Promise.resolve(0);
+    },
+  });
+  await expect(runCli(proc, dependencies, "/home/cli")).resolves.toBe(0);
+  expect(seen).toBe(true);
+});
+
 function mainDependenciesRequest() {
   return effectiveRequest({ cwd: "/workspace" });
 }

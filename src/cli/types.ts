@@ -7,6 +7,7 @@ import type { CodexApprovalPolicy, CodexSandboxMode } from "../codex/session/typ
 import type { ImageInput } from "../core/images/types.ts";
 import type { ClaudeReasoningEffort, CodexReasoningEffort } from "../core/reasoning-effort.ts";
 import type { ClaudePermissionMode, TerminalSize } from "../core/types.ts";
+import type { ParsedInteractiveCommand, ParsedListCommand } from "./command-types.ts";
 import type { CliRequestResolution } from "./request/resolution-types.ts";
 
 export type { CliRequestResolution, CliSettingSources } from "./request/resolution-types.ts";
@@ -100,6 +101,9 @@ export type ParsedRunCommand = {
 
 export type ParsedCliCommand =
   | ParsedRunCommand
+  | ParsedListCommand<"sessions">
+  | ParsedListCommand<"models">
+  | ParsedInteractiveCommand
   | { readonly command: "help" }
   | { readonly command: "version" }
   | { readonly command: "config"; readonly args: readonly string[] };

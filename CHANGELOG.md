@@ -12,7 +12,152 @@ back each entry are listed in PRD.md §14.
 
 ## [Unreleased]
 
+<<<<<<< HEAD
 First public release.
+=======
+### Added
+
+- **The `elwood` CLI now explains and cleanly overrides its effective behavior.**
+  `--no-stream` and `--no-verbose` reverse inherited boolean defaults,
+  `--no-defaults` bypasses saved config and `ELWOOD_*` run settings, and
+  `elwood config effective` reports validated launch/output values with their
+  provenance without starting an agent. Routine warnings now reach stderr for
+  text and JSON runs, `--verbose` is a concise elapsed progress view, and
+  `--debug` retains full sanitized event detail. JSONL records include elapsed
+  timing plus tool-call correlation IDs when available. Help, validation errors,
+  resume/persona/ephemeral wording, and the new scripting guide now make defaults,
+  recovery actions, and lifecycle effects explicit. (§5.8/§12A,
+  C-API-48/C-CLI-02/03/08/10/11/14/19/20)
+- **The `elwood` CLI can now mirror the live agent TUI in the current terminal.**
+  `--head` sends the agent's ordered raw VT/ANSI stream to terminal stderr while
+  preserving the final text or JSON result on stdout, including cursor-addressed
+  redraws, alternate screens, colors, spinners, and OSC title changes. It follows
+  terminal resizes, restores terminal modes on every handled outcome, and treats
+  Ctrl-C like the existing interrupt lifecycle. The display is intentionally
+  view-only and cannot be combined with `--stream`, `--verbose`, or JSONL.
+  Pending terminal writes are bounded by bytes and frame count, so a stalled
+  terminal becomes a clean run failure instead of an unbounded memory queue.
+  An argument-free `elwood` invocation now prints help instead of waiting for a
+  prompt. (§12A.1/§12A.6, C-CLI-02/C-CLI-18)
+- **The `elwood` CLI gained `sessions`, `resume`, `interactive`, and `models`
+  commands.** `elwood sessions` lists Elwood-owned session records (id, agent,
+  workspace, `createdAt`/`lastUsedAt`, `resumable`, socket-presence `live`) as an
+  aligned table or one `{"type":"sessions"}` JSON document without starting an
+  agent. `elwood resume <id> [prompt...]` is a parse-time rewrite of
+  `run --resume <id>`. `elwood interactive [id]` runs the real `claude`/`codex`
+  TUI in the foreground with Elwood's resolved agent, model, effort, workspace,
+  and posture passed as the agent's own flags — no PTY, automation, observation,
+  or state — resuming a stored session's own conversation when given an id.
+  `elwood models` starts the agent briefly, reads its model picker through the
+  public `listModels` operation, tears the session down, and prints a table or a
+  `{"type":"models"}` document of `AgentModelOption` rows. The adapters' launch
+  flag mapping now lives in shared `claudeLaunchArguments`/`codexLaunchArguments`
+  builders so interactive and headless launches cannot drift. (§12A.7–§12A.10,
+  C-CLI-21 through C-CLI-24)
+
+### Fixed
+
+- **Headed runs no longer suspend themselves or leave the invoking terminal unusable.**
+  Interactive version and capability probes now run in an isolated process session,
+  preventing their shell-managed commands from stealing the real terminal's foreground
+  process group. `--head` can therefore restore cooked input and display modes before
+  returning to an interactive shell, without a cleanup-time `SIGTTOU` stop or leaked
+  terminal-protocol replies. Its defensive restore now also pops the Kitty keyboard
+  enhancement mode used by current agent TUIs, so subsequent shell keystrokes remain
+  ordinary text instead of encoded key-event sequences. (§12A.6, C-CLI-18)
+- **Codex's startup update dialog no longer wedges headed or headless runs.**
+  Codex 0.153.x can paint its numbered update menu before its input loop accepts
+  the first safe Skip hotkey. Elwood now retries that hotkey for a bounded interval
+  only after revalidating the complete current update dialog, and the CLI no longer
+  mistakes the responder-owned dialog's replayed blocking edge for a human prompt.
+  A persistent or unanswerable update dialog now fails and cleans up boundedly even
+  without `--timeout`; no retry can escape into the composer or another dialog.
+  (§5.5/§12A.2, C-CODEX-12/C-CLI-05)
+- **Headless turns now survive real-CLI startup, resume, and teardown races.**
+  Codex 0.153.3 can accept the 10-second fallback paste into its cold-start
+  placeholder, swallow it during a later boot repaint, and appear to finish an
+  empty turn; ergonomic turns now require positive submission evidence, replay
+  an unaccepted prompt at most twice, and fail explicitly instead of reporting
+  false success. A resumed Claude turn no longer treats its stale composer as
+  an immediate end before real work paints. The headless owner also ignores
+  transient attention from trust prompts it is already authorized to answer,
+  and macOS teardown retries the short-lived post-exit `EPERM` process-group
+  window instead of surfacing `cleanup_failed`. (§5.3/§5.8/§12A, C-API-48,
+  C-TURN-03, C-CLI-05/09)
+- **Claude model switches now complete through model/effort cache warnings.**
+  Claude 2.1.258 may interpose `Switch model?` or `Change effort level?` after
+  Elwood applies a session-only picker choice; Elwood previously treated that
+  dialog as successful picker closure and returned while the session was still
+  waiting. Elwood now recognizes numbered and unnumbered variants, navigates
+  from the rendered cursor to the affirmative action, confirms the built-in
+  cache warning, and waits for the idle composer before resolving `setModel`.
+  Recognition is scoped to the bottom-most live dialog and revalidated before
+  Enter, so transcript text cannot spoof a cache warning or composer. Hook-requested
+  `PreModelSwitch` confirmations remain blocking and human-controlled. (§5.3,
+  C-API-24/C-ATTN-04)
+- **Concurrent Codex starts no longer race global npm updates.** Codex's live
+  update dialog is now input-blocking until its rendered frame clears, so queued
+  persona/caller input cannot press Enter on the default "Update now" action when
+  a prompt layout is partial or drifts. Elwood still skips every recognized safe
+  option automatically. Separately, `autoupdate` now holds an atomic per-user,
+  per-adapter cross-process lease around the global updater; another Elwood host
+  waits asynchronously, skips its duplicate install, and validates the resulting
+  binary. The lease uses a stable account cache across differing `TMPDIR` values,
+  records its owner/generation so live or successor updates cannot be evicted,
+  and recovers dead owners safely. Failed partial installs also invalidate version
+  and capability caches before validation. Coal Harbor and other consumers need
+  no API or configuration changes. (§5.5/§9.2, C-CODEX-12/C-PERF-04/C-LIFE-09)
+- **Claude's current cursor-style workspace trust prompt is auto-approved again.**
+  Claude 2.1.252 replaced the older numbered, affirmative-first layout with an
+  unnumbered menu that defaults to `No, exit`; the responder recognized its header
+  but found no numbered affirmative, wrote nothing, and the readiness fallback
+  could report `ready` over the still-visible gate. Elwood now supports both
+  layouts, navigates cursor menus to the affirmative before Enter, keeps their
+  entire option region out of header recognition, and verifies the real trust
+  screen clears before readiness. The gate remains independent of Claude's
+  `bypassPermissions` / `--dangerously-skip-permissions` policy. (§5.1/§5.3,
+  C-CLAUDE-10/C-CLAUDE-14/C-E2E-09)
+- **Modern Codex final replies now carry their text on `assistant_message`
+  activity.** Codex 0.149.1 writes replies as assistant `message` response items
+  with `phase: "final_answer"` and `content[].output_text`; Elwood previously
+  expected a plain string (or a legacy `agent_message` duplicate), so consumers
+  received a textless event and could silently discard the reply. Elwood now
+  extracts the full final-answer text—including `@mentions`—while keeping
+  commentary and user/developer transcript records out of assistant activity.
+  (§5.4/§7A.4, C-API-12/C-CODEX-16)
+- **Claude's `Not logged in · Run /login` sign-out is now detected mid-session.**
+  A ready Claude session that gets logged out mid-run renders `Not logged in`
+  (paired with a `run /login` hint) — a different wording than the `Login expired`
+  / `Session expired` / `OAuth token revoked` banners Elwood already recognized.
+  That form previously went undetected mid-session, so no `login_expired` warning
+  fired. It now surfaces the same content-free `login_expired` warning (+ `warning`
+  activity), leaving the session alive to recover via `session.login()`. (§5.3/§5.7,
+  C-CLAUDE-17/18)
+- **Codex's in-TUI update prompt is now re-skipped on the restart loop.** Elwood
+  always skips Codex's interactive "update available" prompt (it never selects
+  "Update now"; the real update is the `autoupdate` preflight). The skip was latched
+  once per session, so if Codex restarted and the SAME update screen reappeared — the
+  update did not take — the session got stuck looping on it. The skip is now
+  edge-triggered: it re-arms when the update screen leaves the frame and re-skips the
+  reappearance. (§5.5, C-CODEX-12)
+- **Autoupdate is now best-effort and never fails a start on its own.** When
+  `autoupdate: true` and `claude update` / `codex update` fails (a flaky network,
+  a partial native-installer download, contention during a fleet launch), Elwood no
+  longer rejects `startClaude`/`startCodex` with `claude_update_failed` /
+  `codex_update_failed`. If the INSTALLED CLI still meets the minimum version, the
+  session starts from it and Elwood emits a live `agent_update_failed` warning (safe
+  diagnostics only: installed version, an allowlisted error code, bounded stderr).
+  Startup fails only when the installed version is actually below the minimum. The
+  warning is zero-burden — a consumer that does not subscribe to `warning` is
+  unaffected and the session still reaches `ready`. (§9.2, C-LIFE-11)
+- **A failed shared update no longer poisons the process.** A once-per-process
+  update/probe cache that rejected was retained and replayed, so one failed
+  `claude update` could reject every concurrent roster start AND every later start
+  until the process restarted. Cached probes (autoupdate, version read, capability
+  detection) now never retain a rejected result: concurrent callers share one attempt
+  and a later caller re-attempts rather than inheriting the failure. (§9.2,
+  C-LIFE-09/11)
+>>>>>>> e8930e4 (feat(cli): add sessions, resume, interactive and models subcommands)
 
 ### Added
 

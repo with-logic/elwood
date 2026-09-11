@@ -444,6 +444,54 @@ Verified manually in a real PTY with successful headed turns on Codex 0.153.4 an
 Claude 2.1.261, including terminal restoration and clean JSON terminal records.
 C-CLI-18/C-CODEX-12.
 
+## Interactive mode, session listing, and model listing
+
+`elwood interactive` is the one command that does NOT drive the interactive TUI
+through Elwood: it spawns `claude`/`codex` directly with inherited stdio and the
+adapters' shared launch-argument builders, so every dialog the headless path
+automates is the user's to answer. Verified in a real PTY on Claude 2.1.268 and
+Codex 0.153.4:
+
+- Codex shows its in-TUI update prompt first, then the directory-trust prompt
+  ("Do you trust the contents of this directory?"), before the `›` composer. A
+  PTY driver must answer both (Skip = `2`, Yes = `1`) before the composer
+  appears; answering `2` to the trust prompt ("No, quit") exits 0. Codex draws
+  words with cursor moves, so match dialog text with `\s*` between words. A
+  typed `/quit` + Enter did not end the idle Codex TUI within 10s; its idle
+  double Ctrl-C did (status 0), so the e2e driver quits Codex that way.
+- Claude in a fresh temp directory went straight to the `❯` composer here, and
+  `/exit` returned 0. The footer's "don't ask on" came from the user's own
+  `~/.claude/settings.json` `permissions.defaultMode`, not from Elwood: with no
+  configured posture Elwood passes no `--permission-mode` (source `built-in` is
+  omitted), which is exactly the direct-launch experience.
+- `elwood interactive <id>` after a headless `--keep` run reopened the prior
+  conversation (the kept prompt and answer were on screen) via
+  `claude --resume <conversation id>` in the stored workspace, and Claude
+  printed its own "Resume this session with: claude --resume …" on exit. The
+  Elwood record's `lastUsedAt` did not change, confirming no state writes.
+- A stored headless session carries `permissionMode: dontAsk`, so an interactive
+  resume of it runs Claude in don't-ask mode until `--claude-permission-mode`
+  overrides it (documented in the README).
+
+`elwood models` reuses the headless facade plus `CliLifecycle`, so timeout,
+SIGINT, blocked prompts, and teardown behave as for a run. Real Claude lists
+five rows in ~6s; real Codex six rows in ~5s. Two environment facts matter:
+
+- When Elwood itself runs nested inside a Claude Code session (`CLAUDECODE` and
+  `CLAUDE_CODE_*` set), claude >= 2.1.201 skips transcript persistence for the
+  nested instance; a headless run then fails `wait_timeout` ("transcript did not
+  catch up after ready") and floods `transcript_read_error (ENOENT)`. The e2e
+  helper strips those variables; do the same for manual smoke runs.
+- Even outside nesting, one `transcript_read_error (ENOENT)` warning appears at
+  Claude startup before the first turn creates the transcript file. It is
+  pre-existing run behavior, not specific to `models`.
+
+`elwood sessions` reports `live` from the presence of a `.sock` file in the
+session's stable socket home. A connect probe was rejected on purpose: the
+bridge treats any connection that closes without a frame as a malformed request
+and emits `hookError`/`activity` on the live owner, so presence is the only
+side-effect-free signal. C-CLI-21 through C-CLI-24.
+
 ## Testing against the real CLIs
 
 - `test:e2e` runs **serially** (`--test-concurrency=1`): Codex config-file

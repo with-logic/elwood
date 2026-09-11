@@ -97,9 +97,201 @@ mirror the agent in its own xterm. A late subscriber first receives up to
 128 KB of replayed history as one chunk. `sendKeys(Uint8Array)` forwards a
 user's keystrokes verbatim.
 
+<<<<<<< HEAD
 **Status lifecycle.** `status` moves through `starting`, `ready`, `running`,
 and `blocked` (a dialog needs a human) and ends in `stopped`, `exited`,
 `killed`, or `torn_down`. Every real turn is a `running` to `ready` beat.
+=======
+ANSI terminal frames, raw hook payloads, screen contents, bridge credentials,
+and stacks are excluded from production output. Writes honor backpressure, and
+a downstream pipe closing early triggers cleanup without an uncaught `EPIPE`.
+
+### Live terminal view
+
+Add `--head` when you want to watch the real agent interface while retaining a
+pipeline-friendly final result:
+
+```sh
+elwood --head "Run the test suite and fix the failure"
+elwood --head --output json "Review this repository" >result.json
+elwood --head --agent claude "Explain the architecture"
+```
+
+The display stays in the current terminal and receives the raw PTY byte stream on
+stderr. It is a real VT/ANSI mirror, so full-screen layouts, cursor-addressed
+updates, alternate-screen buffers, colors, spinners, and title changes render as
+they do in the underlying Claude or Codex client. Stdout remains only the final
+text or JSON protocol and can be redirected independently. Pending display work
+is capped at 4 MiB or 1,024 frames; a terminal that remains backpressured fails
+the run cleanly after draining accepted bytes instead of growing memory without
+bound.
+
+Head mode is deliberately view-only: while attached, ordinary keyboard, mouse,
+paste, and terminal-response bytes are discarded; Ctrl-C still interrupts using
+Elwood's normal first-interrupt/repeated-force-kill lifecycle. Terminal resizes
+propagate to the agent. Elwood restores raw/cooked input state, mouse and paste
+modes, attributes, cursor visibility, and the main screen before printing the
+final result. Both stdin and stderr must be terminals, and `--head` cannot be
+combined with `--stream`, `--verbose`, `--debug`, or `--output jsonl`.
+
+### Continuation and cleanup
+
+New runs are ephemeral unless `--keep` is supplied. A kept text run reports its
+session ID on stderr; JSON and JSONL include it in the terminal record:
+
+```sh
+first=$(elwood --keep --output json "Remember that the release color is teal")
+id=$(printf '%s' "$first" | jq -r .sessionId)
+elwood --resume "$id" "What is the release color?"
+elwood --resume "$id" --ephemeral "Finish this conversation"
+```
+
+Resume uses the exact stored agent and workspace; conflicting `--agent` and any
+`--cwd` are rejected. Resumed sessions stay preserved after success or failure unless
+`--ephemeral` requests teardown. Ephemeral teardown removes Elwood's session
+record and loop definitions; it does not undo workspace changes or delete
+conversation history owned by Claude or Codex. CLI state defaults to absolute
+`$XDG_STATE_HOME/elwood` or `~/.local/state/elwood`; its private records contain
+resume metadata, not ordinary prompts or output.
+
+Before launching, `elwood config effective [run options]` prints the resolved
+settings and where each came from. The JSON includes `head` and, for Claude,
+the effective `permissionMode`, `allowedTools`, `disallowedTools`, and `tools`;
+resume inspection reports persisted tool rules with stored-session provenance.
+
+Exit status is `0` for success or a closed consumer, `1` for agent/runtime or
+cleanup failure, `2` for usage/configuration failure, `124` for timeout, and
+`130` for interruption. The first Ctrl-C requests a clean interrupt; a repeated
+Ctrl-C force-kills before cleanup.
+
+`--persona` runs an actual extra agent turn before the requested turn. Elwood
+discards that setup turn's answer, but any tools it invokes or files it changes
+remain. It is therefore supported only for new sessions, never `--resume`.
+
+### Sessions, resume, and interactive mode
+
+`elwood sessions` lists the Elwood-owned session records in the effective state
+directory without starting an agent, and `elwood resume <id>` is the subcommand
+form of `--resume <id>`:
+
+```sh
+elwood sessions
+elwood sessions --state-dir ./state --output json | jq -r '.sessions[] | .id'
+elwood resume "$id" "What is the release color?"
+git diff | elwood resume "$id" --ephemeral "Does this diff match what we agreed?"
+```
+
+The table (or the `sessions` array in JSON) reports each session's id, agent,
+workspace, `createdAt`/`lastUsedAt` timestamps, whether it is `resumable`
+(the agent's own conversation id is stored), and `live` — whether a launch's
+bridge socket file is currently present. `live` is a cheap file-presence
+signal: a socket left behind by a force-killed owner reads as live until that
+session is next started or torn down. Unreadable records are skipped with a
+stderr warning, and an empty state directory is a normal empty result.
+`resume <id>` follows every `--resume` rule: stored agent and workspace, no
+`--cwd`, no `--keep`, no persona, and piped stdin composes the same way.
+
+`elwood interactive [id]` opens the real `claude` or `codex` TUI in the current
+terminal — no hidden PTY, no automation, no observation, no Elwood state — with
+Elwood's resolved agent, model, reasoning effort, workspace, and posture passed
+as the agent's own flags. It exits with the agent's exit status and needs a
+terminal on stdin and stdout:
+
+```sh
+elwood interactive                      # the configured agent, its own defaults
+elwood interactive --agent claude --model opus --claude-permission-mode plan
+elwood interactive "$id"                # the stored conversation, workspace, and posture
+```
+
+Built-in headless posture defaults (Claude `dontAsk`, Codex `workspace-write`
+and `never`) are not applied unless a flag, environment variable, config key,
+or stored record selected them, so an unconfigured launch is the agent's own
+default experience. A session kept by a headless run does store its headless
+posture; pass `--claude-permission-mode default` (or the Codex flags) to get the
+agent's prompts back when resuming one interactively. Because the agent owns
+the resumed conversation, a later `elwood resume <id>` sees what you said. The
+command rejects `--output json|jsonl`, `--stream`, `--verbose`, `--debug`,
+`--head`, `--timeout`, `--persona`, `--image`, `--keep`, `--ephemeral`, and
+`--resume`.
+
+### Listing models
+
+`elwood models` starts the selected agent briefly, opens and cancels its own
+model picker, tears the session down, and prints the rows. Text marks the
+current model with `*` and the default with `(default)`; JSON is one
+`{"schemaVersion":1,"type":"models",...}` document of `AgentModelOption` rows:
+
+```sh
+elwood models
+elwood models --agent claude --output json | jq -r '.models[] | select(.isCurrent) | .id'
+```
+
+Starting the agent is unavoidable because the picker is the only source of the
+list. The command honors `--agent`, `--cwd`, `--model`, `--reasoning-effort`,
+`--timeout`, `--state-dir`, trust, and posture flags, leaves no Elwood state
+behind, and maps failures (timeout, interruption, blocked prompts) to the usual
+statuses and error documents.
+
+### Trust and security
+
+Headless mode is non-interactive. With the default `--trust`, Elwood answers only
+its allowlisted workspace-directory and extension trust dialogs (plus the
+Elwood-owned Codex hook trust needed for operation). `--no-trust` disables the
+workspace/extension approvals. Any other recognized dialog fails safely as
+`blocked_prompt` instead of hanging or guessing.
+
+Piped text and image paths are prompt input with the same authority as text typed
+by the caller. Do not combine untrusted input with broad filesystem permissions.
+Global config is never loaded from the repository being opened.
+
+Head mode renders agent-controlled terminal escape sequences verbatim, just as
+running the selected interactive CLI directly would. Use it only with agents and
+workspaces you trust to control the current terminal display.
+
+## Try It Locally
+
+Elwood includes two local test apps.
+
+```sh
+# Terminal smoke app, Claude by default.
+npm run dev:app -- --cwd /path/to/project
+
+# Terminal smoke app with Codex.
+npm run dev:app -- --agent codex --cwd /path/to/project
+
+# Resume from Elwood metadata.
+npm run dev:app -- --cwd /path/to/project --resume <elwoodSessionId>
+
+# Browser debugger with xterm.js terminal mirror and structured event inspector.
+npm run dev:web
+```
+
+`dev:web` serves `http://localhost:4317`. It shows the live terminal on the left
+and a structured event timeline on the right. Use it to inspect hooks,
+activities, warnings, startup automation, status changes, and raw event payloads.
+
+The script is still invoked through npm, but the browser dev server process runs
+under Node so `node-pty` can own a real interactive PTY reliably.
+
+## Runnable Examples
+
+For the smallest real usage sample, run the minimal example. It constructs a
+`CodexSession`, which starts Codex lazily on the first `send`, then makes two
+ergonomic `send` calls — an initial prompt and a follow-up that refers back to it —
+printing each assistant response, and closes the session:
+
+```sh
+npm run example:minimal
+```
+
+For a fuller sample with Claude/Codex selection, custom prompts, richer logging,
+timeouts, and cleanup options, run `examples/full.ts`:
+
+```sh
+npm run example:full
+npm run example:full -- --agent codex --cwd . --prompt "Summarize this repo in one paragraph."
+```
+>>>>>>> e8930e4 (feat(cli): add sessions, resume, interactive and models subcommands)
 
 **State directory.** Elwood keeps a minimal session record under
 `<cwd>/.elwood` by default, or under an explicit `stateDir`. It holds what

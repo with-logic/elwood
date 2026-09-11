@@ -79,6 +79,66 @@ share `toolCallId` when the agent supplies one:
 JSONL warning records stay on stdout so the machine protocol remains ordered;
 text and JSON runs surface warnings on stderr.
 
+## Session and model listings
+
+`elwood sessions` and `elwood models` accept `--output text` (default) or
+`--output json`; JSONL is not a listing protocol. Both emit exactly one document
+in JSON mode, and `sessions` never starts an agent:
+
+```json
+{
+  "schemaVersion": 1,
+  "type": "sessions",
+  "stateDir": "/Users/me/.local/state/elwood",
+  "sessions": [
+    {
+      "id": "6f0c2c1e-3f1a-4d2b-9c6e-1f2a3b4c5d6e",
+      "agent": "codex",
+      "cwd": "/Users/me/project",
+      "createdAt": "2026-09-10T18:21:04.512Z",
+      "lastUsedAt": "2026-09-10T18:24:39.001Z",
+      "resumable": true,
+      "live": false
+    }
+  ]
+}
+```
+
+`live` means a launch's bridge socket file is present; it is a cheap presence
+check, so a force-killed owner can leave a stale "live" until the session is
+next started or torn down. An empty state directory yields an empty `sessions`
+array (text mode prints a notice on stderr and nothing on stdout). Unreadable
+records are skipped with one stderr warning each.
+
+`elwood models` starts the agent briefly to read its own model picker, then
+tears the session down:
+
+```json
+{
+  "schemaVersion": 1,
+  "type": "models",
+  "agent": "claude",
+  "models": [
+    { "id": "opus", "label": "Opus", "description": "…", "isCurrent": true, "isDefault": false, "raw": "…" },
+    { "id": "sonnet", "label": "Sonnet", "description": "…", "isCurrent": false, "isDefault": true, "raw": "…" }
+  ]
+}
+```
+
+Failures use the same `error` document and statuses as a run. Useful recipes:
+
+```sh
+id=$(elwood sessions --output json | jq -r '.sessions[0].id')
+elwood resume "$id" --output json "Summarize what we decided" | jq -er .response
+elwood models --agent codex --output json | jq -r '.models[] | select(.isDefault) | .id'
+```
+
+`elwood resume <id> [prompt...]` is exactly `elwood run --resume <id>`; the
+stored agent and workspace apply, and piped stdin composes with positional words
+the same way. `elwood interactive [id]` is not scriptable: it requires a terminal
+on stdin and stdout, hands the terminal to the agent's own TUI, writes no
+protocol to stdout, and exits with the agent's exit status.
+
 ## Exit codes
 
 | Status | Meaning |

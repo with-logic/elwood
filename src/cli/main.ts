@@ -1,39 +1,37 @@
 /**
- * Side-effect-free routing for metadata, config, validation, and headless execution.
- * Implements PRD §12A and C-CLI-02/C-CLI-11/C-CLI-14/C-CLI-17.
+ * Side-effect-free routing for metadata, config, listing, interactive, and headless execution.
+ * Implements PRD §12A and C-CLI-02/C-CLI-11/C-CLI-14/C-CLI-17/C-CLI-21 through C-CLI-24.
  */
 
-import { ElwoodError } from "../core/errors.ts";
-import { isOneOf } from "../core/predicates.ts";
 import { parseCliArgs } from "./args/index.ts";
 import { runConfigCommand } from "./config/commands.ts";
 import { HeadedDisplay } from "./head/display.ts";
 import type { CliHeadTarget } from "./head/types.ts";
 import { cliHelp } from "./help.ts";
+import type { runInteractiveCommand } from "./interactive/index.ts";
 import type { CliSignalSource } from "./lifecycle/index.ts";
-import { writeJson } from "./output/json.ts";
-import { JsonlRenderer } from "./output/jsonl.ts";
-import { createCliSanitizer, formatDiagnosticValue } from "./output/sanitize.ts";
-import type { CliError } from "./output/types.ts";
-import { resolveRunRequest } from "./request/index.ts";
+import {
+  agentHint,
+  cliFailure,
+  errorRecord,
+  explicitStructuredOutput,
+  renderErrorRecord,
+} from "./main-failure.ts";
+import type { executeModels } from "./models/index.ts";
+import { resolveRunRequest, resolveRunSettings } from "./request/index.ts";
 import { optional, usage } from "./request/values.ts";
 import type { executeRun } from "./run/index.ts";
 import type { prepareCliSession } from "./session/index.ts";
+import { assertListingOutput, runSessionsCommand } from "./sessions/index.ts";
 import { AsyncOutputSink, type CliWritable } from "./stream.ts";
-import {
-  type CliAgent,
-  type CliEnvironment,
-  type CliOutputMode,
-  CliValidationError,
-  cliAgents,
-  type PromptStdin,
-} from "./types.ts";
+import type { CliEnvironment, PromptStdin } from "./types.ts";
 import { readCliVersion } from "./version.ts";
 
 export type CliMainContext = {
   readonly stdout: CliWritable;
   readonly stderr: CliWritable;
   readonly stdin: PromptStdin;
+  readonly stdoutIsTTY?: boolean;
   readonly env: CliEnvironment;
   readonly invocationCwd: string;
   readonly homeDir: string;
@@ -43,8 +41,11 @@ export type CliMainContext = {
 export type CliMainDependencies = {
   readonly version: () => string;
   readonly resolve: typeof resolveRunRequest;
+  readonly settings: typeof resolveRunSettings;
   readonly prepare: typeof prepareCliSession;
   readonly execute: typeof executeRun;
+  readonly listModels: typeof executeModels;
+  readonly interactive: typeof runInteractiveCommand;
   readonly now: () => number;
 };
 
@@ -54,11 +55,20 @@ export const prepareDefaultCliSession: typeof prepareCliSession = async (...args
 export const executeDefaultCliRun: typeof executeRun = async (...args) =>
   (await import("./run/index.ts")).executeRun(...args);
 
+export const executeDefaultModels: typeof executeModels = async (...args) =>
+  (await import("./models/index.ts")).executeModels(...args);
+
+export const runDefaultInteractive: typeof runInteractiveCommand = async (...args) =>
+  (await import("./interactive/index.ts")).runInteractiveCommand(...args);
+
 const defaults: CliMainDependencies = {
   version: readCliVersion,
   resolve: resolveRunRequest,
+  settings: resolveRunSettings,
   prepare: prepareDefaultCliSession,
   execute: executeDefaultCliRun,
+  listModels: executeDefaultModels,
+  interactive: runDefaultInteractive,
   now: Date.now,
 };
 
@@ -72,7 +82,7 @@ export async function main(
   const stderr = new AsyncOutputSink(context.stderr);
   const startedAt = dependencies.now();
   let output = explicitStructuredOutput(args) ?? "text";
-  let agent: CliAgent | null = agentHint(args, context.env);
+  let agent = agentHint(args, context.env);
   let head: HeadedDisplay | undefined;
   try {
     const parsed = parseCliArgs(args);
@@ -87,6 +97,26 @@ export async function main(
     if (parsed.command === "config") {
       await runConfigCommand(parsed.args, { ...context, stdout });
       return 0;
+    }
+    if (parsed.command === "sessions") {
+      return await runSessionsCommand(parsed, { ...context, stdout, stderr });
+    }
+    if (parsed.command === "interactive") {
+      return await dependencies.interactive(parsed, context);
+    }
+    if (parsed.command === "models") {
+      const settings = await dependencies.settings(parsed.run, context);
+      assertListingOutput(settings, "models");
+      output = settings.output;
+      agent = settings.agent;
+      const prepared = await dependencies.prepare(settings);
+      agent = prepared.request.agent;
+      return await dependencies.listModels(
+        prepared.request,
+        prepared.session,
+        { stdout, stderr },
+        { signals: context.signals },
+      );
     }
     const resolved = await dependencies.resolve(parsed, context);
     output = resolved.output;
@@ -110,14 +140,10 @@ export async function main(
   } catch (error) {
     await head?.close();
     const failure = cliFailure(error);
-    await renderFailure(
-      output,
-      agent,
-      failure,
-      Math.max(0, Math.trunc(dependencies.now() - startedAt)),
-      stdout,
-      stderr,
-    ).catch(() => undefined);
+    const durationMs = Math.max(0, Math.trunc(dependencies.now() - startedAt));
+    await renderErrorRecord(output, errorRecord(agent, failure, durationMs), stdout, stderr).catch(
+      () => undefined,
+    );
     return failure.exitCode;
   } finally {
     await head?.close();
@@ -125,69 +151,4 @@ export async function main(
     stdout.dispose();
     stderr.dispose();
   }
-}
-
-type StaticFailure = { readonly code: string; readonly message: string; readonly exitCode: 1 | 2 };
-
-function cliFailure(error: unknown): StaticFailure {
-  if (error instanceof CliValidationError)
-    return { code: error.code, message: error.message, exitCode: 2 };
-  if (error instanceof ElwoodError)
-    return { code: error.code, message: error.message, exitCode: 1 };
-  return { code: "runtime_error", message: "Elwood could not run the agent.", exitCode: 1 };
-}
-
-async function renderFailure(
-  output: CliOutputMode,
-  agent: CliAgent | null,
-  failure: StaticFailure,
-  durationMs: number,
-  stdout: AsyncOutputSink,
-  stderr: AsyncOutputSink,
-): Promise<void> {
-  const clean = createCliSanitizer();
-  const record: CliError = {
-    schemaVersion: 1,
-    type: "error",
-    agent,
-    response: "",
-    sessionId: null,
-    durationMs,
-    cleanup: { action: "none", status: "succeeded" },
-    error: { code: clean(failure.code), message: clean(failure.message) },
-  };
-  if (output === "json") await writeJson(stdout, record);
-  else if (output === "jsonl") await new JsonlRenderer(stdout, () => durationMs).finish(record);
-  else await stderr.write(`elwood: ${formatDiagnosticValue(record.error.message, clean)}\n`);
-}
-
-function explicitStructuredOutput(args: readonly string[]): CliOutputMode | undefined {
-  if (args[0] === "config") return undefined;
-  let candidate: string | undefined;
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (arg === "--") break;
-    if (arg === "--output") candidate = args[index + 1];
-    else if (arg?.startsWith("--output=")) candidate = arg.slice("--output=".length);
-  }
-  return candidate === "json" || candidate === "jsonl" ? candidate : undefined;
-}
-
-/**
- * Agent an argument/config failure record reports before resolution ran: the
- * `--agent` flag, else `ELWOOD_AGENT` unless `--no-defaults` ignores it, else
- * `null` because nothing selected one (auto-detection had not chosen yet).
- */
-function agentHint(args: readonly string[], env: CliEnvironment): CliAgent | null {
-  let flag: string | undefined;
-  let useDefaults = true;
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (arg === "--") break;
-    if (arg === "--no-defaults") useDefaults = false;
-    else if (arg === "--agent") flag = args[index + 1];
-    else if (arg?.startsWith("--agent=")) flag = arg.slice("--agent=".length);
-  }
-  const candidate = flag ?? (useDefaults ? env["ELWOOD_AGENT"] : undefined);
-  return isOneOf(candidate, cliAgents) ? candidate : null;
 }

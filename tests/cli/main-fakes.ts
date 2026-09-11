@@ -4,7 +4,12 @@
 
 import type { CliHeadTarget } from "../../src/cli/head/types.ts";
 import type { CliMainContext, CliMainDependencies } from "../../src/cli/main.ts";
-import type { CliAgent, EffectiveRunRequest, ResolvedRunRequest } from "../../src/cli/types.ts";
+import type {
+  CliAgent,
+  CliRequestResolution,
+  EffectiveRunRequest,
+  ResolvedRunRequest,
+} from "../../src/cli/types.ts";
 import type {
   ClaudeReasoningEffort,
   CodexReasoningEffort,
@@ -67,6 +72,39 @@ export const effectiveRequest = (overrides: EffectiveRequestOverrides = {}): Eff
     ...overrides,
   }) as EffectiveRunRequest;
 
+/** Provenance with every source built-in/unset unless overridden, for posture-aware tests. */
+export function fakeResolution(
+  sources: Partial<CliRequestResolution["sources"]> = {},
+): CliRequestResolution {
+  return {
+    config: { path: "/cfg", source: "home directory", loaded: false },
+    sources: {
+      agent: "built-in",
+      output: "built-in",
+      timeoutMs: "built-in",
+      trust: "built-in",
+      highTrust: "built-in",
+      stateDir: "built-in",
+      verbose: "built-in",
+      stream: "built-in",
+      debug: "built-in",
+      head: "built-in",
+      persona: "unset",
+      model: "unset",
+      reasoningEffort: "unset",
+      permissionMode: "built-in",
+      sandbox: "built-in",
+      approvalPolicy: "built-in",
+      workspace: "invocation cwd",
+      ...sources,
+    },
+    agentOptionSources: {
+      claude: { model: "unset", reasoningEffort: "unset" },
+      codex: { model: "unset", reasoningEffort: "unset" },
+    },
+  };
+}
+
 export function mainHarness() {
   const stdout = new MemoryWriter();
   const stderr = new MemoryWriter();
@@ -109,8 +147,11 @@ export function mainDependencies(
   return {
     version: () => "9.8.7",
     resolve: () => Promise.resolve(resolvedRequest()),
+    settings: () => Promise.resolve(resolvedRequest()),
     prepare: () => Promise.resolve({ request: effective, session: new FakeCliSession() }),
     execute: () => Promise.resolve(0),
+    listModels: () => Promise.resolve(0),
+    interactive: () => Promise.resolve(0),
     now: () => 10,
     ...overrides,
   };

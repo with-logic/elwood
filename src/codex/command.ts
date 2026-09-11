@@ -1,14 +1,51 @@
 /**
- * Builds shell commands used to launch interactive Codex.
- * Implements PRD §4.2, §4.4, and §9.1.
+ * Builds the launch arguments and shell commands used to start interactive Codex.
+ * The argument list is shared by the headless PTY launch and `elwood interactive`
+ * (§12A.9), so the Elwood-to-Codex flag mapping cannot drift between them.
+ * Implements PRD §4.2, §4.4, §9.1, and §12A.9.
  */
 
 import { hookCommand } from "../runtime/hook-command.ts";
+import { type LaunchArgument, launchShellWords } from "../runtime/launch-arguments.ts";
 import { shellQuote } from "../runtime/shell.ts";
 import type { SessionRecord } from "../state/store.ts";
 import { codexHookEventNames } from "./hooks/index.ts";
 import type { CodexCliCapabilities } from "./preflight.ts";
 import type { StartCodexOptions } from "./session/types.ts";
+
+/** The subset of start options that become Codex's own command-line flags. */
+export type CodexLaunchArgumentOptions = Pick<
+  StartCodexOptions,
+  "model" | "profile" | "sandbox" | "approvalPolicy"
+> & {
+  readonly cwd: string;
+  readonly resumeId?: string;
+};
+
+/** Codex's native arguments for a launch, in stable order (no hook wiring). */
+export function codexLaunchArguments(
+  options: CodexLaunchArgumentOptions,
+): readonly LaunchArgument[] {
+  const parts: LaunchArgument[] = options.resumeId ? [["resume", options.resumeId]] : [];
+  if (options.model) parts.push(["--model", options.model]);
+  if (options.profile) parts.push(["--profile", options.profile]);
+  if (options.sandbox) parts.push(["--sandbox", options.sandbox]);
+  if (options.approvalPolicy) parts.push(["--ask-for-approval", options.approvalPolicy]);
+  parts.push(["--cd", options.cwd]);
+  return parts;
+}
+
+/**
+ * Codex's reasoning-effort override as a `-c` argument. Validated before spawn
+ * (C-CODEX-21) and emitted as a bare TOML string value; the enum members contain
+ * no TOML-special characters.
+ */
+export function codexEffortArguments(
+  reasoningEffort: string | undefined,
+): readonly LaunchArgument[] {
+  if (!reasoningEffort) return [];
+  return [["-c", `model_reasoning_effort="${reasoningEffort}"`]];
+}
 
 export function buildCodexShellCommand(
   record: SessionRecord,
@@ -16,11 +53,13 @@ export function buildCodexShellCommand(
   options: StartCodexOptions,
   capabilities: CodexCliCapabilities = { supportsHookTrustBypass: true },
 ): string {
-  const parts = record.codex.resumeId
-    ? ["exec", "codex", "resume", shellQuote(record.codex.resumeId)]
-    : ["exec", "codex"];
-  addLaunchFlags(parts, options);
-  parts.push("--cd", shellQuote(record.cwd));
+  const parts = ["exec", "codex"];
+  const launch = codexLaunchArguments({
+    ...options,
+    cwd: record.cwd,
+    ...(record.codex.resumeId === undefined ? {} : { resumeId: record.codex.resumeId }),
+  });
+  parts.push(...launchShellWords(launch));
   if (capabilities.supportsHookTrustBypass) {
     parts.push("--dangerously-bypass-hook-trust");
   }
@@ -29,24 +68,12 @@ export function buildCodexShellCommand(
   for (const override of hookOverrides(bridgeScriptPath, options))
     parts.push("-c", shellQuote(override));
   for (const override of options.configOverrides ?? []) parts.push("-c", shellQuote(override));
-  // Reasoning effort is validated before spawn (C-CODEX-21) and applied AFTER caller
-  // overrides so it wins over a hand-rolled `model_reasoning_effort` duplicate. Emitted
-  // as a bare TOML string value; the enum members contain no TOML-special characters.
-  if (options.reasoningEffort) {
-    parts.push("-c", shellQuote(`model_reasoning_effort="${options.reasoningEffort}"`));
-  }
+  // Reasoning effort is applied AFTER caller overrides so it wins over a hand-rolled
+  // `model_reasoning_effort` duplicate.
+  parts.push(...launchShellWords(codexEffortArguments(options.reasoningEffort)));
   parts.push("-c", shellQuote("features.hooks=true"));
   parts.push("-c", shellQuote('hookTrust="trust-all"'));
   return parts.join(" ");
-}
-
-function addLaunchFlags(parts: string[], options: StartCodexOptions): void {
-  if (options.model) parts.push("--model", shellQuote(options.model));
-  if (options.profile) parts.push("--profile", shellQuote(options.profile));
-  if (options.sandbox) parts.push("--sandbox", shellQuote(options.sandbox));
-  if (options.approvalPolicy) {
-    parts.push("--ask-for-approval", shellQuote(options.approvalPolicy));
-  }
 }
 
 /**

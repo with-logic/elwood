@@ -1,10 +1,14 @@
 /**
  * Static production help for the first-party headless Elwood command.
- * Implements PRD §12A.1 and C-CLI-02.
+ * Implements PRD §12A.1/§12A.7-§12A.10 and C-CLI-02/C-CLI-21 through C-CLI-24.
  */
 
 export const cliHelp = `Usage: elwood [options] [prompt...]
        elwood run [options] [prompt...]
+       elwood resume <id> [options] [prompt...]
+       elwood interactive [id] [options]
+       elwood sessions [--state-dir <path>] [--output <text|json>]
+       elwood models [options] [--output <text|json>]
        elwood config <command>
 
 Run one Claude Code or Codex turn and write its combined assistant response.
@@ -18,6 +22,10 @@ Examples:
 
 Commands:
   run                         Run one agent turn (default)
+  resume <id> [prompt...]     Resume a kept session; same as run --resume <id>
+  interactive [id]            Open the agent's own TUI here with Elwood's settings
+  sessions                    List Elwood-owned session records; never starts an agent
+  models                      List the agent's models (starts the agent briefly)
   config                      Inspect or update global defaults; see config --help
   help                        Show this help
 
@@ -60,6 +68,34 @@ combined with stream, verbose, debug, or JSONL output. Ctrl-C still interrupts.
 
 Warnings and diagnostics use stderr; stdout remains the selected protocol.
 Use "elwood config effective" to explain resolved values and their sources.
+
+Resume subcommand:
+  elwood resume <id> [prompt...] is exactly elwood run --resume <id>: the stored
+  agent and workspace are used, --cwd is rejected, and piped stdin still applies.
+
+Interactive mode:
+  elwood interactive [id] runs claude or codex in the foreground of this terminal
+  with the resolved agent, model, effort, workspace, and posture passed as the
+  agent's own flags. Elwood does not observe or record the conversation and
+  writes no session state. With an id, the stored session's own conversation is
+  resumed in its stored workspace with its stored posture. Requires a terminal on
+  stdin and stdout; cannot be combined with --output json/jsonl, --stream,
+  --verbose, --debug, --head, --timeout, --persona, --image, --keep, --ephemeral,
+  or --resume. Built-in posture defaults are not applied unless configured.
+
+Session listing:
+  elwood sessions lists id, agent, live, resumable, last used, created, and
+  workspace for records in the effective state directory. "live" means a
+  launch's bridge socket is present. Text is an aligned table; --output json
+  emits one {"schemaVersion":1,"type":"sessions",...} document. An empty state
+  directory is a normal, empty result.
+
+Model listing:
+  elwood models starts the selected agent briefly, opens and cancels its own
+  model picker, tears the session down, and prints the rows. Text marks the
+  current model with * and the default with (default); --output json emits one
+  {"schemaVersion":1,"type":"models",...} document. Honors --agent, --cwd,
+  --model, --reasoning-effort, --timeout, --state-dir, trust, and posture flags.
 
   -h, --help                  Show this help
   -V, --version               Show the Elwood version

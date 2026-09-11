@@ -2,7 +2,7 @@
 
 /**
  * Binds the side-effect-free Elwood command to Node streams, environment, and SIGINT.
- * Implements PRD §12A and C-CLI-01/C-CLI-02/C-CLI-07/C-CLI-12.
+ * Implements PRD §12A and C-CLI-01/C-CLI-02/C-CLI-07/C-CLI-12/C-CLI-23.
  */
 
 import { realpathSync } from "node:fs";
@@ -14,7 +14,7 @@ import type { CliWritable } from "./stream.ts";
 
 export type CliProcess = {
   readonly argv: readonly string[];
-  readonly stdout: CliWritable;
+  readonly stdout: CliWritable & { readonly isTTY?: boolean };
   readonly stderr: CliWritable;
   readonly stdin: AsyncIterable<string | Uint8Array> & { readonly isTTY?: boolean };
   readonly env: Readonly<Record<string, string | undefined>>;
@@ -64,6 +64,7 @@ function processContext(proc: CliProcess, userHome: string): CliMainContext {
       source: proc.stdin,
       ...(proc.stdin.isTTY === undefined ? {} : { isTTY: proc.stdin.isTTY }),
     },
+    ...(proc.stdout.isTTY === undefined ? {} : { stdoutIsTTY: proc.stdout.isTTY }),
     env: proc.env,
     invocationCwd: proc.cwd(),
     homeDir: userHome,
