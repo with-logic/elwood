@@ -19,3 +19,10 @@ tickets/
 # Ephemeral code-review artifacts (regenerated each run).
 REVIEW.md
 VALIDATION.md
+
+# Site: generated animation masters and internal review media live outside the
+# repository. `site/assets/game/` (the runtime sprite sheets) IS committed.
+site/assets/production/
+site/docs/reviews/
+site/**/__pycache__/
+site/assets/frame.png

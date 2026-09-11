@@ -1,14 +1,50 @@
-# Elwood
+<div align="center">
+  <img src="site/assets/landing/robot.webp" alt="" width="96" />
+  <h1>Elwood</h1>
+</div>
 
-Elwood is a TypeScript library and command-line tool for driving interactive
-agentic coding CLIs through real terminal sessions. It starts tools like Claude
-Code and Codex the way they are designed to run, inside an interactive PTY, and
-lets a host application send prompts and key presses, render the live terminal,
-and observe a typed event stream for hooks, tool calls, transcript activity,
-warnings, and lifecycle state. The governing constraint is that the agent should
-not know it is wrapped: the process stays interactive, runs in the user's normal
-shell environment, and is controlled through the hooks and transcripts the CLI
-already provides. The first supported adapters are Claude Code and Codex CLI.
+**Automate real Claude Code and Codex sessions in headless PTYs.**
+
+Write scripts that control normal interactive Claude Code and Codex sessions,
+which use your regular subscription rather than metered API billing. Elwood
+starts the actual agent CLI in a hidden terminal and types into it the way you
+would. The agent keeps its tools, hooks, configuration, and login.
+
+Elwood is an open-source project by [Logic, Inc](https://logic.inc).
+
+```sh
+npm install -g @with-logic/elwood
+elwood "Explain this project's architecture."
+```
+
+```ts
+import { ClaudeSession } from "@with-logic/elwood";
+
+const session = new ClaudeSession({ cwd: "/path/to/project" });
+console.log(await session.send("Explain this project."));
+await session.close();
+```
+
+---
+
+## Why Elwood
+
+> **The agent should not know it is wrapped.**
+
+Headless agent APIs give you a different product than the CLI your team
+actually uses: different tools, different hooks, different billing. Elwood
+drives the real interactive CLI instead. The process stays interactive, runs in
+your normal shell environment, and is controlled through the hooks and
+transcripts the CLI already provides.
+
+- **Your subscription, not an API key.** It is the same interactive session you
+  run by hand, so it bills the way that session already bills.
+- **A small API over a real terminal.** `send()` returns a string. `stream()`
+  yields typed events. The CLI keeps its own tools and history.
+- **Typed activity, not screen scraping.** Assistant text, reasoning, tool
+  calls and results, hooks, warnings, and lifecycle arrive as one event stream.
+- **Two ways in.** A TypeScript library for applications, and an `elwood`
+  command for shell scripts and pipelines.
 
 `PRD.md` is the source of truth for observable behavior. If this README, the
 tests, or the implementation disagree with the PRD, the PRD wins.
@@ -492,6 +528,28 @@ immediate; both are safe after the process has already exited.
   low-level examples.
 - [PRD.md](PRD.md): the behavior specification and conformance criteria.
 - [CHANGELOG.md](CHANGELOG.md): consumer-facing changes.
+- [site/](site/): the landing page and the generated documentation site.
+
+## The website
+
+[`site/`](site/) is the landing page and the generated documentation site,
+deployed to Vercel from this repository. It is a static site with no framework
+and no build step: HTML, CSS, ES modules, and the robot's sprite sheets.
+
+```sh
+cd site && python3 -m http.server 8766 --bind 127.0.0.1
+```
+
+The documentation page is generated from Markdown sources in
+[`site/docs/guide/`](site/docs/guide/) and reads the CLI's help text out of
+`src/cli/help.ts`, so the published flag reference cannot drift from the code:
+
+```sh
+cd site
+uv run scripts/build_docs.py        # regenerate guide/, llms.txt, llms-full.txt
+python3 scripts/check_doc_examples.py   # typecheck every documented example
+node --test tests/*.test.mjs        # the landing page's own tests
+```
 
 ## License
 

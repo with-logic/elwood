@@ -1,0 +1,57 @@
+name: Site CI
+
+# Runs on every PR and push to main, regardless of which paths changed.
+# Branch protection requires this job's success context, so path-filtering it
+# would let library-only PRs slip through unblocked.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  site-check:
+    # macOS matches the library job, and the doc example check compiles
+    # against the library's own TypeScript.
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Landing page tests
+        working-directory: site
+        run: node --test tests/*.test.mjs
+
+      # The guide is generated from site/docs/guide/ and reads CLI help out of
+      # src/cli/help.ts. Rebuilding here proves the committed guide matches its
+      # sources and the current flag reference.
+      - name: Rebuild the documentation site
+        working-directory: site
+        run: uv run scripts/build_docs.py
+
+      - name: Fail if the generated guide is stale
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet -- site/guide site/llms.txt site/llms-full.txt; then
+            echo "::error::The generated guide is out of date. Run 'cd site && uv run scripts/build_docs.py' and commit the result."
+            git diff --stat -- site/guide site/llms.txt site/llms-full.txt
+            exit 1
+          fi
+
+      - name: Typecheck every documented example
+        working-directory: site
+        run: python3 scripts/check_doc_examples.py

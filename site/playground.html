@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#e8edf1">
+  <title>Elwood’s little world</title>
+  <link rel="stylesheet" href="playground.css">
+</head>
+<body>
+  <header>
+    <a class="wordmark" href="./" aria-label="Elwood home">elwood<span class="wordmark-dot">.</span></a>
+    <p>A little room to roam.</p>
+    <nav><button id="pause" type="button">Pause</button><button id="reset" type="button">Back home <kbd>R</kbd></button><a href="assets/production/review/index.html">Animation library</a></nav>
+  </header>
+  <main>
+    <section class="playground" aria-label="Robot playground">
+      <div class="scene-title"><h1>Small robot.<br>Big playground.</h1><p>Take the long way home.</p></div>
+      <canvas id="world" tabindex="0" aria-label="Interactive robot world. Arrow keys or A and D move. Space jumps. Up climbs. Down drops. F faces the camera. B faces away. The labeled keyboard below provides a single key for each gesture. Sitting, crossed arms, fainting and floating hold until another action is requested."></canvas>
+      <div id="loading" role="status"><span class="loading-mark"></span><p>Waking up Elwood…</p><button type="button" id="retry" hidden>Try again</button></div>
+      <div class="scene-meta"><span id="state" role="status" aria-live="polite">Getting ready</span><span id="hint">Walk over to the letters. See how high you can get.</span></div>
+      <div id="pause-overlay" hidden>Taking a breather.<button type="button" id="resume">Keep exploring</button></div>
+    </section>
+    <footer class="keyboard-panel" aria-label="Elwood’s keyboard">
+      <div class="keyboard-heading"><div><h2>A whole keyboard of little moments.</h2><p>Press a key, or click one. See what happens.</p></div><span>Arrows move too · Space jumps</span></div>
+      <div class="virtual-keyboard" aria-label="Clickable animation keyboard">
+        <div class="keyboard-row row-0">
+          <button type="button" class="keyboard-key gesture-key" data-gesture="thinking" data-code="Digit1" title="1: Think"><kbd>1</kbd><span>Think</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="shrug" data-code="Digit2" title="2: Shrug"><kbd>2</kbd><span>Shrug</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="wave" data-code="Digit3" title="3: Wave"><kbd>3</kbd><span>Wave</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="bow" data-code="Digit4" title="4: Bow"><kbd>4</kbd><span>Bow</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="toe-touch" data-code="Digit5" title="5: Touch toes"><kbd>5</kbd><span>Touch toes</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="tiptoe" data-code="Digit6" title="6: Tiptoe"><kbd>6</kbd><span>Tiptoe</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="pond-hops" data-code="Digit7" title="7: Pond hops"><kbd>7</kbd><span>Pond hops</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="balance" data-code="Digit8" title="8: Balance"><kbd>8</kbd><span>Balance</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="crossed-arms" data-code="Digit9" title="9: Cross arms"><kbd>9</kbd><span>Cross arms</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="criss-cross" data-code="Digit0" title="0: Sit"><kbd>0</kbd><span>Sit</span></button>
+        </div>
+        <div class="keyboard-row row-1">
+          <button type="button" class="keyboard-key gesture-key" data-gesture="quad-stretch" data-code="KeyQ" title="Q: Leg stretch"><kbd>Q</kbd><span>Leg stretch</span></button>
+          <button type="button" class="keyboard-key control-key" data-hold="climb" title="W: Climb"><kbd>W</kbd><span>Climb</span></button>
+          <button type="button" class="keyboard-key control-key" data-press="climb" title="E: Grab"><kbd>E</kbd><span>Grab</span></button>
+          <button type="button" class="keyboard-key control-key" data-command="reset" title="R: Home"><kbd>R</kbd><span>Home</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="side-stretch" data-code="KeyT" title="T: Big stretch"><kbd>T</kbd><span>Big stretch</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="sleepy-yawn" data-code="KeyY" title="Y: Yawn"><kbd>Y</kbd><span>Yawn</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="blow-kiss" data-code="KeyU" title="U: Kiss"><kbd>U</kbd><span>Kiss</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="imaginary-watch" data-code="KeyI" title="I: Time"><kbd>I</kbd><span>Time</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="bashful-toe" data-code="KeyO" title="O: Bashful"><kbd>O</kbd><span>Bashful</span></button>
+          <button type="button" class="keyboard-key control-key" data-command="pause" title="P: Pause"><kbd>P</kbd><span>Pause</span></button>
+        </div>
+        <div class="keyboard-row row-2">
+          <button type="button" class="keyboard-key control-key" data-hold="left" title="A: Left"><kbd>A</kbd><span>Left</span></button>
+          <button type="button" class="keyboard-key control-key" data-press="drop" title="S: Drop"><kbd>S</kbd><span>Drop</span></button>
+          <button type="button" class="keyboard-key control-key" data-hold="right" title="D: Right"><kbd>D</kbd><span>Right</span></button>
+          <button type="button" class="keyboard-key control-key" data-face="front" title="F: Face us"><kbd>F</kbd><span>Face us</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="peace-sign" data-code="KeyG" title="G: Peace"><kbd>G</kbd><span>Peace</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="juggling-mime" data-code="KeyH" title="H: Juggle"><kbd>H</kbd><span>Juggle</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="sneeze" data-code="KeyJ" title="J: Achoo"><kbd>J</kbd><span>Achoo</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="dramatic-faint" data-code="KeyK" title="K: Faint"><kbd>K</kbd><span>Faint</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="zero-gravity" data-code="KeyL" title="L: Float"><kbd>L</kbd><span>Float</span></button>
+        </div>
+        <div class="keyboard-row row-3">
+          <button type="button" class="keyboard-key gesture-key" data-gesture="cartwheel" data-code="KeyZ" title="Z: Cartwheel"><kbd>Z</kbd><span>Cartwheel</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="arm-inspection" data-code="KeyX" title="X: Spare arm"><kbd>X</kbd><span>Spare arm</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="punch-jump" data-code="KeyC" title="C: Hero jump"><kbd>C</kbd><span>Hero jump</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="disco-dance" data-code="KeyV" title="V: Dance"><kbd>V</kbd><span>Dance</span></button>
+          <button type="button" class="keyboard-key control-key" data-face="back" title="B: Face away"><kbd>B</kbd><span>Face away</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="dust-off" data-code="KeyN" title="N: Dust off"><kbd>N</kbd><span>Dust off</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="air-guitar" data-code="KeyM" title="M: Air guitar"><kbd>M</kbd><span>Air guitar</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="little-victory" data-code="Comma" title=",: Victory"><kbd>,</kbd><span>Victory</span></button>
+        </div>
+        <div class="keyboard-row space-row"><button type="button" class="keyboard-key control-key" data-hold="sprint" title="Hold Shift with left or right to sprint"><kbd>Shift</kbd><span>Sprint</span></button><button type="button" class="keyboard-key control-key space-key" data-press="jump"><kbd>Space</kbd><span>Jump</span></button></div>
+      </div>
+      <p class="keyboard-note">Sit, cross arms, faint or float for as long as you like. Choose another action to get up or land.</p>
+    </footer>
+    <div class="touch-controls" aria-label="Touch movement controls"><button type="button" data-hold="left" aria-label="Move left">←</button><button type="button" data-hold="right" aria-label="Move right">→</button><button type="button" data-press="jump">Jump</button><button type="button" data-press="climb">Climb</button><button type="button" data-press="drop">Drop</button></div>
+  </main>
+  <script type="module" src="playground.mjs"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+# Elwood
+
+> A TypeScript library and CLI for driving Claude Code and Codex through real interactive terminals. Package: @with-logic/elwood.
+
+- [Overview](guide/index.md)
+- [Quickstart](guide/quickstart.md)
+- [Sessions and streaming](guide/sessions.md)
+- [CLI](guide/cli.md)
+- [Recipes](guide/recipes.md)
+- [Configuration](guide/configuration.md)
+- [Permissions and cleanup](guide/permissions.md)
+- [TypeScript reference](guide/api.md)
+- [CLI reference](guide/cli-reference.md)
+- [Troubleshooting](guide/troubleshooting.md)
+
+[Full documentation](llms-full.txt)

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fbf6e7">
+  <meta name="description" content="Automate real Claude Code and Codex sessions in headless PTYs. Write scripts that control normal interactive Claude Code and Codex sessions, which use your regular subscription. A TypeScript library and CLI.">
+  <title>Elwood — Headless interactive agent sessions</title>
+  <link rel="preload" href="assets/landing/fonts/anton.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/landing/robot.webp" as="image">
+  <link rel="stylesheet" href="landing.css">
+</head>
+<body>
+  <a class="skip-link" href="#documentation">Skip to documentation</a>
+  <main>
+    <section class="hero" id="home" aria-label="Elwood, headless interactive agent sessions">
+      <header class="site-header">
+        <a class="brand" href="./">ELWOOD / OPEN SOURCE / TYPESCRIPT</a>
+        <div class="header-rule" aria-hidden="true"></div>
+        <nav class="site-nav" aria-label="Main navigation"><a id="github-link" href="https://github.com/with-logic/elwood">GITHUB <span aria-hidden="true">↗</span></a><a href="guide/">DOCUMENTATION <span aria-hidden="true">↗</span></a></nav>
+      </header>
+      <button type="button" class="terminal" aria-label="Watch the Elwood walkthrough" aria-haspopup="dialog" aria-controls="terminal-demo"><div class="terminal-bar"><span>/dev/tty0</span><i></i></div><div class="terminal-screen"><span>&gt;<span class="terminal-cursor">_</span></span></div><b class="terminal-plug" aria-hidden="true"></b><span class="terminal-play" aria-hidden="true">▶</span></button>
+      <div class="system-note"><i aria-hidden="true"></i><p>Automate real Claude Code and Codex sessions in headless PTYs.</p><p>Write scripts that control normal interactive Claude Code and Codex sessions, which use your regular subscription.</p></div>
+      <img class="robot-poster" src="assets/landing/robot.webp" width="343" height="720" alt="Elwood, a little mechanical robot connected to a terminal." fetchpriority="high">
+      <canvas id="elwood-scene" aria-hidden="true"></canvas>
+      <button type="button" class="robot-grip" aria-label="Pick up Elwood. Drag to move; release to drop. With keyboard, press Enter, use arrows, then Enter to drop." aria-pressed="false" hidden></button>
+      <div class="hero-copy">
+        <h1 class="hero-title" aria-label="Headless interactive agent sessions"><span class="title-line line-1"><span class="word word-headless">HEADLESS</span><span class="word word-interactive">INTERACTIVE</span></span><span class="title-line line-2"><span class="word word-agent">AGENT</span><span class="word word-sessions">SESSIONS</span></span></h1>
+      </div>
+      <button class="help-toggle" type="button" aria-label="Robot keyboard shortcuts" aria-haspopup="dialog" aria-controls="robot-help">?</button>
+      <p class="robot-error" role="status" hidden></p>
+      <div class="touch-pad" aria-label="Robot movement controls" hidden><button type="button" data-hold="left" aria-label="Walk left">←</button><button type="button" data-hold="right" aria-label="Walk right">→</button><button type="button" data-press="jump" aria-label="Jump">↑</button><button type="button" data-press="climb">Climb</button></div>
+    </section>
+    <section class="thesis" id="documentation" aria-labelledby="thesis-title">
+      <p class="section-name">What Elwood does</p>
+      <h2 id="thesis-title" class="thesis-title">Real Claude Code and Codex sessions, automated.</h2>
+      <p class="thesis-text">Elwood starts the actual agent CLI in a hidden terminal and types into it the way you would. The agent keeps its tools, hooks, configuration and login. Your script sends a prompt and gets the reply back as a string, a stream of typed events, or JSON. Because it is the normal interactive session, it runs on the subscription you already pay for, not on a metered API key.</p>
+    </section>
+    <section class="ways" aria-label="Two ways to use Elwood">
+      <div class="way">
+        <p class="section-name">The library</p>
+        <h3>From TypeScript</h3>
+        <p>Create a session, send a prompt, read the reply. Stream typed events when you want to watch the agent work.</p>
+        <figure class="code-example"><figcaption>TypeScript</figcaption><pre><code><span class="code-muted">import</span> { ClaudeSession } <span class="code-muted">from</span> <span class="code-string">"@with-logic/elwood"</span>;
+
+<span class="code-muted">const</span> session = <span class="code-muted">new</span> ClaudeSession({
+  cwd: <span class="code-string">"/path/to/project"</span>,
+});
+
+<span class="code-muted">try</span> {
+  console.log(<span class="code-muted">await</span> session.send(
+    <span class="code-string">"Explain this project."</span>
+  ));
+} <span class="code-muted">finally</span> {
+  <span class="code-muted">await</span> session.close();
+}</code></pre><p>Use <code>CodexSession</code> for Codex, or <code>session.stream()</code> for typed activity as it happens.</p></figure>
+        <a class="guide-link" href="guide/#quickstart">Read the quickstart ↗</a>
+      </div>
+      <div class="way">
+        <p class="section-name">The CLI</p>
+        <h3>From your shell</h3>
+        <p>Pipe in a diff, a document or a build log. Get back text, JSON or a stream of events that the next command can use.</p>
+        <figure class="code-example"><figcaption>Terminal</figcaption><pre><code>npm install -g @with-logic/elwood
+
+git diff | elwood "Review this diff for correctness."
+
+elwood --output json "Which module owns auth?"
+
+elwood --agent codex "Summarize the failing tests."</code></pre><p>If no agent is specified, we try Claude Code first and then Codex if Claude isn't found.</p></figure>
+        <a class="guide-link" href="guide/#cli">Read the CLI guide ↗</a>
+      </div>
+    </section>
+    <footer class="page-footer" id="source"><a class="brand" href="#home">ELWOOD</a><p>An open-source project by <a href="https://logic.inc">Logic, Inc</a>. MIT licensed.</p><nav class="footer-links" aria-label="Project links"><a href="https://github.com/with-logic/elwood">GitHub <span aria-hidden="true">↗</span></a><a href="https://www.npmjs.com/package/@with-logic/elwood">npm <span aria-hidden="true">↗</span></a><a href="playground.html">The animation workshop <span aria-hidden="true">↗</span></a></nav></footer>
+  </main>
+  <dialog id="robot-help" aria-labelledby="help-title">
+    <div class="help-heading"><div><p>HE HAS A MIND OF HIS OWN.</p><h2 id="help-title">Borrow the controls.</h2></div><button type="button" class="help-close" aria-label="Close keyboard shortcuts">×</button></div>
+    <p class="help-intro">Arrow keys or A / D to move. Space to jump. ↑ or W to grab and climb. ↓ to drop. After five quiet seconds, he settles into idle, then wanders again.</p>
+    <div class="help-actions"><button type="button" data-action="play">Play with Elwood</button><button type="button" data-action="pause">Pause animation</button></div>
+      <div class="virtual-keyboard" aria-label="Clickable animation keyboard">
+        <div class="keyboard-row row-0">
+          <button type="button" class="keyboard-key gesture-key" data-gesture="thinking" data-code="Digit1" title="1: Think"><kbd>1</kbd><span>Think</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="shrug" data-code="Digit2" title="2: Shrug"><kbd>2</kbd><span>Shrug</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="wave" data-code="Digit3" title="3: Wave"><kbd>3</kbd><span>Wave</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="bow" data-code="Digit4" title="4: Bow"><kbd>4</kbd><span>Bow</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="toe-touch" data-code="Digit5" title="5: Touch toes"><kbd>5</kbd><span>Touch toes</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="tiptoe" data-code="Digit6" title="6: Tiptoe"><kbd>6</kbd><span>Tiptoe</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="pond-hops" data-code="Digit7" title="7: Pond hops"><kbd>7</kbd><span>Pond hops</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="balance" data-code="Digit8" title="8: Balance"><kbd>8</kbd><span>Balance</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="crossed-arms" data-code="Digit9" title="9: Cross arms"><kbd>9</kbd><span>Cross arms</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="criss-cross" data-code="Digit0" title="0: Sit"><kbd>0</kbd><span>Sit</span></button>
+        </div>
+        <div class="keyboard-row row-1">
+          <button type="button" class="keyboard-key gesture-key" data-gesture="quad-stretch" data-code="KeyQ" title="Q: Leg stretch"><kbd>Q</kbd><span>Leg stretch</span></button>
+          <button type="button" class="keyboard-key control-key" data-hold="climb" title="W: Climb"><kbd>W</kbd><span>Climb</span></button>
+          <button type="button" class="keyboard-key control-key" data-press="climb" title="E: Grab"><kbd>E</kbd><span>Grab</span></button>
+          <button type="button" class="keyboard-key control-key" data-command="reset" title="R: Home"><kbd>R</kbd><span>Home</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="side-stretch" data-code="KeyT" title="T: Big stretch"><kbd>T</kbd><span>Big stretch</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="sleepy-yawn" data-code="KeyY" title="Y: Yawn"><kbd>Y</kbd><span>Yawn</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="blow-kiss" data-code="KeyU" title="U: Kiss"><kbd>U</kbd><span>Kiss</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="imaginary-watch" data-code="KeyI" title="I: Time"><kbd>I</kbd><span>Time</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="bashful-toe" data-code="KeyO" title="O: Bashful"><kbd>O</kbd><span>Bashful</span></button>
+          <button type="button" class="keyboard-key control-key" data-command="pause" title="P: Pause"><kbd>P</kbd><span>Pause</span></button>
+        </div>
+        <div class="keyboard-row row-2">
+          <button type="button" class="keyboard-key control-key" data-hold="left" title="A: Left"><kbd>A</kbd><span>Left</span></button>
+          <button type="button" class="keyboard-key control-key" data-press="drop" title="S: Drop"><kbd>S</kbd><span>Drop</span></button>
+          <button type="button" class="keyboard-key control-key" data-hold="right" title="D: Right"><kbd>D</kbd><span>Right</span></button>
+          <button type="button" class="keyboard-key control-key" data-face="front" title="F: Face us"><kbd>F</kbd><span>Face us</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="peace-sign" data-code="KeyG" title="G: Peace"><kbd>G</kbd><span>Peace</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="juggling-mime" data-code="KeyH" title="H: Juggle"><kbd>H</kbd><span>Juggle</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="sneeze" data-code="KeyJ" title="J: Achoo"><kbd>J</kbd><span>Achoo</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="dramatic-faint" data-code="KeyK" title="K: Faint"><kbd>K</kbd><span>Faint</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="zero-gravity" data-code="KeyL" title="L: Float"><kbd>L</kbd><span>Float</span></button>
+        </div>
+        <div class="keyboard-row row-3">
+          <button type="button" class="keyboard-key gesture-key" data-gesture="cartwheel" data-code="KeyZ" title="Z: Cartwheel"><kbd>Z</kbd><span>Cartwheel</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="arm-inspection" data-code="KeyX" title="X: Spare arm"><kbd>X</kbd><span>Spare arm</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="punch-jump" data-code="KeyC" title="C: Hero jump"><kbd>C</kbd><span>Hero jump</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="disco-dance" data-code="KeyV" title="V: Dance"><kbd>V</kbd><span>Dance</span></button>
+          <button type="button" class="keyboard-key control-key" data-face="back" title="B: Face away"><kbd>B</kbd><span>Face away</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="dust-off" data-code="KeyN" title="N: Dust off"><kbd>N</kbd><span>Dust off</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="air-guitar" data-code="KeyM" title="M: Air guitar"><kbd>M</kbd><span>Air guitar</span></button>
+          <button type="button" class="keyboard-key gesture-key" data-gesture="little-victory" data-code="Comma" title=",: Victory"><kbd>,</kbd><span>Victory</span></button>
+        </div>
+        <div class="keyboard-row space-row"><button type="button" class="keyboard-key control-key" data-hold="sprint" title="Hold Shift with left or right to sprint"><kbd>Shift</kbd><span>Sprint</span></button><button type="button" class="keyboard-key control-key space-key" data-press="jump"><kbd>Space</kbd><span>Jump</span></button></div>
+      </div>
+
+    <p class="keyboard-note">F / B face toward or away from you. R brings him home. P pauses. ? opens this menu. Sitting, crossed arms, fainting and floating hold until the next action. You can also pick him up and drag him around. With keyboard focus on the robot, press Enter, move with arrows, then Enter to drop.</p>
+  </dialog>
+  <dialog id="terminal-demo" aria-label="Elwood walkthrough">
+    <div class="demo-window-bar"><span class="demo-mode">zsh</span><span>elwood / demo</span><button type="button" data-demo="close" aria-label="Close walkthrough">×</button></div>
+    <pre class="demo-output" tabindex="0" aria-label="Walkthrough terminal output"></pre>
+    <div class="demo-controls"><button type="button" data-demo="pause" data-state="pause" aria-label="Pause"><svg class="icon-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg><svg class="icon-pause" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z"/></svg><svg class="icon-replay" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3a5 5 0 1 1-4.6 3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M2.6 2.2v4.3h4.3z"/></svg></button><button type="button" data-demo="restart" aria-label="Restart"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.5h2v11H3zM13 2.5v11l-8-5.5z"/></svg></button><label class="visually-hidden" for="demo-progress">Walkthrough position</label><input id="demo-progress" class="demo-progress" type="range" min="0" value="0" step="0.1"><span class="demo-time"></span></div>
+    <nav class="demo-chapters" aria-label="Walkthrough chapters"></nav>
+  </dialog>
+  <script type="module" src="landing.mjs"></script>
+</body>
+</html>

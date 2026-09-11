@@ -1,0 +1,933 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#fbf6e7"><meta name="description" content="Documentation for the Elwood TypeScript library and CLI: what it does, how it does it, and how to use it."><title>Elwood documentation</title><link rel="stylesheet" href="guide.css"></head>
+<body><a class="skip" href="#content">Skip to content</a><header class="docs-header"><a class="docs-brand" href="../">ELWOOD <span>/ documentation</span></a><nav aria-label="Site"><a href="../">Home</a><a href="https://www.npmjs.com/package/@with-logic/elwood">npm ↗</a><button id="search-open" aria-haspopup="dialog">Search <kbd>⌘ K</kbd></button></nav></header>
+<div class="docs-layout"><aside class="docs-sidebar"><p class="sidebar-title">Contents</p><nav aria-label="Documentation"><ul><li><a href="#index" data-section="index">Overview</a><ul><li><a href="#index--two-ways-in">Two ways in</a></li><li><a href="#index--what-happens-on-send">What happens on send</a></li><li><a href="#index--what-elwood-owns">What Elwood owns</a></li><li><a href="#index--where-to-go-next">Where to go next</a></li><li><a href="#index--runtime-support">Runtime support</a></li></ul></li><li><a href="#quickstart" data-section="quickstart">Quickstart</a><ul><li><a href="#quickstart--before-you-start">Before you start</a></li><li><a href="#quickstart--from-the-shell">From the shell</a></li><li><a href="#quickstart--from-typescript">From TypeScript</a></li><li><a href="#quickstart--follow-up-turns">Follow-up turns</a></li><li><a href="#quickstart--if-the-first-run-fails">If the first run fails</a></li></ul></li><li><a href="#sessions" data-section="sessions">Sessions and streaming</a><ul><li><a href="#sessions--send-and-follow-ups">Send and follow-ups</a></li><li><a href="#sessions--streaming">Streaming</a></li><li><a href="#sessions--attach-an-image">Attach an image</a></li><li><a href="#sessions--codex-sessions">Codex sessions</a></li><li><a href="#sessions--startup-and-cleanup">Startup and cleanup</a></li><li><a href="#sessions--timeouts-and-cancellation">Timeouts and cancellation</a></li></ul></li><li><a href="#cli" data-section="cli">CLI</a><ul><li><a href="#cli--input">Input</a></li><li><a href="#cli--output-formats">Output formats</a></li><li><a href="#cli--streaming-and-verbose-output">Streaming and verbose output</a></li><li><a href="#cli--timeouts">Timeouts</a></li><li><a href="#cli--resuming-a-session">Resuming a session</a></li><li><a href="#cli--listing-sessions">Listing sessions</a></li><li><a href="#cli--listing-models">Listing models</a></li><li><a href="#cli--the-agents-own-terminal">The agent&#x27;s own terminal</a></li><li><a href="#cli--reproducible-runs">Reproducible runs</a></li></ul></li><li><a href="#recipes" data-section="recipes">Recipes</a><ul><li><a href="#recipes--review-a-diff-into-a-file">Review a diff into a file</a></li><li><a href="#recipes--json-output-with-failure-handling">JSON output with failure handling</a></li><li><a href="#recipes--activity-in-your-application">Activity in your application</a></li><li><a href="#recipes--warnings-before-the-first-turn">Warnings before the first turn</a></li><li><a href="#recipes--environment-check">Environment check</a></li></ul></li><li><a href="#configuration" data-section="configuration">Configuration</a><ul><li><a href="#configuration--the-config-file">The config file</a></li><li><a href="#configuration--location-and-precedence">Location and precedence</a></li><li><a href="#configuration--environment-variables">Environment variables</a></li><li><a href="#configuration--library-options">Library options</a></li></ul></li><li><a href="#permissions" data-section="permissions">Permissions and cleanup</a><ul><li><a href="#permissions--cli-defaults">CLI defaults</a></li><li><a href="#permissions--library-options">Library options</a></li><li><a href="#permissions--input-and-authority">Input and authority</a></li><li><a href="#permissions--cleanup">Cleanup</a></li></ul></li><li><a href="#api" data-section="api">TypeScript reference</a><ul><li><a href="#api--constructors">Constructors</a></li><li><a href="#api--constructor-options">Constructor options</a></li><li><a href="#api--turn-methods">Turn methods</a></li><li><a href="#api--turn-options">Turn options</a></li><li><a href="#api--stream-events">Stream events</a></li><li><a href="#api--lifecycle-and-control">Lifecycle and control</a></li><li><a href="#api--events-and-hooks">Events and hooks</a></li><li><a href="#api--errors">Errors</a></li><li><a href="#api--advanced-resume">Advanced resume</a></li></ul></li><li><a href="#cli-reference" data-section="cli-reference">CLI reference</a><ul><li><a href="#cli-reference--command-help">Command help</a></li><li><a href="#cli-reference--output-records">Output records</a></li><li><a href="#cli-reference--exit-codes">Exit codes</a></li><li><a href="#cli-reference--configuration-commands">Configuration commands</a></li><li><a href="#cli-reference--combinations-to-know">Combinations to know</a></li></ul></li><li><a href="#troubleshooting" data-section="troubleshooting">Troubleshooting</a><ul><li><a href="#troubleshooting--command-not-found">Command not found</a></li><li><a href="#troubleshooting--authentication-fails">Authentication fails</a></li><li><a href="#troubleshooting--nothing-appears-for-a-while">Nothing appears for a while</a></li><li><a href="#troubleshooting--a-prompt-is-blocked">A prompt is blocked</a></li><li><a href="#troubleshooting--a-script-says-success-but-the-agent-failed">A script says success but the agent failed</a></li><li><a href="#troubleshooting--timeout-or-a-turn-that-will-not-finish">Timeout or a turn that will not finish</a></li><li><a href="#troubleshooting--a-saved-conversation-cannot-resume">A saved conversation cannot resume</a></li><li><a href="#troubleshooting--native-dependency-or-platform-error">Native dependency or platform error</a></li><li><a href="#troubleshooting--filing-an-issue">Filing an issue</a></li></ul></li></ul></nav></aside>
+<main id="content" tabindex="-1"><article><section class="doc-section" id="index" aria-labelledby="index--title"><div class="section-tools"><span>Overview</span><button class="copy-section" data-slug="index">Copy as Markdown</button><a href="index.md">.md</a></div><h1 id="index--title">What Elwood is</h1>
+<p>Elwood lets you drive Claude Code or Codex from TypeScript and the command line. Underneath, the agent runs in a real interactive terminal, with its own tools, configuration and authenticated account.</p>
+<p>You do not need to parse terminal escape codes or guess when the agent has finished a turn.</p>
+<h2 id="index--two-ways-in">Two ways in</h2>
+<p><strong>From your shell:</strong> install the <code>elwood</code> executable, pipe in a diff, and get an answer you can use in a script. <a href="#quickstart--from-the-shell">CLI quickstart</a>.</p>
+<p><strong>From your app:</strong> create a <code>ClaudeSession</code>, call <code>send()</code>, and get a string back. <a href="#quickstart--from-typescript">TypeScript quickstart</a>.</p>
+<div class="highlight"><pre><span></span><code>npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span>@with-logic/elwood
+elwood<span class="w"> </span><span class="s2">"Explain this project's architecture."</span>
+</code></pre></div>
+
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">"@with-logic/elwood"</span><span class="p">;</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">session</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="p">();</span>
+<span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">reply</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span><span class="s2">"Explain this project's architecture."</span><span class="p">);</span>
+<span class="w">  </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">reply</span><span class="p">);</span>
+<span class="p">}</span><span class="w"> </span><span class="k">finally</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">close</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h2 id="index--what-happens-on-send">What happens on send</h2>
+<ol>
+<li>Elwood starts the selected agent in a hidden terminal, in your project directory.</li>
+<li>It waits until the agent is ready and submits your prompt.</li>
+<li>The agent uses its normal tools. Elwood observes structured activity and the turn boundary.</li>
+<li>Your call resolves with the assistant's reply. The same session can be continued with further prompts as needed.</li>
+</ol>
+<p>A <strong>session</strong> is a running conversation with one agent in one workspace. A <strong>turn</strong> is one prompt and its response. A <strong>PTY</strong> is the operating system's terminal interface: it gives the agent the interactive environment it expects even when your app has no terminal window.</p>
+<h2 id="index--what-elwood-owns">What Elwood owns</h2>
+<p>Elwood handles terminal startup, prompt delivery, typed activity, turn completion, process cleanup, and even agent updates (if enabled). Claude Code or Codex still owns model access, account authentication, its tools and its conversation history.</p>
+<p>The agent can read and change files according to its launch permissions. <a href="#permissions">Choose the permissions your task needs</a>.</p>
+<h2 id="index--where-to-go-next">Where to go next</h2>
+<ul>
+<li><a href="#quickstart">Quickstart</a>: prerequisites, install and a runnable example.</li>
+<li><a href="#sessions">Sessions and streaming</a>: follow-ups, streaming, images and cleanup.</li>
+<li><a href="#cli">CLI</a>: prompts, pipelines, JSON, session and model listings, and the agent's own terminal.</li>
+<li><a href="#recipes">Recipes</a>: scripts with complete error paths.</li>
+<li><a href="#api">TypeScript reference</a>: classes, options, events and lifecycle methods.</li>
+<li><a href="#troubleshooting">Troubleshooting</a>: installation, login, blocked prompts and timeouts.</li>
+</ul>
+<h2 id="index--runtime-support">Runtime support</h2>
+<p>The initial release targets <strong>macOS and Node.js 24 or newer</strong>. Elwood is a local/server-side Node library with a native PTY dependency. It does not run inside a browser. The agent must be installed and authenticated. With no agent selected, the CLI uses the first one it finds (Claude Code, then Codex) and never switches mid-session.</p>
+<p>These docs use the distribution name <strong><a href="https://www.npmjs.com/package/@with-logic/elwood">@with-logic/elwood</a></strong> and the executable name <strong>elwood</strong>.</p></section><section class="doc-section" id="quickstart" aria-labelledby="quickstart--title"><div class="section-tools"><span>Quickstart</span><button class="copy-section" data-slug="quickstart">Copy as Markdown</button><a href="quickstart.md">.md</a></div><h1 id="quickstart--title">Quickstart</h1>
+<p>Start in a project you know. The first prompt below asks for an explanation, so you can see the whole round trip before asking an agent to make changes.</p>
+<h2 id="quickstart--before-you-start">Before you start</h2>
+<p>You need macOS, Node.js 24+, and an installed, authenticated Claude Code or Codex CLI. This guide uses Claude Code.</p>
+<div class="highlight"><pre><span></span><code>node<span class="w"> </span>--version
+claude<span class="w"> </span>--version
+</code></pre></div>
+
+<p>If Claude is not installed, follow the <a href="https://code.claude.com/docs/en/quickstart">Claude Code installation guide</a>. Run <code>claude</code> once in your terminal and complete its sign-in flow. See <a href="https://code.claude.com/docs/en/authentication">Claude authentication</a> for your account or organization setup. Then exit that session and return to your shell.</p>
+<p>Elwood uses the agent's normal environment and authentication. Installing Elwood does not create an account or include model usage.</p>
+<h2 id="quickstart--from-the-shell">From the shell</h2>
+<p>Install the executable:</p>
+<div class="highlight"><pre><span></span><code>npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span>@with-logic/elwood
+</code></pre></div>
+
+<p>From your project directory, ask one question:</p>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span><span class="s2">"Explain this project in three sentences."</span>
+</code></pre></div>
+
+<p>Elwood starts Claude in a hidden terminal, waits for one turn, prints the assistant's reply and exits. The exact answer depends on your project. Diagnostics go to stderr; the answer goes to stdout.</p>
+<p>Pin one agent if you have both installed:</p>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>agent<span class="w"> </span>claude
+elwood<span class="w"> </span><span class="s2">"Where are the tests?"</span>
+</code></pre></div>
+
+<p>With no <code>--agent</code>, Elwood uses the first agent it finds installed: Claude Code, then Codex. Pass <code>--agent codex</code> (or set <code>ELWOOD_AGENT</code>) to choose explicitly. <a href="#cli">Continue with the CLI guide</a>.</p>
+<h2 id="quickstart--from-typescript">From TypeScript</h2>
+<p>Install the library in your project:</p>
+<div class="highlight"><pre><span></span><code>npm<span class="w"> </span>install<span class="w"> </span>@with-logic/elwood
+</code></pre></div>
+
+<p>Save this as <strong>ask.mts</strong>. The <code>.mts</code> extension makes this an ES module, including top-level <code>await</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">"@with-logic/elwood"</span><span class="p">;</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">session</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="p">({</span><span class="w"> </span><span class="nx">cwd</span><span class="o">:</span><span class="w"> </span><span class="kt">process.cwd</span><span class="p">()</span><span class="w"> </span><span class="p">});</span>
+
+<span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">reply</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span>
+<span class="w">    </span><span class="s2">"Explain this project in three sentences."</span><span class="p">,</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nx">timeoutMs</span><span class="o">:</span><span class="w"> </span><span class="kt">120_000</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="p">);</span>
+<span class="w">  </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">reply</span><span class="p">);</span>
+<span class="p">}</span><span class="w"> </span><span class="k">finally</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">close</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>Run it with Node.js 24+:</p>
+<div class="highlight"><pre><span></span><code>node<span class="w"> </span>ask.mts
+</code></pre></div>
+
+<p><code>new ClaudeSession()</code> is synchronous. The first <code>send()</code> starts the agent; the constructor alone does not. <code>send()</code> resolves to a string after the turn settles. <code>finally</code> closes the process even if the turn fails.</p>
+<p>The turn timeout bounds the response wait. It does not itself kill the agent, and it is not a whole-launch timeout. The <code>finally</code> block still matters. Use the CLI's <code>--timeout</code> when you need a single deadline covering launch and the turn.</p>
+<h2 id="quickstart--follow-up-turns">Follow-up turns</h2>
+<p>Reuse the same session before closing it:</p>
+<div class="highlight"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">overview</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span><span class="s2">"Explain the architecture."</span><span class="p">);</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">nextStep</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span><span class="s2">"Which part should I read first?"</span><span class="p">);</span>
+</code></pre></div>
+
+<p>The second turn keeps the first turn's context. For the full runnable pattern, streaming events, and lifecycle details, <a href="#sessions">continue with sessions</a>.</p>
+<h2 id="quickstart--if-the-first-run-fails">If the first run fails</h2>
+<p>Run the selected agent directly in the same directory. Finish login or any first-run setup, then retry Elwood. If the command is quiet, add <code>--verbose</code> to see lifecycle progress without mixing it into the answer. <a href="#troubleshooting">Find the matching symptom</a>.</p></section><section class="doc-section" id="sessions" aria-labelledby="sessions--title"><div class="section-tools"><span>Sessions and streaming</span><button class="copy-section" data-slug="sessions">Copy as Markdown</button><a href="sessions.md">.md</a></div><h1 id="sessions--title">Sessions and streaming</h1>
+<p>Create one session per conversation. Send related prompts to that session, and close it when the conversation is finished. Each session belongs to one agent and workspace.</p>
+<h2 id="sessions--send-and-follow-ups">Send and follow-ups</h2>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">"@with-logic/elwood"</span><span class="p">;</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">session</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="p">({</span><span class="w"> </span><span class="nx">cwd</span><span class="o">:</span><span class="w"> </span><span class="kt">process.cwd</span><span class="p">()</span><span class="w"> </span><span class="p">});</span>
+<span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span><span class="s2">"Summarize the test strategy."</span><span class="p">));</span>
+<span class="w">  </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span><span class="s2">"Which gaps would you address first?"</span><span class="p">));</span>
+<span class="p">}</span><span class="w"> </span><span class="k">finally</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">close</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>send()</code> combines observed assistant text messages with a blank line between them. It does not include thinking or tool output. Calls to <code>send()</code> and <code>stream()</code> on one session are serialized in call order. Separate sessions can run independently, but agents editing the same files still need coordination from your app.</p>
+<h2 id="sessions--streaming">Streaming</h2>
+<p>Use <code>stream()</code> when your interface should show progress before the final reply. It yields four kinds of content event:</p>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">"@with-logic/elwood"</span><span class="p">;</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">session</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="p">();</span>
+<span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">event</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">stream</span><span class="p">(</span><span class="s2">"Find the test entry points."</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">switch</span><span class="w"> </span><span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="kr">type</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="k">case</span><span class="w"> </span><span class="s2">"text"</span><span class="o">:</span>
+<span class="w">        </span><span class="nx">process</span><span class="p">.</span><span class="nx">stdout</span><span class="p">.</span><span class="nx">write</span><span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="nx">text</span><span class="p">);</span>
+<span class="w">        </span><span class="k">break</span><span class="p">;</span>
+<span class="w">      </span><span class="k">case</span><span class="w"> </span><span class="s2">"thinking"</span><span class="o">:</span>
+<span class="w">        </span><span class="c1">// Display separately from the answer, if useful.</span>
+<span class="w">        </span><span class="k">break</span><span class="p">;</span>
+<span class="w">      </span><span class="k">case</span><span class="w"> </span><span class="s2">"tool_call"</span><span class="o">:</span>
+<span class="w">        </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="sb">`Using </span><span class="si">${</span><span class="nx">event</span><span class="p">.</span><span class="nx">name</span><span class="si">}</span><span class="sb">`</span><span class="p">);</span>
+<span class="w">        </span><span class="k">break</span><span class="p">;</span>
+<span class="w">      </span><span class="k">case</span><span class="w"> </span><span class="s2">"tool_result"</span><span class="o">:</span>
+<span class="w">        </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="nx">output</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="s2">"Tool finished"</span><span class="p">);</span>
+<span class="w">        </span><span class="k">break</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span><span class="w"> </span><span class="k">finally</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">close</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>Tool call/result events include <code>toolCallId</code> when the adapter supplies it. Stream text arrives as observed messages; do not assume token-by-token delivery. Lifecycle, warnings and hooks belong to session event subscriptions, not this four-event content stream.</p>
+<p>Breaking out of a stream stops consuming it; it does <strong>not</strong> cancel the underlying turn. Call <code>interrupt()</code> or close the session when you mean to stop the agent.</p>
+<h2 id="sessions--attach-an-image">Attach an image</h2>
+<p>Images are part of a turn. Keep the prompt specific about what the agent should inspect.</p>
+<div class="highlight"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">reply</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span><span class="s2">"Explain the layout issue in this screenshot."</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">images</span><span class="o">:</span><span class="w"> </span><span class="p">[{</span><span class="w"> </span><span class="nx">path</span><span class="o">:</span><span class="w"> </span><span class="s2">"/absolute/path/to/screenshot.png"</span><span class="w"> </span><span class="p">}],</span>
+<span class="w">  </span><span class="nx">timeoutMs</span><span class="o">:</span><span class="w"> </span><span class="kt">120_000</span><span class="p">,</span>
+<span class="p">});</span>
+</code></pre></div>
+
+<p>Use readable local files. Multiple images preserve their order. <a href="#api--turn-options">See the API reference</a> for the turn options.</p>
+<h2 id="sessions--codex-sessions">Codex sessions</h2>
+<p>Use <code>CodexSession</code> with the same <code>send()</code>, <code>stream()</code> and <code>close()</code> pattern:</p>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">CodexSession</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">"@with-logic/elwood"</span><span class="p">;</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">session</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">CodexSession</span><span class="p">({</span><span class="w"> </span><span class="nx">cwd</span><span class="o">:</span><span class="w"> </span><span class="kt">process.cwd</span><span class="p">()</span><span class="w"> </span><span class="p">});</span>
+<span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span><span class="s2">"Explain this project's build process."</span><span class="p">));</span>
+<span class="p">}</span><span class="w"> </span><span class="k">finally</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">close</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>This starts a Codex conversation; it does not convert a running Claude conversation. Agent-specific constructor options and hooks differ.</p>
+<h2 id="sessions--startup-and-cleanup">Startup and cleanup</h2>
+<p>Use <code>await session.start()</code> if you want startup to complete before the first prompt. It is idempotent; concurrent calls share the same startup. You can register event handlers before startup.</p>
+<p><code>close()</code> stops the process, with a kill fallback if graceful stopping fails. It does not delete Elwood's saved metadata. <code>teardown()</code> is the separate operation for removing Elwood-owned state. Neither operation reverses files the agent edited or deletes history owned by the agent CLI.</p>
+<p>For shell-based continuation across processes, <a href="#cli--resuming-a-session">use <code>--keep</code> and <code>--resume</code></a>. For advanced TypeScript resume, <code>resumeClaude()</code> / <code>resumeCodex()</code> return the low-level session API. They do not return the ergonomic class, so do not assume they have <code>send()</code> or <code>stream()</code>.</p>
+<h2 id="sessions--timeouts-and-cancellation">Timeouts and cancellation</h2>
+<p>A <code>send()</code> or <code>stream()</code> timeout rejects that call with <code>wait_timeout</code>. The agent may still be working. The next queued turn waits for the agent's actual turn boundary; a timeout does not make it safe to submit raw input concurrently.</p>
+<p>Use <code>await session.interrupt()</code> to request an interruption. Keep cleanup in <code>finally</code>. Do not mix low-level <code>sendMessage()</code>, <code>sendPrompt()</code> or <code>sendGuidance()</code> with an in-flight ergonomic turn: those raw methods are not part of its turn queue.</p></section><section class="doc-section" id="cli" aria-labelledby="cli--title"><div class="section-tools"><span>CLI</span><button class="copy-section" data-slug="cli">Copy as Markdown</button><a href="cli.md">.md</a></div><h1 id="cli--title">The CLI</h1>
+<p>The <code>elwood</code> command runs one agent turn, writes the reply, and exits. It still drives the real interactive agent under the hood. You get a shell-friendly interface without scraping its screen.</p>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span><span class="s2">"Summarize this repository."</span>
+</code></pre></div>
+
+<p><code>elwood run</code> is the explicit form of the same command. With no arguments, <code>elwood</code> prints help. The built-in default agent is Codex; choose Claude explicitly or <a href="#configuration">save a default</a>.</p>
+<h2 id="cli--input">Input</h2>
+<p>Positional words become the prompt. Piped input is appended after a blank line:</p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>diff<span class="w"> </span><span class="p">|</span><span class="w"> </span>elwood<span class="w"> </span><span class="s2">"Review this diff for correctness."</span>
+elwood<span class="w"> </span>&lt;<span class="w"> </span>prompt.txt
+elwood<span class="w"> </span>-C<span class="w"> </span>../service<span class="w"> </span><span class="s2">"Explain the entry point."</span>
+elwood<span class="w"> </span>--image<span class="w"> </span>screenshot.png<span class="w"> </span><span class="s2">"What looks wrong?"</span>
+</code></pre></div>
+
+<p>Repeat <code>--image</code> for multiple images. Input is limited to 8 MiB. The command does not read interactive terminal stdin as a prompt.</p>
+<h2 id="cli--output-formats">Output formats</h2>
+<table>
+<thead>
+<tr>
+<th>Format</th>
+<th>Use it for</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--output text</code></td>
+<td>A person or a text file</td>
+<td>Combined assistant reply; default</td>
+</tr>
+<tr>
+<td><code>--output json</code></td>
+<td>A script that needs one result</td>
+<td>One terminal document with response, status and cleanup</td>
+</tr>
+<tr>
+<td><code>--output jsonl</code></td>
+<td>Progress in another program</td>
+<td>Ordered event records, then one result or error</td>
+</tr>
+</tbody>
+</table>
+<p>Text and JSON diagnostics use stderr. JSONL includes warning records in its ordered stdout stream. A response can contain useful partial text even when the run fails: inspect the exit code and terminal record type.</p>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>--output<span class="w"> </span>json<span class="w"> </span><span class="s2">"Describe the architecture."</span>
+</code></pre></div>
+
+<p>Illustrative successful output:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"schemaVersion"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"result"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"agent"</span><span class="p">:</span><span class="w"> </span><span class="s2">"claude"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"response"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The project has a CLI, a session layer, and two adapters."</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"sessionId"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"durationMs"</span><span class="p">:</span><span class="w"> </span><span class="mi">8421</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"cleanup"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"action"</span><span class="p">:</span><span class="w"> </span><span class="s2">"teardown"</span><span class="p">,</span><span class="w"> </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"succeeded"</span><span class="w"> </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><code>response</code> combines all observed assistant text in order. <code>sessionId</code> is null for a new ephemeral session. Failure documents use <code>type: "error"</code> and add <code>error.code</code> and <code>error.message</code>. <a href="#cli-reference--output-records">See output records and exit codes</a>.</p>
+<h2 id="cli--streaming-and-verbose-output">Streaming and verbose output</h2>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>--stream<span class="w"> </span>--verbose<span class="w"> </span><span class="s2">"Explain the build pipeline."</span>
+</code></pre></div>
+
+<p><code>--stream</code> emits assistant text as it arrives. <code>--verbose</code> prints concise elapsed progress to stderr. Streaming is valid only with text output; use <code>--no-stream</code> if a saved setting enables it and you need JSON.</p>
+<p>To see the actual TUI, use <code>--head</code>:</p>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>--head<span class="w"> </span><span class="s2">"Explain the architecture."</span>
+</code></pre></div>
+
+<p>Head mode is view-only. It requires terminal stdin and stderr and cannot combine with stream, verbose, debug or JSONL. Ctrl-C still interrupts. It mirrors terminal bytes to stderr while the final reply remains on stdout.</p>
+<h2 id="cli--timeouts">Timeouts</h2>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>--timeout<span class="w"> </span>2m<span class="w"> </span><span class="s2">"List the main modules."</span>
+</code></pre></div>
+
+<p>CLI timeout covers launch, any persona setup turn and the requested turn. Durations use a positive integer plus <code>ms</code>, <code>s</code>, <code>m</code> or <code>h</code>. There is no default whole-invocation timeout. A timeout exits with status 124.</p>
+<h2 id="cli--resuming-a-session">Resuming a session</h2>
+<p>New runs normally remove their Elwood state afterward. <code>--keep</code> preserves it so a later process can resume. With text output, the session ID is reported on stderr; JSON includes it in the result.</p>
+<p>This Bash/Zsh example requires <code>jq</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">first</span><span class="o">=</span><span class="k">$(</span>elwood<span class="w"> </span>--keep<span class="w"> </span>--output<span class="w"> </span>json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">"Remember: this release is called Acorn."</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="nv">$?</span>
+
+<span class="nv">session_id</span><span class="o">=</span><span class="k">$(</span><span class="nb">printf</span><span class="w"> </span><span class="s1">'%s'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$first</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-er<span class="w"> </span><span class="s1">'select(.type == "result") | .sessionId'</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="nv">$?</span>
+
+elwood<span class="w"> </span>resume<span class="w"> </span><span class="s2">"</span><span class="nv">$session_id</span><span class="s2">"</span><span class="w"> </span><span class="s2">"What is the release called?"</span>
+elwood<span class="w"> </span>resume<span class="w"> </span><span class="s2">"</span><span class="nv">$session_id</span><span class="s2">"</span><span class="w"> </span>--ephemeral<span class="w"> </span><span class="s2">"Finish with a one-line summary."</span>
+</code></pre></div>
+
+<p><code>elwood resume &lt;id&gt;</code> is the subcommand form of <code>--resume &lt;id&gt;</code>; the two are the same run. Resume uses the stored agent and workspace. Do not add <code>--cwd</code> or a conflicting <code>--agent</code>. Resumed sessions stay preserved unless you pass <code>--ephemeral</code>. Cleanup removes Elwood metadata and loop definitions; workspace edits and the agent's own history remain.</p>
+<h2 id="cli--listing-sessions">Listing sessions</h2>
+<p><code>elwood sessions</code> lists the session records Elwood owns in the effective state directory. It never starts an agent.</p>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>sessions
+elwood<span class="w"> </span>sessions<span class="w"> </span>--output<span class="w"> </span>json
+</code></pre></div>
+
+<p>Each record reports its id, agent, workspace, creation and last-used times, whether it is resumable, and whether it is live (a launch's bridge socket is present). JSON emits one <code>{"schemaVersion": 1, "type": "sessions", ...}</code> document. An empty state directory is a normal, empty result.</p>
+<h2 id="cli--listing-models">Listing models</h2>
+<p><code>elwood models</code> starts the selected agent briefly, opens and cancels the agent's own model picker, tears the session down, and prints what it found. Your configured model is left unchanged.</p>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>models
+elwood<span class="w"> </span>models<span class="w"> </span>--agent<span class="w"> </span>codex<span class="w"> </span>--output<span class="w"> </span>json
+</code></pre></div>
+
+<p>Text marks the current model with <code>*</code> and the default with <code>(default)</code>. JSON emits one <code>{"schemaVersion": 1, "type": "models", ...}</code> document whose rows carry <code>id</code>, <code>label</code>, <code>description</code>, <code>isCurrent</code>, and <code>isDefault</code>.</p>
+<h2 id="cli--the-agents-own-terminal">The agent's own terminal</h2>
+<p><code>elwood interactive</code> hands your terminal to the real agent TUI, exactly as running <code>claude</code> or <code>codex</code> yourself would, but with Elwood's resolved settings passed as the agent's own flags.</p>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>interactive
+elwood<span class="w"> </span>interactive<span class="w"> </span>--agent<span class="w"> </span>codex<span class="w"> </span>--model<span class="w"> </span>gpt-5.4
+elwood<span class="w"> </span>interactive<span class="w"> </span><span class="s2">"</span><span class="nv">$session_id</span><span class="s2">"</span>
+</code></pre></div>
+
+<p>With an id, the stored session's conversation reopens in its stored workspace with its stored posture. Elwood does not observe or record an interactive conversation and writes no session state. It requires a terminal on stdin and stdout, and cannot be combined with <code>--output json</code>/<code>jsonl</code>, <code>--stream</code>, <code>--verbose</code>, <code>--debug</code>, <code>--head</code>, <code>--timeout</code>, <code>--persona</code>, <code>--image</code>, <code>--keep</code>, <code>--ephemeral</code>, or <code>--resume</code>.</p>
+<h2 id="cli--reproducible-runs">Reproducible runs</h2>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>--no-defaults<span class="w"> </span>--agent<span class="w"> </span>claude<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output<span class="w"> </span>json<span class="w"> </span>--timeout<span class="w"> </span>2m<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--claude-permission-mode<span class="w"> </span>dontAsk<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">"Explain this project's directory structure."</span>
+</code></pre></div>
+
+<p><code>--no-defaults</code> ignores saved Elwood defaults and its <code>ELWOOD_*</code> run-setting environment variables. It leaves the selected agent's normal process environment intact. <a href="#configuration">Inspect configuration precedence</a>.</p></section><section class="doc-section" id="recipes" aria-labelledby="recipes--title"><div class="section-tools"><span>Recipes</span><button class="copy-section" data-slug="recipes">Copy as Markdown</button><a href="recipes.md">.md</a></div><h1 id="recipes--title">Recipes</h1>
+<p>These recipes use Claude explicitly and keep their output and cleanup behavior visible. Start with a project you understand, then adapt the prompts.</p>
+<h2 id="recipes--review-a-diff-into-a-file">Review a diff into a file</h2>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>diff<span class="w"> </span><span class="p">|</span><span class="w"> </span>elwood<span class="w"> </span>--timeout<span class="w"> </span>5m<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">"Review this diff. List correctness issues with file names."</span><span class="w"> </span>&gt;<span class="w"> </span>review.txt
+</code></pre></div>
+
+<p>The answer goes into <code>review.txt</code>; diagnostics remain on stderr. Check the exit code before treating the file as a completed review. A failing run can leave partial text.</p>
+<h2 id="recipes--json-output-with-failure-handling">JSON output with failure handling</h2>
+<p>In Bash or Zsh, enable pipeline failure propagation before piping into <code>jq</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">set</span><span class="w"> </span>-o<span class="w"> </span>pipefail
+elwood<span class="w"> </span>--output<span class="w"> </span>json<span class="w"> </span>--timeout<span class="w"> </span>2m<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">"Summarize this repository."</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-er<span class="w"> </span><span class="s1">'select(.type == "result") | .response'</span>
+</code></pre></div>
+
+<p>Without <code>pipefail</code>, <code>jq</code> could succeed after Elwood failed. The <code>type</code> check also distinguishes a terminal result from an error document.</p>
+<p>For full access to a partial failure, capture stdout separately and preserve Elwood's status:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">result_file</span><span class="o">=</span><span class="k">$(</span>mktemp<span class="k">)</span>
+<span class="nb">trap</span><span class="w"> </span><span class="s1">'rm -f "$result_file"'</span><span class="w"> </span>EXIT
+
+<span class="k">if</span><span class="w"> </span>elwood<span class="w"> </span>--output<span class="w"> </span>json<span class="w"> </span>--timeout<span class="w"> </span>5m<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">"Explain the release checks."</span><span class="w"> </span>&gt;<span class="w"> </span><span class="s2">"</span><span class="nv">$result_file</span><span class="s2">"</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">  </span>jq<span class="w"> </span>-er<span class="w"> </span><span class="s1">'select(.type == "result") | .response'</span><span class="w"> </span>&lt;<span class="w"> </span><span class="s2">"</span><span class="nv">$result_file</span><span class="s2">"</span>
+<span class="k">else</span>
+<span class="w">  </span><span class="nv">elwood_status</span><span class="o">=</span><span class="nv">$?</span>
+<span class="w">  </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'.error.message'</span><span class="w"> </span>&lt;<span class="w"> </span><span class="s2">"</span><span class="nv">$result_file</span><span class="s2">"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span>
+<span class="w">  </span><span class="nb">exit</span><span class="w"> </span><span class="s2">"</span><span class="nv">$elwood_status</span><span class="s2">"</span>
+<span class="k">fi</span>
+</code></pre></div>
+
+<h2 id="recipes--activity-in-your-application">Activity in your application</h2>
+<p>This complete example prints the answer to stdout and tool names to stderr. Save it as <code>inspect.mts</code>, install the package locally, then run <code>node inspect.mts</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="p">,</span><span class="w"> </span><span class="nx">ElwoodError</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">"@with-logic/elwood"</span><span class="p">;</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">session</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="p">({</span><span class="w"> </span><span class="nx">cwd</span><span class="o">:</span><span class="w"> </span><span class="kt">process.cwd</span><span class="p">()</span><span class="w"> </span><span class="p">});</span>
+<span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">event</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">stream</span><span class="p">(</span>
+<span class="w">    </span><span class="s2">"Find the build scripts and explain what each one does."</span><span class="p">,</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="nx">timeoutMs</span><span class="o">:</span><span class="w"> </span><span class="kt">120_000</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="kr">type</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">"text"</span><span class="p">)</span><span class="w"> </span><span class="nx">process</span><span class="p">.</span><span class="nx">stdout</span><span class="p">.</span><span class="nx">write</span><span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="nx">text</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="kr">type</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">"tool_call"</span><span class="p">)</span><span class="w"> </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="sb">`Using </span><span class="si">${</span><span class="nx">event</span><span class="p">.</span><span class="nx">name</span><span class="si">}</span><span class="sb">`</span><span class="p">);</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span><span class="w"> </span><span class="k">catch</span><span class="w"> </span><span class="p">(</span><span class="nx">error</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">error</span><span class="w"> </span><span class="ow">instanceof</span><span class="w"> </span><span class="nx">ElwoodError</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="sb">`</span><span class="si">${</span><span class="nx">error</span><span class="p">.</span><span class="nx">code</span><span class="si">}</span><span class="sb">: </span><span class="si">${</span><span class="nx">error</span><span class="p">.</span><span class="nx">message</span><span class="si">}</span><span class="sb">`</span><span class="p">);</span>
+<span class="w">  </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="nx">error</span><span class="p">);</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="w">  </span><span class="nx">process</span><span class="p">.</span><span class="nx">exitCode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">1</span><span class="p">;</span>
+<span class="p">}</span><span class="w"> </span><span class="k">finally</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">close</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>Use <code>event.type</code> to choose your UI treatment. Do not render tool output as trusted HTML. The stream is content; add session subscriptions when you also need lifecycle or warning events.</p>
+<h2 id="recipes--warnings-before-the-first-turn">Warnings before the first turn</h2>
+<div class="highlight"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">unsubscribe</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">on</span><span class="p">(</span><span class="s2">"warning"</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">warning</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="nx">warning</span><span class="p">.</span><span class="nx">code</span><span class="p">,</span><span class="w"> </span><span class="nx">warning</span><span class="p">.</span><span class="nx">message</span><span class="p">);</span>
+<span class="p">});</span>
+
+<span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span><span class="s2">"Explain the public API."</span><span class="p">));</span>
+<span class="p">}</span><span class="w"> </span><span class="k">finally</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">unsubscribe</span><span class="p">();</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">close</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>Subscriptions can be registered before startup. The returned function removes that subscription.</p>
+<h2 id="recipes--environment-check">Environment check</h2>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>--version
+elwood<span class="w"> </span>config<span class="w"> </span>effective<span class="w"> </span>--agent<span class="w"> </span>claude
+claude<span class="w"> </span>--version
+</code></pre></div>
+
+<p>These are useful first checks in a support report. For launch problems, also try the agent directly in the target workspace. <a href="#troubleshooting">Troubleshooting</a> has the next steps.</p></section><section class="doc-section" id="configuration" aria-labelledby="configuration--title"><div class="section-tools"><span>Configuration</span><button class="copy-section" data-slug="configuration">Copy as Markdown</button><a href="configuration.md">.md</a></div><h1 id="configuration--title">Configuration</h1>
+<p>The CLI resolves settings in this order: <strong>command flags → environment → global configuration → built-in defaults</strong>. You can inspect the result before starting an agent.</p>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>config<span class="w"> </span>effective<span class="w"> </span>--agent<span class="w"> </span>claude<span class="w"> </span>--output<span class="w"> </span>json
+</code></pre></div>
+
+<p>The output includes each value and its source. This command does not read a prompt or launch an agent.</p>
+<h2 id="configuration--the-config-file">The config file</h2>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>agent<span class="w"> </span>claude
+elwood<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>timeout<span class="w"> </span>10m
+elwood<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>output<span class="w"> </span>text
+elwood<span class="w"> </span>config<span class="w"> </span>show
+</code></pre></div>
+
+<p><code>show</code> prints the saved document, while <code>effective</code> shows resolved settings. Remove a saved value with <code>unset</code>:</p>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>config<span class="w"> </span>get<span class="w"> </span>agent
+elwood<span class="w"> </span>config<span class="w"> </span><span class="nb">unset</span><span class="w"> </span>timeout
+elwood<span class="w"> </span>config<span class="w"> </span>path
+</code></pre></div>
+
+<p>Configuration is global. Elwood does not read a config file from the repository being opened.</p>
+<h2 id="configuration--location-and-precedence">Location and precedence</h2>
+<p>The config path is selected from <code>ELWOOD_CONFIG</code>, then an absolute <code>XDG_CONFIG_HOME</code> plus <code>/elwood/config.json</code>, then <code>~/.config/elwood/config.json</code>. Use <code>elwood config path</code> rather than guessing on a particular machine.</p>
+<p>The configuration document has <code>schemaVersion: 1</code>. Unknown keys and values with the wrong type are rejected.</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Example value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>agent</code></td>
+<td><code>claude</code> or <code>codex</code></td>
+</tr>
+<tr>
+<td><code>output</code></td>
+<td><code>text</code>, <code>json</code>, <code>jsonl</code></td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td><code>10m</code></td>
+</tr>
+<tr>
+<td><code>trust</code>, <code>highTrust</code>, <code>verbose</code>, <code>stream</code></td>
+<td><code>true</code> or <code>false</code></td>
+</tr>
+<tr>
+<td><code>stateDir</code></td>
+<td>Absolute path to CLI-owned session state</td>
+</tr>
+<tr>
+<td><code>persona</code></td>
+<td>Setup prompt for new sessions</td>
+</tr>
+<tr>
+<td><code>claude.model</code>, <code>codex.model</code></td>
+<td>Model identifier supported by that agent</td>
+</tr>
+<tr>
+<td><code>claude.reasoningEffort</code>, <code>codex.reasoningEffort</code></td>
+<td>Supported effort level for that agent</td>
+</tr>
+<tr>
+<td><code>claude.permissionMode</code></td>
+<td>For example, <code>dontAsk</code></td>
+</tr>
+<tr>
+<td><code>codex.sandbox</code></td>
+<td>For example, <code>workspace-write</code></td>
+</tr>
+<tr>
+<td><code>codex.approvalPolicy</code></td>
+<td>For example, <code>never</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="configuration--environment-variables">Environment variables</h2>
+<p>The run-setting variables are <code>ELWOOD_AGENT</code>, <code>ELWOOD_OUTPUT</code>, <code>ELWOOD_TIMEOUT</code>, <code>ELWOOD_TRUST</code>, <code>ELWOOD_HIGH_TRUST</code>, <code>ELWOOD_STATE_DIR</code>, <code>ELWOOD_VERBOSE</code>, <code>ELWOOD_STREAM</code>, <code>ELWOOD_PERSONA</code>, <code>ELWOOD_MODEL</code>, <code>ELWOOD_REASONING_EFFORT</code>, <code>ELWOOD_CLAUDE_PERMISSION_MODE</code>, <code>ELWOOD_CODEX_SANDBOX</code>, and <code>ELWOOD_CODEX_APPROVAL_POLICY</code>.</p>
+<p>Boolean values are exactly <code>true</code> or <code>false</code>. An explicit flag overrides an environment value. <code>--no-stream</code> and <code>--no-verbose</code> override inherited true values.</p>
+<div class="highlight"><pre><span></span><code><span class="nv">ELWOOD_AGENT</span><span class="o">=</span>claude<span class="w"> </span>elwood<span class="w"> </span><span class="s2">"Explain the test setup."</span>
+elwood<span class="w"> </span>--no-defaults<span class="w"> </span>--agent<span class="w"> </span>claude<span class="w"> </span>--output<span class="w"> </span>json<span class="w"> </span><span class="s2">"Explain the test setup."</span>
+</code></pre></div>
+
+<p><code>--no-defaults</code> ignores saved config and Elwood's run-setting variables. It does not remove credentials, PATH, or other ordinary environment used by the agent process.</p>
+<h2 id="configuration--library-options">Library options</h2>
+<p>These global defaults belong to the <code>elwood</code> executable. In TypeScript, use explicit constructor and turn options. Do not assume changing <code>elwood config</code> changes a <code>ClaudeSession</code> created by your app.</p>
+<div class="highlight"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">session</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="p">({</span>
+<span class="w">  </span><span class="nx">cwd</span><span class="o">:</span><span class="w"> </span><span class="kt">process.cwd</span><span class="p">(),</span>
+<span class="w">  </span><span class="nx">permissionMode</span><span class="o">:</span><span class="w"> </span><span class="s2">"dontAsk"</span><span class="p">,</span>
+<span class="p">});</span>
+</code></pre></div>
+
+<p><a href="#api--constructor-options">See the constructor reference</a> or <a href="#permissions">choose permissions</a>.</p></section><section class="doc-section" id="permissions" aria-labelledby="permissions--title"><div class="section-tools"><span>Permissions and cleanup</span><button class="copy-section" data-slug="permissions">Copy as Markdown</button><a href="permissions.md">.md</a></div><h1 id="permissions--title">Permissions and cleanup</h1>
+<p>Elwood starts a real coding agent. It can use that agent's tools and change your workspace according to its permissions. Choose those permissions when you launch, especially for unattended scripts.</p>
+<h2 id="permissions--cli-defaults">CLI defaults</h2>
+<p>By default neither agent stops to ask a human for approval. The two agents express that differently:</p>
+<table>
+<thead>
+<tr>
+<th>Agent</th>
+<th>Default CLI posture</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Claude</td>
+<td><code>--claude-permission-mode dontAsk</code></td>
+<td>Permission prompts are suppressed. A tool outside the permitted set is denied rather than asked about.</td>
+</tr>
+<tr>
+<td>Codex</td>
+<td><code>--codex-sandbox workspace-write</code> with <code>--codex-approval-policy never</code></td>
+<td><code>never</code> means never ask for approval. The sandbox additionally keeps file writes inside the workspace.</td>
+</tr>
+</tbody>
+</table>
+<p>Neither default grants every possible tool permission. A successful turn may explain that it could not perform an operation.</p>
+<p><code>--high-trust</code> is the agent-neutral way to say "never ask for anything". For whichever agent runs it selects Claude <code>bypassPermissions</code>, or Codex <code>danger-full-access</code> with approval policy <code>never</code>, so you do not have to remember which value means what for each agent.</p>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>--high-trust<span class="w"> </span><span class="s2">"Fix the failing tests and commit."</span>
+</code></pre></div>
+
+<p>It layers like any other setting: <code>ELWOOD_HIGH_TRUST=true</code>, <code>elwood config set highTrust true</code>, and <code>--no-high-trust</code> to reverse an inherited value. Combining a flag or environment high trust with an explicit <code>--claude-permission-mode</code>, <code>--codex-sandbox</code>, or <code>--codex-approval-policy</code> is a usage error naming both sources, rather than a silent override. A saved per-agent posture key is overridden by high trust; a saved <code>highTrust</code> yields to an explicit per-agent flag.</p>
+<p>High trust removes the agent's own guardrails, including Codex's workspace sandbox. Use it for work you would let run unattended, in a directory you trust. Claude shows a one-time acceptance dialog the first time a machine runs in bypass mode; Elwood answers it under the same trust automation as the workspace gate.</p>
+<p>The CLI automates only allowlisted trust dialogs. An unhandled blocking prompt exits as <code>blocked_prompt</code>. <code>--no-trust</code> disables workspace and extension trust automation; it does not turn an unattended command into a permission UI.</p>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>--agent<span class="w"> </span>claude<span class="w"> </span>--claude-permission-mode<span class="w"> </span>plan<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">"Propose a refactor without applying it."</span>
+</code></pre></div>
+
+<h2 id="permissions--library-options">Library options</h2>
+<p>The library constructor accepts agent-specific settings. A narrow Claude example:</p>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">"@with-logic/elwood"</span><span class="p">;</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">session</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="p">({</span>
+<span class="w">  </span><span class="nx">cwd</span><span class="o">:</span><span class="w"> </span><span class="kt">process.cwd</span><span class="p">(),</span>
+<span class="w">  </span><span class="nx">permissionMode</span><span class="o">:</span><span class="w"> </span><span class="s2">"dontAsk"</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">allowedTools</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"Read"</span><span class="p">,</span><span class="w"> </span><span class="s2">"Glob"</span><span class="p">,</span><span class="w"> </span><span class="s2">"Grep"</span><span class="p">],</span>
+<span class="w">  </span><span class="nx">disallowedTools</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"Write"</span><span class="p">,</span><span class="w"> </span><span class="s2">"Edit"</span><span class="p">,</span><span class="w"> </span><span class="s2">"Bash"</span><span class="p">],</span>
+<span class="p">});</span>
+
+<span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span><span class="s2">"Explain the module boundaries."</span><span class="p">));</span>
+<span class="p">}</span><span class="w"> </span><span class="k">finally</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">close</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>Tool rules are interpreted by the agent; this is not a filesystem sandbox supplied by Elwood. If you enable additional integrations or tools, review their capabilities too. For Codex, choose <code>sandbox</code> and <code>approvalPolicy</code> in its constructor.</p>
+<h2 id="permissions--input-and-authority">Input and authority</h2>
+<p>A piped document becomes part of the prompt. It is not automatically a trusted instruction. For jobs that process outside content, pair the task with the minimum tools and workspace access needed.</p>
+<p>A <code>--persona</code> setting runs a real setup turn before the main prompt. Its answer is hidden, but its tool calls and file changes still happen. Use it for a deliberate setup task, not as if it were an inert label. It applies to new CLI sessions, not resume.</p>
+<h2 id="permissions--cleanup">Cleanup</h2>
+<p>Ephemeral CLI cleanup removes Elwood's session record and loop state. It does not revert code changes or delete agent-owned conversation history. In the library, <code>close()</code> stops the process and <code>teardown()</code> removes Elwood-owned state.</p>
+<p>Elwood uses the agent's existing account, so normal provider usage limits and billing still apply. There is no separate Elwood model proxy.</p></section><section class="doc-section" id="api" aria-labelledby="api--title"><div class="section-tools"><span>TypeScript reference</span><button class="copy-section" data-slug="api">Copy as Markdown</button><a href="api.md">.md</a></div><h1 id="api--title">TypeScript API reference</h1>
+<p>Import from <code>@with-logic/elwood</code>. The primary entry points are <code>ClaudeSession</code> and <code>CodexSession</code>. They share an ergonomic turn API and expose the operational methods of the underlying session.</p>
+<h2 id="api--constructors">Constructors</h2>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="p">,</span><span class="w"> </span><span class="nx">CodexSession</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">"@with-logic/elwood"</span><span class="p">;</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">claude</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="p">({</span><span class="w"> </span><span class="nx">cwd</span><span class="o">:</span><span class="w"> </span><span class="kt">process.cwd</span><span class="p">()</span><span class="w"> </span><span class="p">});</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">codex</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">CodexSession</span><span class="p">({</span><span class="w"> </span><span class="nx">cwd</span><span class="o">:</span><span class="w"> </span><span class="kt">process.cwd</span><span class="p">()</span><span class="w"> </span><span class="p">});</span>
+</code></pre></div>
+
+<p>Construction is synchronous and snapshots the working directory. The first turn or <code>start()</code> launches the agent. Omitting <code>cwd</code> uses the working directory at construction time.</p>
+<h2 id="api--constructor-options">Constructor options</h2>
+<table>
+<thead>
+<tr>
+<th>Common option</th>
+<th>Type / meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cwd</code></td>
+<td>Workspace path; defaults to <code>process.cwd()</code></td>
+</tr>
+<tr>
+<td><code>stateDir</code></td>
+<td>Elwood session-state directory</td>
+</tr>
+<tr>
+<td><code>model</code></td>
+<td>Agent-supported model identifier</td>
+</tr>
+<tr>
+<td><code>reasoningEffort</code></td>
+<td>Agent-specific effort level</td>
+</tr>
+<tr>
+<td><code>persona</code></td>
+<td>Setup prompt</td>
+</tr>
+<tr>
+<td><code>initialSize</code></td>
+<td>Terminal dimensions, <code>{ cols, rows }</code></td>
+</tr>
+<tr>
+<td><code>autoupdate</code></td>
+<td>Opt into the adapter's update behavior</td>
+</tr>
+<tr>
+<td><code>autotrust</code></td>
+<td>Control allowlisted trust automation</td>
+</tr>
+<tr>
+<td><code>highTrust</code></td>
+<td>Never ask for permissions: Claude <code>bypassPermissions</code>, or Codex <code>danger-full-access</code> with <code>never</code></td>
+</tr>
+<tr>
+<td><code>strictVersionCheck</code></td>
+<td>Reject an unparseable/unsupported version instead of permissive handling where supported</td>
+</tr>
+<tr>
+<td><code>hooks</code></td>
+<td>Agent-specific typed hook handlers</td>
+</tr>
+<tr>
+<td><code>hookTimeoutMs</code></td>
+<td>Timeout for hook handling</td>
+</tr>
+</tbody>
+</table>
+<p>Passing <code>highTrust</code> alongside an explicit <code>permissionMode</code> (Claude) or <code>sandbox</code>/<code>approvalPolicy</code> (Codex) throws <code>claude_high_trust_conflict</code> / <code>codex_high_trust_conflict</code> rather than silently overriding your choice.</p>
+<p>Claude also accepts <code>name</code>, <code>permissionMode</code>, <code>allowedTools</code>, <code>disallowedTools</code>, <code>tools</code>, and <code>settingsOverrides</code>. Codex accepts <code>profile</code>, <code>sandbox</code>, <code>approvalPolicy</code>, and <code>configOverrides</code>. Use the exported <code>ClaudeSessionOptions</code> / <code>CodexSessionOptions</code> types for compiler-checked configuration.</p>
+<p>CLI defaults and global config do not define library constructor defaults. Set important permissions explicitly in your application.</p>
+<h2 id="api--turn-methods">Turn methods</h2>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Returns</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>send(prompt, options?)</code></td>
+<td><code>Promise&lt;string&gt;</code></td>
+<td>Wait for the combined assistant reply</td>
+</tr>
+<tr>
+<td><code>stream(prompt, options?)</code></td>
+<td><code>AsyncGenerator&lt;TurnEvent&gt;</code></td>
+<td>Consume content as it arrives</td>
+</tr>
+<tr>
+<td><code>start()</code></td>
+<td>Promise of the underlying session</td>
+<td>Eager startup; idempotent</td>
+</tr>
+</tbody>
+</table>
+<p>Ergonomic turns are serialized in call order on each session. Do not interleave low-level turn-producing methods with an in-flight <code>send()</code> or <code>stream()</code>.</p>
+<h2 id="api--turn-options">Turn options</h2>
+<div class="highlight"><pre><span></span><code><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span><span class="s2">"Explain this screenshot."</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">timeoutMs</span><span class="o">:</span><span class="w"> </span><span class="kt">120_000</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">catchUpMs</span><span class="o">:</span><span class="w"> </span><span class="kt">10_000</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">images</span><span class="o">:</span><span class="w"> </span><span class="p">[{</span><span class="w"> </span><span class="nx">path</span><span class="o">:</span><span class="w"> </span><span class="s2">"/absolute/path/screenshot.png"</span><span class="w"> </span><span class="p">}],</span>
+<span class="p">});</span>
+</code></pre></div>
+
+<p><code>timeoutMs</code> is an opt-in turn ceiling; there is no default. <code>catchUpMs</code> bounds transcript catch-up after ready, with a default of 10 seconds. A wait timeout is not a process kill.</p>
+<p>Images accept either <code>{ path: string }</code> or <code>{ data: Uint8Array, format }</code>. Byte formats are <code>png</code>, <code>jpeg</code>, <code>gif</code>, and <code>webp</code>. Do not supply both path and bytes. Limits are 16 images per submission, 25 MiB per image and 50 MiB total; queued image bytes on one session also have a bounded aggregate limit.</p>
+<h2 id="api--stream-events">Stream events</h2>
+<table>
+<thead>
+<tr>
+<th><code>type</code></th>
+<th>Fields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>text</code></td>
+<td><code>text: string</code></td>
+</tr>
+<tr>
+<td><code>thinking</code></td>
+<td><code>text: string</code></td>
+</tr>
+<tr>
+<td><code>tool_call</code></td>
+<td><code>name: string</code>, optional <code>input</code>, <code>toolCallId</code></td>
+</tr>
+<tr>
+<td><code>tool_result</code></td>
+<td>Optional <code>name</code>, <code>output</code>, <code>toolCallId</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>input</code> and <code>output</code> are strings when present. Availability and granularity depend on the adapter. The stream finishes when that turn settles; stopping iteration does not stop the agent.</p>
+<h2 id="api--lifecycle-and-control">Lifecycle and control</h2>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>close()</code></td>
+<td>Stop, falling back to kill when needed; joins an in-flight startup</td>
+</tr>
+<tr>
+<td><code>stop()</code></td>
+<td>Delegate graceful stop to the live session</td>
+</tr>
+<tr>
+<td><code>kill()</code></td>
+<td>Force-stop the live session</td>
+</tr>
+<tr>
+<td><code>teardown()</code></td>
+<td>Remove Elwood-owned session state through the live session</td>
+</tr>
+<tr>
+<td><code>interrupt({ timeoutMs }?)</code></td>
+<td>Request interruption of current work</td>
+</tr>
+<tr>
+<td><code>compact({ timeoutMs }?)</code></td>
+<td>Request conversation compaction</td>
+</tr>
+<tr>
+<td><code>resize({ cols, rows })</code></td>
+<td>Change terminal dimensions</td>
+</tr>
+<tr>
+<td><code>listModels(options?)</code></td>
+<td>Inspect the agent's model choices</td>
+</tr>
+<tr>
+<td><code>setModel(id, options?)</code></td>
+<td>Switch model through the agent</td>
+</tr>
+<tr>
+<td><code>waitForStatus(predicate, timeoutMs?)</code></td>
+<td>Wait for a matching lifecycle status</td>
+</tr>
+<tr>
+<td><code>waitForActivity(predicate, timeoutMs?)</code></td>
+<td>Wait for matching normalized activity</td>
+</tr>
+</tbody>
+</table>
+<p><code>session.status</code> exposes current status. <code>session.session</code> is undefined before startup and holds the low-level session afterward. Raw identity and diagnostics such as <code>elwoodSessionId</code>, <code>cwd</code>, <code>terminal</code> and <code>statusDecisions()</code> live there.</p>
+<h2 id="api--events-and-hooks">Events and hooks</h2>
+<p><code>on(event, handler)</code> returns an unsubscribe function; <code>off(event, handler)</code> removes the matching subscription. Common events include <code>activity</code>, <code>status</code>, <code>warning</code>, <code>terminal:data</code>, <code>terminal:exit</code>, <code>hook</code> and <code>hookError</code>. Event names and payloads are typed per adapter.</p>
+<p>Use constructor <code>hooks</code> when your application must respond to an agent hook. Use event subscriptions when it only needs to observe. Claude and Codex have different hook vocabularies and result types; do not reuse a handler blindly between agents.</p>
+<p>The classes also expose <code>createLoop()</code>, <code>listLoops()</code> and <code>cancelLoop()</code> for recurring prompts, plus raw <code>sendMessage()</code>, <code>sendPrompt()</code>, <code>sendGuidance()</code> and <code>sendKeys()</code> for direct control. Raw input bypasses the ergonomic turn queue. Start with <code>send()</code> and <code>stream()</code> unless you need to own that coordination.</p>
+<h2 id="api--errors">Errors</h2>
+<p>The exported <code>ElwoodError</code> has <code>code</code>, <code>message</code> and <code>details</code>. Use <code>instanceof ElwoodError</code> before reading those fields. Typical codes include <code>claude_not_found</code>, <code>codex_not_authenticated</code>, <code>unsupported_platform</code>, <code>invalid_image</code>, <code>state_not_found</code>, <code>wait_timeout</code>, and <code>termination_failed</code>.</p>
+<p>The CLI has its own terminal error records, including command-specific codes such as <code>blocked_prompt</code> and invocation timeouts. Do not assume every CLI code belongs to the library's <code>ElwoodErrorName</code> union.</p>
+<h2 id="api--advanced-resume">Advanced resume</h2>
+<p><code>resumeClaude()</code> and <code>resumeCodex()</code> accept an <code>elwoodSessionId</code> and return the low-level session API. <code>startOrResumeClaude()</code> / <code>startOrResumeCodex()</code> provide a try-resume-or-start flow. These are a different surface from the ergonomic classes. The eager <code>startClaude()</code> and <code>startCodex()</code> factories are deprecated in favor of the classes.</p>
+<p>For most projects, use a long-lived class instance for in-process follow-ups, or the <a href="#cli--resuming-a-session">CLI continuation recipe</a> for separate shell invocations.</p></section><section class="doc-section" id="cli-reference" aria-labelledby="cli-reference--title"><div class="section-tools"><span>CLI reference</span><button class="copy-section" data-slug="cli-reference">Copy as Markdown</button><a href="cli-reference.md">.md</a></div><h1 id="cli-reference--title">CLI reference</h1>
+<p>The executable is <code>elwood</code>, installed by <code>@with-logic/elwood</code>. <code>run</code> is the default command. Use <code>config --help</code> for configuration commands.</p>
+<h2 id="cli-reference--command-help">Command help</h2>
+<p>The following flag list is synchronized from the library's first-party CLI help when this guide is built.</p>
+<div class="highlight"><pre><span></span><code>Usage: elwood [options] [prompt...]
+       elwood run [options] [prompt...]
+       elwood resume &lt;id&gt; [options] [prompt...]
+       elwood interactive [id] [options]
+       elwood sessions [--state-dir &lt;path&gt;] [--output &lt;text|json&gt;]
+       elwood models [options] [--output &lt;text|json&gt;]
+       elwood config &lt;command&gt;
+
+Run one Claude Code or Codex turn and write its combined assistant response.
+Positional text and piped stdin are combined with one blank line.
+
+Examples:
+  elwood "Summarize this repository"
+  git diff | elwood "Review this diff for correctness"
+  elwood run --output json &lt; prompt.txt
+  elwood --keep --output json "Remember this decision"
+
+Commands:
+  run                         Run one agent turn (default)
+  resume &lt;id&gt; [prompt...]     Resume a kept session; same as run --resume &lt;id&gt;
+  interactive [id]            Open the agent's own TUI here with Elwood's settings
+  sessions                    List Elwood-owned session records; never starts an agent
+  models                      List the agent's models (starts the agent briefly)
+  config                      Inspect or update global defaults; see config --help
+  help                        Show this help
+
+Agent and turn options:
+  --agent &lt;claude|codex&gt;      Select the agent (default: first available of claude, codex)
+  --model &lt;id&gt;                Select or switch the model
+  --reasoning-effort &lt;level&gt;  Claude: low|medium|high|xhigh|max
+                              Codex: none|minimal|low|medium|high|xhigh|max
+  --persona &lt;prompt&gt;          Run a real side-effect-capable setup turn; hide its answer
+  -C, --cwd &lt;path&gt;            Workspace for a new run (default: current directory)
+  --image &lt;path&gt;              Attach an image; repeat to preserve order
+  --timeout &lt;duration&gt;        Bound launch, setup, and turn (default: none; ms|s|m|h)
+  --trust / --no-trust        Toggle allowlisted trust automation (default: trust)
+  --no-defaults               Ignore saved config and ELWOOD_* run defaults
+
+Continuation and output:
+  --keep                      Preserve Elwood state for a new session
+  --resume &lt;id&gt;               Resume the exact stored agent and workspace
+  --ephemeral                 Remove resumed Elwood state afterward
+  --output &lt;text|json|jsonl&gt;  Stdout protocol (default: text)
+  --stream / --no-stream      Toggle incremental text output (default: off)
+  --verbose / --no-verbose    Toggle concise elapsed progress on stderr (default: off)
+  --debug                     Write full sanitized event details to stderr
+  --head                      View the full agent TUI in this terminal
+  --state-dir &lt;path&gt;          Override CLI-owned state storage
+
+Agent posture defaults and supported values:
+  --high-trust / --no-high-trust
+                              Never ask for permissions on either agent (default: off):
+                              Claude bypassPermissions; Codex danger-full-access + never
+  --claude-permission-mode &lt;default|acceptEdits|plan|auto|dontAsk|bypassPermissions&gt;
+                              Default: dontAsk
+  --codex-sandbox &lt;read-only|workspace-write|danger-full-access&gt;
+                              Default: workspace-write
+  --codex-approval-policy &lt;untrusted|on-request|never&gt;
+                              Default: never
+
+Head mode is view-only and requires terminal stdin and stderr. It cannot be
+combined with stream, verbose, debug, or JSONL output. Ctrl-C still interrupts.
+
+Warnings and diagnostics use stderr; stdout remains the selected protocol.
+Use "elwood config effective" to explain resolved values and their sources.
+
+Resume subcommand:
+  elwood resume &lt;id&gt; [prompt...] is exactly elwood run --resume &lt;id&gt;: the stored
+  agent and workspace are used, --cwd is rejected, and piped stdin still applies.
+
+Interactive mode:
+  elwood interactive [id] runs claude or codex in the foreground of this terminal
+  with the resolved agent, model, effort, workspace, and posture passed as the
+  agent's own flags. Elwood does not observe or record the conversation and
+  writes no session state. With an id, the stored session's own conversation is
+  resumed in its stored workspace with its stored posture. Requires a terminal on
+  stdin and stdout; cannot be combined with --output json/jsonl, --stream,
+  --verbose, --debug, --head, --timeout, --persona, --image, --keep, --ephemeral,
+  or --resume. Built-in posture defaults are not applied unless configured.
+
+Session listing:
+  elwood sessions lists id, agent, live, resumable, last used, created, and
+  workspace for records in the effective state directory. "live" means a
+  launch's bridge socket is present. Text is an aligned table; --output json
+  emits one {"schemaVersion":1,"type":"sessions",...} document. An empty state
+  directory is a normal, empty result.
+
+Model listing:
+  elwood models starts the selected agent briefly, opens and cancels its own
+  model picker, tears the session down, and prints the rows. Text marks the
+  current model with * and the default with (default); --output json emits one
+  {"schemaVersion":1,"type":"models",...} document. Honors --agent, --cwd,
+  --model, --reasoning-effort, --timeout, --state-dir, trust, and posture flags.
+
+  -h, --help                  Show this help
+  -V, --version               Show the Elwood version
+</code></pre></div>
+
+<h2 id="cli-reference--output-records">Output records</h2>
+<p>JSON terminal records have <code>schemaVersion: 1</code>, <code>type</code>, <code>agent</code>, <code>response</code>, <code>sessionId</code>, <code>durationMs</code>, and <code>cleanup</code>. Error records add <code>error: { code, message }</code>. <code>cleanup.action</code> is <code>none</code>, <code>preserve</code> or <code>teardown</code>; <code>cleanup.status</code> is <code>succeeded</code> or <code>failed</code>, with an optional error message.</p>
+<p><code>elwood sessions</code> and <code>elwood models</code> emit their own single documents, <code>{"schemaVersion": 1, "type": "sessions", ...}</code> and <code>{"schemaVersion": 1, "type": "models", ...}</code>. Both accept <code>--output text</code> (the default) or <code>--output json</code>; JSONL is not a listing protocol.</p>
+<p>JSONL records add a monotonically increasing <code>sequence</code> and elapsed <code>elapsedMs</code>. Progress record types are <code>text</code>, <code>thinking</code>, <code>tool</code>, <code>status</code> and <code>warning</code>. A tool record has <code>phase: "call"</code> or <code>"result"</code>, optional content and a shared <code>toolCallId</code> when available. Exactly one terminal <code>result</code> or <code>error</code> ends the stream.</p>
+<p>Do not treat <code>response</code> alone as proof of success. Inspect both the process status and terminal record type.</p>
+<h2 id="cli-reference--exit-codes">Exit codes</h2>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>Success, or a downstream consumer closed normally</td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td>Agent, runtime or cleanup failure</td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td>Usage, configuration or workspace failure</td>
+</tr>
+<tr>
+<td><code>124</code></td>
+<td>Invocation timeout</td>
+</tr>
+<tr>
+<td><code>130</code></td>
+<td>User interruption</td>
+</tr>
+</tbody>
+</table>
+<h2 id="cli-reference--configuration-commands">Configuration commands</h2>
+<div class="highlight"><pre><span></span><code>Usage: elwood config &lt;command&gt; [arguments]
+
+Inspect or update Elwood's global user configuration without starting an agent.
+
+Commands:
+  path                        Print the global config path
+  show                        Print the saved configuration document
+  effective [run options]     Explain resolved launch/output settings and sources
+  get &lt;key&gt;                   Print one configured scalar
+  set &lt;key&gt; &lt;value&gt;           Set one documented config key
+  unset &lt;key&gt;                 Remove one configured key
+
+  -h, --help                  Show this help
+
+Examples:
+  elwood config show
+  elwood config effective --agent claude
+  elwood config set codex.sandbox workspace-write
+</code></pre></div>
+
+<h2 id="cli-reference--combinations-to-know">Combinations to know</h2>
+<ul>
+<li><code>--stream</code> works with text output only. Use <code>--no-stream</code> to override saved streaming before requesting JSON.</li>
+<li><code>--head</code> requires terminal stdin and stderr. It cannot combine with stream, verbose, debug or JSONL. It is view-only; Ctrl-C still interrupts.</li>
+<li><code>--resume</code> restores the stored agent and workspace. Any <code>--cwd</code> or conflicting <code>--agent</code> is invalid.</li>
+<li><code>--persona</code> performs a real setup turn for new sessions and cannot be used with resume.</li>
+<li><code>--ephemeral</code> removes resumed Elwood state afterward. New sessions are already ephemeral unless <code>--keep</code> is set.</li>
+<li><code>--high-trust</code> cannot combine with an explicit <code>--claude-permission-mode</code>, <code>--codex-sandbox</code> or <code>--codex-approval-policy</code>. Use <code>--no-high-trust</code> to reverse an inherited value.</li>
+<li><code>elwood interactive</code> needs a terminal and rejects the scripted flags (<code>--output json</code>/<code>jsonl</code>, <code>--stream</code>, <code>--verbose</code>, <code>--debug</code>, <code>--head</code>, <code>--timeout</code>, <code>--persona</code>, <code>--image</code>, <code>--keep</code>, <code>--ephemeral</code>, <code>--resume</code>).</li>
+<li><code>elwood sessions</code> never starts an agent; <code>elwood models</code> starts one briefly and leaves no session state behind.</li>
+</ul>
+<p>Flags override environment, which overrides global configuration, which overrides built-ins. <a href="#configuration">See all configuration keys</a>.</p></section><section class="doc-section" id="troubleshooting" aria-labelledby="troubleshooting--title"><div class="section-tools"><span>Troubleshooting</span><button class="copy-section" data-slug="troubleshooting">Copy as Markdown</button><a href="troubleshooting.md">.md</a></div><h1 id="troubleshooting--title">Troubleshooting</h1>
+<p>Start with the smallest reproducible command in the same directory as the failing run:</p>
+<div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>--no-defaults<span class="w"> </span>--agent<span class="w"> </span>claude<span class="w"> </span>--verbose<span class="w"> </span>--timeout<span class="w"> </span>2m<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">"Reply with one short sentence."</span>
+</code></pre></div>
+
+<p>This makes the agent, deadline and diagnostic output explicit. It still starts a real turn and uses your agent account.</p>
+<h2 id="troubleshooting--command-not-found">Command not found</h2>
+<p>For <code>elwood</code>, confirm the package installed successfully and that your shell can find npm's global executables. Open a fresh terminal after changing PATH. For local dependency installs, use <code>npx elwood --help</code> from that project rather than expecting a global command.</p>
+<p>For <code>claude_not_found</code> or <code>codex_not_found</code>, run the selected agent's <code>--version</code> command. Elwood needs the actual CLI binary, not only a browser account or desktop app. Install the matching CLI, then retry from the same shell.</p>
+<h2 id="troubleshooting--authentication-fails">Authentication fails</h2>
+<p>Run <code>claude</code> or <code>codex</code> directly and complete its sign-in flow. A CLI that is logged out cannot be made authenticated by changing Elwood's output format. Claude's <a href="https://code.claude.com/docs/en/authentication">authentication guide</a> covers account and organization setup.</p>
+<p>A different environment can select different credentials. Check how your script is launched and what environment it inherits. Keep credentials out of copied diagnostics.</p>
+<h2 id="troubleshooting--nothing-appears-for-a-while">Nothing appears for a while</h2>
+<p>Text output normally waits for the combined reply. Add <code>--verbose</code> for elapsed progress or <code>--stream</code> for incremental assistant text. If you need the actual TUI, try <code>--head</code> in a terminal without incompatible stream/verbose/debug/JSONL flags.</p>
+<p>If the agent itself is not ready, run it directly in the workspace to complete first-run setup or inspect a pending dialog. Elwood does not use raw terminal text as a fallback answer.</p>
+<h2 id="troubleshooting--a-prompt-is-blocked">A prompt is blocked</h2>
+<p><code>blocked_prompt</code> means the unattended CLI encountered a recognized prompt it could not safely answer. Run the agent directly to understand what it needs. Adjust the intended permission or workspace setup, then retry. <code>--no-trust</code> can deliberately leave workspace trust unresolved; it does not provide an interactive prompt handler.</p>
+<p>If a tool was denied but the agent still replied, review the permission mode and allowed tools. <code>dontAsk</code> is not a blanket grant. <a href="#permissions">Read the permissions guide</a>.</p>
+<h2 id="troubleshooting--a-script-says-success-but-the-agent-failed">A script says success but the agent failed</h2>
+<p>Check whether your pipeline discarded Elwood's exit code. In Bash/Zsh, enable <code>set -o pipefail</code>. For JSON, require <code>type == "result"</code>; error documents can contain a partial <code>response</code>. <a href="#recipes--json-output-with-failure-handling">Use the complete JSON recipe</a>.</p>
+<h2 id="troubleshooting--timeout-or-a-turn-that-will-not-finish">Timeout or a turn that will not finish</h2>
+<p>The CLI's <code>--timeout</code> bounds launch and the requested turn. Library <code>timeoutMs</code> bounds the turn wait and does not stop the process by itself. In TypeScript, close the session in <code>finally</code>, or interrupt intentionally before a follow-up.</p>
+<p>Inspect agent progress before increasing a timeout: a blocked login or permission prompt is different from a long-running task.</p>
+<h2 id="troubleshooting--a-saved-conversation-cannot-resume">A saved conversation cannot resume</h2>
+<p>Use the Elwood session ID from a kept run and the same state directory. A provider conversation ID is not an Elwood ID. Resume restores the stored agent/workspace; do not supply a conflicting agent or <code>--cwd</code>.</p>
+<p><code>state_not_found</code> means the record is unavailable at the selected location. <code>resume_unavailable</code> means there is not enough provider resume information. Start a new conversation when the required state is gone; do not edit saved IDs by hand.</p>
+<h2 id="troubleshooting--native-dependency-or-platform-error">Native dependency or platform error</h2>
+<p>The initial support target is macOS with Node.js 24+. Elwood uses a native PTY dependency. If installation reports native compilation errors, retain that installer output and check the Node version and local build-tool setup. Browser runtimes and unsupported operating systems are not equivalent substitutes for the supported runtime.</p>
+<h2 id="troubleshooting--filing-an-issue">Filing an issue</h2>
+<p>Include the Elwood, Node and agent versions, macOS version, the command with private input removed, exit code, error code/message, and whether the agent works directly. <code>elwood config effective</code> can explain unexpected settings. Review diagnostic output before sharing it; <code>--debug</code> includes detailed normalized events and can reveal prompt or project content.</p></section></article></main><aside class="docs-tools" aria-label="Copy and export"><p>For your agent</p><button class="tool-copy" id="copy-all-side" type="button">Copy docs as Markdown</button><a class="plain-text" href="../llms-full.txt">llms-full.txt</a><a class="plain-text" href="../llms.txt">llms.txt</a></aside></div>
+<dialog id="docs-search" aria-labelledby="search-title"><div class="search-heading"><h2 id="search-title">Search</h2><button id="search-close" aria-label="Close search">×</button></div><label for="search-query">Search the documentation</label><input id="search-query" type="search" placeholder="streaming, timeout, resume…" autocomplete="off"><p id="search-status" role="status"></p><ul id="search-results"></ul></dialog><script type="module" src="guide.mjs"></script></body></html>

@@ -1,8 +1,19 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.15/schema.json",
-  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
   "files": {
-    "includes": ["**", "!**/node_modules", "!**/dist", "!**/coverage", "!package-lock.json"]
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/coverage",
+      "!package-lock.json",
+      "!site"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -23,18 +34,23 @@
     "globals": []
   },
   "json": {
-    "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2 }
+    "formatter": {
+      "enabled": true,
+      "indentStyle": "space",
+      "indentWidth": 2
+    }
   },
   "linter": {
     "enabled": true,
     "rules": {
       "recommended": true,
-
       "complexity": {
         "recommended": true,
         "noExcessiveCognitiveComplexity": {
           "level": "error",
-          "options": { "maxAllowedComplexity": 20 }
+          "options": {
+            "maxAllowedComplexity": 20
+          }
         },
         "noForEach": "error",
         "noUselessStringConcat": "error",
@@ -42,7 +58,6 @@
         "useSimplifiedLogicExpression": "error",
         "useLiteralKeys": "off"
       },
-
       "correctness": {
         "recommended": true,
         "noUndeclaredDependencies": {
@@ -64,16 +79,15 @@
         "noUnusedVariables": "error",
         "useImportExtensions": "error"
       },
-
       "performance": {
         "recommended": true,
         "noAccumulatingSpread": "error",
         "noDelete": "error",
         "useTopLevelRegex": "off"
       },
-
-      "security": { "recommended": true },
-
+      "security": {
+        "recommended": true
+      },
       "style": {
         "recommended": true,
         "noDefaultExport": "error",
@@ -85,13 +99,22 @@
         "noParameterProperties": "error",
         "noRestrictedGlobals": {
           "level": "error",
-          "options": { "deniedGlobals": { "event": "use a typed event parameter" } }
+          "options": {
+            "deniedGlobals": {
+              "event": "use a typed event parameter"
+            }
+          }
         },
         "noShoutyConstants": "off",
         "noYodaExpression": "error",
         "useBlockStatements": "off",
         "useCollapsedElseIf": "error",
-        "useConsistentArrayType": { "level": "error", "options": { "syntax": "shorthand" } },
+        "useConsistentArrayType": {
+          "level": "error",
+          "options": {
+            "syntax": "shorthand"
+          }
+        },
         "useConsistentBuiltinInstantiation": "error",
         "useConst": "error",
         "useDefaultParameterLast": "error",
@@ -115,11 +138,15 @@
         "useThrowNewError": "error",
         "useThrowOnlyError": "error"
       },
-
       "suspicious": {
         "recommended": true,
         "noApproximativeNumericConstant": "error",
-        "noConsole": { "level": "error", "options": { "allow": ["error"] } },
+        "noConsole": {
+          "level": "error",
+          "options": {
+            "allow": ["error"]
+          }
+        },
         "noEmptyBlockStatements": "error",
         "noEvolvingTypes": "error",
         "noExportsInTest": "error",
@@ -135,21 +162,31 @@
   },
   "assist": {
     "enabled": true,
-    "actions": { "source": { "organizeImports": "on" } }
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
   },
   "overrides": [
     {
       "includes": ["tests/**"],
       "linter": {
         "rules": {
-          "style": { "noDefaultExport": "off" },
+          "style": {
+            "noDefaultExport": "off"
+          },
           "suspicious": {
             "noConsole": "off",
             "noExplicitAny": "off",
             "noEmptyBlockStatements": "off"
           },
-          "complexity": { "noExcessiveCognitiveComplexity": "off" },
-          "performance": { "noDelete": "off" }
+          "complexity": {
+            "noExcessiveCognitiveComplexity": "off"
+          },
+          "performance": {
+            "noDelete": "off"
+          }
         }
       }
     }

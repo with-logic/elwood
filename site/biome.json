@@ -1,0 +1,31 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.15/schema.json",
+  "extends": ["../biome.json"],
+  "files": {
+    "includes": [
+      "*.mjs",
+      "*.html",
+      "*.css",
+      "tests/**/*.mjs",
+      "vercel.json",
+      "!assets",
+      "!guide",
+      "!node_modules",
+      "!scripts"
+    ]
+  },
+  "linter": {
+    "rules": {
+      "complexity": {
+        "noExcessiveCognitiveComplexity": "off"
+      },
+      "style": {
+        "noDescendingSpecificity": "off"
+      },
+      "suspicious": {
+        "noMisplacedAssertion": "off",
+        "useAwait": "off"
+      }
+    }
+  }
+}

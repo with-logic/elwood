@@ -1,0 +1,991 @@
+# What Elwood is
+
+Elwood lets you drive Claude Code or Codex from TypeScript and the command line. Underneath, the agent runs in a real interactive terminal, with its own tools, configuration and authenticated account.
+
+You do not need to parse terminal escape codes or guess when the agent has finished a turn.
+
+## Two ways in
+
+**From your shell:** install the `elwood` executable, pipe in a diff, and get an answer you can use in a script. [CLI quickstart](quickstart.html#from-the-shell).
+
+**From your app:** create a `ClaudeSession`, call `send()`, and get a string back. [TypeScript quickstart](quickstart.html#from-typescript).
+
+```sh
+npm install -g @with-logic/elwood
+elwood "Explain this project's architecture."
+```
+
+```ts
+import { ClaudeSession } from "@with-logic/elwood";
+
+const session = new ClaudeSession();
+try {
+  const reply = await session.send("Explain this project's architecture.");
+  console.log(reply);
+} finally {
+  await session.close();
+}
+```
+
+## What happens on send
+
+1. Elwood starts the selected agent in a hidden terminal, in your project directory.
+2. It waits until the agent is ready and submits your prompt.
+3. The agent uses its normal tools. Elwood observes structured activity and the turn boundary.
+4. Your call resolves with the assistant's reply. The same session can be continued with further prompts as needed.
+
+A **session** is a running conversation with one agent in one workspace. A **turn** is one prompt and its response. A **PTY** is the operating system's terminal interface: it gives the agent the interactive environment it expects even when your app has no terminal window.
+
+## What Elwood owns
+
+Elwood handles terminal startup, prompt delivery, typed activity, turn completion, process cleanup, and even agent updates (if enabled). Claude Code or Codex still owns model access, account authentication, its tools and its conversation history.
+
+The agent can read and change files according to its launch permissions. [Choose the permissions your task needs](permissions.html).
+
+## Where to go next
+
+- [Quickstart](quickstart.html): prerequisites, install and a runnable example.
+- [Sessions and streaming](sessions.html): follow-ups, streaming, images and cleanup.
+- [CLI](cli.html): prompts, pipelines, JSON, session and model listings, and the agent's own terminal.
+- [Recipes](recipes.html): scripts with complete error paths.
+- [TypeScript reference](api.html): classes, options, events and lifecycle methods.
+- [Troubleshooting](troubleshooting.html): installation, login, blocked prompts and timeouts.
+
+## Runtime support
+
+The initial release targets **macOS and Node.js 24 or newer**. Elwood is a local/server-side Node library with a native PTY dependency. It does not run inside a browser. The agent must be installed and authenticated. With no agent selected, the CLI uses the first one it finds (Claude Code, then Codex) and never switches mid-session.
+
+These docs use the distribution name **[@with-logic/elwood](https://www.npmjs.com/package/@with-logic/elwood)** and the executable name **elwood**.
+
+
+---
+
+# Quickstart
+
+Start in a project you know. The first prompt below asks for an explanation, so you can see the whole round trip before asking an agent to make changes.
+
+## Before you start
+
+You need macOS, Node.js 24+, and an installed, authenticated Claude Code or Codex CLI. This guide uses Claude Code.
+
+```sh
+node --version
+claude --version
+```
+
+If Claude is not installed, follow the [Claude Code installation guide](https://code.claude.com/docs/en/quickstart). Run `claude` once in your terminal and complete its sign-in flow. See [Claude authentication](https://code.claude.com/docs/en/authentication) for your account or organization setup. Then exit that session and return to your shell.
+
+Elwood uses the agent's normal environment and authentication. Installing Elwood does not create an account or include model usage.
+
+## From the shell
+
+Install the executable:
+
+```sh
+npm install -g @with-logic/elwood
+```
+
+From your project directory, ask one question:
+
+```sh
+elwood "Explain this project in three sentences."
+```
+
+Elwood starts Claude in a hidden terminal, waits for one turn, prints the assistant's reply and exits. The exact answer depends on your project. Diagnostics go to stderr; the answer goes to stdout.
+
+Pin one agent if you have both installed:
+
+```sh
+elwood config set agent claude
+elwood "Where are the tests?"
+```
+
+With no `--agent`, Elwood uses the first agent it finds installed: Claude Code, then Codex. Pass `--agent codex` (or set `ELWOOD_AGENT`) to choose explicitly. [Continue with the CLI guide](cli.html).
+
+## From TypeScript
+
+Install the library in your project:
+
+```sh
+npm install @with-logic/elwood
+```
+
+Save this as **ask.mts**. The `.mts` extension makes this an ES module, including top-level `await`.
+
+```ts
+import { ClaudeSession } from "@with-logic/elwood";
+
+const session = new ClaudeSession({ cwd: process.cwd() });
+
+try {
+  const reply = await session.send(
+    "Explain this project in three sentences.",
+    { timeoutMs: 120_000 },
+  );
+  console.log(reply);
+} finally {
+  await session.close();
+}
+```
+
+Run it with Node.js 24+:
+
+```sh
+node ask.mts
+```
+
+`new ClaudeSession()` is synchronous. The first `send()` starts the agent; the constructor alone does not. `send()` resolves to a string after the turn settles. `finally` closes the process even if the turn fails.
+
+The turn timeout bounds the response wait. It does not itself kill the agent, and it is not a whole-launch timeout. The `finally` block still matters. Use the CLI's `--timeout` when you need a single deadline covering launch and the turn.
+
+## Follow-up turns
+
+Reuse the same session before closing it:
+
+```ts
+const overview = await session.send("Explain the architecture.");
+const nextStep = await session.send("Which part should I read first?");
+```
+
+The second turn keeps the first turn's context. For the full runnable pattern, streaming events, and lifecycle details, [continue with sessions](sessions.html).
+
+## If the first run fails
+
+Run the selected agent directly in the same directory. Finish login or any first-run setup, then retry Elwood. If the command is quiet, add `--verbose` to see lifecycle progress without mixing it into the answer. [Find the matching symptom](troubleshooting.html).
+
+
+---
+
+# Sessions and streaming
+
+Create one session per conversation. Send related prompts to that session, and close it when the conversation is finished. Each session belongs to one agent and workspace.
+
+## Send and follow-ups
+
+```ts
+import { ClaudeSession } from "@with-logic/elwood";
+
+const session = new ClaudeSession({ cwd: process.cwd() });
+try {
+  console.log(await session.send("Summarize the test strategy."));
+  console.log(await session.send("Which gaps would you address first?"));
+} finally {
+  await session.close();
+}
+```
+
+`send()` combines observed assistant text messages with a blank line between them. It does not include thinking or tool output. Calls to `send()` and `stream()` on one session are serialized in call order. Separate sessions can run independently, but agents editing the same files still need coordination from your app.
+
+## Streaming
+
+Use `stream()` when your interface should show progress before the final reply. It yields four kinds of content event:
+
+```ts
+import { ClaudeSession } from "@with-logic/elwood";
+
+const session = new ClaudeSession();
+try {
+  for await (const event of session.stream("Find the test entry points.")) {
+    switch (event.type) {
+      case "text":
+        process.stdout.write(event.text);
+        break;
+      case "thinking":
+        // Display separately from the answer, if useful.
+        break;
+      case "tool_call":
+        console.error(`Using ${event.name}`);
+        break;
+      case "tool_result":
+        console.error(event.output ?? "Tool finished");
+        break;
+    }
+  }
+} finally {
+  await session.close();
+}
+```
+
+Tool call/result events include `toolCallId` when the adapter supplies it. Stream text arrives as observed messages; do not assume token-by-token delivery. Lifecycle, warnings and hooks belong to session event subscriptions, not this four-event content stream.
+
+Breaking out of a stream stops consuming it; it does **not** cancel the underlying turn. Call `interrupt()` or close the session when you mean to stop the agent.
+
+## Attach an image
+
+Images are part of a turn. Keep the prompt specific about what the agent should inspect.
+
+```ts
+const reply = await session.send("Explain the layout issue in this screenshot.", {
+  images: [{ path: "/absolute/path/to/screenshot.png" }],
+  timeoutMs: 120_000,
+});
+```
+
+Use readable local files. Multiple images preserve their order. [See the API reference](api.html#turn-options) for the turn options.
+
+## Codex sessions
+
+Use `CodexSession` with the same `send()`, `stream()` and `close()` pattern:
+
+```ts
+import { CodexSession } from "@with-logic/elwood";
+
+const session = new CodexSession({ cwd: process.cwd() });
+try {
+  console.log(await session.send("Explain this project's build process."));
+} finally {
+  await session.close();
+}
+```
+
+This starts a Codex conversation; it does not convert a running Claude conversation. Agent-specific constructor options and hooks differ.
+
+## Startup and cleanup
+
+Use `await session.start()` if you want startup to complete before the first prompt. It is idempotent; concurrent calls share the same startup. You can register event handlers before startup.
+
+`close()` stops the process, with a kill fallback if graceful stopping fails. It does not delete Elwood's saved metadata. `teardown()` is the separate operation for removing Elwood-owned state. Neither operation reverses files the agent edited or deletes history owned by the agent CLI.
+
+For shell-based continuation across processes, [use `--keep` and `--resume`](cli.html#resuming-a-session). For advanced TypeScript resume, `resumeClaude()` / `resumeCodex()` return the low-level session API. They do not return the ergonomic class, so do not assume they have `send()` or `stream()`.
+
+## Timeouts and cancellation
+
+A `send()` or `stream()` timeout rejects that call with `wait_timeout`. The agent may still be working. The next queued turn waits for the agent's actual turn boundary; a timeout does not make it safe to submit raw input concurrently.
+
+Use `await session.interrupt()` to request an interruption. Keep cleanup in `finally`. Do not mix low-level `sendMessage()`, `sendPrompt()` or `sendGuidance()` with an in-flight ergonomic turn: those raw methods are not part of its turn queue.
+
+
+---
+
+# The CLI
+
+The `elwood` command runs one agent turn, writes the reply, and exits. It still drives the real interactive agent under the hood. You get a shell-friendly interface without scraping its screen.
+
+```sh
+elwood "Summarize this repository."
+```
+
+`elwood run` is the explicit form of the same command. With no arguments, `elwood` prints help. The built-in default agent is Codex; choose Claude explicitly or [save a default](configuration.html).
+
+## Input
+
+Positional words become the prompt. Piped input is appended after a blank line:
+
+```sh
+git diff | elwood "Review this diff for correctness."
+elwood < prompt.txt
+elwood -C ../service "Explain the entry point."
+elwood --image screenshot.png "What looks wrong?"
+```
+
+Repeat `--image` for multiple images. Input is limited to 8 MiB. The command does not read interactive terminal stdin as a prompt.
+
+## Output formats
+
+| Format | Use it for | Behavior |
+| --- | --- | --- |
+| `--output text` | A person or a text file | Combined assistant reply; default |
+| `--output json` | A script that needs one result | One terminal document with response, status and cleanup |
+| `--output jsonl` | Progress in another program | Ordered event records, then one result or error |
+
+Text and JSON diagnostics use stderr. JSONL includes warning records in its ordered stdout stream. A response can contain useful partial text even when the run fails: inspect the exit code and terminal record type.
+
+```sh
+elwood --output json "Describe the architecture."
+```
+
+Illustrative successful output:
+
+```json
+{
+  "schemaVersion": 1,
+  "type": "result",
+  "agent": "claude",
+  "response": "The project has a CLI, a session layer, and two adapters.",
+  "sessionId": null,
+  "durationMs": 8421,
+  "cleanup": { "action": "teardown", "status": "succeeded" }
+}
+```
+
+`response` combines all observed assistant text in order. `sessionId` is null for a new ephemeral session. Failure documents use `type: "error"` and add `error.code` and `error.message`. [See output records and exit codes](cli-reference.html#output-records).
+
+## Streaming and verbose output
+
+```sh
+elwood --stream --verbose "Explain the build pipeline."
+```
+
+`--stream` emits assistant text as it arrives. `--verbose` prints concise elapsed progress to stderr. Streaming is valid only with text output; use `--no-stream` if a saved setting enables it and you need JSON.
+
+To see the actual TUI, use `--head`:
+
+```sh
+elwood --head "Explain the architecture."
+```
+
+Head mode is view-only. It requires terminal stdin and stderr and cannot combine with stream, verbose, debug or JSONL. Ctrl-C still interrupts. It mirrors terminal bytes to stderr while the final reply remains on stdout.
+
+## Timeouts
+
+```sh
+elwood --timeout 2m "List the main modules."
+```
+
+CLI timeout covers launch, any persona setup turn and the requested turn. Durations use a positive integer plus `ms`, `s`, `m` or `h`. There is no default whole-invocation timeout. A timeout exits with status 124.
+
+## Resuming a session
+
+New runs normally remove their Elwood state afterward. `--keep` preserves it so a later process can resume. With text output, the session ID is reported on stderr; JSON includes it in the result.
+
+This Bash/Zsh example requires `jq`:
+
+```sh
+first=$(elwood --keep --output json \
+  "Remember: this release is called Acorn.") || exit $?
+
+session_id=$(printf '%s' "$first" \
+  | jq -er 'select(.type == "result") | .sessionId') || exit $?
+
+elwood resume "$session_id" "What is the release called?"
+elwood resume "$session_id" --ephemeral "Finish with a one-line summary."
+```
+
+`elwood resume <id>` is the subcommand form of `--resume <id>`; the two are the same run. Resume uses the stored agent and workspace. Do not add `--cwd` or a conflicting `--agent`. Resumed sessions stay preserved unless you pass `--ephemeral`. Cleanup removes Elwood metadata and loop definitions; workspace edits and the agent's own history remain.
+
+## Listing sessions
+
+`elwood sessions` lists the session records Elwood owns in the effective state directory. It never starts an agent.
+
+```sh
+elwood sessions
+elwood sessions --output json
+```
+
+Each record reports its id, agent, workspace, creation and last-used times, whether it is resumable, and whether it is live (a launch's bridge socket is present). JSON emits one `{"schemaVersion": 1, "type": "sessions", ...}` document. An empty state directory is a normal, empty result.
+
+## Listing models
+
+`elwood models` starts the selected agent briefly, opens and cancels the agent's own model picker, tears the session down, and prints what it found. Your configured model is left unchanged.
+
+```sh
+elwood models
+elwood models --agent codex --output json
+```
+
+Text marks the current model with `*` and the default with `(default)`. JSON emits one `{"schemaVersion": 1, "type": "models", ...}` document whose rows carry `id`, `label`, `description`, `isCurrent`, and `isDefault`.
+
+## The agent's own terminal
+
+`elwood interactive` hands your terminal to the real agent TUI, exactly as running `claude` or `codex` yourself would, but with Elwood's resolved settings passed as the agent's own flags.
+
+```sh
+elwood interactive
+elwood interactive --agent codex --model gpt-5.4
+elwood interactive "$session_id"
+```
+
+With an id, the stored session's conversation reopens in its stored workspace with its stored posture. Elwood does not observe or record an interactive conversation and writes no session state. It requires a terminal on stdin and stdout, and cannot be combined with `--output json`/`jsonl`, `--stream`, `--verbose`, `--debug`, `--head`, `--timeout`, `--persona`, `--image`, `--keep`, `--ephemeral`, or `--resume`.
+
+## Reproducible runs
+
+```sh
+elwood --no-defaults --agent claude \
+  --output json --timeout 2m \
+  --claude-permission-mode dontAsk \
+  "Explain this project's directory structure."
+```
+
+`--no-defaults` ignores saved Elwood defaults and its `ELWOOD_*` run-setting environment variables. It leaves the selected agent's normal process environment intact. [Inspect configuration precedence](configuration.html).
+
+
+---
+
+# Recipes
+
+These recipes use Claude explicitly and keep their output and cleanup behavior visible. Start with a project you understand, then adapt the prompts.
+
+## Review a diff into a file
+
+```sh
+git diff | elwood --timeout 5m \
+  "Review this diff. List correctness issues with file names." > review.txt
+```
+
+The answer goes into `review.txt`; diagnostics remain on stderr. Check the exit code before treating the file as a completed review. A failing run can leave partial text.
+
+## JSON output with failure handling
+
+In Bash or Zsh, enable pipeline failure propagation before piping into `jq`:
+
+```sh
+set -o pipefail
+elwood --output json --timeout 2m \
+  "Summarize this repository." \
+  | jq -er 'select(.type == "result") | .response'
+```
+
+Without `pipefail`, `jq` could succeed after Elwood failed. The `type` check also distinguishes a terminal result from an error document.
+
+For full access to a partial failure, capture stdout separately and preserve Elwood's status:
+
+```sh
+result_file=$(mktemp)
+trap 'rm -f "$result_file"' EXIT
+
+if elwood --output json --timeout 5m \
+  "Explain the release checks." > "$result_file"; then
+  jq -er 'select(.type == "result") | .response' < "$result_file"
+else
+  elwood_status=$?
+  jq -r '.error.message' < "$result_file" >&2
+  exit "$elwood_status"
+fi
+```
+
+## Activity in your application
+
+This complete example prints the answer to stdout and tool names to stderr. Save it as `inspect.mts`, install the package locally, then run `node inspect.mts`.
+
+```ts
+import { ClaudeSession, ElwoodError } from "@with-logic/elwood";
+
+const session = new ClaudeSession({ cwd: process.cwd() });
+try {
+  for await (const event of session.stream(
+    "Find the build scripts and explain what each one does.",
+    { timeoutMs: 120_000 },
+  )) {
+    if (event.type === "text") process.stdout.write(event.text);
+    if (event.type === "tool_call") console.error(`Using ${event.name}`);
+  }
+} catch (error) {
+  if (error instanceof ElwoodError) {
+    console.error(`${error.code}: ${error.message}`);
+  } else {
+    console.error(error);
+  }
+  process.exitCode = 1;
+} finally {
+  await session.close();
+}
+```
+
+Use `event.type` to choose your UI treatment. Do not render tool output as trusted HTML. The stream is content; add session subscriptions when you also need lifecycle or warning events.
+
+## Warnings before the first turn
+
+```ts
+const unsubscribe = session.on("warning", (warning) => {
+  console.error(warning.code, warning.message);
+});
+
+try {
+  console.log(await session.send("Explain the public API."));
+} finally {
+  unsubscribe();
+  await session.close();
+}
+```
+
+Subscriptions can be registered before startup. The returned function removes that subscription.
+
+## Environment check
+
+```sh
+elwood --version
+elwood config effective --agent claude
+claude --version
+```
+
+These are useful first checks in a support report. For launch problems, also try the agent directly in the target workspace. [Troubleshooting](troubleshooting.html) has the next steps.
+
+
+---
+
+# Configuration
+
+The CLI resolves settings in this order: **command flags → environment → global configuration → built-in defaults**. You can inspect the result before starting an agent.
+
+```sh
+elwood config effective --agent claude --output json
+```
+
+The output includes each value and its source. This command does not read a prompt or launch an agent.
+
+## The config file
+
+```sh
+elwood config set agent claude
+elwood config set timeout 10m
+elwood config set output text
+elwood config show
+```
+
+`show` prints the saved document, while `effective` shows resolved settings. Remove a saved value with `unset`:
+
+```sh
+elwood config get agent
+elwood config unset timeout
+elwood config path
+```
+
+Configuration is global. Elwood does not read a config file from the repository being opened.
+
+## Location and precedence
+
+The config path is selected from `ELWOOD_CONFIG`, then an absolute `XDG_CONFIG_HOME` plus `/elwood/config.json`, then `~/.config/elwood/config.json`. Use `elwood config path` rather than guessing on a particular machine.
+
+The configuration document has `schemaVersion: 1`. Unknown keys and values with the wrong type are rejected.
+
+| Setting | Example value |
+| --- | --- |
+| `agent` | `claude` or `codex` |
+| `output` | `text`, `json`, `jsonl` |
+| `timeout` | `10m` |
+| `trust`, `highTrust`, `verbose`, `stream` | `true` or `false` |
+| `stateDir` | Absolute path to CLI-owned session state |
+| `persona` | Setup prompt for new sessions |
+| `claude.model`, `codex.model` | Model identifier supported by that agent |
+| `claude.reasoningEffort`, `codex.reasoningEffort` | Supported effort level for that agent |
+| `claude.permissionMode` | For example, `dontAsk` |
+| `codex.sandbox` | For example, `workspace-write` |
+| `codex.approvalPolicy` | For example, `never` |
+
+## Environment variables
+
+The run-setting variables are `ELWOOD_AGENT`, `ELWOOD_OUTPUT`, `ELWOOD_TIMEOUT`, `ELWOOD_TRUST`, `ELWOOD_HIGH_TRUST`, `ELWOOD_STATE_DIR`, `ELWOOD_VERBOSE`, `ELWOOD_STREAM`, `ELWOOD_PERSONA`, `ELWOOD_MODEL`, `ELWOOD_REASONING_EFFORT`, `ELWOOD_CLAUDE_PERMISSION_MODE`, `ELWOOD_CODEX_SANDBOX`, and `ELWOOD_CODEX_APPROVAL_POLICY`.
+
+Boolean values are exactly `true` or `false`. An explicit flag overrides an environment value. `--no-stream` and `--no-verbose` override inherited true values.
+
+```sh
+ELWOOD_AGENT=claude elwood "Explain the test setup."
+elwood --no-defaults --agent claude --output json "Explain the test setup."
+```
+
+`--no-defaults` ignores saved config and Elwood's run-setting variables. It does not remove credentials, PATH, or other ordinary environment used by the agent process.
+
+## Library options
+
+These global defaults belong to the `elwood` executable. In TypeScript, use explicit constructor and turn options. Do not assume changing `elwood config` changes a `ClaudeSession` created by your app.
+
+```ts
+const session = new ClaudeSession({
+  cwd: process.cwd(),
+  permissionMode: "dontAsk",
+});
+```
+
+[See the constructor reference](api.html#constructor-options) or [choose permissions](permissions.html).
+
+
+---
+
+# Permissions and cleanup
+
+Elwood starts a real coding agent. It can use that agent's tools and change your workspace according to its permissions. Choose those permissions when you launch, especially for unattended scripts.
+
+## CLI defaults
+
+By default neither agent stops to ask a human for approval. The two agents express that differently:
+
+| Agent | Default CLI posture | What it means |
+| --- | --- | --- |
+| Claude | `--claude-permission-mode dontAsk` | Permission prompts are suppressed. A tool outside the permitted set is denied rather than asked about. |
+| Codex | `--codex-sandbox workspace-write` with `--codex-approval-policy never` | `never` means never ask for approval. The sandbox additionally keeps file writes inside the workspace. |
+
+Neither default grants every possible tool permission. A successful turn may explain that it could not perform an operation.
+
+`--high-trust` is the agent-neutral way to say "never ask for anything". For whichever agent runs it selects Claude `bypassPermissions`, or Codex `danger-full-access` with approval policy `never`, so you do not have to remember which value means what for each agent.
+
+```sh
+elwood --high-trust "Fix the failing tests and commit."
+```
+
+It layers like any other setting: `ELWOOD_HIGH_TRUST=true`, `elwood config set highTrust true`, and `--no-high-trust` to reverse an inherited value. Combining a flag or environment high trust with an explicit `--claude-permission-mode`, `--codex-sandbox`, or `--codex-approval-policy` is a usage error naming both sources, rather than a silent override. A saved per-agent posture key is overridden by high trust; a saved `highTrust` yields to an explicit per-agent flag.
+
+High trust removes the agent's own guardrails, including Codex's workspace sandbox. Use it for work you would let run unattended, in a directory you trust. Claude shows a one-time acceptance dialog the first time a machine runs in bypass mode; Elwood answers it under the same trust automation as the workspace gate.
+
+The CLI automates only allowlisted trust dialogs. An unhandled blocking prompt exits as `blocked_prompt`. `--no-trust` disables workspace and extension trust automation; it does not turn an unattended command into a permission UI.
+
+```sh
+elwood --agent claude --claude-permission-mode plan \
+  "Propose a refactor without applying it."
+```
+
+## Library options
+
+The library constructor accepts agent-specific settings. A narrow Claude example:
+
+```ts
+import { ClaudeSession } from "@with-logic/elwood";
+
+const session = new ClaudeSession({
+  cwd: process.cwd(),
+  permissionMode: "dontAsk",
+  allowedTools: ["Read", "Glob", "Grep"],
+  disallowedTools: ["Write", "Edit", "Bash"],
+});
+
+try {
+  console.log(await session.send("Explain the module boundaries."));
+} finally {
+  await session.close();
+}
+```
+
+Tool rules are interpreted by the agent; this is not a filesystem sandbox supplied by Elwood. If you enable additional integrations or tools, review their capabilities too. For Codex, choose `sandbox` and `approvalPolicy` in its constructor.
+
+## Input and authority
+
+A piped document becomes part of the prompt. It is not automatically a trusted instruction. For jobs that process outside content, pair the task with the minimum tools and workspace access needed.
+
+A `--persona` setting runs a real setup turn before the main prompt. Its answer is hidden, but its tool calls and file changes still happen. Use it for a deliberate setup task, not as if it were an inert label. It applies to new CLI sessions, not resume.
+
+## Cleanup
+
+Ephemeral CLI cleanup removes Elwood's session record and loop state. It does not revert code changes or delete agent-owned conversation history. In the library, `close()` stops the process and `teardown()` removes Elwood-owned state.
+
+Elwood uses the agent's existing account, so normal provider usage limits and billing still apply. There is no separate Elwood model proxy.
+
+
+---
+
+# TypeScript API reference
+
+Import from `@with-logic/elwood`. The primary entry points are `ClaudeSession` and `CodexSession`. They share an ergonomic turn API and expose the operational methods of the underlying session.
+
+## Constructors
+
+```ts
+import { ClaudeSession, CodexSession } from "@with-logic/elwood";
+
+const claude = new ClaudeSession({ cwd: process.cwd() });
+const codex = new CodexSession({ cwd: process.cwd() });
+```
+
+Construction is synchronous and snapshots the working directory. The first turn or `start()` launches the agent. Omitting `cwd` uses the working directory at construction time.
+
+## Constructor options
+
+| Common option | Type / meaning |
+| --- | --- |
+| `cwd` | Workspace path; defaults to `process.cwd()` |
+| `stateDir` | Elwood session-state directory |
+| `model` | Agent-supported model identifier |
+| `reasoningEffort` | Agent-specific effort level |
+| `persona` | Setup prompt |
+| `initialSize` | Terminal dimensions, `{ cols, rows }` |
+| `autoupdate` | Opt into the adapter's update behavior |
+| `autotrust` | Control allowlisted trust automation |
+| `highTrust` | Never ask for permissions: Claude `bypassPermissions`, or Codex `danger-full-access` with `never` |
+| `strictVersionCheck` | Reject an unparseable/unsupported version instead of permissive handling where supported |
+| `hooks` | Agent-specific typed hook handlers |
+| `hookTimeoutMs` | Timeout for hook handling |
+
+Passing `highTrust` alongside an explicit `permissionMode` (Claude) or `sandbox`/`approvalPolicy` (Codex) throws `claude_high_trust_conflict` / `codex_high_trust_conflict` rather than silently overriding your choice.
+
+Claude also accepts `name`, `permissionMode`, `allowedTools`, `disallowedTools`, `tools`, and `settingsOverrides`. Codex accepts `profile`, `sandbox`, `approvalPolicy`, and `configOverrides`. Use the exported `ClaudeSessionOptions` / `CodexSessionOptions` types for compiler-checked configuration.
+
+CLI defaults and global config do not define library constructor defaults. Set important permissions explicitly in your application.
+
+## Turn methods
+
+| Method | Returns | Use |
+| --- | --- | --- |
+| `send(prompt, options?)` | `Promise<string>` | Wait for the combined assistant reply |
+| `stream(prompt, options?)` | `AsyncGenerator<TurnEvent>` | Consume content as it arrives |
+| `start()` | Promise of the underlying session | Eager startup; idempotent |
+
+Ergonomic turns are serialized in call order on each session. Do not interleave low-level turn-producing methods with an in-flight `send()` or `stream()`.
+
+## Turn options
+
+```ts
+await session.send("Explain this screenshot.", {
+  timeoutMs: 120_000,
+  catchUpMs: 10_000,
+  images: [{ path: "/absolute/path/screenshot.png" }],
+});
+```
+
+`timeoutMs` is an opt-in turn ceiling; there is no default. `catchUpMs` bounds transcript catch-up after ready, with a default of 10 seconds. A wait timeout is not a process kill.
+
+Images accept either `{ path: string }` or `{ data: Uint8Array, format }`. Byte formats are `png`, `jpeg`, `gif`, and `webp`. Do not supply both path and bytes. Limits are 16 images per submission, 25 MiB per image and 50 MiB total; queued image bytes on one session also have a bounded aggregate limit.
+
+## Stream events
+
+| `type` | Fields |
+| --- | --- |
+| `text` | `text: string` |
+| `thinking` | `text: string` |
+| `tool_call` | `name: string`, optional `input`, `toolCallId` |
+| `tool_result` | Optional `name`, `output`, `toolCallId` |
+
+`input` and `output` are strings when present. Availability and granularity depend on the adapter. The stream finishes when that turn settles; stopping iteration does not stop the agent.
+
+## Lifecycle and control
+
+| Method | Behavior |
+| --- | --- |
+| `close()` | Stop, falling back to kill when needed; joins an in-flight startup |
+| `stop()` | Delegate graceful stop to the live session |
+| `kill()` | Force-stop the live session |
+| `teardown()` | Remove Elwood-owned session state through the live session |
+| `interrupt({ timeoutMs }?)` | Request interruption of current work |
+| `compact({ timeoutMs }?)` | Request conversation compaction |
+| `resize({ cols, rows })` | Change terminal dimensions |
+| `listModels(options?)` | Inspect the agent's model choices |
+| `setModel(id, options?)` | Switch model through the agent |
+| `waitForStatus(predicate, timeoutMs?)` | Wait for a matching lifecycle status |
+| `waitForActivity(predicate, timeoutMs?)` | Wait for matching normalized activity |
+
+`session.status` exposes current status. `session.session` is undefined before startup and holds the low-level session afterward. Raw identity and diagnostics such as `elwoodSessionId`, `cwd`, `terminal` and `statusDecisions()` live there.
+
+## Events and hooks
+
+`on(event, handler)` returns an unsubscribe function; `off(event, handler)` removes the matching subscription. Common events include `activity`, `status`, `warning`, `terminal:data`, `terminal:exit`, `hook` and `hookError`. Event names and payloads are typed per adapter.
+
+Use constructor `hooks` when your application must respond to an agent hook. Use event subscriptions when it only needs to observe. Claude and Codex have different hook vocabularies and result types; do not reuse a handler blindly between agents.
+
+The classes also expose `createLoop()`, `listLoops()` and `cancelLoop()` for recurring prompts, plus raw `sendMessage()`, `sendPrompt()`, `sendGuidance()` and `sendKeys()` for direct control. Raw input bypasses the ergonomic turn queue. Start with `send()` and `stream()` unless you need to own that coordination.
+
+## Errors
+
+The exported `ElwoodError` has `code`, `message` and `details`. Use `instanceof ElwoodError` before reading those fields. Typical codes include `claude_not_found`, `codex_not_authenticated`, `unsupported_platform`, `invalid_image`, `state_not_found`, `wait_timeout`, and `termination_failed`.
+
+The CLI has its own terminal error records, including command-specific codes such as `blocked_prompt` and invocation timeouts. Do not assume every CLI code belongs to the library's `ElwoodErrorName` union.
+
+## Advanced resume
+
+`resumeClaude()` and `resumeCodex()` accept an `elwoodSessionId` and return the low-level session API. `startOrResumeClaude()` / `startOrResumeCodex()` provide a try-resume-or-start flow. These are a different surface from the ergonomic classes. The eager `startClaude()` and `startCodex()` factories are deprecated in favor of the classes.
+
+For most projects, use a long-lived class instance for in-process follow-ups, or the [CLI continuation recipe](cli.html#resuming-a-session) for separate shell invocations.
+
+
+---
+
+# CLI reference
+
+The executable is `elwood`, installed by `@with-logic/elwood`. `run` is the default command. Use `config --help` for configuration commands.
+
+## Command help
+
+The following flag list is synchronized from the library's first-party CLI help when this guide is built.
+
+```text
+Usage: elwood [options] [prompt...]
+       elwood run [options] [prompt...]
+       elwood resume <id> [options] [prompt...]
+       elwood interactive [id] [options]
+       elwood sessions [--state-dir <path>] [--output <text|json>]
+       elwood models [options] [--output <text|json>]
+       elwood config <command>
+
+Run one Claude Code or Codex turn and write its combined assistant response.
+Positional text and piped stdin are combined with one blank line.
+
+Examples:
+  elwood "Summarize this repository"
+  git diff | elwood "Review this diff for correctness"
+  elwood run --output json < prompt.txt
+  elwood --keep --output json "Remember this decision"
+
+Commands:
+  run                         Run one agent turn (default)
+  resume <id> [prompt...]     Resume a kept session; same as run --resume <id>
+  interactive [id]            Open the agent's own TUI here with Elwood's settings
+  sessions                    List Elwood-owned session records; never starts an agent
+  models                      List the agent's models (starts the agent briefly)
+  config                      Inspect or update global defaults; see config --help
+  help                        Show this help
+
+Agent and turn options:
+  --agent <claude|codex>      Select the agent (default: first available of claude, codex)
+  --model <id>                Select or switch the model
+  --reasoning-effort <level>  Claude: low|medium|high|xhigh|max
+                              Codex: none|minimal|low|medium|high|xhigh|max
+  --persona <prompt>          Run a real side-effect-capable setup turn; hide its answer
+  -C, --cwd <path>            Workspace for a new run (default: current directory)
+  --image <path>              Attach an image; repeat to preserve order
+  --timeout <duration>        Bound launch, setup, and turn (default: none; ms|s|m|h)
+  --trust / --no-trust        Toggle allowlisted trust automation (default: trust)
+  --no-defaults               Ignore saved config and ELWOOD_* run defaults
+
+Continuation and output:
+  --keep                      Preserve Elwood state for a new session
+  --resume <id>               Resume the exact stored agent and workspace
+  --ephemeral                 Remove resumed Elwood state afterward
+  --output <text|json|jsonl>  Stdout protocol (default: text)
+  --stream / --no-stream      Toggle incremental text output (default: off)
+  --verbose / --no-verbose    Toggle concise elapsed progress on stderr (default: off)
+  --debug                     Write full sanitized event details to stderr
+  --head                      View the full agent TUI in this terminal
+  --state-dir <path>          Override CLI-owned state storage
+
+Agent posture defaults and supported values:
+  --high-trust / --no-high-trust
+                              Never ask for permissions on either agent (default: off):
+                              Claude bypassPermissions; Codex danger-full-access + never
+  --claude-permission-mode <default|acceptEdits|plan|auto|dontAsk|bypassPermissions>
+                              Default: dontAsk
+  --codex-sandbox <read-only|workspace-write|danger-full-access>
+                              Default: workspace-write
+  --codex-approval-policy <untrusted|on-request|never>
+                              Default: never
+
+Head mode is view-only and requires terminal stdin and stderr. It cannot be
+combined with stream, verbose, debug, or JSONL output. Ctrl-C still interrupts.
+
+Warnings and diagnostics use stderr; stdout remains the selected protocol.
+Use "elwood config effective" to explain resolved values and their sources.
+
+Resume subcommand:
+  elwood resume <id> [prompt...] is exactly elwood run --resume <id>: the stored
+  agent and workspace are used, --cwd is rejected, and piped stdin still applies.
+
+Interactive mode:
+  elwood interactive [id] runs claude or codex in the foreground of this terminal
+  with the resolved agent, model, effort, workspace, and posture passed as the
+  agent's own flags. Elwood does not observe or record the conversation and
+  writes no session state. With an id, the stored session's own conversation is
+  resumed in its stored workspace with its stored posture. Requires a terminal on
+  stdin and stdout; cannot be combined with --output json/jsonl, --stream,
+  --verbose, --debug, --head, --timeout, --persona, --image, --keep, --ephemeral,
+  or --resume. Built-in posture defaults are not applied unless configured.
+
+Session listing:
+  elwood sessions lists id, agent, live, resumable, last used, created, and
+  workspace for records in the effective state directory. "live" means a
+  launch's bridge socket is present. Text is an aligned table; --output json
+  emits one {"schemaVersion":1,"type":"sessions",...} document. An empty state
+  directory is a normal, empty result.
+
+Model listing:
+  elwood models starts the selected agent briefly, opens and cancels its own
+  model picker, tears the session down, and prints the rows. Text marks the
+  current model with * and the default with (default); --output json emits one
+  {"schemaVersion":1,"type":"models",...} document. Honors --agent, --cwd,
+  --model, --reasoning-effort, --timeout, --state-dir, trust, and posture flags.
+
+  -h, --help                  Show this help
+  -V, --version               Show the Elwood version
+```
+
+## Output records
+
+JSON terminal records have `schemaVersion: 1`, `type`, `agent`, `response`, `sessionId`, `durationMs`, and `cleanup`. Error records add `error: { code, message }`. `cleanup.action` is `none`, `preserve` or `teardown`; `cleanup.status` is `succeeded` or `failed`, with an optional error message.
+
+`elwood sessions` and `elwood models` emit their own single documents, `{"schemaVersion": 1, "type": "sessions", ...}` and `{"schemaVersion": 1, "type": "models", ...}`. Both accept `--output text` (the default) or `--output json`; JSONL is not a listing protocol.
+
+JSONL records add a monotonically increasing `sequence` and elapsed `elapsedMs`. Progress record types are `text`, `thinking`, `tool`, `status` and `warning`. A tool record has `phase: "call"` or `"result"`, optional content and a shared `toolCallId` when available. Exactly one terminal `result` or `error` ends the stream.
+
+Do not treat `response` alone as proof of success. Inspect both the process status and terminal record type.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Success, or a downstream consumer closed normally |
+| `1` | Agent, runtime or cleanup failure |
+| `2` | Usage, configuration or workspace failure |
+| `124` | Invocation timeout |
+| `130` | User interruption |
+
+## Configuration commands
+
+```text
+Usage: elwood config <command> [arguments]
+
+Inspect or update Elwood's global user configuration without starting an agent.
+
+Commands:
+  path                        Print the global config path
+  show                        Print the saved configuration document
+  effective [run options]     Explain resolved launch/output settings and sources
+  get <key>                   Print one configured scalar
+  set <key> <value>           Set one documented config key
+  unset <key>                 Remove one configured key
+
+  -h, --help                  Show this help
+
+Examples:
+  elwood config show
+  elwood config effective --agent claude
+  elwood config set codex.sandbox workspace-write
+```
+
+## Combinations to know
+
+- `--stream` works with text output only. Use `--no-stream` to override saved streaming before requesting JSON.
+- `--head` requires terminal stdin and stderr. It cannot combine with stream, verbose, debug or JSONL. It is view-only; Ctrl-C still interrupts.
+- `--resume` restores the stored agent and workspace. Any `--cwd` or conflicting `--agent` is invalid.
+- `--persona` performs a real setup turn for new sessions and cannot be used with resume.
+- `--ephemeral` removes resumed Elwood state afterward. New sessions are already ephemeral unless `--keep` is set.
+- `--high-trust` cannot combine with an explicit `--claude-permission-mode`, `--codex-sandbox` or `--codex-approval-policy`. Use `--no-high-trust` to reverse an inherited value.
+- `elwood interactive` needs a terminal and rejects the scripted flags (`--output json`/`jsonl`, `--stream`, `--verbose`, `--debug`, `--head`, `--timeout`, `--persona`, `--image`, `--keep`, `--ephemeral`, `--resume`).
+- `elwood sessions` never starts an agent; `elwood models` starts one briefly and leaves no session state behind.
+
+Flags override environment, which overrides global configuration, which overrides built-ins. [See all configuration keys](configuration.html).
+
+
+---
+
+# Troubleshooting
+
+Start with the smallest reproducible command in the same directory as the failing run:
+
+```sh
+elwood --no-defaults --agent claude --verbose --timeout 2m \
+  "Reply with one short sentence."
+```
+
+This makes the agent, deadline and diagnostic output explicit. It still starts a real turn and uses your agent account.
+
+## Command not found
+
+For `elwood`, confirm the package installed successfully and that your shell can find npm's global executables. Open a fresh terminal after changing PATH. For local dependency installs, use `npx elwood --help` from that project rather than expecting a global command.
+
+For `claude_not_found` or `codex_not_found`, run the selected agent's `--version` command. Elwood needs the actual CLI binary, not only a browser account or desktop app. Install the matching CLI, then retry from the same shell.
+
+## Authentication fails
+
+Run `claude` or `codex` directly and complete its sign-in flow. A CLI that is logged out cannot be made authenticated by changing Elwood's output format. Claude's [authentication guide](https://code.claude.com/docs/en/authentication) covers account and organization setup.
+
+A different environment can select different credentials. Check how your script is launched and what environment it inherits. Keep credentials out of copied diagnostics.
+
+## Nothing appears for a while
+
+Text output normally waits for the combined reply. Add `--verbose` for elapsed progress or `--stream` for incremental assistant text. If you need the actual TUI, try `--head` in a terminal without incompatible stream/verbose/debug/JSONL flags.
+
+If the agent itself is not ready, run it directly in the workspace to complete first-run setup or inspect a pending dialog. Elwood does not use raw terminal text as a fallback answer.
+
+## A prompt is blocked
+
+`blocked_prompt` means the unattended CLI encountered a recognized prompt it could not safely answer. Run the agent directly to understand what it needs. Adjust the intended permission or workspace setup, then retry. `--no-trust` can deliberately leave workspace trust unresolved; it does not provide an interactive prompt handler.
+
+If a tool was denied but the agent still replied, review the permission mode and allowed tools. `dontAsk` is not a blanket grant. [Read the permissions guide](permissions.html).
+
+## A script says success but the agent failed
+
+Check whether your pipeline discarded Elwood's exit code. In Bash/Zsh, enable `set -o pipefail`. For JSON, require `type == "result"`; error documents can contain a partial `response`. [Use the complete JSON recipe](recipes.html#json-output-with-failure-handling).
+
+## Timeout or a turn that will not finish
+
+The CLI's `--timeout` bounds launch and the requested turn. Library `timeoutMs` bounds the turn wait and does not stop the process by itself. In TypeScript, close the session in `finally`, or interrupt intentionally before a follow-up.
+
+Inspect agent progress before increasing a timeout: a blocked login or permission prompt is different from a long-running task.
+
+## A saved conversation cannot resume
+
+Use the Elwood session ID from a kept run and the same state directory. A provider conversation ID is not an Elwood ID. Resume restores the stored agent/workspace; do not supply a conflicting agent or `--cwd`.
+
+`state_not_found` means the record is unavailable at the selected location. `resume_unavailable` means there is not enough provider resume information. Start a new conversation when the required state is gone; do not edit saved IDs by hand.
+
+## Native dependency or platform error
+
+The initial support target is macOS with Node.js 24+. Elwood uses a native PTY dependency. If installation reports native compilation errors, retain that installer output and check the Node version and local build-tool setup. Browser runtimes and unsupported operating systems are not equivalent substitutes for the supported runtime.
+
+## Filing an issue
+
+Include the Elwood, Node and agent versions, macOS version, the command with private input removed, exit code, error code/message, and whether the agent works directly. `elwood config effective` can explain unexpected settings. Review diagnostic output before sharing it; `--debug` includes detailed normalized events and can reveal prompt or project content.

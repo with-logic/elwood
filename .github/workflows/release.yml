@@ -1,0 +1,163 @@
+name: Release
+
+# Three ways this workflow fires:
+#   1. A release PR bumps `package.json`. When it merges to `main`, the push
+#      event notices the version advance, tags the merge commit, publishes to
+#      npm, and creates the GitHub release. (Primary path.)
+#   2. Pushing a tag `vX.Y.Z` directly skips the PR flow and ships.
+#   3. `workflow_dispatch` from the Actions tab with a version input.
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 0.2.0 — no `v` prefix)"
+        required: true
+        type: string
+
+permissions:
+  contents: write # Create releases and push tags.
+  id-token: write # npm provenance via OIDC.
+
+jobs:
+  resolve:
+    # Decide whether this run releases, and at what version. For the
+    # `push: main` path that means comparing package.json against the
+    # previous commit: only a version that CHANGED in this push ships.
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.decide.outputs.should_release }}
+      version: ${{ steps.decide.outputs.version }}
+      tag: ${{ steps.decide.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # Need history and tags.
+      - id: decide
+        run: |
+          set -euo pipefail
+          event="${{ github.event_name }}"
+
+          if [ "$event" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            echo "tag=v$version" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$event" = "push" ] && [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            tag="${GITHUB_REF_NAME}"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          before_sha="${{ github.event.before }}"
+
+          # The first push after repo creation has `before` = all zeros. Treat
+          # that as "no prior state" so adding this workflow never ships
+          # whatever version happened to be checked in.
+          if [[ "$before_sha" == "0000000000000000000000000000000000000000" || -z "$before_sha" ]]; then
+            echo "First push on main has no prior version to compare; skipping release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          new_version="$(node -p 'require("./package.json").version')"
+          old_version="$(git show "$before_sha:package.json" 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{try{console.log(JSON.parse(s).version||"")}catch{console.log("")}})' || true)"
+
+          if [ "$old_version" = "$new_version" ]; then
+            echo "package.json version unchanged ($new_version); nothing to release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -z "$new_version" ]; then
+            echo "::error::could not read version from package.json"
+            exit 1
+          fi
+
+          candidate_tag="v$new_version"
+          if git rev-parse -q --verify "refs/tags/$candidate_tag" >/dev/null 2>&1; then
+            echo "::error::version advanced to $new_version but tag $candidate_tag already exists; aborting"
+            exit 1
+          fi
+
+          echo "Version advanced $old_version -> $new_version; releasing as $candidate_tag."
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
+          echo "version=$new_version" >> "$GITHUB_OUTPUT"
+          echo "tag=$candidate_tag" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: resolve
+    if: needs.resolve.outputs.should_release == 'true'
+    # macOS: the full check runs the PTY-backed suite, and both adapters
+    # reject other platforms at startup.
+    runs-on: macos-latest
+    timeout-minutes: 20
+    environment: npm-publish
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify package version matches the release tag
+        run: |
+          set -euo pipefail
+          pkg_version="$(node -p 'require("./package.json").version')"
+          if [ "$pkg_version" != "${{ needs.resolve.outputs.version }}" ]; then
+            echo "::error::package.json version ($pkg_version) does not match release version (${{ needs.resolve.outputs.version }})"
+            exit 1
+          fi
+
+      # Safety gate: never publish a build that cannot pass the full check.
+      # This also produces `dist/`, which the published tarball ships.
+      - name: Build, typecheck, lint, line cap, unit and conformance tests
+        run: npm run check
+
+      - name: Verify the packed tarball carries a runnable CLI
+        run: |
+          set -euo pipefail
+          npm pack --pack-destination "$RUNNER_TEMP"
+          tarball="$RUNNER_TEMP/with-logic-elwood-${{ needs.resolve.outputs.version }}.tgz"
+          work="$(mktemp -d)"
+          cd "$work"
+          npm init -y >/dev/null
+          npm install "$tarball"
+          # The package declares no install scripts, so this must work with a
+          # prebuilt dist straight out of the tarball (C-CLI-01).
+          ./node_modules/.bin/elwood --version
+
+      - name: Create tag
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ needs.resolve.outputs.tag }}"
+          git push origin "${{ needs.resolve.outputs.tag }}"
+
+      - name: Publish to npm
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve.outputs.tag }}
+          name: ${{ needs.resolve.outputs.tag }}
+          generate_release_notes: true
