@@ -1,15 +1,33 @@
 {
-  "name": "elwood",
-  "version": "0.0.0",
-  "private": true,
-  "description": "Spec-driven TypeScript project.",
+  "name": "@with-logic/elwood",
+  "version": "0.1.0",
+  "description": "Control interactive agentic coding CLIs (Claude Code, Codex) through real terminal sessions: typed hooks, a unified activity stream, resumable sessions, and a headless CLI.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/with-logic/elwood.git"
+  },
+  "homepage": "https://github.com/with-logic/elwood#readme",
+  "bugs": {
+    "url": "https://github.com/with-logic/elwood/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "agent",
+    "pty",
+    "terminal",
+    "hooks",
+    "cli",
+    "automation",
+    "llm"
+  ],
   "type": "module",
   "files": [
     "dist",
-    "docs",
+    "docs/*.md",
     "CHANGELOG.md",
-    "README.md",
-    "PRD.md"
+    "README.md"
   ],
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -26,8 +44,10 @@
   "engines": {
     "node": ">=24"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "start": "node --no-warnings src/index.ts",
     "build": "tsc -p tsconfig.build.json && node scripts/postbuild.mjs",
     "prepare": "npm run build",
     "test": "vitest run --coverage",
@@ -40,24 +60,24 @@
     "check:all": "npm run check && npm run test:e2e",
     "test:e2e": "exec node --no-warnings --experimental-test-coverage --test-coverage-include='src/**/*.ts' --test-coverage-exclude='src/app/**' --test-coverage-exclude='tests/**' --test-timeout=240000 --test-concurrency=1 --test tests/e2e/*.e2e.ts",
     "dev:app": "exec node --no-warnings src/app/dev.ts",
-    "dev:web": "exec node --no-warnings scripts/dev-web.ts",
-    "example:minimal": "exec node --no-warnings scripts/run-example.ts examples/minimal.ts",
-    "example:stream": "exec node --no-warnings scripts/run-example.ts examples/stream.ts",
-    "example:full": "exec node --no-warnings scripts/run-example.ts examples/full.ts"
+    "dev:web": "exec node --no-warnings scripts/supervise.ts src/app/web-dev.ts",
+    "example:minimal": "exec node --no-warnings scripts/supervise.ts examples/minimal.ts",
+    "example:stream": "exec node --no-warnings scripts/supervise.ts examples/stream.ts",
+    "example:full": "exec node --no-warnings scripts/supervise.ts examples/full.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.15",
     "@types/node": "^25.9.1",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-istanbul": "^4.1.9",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.9",
+    "ws": "^8.21.0"
   },
   "dependencies": {
-    "@xterm/addon-fit": "^0.11.0",
     "@xterm/headless": "^6.0.0",
-    "@xterm/xterm": "^6.0.0",
-    "node-pty": "^1.1.0",
-    "ws": "^8.21.0"
+    "node-pty": "^1.1.0"
   }
 }
