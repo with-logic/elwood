@@ -14,6 +14,7 @@ const request = (overrides: Partial<EffectiveRunRequest> = {}): EffectiveRunRequ
   output: "text",
   outputExplicit: false,
   trust: true,
+  highTrust: false,
   stateDir: "/state",
   verbose: false,
   stream: false,

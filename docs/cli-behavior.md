@@ -191,6 +191,46 @@ select a destructive-rider affirmative, and never answer a specific-affirmative
 prompt (e.g. hook trust) with a generic "Yes". `src/core/trust/responder.ts`,
 `src/core/trust/prompts.ts`, verified by `tests/e2e/trust-prompt-claude.e2e.ts`.
 
+### Bypass-permissions acceptance dialog (`--high-trust`)
+
+Claude Code carries a one-time disclaimer for bypass mode. Its wording, taken
+from the 2.1.268 binary (it is not in the public docs), is:
+
+```
+WARNING: Claude Code running in Bypass Permissions mode
+In Bypass Permissions mode, Claude Code will not ask for your approval before running potentially dangerous commands.
+By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode.
+  Yes, I accept
+  No, exit
+```
+
+The acceptance is persisted in Claude's global config as
+`bypassPermissionsModeAccepted` (the binary describes it as "Whether the user has
+accepted the bypass permissions mode dialog"), and `--bg` refuses bypass mode
+until it has been accepted once interactively, so the dialog is at most
+once-per-machine. **Empirically, on 2.1.268 (Claude Max account, macOS) the
+dialog did NOT render at all** — neither through Elwood's `--permission-mode
+bypassPermissions` launch nor with a raw `--dangerously-skip-permissions`
+launch — and no `bypassPermissionsModeAccepted` key existed anywhere under
+`~/.claude*`; the session went straight to the composer with the persistent
+`⏵⏵ bypass permissions on (shift+tab to cycle)` footer. Whether it appears is
+therefore version/account-gated, and Elwood must be correct in BOTH states:
+
+- The dialog is an allowlisted trust prompt (`bypass_permissions`), answered
+  under `autotrust` by the same header-anchored, numbered-or-cursor machinery as
+  folder trust. The header pattern anchors on `running in Bypass Permissions
+  mode` so the always-present `bypass permissions on` footer can never match, and
+  the affirmative matcher is specific to `Yes, I accept` (never a generic yes).
+- When the dialog does not render, nothing is written and the session simply
+  reaches `ready`; `tests/e2e/high-trust.e2e.ts` asserts a `bypass_permissions`
+  `startup_prompt` exactly when the dialog was seen, and logs which case ran.
+- The folder-trust gate still renders first under bypass mode (see above), so a
+  fresh temp workspace answers `workspace_trust` and then, if shown, the
+  disclaimer.
+- `--dangerously-skip-permissions cannot be used with root/sudo privileges for
+  security reasons` is the CLI's own refusal; Elwood does not special-case it —
+  it surfaces as the ordinary start failure with the CLI's message.
+
 **Do not equate `autotrust` with “not blocking” until the write clears the real
 screen.** Trust rules are omitted from human-blocking classification under
 `autotrust`, because automation owns the gate. If option parsing drifts and writes

@@ -14,6 +14,16 @@ import {
   codexApprovalPolicies,
   codexSandboxModes,
 } from "../types.ts";
+import {
+  exactKeys,
+  invalid,
+  oneOf,
+  optionalBoolean,
+  optionalEnum,
+  optionalString,
+  record,
+  strictBoolean,
+} from "./codec-primitives.ts";
 import { type ConfigKey, configKeys } from "./keys.ts";
 
 const topKeys = [
@@ -22,6 +32,7 @@ const topKeys = [
   "output",
   "timeout",
   "trust",
+  "highTrust",
   "stateDir",
   "verbose",
   "stream",
@@ -49,6 +60,7 @@ export function decodeConfig(value: unknown): CliConfig {
     ...optionalEnum(object, "output", cliOutputModes),
     ...optionalDuration(object),
     ...optionalBoolean(object, "trust"),
+    ...optionalBoolean(object, "highTrust"),
     ...optionalString(object, "stateDir"),
     ...optionalBoolean(object, "verbose"),
     ...optionalBoolean(object, "stream"),
@@ -64,7 +76,8 @@ export function parseConfigValue(key: string, value: string): unknown {
     if (value !== "1") throw invalid("schemaVersion must be 1.");
     return 1;
   }
-  if (key === "trust" || key === "verbose" || key === "stream") return strictBoolean(value);
+  if (key === "trust" || key === "highTrust" || key === "verbose" || key === "stream")
+    return strictBoolean(value);
   if (key === "agent") return oneOf(value, cliAgents, key);
   if (key === "output") return oneOf(value, cliOutputModes, key);
   if (key === "timeout") {
@@ -146,54 +159,6 @@ function optionalDuration(object: Record<string, unknown>): { readonly timeout?:
   if (result.timeout !== undefined) parseDuration(result.timeout, "invalid_config");
   return result;
 }
-function optionalString<K extends string>(
-  object: Record<string, unknown>,
-  key: K,
-): { readonly [P in K]?: string } {
-  if (!(key in object)) return {};
-  const value = object[key];
-  if (typeof value !== "string" || value.trim() === "")
-    throw invalid(`${key} must be a non-empty string.`);
-  return { [key]: value } as { readonly [P in K]?: string };
-}
-function optionalBoolean<K extends string>(
-  object: Record<string, unknown>,
-  key: K,
-): { readonly [P in K]?: boolean } {
-  if (!(key in object)) return {};
-  if (typeof object[key] !== "boolean") throw invalid(`${key} must be true or false.`);
-  return { [key]: object[key] } as { readonly [P in K]?: boolean };
-}
-function optionalEnum<K extends string, V extends string>(
-  object: Record<string, unknown>,
-  key: K,
-  valid: readonly V[],
-): { readonly [P in K]?: V } {
-  if (!(key in object)) return {};
-  return { [key]: oneOf(object[key], valid, key) } as { readonly [P in K]?: V };
-}
-function oneOf<V extends string>(value: unknown, valid: readonly V[], key: string): V {
-  if (typeof value !== "string" || !valid.includes(value as V))
-    throw invalid(`${key} must be one of: ${valid.join(", ")}.`);
-  return value as V;
-}
-function strictBoolean(value: string): boolean {
-  if (value === "true") return true;
-  if (value === "false") return false;
-  throw invalid("Boolean values must be true or false.");
-}
-function record(value: unknown, label: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    throw invalid(`${label} must be an object.`);
-  return value as Record<string, unknown>;
-}
-function exactKeys(object: Record<string, unknown>, valid: readonly string[], label: string): void {
-  const unknown = Object.keys(object).find((key) => !valid.includes(key));
-  if (unknown !== undefined) throw invalid(`Unknown ${label} key: ${unknown}.`);
-}
 function assertConfigKey(key: string): asserts key is ConfigKey {
   if (!configKeys.includes(key as ConfigKey)) throw invalid(`Unknown config key: ${key}.`);
-}
-function invalid(message: string): CliValidationError {
-  return new CliValidationError("invalid_config", message);
 }

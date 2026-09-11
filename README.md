@@ -228,6 +228,11 @@ immediate; both are safe after the process has already exited.
   `autotrust`), Codex hook-trust and update dialogs, and Claude's browser-tools
   onboarding. Any other dialog leaves the session `blocked` for a human; the
   CLI fails such runs as `blocked_prompt`.
+- `--high-trust` (library `highTrust: true`) is the agent-neutral "never ask"
+  switch: Claude `bypassPermissions`, or Codex `danger-full-access` with
+  approval policy `never`. It removes the agent's own guardrails, so point it
+  only at work you would let run unattended. Combining it with an explicit
+  per-agent posture is a usage error rather than a silent override.
 - `autotrust` changes the security posture of the launched agent. Point it only
   at directories you already trust. The standalone `listClaudeModels` /
   `listCodexModels` probes always start with `autotrust: true`.

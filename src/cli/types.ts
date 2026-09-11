@@ -51,6 +51,7 @@ export type CliConfig = {
   readonly output?: CliOutputMode;
   readonly timeout?: string;
   readonly trust?: boolean;
+  readonly highTrust?: boolean;
   readonly stateDir?: string;
   readonly verbose?: boolean;
   readonly stream?: boolean;
@@ -67,6 +68,7 @@ export type RunFlags = {
   readonly output?: string;
   readonly timeout?: string;
   readonly trust?: boolean;
+  readonly highTrust?: boolean;
   readonly stateDir?: string;
   readonly verbose?: boolean;
   readonly stream?: boolean;
@@ -121,6 +123,7 @@ export type ResolvedRunRequest = {
   readonly outputExplicit: boolean;
   readonly timeoutMs?: number;
   readonly trust: boolean;
+  readonly highTrust: boolean;
   readonly stateDir: string;
   readonly verbose: boolean;
   readonly stream: boolean;

@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
+import { applyClaudeHighTrust } from "../../core/high-trust.ts";
 import { queuePersonaMessage } from "../../core/persona.ts";
 import { claudeReasoningEfforts, validateReasoningEffort } from "../../core/reasoning-effort.ts";
 import type { StartClaudeOptions } from "../../core/types.ts";
@@ -41,8 +42,10 @@ export async function startClaudeWithId(
   // path resolved after the await could point elsewhere if the caller's (or preflight's)
   // process.cwd() changed during it, splitting where state is written from where the CLI
   // launches (§8.1, §8.2). Thread the resolved cwd everywhere so the record, launch, and
-  // PTY spawn all agree.
-  const options = { ...rawOptions, cwd: resolve(rawOptions.cwd) };
+  // PTY spawn all agree. `highTrust` expands to its concrete posture (or rejects a
+  // conflicting explicit one) HERE, before preflight, so the persisted record and the
+  // launch command both carry the expanded posture (C-API-54).
+  const options = applyClaudeHighTrust({ ...rawOptions, cwd: resolve(rawOptions.cwd) });
   const stateDir = resolve(options.stateDir ?? defaultStateDir(options.cwd));
   const strict = options.strictVersionCheck ?? false;
   const warning = await preflightClaude(strict, options.autoupdate ?? false);

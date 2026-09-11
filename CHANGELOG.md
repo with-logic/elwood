@@ -86,6 +86,18 @@ First public release.
   `agent`, a new run tries `claude` then `codex` in the login shell and fails
   with `no_agent_found` (status 2) when neither resolves. Error records
   emitted before an agent was selected report `agent: null`.
+- An agent-neutral "never ask for permissions" switch: `--high-trust` /
+  `--no-high-trust`, `ELWOOD_HIGH_TRUST`, the `highTrust` config key, and
+  `highTrust?: boolean` on both session classes and both resume functions. It
+  expands to Claude `permissionMode: "bypassPermissions"` or Codex
+  `sandbox: "danger-full-access"` with `approvalPolicy: "never"` before the
+  posture is persisted and the process spawned. Combining it with an explicit
+  per-agent posture is rejected: the CLI names both sources as a usage error and
+  the library throws `claude_high_trust_conflict` / `codex_high_trust_conflict`.
+  `config effective` reports `highTrust` and attributes the posture it decided
+  to the high-trust source. Claude's one-time "running in Bypass Permissions
+  mode" acceptance dialog is an allowlisted trust prompt answered under
+  `autotrust` (`startup_prompt` label `bypass_permissions`).
 
 ### Changed
 

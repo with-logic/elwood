@@ -29,6 +29,8 @@ export const runOptionTable: Readonly<Record<string, RunOptionSpec>> = {
   timeout: { type: "string", key: "timeout" },
   trust: { type: "boolean", key: "trust", value: true },
   "no-trust": { type: "boolean", key: "trust", value: false },
+  "high-trust": { type: "boolean", key: "highTrust", value: true },
+  "no-high-trust": { type: "boolean", key: "highTrust", value: false },
   "state-dir": { type: "string", key: "stateDir" },
   verbose: { type: "boolean", key: "verbose", value: true },
   "no-verbose": { type: "boolean", key: "verbose", value: false },

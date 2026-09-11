@@ -89,20 +89,48 @@ export function settingConflict(sources: readonly string[], target: string): str
   return `${subject} ${sources.length === 1 ? "is" : "are"} incompatible with ${target}. ${recovery}`;
 }
 
+export type ExplicitPostureSources = {
+  readonly claude: readonly string[];
+  readonly codex: readonly string[];
+};
+
+/** The flag/environment sources that explicitly set a per-agent posture this invocation. */
+export function explicitPostureSources(
+  parsed: ParsedRunCommand,
+  env: EnvSettings,
+): ExplicitPostureSources {
+  return {
+    claude: [
+      ...(parsed.flags.claudePermissionMode === undefined ? [] : ["--claude-permission-mode"]),
+      ...(env.claudePermissionMode === undefined ? [] : ["ELWOOD_CLAUDE_PERMISSION_MODE"]),
+    ],
+    codex: [
+      ...(parsed.flags.codexSandbox === undefined ? [] : ["--codex-sandbox"]),
+      ...(parsed.flags.codexApprovalPolicy === undefined ? [] : ["--codex-approval-policy"]),
+      ...(env.codexSandbox === undefined ? [] : ["ELWOOD_CODEX_SANDBOX"]),
+      ...(env.codexApprovalPolicy === undefined ? [] : ["ELWOOD_CODEX_APPROVAL_POLICY"]),
+    ],
+  };
+}
+
+/**
+ * A flag or variable `--high-trust` cannot be combined with an explicit per-agent
+ * posture from the same layers: the switch would silently override a setting the
+ * caller spelled out this invocation (C-CLI-22).
+ */
+export function validateHighTrust(parsed: ParsedRunCommand, env: EnvSettings): void {
+  if ((parsed.flags.highTrust ?? env.highTrust) !== true) return;
+  const target = parsed.flags.highTrust === undefined ? "ELWOOD_HIGH_TRUST" : "--high-trust";
+  const explicit = explicitPostureSources(parsed, env);
+  const sources = [...explicit.claude, ...explicit.codex];
+  if (sources.length > 0) throw usage(settingConflict(sources, target));
+}
+
 function adapterConflictSources(
   parsed: ParsedRunCommand,
   env: EnvSettings,
   agent: CliAgent,
 ): readonly string[] {
-  if (agent === "codex")
-    return [
-      ...(parsed.flags.claudePermissionMode === undefined ? [] : ["--claude-permission-mode"]),
-      ...(env.claudePermissionMode === undefined ? [] : ["ELWOOD_CLAUDE_PERMISSION_MODE"]),
-    ];
-  return [
-    ...(parsed.flags.codexSandbox === undefined ? [] : ["--codex-sandbox"]),
-    ...(parsed.flags.codexApprovalPolicy === undefined ? [] : ["--codex-approval-policy"]),
-    ...(env.codexSandbox === undefined ? [] : ["ELWOOD_CODEX_SANDBOX"]),
-    ...(env.codexApprovalPolicy === undefined ? [] : ["ELWOOD_CODEX_APPROVAL_POLICY"]),
-  ];
+  const explicit = explicitPostureSources(parsed, env);
+  return agent === "codex" ? explicit.claude : explicit.codex;
 }

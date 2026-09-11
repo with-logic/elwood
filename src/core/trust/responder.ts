@@ -178,3 +178,10 @@ async function waitForCursorProgress(
   }
   return "retry";
 }
+
+/** Whether any allowlisted trust prompt for `agent` is showing its header in `text`. */
+export function trustPromptVisible(text: string, agent: ElwoodAgentKind): boolean {
+  return trustPromptAllowlist.some(
+    (spec) => spec.agent === agent && trustPromptHeaderVisible(text, spec),
+  );
+}

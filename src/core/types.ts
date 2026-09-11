@@ -76,6 +76,8 @@ export type StartClaudeOptions = {
   readonly disallowedTools?: readonly ClaudeToolRule[];
   readonly tools?: readonly ClaudeToolRule[];
   readonly settingsOverrides?: ClaudeSettingsOverrides;
+  /** Agent-neutral "never ask": expands to `permissionMode: "bypassPermissions"` (C-API-54). */
+  readonly highTrust?: boolean;
   readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
@@ -93,6 +95,7 @@ export type ResumeClaudeOptions = {
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];
   readonly tools?: readonly ClaudeToolRule[];
+  readonly highTrust?: boolean;
   readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;

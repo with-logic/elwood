@@ -77,14 +77,22 @@ invocation; it does not strip the environment passed to the agent. Environment
 names are `ELWOOD_AGENT`, `ELWOOD_OUTPUT`, `ELWOOD_TIMEOUT`, `ELWOOD_TRUST`,
 `ELWOOD_STATE_DIR`, `ELWOOD_VERBOSE`, `ELWOOD_STREAM`, `ELWOOD_PERSONA`,
 `ELWOOD_MODEL`, `ELWOOD_REASONING_EFFORT`, `ELWOOD_CLAUDE_PERMISSION_MODE`,
-`ELWOOD_CODEX_SANDBOX`, and `ELWOOD_CODEX_APPROVAL_POLICY`. Boolean environment
-values are exactly `true` or `false`.
+`ELWOOD_CODEX_SANDBOX`, `ELWOOD_CODEX_APPROVAL_POLICY`, and `ELWOOD_HIGH_TRUST`.
+Boolean environment values are exactly `true` or `false`.
 
 Run `elwood --help` for the full flag list. Launch controls include `--model`,
 `--reasoning-effort`, `--persona`, `--claude-permission-mode`,
 `--codex-sandbox`, `--codex-approval-policy`, `--state-dir`, `--verbose`,
 `--debug`, and `--trust` / `--no-trust`. The built-in non-interactive posture
 is Claude `dontAsk`, or Codex `workspace-write` with approval policy `never`.
+
+For an unattended run that must never stop on a permission prompt, prefer the
+agent-neutral `--high-trust` over per-agent posture flags. It selects Claude
+`bypassPermissions`, or Codex `danger-full-access` with approval policy
+`never`, for whichever agent runs. `ELWOOD_HIGH_TRUST=true` and `elwood config
+set highTrust true` are the inherited forms, and `--no-high-trust` reverses
+them. Combining it with `--claude-permission-mode`, `--codex-sandbox`, or
+`--codex-approval-policy` in the same invocation is a usage error.
 
 A reproducible run ignores saved defaults and states the important settings:
 

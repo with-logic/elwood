@@ -5,6 +5,7 @@
 
 import { resolve } from "node:path";
 import { elwoodError } from "../../core/errors.ts";
+import { applyClaudeHighTrust } from "../../core/high-trust.ts";
 import type { ResumeClaudeOptions } from "../../core/types.ts";
 import {
   claudeLaunchPosture,
@@ -16,7 +17,10 @@ import { preflightClaude } from "../preflight.ts";
 import { startClaudeFromRecord } from "./index.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
 
-export async function resumeClaude(options: ResumeClaudeOptions): Promise<ClaudeSessionApi> {
+export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<ClaudeSessionApi> {
+  // `highTrust` expands to its explicit posture override (or rejects a conflicting
+  // explicit one) before anything else, exactly as on start (C-API-54).
+  const options = applyClaudeHighTrust(rawOptions);
   // Resolve stateDir to ABSOLUTE ONCE, before any read or `await`: a relative path
   // re-resolved after a `process.chdir()` between the record read and the runtime-file
   // writes would read one session and write another's files (PRD §8.1). (C-STATE)

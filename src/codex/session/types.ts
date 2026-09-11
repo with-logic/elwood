@@ -42,6 +42,8 @@ export type StartCodexOptions = {
   readonly sandbox?: CodexSandboxMode;
   readonly approvalPolicy?: CodexApprovalPolicy;
   readonly configOverrides?: readonly string[];
+  /** Agent-neutral "never ask": expands to `danger-full-access` + `never` (C-API-54). */
+  readonly highTrust?: boolean;
   readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
@@ -57,6 +59,7 @@ export type ResumeCodexOptions = {
   readonly reasoningEffort?: CodexReasoningEffort;
   readonly sandbox?: CodexSandboxMode;
   readonly approvalPolicy?: CodexApprovalPolicy;
+  readonly highTrust?: boolean;
   readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;

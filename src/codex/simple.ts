@@ -6,6 +6,7 @@
  * factory.
  */
 
+import { assertCodexHighTrust } from "../core/high-trust.ts";
 import { resolveSessionPaths } from "../core/simple/resolve-paths.ts";
 import { SessionBase } from "../core/simple/session.ts";
 import { type AssertStopBoundary, defaultBoundarySignal } from "../core/simple/turn.ts";
@@ -39,6 +40,9 @@ export class CodexSession extends SessionBase<CodexSessionApi> {
     // SNAPSHOT cwd + relative stateDir at CONSTRUCTION (see resolveSessionPaths): a chdir between
     // construction and lazy launch must not change which project is launched or where state lands.
     this.options = resolveSessionPaths(options);
+    // A `highTrust` + explicit `sandbox`/`approvalPolicy` conflict is a configuration error:
+    // fail at construction rather than deferring it to the first lazy `send` (C-API-54).
+    assertCodexHighTrust(this.options);
   }
 
   protected launch(): Promise<CodexSessionApi> {

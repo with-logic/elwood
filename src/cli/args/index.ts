@@ -29,6 +29,7 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliCommand {
     if (parsed.values["help"] === true) return { command: "help" };
     if (parsed.values["version"] === true) return { command: "version" };
     rejectBooleanPair(parsed.values, "trust", "no-trust");
+    rejectBooleanPair(parsed.values, "high-trust", "no-high-trust");
     rejectBooleanPair(parsed.values, "stream", "no-stream");
     rejectBooleanPair(parsed.values, "verbose", "no-verbose");
     return {

@@ -8,6 +8,7 @@ export type CliSettingSources = {
   readonly output: string;
   readonly timeoutMs: string;
   readonly trust: string;
+  readonly highTrust: string;
   readonly stateDir: string;
   readonly verbose: string;
   readonly stream: string;

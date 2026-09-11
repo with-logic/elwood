@@ -23,6 +23,7 @@ export type EnvSettings = {
   readonly output?: CliOutputMode;
   readonly timeout?: string;
   readonly trust?: boolean;
+  readonly highTrust?: boolean;
   readonly stateDir?: string;
   readonly verbose?: boolean;
   readonly stream?: boolean;
@@ -40,6 +41,7 @@ export function decodeEnvironment(env: CliEnvironment): EnvSettings {
     ...envEnum(env, "ELWOOD_OUTPUT", cliOutputModes, "output"),
     ...envString(env, "ELWOOD_TIMEOUT", "timeout"),
     ...envBoolean(env, "ELWOOD_TRUST", "trust"),
+    ...envBoolean(env, "ELWOOD_HIGH_TRUST", "highTrust"),
     ...envString(env, "ELWOOD_STATE_DIR", "stateDir"),
     ...envBoolean(env, "ELWOOD_VERBOSE", "verbose"),
     ...envBoolean(env, "ELWOOD_STREAM", "stream"),

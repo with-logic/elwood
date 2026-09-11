@@ -9,6 +9,7 @@ export const configKeys = [
   "output",
   "timeout",
   "trust",
+  "highTrust",
   "stateDir",
   "verbose",
   "stream",

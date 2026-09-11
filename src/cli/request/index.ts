@@ -14,9 +14,15 @@ import {
 } from "../types.ts";
 import { type AgentDetector, detectAvailableAgent, selectAgent } from "./agent-detect.ts";
 import { explicitAdapterOptions, layeredSettings } from "./layers.ts";
-import { ioSettings, optionSettings, resolvePosture } from "./settings.ts";
+import { resolvePosture } from "./posture.ts";
+import { ioSettings, optionSettings } from "./settings.ts";
 import { configKey, sourced } from "./sources.ts";
-import { validateLifecycle, validateOutput, validateSpecificFlags } from "./validation.ts";
+import {
+  validateHighTrust,
+  validateLifecycle,
+  validateOutput,
+  validateSpecificFlags,
+} from "./validation.ts";
 import {
   decodeEnvironment,
   optional,
@@ -67,6 +73,9 @@ export async function resolveRunSettings(
     detectAgent,
   );
   const agent = requiredChoice(agentSetting.value!, cliAgents, "agent");
+  // High trust is rejected against explicit posture BEFORE the adapter check, so
+  // `--high-trust --codex-sandbox …` names the switch rather than the agent (C-CLI-22).
+  validateHighTrust(parsed, env);
   if (!resuming) validateSpecificFlags(parsed, env, agent, agentSetting.source);
   validateLifecycle(parsed, env);
   const io = ioSettings(parsed, env, config, configLocation.path);
@@ -85,6 +94,7 @@ export async function resolveRunSettings(
     outputExplicit: parsed.explicit.has("output"),
     ...(layers.timeout.value !== undefined && { timeoutMs: parseDuration(layers.timeout.value) }),
     trust: io.trust.value as boolean,
+    highTrust: posture.highTrust.value,
     stateDir: layers.stateDir.value!,
     verbose: io.verbose.value as boolean,
     stream: io.stream.value as boolean,
@@ -115,6 +125,7 @@ export async function resolveRunSettings(
         output: io.output.source,
         timeoutMs: layers.timeout.source,
         trust: io.trust.source,
+        highTrust: posture.highTrust.source,
         stateDir: layers.stateDir.source,
         verbose: io.verbose.source,
         stream: io.stream.source,

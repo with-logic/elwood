@@ -68,6 +68,7 @@ describe("CLI config codec edges", () => {
       output: "text",
       timeout: "1h",
       trust: "true",
+      highTrust: "true",
       stateDir: "s",
       verbose: "false",
       stream: "true",

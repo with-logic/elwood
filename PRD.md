@@ -265,6 +265,7 @@ type StartClaudeOptions = {
   readonly disallowedTools?: readonly ClaudeToolRule[];
   readonly tools?: readonly ClaudeToolRule[];
   readonly settingsOverrides?: ClaudeSettingsOverrides;
+  readonly highTrust?: boolean;
   readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
@@ -297,6 +298,24 @@ the update probe's own timeout. `strictVersionCheck` makes unparseable Claude
 versions fatal instead of warning-and-continuing. `permissionMode`
 accepts Claude's documented launch values: `default`, `acceptEdits`, `plan`,
 `auto`, `dontAsk`, and `bypassPermissions`.
+
+`highTrust` is the agent-neutral "never ask for permissions" switch. On Claude,
+`highTrust: true` expands to `permissionMode: "bypassPermissions"` before the
+posture is persisted or the process is spawned, so the record, `config
+effective`, and the launched CLI all agree. It is an expansion, not a second
+axis: supplying an explicit `permissionMode` together with `highTrust: true` is a
+configuration error rejected before spawn with the typed
+`claude_high_trust_conflict` error. When Claude starts in bypass-permissions
+mode it may render a one-time acceptance dialog (header `WARNING: Claude Code
+running in Bypass Permissions mode`, affirmative `Yes, I accept`, decline `No,
+exit`); that dialog is an allowlisted trust prompt answered under `autotrust`
+with `startup_prompt` label `bypass_permissions`, and with `autotrust` off it is
+a blocking prompt like any other trust gate. Whether the installed CLI shows the
+dialog at all is version- and machine-dependent (the CLI may persist the
+acceptance), so Elwood answers it when present and otherwise proceeds. When the
+CLI itself refuses bypass mode (for example when running as root), Elwood does
+not special-case it: the refusal surfaces as the ordinary start failure carrying
+the CLI's own message.
 
 `model` is forwarded to Claude's documented `--model` launch flag so the
 session starts on the requested model. Elwood does not validate the value;
@@ -352,6 +371,7 @@ type ResumeClaudeOptions = {
   readonly allowedTools?: readonly ClaudeToolRule[];
   readonly disallowedTools?: readonly ClaudeToolRule[];
   readonly tools?: readonly ClaudeToolRule[];
+  readonly highTrust?: boolean;
   readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
@@ -390,7 +410,10 @@ field, and the effective posture is re-persisted. Other adapter launch policy
 such as model, reasoning effort, and caller config overrides remains
 caller-supplied-per-call and is intentionally not persisted yet — a resumed
 session that wants a non-default reasoning effort must re-supply `reasoningEffort`,
-exactly as it must re-supply `model`.
+exactly as it must re-supply `model`. `highTrust: true` on resume expands to the
+same explicit `permissionMode: "bypassPermissions"` override as on start (and
+conflicts with an explicit `permissionMode` the same way); a bare resume keeps
+the persisted posture, including one that a high-trust start persisted.
 
 Because every persisting parent writes the same try-resume-else-start dance,
 Elwood provides it directly:
@@ -1142,19 +1165,22 @@ may be emitted with `kind: "startup_prompt"`:
 | `skill_trust`     | claude         | C-CLAUDE-14                 |
 | `plugin_trust`    | claude         | C-CLAUDE-14                 |
 | `mcp_trust`       | claude         | C-CLAUDE-14                 |
+| `bypass_permissions` | claude      | C-CLAUDE-21                 |
 | `browser_tools`   | claude         | C-CLAUDE-11                 |
 | `hook_trust`      | codex          | C-CODEX-06/15               |
 | `update`          | codex          | C-CODEX-12                  |
 
 The trust-prompt labels (`workspace_trust`, `skill_trust`, `plugin_trust`,
-`mcp_trust`, `hook_trust`) are exactly the ids in the trust-prompt allowlist; a
-second implementation MUST treat this table as the complete output union.
+`mcp_trust`, `bypass_permissions`, `hook_trust`) are exactly the ids in the
+trust-prompt allowlist; a second implementation MUST treat this table as the
+complete output union.
 
 Under a caller's full-trust launch (`autotrust`), an agent MUST NEVER be left
 waiting on a trust gate: when an allowlisted trust prompt is visible in the
 current rendered frame, Elwood selects its affirmative option and sends it —
-always say yes. The trust prompt family is folder/directory trust and the CLI's
-first-run prompts for loading a skill, a plugin, or an MCP server. This is an
+always say yes. The trust prompt family is folder/directory trust, the CLI's
+first-run prompts for loading a skill, a plugin, or an MCP server, and Claude's
+one-time bypass-permissions acceptance dialog (§5.1). This is an
 EXPLICIT ALLOWLIST: each entry names one prompt by its on-screen HEADER wording
 and an affirmative-option matcher. Recognition — and ONLY recognition — is the
 guard: (1) Elwood auto-answers only ALLOWLISTED prompts, so an off-allowlist
@@ -1222,6 +1248,7 @@ type StartCodexOptions = {
   readonly sandbox?: "read-only" | "workspace-write" | "danger-full-access";
   readonly approvalPolicy?: "untrusted" | "on-request" | "never";
   readonly configOverrides?: readonly string[];
+  readonly highTrust?: boolean;
   readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
@@ -1293,6 +1320,13 @@ from selecting Codex's default "Update now" action (C-CODEX-12).
 `strictVersionCheck` makes unparseable Codex versions fatal instead of
 warning-and-continuing.
 
+`highTrust` is the same agent-neutral "never ask for permissions" switch as on
+Claude (§5.1). On Codex, `highTrust: true` expands to `sandbox:
+"danger-full-access"` with `approvalPolicy: "never"` before the posture is
+persisted or the process is spawned. Supplying an explicit `sandbox` or
+`approvalPolicy` together with `highTrust: true` is a configuration error
+rejected before spawn with the typed `codex_high_trust_conflict` error.
+
 `autotrust` is an opt-in convenience for embedded/headless parent apps.
 When true, Elwood detects Codex's first-party directory trust prompt in the
 rendered terminal and chooses the trust/continue option through PTY input,
@@ -1318,6 +1352,7 @@ type ResumeCodexOptions = {
   readonly reasoningEffort?: CodexReasoningEffort;
   readonly sandbox?: CodexSandboxMode;
   readonly approvalPolicy?: CodexApprovalPolicy;
+  readonly highTrust?: boolean;
   readonly autoupdate?: boolean;
   readonly autotrust?: boolean;
   readonly hookTimeoutMs?: number;
@@ -1350,6 +1385,9 @@ Like the start path, `resumeCodex` accepts the launch-policy privilege options
 at start and resume defaults to it, so a bare `resumeCodex` relaunches with the
 same sandbox and approval policy the session started with; explicit resume
 options override field by field and the effective posture is re-persisted.
+`highTrust: true` on resume expands to the same explicit `danger-full-access` /
+`never` override as on start and conflicts with explicit `sandbox` /
+`approvalPolicy` the same way (`codex_high_trust_conflict`).
 
 ### 5.7 CodexSessionApi (the raw live session)
 
@@ -2686,12 +2724,14 @@ Initial required error names:
 | `claude_not_authenticated` | Startup output or status indicates Claude is not authenticated. |
 | `claude_version_unsupported` | Installed Claude version lacks required features. |
 | `claude_invalid_reasoning_effort` | `reasoningEffort` was not one of the valid `ClaudeReasoningEffort` values; rejected before spawn. |
+| `claude_high_trust_conflict` | `highTrust: true` was combined with an explicit `permissionMode`; rejected before spawn. |
 | `codex_not_found` | `codex` could not be resolved or spawned. |
 | `codex_start_failed` | Codex started but exited or failed before the session was usable. |
 | `codex_update_failed` | `codex update` failed. Best-effort: contained by the autoupdate preflight and surfaced as the `agent_update_failed` warning (never thrown out of `startCodex` when the installed CLI meets the minimum). |
 | `codex_not_authenticated` | Startup output or status indicates Codex is not authenticated. |
 | `codex_version_unsupported` | Installed Codex version lacks required features. |
 | `codex_invalid_reasoning_effort` | `reasoningEffort` was not one of the valid `CodexReasoningEffort` values; rejected before spawn (Codex would otherwise fail server-side at the first turn). |
+| `codex_high_trust_conflict` | `highTrust: true` was combined with an explicit `sandbox` or `approvalPolicy`; rejected before spawn. |
 | `state_not_found` | A requested Elwood session record does not exist. |
 | `state_corrupt` | A session record exists but cannot be parsed or validated. |
 | `adapter_mismatch` | A resume request targeted a session record owned by another adapter. |
@@ -2864,6 +2904,21 @@ may select the adapter, model, reasoning effort, persona, state directory,
 Claude permission mode, Codex sandbox, and Codex approval policy. An
 adapter-specific option is a usage error for an incompatible adapter.
 
+`--high-trust` is the agent-neutral "never ask for permissions" switch (§5.1,
+§5.5): for whichever adapter runs, it expands to Claude `bypassPermissions` or
+Codex `danger-full-access` with approval policy `never`. It layers like every
+other setting (`--high-trust` / `--no-high-trust`, `ELWOOD_HIGH_TRUST`, the
+`highTrust` config key, built-in `false`), and `--no-high-trust` reverses an
+inherited `true`. An effective `true` from a flag or environment variable
+combined with an explicit per-agent posture flag or variable
+(`--claude-permission-mode`, `--codex-sandbox`, `--codex-approval-policy`, or
+their `ELWOOD_*` forms) in the same invocation is a usage error naming both
+sources, whether the run is new or resumed. Saved `claude.permissionMode`,
+`codex.sandbox`, and `codex.approvalPolicy` config keys are simply overridden by
+high trust; a saved `highTrust: true` is itself overridden field by field by an
+explicit per-agent flag or variable. On resume, `--high-trust` behaves like the
+other posture flags: it overrides the stored posture for the resumed adapter.
+
 Turns have no whole-invocation timeout by default. `--timeout` accepts a
 positive safe integer followed by `ms`, `s`, `m`, or `h`; its deadline spans
 launch, persona setup, and the user turn. Signal handlers are active before
@@ -2937,15 +2992,15 @@ non-empty, otherwise `~/.config/elwood/config.json`. V1 does not read
 project-local configuration.
 
 Configuration is a strict version-1 JSON object. Documented keys are
-`schemaVersion`, `agent`, `output`, `timeout`, `trust`, `stateDir`, `verbose`,
-`stream`, `persona`, `claude.model`, `claude.reasoningEffort`,
+`schemaVersion`, `agent`, `output`, `timeout`, `trust`, `highTrust`, `stateDir`,
+`verbose`, `stream`, `persona`, `claude.model`, `claude.reasoningEffort`,
 `claude.permissionMode`, `codex.model`, `codex.reasoningEffort`,
 `codex.sandbox`, and `codex.approvalPolicy`. Config MUST NOT set prompt, cwd,
 keep, ephemeral, resume ID, or images.
 
 Supported environment variables are `ELWOOD_AGENT`, `ELWOOD_OUTPUT`,
-`ELWOOD_TIMEOUT`, `ELWOOD_TRUST`, `ELWOOD_STATE_DIR`, `ELWOOD_VERBOSE`,
-`ELWOOD_STREAM`, `ELWOOD_PERSONA`, `ELWOOD_MODEL`,
+`ELWOOD_TIMEOUT`, `ELWOOD_TRUST`, `ELWOOD_HIGH_TRUST`, `ELWOOD_STATE_DIR`,
+`ELWOOD_VERBOSE`, `ELWOOD_STREAM`, `ELWOOD_PERSONA`, `ELWOOD_MODEL`,
 `ELWOOD_REASONING_EFFORT`, `ELWOOD_CLAUDE_PERMISSION_MODE`,
 `ELWOOD_CODEX_SANDBOX`, and `ELWOOD_CODEX_APPROVAL_POLICY`. Boolean variables
 accept only `true` or `false`. Precedence is command-line flags, environment,
@@ -2954,8 +3009,8 @@ built-in default: when nothing selects it, a new session auto-detects the first
 available of `claude` then `codex` as described in §12A.1.
 
 Boolean settings inherited from environment or configuration remain reversible
-per invocation: `--no-stream` and `--no-verbose` explicitly select false with
-normal flag precedence. `--no-defaults` ignores the user configuration document
+per invocation: `--no-stream`, `--no-verbose`, and `--no-high-trust` explicitly
+select false with normal flag precedence. `--no-defaults` ignores the user configuration document
 and every `ELWOOD_*` run-setting variable for that invocation, while retaining
 command-line flags, built-in defaults, the normal home/XDG state-location rules,
 and the selected agent's inherited process environment.
@@ -2966,7 +3021,10 @@ keys without launching an agent; `show` prints only the saved document.
 settings without reading prompt input or starting an agent, then prints one
 version-1 JSON document containing the config path and whether it was loaded,
 plus the effective agent, model, workspace, timeout, output controls (including
-`head`), state directory, and adapter permission posture. Claude posture includes
+`head`), state directory, `highTrust`, and adapter permission posture. When high
+trust decides a posture value, that value's source is the high-trust source
+(`--high-trust`, `ELWOOD_HIGH_TRUST`, or the config path and `highTrust` key),
+so the document explains WHY the posture is what it is. Claude posture includes
 `permissionMode`, `allowedTools`, `disallowedTools`, and `tools`; exact resume
 inspection merges persisted posture by the same field-by-field rules as launch so
 the document reports the tool policy the resumed process will receive. Every
@@ -3141,6 +3199,7 @@ Each criterion has:
 | C-API-51 | §5.8 | `close()` stops the underlying session (falling back to `kill` on a stop failure) and is a no-op when the session never started, so it is safe to call in a `finally`. When a lazy start is IN FLIGHT, `close()` awaits that same start and stops the resulting session (never orphaning a session whose launch resolves after `close()` returned); a launch that REJECTS leaves nothing to close. When BOTH stop and kill fail, `close()` throws `termination_failed` carrying BOTH the stop `cause` and the kill `killCause` (neither diagnostic is lost). |
 | C-API-52 | §5.8 | `ClaudeSession`/`CodexSession` expose the FULL control surface in addition to `send`/`stream`, in THREE categories. (1) OPERATIONAL methods — `sendMessage`, `sendPrompt`, `sendGuidance`, `sendKeys`, `resize`, `interrupt`, `compact`, `listModels`, `setModel`, `waitForStatus`, `waitForActivity`, and Claude's `login` — lazy-start the underlying session on first use and delegate to it. (2) `on`/`off` BUFFER before start (attached on start, so subscribing never forces a start). (3) SHUTDOWN methods — `stop`/`kill`/`teardown` — only delegate when a live session already exists and are no-ops before start (so `close()` is safe in a `finally`). `status` reads `starting` until the session exists. Only `send`/`stream` serialize; operational control methods go through immediately (not queued behind a running turn). `startClaude`/`startCodex` are deprecated in favor of the class but remain functional. |
 | C-API-53 | §5.8 | An ergonomic turn's buffered state is BOUNDED even with no whole-turn timeout: the oracle matches a rolling window of recent assistant text (bounded even when the `Stop` hook's expected text is itself large, and large enough BEFORE the oracle is installed to retain text that arrives ahead of a lagging `Stop` hook), and UNCONSUMED events are capped by BOTH count and total UTF-8 bytes. A turn whose pending backlog exceeds either cap fails with `wait_timeout` rather than growing without limit; the byte cap is required because a single event may carry an arbitrarily large agent-controlled payload that the count cap alone would not bound. |
+| C-API-54 | §5.1 §5.2 §5.5 §5.6 | `highTrust: true` on `startClaude`/`resumeClaude`/`ClaudeSession` expands to `permissionMode: "bypassPermissions"`, and on `startCodex`/`resumeCodex`/`CodexSession` to `sandbox: "danger-full-access"` with `approvalPolicy: "never"`, before the posture is persisted and the process spawned (the record and launch command carry the expanded values). Combining it with an explicit `permissionMode` (Claude) or `sandbox`/`approvalPolicy` (Codex) rejects before spawn with `claude_high_trust_conflict` / `codex_high_trust_conflict`; the lazy session classes reject at construction. |
 
 #### C-LOOP: Recurring Session Loops (§5.9, §8, §9, §10)
 
@@ -3214,6 +3273,7 @@ Each criterion has:
 | C-CLAUDE-18 | §5.3 §5.7 | When a lapsed/revoked-login banner (per C-CLAUDE-17) appears on a Claude session that has ALREADY reached readiness — i.e. login expires mid-session — Elwood surfaces a typed, content-free `login_expired` warning (and its `warning` activity) carrying only a bounded `recoveryCommand` of `/login`. Detection is edge-based so a banner persisting across many frames does not re-emit, so a session warns at most once for its login expiring; the session is left ALIVE (no forced terminal transition) so the caller can recover in place via `session.login()`, tear down, or re-authenticate out of band. |
 | C-CLAUDE-19 | §5.4 §7A.4 | A committed Claude assistant `thinking` content block surfaces its plaintext extended-thinking as a `reasoning` activity carrying that text, sourced from the committed transcript exactly like `assistant_message` (C-CLAUDE-15) — no hook exposes it. Only ASSISTANT thinking is surfaced and empty thinking is dropped; a `redacted_thinking` block (opaque encrypted `data`, no readable text) produces no activity. |
 | C-CLAUDE-20 | §5.1 §5.2 | `reasoningEffort`, when supplied to `startClaude`/`resumeClaude`, is validated against the `ClaudeReasoningEffort` enum (`low`, `medium`, `high`, `xhigh`, `max`) before spawn — an out-of-enum value rejects with `claude_invalid_reasoning_effort` (message listing the valid values) and no process is spawned — and a valid value is forwarded to Claude's `--effort` launch flag. It is independent of `model`, applies to the launched session only, and is not persisted across resume (a resume must re-supply it). |
+| C-CLAUDE-21 | §5.1 §5.4 | Claude's one-time bypass-permissions acceptance dialog (header wording `Claude Code running in Bypass Permissions mode`, affirmative `Yes, I accept`, decline `No, exit`) is an allowlisted trust prompt: under `autotrust` it is recognized by its header wording outside the option region, answered once by selecting the affirmative in numbered or cursor layouts, and reported as `startup_prompt` activity with label `bypass_permissions`; with `autotrust` off it is a blocking prompt. The persistent `bypass permissions on` footer of a running session never matches, and a CLI refusal of bypass mode surfaces as the ordinary start failure. |
 
 #### C-CODEX: Codex Startup And Config (§4, §7A, §9)
 
@@ -3356,7 +3416,7 @@ Each criterion has:
 | C-CLI-11 | §12A.3 | JSON emits one version-1 terminal document and JSONL emits ordered normalized records plus exactly one terminal record, including structured validation errors when explicitly selected; every JSONL record has `elapsedMs` and tool records carry `toolCallId` when available. An error record emitted before any adapter was selected reports `agent: null`; otherwise `agent` is the selected or running adapter. |
 | C-CLI-12 | §12A.3 | Output excludes terminal and secret-bearing internals, honors backpressure, and treats downstream `EPIPE` as graceful consumer closure followed by cleanup. |
 | C-CLI-13 | §12A.4 | Config path resolution follows explicit, absolute XDG, then home fallback order; config is strict version 1 with only documented keys, and project-local config is ignored. |
-| C-CLI-14 | §12A.4 | Flag, environment, config, and built-in precedence is deterministic, environment booleans are strict, negative flags reverse inherited stream/verbose values, `--no-defaults` bypasses Elwood run defaults, and config path/show/get/set/unset/effective never launches an agent (agent auto-detection only asks the login shell whether a command resolves). |
+| C-CLI-14 | §12A.4 | Flag, environment, config, and built-in precedence is deterministic, environment booleans are strict, negative flags reverse inherited stream/verbose/high-trust values, `--no-defaults` bypasses Elwood run defaults, and config path/show/get/set/unset/effective never launches an agent (agent auto-detection only asks the login shell whether a command resolves). |
 | C-CLI-15 | §12A.4 §12A.5 | Config and state reads and writes enforce private ownership, regular-file, symlink-safety, and atomicity constraints. |
 | C-CLI-16 | §12A.5 | CLI state defaults to the absolute XDG state base or `~/.local/state/elwood`, never the workspace, and one session identity has at most one live owner. |
 | C-CLI-17 | §12A.5 | Success, agent/cleanup failure, usage/config failure, timeout, and interruption map to statuses 0, 1, 2, 124, and 130 without cleanup masking a primary status. |
@@ -3364,6 +3424,7 @@ Each criterion has:
 | C-CLI-19 | §12A.4 | `config effective` prints validated effective launch/output values (including `head` and the full Claude tool posture) with config location/load state and per-setting provenance (including `auto-detected` for a probed agent), supports exact stored resume inspection using the same posture merge as launch, reads no prompt input, and starts no agent. |
 | C-CLI-20 | §12A.5 | Text validation errors use user-facing language, identify relevant paths and inherited-setting sources, suggest an unambiguous nearby long option, and retain the stable structured error code. |
 | C-CLI-21 | §12A.1 §12A.4 | When no flag, environment variable, or config key selects an agent, a new session (and `config effective`) probes the user's login shell for `claude` and `codex` concurrently and uses the first in that order whose command resolves, reporting source `auto-detected`; the probe never runs an agent, resume never probes, and when neither resolves the invocation fails before launch with code `no_agent_found` and status 2, naming both agents, an install hint, and the `--agent`/`ELWOOD_AGENT`/config selection paths. A probe that cannot run (missing or broken login shell, probe timeout) fails with the same code and status but names the shell and underlying error rather than claiming no agent is installed; adapter-option conflicts with an auto-detected agent say so and offer `--agent` for the other adapter. |
+| C-CLI-22 | §12A.2 §12A.4 | `--high-trust` / `--no-high-trust`, `ELWOOD_HIGH_TRUST` (strict boolean), and the `highTrust` config key layer with normal precedence and expand, for the effective adapter, to Claude `bypassPermissions` or Codex `danger-full-access` + `never`; an effective flag/environment `true` combined with an explicit per-agent posture flag or variable is a usage error naming both sources on new and resumed runs; saved per-agent posture keys are overridden by high trust while a saved `highTrust` yields field by field to explicit per-agent flags/variables; and `config effective` reports `highTrust` plus posture values whose source is the deciding high-trust source. |
 
 #### C-E2E: Real Adapter Flows (§12)
 
@@ -3384,6 +3445,7 @@ Each criterion has:
 | C-E2E-09 | §5.1 | The trust-prompt allowlist recognizes and answers the REAL folder-trust frame the installed Claude CLI renders in a fresh untrusted directory (header-anchored recognition + numbered or cursor affirmative selection), verifies the trust screen clears before readiness, and fails if a fully rendered trust frame is visible but unanswerable; it skips loudly only when no trust frame renders (for example, an already trusted directory). |
 | C-E2E-14 | §5.8 | Against a REAL Claude (or Codex) CLI, a lazily-started `ClaudeSession`/`CodexSession` answers two sequential `send` calls: the first returns non-empty assistant text, and the second — referring back to the first — returns text consistent with retained conversation context, proving `send` collects a turn's assistant text and the ergonomic layer preserves multi-turn context (C-API-47, C-API-49). |
 | C-E2E-15 | §5.8 | Against a REAL CLI, `stream(prompt)` for a task that DETERMINISTICALLY uses a workspace tool (reading a planted file) yields the turn's simplified typed events in arrival order — a `tool_call` FOLLOWED by its `tool_result`, and at least one `text` — and ends when the turn settles, verified against the installed CLI (C-API-48). |
+| C-E2E-16 | §5.1 §5.5 | Against the REAL CLIs, a session started with `highTrust: true` reaches `ready` on both adapters: Claude's rendered composer shows its bypass-permissions footer with no acceptance dialog left visible (answered when the installed CLI renders one), and Codex's persisted launch posture is `danger-full-access` / `never` (C-API-54, C-CLAUDE-21). |
 
 ## 15. Open Implementation Notes
 

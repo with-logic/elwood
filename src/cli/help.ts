@@ -45,6 +45,9 @@ Continuation and output:
   --state-dir <path>          Override CLI-owned state storage
 
 Agent posture defaults and supported values:
+  --high-trust / --no-high-trust
+                              Never ask for permissions on either agent (default: off):
+                              Claude bypassPermissions; Codex danger-full-access + never
   --claude-permission-mode <default|acceptEdits|plan|auto|dontAsk|bypassPermissions>
                               Default: dontAsk
   --codex-sandbox <read-only|workspace-write|danger-full-access>

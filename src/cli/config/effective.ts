@@ -78,6 +78,7 @@ export async function writeEffectiveConfig(
       debug: setting(request.debug === true, resolution.sources.debug),
       head: setting(draft.head === true, resolution.sources.head),
       trust: setting(request.trust, resolution.sources.trust),
+      highTrust: setting(request.highTrust, resolution.sources.highTrust),
       stateDir: setting(request.stateDir, resolution.sources.stateDir),
       permissionMode: setting(claudePosture?.permissionMode, resolution.sources.permissionMode),
       allowedTools: setting(
