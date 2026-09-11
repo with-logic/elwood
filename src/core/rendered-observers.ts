@@ -4,7 +4,7 @@
  * Implements PRD §5.3 turn and blocked detection.
  */
 
-import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity.ts";
+import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity/index.ts";
 import { type AttentionWatcher, activityFromAttention } from "./attention.ts";
 import {
   type RenderedFrame,

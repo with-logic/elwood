@@ -9,7 +9,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import type { ClaudeSessionImpl } from "../../src/claude/session-instance.ts";
+import type { ClaudeSessionImpl } from "../../src/claude/session/instance.ts";
 import { startClaude } from "../../src/index.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 

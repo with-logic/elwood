@@ -105,7 +105,7 @@ describe("headed CLI display", () => {
     expect(target.output.value.endsWith("\u001b[<u\u001b[?1049l")).toBe(true);
   });
 
-  test("closing an unused display is side-effect free", async () => {
+  test("C-CLI-18 closing an unused display is side-effect free", async () => {
     const target = new FakeHeadTarget();
     const display = new HeadedDisplay(target);
     display.write("ignored");
@@ -121,7 +121,7 @@ describe("headed CLI display", () => {
     expect(attached.output.value).toBe("");
   });
 
-  test("unexpected display, resize, and cleanup failures are reported", async () => {
+  test("C-CLI-18 unexpected display, resize, and cleanup failures are reported", async () => {
     const target = new FakeHeadTarget();
     target.output.write = (_value, callback) => {
       callback(new Error("write failed"));

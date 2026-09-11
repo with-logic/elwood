@@ -3,31 +3,23 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { type CliLaunchDependencies, createCliLaunch } from "../../src/cli/session-launch.ts";
+import { type CliLaunchDependencies, createCliLaunch } from "../../src/cli/session/launch.ts";
 import type { EffectiveRunRequest } from "../../src/cli/types.ts";
+import { type EffectiveRequestOverrides, effectiveRequest } from "./main-fakes.ts";
 
 function request(
   agent: "claude" | "codex",
-  overrides: Partial<EffectiveRunRequest> = {},
+  overrides: EffectiveRequestOverrides = {},
 ): EffectiveRunRequest {
-  return {
+  return effectiveRequest({
     agent,
-    output: "text",
-    outputExplicit: false,
     trust: false,
-    stateDir: "/state",
-    verbose: false,
-    stream: false,
     cwd: "/workspace",
-    images: [],
-    prompt: "go",
-    keep: false,
-    ephemeral: false,
     ...(agent === "claude"
       ? { permissionMode: "plan" }
       : { sandbox: "read-only", approvalPolicy: "on-request" }),
     ...overrides,
-  };
+  });
 }
 
 function harness() {
@@ -49,7 +41,7 @@ function harness() {
 }
 
 describe("CLI adapter launch mapping", () => {
-  test("new Claude carries posture/model/effort and uses the preallocated identity", async () => {
+  test("C-CLI-06 new Claude carries posture/model/effort and uses the preallocated identity", async () => {
     const h = harness();
     const launch = createCliLaunch(
       request("claude", {
@@ -79,7 +71,7 @@ describe("CLI adapter launch mapping", () => {
     ]);
   });
 
-  test("exact Claude resume has no start or model fallback", async () => {
+  test("C-CLI-08 exact Claude resume has no start or model fallback", async () => {
     const h = harness();
     const launch = createCliLaunch(request("claude", { resume: "saved" }), "saved", h.dependencies);
     await expect(launch()).rejects.toThrow("resumeClaude");
@@ -98,7 +90,7 @@ describe("CLI adapter launch mapping", () => {
     ]);
   });
 
-  test("new Codex carries posture/model/effort and uses the preallocated identity", async () => {
+  test("C-CLI-06 new Codex carries posture/model/effort and uses the preallocated identity", async () => {
     const h = harness();
     const launch = createCliLaunch(
       request("codex", { model: "gpt", reasoningEffort: "minimal" }),
@@ -122,7 +114,7 @@ describe("CLI adapter launch mapping", () => {
     });
   });
 
-  test("exact Codex resume has no start or model fallback", async () => {
+  test("C-CLI-08 exact Codex resume has no start or model fallback", async () => {
     const h = harness();
     const launch = createCliLaunch(
       request("codex", { resume: "saved", initialSize: { cols: 91, rows: 27 } }),
@@ -145,11 +137,9 @@ describe("CLI adapter launch mapping", () => {
     });
   });
 
-  test("new launches supply defaults and omit absent model and invalid effort", async () => {
+  test("C-CLI-06 new launches supply defaults and omit an absent model and effort", async () => {
     const claude = harness();
-    const { permissionMode: _permission, ...claudeRequest } = request("claude", {
-      reasoningEffort: "invalid",
-    });
+    const { permissionMode: _permission, ...claudeRequest } = request("claude");
     await expect(
       createCliLaunch(claudeRequest as EffectiveRunRequest, "c", claude.dependencies)(),
     ).rejects.toThrow("startClaude");
@@ -158,13 +148,7 @@ describe("CLI adapter launch mapping", () => {
     expect(claude.calls[0]?.options).not.toHaveProperty("reasoningEffort");
 
     const codex = harness();
-    const {
-      sandbox: _sandbox,
-      approvalPolicy: _approval,
-      ...codexRequest
-    } = request("codex", {
-      reasoningEffort: "invalid",
-    });
+    const { sandbox: _sandbox, approvalPolicy: _approval, ...codexRequest } = request("codex");
     await expect(
       createCliLaunch(codexRequest as EffectiveRunRequest, "x", codex.dependencies)(),
     ).rejects.toThrow("startCodex");

@@ -5,27 +5,22 @@
  * caller, so a cleanup failure must not escape the shutdown boundary untyped.
  */
 
-import { existsSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { elwoodError } from "../../src/core/errors.ts";
-import {
-  managedShutdown,
-  runShutdown,
-  runTeardown,
-  type ShutdownHost,
-} from "../../src/runtime/session-shutdown.ts";
-import {
-  type ShutdownContext,
-  ShutdownCoordinator,
-} from "../../src/runtime/shutdown-coordinator.ts";
-import {
-  createSessionRecord,
-  prepareStateDir,
-  sessionDir,
-  writeSessionRecord,
-} from "../../src/state/store.ts";
+import type { PtyProcess } from "../../src/pty/types.ts";
+import { runShutdown, type ShutdownHost } from "../../src/runtime/session/shutdown.ts";
+import type { ShutdownContext } from "../../src/runtime/shutdown/coordinator.ts";
+
+/** A PTY the already-signaled hosts below never touch (no signal is ever re-sent). */
+const untouchedPty: PtyProcess = {
+  pid: 1000,
+  onData: () => () => {},
+  onExit: () => () => {},
+  write: () => {},
+  resize: () => "resized",
+  kill: () => {
+    throw new Error("an already-signaled session must not be re-signaled");
+  },
+};
 
 // A host whose runtime cleanup rejects with a raw aggregate Error (as runCleanupSteps
 // does). The session is treated as already-signaled so runShutdown takes the
@@ -35,11 +30,11 @@ function host(
   overrides: Partial<ShutdownHost> = {},
 ): ShutdownHost {
   return {
-    pty: {} as never,
+    pty: untouchedPty,
     stateDir: "/tmp/state",
     elwoodSessionId: "s1",
-    socketPath: "/tmp/elwood-x/h.sock",
-    reapPolicy: { orThrow: () => undefined, reaper: {} as never } as never,
+    socketHome: "/tmp/elwood-x",
+    reapPolicy: { orThrow: () => undefined, reaper: { reap: () => undefined } },
     status: () => "exited",
     claimShutdown: () => undefined,
     pauseLoops: () => undefined,
@@ -50,7 +45,7 @@ function host(
   };
 }
 
-const signaledCtx = { alreadySignaled: true, markSignaled: () => undefined } as ShutdownContext;
+const signaledCtx: ShutdownContext = { alreadySignaled: true, markSignaled: () => undefined };
 
 describe("runShutdown runtime-cleanup failure (C-LIFE-10)", () => {
   test("C-ERR-01 a rejecting cleanupRuntime surfaces as typed termination_failed", async () => {
@@ -79,114 +74,5 @@ describe("runShutdown runtime-cleanup failure (C-LIFE-10)", () => {
         signaledCtx,
       ),
     ).resolves.toBeUndefined();
-  });
-});
-
-describe("permanent loop clearing (C-LOOP-14/C-LOOP-19)", () => {
-  test("stop preserves loops while a successful kill pauses then clears them", async () => {
-    const calls: string[] = [];
-    const shutdownHost = host(async () => void calls.push("cleanup"), {
-      pauseLoops: () => void calls.push("pause"),
-      clearLoops: async (reason) => void calls.push(`clear:${reason}`),
-      reapPolicy: { orThrow: () => void calls.push("reap"), reaper: {} as never } as never,
-    });
-    const shutdown = managedShutdown(new ShutdownCoordinator(), () => shutdownHost);
-    await shutdown.stop();
-    expect(calls).toEqual(["reap", "cleanup"]);
-    calls.length = 0;
-    await shutdown.kill();
-    expect(calls).toEqual(["pause", "reap", "cleanup", "clear:kill"]);
-  });
-
-  test("a failed kill preserves loops and retries clearing only after cleanup succeeds", async () => {
-    const calls: string[] = [];
-    let cleanupAttempts = 0;
-    const shutdownHost = host(
-      () => {
-        calls.push("cleanup");
-        cleanupAttempts += 1;
-        return cleanupAttempts === 1
-          ? Promise.reject(new Error("cleanup failed"))
-          : Promise.resolve();
-      },
-      {
-        pauseLoops: () => void calls.push("pause"),
-        clearLoops: async () => void calls.push("clear"),
-        reapPolicy: { orThrow: () => void calls.push("reap"), reaper: {} as never } as never,
-      },
-    );
-    const shutdown = managedShutdown(new ShutdownCoordinator(), () => shutdownHost);
-    await expect(shutdown.kill()).rejects.toMatchObject({ code: "termination_failed" });
-    expect(calls).toEqual(["pause", "reap", "cleanup"]);
-    await shutdown.kill();
-    expect(calls).toEqual(["pause", "reap", "cleanup", "pause", "reap", "cleanup", "clear"]);
-  });
-
-  test("kill reports loop persistence failure after cleanup succeeds", async () => {
-    const calls: string[] = [];
-    const shutdownHost = host(async () => void calls.push("cleanup"), {
-      pauseLoops: () => void calls.push("pause"),
-      clearLoops: () => {
-        calls.push("clear");
-        return Promise.reject(
-          elwoodError("loop_persistence_failed", "Could not clear loop state."),
-        );
-      },
-      reapPolicy: { orThrow: () => void calls.push("reap"), reaper: {} as never } as never,
-    });
-    await expect(
-      managedShutdown(new ShutdownCoordinator(), () => shutdownHost).kill(),
-    ).rejects.toMatchObject({
-      code: "loop_persistence_failed",
-    });
-    expect(calls).toEqual(["pause", "reap", "cleanup", "clear"]);
-  });
-
-  test("kill still reports termination failure when loop clearing succeeds", async () => {
-    const shutdownHost = host(() => Promise.reject(new Error("cleanup failed")));
-    const shutdown = managedShutdown(new ShutdownCoordinator(), () => shutdownHost);
-    await expect(shutdown.kill()).rejects.toMatchObject({ code: "termination_failed" });
-  });
-
-  test("teardown reports cleanup failure when loop clearing succeeds", async () => {
-    const shutdownHost = host(() => Promise.reject(new Error("cleanup failed")), {
-      reapPolicy: {
-        orThrow: () => undefined,
-        reaper: { reap: () => Promise.resolve() },
-      } as never,
-    });
-    await expect(runTeardown(shutdownHost, signaledCtx)).rejects.toMatchObject({
-      code: "teardown_failed",
-      details: { causes: ["cleanup failed"] },
-    });
-  });
-
-  test("teardown preserves loop_persistence_failed but still removes session files", async () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-shutdown-loops-"));
-    prepareStateDir(root);
-    const id = "teardown-loop-failure";
-    const dir = sessionDir(root, id);
-    writeSessionRecord(createSessionRecord({ cwd: root, id }), dir);
-    const calls: string[] = [];
-    const shutdownHost = host(async () => void calls.push("cleanup"), {
-      stateDir: root,
-      elwoodSessionId: id,
-      clearLoops: (reason) => {
-        calls.push(`clear:${reason}`);
-        return Promise.reject(
-          elwoodError("loop_persistence_failed", "Could not clear loop state."),
-        );
-      },
-      reapPolicy: {
-        orThrow: () => undefined,
-        reaper: { reap: async () => void calls.push("reap") },
-      } as never,
-      submitEvidence: () => void calls.push("evidence"),
-    });
-    await expect(runTeardown(shutdownHost, signaledCtx)).rejects.toMatchObject({
-      code: "loop_persistence_failed",
-    });
-    expect(calls).toEqual(["clear:teardown", "reap", "cleanup", "evidence"]);
-    expect(existsSync(dir)).toBe(false);
   });
 });

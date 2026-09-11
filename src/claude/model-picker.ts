@@ -3,9 +3,9 @@
  * Implements PRD §5.3, C-API-23, and C-API-24.
  */
 
-import type { ModelPickerSpec } from "../core/model-picker.ts";
-import { claudeModelPickerHeader, parseClaudeModelPicker } from "../core/model-rows.ts";
-import { waitForScreen } from "../core/tui-screen.ts";
+import type { ModelPickerSpec } from "../core/models/picker.ts";
+import { claudeModelPickerHeader, parseClaudeModelPicker } from "../core/models/rows.ts";
+import { waitForScreen } from "../core/models/tui-screen.ts";
 import {
   isClaudeIdleComposer,
   parseClaudeSwitchConfirmation,
@@ -34,14 +34,6 @@ export const claudeModelPicker: ModelPickerSpec = {
       const delta = confirmation.affirmativeIndex - confirmation.selectedIndex;
       const key = delta > 0 ? arrowDown : arrowUp;
       for (let step = 0; step < Math.abs(delta); step += 1) await io.terminal.sendInput(key);
-      if (delta !== 0) {
-        await waitForScreen(
-          io.terminal,
-          affirmativeCacheConfirmation,
-          timeoutMs,
-          "claude cache confirmation cursor on the affirmative action",
-        );
-      }
       await waitForScreen(
         io.terminal,
         affirmativeCacheConfirmation,

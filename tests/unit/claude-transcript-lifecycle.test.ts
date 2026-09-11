@@ -4,33 +4,27 @@
  * error boundary. Covers PRD §5.4/§9.2 (C-CLAUDE-15).
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { describe, expect, test, vi } from "vitest";
+import { writeFileSync } from "node:fs";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   type ClaudeTranscriptEvent,
   ClaudeTranscriptWatcher,
   type TranscriptDropNotice,
 } from "../../src/claude/transcript/index.ts";
+import {
+  resetByteReaderForTests,
+  setByteReaderForTests,
+} from "../../src/core/transcript/cursor-io.ts";
+import {
+  appendRecords,
+  assistant,
+  eisdirError,
+  texts,
+  tmpFile,
+  writeRecords,
+} from "./claude-transcript-helpers.ts";
 
-const assistant = (text: string) => ({
-  type: "assistant",
-  message: { content: [{ type: "text", text }] },
-});
-
-function tmpFile(): string {
-  return join(mkdtempSync(join(tmpdir(), "elwood-tx-")), "t.jsonl");
-}
-const writeRecords = (path: string, ...records: unknown[]) =>
-  writeFileSync(
-    path,
-    records.length ? `${records.map((r) => JSON.stringify(r)).join("\n")}\n` : "",
-  );
-const appendRecords = (path: string, prior: unknown[], ...records: unknown[]) =>
-  writeRecords(path, ...prior, ...records);
-const texts = (events: ClaudeTranscriptEvent[]) =>
-  events.map((e) => (e.summary.kind === "assistant_message" ? e.summary.text : e.summary.kind));
+afterEach(resetByteReaderForTests);
 
 describe("C-CLAUDE-15 Claude transcript watcher lifecycle", () => {
   test("finish() is terminal: a later observe/scan/poll emits nothing", async () => {
@@ -95,7 +89,11 @@ describe("C-CLAUDE-15 Claude transcript watcher lifecycle", () => {
   test("finish() drains a multi-chunk delta fully (more=true loops to EOF)", () => {
     const path = tmpFile();
     const events: ClaudeTranscriptEvent[] = [];
-    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
+    // A FROZEN clock: the drain's bound is its chunk budget, not wall time, so this
+    // asserts the multi-chunk loop itself. With the real clock the per-call slice can
+    // expire mid-drain on a loaded machine and legitimately truncate the delta —
+    // correct behavior (§5.4) that made this test flaky when asserted as a total.
+    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e), { now: () => 0 });
     writeRecords(path);
     watcher.observe(path);
     // Append > 256 KiB of valid records so finish()'s drain loops (chunk.canContinueNow)
@@ -170,8 +168,9 @@ describe("C-CLAUDE-15 Claude transcript watcher lifecycle", () => {
     writeRecords(path);
     watcher.observe(path);
     appendRecords(path, [], assistant("x"));
-    rmSync(path);
-    mkdirSync(path); // the drain read now throws EISDIR: finish() must contain it
+    setByteReaderForTests(() => {
+      throw eisdirError(); // the drain read now throws EISDIR: finish() must contain it
+    });
     expect(() => watcher.finish()).not.toThrow();
   });
 

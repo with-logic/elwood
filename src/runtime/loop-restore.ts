@@ -26,14 +26,15 @@ export function loadRuntimeLoopDefinitions(
   io: LoopRestoreIo = defaultIo,
 ): readonly PersistedLoopDefinition[] {
   const definitions = io.read(stateDir, elwoodSessionId);
+  const expired = definitions.find((definition) => definition.expiresAt <= now);
+  if (expired === undefined) return definitions;
   const active = pruneExpiredLoopDefinitions(definitions, now);
-  if (active.length === definitions.length) return definitions;
   try {
     io.write(stateDir, elwoodSessionId, active);
   } catch {
-    const removed = definitions.find((definition) => definition.expiresAt <= now);
+    // Details name only the loop id, never its prompt (§10 loop_persistence_failed).
     throw elwoodError("loop_persistence_failed", "Could not prune expired loop state.", {
-      loopId: (removed as PersistedLoopDefinition).id,
+      loopId: expired.id,
     });
   }
   return active;

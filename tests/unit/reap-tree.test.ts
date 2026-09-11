@@ -3,14 +3,16 @@
  * Covers PRD §5.3 and §9.4 (C-LIFE-10).
  */
 
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   reapProcessGroup,
   rethrowUnlessGroupGone,
   SessionReaper,
-} from "../../src/runtime/reap-tree.ts";
+} from "../../src/runtime/shutdown/reap-tree.ts";
 
 const LEADER = 1000;
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("C-LIFE-10 process-group reaping", () => {
   test("SIGKILLs the leader's process group", () => {
@@ -40,9 +42,23 @@ describe("C-LIFE-10 process-group reaping", () => {
     expect(killed).toEqual([42]);
   });
 
-  test("real seams: reaping an already-dead group is a harmless no-op (ESRCH)", () => {
-    // A high, almost-certainly-unused pid; the default killer must swallow ESRCH.
-    expect(() => reapProcessGroup(999_999)).not.toThrow();
+  test("the default killer signals the negative pgid and swallows an already-gone group", () => {
+    // `process.kill` is stubbed so no real group is ever signaled: the default killer
+    // must target -pgid with SIGKILL and treat ESRCH (group already empty) as success.
+    const signaled: [number, string][] = [];
+    vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      signaled.push([pid, String(signal)]);
+      throw Object.assign(new Error("gone"), { code: "ESRCH" });
+    });
+    expect(() => reapProcessGroup(LEADER)).not.toThrow();
+    expect(signaled).toEqual([[-LEADER, "SIGKILL"]]);
+  });
+
+  test("the default killer rethrows a real kill failure such as EPERM", () => {
+    vi.spyOn(process, "kill").mockImplementation(() => {
+      throw Object.assign(new Error("denied"), { code: "EPERM" });
+    });
+    expect(() => reapProcessGroup(LEADER)).toThrow("denied");
   });
 
   test("swallows ESRCH but re-throws any other kill failure", () => {

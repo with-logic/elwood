@@ -7,9 +7,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { type ElwoodAgentSession, startClaude, startCodex } from "../../src/index.ts";
-import { cleanup, makeProject, skipReason, turnsEnabled, waitFor } from "./helpers.ts";
+import { cleanup, makeProject, skipIf, skipReason, skipTurns, waitFor } from "./helpers.ts";
 
-const skipTurnsReason = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
 const brailleSpinner = /^[⠀-⣿]\s/;
 
 async function titleFlow(
@@ -32,7 +31,7 @@ async function titleFlow(
 }
 
 test("C-TURN-05 real Claude emits a working spinner in the OSC title", {
-  skip: skipReason("claude") ?? skipTurnsReason,
+  skip: skipIf(skipReason("claude"), skipTurns),
   timeout: 240_000,
 }, async () => {
   const project = makeProject("claude");
@@ -52,7 +51,7 @@ test("C-TURN-05 real Claude emits a working spinner in the OSC title", {
 });
 
 test("C-TURN-05 real Codex emits a working spinner in the OSC title", {
-  skip: skipReason("codex") ?? skipTurnsReason,
+  skip: skipIf(skipReason("codex"), skipTurns),
   timeout: 240_000,
 }, async () => {
   const project = makeProject("codex");

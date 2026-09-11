@@ -5,52 +5,59 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { spawn } from "node-pty";
 import { describe, expect, test } from "vitest";
-import { reapProcessGroup } from "../../src/runtime/reap-tree.ts";
+import { reapProcessGroup } from "../../src/runtime/shutdown/reap-tree.ts";
+import { tempDir } from "../helpers/tmp.ts";
+
+const zsh = "/bin/zsh";
+const hasZsh = existsSync(zsh);
+if (!hasZsh) console.warn(`SKIPPING reap-tree-real: ${zsh} is not installed on this host`);
 
 describe("C-LIFE-10 process-group reaping (real seams)", () => {
-  test("kills a descendant reparented to PID 1 that a pgrep -P walk would miss", async () => {
-    // A PTY leader (zsh) whose middle process spawns a long-lived grandchild and
-    // then exits. POSIX reparents the grandchild to PID 1 — so `pgrep -P <leader>`
-    // finds nothing — but it stays in the leader's group, so a group SIGKILL reaps
-    // it. The test PROVES the reparent happened before reaping.
-    const marker = tmpMarker();
-    const inner =
-      "const{spawn}=require('child_process');" +
-      `const gc=spawn(process.execPath,['-e','process.title=${JSON.stringify(marker)};setInterval(()=>{},1e9)'],{stdio:'ignore'});` +
-      `require('fs').writeFileSync('${marker}',String(gc.pid)+' '+String(process.pid));` +
-      "setTimeout(()=>process.exit(0),150);";
-    const pty = spawn("/bin/zsh", ["-c", `node -e "${inner.replace(/"/g, '\\"')}"; sleep 5`], {
-      name: "xterm-256color",
-      cols: 80,
-      rows: 24,
-    });
-    const [grandchildPid, intermediatePid] = await readPidsWhenWritten(marker);
-    try {
-      // Wait for the intermediate (the grandchild's original parent) to exit, so
-      // the decisive reparent-to-init has actually happened — a recursive parent
-      // walker would now find nothing under the leader (the guarantee C-LIFE-10
-      // depends on).
-      expect(await pollGone(intermediatePid)).toBe(true);
-      expect(parentPidOf(grandchildPid)).not.toBe(intermediatePid); // reparented
-      expect(processAlive(grandchildPid)).toBe(true); // but still alive in the group
-      reapProcessGroup(pty.pid);
-      expect(await pollGone(grandchildPid)).toBe(true);
-    } finally {
-      // Clean up survivors and the marker even if an assertion above failed.
-      if (processAlive(grandchildPid)) tryKill(grandchildPid);
-      pty.kill();
-      tryRemove(marker);
-    }
-  });
+  test.skipIf(!hasZsh)(
+    "kills a descendant reparented to PID 1 that a pgrep -P walk would miss",
+    async () => {
+      // A PTY leader (zsh) whose middle process spawns a long-lived grandchild and
+      // then exits. POSIX reparents the grandchild to PID 1 — so `pgrep -P <leader>`
+      // finds nothing — but it stays in the leader's group, so a group SIGKILL reaps
+      // it. The test PROVES the reparent happened before reaping.
+      const marker = tmpMarker();
+      const inner =
+        "const{spawn}=require('child_process');" +
+        `const gc=spawn(process.execPath,['-e','process.title=${JSON.stringify(marker)};setInterval(()=>{},1e9)'],{stdio:'ignore'});` +
+        `require('fs').writeFileSync('${marker}',String(gc.pid)+' '+String(process.pid));` +
+        "setTimeout(()=>process.exit(0),150);";
+      const node = JSON.stringify(process.execPath);
+      const pty = spawn(zsh, ["-c", `${node} -e "${inner.replace(/"/g, '\\"')}"; sleep 5`], {
+        name: "xterm-256color",
+        cols: 80,
+        rows: 24,
+      });
+      const [grandchildPid, intermediatePid] = await readPidsWhenWritten(marker);
+      try {
+        // Wait for the intermediate (the grandchild's original parent) to exit, so
+        // the decisive reparent-to-init has actually happened — a recursive parent
+        // walker would now find nothing under the leader (the guarantee C-LIFE-10
+        // depends on).
+        expect(await pollGone(intermediatePid)).toBe(true);
+        expect(parentPidOf(grandchildPid)).not.toBe(intermediatePid); // reparented
+        expect(processAlive(grandchildPid)).toBe(true); // but still alive in the group
+        reapProcessGroup(pty.pid);
+        expect(await pollGone(grandchildPid)).toBe(true);
+      } finally {
+        // Clean up survivors even if an assertion above failed.
+        if (processAlive(grandchildPid)) tryKill(grandchildPid);
+        pty.kill();
+      }
+    },
+  );
 });
 
-let markerCounter = 0;
 function tmpMarker(): string {
-  markerCounter += 1;
-  return `/tmp/elwood-reap-test-${process.pid}-${markerCounter}.pid`;
+  return join(tempDir("elwood-reap-test-"), "pids.txt");
 }
 
 async function readPidsWhenWritten(path: string): Promise<[number, number]> {
@@ -93,14 +100,6 @@ function tryKill(pid: number): void {
     process.kill(pid, "SIGKILL");
   } catch {
     // Already gone: nothing to clean up.
-  }
-}
-
-function tryRemove(path: string): void {
-  try {
-    rmSync(path, { force: true });
-  } catch {
-    // Best-effort cleanup.
   }
 }
 

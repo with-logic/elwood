@@ -5,10 +5,13 @@
 
 import { elwoodError, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
-import { type DistributiveOmit, updateFailedWarning } from "../core/update-warning.ts";
+import { compareVersions, parseVersion } from "../core/versions.ts";
+import { type DistributiveOmit, updateFailedWarning } from "../core/warnings/update.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
-import { cachedAutoupdate, cachedVersionRead, dedupeInFlight } from "../runtime/update-once.ts";
+import { cachedAutoupdate, cachedVersionRead, dedupeInFlight } from "../runtime/update/once.ts";
+
+// Re-exported for existing importers; the implementation lives in core/versions.ts.
 
 export const minimumCodexVersion = "0.124.0";
 export type CodexCliCapabilities = { readonly supportsHookTrustBypass: boolean };
@@ -45,7 +48,7 @@ export async function preflightCodex(
     if (!outcome.ok) updateError = outcome.error;
   }
   const result = await readCodexVersion();
-  const version = parseCodexVersion(result.stdout);
+  const version = parseVersion(result.stdout);
   if (!version) {
     if (strictVersionCheck) {
       throw elwoodError("codex_version_unsupported", "Could not parse Codex CLI version.");
@@ -89,10 +92,6 @@ async function readCodexVersion(): Promise<CommandResult> {
   return result;
 }
 
-export function parseCodexVersion(output: string): string | null {
-  return /(\d+\.\d+\.\d+)/.exec(output)?.[1] ?? null;
-}
-
 export function detectCodexCliCapabilities(): Promise<CodexCliCapabilities> {
   // Shared once across concurrent first spawns; a rejected probe is evicted so a later start
   // re-probes rather than inheriting the failure.
@@ -112,17 +111,6 @@ async function detectCapabilities(): Promise<CodexCliCapabilities> {
 
 export function resetCodexPreflightCacheForTests(): void {
   capabilityProbe.clear();
-}
-
-function compareVersions(left: string, right: string): number {
-  // Both inputs are dotted numeric triples: parseCodexVersion captures exactly
-  // `major.minor.patch` and minimumCodexVersion is a literal triple.
-  const rightParts = right.split(".");
-  for (const [index, part] of left.split(".").entries()) {
-    const diff = Number(part) - Number(rightParts[index]);
-    if (diff !== 0) return diff;
-  }
-  return 0;
 }
 
 function versionWarning(output: string): CodexPreflightWarning {

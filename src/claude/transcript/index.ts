@@ -8,6 +8,7 @@
 import { TranscriptCursor } from "./cursor.ts";
 import type { ChunkBudget, DrainContext } from "./drain.ts";
 import { drainToBudget, newTerminalBudget } from "./drain.ts";
+import { buildDrainContext } from "./drain-context.ts";
 import {
   DropReporter,
   ReadErrorReporter,
@@ -39,6 +40,7 @@ export class ClaudeTranscriptWatcher {
   private readonly onPollError: ((error: unknown) => void) | undefined;
   private readonly pollIntervalMs: number;
   private readonly lines: LineEmitter;
+  private readonly drain: DrainContext;
   // Test seam: run after each cursor's scan within a poll pass, so a test can drive the
   // exact race where an earlier cursor's drop is pending when finish() lands mid-pass.
   private afterScanForTests: (() => void) | undefined;
@@ -58,6 +60,12 @@ export class ClaudeTranscriptWatcher {
     this.onPollError = notices.onPollError;
     this.pollIntervalMs = notices.pollIntervalMs ?? pollMs;
     this.lines = new LineEmitter(elwoodSessionId, emit, this.drops);
+    this.drain = buildDrainContext({
+      guard: this.guard,
+      lines: this.lines,
+      drops: this.drops,
+      now: notices.now,
+    });
   }
 
   // Begin watching `path`: baselines at EOF (history not replayed); a turn-boundary
@@ -95,7 +103,7 @@ export class ClaudeTranscriptWatcher {
   retire(path: string): void {
     const cursor = this.cursors.get(path);
     if (!cursor || this.finished) return;
-    drainToBudget(this.drainContext(), [cursor], this.terminalBudget);
+    drainToBudget(this.drain, [cursor], this.terminalBudget);
     this.cursors.delete(path);
   }
 
@@ -138,16 +146,10 @@ export class ClaudeTranscriptWatcher {
     if (this.finished) return;
     this.finished = true;
     try {
-      drainToBudget(this.drainContext(), [...this.cursors.values()], this.terminalBudget);
+      drainToBudget(this.drain, [...this.cursors.values()], this.terminalBudget);
     } finally {
       this.stop();
     }
-  }
-
-  // The guard's `read` is bound so the shared fs guard still contains a read
-  // failure mid-drain (the drain's `readFs` seam maps to it).
-  private drainContext(): DrainContext {
-    return { readFs: this.guard.read.bind(this.guard), lines: this.lines, drops: this.drops };
   }
 
   stop(): void {

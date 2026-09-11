@@ -113,7 +113,7 @@ describe("config commands", () => {
       ["set", "agent", ""],
       ["unset"],
     ].map((args) => ({ args })),
-  )("rejects malformed config arguments: $args", async ({ args }) => {
+  )("C-CLI-20 rejects malformed config arguments: $args", async ({ args }) => {
     const h = harness();
     await expect(runConfigCommand(args, h.context)).rejects.toBeInstanceOf(CliValidationError);
   });

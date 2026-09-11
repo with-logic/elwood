@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { ControlQueue } from "../../src/core/control-queue.ts";
+import { ControlQueue } from "../../src/core/control-queue/index.ts";
 
 describe("ControlQueue submission lifecycle", () => {
   test("C-API-19 a rejected first submission restores readiness so later messages still drain", async () => {

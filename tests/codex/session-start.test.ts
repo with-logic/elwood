@@ -175,8 +175,7 @@ describe("CodexSessionApi startup and terminal control", () => {
       transcript,
       `${JSON.stringify({ type: "response_item", payload: { type: "reasoning" } })}\n`,
     );
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(seen).toEqual(["reasoning"]);
+    await expect.poll(() => seen).toEqual(["reasoning"]);
     expect(activity).toContain("reasoning");
   });
 });

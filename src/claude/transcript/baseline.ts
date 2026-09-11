@@ -30,7 +30,7 @@ export function resetMaxRecordsForTests(): void {
  * on that cap path (NOT on a clean BOF with no boundary, which has no turn to
  * recover); `unrecoveredBytes` is then the magnitude of the earlier-in-file
  * portion that fell outside the window, so the caller can surface it as a bounded,
- * content-free drop rather than silently losing it (MINOR: truncation accounting).
+ * content-free drop rather than silently losing it.
  */
 export type BaselineTail = {
   readonly lines: readonly string[];

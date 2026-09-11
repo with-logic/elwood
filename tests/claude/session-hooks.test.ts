@@ -1,8 +1,3 @@
-/**
- * Conformance tests for Claude hook routing and typed hook responses.
- * Covers PRD §6, §8, and §10.
- */
-
 import { afterEach, describe, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";

@@ -6,22 +6,20 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
-import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
+import { type ClaudeSessionApi, type ElwoodActivityEvent, startClaude } from "../../src/index.ts";
 import {
   cleanup,
   e2eTimeoutMs,
   makeProject,
   observeSession,
+  skipIf,
   skipReason,
-  turnsEnabled,
+  skipTurns,
   waitFor,
 } from "./helpers.ts";
 
-const skipTurnsReason = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
-
 test("C-E2E-07 real Claude assistant_message comes from the committed transcript", {
-  skip: skipReason("claude") ?? skipTurnsReason,
+  skip: skipIf(skipReason("claude"), skipTurns),
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("claude");
@@ -36,7 +34,7 @@ test("C-E2E-07 real Claude assistant_message comes from the committed transcript
       autotrust: true,
     });
     const observed = observeSession(session);
-    const acts = () => observed.activities as readonly ElwoodActivityEvent[];
+    const acts = () => observed.activities;
     await session.sendMessage("Reply briefly, then stop. Do not use tools.");
 
     // Any committed assistant turn must surface as an assistant_message whose
@@ -67,7 +65,7 @@ test("C-E2E-07 real Claude assistant_message comes from the committed transcript
 });
 
 test("C-E2E-08 real Claude tool_call/tool_result come from the committed transcript", {
-  skip: skipReason("claude") ?? skipTurnsReason,
+  skip: skipIf(skipReason("claude"), skipTurns),
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("claude");
@@ -82,7 +80,7 @@ test("C-E2E-08 real Claude tool_call/tool_result come from the committed transcr
       autotrust: true,
     });
     const observed = observeSession(session);
-    const acts = () => observed.activities as readonly ElwoodActivityEvent[];
+    const acts = () => observed.activities;
     // A deterministic, cheap tool turn: read the AGENTS.md the fixture writes.
     await session.sendMessage("Use your Read tool to read AGENTS.md, then stop.");
 

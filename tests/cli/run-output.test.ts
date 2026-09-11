@@ -4,29 +4,12 @@
 
 import { describe, expect, test } from "vitest";
 import type { CliError, CliResult } from "../../src/cli/output/types.ts";
-import { RunOutput } from "../../src/cli/run-output.ts";
+import { RunOutput } from "../../src/cli/run/output.ts";
 import { AsyncOutputSink } from "../../src/cli/stream.ts";
 import type { EffectiveRunRequest } from "../../src/cli/types.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
+import { effectiveRequest as request } from "./main-fakes.ts";
 import { MemoryWriter } from "./run-fakes.ts";
-
-const request = (overrides: Partial<EffectiveRunRequest> = {}): EffectiveRunRequest => ({
-  agent: "codex",
-  output: "text",
-  outputExplicit: false,
-  trust: true,
-  stateDir: "/state",
-  verbose: false,
-  stream: false,
-  cwd: "/work",
-  images: [],
-  prompt: "go",
-  keep: false,
-  ephemeral: false,
-  sandbox: "workspace-write",
-  approvalPolicy: "never",
-  ...overrides,
-});
 
 const terminal = (overrides: Partial<Omit<CliResult, "type">> = {}): CliResult => ({
   schemaVersion: 1,
@@ -159,7 +142,7 @@ describe("RunOutput", () => {
     expect(jsonl.stderr.value).not.toContain("file");
   });
 
-  test("text errors and kept identities stay on stderr", async () => {
+  test("C-CLI-10 text errors and kept identities stay on stderr", async () => {
     const h = harness(request({ keep: true }));
     await h.output.finish(() =>
       errorTerminal({
@@ -171,7 +154,7 @@ describe("RunOutput", () => {
     expect(h.stderr.value).toBe("elwood: Agent exited.\nelwood: session s1\n");
   });
 
-  test("EPIPE latches consumer closure and suppresses text diagnostics", async () => {
+  test("C-CLI-12 stdout EPIPE latches consumer closure but keeps stderr diagnostics", async () => {
     const h = harness(request({ stream: true }));
     h.stdout.failAt = 1;
     await h.output.turn({ type: "text", text: "partial" });
@@ -179,10 +162,30 @@ describe("RunOutput", () => {
       errorTerminal({ error: { code: "timeout", message: "Timed out." } }),
     );
     expect(h.closed).toEqual([true, true]);
-    expect(h.stderr.value).toBe("");
+    expect(h.stderr.value).toBe("elwood: Timed out.\n");
   });
 
-  test("progress write failures notify the lifecycle hook", async () => {
+  test("C-CLI-12 stderr EPIPE suppresses the text-mode error diagnostic", async () => {
+    const h = harness(request());
+    h.stderr.failAt = 1;
+    h.output.warning({
+      elwoodSessionId: "s1",
+      agent: "codex",
+      source: "lifecycle",
+      code: "version_unparseable",
+      severity: "warning",
+      message: "first stderr write closes the pipe",
+      raw: "raw",
+    });
+    await h.output.flush();
+    await h.output.finish(() =>
+      errorTerminal({ error: { code: "timeout", message: "Timed out." } }),
+    );
+    expect(h.stderr.value).toBe("");
+    expect(h.failed).toEqual([]);
+  });
+
+  test("C-CLI-12 progress write failures notify the lifecycle hook", async () => {
     const h = harness(request({ output: "jsonl" }));
     h.stdout.write = (_value, callback) => {
       callback(new Error("stdout failed"));

@@ -18,7 +18,7 @@ class ClosedWriter {
 }
 
 describe("CLI output edges", () => {
-  test("optional tool fields are independently projected", () => {
+  test("C-CLI-11 optional tool fields are independently projected", () => {
     const clean = createCliSanitizer();
     expect(progressFromTurn({ type: "tool_call", name: "read" }, clean)).toEqual({
       schemaVersion: 1,
@@ -41,7 +41,7 @@ describe("CLI output edges", () => {
     });
   });
 
-  test("closed sinks suppress all later text and JSONL output", async () => {
+  test("C-CLI-12 closed sinks suppress all later text and JSONL output", async () => {
     const sink = new AsyncOutputSink(new ClosedWriter());
     expect(await writeFinalText(sink, "first")).toBe(false);
     expect(await writeFinalText(sink, "later")).toBe(false);

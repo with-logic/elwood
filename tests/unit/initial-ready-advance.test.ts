@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from "vitest";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
-import { advanceInitialReady } from "../../src/runtime/initial-ready-advance.ts";
+import { advanceInitialReady } from "../../src/runtime/readiness/advance.ts";
 import { SessionStatusEngine } from "../../src/runtime/status-evidence.ts";
 
 /** Build a real engine + advance whose ready-listener fault is injectable. */
@@ -48,8 +48,19 @@ describe("C-API-42 advanceInitialReady with the real status engine", () => {
       h.advance();
       const { queueReleased, warnings } = h.get();
       expect(queueReleased).toBe(true); // the queue was NOT left starved
-      expect(warnings).toMatchObject([{ code: "initial_ready_fallback", agent }]);
+      // The warning is typed, live-only, and content-free: no raw listener error text.
+      expect(warnings).toMatchObject([
+        {
+          code: "initial_ready_fallback",
+          agent,
+          elwoodSessionId: "s1",
+          source: "lifecycle",
+          severity: "warning",
+          raw: "initial_ready_fallback",
+        },
+      ]);
       expect(warnings[0]).not.toHaveProperty("reason");
+      expect(warnings[0]?.message).not.toContain("boom");
     });
   }
 

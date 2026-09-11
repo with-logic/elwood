@@ -62,8 +62,8 @@ describe("C-API-14 Codex preflight warning is observable on the returned session
   });
 
   test("C-CODEX-09 an MCP banner during STARTUP (before resolve) is observed once after return", async () => {
-    // The review's finding: an MCP/transcript warning can render during the pre-return
-    // startup gate, when the caller has no session to subscribe to. The startup-warning
+    // An MCP/transcript warning can render during the pre-return startup gate, when
+    // the caller has no session to subscribe to. The startup-warning
     // gate BUFFERS it and flushes on a deferred macrotask after return, so an immediate
     // subscriber still sees it exactly once — without late-subscriber replay.
     const cwd = tempDir();

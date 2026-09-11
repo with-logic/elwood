@@ -6,8 +6,8 @@
  */
 
 import { describe, expect, test } from "vitest";
-import type { SharedSession } from "../../src/app/agent-runtime.ts";
 import { WebSessionSlot } from "../../src/app/web-session-slot.ts";
+import { type FakeSharedSession, fakeSharedSession } from "../helpers/fake-shared-session.ts";
 
 describe("web session slot", () => {
   test("C-APP-08 serializes runs so tasks never interleave", async () => {
@@ -168,32 +168,12 @@ function tick(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 1));
 }
 
-type FakeOptions = { readonly teardownThrows?: boolean };
-
-type FakeSession = SharedSession & { teardownCount: number };
-
-function fakeSession(id: string, options: FakeOptions = {}): FakeSession {
-  const session = {
-    elwoodSessionId: id,
-    cwd: "/w",
-    status: "running",
-    terminal: {} as never,
-    teardownCount: 0,
-    statusDecisions: () => [],
-    on: () => () => {},
-    sendPrompt: () => Promise.resolve(),
-    sendMessage: () => Promise.resolve(),
-    sendGuidance: () => Promise.resolve(),
-    sendKeys: () => Promise.resolve(),
-    resize: () => Promise.resolve(),
-    stop: () => Promise.resolve(),
-    kill: () => Promise.resolve(),
-    teardown: () => {
-      session.teardownCount += 1;
-      return options.teardownThrows
-        ? Promise.reject(new Error("teardown failed"))
-        : Promise.resolve();
-    },
-  } satisfies FakeSession;
-  return session;
+function fakeSession(
+  id: string,
+  options: { readonly teardownThrows?: boolean } = {},
+): FakeSharedSession {
+  return fakeSharedSession(
+    id,
+    options.teardownThrows ? { teardown: () => Promise.reject(new Error("teardown failed")) } : {},
+  );
 }

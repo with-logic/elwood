@@ -4,26 +4,28 @@
  */
 
 import { ElwoodError } from "../core/errors.ts";
-import { parseCliArgs } from "./args.ts";
+import { isOneOf } from "../core/predicates.ts";
+import { parseCliArgs } from "./args/index.ts";
 import { runConfigCommand } from "./config/commands.ts";
 import { HeadedDisplay } from "./head/display.ts";
 import type { CliHeadTarget } from "./head/types.ts";
 import { cliHelp } from "./help.ts";
-import type { CliSignalSource } from "./lifecycle.ts";
+import type { CliSignalSource } from "./lifecycle/index.ts";
 import { writeJson } from "./output/json.ts";
 import { JsonlRenderer } from "./output/jsonl.ts";
 import { createCliSanitizer, formatDiagnosticValue } from "./output/sanitize.ts";
 import type { CliError } from "./output/types.ts";
-import { resolveRunRequest } from "./request.ts";
-import { optional, usage } from "./request-values.ts";
-import type { executeRun } from "./run.ts";
-import type { prepareCliSession } from "./session.ts";
+import { resolveRunRequest } from "./request/index.ts";
+import { optional, usage } from "./request/values.ts";
+import type { executeRun } from "./run/index.ts";
+import type { prepareCliSession } from "./session/index.ts";
 import { AsyncOutputSink, type CliWritable } from "./stream.ts";
 import {
   type CliAgent,
   type CliEnvironment,
   type CliOutputMode,
   CliValidationError,
+  cliAgents,
   type PromptStdin,
 } from "./types.ts";
 import { readCliVersion } from "./version.ts";
@@ -47,10 +49,10 @@ export type CliMainDependencies = {
 };
 
 export const prepareDefaultCliSession: typeof prepareCliSession = async (...args) =>
-  (await import("./session.ts")).prepareCliSession(...args);
+  (await import("./session/index.ts")).prepareCliSession(...args);
 
 export const executeDefaultCliRun: typeof executeRun = async (...args) =>
-  (await import("./run.ts")).executeRun(...args);
+  (await import("./run/index.ts")).executeRun(...args);
 
 const defaults: CliMainDependencies = {
   version: readCliVersion,
@@ -70,7 +72,7 @@ export async function main(
   const stderr = new AsyncOutputSink(context.stderr);
   const startedAt = dependencies.now();
   let output = explicitStructuredOutput(args) ?? "text";
-  let agent = agentHint(args);
+  let agent: CliAgent | null = agentHint(args, context.env);
   let head: HeadedDisplay | undefined;
   try {
     const parsed = parseCliArgs(args);
@@ -137,7 +139,7 @@ function cliFailure(error: unknown): StaticFailure {
 
 async function renderFailure(
   output: CliOutputMode,
-  agent: CliAgent,
+  agent: CliAgent | null,
   failure: StaticFailure,
   durationMs: number,
   stdout: AsyncOutputSink,
@@ -171,17 +173,21 @@ function explicitStructuredOutput(args: readonly string[]): CliOutputMode | unde
   return candidate === "json" || candidate === "jsonl" ? candidate : undefined;
 }
 
-function agentHint(args: readonly string[]): CliAgent {
+/**
+ * Agent an argument/config failure record reports before resolution ran: the
+ * `--agent` flag, else `ELWOOD_AGENT` unless `--no-defaults` ignores it, else
+ * `null` because nothing selected one (auto-detection had not chosen yet).
+ */
+function agentHint(args: readonly string[], env: CliEnvironment): CliAgent | null {
+  let flag: string | undefined;
+  let useDefaults = true;
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--") break;
-    const value =
-      arg === "--agent"
-        ? args[index + 1]
-        : arg?.startsWith("--agent=")
-          ? arg.slice("--agent=".length)
-          : undefined;
-    if (value === "claude" || value === "codex") return value;
+    if (arg === "--no-defaults") useDefaults = false;
+    else if (arg === "--agent") flag = args[index + 1];
+    else if (arg?.startsWith("--agent=")) flag = arg.slice("--agent=".length);
   }
-  return "codex";
+  const candidate = flag ?? (useDefaults ? env["ELWOOD_AGENT"] : undefined);
+  return isOneOf(candidate, cliAgents) ? candidate : null;
 }

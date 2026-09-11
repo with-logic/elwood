@@ -10,8 +10,11 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 import type { PtyExit } from "../../src/pty/types.ts";
-import { resetGroupKillerForTests, setGroupKillerForTests } from "../../src/runtime/reap-tree.ts";
-import { cleanupStartupResources, guardStartupRegion } from "../../src/runtime/startup-cleanup.ts";
+import {
+  resetGroupKillerForTests,
+  setGroupKillerForTests,
+} from "../../src/runtime/shutdown/reap-tree.ts";
+import { cleanupStartupResources, guardStartupRegion } from "../../src/runtime/startup/cleanup.ts";
 
 const LEADER = 4242;
 const fastTimeouts = { gracefulMs: 0, forceMs: 0 } as const;
@@ -33,8 +36,8 @@ afterEach(resetGroupKillerForTests);
 
 describe("C-LIFE-10 guarded startup region", () => {
   test("a throwing region tears down every live resource before rethrowing", async () => {
-    // The BLOCKER contract: a failure AFTER the session is live (e.g. a disk error in
-    // the warning flush) must not leak the PTY, bridge, terminal, or watcher — the
+    // A failure AFTER the session is live (e.g. a disk error in the warning flush)
+    // must not leak the PTY, bridge, terminal, or watcher — the
     // region signals the pty, reaps its group, stops the bridge, disposes the
     // terminal, and runs `after`.
     const reaped: number[] = [];
@@ -70,6 +73,56 @@ describe("C-LIFE-10 guarded startup region", () => {
     expect(killed).toEqual([]);
     expect(reaped).toEqual([]);
     expect(calls).toEqual([]);
+  });
+});
+
+describe("cleanupStartupResources", () => {
+  test("resolves when no startup resources were created", async () => {
+    await expect(cleanupStartupResources({})).resolves.toBeUndefined();
+  });
+
+  test("C-ERR-07 runs every step and reaps the group even when the bridge stop rejects", async () => {
+    // Cleanup routes the PTY through the group-reaping termination primitive and runs
+    // every step (bridge stop, watcher `after`, terminal dispose) even when a step
+    // rejects — the original startup error is preserved, never replaced.
+    const reaped: number[] = [];
+    setGroupKillerForTests({ killGroup: (pgid) => reaped.push(pgid) });
+    const calls: string[] = [];
+    await cleanupStartupResources({
+      before: () => calls.push("before"),
+      pty: {
+        pid: 2000,
+        onData: () => () => {},
+        onExit: (handler) => {
+          queueMicrotask(() => handler({ exitCode: 0 }));
+          return () => {};
+        },
+        write: () => {},
+        resize: () => "resized",
+        kill: () => calls.push("kill"),
+      },
+      bridge: { stop: () => Promise.reject(new Error("bridge")) },
+      terminal: { dispose: () => calls.push("dispose") },
+      after: () => calls.push("after"),
+      terminationTimeouts: fastTimeouts,
+    });
+    expect(calls).toEqual(["before", "kill", "after", "dispose"]);
+    expect(reaped).toEqual([2000]); // the leader's process GROUP was reaped
+  });
+
+  test("C-ERR-07 a bridge stop that throws synchronously is contained too", async () => {
+    const calls: string[] = [];
+    await expect(
+      cleanupStartupResources({
+        bridge: {
+          stop: () => {
+            throw new Error("sync bridge failure");
+          },
+        },
+        after: () => calls.push("after"),
+      }),
+    ).resolves.toBeUndefined();
+    expect(calls).toEqual(["after"]); // later steps still ran
   });
 });
 

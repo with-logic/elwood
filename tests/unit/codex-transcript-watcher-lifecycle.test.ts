@@ -8,9 +8,9 @@
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { resetByteReaderForTests } from "../../src/codex/transcript/cursor-io.ts";
 import { codexPollStoppedWarning } from "../../src/codex/transcript/warnings.ts";
 import { CodexTranscriptWatcher } from "../../src/codex/transcript/watcher.ts";
+import { resetByteReaderForTests } from "../../src/core/transcript/cursor-io.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
 afterEach(() => {

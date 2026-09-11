@@ -4,11 +4,10 @@
  */
 
 import { mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, expect, test, vi } from "vitest";
-import { coordinatedAutoupdate, updateLockPath } from "../../src/runtime/update-lock.ts";
+import { coordinatedAutoupdate, updateLockPath } from "../../src/runtime/update/lock.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 const failures = vi.hoisted(() => ({
   ownerWrite: false,
@@ -17,11 +16,15 @@ const failures = vi.hoisted(() => ({
   recoveryRmdir: false,
   staleUnlink: false,
   releaseUnlink: false,
-  mockHome: `/tmp/elwood-update-lock-default-${process.pid}`,
+  // A fake HOME under the OS temp dir (set by the `node:os` mock below, which is the
+  // first place the real `tmpdir()` is reachable) so the default lease root is
+  // exercised without touching the developer's real cache directory.
+  mockHome: "",
 }));
 
 vi.mock("node:os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:os")>();
+  failures.mockHome = `${actual.tmpdir()}/elwood-update-lock-default-${process.pid}`;
   return { ...actual, userInfo: () => ({ ...actual.userInfo(), homedir: failures.mockHome }) };
 });
 
@@ -154,8 +157,8 @@ test("an owner unlink failure cannot mask update success", async () => {
 
 const options = (root: string) => ({ root, pollMs: 1, staleMs: 1 });
 
-function sandbox(label: string): Promise<string> {
-  return mkdtemp(join(tmpdir(), `elwood-update-lock-${label}-`));
+function sandbox(label: string): string {
+  return tempDir(`elwood-update-lock-${label}-`);
 }
 
 function staleDeadLease(root: string): void {

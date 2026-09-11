@@ -38,6 +38,7 @@ describe("CLI main routing", () => {
     const terminal = available.headTarget({ cols: 117, rows: 39 });
     const prepared = effectiveRequest({ initialSize: { cols: 117, rows: 39 } });
     let executionSize: { readonly cols: number; readonly rows: number } | undefined;
+    let preparedSize: { readonly cols: number; readonly rows: number } | undefined;
     expect(
       await main(
         ["--head", "go"],
@@ -45,7 +46,7 @@ describe("CLI main routing", () => {
         mainDependencies({
           resolve: () => Promise.resolve(resolvedRequest({ head: true })),
           prepare: (draft) => {
-            expect(draft.initialSize).toEqual({ cols: 117, rows: 39 });
+            preparedSize = draft.initialSize;
             return Promise.resolve({ request: prepared, session: new FakeCliSession() });
           },
           execute: (_request, _session, _io, execution) => {
@@ -55,6 +56,7 @@ describe("CLI main routing", () => {
         }),
       ),
     ).toBe(0);
+    expect(preparedSize).toEqual({ cols: 117, rows: 39 });
     expect(executionSize).toEqual({ cols: 117, rows: 39 });
   });
 
@@ -122,7 +124,11 @@ describe("CLI main routing", () => {
     }
   });
 
-  test("run-only dependencies lazy-load after routing", async () => {
+  // Exercises the REAL lazy imports (session preparation and run execution), so the
+  // first-import cost of those module graphs lands inside this test; under parallel
+  // suite load that can exceed the suite default, which surfaced as a timeout rather
+  // than a routing failure.
+  test("C-CLI-02 run-only dependencies lazy-load after routing", { timeout: 60_000 }, async () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-main-lazy-"));
     const prepared = mainHarness();
     expect(

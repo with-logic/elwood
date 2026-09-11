@@ -14,7 +14,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { setCodexHookBridgeFactoryForTests } from "../../src/codex/session.ts";
+import { setCodexHookBridgeFactoryForTests } from "../../src/codex/session/index.ts";
 import { resumeCodex, startCodex } from "../../src/index.ts";
 import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { boundSocketPathLength, socketFilesIn, socketHomesIn } from "../helpers/socket-leak.ts";

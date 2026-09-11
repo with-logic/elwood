@@ -37,7 +37,7 @@ describe("C-CLAUDE-15 Claude transcript drop wiring", () => {
   });
 
   test("C-LIFE-10 a listener throwing on the final flush still yields exit + status + reap", async () => {
-    // Finding 6: the PTY-exit callback flushes the trailing committed transcript
+    // The PTY-exit callback flushes the trailing committed transcript
     // before emitting terminal:exit. If a transcript activity listener throws during
     // that flush, the exit event, terminal status, and process-group reap MUST still
     // run (behind the error boundary), and a bounded diagnostic is surfaced.

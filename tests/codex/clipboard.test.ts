@@ -29,19 +29,29 @@ function fakeExecFile(file: string, args: readonly string[]) {
 }
 (fakeExecFile as unknown as Record<symbol, unknown>)[promisify.custom] = fakeExecFile;
 
-vi.mock("node:child_process", () => ({ execFile: fakeExecFile }));
+vi.mock("node:child_process", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:child_process")>()),
+  execFile: fakeExecFile,
+}));
 
 const { clipboardImageSupported, restoreClipboardText, setClipboardImage, snapshotClipboardText } =
-  await import("../../src/codex/clipboard.ts");
+  await import("../../src/codex/images/clipboard.ts");
+const { resetRuntimeSeamsForTests, setPlatformForTests } = await import(
+  "../../src/runtime/seams.ts"
+);
 
 afterEach(() => {
   results.value = { stdout: "" };
   calls.length = 0;
+  resetRuntimeSeamsForTests();
 });
 
 describe("Codex clipboard helpers (C-API-46)", () => {
   test("C-API-46 clipboardImageSupported is true only on macOS", () => {
-    expect(clipboardImageSupported()).toBe(process.platform === "darwin");
+    setPlatformForTests("darwin");
+    expect(clipboardImageSupported()).toBe(true);
+    setPlatformForTests("linux");
+    expect(clipboardImageSupported()).toBe(false);
   });
 
   test("C-API-46 snapshot returns clipboard text", async () => {

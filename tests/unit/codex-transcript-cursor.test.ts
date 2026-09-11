@@ -8,13 +8,13 @@
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { CodexTranscriptCursor } from "../../src/codex/transcript/cursor.ts";
+import { BoundedTranscriptCursor } from "../../src/core/transcript/cursor.ts";
 import {
   fileSize,
   readRange,
   resetByteReaderForTests,
   setByteReaderForTests,
-} from "../../src/codex/transcript/cursor-io.ts";
+} from "../../src/core/transcript/cursor-io.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
 afterEach(() => resetByteReaderForTests());
@@ -41,7 +41,7 @@ describe("Codex bounded cursor", () => {
     // > 256 KiB record so the first read is capped and a second drains the rest.
     const path = join(tempDirForUnit(), "empty.jsonl");
     writeFileSync(path, "");
-    const cursor = new CodexTranscriptCursor(path);
+    const cursor = new BoundedTranscriptCursor(path);
     appendFileSync(path, `${"x".repeat(300 * 1024)}\n`);
     const first = cursor.readChunk();
     expect(Buffer.byteLength(first.text, "utf8")).toBe(256 * 1024);
@@ -56,7 +56,7 @@ describe("Codex bounded cursor", () => {
     // the same byte up to 16×/tick until the rest of the code point lands.
     const path = join(tempDirForUnit(), "partial.jsonl");
     writeFileSync(path, "");
-    const cursor = new CodexTranscriptCursor(path);
+    const cursor = new BoundedTranscriptCursor(path);
     appendFileSync(path, Buffer.from([0xc3])); // lead byte of "é", rest not yet written
     setByteReaderForTests(() => Buffer.from([0xc3]));
     const chunk = cursor.readChunk();
@@ -66,7 +66,7 @@ describe("Codex bounded cursor", () => {
   test("C-CODEX-20 readChunk restarts at 0 on truncation and reports no growth", () => {
     const path = join(tempDirForUnit(), "trunc.jsonl");
     writeFileSync(path, "aaaa\n");
-    const cursor = new CodexTranscriptCursor(path);
+    const cursor = new BoundedTranscriptCursor(path);
     appendFileSync(path, "bbbb\n");
     expect(cursor.readChunk().text).toBe("bbbb\n");
     // No new bytes: an empty read that commits the current offset (the `size<=from`
@@ -78,7 +78,7 @@ describe("Codex bounded cursor", () => {
   });
 
   test("C-CODEX-20 takeLines discards an over-length un-terminated record", () => {
-    const cursor = new CodexTranscriptCursor(join(tempDirForUnit(), "e.jsonl"));
+    const cursor = new BoundedTranscriptCursor(join(tempDirForUnit(), "e.jsonl"));
     const giant = "y".repeat(1024 * 1024 + 5);
     // No newline yet: the whole over-length buffer is discarded, a fresh drop begins.
     const started = cursor.takeLines(giant);
@@ -94,7 +94,7 @@ describe("Codex bounded cursor", () => {
   });
 
   test("C-CODEX-20 takeLines can END one discard and START the next in one chunk", () => {
-    const cursor = new CodexTranscriptCursor(join(tempDirForUnit(), "e.jsonl"));
+    const cursor = new BoundedTranscriptCursor(join(tempDirForUnit(), "e.jsonl"));
     cursor.takeLines("z".repeat(1024 * 1024 + 1)); // start a discard
     const both = cursor.takeLines(`end\n${"w".repeat(1024 * 1024 + 1)}`);
     // Closed the prior discard AND started a fresh over-length record:
@@ -106,7 +106,7 @@ describe("Codex bounded cursor", () => {
   test("C-CODEX-20 drainPending flushes then clears, remainingBytes reflects the tail", () => {
     const path = join(tempDirForUnit(), "r.jsonl");
     writeFileSync(path, "");
-    const cursor = new CodexTranscriptCursor(path);
+    const cursor = new BoundedTranscriptCursor(path);
     cursor.takeLines("partial-no-newline");
     expect(cursor.drainPending()).toBe("partial-no-newline");
     expect(cursor.drainPending()).toBe("");
@@ -117,7 +117,7 @@ describe("Codex bounded cursor", () => {
   test("C-CODEX-20 remainingBytes is 0 when the file shrank below the cursor", () => {
     const path = join(tempDirForUnit(), "shrink.jsonl");
     writeFileSync(path, "aaaaaaaa\n");
-    const cursor = new CodexTranscriptCursor(path);
+    const cursor = new BoundedTranscriptCursor(path);
     cursor.readChunk(); // no new bytes; offset stays at the original EOF
     // Truncate below the offset so `size > offset` is false and remainingBytes
     // reports 0 (no negative backlog).

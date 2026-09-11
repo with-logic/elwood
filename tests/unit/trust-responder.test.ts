@@ -4,7 +4,15 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { TrustPromptResponder, trustPromptVisible } from "../../src/core/trust-responder.ts";
+import { trustPromptAllowlist, trustPromptHeaderVisible } from "../../src/core/trust/prompts.ts";
+import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
+
+/** True when an allowlisted trust prompt for `agent` is visible in `text`. */
+function trustPromptVisible(text: string, agent: "claude" | "codex"): boolean {
+  return trustPromptAllowlist.some(
+    (spec) => spec.agent === agent && trustPromptHeaderVisible(text, spec),
+  );
+}
 
 describe("allowlisted trust prompt automation", () => {
   test("C-API-18 stays disabled unless callers opt in", () => {

@@ -8,8 +8,8 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import type { AttachDriver } from "../../src/runtime/session-image-attach.ts";
-import { enqueueSubmission, QueuedImageBudget } from "../../src/runtime/session-image-attach.ts";
+import type { AttachDriver } from "../../src/runtime/session/image-attach.ts";
+import { enqueueSubmission, QueuedImageBudget } from "../../src/runtime/session/image-attach.ts";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const noopDriver: AttachDriver = () => Promise.resolve();
@@ -149,7 +149,7 @@ describe("enqueueSubmission (C-API-44)", () => {
           Promise.resolve({ paths: ["/x.png"], cleanup: () => Promise.reject(new Error("rm")) }),
       };
     });
-    const { enqueueSubmission: mocked } = await import("../../src/runtime/session-image-attach.ts");
+    const { enqueueSubmission: mocked } = await import("../../src/runtime/session/image-attach.ts");
     await expect(
       mocked([{ data: PNG, format: "png" }], () => Promise.resolve(), runAttach),
     ).resolves.toBeUndefined();

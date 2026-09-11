@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { listCodexModels } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
-import { asScreen, codexPickerCurrentIsDefault } from "../helpers/model-pickers.ts";
+import { asScreen, codexPickerCurrentIsDefault, until } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -25,14 +25,6 @@ function probeState(parent: string): { stateDir: string; id: string } {
 }
 
 /** Poll a condition without `expect` so it can live in a shared helper. */
-async function until(check: () => boolean): Promise<void> {
-  for (let i = 0; i < 200; i += 1) {
-    if (check()) return;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error("probe flow condition not reached");
-}
-
 /** Drive the fake probe through readiness, the rendered picker, and its close. */
 async function driveProbe(cwd: string, parent: string): Promise<void> {
   await until(() => ptys.length === 1);

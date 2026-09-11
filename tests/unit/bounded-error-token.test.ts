@@ -12,7 +12,7 @@ import {
   boundedErrorToken,
   isResizeErrorCode,
   unknownErrorToken,
-} from "../../src/core/warning-reasons.ts";
+} from "../../src/core/warnings/reasons.ts";
 
 describe("boundedErrorToken", () => {
   test("prefers an allowlisted `.code` (errno) over the error name", () => {

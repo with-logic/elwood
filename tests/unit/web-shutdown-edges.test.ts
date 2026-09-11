@@ -21,16 +21,23 @@ describe("web dev app shutdown edges", () => {
     const before = new Map(
       watchedEvents.map((event) => [event, new Set(process.listeners(event as "exit"))]),
     );
-    installHardShutdown();
     let added = 0;
-    for (const event of watchedEvents) {
-      for (const listener of process.listeners(event as "exit")) {
-        if (before.get(event)?.has(listener)) continue;
-        added += 1;
-        process.removeListener(event as "exit", listener);
+    try {
+      installHardShutdown();
+      for (const event of watchedEvents) {
+        for (const listener of process.listeners(event as "exit")) {
+          if (!before.get(event)?.has(listener)) added += 1;
+        }
+      }
+      expect(added).toBe(watchedEvents.length);
+    } finally {
+      // Always unwind the real listeners, even when the assertion above fails.
+      for (const event of watchedEvents) {
+        for (const listener of process.listeners(event as "exit")) {
+          if (!before.get(event)?.has(listener)) process.removeListener(event as "exit", listener);
+        }
       }
     }
-    expect(added).toBe(watchedEvents.length);
   });
 
   test("C-APP-08 repeated shutdown signals force an immediate kill", () => {

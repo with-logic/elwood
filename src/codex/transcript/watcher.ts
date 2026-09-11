@@ -7,16 +7,19 @@
  * bounded, content-free drop notices.
  */
 
-import { CodexTranscriptCursor } from "./cursor.ts";
+import { BoundedTranscriptCursor } from "../../core/transcript/cursor.ts";
+import { DropReporter, ReadErrorReporter } from "../../core/transcript/drops.ts";
 import type { ChunkBudget, DrainContext } from "./drain.ts";
 import { drainToBudget, newTerminalBudget } from "./drain.ts";
-import { CodexDropReporter, CodexReadErrorReporter } from "./drops.ts";
 import { CodexLineEmitter } from "./emit.ts";
 import { CodexTranscriptFsGuard } from "./fs-guard.ts";
 import type { CodexTranscriptEvent } from "./types.ts";
 import type { CodexTranscriptNotices } from "./watcher-config.ts";
 
-export type { CodexDropNotice, CodexReadErrorNotice } from "./drops.ts";
+export type {
+  TranscriptDropNotice as CodexDropNotice,
+  TranscriptReadErrorNotice as CodexReadErrorNotice,
+} from "../../core/transcript/drops.ts";
 export type { CodexTranscriptNotices } from "./watcher-config.ts";
 
 const defaultScanIntervalMs = 250; // poll cadence: transcript activity is not latency-critical
@@ -24,29 +27,32 @@ const defaultScanIntervalMs = 250; // poll cadence: transcript activity is not l
 const scanChunksPerScan = 16;
 
 export class CodexTranscriptWatcher {
-  private cursor: CodexTranscriptCursor | undefined;
+  private cursor: BoundedTranscriptCursor | undefined;
   private interval: ReturnType<typeof setInterval> | undefined;
   // A permanent terminal latch: once finished, no scan/flush/observe restarts it.
   private finished = false;
   private readonly guard: CodexTranscriptFsGuard;
-  private readonly drops: CodexDropReporter;
+  private readonly drops: DropReporter;
   private readonly lines: CodexLineEmitter;
   private readonly onPollError: ((error: unknown) => void) | undefined;
   // ONE budget shared across every flush() for a watcher's whole lifetime.
   private readonly terminalBudget: ChunkBudget = newTerminalBudget();
   private readonly scanIntervalMs: number | undefined;
+  // Drain-slice clock; undefined in production. See watcher-config.ts.
+  private readonly now: (() => number) | undefined;
 
   constructor(
     elwoodSessionId: string,
     emit: (event: CodexTranscriptEvent) => void,
     notices: CodexTranscriptNotices = {},
   ) {
-    this.drops = new CodexDropReporter(elwoodSessionId, notices.onDrop);
-    const readErrors = new CodexReadErrorReporter(elwoodSessionId, notices.onReadError);
+    this.drops = new DropReporter(elwoodSessionId, notices.onDrop);
+    const readErrors = new ReadErrorReporter(elwoodSessionId, notices.onReadError);
     this.guard = new CodexTranscriptFsGuard(readErrors);
     this.lines = new CodexLineEmitter(elwoodSessionId, emit, this.drops);
     this.onPollError = notices.onPollError;
     this.scanIntervalMs = notices.scanIntervalMs;
+    this.now = notices.now;
   }
 
   // Begin watching `path`, baselining at its CURRENT end so history is NOT replayed.
@@ -55,7 +61,7 @@ export class CodexTranscriptWatcher {
   observe(path: string): void {
     if (this.finished || this.cursor?.path === path) return;
     this.stop();
-    this.cursor = this.guard.read(path, () => new CodexTranscriptCursor(path));
+    this.cursor = this.guard.read(path, () => new BoundedTranscriptCursor(path));
     if (!this.cursor) return;
     // A scan() throw (a throwing drop/activity/warning listener) must not escape the
     // timer as an uncaught exception — contain it, stop, and route a bounded live
@@ -75,13 +81,14 @@ export class CodexTranscriptWatcher {
   // One bounded scan pass: read up to a per-pass chunk budget of new committed bytes
   // (a large delta streams across ticks), emit complete lines, retain the partial.
   scan(): void {
-    if (this.finished || !this.cursor) return;
+    const cursor = this.cursor;
+    if (this.finished || !cursor) return;
     const budget = { chunks: scanChunksPerScan };
     while (budget.chunks > 0) {
       budget.chunks -= 1;
-      const chunk = this.guard.read(this.cursor.path, () => this.cursor?.readChunk());
-      if (!chunk) break; // contained FS failure or cursor gone; keep last offset
-      if (chunk.text.length > 0) this.lines.emitLines(this.cursor.path, chunk.text, this.cursor);
+      const chunk = this.guard.read(cursor.path, () => cursor.readChunk());
+      if (!chunk) break; // contained FS failure; keep last offset
+      if (chunk.text.length > 0) this.lines.emitLines(cursor.path, chunk.text, cursor);
       if (!chunk.canContinueNow) break;
     } // budget exhausted with more to read: the next scan tick resumes here.
     this.drops.flushPass(); // bounded drop delivery: one warning per (path, cause) per scan
@@ -128,6 +135,11 @@ export class CodexTranscriptWatcher {
   }
 
   private drainContext(): DrainContext {
-    return { readFs: this.guard.read.bind(this.guard), lines: this.lines, drops: this.drops };
+    return {
+      readFs: this.guard.read.bind(this.guard),
+      lines: this.lines,
+      drops: this.drops,
+      ...(this.now === undefined ? {} : { now: this.now }),
+    };
   }
 }

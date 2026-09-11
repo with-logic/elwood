@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from "vitest";
 import { claudeScreenFactTable } from "../../src/claude/screen-table.ts";
-import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
+import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import { AttentionWatcher } from "../../src/core/attention.ts";
 import { observeRenderedFrame } from "../../src/core/rendered-observers.ts";
 import type { RenderedFrame } from "../../src/core/screen-facts.ts";

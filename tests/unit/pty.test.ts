@@ -1,27 +1,38 @@
 /**
- * Focused unit coverage for the node-pty adapter.
- * Covers PRD §5 and §10.
+ * Unit coverage for the node-pty adapter and the shared PTY termination helper.
+ * Covers PRD §4.1, §4.2, §5.3, §9.4 (C-PTY-01/02, C-LIFE-02/10). node-pty itself is
+ * mocked here (the real PTY is exercised by the adapter conformance suites); the
+ * zsh startup-file test runs only where `/bin/zsh` exists.
  */
 
 import { spawnSync } from "node:child_process";
-import { statSync, writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, test, vi } from "vitest";
-import { SessionReaper } from "../../src/runtime/reap-tree.ts";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { loginShellCommand } from "../../src/runtime/shell.ts";
-import { terminatePty } from "../../src/runtime/terminate.ts";
-import { tempDirForUnit } from "./helpers.ts";
+import { SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
+import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
+import { tempDir } from "../helpers/tmp.ts";
+
+const zsh = "/bin/zsh";
+const hasZsh = existsSync(zsh);
+if (!hasZsh) console.warn(`SKIPPING C-PTY-02: ${zsh} is not installed on this host`);
 
 /** A reaper with an injected killer so tests never signal a real process group. */
 function testReaper(reaped: number[], pid = 1000) {
   return new SessionReaper(pid, { killGroup: (pgid) => reaped.push(pgid) });
 }
 
+afterEach(() => {
+  vi.doUnmock("node-pty");
+  vi.resetModules();
+});
+
 describe("node PTY adapter", () => {
-  test("C-PTY-02 interactive login shell sources zsh startup files", () => {
-    const home = tempDirForUnit();
+  test.skipIf(!hasZsh)("C-PTY-02 interactive login shell sources zsh startup files", () => {
+    const home = tempDir("elwood-unit-");
     writeFileSync(join(home, ".zshrc"), "export ELWOOD_SHELL_PROBE=from_zshrc\n");
-    const result = spawnSync("/bin/zsh", loginShellCommand("printf $ELWOOD_SHELL_PROBE"), {
+    const result = spawnSync(zsh, loginShellCommand("printf $ELWOOD_SHELL_PROBE"), {
       encoding: "utf8",
       env: { ...process.env, HOME: home, ZDOTDIR: home },
     });
@@ -29,7 +40,7 @@ describe("node PTY adapter", () => {
     expect(result.stdout).toBe("from_zshrc");
   });
 
-  test("C-PTY-01 wraps a real pseudoterminal process", async () => {
+  test("C-PTY-01 adapts node-pty's spawn API to PtyProcess (node-pty mocked)", async () => {
     const calls: string[] = [];
     vi.resetModules();
     vi.doMock("node-pty", () => ({
@@ -52,16 +63,8 @@ describe("node PTY adapter", () => {
         kill: (signal?: string) => calls.push(`kill:${signal}`),
       }),
     }));
-    const { currentPtyFactory, resetRuntimeSeamsForTests } = await import(
-      "../../src/runtime/seams.ts"
-    );
-    const { ensureNodePtySpawnHelperExecutable, nodePtyFactory, nodePtySpawnHelperPath } =
-      await import("../../src/pty/node.ts");
-    const helper = join(tempDirForUnit(), "spawn-helper");
-    writeFileSync(helper, "");
-    ensureNodePtySpawnHelperExecutable(helper);
-    ensureNodePtySpawnHelperExecutable(join(tempDirForUnit(), "missing-helper"));
-    expect(statSync(helper).mode & 0o111).toBeGreaterThan(0);
+    const { currentPtyFactory } = await import("../../src/runtime/seams.ts");
+    const { nodePtyFactory, nodePtySpawnHelperPath } = await import("../../src/pty/node.ts");
     expect(nodePtySpawnHelperPath()).toContain("spawn-helper");
     const pty = nodePtyFactory({
       command: "fake",
@@ -79,7 +82,7 @@ describe("node PTY adapter", () => {
       exitCode = event.exitCode;
     });
     pty.resize({ cols: 30, rows: 10 });
-    expect(() => pty.resize({ cols: 31, rows: 10 })).not.toThrow();
+    expect(pty.resize({ cols: 31, rows: 10 })).toBe("closed"); // EBADF: exit race, ignored
     expect(() => pty.resize({ cols: 32, rows: 10 })).toThrow("EINVAL");
     pty.write("hello\n");
     pty.write(new Uint8Array([113, 10]));
@@ -89,13 +92,11 @@ describe("node PTY adapter", () => {
     expect(pty.pid).toBe(42);
     expect(data).toBe("hello");
     expect(exitCode).toBe(0);
-    expect(calls).toContain("resize:30x10");
-    expect(calls).toContain("write:hello\n");
-    expect(calls).toContain("write:q\n");
-    expect(calls).toContain("kill:SIGTERM");
-    expect(calls).toContain("off-data");
-    expect(calls).toContain("off-exit");
-    resetRuntimeSeamsForTests();
+    expect(calls).toEqual(
+      expect.arrayContaining(["resize:30x10", "write:hello\n", "write:q\n", "kill:SIGTERM"]),
+    );
+    expect(calls).toEqual(expect.arrayContaining(["off-data", "off-exit"]));
+    // The runtime seam defaults to this same factory.
     const runtimePty = currentPtyFactory()({
       command: "fake",
       args: [],
@@ -103,16 +104,13 @@ describe("node PTY adapter", () => {
       env: process.env,
       size: { cols: 10, rows: 3 },
     });
-    const offRuntimeData = runtimePty.onData(() => {});
-    const offRuntimeExit = runtimePty.onExit(() => {});
+    runtimePty.onData(() => {})();
+    runtimePty.onExit(() => {})();
     runtimePty.write("x");
     runtimePty.resize({ cols: 11, rows: 4 });
     runtimePty.kill("SIGKILL");
-    offRuntimeData();
-    offRuntimeExit();
     expect(runtimePty.pid).toBe(42);
-    vi.doUnmock("node-pty");
-    vi.resetModules();
+    expect(calls).toContain("kill:SIGKILL");
   });
 
   test("C-LIFE-02 graceful termination escalates when the process does not exit", async () => {
@@ -144,7 +142,7 @@ describe("node PTY adapter", () => {
 
   test("C-LIFE-10 termination reports failure but STILL reaps the group", async () => {
     // Both timeout branches must reap before returning: a termination_failed
-    // outcome that leaks the descendant tree is the exact P0 this guards.
+    // outcome that leaks the descendant tree is the exact leak this guards.
     for (const signal of ["SIGTERM", "SIGKILL"] as const) {
       const reaped: number[] = [];
       await expect(

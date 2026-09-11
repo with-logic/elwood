@@ -5,7 +5,7 @@ import {
   clearStagedComposer,
   inputAbortError,
   throwIfInputAborted,
-} from "../../src/core/session-input-abort.ts";
+} from "../../src/core/input/abort.ts";
 
 describe("session input abort helpers", () => {
   test("cover absent, typed, raw, and cleanup-failure signals", async () => {

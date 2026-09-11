@@ -10,8 +10,8 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { initialReady } from "../../src/runtime/initial-ready.ts";
-import { createReadinessGate } from "../../src/runtime/session-readiness.ts";
+import { initialReady } from "../../src/runtime/readiness/initial-ready.ts";
+import { createReadinessGate } from "../../src/runtime/session/readiness.ts";
 
 describe("C-API-28 readiness blocking gate + deadline", () => {
   test("a dialog held PAST the deadline does not release readiness until it clears", async () => {

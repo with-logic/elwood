@@ -6,11 +6,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { startClaude, startCodex } from "../../src/index.ts";
-import { cleanup, makeProject, skipReason, turnsEnabled, waitFor } from "./helpers.ts";
+import { cleanup, makeProject, skipIf, skipReason, skipTurns, waitFor } from "./helpers.ts";
 
-const skipTurnsReason = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
-
-// 18 lines, mirroring coal-harbor's preamble+persona shape that reliably
+// 18 lines, mirroring a host application's preamble+persona shape that reliably
 // reproduced the staged-but-unsubmitted composer.
 const persona = [
   "You are a terse assistant embedded in a product.",
@@ -21,7 +19,7 @@ const persona = [
 
 for (const agent of ["claude", "codex"] as const) {
   test(`C-API-31 real ${agent} submits an 18-line persona as the first turn`, {
-    skip: skipReason(agent) ?? skipTurnsReason,
+    skip: skipIf(skipReason(agent), skipTurns),
     timeout: 240_000,
   }, async () => {
     const project = makeProject(agent);

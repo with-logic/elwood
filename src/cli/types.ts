@@ -3,14 +3,19 @@
  * Implements PRD §12A.1/§12A.2/§12A.4 and C-CLI-02 through C-CLI-16.
  */
 
-import type { CodexApprovalPolicy, CodexSandboxMode } from "../codex/session-types.ts";
+import type { CodexApprovalPolicy, CodexSandboxMode } from "../codex/session/types.ts";
 import type { ImageInput } from "../core/images/types.ts";
-import type { CodexReasoningEffort } from "../core/reasoning-effort.ts";
+import type { ClaudeReasoningEffort, CodexReasoningEffort } from "../core/reasoning-effort.ts";
 import type { ClaudePermissionMode, TerminalSize } from "../core/types.ts";
-import type { CliRequestResolution } from "./resolution-types.ts";
+import type { CliRequestResolution } from "./request/resolution-types.ts";
 
-export type { CliRequestResolution, CliSettingSources } from "./resolution-types.ts";
+export type { CliRequestResolution, CliSettingSources } from "./request/resolution-types.ts";
+export { type CliValidationCode, CliValidationError } from "./validation-error.ts";
 export const cliAgents = ["claude", "codex"] as const;
+/** Human-facing adapter name for diagnostics and progress lines. */
+export function agentDisplayName(agent: CliAgent): "Claude" | "Codex" {
+  return agent === "claude" ? "Claude" : "Codex";
+}
 export const cliOutputModes = ["text", "json", "jsonl"] as const;
 export const claudePermissionModes = [
   "default",
@@ -57,29 +62,6 @@ export type CliConfig = {
   };
 };
 
-export type RunOptionKey =
-  | "agent"
-  | "output"
-  | "timeout"
-  | "trust"
-  | "stateDir"
-  | "verbose"
-  | "stream"
-  | "debug"
-  | "ignoreDefaults"
-  | "head"
-  | "persona"
-  | "model"
-  | "reasoningEffort"
-  | "claudePermissionMode"
-  | "codexSandbox"
-  | "codexApprovalPolicy"
-  | "cwd"
-  | "images"
-  | "keep"
-  | "resume"
-  | "ephemeral";
-
 export type RunFlags = {
   readonly agent?: string;
   readonly output?: string;
@@ -103,6 +85,9 @@ export type RunFlags = {
   readonly resume?: string;
   readonly ephemeral?: boolean;
 };
+
+/** Every `RunFlags` field an explicit long option can set. */
+export type RunOptionKey = keyof RunFlags;
 
 export type ParsedRunCommand = {
   readonly command: "run";
@@ -161,8 +146,18 @@ export type ResolvedRunRequest = {
   readonly resolution?: CliRequestResolution;
 };
 
+/**
+ * The effective adapter with its effort already narrowed to that adapter's
+ * vocabulary (C-CLI-06): `finalizeRunRequest` validates before launch, so the
+ * launch mapping never re-checks the value.
+ */
+export type EffectiveAgentEffort =
+  | { readonly agent: "claude"; readonly reasoningEffort?: ClaudeReasoningEffort }
+  | { readonly agent: "codex"; readonly reasoningEffort?: CodexReasoningEffort };
+
 export type EffectiveRunRequest = Omit<
   ResolvedRunRequest,
+  | "agent"
   | "cwd"
   | "imagePaths"
   | "agentOptions"
@@ -178,21 +173,10 @@ export type EffectiveRunRequest = Omit<
   readonly cwd: string;
   readonly images: readonly ImageInput[];
   readonly model?: string;
-  readonly reasoningEffort?: string;
   readonly permissionMode?: ClaudePermissionMode;
   readonly sandbox?: CodexSandboxMode;
   readonly approvalPolicy?: CodexApprovalPolicy;
-};
-
-export class CliValidationError extends Error {
-  override readonly name = "CliValidationError";
-  readonly code: "invalid_arguments" | "invalid_config";
-
-  constructor(code: "invalid_arguments" | "invalid_config", message: string) {
-    super(message);
-    this.code = code;
-  }
-}
+} & EffectiveAgentEffort;
 
 export type EffectiveAgentOptions = {
   readonly model?: string;

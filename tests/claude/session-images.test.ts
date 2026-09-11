@@ -11,7 +11,12 @@ import { afterEach, describe, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
-afterEach(resetFakes);
+let cancelChips: (() => void) | undefined;
+afterEach(() => {
+  cancelChips?.(); // a failed test must not leave the chip driver rescheduling itself
+  cancelChips = undefined;
+  resetFakes();
+});
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const ESC = String.fromCharCode(27);
@@ -25,6 +30,7 @@ const paste = (text: string) => `${ESC}[200~${text}${ESC}[201~`;
  */
 function driveChips(count: number): void {
   let emitted = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const tick = () => {
     const pastes = ptys[0]!.writes.filter((w) => w.includes("[200~")).length;
     while (emitted < pastes && emitted < count) {
@@ -32,9 +38,10 @@ function driveChips(count: number): void {
       const chips = Array.from({ length: emitted }, (_, i) => `[Image #${i + 1}]`).join(" ");
       ptys[0]!.emitData(`[999;1H[K❯ ${chips}`);
     }
-    if (emitted < count) setTimeout(tick, 20);
+    if (emitted < count) timer = setTimeout(tick, 20);
   };
-  setTimeout(tick, 20);
+  timer = setTimeout(tick, 20);
+  cancelChips = () => clearTimeout(timer);
 }
 
 async function ready(cwd: string, elwoodSessionId: string): Promise<void> {

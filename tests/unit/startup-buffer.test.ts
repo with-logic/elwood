@@ -6,8 +6,11 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { resetStartupWaitMsForTests, setStartupWaitMsForTests } from "../../src/runtime/startup.ts";
-import { assertStartupThenRelease, createStartupBuffer } from "../../src/runtime/startup-buffer.ts";
+import { assertStartupThenRelease, createStartupBuffer } from "../../src/runtime/startup/buffer.ts";
+import {
+  resetStartupWaitMsForTests,
+  setStartupWaitMsForTests,
+} from "../../src/runtime/startup/index.ts";
 
 describe("createStartupBuffer (§9.1, §9.4)", () => {
   test("collects chunks until read", () => {

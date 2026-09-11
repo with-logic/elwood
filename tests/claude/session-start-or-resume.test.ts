@@ -39,6 +39,7 @@ describe("startOrResumeClaude", () => {
       autoupdate: false,
       autotrust: false,
       hookTimeoutMs: 5_000,
+      reasoningEffort: "high",
       permissionMode: "bypassPermissions",
       allowedTools: ["Read"],
       disallowedTools: ["Bash"],
@@ -52,6 +53,8 @@ describe("startOrResumeClaude", () => {
     expect(ptys.at(-1)!.options.args.join(" ")).toContain("--allowedTools 'Read'");
     expect(ptys.at(-1)!.options.args.join(" ")).toContain("--disallowedTools 'Bash'");
     expect(ptys.at(-1)!.options.args.join(" ")).toContain("--tools 'Read,Edit'");
+    // C-CLAUDE-20: reasoningEffort is not persisted, so the resume path must forward it.
+    expect(ptys.at(-1)!.options.args.join(" ")).toContain("--effort 'high'");
     await first.session.stop();
     await result.session.stop();
   });

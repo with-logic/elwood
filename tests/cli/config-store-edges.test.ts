@@ -26,7 +26,8 @@ vi.mock("node:fs", async (importOriginal) => {
       return actual.openSync(path, flags, mode);
     },
     writeFileSync: (file: Parameters<typeof actual.writeFileSync>[0], data: string) => {
-      if (fault.mode === "write" && typeof file === "number") throw new Error("write failed");
+      if (fault.mode === "write" && typeof file === "number")
+        throw Object.assign(new Error("write failed"), { code: "EACCES" });
       return actual.writeFileSync(file, data);
     },
   };
@@ -39,14 +40,19 @@ const root = () => mkdtempSync(join(tmpdir(), "elwood-config-fault-"));
 const config = { schemaVersion: 1 } as const;
 
 describe("CLI config store failures", () => {
-  test.each(["open", "write"])("contains an atomic %s failure", (mode) => {
+  test.each([
+    ["open", ""],
+    ["write", " (EACCES)"],
+  ])("C-CLI-20 contains an atomic %s failure naming the path and errno", (mode, code) => {
     const path = join(root(), "config.json");
     fault.mode = mode;
-    expect(() => writeConfig(path, config)).toThrow(/safely write/iu);
+    expect(() => writeConfig(path, config)).toThrow(
+      `Elwood config ${JSON.stringify(path)} could not be safely written${code}.`,
+    );
     fault.mode = "none";
   });
 
-  test("normalizes target-inspection and read failures", () => {
+  test("C-CLI-15/C-CLI-20 normalizes target-inspection and read failures", () => {
     const directory = root();
     fault.mode = "inspect";
     expect(() => writeConfig(join(directory, "config.json"), config)).toThrow(/inspect/iu);
@@ -60,7 +66,7 @@ describe("CLI config store failures", () => {
     fault.mode = "none";
   });
 
-  test("rejects an existing symlink before atomic replacement", () => {
+  test("C-CLI-15 rejects an existing symlink before atomic replacement", () => {
     const directory = root();
     const real = join(directory, "real.json");
     const link = join(directory, "link.json");

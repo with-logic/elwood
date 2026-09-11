@@ -5,29 +5,12 @@
 import { describe, expect, test } from "vitest";
 import { formatDiagnosticValue } from "../../src/cli/output/sanitize.ts";
 import type { CliError, CliResult } from "../../src/cli/output/types.ts";
-import { RunOutput } from "../../src/cli/run-output.ts";
+import { RunOutput } from "../../src/cli/run/output.ts";
 import { AsyncOutputSink } from "../../src/cli/stream.ts";
 import type { EffectiveRunRequest } from "../../src/cli/types.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
+import { effectiveRequest as request } from "./main-fakes.ts";
 import { MemoryWriter } from "./run-fakes.ts";
-
-const request = (overrides: Partial<EffectiveRunRequest> = {}): EffectiveRunRequest => ({
-  agent: "codex",
-  output: "text",
-  outputExplicit: false,
-  trust: true,
-  stateDir: "/state",
-  verbose: false,
-  stream: false,
-  cwd: "/work",
-  images: [],
-  prompt: "go",
-  keep: false,
-  ephemeral: false,
-  sandbox: "workspace-write",
-  approvalPolicy: "never",
-  ...overrides,
-});
 
 const result = (): CliResult => ({
   schemaVersion: 1,
@@ -78,7 +61,7 @@ describe("RunOutput diagnostic integrity", () => {
     }
   });
 
-  test("warnings accepted before finish are rendered and later warnings are ignored", async () => {
+  test("C-CLI-10 warnings accepted before finish are rendered and later warnings are ignored", async () => {
     const h = harness(request());
     h.output.warning(warning("during cleanup"));
     await h.output.finish(result);

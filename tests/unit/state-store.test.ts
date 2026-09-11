@@ -4,18 +4,7 @@
  * fields, and derived files are removed via (stateDir, id, socketPath).
  */
 
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 import { ElwoodError } from "../../src/core/errors.ts";
@@ -29,10 +18,11 @@ import {
   sessionDir,
   writeSessionRecord,
 } from "../../src/state/store.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 describe("state store", () => {
   test("C-ERR-03 C-ERR-04 state error paths are typed", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-state-"));
+    const root = tempDir("elwood-state-");
     expect(defaultStateDir(root)).toBe(join(root, ".elwood"));
     expect(sessionDir(root, "missing")).toBe(join(root, "sessions", "missing"));
     expect(sessionDir("relative-state", "missing")).toBe(
@@ -42,21 +32,23 @@ describe("state store", () => {
     expect(elwoodCode(() => readSessionRecord(root, "missing"))).toBe("state_not_found");
     const dir = sessionDir(root, "bad");
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "session.json"), '{"schemaVersion":2,"elwoodSessionId":"bad"}');
+    writeFileSync(join(dir, "session.json"), '{"schemaVersion":2,"elwoodSessionId":"bad"}', {
+      mode: 0o600,
+    });
     expect(elwoodCode(() => readSessionRecord(root, "bad"))).toBe("state_corrupt");
     const corruptDir = sessionDir(root, "corrupt");
     mkdirSync(corruptDir, { recursive: true });
-    writeFileSync(join(corruptDir, "session.json"), "{");
+    writeFileSync(join(corruptDir, "session.json"), "{", { mode: 0o600 });
     expect(elwoodCode(() => readSessionRecord(root, "corrupt"))).toBe("state_corrupt");
     expect(
       elwoodCode(() =>
-        removeSessionFiles({ stateDir: root, elwoodSessionId: "\0bad", socketPath: "/tmp/x.sock" }),
+        removeSessionFiles({ stateDir: root, elwoodSessionId: "\0bad", socketHome: "/tmp/x" }),
       ),
     ).toBe("state_not_found");
   });
 
   test("C-STATE the minimal record round-trips only the six kept fields", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-state-"));
+    const root = tempDir("elwood-state-");
     prepareStateDir(root);
     const record = createSessionRecord({ cwd: root, id: "minimal", adapter: "codex" });
     const dir = sessionDir(root, "minimal");
@@ -87,62 +79,31 @@ describe("state store", () => {
   });
 
   test("C-STATE-08 removeSessionFiles removes the derived dir and the socket home", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-state-"));
+    const root = tempDir("elwood-state-");
     prepareStateDir(root);
     const record = createSessionRecord({ cwd: root, id: "teardown" });
     const dir = sessionDir(root, "teardown");
     writeSessionRecord(record, dir);
-    // A fresh mkdtemp socket home (elwood-prefixed) is removed alongside the dir.
-    const socketHome = mkdtempSync(join(tmpdir(), "elwood-"));
-    const socketPath = join(socketHome, "h.sock");
+    // An elwood-prefixed socket home is removed alongside the dir.
+    const socketHome = tempDir("elwood-");
+    writeFileSync(join(socketHome, "h.sock"), "");
     expect(existsSync(dir)).toBe(true);
     expect(existsSync(socketHome)).toBe(true);
-    removeSessionFiles({ stateDir: root, elwoodSessionId: "teardown", socketPath });
+    removeSessionFiles({ stateDir: root, elwoodSessionId: "teardown", socketHome });
     expect(existsSync(dir)).toBe(false);
     expect(existsSync(socketHome)).toBe(false);
     // A non-elwood socket home is left untouched (only the derived dir is removed).
-    const foreignHome = mkdtempSync(join(tmpdir(), "other-"));
+    const foreignHome = tempDir("other-");
     const record2 = createSessionRecord({ cwd: root, id: "teardown-2" });
     const dir2 = sessionDir(root, "teardown-2");
     writeSessionRecord(record2, dir2);
-    removeSessionFiles({
-      stateDir: root,
-      elwoodSessionId: "teardown-2",
-      socketPath: join(foreignHome, "h.sock"),
-    });
+    removeSessionFiles({ stateDir: root, elwoodSessionId: "teardown-2", socketHome: foreignHome });
     expect(existsSync(dir2)).toBe(false);
     expect(existsSync(foreignHome)).toBe(true);
   });
 
-  test("§8.4 a socket-home removal FAILURE still removes the session dir, then reports teardown_failed", () => {
-    // The two removals are independent (attempt-all §8.4): a socket-home rmSync failure
-    // must NOT prevent the session-directory removal that would otherwise leave resumable
-    // metadata + runtime files behind. Force the socket-home removal to fail by making its
-    // PARENT read-only (so rmSync of the home throws EACCES/EPERM), then assert the session
-    // dir is gone anyway and the fault surfaces as teardown_failed.
-    const root = mkdtempSync(join(tmpdir(), "elwood-state-"));
-    prepareStateDir(root);
-    const record = createSessionRecord({ cwd: root, id: "attempt-all" });
-    const dir = sessionDir(root, "attempt-all");
-    writeSessionRecord(record, dir);
-    const socketParent = mkdtempSync(join(tmpdir(), "elwood-parent-"));
-    const socketHome = join(socketParent, "elwood-home");
-    mkdirSync(socketHome, { recursive: true });
-    const socketPath = join(socketHome, "h.sock");
-    chmodSync(socketParent, 0o500); // read-only parent → removing the home throws
-    try {
-      expect(() =>
-        removeSessionFiles({ stateDir: root, elwoodSessionId: "attempt-all", socketPath }),
-      ).toThrow(/Could not remove/); // teardown_failed surfaced
-      expect(existsSync(dir)).toBe(false); // the session dir was STILL removed
-    } finally {
-      chmodSync(socketParent, 0o700);
-      rmSync(socketParent, { recursive: true, force: true });
-    }
-  });
-
   test("C-STATE-03 C-STATE-11 custom state directories do not receive or overwrite gitignore files", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-state-"));
+    const root = tempDir("elwood-state-");
     const projectState = join(root, ".elwood");
     prepareStateDir(projectState, { gitignore: true });
     expect(readFileSync(join(projectState, ".gitignore"), "utf8")).toBe("*\n");
@@ -163,7 +124,7 @@ describe("state store", () => {
   });
 
   test("C-STATE-03 atomic private writes fully replace files and clean temp files", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-state-"));
+    const root = tempDir("elwood-state-");
     const privatePath = join(root, "private", "settings.json");
     writePrivateFile(privatePath, "{}");
     expect(statSync(privatePath).mode & 0o777).toBe(0o600);

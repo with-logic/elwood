@@ -3,7 +3,7 @@
  * Implements PRD §5.4.
  */
 
-import type { ElwoodEventMap, Unsubscribe } from "../core/types.ts";
+import type { Unsubscribe } from "../core/types.ts";
 
 type Handler = (event: unknown) => unknown;
 type EventKey<M> = Extract<keyof M, string>;
@@ -16,7 +16,7 @@ type HandlerFor<M, E extends EventKey<M>> = (event: M[E]) => unknown;
 // handler unsubscribed mid-emission, so an unsubscribe takes effect immediately.
 type Listeners = { list: readonly Handler[]; readonly live: Set<Handler> };
 
-export class TypedEmitter<M extends Record<string, unknown> = ElwoodEventMap> {
+export class TypedEmitter<M extends Record<string, unknown>> {
   private readonly handlers: Map<EventKey<M>, Listeners>;
 
   constructor() {

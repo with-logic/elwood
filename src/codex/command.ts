@@ -6,9 +6,9 @@
 import { hookCommand } from "../runtime/hook-command.ts";
 import { shellQuote } from "../runtime/shell.ts";
 import type { SessionRecord } from "../state/store.ts";
-import { codexHookEventNames } from "./hooks.ts";
+import { codexHookEventNames } from "./hooks/index.ts";
 import type { CodexCliCapabilities } from "./preflight.ts";
-import type { StartCodexOptions } from "./session-types.ts";
+import type { StartCodexOptions } from "./session/types.ts";
 
 export function buildCodexShellCommand(
   record: SessionRecord,
@@ -24,6 +24,8 @@ export function buildCodexShellCommand(
   if (capabilities.supportsHookTrustBypass) {
     parts.push("--dangerously-bypass-hook-trust");
   }
+  // Elwood's `hooks.*` overrides precede the caller's `configOverrides` by design: a
+  // caller may override (or disable) the bridge hooks, which PRD §4.4 permits.
   for (const override of hookOverrides(bridgeScriptPath, options))
     parts.push("-c", shellQuote(override));
   for (const override of options.configOverrides ?? []) parts.push("-c", shellQuote(override));
@@ -47,8 +49,16 @@ function addLaunchFlags(parts: string[], options: StartCodexOptions): void {
   }
 }
 
+/**
+ * Seconds of slack added to the CLI-side hook timeout beyond Elwood's fail-open
+ * deadline. Codex starts its clock when it SPAWNS the hook, before the bridge has
+ * connected and Elwood's own timer has started, so an identical value would let
+ * Codex kill the hook just before Elwood's fail-open no-decision response arrives.
+ */
+const cliHookTimeoutSlackSeconds = 5;
+
 function hookOverrides(bridgeScriptPath: string, options: StartCodexOptions): string[] {
-  const timeout = Math.ceil((options.hookTimeoutMs ?? 25_000) / 1000);
+  const timeout = Math.ceil((options.hookTimeoutMs ?? 25_000) / 1000) + cliHookTimeoutSlackSeconds;
   return codexHookEventNames.map((eventName) => {
     const command = hookCommand(bridgeScriptPath);
     const hook = `{type="command",command=${tomlString(command)},timeout=${timeout}}`;

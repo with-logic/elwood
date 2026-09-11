@@ -7,14 +7,15 @@ import { createConnection } from "node:net";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { HookBridgeServer } from "../../src/bridge/server.ts";
-import { sendBridge, tempDirForUnit } from "./helpers.ts";
+import { tempDir } from "../helpers/tmp.ts";
+import { sendBridge } from "./helpers.ts";
 
 const acceptHookInput = () => true;
 const rejectHookInput = () => false;
 
 describe("bridge and emitter edges", () => {
   test("C-HOOK-16 invalid bridge input fails open and reports an error", async () => {
-    const root = tempDirForUnit();
+    const root = tempDir("elwood-unit-");
     const socketPath = join(root, "hook.sock");
     const errors: string[] = [];
     const server = new HookBridgeServer(
@@ -39,7 +40,7 @@ describe("bridge and emitter edges", () => {
 
   test("C-ERR-06 bridge start rejects when its socket cannot be created", async () => {
     const server = new HookBridgeServer(
-      join(tempDirForUnit(), "missing", "hook.sock"),
+      join(tempDir("elwood-unit-"), "missing", "hook.sock"),
       "token",
       async () => ({ exitCode: 0, stdout: "", stderr: "" }),
       () => {},
@@ -50,7 +51,7 @@ describe("bridge and emitter edges", () => {
   });
 
   test("bridge stop destroys open hook sockets", async () => {
-    const root = tempDirForUnit();
+    const root = tempDir("elwood-unit-");
     const socketPath = join(root, "open-hook.sock");
     const server = new HookBridgeServer(
       socketPath,
@@ -69,7 +70,7 @@ describe("bridge and emitter edges", () => {
   });
 
   test("bridge ignores hook client disconnects before response", async () => {
-    const socketPath = join(tempDirForUnit(), "disconnect-hook.sock");
+    const socketPath = join(tempDir("elwood-unit-"), "disconnect-hook.sock");
     let release!: () => void;
     const delay = new Promise<void>((resolve) => {
       release = resolve;
@@ -108,7 +109,7 @@ describe("bridge and emitter edges", () => {
   });
 
   test("C-HOOK-16 bridge waits for a complete framed request", async () => {
-    const root = tempDirForUnit();
+    const root = tempDir("elwood-unit-");
     const socketPath = join(root, "split-hook.sock");
     let dispatched = 0;
     const server = new HookBridgeServer(

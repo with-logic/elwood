@@ -2,9 +2,10 @@
  * Shared fake-session harness for the wait-helper unit tests.
  */
 
-import type { ElwoodActivityEvent, ElwoodActivityKind } from "../../src/core/activity.ts";
+import type { ElwoodActivityEvent, ElwoodActivityKind } from "../../src/core/activity/index.ts";
 import type { ElwoodError } from "../../src/core/errors.ts";
 import type { ElwoodSessionStatus } from "../../src/core/types.ts";
+import { activity as anyActivity } from "../helpers/activity.ts";
 
 type Handler = (event: never) => void;
 
@@ -34,14 +35,9 @@ export function fakeSession(initial: ElwoodSessionStatus = "running") {
   };
 }
 
+/** A terminal-sourced activity of one kind, for wait-predicate matching. */
 export const activity = (kind: ElwoodActivityKind): ElwoodActivityEvent =>
-  ({
-    elwoodSessionId: "s1",
-    agent: "claude",
-    source: "terminal",
-    kind,
-    label: kind,
-  }) satisfies ElwoodActivityEvent;
+  anyActivity({ source: "terminal", kind, label: kind });
 
 /** Awaits a rejected wait and returns its Elwood error for code assertions. */
 export async function rejection(promise: Promise<unknown>): Promise<ElwoodError> {

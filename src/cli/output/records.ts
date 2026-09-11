@@ -3,7 +3,6 @@
  * Implements PRD §12A.3 and C-CLI-11/C-CLI-12.
  */
 
-import type { ElwoodActivityEvent } from "../../core/activity.ts";
 import type { TurnEvent } from "../../core/simple/events.ts";
 import type { ElwoodWarningEvent } from "../../core/types.ts";
 import type { CliProgressRecord, CliTextSanitizer } from "./types.ts";
@@ -33,12 +32,6 @@ export function progressFromTurn(event: TurnEvent, clean: CliTextSanitizer): Cli
         ...(event.toolCallId === undefined ? {} : { toolCallId: clean(event.toolCallId) }),
       };
   }
-}
-
-/** Only lifecycle status crosses from rich activity; raw and arbitrary text never do. */
-export function progressFromActivity(event: ElwoodActivityEvent): CliProgressRecord | undefined {
-  if (event.kind !== "status" || event.status === undefined) return undefined;
-  return { schemaVersion: 1, type: "status", status: event.status };
 }
 
 /** Warning projection admits only the stable code and bounded public message. */

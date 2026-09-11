@@ -10,7 +10,7 @@
 import { describe, expect, test } from "vitest";
 import type { TerminalSize } from "../../src/core/types.ts";
 import type { PtyProcess } from "../../src/pty/types.ts";
-import { restoreHeldResize } from "../../src/runtime/session-resize.ts";
+import { restoreHeldResize } from "../../src/runtime/session/resize.ts";
 import type { ElwoodTerminal } from "../../src/terminal/headless.ts";
 
 type Harness = {

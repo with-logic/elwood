@@ -54,7 +54,7 @@ describe("C-CLAUDE-15 transcript warning builders", () => {
   });
 
   test("transcriptFailureWarning carries the phase and a phase-specific message", () => {
-    // MAJOR: the same warning code distinguishes a live poll failure from a failed
+    // the same warning code distinguishes a live poll failure from a failed
     // final flush at exit via the bounded `phase` field, so an operator can tell
     // lost trailing shutdown activity from a live-watcher poll failure.
     const poll = transcriptFailureWarning("s1", new Error("x")); // defaults to "poll"
@@ -70,7 +70,7 @@ describe("C-CLAUDE-15 transcript warning builders", () => {
   });
 
   test("dropWarning labels every cause truthfully and never carries content", () => {
-    // MAJOR: unparseable, oversized, and unread-backlog losses share ONE code but
+    // unparseable, oversized, and unread-backlog losses share ONE code but
     // carry a bounded `cause` discriminator, so a valid unread backlog is never
     // mislabelled as an unparseable record. Each drop is one live warning, no counts.
     const cases: Record<DropCause, string> = {

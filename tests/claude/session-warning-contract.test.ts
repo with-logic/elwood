@@ -78,7 +78,7 @@ describe("C-API-14 Claude preflight warning is observable on the returned sessio
   });
 
   test("survives ordinary PTY output BEFORE the start promise resolves (the original race)", async () => {
-    // The failure mode the review guarded: real CLI output streams DURING startup,
+    // Real CLI output streams DURING startup,
     // before the caller has a session to subscribe to. If the preflight fired on a
     // startup frame it would be consumed unheard. Because it is deferred to AFTER
     // start resolves, pre-return terminal chatter cannot consume it.

@@ -12,7 +12,7 @@ Positional text and piped stdin are combined with one blank line.
 
 Examples:
   elwood "Summarize this repository"
-  git diff | elwood --agent claude "Review this diff for correctness"
+  git diff | elwood "Review this diff for correctness"
   elwood run --output json < prompt.txt
   elwood --keep --output json "Remember this decision"
 
@@ -22,7 +22,7 @@ Commands:
   help                        Show this help
 
 Agent and turn options:
-  --agent <codex|claude>      Select the agent (default: codex)
+  --agent <claude|codex>      Select the agent (default: first available of claude, codex)
   --model <id>                Select or switch the model
   --reasoning-effort <level>  Claude: low|medium|high|xhigh|max
                               Codex: none|minimal|low|medium|high|xhigh|max

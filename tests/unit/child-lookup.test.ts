@@ -11,6 +11,7 @@ import {
   type ChildLookupDiagnostic,
   childPids,
   classifyChildLookup,
+  pgrepExecutable,
   setChildLookupReporter,
 } from "../../src/app/child-lookup.ts";
 
@@ -49,17 +50,22 @@ describe("C-APP-08 child-process lookup classification", () => {
   });
 
   test("childPids returns [] and surfaces NO diagnostic for the normal no-matches case", () => {
-    // A real spawnSync against a bogus pid exits with status 1 (no matches) — the
-    // common leaf case. childPids must return [] and NOT invoke the reporter, so only
-    // true operational failures reach the debugger.
+    // pgrep exits 1 with no matches — the common leaf case. childPids must return []
+    // and NOT invoke the reporter, so only true operational failures reach the debugger.
     const seen: ChildLookupDiagnostic[] = [];
     const restore = setChildLookupReporter((d) => seen.push(d));
     try {
-      expect(childPids(999_999_999)).toEqual([]);
+      expect(childPids(999_999_999, () => ({ signal: null, status: 1, stdout: "" }))).toEqual([]);
       expect(seen).toEqual([]); // status 1 is normal: no diagnostic surfaced
     } finally {
       restore();
     }
+  });
+
+  test("pgrep resolves to the system binary when present, else PATH lookup", () => {
+    expect(pgrepExecutable(() => true)).toBe("/usr/bin/pgrep");
+    expect(pgrepExecutable(() => false)).toBe("pgrep");
+    expect(pgrepExecutable()).toMatch(/pgrep$/); // the real existence check
   });
 
   test("childPids surfaces an OPERATIONAL failure through the reporter, then returns []", () => {

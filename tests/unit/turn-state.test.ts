@@ -182,7 +182,7 @@ describe("C-TURN-04 interrupt end banners", () => {
     // A permission dialog's `❯ 1. Yes` caret is byte-identical to the composer marker,
     // so it reads as composer-visible. Without evidence it must NOT release replay
     // settling (it is not a quiet composer): releasing on the dialog would let the
-    // next replayed working flash fire a phantom `started` (Coal Harbor item 2).
+    // next replayed working flash fire a phantom `started`.
     const claudePermission = "Do you want to create x?\n ❯ 1. Yes\n   3. No\n Esc to cancel";
     const watcher = new TurnStateWatcher();
     watcher.arm(true); // resume: settling

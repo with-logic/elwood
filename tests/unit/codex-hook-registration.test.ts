@@ -4,8 +4,8 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { registerInitialHooks } from "../../src/codex/session-hooks.ts";
-import type { CodexEventMap } from "../../src/codex/session-types.ts";
+import { registerInitialHooks } from "../../src/codex/session/hooks.ts";
+import type { CodexEventMap } from "../../src/codex/session/types.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 
 describe("Codex hook registration", () => {
@@ -26,6 +26,26 @@ describe("Codex hook registration", () => {
     await expect(
       emitter.request("hook:PreToolUse", { hook_event_name: "PreToolUse" } as never),
     ).resolves.toMatchObject({ additionalContext: "unknown tool" });
+  });
+
+  test("C-HRESP-01 a known command tool never falls back to the `unknown` handler", async () => {
+    // `unknown` is typed for `mcp__*` / `unknown:*` events only; a Bash event with no
+    // Bash handler resolves to no decision rather than being routed into it (§7A.2).
+    const emitter = new TypedEmitter<CodexEventMap>();
+    const seen: string[] = [];
+    registerInitialHooks(emitter, {
+      PreToolUse: {
+        unknown: (event) => {
+          seen.push(event.tool_name);
+          return { additionalContext: "unknown tool" };
+        },
+      },
+    });
+    await expect(emitter.request("hook:PreToolUse", bashEvent())).resolves.toBeUndefined();
+    await expect(emitter.request("hook:PreToolUse", unknownEvent())).resolves.toMatchObject({
+      additionalContext: "unknown tool",
+    });
+    expect(seen).toEqual(["unknown:web_search"]);
   });
 
   test("C-HRESP-01 unmatched tools without a fallback handler resolve to undefined", async () => {

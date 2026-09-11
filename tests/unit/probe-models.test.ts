@@ -5,8 +5,8 @@
 
 import { describe, expect, test } from "vitest";
 import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
-import { type ListModelsOptions, probeModels } from "../../src/core/list-models.ts";
-import type { AgentModelOption } from "../../src/core/model-rows.ts";
+import { type ListModelsOptions, probeModels } from "../../src/core/models/list.ts";
+import type { AgentModelOption } from "../../src/core/models/rows.ts";
 
 const opts: ListModelsOptions = { cwd: "/tmp/x" };
 const rows: readonly AgentModelOption[] = [

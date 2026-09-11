@@ -1,12 +1,14 @@
-/** Effective request validation branches. Covers PRD C-CLI-03/C-CLI-06/C-CLI-14. */
+/** Effective request validation branches. Covers PRD C-CLI-03/C-CLI-06/C-CLI-14/C-CLI-21. */
 
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { parseCliArgs } from "../../src/cli/args.ts";
-import { resolveRunRequest } from "../../src/cli/request.ts";
+import { parseCliArgs } from "../../src/cli/args/index.ts";
+import { autoDetectedSource } from "../../src/cli/request/agent-detect.ts";
+import { resolveRunRequest } from "../../src/cli/request/index.ts";
 import type { ParsedRunCommand, RequestContext } from "../../src/cli/types.ts";
+import { detectCodex } from "./agent-fakes.ts";
 
 async function* emptyStdin(...values: readonly string[]) {
   await Promise.resolve();
@@ -27,7 +29,7 @@ function run(argv: readonly string[]): ParsedRunCommand {
   return parsed;
 }
 describe("effective request edges", () => {
-  test("resolves all Codex flags and defaults", async () => {
+  test("C-CLI-06/C-CLI-21 resolves all Codex flags and defaults for an auto-detected Codex", async () => {
     const root = sandbox();
     await expect(
       resolveRunRequest(
@@ -54,9 +56,11 @@ describe("effective request edges", () => {
           "go",
         ]),
         context(root),
+        detectCodex,
       ),
     ).resolves.toMatchObject({
       agent: "codex",
+      resolution: { sources: { agent: autoDetectedSource } },
       outputExplicit: true,
       timeoutMs: 1_000,
       trust: false,
@@ -72,7 +76,7 @@ describe("effective request edges", () => {
     });
   });
 
-  test("resolves Claude config and environment precedence", async () => {
+  test("C-CLI-14 resolves Claude config and environment precedence", async () => {
     const root = sandbox();
     const path = join(root, "config.json");
     writeFileSync(
@@ -114,7 +118,7 @@ describe("effective request edges", () => {
     });
   });
 
-  test("applies Claude's default non-interactive permission mode", async () => {
+  test("C-CLI-06 applies Claude's default non-interactive permission mode", async () => {
     await expect(
       resolveRunRequest(run(["--agent", "claude", "go"]), context(sandbox())),
     ).resolves.toMatchObject({ permissionMode: "dontAsk" });
@@ -135,17 +139,19 @@ describe("effective request edges", () => {
     [["--model", " ", "go"], /model/iu],
     [["--resume", " ", "go"], /resume/iu],
     [["--resume", "s", "--cwd", ".", "go"], /--cwd cannot be used with --resume/iu],
-  ])("rejects incompatible invocation %#", async (argv, message) => {
-    await expect(resolveRunRequest(run(argv), context(sandbox()))).rejects.toThrow(message);
+  ])("C-CLI-20 rejects incompatible invocation %#", async (argv, message) => {
+    await expect(resolveRunRequest(run(argv), context(sandbox()), detectCodex)).rejects.toThrow(
+      message,
+    );
   });
 
-  test("rejects debug head mode alongside the other unsupported combinations", async () => {
+  test("C-CLI-18 rejects debug head mode alongside the other unsupported combinations", async () => {
     await expect(
-      resolveRunRequest(run(["--head", "--debug", "go"]), context(sandbox())),
+      resolveRunRequest(run(["--head", "--debug", "go"]), context(sandbox()), detectCodex),
     ).rejects.toThrow(/--head cannot be combined with --debug/iu);
   });
 
-  test("rejects agent-specific environment for the selected adapter", async () => {
+  test("C-CLI-06/C-CLI-20 rejects agent-specific environment for the selected adapter", async () => {
     const root = sandbox();
     await expect(
       resolveRunRequest(

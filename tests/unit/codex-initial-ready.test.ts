@@ -3,8 +3,13 @@
  * Covers PRD §5.3, C-API-19, and C-API-28.
  */
 
-import { describe, expect, test } from "vitest";
-import { initialReady, markReadyOnResumeComposer } from "../../src/codex/initial-ready.ts";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import {
+  initialReady,
+  markReadyOnResumeComposer,
+} from "../../src/runtime/readiness/initial-ready.ts";
+
+afterEach(() => vi.useRealTimers());
 
 describe("initialReady", () => {
   test("C-API-28 mark fires readiness once and replays after a session is attached", () => {
@@ -18,31 +23,34 @@ describe("initialReady", () => {
     expect(calls).toBe(2);
   });
 
-  test("C-API-28 the deadline is the fallback when the readiness hook never arrives", async () => {
+  test("C-API-28 the deadline is the fallback when the readiness hook never arrives", () => {
+    vi.useFakeTimers();
     let calls = 0;
     const ready = initialReady(() => calls++, 20);
     ready.armDeadline();
     ready.armDeadline();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    vi.advanceTimersByTime(50);
     expect(calls).toBe(1);
   });
 
-  test("C-API-28 a real SessionStart wins over the pending deadline", async () => {
+  test("C-API-28 a real SessionStart wins over the pending deadline", () => {
+    vi.useFakeTimers();
     let calls = 0;
     const ready = initialReady(() => calls++, 100);
     ready.armDeadline();
     ready.mark();
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    vi.advanceTimersByTime(150);
     // mark fired once; the later deadline is a no-op because readiness latched.
     expect(calls).toBe(1);
   });
 
-  test("C-API-28 cancel clears the pending starvation deadline", async () => {
+  test("C-API-28 cancel clears the pending starvation deadline", () => {
+    vi.useFakeTimers();
     let calls = 0;
     const ready = initialReady(() => calls++, 20);
     ready.armDeadline();
     ready.cancel();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    vi.advanceTimersByTime(50);
     expect(calls).toBe(0);
   });
 
@@ -84,12 +92,13 @@ describe("initialReady", () => {
     expect(calls).toBe(0);
   });
 
-  test("C-API-28 a resume-composer readiness wins over the pending deadline", async () => {
+  test("C-API-28 a resume-composer readiness wins over the pending deadline", () => {
+    vi.useFakeTimers();
     let calls = 0;
     const ready = initialReady(() => calls++, 100);
     ready.armDeadline();
     markReadyOnResumeComposer(ready, true, facts(true));
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    vi.advanceTimersByTime(150);
     expect(calls).toBe(1); // fired once on the composer; the later deadline is a no-op
   });
 

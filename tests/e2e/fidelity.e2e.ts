@@ -4,17 +4,7 @@
  */
 
 import assert from "node:assert/strict";
-import {
-  chmodSync,
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import {
@@ -23,12 +13,19 @@ import {
   startClaude,
   startCodex,
 } from "../../src/index.ts";
-import { cleanup, makeProject, observeSession, skipReason, waitFor } from "./helpers.ts";
-
-const codexAuthPath = join(homedir(), ".codex", "auth.json");
+import {
+  cleanup,
+  codexAuthMissing,
+  makeProject,
+  observeSession,
+  sandboxedCodexHome,
+  skipIf,
+  skipReason,
+  waitFor,
+} from "./helpers.ts";
 
 test("C-E2E-06 project settings hooks and CLAUDE.md load alongside the Elwood bridge", {
-  skip: skipReason("claude"),
+  skip: skipIf(skipReason("claude")),
   timeout: 120_000,
 }, async () => {
   const project = makeProject("claude");
@@ -90,21 +87,15 @@ test("C-E2E-06 project settings hooks and CLAUDE.md load alongside the Elwood br
 });
 
 test("C-E2E-06 user Codex config.toml hooks fire alongside the Elwood bridge", {
-  skip:
-    skipReason("codex") ??
-    (existsSync(codexAuthPath) ? undefined : "no ~/.codex/auth.json for a sandboxed CODEX_HOME"),
+  skip: skipIf(skipReason("codex"), codexAuthMissing()),
   timeout: 180_000,
 }, async () => {
   const project = makeProject("codex");
+  const marker = join(project.cwd, "user-hook-fired");
   // A sandboxed CODEX_HOME with the user's real auth reproduces a logged-in
   // machine whose config.toml defines its own hooks, without touching ~/.codex.
-  const codexHome = join(project.cwd, "codex-home");
-  mkdirSync(codexHome, { recursive: true });
-  copyFileSync(codexAuthPath, join(codexHome, "auth.json"));
-  chmodSync(join(codexHome, "auth.json"), 0o600);
-  const marker = join(project.cwd, "user-hook-fired");
-  writeFileSync(
-    join(codexHome, "config.toml"),
+  const sandbox = sandboxedCodexHome(
+    project,
     [
       "features = { hooks = true }",
       'hookTrust = "trust-all"',
@@ -115,8 +106,6 @@ test("C-E2E-06 user Codex config.toml hooks fire alongside the Elwood bridge", {
       "",
     ].join("\n"),
   );
-  const previousHome = process.env["CODEX_HOME"];
-  process.env["CODEX_HOME"] = codexHome;
   let session: CodexSessionApi | undefined;
   let stops = 0;
   try {
@@ -139,14 +128,12 @@ test("C-E2E-06 user Codex config.toml hooks fire alongside the Elwood bridge", {
     await waitFor(() => (existsSync(marker) ? true : undefined), "user config.toml hook marker");
     assert.equal(observed.hookErrors.length, 0);
     // Elwood must not rewrite the user-owned config it merged with.
-    const configRaw = readFileSync(join(codexHome, "config.toml"), "utf8");
+    const configRaw = readFileSync(sandbox.configPath, "utf8");
     assert.ok(configRaw.includes("user-hook-fired"));
     assert.ok(!configRaw.includes("hook-bridge.mjs"), "bridge hooks stay out of user config");
     observed.dispose();
   } finally {
-    if (previousHome === undefined) delete process.env["CODEX_HOME"];
-    else process.env["CODEX_HOME"] = previousHome;
     await cleanup(session);
-    rmSync(join(codexHome, "auth.json"), { force: true });
+    sandbox.dispose();
   }
 });

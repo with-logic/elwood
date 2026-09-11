@@ -3,7 +3,7 @@
  * Implements PRD §6.4.
  */
 
-import type { ClaudeHookPermissionMode } from "./hook-names.ts";
+import type { ClaudeHookPermissionMode } from "./hooks/names.ts";
 
 export type PermissionRuleBehavior = "allow" | "deny" | "ask";
 export type PermissionUpdateDestination =

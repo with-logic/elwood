@@ -7,8 +7,8 @@
  */
 
 import { describe, expect, test } from "vitest";
-import type { StartupPromptOutcome } from "../../src/core/startup-automation.ts";
-import type { TrustPromptSpec } from "../../src/core/trust-prompts.ts";
+import type { StartupPromptOutcome } from "../../src/core/startup/automation.ts";
+import type { TrustPromptSpec } from "../../src/core/trust/prompts.ts";
 
 const headerPattern = /trust/i;
 const accept = /yes/i;

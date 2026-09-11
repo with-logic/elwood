@@ -3,9 +3,9 @@
  * Implements PRD §4.4, §5.5, and §5.7.
  */
 
-import type { SettledStartupOutcome } from "../core/startup-write.ts";
+import type { SettledStartupOutcome } from "../core/startup/write.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
-import { TrustPromptResponder, type TrustWriteResult } from "../core/trust-responder.ts";
+import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import {
   CodexUpdatePromptTracker,
@@ -16,7 +16,7 @@ import {
 /** A Codex startup outcome paired with its PTY-write completion (§5.4, §5.7). */
 export type SettledCodexStartupOutcome = SettledStartupOutcome<"codex">;
 
-export type CodexStartupPromptResult = {
+type CodexStartupPromptResult = {
   readonly warnings: readonly ElwoodWarningEvent[];
   readonly outcomes: readonly SettledCodexStartupOutcome[];
 };

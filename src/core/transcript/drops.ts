@@ -15,7 +15,7 @@
  * counted across passes, so this is not a persisted aggregate.
  */
 
-import type { DropCause } from "../warning-reasons.ts";
+import type { DropCause } from "../warnings/reasons.ts";
 
 export type { DropCause };
 

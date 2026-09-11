@@ -3,10 +3,13 @@
  * programming errors, and bounded drop diagnostics. Covers PRD §5.4 (C-CLAUDE-15).
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
+import {
+  resetByteReaderForTests,
+  setByteReaderForTests,
+} from "../../src/claude/transcript/cursor.ts";
 import {
   type TranscriptReadErrorNotice as DropsReadErrorNotice,
   ReadErrorReporter,
@@ -17,12 +20,10 @@ import {
   type TranscriptDropNotice,
   type TranscriptReadErrorNotice,
 } from "../../src/claude/transcript/index.ts";
+import { assistant, eisdirError, tmpFile } from "./claude-transcript-helpers.ts";
 
-const assistant = (text: string) => ({
-  type: "assistant",
-  message: { content: [{ type: "text", text }] },
-});
-const tmpFile = () => join(mkdtempSync(join(tmpdir(), "elwood-tx-")), "t.jsonl");
+afterEach(resetByteReaderForTests);
+
 const record = (r: unknown) => `${JSON.stringify(r)}\n`;
 
 describe("C-CLAUDE-15 transcript watcher robustness", () => {
@@ -45,10 +46,11 @@ describe("C-CLAUDE-15 transcript watcher robustness", () => {
   });
 
   test("a filesystem error during scan is contained AND surfaced as a bounded diagnostic", () => {
-    // Replace the file with a directory: reads now throw a rotation-race-like
-    // error that the fs guard must swallow without crashing the timer, while
-    // still surfacing a bounded, content-free read-error notice (path + error code,
-    // never a count).
+    // The path became a directory mid-session (a rotation-race-like error): the
+    // read throws EISDIR, which the fs guard must swallow without crashing the
+    // timer, while still surfacing a bounded, content-free read-error notice
+    // (path + error code, never a count). The reader seam injects the throw so the
+    // test does not depend on the host's directory stat size.
     const path = tmpFile();
     const events: ClaudeTranscriptEvent[] = [];
     const readErrors: TranscriptReadErrorNotice[] = [];
@@ -57,24 +59,30 @@ describe("C-CLAUDE-15 transcript watcher robustness", () => {
     });
     writeFileSync(path, "");
     watcher.observe(path);
-    rmSync(path);
-    mkdirSync(path); // reading a directory throws EISDIR
+    writeFileSync(path, record(assistant("pending"))); // the cursor has work to read
+    setByteReaderForTests(() => {
+      throw eisdirError();
+    });
     expect(() => watcher.scan()).not.toThrow();
     expect(events).toEqual([]);
     watcher.finish();
     // Not silent: a bounded notice carrying the last error code and path (never a count).
     expect(readErrors.at(-1)).toMatchObject({ elwoodSessionId: "s1", path });
-    expect(readErrors.at(-1)!.lastErrorCode).toBeTruthy();
+    expect(readErrors.at(-1)!.lastErrorCode).toBe("EISDIR");
   });
 
   test("a failing baseline read at observe is contained (no crash, no baseline)", () => {
-    // The path is a directory, so the first-observe baseline read throws; observe
-    // must contain it and emit nothing rather than propagate. recoverTail=true so
-    // the baseline path (not just cursor construction) is exercised.
-    const dir = mkdtempSync(join(tmpdir(), "elwood-tx-dir-"));
+    // Every byte read fails (a rotation race at first observe), so the baseline
+    // read throws; observe must contain it and emit nothing rather than propagate.
+    // recoverTail=true so the baseline path (not just cursor construction) runs.
+    const path = tmpFile();
+    writeFileSync(path, `${JSON.stringify(assistant("tail"))}\n`);
+    setByteReaderForTests(() => {
+      throw eisdirError();
+    });
     const events: ClaudeTranscriptEvent[] = [];
     const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
-    expect(() => watcher.observe(dir, true)).not.toThrow();
+    expect(() => watcher.observe(path, true)).not.toThrow();
     expect(events).toEqual([]);
     watcher.stop();
   });

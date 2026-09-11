@@ -5,10 +5,13 @@
 
 import { elwoodError, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
-import { type DistributiveOmit, updateFailedWarning } from "../core/update-warning.ts";
+import { compareVersions, parseVersion } from "../core/versions.ts";
+import { type DistributiveOmit, updateFailedWarning } from "../core/warnings/update.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
-import { cachedAutoupdate, cachedVersionRead } from "../runtime/update-once.ts";
+import { cachedAutoupdate, cachedVersionRead } from "../runtime/update/once.ts";
+
+// Re-exported for existing importers; the implementation lives in core/versions.ts.
 
 export const minimumClaudeVersion = "2.1.144";
 export type ClaudePreflightWarning = DistributiveOmit<
@@ -42,7 +45,7 @@ export async function preflightClaude(
     if (strictVersionCheck) {
       throw elwoodError("claude_version_unsupported", "Could not parse Claude Code version.");
     }
-    return versionWarning("claude", result.stdout);
+    return versionWarning(result.stdout);
   }
   if (compareVersions(version, minimumClaudeVersion) < 0) {
     throw elwoodError(
@@ -91,33 +94,24 @@ async function readClaudeVersion(): Promise<CommandResult> {
   return result;
 }
 
-export function parseVersion(output: string): string | null {
-  const match = /(\d+\.\d+\.\d+)/.exec(output);
-  return match?.[1] ?? null;
-}
-
-export function compareVersions(left: string, right: string): number {
-  const a = left.split(".").map(toVersionPart);
-  const b = right.split(".").map(toVersionPart);
-  for (let index = 0; index < 3; index += 1) {
-    const diff = (a[index] ?? 0) - (b[index] ?? 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
-
-function toVersionPart(part: string): number {
-  const parsed = Number.parseInt(part, 10);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function versionWarning(agent: "claude", output: string): ClaudePreflightWarning {
+function versionWarning(output: string): ClaudePreflightWarning {
   return {
-    agent,
+    agent: "claude",
     source: "lifecycle",
     code: "version_unparseable",
     severity: "warning",
     message: "Could not parse Claude Code version; compatibility was not verified.",
     raw: output,
   };
+}
+
+// `ClaudePreflightWarning` is a DISTRIBUTED union (see DistributiveOmit), so re-attaching
+// `elwoodSessionId` reconstructs each `ElwoodWarningEvent` member arm-by-arm.
+type WithSessionId<W> = W extends unknown ? W & { readonly elwoodSessionId: string } : never;
+
+export function preflightEvent(
+  elwoodSessionId: string,
+  warning: ClaudePreflightWarning,
+): WithSessionId<ClaudePreflightWarning> {
+  return { elwoodSessionId, ...warning };
 }

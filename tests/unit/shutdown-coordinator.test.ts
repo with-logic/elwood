@@ -11,7 +11,7 @@ import { describe, expect, test } from "vitest";
 import {
   type ShutdownContext,
   ShutdownCoordinator,
-} from "../../src/runtime/shutdown-coordinator.ts";
+} from "../../src/runtime/shutdown/coordinator.ts";
 
 const deferred = () => {
   let resolve!: () => void;
@@ -86,7 +86,7 @@ describe("C-LIFE-10 shutdown coordinator", () => {
   });
 
   test("a concurrent escalation does NOT re-signal after the predecessor signaled then threw", async () => {
-    // MAJOR: stop() marks the PTY signaled and then throws before submitting a
+    // stop() marks the PTY signaled and then throws before submitting a
     // terminal status. A concurrent kill() escalation must observe `alreadySignaled`
     // and NOT signal the (possibly recycled) PID again — it may still reap/cleanup.
     const coordinator = new ShutdownCoordinator();
@@ -106,7 +106,7 @@ describe("C-LIFE-10 shutdown coordinator", () => {
   });
 
   test("a settled failure is retryable: a later call runs a fresh op and does not re-signal", async () => {
-    // MAJOR: a failed teardown must not leave every later call joined to the old
+    // A failed teardown must not leave every later call joined to the old
     // rejected promise. Once it settles, a later call runs a FRESH operation that
     // retries reap/cleanup, and — because the PTY was already signaled — never
     // re-signals it.

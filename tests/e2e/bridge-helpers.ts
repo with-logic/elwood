@@ -1,11 +1,49 @@
 /**
- * Shared assertions and payload builders for hook bridge e2e tests.
- * Implements PRD §12.
+ * Direct hook-bridge invocation plus the assertions and payload builders the hook
+ * bridge e2e tests share. Implements PRD §12 and C-E2E-01.
  */
 
-import { parseJsonOutput } from "./helpers.ts";
+import { spawn } from "node:child_process";
+import { join } from "node:path";
+import type { HookErrorEvent } from "../../src/index.ts";
+import type { E2eProject } from "./scratch.ts";
 
 export type JsonObject = Readonly<Record<string, unknown>>;
+
+export async function invokeHookBridge(
+  project: E2eProject,
+  elwoodSessionId: string,
+  input: Readonly<Record<string, unknown>>,
+): Promise<{ readonly status: number | null; readonly stdout: string; readonly stderr: string }> {
+  const bridgePath = join(project.sessionDir(elwoodSessionId), "hook-bridge.mjs");
+  return await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [bridgePath], {
+      env: { ...process.env, ELWOOD_SESSION_ID: elwoodSessionId },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    const timeout = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error("Timed out invoking hook bridge"));
+    }, 15_000);
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("exit", (status) => {
+      clearTimeout(timeout);
+      resolve({ status, stdout, stderr });
+    });
+    child.stdin.end(JSON.stringify(input));
+  });
+}
+
+export function parseJsonOutput<T>(stdout: string): T {
+  return JSON.parse(stdout) as T;
+}
 
 export function assertJson(stdout: string, path: readonly string[], expected: unknown): void {
   let value: unknown = parseJsonOutput<JsonObject>(stdout);
@@ -39,10 +77,6 @@ export function commandFromToolInput(input: unknown): string {
   return typeof command === "string" ? command : "";
 }
 
-export function hasHookError(events: readonly unknown[], hookEventName: string): boolean {
-  return events.some(
-    (event) =>
-      Boolean(event && typeof event === "object") &&
-      (event as { readonly hookEventName?: unknown }).hookEventName === hookEventName,
-  );
+export function hasHookError(events: readonly HookErrorEvent[], hookEventName: string): boolean {
+  return events.some((event) => event.hookEventName === hookEventName);
 }

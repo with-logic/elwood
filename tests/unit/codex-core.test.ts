@@ -3,14 +3,10 @@
  * Covers PRD §4.4, §7A, §9, and §10.
  */
 
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import { buildCodexShellCommand } from "../../src/codex/command.ts";
-import {
-  minimumCodexVersion,
-  parseCodexVersion,
-  preflightCodex,
-} from "../../src/codex/preflight.ts";
-import { serializeCodexHookResult } from "../../src/codex/serialize.ts";
+import { serializeCodexHookResult } from "../../src/codex/hooks/serialize.ts";
+import { minimumCodexVersion, preflightCodex } from "../../src/codex/preflight.ts";
 import { ElwoodError } from "../../src/core/errors.ts";
 import {
   type CommandResult,
@@ -18,9 +14,11 @@ import {
   setCommandRunnerForTests,
   setPlatformForTests,
 } from "../../src/runtime/seams.ts";
-import { resetPreflightCacheForTests } from "../../src/runtime/update-once.ts";
+import { resetPreflightCacheForTests } from "../../src/runtime/update/once.ts";
 import { createSessionRecord } from "../../src/state/store.ts";
 import { tempDirForUnit } from "./helpers.ts";
+
+afterEach(() => resetRuntimeSeamsForTests());
 
 describe("Codex core helpers", () => {
   test("C-CODEX-03 command construction reflects launch policy", () => {
@@ -67,6 +65,19 @@ describe("Codex core helpers", () => {
     ).not.toContain("--dangerously-bypass-hook-trust");
   });
 
+  test("§7A the CLI-side hook timeout carries 5 s of slack past Elwood's fail-open deadline", () => {
+    // Codex starts its clock at hook spawn, before Elwood's own timer starts: an
+    // identical value would let Codex kill the hook just before the fail-open
+    // no-decision response arrives, so the CLI gets ceil(hookTimeoutMs / 1000) + 5.
+    const cwd = tempDirForUnit();
+    const record = createSessionRecord({ cwd, id: "s2", adapter: "codex" });
+    const script = `${cwd}/hook-bridge.mjs`;
+    expect(buildCodexShellCommand(record, script, { cwd })).toContain("timeout=30}"); // 25 s default
+    expect(buildCodexShellCommand(record, script, { cwd, hookTimeoutMs: 1_500 })).toContain(
+      "timeout=7}",
+    );
+  });
+
   test("C-CODEX-04 version parsing and strict failure paths are typed", async () => {
     // Each fresh `--version` output must be re-read, so clear the per-process
     // version cache whenever the fake runner changes output.
@@ -74,7 +85,6 @@ describe("Codex core helpers", () => {
       resetPreflightCacheForTests();
       setCommandRunnerForTests(() => result);
     };
-    expect(parseCodexVersion("codex-cli 0.132.0")).toBe("0.132.0");
     expect(minimumCodexVersion).toBe("0.124.0");
     setPlatformForTests("linux");
     await expect(preflightCodex(false)).rejects.toThrow(ElwoodError);
@@ -106,7 +116,6 @@ describe("Codex core helpers", () => {
     await expect(preflightCodex(true)).resolves.toBeUndefined();
     setVersion({ status: 0, stdout: "0.1.0", stderr: "" });
     await expect(preflightCodex(false)).rejects.toThrow(ElwoodError);
-    resetRuntimeSeamsForTests();
   });
 
   test("C-HRESP-10 serializes Codex hook response variants", () => {

@@ -4,13 +4,18 @@
 
 import { describe, expect, test } from "vitest";
 import { main } from "../../src/cli/main.ts";
-import { resolveRunRequest } from "../../src/cli/request.ts";
+import { resolveRunRequest } from "../../src/cli/request/index.ts";
 import { CliValidationError } from "../../src/cli/types.ts";
 import { elwoodError } from "../../src/core/errors.ts";
+import { detectCodex } from "./agent-fakes.ts";
 import { mainDependencies, mainHarness, resolvedRequest } from "./main-fakes.ts";
 
+/** Real request resolution with a deterministic detector, so no test probes the login shell. */
+const resolveDetected: typeof resolveRunRequest = (parsed, context) =>
+  resolveRunRequest(parsed, context, detectCodex);
+
 describe("CLI main failures", () => {
-  test("C-CLI-18 unknown options are actionable and suggest close matches", async () => {
+  test("C-CLI-20 unknown options are actionable and suggest close matches", async () => {
     const h = mainHarness();
     expect(await main(["--verbsoe"], h.context)).toBe(2);
     expect(h.stdout.value).toBe("");
@@ -19,7 +24,7 @@ describe("CLI main failures", () => {
 
   test("C-CLI-02/C-CLI-17 explicit run with empty terminal input is a usage error", async () => {
     const h = mainHarness();
-    expect(await main(["run"], h.context)).toBe(2);
+    expect(await main(["run"], h.context, mainDependencies({ resolve: resolveDetected }))).toBe(2);
     expect(h.stdout.value).toBe("");
     expect(h.stderr.value).toBe("elwood: A non-empty prompt is required.\n");
   });
@@ -54,7 +59,8 @@ describe("CLI main failures", () => {
 
   test("C-CLI-11 explicit inline JSONL emits one sequenced validation error", async () => {
     const h = mainHarness();
-    expect(await main(["--output=jsonl", "--stream", "go"], h.context)).toBe(2);
+    const deps = mainDependencies({ resolve: resolveDetected });
+    expect(await main(["--output=jsonl", "--stream", "go"], h.context, deps)).toBe(2);
     expect(JSON.parse(h.stdout.value)).toMatchObject({
       schemaVersion: 1,
       sequence: 1,
@@ -63,7 +69,7 @@ describe("CLI main failures", () => {
     });
   });
 
-  test("invalid or post-double-dash output selections retain text diagnostics", async () => {
+  test("C-CLI-02/C-CLI-11 invalid or post-double-dash output selections retain text diagnostics", async () => {
     for (const args of [
       ["--output", "yaml", "go"],
       ["--unknown", "--", "--output", "json"],
@@ -71,7 +77,7 @@ describe("CLI main failures", () => {
       ["config", "unknown", "--output", "json"],
     ]) {
       const h = mainHarness();
-      expect(await main(args, h.context)).toBe(2);
+      expect(await main(args, h.context, mainDependencies({ resolve: resolveDetected }))).toBe(2);
       expect(h.stdout.value).toBe("");
       expect(h.stderr.value).toContain("elwood:");
     }
@@ -95,7 +101,7 @@ describe("CLI main failures", () => {
     expect(h.stderr.value).toBe("elwood: Workspace 'bad\\npath' does not exist.\n");
   });
 
-  test("resolved output handles typed and unknown startup failures", async () => {
+  test("C-CLI-11/C-CLI-17 resolved output handles typed and unknown startup failures", async () => {
     const typed = mainHarness();
     expect(
       await main(
@@ -123,7 +129,7 @@ describe("CLI main failures", () => {
     expect(JSON.parse(unknown.stdout.value).error.code).toBe("runtime_error");
   });
 
-  test("error rendering failures are contained and negative durations clamp", async () => {
+  test("C-CLI-12 error rendering failures are contained and negative durations clamp", async () => {
     const h = mainHarness();
     h.stderr.write = (_value, callback) => {
       callback(new Error("closed"));
@@ -134,7 +140,7 @@ describe("CLI main failures", () => {
       await main(
         ["run"],
         h.context,
-        mainDependencies({ resolve: resolveRunRequest, now: () => times.shift() ?? 5 }),
+        mainDependencies({ resolve: resolveDetected, now: () => times.shift() ?? 5 }),
       ),
     ).toBe(2);
     expect(h.stdout.value).toBe("");

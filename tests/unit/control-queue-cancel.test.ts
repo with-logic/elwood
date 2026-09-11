@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { type ControlDispatchNotification, ControlQueue } from "../../src/core/control-queue.ts";
+import { ControlQueue } from "../../src/core/control-queue/index.ts";
 
 const loopOrigin = { kind: "loop", loopId: "loop-1" } as const;
 
@@ -27,7 +27,6 @@ describe("ControlQueue cancellation and attribution", () => {
 
   test("C-LOOP-17 cancels a readiness-waiting loop message without dispatch", async () => {
     const submitted: string[] = [];
-    const notifications: ControlDispatchNotification[] = [];
     const cancel = new AbortController();
     const queue = new ControlQueue(
       (input) => {
@@ -36,8 +35,6 @@ describe("ControlQueue cancellation and attribution", () => {
       },
       () => new Error("closed"),
       () => undefined,
-      undefined,
-      (notification) => notifications.push(notification),
     );
     const pending = queue.send("scheduled", "message", undefined, {
       cancel: { signal: cancel.signal, error: () => new Error("cancelled") },
@@ -47,13 +44,9 @@ describe("ControlQueue cancellation and attribution", () => {
     await expect(pending).rejects.toThrow("cancelled");
     queue.markReady();
     expect(submitted).toEqual([]);
-    expect(notifications).toEqual([
-      { kind: "cancelled", operationKind: "message", origin: loopOrigin },
-    ]);
   });
 
   test("C-LOOP-17 cancels an in-flight loop message before commit", async () => {
-    const notifications: ControlDispatchNotification[] = [];
     const turns: string[] = [];
     const cancel = new AbortController();
     const queue = new ControlQueue(
@@ -63,8 +56,6 @@ describe("ControlQueue cancellation and attribution", () => {
         }),
       () => new Error("closed"),
       (origin) => turns.push(origin.kind),
-      undefined,
-      (notification) => notifications.push(notification),
     );
     queue.markReady();
     const pending = queue.send("scheduled", "message", undefined, {
@@ -74,10 +65,7 @@ describe("ControlQueue cancellation and attribution", () => {
     expect(turns).toEqual([]);
     cancel.abort();
     await expect(pending).rejects.toThrow("cancelled");
-    expect(turns).toEqual([]);
-    expect(notifications).toEqual([
-      { kind: "cancelled", operationKind: "message", origin: loopOrigin },
-    ]);
+    expect(turns).toEqual([]); // no loop turn evidence for a write that never committed
   });
 
   test("C-LOOP-09 commits loop turn evidence only after Enter settles", async () => {
@@ -87,15 +75,13 @@ describe("ControlQueue cancellation and attribution", () => {
       () => new Promise<void>((resolve) => (release = resolve)),
       () => new Error("closed"),
       (origin) => events.push(`turn:${origin.kind}`),
-      undefined,
-      (notification) => events.push(`notify:${notification.kind}`),
     );
     queue.markReady();
     const pending = queue.send("scheduled", "message", undefined, { origin: loopOrigin });
     expect(events).toEqual([]);
     release();
     await pending;
-    expect(events).toEqual(["turn:loop", "notify:committed"]);
+    expect(events).toEqual(["turn:loop"]);
   });
 
   test("C-LOOP-06 caller turn timing stays eager and post-commit cancel is a no-op", async () => {
@@ -106,8 +92,6 @@ describe("ControlQueue cancellation and attribution", () => {
       () => new Promise<void>((resolve) => (release = resolve)),
       () => new Error("closed"),
       (origin) => events.push(`turn:${origin.kind}`),
-      undefined,
-      (notification) => events.push(`notify:${notification.kind}`),
     );
     queue.markReady();
     const pending = queue.send("caller", "message", undefined, {
@@ -116,8 +100,12 @@ describe("ControlQueue cancellation and attribution", () => {
     expect(events).toEqual(["turn:caller"]);
     release();
     await pending;
-    cancel.abort();
-    expect(events).toEqual(["turn:caller", "notify:committed"]);
+    cancel.abort(); // the op already committed: nothing to drop, nothing rejected
+    queue.markReady(); // the finished turn re-arms readiness, so the queue keeps draining
+    const next = queue.send("next", "message");
+    release(); // the second write's own resolver (re-captured by the submitter)
+    await expect(next).resolves.toBeUndefined();
+    expect(events).toEqual(["turn:caller", "turn:caller"]);
   });
 
   test("a cancelled non-bypassing op does not corrupt guidance bypass accounting", async () => {
@@ -146,26 +134,16 @@ describe("ControlQueue cancellation and attribution", () => {
     await expect(held).rejects.toThrow("closed");
   });
 
-  test("failure notification carries origin and throwing observers stay contained", async () => {
-    const notifications: ControlDispatchNotification[] = [];
+  test("a failed write rejects only its own send and the queue keeps draining", async () => {
     const queue = new ControlQueue(
       (input) => (input === "bad" ? Promise.reject(new Error("write failed")) : Promise.resolve()),
       () => new Error("closed"),
       () => undefined,
-      undefined,
-      (notification) => {
-        notifications.push(notification);
-        throw new Error("observer failed");
-      },
     );
     queue.markReady();
     await expect(queue.send("bad", "message", undefined, { origin: loopOrigin })).rejects.toThrow(
       "write failed",
     );
     await expect(queue.send("next", "message")).resolves.toBeUndefined();
-    expect(notifications.map(({ kind, origin }) => [kind, origin.kind])).toEqual([
-      ["failed", "loop"],
-      ["committed", "caller"],
-    ]);
   });
 });

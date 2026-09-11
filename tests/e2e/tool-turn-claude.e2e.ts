@@ -17,17 +17,16 @@ import {
   makeProject,
   observeSession,
   pathRemoved,
+  skipIf,
   skipReason,
-  turnsEnabled,
+  skipTurns,
   waitFor,
 } from "./helpers.ts";
-
-const skipTurnsReason = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
 
 type ToolSeen = { readonly name: string; readonly input: unknown; readonly response?: unknown };
 
 test("C-E2E-02 real Claude turn queues early messages and hooks real tools", {
-  skip: skipReason("claude") ?? skipTurnsReason,
+  skip: skipIf(skipReason("claude"), skipTurns),
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("claude");
@@ -94,8 +93,7 @@ test("C-E2E-02 real Claude turn queues early messages and hooks real tools", {
     // fields come from the ASYNC transcript watcher, which ingests after the
     // PostToolUse hook fires, so wait for the transcript-sourced activity rather
     // than asserting synchronously on a hook that has only just been observed.
-    const acts = () =>
-      observed.activities as readonly { toolInput?: string; toolOutput?: string }[];
+    const acts = () => observed.activities;
     await waitFor(
       () => (acts().some((a) => typeof a.toolInput === "string") ? true : undefined),
       "activity carries toolInput",

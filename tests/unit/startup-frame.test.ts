@@ -5,7 +5,7 @@
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { createStartupWarningGate, deliverFrameWarnings } from "../../src/core/startup-frame.ts";
+import { createStartupWarningGate, deliverFrameWarnings } from "../../src/core/startup/frame.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
 
 // A COMPLETE, legitimate public warning variant; the per-instance identity travels in a

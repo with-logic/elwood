@@ -5,7 +5,7 @@
  */
 
 import type { ScreenFactTable } from "../core/screen-facts.ts";
-import { withTrustBlockingRules } from "../core/trust-blocking.ts";
+import { withTrustBlockingRules } from "../core/trust/blocking.ts";
 import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
 
 /**

@@ -3,9 +3,14 @@
  * Implements PRD §6.4 future-tool compatibility.
  */
 
-import type { ClaudeHookEvent } from "./hooks.ts";
+import type { ClaudeHookEvent } from "./hooks/index.ts";
+import type { KnownClaudeToolName } from "./hooks/tool-types.ts";
 
-const knownToolNames = new Set([
+// Compile-coupled to the public union in BOTH directions: `satisfies` rejects a name
+// outside the union, and `AssertEqual` fails if the union gains a member the list
+// lacks — so a newly typed tool can't be demoted to `unknown:` at runtime.
+type AssertEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+const knownToolNameList = [
   "Agent",
   "AskUserQuestion",
   "Bash",
@@ -48,7 +53,11 @@ const knownToolNames = new Set([
   "WebFetch",
   "WebSearch",
   "Write",
-]);
+] as const satisfies readonly KnownClaudeToolName[];
+const _knownToolNamesCoupled: AssertEqual<(typeof knownToolNameList)[number], KnownClaudeToolName> =
+  true;
+void _knownToolNamesCoupled;
+const knownToolNames: ReadonlySet<string> = new Set(knownToolNameList);
 
 export function normalizeClaudeHookEvent(input: unknown): ClaudeHookEvent {
   const event = input as ClaudeHookEvent;

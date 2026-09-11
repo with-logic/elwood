@@ -3,29 +3,11 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { executeRun } from "../../src/cli/run.ts";
+import { executeRun } from "../../src/cli/run/index.ts";
 import { AsyncOutputSink } from "../../src/cli/stream.ts";
-import type { EffectiveRunRequest } from "../../src/cli/types.ts";
 import { registerPrivateOutputSecrets } from "../../src/core/private-output-secrets.ts";
+import { effectiveRequest as request } from "./main-fakes.ts";
 import { FakeCliSession, FakeClock, FakeSignals, MemoryWriter } from "./run-fakes.ts";
-
-const request = (overrides: Partial<EffectiveRunRequest> = {}): EffectiveRunRequest => ({
-  agent: "codex",
-  output: "text",
-  outputExplicit: false,
-  trust: true,
-  stateDir: "/state",
-  verbose: false,
-  stream: false,
-  cwd: "/work",
-  images: [],
-  prompt: "go",
-  keep: false,
-  ephemeral: false,
-  sandbox: "workspace-write",
-  approvalPolicy: "never",
-  ...overrides,
-});
 
 function io(stdout = new MemoryWriter(), stderr = new MemoryWriter()) {
   return {
@@ -112,7 +94,7 @@ describe("executeRun failure boundaries", () => {
     expect(session.teardowns).toBe(1);
   });
 
-  test("progress output failure becomes the terminal primary error", async () => {
+  test("C-CLI-09/C-CLI-12 progress output failure becomes the terminal primary error", async () => {
     for (const output of ["json", "jsonl"] as const) {
       const session = new FakeCliSession();
       session.streamWork = (current) => {
@@ -136,7 +118,7 @@ describe("executeRun failure boundaries", () => {
     }
   });
 
-  test("delayed completion diagnostic failure changes JSON and JSONL terminal records", async () => {
+  test("C-CLI-09/C-CLI-11 delayed completion diagnostic failure changes JSON and JSONL terminal records", async () => {
     for (const output of ["json", "jsonl"] as const) {
       const session = new FakeCliSession();
       const streams = io();
@@ -153,7 +135,7 @@ describe("executeRun failure boundaries", () => {
     }
   });
 
-  test("warnings emitted during cleanup are flushed before the terminal record", async () => {
+  test("C-CLI-11 warnings emitted during cleanup are flushed before the terminal record", async () => {
     const session = new FakeCliSession();
     session.cleanupWork = (current) => {
       current.emitter.emit("warning", {
@@ -180,7 +162,7 @@ describe("executeRun failure boundaries", () => {
     ).toEqual(["text", "warning", "result"]);
   });
 
-  test("terminal output failure is contained after cleanup", async () => {
+  test("C-CLI-09/C-CLI-12 terminal output failure is contained after cleanup", async () => {
     const session = new FakeCliSession();
     const stdout = new MemoryWriter();
     stdout.write = (_value, callback) => {

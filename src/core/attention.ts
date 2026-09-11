@@ -4,7 +4,7 @@
  * Implements PRD §5.3 blocked status (C-ATTN-01 through C-ATTN-03).
  */
 
-import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity.ts";
+import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity/index.ts";
 import type { ScreenFactReading } from "./screen-facts.ts";
 
 export type AttentionEdge = {

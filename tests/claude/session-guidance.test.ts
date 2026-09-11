@@ -95,7 +95,8 @@ describe("ClaudeSessionApi guidance", () => {
     const guidance = session.sendGuidance("intervene");
     // Blocked holds the whole submission: not even the paste is written while the
     // dialog is up (writes stays empty, proving the paste itself is held).
-    await expect.poll(() => ptys[0]!.writes.length, { timeout: 300 }).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(ptys[0]!.writes).toEqual([]);
     // The dialog clears; the held guidance now pastes AND submits, in that order.
     ptys[0]!.emitData("[2J[H❯ \r\n  ready again\r\n");
     await guidance;

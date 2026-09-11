@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { ControlQueue, controlOperationTraits } from "../../src/core/control-queue.ts";
+import { ControlQueue, controlOperationTraits } from "../../src/core/control-queue/index.ts";
 
 describe("control-queue traits", () => {
   test("C-API-19 traits table pins per-operation readiness semantics", () => {

@@ -4,11 +4,10 @@
  */
 
 import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, expect, test, vi } from "vitest";
-import { coordinatedAutoupdate, updateLockPath } from "../../src/runtime/update-lock.ts";
+import { coordinatedAutoupdate, updateLockPath } from "../../src/runtime/update/lock.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 const races = vi.hoisted(() => ({
   claimUntilRelease: false,
@@ -86,18 +85,18 @@ beforeEach(() => {
 });
 
 test("a delayed claimant observes a peer completion and skips its duplicate", async () => {
-  const root = await sandbox("completion");
+  const root = sandbox("completion");
   const attempts: string[] = [];
   races.claimUntilRelease = true;
   const delayed = run(root, () => attempts.push("delayed"));
-  while (!races.claimDelayStarted) await new Promise((resolve) => setImmediate(resolve));
+  await until(() => races.claimDelayStarted, "the delayed claim never started");
   const winner = run(root, () => attempts.push("winner"));
   await Promise.all([delayed, winner]);
   expect(attempts).toEqual(["winner"]);
 });
 
 test("a recovery marker appearing after claim prevents the updater from starting", async () => {
-  const root = await sandbox("post-claim-recovery");
+  const root = sandbox("post-claim-recovery");
   races.createRecoveryAfterOwner = true;
   let attempts = 0;
   await run(root, () => {
@@ -107,7 +106,7 @@ test("a recovery marker appearing after claim prevents the updater from starting
 });
 
 test("a generation changed during stale recovery fails safe", async () => {
-  const root = await sandbox("moved-generation");
+  const root = sandbox("moved-generation");
   staleDeadLease(root);
   races.mutateMovedOwner = true;
   let ran = false;
@@ -118,7 +117,7 @@ test("a generation changed during stale recovery fails safe", async () => {
 });
 
 test("contended stale recovery waits for the active cleaner", async () => {
-  const root = await sandbox("contended-recovery");
+  const root = sandbox("contended-recovery");
   staleDeadLease(root);
   races.contendedRename = true;
   let ran = false;
@@ -139,12 +138,21 @@ function run(root: string, update: () => void): Promise<void> {
   );
 }
 
-async function waitForOwnerRelease(): Promise<void> {
-  while (!races.ownerReleased) await new Promise((resolve) => setImmediate(resolve));
+function waitForOwnerRelease(): Promise<void> {
+  return until(() => races.ownerReleased, "the owner never released its lease");
 }
 
-function sandbox(label: string): Promise<string> {
-  return mkdtemp(join(tmpdir(), `elwood-update-lock-${label}-`));
+/** Poll `condition` on the macrotask queue; throw (never hang) past the deadline. */
+async function until(condition: () => boolean, failure: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error(failure);
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+function sandbox(label: string): string {
+  return tempDir(`elwood-update-lock-${label}-`);
 }
 
 function staleDeadLease(root: string): void {

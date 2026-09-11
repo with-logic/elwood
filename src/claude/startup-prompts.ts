@@ -5,12 +5,11 @@
  * C-CLAUDE-14, and C-CLAUDE-16.
  */
 
-import type { SettledStartupOutcome } from "../core/startup-write.ts";
-import { TrustPromptResponder, type TrustWriteResult } from "../core/trust-responder.ts";
+import type { SettledStartupOutcome } from "../core/startup/write.ts";
+import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 
-// The prompt's documented decline keystroke (ESC); built from its code point so
-// the raw control byte never appears literally in source.
-const declineKey = String.fromCharCode(0x1b);
+// The prompt's documented decline keystroke (ESC).
+const declineKey = "\u001b";
 
 export class ClaudeStartupPromptResponder {
   private readonly trust: TrustPromptResponder<"claude">;

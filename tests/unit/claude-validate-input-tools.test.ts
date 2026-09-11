@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { isClaudeHookInput as isClaudeHookEvent } from "../../src/claude/validate-input.ts";
+import { isClaudeHookInput as isClaudeHookEvent } from "../../src/claude/validate/input.ts";
 import { base, denied, response, tool } from "./claude-validate-input-helpers.ts";
 
 describe("Claude hook input validation (tools)", () => {

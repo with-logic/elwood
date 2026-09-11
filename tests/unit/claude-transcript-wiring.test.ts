@@ -3,33 +3,18 @@
  * Covers PRD §5.4 (C-CLAUDE-15): both transcript paths observed; drops surfaced.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { describe, expect, test } from "vitest";
+import { writeFileSync } from "node:fs";
+import { afterEach, describe, expect, test } from "vitest";
+import { createTranscriptWatcher, type WarningSink } from "../../src/claude/session/transcript.ts";
 import {
-  createTranscriptWatcher,
-  type TranscriptActivityEmitter,
-  type WarningSink,
-} from "../../src/claude/session-transcript.ts";
-import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
+  resetByteReaderForTests,
+  setByteReaderForTests,
+} from "../../src/claude/transcript/cursor.ts";
+import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
+import { assistant, eisdirError, fakeEmitter, tmpFile } from "./claude-transcript-helpers.ts";
 
-/** A typed activity-emitter fake that records the events it receives. */
-function fakeEmitter(
-  sink: (event: ElwoodActivityEvent) => void = () => {},
-): TranscriptActivityEmitter {
-  return { emit: (_event, payload) => sink(payload) };
-}
-
-const assistant = (text: string) => ({
-  type: "assistant",
-  message: { content: [{ type: "text", text }] },
-});
-
-function tmpFile(): string {
-  return join(mkdtempSync(join(tmpdir(), "elwood-tx-")), "t.jsonl");
-}
+afterEach(resetByteReaderForTests);
 
 describe("C-CLAUDE-15 transcript session wiring", () => {
   test("a LONE drop buffered before the sink exists is flushed by flushPendingWarnings", () => {
@@ -139,14 +124,16 @@ describe("C-CLAUDE-15 transcript session wiring", () => {
     const path = tmpFile();
     writeFileSync(path, "");
     watcher.observe(path);
-    rmSync(path);
-    mkdirSync(path); // reads now throw EISDIR: contained and surfaced, not silent
-    watcher.scan();
+    writeFileSync(path, `${JSON.stringify(assistant("pending"))}\n`); // pending work
+    setByteReaderForTests(() => {
+      throw eisdirError(); // the read fails as if the path became a directory
+    });
+    watcher.scan(); // contained and surfaced, not silent
     watcher.finish();
     expect(recorded.at(-1)).toMatchObject({
       code: "transcript_read_error",
       agent: "claude",
-      lastErrorCode: expect.any(String),
+      lastErrorCode: "EISDIR",
       transcriptPath: path,
     });
   });

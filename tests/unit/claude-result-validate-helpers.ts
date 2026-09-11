@@ -3,8 +3,8 @@
  * Supports PRD §6.4, C-HOOK-06, C-HOOK-09, and C-HRESP-01 coverage.
  */
 
-import type { ClaudeToolInputByName } from "../../src/claude/tool-types.ts";
-import { isClaudeHookResult } from "../../src/claude/validate-result.ts";
+import type { ClaudeToolInputByName } from "../../src/claude/hooks/tool-types.ts";
+import { isClaudeHookResult } from "../../src/claude/validate/result.ts";
 
 export function updateFor(
   tool: ClaudeToolInputByName,

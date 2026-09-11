@@ -18,7 +18,7 @@ const state = {
   onSet: undefined as (() => void) | undefined,
 };
 
-vi.mock("../../src/codex/clipboard.ts", () => ({
+vi.mock("../../src/codex/images/clipboard.ts", () => ({
   clipboardImageSupported: () => state.supported,
   snapshotClipboardText: () => {
     if (state.snapshotThrows) return Promise.reject(new Error("no clipboard"));
@@ -35,7 +35,7 @@ vi.mock("../../src/codex/clipboard.ts", () => ({
   },
 }));
 
-const { attachCodexImages } = await import("../../src/codex/attach-images.ts");
+const { attachCodexImages } = await import("../../src/codex/images/attach.ts");
 const CTRL_V = String.fromCharCode(22);
 
 beforeEach(() => {

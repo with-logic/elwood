@@ -15,10 +15,10 @@ import type {
   StartClaudeOptions,
   Unsubscribe,
 } from "../core/types.ts";
-import type { ClaudeHookEventFor } from "./hook-events.ts";
+import type { ClaudeHookEventFor } from "./hooks/events.ts";
 import type { ClaudeLoginOptions } from "./login/types.ts";
-import { startClaude } from "./session.ts";
-import type { ClaudeSessionApi } from "./session-interface.ts";
+import { startClaude } from "./session/index.ts";
+import type { ClaudeSessionApi } from "./session/interface.ts";
 
 // Compile-time TURN-CAPABILITY guard: the completeness oracle reads the `Stop` hook's
 // `last_assistant_message`, so the REAL Claude `Stop` payload must carry the oracle's required

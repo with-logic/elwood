@@ -2,10 +2,10 @@
  * Typed fake sessions, signals, clocks, and streams for headless CLI lifecycle tests.
  */
 
-import type { CliLifecycleClock, CliSignalSource } from "../../src/cli/lifecycle.ts";
-import type { CliSessionFacade } from "../../src/cli/session.ts";
+import type { CliLifecycleClock, CliSignalSource } from "../../src/cli/lifecycle/index.ts";
+import type { CliSessionFacade } from "../../src/cli/session/index.ts";
 import type { CliWritable } from "../../src/cli/stream.ts";
-import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
+import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import type { ElwoodCommonEventMap } from "../../src/core/agent-session.ts";
 import type { TurnEvent } from "../../src/core/simple/events.ts";
 import type { TurnOptions } from "../../src/core/simple/turn-types.ts";

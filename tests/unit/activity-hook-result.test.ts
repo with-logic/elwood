@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { activityFromHookResult } from "../../src/core/activity.ts";
+import { activityFromHookResult } from "../../src/core/activity/index.ts";
 
 describe("Elwood hook-result activity", () => {
   test("C-API-12 maps hook result labels for known response variants", () => {

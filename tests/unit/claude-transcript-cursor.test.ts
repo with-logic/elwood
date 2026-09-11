@@ -4,26 +4,10 @@
  * boundary and a backward scan that recovers the whole current turn.
  */
 
-import { mkdtempSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { statSync, writeFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { TranscriptCursor } from "../../src/claude/transcript/cursor.ts";
-
-function tmpFile(): string {
-  return join(mkdtempSync(join(tmpdir(), "elwood-tx-")), "t.jsonl");
-}
-
-/** Drain a cursor to the end, returning the concatenated decoded text. */
-function drainAll(cursor: TranscriptCursor): string {
-  let out = "";
-  for (let budget = 1000; budget > 0; budget--) {
-    const { text, canContinueNow } = cursor.readChunk();
-    out += text;
-    if (!canContinueNow) break;
-  }
-  return out;
-}
+import { drainAll, tmpFile } from "./claude-transcript-helpers.ts";
 
 describe("C-CLAUDE-15 transcript cursor byte accuracy", () => {
   test("a multibyte UTF-8 character split across a chunk boundary is decoded intact", () => {

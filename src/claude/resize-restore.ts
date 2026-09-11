@@ -10,7 +10,7 @@
  */
 
 import type { ElwoodWarningEvent, TerminalSize } from "../core/types.ts";
-import { boundedErrorToken, isResizeErrorCode } from "../core/warning-reasons.ts";
+import { boundedErrorToken, isResizeErrorCode } from "../core/warnings/reasons.ts";
 
 export function resizeRestoreFailedWarning(
   elwoodSessionId: string,

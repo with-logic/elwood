@@ -16,6 +16,7 @@ import {
   claudeModelCacheConfirmationYesBelowSelected,
   claudePicker,
   claudePickerCursorOnHaiku,
+  until,
 } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -174,12 +175,4 @@ async function isSettled(promise: Promise<void>): Promise<boolean> {
     ),
     new Promise<false>((resolve) => setTimeout(() => resolve(false), 150)),
   ]);
-}
-
-async function until(check: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (check()) return;
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  throw new Error("Timed out waiting for model picker test state.");
 }

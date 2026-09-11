@@ -4,7 +4,7 @@
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { activity, collect, drive, runTurn, type TurnSession } from "./simple-turn-fakes.ts";
+import { activity, collect, drive, runTurn } from "./simple-turn-fakes.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -19,7 +19,7 @@ describe("streamTurn default no-oracle grace", () => {
         current.emit("activity", activity({ text: "late reply", turnId: "t1" }));
       }, 1_000);
     });
-    const response = collect(runTurn(session as unknown as TurnSession, "go").events);
+    const response = collect(runTurn(session, "go").events);
     await vi.advanceTimersByTimeAsync(1_000);
     await expect(response).resolves.toEqual([{ type: "text", text: "late reply" }]);
   });

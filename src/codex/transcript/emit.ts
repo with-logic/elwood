@@ -6,8 +6,8 @@
  * event of its own.
  */
 
-import type { CodexTranscriptCursor } from "./cursor.ts";
-import type { CodexDropReporter } from "./drops.ts";
+import type { BoundedTranscriptCursor } from "../../core/transcript/cursor.ts";
+import type { DropReporter } from "../../core/transcript/drops.ts";
 import { summarizeTranscriptItem } from "./summary.ts";
 import type { CodexTranscriptEvent } from "./types.ts";
 
@@ -15,16 +15,16 @@ import type { CodexTranscriptEvent } from "./types.ts";
 export class CodexLineEmitter {
   private readonly elwoodSessionId: string;
   private readonly emit: (event: CodexTranscriptEvent) => void;
-  private readonly drops: CodexDropReporter;
+  private readonly drops: DropReporter;
 
-  constructor(id: string, emit: (event: CodexTranscriptEvent) => void, drops: CodexDropReporter) {
+  constructor(id: string, emit: (event: CodexTranscriptEvent) => void, drops: DropReporter) {
     this.elwoodSessionId = id;
     this.emit = emit;
     this.drops = drops;
   }
 
   /** Emit complete lines from `text`; the cursor retains any trailing partial line. */
-  emitLines(path: string, text: string, cursor: CodexTranscriptCursor): void {
+  emitLines(path: string, text: string, cursor: BoundedTranscriptCursor): void {
     if (text.length === 0) return;
     const { lines, startedOversizedDrop } = cursor.takeLines(text);
     // An over-length un-terminated record was discarded, not emitted: surface one

@@ -1,0 +1,125 @@
+/**
+ * The caller-facing control surface shared by both adapter sessions — prompt,
+ * message, and guidance submission (with image attachment), raw keys, resize,
+ * interrupt/compact, the model picker, and recurring loops — layered over the
+ * lifecycle core in `lifecycle.ts`. Implements PRD §5.3, §5.7, §5.9.
+ */
+
+import type { ElwoodAgentKind } from "../../core/activity/index.ts";
+import type { SendOptions } from "../../core/images/types.ts";
+import type { ElwoodLoopRequest, ElwoodLoopSnapshot } from "../../core/loops/types.ts";
+import type { ModelPickerSpec } from "../../core/models/picker.ts";
+import type { AgentModelOption } from "../../core/models/rows.ts";
+import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
+import type { TerminalSize } from "../../core/types.ts";
+import type { PtyProcess } from "../../pty/types.ts";
+import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
+import type { SessionRuntime } from "../../state/runtime-paths.ts";
+import type { SessionRecord } from "../../state/store.ts";
+import type { ElwoodTerminal } from "../../terminal/headless.ts";
+import { CommandSurface } from "./commands.ts";
+import {
+  type AttachDriver,
+  type AttachTask,
+  enqueueSubmission,
+  QueuedImageBudget,
+  type SubmitKind,
+} from "./image-attach.ts";
+import { SessionLifecycle } from "./lifecycle.ts";
+import { applyResize, restoreHeldResize } from "./resize.ts";
+import type { SessionStatusEmitter } from "./status-wiring.ts";
+
+type Timeout = { readonly timeoutMs?: number };
+
+export abstract class AgentSessionBase extends SessionLifecycle {
+  protected abstract readonly picker: ModelPickerSpec;
+  private readonly commands: CommandSurface;
+  private readonly imageBudget = new QueuedImageBudget();
+
+  protected constructor(
+    agent: ElwoodAgentKind,
+    record: SessionRecord,
+    stateDir: string,
+    runtime: SessionRuntime,
+    pty: PtyProcess,
+    terminal: ElwoodTerminal,
+    statusEvents: SessionStatusEmitter,
+    terminalReplay: TerminalReplayBuffer,
+    loopDefinitions: readonly PersistedLoopDefinition[],
+  ) {
+    super(
+      agent,
+      record,
+      stateDir,
+      runtime,
+      pty,
+      terminal,
+      statusEvents,
+      terminalReplay,
+      loopDefinitions,
+    );
+    // `picker` is a subclass field initializer that runs AFTER this constructor, so the
+    // surface resolves it per call rather than capturing it here.
+    this.commands = new CommandSurface({
+      terminal,
+      statusEvents,
+      status: () => this.status,
+      everReady: () => this.everReady,
+      picker: () => this.picker,
+      submit: (command, kind) => this.controlQueue.send(command, kind),
+    });
+  }
+
+  sendPrompt(prompt: string, options?: SendOptions): Promise<void> {
+    return this.enqueue(prompt, "prompt", options);
+  }
+  sendMessage(message: string, options?: SendOptions): Promise<void> {
+    return this.enqueue(message, "message", options);
+  }
+  sendGuidance(message: string, options?: SendOptions): Promise<void> {
+    return this.enqueue(message, "guidance", options);
+  }
+  sendKeys(input: string | Uint8Array): Promise<void> {
+    return this.inSession(async () => {
+      await this.terminal.sendInput(input);
+      this.loops.callerActivity();
+    });
+  }
+  resize(size: TerminalSize): Promise<void> {
+    return this.inSession(() => applyResize(this.pty, this.terminal, size));
+  }
+  interrupt(options?: Timeout): Promise<void> {
+    return this.inSession(() => this.commands.interrupt(options));
+  }
+  compact(options?: Timeout): Promise<void> {
+    return this.inSession(() => this.commands.compact(options));
+  }
+  listModels(options?: Timeout): Promise<readonly AgentModelOption[]> {
+    return this.inSession(() => this.commands.listModels(options));
+  }
+  setModel(id: string, options?: Timeout): Promise<void> {
+    return this.inSession(() => this.commands.setModel(id, options));
+  }
+  createLoop(request: ElwoodLoopRequest): Promise<ElwoodLoopSnapshot> {
+    return this.inSession(() => this.loops.create(request));
+  }
+  listLoops(): Promise<readonly ElwoodLoopSnapshot[]> {
+    return this.inSession(() => this.loops.list(), true);
+  }
+  cancelLoop(loopId: string): Promise<void> {
+    return this.inSession(() => this.loops.cancel(loopId), true);
+  }
+
+  /** Attach `paths` to the composer before the queued text is submitted (C-API-44). */
+  protected abstract attachImages(paths: readonly string[], signal: AbortSignal): Promise<void>;
+  /** Re-apply a resize that was held during startup (a best-effort restore). */
+  protected restoreHeldSize(size: TerminalSize): void {
+    void restoreHeldResize(this.pty, this.terminal, size);
+  }
+
+  private enqueue(input: string, kind: SubmitKind, options?: SendOptions): Promise<void> {
+    const driver: AttachDriver = (paths, signal) => this.attachImages(paths, signal);
+    const send = (attach?: AttachTask) => this.controlQueue.send(input, kind, attach);
+    return this.inSession(() => enqueueSubmission(options?.images, driver, send, this.imageBudget));
+  }
+}

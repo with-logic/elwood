@@ -7,10 +7,10 @@ import {
   nonBlank,
   optional,
   reasoning,
-} from "../../src/cli/request-values.ts";
+} from "../../src/cli/request/values.ts";
 
 describe("CLI request values", () => {
-  test("decodes every supported environment variable", () => {
+  test("C-CLI-14 decodes every supported environment variable", () => {
     expect(
       decodeEnvironment({
         ELWOOD_AGENT: "claude",
@@ -48,22 +48,21 @@ describe("CLI request values", () => {
     [{ ELWOOD_TRUST: "yes" }, /true or false/iu],
     [{ ELWOOD_AGENT: "gemini" }, /one of/iu],
     [{ ELWOOD_MODEL: " " }, /empty/iu],
-  ])("rejects invalid environment %#", (env, message) => {
+  ])("C-CLI-14 rejects invalid environment %#", (env, message) => {
     expect(() => decodeEnvironment(env)).toThrow(message);
   });
 
   test("covers precedence and optional helpers", () => {
-    expect(choice("a", "b", "c", ["a", "b", "c"], "x")).toBe("a");
-    expect(choice(undefined, "b", "c", ["b", "c"], "x")).toBe("b");
-    expect(choice(undefined, undefined, "c", ["c"], "x")).toBe("c");
-    expect(choice(undefined, undefined, undefined, ["c"], "x")).toBeUndefined();
+    expect(choice("a", ["a", "b", "c"], "x")).toBe("a");
+    expect(choice(undefined, ["c"], "x")).toBeUndefined();
+    expect(() => choice("d", ["c"], "x")).toThrow(/one of/iu);
     expect(optional(undefined, "x")).toEqual({});
     expect(optional("v", "x")).toEqual({ x: "v" });
     expect(nonBlank("v", "x")).toBe("v");
     expect(() => nonBlank(" ", "x")).toThrow(/empty/iu);
   });
 
-  test("validates both adapter effort vocabularies", () => {
+  test("C-CLI-06 validates both adapter effort vocabularies", () => {
     expect(reasoning("claude", undefined)).toBeUndefined();
     expect(reasoning("claude", "xhigh")).toBe("xhigh");
     expect(reasoning("codex", "minimal")).toBe("minimal");

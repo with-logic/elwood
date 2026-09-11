@@ -8,6 +8,7 @@ import test from "node:test";
 import {
   type CodexHookHandlers,
   type CodexSessionApi,
+  type ElwoodActivityEvent,
   ElwoodError,
   startCodex,
 } from "../../src/index.ts";
@@ -17,16 +18,15 @@ import {
   makeProject,
   observeSession,
   pathRemoved,
+  skipIf,
   skipReason,
-  turnsEnabled,
+  skipTurns,
   waitFor,
 } from "./helpers.ts";
 
-const skipTurnsReason = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
-
 type ToolSeen = { readonly name: string; readonly input: unknown; readonly response?: unknown };
 test("C-E2E-03 real Codex turn queues early messages and hooks real tools", {
-  skip: skipReason("codex") ?? skipTurnsReason,
+  skip: skipIf(skipReason("codex"), skipTurns),
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("codex");
@@ -68,8 +68,8 @@ test("C-E2E-03 real Codex turn queues early messages and hooks real tools", {
     // C-E2E-11: the queued initial persona is DELIVERED (observed as the first
     // UserPromptSubmit), not swallowed — the queue is released on Codex's
     // SessionStart hook, not the boot-time composer placeholder (C-API-28).
-    // This is the exact Coal-Harbour "initial prompt submitted before Codex was
-    // ready" failure: if readiness fired early, no UserPromptSubmit would arrive.
+    // This is the exact "initial prompt submitted before Codex was ready" failure a
+    // host application reported: if readiness fired early, no UserPromptSubmit would arrive.
     await waitFor(
       () =>
         prompts.some((p) => p.includes("shell tool") && p.includes("ELWOOD_CODEX_TOOL_OK"))
@@ -87,7 +87,7 @@ test("C-E2E-03 real Codex turn queues early messages and hooks real tools", {
     // C-E2E-10: the committed reply surfaces as exactly one assistant_message,
     // sourced from the transcript — never a second copy re-projected from the
     // Stop hook's last_assistant_message (C-CODEX-16). Regression guard for the
-    // Coal-Harbour "Codex replies received twice" report.
+    // "Codex replies received twice" report from a host application.
     await waitFor(
       () => (assistantMessages(observed.activities).length >= 1 ? true : undefined),
       "Codex assistant_message activity",
@@ -121,15 +121,12 @@ function hasCode(code: string): (error: unknown) => boolean {
   return (error) => error instanceof ElwoodError && error.code === code;
 }
 
-type ReplyActivity = { readonly source?: unknown; readonly text?: unknown };
 /** The committed persona reply, projected as `assistant_message` activity. */
-function assistantMessages(activities: readonly unknown[]): readonly ReplyActivity[] {
-  return activities.filter((a): a is ReplyActivity => {
-    const event = a as { kind?: unknown; text?: unknown };
-    return (
-      event.kind === "assistant_message" &&
-      typeof event.text === "string" &&
-      event.text.includes("ELWOOD_CODEX_TOOL_OK")
-    );
-  });
+function assistantMessages(
+  activities: readonly ElwoodActivityEvent[],
+): readonly ElwoodActivityEvent[] {
+  return activities.filter(
+    (event) =>
+      event.kind === "assistant_message" && (event.text ?? "").includes("ELWOOD_CODEX_TOOL_OK"),
+  );
 }

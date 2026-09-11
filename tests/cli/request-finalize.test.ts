@@ -4,9 +4,10 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
-import { parseCliArgs } from "../../src/cli/args.ts";
-import { finalizeRunRequest, resolveRunSettings } from "../../src/cli/request.ts";
+import { parseCliArgs } from "../../src/cli/args/index.ts";
+import { finalizeRunRequest, resolveRunSettings } from "../../src/cli/request/index.ts";
 import type { ResolvedRunRequest } from "../../src/cli/types.ts";
+import { detectNothing } from "./agent-fakes.ts";
 
 type DraftOverrides = Omit<Partial<ResolvedRunRequest>, "cwd"> & {
   readonly cwd?: string | undefined;
@@ -33,7 +34,7 @@ function draft(root: string, overrides: DraftOverrides = {}): ResolvedRunRequest
 }
 
 describe("final request workspaces", () => {
-  test("finalizes new and resumed workspaces and rejects invalid state", async () => {
+  test("C-CLI-03/C-CLI-08 finalizes new and resumed workspaces and rejects invalid state", async () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
     await expect(finalizeRunRequest(draft(root))).resolves.toMatchObject({ cwd: root, images: [] });
     await expect(finalizeRunRequest(draft(root, { resume: "s", cwd: undefined }))).rejects.toThrow(
@@ -74,7 +75,7 @@ describe("final request workspaces", () => {
     ).rejects.toThrow(/--cwd cannot be used with --resume/iu);
   });
 
-  test("identifies non-directory and uninspectable workspaces", async () => {
+  test("C-CLI-03/C-CLI-20 identifies non-directory and uninspectable workspaces", async () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
     const file = join(root, "file");
     writeFileSync(file, "x");
@@ -86,7 +87,7 @@ describe("final request workspaces", () => {
     );
   });
 
-  test("requires workspace ownership when POSIX identity is available", async () => {
+  test("C-CLI-03 requires workspace ownership when POSIX identity is available", async () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
     const spy = vi.spyOn(process, "getuid").mockReturnValue((process.getuid?.() ?? 0) + 1);
     await expect(finalizeRunRequest(draft(root))).rejects.toThrow(/owned/iu);
@@ -96,7 +97,7 @@ describe("final request workspaces", () => {
     absent.mockRestore();
   });
 
-  test("validates explicit adapter posture after stored adapter selection", async () => {
+  test("C-CLI-06 validates explicit adapter posture after stored adapter selection", async () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
     await expect(
       finalizeRunRequest(draft(root, { claudeOptionsExplicit: true }), {
@@ -112,7 +113,7 @@ describe("final request workspaces", () => {
     ).rejects.toThrow(/Codex launch/iu);
   });
 
-  test("finalizes legacy selected options and default Codex posture", async () => {
+  test("C-CLI-06 finalizes legacy selected options and default Codex posture", async () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
     const {
       sandbox: _sandbox,
@@ -134,7 +135,11 @@ describe("final request workspaces", () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-request-finalize-"));
     const parsed = parseCliArgs(["--resume", "s"]);
     if (parsed.command !== "run") throw new Error("expected run");
-    const resolved = resolveRunSettings(parsed, { env: {}, homeDir: root, invocationCwd: root });
+    const resolved = await resolveRunSettings(
+      parsed,
+      { env: {}, homeDir: root, invocationCwd: root },
+      detectNothing,
+    );
     const claude = await finalizeRunRequest(resolved, { agent: "claude", cwd: root });
     expect(claude.resolution?.sources).toMatchObject({
       agent: "stored session s",
@@ -146,7 +151,7 @@ describe("final request workspaces", () => {
 
     const config = join(root, "config.json");
     writeFileSync(config, JSON.stringify({ schemaVersion: 1, agent: "claude" }), { mode: 0o600 });
-    const configured = resolveRunSettings(parsed, {
+    const configured = await resolveRunSettings(parsed, {
       env: { ELWOOD_CONFIG: config },
       homeDir: root,
       invocationCwd: root,

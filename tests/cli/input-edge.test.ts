@@ -14,7 +14,7 @@ const chunkings = [
 ] as const;
 
 describe("CLI prompt byte edges", () => {
-  test("accepts bytes at the exact cap and Uint8Array chunks", async () => {
+  test("C-CLI-04 accepts bytes at the exact cap and Uint8Array chunks", async () => {
     await expect(
       readPromptInput([], { source: source(Uint8Array.from(Buffer.from("ok"))) }),
     ).resolves.toBe("ok");
@@ -23,7 +23,7 @@ describe("CLI prompt byte edges", () => {
     ).resolves.toHaveLength(maxPromptBytes);
   });
 
-  test("rejects positional input above the cap", async () => {
+  test("C-CLI-04 rejects positional input above the cap", async () => {
     await expect(
       readPromptInput(["x".repeat(maxPromptBytes + 1)], { isTTY: true, source: source() }),
     ).rejects.toThrow(/8 MiB/iu);
@@ -31,19 +31,21 @@ describe("CLI prompt byte edges", () => {
 
   test.each(
     chunkings,
-  )("counts one separator for exact-boundary input in %s", async (_name, chunked) => {
+  )("C-CLI-04 counts one separator for exact-boundary input in %s", async (_name, chunked) => {
     const piped = "x".repeat(maxPromptBytes - 3);
     await expect(readPromptInput(["a"], { source: chunked(piped) })).resolves.toHaveLength(
       maxPromptBytes,
     );
   });
 
-  test.each(chunkings)("rejects equivalent over-boundary input in %s", async (_name, chunked) => {
+  test.each(
+    chunkings,
+  )("C-CLI-04 rejects equivalent over-boundary input in %s", async (_name, chunked) => {
     const piped = "x".repeat(maxPromptBytes - 2);
     await expect(readPromptInput(["a"], { source: chunked(piped) })).rejects.toThrow(/8 MiB/iu);
   });
 
-  test("empty chunks never consume the separator budget", async () => {
+  test("C-CLI-04 empty chunks never consume the separator budget", async () => {
     await expect(
       readPromptInput(["x".repeat(maxPromptBytes)], { source: source("", "") }),
     ).resolves.toHaveLength(maxPromptBytes);

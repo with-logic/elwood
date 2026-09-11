@@ -6,10 +6,10 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest";
-import { setCodexHookBridgeFactoryForTests } from "../../src/codex/session.ts";
+import { setCodexHookBridgeFactoryForTests } from "../../src/codex/session/index.ts";
 import { startCodex } from "../../src/index.ts";
-import { setGroupKillerForTests } from "../../src/runtime/reap-tree.ts";
 import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import { setGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import { FakePty, installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);

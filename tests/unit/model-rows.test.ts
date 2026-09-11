@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { parseClaudeModelPicker, parseCodexModelPicker } from "../../src/core/model-rows.ts";
+import { parseClaudeModelPicker, parseCodexModelPicker } from "../../src/core/models/rows.ts";
 import {
   claudePicker,
   claudePickerCursorOnHaiku,

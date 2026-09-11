@@ -1,0 +1,113 @@
+/**
+ * Public Codex session API types.
+ * Implements PRD §5.5, §5.6, and §5.7.
+ */
+
+import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
+import type { SendOptions } from "../../core/images/types.ts";
+import type { LoopControls } from "../../core/loops/loop-controls.ts";
+import type { AgentModelOption } from "../../core/models/rows.ts";
+import type { CodexReasoningEffort } from "../../core/reasoning-effort.ts";
+import type {
+  ActivityMatch,
+  ElwoodCommonEventMap,
+  ElwoodSessionStatus,
+  ElwoodStatusDecision,
+  StatusMatch,
+  TerminalSize,
+  Unsubscribe,
+} from "../../core/types.ts";
+import type { ElwoodTerminal } from "../../terminal/headless.ts";
+import type {
+  CodexHookEvent,
+  CodexHookEventFor,
+  CodexHookEventName,
+  CodexHookHandlers,
+  CodexHookResultFor,
+} from "../hooks/index.ts";
+import type { CodexTranscriptEvent } from "../transcript/index.ts";
+
+export type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access";
+export type CodexApprovalPolicy = "untrusted" | "on-request" | "never";
+
+export type StartCodexOptions = {
+  readonly cwd: string;
+  readonly stateDir?: string;
+  readonly initialSize?: TerminalSize;
+  readonly hooks?: CodexHookHandlers;
+  readonly persona?: string;
+  readonly model?: string;
+  readonly reasoningEffort?: CodexReasoningEffort;
+  readonly profile?: string;
+  readonly sandbox?: CodexSandboxMode;
+  readonly approvalPolicy?: CodexApprovalPolicy;
+  readonly configOverrides?: readonly string[];
+  readonly autoupdate?: boolean;
+  readonly autotrust?: boolean;
+  readonly hookTimeoutMs?: number;
+  readonly strictVersionCheck?: boolean;
+};
+
+export type ResumeCodexOptions = {
+  readonly elwoodSessionId: string;
+  readonly cwd?: string;
+  readonly stateDir?: string;
+  readonly hooks?: CodexHookHandlers;
+  readonly initialSize?: TerminalSize;
+  readonly reasoningEffort?: CodexReasoningEffort;
+  readonly sandbox?: CodexSandboxMode;
+  readonly approvalPolicy?: CodexApprovalPolicy;
+  readonly autoupdate?: boolean;
+  readonly autotrust?: boolean;
+  readonly hookTimeoutMs?: number;
+  readonly strictVersionCheck?: boolean;
+};
+
+export type CodexEventMap = ElwoodCommonEventMap & {
+  readonly hook: CodexHookEvent;
+  readonly "codex:transcript": CodexTranscriptEvent;
+} & {
+  readonly [K in `hook:${CodexHookEventName}`]: K extends `hook:${infer N}`
+    ? N extends CodexHookEventName
+      ? CodexHookEventFor<N>
+      : never
+    : never;
+};
+
+export type CodexEventName = keyof CodexEventMap;
+
+export type CodexEventHandler<E extends CodexEventName> = (
+  event: CodexEventMap[E],
+) => E extends `hook:${infer K}`
+  ? K extends CodexHookEventName
+    ? CodexHookResultFor<K> | Promise<CodexHookResultFor<K>>
+    : undefined
+  : void;
+
+export interface CodexSessionApi extends LoopControls {
+  readonly elwoodSessionId: string;
+  readonly cwd: string;
+  readonly status: ElwoodSessionStatus;
+  readonly terminal: ElwoodTerminal;
+
+  /** Live-only log of recent status decisions, oldest first, for diagnostics. */
+  statusDecisions(): readonly ElwoodStatusDecision[];
+  waitForStatus(match: StatusMatch, timeoutMs?: number): Promise<ElwoodSessionStatus>;
+  waitForActivity(match: ActivityMatch, timeoutMs?: number): Promise<ElwoodActivityEvent>;
+
+  on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): Unsubscribe;
+  off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void;
+
+  sendPrompt(prompt: string, options?: SendOptions): Promise<void>;
+  sendMessage(message: string, options?: SendOptions): Promise<void>;
+  sendGuidance(message: string, options?: SendOptions): Promise<void>;
+  sendKeys(input: string | Uint8Array): Promise<void>;
+  resize(size: TerminalSize): Promise<void>;
+  interrupt(options?: { readonly timeoutMs?: number }): Promise<void>;
+  compact(options?: { readonly timeoutMs?: number }): Promise<void>;
+  listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]>;
+  setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void>;
+  stop(): Promise<void>;
+  kill(): Promise<void>;
+  teardown(): Promise<void>;
+}

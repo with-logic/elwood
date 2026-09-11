@@ -8,6 +8,8 @@ import { WebSocket } from "ws";
 import type { AgentLaunchOptions, SharedSession } from "../../src/app/agent-runtime.ts";
 import { createWebDevApp, type WebDevApp } from "../../src/app/web-dev.ts";
 
+export { fakeSharedSession as fakeSession } from "../helpers/fake-shared-session.ts";
+
 export type LaunchOptions = { readonly token?: string; readonly port?: number };
 export type StartFn = (options: AgentLaunchOptions) => Promise<SharedSession>;
 
@@ -61,26 +63,4 @@ export async function waitFor(predicate: () => boolean, ms = 2000): Promise<void
     if (Date.now() > deadline) throw new Error("timed out waiting for condition");
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
-}
-
-export function fakeSession(
-  id: string,
-  overrides: { readonly teardown?: () => Promise<void> } = {},
-): SharedSession {
-  return {
-    elwoodSessionId: id,
-    cwd: "/w",
-    status: "running",
-    terminal: {} as never,
-    statusDecisions: () => [],
-    on: () => () => {},
-    sendPrompt: () => Promise.resolve(),
-    sendMessage: () => Promise.resolve(),
-    sendGuidance: () => Promise.resolve(),
-    sendKeys: () => Promise.resolve(),
-    resize: () => Promise.resolve(),
-    stop: () => Promise.resolve(),
-    kill: () => Promise.resolve(),
-    teardown: overrides.teardown ?? (() => Promise.resolve()),
-  };
 }

@@ -3,15 +3,15 @@
  * Implements PRD §6.4 tool-specific response narrowing.
  */
 
-import type { ClaudeHookEventFor } from "./hook-events.ts";
-import type { ClaudeHookEventName } from "./hook-names.ts";
+import type { ClaudeHookEventFor } from "./hooks/events.ts";
 import type {
   ClaudeHookResultFor,
   ClaudeHookResultForEvent,
   PermissionRequestCommonResult,
   PreToolUseCommonResult,
-} from "./hooks.ts";
-import type { UnknownClaudeToolName } from "./tool-types.ts";
+} from "./hooks/index.ts";
+import type { ClaudeHookEventName } from "./hooks/names.ts";
+import type { UnknownClaudeToolName } from "./hooks/tool-types.ts";
 
 type MaybePromise<T> = T | Promise<T>;
 

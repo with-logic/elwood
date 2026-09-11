@@ -12,7 +12,7 @@ import {
   readErrorWarning as sharedReadErrorWarning,
 } from "../../core/transcript/warnings.ts";
 import type { ElwoodWarningEvent } from "../../core/types.ts";
-import { boundedErrorToken, isPollErrorReason } from "../../core/warning-reasons.ts";
+import { boundedErrorToken, isPollErrorReason } from "../../core/warnings/reasons.ts";
 import type { TranscriptDropNotice, TranscriptReadErrorNotice } from "./drops.ts";
 
 /** The shared drop warning, tagged for Claude. */

@@ -6,8 +6,8 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { ControlQueue } from "../../src/core/control-queue.ts";
-import type { PendingOperation } from "../../src/core/control-queue-types.ts";
+import { ControlQueue } from "../../src/core/control-queue/index.ts";
+import type { PendingOperation } from "../../src/core/control-queue/types.ts";
 
 describe("ControlQueue image attach (C-API-44)", () => {
   test("C-API-44 the run/attach XOR forbids an op carrying BOTH at compile time", () => {
@@ -17,7 +17,6 @@ describe("ControlQueue image attach (C-API-44)", () => {
       kind: "message",
       mayBypassReadiness: false,
       origin: { kind: "caller" },
-      notifyDispatch: true,
       attach: task,
     };
     // @ts-expect-error — an op cannot carry BOTH run and attach; dispatch would else
@@ -27,12 +26,11 @@ describe("ControlQueue image attach (C-API-44)", () => {
       kind: "message",
       mayBypassReadiness: false,
       origin: { kind: "caller" },
-      notifyDispatch: true,
       run: task,
       attach: task,
     };
     expect(attachOnly.attach).toBe(task);
-    expect(both).toBeDefined(); // runtime is irrelevant; the ts-expect-error is the assertion
+    void both; // the `@ts-expect-error` above is the assertion; no runtime check applies
   });
 
   test("C-API-44 runs a send's attach task before its text write", async () => {

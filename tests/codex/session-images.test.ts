@@ -10,11 +10,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 const clip = { set: [] as string[], restored: [] as string[], restoreOk: true };
-vi.mock("../../src/codex/clipboard.ts", () => ({
-  // The real message constant lives in this module; keep it so session-instance's
-  // import resolves under the mock (it moved here from the deleted validate-warnings).
-  CLIPBOARD_RESTORE_FAILED_MESSAGE:
-    "Elwood could not restore the clipboard after attaching an image.",
+vi.mock("../../src/codex/images/clipboard.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/codex/images/clipboard.ts")>()), // the real message constant
   clipboardImageSupported: () => true,
   snapshotClipboardText: () => Promise.resolve("prior"),
   restoreClipboardText: (t: string) => {

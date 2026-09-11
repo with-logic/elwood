@@ -6,19 +6,16 @@
  */
 
 import { beforeEach, describe, expect, test } from "vitest";
-import { compareVersions, preflightClaude } from "../../src/claude/preflight.ts";
+import { preflightClaude } from "../../src/claude/preflight.ts";
 import { preflightCodex } from "../../src/codex/preflight.ts";
 import { ElwoodError } from "../../src/core/errors.ts";
-import {
-  resetRuntimeSeamsForTests,
-  setCommandRunnerForTests,
-  setPlatformForTests,
-} from "../../src/runtime/seams.ts";
+import { compareVersions } from "../../src/core/versions.ts";
+import { setCommandRunnerForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
 import {
   resetAutoupdateForTests,
   resetPreflightCacheForTests,
   setUpdateCoordinatorForTests,
-} from "../../src/runtime/update-once.ts";
+} from "../../src/runtime/update/once.ts";
 
 function resetPreflight(): void {
   resetAutoupdateForTests();
@@ -38,7 +35,6 @@ describe("CLI autoupdate preflight", () => {
     });
     await preflightClaude(false, true);
     expect(commands.some((command) => command.includes("claude update"))).toBe(true);
-    resetRuntimeSeamsForTests();
   });
 
   test("C-LIFE-11 a failed update with a COMPATIBLE installed CLI warns and continues (Claude)", async () => {
@@ -57,7 +53,6 @@ describe("CLI autoupdate preflight", () => {
       installedVersion: "2.1.223",
       raw: "network error",
     });
-    resetRuntimeSeamsForTests();
   });
 
   test("C-LIFE-11 a bounded/timed-out update carries its errno into the warning, not a fatal error", async () => {
@@ -74,7 +69,6 @@ describe("CLI autoupdate preflight", () => {
     );
     const warning = await preflightClaude(false, true);
     expect(warning).toMatchObject({ code: "agent_update_failed", errorCode: "ETIMEDOUT" });
-    resetRuntimeSeamsForTests();
   });
 
   test("C-LIFE-11 a failed update with an INCOMPATIBLE installed CLI is fatal (Claude)", async () => {
@@ -88,7 +82,6 @@ describe("CLI autoupdate preflight", () => {
     await expect(preflightClaude(false, true)).rejects.toMatchObject({
       code: "claude_version_unsupported",
     });
-    resetRuntimeSeamsForTests();
   });
 
   test("C-LIFE-11 a failed update validates a freshly changed installed version", async () => {
@@ -122,7 +115,6 @@ describe("CLI autoupdate preflight", () => {
       return { status: 127, stdout: "", stderr: "missing" };
     });
     await expect(preflightClaude(false, true)).rejects.toThrow(ElwoodError);
-    resetRuntimeSeamsForTests();
   });
 
   test("C-CLAUDE-04 treats missing or malformed version parts as zero", () => {
@@ -145,7 +137,6 @@ describe("CLI autoupdate preflight", () => {
       agent: "codex",
       installedVersion: "0.132.0",
     });
-    resetRuntimeSeamsForTests();
   });
 
   test("C-CODEX-10 validates the post-update version; a missing binary after update is fatal", async () => {
@@ -162,6 +153,5 @@ describe("CLI autoupdate preflight", () => {
       return { status: 127, stdout: "", stderr: "missing" };
     });
     await expect(preflightCodex(false, true)).rejects.toThrow(ElwoodError);
-    resetRuntimeSeamsForTests();
   });
 });

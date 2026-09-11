@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { resumeClaude, startClaude } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
-import { resetPreflightCacheForTests } from "../../src/runtime/update-once.ts";
+import { resetPreflightCacheForTests } from "../../src/runtime/update/once.ts";
 import {
   createSessionRecord,
   prepareStateDir,

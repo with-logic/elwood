@@ -9,7 +9,15 @@ import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { e2eTimeoutMs, makeProject, pathRemoved, skipReason, turnsEnabled } from "./helpers.ts";
+import { sessionSocketHome } from "../../src/state/socket-home.ts";
+import {
+  e2eTimeoutMs,
+  makeProject,
+  pathRemoved,
+  skipIf,
+  skipReason,
+  skipTurns,
+} from "./helpers.ts";
 
 type Invocation = {
   readonly status: number | null;
@@ -25,12 +33,11 @@ type TerminalDocument = {
   readonly error?: { readonly code: string };
 };
 
-const skipTurns = turnsEnabled ? false : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
 const entryPath = fileURLToPath(new URL("../../dist/cli/entry.js", import.meta.url));
 
 for (const agent of ["claude", "codex"] as const) {
   test(`C-E2E-19 elwood emits clean final text through real ${agent}`, {
-    skip: skipReason(agent) || skipTurns,
+    skip: skipIf(skipReason(agent), skipTurns),
     timeout: e2eTimeoutMs + 30_000,
   }, async () => {
     const project = makeProject(agent);
@@ -55,7 +62,7 @@ for (const agent of ["claude", "codex"] as const) {
   });
 
   test(`C-E2E-19 elwood keeps and resumes real ${agent} across processes`, {
-    skip: skipReason(agent) || skipTurns,
+    skip: skipIf(skipReason(agent), skipTurns),
     timeout: e2eTimeoutMs * 2 + 30_000,
   }, async () => {
     const project = makeProject(agent);
@@ -100,17 +107,16 @@ for (const agent of ["claude", "codex"] as const) {
       assert.equal(resumed.cleanup.action, "teardown");
       assert.ok(pathRemoved(project.sessionDir(sessionId)));
     } finally {
+      // If the resume never tore the kept session down, remove its state and the
+      // socket home teardown would have removed — no model turn just for cleanup.
       if (sessionId && !pathRemoved(project.sessionDir(sessionId))) {
-        await invoke(
-          [
-            `--state-dir=${project.stateDir}`,
-            `--resume=${sessionId}`,
-            "--ephemeral",
-            "--output=json",
-            "Discard this session.",
-          ],
-          project.cwd,
-        ).catch(() => undefined);
+        rmSync(project.sessionDir(sessionId), { recursive: true, force: true });
+        const home = sessionSocketHome({
+          stateDir: project.stateDir,
+          elwoodSessionId: sessionId,
+          adapter: agent,
+        });
+        rmSync(home, { recursive: true, force: true });
       }
       rmSync(project.cwd, { recursive: true, force: true });
     }
@@ -118,7 +124,7 @@ for (const agent of ["claude", "codex"] as const) {
 }
 
 test("C-E2E-19 elwood fails closed on a declined Claude workspace trust gate", {
-  skip: skipReason("claude"),
+  skip: skipIf(skipReason("claude")),
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("claude");

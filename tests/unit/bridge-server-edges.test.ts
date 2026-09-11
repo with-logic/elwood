@@ -7,14 +7,15 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { HookBridgeServer } from "../../src/bridge/server.ts";
-import { sendBridge, tempDirForUnit } from "./helpers.ts";
+import { tempDir } from "../helpers/tmp.ts";
+import { sendBridge } from "./helpers.ts";
 
 const acceptHookInput = () => true;
 const rejectHookInput = () => false;
 
 describe("bridge server edge handling", () => {
   test("C-HOOK-16 bridge fails open when dispatch throws", async () => {
-    const socketPath = join(tempDirForUnit(), "throw-hook.sock");
+    const socketPath = join(tempDir("elwood-unit-"), "throw-hook.sock");
     const errors: string[] = [];
     const server = new HookBridgeServer(
       socketPath,
@@ -31,7 +32,7 @@ describe("bridge server edge handling", () => {
   });
 
   test("C-HOOK-16 bridge ignores mismatched sessions and malformed envelopes", async () => {
-    const socketPath = join(tempDirForUnit(), "filtered-hook.sock");
+    const socketPath = join(tempDir("elwood-unit-"), "filtered-hook.sock");
     let dispatched = 0;
     const server = new HookBridgeServer(
       socketPath,
@@ -57,7 +58,7 @@ describe("bridge server edge handling", () => {
   });
 
   test("C-HOOK-16 invalid hook input reports identifiable hook names", async () => {
-    const socketPath = join(tempDirForUnit(), "invalid-named-hook.sock");
+    const socketPath = join(tempDir("elwood-unit-"), "invalid-named-hook.sock");
     const errors: string[] = [];
     const server = new HookBridgeServer(
       socketPath,
@@ -76,7 +77,7 @@ describe("bridge server edge handling", () => {
   });
 
   test("C-HOOK-16 start replaces stale socket files left on disk", async () => {
-    const socketPath = join(tempDirForUnit(), "stale-start.sock");
+    const socketPath = join(tempDir("elwood-unit-"), "stale-start.sock");
     writeFileSync(socketPath, "stale");
     let dispatched = 0;
     const server = new HookBridgeServer(
@@ -97,7 +98,7 @@ describe("bridge server edge handling", () => {
   });
 
   test("C-HOOK-16 stop removes stale socket files after a failed start", async () => {
-    const socketDir = join(tempDirForUnit(), "missing");
+    const socketDir = join(tempDir("elwood-unit-"), "missing");
     const socketPath = join(socketDir, "stale-stop.sock");
     const server = new HookBridgeServer(
       socketPath,
@@ -114,7 +115,7 @@ describe("bridge server edge handling", () => {
   });
 
   test("C-HOOK-16 requests without a matching token are ignored", async () => {
-    const socketPath = join(tempDirForUnit(), "auth-hook.sock");
+    const socketPath = join(tempDir("elwood-unit-"), "auth-hook.sock");
     let dispatched = 0;
     const errors: string[] = [];
     const server = new HookBridgeServer(
@@ -138,7 +139,7 @@ describe("bridge server edge handling", () => {
   });
 
   test("C-HOOK-16 bridge fails open with a generic message for non-Error failures", async () => {
-    const socketPath = join(tempDirForUnit(), "non-error-hook.sock");
+    const socketPath = join(tempDir("elwood-unit-"), "non-error-hook.sock");
     const errors: string[] = [];
     const server = new HookBridgeServer(
       socketPath,

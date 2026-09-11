@@ -6,11 +6,9 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
+import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import { type ElwoodAgentSession, startClaude, startCodex } from "../../src/index.ts";
-import { cleanup, makeProject, skipReason, turnsEnabled, waitFor } from "./helpers.ts";
-
-const skipTurnsReason = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
+import { cleanup, makeProject, skipIf, skipReason, skipTurns, waitFor } from "./helpers.ts";
 
 async function attentionFlow(session: ElwoodAgentSession): Promise<readonly ElwoodActivityEvent[]> {
   const attention: ElwoodActivityEvent[] = [];
@@ -33,7 +31,7 @@ async function attentionFlow(session: ElwoodAgentSession): Promise<readonly Elwo
 }
 
 test("C-ATTN-01 real Claude permission dialog blocks and emits attention", {
-  skip: skipReason("claude") ?? skipTurnsReason,
+  skip: skipIf(skipReason("claude"), skipTurns),
   timeout: 240_000,
 }, async () => {
   const project = makeProject("claude");
@@ -57,7 +55,7 @@ test("C-ATTN-01 real Claude permission dialog blocks and emits attention", {
 });
 
 test("C-ATTN-01 real Codex approval dialog blocks and emits attention", {
-  skip: skipReason("codex") ?? skipTurnsReason,
+  skip: skipIf(skipReason("codex"), skipTurns),
   timeout: 240_000,
 }, async () => {
   const project = makeProject("codex");

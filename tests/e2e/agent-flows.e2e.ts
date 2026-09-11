@@ -24,15 +24,14 @@ import {
   observeSession,
   pathRemoved,
   prepareInteractivePrompt,
+  skipIf,
   skipReason,
-  turnsEnabled,
+  skipTurns,
   waitFor,
 } from "./helpers.ts";
 
-const skipTurnsReason = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
-
 test("C-E2E-02 real Claude session supports core public flows", {
-  skip: skipReason("claude") ?? skipTurnsReason,
+  skip: skipIf(skipReason("claude"), skipTurns),
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("claude");
@@ -108,7 +107,7 @@ test("C-E2E-02 real Claude session supports core public flows", {
 });
 
 test("C-E2E-03 real Codex session supports core public flows", {
-  skip: skipReason("codex") ?? skipTurnsReason,
+  skip: skipIf(skipReason("codex"), skipTurns),
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("codex");

@@ -5,8 +5,8 @@
  * Implements PRD §5.3 and C-API-34.
  */
 
-import type { ElwoodActivityEvent } from "./activity.ts";
-import { elwoodError } from "./errors.ts";
+import type { ElwoodActivityEvent } from "./activity/index.ts";
+import { elwoodError, toError } from "./errors.ts";
 import { terminalStatuses as terminalWaitStatuses } from "./status-categories.ts";
 import type { ElwoodSessionStatus, Unsubscribe } from "./types.ts";
 
@@ -75,7 +75,7 @@ export function waitForStatus(
   try {
     currentMatched = match(current);
   } catch (error) {
-    return Promise.reject(asError(error));
+    return Promise.reject(toError(error));
   }
   if (currentMatched) return Promise.resolve(current);
   // Already terminal and unmatched: reject now rather than waiting out the
@@ -88,7 +88,7 @@ export function waitForStatus(
       try {
         matched = match(status);
       } catch (error) {
-        return done.finish(() => reject(asError(error)), off, timer);
+        return done.finish(() => reject(toError(error)), off, timer);
       }
       if (matched) return done.finish(() => resolve(status), off, timer);
       // A terminal status the caller was not waiting for ends the wait.
@@ -114,7 +114,7 @@ export function waitForActivity(
       try {
         matched = match(event);
       } catch (error) {
-        return done.finish(() => reject(asError(error)), offAll, timer);
+        return done.finish(() => reject(toError(error)), offAll, timer);
       }
       if (matched) done.finish(() => resolve(event), offAll, timer);
     });
@@ -153,8 +153,4 @@ function settler(reject: (error: Error) => void, label: "status" | "activity", t
 
 function terminated(status: ElwoodSessionStatus): Error {
   return elwoodError("session_not_running", `Session reached ${status} before the wait resolved.`);
-}
-
-function asError(value: unknown): Error {
-  return value instanceof Error ? value : new Error(String(value));
 }

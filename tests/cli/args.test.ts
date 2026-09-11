@@ -4,8 +4,8 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { argumentErrorMessage } from "../../src/cli/arg-errors.ts";
-import { parseCliArgs } from "../../src/cli/args.ts";
+import { argumentErrorMessage } from "../../src/cli/args/errors.ts";
+import { parseCliArgs } from "../../src/cli/args/index.ts";
 
 describe("CLI argument grammar", () => {
   test.each([

@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { ControlQueue } from "../../src/core/control-queue.ts";
+import { ControlQueue } from "../../src/core/control-queue/index.ts";
 
 describe("ControlQueue turn-start listener containment", () => {
   test("C-API-35 a throwing turn-start listener is CONTAINED — the write still proceeds", async () => {

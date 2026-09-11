@@ -8,7 +8,7 @@ import {
   browserToolsPromptVisible,
   ClaudeStartupPromptResponder,
 } from "../../src/claude/startup-prompts.ts";
-import type { SettledStartupOutcome } from "../../src/core/startup-write.ts";
+import type { SettledStartupOutcome } from "../../src/core/startup/write.ts";
 
 // Captured from a real claude session that wedged an embedded start.
 const browserPrompt = [

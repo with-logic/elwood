@@ -15,15 +15,14 @@ import {
   cleanup,
   e2eTimeoutMs,
   makeProject,
+  skipIf,
   skipReason,
-  turnsEnabled,
+  skipTurns,
   waitFor,
 } from "./helpers.ts";
 
-const skipTurnsReason = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
-
 test("C-CLAUDE-12 C-API-22 real Claude starts on the requested model and compacts", {
-  skip: skipReason("claude") ?? skipTurnsReason,
+  skip: skipIf(skipReason("claude"), skipTurns),
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("claude");
@@ -74,7 +73,7 @@ test("C-CLAUDE-12 C-API-22 real Claude starts on the requested model and compact
 });
 
 test("C-API-22 real Codex compacts through the readiness queue", {
-  skip: skipReason("codex") ?? skipTurnsReason,
+  skip: skipIf(skipReason("codex"), skipTurns),
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("codex");

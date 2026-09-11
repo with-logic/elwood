@@ -11,7 +11,7 @@ import {
   activityFromHookError,
   activityFromStatus,
   activityFromTerminalExit,
-} from "../../src/core/activity.ts";
+} from "../../src/core/activity/index.ts";
 import { TerminalReplayBuffer } from "../../src/core/terminal-replay.ts";
 
 describe("Elwood activity events", () => {
@@ -154,7 +154,7 @@ describe("Elwood activity events", () => {
     });
   });
 
-  test("C-API-17 terminal replay trims oldest chunks over the byte limit", () => {
+  test("C-CLI-05 terminal replay trims oldest chunks over the byte limit", () => {
     const buffer = new TerminalReplayBuffer("elwood-6", 4);
     const replayed: string[] = [];
     buffer.push("ab");

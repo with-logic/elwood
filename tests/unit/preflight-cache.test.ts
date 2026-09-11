@@ -6,16 +6,12 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import { preflightClaude } from "../../src/claude/preflight.ts";
 import { preflightCodex } from "../../src/codex/preflight.ts";
-import {
-  resetRuntimeSeamsForTests,
-  setCommandRunnerForTests,
-  setPlatformForTests,
-} from "../../src/runtime/seams.ts";
+import { setCommandRunnerForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
 import {
   resetAutoupdateForTests,
   resetPreflightCacheForTests,
   setUpdateCoordinatorForTests,
-} from "../../src/runtime/update-once.ts";
+} from "../../src/runtime/update/once.ts";
 
 function resetPreflight(): void {
   resetAutoupdateForTests();
@@ -46,7 +42,6 @@ describe("version-read cache", () => {
     });
     await Promise.all([preflightClaude(false), preflightCodex(false)]);
     expect(maxInFlight).toBe(2);
-    resetRuntimeSeamsForTests();
   });
 
   test("C-PERF-02 reads --version at most once per process", async () => {
@@ -59,7 +54,6 @@ describe("version-read cache", () => {
     await preflightClaude(false);
     await preflightClaude(true);
     expect(reads).toBe(1);
-    resetRuntimeSeamsForTests();
   });
 
   test("C-PERF-02 concurrent first reads share one subprocess", async () => {
@@ -74,7 +68,6 @@ describe("version-read cache", () => {
     );
     await Promise.all([preflightClaude(false), preflightClaude(false), preflightClaude(false)]);
     expect(reads).toBe(1);
-    resetRuntimeSeamsForTests();
   });
 
   test("C-PERF-02 autoupdate invalidates the cache so the version is re-read", async () => {
@@ -88,7 +81,6 @@ describe("version-read cache", () => {
     await preflightClaude(false, true);
     // One read before the update, one after the invalidate.
     expect(versions).toHaveLength(2);
-    resetRuntimeSeamsForTests();
   });
 });
 
@@ -109,7 +101,6 @@ describe("autoupdate dedupe", () => {
     const updates = commands.filter((command) => command.includes(" update"));
     expect(updates.filter((command) => command.includes("claude update"))).toHaveLength(1);
     expect(updates.filter((command) => command.includes("codex update"))).toHaveLength(1);
-    resetRuntimeSeamsForTests();
   });
 
   test("C-PERF-04 concurrent Claude autoupdate callers all validate the post-update version", async () => {
@@ -134,7 +125,6 @@ describe("autoupdate dedupe", () => {
       preflightClaude(false, true),
     ]);
     expect(updates).toBe(1);
-    resetRuntimeSeamsForTests();
   });
 
   test("C-PERF-04 concurrent Codex autoupdate callers all validate the post-update version", async () => {
@@ -156,7 +146,6 @@ describe("autoupdate dedupe", () => {
       preflightCodex(false, true),
     ]);
     expect(updates).toBe(1);
-    resetRuntimeSeamsForTests();
   });
 
   test("C-PERF-04 concurrent autoupdate callers share ONE update failure without rejecting (C-LIFE-11)", async () => {
@@ -180,6 +169,5 @@ describe("autoupdate dedupe", () => {
       if (r.status === "fulfilled") expect(r.value).toMatchObject({ code: "agent_update_failed" });
     }
     expect(updates).toBe(1); // still exactly one shared update attempt
-    resetRuntimeSeamsForTests();
   });
 });

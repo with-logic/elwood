@@ -4,11 +4,12 @@
  */
 
 import { describe, expect, test } from "vitest";
+import type { ElwoodEventMap } from "../../src/core/types.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 
 describe("TypedEmitter", () => {
   test("C-API-08 event emitter handles empty emissions and explicit off", async () => {
-    const emitter = new TypedEmitter();
+    const emitter = new TypedEmitter<ElwoodEventMap>();
     emitter.emit("status", { elwoodSessionId: "x", status: "running" });
     expect(
       await emitter.request("status", { elwoodSessionId: "x", status: "running" }),
@@ -33,7 +34,7 @@ describe("TypedEmitter", () => {
   });
 
   test("emit delivers to every listener before rethrowing the first failure", () => {
-    const emitter = new TypedEmitter();
+    const emitter = new TypedEmitter<ElwoodEventMap>();
     const seen: string[] = [];
     // A rogue user listener throwing must not abort delivery to the internal
     // lifecycle subscriber registered after it (e.g. interrupt/compact settle);
@@ -53,7 +54,7 @@ describe("TypedEmitter", () => {
   });
 
   test("emit honors an unsubscribe made by an earlier listener in the same emission", () => {
-    const emitter = new TypedEmitter();
+    const emitter = new TypedEmitter<ElwoodEventMap>();
     const seen: string[] = [];
     const b = (event: { readonly status: string }) => seen.push(`b:${event.status}`);
     // Listener A unsubscribes B mid-emit; B must NOT fire afterwards even though
@@ -65,7 +66,7 @@ describe("TypedEmitter", () => {
   });
 
   test("a listener added mid-emit does not fire during the emission in progress", () => {
-    const emitter = new TypedEmitter();
+    const emitter = new TypedEmitter<ElwoodEventMap>();
     const seen: string[] = [];
     const late = (event: { readonly status: string }) => seen.push(`late:${event.status}`);
     // The copy-on-write `list` snapshot is frozen when the emission begins, so a
@@ -78,7 +79,7 @@ describe("TypedEmitter", () => {
   });
 
   test("registering the same handler twice is a no-op: it fires once and one off removes it", () => {
-    const emitter = new TypedEmitter();
+    const emitter = new TypedEmitter<ElwoodEventMap>();
     let calls = 0;
     const handler = () => {
       calls += 1;
@@ -95,7 +96,7 @@ describe("TypedEmitter", () => {
   });
 
   test("request skips a handler unsubscribed by an earlier request handler", async () => {
-    const emitter = new TypedEmitter();
+    const emitter = new TypedEmitter<ElwoodEventMap>();
     const b = () => "b-result";
     // The first async handler removes B before B is reached; the immutable `list`
     // snapshot still contains B, so `request` must consult `live` and skip it.

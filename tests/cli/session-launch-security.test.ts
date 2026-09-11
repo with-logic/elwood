@@ -15,27 +15,19 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { type CliLaunchDependencies, createCliLaunch } from "../../src/cli/session-launch.ts";
+import { type CliLaunchDependencies, createCliLaunch } from "../../src/cli/session/launch.ts";
 import type { EffectiveRunRequest } from "../../src/cli/types.ts";
 import { ensurePrivateStateRoot } from "../../src/state/private-session.ts";
+import { effectiveRequest } from "./main-fakes.ts";
 
 function request(root: string, stateDir: string): EffectiveRunRequest {
-  return {
-    agent: "codex",
-    output: "text",
-    outputExplicit: false,
+  return effectiveRequest({
     trust: false,
     stateDir,
-    verbose: false,
-    stream: false,
     cwd: root,
-    images: [],
-    prompt: "go",
-    keep: false,
-    ephemeral: false,
     sandbox: "read-only",
     approvalPolicy: "on-request",
-  };
+  });
 }
 
 function dependencies(starts: string[]): CliLaunchDependencies {

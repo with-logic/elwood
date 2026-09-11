@@ -16,10 +16,10 @@ import {
   startClaude,
   startCodex,
 } from "../../src/index.ts";
-import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
+import { cleanup, makeProject, skipIf, skipReason, waitFor } from "./helpers.ts";
 
 test("C-CLAUDE-20 Claude launches and reaches ready with --effort set (real CLI)", {
-  skip: skipReason("claude"),
+  skip: skipIf(skipReason("claude")),
   timeout: 180_000,
 }, async () => {
   const project = makeProject("claude");
@@ -48,7 +48,7 @@ test("C-CLAUDE-20 Claude launches and reaches ready with --effort set (real CLI)
 });
 
 test("C-CODEX-21 Codex launches and reaches ready with model_reasoning_effort set (real CLI)", {
-  skip: skipReason("codex"),
+  skip: skipIf(skipReason("codex")),
   timeout: 180_000,
 }, async () => {
   const project = makeProject("codex");

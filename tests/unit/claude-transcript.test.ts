@@ -3,7 +3,7 @@
  * Covers PRD §5.4 (C-CLAUDE-15): bounded, per-path, no-replay observation.
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -12,24 +12,13 @@ import {
   ClaudeTranscriptWatcher,
   type TranscriptDropNotice,
 } from "../../src/claude/transcript/index.ts";
-
-const assistant = (text: string) => ({
-  type: "assistant",
-  message: { content: [{ type: "text", text }] },
-});
-
-function tmpFile(): string {
-  return join(mkdtempSync(join(tmpdir(), "elwood-tx-")), "t.jsonl");
-}
-const writeRecords = (path: string, ...records: unknown[]) =>
-  writeFileSync(
-    path,
-    records.length ? `${records.map((r) => JSON.stringify(r)).join("\n")}\n` : "",
-  );
-const appendRecords = (path: string, prior: unknown[], ...records: unknown[]) =>
-  writeRecords(path, ...prior, ...records);
-const texts = (events: ClaudeTranscriptEvent[]) =>
-  events.map((e) => (e.summary.kind === "assistant_message" ? e.summary.text : e.summary.kind));
+import {
+  appendRecords,
+  assistant,
+  texts,
+  tmpFile,
+  writeRecords,
+} from "./claude-transcript-helpers.ts";
 
 describe("C-CLAUDE-15 Claude transcript watcher", () => {
   test("emits only NEW records appended after observe; does not replay history", () => {
@@ -58,6 +47,18 @@ describe("C-CLAUDE-15 Claude transcript watcher", () => {
     watcher.observe(path, true);
     watcher.finish();
     expect(texts(events)).toEqual(["committed"]);
+  });
+
+  test("scan() on an unchanged cursor reads nothing and emits nothing", () => {
+    // No growth since observe: the chunk is empty, so no line is fed to the emitter.
+    const path = tmpFile();
+    const events: ClaudeTranscriptEvent[] = [];
+    const watcher = new ClaudeTranscriptWatcher("s1", (e) => events.push(e));
+    writeRecords(path, assistant("old"));
+    watcher.observe(path);
+    watcher.scan();
+    watcher.stop();
+    expect(events).toEqual([]);
   });
 
   test("a non-boundary first observe (resume) recovers NO history", () => {

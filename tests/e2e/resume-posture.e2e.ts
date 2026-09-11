@@ -1,8 +1,8 @@
 /**
  * Real-CLI verification that a restrictive launch posture PERSISTS across a resume
  * and is not silently loosened (PRD §5.2, §9.3, C-API-29/C-API-32/C-STATE-13). This
- * is the security-relevant behavior the review found contradicted between PRD §5.2
- * and §9.3: the code re-applies the persisted posture, and this pins it to the wire.
+ * is security-relevant: a resume that fell back to wrapper defaults would widen the
+ * tool surface, so the persisted posture is re-applied and pinned here on the wire.
  */
 
 import assert from "node:assert/strict";
@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { type ClaudeSessionApi, resumeClaude, startClaude } from "../../src/index.ts";
-import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
+import { cleanup, makeProject, skipIf, skipReason, waitFor } from "./helpers.ts";
 
 type ClaudeLaunch = {
   readonly permissionMode?: string;
@@ -27,7 +27,7 @@ function readLaunch(stateDir: string, id: string): ClaudeLaunch | undefined {
 }
 
 test("C-API-32 a restrictive Claude posture survives resume unchanged (real CLI)", {
-  skip: skipReason("claude"),
+  skip: skipIf(skipReason("claude")),
   timeout: 180_000,
 }, async () => {
   const project = makeProject("claude");

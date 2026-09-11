@@ -6,13 +6,20 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { materializeImages } from "../../src/core/images/materialize.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 describe("materializeImages (C-API-44)", () => {
+  afterEach(() => {
+    // Every mocked-fs test below is undone here, so a failing assertion cannot leak the
+    // mock into the next test.
+    vi.doUnmock("node:fs/promises");
+    vi.resetModules();
+  });
+
   test("C-API-44 materializes bytes to temp files and cleans them up", async () => {
     const { paths, cleanup } = await materializeImages([{ data: PNG, format: "png" }]);
     const file = paths[0] as string;
@@ -80,8 +87,6 @@ describe("materializeImages (C-API-44)", () => {
       details: { cause: "ENOSPC" },
     });
     expect(removed.length).toBeGreaterThan(0);
-    vi.doUnmock("node:fs/promises");
-    vi.resetModules();
   });
 
   test("C-API-44 a non-Error materialize failure is stringified into the cause", async () => {
@@ -95,8 +100,6 @@ describe("materializeImages (C-API-44)", () => {
       code: "image_attach_failed",
       details: { cause: "disk-gone" },
     });
-    vi.doUnmock("node:fs/promises");
-    vi.resetModules();
   });
 
   test("C-API-44 a cleanup failure never masks the ORIGINAL materialize failure", async () => {
@@ -114,7 +117,5 @@ describe("materializeImages (C-API-44)", () => {
     await expect(mocked([{ data: PNG, format: "png" }])).rejects.toMatchObject({
       code: "image_attach_failed",
     });
-    vi.doUnmock("node:fs/promises");
-    vi.resetModules();
   });
 });

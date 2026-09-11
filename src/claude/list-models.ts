@@ -2,10 +2,10 @@
  * Session-less Claude model enumeration. Implements PRD §5.3 and C-API-41.
  */
 
-import { type ListModelsOptions, probeModels } from "../core/list-models.ts";
-import type { AgentModelOption } from "../core/model-rows.ts";
-import { ownedProbeStateDir } from "../core/probe-state.ts";
-import { startClaude } from "./session.ts";
+import { type ListModelsOptions, probeModels } from "../core/models/list.ts";
+import { ownedProbeStateDir } from "../core/models/probe-state.ts";
+import type { AgentModelOption } from "../core/models/rows.ts";
+import { startClaude } from "./session/index.ts";
 
 /**
  * Lists the models available to Claude WITHOUT a caller-held session: starts a

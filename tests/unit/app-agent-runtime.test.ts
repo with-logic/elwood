@@ -4,11 +4,8 @@
  */
 
 import { describe, expect, test } from "vitest";
-import {
-  defaultAgentRuntime,
-  type SharedSession,
-  startAgentSession,
-} from "../../src/app/agent-runtime.ts";
+import { defaultAgentRuntime, startAgentSession } from "../../src/app/agent-runtime.ts";
+import { fakeSharedSession } from "../helpers/fake-shared-session.ts";
 
 describe("app adapter runtime", () => {
   test("default runtime exposes both adapters", () => {
@@ -17,7 +14,7 @@ describe("app adapter runtime", () => {
   });
 
   test("C-APP-01 starts Codex through the selected runtime", async () => {
-    const session = fakeSession();
+    const session = fakeSharedSession("s1", { cwd: "/tmp/project" });
     let seenStateDir = "";
     const runtime = {
       startClaude: () => Promise.reject(new Error("wrong adapter")),
@@ -44,7 +41,7 @@ describe("app adapter runtime", () => {
   });
 
   test("C-APP-02 resumes Codex through the selected runtime", async () => {
-    const session = fakeSession();
+    const session = fakeSharedSession("s1", { cwd: "/tmp/project" });
     const runtime = {
       startClaude: () => Promise.reject(new Error("wrong adapter")),
       resumeClaude: () => Promise.reject(new Error("wrong adapter")),
@@ -65,26 +62,3 @@ describe("app adapter runtime", () => {
     ).resolves.toBe(session);
   });
 });
-
-function fakeSession(): SharedSession {
-  return {
-    elwoodSessionId: "s1",
-    cwd: "/tmp/project",
-    status: "running",
-    terminal: fakeTerminal() as never,
-    statusDecisions: () => [],
-    on: () => () => {},
-    sendPrompt: () => Promise.resolve(),
-    sendMessage: () => Promise.resolve(),
-    sendGuidance: () => Promise.resolve(),
-    sendKeys: () => Promise.resolve(),
-    resize: () => Promise.resolve(),
-    stop: () => Promise.resolve(),
-    kill: () => Promise.resolve(),
-    teardown: () => Promise.resolve(),
-  };
-}
-
-function fakeTerminal() {
-  return { snapshot: () => ({ text: "screen" }), settled: () => Promise.resolve() };
-}

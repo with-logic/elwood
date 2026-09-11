@@ -4,7 +4,7 @@
  */
 
 import { cliConfigHelp } from "../help.ts";
-import { usage } from "../request-values.ts";
+import { usage } from "../request/values.ts";
 import type { AsyncOutputSink } from "../stream.ts";
 import type { CliEnvironment } from "../types.ts";
 import { getConfigValue, setConfigValue, unsetConfigValue } from "./codec.ts";

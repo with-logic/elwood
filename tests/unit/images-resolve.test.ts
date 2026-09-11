@@ -27,7 +27,7 @@ describe("ImageInput type exclusivity (C-API-44)", () => {
     // @ts-expect-error — path and data are mutually exclusive (never-typed complements),
     // so a caller cannot smuggle an unvalidated path alongside bytes.
     const mixed: ImageInput = { path: "/x.png", data: PNG, format: "png" };
-    expect(mixed).toBeDefined(); // runtime is irrelevant; the ts-expect-error is the assertion
+    void mixed; // the `@ts-expect-error` above is the assertion; no runtime check applies
   });
 });
 

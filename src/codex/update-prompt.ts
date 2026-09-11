@@ -4,7 +4,7 @@
  */
 
 import { nonOptionText, numberedOptions } from "../core/terminal-options.ts";
-import type { TrustWriteResult } from "../core/trust-responder.ts";
+import type { TrustWriteResult } from "../core/trust/responder.ts";
 
 export const codexUpdateOptionPattern = /continue\s*without\s*updat|skip|not\s*now|later/i;
 const updateScreenBanner =

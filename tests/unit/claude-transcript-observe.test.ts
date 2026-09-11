@@ -9,7 +9,7 @@ import { describe, expect, test } from "vitest";
 import {
   type ObservableTranscript,
   observeTranscript,
-} from "../../src/claude/session-transcript.ts";
+} from "../../src/claude/session/transcript.ts";
 
 describe("C-CLAUDE-15 observeTranscript path following", () => {
   test("observeTranscript follows BOTH transcript_path and agent_transcript_path", () => {

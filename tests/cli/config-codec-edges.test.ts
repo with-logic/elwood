@@ -12,7 +12,7 @@ import {
 import { configKeys } from "../../src/cli/config/keys.ts";
 
 describe("CLI config codec edges", () => {
-  test("decodes every documented field", () => {
+  test("C-CLI-13 decodes every documented field", () => {
     const config = decodeConfig({
       schemaVersion: 1,
       agent: "codex",
@@ -41,7 +41,7 @@ describe("CLI config codec edges", () => {
     ["[]", /object/iu],
     ["{}", /schemaVersion/iu],
     ['{"schemaVersion":1,"unknown":true}', /unknown/iu],
-  ])("rejects malformed config %s", (text, message) => {
+  ])("C-CLI-13 rejects malformed config %s", (text, message) => {
     expect(() => parseConfigText(text)).toThrow(message);
   });
 
@@ -57,11 +57,11 @@ describe("CLI config codec edges", () => {
     [{ schemaVersion: 1, codex: { extra: true } }, /extra/iu],
     [{ schemaVersion: 1, claude: { reasoningEffort: "minimal" } }, /reasoningEffort/iu],
     [{ schemaVersion: 1, codex: { sandbox: "open" } }, /sandbox/iu],
-  ])("rejects invalid shape %#", (value, message) => {
+  ])("C-CLI-13 rejects invalid shape %#", (value, message) => {
     expect(() => decodeConfig(value)).toThrow(message);
   });
 
-  test("parses every dotted value family", () => {
+  test("C-CLI-14 parses every dotted value family", () => {
     const values: Readonly<Record<string, string>> = {
       schemaVersion: "1",
       agent: "claude",
@@ -86,7 +86,7 @@ describe("CLI config codec edges", () => {
     expect(() => parseConfigValue("stateDir", " ")).toThrow(/empty/iu);
   });
 
-  test("gets, sets, and idempotently unsets top-level and dotted keys", () => {
+  test("C-CLI-14 gets, sets, and idempotently unsets top-level and dotted keys", () => {
     const base = { schemaVersion: 1, agent: "codex", claude: { model: "c" } } as const;
     expect(getConfigValue(base, "agent")).toBe("codex");
     expect(getConfigValue(base, "claude.model")).toBe("c");

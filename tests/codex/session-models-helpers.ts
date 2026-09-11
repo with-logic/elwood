@@ -10,8 +10,11 @@ import {
   codexPickerCurrentIsDefault,
   codexPickerSplitMarkers,
   codexReasoningScreen,
+  until,
 } from "../helpers/model-pickers.ts";
 import { ptys } from "./helpers.ts";
+
+export { until };
 
 export const userConfig = 'model = "gpt-5.5"\nmodel_reasoning_effort = "high"\n\n[hooks]\n';
 
@@ -21,17 +24,6 @@ export function sandboxCodexHome(cwd: string): string {
   writeFileSync(join(home, "config.toml"), userConfig);
   process.env["CODEX_HOME"] = home;
   return join(home, "config.toml");
-}
-
-export async function until(check: () => boolean): Promise<void> {
-  // Generous budget (20s) so heavy parallel-suite CPU contention cannot exhaust the
-  // poll before the fake PTY emits — the driven operations use a matching large
-  // timeoutMs, so neither the op nor this wait loses the race under load.
-  for (let i = 0; i < 800; i += 1) {
-    if (check()) return;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error("picker flow condition not reached");
 }
 
 export async function driveSetModel(
@@ -47,7 +39,7 @@ export async function driveSetModel(
  * Drives the picker through the point where Codex writes config.toml, then
  * stops WITHOUT the final "Model changed" confirmation so the last waitForScreen
  * times out and super.setModel rejects — exercising the finally-restore path
- * (C-CODEX-14, finding #3).
+ * (C-CODEX-14).
  */
 export async function driveUntilConfigWritten(
   configPath: string,

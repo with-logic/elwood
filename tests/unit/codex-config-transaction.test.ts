@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { runCodexModelSwitch } from "../../src/codex/config-transaction.ts";
+import { runCodexModelSwitch } from "../../src/codex/config/transaction.ts";
 
 function io(overrides: {
   apply: () => Promise<void>;

@@ -64,23 +64,25 @@ export class LoopDelivery {
     this.readyState = false;
     this.options.submit(entry.definition.message, candidate.id, candidate.abort.signal).then(
       () => this.submitted(candidate),
-      () => this.rejected(candidate, live),
+      () => this.rejected(candidate),
     );
   }
 
+  /**
+   * Aborts an in-flight write for `loopId`. `activeOrigin` is deliberately left alone: a
+   * cancelled loop no longer exists for `ready()` to re-arm, and caller activity already
+   * resets every idle loop to `waiting` (re-armed at the next `ready` regardless of origin).
+   */
   cancel(loopId: string): void {
-    if (this.candidate?.id === loopId) {
-      const candidate = this.candidate;
-      this.candidate = undefined;
-      this.readyState = true;
-      candidate.abort.abort(cancelledError(loopId));
-    }
-    if (this.activeOrigin === loopId) this.activeOrigin = undefined;
+    if (this.candidate?.id !== loopId) return;
+    const candidate = this.candidate;
+    this.candidate = undefined;
+    this.readyState = true;
+    candidate.abort.abort(cancelledError(loopId));
   }
 
   cancelIf(predicate: (loopId: string) => boolean): void {
     if (this.candidate && predicate(this.candidate.id)) this.cancel(this.candidate.id);
-    if (this.activeOrigin && predicate(this.activeOrigin)) this.activeOrigin = undefined;
   }
 
   pause(): void {
@@ -90,9 +92,7 @@ export class LoopDelivery {
   }
 
   private submitted(candidate: Candidate): void {
-    if (this.candidate !== candidate) return;
-    this.candidate = undefined;
-    const entry = this.options.state.get(candidate.id);
+    const entry = this.settled(candidate);
     if (!entry) return;
     if (entry.definition.expiresAt <= this.options.now()) {
       this.options.expire(candidate.id);
@@ -110,15 +110,24 @@ export class LoopDelivery {
     });
   }
 
-  private rejected(candidate: Candidate, live: boolean): void {
-    if (this.candidate !== candidate) return;
-    this.candidate = undefined;
-    const entry = this.options.state.get(candidate.id);
-    if (!(entry && live)) return;
+  private rejected(candidate: Candidate): void {
+    const entry = this.settled(candidate);
+    if (!entry) return;
     this.readyState = true;
     this.options.fail(entry);
     this.options.armDue(entry, this.options.now());
-    this.pump(live);
+    this.pump(true); // a candidate only exists while live; pausing clears it (→ stale above)
+  }
+
+  /**
+   * Retires a settling candidate and returns its live entry, or `undefined` when the
+   * settlement is STALE: the loop was cancelled, removed, or the scheduler paused while
+   * the write was in flight (each of those clears `candidate`), so nothing may fire.
+   */
+  private settled(candidate: Candidate): LoopRuntimeEntry | undefined {
+    if (this.candidate !== candidate) return undefined;
+    this.candidate = undefined;
+    return this.options.state.get(candidate.id);
   }
 }
 

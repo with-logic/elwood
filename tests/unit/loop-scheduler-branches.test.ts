@@ -1,120 +1,153 @@
-/** Race and defensive branch coverage for the loop scheduler (PRD §5.9). */
+/**
+ * Race coverage for the loop scheduler (PRD §5.9), driven only through its public surface
+ * and the injectable clock/timer seam: a submission settling AFTER its loop was cancelled or
+ * expired, and timers that a non-cancelling scheduler seam fires late (the seam's contract
+ * allows it), which every timer callback must tolerate.
+ */
 
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import { LoopScheduler } from "../../src/core/loops/scheduler.ts";
-import { LoopDelivery } from "../../src/core/loops/scheduler-delivery.ts";
-import { LoopSchedulerState } from "../../src/core/loops/scheduler-state.ts";
-import { LoopTimerBank, LoopTiming } from "../../src/core/loops/timers.ts";
+import type { LoopSchedulerOptions } from "../../src/core/loops/scheduler-state.ts";
 import { fixed, flushPromises, SchedulerHarness } from "./loop-scheduler-harness.ts";
 
+/** A seam whose `cancel` is a no-op, so a cancelled timer can still be fired by the test. */
+function nonCancelling(harness: SchedulerHarness, definitions = [fixed(harness.clock)]) {
+  const callbacks: (() => void)[] = [];
+  const options: LoopSchedulerOptions = {
+    ...harness.options(definitions),
+    schedule: (run) => {
+      callbacks.push(run);
+      return { cancel: () => undefined };
+    },
+  };
+  return { scheduler: new LoopScheduler(options), callbacks };
+}
+
 describe("LoopScheduler race branches", () => {
-  test("stale delivery settlement cannot revive a cancelled or removed candidate", async () => {
+  test("C-LOOP-17 a submission settling AFTER its loop was cancelled cannot revive it", async () => {
+    const harness = new SchedulerHarness();
+    const settle: { resolve: () => void; reject: (error: Error) => void }[] = [];
+    harness.submit = () =>
+      new Promise<void>((resolve, reject) => {
+        settle.push({ resolve, reject });
+      });
+    const scheduler = new LoopScheduler(harness.options());
+    scheduler.start();
+    scheduler.ready();
+    const first = scheduler.create({ mode: "fixed", intervalMs: 60_000, message: "one" });
+    await harness.clock.advance(60_000 + first.jitterMs); // due → submitted (write pending)
+    expect(settle).toHaveLength(1);
+    scheduler.cancel(first.id); // the candidate is dropped while the write is in flight
+    settle[0]?.resolve(); // a STALE resolve: no `fired`, no re-arm
+    await flushPromises();
+    expect(harness.events.map(({ kind }) => kind)).toEqual(["created", "cancelled"]);
+    expect(harness.clock.pending).toBe(0);
+    // A stale REJECTION is equally inert: no `failed`, no retry.
+    const second = scheduler.create({ mode: "fixed", intervalMs: 60_000, message: "two" });
+    await harness.clock.advance(60_000 + second.jitterMs);
+    scheduler.cancel(second.id);
+    settle[1]?.reject(new Error("late"));
+    await flushPromises();
+    expect(harness.events.filter(({ kind }) => kind === "failed")).toEqual([]);
+    expect(harness.clock.pending).toBe(0);
+    expect(scheduler.list()).toEqual([]);
+  });
+
+  test("C-LOOP-13 a submission settling after the loop's expiry expires it instead of firing", async () => {
     const harness = new SchedulerHarness();
     let resolve!: () => void;
-    let reject!: (error: Error) => void;
-    const state = dueState(harness);
-    const armDue = vi.fn();
-    const expire = vi.fn();
-    const fail = vi.fn();
-    const emit = vi.fn();
-    const delivery = new LoopDelivery({
-      state,
-      now: harness.clock.now,
-      submit: () => new Promise<void>((yes, no) => ([resolve, reject] = [yes, no])),
-      armDue,
-      expire,
-      fail,
-      emit,
-    });
-    delivery.markReady();
-    delivery.pump(true);
-    delivery.cancelIf(() => false);
-    delivery.cancel("other");
-    delivery.cancelIf(() => true);
-    state.commit([]);
+    harness.submit = () =>
+      new Promise<void>((done) => {
+        resolve = done;
+      });
+    const expiresAt = harness.clock.nowMs + 60_001;
+    const scheduler = new LoopScheduler(harness.options([fixed(harness.clock, { expiresAt })]));
+    scheduler.start();
+    scheduler.ready();
+    await harness.clock.advance(60_000); // due (jitter 0) → write pending
+    harness.clock.nowMs = expiresAt; // the wall clock passes expiry while the write is in flight
     resolve();
     await flushPromises();
-    state.commit([fixed(harness.clock)]);
-    state.get("fixed")!.state = "due";
-    state.get("fixed")!.dueAt = harness.clock.nowMs;
-    delivery.markReady();
-    delivery.pump(true);
-    state.commit([]);
-    reject(new Error("removed"));
-    await flushPromises();
-    state.commit([fixed(harness.clock)]);
-    state.get("fixed")!.state = "due";
-    state.get("fixed")!.dueAt = harness.clock.nowMs;
-    delivery.markReady();
-    delivery.pump(true);
-    state.commit([]);
-    resolve();
-    await flushPromises();
-    expect(state.entries()).toEqual([]);
-    expect(armDue).not.toHaveBeenCalled();
-    expect(expire).not.toHaveBeenCalled();
-    expect(fail).not.toHaveBeenCalled();
-    expect(emit).not.toHaveBeenCalled();
+    expect(harness.events.filter(({ kind }) => kind === "fired")).toEqual([]);
+    expect(harness.events.at(-1)).toMatchObject({ kind: "expired", loopId: "fixed" });
+    expect(scheduler.list()).toEqual([]);
   });
-  test("submission expiry wins and caller cancellation clears an active idle origin", async () => {
+
+  test("C-LOOP-13 a due loop that expired while the session was busy expires at the next pump", async () => {
     const harness = new SchedulerHarness();
-    let now = harness.clock.nowMs;
+    const expiresAt = harness.clock.nowMs + 60_001;
+    const scheduler = new LoopScheduler(harness.options([fixed(harness.clock, { expiresAt })]));
+    scheduler.start();
+    scheduler.ready();
+    scheduler.running(); // a caller turn holds delivery
+    await harness.clock.advance(60_000); // due, but not ready → held
+    harness.clock.nowMs = expiresAt;
+    scheduler.ready(); // the pump finds the head loop already expired
+    expect(harness.submissions).toEqual([]);
+    expect(harness.events.at(-1)).toMatchObject({ kind: "expired", loopId: "fixed" });
+  });
+
+  test("C-LOOP-08 caller activity leaves an in-flight or just-fired FIXED loop alone", async () => {
+    // Caller activity only resets IDLE loops: a fixed loop mid-write is not aborted, and once
+    // fired it stays the active origin without being cleared or rescheduled early.
+    const harness = new SchedulerHarness();
     let resolve!: () => void;
-    const definition = fixed(harness.clock, { expiresAt: now + 1 });
-    const state = new LoopSchedulerState([definition]);
-    state.get("fixed")!.state = "due";
-    state.get("fixed")!.dueAt = now;
-    const expire = vi.fn();
-    const delivery = new LoopDelivery({
-      state,
-      now: () => now,
-      submit: () => new Promise<void>((yes) => (resolve = yes)),
-      armDue: vi.fn(),
-      expire,
-      fail: vi.fn(),
-      emit: vi.fn(),
-    });
-    delivery.markReady();
-    delivery.pump(true);
-    now += 1;
+    let aborted = false;
+    harness.submit = (_message, _id, signal) =>
+      new Promise<void>((done) => {
+        signal.addEventListener("abort", () => (aborted = true), { once: true });
+        resolve = done;
+      });
+    const scheduler = new LoopScheduler(harness.options([fixed(harness.clock)]));
+    scheduler.start();
+    scheduler.ready();
+    await harness.clock.advance(60_000); // due → write pending
+    scheduler.activity("caller"); // a fixed candidate is not an idle loop → untouched
+    expect(aborted).toBe(false);
     resolve();
     await flushPromises();
-    expect(expire).toHaveBeenCalledWith("fixed");
+    expect(harness.events.at(-1)).toMatchObject({ kind: "fired", loopId: "fixed" });
+    scheduler.activity("caller"); // the fired fixed loop stays the active origin
+    scheduler.ready();
+    expect(scheduler.list().map(({ state }) => state)).toEqual(["scheduled"]);
   });
-  test("start, stale expiry, paused expiry, and list pruning stay idempotent", () => {
+
+  test("timers a non-cancelling seam fires after cancellation are ignored", () => {
     const harness = new SchedulerHarness();
-    const callbacks: (() => void)[] = [];
-    const base = harness.options([fixed(harness.clock, { expiresAt: harness.clock.nowMs + 10 })]);
-    const scheduler = new LoopScheduler({
-      ...base,
-      schedule: (run) => {
-        callbacks.push(run);
-        return { cancel: () => undefined };
-      },
-    });
+    const { scheduler, callbacks } = nonCancelling(harness);
     scheduler.start();
-    scheduler.start();
-    scheduler.activity("caller");
+    scheduler.start(); // idempotent: no second expiry timer
+    scheduler.ready();
+    expect(callbacks).toHaveLength(2); // [expiry, due]
+    scheduler.activity("caller"); // a fixed loop is untouched by caller activity
     scheduler.cancel("fixed");
-    callbacks[0]!();
-    const paused = new LoopScheduler({
-      ...harness.options([fixed(harness.clock, { expiresAt: harness.clock.nowMs + 10 })]),
-      schedule: (run) => {
-        callbacks.push(run);
-        return { cancel: () => undefined };
-      },
-    });
-    paused.start();
-    paused.pause();
-    callbacks.at(-1)!();
-    expect(paused.list()).toEqual([]);
+    for (const run of callbacks.splice(0)) run(); // stale expiry + stale due
+    expect(harness.events.map(({ kind }) => kind)).toEqual(["cancelled"]);
+    expect(scheduler.list()).toEqual([]);
   });
+
+  test("timers a non-cancelling seam fires after pause neither emit nor re-arm", () => {
+    const harness = new SchedulerHarness();
+    const { scheduler, callbacks } = nonCancelling(harness);
+    scheduler.start();
+    scheduler.ready();
+    scheduler.pause();
+    const [expiry, due] = callbacks.splice(0);
+    due?.(); // a stale due on a paused scheduler leaves the loop waiting
+    expect(scheduler.list().map(({ state }) => state)).toEqual(["waiting"]);
+    expiry?.(); // a stale expiry still retires the loop but emits nothing while paused
+    expect(scheduler.list()).toEqual([]);
+    expect(harness.events).toEqual([]);
+    expect(callbacks).toEqual([]);
+  });
+
   test("omitted definitions and live list-pruning cover fresh scheduler branches", () => {
     const harness = new SchedulerHarness();
     const { definitions: _definitions, ...options } = harness.options();
     const fresh = new LoopScheduler(options);
     fresh.ready();
     fresh.clear("kill");
+    expect(harness.writes).toEqual([]); // nothing to persist for an empty scheduler
     let now = harness.clock.nowMs;
     const pruning = new LoopScheduler({
       ...harness.options([fixed(harness.clock, { expiresAt: now + 1 })]),
@@ -126,6 +159,7 @@ describe("LoopScheduler race branches", () => {
     expect(pruning.list()).toEqual([]);
     expect(harness.events).toContainEqual(expect.objectContaining({ kind: "expired" }));
   });
+
   test("batch persistence failure reports active IDs without request contents", () => {
     const harness = new SchedulerHarness();
     const scheduler = new LoopScheduler(harness.options([fixed(harness.clock)]));
@@ -140,61 +174,22 @@ describe("LoopScheduler race branches", () => {
       phase: "persistence",
     });
   });
-});
-describe("LoopTiming defensive callbacks", () => {
-  test("a stopped scheduler does not retry failed due or expiry timers", () => {
+
+  test("C-LOOP-05 a timer seam that throws fails the loop once and re-arms exactly once", () => {
     const harness = new SchedulerHarness();
-    const state = new LoopSchedulerState([fixed(harness.clock)]);
-    let calls = 0;
-    const timing = new LoopTiming(
-      new LoopTimerBank(() => {
-        calls += 1;
-        throw new Error("timer");
-      }),
-      {
-        state,
-        now: harness.clock.now,
-        live: () => false,
-        fail: vi.fn(),
-        expire: vi.fn(),
-        pump: vi.fn(),
+    let arms = 0;
+    const scheduler = new LoopScheduler({
+      ...harness.options([fixed(harness.clock)]),
+      schedule: () => {
+        arms += 1;
+        throw new Error("no timers");
       },
-    );
-    timing.armDue(state.get("fixed")!, harness.clock.nowMs);
-    timing.armExpiry(state.get("fixed")!);
-    expect(calls).toBe(2);
-  });
-  test("stale due callbacks ignore missing and non-live definitions", () => {
-    const harness = new SchedulerHarness();
-    const callbacks: (() => void)[] = [];
-    const state = new LoopSchedulerState([fixed(harness.clock)]);
-    let live = true;
-    const timing = new LoopTiming(
-      new LoopTimerBank((run) => {
-        callbacks.push(run);
-        return { cancel: () => undefined };
-      }),
-      {
-        state,
-        now: harness.clock.now,
-        live: () => live,
-        fail: vi.fn(),
-        expire: vi.fn(),
-        pump: vi.fn(),
-      },
-    );
-    timing.armDue(state.get("fixed")!, harness.clock.nowMs);
-    state.commit([]);
-    callbacks[0]!();
-    state.commit([fixed(harness.clock)]);
-    timing.armDue(state.get("fixed")!, harness.clock.nowMs);
-    live = false;
-    callbacks[1]!();
+    });
+    scheduler.start(); // expiry: arm, fail, one retry, fail → 2 attempts, no infinite loop
+    expect(arms).toBe(2);
+    scheduler.ready(); // due: the same single re-arm from a fresh anchor, then give up
+    expect(arms).toBe(4);
+    expect(harness.events.filter(({ kind }) => kind === "failed")).toHaveLength(4);
+    expect(scheduler.list().map(({ state }) => state)).toEqual(["waiting"]);
   });
 });
-function dueState(harness: SchedulerHarness): LoopSchedulerState {
-  const state = new LoopSchedulerState([fixed(harness.clock)]);
-  state.get("fixed")!.state = "due";
-  state.get("fixed")!.dueAt = harness.clock.nowMs;
-  return state;
-}

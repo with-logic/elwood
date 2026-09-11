@@ -3,8 +3,8 @@
  * Implements PRD §5.3, §5.7, and C-API-38.
  */
 
-import { terminalStatuses } from "../runtime/session-status.ts";
 import { elwoodError } from "./errors.ts";
+import { terminalStatuses } from "./status-categories.ts";
 import type { ElwoodSessionStatus, Unsubscribe } from "./types.ts";
 
 export const defaultInterruptTimeoutMs = 10_000;

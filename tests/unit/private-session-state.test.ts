@@ -2,16 +2,7 @@
  * Secure CLI resume-state coverage (PRD §12A.5, C-CLI-15/C-CLI-16).
  */
 
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  symlinkSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, mkdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import {
@@ -24,9 +15,10 @@ import {
   sessionDir,
   writeSessionRecord,
 } from "../../src/state/store.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 function fixture(id = "saved") {
-  const root = mkdtempSync(join(tmpdir(), "elwood-private-state-"));
+  const root = tempDir("elwood-private-state-");
   const stateDir = join(root, "state");
   prepareStateDir(stateDir);
   const record = createSessionRecord({ cwd: root, id, adapter: "codex" });
@@ -44,6 +36,13 @@ describe("private CLI session state", () => {
   test("C-CLI-15 distinguishes absent state from unsafe or corrupt state", () => {
     const missing = fixture();
     expect(() => readPrivateSessionRecord(missing.stateDir, "absent")).toThrow(/No Elwood/iu);
+    // A private session dir whose record was removed is still "absent", not corrupt.
+    const emptied = fixture("emptied");
+    unlinkSync(emptied.path);
+    expect(() => readPrivateSessionRecord(emptied.stateDir, "emptied")).toThrow(/No Elwood/iu);
+    // A state path that cannot even be inspected (a file where a directory should be,
+    // ENOTDIR) is unsafe/corrupt rather than "absent".
+    expect(() => readPrivateSessionRecord("/dev/null/not-a-dir", "saved")).toThrow(/private/iu);
     expect(() => readPrivateSessionRecord(missing.stateDir, "../escape")).toThrow(/Invalid/iu);
 
     const sharedRoot = fixture("shared-root");
@@ -114,7 +113,7 @@ describe("private CLI session state", () => {
     expect(() => removeSessionIdentity(alias, "linked-cleanup", "codex")).toThrow(/private/iu);
     expect(existsSync(linkedRoot.dir)).toBe(true);
 
-    const root = mkdtempSync(join(tmpdir(), "elwood-private-cleanup-"));
+    const root = tempDir("elwood-private-cleanup-");
     const stateDir = join(root, "state");
     const target = join(root, "target-sessions");
     mkdirSync(stateDir, { mode: 0o700 });

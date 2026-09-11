@@ -5,32 +5,11 @@
  * listener error surfaces as a bounded transcript_poll_stopped warning.
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { writeFileSync } from "node:fs";
 import { describe, expect, test, vi } from "vitest";
-import {
-  createTranscriptWatcher,
-  type TranscriptActivityEmitter,
-  type WarningSink,
-} from "../../src/claude/session-transcript.ts";
-import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
+import { createTranscriptWatcher, type WarningSink } from "../../src/claude/session/transcript.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
-
-function fakeEmitter(
-  sink: (event: ElwoodActivityEvent) => void = () => {},
-): TranscriptActivityEmitter {
-  return { emit: (_event, payload) => sink(payload) };
-}
-
-const assistant = (text: string) => ({
-  type: "assistant",
-  message: { content: [{ type: "text", text }] },
-});
-
-function tmpFile(): string {
-  return join(mkdtempSync(join(tmpdir(), "elwood-tx-")), "t.jsonl");
-}
+import { assistant, fakeEmitter, tmpFile } from "./claude-transcript-helpers.ts";
 
 describe("C-CLAUDE-15 transcript poll/finish race", () => {
   test("§5.4 a drop orphaned by a throwing finish-drain is DISCARDED by the resumed poll, not flushed past exit", async () => {

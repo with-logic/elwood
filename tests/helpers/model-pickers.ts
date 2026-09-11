@@ -1,5 +1,6 @@
 /**
- * Model picker screen fixtures captured from real CLI sessions (2026-07).
+ * Model picker screen fixtures captured from real CLI sessions (2026-07), plus the
+ * polling helpers the picker-driving tests share (`until`, `flushTerminal`).
  * Supports C-API-23 and C-API-24 tests.
  */
 
@@ -98,4 +99,32 @@ export const codexReasoningScreen = [
 /** Renders fixture text as a fresh screen through a raw PTY data stream. */
 export function asScreen(text: string): string {
   return `\u001b[2J\u001b[H${text.replaceAll("\n", "\r\n")}`;
+}
+
+export type UntilOptions = {
+  /** Poll attempts before giving up (default 800 × 25 ms = 20 s). */
+  readonly attempts?: number;
+  readonly intervalMs?: number;
+  /** Names the awaited state in the timeout error. */
+  readonly label?: string;
+};
+
+/**
+ * Polls `check` without `expect` so it can live in a shared helper. The default budget
+ * is generous (20 s) so heavy parallel-suite CPU contention cannot exhaust the poll
+ * before the fake PTY emits — the driven operations use a matching large timeoutMs, so
+ * neither the op nor this wait loses the race under load.
+ */
+export async function until(check: () => boolean, options: UntilOptions = {}): Promise<void> {
+  const { attempts = 800, intervalMs = 25, label = "picker flow condition" } = options;
+  for (let i = 0; i < attempts; i += 1) {
+    if (check()) return;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(`${label} not reached`);
+}
+
+/** Yields long enough for the headless terminal to ingest emitted PTY data. */
+export function flushTerminal(ms = 25): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

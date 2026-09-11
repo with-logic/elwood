@@ -3,28 +3,11 @@
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { CliLifecycle, cleanupAction } from "../../src/cli/lifecycle.ts";
-import type { EffectiveRunRequest } from "../../src/cli/types.ts";
+import { CliLifecycle } from "../../src/cli/lifecycle/index.ts";
+import { cleanupAction } from "../../src/cli/lifecycle/outcome.ts";
 import { elwoodError } from "../../src/core/errors.ts";
+import { effectiveRequest as request } from "./main-fakes.ts";
 import { FakeCliSession, FakeClock, FakeSignals } from "./run-fakes.ts";
-
-const request = (overrides: Partial<EffectiveRunRequest> = {}): EffectiveRunRequest => ({
-  agent: "codex",
-  output: "text",
-  outputExplicit: false,
-  trust: true,
-  stateDir: "/state",
-  verbose: false,
-  stream: false,
-  cwd: "/work",
-  images: [],
-  prompt: "go",
-  keep: false,
-  ephemeral: false,
-  sandbox: "workspace-write",
-  approvalPolicy: "never",
-  ...overrides,
-});
 
 afterEach(() => vi.useRealTimers());
 
@@ -57,7 +40,7 @@ describe("CliLifecycle", () => {
     expect(signals.unbound).toBe(true);
   });
 
-  test("first SIGINT after launch requests interrupt and contains control failure", async () => {
+  test("C-CLI-07 first SIGINT after launch requests interrupt and contains control failure", async () => {
     const session = new FakeCliSession();
     session.interrupt = () => {
       session.interrupts += 1;
@@ -127,7 +110,7 @@ describe("CliLifecycle", () => {
     lifecycle.dispose();
   });
 
-  test("consumer closure is success and races return either operation or stop", async () => {
+  test("C-CLI-12 consumer closure is success and races return either operation or stop", async () => {
     const lifecycle = new CliLifecycle(request(), new FakeCliSession(), new FakeSignals());
     expect(await lifecycle.race(Promise.resolve(3))).toEqual({ completed: true, value: 3 });
     lifecycle.closeConsumer();
@@ -138,7 +121,7 @@ describe("CliLifecycle", () => {
     expect(lifecycle.failure).toBeUndefined();
   });
 
-  test("blocking and exit cleanup preserve the first primary outcome", async () => {
+  test("C-CLI-09 blocking and exit cleanup preserve the first primary outcome", async () => {
     const session = new FakeCliSession();
     const lifecycle = new CliLifecycle(request({ keep: true }), session, new FakeSignals());
     lifecycle.beginLaunch();
@@ -151,7 +134,7 @@ describe("CliLifecycle", () => {
     expect(lifecycle.failure?.code).toBe("blocked_prompt");
   });
 
-  test("real clock deadline and already-failed expiry are safe", async () => {
+  test("C-CLI-07 real clock deadline and already-failed expiry are safe", async () => {
     vi.useFakeTimers();
     const session = new FakeCliSession();
     const lifecycle = new CliLifecycle(request({ timeoutMs: 1 }), session, new FakeSignals());

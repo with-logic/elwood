@@ -6,8 +6,8 @@
 
 import { describe, expect, test } from "vitest";
 import type { PtyExit } from "../../src/pty/types.ts";
-import { SessionReaper } from "../../src/runtime/reap-tree.ts";
-import { terminatePty } from "../../src/runtime/terminate.ts";
+import { SessionReaper } from "../../src/runtime/shutdown/reap-tree.ts";
+import { terminatePty } from "../../src/runtime/shutdown/terminate.ts";
 
 const LEADER = 1000;
 

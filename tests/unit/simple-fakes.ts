@@ -4,7 +4,7 @@
  * plus a `TestSimple` facade over `SessionBase` exposing a typed `on`/`off`.
  */
 
-import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
+import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import type {
   ElwoodAgentSession,
   ElwoodCommonEventMap,
@@ -12,7 +12,7 @@ import type {
 } from "../../src/core/agent-session.ts";
 import type { SendOptions } from "../../src/core/images/types.ts";
 import type { ElwoodLoopRequest, ElwoodLoopSnapshot } from "../../src/core/loops/types.ts";
-import type { AgentModelOption } from "../../src/core/model-rows.ts";
+import type { AgentModelOption } from "../../src/core/models/rows.ts";
 import { SessionBase } from "../../src/core/simple/session.ts";
 import { defaultBoundarySignal } from "../../src/core/simple/turn.ts";
 import type {
@@ -24,19 +24,11 @@ import type {
 } from "../../src/core/types.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 import type { ElwoodTerminal } from "../../src/terminal/headless.ts";
+import { activity } from "../helpers/activity.ts";
 
 export type Emitter = TypedEmitter<ElwoodCommonEventMap>;
 
-export function activity(partial: Partial<ElwoodActivityEvent>): ElwoodActivityEvent {
-  return {
-    elwoodSessionId: "s1",
-    agent: "claude",
-    source: "transcript",
-    kind: "assistant_message",
-    label: "assistant",
-    ...partial,
-  };
-}
+export { activity };
 
 /**
  * A controllable underlying session that scripts a turn per `sendMessage` and records

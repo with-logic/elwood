@@ -19,9 +19,7 @@ import {
   startClaude,
   startCodex,
 } from "../../src/index.ts";
-import { cleanup, makeProject, skipReason, turnsEnabled, waitFor } from "./helpers.ts";
-
-const skipTurnsReason = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
+import { cleanup, makeProject, skipIf, skipReason, skipTurns, waitFor } from "./helpers.ts";
 
 type GuidanceOutcome = {
   // Status transitions observed from the moment guidance was sent until it
@@ -95,7 +93,7 @@ async function guidanceFlow(
 }
 
 test("C-API-37 real Claude receives guidance during an active turn", {
-  skip: skipReason("claude") ?? skipTurnsReason,
+  skip: skipIf(skipReason("claude"), skipTurns),
   timeout: 120_000,
 }, async () => {
   const project = makeProject("claude");
@@ -120,7 +118,7 @@ test("C-API-37 real Claude receives guidance during an active turn", {
 });
 
 test("C-API-37 real Codex receives guidance during an active turn", {
-  skip: skipReason("codex") ?? skipTurnsReason,
+  skip: skipIf(skipReason("codex"), skipTurns),
   timeout: 120_000,
 }, async () => {
   const project = makeProject("codex");

@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { startClaude } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
+import { flushTerminal } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -150,17 +151,19 @@ describe("ClaudeSessionApi startup and terminal control", () => {
     const session = await startClaude({ cwd });
     const seen: string[] = [];
     const activity: string[] = [];
-    const offPtyData = ptys[0]!.onData(() => {});
-    const offPtyExit = ptys[0]!.onExit(() => {});
-    offPtyData();
-    offPtyExit();
     ptys[0]!.emitData("early");
-    await flushTerminal();
+    await flushTerminal(5);
     const unsubscribe = session.on("terminal:data", (event) => seen.push(event.data));
     session.on("activity", (event) => activity.push(event.kind));
-    session.off("terminal:data", () => {});
+    // off() removes a REGISTERED handler: it sees the registration-time replay of
+    // buffered startup data ("early") and nothing emitted after removal.
+    const removed: string[] = [];
+    const removable = (event: { readonly data: string }) => removed.push(event.data);
+    session.on("terminal:data", removable);
+    session.off("terminal:data", removable);
     ptys[0]!.emitData("abc");
-    await flushTerminal();
+    await flushTerminal(5);
+    expect(removed).toEqual(["early"]);
     unsubscribe();
     ptys[0]!.emitData("ignored");
     await session.sendKeys("x");
@@ -180,7 +183,3 @@ describe("ClaudeSessionApi startup and terminal control", () => {
     expect(activity).toContain("terminal_exit");
   });
 });
-
-function flushTerminal(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 5));
-}

@@ -8,14 +8,15 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { MAX_HOOK_REQUEST_BYTES } from "../../src/bridge/limits.ts";
 import { HookBridgeServer } from "../../src/bridge/server.ts";
-import { sendBridge, sendRaw, tempDirForUnit } from "./helpers.ts";
+import { tempDir } from "../helpers/tmp.ts";
+import { sendBridge, sendRaw } from "./helpers.ts";
 
 const acceptHookInput = () => true;
 const input = JSON.stringify({ hook_event_name: "Stop", session_id: "s1", cwd: "/tmp" });
 
 describe("bridge server fail-open limits", () => {
   test("C-HOOK-16 bridge still fails open when the error sink throws", async () => {
-    const socketPath = join(tempDirForUnit(), "throwing-sink.sock");
+    const socketPath = join(tempDir("elwood-unit-"), "throwing-sink.sock");
     const server = new HookBridgeServer(
       socketPath,
       "token",
@@ -34,7 +35,7 @@ describe("bridge server fail-open limits", () => {
   });
 
   test("C-HOOK-16 an oversized request fails open before dispatch or auth", async () => {
-    const socketPath = join(tempDirForUnit(), "oversized.sock");
+    const socketPath = join(tempDir("elwood-unit-"), "oversized.sock");
     let dispatched = 0;
     const errors: string[] = [];
     const server = new HookBridgeServer(
@@ -62,7 +63,7 @@ describe("bridge server fail-open limits", () => {
     // Pins the exact 8,388,608-byte boundary: a `>` → `>=` regression would flip
     // acceptance of the at-cap request and stay green without this. Sent as raw bytes
     // with a client that tolerates the server's mid-write destroy on the over-cap case.
-    const socketPath = join(tempDirForUnit(), "boundary.sock");
+    const socketPath = join(tempDir("elwood-unit-"), "boundary.sock");
     let dispatched = 0;
     const server = new HookBridgeServer(
       socketPath,
@@ -102,7 +103,7 @@ describe("bridge server fail-open limits", () => {
     // The 4-byte 😀 is split across two writes. Decoding each chunk on its own would
     // insert replacement chars; the server must accumulate bytes and decode once, so
     // the dispatched hook input carries the intact emoji, not `a���b`.
-    const socketPath = join(tempDirForUnit(), "split-utf8.sock");
+    const socketPath = join(tempDir("elwood-unit-"), "split-utf8.sock");
     let resolveInput!: (v: unknown) => void;
     const gotInput = new Promise<unknown>((resolve) => {
       resolveInput = resolve;
@@ -137,7 +138,7 @@ describe("bridge server fail-open limits", () => {
   });
 
   test("C-HOOK-16 an unterminated oversized stream fails open without a frame", async () => {
-    const socketPath = join(tempDirForUnit(), "oversized-unterminated.sock");
+    const socketPath = join(tempDir("elwood-unit-"), "oversized-unterminated.sock");
     let dispatched = 0;
     const server = new HookBridgeServer(
       socketPath,

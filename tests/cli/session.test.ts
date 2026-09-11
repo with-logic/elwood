@@ -6,12 +6,12 @@ import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { finalizeRunRequest } from "../../src/cli/request.ts";
+import { finalizeRunRequest } from "../../src/cli/request/index.ts";
 import {
   type CliSessionDependencies,
   HeadlessCliSession,
   prepareCliSession,
-} from "../../src/cli/session.ts";
+} from "../../src/cli/session/index.ts";
 import type { CliAgent, EffectiveRunRequest, ResolvedRunRequest } from "../../src/cli/types.ts";
 import { readPrivateSessionRecord } from "../../src/state/private-session.ts";
 import {
@@ -21,6 +21,7 @@ import {
   writeSessionRecord,
 } from "../../src/state/store.ts";
 import { FakeUnderlying } from "../unit/simple-fakes.ts";
+import { effectiveRequest } from "./main-fakes.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -28,23 +29,12 @@ function effective(
   root: string,
   overrides: Partial<EffectiveRunRequest> = {},
 ): EffectiveRunRequest {
-  return {
-    agent: "codex",
-    output: "text",
-    outputExplicit: false,
-    trust: true,
+  return effectiveRequest({
     stateDir: join(root, "state"),
-    verbose: false,
-    stream: false,
     cwd: root,
-    images: [],
     prompt: "user",
-    keep: false,
-    ephemeral: false,
-    sandbox: "workspace-write",
-    approvalPolicy: "never",
     ...overrides,
-  };
+  });
 }
 
 function draft(root: string, resume?: string): ResolvedRunRequest {
@@ -76,14 +66,14 @@ function dependencies(id = "new-id"): CliSessionDependencies {
 }
 
 describe("headless CLI session", () => {
-  test("prepares a new session with a preallocated identity", async () => {
+  test("C-CLI-16 prepares a new session with a preallocated identity", async () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-cli-session-"));
     const prepared = await prepareCliSession(draft(root), dependencies("allocated"));
     expect(prepared.request).toMatchObject({ agent: "codex", cwd: root });
     expect(prepared.session).toMatchObject({ id: "allocated", resumed: false });
   });
 
-  test("default preparation allocates without eagerly launching", async () => {
+  test("C-CLI-16 default preparation allocates without eagerly launching", async () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-cli-session-"));
     const prepared = await prepareCliSession(draft(root));
     expect(prepared.session.id).toMatch(/^[0-9a-f-]{36}$/u);
@@ -120,7 +110,7 @@ describe("headless CLI session", () => {
     expect(live.sends).toBe(0);
   });
 
-  test("cleanup owns live, rejected, and mismatched launches", async () => {
+  test("C-CLI-08/C-CLI-09 cleanup owns live, rejected, and mismatched launches", async () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-cli-session-"));
     const live = new FakeUnderlying();
     const owned = new HeadlessCliSession(effective(root), "s1", async () => live);

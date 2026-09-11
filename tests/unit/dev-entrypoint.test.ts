@@ -6,8 +6,8 @@
 
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
-import type { SharedSession } from "../../src/app/agent-runtime.ts";
 import { bootstrapDevAppIfMain, type DevAppProcess, runDevApp } from "../../src/app/dev.ts";
+import { fakeSharedSession } from "../helpers/fake-shared-session.ts";
 
 const devUrl = new URL("../../src/app/dev.ts", import.meta.url).href;
 
@@ -56,30 +56,11 @@ async function* emptyStdin(): AsyncIterable<string> {
 }
 
 function fakeRuntime() {
-  const session = fakeSession();
+  const session = fakeSharedSession();
   return {
     startClaude: () => Promise.resolve(session),
     resumeClaude: () => Promise.resolve(session),
     startCodex: () => Promise.resolve(session),
     resumeCodex: () => Promise.resolve(session),
-  };
-}
-
-function fakeSession(): SharedSession {
-  return {
-    elwoodSessionId: "s1",
-    cwd: "/w",
-    status: "running",
-    terminal: {} as never,
-    statusDecisions: () => [],
-    on: () => () => {},
-    sendPrompt: () => Promise.resolve(),
-    sendMessage: () => Promise.resolve(),
-    sendGuidance: () => Promise.resolve(),
-    sendKeys: () => Promise.resolve(),
-    resize: () => Promise.resolve(),
-    stop: () => Promise.resolve(),
-    kill: () => Promise.resolve(),
-    teardown: () => Promise.resolve(),
   };
 }

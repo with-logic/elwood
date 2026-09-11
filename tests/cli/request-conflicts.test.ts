@@ -4,13 +4,14 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { parseCliArgs } from "../../src/cli/args.ts";
+import { parseCliArgs } from "../../src/cli/args/index.ts";
 import {
   finalizeRunRequest,
   resolveRunRequest,
   resolveRunSettings,
-} from "../../src/cli/request.ts";
+} from "../../src/cli/request/index.ts";
 import type { ParsedRunCommand, RequestContext } from "../../src/cli/types.ts";
+import { detectNothing } from "./agent-fakes.ts";
 
 async function* emptyStdin(...values: readonly string[]) {
   await Promise.resolve();
@@ -94,9 +95,9 @@ describe("source-aware setting conflicts", () => {
       { ELWOOD_PERSONA: "p" },
       "ELWOOD_PERSONA is incompatible with --resume. Use --no-defaults to ignore ELWOOD_PERSONA.",
     ],
-  ])("C-CLI-20 identifies resume-persona source %#", (argv, env, message) => {
+  ])("C-CLI-20 identifies resume-persona source %#", async (argv, env, message) => {
     const cwd = root();
-    expect(() => resolveRunSettings(run(argv), context(cwd, env))).toThrow(message);
+    await expect(resolveRunSettings(run(argv), context(cwd, env))).rejects.toThrow(message);
   });
 
   test.each([
@@ -126,7 +127,7 @@ describe("source-aware setting conflicts", () => {
     ],
   ] as const)("C-CLI-20 identifies resumed adapter-option source %#", async (argv, env, agent, message) => {
     const cwd = root();
-    const draft = resolveRunSettings(run(argv), context(cwd, env));
+    const draft = await resolveRunSettings(run(argv), context(cwd, env), detectNothing);
     await expect(finalizeRunRequest(draft, { agent, cwd })).rejects.toThrow(message);
   });
 
@@ -151,7 +152,7 @@ describe("source-aware setting conflicts", () => {
     ],
   ] as const)("C-CLI-20 identifies resumed adapter source %#", async (argv, env, storedAgent, message) => {
     const cwd = root();
-    const draft = resolveRunSettings(run(argv), context(cwd, env));
+    const draft = await resolveRunSettings(run(argv), context(cwd, env), detectNothing);
     await expect(finalizeRunRequest(draft, { agent: storedAgent, cwd })).rejects.toThrow(message);
   });
 

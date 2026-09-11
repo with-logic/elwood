@@ -4,41 +4,22 @@
  */
 
 import type { ElwoodTerminal } from "../terminal/headless.ts";
-import type { ElwoodActivityEvent } from "./activity.ts";
+import type { ElwoodActivityEvent } from "./activity/index.ts";
 import type { SendOptions } from "./images/types.ts";
-import type { ElwoodLoopEvent } from "./loops/types.ts";
-import type { AgentModelOption } from "./model-rows.ts";
-import type { LoopControls } from "./simple/loop-controls.ts";
+import type { LoopControls } from "./loops/loop-controls.ts";
+import type { AgentModelOption } from "./models/rows.ts";
 import type {
   ActivityMatch,
+  ElwoodCommonEventMap,
+  ElwoodCommonEventName,
   ElwoodSessionStatus,
   ElwoodStatusDecision,
-  ElwoodWarningEvent,
-  HookErrorEvent,
   StatusMatch,
   TerminalSize,
   Unsubscribe,
 } from "./types.ts";
 
-/** Events every adapter session emits with identical payload shapes. */
-export type ElwoodCommonEventMap = {
-  readonly "terminal:data": { readonly elwoodSessionId: string; readonly data: string };
-  readonly "terminal:exit": {
-    readonly elwoodSessionId: string;
-    readonly exitCode: number;
-    readonly signal?: number;
-  };
-  readonly status: {
-    readonly elwoodSessionId: string;
-    readonly status: ElwoodSessionStatus;
-  };
-  readonly activity: ElwoodActivityEvent;
-  readonly warning: ElwoodWarningEvent;
-  readonly loop: ElwoodLoopEvent;
-  readonly hookError: HookErrorEvent;
-};
-
-export type ElwoodCommonEventName = keyof ElwoodCommonEventMap;
+export type { ElwoodCommonEventMap, ElwoodCommonEventName } from "./types.ts";
 
 /**
  * Structural supertype of ClaudeSessionApi and CodexSessionApi. Code generic over

@@ -3,11 +3,11 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { ControlQueue } from "../../src/core/control-queue.ts";
+import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import type { ElwoodLoopEvent } from "../../src/core/loops/types.ts";
-import { SessionLoops } from "../../src/runtime/session-loops.ts";
+import { SessionLoops } from "../../src/runtime/session/loops.ts";
 import type { PersistedLoopDefinition } from "../../src/state/loop-store.ts";
-import { tempDir } from "../claude/helpers.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -33,13 +33,21 @@ describe("SessionLoops", () => {
     expect(submitted).toEqual(["scheduled"]);
   });
 
-  test("cancelling an in-flight delivery exercises its queue abort boundary", async () => {
+  test("C-LOOP-17 cancelling an in-flight delivery aborts its queued write with a typed error", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_800_000_000_000);
+    const aborts: unknown[] = [];
     const queue = new ControlQueue(
       (_input, _mode, signal) =>
         new Promise<void>((_resolve, reject) =>
-          signal.addEventListener("abort", () => reject(signal.reason), { once: true }),
+          signal.addEventListener(
+            "abort",
+            () => {
+              aborts.push(signal.reason);
+              reject(signal.reason);
+            },
+            { once: true },
+          ),
         ),
       () => new Error("closed"),
       () => undefined,
@@ -51,6 +59,10 @@ describe("SessionLoops", () => {
     await vi.advanceTimersByTimeAsync(loop.nextDueAt! - Date.now());
     loops.cancel(loop.id);
     await vi.runAllTimersAsync();
+    // The queued write is aborted with the typed §10 error naming only the loop id.
+    expect(aborts).toEqual([
+      expect.objectContaining({ code: "loop_submission_failed", details: { loopId: loop.id } }),
+    ]);
     expect(loops.list()).toEqual([]);
   });
 

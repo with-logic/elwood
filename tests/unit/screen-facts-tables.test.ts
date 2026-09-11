@@ -9,7 +9,7 @@ import {
   codexScreenFactTable,
   codexScreenFactTableForTrustPolicy,
 } from "../../src/codex/screen-table.ts";
-import { hasScreenFact, type RenderedFrame, readScreenFacts } from "../../src/core/screen-facts.ts";
+import { type RenderedFrame, readScreenFacts } from "../../src/core/screen-facts.ts";
 import {
   claudeEffortCacheConfirmation,
   claudeHookSwitchConfirmation,
@@ -75,12 +75,10 @@ describe("screen fact tables", () => {
     // composer_visible feeds idle-turn detection; it is NOT a readiness signal
     // — the boot-time placeholder marker paints before input is accepted, so
     // Codex readiness is hook-backed (C-API-28), not composer-driven.
-    expect(
-      hasScreenFact(codexScreenFactTable, { text: codexIdle, title: "" }, "composer_visible"),
-    ).toBe(true);
-    expect(
-      hasScreenFact(codexScreenFactTable, { text: modalDialog, title: "" }, "composer_visible"),
-    ).toBe(false);
+    const composer = (text: string) =>
+      readScreenFacts(codexScreenFactTable, screen(text)).facts.composer_visible;
+    expect(composer(codexIdle)).toBe(true);
+    expect(composer(modalDialog)).toBe(false);
   });
 
   test("C-CODEX-12 Codex update screens block input without matching ordinary update prose", () => {
@@ -120,18 +118,13 @@ describe("screen fact tables", () => {
     expect(blocked("Claude said: Change effort level? Yes, switch to xhigh")).toBe(false);
   });
 
-  test("hasScreenFact evaluates a single fact across screen and title regions", () => {
+  test("C-TURN-03 a fact is read across the screen and title regions", () => {
+    const facts = (frame: RenderedFrame) => readScreenFacts(claudeScreenFactTable, frame).facts;
     // A title-region working rule matches the spinner title, not the screen.
-    expect(
-      hasScreenFact(claudeScreenFactTable, { text: "❯ ", title: workingTitle }, "working_visible"),
-    ).toBe(true);
+    expect(facts(screen("❯ ", workingTitle)).working_visible).toBe(true);
     // The same fact is absent when neither the footer nor the title spins.
-    expect(
-      hasScreenFact(claudeScreenFactTable, { text: "❯ ", title: idleTitle }, "working_visible"),
-    ).toBe(false);
+    expect(facts(screen("❯ ", idleTitle)).working_visible).toBe(false);
     // A screen-region rule still matches when the title is empty.
-    expect(
-      hasScreenFact(claudeScreenFactTable, { text: claudeWorking, title: "" }, "composer_visible"),
-    ).toBe(true);
+    expect(facts(screen(claudeWorking)).composer_visible).toBe(true);
   });
 });

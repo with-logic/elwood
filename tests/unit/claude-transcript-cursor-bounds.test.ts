@@ -4,10 +4,9 @@
  * (C-CLAUDE-15).
  */
 
-import { closeSync, mkdtempSync, openSync, readSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { closeSync, openSync, readSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import {
   resetMaxRecordsForTests,
   scanBaselineTail,
@@ -18,6 +17,12 @@ import {
   setByteReaderForTests,
   TranscriptCursor,
 } from "../../src/claude/transcript/cursor.ts";
+import { drainAll, tmpFile } from "./claude-transcript-helpers.ts";
+
+afterEach(() => {
+  resetByteReaderForTests();
+  resetMaxRecordsForTests();
+});
 
 function fileBytes(path: string): number {
   return statSync(path).size;
@@ -36,20 +41,6 @@ function countingReader(counter: { bytes: number }) {
       closeSync(fd);
     }
   };
-}
-
-function tmpFile(): string {
-  return join(mkdtempSync(join(tmpdir(), "elwood-tx-")), "t.jsonl");
-}
-
-function drainAll(cursor: TranscriptCursor): string {
-  let out = "";
-  for (let budget = 1000; budget > 0; budget--) {
-    const { text, canContinueNow } = cursor.readChunk();
-    out += text;
-    if (!canContinueNow) break;
-  }
-  return out;
 }
 
 describe("C-CLAUDE-15 transcript cursor growth check", () => {
@@ -84,11 +75,7 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
     writeFileSync(path, `${Array.from({ length: 8000 }, (_, i) => asst(`m${i}`)).join("\n")}\n`);
     const counter = { bytes: 0 };
     setByteReaderForTests(countingReader(counter));
-    try {
-      new TranscriptCursor(path).baselineTail();
-    } finally {
-      resetByteReaderForTests();
-    }
+    new TranscriptCursor(path).baselineTail();
     // Linear: each backward block is read once, so total ≈ the scanned span, well
     // under 2× the file. The old impl re-read the suffix each step → many× the file.
     expect(counter.bytes).toBeLessThan(fileBytes(path) * 2);
@@ -109,17 +96,13 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
     const tailRecords = Array.from({ length: 4 }, (_, i) => big(i)).join("\n");
     writeFileSync(path, `${user}\n${big(99)}\n${big(98)}\n${tailRecords}\n`);
     setMaxRecordsForTests(1); // stop after the first block, before the prompt block
-    try {
-      const tail = scanBaselineTail(path, fileBytes(path));
-      expect(tail.truncated).toBe(true); // budget hit before the boundary
-      // The earlier-in-file portion that fell outside the window is quantified so
-      // the caller can surface it as a bounded, content-free drop (MINOR fix).
-      expect(tail.unrecoveredBytes).toBeGreaterThan(0);
-      expect(tail.lines.join("\n")).toContain("r3-"); // a newest in-window record kept
-      expect(tail.lines.join("\n")).not.toContain('"content":"go"'); // prompt not reached
-    } finally {
-      resetMaxRecordsForTests();
-    }
+    const tail = scanBaselineTail(path, fileBytes(path));
+    expect(tail.truncated).toBe(true); // budget hit before the boundary
+    // The earlier-in-file portion that fell outside the window is quantified so
+    // the caller can surface it as a bounded, content-free drop.
+    expect(tail.unrecoveredBytes).toBeGreaterThan(0);
+    expect(tail.lines.join("\n")).toContain("r3-"); // a newest in-window record kept
+    expect(tail.lines.join("\n")).not.toContain('"content":"go"'); // prompt not reached
   });
 
   test("a non-ENOENT stat error at construction propagates to the caller's fs guard", () => {
@@ -159,16 +142,12 @@ describe("C-CLAUDE-15 transcript cursor growth check", () => {
       resetByteReaderForTests(); // subsequent reads use the real reader
       throw Object.assign(new Error("EIO"), { code: "EIO" }); // fail the truncation read
     });
-    try {
-      // The read throws; a pre-fix impl already reset the offset to 0 by now.
-      expect(() => cursor.readChunk()).toThrow("EIO");
-      // Regrow past the old offset. Fixed: offset still 15 → reads only "DD\n".
-      // Pre-fix: offset 0 → would replay "aaaa\n...\nDD\n". Assert no replay.
-      writeFileSync(path, "aaaa\nbbbb\ncccc\nDD\n"); // 18 bytes
-      expect(drainAll(cursor)).toBe("DD\n");
-    } finally {
-      resetByteReaderForTests();
-    }
+    // The read throws; a pre-fix impl already reset the offset to 0 by now.
+    expect(() => cursor.readChunk()).toThrow("EIO");
+    // Regrow past the old offset. Fixed: offset still 15 → reads only "DD\n".
+    // Pre-fix: offset 0 → would replay "aaaa\n...\nDD\n". Assert no replay.
+    writeFileSync(path, "aaaa\nbbbb\ncccc\nDD\n"); // 18 bytes
+    expect(drainAll(cursor)).toBe("DD\n");
   });
 
   test("takeLines splits complete lines and retains the trailing partial", () => {

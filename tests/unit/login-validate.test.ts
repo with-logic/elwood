@@ -7,12 +7,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import {
-  abortRejection,
-  deadlineSignal,
-  pollDelay,
-  raceSettle,
-} from "../../src/claude/login/abort.ts";
+import { deadlineSignal, pollDelay, raceSettle } from "../../src/claude/login/abort.ts";
 import { isSafeAuthCode, safeAuthUrl } from "../../src/claude/login/validate.ts";
 
 describe("safeAuthUrl (C-API-43)", () => {
@@ -60,10 +55,6 @@ describe("abort helpers reject immediately when already aborted (C-API-43)", () 
     return controller.signal;
   };
 
-  test("abortRejection rejects at once on a pre-aborted signal", async () => {
-    await expect(abortRejection(aborted())).rejects.toMatchObject({ code: "login_timeout" });
-  });
-
   test("raceSettle surfaces the abort even against pending work", async () => {
     await expect(raceSettle(new Promise<void>(() => {}), aborted())).rejects.toMatchObject({
       code: "login_timeout",
@@ -78,7 +69,9 @@ describe("abort helpers reject immediately when already aborted (C-API-43)", () 
     const parent = new AbortController();
     parent.abort();
     const { signal, cancel } = deadlineSignal(60_000, parent.signal);
-    await expect(abortRejection(signal)).rejects.toMatchObject({ code: "session_not_running" });
+    await expect(raceSettle(new Promise<void>(() => {}), signal)).rejects.toMatchObject({
+      code: "session_not_running",
+    });
     cancel();
   });
 });

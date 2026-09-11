@@ -5,22 +5,23 @@
 
 import type { StartClaudeOptions } from "../core/types.ts";
 import { hookCommand } from "../runtime/hook-command.ts";
-import { claudeHookEventNames } from "./hooks.ts";
+import { claudeHookEventNames } from "./hooks/index.ts";
+import { isToolHookEventName } from "./hooks/tool-events.ts";
 
 export type GeneratedSettingsInput = {
   readonly bridgeScriptPath: string;
-  readonly options: Pick<StartClaudeOptions, "disallowedTools" | "settingsOverrides">;
+  readonly options: Pick<StartClaudeOptions, "settingsOverrides">;
+  /** The CLI-side per-hook timeout written into the settings (see session/runtime.ts). */
   readonly timeoutSeconds: number;
 };
 
+/** Caller overrides (including any `permissions`) pass through; Elwood adds only `hooks`. */
 export function generateClaudeSettings(
   input: GeneratedSettingsInput,
 ): Readonly<Record<string, unknown>> {
-  const permissions = permissionsFrom(input.options.settingsOverrides);
   return {
     ...input.options.settingsOverrides,
     hooks: generateHooks(input.bridgeScriptPath, input.timeoutSeconds),
-    ...(Object.keys(permissions).length === 0 ? {} : { permissions }),
   };
 }
 
@@ -32,7 +33,8 @@ function generateHooks(
   for (const eventName of claudeHookEventNames) {
     hooks[eventName] = [
       {
-        matcher: matcherFor(eventName),
+        // Tool events need a matcher; "*" routes every tool through the bridge.
+        ...(isToolHookEventName(eventName) ? { matcher: "*" } : {}),
         hooks: [
           {
             type: "command",
@@ -44,26 +46,4 @@ function generateHooks(
     ];
   }
   return hooks;
-}
-
-function matcherFor(eventName: string): string | undefined {
-  const toolEvents = new Set([
-    "PreToolUse",
-    "PermissionRequest",
-    "PostToolUse",
-    "PostToolUseFailure",
-    "PermissionDenied",
-  ]);
-  if (toolEvents.has(eventName)) return "*";
-  return undefined;
-}
-
-function permissionsFrom(
-  overrides: StartClaudeOptions["settingsOverrides"],
-): Record<string, unknown> {
-  const permissions = overrides?.["permissions"];
-  if (permissions && typeof permissions === "object" && !Array.isArray(permissions)) {
-    return { ...(permissions as Record<string, unknown>) };
-  }
-  return {};
 }

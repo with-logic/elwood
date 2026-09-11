@@ -406,9 +406,13 @@ declare function startOrResumeClaude(
 ```
 
 When `elwoodSessionId` is set, `startOrResumeClaude` attempts a resume,
-forwarding the resume-relevant start options (`cwd`, `stateDir`, `hooks`,
-`initialSize`, `autoupdate`, `autotrust`, `hookTimeoutMs`,
-`strictVersionCheck`). It falls back to a fresh `startClaude` only for the
+forwarding every start option the resume entry point accepts: `cwd`,
+`stateDir`, `hooks`, `initialSize`, `reasoningEffort`, `permissionMode`,
+`allowedTools`, `disallowedTools`, `tools`, `autoupdate`, `autotrust`,
+`hookTimeoutMs`, and `strictVersionCheck` (for Codex: the same shared options
+plus `sandbox` and `approvalPolicy`). Non-persisted per-call policy such as
+`reasoningEffort` therefore reaches a resumed session exactly as it reaches a
+fresh one. It falls back to a fresh `startClaude` only for the
 error names that mean "no resumable session": `state_not_found`,
 `resume_unavailable`, and `adapter_mismatch`. Every other error — including
 `state_corrupt` — is a real failure and is rethrown, so data problems are
@@ -436,8 +440,8 @@ interface ClaudeSessionApi {
     timeoutMs?: number,
   ): Promise<ElwoodActivityEvent>;
 
-  on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): Unsubscribe;
-  off<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): void;
+  on<E extends ClaudeEventName>(event: E, handler: ClaudeEventHandler<E>): Unsubscribe;
+  off<E extends ClaudeEventName>(event: E, handler: ClaudeEventHandler<E>): void;
 
   sendPrompt(prompt: string, options?: SendOptions): Promise<void>;
   sendMessage(message: string, options?: SendOptions): Promise<void>;
@@ -1027,8 +1031,11 @@ read `terminal.snapshot()`, but visual terminal renderers SHOULD render the raw
 that forwarding fails.
 Because parent apps often attach listeners after `startClaude` or `startCodex`
 resolves, sessions MUST maintain a bounded live-only replay buffer of raw PTY
-output emitted during the current process lifetime. New `terminal:data`
-subscribers receive that buffer immediately, then receive future live chunks.
+output emitted during the current process lifetime (128 KB by default). New
+`terminal:data` subscribers receive that buffer immediately, then receive future
+live chunks. When the bound trims the oldest retained output, it trims on a UTF-8
+code-point boundary so the replayed data never begins with a split multibyte
+sequence (U+FFFD).
 This replay buffer MUST NOT be written to Elwood session state. Parent apps that
 embed their own visual xterm.js instance should feed it the replayed and live
 `terminal:data` chunks; Elwood does not require sharing the same JavaScript
@@ -1682,9 +1689,15 @@ not persisted or replayed. A closed-fd resize at this transition is the ordinary
 benign process-exit race and is a silent no-op, not a warning (C-API-39).
 
 A stopped subagent's transcript (`agent_transcript_path` on a `SubagentStop`) is
-a one-shot input: Elwood flushes it once and then retires it from active polling,
-so a long-lived session with many subagents does not accumulate an unbounded set
-of transcript files polled for the rest of its lifetime. Once the session's PTY
+a one-shot input for Claude: Elwood observes that path, flushes it once, and then
+retires it from active polling, so a long-lived session with many subagents does
+not accumulate an unbounded set of transcript files polled for the rest of its
+lifetime. Codex subagent transcripts are NOT observed: the Codex watcher follows
+only the session's own rollout file, so a Codex subagent's committed records
+reach the host only insofar as the parent session's transcript carries them.
+`agent_transcript_path` is still validated and delivered on the Codex
+`SubagentStop` hook payload, so a host that wants those records can read the file
+itself. Once the session's PTY
 exits, the watcher becomes permanently terminal: no scan, emit, or observation
 occurs after `finish()`, so no transcript activity is ever delivered past
 `terminal:exit`.
@@ -1807,11 +1820,13 @@ shortly AFTER the `ready` status. The boundary is therefore a COMPLETENESS ORACL
 not a timer: the turn-boundary `Stop` hook carries `last_assistant_message` — the
 final assistant text of the just-completed turn — and Elwood uses it ONLY as a
 completeness signal (never as displayed text, since it can be un-submitted ghost
-text). Each adapter NORMALIZES its raw hook into that signal (an expected-text string
-or none), so the adapter-neutral turn runner reads the normalized signal, never raw
-provider hook field names. Once `ready` is observed, the turn ends the instant the transcript-collected
-assistant text CONTAINS that expected text, so it waits exactly as long as the
-transcript needs. When no completeness signal is available for a turn — a pure-tool
+text). Each adapter NORMALIZES its raw hook into that signal: a turn-boundary hook
+yields an expected-text string (empty when the boundary carries no text), and any
+other hook yields none and is IGNORED — a `Notification` or similar hook arriving
+after `Stop` never clears an installed signal — so the adapter-neutral turn runner
+reads the normalized signal, never raw provider hook field names. Once `ready` is
+observed, the turn ends the instant the transcript-collected assistant text CONTAINS
+that expected text, so it waits exactly as long as the transcript needs. When no completeness signal is available for a turn — a pure-tool
 turn, or an empty/null `last_assistant_message` (e.g. `StopFailure`) — the turn falls
 back to a bounded quiet-window settle after `ready` (no new content for a short
 window). When a NON-EMPTY expected text IS present but never appears in the
@@ -2140,6 +2155,15 @@ Fail-open does not mean silent. `hookError` must include:
 
 It must not persist the full hook payload by default.
 
+Elwood's `hookTimeoutMs` is the deadline that decides a handler timeout. The
+per-hook `timeout` written into the generated Claude settings (the CLI's own
+kill switch for the hook process) is `ceil(hookTimeoutMs / 1000) + 5` seconds:
+the CLI's clock starts when it spawns the hook process, before the bridge has
+connected and Elwood's deadline has started, so an equal value would let the CLI
+kill the hook just before Elwood's fail-open "no decision" reply arrived. The
+margin keeps Elwood the party that times out, so the parent always observes its
+typed `hookError` rather than an opaque CLI-side hook failure.
+
 The bridge caps the size of a single hook request at 8 MiB (8,388,608 bytes). The
 cap is measured on the SAME thing in both places: the encoded wire envelope (the
 `{token, elwoodSessionId, input}` JSON plus its framing newline), counted in the
@@ -2191,7 +2215,8 @@ Claude hook response support also includes:
 - context hooks such as `SessionStart`, `Setup`, and `SubagentStart` may return
   `additionalContext`, `initialUserMessage`, or `watchPaths`.
 - `PostToolUse` may return `additionalContext`, `updatedToolOutput`, or
-  `updatedMCPToolOutput`, or block with a reason.
+  `updatedMCPToolOutput`, or block with a reason. Every field is optional, so
+  an empty object is a valid no-op result (as it is for the context hooks).
 - `WorktreeCreate` may return `{ worktreePath: string }`.
 - `TeammateIdle`, `TaskCreated`, and `TaskCompleted` may return
   `{ continue: false, stopReason? }`.
@@ -2288,9 +2313,10 @@ these shapes on the wire.
 For Codex, `Stop` is the canonical signal that a turn completed. If a `Stop`
 handler returns a continuation/blocking decision, Elwood must not mark the
 session ready. Before an unblocked Codex `Stop` marks the session ready, Elwood
-should flush readable live transcript data so parent applications receive
-transcript-derived turn activity before the ready transition whenever Codex has
-already written it.
+should read the committed live transcript data with one bounded per-pass scan
+(the same bounded read the poll timer performs, never the terminal-drain budget
+reserved for PTY exit) so parent applications receive transcript-derived turn
+activity before the ready transition whenever Codex has already written it.
 
 ### 7A.4 Non-Hook Transcript Activity
 
@@ -2797,9 +2823,25 @@ arguments is another exact top-level help form and MUST NOT read piped or termin
 stdin. `elwood run` remains an explicit run and therefore requires prompt input,
 including when that input comes only from piped stdin.
 
-A new session defaults to Codex and the invocation directory. `-C`/`--cwd`
-overrides that directory. Elwood MUST fail when the selected adapter is
-unavailable and MUST NOT silently fall back to another adapter.
+A new session defaults to the invocation directory; `-C`/`--cwd` overrides it.
+When no flag, environment variable, or configuration key selects an agent, a
+new session auto-detects one: Elwood tries `claude` first, then `codex`, and
+uses the first whose command resolves in the user's login shell — the same
+resolution the agent launch itself uses (§4.2) — without running either agent.
+Both probes run concurrently; the order only decides the winner. The resolved
+agent reports the source `auto-detected`. When neither command resolves, the
+invocation fails before any launch with the stable code `no_agent_found` and
+status 2; the message names both agents, how to install one, and that
+`--agent`, `ELWOOD_AGENT`, or the config `agent` key selects one explicitly.
+When the probe itself cannot run — the login shell is missing or broken, or the
+probe times out — the invocation fails with the same code and status but the
+message names the shell and the underlying error and says the probe failed,
+because nothing is then known about which agents are installed. Adapter-specific
+options that conflict with an auto-detected agent are reported as conflicting
+with the auto-detected agent, and the recovery additionally offers selecting the
+other adapter with `--agent`. Resume never auto-detects; it uses the stored
+adapter. Elwood MUST fail when the selected adapter is unavailable and MUST NOT
+silently fall back to another adapter.
 
 Non-empty piped stdin is appended to positional prompt text after one blank
 line; terminal stdin is never read. Whitespace-only input is a usage error.
@@ -2871,7 +2913,11 @@ adds one trailing newline when non-empty.
 
 `--output json` emits one version-1 terminal result or error document containing
 the record type, adapter, combined response, nullable session ID, integer
-duration in milliseconds, and cleanup outcome. `--output jsonl` emits
+duration in milliseconds, and cleanup outcome. A result record's `agent` is
+always the adapter that ran. An error record's `agent` is the adapter that ran
+or was selected; it is `null` when the failure happened before anything selected
+an adapter — for example `no_agent_found`, or an argument or configuration
+failure in an invocation with neither `--agent` nor an honored `ELWOOD_AGENT`. `--output jsonl` emits
 monotonically sequenced version-1 normalized text, thinking, tool, status, and
 warning records, followed by exactly one terminal result or error record with
 the combined response. Every JSONL record includes a non-negative integer
@@ -2903,7 +2949,9 @@ Supported environment variables are `ELWOOD_AGENT`, `ELWOOD_OUTPUT`,
 `ELWOOD_REASONING_EFFORT`, `ELWOOD_CLAUDE_PERMISSION_MODE`,
 `ELWOOD_CODEX_SANDBOX`, and `ELWOOD_CODEX_APPROVAL_POLICY`. Boolean variables
 accept only `true` or `false`. Precedence is command-line flags, environment,
-user configuration, then built-in defaults.
+user configuration, then built-in defaults. The `agent` setting has no fixed
+built-in default: when nothing selects it, a new session auto-detects the first
+available of `claude` then `codex` as described in §12A.1.
 
 Boolean settings inherited from environment or configuration remain reversible
 per invocation: `--no-stream` and `--no-verbose` explicitly select false with
@@ -2923,7 +2971,13 @@ plus the effective agent, model, workspace, timeout, output controls (including
 inspection merges persisted posture by the same field-by-field rules as launch so
 the document reports the tool policy the resumed process will receive. Every
 reported setting includes its source (`--flag`, `ELWOOD_*`, the saved config path
-and key, stored session, invocation context, built-in, unset, or not applicable).
+and key, stored session, invocation context, auto-detected, built-in, unset, or
+not applicable). When nothing selects the agent, `config effective` reports the
+auto-detected agent with source `auto-detected`, resolved by the same
+login-shell command probe a run would use (§12A.1), so the document shows the
+agent that invocation would actually launch; the probe only asks the shell
+whether the command resolves and never starts an agent, and a missing agent is
+the same `no_agent_found` failure a run would report.
 Mutations are atomic and silent on success;
 config parsing and writes reject unknown keys, unknown schema versions,
 symlinks, non-regular files, wrong ownership, and non-private permissions.
@@ -3178,14 +3232,14 @@ Each criterion has:
 | C-CODEX-11 | §5.5 | `autotrust: true` answers Codex's directory trust prompt through PTY input and emits `startup_prompt` activity. |
 | C-CODEX-12 | §5.5 | If Codex still shows an interactive update prompt inside the TUI, Elwood selects the skip/continue-without-updating option by label. The skip is EDGE-triggered: a persistent update screen starts one bounded response operation (not one per rendered frame), but that operation re-reads the current rendered frame before every retry and writes only when the original first-party prompt generation remains active and the frame exposes its safe numbered choice. It stops without writing when the generation clears or changes and fails boundedly if that prompt loses its safe choice or exhausts retries; the CLI converts an unanswerable blocked update into `blocked_prompt` even without a whole-run timeout. The skip RE-ARMS once the update screen leaves the frame, so an update prompt that REAPPEARS after Codex restarts (e.g. the update did not take and the same screen returns) is skipped again rather than leaving the session stuck on it. Every recognized update screen is input-blocking until its rendered frame clears: a captured first-party banner blocks before its options render, and a following safe-option-only continuation frame stays latched as the same prompt. Generic agent prose containing "update available" and Codex's passive installation notice do not activate the blocker. Readiness and queued persona/caller input therefore cannot select the default "Update now" action. |
 | C-CODEX-13 | §10 | An immediately failing or unusable Codex process fails with `codex_start_failed` or a more specific typed error. |
-| C-CODEX-14 | §5.3 | `setModel` on Codex restores the user's prior `config.toml` default via compare-and-swap after the CLI persists its picker selection, skipping with the `codex_default_model_persisted` warning instead of clobbering concurrent edits. |
+| C-CODEX-14 | §5.3 | `setModel` on Codex restores the user's prior `config.toml` default via compare-and-swap after the CLI persists its picker selection, skipping with the `codex_default_model_persisted` warning instead of clobbering concurrent edits. The restore is written atomically (sibling temp file + rename, mode preserved, a symlinked config written through to its target) so a crash mid-restore can never leave the user's config truncated. When no `config.toml` existed before the switch and the CLI created one, there is no snapshot to restore: the new file is left in place and the same warning code carries a message saying so (not a false "changed in other ways"). |
 | C-CODEX-15 | §5.5 | Codex's directory-trust prompt is answered only under `autotrust` (blocking on the human when off); Codex hook trust — Elwood's own integration — is answered regardless of `autotrust` and is NOT classified as blocking. Each is recognized only by its HEADER wording on a non-option line (so an option-only phrase cannot spoof it) and, once recognized, answered from the frame's affirmative option — the agent is never left waiting. When a recognized prompt's affirmative option has not rendered yet, a fire-once transient `attention` activity is emitted and Elwood keeps watching so a later frame answers it; this render-delay state is TRANSIENT and no warning is emitted for it. Each is answered once, from the shared allowlist. |
 | C-CODEX-16 | §5.1 | Codex `assistant_message`, `tool_call`, and `tool_result` activities are sourced only from the committed transcript, never re-projected from the `Stop`/`PreToolUse`/`PostToolUse` hook payloads; those hooks emit plain `hook` activity, so a single reply or tool step is surfaced exactly once (mirrors C-CLAUDE-15). |
 | C-CODEX-17 | §5.4 §5.5 §5.7 | A Codex startup prompt Elwood auto-answers (directory/hook trust, `update` skip) is marked settled and emits its `startup_prompt` activity only after its PTY `sendInput` write fulfills. A rejected write emits NO `startup_prompt` activity, leaves the prompt un-settled so a later frame re-attempts it, and surfaces a bounded, content-free `startup_prompt_write_failed` warning carrying only the prompt label (mirrors C-CLAUDE-16). |
 | C-CODEX-18 | §5.4 §7A.4 | A committed Codex `reasoning` transcript item surfaces its human-readable text on the `reasoning` activity's `text` field: the `text` of every `summary[]` entry of type `summary_text`, or — when the reasoning is un-summarized — every `content[]` entry of type `reasoning_text`, joined by newlines. The always-present `encrypted_content` blob is never readable and is never surfaced. When neither carries prose (the common case with reasoning summaries disabled), the activity carries no `text`, exactly as a bare reasoning marker. |
 | C-CODEX-19 | §5.4 §7A.4 | A committed Codex shell/exec transcript item surfaces the ACTUAL command it ran as `tool_call` activity with its `toolInput`, and its output as `tool_result` activity with its `toolOutput`, across every representation the CLI emits — and the command is UNWRAPPED from the CLI's invocation machinery so consumers see the bare command, not the harness. The modern `exec` tool is a `custom_tool_call` whose `input` is a JavaScript snippet wrapping the call (e.g. `const r = await tools.exec_command({"cmd":"echo hi","workdir":…,"yield_time_ms":…}); text(r.output);`): Elwood extracts the inner `cmd`/`command` string (a `command` array is joined with spaces) and surfaces THAT as `toolInput`, discarding the JS wrapper and the non-command fields (`workdir`, `yield_time_ms`, `max_output_tokens`). A `function_call` (`shell`/`exec_command`) whose command is a JSON string in `arguments` is likewise unwrapped to its `command`/`cmd`. When the wrapper cannot be parsed, the raw `input`/`arguments` is surfaced unchanged rather than dropped. A `custom_tool_call_output` is classified as `tool_result` (not `other`), and a result's `output` — a plain string OR an array of `{ type: "input_text", text }` entries — is surfaced as `toolOutput` with the array entries' text joined; the `tool_result` `label` carries the `call_id` correlating it to its `tool_call`. So the real command and its output are surfaced as a clean paired call/result, never the JS harness and never a content-free `other` row. |
 | C-CODEX-21 | §5.5 §5.6 | `reasoningEffort`, when supplied to `startCodex`/`resumeCodex`, is validated against the `CodexReasoningEffort` enum (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`) before spawn — an out-of-enum value rejects with `codex_invalid_reasoning_effort` (message listing the valid values) and no process is spawned — and a valid value is forwarded as the reserved `-c model_reasoning_effort=<value>` override, applied AFTER caller `configOverrides` so it wins over a hand-rolled duplicate. It is independent of `model`, applies to the launched session only, and is not persisted across resume (a resume must re-supply it). |
-| C-CODEX-20 | §5.4 | The Codex transcript reader is BOUNDED like Claude's: it reads in fixed-size chunks, discards any un-terminated record past a max-pending ceiling as an `"oversized"` drop, streams a large backlog across poll ticks under a per-scan chunk budget, and at PTY-exit drains only within a bounded chunk budget and wall-clock slice — accounting leftover bytes as an `"unread_backlog"` drop — so a hundreds-of-MiB transcript never OOMs or blocks the event loop. Lost data is surfaced as the content-free, count-free `transcript_records_dropped` warning (a live event, cause-tagged, not persisted or counted) and a scan that throws is contained as `transcript_poll_stopped` (both `agent: "codex" | "claude"`). `finish()` is idempotent and terminal — a late `observe()` never restarts polling past `terminal:exit`. |
+| C-CODEX-20 | §5.4 | The Codex transcript reader is BOUNDED like Claude's: it reads in fixed-size chunks, discards any un-terminated record past a max-pending ceiling as an `"oversized"` drop, streams a large backlog across poll ticks under a per-scan chunk budget, and at PTY-exit drains only within a bounded chunk budget and wall-clock slice — accounting leftover bytes as an `"unread_backlog"` drop — so a hundreds-of-MiB transcript never OOMs or blocks the event loop. An unblocked `Stop` reads the committed turn with the per-pass scan budget, never the PTY-exit drain budget, so an arbitrarily long session (hundreds of turns) never exhausts that budget into false `unread_backlog` drops. Lost data is surfaced as the content-free, count-free `transcript_records_dropped` warning (a live event, cause-tagged, not persisted or counted) and a scan that throws is contained as `transcript_poll_stopped` (both `agent: "codex" | "claude"`). `finish()` is idempotent and terminal — a late `observe()` never restarts polling past `terminal:exit`. |
 
 #### C-HOOK: Hook Bridge Coverage And Semantics (§6)
 
@@ -3291,7 +3345,7 @@ Each criterion has:
 |---|---:|---|
 | C-CLI-01 | §12A | Local, git, and packed-tarball installs expose an executable `elwood` bin and an importable library entry backed only by emitted JavaScript and declarations under `dist`, on Node.js 24 or newer. |
 | C-CLI-02 | §12A.1 | Direct and explicit `run` forms are equivalent; an argument-free invocation, top-level/config help, and version complete without stdin/config reads or agent launch; `elwood run` still requires input; and reserved command words are commands only in first-argument position before `--`. |
-| C-CLI-03 | §12A.1 | New sessions default to Codex and the invocation cwd, explicit cwd overrides it, an unavailable selected adapter never falls back, and resume uses its validated stored adapter and cwd exactly while rejecting `--cwd`. |
+| C-CLI-03 | §12A.1 | New sessions default to the invocation cwd and, when nothing selects an agent, to the first available of Claude then Codex (C-CLI-21); explicit cwd overrides the workspace, an unavailable selected adapter never falls back, and resume uses its validated stored adapter and cwd exactly while rejecting `--cwd`. |
 | C-CLI-04 | §12A.1 | Positional and piped input compose with one blank line, terminal stdin is not read, whitespace-only input fails before launch, UTF-8 input is incrementally limited to 8 MiB, and ordered image flags attach on the user turn. |
 | C-CLI-05 | §12A.2 | A CLI turn preserves Elwood's real interactive environment and auto-authorizes only its documented trust classes; disabled or unrecognized trust automation fails as `blocked_prompt` without submitting into the dialog. |
 | C-CLI-06 | §12A.2 | Built-in and selected per-agent permission, sandbox, approval, model, effort, and persona settings validate against the effective adapter before launch. |
@@ -3299,16 +3353,17 @@ Each criterion has:
 | C-CLI-08 | §12A.2 §12A.5 | New Elwood state tears down unless kept, resumed state preserves unless ephemeral, exact resume never falls back, teardown does not undo workspace/agent-owned state, and persona is one output-discarded but side-effect-capable new-session setup turn that is rejected on resume. |
 | C-CLI-09 | §12A.2 | Premature agent exit and cleanup failure retain collected response data; cleanup runs once, never replaces a primary failure, and changes otherwise-successful execution to status 1. |
 | C-CLI-10 | §12A.3 | Default text output contains only the combined observed assistant messages with exact separator/newline semantics; text/JSON warnings surface concisely on stderr; verbose emits concise elapsed progress without assistant/thinking duplication; debug detail stays on stderr; and streamed text is emitted once with partial output retained on failure. |
-| C-CLI-11 | §12A.3 | JSON emits one version-1 terminal document and JSONL emits ordered normalized records plus exactly one terminal record, including structured validation errors when explicitly selected; every JSONL record has `elapsedMs` and tool records carry `toolCallId` when available. |
+| C-CLI-11 | §12A.3 | JSON emits one version-1 terminal document and JSONL emits ordered normalized records plus exactly one terminal record, including structured validation errors when explicitly selected; every JSONL record has `elapsedMs` and tool records carry `toolCallId` when available. An error record emitted before any adapter was selected reports `agent: null`; otherwise `agent` is the selected or running adapter. |
 | C-CLI-12 | §12A.3 | Output excludes terminal and secret-bearing internals, honors backpressure, and treats downstream `EPIPE` as graceful consumer closure followed by cleanup. |
 | C-CLI-13 | §12A.4 | Config path resolution follows explicit, absolute XDG, then home fallback order; config is strict version 1 with only documented keys, and project-local config is ignored. |
-| C-CLI-14 | §12A.4 | Flag, environment, config, and built-in precedence is deterministic, environment booleans are strict, negative flags reverse inherited stream/verbose values, `--no-defaults` bypasses Elwood run defaults, and config path/show/get/set/unset/effective never launches an agent. |
+| C-CLI-14 | §12A.4 | Flag, environment, config, and built-in precedence is deterministic, environment booleans are strict, negative flags reverse inherited stream/verbose values, `--no-defaults` bypasses Elwood run defaults, and config path/show/get/set/unset/effective never launches an agent (agent auto-detection only asks the login shell whether a command resolves). |
 | C-CLI-15 | §12A.4 §12A.5 | Config and state reads and writes enforce private ownership, regular-file, symlink-safety, and atomicity constraints. |
 | C-CLI-16 | §12A.5 | CLI state defaults to the absolute XDG state base or `~/.local/state/elwood`, never the workspace, and one session identity has at most one live owner. |
 | C-CLI-17 | §12A.5 | Success, agent/cleanup failure, usage/config failure, timeout, and interruption map to statuses 0, 1, 2, 124, and 130 without cleanup masking a primary status. |
 | C-CLI-18 | §12A.6 | `--head` fails before launch without terminal stdin/stderr and rejects stream/verbose/debug/JSONL; otherwise it mirrors ordered raw PTY bytes (including full-screen VT/ANSI control sequences) only to terminal stderr, uses and follows its size, keeps final text/JSON stdout clean, treats raw Ctrl-C like SIGINT, and restores terminal input/display modes before final output on every handled outcome. Outstanding mirror work is capped at 4 MiB or 1,024 frames; overflow fails the run after draining accepted bytes and restoring the terminal instead of growing memory without bound. A terminal-gone error from an input handle already closed by its host is contained because only that host can then restore the terminal, and it does not replace a completed result. |
-| C-CLI-19 | §12A.4 | `config effective` prints validated effective launch/output values (including `head` and the full Claude tool posture) with config location/load state and per-setting provenance, supports exact stored resume inspection using the same posture merge as launch, reads no prompt input, and starts no agent. |
+| C-CLI-19 | §12A.4 | `config effective` prints validated effective launch/output values (including `head` and the full Claude tool posture) with config location/load state and per-setting provenance (including `auto-detected` for a probed agent), supports exact stored resume inspection using the same posture merge as launch, reads no prompt input, and starts no agent. |
 | C-CLI-20 | §12A.5 | Text validation errors use user-facing language, identify relevant paths and inherited-setting sources, suggest an unambiguous nearby long option, and retain the stable structured error code. |
+| C-CLI-21 | §12A.1 §12A.4 | When no flag, environment variable, or config key selects an agent, a new session (and `config effective`) probes the user's login shell for `claude` and `codex` concurrently and uses the first in that order whose command resolves, reporting source `auto-detected`; the probe never runs an agent, resume never probes, and when neither resolves the invocation fails before launch with code `no_agent_found` and status 2, naming both agents, an install hint, and the `--agent`/`ELWOOD_AGENT`/config selection paths. A probe that cannot run (missing or broken login shell, probe timeout) fails with the same code and status but names the shell and underlying error rather than claiming no agent is installed; adapter-option conflicts with an auto-detected agent say so and offer `--agent` for the other adapter. |
 
 #### C-E2E: Real Adapter Flows (§12)
 

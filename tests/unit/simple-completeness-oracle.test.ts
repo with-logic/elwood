@@ -5,10 +5,11 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { CompletenessOracle } from "../../src/core/simple/completeness-oracle.ts";
+import {
+  CompletenessOracle,
+  expectedTextMax as EXPECTED_MAX,
+} from "../../src/core/simple/completeness-oracle.ts";
 import { defaultAcceptanceSignal, defaultBoundarySignal } from "../../src/core/simple/turn.ts";
-
-const EXPECTED_MAX = 1024 * 1024; // must mirror the constant in completeness-oracle.ts
 
 describe("CompletenessOracle", () => {
   test("matches once the collected text contains the expected text", () => {
@@ -21,11 +22,12 @@ describe("CompletenessOracle", () => {
     expect(o.matched).toBe(true);
   });
 
-  test("empty / undefined / whitespace expected text clears the oracle (→ quiet settle)", () => {
+  test("empty / whitespace expected text clears the oracle (→ quiet settle)", () => {
     const o = new CompletenessOracle();
-    expect(o.expectText("   ")).toBe(false); // whitespace trims to empty → not installed
+    expect(o.expectText("DONE")).toBe(true);
+    expect(o.expectText("   ")).toBe(false); // whitespace trims to empty → cleared
     expect(o.hasExpected).toBe(false);
-    expect(o.expectText(undefined)).toBe(false);
+    expect(o.expectText("")).toBe(false);
     expect(o.matched).toBe(false); // no expected text → never "matched"
   });
 
@@ -56,14 +58,15 @@ describe("defaultBoundarySignal (adapter hook → completeness signal)", () => {
       "DONE",
     );
   });
-  test("returns undefined for a non-Stop hook", () => {
+  test("returns undefined (NOT a boundary) for a non-Stop hook", () => {
     expect(defaultBoundarySignal({ hook_event_name: "PreToolUse" })).toBeUndefined();
+    expect(defaultBoundarySignal({ hook_event_name: "Notification" })).toBeUndefined();
   });
-  test("returns undefined for a Stop hook with null/absent message (→ quiet settle)", () => {
-    expect(
-      defaultBoundarySignal({ hook_event_name: "Stop", last_assistant_message: null }),
-    ).toBeUndefined();
-    expect(defaultBoundarySignal({ hook_event_name: "Stop" })).toBeUndefined();
+  test("returns an EMPTY signal for a Stop hook with null/absent message (a boundary → quiet settle)", () => {
+    expect(defaultBoundarySignal({ hook_event_name: "Stop", last_assistant_message: null })).toBe(
+      "",
+    );
+    expect(defaultBoundarySignal({ hook_event_name: "Stop" })).toBe("");
   });
 });
 

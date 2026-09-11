@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { ControlQueue } from "../../src/core/control-queue.ts";
+import { ControlQueue } from "../../src/core/control-queue/index.ts";
 
 describe("ControlQueue ordering and failures", () => {
   test("C-API-19 drains the next operation only after the prior submit resolves", async () => {

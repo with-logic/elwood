@@ -5,7 +5,10 @@
  * encrypted reasoning is never surfaced.
  */
 
+import { isRecord } from "../../core/predicates.ts";
 import type { CodexTranscriptSummary } from "./types.ts";
+
+type Item = Readonly<Record<string, unknown>>;
 
 export function summarizeTranscriptItem(item: unknown): CodexTranscriptSummary {
   const payload = record(record(item)?.["payload"]);
@@ -24,7 +27,7 @@ export function summarizeTranscriptItem(item: unknown): CodexTranscriptSummary {
   return { kind: "other", label: type ?? stringValue(record(item)?.["type"]) ?? "unknown" };
 }
 
-function webSearch(payload: Record<string, unknown>): CodexTranscriptSummary {
+function webSearch(payload: Item): CodexTranscriptSummary {
   const query = stringValue(payload["query"]);
   const action = record(payload["action"]);
   const actionType = stringValue(action?.["type"]) ?? "search";
@@ -35,7 +38,7 @@ function webSearch(payload: Record<string, unknown>): CodexTranscriptSummary {
 // A `custom_tool_call` (modern `exec`) carries its command in `input`; a
 // `function_call` in JSON `arguments` — surface whichever holds it, UNWRAPPED from
 // the CLI's JS/JSON harness so consumers see the bare command (C-CODEX-19).
-function toolCall(payload: Record<string, unknown>): CodexTranscriptSummary {
+function toolCall(payload: Item): CodexTranscriptSummary {
   const name = stringValue(payload["name"]) ?? "tool";
   const raw = payload["input"] ?? payload["arguments"];
   const command = typeof raw === "string" ? extractCommand(raw) : undefined;
@@ -60,7 +63,7 @@ function extractCommand(input: string): string | undefined {
 // Extract and parse the first balanced `{...}` object literal in a string. Codex's
 // exec `cmd` values can themselves contain braces, so scan for a brace-balanced span
 // (respecting string literals/escapes) rather than a greedy regex.
-function firstJsonObject(text: string): Record<string, unknown> | undefined {
+function firstJsonObject(text: string): Item | undefined {
   const start = text.indexOf("{");
   if (start < 0) return undefined;
   let depth = 0;
@@ -81,7 +84,7 @@ function firstJsonObject(text: string): Record<string, unknown> | undefined {
   return undefined;
 }
 
-function safeJsonRecord(json: string): Record<string, unknown> | undefined {
+function safeJsonRecord(json: string): Item | undefined {
   try {
     return record(JSON.parse(json));
   } catch {
@@ -89,7 +92,7 @@ function safeJsonRecord(json: string): Record<string, unknown> | undefined {
   }
 }
 
-function toolResult(payload: Record<string, unknown>): CodexTranscriptSummary {
+function toolResult(payload: Item): CodexTranscriptSummary {
   const callId = stringValue(payload["call_id"]) ?? "tool";
   return { kind: "tool_result", label: callId, ...(text(toolOutputText(payload["output"])) ?? {}) };
 }
@@ -107,7 +110,7 @@ export function toolOutputText(output: unknown): string | undefined {
   return parts.length > 0 ? parts.join("") : undefined;
 }
 
-function message(payload: Record<string, unknown>): CodexTranscriptSummary {
+function message(payload: Item): CodexTranscriptSummary {
   const role = stringValue(payload["role"]) ?? "message";
   const value = assistantMessageText(payload, role);
   return value === undefined
@@ -115,7 +118,7 @@ function message(payload: Record<string, unknown>): CodexTranscriptSummary {
     : { kind: "message", label: role, text: value };
 }
 
-function assistantMessageText(payload: Record<string, unknown>, role: string): string | undefined {
+function assistantMessageText(payload: Item, role: string): string | undefined {
   if (role !== "assistant") return undefined;
   const phase = stringValue(payload["phase"]);
   if (phase !== undefined && phase !== "final_answer") return undefined;
@@ -129,14 +132,14 @@ function assistantMessageText(payload: Record<string, unknown>, role: string): s
   return parts.length > 0 ? parts.join("") : undefined;
 }
 
-function agentMessage(payload: Record<string, unknown>): CodexTranscriptSummary {
+function agentMessage(payload: Item): CodexTranscriptSummary {
   return { kind: "message", label: "assistant", ...(text(payload["message"]) ?? {}) };
 }
 
 // A Codex reasoning item: readable text is `summary[]` `summary_text` entries, or
 // (rarely) `content[]` `reasoning_text`; `encrypted_content` is never surfaced.
 // Most items have an empty summary, so `text` is set only when prose exists (§7A.4).
-function reasoning(payload: Record<string, unknown>): CodexTranscriptSummary {
+function reasoning(payload: Item): CodexTranscriptSummary {
   const value =
     reasoningText(payload["summary"], "summary_text") ??
     reasoningText(payload["content"], "reasoning_text");
@@ -158,10 +161,8 @@ function text(value: unknown): { readonly text: string } | undefined {
   return undefined;
 }
 
-function record(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+function record(value: unknown): Item | undefined {
+  return isRecord(value) ? value : undefined;
 }
 
 function stringValue(value: unknown): string | undefined {

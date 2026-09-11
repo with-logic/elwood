@@ -3,18 +3,16 @@
  * Covers PRD §8.2, §10, C-ERR-04, and C-STATE-13.
  */
 
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { createSessionRecord } from "../../src/state/store.ts";
 import { validateSessionRecord } from "../../src/state/validate.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 const id = "validate-target";
 
 describe("session record validation", () => {
   test("C-ERR-04 rejects malformed top-level record shapes", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const root = tempDir("elwood-validate-");
     const base = jsonRecord(root);
     expect(validateSessionRecord("not-a-record", id)).toBeNull();
     expect(validateSessionRecord({ ...base, adapter: "gemini" }, id)).toBeNull();
@@ -32,7 +30,7 @@ describe("session record validation", () => {
     // adapter-state extras (a `name`). validateSessionRecord must return a FRESH
     // canonical record with none of them, so the next write can never round-trip a
     // retired credential back onto disk.
-    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const root = tempDir("elwood-validate-");
     const legacy = {
       ...jsonRecord(root),
       bridgeToken: "stale-secret",
@@ -61,7 +59,7 @@ describe("session record validation", () => {
   });
 
   test("C-STATE-13 validates the persisted launch posture shape", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const root = tempDir("elwood-validate-");
     const base = jsonRecord(root);
     const good = { ...base, claude: { launch: { permissionMode: "plan", tools: ["Read"] } } };
     expect(validateSessionRecord(good, id)).not.toBeNull();
@@ -74,21 +72,21 @@ describe("session record validation", () => {
   });
 
   test("C-STATE-13 rejects an out-of-union Claude permissionMode", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const root = tempDir("elwood-validate-");
     const base = jsonRecord(root);
     const bad = { ...base, claude: { launch: { permissionMode: "yolo" } } };
     expect(validateSessionRecord(bad, id)).toBeNull();
   });
 
   test("C-STATE-13 rejects Claude posture carrying codex-only fields", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const root = tempDir("elwood-validate-");
     const base = jsonRecord(root);
     const bad = { ...base, claude: { launch: { sandbox: "read-only" } } };
     expect(validateSessionRecord(bad, id)).toBeNull();
   });
 
   test("C-STATE-13 accepts an in-union codex sandbox and approval policy", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const root = tempDir("elwood-validate-");
     const base = codexRecord(root);
     const good = {
       ...base,
@@ -98,21 +96,21 @@ describe("session record validation", () => {
   });
 
   test("C-STATE-13 rejects an out-of-union codex sandbox", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const root = tempDir("elwood-validate-");
     const base = codexRecord(root);
     const bad = { ...base, codex: { launch: { sandbox: "not-a-mode" } } };
     expect(validateSessionRecord(bad, id)).toBeNull();
   });
 
   test("C-STATE-13 rejects an out-of-union codex approvalPolicy", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const root = tempDir("elwood-validate-");
     const base = codexRecord(root);
     const bad = { ...base, codex: { launch: { approvalPolicy: "sometimes" } } };
     expect(validateSessionRecord(bad, id)).toBeNull();
   });
 
   test("C-STATE-13 rejects codex posture carrying claude-only fields", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const root = tempDir("elwood-validate-");
     const base = codexRecord(root);
     const bad = { ...base, codex: { launch: { permissionMode: "plan" } } };
     expect(validateSessionRecord(bad, id)).toBeNull();

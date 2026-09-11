@@ -15,16 +15,17 @@ export type CliCleanup = {
 
 export type CliTerminalBase = {
   readonly schemaVersion: 1;
-  readonly agent: CliAgent;
   readonly response: string;
   readonly sessionId: string | null;
   readonly durationMs: number;
   readonly cleanup: CliCleanup;
 };
 
-export type CliResult = CliTerminalBase & { readonly type: "result" };
+export type CliResult = CliTerminalBase & { readonly type: "result"; readonly agent: CliAgent };
+/** `agent` is `null` only for failures raised before anything selected an agent. */
 export type CliError = CliTerminalBase & {
   readonly type: "error";
+  readonly agent: CliAgent | null;
   readonly error: { readonly code: string; readonly message: string };
 };
 export type CliTerminalRecord = CliResult | CliError;

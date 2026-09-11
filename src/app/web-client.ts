@@ -33,13 +33,11 @@ socket.addEventListener("message", (event) => {
   const message = JSON.parse(event.data);
   if (message.type === "terminal") terminal.write(message.data);
   if (message.type === "event") addEvent(message.entry);
-  if (message.type === "log") addEvent(logEntry(message));
   if (message.type === "status") session.dataset.status = message.status;
   if (message.type === "session") {
     sessionActive = true;
     session.textContent = message.id + " / " + message.status;
   }
-  if (message.type === "error") addEvent(errorEntry(message));
 });
 
 terminal.onData((value) => {
@@ -172,26 +170,5 @@ function selectEvent(entry) {
 function renderDetail(entry) {
   detailTitle.textContent = entry.badge + " " + entry.title;
   detailJson.textContent = JSON.stringify(entry.raw ?? entry, null, 2);
-}
-
-function nowEntry(kind, level, badge, title, summary, raw) {
-  return {
-    id: "client-" + Date.now() + "-" + Math.random().toString(16).slice(2),
-    timestamp: new Date().toISOString(),
-    kind,
-    level,
-    badge,
-    title,
-    summary,
-    raw,
-  };
-}
-
-function logEntry(message) {
-  return nowEntry("log", message.level, "LOG", "Legacy log", message.text, message);
-}
-
-function errorEntry(message) {
-  return nowEntry("error", "error", "ERR", "Runtime error", message.message, message);
 }`;
 }

@@ -29,7 +29,7 @@ class GuardClock {
 }
 
 describe("CodexUpdateAttentionGuard", () => {
-  test("ignores stale ready replays, arms once while blocked, and expires into a block", () => {
+  test("C-CLI-05 ignores stale ready replays, arms once while blocked, and expires into a block", () => {
     const session: { status: ElwoodSessionStatus } = { status: "ready" };
     const blocks: string[] = [];
     const clock = new GuardClock();
@@ -50,7 +50,7 @@ describe("CodexUpdateAttentionGuard", () => {
     expect(blocks).toEqual(["codex-update-prompt"]);
   });
 
-  test("success and non-blocked status cancel an armed grace period", () => {
+  test("C-CLI-05 success and non-blocked status cancel an armed grace period", () => {
     const session: { status: ElwoodSessionStatus } = { status: "blocked" };
     const clock = new GuardClock();
     const guard = new CodexUpdateAttentionGuard(session, { block: () => {} }, clock);
@@ -64,7 +64,7 @@ describe("CodexUpdateAttentionGuard", () => {
     expect(clock.clears).toBe(2);
   });
 
-  test("a rejected safe write blocks immediately and disposed guards stay inert", () => {
+  test("C-CLI-05 a rejected safe write blocks immediately and disposed guards stay inert", () => {
     const session: { status: ElwoodSessionStatus } = { status: "blocked" };
     const blocks: string[] = [];
     const clock = new GuardClock();

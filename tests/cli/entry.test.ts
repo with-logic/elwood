@@ -5,7 +5,8 @@
 
 import { describe, expect, test, vi } from "vitest";
 import { type CliProcess, runCli } from "../../src/cli/entry.ts";
-import { mainDependencies, resolvedRequest } from "./main-fakes.ts";
+import type { RequestContext } from "../../src/cli/types.ts";
+import { effectiveRequest, mainDependencies, resolvedRequest } from "./main-fakes.ts";
 import { FakeCliSession, MemoryWriter } from "./run-fakes.ts";
 
 describe("CLI process adapter", () => {
@@ -31,10 +32,11 @@ describe("CLI process adapter", () => {
       exitCode: undefined,
     };
     const handler = vi.fn();
+    let resolvedContext: RequestContext | undefined;
+    let listenersDuringExecution: number | undefined;
     const dependencies = mainDependencies({
       resolve: (_parsed, context) => {
-        expect(context).toMatchObject({ invocationCwd: "/workspace", homeDir: "/home/cli" });
-        expect(context.stdin.isTTY).toBeUndefined();
+        resolvedContext = context;
         return Promise.resolve(resolvedRequest());
       },
       prepare: () =>
@@ -44,13 +46,16 @@ describe("CLI process adapter", () => {
         }),
       execute: (_request, _session, _io, execution) => {
         const remove = execution.signals.onSigint(handler);
-        expect(listeners).toHaveLength(1);
+        listenersDuringExecution = listeners.size;
         listeners.values().next().value?.();
         remove();
         return Promise.resolve(130);
       },
     });
     await expect(runCli(proc, dependencies, "/home/cli")).resolves.toBe(130);
+    expect(resolvedContext).toMatchObject({ invocationCwd: "/workspace", homeDir: "/home/cli" });
+    expect(resolvedContext?.stdin.isTTY).toBeUndefined();
+    expect(listenersDuringExecution).toBe(1);
     expect(proc.exitCode).toBe(130);
     expect(handler).toHaveBeenCalledOnce();
     expect(listeners).toHaveLength(0);
@@ -58,20 +63,5 @@ describe("CLI process adapter", () => {
 });
 
 function mainDependenciesRequest() {
-  return {
-    agent: "codex" as const,
-    output: "text" as const,
-    outputExplicit: false,
-    trust: true,
-    stateDir: "/state",
-    verbose: false,
-    stream: false,
-    cwd: "/workspace",
-    images: [],
-    prompt: "go",
-    keep: false,
-    ephemeral: false,
-    sandbox: "workspace-write" as const,
-    approvalPolicy: "never" as const,
-  };
+  return effectiveRequest({ cwd: "/workspace" });
 }

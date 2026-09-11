@@ -1,15 +1,18 @@
+/**
+ * The stdin-driven local test app (PRD §11, C-APP-01..07): argument parsing, session
+ * start/resume through an injectable runtime, event logging, and hook handler coverage.
+ */
+
 import { describe, expect, test } from "vitest";
-import type {
-  CommonEventHandler,
-  CommonEventName,
-  SharedSession,
-} from "../../src/app/agent-runtime.ts";
 import {
   createLiveHookHandlers,
   parseTestAppArgs,
   runTestApp,
   summarizeHookResult,
 } from "../../src/app/test-app.ts";
+import { claudeHookEventNames } from "../../src/claude/hooks/names.ts";
+import { codexHookEventNames } from "../../src/codex/hooks/names.ts";
+import { fakeSharedSession } from "../helpers/fake-shared-session.ts";
 
 describe("local test app", () => {
   test("C-APP-01 C-APP-02 parses start and resume launch options", () => {
@@ -35,7 +38,7 @@ describe("local test app", () => {
   });
 
   test("C-APP-03 C-APP-04 C-APP-05 C-APP-07 runs against an injectable session", async () => {
-    const session = new FakeSession();
+    const session = fakeSharedSession("s1", { cwd: "/tmp/project" });
     const stdout = new Sink();
     const stderr = new Sink();
     const runtime = {
@@ -78,7 +81,7 @@ describe("local test app", () => {
   });
 
   test("C-APP-02 resumes through the injectable runtime", async () => {
-    const session = new FakeSession();
+    const session = fakeSharedSession("s1", { cwd: "/tmp/project" });
     const runtime = {
       startClaude: () => Promise.reject(new Error("should resume")),
       resumeClaude: () => Promise.resolve(session),
@@ -97,7 +100,7 @@ describe("local test app", () => {
     const stderr = new Sink();
     const handlers = createLiveHookHandlers("claude", stderr);
     handlers.Stop?.({ hook_event_name: "Stop", session_id: "claude-1", cwd: "/tmp/project" });
-    expect(Object.keys(handlers)).toHaveLength(29);
+    expect(Object.keys(handlers).sort()).toEqual([...claudeHookEventNames].sort());
     expect(stderr.text).toContain("[hook] Stop no decision");
     const codex = createLiveHookHandlers("codex", stderr);
     codex.Stop?.({
@@ -108,7 +111,7 @@ describe("local test app", () => {
       turn_id: "turn-1",
       stop_hook_active: false,
     });
-    expect(Object.keys(codex)).toHaveLength(10);
+    expect(Object.keys(codex).sort()).toEqual([...codexHookEventNames].sort());
     expect(stderr.text).toContain("[hook] Stop no decision");
   });
 
@@ -140,61 +143,4 @@ class Sink {
   write(chunk: string): void {
     this.text += chunk;
   }
-}
-
-class FakeSession implements SharedSession {
-  readonly elwoodSessionId = "s1";
-  readonly cwd = "/tmp/project";
-  readonly status = "running";
-  readonly warnings = [];
-  readonly terminal = fakeTerminal() as never;
-  readonly prompts: string[] = [];
-  readonly sizes: { readonly cols: number; readonly rows: number }[] = [];
-  private readonly handlers = new Map<CommonEventName, CommonEventHandler<CommonEventName>[]>();
-  statusDecisions = () => [];
-
-  on<E extends CommonEventName>(event: E, handler: CommonEventHandler<E>) {
-    const handlers = this.handlers.get(event) ?? [];
-    handlers.push(handler as CommonEventHandler<CommonEventName>);
-    this.handlers.set(event, handlers);
-    return () => this.off(event, handler);
-  }
-
-  off<E extends CommonEventName>(event: E, handler: CommonEventHandler<E>): void {
-    this.handlers.set(
-      event,
-      (this.handlers.get(event) ?? []).filter((entry) => entry !== handler),
-    );
-  }
-
-  emit<E extends CommonEventName>(event: E, payload: Parameters<CommonEventHandler<E>>[0]): void {
-    for (const handler of this.handlers.get(event) ?? []) {
-      handler(payload as never);
-    }
-  }
-
-  sendPrompt(prompt: string): Promise<void> {
-    this.prompts.push(prompt);
-    return Promise.resolve();
-  }
-  sendMessage(message: string): Promise<void> {
-    return this.sendPrompt(message);
-  }
-  sendGuidance(message: string): Promise<void> {
-    return this.sendPrompt(message);
-  }
-  sendKeys = () => Promise.resolve();
-
-  resize(size: { readonly cols: number; readonly rows: number }): Promise<void> {
-    this.sizes.push(size);
-    return Promise.resolve();
-  }
-
-  stop = () => Promise.resolve();
-  kill = () => Promise.resolve();
-  teardown = () => Promise.resolve();
-}
-
-function fakeTerminal() {
-  return { snapshot: () => ({ text: "screen" }), settled: () => Promise.resolve() };
 }

@@ -1,6 +1,6 @@
 /**
  * Real-agent sessions with deeply nested caller stateDir layouts.
- * Implements C-STATE-12 (PRD §8.1) — the Coal Harbor blocking repro.
+ * Implements C-STATE-12 (PRD §8.1) — a host application's blocking repro.
  */
 
 import assert from "node:assert/strict";
@@ -9,19 +9,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { type ClaudeSessionApi, resumeClaude, startClaude } from "../../src/index.ts";
-import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
+import { cleanup, makeProject, skipIf, skipReason, waitFor } from "./helpers.ts";
 
-/** The stable per-session socket homes (`elwood-<fingerprint>` under tmpdir). */
+/**
+ * The stable per-session socket homes (`elwood-<16 hex>` under tmpdir). Matched by the
+ * exact fingerprint shape so scratch dirs from a concurrent test run cannot alias one.
+ */
 function socketHomes(): Set<string> {
   return new Set(
     readdirSync(tmpdir())
-      .filter((name) => name.startsWith("elwood-"))
+      .filter((name) => /^elwood-[0-9a-f]{16}$/.test(name))
       .map((name) => join(tmpdir(), name)),
   );
 }
 
 test("C-STATE-12 real Claude starts and resumes from a 200-char stateDir", {
-  skip: skipReason("claude"),
+  skip: skipIf(skipReason("claude")),
   timeout: 180_000,
 }, async () => {
   const project = makeProject("claude");

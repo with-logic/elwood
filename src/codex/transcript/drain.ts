@@ -8,8 +8,8 @@
  * completes in bounded work.
  */
 
-import type { CodexTranscriptCursor } from "./cursor.ts";
-import type { CodexDropReporter } from "./drops.ts";
+import type { BoundedTranscriptCursor } from "../../core/transcript/cursor.ts";
+import type { DropReporter } from "../../core/transcript/drops.ts";
 import type { CodexLineEmitter } from "./emit.ts";
 
 /** A mutable chunk budget shared across every drain call across a watcher's life. */
@@ -29,7 +29,7 @@ export function newTerminalBudget(): ChunkBudget {
 export type DrainContext = {
   readFs<T>(path: string, read: () => T): T | undefined;
   readonly lines: CodexLineEmitter;
-  readonly drops: CodexDropReporter;
+  readonly drops: DropReporter;
   /** Per-call wall-clock ms cap (defaults to `drainSliceMs`); tests may override. */
   readonly sliceMs?: number;
   /** Monotonic clock (injectable for tests); defaults to `Date.now`. */
@@ -42,7 +42,7 @@ export type DrainContext = {
 // the final buffered partial is flushed once.
 export function drainToBudget(
   context: DrainContext,
-  cursor: CodexTranscriptCursor,
+  cursor: BoundedTranscriptCursor,
   budget: ChunkBudget,
 ): void {
   const now = context.now ?? Date.now;
@@ -59,7 +59,7 @@ export function drainToBudget(
 // bytes remained unread when the budget or the deadline was spent (false when drained).
 function drainCursor(
   context: DrainContext,
-  cursor: CodexTranscriptCursor,
+  cursor: BoundedTranscriptCursor,
   budget: ChunkBudget,
   deadline: number,
   now: () => number,

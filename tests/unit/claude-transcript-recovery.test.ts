@@ -6,32 +6,18 @@
  * not re-scanned past its one-shot retirement boundary.
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import {
   type ClaudeTranscriptEvent,
   ClaudeTranscriptWatcher,
 } from "../../src/claude/transcript/index.ts";
-
-const assistant = (text: string) => ({
-  type: "assistant",
-  message: { content: [{ type: "text", text }] },
-});
-
-function tmpFile(): string {
-  return join(mkdtempSync(join(tmpdir(), "elwood-tx-")), "t.jsonl");
-}
-const writeRecords = (path: string, ...records: unknown[]) =>
-  writeFileSync(
-    path,
-    records.length ? `${records.map((r) => JSON.stringify(r)).join("\n")}\n` : "",
-  );
-const appendRecords = (path: string, prior: unknown[], ...records: unknown[]) =>
-  writeRecords(path, ...prior, ...records);
-const texts = (events: ClaudeTranscriptEvent[]) =>
-  events.map((e) => (e.summary.kind === "assistant_message" ? e.summary.text : e.summary.kind));
+import {
+  appendRecords,
+  assistant,
+  texts,
+  tmpFile,
+  writeRecords,
+} from "./claude-transcript-helpers.ts";
 
 describe("C-CLAUDE-15 transcript watcher recovery + retire race", () => {
   test("recovery's finish() re-throwing mid-drain still clears the timer and routes", async () => {
@@ -97,7 +83,7 @@ describe("C-CLAUDE-15 transcript watcher recovery + retire race", () => {
   });
 
   test("retire during a poll's async stat does not re-scan the removed cursor", async () => {
-    // Finding 10: poll() retains a cursor across the async needsScan() stat. If the
+    // poll() retains a cursor across the async needsScan() stat. If the
     // cursor is retired (drained + deleted) while the stat is in flight AND the file
     // then grows, the poll must NOT scan the stale cursor and emit past retirement.
     const path = tmpFile();

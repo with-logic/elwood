@@ -15,7 +15,8 @@ import {
   redactLoop,
   snapshotLoop,
 } from "./scheduler-state.ts";
-import { LoopTimerBank, LoopTiming } from "./timers.ts";
+import { LoopTimerBank } from "./timers.ts";
+import { LoopTiming } from "./timing.ts";
 import type { ElwoodLoopEvent, ElwoodLoopSnapshot } from "./types.ts";
 import { validateLoopRequest } from "./validate.ts";
 
@@ -125,13 +126,10 @@ export class LoopScheduler {
     this.delivery.pump(this.live);
   }
   clear(reason: "kill" | "teardown"): void {
-    const [definitions, wasLive] = [this.state.definitions(), this.live] as const;
+    const definitions = this.state.definitions();
+    const wasLive = this.live;
     try {
-      if (definitions.length > 0)
-        this.persist(
-          [],
-          definitions.map(({ id }) => id),
-        );
+      if (definitions.length > 0) this.persist([], loopIds(definitions));
     } catch (error) {
       this.pause();
       throw error;
@@ -163,10 +161,7 @@ export class LoopScheduler {
     const now = this.options.now();
     const expired = this.state.expired(now);
     if (expired.length === 0) return;
-    this.persist(
-      this.state.unexpired(now),
-      expired.map(({ id }) => id),
-    );
+    this.persist(this.state.unexpired(now), loopIds(expired));
     for (const { id } of expired) {
       this.remove(id);
       if (emit) this.emit({ kind: "expired", loopId: id, at: now });
@@ -197,4 +192,8 @@ export class LoopScheduler {
     if (!wasLive) return;
     runContained(() => this.options.emit(event));
   }
+}
+
+function loopIds(definitions: readonly LoopDefinition[]): readonly string[] {
+  return definitions.map(({ id }) => id);
 }

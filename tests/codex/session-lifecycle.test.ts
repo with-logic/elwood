@@ -6,7 +6,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { setCodexHookBridgeFactoryForTests } from "../../src/codex/session.ts";
+import { setCodexHookBridgeFactoryForTests } from "../../src/codex/session/index.ts";
 import { resumeCodex, startCodex } from "../../src/index.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { safeSessionDir } from "../../src/state/files.ts";

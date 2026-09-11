@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { decodeConfig, parseConfigValue, setConfigValue } from "../../src/cli/config/codec.ts";
-import { resolveConfigPath, resolveStateDir } from "../../src/cli/config/paths.ts";
+import { resolveConfigPath, resolveStateLocation } from "../../src/cli/config/paths.ts";
 import { readConfig, writeConfig } from "../../src/cli/config/store.ts";
 import { CliValidationError } from "../../src/cli/types.ts";
 
@@ -34,10 +34,14 @@ describe("CLI config", () => {
     expect(resolveConfigPath({ XDG_CONFIG_HOME: "relative" }, cwd, home)).toBe(
       "/home/me/.config/elwood/config.json",
     );
-    expect(resolveStateDir({ XDG_STATE_HOME: "/state" }, home)).toBe("/state/elwood");
-    expect(resolveStateDir({ XDG_STATE_HOME: "relative" }, home)).toBe(
-      "/home/me/.local/state/elwood",
-    );
+    expect(resolveStateLocation({ XDG_STATE_HOME: "/state" }, home)).toEqual({
+      path: "/state/elwood",
+      source: "XDG_STATE_HOME",
+    });
+    expect(resolveStateLocation({ XDG_STATE_HOME: "relative" }, home)).toEqual({
+      path: "/home/me/.local/state/elwood",
+      source: "home directory",
+    });
   });
 
   test("C-CLI-13 decodes only the strict v1 shape", () => {

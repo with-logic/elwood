@@ -8,7 +8,7 @@ import { createConnection } from "node:net";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { HookBridgeServer } from "../../src/bridge/server.ts";
-import { tempDirForUnit } from "./helpers.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 const acceptHookInput = () => true;
 const input = JSON.stringify({ hook_event_name: "Stop", session_id: "s1", cwd: "/tmp" });
@@ -23,7 +23,7 @@ describe("bridge server socket lifecycle", () => {
     // guard must drop. Dispatch is gated open so the FIN lands mid-await. Once
     // released, the single response flushes and the socket is destroyed (client
     // `close`), all without server.stop().
-    const socketPath = join(tempDirForUnit(), "half-open.sock");
+    const socketPath = join(tempDir("elwood-unit-"), "half-open.sock");
     let dispatched = 0;
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {

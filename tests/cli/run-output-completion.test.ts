@@ -4,28 +4,13 @@
 
 import { describe, expect, test } from "vitest";
 import type { CliError, CliResult } from "../../src/cli/output/types.ts";
-import { RunOutput } from "../../src/cli/run-output.ts";
+import { RunOutput } from "../../src/cli/run/output.ts";
 import { AsyncOutputSink } from "../../src/cli/stream.ts";
-import type { EffectiveRunRequest } from "../../src/cli/types.ts";
+import { effectiveRequest } from "./main-fakes.ts";
 import { MemoryWriter } from "./run-fakes.ts";
 
 function output() {
-  const request: EffectiveRunRequest = {
-    agent: "codex",
-    output: "text",
-    outputExplicit: false,
-    trust: true,
-    stateDir: "/state",
-    verbose: true,
-    stream: false,
-    cwd: "/work",
-    images: [],
-    prompt: "go",
-    keep: false,
-    ephemeral: false,
-    sandbox: "workspace-write",
-    approvalPolicy: "never",
-  };
+  const request = effectiveRequest({ verbose: true });
   const stdout = new MemoryWriter();
   const stderr = new MemoryWriter();
   return {
@@ -53,7 +38,7 @@ function result(cleanup: CliResult["cleanup"]): CliResult {
 }
 
 describe("RunOutput completion progress", () => {
-  test("distinguishes preserved, failed, and unnecessary cleanup", async () => {
+  test("C-CLI-08/C-CLI-10 distinguishes preserved, failed, and unnecessary cleanup", async () => {
     const preserved = output();
     await preserved.output.finish(() => result({ action: "preserve", status: "succeeded" }));
     expect(preserved.stderr.value).toContain("Completed; session preserved");

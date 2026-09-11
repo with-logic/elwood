@@ -3,29 +3,15 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { executeRun } from "../../src/cli/run.ts";
+import { executeRun } from "../../src/cli/run/index.ts";
 import { AsyncOutputSink } from "../../src/cli/stream.ts";
 import type { EffectiveRunRequest } from "../../src/cli/types.ts";
 import { codexUpdateAttentionGraceMs } from "../../src/cli/update-attention.ts";
+import { effectiveRequest } from "./main-fakes.ts";
 import { FakeCliSession, FakeClock, FakeSignals, MemoryWriter } from "./run-fakes.ts";
 
-const request = (overrides: Partial<EffectiveRunRequest> = {}): EffectiveRunRequest => ({
-  agent: "codex",
-  output: "json",
-  outputExplicit: false,
-  trust: true,
-  stateDir: "/state",
-  verbose: false,
-  stream: false,
-  cwd: "/work",
-  images: [],
-  prompt: "go",
-  keep: false,
-  ephemeral: false,
-  sandbox: "workspace-write",
-  approvalPolicy: "never",
-  ...overrides,
-});
+const request = (overrides: Partial<EffectiveRunRequest> = {}): EffectiveRunRequest =>
+  effectiveRequest({ output: "json", ...overrides });
 
 function io() {
   const stdout = new MemoryWriter();
@@ -111,7 +97,7 @@ describe("executeRun Codex update attention", () => {
     expect(session.kills).toBe(1);
   });
 
-  test("a stale update replay after readiness remains automation-owned", async () => {
+  test("C-CLI-05 a stale update replay after readiness remains automation-owned", async () => {
     const session = new FakeCliSession();
     session.setupWork = async (current) => {
       await current.start();
@@ -125,7 +111,7 @@ describe("executeRun Codex update attention", () => {
     expect(clock.delays).toEqual([]);
   });
 
-  test("another agent cannot claim Codex update automation ownership", async () => {
+  test("C-CLI-05 another agent cannot claim Codex update automation ownership", async () => {
     const session = new FakeCliSession();
     session.setupWork = async (current) => {
       await current.start();

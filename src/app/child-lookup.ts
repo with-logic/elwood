@@ -7,6 +7,7 @@
  */
 
 import { type SpawnSyncReturns, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 
 /**
  * A bounded, content-free diagnostic that a child-process lookup FAILED for an
@@ -54,10 +55,19 @@ export type PgrepRunner = (
   pid: number,
 ) => Pick<SpawnSyncReturns<string>, "error" | "signal" | "status" | "stdout">;
 
-// Absolute path avoids resolving pgrep through a hijacked PATH; the timeout stops a
-// wedged executable from hanging shutdown.
+const SYSTEM_PGREP = "/usr/bin/pgrep";
+
+/**
+ * The system `pgrep` when it exists (so a hijacked PATH cannot substitute it), else
+ * PATH `pgrep` for hosts that install it elsewhere. Injectable for tests.
+ */
+export function pgrepExecutable(exists: (path: string) => boolean = existsSync): string {
+  return exists(SYSTEM_PGREP) ? SYSTEM_PGREP : "pgrep";
+}
+
+// The timeout stops a wedged executable from hanging shutdown.
 const runPgrep: PgrepRunner = (pid) =>
-  spawnSync("/usr/bin/pgrep", ["-P", String(pid)], { encoding: "utf8", timeout: 2_000 });
+  spawnSync(pgrepExecutable(), ["-P", String(pid)], { encoding: "utf8", timeout: 2_000 });
 
 /** Direct children of `pid` via pgrep; surfaces operational failures as diagnostics. */
 export function childPids(pid: number, run: PgrepRunner = runPgrep): readonly number[] {

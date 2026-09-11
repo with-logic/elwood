@@ -3,6 +3,8 @@
  * Implements PRD §5.4.
  */
 
+import type { ElwoodActivityKind } from "./activity/index.ts";
+
 export function hookResultLabel(result: unknown, failedOpen: boolean): string {
   if (failedOpen) return "error";
   if (result === undefined) return "no decision";
@@ -30,5 +32,3 @@ export function transcriptActivityKind(kind: string): ElwoodActivityKind {
   }
   return "other";
 }
-
-import type { ElwoodActivityKind } from "./activity.ts";

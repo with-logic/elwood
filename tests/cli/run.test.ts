@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { executeRun } from "../../src/cli/run.ts";
+import { executeRun } from "../../src/cli/run/index.ts";
 import { AsyncOutputSink } from "../../src/cli/stream.ts";
 import type { EffectiveRunRequest } from "../../src/cli/types.ts";
 import { elwoodError } from "../../src/core/errors.ts";
@@ -167,7 +167,7 @@ describe("executeRun", () => {
     });
   });
 
-  test("JSONL receives normalized status and warning without rich activity", async () => {
+  test("C-CLI-11/C-CLI-12 JSONL receives normalized status and warning without rich activity", async () => {
     const session = new FakeCliSession();
     session.streamWork = (current) => {
       current.emitActivity({ kind: "hook", label: "Stop" });

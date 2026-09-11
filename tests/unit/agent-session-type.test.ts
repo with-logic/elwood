@@ -5,6 +5,7 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 import {
+  type ClaudeEventMap,
   type CodexEventMap,
   type ElwoodAgentSession,
   type ElwoodCommonEventMap,
@@ -38,10 +39,10 @@ describe("ElwoodAgentSession", () => {
       reason: "caller",
     };
     const sameEvent: ElwoodLoopEvent = event;
-    const claudeEvent: ElwoodEventMap["loop"] = sameEvent;
+    const claudeEvent: ClaudeEventMap["loop"] = sameEvent;
+    const deprecatedAlias: ElwoodEventMap["loop"] = claudeEvent;
     const codexEvent: CodexEventMap["loop"] = sameEvent;
-    expect(sameEvent.loopId).toBe("loop-1");
-    expect(claudeEvent).toEqual(codexEvent);
+    void [deprecatedAlias, codexEvent]; // the assignments above are the (compile-time) assertion
   });
 
   test("C-API-27 both adapters satisfy the common session type", async () => {

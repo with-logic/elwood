@@ -3,29 +3,13 @@
 import { expect, test, vi } from "vitest";
 import { HeadedDisplay, terminalRestore } from "../../src/cli/head/display.ts";
 import type { CliHeadTarget } from "../../src/cli/head/types.ts";
-import { executeRun } from "../../src/cli/run.ts";
+import { executeRun } from "../../src/cli/run/index.ts";
 import { AsyncOutputSink, type CliWritable } from "../../src/cli/stream.ts";
-import type { EffectiveRunRequest } from "../../src/cli/types.ts";
 import type { TerminalSize } from "../../src/core/types.ts";
+import { effectiveRequest } from "./main-fakes.ts";
 import { FakeCliSession, FakeSignals, MemoryWriter } from "./run-fakes.ts";
 
-const request: EffectiveRunRequest = {
-  agent: "codex",
-  output: "text",
-  outputExplicit: false,
-  trust: true,
-  stateDir: "/state",
-  verbose: false,
-  stream: false,
-  initialSize: { cols: 120, rows: 40 },
-  cwd: "/work",
-  images: [],
-  prompt: "go",
-  keep: false,
-  ephemeral: false,
-  sandbox: "workspace-write",
-  approvalPolicy: "never",
-};
+const request = effectiveRequest({ initialSize: { cols: 120, rows: 40 } });
 
 test("C-CLI-18 raw TUI output and restore precede the final stdout response", async () => {
   const timeline: string[] = [];

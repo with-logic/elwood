@@ -10,7 +10,7 @@ import {
   type CodexDropNotice,
   CodexTranscriptWatcher,
   summarizeTranscriptItem,
-} from "../../src/codex/transcript.ts";
+} from "../../src/codex/transcript/index.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
 describe("Codex transcript observation", () => {

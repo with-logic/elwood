@@ -37,15 +37,18 @@ export type {
   WebFetchInput,
   WebSearchInput,
   WriteInput,
-} from "./claude/hooks.ts";
-export { claudeHookEventNames } from "./claude/hooks.ts";
+} from "./claude/hooks/index.ts";
+export { claudeHookEventNames } from "./claude/hooks/index.ts";
 export { listClaudeModels } from "./claude/list-models.ts";
 export type { ClaudeLoginMethod, ClaudeLoginOptions } from "./claude/login/types.ts";
-export { startClaude } from "./claude/session.ts";
-export type { ClaudeSessionApi } from "./claude/session-interface.ts";
-export { resumeClaude } from "./claude/session-resume.ts";
+export { startClaude } from "./claude/session/index.ts";
+export type { ClaudeSessionApi } from "./claude/session/interface.ts";
+export { resumeClaude } from "./claude/session/resume.ts";
+export {
+  type StartOrResumeClaudeOptions,
+  startOrResumeClaude,
+} from "./claude/session/start-or-resume.ts";
 export { ClaudeSession, type ClaudeSessionOptions } from "./claude/simple.ts";
-export { type StartOrResumeClaudeOptions, startOrResumeClaude } from "./claude/start-or-resume.ts";
 export type {
   CodexCommandToolInput,
   CodexCommonHookFields,
@@ -61,11 +64,15 @@ export type {
   CodexPreToolUseResultFor,
   CodexToolEventFields,
   CodexUnknownToolName,
-} from "./codex/hooks.ts";
-export { codexHookEventNames } from "./codex/hooks.ts";
+} from "./codex/hooks/index.ts";
+export { codexHookEventNames } from "./codex/hooks/index.ts";
 export { listCodexModels } from "./codex/list-models.ts";
-export { startCodex } from "./codex/session.ts";
-export { resumeCodex } from "./codex/session-resume.ts";
+export { startCodex } from "./codex/session/index.ts";
+export { resumeCodex } from "./codex/session/resume.ts";
+export {
+  type StartOrResumeCodexOptions,
+  startOrResumeCodex,
+} from "./codex/session/start-or-resume.ts";
 export type {
   CodexApprovalPolicy,
   CodexEventHandler,
@@ -75,19 +82,18 @@ export type {
   CodexSessionApi,
   ResumeCodexOptions,
   StartCodexOptions,
-} from "./codex/session-types.ts";
+} from "./codex/session/types.ts";
 export { CodexSession, type CodexSessionOptions } from "./codex/simple.ts";
-export { type StartOrResumeCodexOptions, startOrResumeCodex } from "./codex/start-or-resume.ts";
 export type {
   CodexTranscriptEvent,
   CodexTranscriptSummary,
-} from "./codex/transcript.ts";
+} from "./codex/transcript/index.ts";
 export type {
   ElwoodActivityEvent,
   ElwoodActivityKind,
   ElwoodActivitySource,
   ElwoodAgentKind,
-} from "./core/activity.ts";
+} from "./core/activity/index.ts";
 export type {
   ElwoodAgentSession,
   ElwoodCommonEventMap,
@@ -96,7 +102,6 @@ export type {
 export type { ElwoodErrorName } from "./core/errors.ts";
 export { ElwoodError, elwoodError } from "./core/errors.ts";
 export type { ImageFormat, ImageInput, SendOptions } from "./core/images/types.ts";
-export type { ListModelsOptions } from "./core/list-models.ts";
 export { parseLoopCommand } from "./core/loops/parser.ts";
 export type {
   ElwoodLoopEvent,
@@ -105,13 +110,17 @@ export type {
   ElwoodLoopSnapshot,
   ElwoodLoopState,
 } from "./core/loops/types.ts";
-export type { AgentModelOption } from "./core/model-rows.ts";
+export type { ListModelsOptions } from "./core/models/list.ts";
+export type { AgentModelOption } from "./core/models/rows.ts";
 export type { ClaudeReasoningEffort, CodexReasoningEffort } from "./core/reasoning-effort.ts";
 export type { TurnEvent } from "./core/simple/events.ts";
 export type { TurnOptions } from "./core/simple/session.ts";
 export type { StartOrResumeResult } from "./core/start-or-resume.ts";
 export type {
   ActivityMatch,
+  ClaudeEventHandler,
+  ClaudeEventMap,
+  ClaudeEventName,
   ClaudePermissionMode,
   ClaudeSettingsOverrides,
   ClaudeToolRule,

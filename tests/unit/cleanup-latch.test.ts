@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test, vi } from "vitest";
-import { CleanupLatch } from "../../src/runtime/cleanup-latch.ts";
+import { CleanupLatch } from "../../src/runtime/shutdown/cleanup-latch.ts";
 
 describe("CleanupLatch (§9.4)", () => {
   test("§9.4 coalesces concurrent callers onto a single in-flight attempt", async () => {

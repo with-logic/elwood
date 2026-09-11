@@ -3,21 +3,22 @@
  * default whole-turn timeout (a live turn may run for hours); an opt-in `timeoutMs` ceiling;
  * a tight post-`ready` `catchUpMs` cap; and the memory bounds (pending-event cap, rolling
  * oracle window, queue head compaction) that keep a verbose/hours-long turn from growing
- * without limit.
+ * without limit. Runs under fake timers so every window is advanced deterministically.
  */
 
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   activity,
   collect,
   deferred,
   drive,
   FakeTurnSession,
-  run,
+  runFakeTimed,
   runTurn,
-  runTurnFake,
-  type TurnSession,
 } from "./simple-turn-fakes.ts";
+
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
 
 describe("streamTurn timeouts (C-API-48)", () => {
   test("default options (no args): oracle path still ends deterministically", async () => {
@@ -29,9 +30,9 @@ describe("streamTurn timeouts (C-API-48)", () => {
       s.emit("activity", activity({ text: "ok", turnId: "t1" })); // matches the oracle → ends
     });
     // Call runTurn with NO options object → exercises the `options = {}` default + defaults.
-    expect(await collect(runTurn(s as unknown as TurnSession, "go").events)).toEqual([
-      { type: "text", text: "ok" },
-    ]);
+    const events = collect(runTurn(s, "go").events);
+    await vi.runAllTimersAsync();
+    expect(await events).toEqual([{ type: "text", text: "ok" }]);
   });
 
   test("a content event after ready with the oracle pending does NOT arm the quiet timer", async () => {
@@ -44,7 +45,7 @@ describe("streamTurn timeouts (C-API-48)", () => {
       s.emit("activity", activity({ text: "partial ", turnId: "t1" })); // push after ready, oracle set
       s.emit("activity", activity({ text: "FINAL", turnId: "t1" })); // completes the oracle
     });
-    expect(await run(s)).toEqual([
+    expect(await runFakeTimed(s)).toEqual([
       { type: "text", text: "partial " },
       { type: "text", text: "FINAL" },
     ]);
@@ -56,7 +57,7 @@ describe("streamTurn timeouts (C-API-48)", () => {
     const s = drive((s) => {
       s.emit("status", { status: "running" }); // never settles
     });
-    await expect(collect(runTurnFake(s, { timeoutMs: 10 }).events)).rejects.toMatchObject({
+    await expect(runFakeTimed(s, { timeoutMs: 10 })).rejects.toMatchObject({
       code: "wait_timeout",
     });
   });
@@ -70,9 +71,9 @@ describe("streamTurn timeouts (C-API-48)", () => {
       s.emit("status", { status: "ready" }); // settled — the catch-up cap starts ticking here
       s.emit("activity", activity({ text: "something else", turnId: "t1" })); // never matches
     });
-    await expect(
-      collect(runTurnFake(s, { catchUpMs: 20, fallbackQuietMs: 5_000 }).events),
-    ).rejects.toMatchObject({ code: "wait_timeout" });
+    await expect(runFakeTimed(s, { catchUpMs: 20, fallbackQuietMs: 5_000 })).rejects.toMatchObject({
+      code: "wait_timeout",
+    });
   });
 
   test("ready-BEFORE-Stop: a late non-empty oracle cancels the quiet timer and governs completion", async () => {
@@ -86,11 +87,11 @@ describe("streamTurn timeouts (C-API-48)", () => {
       s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "PROMISED" }); // late oracle
       s.emit("activity", activity({ text: "something else", turnId: "t1" })); // never matches
     });
-    await expect(
-      // Quiet window (10ms) is much shorter than catch-up (60ms): if the quiet timer were NOT
-      // cancelled, the turn would wrongly SUCCEED at ~10ms. It must instead reject at catch-up.
-      collect(runTurnFake(s, { fallbackQuietMs: 10, catchUpMs: 60 }).events),
-    ).rejects.toMatchObject({ code: "wait_timeout" });
+    // Quiet window (10ms) is much shorter than catch-up (60ms): if the quiet timer were NOT
+    // cancelled, the turn would wrongly SUCCEED at ~10ms. It must instead reject at catch-up.
+    await expect(runFakeTimed(s, { fallbackQuietMs: 10, catchUpMs: 60 })).rejects.toMatchObject({
+      code: "wait_timeout",
+    });
   });
 
   test("text arriving BEFORE a long Stop oracle (>4096 chars) is not truncated → no false timeout", async () => {
@@ -104,8 +105,7 @@ describe("streamTurn timeouts (C-API-48)", () => {
       s.emit("hook", { hook_event_name: "Stop", last_assistant_message: body }); // full text is the oracle
       s.emit("status", { status: "ready" });
     });
-    const out = (await run(s)) as { type: string; text: string }[];
-    expect(out).toEqual([{ type: "text", text: body }]); // matched the retained pre-oracle text → ended
+    expect(await runFakeTimed(s)).toEqual([{ type: "text", text: body }]); // matched → ended
   });
 
   test("a stalled consumer past the pending-event cap fails with wait_timeout", async () => {
@@ -115,7 +115,7 @@ describe("streamTurn timeouts (C-API-48)", () => {
       s.emit("status", { status: "running" });
       for (let i = 0; i < 10; i += 1) s.emit("activity", activity({ text: `x${i}`, turnId: "t1" }));
     });
-    await expect(collect(runTurnFake(s, { maxPendingEvents: 3 }).events)).rejects.toMatchObject({
+    await expect(runFakeTimed(s, { maxPendingEvents: 3 })).rejects.toMatchObject({
       code: "wait_timeout",
     });
   });
@@ -130,7 +130,7 @@ describe("streamTurn timeouts (C-API-48)", () => {
       s.emit("activity", activity({ text: "x".repeat(20000), turnId: "t1" })); // huge fragment
       s.emit("activity", activity({ text: "THE END", turnId: "t1" })); // the expected tail
     });
-    const out = (await run(s)) as { type: string; text: string }[];
+    const out = await runFakeTimed(s);
     expect(out.at(-1)).toEqual({ type: "text", text: "THE END" }); // matched → turn ended
   });
 
@@ -144,7 +144,7 @@ describe("streamTurn timeouts (C-API-48)", () => {
       s.emit("hook", { hook_event_name: "Stop", last_assistant_message: `x${N - 1}` });
       s.emit("status", { status: "ready" });
     });
-    const out = (await run(s)) as { type: string; text: string }[];
+    const out = await runFakeTimed(s);
     expect(out).toHaveLength(N);
     expect(out[0]).toEqual({ type: "text", text: "x0" });
     expect(out[N - 1]).toEqual({ type: "text", text: `x${N - 1}` });
@@ -158,7 +158,7 @@ describe("streamTurn timeouts (C-API-48)", () => {
       s.emit("activity", activity({ text: "z".repeat(5000), turnId: "t1" }));
     });
     await expect(
-      collect(runTurnFake(s, { maxPendingEvents: 1000, maxPendingBytes: 1024 }).events),
+      runFakeTimed(s, { maxPendingEvents: 1000, maxPendingBytes: 1024 }),
     ).rejects.toMatchObject({ code: "wait_timeout" });
   });
 
@@ -176,16 +176,14 @@ describe("streamTurn timeouts (C-API-48)", () => {
       s.emit("status", { status: "ready" });
       s.emit("activity", activity({ text: "done", turnId: "t1" }));
     };
-    const turn = runTurn(s as unknown as TurnSession, "go", {
-      timeoutMs: 5,
-      catchUpMs: 5_000,
-      fallbackQuietMs: 20,
-    });
+    const turn = runTurn(s, "go", { timeoutMs: 5, catchUpMs: 5_000, fallbackQuietMs: 20 });
     // Let the 5ms whole-turn timer's window elapse WHILE submission is still pending.
-    await new Promise((r) => setTimeout(r, 30));
+    await vi.advanceTimersByTimeAsync(30);
     expect(s.submissions).toBe(1); // sendMessage was invoked (submission started)...
     send.resolve(); // ...and only now does it resolve; the timer arms AFTER this
     // The turn completes normally — the pre-submission delay did NOT trip the whole-turn timeout.
-    expect(await collect(turn.events)).toEqual([{ type: "text", text: "done" }]);
+    const events = collect(turn.events);
+    await vi.runAllTimersAsync();
+    expect(await events).toEqual([{ type: "text", text: "done" }]);
   });
 });

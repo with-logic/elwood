@@ -97,7 +97,7 @@ export function setConfigValue(config: CliConfig, key: string, raw: string): Cli
 export function unsetConfigValue(config: CliConfig, key: string): CliConfig {
   assertConfigKey(key);
   if (key === "schemaVersion") return config;
-  const copy = JSON.parse(JSON.stringify(config)) as Record<string, unknown>;
+  const copy: Record<string, unknown> = structuredClone(config);
   if (key.includes(".")) {
     const [group, child] = key.split(".") as [string, string];
     const nested = copy[group] as Record<string, unknown> | undefined;

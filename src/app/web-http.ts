@@ -8,15 +8,27 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { moduleRequire } from "../core/module-require.ts";
 import { clientScript, renderHtml } from "./web-assets.ts";
+import { isLocalHost, type PortSource, resolvePort } from "./web-security.ts";
 
 const require = moduleRequire(import.meta.url);
 
-/** Build the HTTP request handler that serves the app shell and vendor assets. */
+/**
+ * Build the HTTP request handler that serves the app shell and vendor assets. The
+ * shell embeds the WebSocket token, so it is served only to a loopback `Host` for
+ * the bound port — the same guard the WebSocket upgrade applies — never to a
+ * request that reached the listener under another name (DNS rebinding).
+ */
 export function createHttpHandler(input: {
   readonly cwd: string;
   readonly token: string;
+  readonly port: PortSource;
 }): (request: IncomingMessage, response: ServerResponse) => void {
   return (request, response) => {
+    if (!isLocalHost(request.headers.host ?? "", resolvePort(input.port))) {
+      response.writeHead(403);
+      response.end("forbidden");
+      return;
+    }
     const path = request.url?.split("?")[0] ?? "/";
     if (path === "/") {
       send(response, "text/html; charset=utf-8", renderHtml(input.cwd, input.token));

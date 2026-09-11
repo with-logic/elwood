@@ -9,22 +9,25 @@
  * warnings.
  */
 
+import type {
+  TranscriptDropNotice,
+  TranscriptReadErrorNotice,
+} from "../../core/transcript/drops.ts";
 import { dropWarning, readErrorWarning } from "../../core/transcript/warnings.ts";
 import type { ElwoodWarningEvent } from "../../core/types.ts";
 import {
   boundedErrorToken,
   isPollErrorReason,
   type PollPhase,
-} from "../../core/warning-reasons.ts";
-import type { CodexDropNotice, CodexReadErrorNotice } from "./drops.ts";
+} from "../../core/warnings/reasons.ts";
 
 /** The shared drop warning, tagged for Codex. */
-export function codexDropWarning(notice: CodexDropNotice): ElwoodWarningEvent {
+export function codexDropWarning(notice: TranscriptDropNotice): ElwoodWarningEvent {
   return dropWarning("codex", notice);
 }
 
 /** The shared read-error warning, tagged for Codex. */
-export function codexReadErrorWarning(notice: CodexReadErrorNotice): ElwoodWarningEvent {
+export function codexReadErrorWarning(notice: TranscriptReadErrorNotice): ElwoodWarningEvent {
   return readErrorWarning("codex", notice);
 }
 

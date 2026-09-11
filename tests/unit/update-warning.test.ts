@@ -5,8 +5,8 @@
 
 import { describe, expect, test } from "vitest";
 import { elwoodError } from "../../src/core/errors.ts";
-import { updateFailedWarning } from "../../src/core/update-warning.ts";
-import { dedupeInFlight } from "../../src/runtime/update-once.ts";
+import { updateFailedWarning } from "../../src/core/warnings/update.ts";
+import { dedupeInFlight } from "../../src/runtime/update/once.ts";
 
 describe("updateFailedWarning", () => {
   test("carries the installed version, errno, and bounded stderr from an ElwoodError", () => {
@@ -36,7 +36,7 @@ describe("updateFailedWarning", () => {
   test("truncates an oversized stderr to keep the warning payload bounded", () => {
     const error = elwoodError("claude_update_failed", "failed", { stderr: "x".repeat(5000) });
     const warning = updateFailedWarning("claude", "2.1.223", error);
-    expect(warning.raw.length).toBeLessThanOrEqual(2000); // MAX_STDERR cap
+    expect(warning.raw.length).toBeLessThanOrEqual(2000); // the 2 KB `maxStderr` cap
   });
 });
 

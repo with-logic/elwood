@@ -6,10 +6,11 @@
 import { claudeLaunchPosture, effectivePosture } from "../../state/launch-posture.ts";
 import { readPrivateSessionRecord } from "../../state/private-session.ts";
 import type { SessionRecord } from "../../state/store.ts";
-import { parseCliArgs } from "../args.ts";
-import { resolveRunSettings } from "../request.ts";
-import { finalizeRunRequest } from "../request-finalize.ts";
-import { usage } from "../request-values.ts";
+import { parseCliArgs } from "../args/index.ts";
+import { type AgentDetector, detectAvailableAgent } from "../request/agent-detect.ts";
+import { finalizeRunRequest } from "../request/finalize.ts";
+import { resolveRunSettings } from "../request/index.ts";
+import { usage } from "../request/values.ts";
 import type { AsyncOutputSink } from "../stream.ts";
 import type { CliEnvironment } from "../types.ts";
 
@@ -22,21 +23,27 @@ export type EffectiveConfigContext = {
 
 export type EffectiveConfigDependencies = {
   readonly readRecord: (stateDir: string, id: string) => SessionRecord;
+  /** Login-shell command probe for an unselected agent; never starts an agent (C-CLI-21). */
+  readonly detectAgent: AgentDetector;
 };
 
-const defaults: EffectiveConfigDependencies = { readRecord: readPrivateSessionRecord };
+const defaults: EffectiveConfigDependencies = {
+  readRecord: readPrivateSessionRecord,
+  detectAgent: detectAvailableAgent,
+};
 
 export async function writeEffectiveConfig(
   args: readonly string[],
   context: EffectiveConfigContext,
-  dependencies: EffectiveConfigDependencies = defaults,
+  overrides: Partial<EffectiveConfigDependencies> = {},
 ): Promise<void> {
+  const dependencies = { ...defaults, ...overrides };
   const parsed = parseCliArgs(["run", ...args]);
   if (parsed.command !== "run") throw usage("config effective accepts run options only.");
   if (parsed.promptWords.length > 0) throw usage("config effective accepts options, not a prompt.");
   if (parsed.flags.images.length > 0)
     throw usage("config effective does not accept --image because it reads no prompt input.");
-  const draft = resolveRunSettings(parsed, context);
+  const draft = await resolveRunSettings(parsed, context, dependencies.detectAgent);
   const stored =
     draft.resume === undefined ? undefined : dependencies.readRecord(draft.stateDir, draft.resume);
   const request = await finalizeRunRequest(

@@ -3,7 +3,8 @@
  * emits activity/status/hook events, and helpers to drive and collect one turn.
  */
 
-import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
+import { vi } from "vitest";
+import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import type { SendOptions } from "../../src/core/images/types.ts";
 import type { TurnEvent } from "../../src/core/simple/events.ts";
 import {
@@ -13,17 +14,9 @@ import {
   type TurnSession,
 } from "../../src/core/simple/turn.ts";
 import type { ElwoodSessionStatus } from "../../src/core/types.ts";
+import { activity } from "../helpers/activity.ts";
 
-export function activity(partial: Partial<ElwoodActivityEvent>): ElwoodActivityEvent {
-  return {
-    elwoodSessionId: "s1",
-    agent: "claude",
-    source: "transcript",
-    kind: "assistant_message",
-    label: "assistant",
-    ...partial,
-  };
-}
+export { activity };
 
 /** The correlated event map the turn fake delivers — the three events `runTurn` subscribes to. */
 type FakeEventMap = {
@@ -102,9 +95,18 @@ export async function collect(gen: AsyncGenerator<TurnEvent>): Promise<TurnEvent
   return out;
 }
 
-/** Run a turn with fast test timings (small quiet window, generous catch-up); returns events. */
-export function run(s: FakeTurnSession, fallbackQuietMs = 20): Promise<TurnEvent[]> {
-  return collect(runTurn(s, "go", { fallbackQuietMs, catchUpMs: 5_000 }).events);
+/**
+ * `run` under `vi.useFakeTimers()`: drains every pending fake timer (quiet window, catch-up
+ * cap, drain settle) so the turn settles deterministically, then returns the collected events.
+ */
+export async function runFakeTimed(
+  s: FakeTurnSession,
+  options: StreamTurnOptions = {},
+): Promise<TurnEvent[]> {
+  const events = collect(runTurnFake(s, options).events);
+  events.catch(() => undefined); // a failing turn rejects before the caller awaits — not unhandled
+  await vi.runAllTimersAsync();
+  return events;
 }
 
 /** Run a turn and return both its events and completion promise (for lifecycle assertions). */

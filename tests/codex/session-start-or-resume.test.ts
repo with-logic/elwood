@@ -32,6 +32,7 @@ describe("startOrResumeCodex", () => {
       autoupdate: false,
       autotrust: false,
       hookTimeoutMs: 5_000,
+      reasoningEffort: "high",
       sandbox: "read-only",
       approvalPolicy: "never",
       strictVersionCheck: false,
@@ -40,6 +41,9 @@ describe("startOrResumeCodex", () => {
     // C-API-29 privilege options survive the startOrResume resume path.
     expect(ptys.at(-1)!.options.args.join(" ")).toContain("--sandbox 'read-only'");
     expect(ptys.at(-1)!.options.args.join(" ")).toContain("--ask-for-approval 'never'");
+    // C-CODEX-21 a resume must re-supply reasoningEffort: startOrResume forwards it.
+    expect(ptys.at(-1)!.options.args.join(" ")).toContain('model_reasoning_effort="high"');
+    expect(ptys.at(-1)!.options.args.join(" ")).toContain("timeout=10}"); // 5 s + 5 s slack
     expect(resumed.session.elwoodSessionId).toBe("resumable");
     const fresh = await startOrResumeCodex({ cwd, elwoodSessionId: "missing" });
     expect(fresh.resumed).toBe(false);

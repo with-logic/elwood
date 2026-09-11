@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { ControlQueue, type ControlSubmitMode } from "../../src/core/control-queue.ts";
+import { ControlQueue, type ControlSubmitMode } from "../../src/core/control-queue/index.ts";
 
 describe("ControlQueue", () => {
   test("C-API-19 submits immediately when ready and marks the turn started", async () => {

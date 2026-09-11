@@ -6,9 +6,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { type ElwoodAgentSession, startClaude, startCodex } from "../../src/index.ts";
-import { cleanup, makeProject, skipReason, turnsEnabled, waitFor } from "./helpers.ts";
-
-const skipTurnsReason = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
+import { cleanup, makeProject, skipIf, skipReason, skipTurns, waitFor } from "./helpers.ts";
 
 type InterruptOutcome = { readonly sawRunning: boolean; readonly lastStatus: string | undefined };
 
@@ -63,7 +61,7 @@ for (const size of [
   { cols: 46, rows: 12, narrow: true },
 ]) {
   test(`C-TURN-02 C-TURN-04 real Claude Esc interrupt emits ready at ${size.cols}x${size.rows}`, {
-    skip: skipReason("claude") ?? skipTurnsReason,
+    skip: skipIf(skipReason("claude"), skipTurns),
     timeout: 240_000,
   }, async () => {
     const project = makeProject("claude");
@@ -91,7 +89,7 @@ for (const size of [
 }
 
 test("C-TURN-02 real Codex Esc interrupt emits ready and stays usable", {
-  skip: skipReason("codex") ?? skipTurnsReason,
+  skip: skipIf(skipReason("codex"), skipTurns),
   timeout: 240_000,
 }, async () => {
   const project = makeProject("codex");

@@ -1,6 +1,6 @@
 /**
  * Shared message types and parsing helpers for the browser dev app.
- * Implements PRD §10.
+ * Implements PRD §11.
  */
 
 import type { TerminalSize } from "../index.ts";
@@ -53,11 +53,9 @@ export type DebugEventEntry = {
 
 export type ServerMessage =
   | { readonly type: "terminal"; readonly data: string }
-  | { readonly type: "log"; readonly level: "info" | "warn" | "error"; readonly text: string }
   | { readonly type: "event"; readonly entry: DebugEventEntry }
   | { readonly type: "session"; readonly id: string; readonly cwd: string; readonly status: string }
-  | { readonly type: "status"; readonly status: string }
-  | { readonly type: "error"; readonly message: string };
+  | { readonly type: "status"; readonly status: string };
 
 export { parseClientMessage } from "./web-parse.ts";
 

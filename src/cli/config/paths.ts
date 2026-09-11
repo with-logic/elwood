@@ -34,10 +34,6 @@ export function resolveConfigLocation(
   };
 }
 
-export function resolveStateDir(env: CliEnvironment, homeDir: string): string {
-  return resolveStateLocation(env, homeDir).path;
-}
-
 export function resolveStateLocation(env: CliEnvironment, homeDir: string): CliPathResolution {
   const xdg = absoluteBase(env["XDG_STATE_HOME"]);
   return {

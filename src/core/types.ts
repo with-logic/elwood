@@ -10,20 +10,20 @@ import type {
   ClaudeHookHandlers,
   ClaudeHookResult,
   ClaudeHookResultFor,
-} from "../claude/hooks.ts";
-import type { CodexHookEventName } from "../codex/hook-names.ts";
-import type { ElwoodActivityEvent } from "./activity.ts";
+} from "../claude/hooks/index.ts";
+import type { CodexHookEventName } from "../codex/hooks/names.ts";
+import type { ElwoodActivityEvent } from "./activity/index.ts";
 import type { ElwoodLoopEvent } from "./loops/types.ts";
 import type { ClaudeReasoningEffort } from "./reasoning-effort.ts";
+import type { ElwoodSessionStatus } from "./status-categories.ts";
+import type { ElwoodWarningEvent } from "./warnings/index.ts";
+
+export type { ElwoodSessionStatus, ElwoodWarningEvent };
 
 export type TerminalSize = {
   readonly cols: number;
   readonly rows: number;
 };
-
-import type { ElwoodSessionStatus } from "./status-categories.ts";
-
-export type { ElwoodSessionStatus };
 
 /** The kinds of evidence that can drive a session status transition. */
 export type ElwoodStatusEvidence =
@@ -112,11 +112,8 @@ export type HookErrorEvent = {
   readonly timeoutMs?: number;
 };
 
-import type { ElwoodWarningEvent } from "./warnings.ts";
-
-export type { ElwoodWarningEvent };
-
-export type ElwoodEventMap = {
+/** Events every adapter session emits with identical payload shapes (§5.7). */
+export type ElwoodCommonEventMap = {
   readonly "terminal:data": { readonly elwoodSessionId: string; readonly data: string };
   readonly "terminal:exit": {
     readonly elwoodSessionId: string;
@@ -130,8 +127,14 @@ export type ElwoodEventMap = {
   readonly activity: ElwoodActivityEvent;
   readonly warning: ElwoodWarningEvent;
   readonly loop: ElwoodLoopEvent;
-  readonly hook: ClaudeHookEvent;
   readonly hookError: HookErrorEvent;
+};
+
+export type ElwoodCommonEventName = keyof ElwoodCommonEventMap;
+
+/** The Claude session's events: the common map plus its typed `hook` / `hook:<Name>` events. */
+export type ClaudeEventMap = ElwoodCommonEventMap & {
+  readonly hook: ClaudeHookEvent;
 } & {
   readonly [K in `hook:${ClaudeHookEventName}`]: K extends `hook:${infer N}`
     ? N extends ClaudeHookEventName
@@ -140,14 +143,21 @@ export type ElwoodEventMap = {
     : never;
 };
 
-export type ElwoodEventName = keyof ElwoodEventMap;
+export type ClaudeEventName = keyof ClaudeEventMap;
 
-export type ElwoodEventHandler<E extends ElwoodEventName> = (
-  event: ElwoodEventMap[E],
+export type ClaudeEventHandler<E extends ClaudeEventName> = (
+  event: ClaudeEventMap[E],
 ) => E extends `hook:${infer K}`
   ? K extends ClaudeHookEventName
     ? ClaudeHookResultFor<K> | Promise<ClaudeHookResultFor<K>>
     : ClaudeHookResult | Promise<ClaudeHookResult>
   : void;
+
+/** @deprecated Claude-specific despite the generic name; use `ClaudeEventMap`. */
+export type ElwoodEventMap = ClaudeEventMap;
+/** @deprecated Claude-specific despite the generic name; use `ClaudeEventName`. */
+export type ElwoodEventName = ClaudeEventName;
+/** @deprecated Claude-specific despite the generic name; use `ClaudeEventHandler`. */
+export type ElwoodEventHandler<E extends ClaudeEventName> = ClaudeEventHandler<E>;
 
 export type Unsubscribe = () => void;

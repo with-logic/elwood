@@ -14,4 +14,10 @@ export type TranscriptNoticeHandlers = {
   readonly onPollError?: (error: unknown) => void;
   /** Poll cadence override (defaults to the watcher default); tests use a short interval. */
   readonly pollIntervalMs?: number;
+  /**
+   * Monotonic clock for the PTY-exit drain's wall-clock slice. Tests inject a
+   * controlled clock so a multi-chunk drain is deterministic rather than a race
+   * against real time; production uses `Date.now`.
+   */
+  readonly now?: () => number;
 };

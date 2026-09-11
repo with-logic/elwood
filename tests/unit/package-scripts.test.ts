@@ -3,7 +3,7 @@
  * Covers PRD §11 and §12.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 
 type PackageJson = {
@@ -18,27 +18,23 @@ type PackageJson = {
 };
 
 describe("package scripts", () => {
-  test("C-APP-11 example scripts run PTY-owning examples under Node", () => {
+  test("C-APP-11 example and dev:web scripts run their entry under the Node supervisor", () => {
     const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as PackageJson;
-    expect(packageJson.scripts?.["example:minimal"]).toBe(
-      "exec node --no-warnings scripts/run-example.ts examples/minimal.ts",
-    );
-    expect(packageJson.scripts?.["example:full"]).toBe(
-      "exec node --no-warnings scripts/run-example.ts examples/full.ts",
-    );
+    const supervised = ["dev:web", "example:minimal", "example:stream", "example:full"];
+    for (const name of supervised) {
+      const script = packageJson.scripts?.[name];
+      const match = /^exec node --no-warnings scripts\/supervise\.ts (\S+)$/.exec(script ?? "");
+      expect(match, `${name}: ${script}`).not.toBeNull();
+      expect(existsSync("scripts/supervise.ts")).toBe(true);
+      expect(existsSync(match?.[1] ?? ""), `${name} entry exists`).toBe(true);
+    }
+    expect(packageJson.scripts?.["dev:web"]).toContain("src/app/web-dev.ts");
   });
 
   test("C-E2E-05 check:all runs the default check gate followed by test:e2e", () => {
     const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as PackageJson;
     expect(packageJson.scripts?.["check:all"]).toBe("npm run check && npm run test:e2e");
     expect(packageJson.scripts?.["check"]).not.toContain("test:e2e");
-  });
-
-  test("C-APP-11 full example has runnable defaults", () => {
-    const fullExample = readFileSync("examples/full.ts", "utf8");
-    expect(fullExample).toContain("const defaultPrompt");
-    expect(fullExample).toContain("let prompt = defaultPrompt");
-    expect(fullExample).not.toContain("Missing required --prompt");
   });
 
   test("C-CLI-01 package scripts emit the installed JavaScript boundary", () => {

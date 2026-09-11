@@ -11,7 +11,7 @@ import { loginShellCommand, userShell } from "../runtime/shell.ts";
 import type { SessionRecord } from "../state/store.ts";
 import { buildCodexShellCommand } from "./command.ts";
 import * as preflight from "./preflight.ts";
-import type { StartCodexOptions } from "./session-types.ts";
+import type { StartCodexOptions } from "./session/types.ts";
 
 export async function spawnCodexPty(
   record: SessionRecord,

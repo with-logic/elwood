@@ -2,10 +2,11 @@
  * Unit coverage for one ergonomic turn's LIFECYCLE races (PRD §5.8, C-API-48/51): a terminal
  * status arriving WHILE a submission is still pending ends the iterator cleanly and preserves
  * buffered content, and a late whole-turn timer cannot overwrite an already-succeeded turn.
- * These exercise the timing windows the deterministic completion path must survive.
+ * These exercise the timing windows the deterministic completion path must survive, under
+ * fake timers so each window is advanced explicitly rather than raced against the wall clock.
  */
 
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   activity,
   collect,
@@ -13,8 +14,17 @@ import {
   drive,
   FakeTurnSession,
   runTurn,
-  type TurnSession,
 } from "./simple-turn-fakes.ts";
+
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
+
+/** Resolves with the collected events once every pending fake timer has run. */
+async function settle<T>(pending: Promise<T>): Promise<T> {
+  pending.catch(() => undefined); // a failing turn rejects before the caller awaits — not unhandled
+  await vi.runAllTimersAsync();
+  return pending;
+}
 
 describe("streamTurn lifecycle races (C-API-48/51)", () => {
   test("a terminal status DURING a pending submission ends cleanly and KEEPS buffered content", async () => {
@@ -31,11 +41,8 @@ describe("streamTurn lifecycle races (C-API-48/51)", () => {
       // The pending submission now fails because the session is gone.
       send.reject(Object.assign(new Error("session not running"), { code: "session_not_running" }));
     };
-    const events = runTurn(s as unknown as TurnSession, "go", {
-      fallbackQuietMs: 20,
-      catchUpMs: 5_000,
-    }).events;
-    expect(await collect(events)).toEqual([{ type: "text", text: "buffered" }]); // kept, no throw
+    const events = runTurn(s, "go", { fallbackQuietMs: 20, catchUpMs: 5_000 }).events;
+    expect(await settle(collect(events))).toEqual([{ type: "text", text: "buffered" }]); // no throw
   });
 
   test("a late whole-turn timer cannot overwrite an already-succeeded turn as a timeout", async () => {
@@ -48,30 +55,22 @@ describe("streamTurn lifecycle races (C-API-48/51)", () => {
       s.emit("status", { status: "ready" });
       s.emit("activity", activity({ text: "ok", turnId: "t1" })); // matches oracle → ends now
     });
-    const turn = runTurn(s as unknown as TurnSession, "go", {
-      timeoutMs: 10,
-      catchUpMs: 5_000,
-      fallbackQuietMs: 20,
-    });
+    const turn = runTurn(s, "go", { timeoutMs: 10, catchUpMs: 5_000, fallbackQuietMs: 20 });
     // Wait past timeoutMs BEFORE draining — if the timer could overwrite success, it would fire.
-    await new Promise((r) => setTimeout(r, 30));
+    await vi.advanceTimersByTimeAsync(30);
     expect(await collect(turn.events)).toEqual([{ type: "text", text: "ok" }]); // success stands
     await expect(turn.completion).resolves.toBeUndefined();
   });
 
   test("the runner removes ALL its listeners once the turn settles (success)", async () => {
-    const s = new FakeTurnSession();
-    s.script = () => {
+    const s = drive((s) => {
       s.emit("status", { status: "running" });
       s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "ok" });
       s.emit("status", { status: "ready" });
       s.emit("activity", activity({ text: "ok", turnId: "t1" }));
-    };
-    const turn = runTurn(s as unknown as TurnSession, "go", {
-      catchUpMs: 5_000,
-      fallbackQuietMs: 20,
     });
-    await collect(turn.events);
+    const turn = runTurn(s, "go", { catchUpMs: 5_000, fallbackQuietMs: 20 });
+    await settle(collect(turn.events));
     await turn.boundary;
     expect(s.listenerCount()).toBe(0); // activity + hook + status listeners all detached
   });
@@ -79,11 +78,8 @@ describe("streamTurn lifecycle races (C-API-48/51)", () => {
   test("the runner removes ALL its listeners once the turn settles (failure)", async () => {
     const s = new FakeTurnSession();
     s.sendResult = Promise.reject(new Error("pty write failed"));
-    const turn = runTurn(s as unknown as TurnSession, "go", {
-      catchUpMs: 5_000,
-      fallbackQuietMs: 20,
-    });
-    await expect(collect(turn.events)).rejects.toThrow(/pty write failed/);
+    const turn = runTurn(s, "go", { catchUpMs: 5_000, fallbackQuietMs: 20 });
+    await expect(settle(collect(turn.events))).rejects.toThrow(/pty write failed/);
     await turn.boundary;
     expect(s.listenerCount()).toBe(0); // no leak even on the failure path
   });
@@ -98,19 +94,15 @@ describe("streamTurn lifecycle races (C-API-48/51)", () => {
       s.emit("status", { status: "running" });
       emit = (text: string) => s.emit("activity", activity({ text })); // untagged (Claude-like)
     };
-    const turn = runTurn(s as unknown as TurnSession, "go", {
-      timeoutMs: 10,
-      catchUpMs: 40,
-      fallbackQuietMs: 5_000,
-    });
-    await expect(collect(turn.events)).rejects.toMatchObject({ code: "wait_timeout" }); // consumer failed
+    const turn = runTurn(s, "go", { timeoutMs: 10, catchUpMs: 40, fallbackQuietMs: 5_000 });
+    await expect(settle(collect(turn.events))).rejects.toMatchObject({ code: "wait_timeout" });
     let resolved = false;
     void turn.boundary.then(() => {
       resolved = true;
     });
     // Long quiet stretch with the agent still `running` (no `ready`): the boundary must NOT resolve.
     emit("still-working");
-    await new Promise((r) => setTimeout(r, 120)); // >> catchUpMs/DRAIN — proves quiet alone won't release
+    await vi.advanceTimersByTimeAsync(120); // >> catchUpMs/DRAIN — proves quiet alone won't release
     expect(resolved).toBe(false); // held — a silent running agent is not done
   });
 
@@ -123,21 +115,22 @@ describe("streamTurn lifecycle races (C-API-48/51)", () => {
       s.emit("status", { status: "running" });
       ready = () => s.emit("status", { status: "ready" });
     };
-    const turn = runTurn(s as unknown as TurnSession, "go", {
+    const turn = runTurn(s, "go", {
       timeoutMs: 10,
       catchUpMs: 5_000,
       fallbackQuietMs: 5_000,
       drainMs: 40,
     });
-    await expect(collect(turn.events)).rejects.toMatchObject({ code: "wait_timeout" });
+    await expect(settle(collect(turn.events))).rejects.toMatchObject({ code: "wait_timeout" });
     let resolved = false;
     void turn.boundary.then(() => {
       resolved = true;
     });
-    await new Promise((r) => setTimeout(r, 30));
+    await vi.advanceTimersByTimeAsync(30);
     expect(resolved).toBe(false); // no `ready` yet → still held
     ready(); // the agent finishes its turn
-    await turn.boundary; // resolves after the short drain settle
+    await vi.advanceTimersByTimeAsync(40); // the drain settle elapses
+    await turn.boundary;
     expect(resolved).toBe(true);
   });
 
@@ -153,23 +146,24 @@ describe("streamTurn lifecycle races (C-API-48/51)", () => {
       ready = () => s.emit("status", { status: "ready" });
       emit = (t: string) => s.emit("activity", activity({ text: t }));
     };
-    const turn = runTurn(s as unknown as TurnSession, "go", {
+    const turn = runTurn(s, "go", {
       timeoutMs: 10,
       catchUpMs: 5_000,
       fallbackQuietMs: 5_000,
       drainMs: 50,
     });
-    await expect(collect(turn.events)).rejects.toMatchObject({ code: "wait_timeout" });
+    await expect(settle(collect(turn.events))).rejects.toMatchObject({ code: "wait_timeout" });
     let resolved = false;
     void turn.boundary.then(() => {
       resolved = true;
     });
     ready(); // arms a 50ms drain
-    await new Promise((r) => setTimeout(r, 40)); // just BEFORE the original 50ms deadline
+    await vi.advanceTimersByTimeAsync(40); // just BEFORE the original 50ms deadline
     emit("trailing"); // RE-ARMS → a fresh 50ms window starts now
-    await new Promise((r) => setTimeout(r, 30)); // now PAST the original deadline (40+30=70 > 50)
+    await vi.advanceTimersByTimeAsync(30); // now PAST the original deadline (40+30=70 > 50)
     expect(resolved).toBe(false); // WITHOUT re-arm this would already be resolved → proves re-arm
-    await turn.boundary; // the fresh window elapses with no more activity → resolves
+    await vi.advanceTimersByTimeAsync(20); // the fresh window elapses with no more activity
+    await turn.boundary;
     expect(resolved).toBe(true);
   });
 
@@ -180,8 +174,8 @@ describe("streamTurn lifecycle races (C-API-48/51)", () => {
       s.emit("status", { status: "running" });
       die = () => s.emit("status", { status: "exited" });
     };
-    const turn = runTurn(s as unknown as TurnSession, "go", { timeoutMs: 10, catchUpMs: 5_000 });
-    await expect(collect(turn.events)).rejects.toMatchObject({ code: "wait_timeout" });
+    const turn = runTurn(s, "go", { timeoutMs: 10, catchUpMs: 5_000 });
+    await expect(settle(collect(turn.events))).rejects.toMatchObject({ code: "wait_timeout" });
     die(); // the agent process is gone — the real boundary, no drain needed
     await turn.boundary; // resolves (would hang if terminal did not release)
     expect(s.listenerCount()).toBe(0);

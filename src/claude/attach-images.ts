@@ -16,7 +16,7 @@ import {
   sendWhenUnblocked,
   waitForImageChip,
 } from "../core/images/chip-wait.ts";
-import { sanitizePasteText } from "../core/session-input.ts";
+import { sanitizePasteText } from "../core/input/index.ts";
 
 const PASTE_START = "\u001b[200~";
 const PASTE_END = "\u001b[201~";

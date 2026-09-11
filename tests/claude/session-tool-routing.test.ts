@@ -4,7 +4,8 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest";
-import { registerInitialHooks } from "../../src/claude/session-runtime.ts";
+import { registerInitialHooks } from "../../src/claude/session/runtime.ts";
+import type { ClaudeEventMap } from "../../src/core/types.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 import { startClaude } from "../../src/index.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -47,7 +48,7 @@ describe("ClaudeSessionApi object-form tool hook routing", () => {
   });
 
   test("C-HOOK-10 object-form handlers tolerate events without a tool name", async () => {
-    const emitter = new TypedEmitter();
+    const emitter = new TypedEmitter<ClaudeEventMap>();
     registerInitialHooks(emitter, {
       PreToolUse: { unknown: () => ({ permissionDecision: "deny" }) },
     });

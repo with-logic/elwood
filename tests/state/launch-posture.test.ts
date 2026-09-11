@@ -15,7 +15,8 @@ import {
   updateSessionResumeId,
   writeSessionRecord,
 } from "../../src/state/store.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "../claude/helpers.ts";
+import { installFakes, ptys, resetFakes } from "../claude/helpers.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 afterEach(resetFakes);
 

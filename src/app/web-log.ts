@@ -1,6 +1,6 @@
 /**
  * Hook event summaries for the browser dev app log.
- * Implements PRD §6 and §10.
+ * Implements PRD §6 and §11.
  */
 
 import type { AgentHookEvent } from "./agent-runtime.ts";

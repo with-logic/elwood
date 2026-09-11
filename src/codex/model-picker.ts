@@ -3,9 +3,9 @@
  * Implements PRD §5.7, C-API-23, and C-API-24.
  */
 
-import type { ModelPickerSpec } from "../core/model-picker.ts";
-import { codexModelPickerHeader, parseCodexModelPicker } from "../core/model-rows.ts";
-import { waitForScreen } from "../core/tui-screen.ts";
+import type { ModelPickerSpec } from "../core/models/picker.ts";
+import { codexModelPickerHeader, parseCodexModelPicker } from "../core/models/rows.ts";
+import { waitForScreen } from "../core/models/tui-screen.ts";
 
 const reasoningHeader = /Select Reasoning Level/;
 const changeConfirmed = /Model changed to/;

@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { summarizeTranscriptItem } from "../../src/codex/transcript.ts";
+import { summarizeTranscriptItem } from "../../src/codex/transcript/index.ts";
 
 function summary(payload: Record<string, unknown>) {
   return summarizeTranscriptItem({ type: "response_item", payload });

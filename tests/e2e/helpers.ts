@@ -1,16 +1,48 @@
 /**
- * Shared helpers for real adapter e2e tests.
- * Implements PRD §12 and C-E2E-01 through C-E2E-04.
+ * Shared helpers for real adapter e2e tests: typed session observation, polling,
+ * prompt readiness, and cleanup.
+ * Implements PRD §12 and C-E2E-01 through C-E2E-04. Availability/skip logic lives in
+ * `availability.ts`; scratch dirs and the Codex sandbox in `scratch.ts`; direct bridge
+ * invocation in `bridge-helpers.ts`. All are re-exported here.
  */
 
-import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { ClaudeSessionApi, CodexSessionApi } from "../../src/index.ts";
+import { existsSync } from "node:fs";
+import type {
+  ClaudeHookEvent,
+  ClaudeSessionApi,
+  CodexHookEvent,
+  CodexSessionApi,
+  CodexTranscriptEvent,
+  ElwoodActivityEvent,
+  ElwoodCommonEventMap,
+  ElwoodWarningEvent,
+  HookErrorEvent,
+  Unsubscribe,
+} from "../../src/index.ts";
+import { type AgentName, e2eTimeoutMs } from "./availability.ts";
 
-export type AgentName = "claude" | "codex";
+export {
+  type AgentName,
+  e2eTimeoutMs,
+  requireAll,
+  skipIf,
+  skipNow,
+  skipReason,
+  skipTurns,
+  turnsEnabled,
+} from "./availability.ts";
+export { invokeHookBridge, parseJsonOutput } from "./bridge-helpers.ts";
+export {
+  type CodexSandbox,
+  codexAuthMissing,
+  codexAuthPath,
+  type E2eProject,
+  makeProject,
+  sandboxedCodexHome,
+} from "./scratch.ts";
+
 export type E2eSession = ClaudeSessionApi | CodexSessionApi;
+export type HookEvent = ClaudeHookEvent | CodexHookEvent;
 
 // The suite emulates an agent launched from the user's own terminal. When the
 // suite itself runs nested inside a Claude Code session, claude >= 2.1.201
@@ -21,58 +53,49 @@ for (const key of Object.keys(process.env)) {
   if (key === "CLAUDECODE" || key.startsWith("CLAUDE_CODE_")) delete process.env[key];
 }
 
+/** The events `observeSession` records, with the payload each adapter emits. */
+type ObservedEvents = Pick<
+  ElwoodCommonEventMap,
+  "terminal:data" | "status" | "activity" | "warning" | "hookError"
+> & {
+  readonly hook: HookEvent;
+  readonly "codex:transcript": CodexTranscriptEvent;
+};
+
+// Both session APIs expose `on` as a generic method over their own event map; a union
+// of two generic signatures is not callable, so subscribe through this per-event view.
+// It is the only place the e2e suite widens a session type.
 type EventSource = {
-  on(event: string, handler: (event: unknown) => void): () => void;
+  on<E extends keyof ObservedEvents>(
+    event: E,
+    handler: (event: ObservedEvents[E]) => void,
+  ): Unsubscribe;
 };
 
 export type ObservedSession = {
   readonly terminal: string[];
-  readonly statuses: unknown[];
-  readonly activities: unknown[];
-  readonly hooks: unknown[];
-  readonly warnings: unknown[];
-  readonly hookErrors: unknown[];
-  readonly transcripts: unknown[];
+  readonly statuses: ElwoodCommonEventMap["status"][];
+  readonly activities: ElwoodActivityEvent[];
+  readonly hooks: HookEvent[];
+  readonly warnings: ElwoodWarningEvent[];
+  readonly hookErrors: HookErrorEvent[];
+  readonly transcripts: CodexTranscriptEvent[];
   dispose(): void;
 };
-
-export const e2eTimeoutMs = Number(process.env["ELWOOD_E2E_TIMEOUT_MS"] ?? 180_000);
-export const turnsEnabled = process.env["ELWOOD_E2E_SKIP_TURNS"] !== "1";
-
-export function skipReason(agent: AgentName): string | false {
-  const envKey = `ELWOOD_E2E_SKIP_${agent.toUpperCase()}`;
-  if (process.env[envKey] === "1") return `${envKey}=1`;
-  const result = spawnSync("/bin/zsh", ["-l", "-i", "-c", `${agent} --version >/dev/null`], {
-    encoding: "utf8",
-    timeout: 15_000,
-  });
-  if (result.status === 0) return false;
-  return `${agent} CLI is not available from an interactive login shell`;
-}
-
-export function makeProject(agent: AgentName) {
-  const root = mkdtempSync(join(tmpdir(), `elwood-e2e-${agent}-`));
-  writeFileSync(join(root, "AGENTS.md"), "Answer directly. Do not modify files unless asked.\n");
-  return {
-    cwd: root,
-    stateDir: join(root, ".state"),
-    sessionDir: (id: string) => join(root, ".state", "sessions", id),
-  };
-}
 
 export function observeSession(session: E2eSession): ObservedSession {
   const source = session as unknown as EventSource;
   const observed = {
     terminal: [] as string[],
-    statuses: [] as unknown[],
-    activities: [] as unknown[],
-    hooks: [] as unknown[],
-    warnings: [] as unknown[],
-    hookErrors: [] as unknown[],
-    transcripts: [] as unknown[],
+    statuses: [] as ElwoodCommonEventMap["status"][],
+    activities: [] as ElwoodActivityEvent[],
+    hooks: [] as HookEvent[],
+    warnings: [] as ElwoodWarningEvent[],
+    hookErrors: [] as HookErrorEvent[],
+    transcripts: [] as CodexTranscriptEvent[],
   };
   const unsubscribers = [
-    source.on("terminal:data", (event) => observed.terminal.push(field(event, "data"))),
+    source.on("terminal:data", (event) => observed.terminal.push(event.data)),
     source.on("status", (event) => observed.statuses.push(event)),
     source.on("activity", (event) => observed.activities.push(event)),
     source.on("hook", (event) => observed.hooks.push(event)),
@@ -118,11 +141,11 @@ export async function prepareInteractivePrompt(
   }, `${agent} interactive prompt`);
 }
 
-export function hookNamed(events: readonly unknown[], name: string): unknown | undefined {
-  return events.find((event) => field(event, "hook_event_name") === name);
+export function hookNamed(events: readonly HookEvent[], name: string): HookEvent | undefined {
+  return events.find((event) => event.hook_event_name === name);
 }
 
-export function hasActivity(events: readonly unknown[]): boolean {
+export function hasActivity(events: readonly ElwoodActivityEvent[]): boolean {
   return events.length > 0;
 }
 
@@ -141,53 +164,6 @@ export async function cleanup(session: E2eSession | undefined): Promise<void> {
 
 export function pathRemoved(path: string): boolean {
   return !existsSync(path);
-}
-
-export async function invokeHookBridge(
-  project: ReturnType<typeof makeProject>,
-  elwoodSessionId: string,
-  input: Readonly<Record<string, unknown>>,
-): Promise<{ readonly status: number | null; readonly stdout: string; readonly stderr: string }> {
-  const bridgePath = join(project.sessionDir(elwoodSessionId), "hook-bridge.mjs");
-  return await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [bridgePath], {
-      env: { ...process.env, ELWOOD_SESSION_ID: elwoodSessionId },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    const timeout = setTimeout(() => {
-      child.kill("SIGTERM");
-      reject(new Error("Timed out invoking hook bridge"));
-    }, 15_000);
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk;
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-    });
-    child.on("error", (error) => {
-      clearTimeout(timeout);
-      reject(error);
-    });
-    child.on("exit", (status) => {
-      clearTimeout(timeout);
-      resolve({ status, stdout, stderr });
-    });
-    child.stdin.end(JSON.stringify(input));
-  });
-}
-
-export function parseJsonOutput<T>(stdout: string): T {
-  return JSON.parse(stdout) as T;
-}
-
-function field(event: unknown, key: string): string {
-  if (!event || typeof event !== "object" || !(key in event)) return "";
-  const value = (event as Record<string, unknown>)[key];
-  return typeof value === "string" ? value : "";
 }
 
 function promptReady(text: string, agent: AgentName): boolean {

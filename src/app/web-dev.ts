@@ -3,8 +3,8 @@
  *
  * `createWebDevApp` builds the HTTP + WebSocket wiring with no import-time side
  * effects so it is fully testable; `bootstrapIfMain` is the thin entrypoint that
- * `scripts/dev-web.ts` runs, starting the server only when this module is the
- * process entry.
+ * `scripts/supervise.ts` runs (`npm run dev:web`), starting the server only when this
+ * module is the process entry.
  */
 
 import { createServer, type Server } from "node:http";
@@ -55,9 +55,10 @@ export function createWebDevApp(options: WebDevAppOptions = {}): WebDevApp {
       }),
     }),
   );
-  const server = createServer(createHttpHandler({ cwd, token }));
   // Resolve the port lazily: with port 0 the OS assigns one at listen time.
-  const wss = createGuardedWebSocketServer(server, token, () => boundPort(server, port));
+  const livePort = (): number => boundPort(server, port);
+  const server: Server = createServer(createHttpHandler({ cwd, token, port: livePort }));
+  const wss = createGuardedWebSocketServer(server, token, livePort);
   const deps: DispatchDeps = {
     slot,
     broadcast,
@@ -102,13 +103,16 @@ export type StartWebDevAppOptions = WebDevAppOptions & {
 };
 
 /** Start the dev app when this module is the process entry; returns the app or null. */
-export function bootstrapIfMain(meta: { readonly url: string }): WebDevApp | null {
+export function bootstrapIfMain(
+  meta: { readonly url: string },
+  options: StartWebDevAppOptions = {},
+): WebDevApp | null {
   if (!isMainModule(meta.url)) return null;
-  return startWebDevApp();
+  return startWebDevApp(options);
 }
 
 /** Create the app, install hard-shutdown signal handling, and begin listening. */
-export function startWebDevApp(options: StartWebDevAppOptions = {}): WebDevApp {
+export function startWebDevApp(options: StartWebDevAppOptions): WebDevApp {
   const app = createWebDevApp(options);
   const install =
     options.installShutdown ?? ((cleanup: () => Promise<void>) => installHardShutdown({ cleanup }));

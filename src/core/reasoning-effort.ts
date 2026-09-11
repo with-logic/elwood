@@ -10,22 +10,30 @@
  * with a provider 400), so a start-time check turns both into one fast, clear error.
  */
 
-import type { ClaudeEffortLevel } from "../claude/hook-names.ts";
+import type { ClaudeEffortLevel } from "../claude/hooks/names.ts";
 import { type ElwoodErrorName, elwoodError } from "./errors.ts";
 
 /**
  * Claude's `--effort` levels (claude 2.1.245: `low, medium, high, xhigh, max`).
  * `ClaudeReasoningEffort` is the SAME set Claude already reports in hook payloads
  * (`ClaudeEffortLevel`), aliased so the launch option and the hook input never
- * drift; the `AssertEqual` below fails to compile if the array and that union
- * diverge.
+ * drift. The coupling is enforced at COMPILE time in both directions with no
+ * runtime statement: `satisfies` rejects a tuple member outside the union, and
+ * `Covers` (whose constraint requires every union member to be in the tuple)
+ * rejects a union member the tuple omits.
  */
-export const claudeReasoningEfforts = ["low", "medium", "high", "xhigh", "max"] as const;
 export type ClaudeReasoningEffort = ClaudeEffortLevel;
-type AssertEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
-const _claudeCoupled: AssertEqual<(typeof claudeReasoningEfforts)[number], ClaudeReasoningEffort> =
-  true;
-void _claudeCoupled;
+export const claudeReasoningEfforts = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const satisfies readonly ClaudeReasoningEffort[];
+/** `T` itself, instantiable only when `U` (the union) is covered by `T`'s members. */
+type Covers<T extends readonly string[], U extends T[number]> = readonly U[] extends T ? never : T;
+/** The launch tuple, proven to cover the hook-payload union (fails to compile on drift). */
+export type ClaudeReasoningEfforts = Covers<typeof claudeReasoningEfforts, ClaudeReasoningEffort>;
 
 /** Codex `model_reasoning_effort` values (codex 0.149.1, API-enforced enum). */
 export const codexReasoningEfforts = [

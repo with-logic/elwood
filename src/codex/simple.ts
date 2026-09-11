@@ -10,14 +10,14 @@ import { resolveSessionPaths } from "../core/simple/resolve-paths.ts";
 import { SessionBase } from "../core/simple/session.ts";
 import { type AssertStopBoundary, defaultBoundarySignal } from "../core/simple/turn.ts";
 import type { Unsubscribe } from "../core/types.ts";
-import type { CodexHookEventFor } from "./hooks.ts";
-import { startCodex } from "./session.ts";
+import type { CodexHookEventFor } from "./hooks/index.ts";
+import { startCodex } from "./session/index.ts";
 import type {
   CodexEventHandler,
   CodexEventName,
   CodexSessionApi,
   StartCodexOptions,
-} from "./session-types.ts";
+} from "./session/types.ts";
 
 // Compile-time TURN-CAPABILITY guard (mirrors Claude): the completeness oracle reads the `Stop`
 // hook's `last_assistant_message`, so the REAL Codex `Stop` payload must carry the oracle's

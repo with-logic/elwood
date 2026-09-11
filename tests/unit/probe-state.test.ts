@@ -2,11 +2,11 @@
  * Unit tests for the probe-owned temp state directory (C-API-41 cleanup).
  */
 
-import { existsSync, mkdtempSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { ownedProbeStateDir, removeProbeStateDir } from "../../src/core/probe-state.ts";
+import { ownedProbeStateDir } from "../../src/core/models/probe-state.ts";
 
 describe("ownedProbeStateDir", () => {
   test("C-API-41 creates a fresh owned dir under a parent and removes exactly it", () => {
@@ -48,9 +48,13 @@ describe("ownedProbeStateDir", () => {
     expect(() => state.remove()).not.toThrow(); // `force` ignores the missing dir
   });
 
-  test("C-API-41 removeProbeStateDir swallows a real fs error so cleanup never throws", () => {
-    // A path whose parent component is a FILE makes rmSync throw ENOTDIR even with
-    // `force`; best-effort cleanup must swallow it rather than surface it.
-    expect(() => removeProbeStateDir("/dev/null/not-a-real-child")).not.toThrow();
+  test("C-API-41 remove() swallows a real fs error so cleanup never throws", () => {
+    // Replace the owned dir's PARENT with a file: rmSync on the owned path then throws
+    // ENOTDIR even with `force`; best-effort cleanup must swallow it, not surface it.
+    const parent = join(mkdtempSync(join(tmpdir(), "elwood-probe-")), "parent");
+    const state = ownedProbeStateDir("claude", parent);
+    rmSync(parent, { recursive: true, force: true });
+    writeFileSync(parent, "not a directory");
+    expect(() => state.remove()).not.toThrow();
   });
 });

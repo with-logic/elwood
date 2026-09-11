@@ -5,11 +5,12 @@
 
 import { describe, expect, test } from "vitest";
 import { buildClaudeShellCommand, shellLaunch } from "../../src/claude/command.ts";
-import { claudeHookEventNames } from "../../src/claude/hooks.ts";
-import { minimumClaudeVersion, parseVersion, preflightClaude } from "../../src/claude/preflight.ts";
+import { claudeHookEventNames } from "../../src/claude/hooks/index.ts";
+import { minimumClaudeVersion, preflightClaude } from "../../src/claude/preflight.ts";
 import { serializeHookResult } from "../../src/claude/serialize.ts";
 import { generateClaudeSettings } from "../../src/claude/settings.ts";
 import { ElwoodError } from "../../src/core/errors.ts";
+import { compareVersions, parseVersion } from "../../src/core/versions.ts";
 import {
   type CommandResult,
   currentCommandRunner,
@@ -18,8 +19,8 @@ import {
   setCommandRunnerForTests,
   setPlatformForTests,
 } from "../../src/runtime/seams.ts";
-import { assertStartupUsable } from "../../src/runtime/startup.ts";
-import { resetPreflightCacheForTests } from "../../src/runtime/update-once.ts";
+import { assertStartupUsable } from "../../src/runtime/startup/index.ts";
+import { resetPreflightCacheForTests } from "../../src/runtime/update/once.ts";
 
 describe("serialization", () => {
   test("C-HRESP-06 variants serialize to Claude-compatible output", () => {
@@ -57,6 +58,11 @@ describe("preflight", () => {
       setCommandRunnerForTests(() => result);
     };
     expect(parseVersion("claude 2.1.144")).toBe(minimumClaudeVersion);
+    expect(parseVersion("codex-cli 0.132.0")).toBe("0.132.0");
+    expect(parseVersion("unparseable")).toBeNull();
+    expect(compareVersions("2.1.144", "2.1.144")).toBe(0);
+    expect(compareVersions("2.1.143", "2.1.144")).toBeLessThan(0);
+    expect(compareVersions("2.2.0", "2.1.144")).toBeGreaterThan(0);
     setPlatformForTests("darwin");
     setVersion({ status: 1, stdout: "", stderr: "boom" });
     // A plain non-zero probe carries stderr and no synthetic cause/errno.
@@ -169,16 +175,17 @@ describe("settings and command construction", () => {
     const settings = generateClaudeSettings({
       bridgeScriptPath: "/tmp/bridge.mjs",
       timeoutSeconds: 3,
-      options: {
-        disallowedTools: ["AskUserQuestion"],
-        settingsOverrides: { permissions: { allow: ["Read"] } },
-      },
+      options: { settingsOverrides: { permissions: { allow: ["Read"] } } },
     });
     expect(JSON.stringify(settings)).toContain("bridge.mjs");
-    expect(JSON.stringify(settings)).toContain("Read");
-    expect(Object.keys(settings["hooks"] as Record<string, unknown>).sort()).toEqual(
-      [...claudeHookEventNames].sort(),
-    );
+    // Caller overrides pass through untouched; Elwood adds only `hooks` (§4.3).
+    expect(settings["permissions"]).toEqual({ allow: ["Read"] });
+    const hooks = settings["hooks"] as Record<string, readonly { matcher?: string }[]>;
+    expect(Object.keys(hooks).sort()).toEqual([...claudeHookEventNames].sort());
+    // Only tool events carry a matcher; every entry carries the CLI-side timeout.
+    expect(hooks["PreToolUse"]?.[0]?.matcher).toBe("*");
+    expect(hooks["PostToolBatch"]?.[0]).not.toHaveProperty("matcher");
+    expect(JSON.stringify(hooks["Stop"])).toContain('"timeout":3');
     const minimalSettings = generateClaudeSettings({
       bridgeScriptPath: "/tmp/bridge.mjs",
       timeoutSeconds: 3,

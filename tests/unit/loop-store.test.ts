@@ -3,16 +3,7 @@
  * Covers PRD §8.2 and C-LOOP-11/C-LOOP-13/C-LOOP-21.
  */
 
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import { ElwoodError } from "../../src/core/errors.ts";
@@ -29,6 +20,7 @@ import {
   sessionDir,
   writeSessionRecord,
 } from "../../src/state/store.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 const createdAt = 1_800_000_000_000;
 const definitions = [
@@ -82,7 +74,7 @@ describe("loop sidecar store", () => {
       "message",
       "mode",
     ]);
-    expect(existsSync(`${path}.tmp-${process.pid}`)).toBe(false);
+    expect(readdirSync(sessionDir(root, id)).filter((e) => e.includes(".tmp-"))).toEqual([]);
   });
 
   test("C-LOOP-13 prunes at the expiry boundary and clear durably removes all definitions", () => {
@@ -161,7 +153,7 @@ describe("loop sidecar store", () => {
 });
 
 function stateRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), "elwood-loop-state-"));
+  const root = tempDir("elwood-loop-state-");
   prepareStateDir(root);
   return root;
 }

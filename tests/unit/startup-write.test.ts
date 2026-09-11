@@ -4,10 +4,10 @@
  */
 
 import { describe, expect, test, vi } from "vitest";
-import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
-import type { SettledStartupOutcome, StartupWarningSink } from "../../src/core/startup-write.ts";
-import { emitSettledStartupOutcomes } from "../../src/core/startup-write.ts";
-import type { ElwoodWarningEvent } from "../../src/core/warnings.ts";
+import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
+import type { SettledStartupOutcome, StartupWarningSink } from "../../src/core/startup/write.ts";
+import { emitSettledStartupOutcomes } from "../../src/core/startup/write.ts";
+import type { ElwoodWarningEvent } from "../../src/core/warnings/index.ts";
 
 function collect() {
   const events: ElwoodActivityEvent[] = [];
@@ -28,7 +28,6 @@ describe("emitSettledStartupOutcomes", () => {
     // `agent: "claude"` — this would otherwise construct a cross-agent warning.
     // @ts-expect-error cross-agent pairing is rejected at compile time.
     emitSettledStartupOutcomes({ emit: collect().emit }, "claude", "s1", codexOutcomes, sink());
-    expect(true).toBe(true);
   });
 
   test("C-CLAUDE-14 a write-less option_pending outcome emits its attention activity immediately", () => {

@@ -10,7 +10,7 @@ import type {
   ElwoodStatusDecision,
   ElwoodStatusEvidence,
 } from "../core/types.ts";
-import { canTransition } from "./session-status.ts";
+import { canTransition } from "./session/status.ts";
 
 /** The evidence kinds the engine accepts; the public alias is the source. */
 export type StatusEvidenceKind = ElwoodStatusEvidence;

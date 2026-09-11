@@ -8,8 +8,8 @@
  */
 
 import { closeSync, openSync, readSync, statSync } from "node:fs";
-import { completeUtf8Length } from "../../runtime/probe.ts";
 import { errnoCode } from "../errors.ts";
+import { completeUtf8Length } from "../utf8.ts";
 
 export function byteLen(text: string): number {
   return Buffer.byteLength(text, "utf8");

@@ -4,31 +4,30 @@
  */
 
 import type { BridgeProcessResult } from "../bridge/types.ts";
-import type { ClaudeHookEventName, ClaudeHookResult, PermissionRequestResult } from "./hooks.ts";
+import type {
+  ClaudeHookEventName,
+  ClaudeHookResult,
+  PermissionRequestResult,
+} from "./hooks/index.ts";
 
 export function serializeHookResult(
   eventName: ClaudeHookEventName,
   result: ClaudeHookResult,
 ): BridgeProcessResult {
   if (result === undefined) return { exitCode: 0, stdout: "", stderr: "" };
-  if ("permissionDecision" in result) return jsonOutput(preToolUse(eventName, result));
   if ("behavior" in result) return jsonOutput(permissionRequest(eventName, result));
   if ("retry" in result)
     return jsonOutput({ hookSpecificOutput: { hookEventName: eventName, retry: true } });
-  if ("worktreePath" in result) return worktree(eventName, result.worktreePath);
-  if ("action" in result)
-    return jsonOutput({ hookSpecificOutput: { hookEventName: eventName, ...result } });
+  if ("worktreePath" in result) return worktree(result.worktreePath);
   if ("decision" in result) return jsonOutput(topLevel(eventName, result));
   if ("continue" in result) return jsonOutput(result);
+  // PreToolUse decisions, elicitation actions, and context/output fields all
+  // travel as hook-specific output keyed by the event name.
   return jsonOutput({ hookSpecificOutput: { hookEventName: eventName, ...result } });
 }
 
 function jsonOutput(value: unknown): BridgeProcessResult {
   return { exitCode: 0, stdout: `${JSON.stringify(value)}\n`, stderr: "" };
-}
-
-function preToolUse(eventName: string, result: Exclude<ClaudeHookResult, void>): unknown {
-  return { hookSpecificOutput: { hookEventName: eventName, ...result } };
 }
 
 function permissionRequest(eventName: string, result: PermissionRequestResult): unknown {
@@ -57,6 +56,6 @@ function topLevel(
   };
 }
 
-function worktree(_eventName: string, path: string): BridgeProcessResult {
+function worktree(path: string): BridgeProcessResult {
   return { exitCode: 0, stdout: `${path}\n`, stderr: "" };
 }

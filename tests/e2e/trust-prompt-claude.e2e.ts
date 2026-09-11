@@ -16,9 +16,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { optionKeystrokes, selectableOptions } from "../../src/core/terminal-options.ts";
-import { TrustPromptResponder, trustPromptVisible } from "../../src/core/trust-responder.ts";
+import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
-import { cleanup, makeProject, skipReason, waitFor } from "./helpers.ts";
+import { cleanup, makeProject, skipIf, skipNow, skipReason, waitFor } from "./helpers.ts";
+import { completeFolderTrustScreenVisible, folderTrustScreenVisible } from "./trust-screens.ts";
 
 /**
  * Answers `frame` under autotrust and returns the affirmative input written by the
@@ -69,21 +70,6 @@ function advancePromptFrame(frame: string, input: string): string {
   return lines.join("\n");
 }
 
-/** True for known and wording-drifted variants of Claude's rendered folder-trust screen. */
-function folderTrustScreenVisible(frame: string): boolean {
-  return (
-    trustPromptVisible(frame, "claude") ||
-    (/Accessing workspace:/i.test(frame) && /trust this folder/i.test(frame))
-  );
-}
-
-/** A complete folder-trust screen whose options have painted, answerable or not. */
-function completeFolderTrustScreenVisible(frame: string): boolean {
-  return (
-    folderTrustScreenVisible(frame) && /[❯›].*(?:yes|no)/i.test(frame) && /\byes\b/i.test(frame)
-  );
-}
-
 /** An answerable real trust frame, an auto-trusted "ready", or no matchable frame. */
 type Capture =
   | { readonly kind: "answerable"; readonly frame: string }
@@ -130,7 +116,7 @@ async function captureTrustFrame(session: ClaudeSessionApi): Promise<Capture> {
 }
 
 test("C-E2E-09 the allowlist recognizes and the autotrust path clears the REAL Claude folder-trust gate", {
-  skip: skipReason("claude"),
+  skip: skipIf(skipReason("claude")),
   timeout: 240_000,
 }, async (t) => {
   const project = makeProject("claude");
@@ -145,9 +131,10 @@ test("C-E2E-09 the allowlist recognizes and the autotrust path clears the REAL C
   try {
     capture = await captureTrustFrame(captureSession);
     if (capture.kind !== "answerable") {
-      // A REAL skip (not a silent pass): surface what the CLI rendered so the
-      // allowlist can be re-verified against it, then mark the test skipped.
-      t.skip(
+      // A REAL skip (not a silent pass; a failure under ELWOOD_E2E_REQUIRE=1): surface
+      // what the CLI rendered so the allowlist can be re-verified against it.
+      skipNow(
+        t,
         `no matchable folder-trust frame from claude (status=${captureSession.status}). ` +
           `Captured terminal:\n${captureSession.terminal.snapshot().text}`,
       );

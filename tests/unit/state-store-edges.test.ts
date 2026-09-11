@@ -1,24 +1,26 @@
 /**
- * Unit coverage for state store file-operation edge cases.
- * Covers PRD §10, C-ERR-04, C-STATE-03, and C-STATE-08.
+ * Unit coverage for state store file-operation edge cases (PRD §8.2, §8.4, §10,
+ * C-ERR-04, C-STATE-03, C-STATE-08). Filesystem failures are injected through a
+ * `node:fs` mock keyed on path substrings so no test depends on chmod tricks.
  */
 
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
-import { fsyncDir } from "../../src/state/files.ts";
+import { fsyncDir, writePrivateFileAtomic } from "../../src/state/files.ts";
 import {
   createSessionRecord,
+  prepareStateDir,
   readSessionRecord,
   removeSessionFiles,
   sessionDir,
   writeSessionRecord,
 } from "../../src/state/store.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
-// `rmSync` throws a bare STRING (non-Error) only for the raw-remove teardown dir, so
-// the store's `String(error)` normalization branch is exercised without disturbing
-// any other filesystem write (mocks are hoisted above imports by vitest).
+// Failures are keyed on path substrings so every other filesystem write is untouched
+// (mocks are hoisted above imports by vitest). `rmSync` throws a bare STRING for the
+// raw-remove dir so the store's `String(error)` normalization is exercised.
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return {
@@ -30,12 +32,16 @@ vi.mock("node:fs", async (importOriginal) => {
         throw new Error("EPERM remove failure");
       return actual.rmSync(path, options);
     },
+    renameSync: (from: string, to: string) => {
+      if (to.includes("rename-fails")) throw new Error("EXDEV rename failure");
+      return actual.renameSync(from, to);
+    },
   };
 });
 
 describe("state store edges", () => {
   test("C-ERR-04 stringifies non-Error read failures as corrupt-state causes", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const root = tempDir("elwood-validate-");
     const record = createSessionRecord({ cwd: root, id: "raw-read" });
     writeSessionRecord(record, sessionDir(root, "raw-read"));
     const spy = vi
@@ -55,7 +61,7 @@ describe("state store edges", () => {
   });
 
   test("C-STATE-08 stringifies non-Error failures while removing session files", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const root = tempDir("elwood-validate-");
     const record = createSessionRecord({ cwd: root, id: "raw-remove" });
     const dir = sessionDir(root, "raw-remove");
     writeSessionRecord(record, dir);
@@ -64,7 +70,7 @@ describe("state store edges", () => {
       removeSessionFiles({
         stateDir: root,
         elwoodSessionId: "raw-remove",
-        socketPath: "/tmp/x.sock",
+        socketHome: "/tmp/x",
       });
     } catch (error) {
       caught = error;
@@ -76,7 +82,7 @@ describe("state store edges", () => {
   });
 
   test("C-STATE-08 surfaces an Error failure's message while removing session files", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const root = tempDir("elwood-validate-");
     const record = createSessionRecord({ cwd: root, id: "err-remove" });
     const dir = sessionDir(root, "err-remove");
     writeSessionRecord(record, dir);
@@ -85,7 +91,7 @@ describe("state store edges", () => {
       removeSessionFiles({
         stateDir: root,
         elwoodSessionId: "err-remove",
-        socketPath: "/tmp/x.sock",
+        socketHome: "/tmp/x",
       });
     } catch (error) {
       caught = error;
@@ -96,8 +102,32 @@ describe("state store edges", () => {
     });
   });
 
+  test("§8.4 a socket-home removal FAILURE still removes the session dir, then reports teardown_failed", () => {
+    // The two removals are independent (attempt-all): a socket-home rmSync failure must
+    // NOT prevent the session-directory removal that would otherwise leave resumable
+    // metadata + runtime files behind.
+    const root = tempDir("elwood-validate-");
+    prepareStateDir(root);
+    const dir = sessionDir(root, "attempt-all");
+    writeSessionRecord(createSessionRecord({ cwd: root, id: "attempt-all" }), dir);
+    const socketHome = join(root, "elwood-err-remove-home"); // owned prefix; rmSync throws
+    expect(() =>
+      removeSessionFiles({ stateDir: root, elwoodSessionId: "attempt-all", socketHome }),
+    ).toThrow(/Could not remove/);
+    expect(existsSync(dir)).toBe(false); // the session dir was STILL removed
+  });
+
+  test("C-STATE-03 a failed atomic write leaves no temp file behind and keeps the old content", () => {
+    const root = tempDir("elwood-validate-");
+    const path = join(root, "rename-fails.json");
+    writeFileSync(path, "before", { mode: 0o600 });
+    expect(() => writePrivateFileAtomic(path, "after")).toThrow(/EXDEV/);
+    expect(readFileSync(path, "utf8")).toBe("before");
+    expect(readdirSync(root)).toEqual(["rename-fails.json"]); // the .tmp-* file was unlinked
+  });
+
   test("C-STATE-03 fsyncDir ignores missing directories", () => {
-    const root = mkdtempSync(join(tmpdir(), "elwood-validate-"));
+    const root = tempDir("elwood-validate-");
     expect(() => fsyncDir(join(root, "missing"))).not.toThrow();
   });
 });

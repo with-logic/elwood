@@ -5,6 +5,8 @@
  * Implements PRD §5.3 rendered-state detection (C-TURN-01 through C-TURN-05).
  */
 
+import type { ElwoodAgentKind } from "./activity/index.ts";
+
 export type ScreenFactKind =
   | "composer_visible"
   | "working_visible"
@@ -35,7 +37,7 @@ export type ScreenFactRule = {
 } & ScreenFactRuleCondition;
 
 export type ScreenFactTable = {
-  readonly agent: "claude" | "codex";
+  readonly agent: ElwoodAgentKind;
   /** CLI version these rules were last verified against by the e2e suites. */
   readonly verifiedAgainst: string;
   readonly rules: readonly ScreenFactRule[];
@@ -61,20 +63,6 @@ export type RenderedFrame = {
   readonly title: string;
 };
 
-/** Evaluates only the rules for one fact, returning on the first match. */
-export function hasScreenFact(
-  table: ScreenFactTable,
-  frame: RenderedFrame,
-  fact: ScreenFactKind,
-): boolean {
-  for (const rule of table.rules) {
-    if (rule.fact !== fact) continue;
-    const target = (rule.region ?? "screen") === "title" ? frame.title : frame.text;
-    if (ruleMatches(rule, target)) return true;
-  }
-  return false;
-}
-
 /** A rule fires when its `all` regexes all match, or its `match` predicate holds. */
 function ruleMatches(rule: ScreenFactRule, target: string): boolean {
   return rule.all === undefined
@@ -85,8 +73,7 @@ function ruleMatches(rule: ScreenFactRule, target: string): boolean {
 /**
  * Evaluates the full table against a frame: sets every fact whose rules match
  * (a fact is true if any of its rules match) and returns the list of matched
- * rules — with their fact and region — for explain-trace diagnostics. Use
- * `hasScreenFact` instead when only one fact is needed on a hot path.
+ * rules — with their fact and region — for explain-trace diagnostics.
  */
 export function readScreenFacts(table: ScreenFactTable, frame: RenderedFrame): ScreenFactReading {
   const facts: Record<ScreenFactKind, boolean> = {

@@ -49,7 +49,7 @@ describe("browser dev app server", () => {
 
   test("C-APP-08 rejects a WebSocket upgrade without the token", async () => {
     const app = await launch(running, { token: "secret" });
-    await expect(connect(app, "wrong")).rejects.toBeDefined();
+    await expect(connect(app, "wrong")).rejects.toThrow(/401/); // ws surfaces the refused upgrade
   });
 
   test("C-APP-08 dispatches a real start frame and broadcasts the session", async () => {

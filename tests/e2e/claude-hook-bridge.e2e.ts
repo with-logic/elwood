@@ -20,12 +20,13 @@ import {
   invokeHookBridge,
   makeProject,
   observeSession,
+  skipIf,
   skipReason,
   waitFor,
 } from "./helpers.ts";
 
 test("C-E2E-02 real Claude bridge handles typed hook responses", {
-  skip: skipReason("claude"),
+  skip: skipIf(skipReason("claude")),
   timeout: e2eTimeoutMs,
 }, async () => {
   const project = makeProject("claude");

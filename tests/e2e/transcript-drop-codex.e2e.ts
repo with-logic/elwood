@@ -1,7 +1,7 @@
 /**
  * Real-CLI verification that the bounded Codex transcript reader discards an
  * oversized record without OOM/hang and surfaces a content-free drop warning
- * (PRD §5.4, finding #13). Appends an over-length un-terminated record to the
+ * (PRD §5.4, C-CODEX-20). Appends an over-length un-terminated record to the
  * REAL rollout transcript Codex is writing, then confirms the session stays
  * responsive and the drop is accounted, not read as hundreds of MiB.
  */
@@ -19,18 +19,17 @@ import {
   cleanup,
   e2eTimeoutMs,
   makeProject,
+  skipIf,
   skipReason,
-  turnsEnabled,
+  skipTurns,
   waitFor,
 } from "./helpers.ts";
-
-const skipTurnsReason = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
 
 // Larger than the cursor's 1 MiB pending ceiling, no trailing newline → discarded.
 const OVERSIZED = `{"junk":"${"x".repeat(1_100_000)}"`;
 
-test("C-E2E-03 real Codex bounds an oversized transcript record and stays usable", {
-  skip: skipReason("codex") ?? skipTurnsReason,
+test("C-CODEX-20 real Codex bounds an oversized transcript record and stays usable", {
+  skip: skipIf(skipReason("codex"), skipTurns),
   timeout: e2eTimeoutMs + 30_000,
 }, async () => {
   const project = makeProject("codex");

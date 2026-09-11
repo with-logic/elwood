@@ -3,7 +3,7 @@
  * Covers PRD §9.2, C-CODEX-06, C-PERF-02, and C-PERF-03.
  */
 
-import { beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   detectCodexCliCapabilities,
   preflightCodex,
@@ -18,12 +18,16 @@ import {
   resetAutoupdateForTests,
   resetPreflightCacheForTests,
   setUpdateCoordinatorForTests,
-} from "../../src/runtime/update-once.ts";
+} from "../../src/runtime/update/once.ts";
 
 beforeEach(() => {
   resetAutoupdateForTests();
   setUpdateCoordinatorForTests((_adapter, update) => update());
   resetPreflightCacheForTests();
+  resetCodexPreflightCacheForTests();
+});
+
+afterEach(() => {
   resetCodexPreflightCacheForTests();
   resetRuntimeSeamsForTests();
 });
@@ -40,12 +44,9 @@ describe("Codex capability detection", () => {
     resetCodexPreflightCacheForTests();
     setCommandRunnerForTests(() => ({ status: 0, stdout: "codex help", stderr: "" }));
     expect((await detectCodexCliCapabilities()).supportsHookTrustBypass).toBe(false);
-    resetCodexPreflightCacheForTests();
-    resetRuntimeSeamsForTests();
   });
 
   test("C-PERF-02 concurrent first capability probes share one subprocess", async () => {
-    resetCodexPreflightCacheForTests();
     setPlatformForTests("darwin");
     let helpReads = 0;
     setCommandRunnerForTests(
@@ -61,8 +62,6 @@ describe("Codex capability detection", () => {
       detectCodexCliCapabilities(),
     ]);
     expect(helpReads).toBe(1);
-    resetCodexPreflightCacheForTests();
-    resetRuntimeSeamsForTests();
   });
 
   test("C-PERF-02 a settled autoupdate does not repeatedly evict capabilities", async () => {
@@ -108,7 +107,6 @@ describe("Codex capability detection", () => {
   });
 
   test("C-PERF-03 a bounded --help probe fails as codex_start_failed with cause", async () => {
-    resetCodexPreflightCacheForTests();
     setPlatformForTests("darwin");
     // A timed-out/overflowed `codex --help` is a diagnosable startup failure,
     // not "capability unsupported".
@@ -123,12 +121,9 @@ describe("Codex capability detection", () => {
         details: { cause: error.message, errno: error.code },
       });
     }
-    resetCodexPreflightCacheForTests();
-    resetRuntimeSeamsForTests();
   });
 
   test("C-PERF-03 a bounded codex update probe is best-effort: warns with errno, not fatal", async () => {
-    resetCodexPreflightCacheForTests();
     setPlatformForTests("darwin");
     setCommandRunnerForTests((_command, args) =>
       args.join(" ").includes("codex update")
@@ -147,6 +142,5 @@ describe("Codex capability detection", () => {
       errorCode: "ETIMEDOUT",
       installedVersion: "0.132.0",
     });
-    resetRuntimeSeamsForTests();
   });
 });

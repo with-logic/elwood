@@ -4,34 +4,16 @@
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { executeRun } from "../../src/cli/run.ts";
-import { HeadlessCliSession } from "../../src/cli/session.ts";
+import { executeRun } from "../../src/cli/run/index.ts";
+import { HeadlessCliSession } from "../../src/cli/session/index.ts";
 import { AsyncOutputSink } from "../../src/cli/stream.ts";
-import type { EffectiveRunRequest } from "../../src/cli/types.ts";
 import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
 import * as privateSession from "../../src/state/private-session.ts";
 import { FakeUnderlying } from "../unit/simple-fakes.ts";
+import { effectiveRequest as request } from "./main-fakes.ts";
 import { FakeClock, FakeSignals, MemoryWriter } from "./run-fakes.ts";
 
 afterEach(() => vi.restoreAllMocks());
-
-const request = (overrides: Partial<EffectiveRunRequest> = {}): EffectiveRunRequest => ({
-  agent: "codex",
-  output: "text",
-  outputExplicit: false,
-  trust: true,
-  stateDir: "/state",
-  verbose: false,
-  stream: false,
-  cwd: "/work",
-  images: [],
-  prompt: "go",
-  keep: false,
-  ephemeral: false,
-  sandbox: "workspace-write",
-  approvalPolicy: "never",
-  ...overrides,
-});
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -157,7 +139,7 @@ describe("headless CLI pending-launch cleanup", () => {
     expect(live.stops).toBe(0);
   });
 
-  test("preserve cleanup closes an already-live launch", async () => {
+  test("C-CLI-08 preserve cleanup closes an already-live launch", async () => {
     const live = new FakeUnderlying();
     const session = new HeadlessCliSession(request({ keep: true }), "s1", async () => live);
     await session.start();
@@ -170,7 +152,7 @@ describe("headless CLI pending-launch cleanup", () => {
   test.each([
     "close",
     "teardown",
-  ] as const)("a late rejected launch is contained after %s cleanup", async (action) => {
+  ] as const)("C-CLI-09 a late rejected launch is contained after %s cleanup", async (action) => {
     const launch = deferred<ElwoodAgentSession>();
     const session = new HeadlessCliSession(request(), "s1", () => launch.promise);
     if (action === "close") vi.spyOn(session, "preservedSessionId").mockReturnValue("s1");
@@ -182,7 +164,7 @@ describe("headless CLI pending-launch cleanup", () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
   });
 
-  test("a failed late teardown retry is contained", async () => {
+  test("C-CLI-09 a failed late teardown retry is contained", async () => {
     vi.spyOn(privateSession, "removeSessionIdentity").mockImplementation(() => {
       throw new Error("remove failed");
     });

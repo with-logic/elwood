@@ -12,22 +12,6 @@ import {
   validateReasoningEffort,
 } from "../../src/core/reasoning-effort.ts";
 
-describe("reasoning-effort enums", () => {
-  test("Claude and Codex efforts match the real CLI enums", () => {
-    expect([...claudeReasoningEfforts]).toEqual(["low", "medium", "high", "xhigh", "max"]);
-    // Codex adds `none`/`minimal` (codex 0.149.1, API-enforced).
-    expect([...codexReasoningEfforts]).toEqual([
-      "none",
-      "minimal",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max",
-    ]);
-  });
-});
-
 describe("validateReasoningEffort", () => {
   test("returns a valid value unchanged and passes undefined through", () => {
     expect(

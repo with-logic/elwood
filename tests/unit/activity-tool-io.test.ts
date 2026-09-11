@@ -6,11 +6,11 @@
 
 import { describe, expect, test } from "vitest";
 import type { ClaudeTranscriptSummary } from "../../src/claude/transcript/summary.ts";
-import { summarizeTranscriptItem } from "../../src/codex/transcript.ts";
+import { summarizeTranscriptItem } from "../../src/codex/transcript/index.ts";
 import {
   activityFromClaudeTranscript,
   activityFromCodexTranscript,
-} from "../../src/core/activity.ts";
+} from "../../src/core/activity/index.ts";
 
 /** Build a Codex transcript activity end-to-end from a raw payload (real summary path). */
 function codexActivity(payload: Record<string, unknown>) {
@@ -144,7 +144,7 @@ describe("Elwood activity tool input/output", () => {
   });
 
   test("C-CLAUDE-15 the Claude-transcript projection REQUIRES each variant's fields", () => {
-    // Finding D: the projection is built by switching on the summary discriminant,
+    // The projection is built by switching on the summary discriminant,
     // so the compiler enforces that an assistant_message carries `text`, a
     // tool_call its `toolName`, and a tool_result its correlating `toolUseId`. A
     // future summary variant that omits a required field fails to typecheck here.
@@ -154,11 +154,11 @@ describe("Elwood activity tool input/output", () => {
     const badCall: ClaudeTranscriptSummary = { kind: "tool_call", label: "Bash" };
     // @ts-expect-error tool_result without `toolUseId` is rejected at the boundary
     const badResult: ClaudeTranscriptSummary = { kind: "tool_result", label: "c" };
-    expect([badMessage, badCall, badResult]).toHaveLength(3);
+    void [badMessage, badCall, badResult]; // the `@ts-expect-error`s above are the assertion
   });
 
   test("C-CLAUDE-15 Claude tool hook events are NOT emitted as tool activity", async () => {
-    const { activityFromClaudeHook } = await import("../../src/core/activity.ts");
+    const { activityFromClaudeHook } = await import("../../src/core/activity/index.ts");
     // PreToolUse/PostToolUse for Claude are plain hook observations now; the
     // committed tool_call/tool_result comes from the transcript instead.
     const pre = activityFromClaudeHook("e1", {

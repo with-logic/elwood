@@ -67,10 +67,13 @@ export function writeConfig(path: string, config: CliConfig, identity = currentI
     renameSync(temporary, path);
     chmodSync(path, 0o600);
     syncDirectory(parent);
-  } catch {
+  } catch (error) {
     if (fd !== undefined) closeSync(fd);
     rmSync(temporary, { force: true });
-    throw invalid("Could not safely write Elwood config.");
+    const code = errnoCode(error);
+    throw invalid(
+      `${configLabel(path)} could not be safely written${code === undefined ? "" : ` (${code})`}.`,
+    );
   }
 }
 

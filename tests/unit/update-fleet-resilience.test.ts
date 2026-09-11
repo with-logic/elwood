@@ -2,7 +2,7 @@
  * Fleet-startup resilience for best-effort autoupdate and cached probes (PRD §9.2, C-LIFE-09/11).
  * A failed shared update must be shared ONCE, reject NO concurrent caller, and never poison a
  * later start. Cached probes (version read, capability detection) must not retain a rejected
- * result. These are the acceptance cases Coal Harbor requested after the fleet-startup failure.
+ * result. These cases model a parent app spawning a roster of sessions at once.
  */
 
 import { beforeEach, describe, expect, test } from "vitest";
@@ -11,11 +11,7 @@ import {
   detectCodexCliCapabilities,
   resetCodexPreflightCacheForTests,
 } from "../../src/codex/preflight.ts";
-import {
-  resetRuntimeSeamsForTests,
-  setCommandRunnerForTests,
-  setPlatformForTests,
-} from "../../src/runtime/seams.ts";
+import { setCommandRunnerForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
 import {
   cachedAutoupdate,
   cachedVersionRead,
@@ -23,7 +19,7 @@ import {
   resetAutoupdateForTests,
   resetPreflightCacheForTests,
   setUpdateCoordinatorForTests,
-} from "../../src/runtime/update-once.ts";
+} from "../../src/runtime/update/once.ts";
 
 function resetPreflight(): void {
   resetAutoupdateForTests();
@@ -54,7 +50,6 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
     expect(updates).toBe(1); // one shared update attempt across the whole burst
     // Every start is usable and observes the SAME best-effort outcome (a warning, not a rejection).
     for (const w of warnings) expect(w).toMatchObject({ code: "agent_update_failed" });
-    resetRuntimeSeamsForTests();
   });
 
   test("a LATER start after a failed shared update is not stuck on a retained rejected promise", async () => {
@@ -72,7 +67,6 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
     await expect(preflightClaude(false, true)).resolves.toMatchObject({
       code: "agent_update_failed",
     });
-    resetRuntimeSeamsForTests();
   });
 
   test("cachedVersionRead evicts a rejected read so a later caller retries (no poison)", async () => {
@@ -106,7 +100,6 @@ describe("autoupdate fleet resilience (C-LIFE-09/11)", () => {
     });
     // A later start re-probes (the rejected capability promise was evicted), and recovers.
     await expect(detectCodexCliCapabilities()).resolves.toEqual({ supportsHookTrustBypass: true });
-    resetRuntimeSeamsForTests();
   });
 
   test("dedupeInFlight: identity-guarded eviction never clobbers a later successful entry", async () => {

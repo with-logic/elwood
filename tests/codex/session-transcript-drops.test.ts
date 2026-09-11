@@ -3,7 +3,7 @@
  * an oversized un-terminated transcript record is discarded by the bounded cursor
  * and surfaces through the LIVE session as a content-free `transcript_records_dropped`
  * warning. Exercises the real `createCodexTranscriptWatcher` sink resolution in
- * `session.ts` end-to-end (not the mocked-watcher unit path).
+ * `session/index.ts` end-to-end (not the mocked-watcher unit path).
  */
 
 import { appendFileSync, writeFileSync } from "node:fs";

@@ -44,6 +44,46 @@ describe("browser dev app bootstrap", () => {
     await (installed as unknown as () => Promise<void>)();
   });
 
+  test("C-APP-08 startWebDevApp defaults to real signal handling and a stdout banner", async () => {
+    // The defaults install the hard-shutdown handlers on THIS process, so every added
+    // listener is unwound in `finally` whether or not the assertions pass.
+    const events = [
+      "SIGINT",
+      "SIGTERM",
+      "SIGHUP",
+      "SIGTSTP",
+      "SIGTTIN",
+      "SIGTTOU",
+      "exit",
+    ] as const;
+    const before = new Map(events.map((event) => [event, new Set(process.listeners(event))]));
+    const written: string[] = [];
+    const realWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      written.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      const app = startWebDevApp({ port: 0 });
+      running.push(app);
+      await waitFor(() => app.server.listening);
+      await waitFor(() =>
+        written.some((line) => line.includes("Elwood dev app: http://localhost:")),
+      );
+      const added = events.flatMap((event) =>
+        process.listeners(event).filter((listener) => !before.get(event)?.has(listener)),
+      );
+      expect(added).toHaveLength(events.length);
+    } finally {
+      process.stdout.write = realWrite;
+      for (const event of events) {
+        for (const listener of process.listeners(event)) {
+          if (!before.get(event)?.has(listener)) process.removeListener(event, listener);
+        }
+      }
+    }
+  });
+
   test("C-APP-08 listen() rejects on a bind failure instead of hanging", async () => {
     // Occupy an ephemeral port, then bind a second app to that SAME port so its
     // listen emits EADDRINUSE — the promise must REJECT, not hang forever.
@@ -52,7 +92,7 @@ describe("browser dev app bootstrap", () => {
     const port = await first.listen();
     const second = createWebDevApp({ port });
     running.push(second);
-    await expect(second.listen()).rejects.toBeDefined();
+    await expect(second.listen()).rejects.toMatchObject({ code: "EADDRINUSE" });
   });
 
   test("C-APP-08 startWebDevApp LOGS a bind failure rather than crashing", async () => {
@@ -104,20 +144,29 @@ describe("browser dev app bootstrap", () => {
   test("C-APP-08 bootstrapIfMain starts the app when the url matches argv entry", async () => {
     const argv = process.argv;
     const restored = [...argv];
-    const originalPort = process.env["ELWOOD_DEV_PORT"];
+    let installed = false;
     try {
       argv[1] = "/tmp/entry.ts";
-      process.env["ELWOOD_DEV_PORT"] = "0"; // ephemeral port; avoid the real 4317
-      const app = bootstrapIfMain({ url: "file:///tmp/entry.ts" });
+      // Shutdown handling is injected so no listener is ever installed on the real
+      // process; an ephemeral port avoids the real 4317.
+      const app = bootstrapIfMain(
+        { url: "file:///tmp/entry.ts" },
+        {
+          port: 0,
+          installShutdown: () => {
+            installed = true;
+          },
+          log: () => undefined,
+        },
+      );
       expect(app).not.toBeNull();
       if (app) {
         running.push(app);
         await waitFor(() => app.server.listening);
       }
+      expect(installed).toBe(true);
     } finally {
       argv.splice(0, argv.length, ...restored);
-      if (originalPort === undefined) delete process.env["ELWOOD_DEV_PORT"];
-      else process.env["ELWOOD_DEV_PORT"] = originalPort;
     }
   });
 });

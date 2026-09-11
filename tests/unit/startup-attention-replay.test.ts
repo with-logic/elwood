@@ -4,7 +4,7 @@
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { claudeScreenFactTable } from "../../src/claude/screen-table.ts";
-import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
+import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import { AttentionWatcher } from "../../src/core/attention.ts";
 import { observeRenderedFrame } from "../../src/core/rendered-observers.ts";
 import { TerminalReplayBuffer } from "../../src/core/terminal-replay.ts";

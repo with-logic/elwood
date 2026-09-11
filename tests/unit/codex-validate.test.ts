@@ -8,7 +8,7 @@ import {
   isCodexHookEvent,
   isCodexHookResult,
   normalizeCodexHookEvent,
-} from "../../src/codex/validate.ts";
+} from "../../src/codex/hooks/validate.ts";
 
 describe("Codex hook validation", () => {
   test("C-HOOK-13 validates Codex hook input schemas", () => {

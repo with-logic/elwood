@@ -1,0 +1,88 @@
+/**
+ * Codex image attachment: Codex ingests an interactive image only from the OS
+ * clipboard via Ctrl+V (it reads `public.tiff` off the macOS NSPasteboard), so
+ * Elwood snapshots the clipboard TEXT once (only text is captured), then for each
+ * image sets it + Ctrl+V + waits for the `[Image #N]` chip, then restores the text
+ * snapshot. macOS-only, and
+ * the whole transaction holds a process-wide clipboard lock so concurrent Codex
+ * sessions cannot cross-attach. Implements PRD §5.3 (C-API-46).
+ */
+
+import { elwoodError } from "../../core/errors.ts";
+import {
+  type AttachTerminal,
+  type BlockedGuard,
+  type ChipWaitOptions,
+  clearComposer,
+  imageChipCount,
+  sendWhenUnblocked,
+  waitForImageChip,
+} from "../../core/images/chip-wait.ts";
+import {
+  clipboardImageSupported,
+  restoreClipboardText,
+  setClipboardImage,
+  snapshotClipboardText,
+} from "./clipboard.ts";
+import { withClipboardLock } from "./clipboard-lock.ts";
+
+const CTRL_V = "\u0016"; // Ctrl+V triggers Codex clipboard-image paste
+const chipWait: ChipWaitOptions = { settleMs: 200, timeoutMs: 10_000, pollMs: 100 };
+
+/**
+ * Attaches every image via the clipboard under a process-wide lock, restoring
+ * the user's clipboard text afterward (best-effort). Rejects with
+ * `unsupported_platform` on non-macOS BEFORE touching the clipboard, and with
+ * `image_attach_failed`/`invalid_image` on a snapshot/set/confirm failure; the
+ * caller then submits no text. The Ctrl+V is held while a blocking dialog is on
+ * screen so it never confirms a dialog (C-API-37/46).
+ */
+export async function attachCodexImages(
+  terminal: AttachTerminal,
+  paths: readonly string[],
+  signal: AbortSignal,
+  blocked?: BlockedGuard,
+  onRestoreFailed?: () => void,
+): Promise<void> {
+  if (!clipboardImageSupported())
+    throw elwoodError("unsupported_platform", "Codex image attachment requires macOS.");
+  await withClipboardLock(() => attachUnderLock(terminal, paths, signal, blocked, onRestoreFailed));
+}
+
+async function attachUnderLock(
+  terminal: AttachTerminal,
+  paths: readonly string[],
+  signal: AbortSignal,
+  blocked: BlockedGuard | undefined,
+  onRestoreFailed: (() => void) | undefined,
+): Promise<void> {
+  // A waiter that acquired the lock only after its session closed must touch
+  // nothing — check abort FIRST, before snapshotting or mutating the clipboard.
+  if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
+  // Snapshot BEFORE mutating; a snapshot failure rejects here so we never
+  // overwrite then "restore" an empty string over the user's clipboard.
+  const priorClipboard = await snapshotClipboardText();
+  let staged = false;
+  try {
+    for (const path of paths) {
+      const before = imageChipCount(terminal.snapshot().text);
+      await setClipboardImage(path);
+      // sendWhenUnblocked rejects if the signal is already aborted, so a mid-attach
+      // close is caught here before the Ctrl+V reaches the PTY (C-API-46).
+      await sendWhenUnblocked(terminal, CTRL_V, blocked, signal);
+      staged = true;
+      await waitForImageChip(terminal, before, signal, chipWait);
+    }
+  } catch (error) {
+    if (staged) await clearComposer(terminal); // discard staged chips on failure (C-API-44)
+    throw error;
+  } finally {
+    // Best-effort and fully isolated: neither the restore nor its warning callback
+    // may reject or mask the primary attach result/error (C-API-46).
+    try {
+      if (!(await restoreClipboardText(priorClipboard))) onRestoreFailed?.();
+    } catch {
+      // A throwing warning sink must not turn a successful attach into a failure.
+    }
+  }
+}

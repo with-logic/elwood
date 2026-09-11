@@ -13,11 +13,9 @@ describe("hookCommand", () => {
   test("runs Electron's executable in Node mode for embedded parents", () => {
     expect(
       hookCommand("/tmp/it's-a-hook.mjs", {
-        runtimePath: "/Applications/Coal Harbor/Electron",
+        runtimePath: "/Applications/Host App/Electron",
         electronRuntime: true,
       }),
-    ).toBe(
-      "ELECTRON_RUN_AS_NODE=1 '/Applications/Coal Harbor/Electron' '/tmp/it'\\''s-a-hook.mjs'",
-    );
+    ).toBe("ELECTRON_RUN_AS_NODE=1 '/Applications/Host App/Electron' '/tmp/it'\\''s-a-hook.mjs'");
   });
 });

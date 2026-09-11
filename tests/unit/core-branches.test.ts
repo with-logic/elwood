@@ -8,18 +8,18 @@ import {
   activityFromCodexHook,
   activityFromCodexTranscript,
   activityFromHookResult,
-} from "../../src/core/activity.ts";
-import { ControlQueue } from "../../src/core/control-queue.ts";
+} from "../../src/core/activity/index.ts";
+import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { ElwoodError } from "../../src/core/errors.ts";
-import { TrustPromptResponder } from "../../src/core/trust-responder.ts";
+import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
 
 describe("core activity branches", () => {
   test("C-API-12 falls back to the event name when tool metadata is missing", () => {
     // Codex tool/assistant activity is transcript-sourced (C-CODEX-16), so its
     // tool hooks stay plain `hook` (labelled by the hook event name) and never
     // re-project a tool_call/tool_result that the transcript already emits.
-    // Valid events only — agent/event correlation (M2) rejects impossible shapes
-    // at compile time, no `as never` needed.
+    // Valid events only — agent/event correlation rejects impossible shapes at
+    // compile time, no `as never` needed.
     const permission = activityFromCodexHook("elwood-7", {
       hook_event_name: "PermissionRequest",
       session_id: "codex-session",
@@ -84,7 +84,7 @@ describe("core activity branches", () => {
     await expect(failure).rejects.toThrow("primitive submit failure");
   });
 
-  test("C-CLAUDE-14 flags a recognized prompt with no rendered affirmative option as option_pending", () => {
+  test("C-CLAUDE-10 flags a recognized workspace-trust prompt with no rendered affirmative option as option_pending", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
     const result = responder.handle("Do you trust this folder?\n1. No, exit", (input) => {

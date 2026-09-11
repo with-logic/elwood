@@ -9,7 +9,7 @@ import {
   optionKeystrokes,
   selectableOptions,
 } from "../../src/core/terminal-options.ts";
-import { TrustPromptResponder } from "../../src/core/trust-responder.ts";
+import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
 
 describe("cursor-style trust prompts", () => {
   test("C-CLAUDE-10 keeps the real Claude 2.1.206 numbered layout working", async () => {

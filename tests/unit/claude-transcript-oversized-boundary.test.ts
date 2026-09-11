@@ -6,25 +6,19 @@
  * survives retire()/finish().
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { writeFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { TranscriptCursor } from "../../src/claude/transcript/cursor.ts";
 import type { TranscriptDropNotice } from "../../src/claude/transcript/drops.ts";
 import { ClaudeTranscriptWatcher } from "../../src/claude/transcript/index.ts";
+import { assistant, tmpFile } from "./claude-transcript-helpers.ts";
 
-const tmpFile = () => join(mkdtempSync(join(tmpdir(), "elwood-oversized-")), "t.jsonl");
-const assistant = (text: string) => ({
-  type: "assistant",
-  message: { content: [{ type: "text", text }] },
-});
 const overCap = (fill: string) => fill.repeat(1024 * 1024 + 8); // > the pending cap
 const oversized = (drops: readonly TranscriptDropNotice[]) =>
   drops.filter((d) => d.cause === "oversized").length;
 
 describe("C-CLAUDE-15 over-length discard boundary", () => {
-  test("Finding A': one chunk that ENDS one over-length record and STARTS the next reports a new drop", () => {
+  test("one chunk that ENDS one over-length record and STARTS the next reports a new drop", () => {
     // The undercount bug at the cursor level: record A's terminating newline is
     // consumed in the SAME call that then buffers a partial record B which itself
     // overflows. The cursor returns `startedOversizedDrop: true` (a fresh drop began),
@@ -48,8 +42,14 @@ describe("C-CLAUDE-15 over-length discard boundary", () => {
     // rather than one synchronous emit per over-length record.
     const path = tmpFile();
     const drops: TranscriptDropNotice[] = [];
+    // A FROZEN clock: this asserts drop COALESCING, so the drain must be bounded by
+    // its chunk budget alone. With the real clock the 50 ms per-call slice can expire
+    // partway through these 4 MiB on a loaded machine, adding a truthful
+    // `unread_backlog` drop (§5.4) and changing the count — correct behavior that
+    // made this assertion flaky.
     const watcher = new ClaudeTranscriptWatcher("s1", () => {}, {
       onDrop: (d: TranscriptDropNotice) => drops.push(d),
+      now: () => 0,
     });
     writeFileSync(path, "");
     watcher.observe(path);
@@ -60,7 +60,7 @@ describe("C-CLAUDE-15 over-length discard boundary", () => {
     expect(JSON.stringify(drops)).not.toContain("x".repeat(64)); // content-free
   });
 
-  test("Finding A': retire clears per-path discard state so a reused path starts fresh", () => {
+  test("retire clears per-path discard state so a reused path starts fresh", () => {
     // The discard state lives ONLY on the cursor now, so retire()/finish() deleting
     // the cursor structurally clears it — no per-path marker leaks past a cursor's
     // life. A path re-observed after retire begins a fresh discard run: a later

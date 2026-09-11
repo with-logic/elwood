@@ -7,8 +7,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { HeadlessCliSession } from "../../src/cli/session.ts";
-import type { CliAgent, EffectiveRunRequest } from "../../src/cli/types.ts";
+import { HeadlessCliSession } from "../../src/cli/session/index.ts";
+import type { CliAgent } from "../../src/cli/types.ts";
 import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
 import {
   createSessionRecord,
@@ -16,6 +16,7 @@ import {
   sessionDir,
   writeSessionRecord,
 } from "../../src/state/store.ts";
+import { effectiveRequest } from "./main-fakes.ts";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -26,23 +27,14 @@ function fixture(agent: CliAgent) {
   const root = mkdtempSync(join(tmpdir(), "elwood-cli-preservation-"));
   roots.push(root);
   const stateDir = join(root, "state");
-  const request: EffectiveRunRequest = {
+  const request = effectiveRequest({
     agent,
     output: "json",
     outputExplicit: true,
-    trust: true,
     stateDir,
-    verbose: false,
-    stream: false,
     cwd: root,
-    images: [],
-    prompt: "go",
     keep: true,
-    ephemeral: false,
-    ...(agent === "claude"
-      ? { permissionMode: "dontAsk" }
-      : { sandbox: "workspace-write", approvalPolicy: "never" }),
-  };
+  });
   const neverLaunch = (): Promise<ElwoodAgentSession> => Promise.reject(new Error("unused"));
   return { root, stateDir, session: new HeadlessCliSession(request, "s1", neverLaunch) };
 }

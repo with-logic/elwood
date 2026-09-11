@@ -11,7 +11,7 @@
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { elwoodError } from "../errors.ts";
+import { ElwoodError, elwoodError } from "../errors.ts";
 import { type ImageFormat, type ImageInput, imageFormatExtension, imageLimits } from "./types.ts";
 
 /**
@@ -145,7 +145,7 @@ async function validatePath(path: string, priorTotal: number): Promise<number> {
     await access(path, constants.R_OK); // readability, not mere existence (C-API-44)
     size = info.size;
   } catch (error) {
-    if (error instanceof Error && error.name === "ElwoodError") throw error;
+    if (error instanceof ElwoodError) throw error;
     throw elwoodError("invalid_image", `Image path is not a readable file: ${path}`);
   }
   if (size > imageLimits.maxBytesPerImage)

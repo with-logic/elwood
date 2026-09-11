@@ -8,18 +8,24 @@
 
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
-import {
-  resetByteReaderForTests,
-  setByteReaderForTests,
-} from "../../src/codex/transcript/cursor-io.ts";
-import type { CodexDropNotice, CodexReadErrorNotice } from "../../src/codex/transcript/drops.ts";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import type { CodexTranscriptEvent } from "../../src/codex/transcript/types.ts";
 import { codexDropWarning, codexReadErrorWarning } from "../../src/codex/transcript/warnings.ts";
 import { CodexTranscriptWatcher } from "../../src/codex/transcript/watcher.ts";
+import {
+  resetByteReaderForTests,
+  setByteReaderForTests,
+} from "../../src/core/transcript/cursor-io.ts";
+import type {
+  TranscriptDropNotice,
+  TranscriptReadErrorNotice,
+} from "../../src/core/transcript/drops.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
-afterEach(() => resetByteReaderForTests());
+afterEach(() => {
+  resetByteReaderForTests();
+  vi.useRealTimers();
+});
 
 function tmp(name = "codex.jsonl"): string {
   return join(tempDirForUnit(), name);
@@ -45,7 +51,7 @@ describe("Codex transcript watcher (bounded)", () => {
   });
 
   test("C-CODEX-20 observe contains a cursor-construction failure and stays unset", () => {
-    const errs: CodexReadErrorNotice[] = [];
+    const errs: TranscriptReadErrorNotice[] = [];
     const watcher = new CodexTranscriptWatcher("s", () => undefined, {
       onReadError: (n) => errs.push(n),
     });
@@ -60,15 +66,16 @@ describe("Codex transcript watcher (bounded)", () => {
     }).not.toThrow();
   });
 
-  test("C-CODEX-20 the scan interval fires and drives a scan tick", async () => {
+  test("C-CODEX-20 the scan interval fires and drives a scan tick", () => {
+    vi.useFakeTimers();
     const path = tmp("tick.jsonl");
     writeFileSync(path, "");
     const events: CodexTranscriptEvent[] = [];
     const watcher = new CodexTranscriptWatcher("s", (e) => events.push(e), { scanIntervalMs: 1 });
     watcher.observe(path);
     appendFileSync(path, `${JSON.stringify({ type: "message" })}\n`);
-    // Wait past one interval so the timer's scan arrow runs (not a manual scan()).
-    await new Promise((resolve) => setTimeout(resolve, 15));
+    // Advance past one interval so the timer's scan arrow runs (not a manual scan()).
+    vi.advanceTimersByTime(2);
     watcher.finish();
     expect(events).toHaveLength(1);
   });
@@ -77,7 +84,7 @@ describe("Codex transcript watcher (bounded)", () => {
     const path = tmp("idle.jsonl");
     writeFileSync(path, "");
     const events: CodexTranscriptEvent[] = [];
-    const notices: CodexDropNotice[] = [];
+    const notices: TranscriptDropNotice[] = [];
     const watcher = new CodexTranscriptWatcher("s", (e) => events.push(e), {
       onDrop: (n) => notices.push(n),
     });
@@ -92,7 +99,11 @@ describe("Codex transcript watcher (bounded)", () => {
     const path = tmp("stream.jsonl");
     writeFileSync(path, "");
     const events: CodexTranscriptEvent[] = [];
-    const watcher = new CodexTranscriptWatcher("s", (e) => events.push(e));
+    // A FROZEN clock: this asserts the CHUNK budget bounds a scan and that repeated
+    // passes eventually drain all 18. finish()'s 50 ms wall-clock slice would
+    // otherwise truncate these 4.6 MB on a loaded machine — truthful behavior (§5.4)
+    // that would make the exact count flaky.
+    const watcher = new CodexTranscriptWatcher("s", (e) => events.push(e), { now: () => 0 });
     watcher.observe(path);
     // 18 JSON records ≈ one 256 KiB chunk each of the 16-chunk budget: scan 1 can't
     // drain all 18 (a budget regression would, failing the < 18 assertion below).
@@ -112,7 +123,7 @@ describe("Codex transcript watcher (bounded)", () => {
     const path = tmp("giant.jsonl");
     writeFileSync(path, "");
     const events: CodexTranscriptEvent[] = [];
-    const notices: CodexDropNotice[] = [];
+    const notices: TranscriptDropNotice[] = [];
     const watcher = new CodexTranscriptWatcher("s", (e) => events.push(e), {
       onDrop: (n) => notices.push(n),
     });
@@ -127,7 +138,7 @@ describe("Codex transcript watcher (bounded)", () => {
   test("C-CODEX-20 a contained read failure during scan records a read error", () => {
     const path = tmp("scanfail.jsonl");
     writeFileSync(path, "");
-    const errs: CodexReadErrorNotice[] = [];
+    const errs: TranscriptReadErrorNotice[] = [];
     const watcher = new CodexTranscriptWatcher("s", () => undefined, {
       onReadError: (n) => errs.push(n),
     });
@@ -143,7 +154,7 @@ describe("Codex transcript watcher (bounded)", () => {
 });
 
 describe("Codex transcript warning builders", () => {
-  const dropNotice: CodexDropNotice = {
+  const dropNotice: TranscriptDropNotice = {
     elwoodSessionId: "s",
     path: "/t",
     cause: "unread_backlog",

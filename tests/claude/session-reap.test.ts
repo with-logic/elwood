@@ -8,7 +8,7 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
-import { setGroupKillerForTests } from "../../src/runtime/reap-tree.ts";
+import { setGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);

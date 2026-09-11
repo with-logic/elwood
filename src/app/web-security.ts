@@ -31,7 +31,7 @@ export function createGuardedWebSocketServer(
 
 export function guardUpgrade(token: string, port: PortSource) {
   return (info: { readonly req: IncomingMessage }) =>
-    isAllowedUpgrade(info.req, token, resolve(port));
+    isAllowedUpgrade(info.req, token, resolvePort(port));
 }
 
 export function isAllowedUpgrade(request: IncomingMessage, token: string, port: number): boolean {
@@ -43,7 +43,7 @@ export function isAllowedUpgrade(request: IncomingMessage, token: string, port: 
   return url.searchParams.get("token") === token;
 }
 
-function resolve(port: PortSource): number {
+export function resolvePort(port: PortSource): number {
   return typeof port === "function" ? port() : port;
 }
 
@@ -56,6 +56,7 @@ function isLocalOrigin(origin: string, port: number): boolean {
   }
 }
 
-function isLocalHost(host: string, port: number): boolean {
+/** Only a loopback `Host` for the bound port may reach the app shell (it embeds the token). */
+export function isLocalHost(host: string, port: number): boolean {
   return host === `localhost:${port}` || host === `127.0.0.1:${port}`;
 }

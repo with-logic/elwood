@@ -73,4 +73,25 @@ describe("LoopScheduler idle cadence", () => {
     await harness.clock.advance(1);
     expect(harness.submissions).toHaveLength(2);
   });
+
+  test("C-LOOP-17 caller activity aborts an IDLE loop's in-flight write and resets it", async () => {
+    // A caller turn arriving while an idle loop's message is still being written means the
+    // caller is no longer idle: the write is aborted and the loop waits for the next idle ready.
+    const harness = new SchedulerHarness();
+    let aborted = false;
+    let writes = 0;
+    harness.submit = (_message, _id, signal) =>
+      new Promise<void>(() => {
+        writes += 1;
+        signal.addEventListener("abort", () => (aborted = true), { once: true });
+      });
+    const scheduler = new LoopScheduler(harness.options([idle(harness.clock)]));
+    scheduler.start();
+    scheduler.ready();
+    await harness.clock.advance(IDLE_LOOP_INTERVAL_MS); // due → write pending
+    expect(writes).toBe(1);
+    scheduler.activity("caller");
+    expect(aborted).toBe(true);
+    expect(scheduler.list().map(({ state }) => state)).toEqual(["waiting"]);
+  });
 });

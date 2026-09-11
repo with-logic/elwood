@@ -129,9 +129,9 @@ describe("public loop domain", () => {
       view.state = "due";
     };
 
+    void proveReadonly; // the `@ts-expect-error`s above are the assertion
     expect(event.snapshot).not.toHaveProperty("message");
     expect(request.mode).toBe("idle");
-    expect(typeof proveReadonly).toBe("function");
     expect(MAX_ACTIVE_LOOPS).toBe(50);
   });
 });

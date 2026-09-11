@@ -6,8 +6,8 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { emitSessionWarnings, type WarningEmit } from "../../src/core/session-warnings.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
+import { emitSessionWarnings, type WarningEmit } from "../../src/core/warnings/session.ts";
 
 function dropWarning(): ElwoodWarningEvent {
   return {

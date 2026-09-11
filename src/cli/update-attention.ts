@@ -4,7 +4,7 @@
  */
 
 import type { ElwoodSessionStatus } from "../core/types.ts";
-import type { CliLifecycleClock } from "./lifecycle.ts";
+import type { CliLifecycleClock } from "./lifecycle/index.ts";
 
 export const codexUpdateAttentionGraceMs = 5_500;
 

@@ -133,8 +133,8 @@ describe("ClaudeSessionApi mid-session login expiry (C-CLAUDE-18)", () => {
     // Warnings are live-only and fire EXACTLY ONCE per occurrence. The edge is committed
     // BEFORE the live fan-out, so a throwing listener is contained and does NOT re-arm the
     // edge — a persistent banner across frames must not re-fire the SAME incident to
-    // listeners that already received it. This is the regression for the review's
-    // "throwing listener duplicates login_expired" finding.
+    // listeners that already received it (a throwing listener must not duplicate
+    // login_expired).
     const throwing: string[] = [];
     const ok: string[] = [];
     session.on("warning", (w) => {

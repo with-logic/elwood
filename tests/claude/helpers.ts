@@ -1,24 +1,38 @@
-import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { resetClaudeSessionSeamsForTests } from "../../src/claude/session.ts";
-import type { TerminalSize } from "../../src/index.ts";
-import type { PtyExit, PtyProcess, PtySpawnOptions } from "../../src/pty/types.ts";
-import { resetGroupKillerForTests, setGroupKillerForTests } from "../../src/runtime/reap-tree.ts";
+/**
+ * Claude adapter test harness: installs the PTY/command/reaper seams (PRD §13) with the
+ * shared `FakePty`, tracks the ptys and reaped process groups a test can inspect, and
+ * hands out scratch dirs that are removed after each test.
+ */
+
+import { afterEach } from "vitest";
+import { resetClaudeSessionSeamsForTests } from "../../src/claude/session/index.ts";
 import {
   resetRuntimeSeamsForTests,
   setCommandRunnerForTests,
   setPlatformForTests,
   setPtyFactoryForTests,
 } from "../../src/runtime/seams.ts";
-import { resetStartupWaitMsForTests, setStartupWaitMsForTests } from "../../src/runtime/startup.ts";
-import { resetPreflightCacheForTests } from "../../src/runtime/update-once.ts";
+import {
+  resetGroupKillerForTests,
+  setGroupKillerForTests,
+} from "../../src/runtime/shutdown/reap-tree.ts";
+import {
+  resetStartupWaitMsForTests,
+  setStartupWaitMsForTests,
+} from "../../src/runtime/startup/index.ts";
+import { resetPreflightCacheForTests } from "../../src/runtime/update/once.ts";
+import { createScratchRegistry, FakePty } from "../helpers/fake-pty.ts";
+
+export { type BridgeReply, dispatchRaw, FakePty, readBridgeScript } from "../helpers/fake-pty.ts";
 
 export const ptys: FakePty[] = [];
 /** Process-group ids that session teardown asked the reaper to SIGKILL. */
 export const reapedGroups: number[] = [];
 
 const versionOk = () => ({ status: 0, stdout: "2.1.144\n", stderr: "" });
+const scratch = createScratchRegistry("elwood_test_claude-");
+
+afterEach(() => scratch.removeAll());
 
 export function installFakes(): void {
   setPlatformForTests("darwin");
@@ -27,7 +41,7 @@ export function installFakes(): void {
   // Record group reaps instead of issuing a real SIGKILL to a live pgid.
   setGroupKillerForTests({ killGroup: (pgid) => reapedGroups.push(pgid) });
   setPtyFactoryForTests((options) => {
-    const pty = new FakePty(options);
+    const pty = new FakePty(options, 1000 + ptys.length);
     ptys.push(pty);
     return pty;
   });
@@ -43,101 +57,7 @@ export function resetFakes(): void {
   reapedGroups.length = 0;
 }
 
+/** A fresh scratch directory (removed after the current test). */
 export function tempDir(): string {
-  const path = mkdtempSync(join(tmpdir(), "elwood-"));
-  mkdirSync(path, { recursive: true });
-  return path;
-}
-
-export class FakePty implements PtyProcess {
-  readonly pid = 1000 + ptys.length;
-  readonly writes: string[] = [];
-  readonly killSignals: string[] = [];
-  readonly dataHandlers: ((data: string) => void)[] = [];
-  readonly exitHandlers: ((exit: PtyExit) => void)[] = [];
-  readonly options: PtySpawnOptions;
-  size: TerminalSize;
-  resizeResult: "resized" | "closed" = "resized";
-  resizeError: Error | undefined;
-  failOnWrite: string | undefined;
-
-  constructor(options: PtySpawnOptions) {
-    this.options = options;
-    this.size = options.size;
-  }
-
-  onData(handler: (data: string) => void) {
-    this.dataHandlers.push(handler);
-    return () => {};
-  }
-
-  onExit(handler: (exit: PtyExit) => void) {
-    this.exitHandlers.push(handler);
-    return () => {};
-  }
-
-  write(data: string | Uint8Array): void {
-    if (data === this.failOnWrite) throw new Error("terminal disposed");
-    this.writes.push(typeof data === "string" ? data : Buffer.from(data).toString("utf8"));
-  }
-
-  resize(size: TerminalSize): "resized" | "closed" {
-    if (this.resizeError !== undefined) throw this.resizeError;
-    if (this.resizeResult === "closed") return "closed";
-    this.size = size;
-    return "resized";
-  }
-
-  kill(signal = "SIGTERM"): void {
-    this.killSignals.push(signal);
-    this.emitExit({ exitCode: 0 });
-  }
-
-  emitData(data: string): void {
-    for (const handler of this.dataHandlers) handler(data);
-  }
-
-  emitExit(exit: PtyExit): void {
-    for (const handler of this.exitHandlers) handler(exit);
-  }
-
-  async dispatchHook(elwoodSessionId: string, input: Record<string, unknown>, stateDir?: string) {
-    const { socketPath, token } = this.readBridge(elwoodSessionId, stateDir);
-    return await this.dispatchRaw(
-      socketPath,
-      JSON.stringify({ token, elwoodSessionId, input: JSON.stringify(input) }),
-    );
-  }
-
-  async dispatchMalformedHook(elwoodSessionId: string, stateDir?: string) {
-    const { socketPath, token } = this.readBridge(elwoodSessionId, stateDir);
-    return await this.dispatchRaw(
-      socketPath,
-      JSON.stringify({ token, elwoodSessionId, input: "not-json" }),
-    );
-  }
-
-  private readBridge(elwoodSessionId: string, stateDir?: string) {
-    const dir = join(stateDir ?? join(this.options.cwd, ".elwood"), "sessions", elwoodSessionId);
-    const script = readFileSync(join(dir, "hook-bridge.mjs"), "utf8");
-    return {
-      socketPath: /const socketPath = "([^"]+)"/.exec(script)![1]!,
-      token: /const token = "([^"]+)"/.exec(script)![1]!,
-    };
-  }
-
-  private async dispatchRaw(socketPath: string, payload: string) {
-    const net = await import("node:net");
-    return await new Promise<{ exitCode: number; stdout: string; stderr: string }>((resolve) => {
-      const client = net.createConnection({ path: socketPath });
-      let response = "";
-      client.on("data", (chunk) => {
-        response += chunk.toString("utf8");
-      });
-      client.on("end", () => resolve(JSON.parse(response)));
-      client.on("connect", () => {
-        client.write(`${payload}\n`);
-      });
-    });
-  }
+  return scratch.make();
 }

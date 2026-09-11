@@ -7,13 +7,13 @@
  * sync guard is needed (no async stat twin).
  */
 
-import type { CodexReadErrorReporter } from "./drops.ts";
+import type { ReadErrorReporter } from "../../core/transcript/drops.ts";
 
 /** Wraps a sync transcript read so a thrown fs error is contained and reported as one live warning. */
 export class CodexTranscriptFsGuard {
-  private readonly readErrors: CodexReadErrorReporter;
+  private readonly readErrors: ReadErrorReporter;
 
-  constructor(readErrors: CodexReadErrorReporter) {
+  constructor(readErrors: ReadErrorReporter) {
     this.readErrors = readErrors;
   }
 

@@ -13,6 +13,7 @@ import {
   rmSync,
   symlinkSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, test } from "vitest";
@@ -78,9 +79,14 @@ describe("installed CLI package", () => {
   test.each(
     ["--version", "-V"].map((arg) => ({ args: [arg] })),
   )("C-CLI-02 renders version for $args", async ({ args }) => {
+    // Asserted against the manifest, not a literal: the version is the package's
+    // to change, and a release bump must not fail this test.
+    const { version } = JSON.parse(
+      readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
+    ) as { readonly version: string };
     const captured = mainHarness();
     expect(await main(args, captured.context)).toBe(0);
-    expect(captured.stdout.value).toBe("0.0.0\n");
+    expect(captured.stdout.value).toBe(`${version}\n`);
     expect(captured.stderr.value).toBe("");
   });
 
@@ -102,7 +108,7 @@ describe("installed CLI package", () => {
     const direct = fakeProcess(["node", "entry", "--help"]);
     await expect(runCli(direct.proc)).resolves.toBe(0);
 
-    const fixture = mkdtempSync(join(process.cwd(), ".tmp-elwood-entry-"));
+    const fixture = mkdtempSync(join(tmpdir(), "elwood-entry-"));
     try {
       const entryPath = join(process.cwd(), "dist", "cli", "entry.js");
       const linkedPath = join(fixture, "elwood");
@@ -129,8 +135,13 @@ describe("installed CLI package", () => {
     );
   });
 
-  test("C-CLI-01 packed package runs through the installed bin symlink and imports", () => {
-    const fixture = mkdtempSync(join(process.cwd(), ".tmp-elwood-package-"));
+  // This case shells out to `npm pack`, `tar`, and two fresh Node processes, so it
+  // needs far more than the suite default when the parallel suite is loading the
+  // machine; a timeout here was previously misread as a packaging failure.
+  test("C-CLI-01 packed package runs through the installed bin symlink and imports", {
+    timeout: 120_000,
+  }, () => {
+    const fixture = mkdtempSync(join(tmpdir(), "elwood-package-"));
     try {
       const packOutput = execFileSync(
         "npm",
@@ -138,10 +149,13 @@ describe("installed CLI package", () => {
         { encoding: "utf8" },
       );
       const packed = JSON.parse(packOutput) as [{ readonly filename: string }];
-      const packageDir = join(fixture, "consumer", "node_modules", "elwood");
+      const packageDir = join(fixture, "consumer", "node_modules", "@with-logic", "elwood");
       const binDir = join(fixture, "consumer", "node_modules", ".bin");
       mkdirSync(packageDir, { recursive: true });
       mkdirSync(binDir, { recursive: true });
+      // The packed package declares runtime dependencies (node-pty) that the bare
+      // consumer never installs; resolution walks up from the fixture to find them.
+      symlinkSync(join(process.cwd(), "node_modules"), join(fixture, "node_modules"));
       execFileSync("tar", [
         "-xzf",
         join(fixture, packed[0].filename),
@@ -150,14 +164,14 @@ describe("installed CLI package", () => {
         "--strip-components=1",
       ]);
       const binPath = join(binDir, "elwood");
-      symlinkSync("../elwood/dist/cli/entry.js", binPath);
+      symlinkSync("../@with-logic/elwood/dist/cli/entry.js", binPath);
 
-      expect(readlinkSync(binPath)).toBe("../elwood/dist/cli/entry.js");
+      expect(readlinkSync(binPath)).toBe("../@with-logic/elwood/dist/cli/entry.js");
       expect(execFileSync(binPath, ["--help"], { encoding: "utf8" })).toContain("Usage: elwood");
       expect(
         execFileSync(
           process.execPath,
-          ["--input-type=module", "--eval", "await import('elwood')"],
+          ["--input-type=module", "--eval", "await import('@with-logic/elwood')"],
           {
             cwd: join(fixture, "consumer"),
             encoding: "utf8",

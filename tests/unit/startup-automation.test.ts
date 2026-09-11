@@ -4,8 +4,8 @@
  */
 
 import { describe, expect, test } from "vitest";
-import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
-import { emitStartupPromptActivity } from "../../src/core/startup-automation.ts";
+import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
+import { emitStartupPromptActivity } from "../../src/core/startup/automation.ts";
 
 function collect(): {
   events: ElwoodActivityEvent[];

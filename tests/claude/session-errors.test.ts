@@ -4,7 +4,7 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest";
-import { setHookBridgeFactoryForTests } from "../../src/claude/session.ts";
+import { setHookBridgeFactoryForTests } from "../../src/claude/session/index.ts";
 import { startClaude } from "../../src/index.ts";
 import {
   setCommandRunnerForTests,
@@ -165,7 +165,7 @@ describe("ClaudeSessionApi errors", () => {
   });
 
   test("C-LIFE-10 a failure in the guarded startup region tears down the live bridge + PTY", async () => {
-    // BLOCKER: the region now spans the warning flush, exit registration, the startup
+    // The guarded region spans the warning flush, exit registration, the startup
     // assertion, and startup evidence — all AFTER the bridge/PTY/terminal are live. A
     // failure in ANY of them (here, the auth-banner assertion) must run cleanup so the
     // now-live bridge is stopped and the PTY killed, never leaked.

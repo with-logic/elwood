@@ -13,23 +13,16 @@ import {
   e2eTimeoutMs,
   makeProject,
   observeSession,
+  skipIf,
   skipReason,
-  turnsEnabled,
+  skipTurns,
   waitFor,
 } from "./helpers.ts";
 
-const skipTurnsReason = turnsEnabled ? undefined : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
 const MARKER = "ELWOOD_EXEC_MARKER_9f3";
 
-type Activity = {
-  readonly kind?: string;
-  readonly label?: string;
-  readonly toolInput?: string;
-  readonly toolOutput?: string;
-};
-
 test("C-CODEX-19 real Codex exec surfaces the bare command and output (unwrapped)", {
-  skip: skipReason("codex") ?? skipTurnsReason,
+  skip: skipIf(skipReason("codex"), skipTurns),
   timeout: e2eTimeoutMs + 60_000,
 }, async () => {
   const project = makeProject("codex");
@@ -49,7 +42,7 @@ test("C-CODEX-19 real Codex exec surfaces the bare command and output (unwrapped
     // Wait for a tool_call whose input is the BARE command — not the JS wrapper.
     const call = await waitFor(
       () =>
-        (observed.activities as Activity[]).find(
+        observed.activities.find(
           (a) => a.kind === "tool_call" && a.toolInput?.includes(`echo ${MARKER}`),
         ),
       "exec tool_call with the bare command",
@@ -61,9 +54,7 @@ test("C-CODEX-19 real Codex exec surfaces the bare command and output (unwrapped
     // The paired tool_result carries the command's stdout.
     const result = await waitFor(
       () =>
-        (observed.activities as Activity[]).find(
-          (a) => a.kind === "tool_result" && a.toolOutput?.includes(MARKER),
-        ),
+        observed.activities.find((a) => a.kind === "tool_result" && a.toolOutput?.includes(MARKER)),
       "exec tool_result with the command output",
       60_000,
     );

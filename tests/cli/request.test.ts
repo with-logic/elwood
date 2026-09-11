@@ -1,14 +1,16 @@
 /**
  * Effective CLI request resolution coverage.
- * Covers PRD §12A.1/§12A.2/§12A.4 and C-CLI-03/C-CLI-04/C-CLI-06/C-CLI-14.
+ * Covers PRD §12A.1/§12A.2/§12A.4 and C-CLI-03/C-CLI-04/C-CLI-06/C-CLI-14/C-CLI-21.
  */
 
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { parseCliArgs } from "../../src/cli/args.ts";
-import { finalizeRunRequest, resolveRunRequest } from "../../src/cli/request.ts";
+import { parseCliArgs } from "../../src/cli/args/index.ts";
+import { autoDetectedSource } from "../../src/cli/request/agent-detect.ts";
+import { finalizeRunRequest, resolveRunRequest } from "../../src/cli/request/index.ts";
+import { detectCodex } from "./agent-fakes.ts";
 
 async function* stdin(value = "") {
   await Promise.resolve();
@@ -58,12 +60,14 @@ describe("effective CLI request", () => {
       stream: false,
       verbose: false,
     });
-    await expect(resolveRunRequest(isolated, context)).resolves.toMatchObject({
+    const detected = await resolveRunRequest(isolated, context, detectCodex);
+    expect(detected).toMatchObject({
       agent: "codex",
       output: "text",
       stream: false,
       verbose: false,
     });
+    expect(detected.resolution?.sources.agent).toBe(autoDetectedSource);
   });
 
   test("C-CLI-20 incompatibility errors identify inherited sources and recovery flags", async () => {
@@ -76,7 +80,7 @@ describe("effective CLI request", () => {
     } as const;
     const parsed = parseCliArgs(["--output", "json", "go"]);
     if (parsed.command !== "run") throw new Error("expected run");
-    await expect(resolveRunRequest(parsed, context)).rejects.toThrow(
+    await expect(resolveRunRequest(parsed, context, detectCodex)).rejects.toThrow(
       "Streaming is enabled by ELWOOD_STREAM; JSON output requires streaming to be disabled. Use --no-stream.",
     );
   });
@@ -86,18 +90,21 @@ describe("effective CLI request", () => {
     const flagged = parseCliArgs(["--trust", "--debug", "go"]);
     const inherited = parseCliArgs(["go"]);
     if (flagged.command !== "run" || inherited.command !== "run") throw new Error("expected run");
-    const first = await resolveRunRequest(flagged, {
-      env: {},
-      homeDir: root,
-      invocationCwd: root,
-      stdin: { isTTY: true, source: stdin() },
-    });
-    const second = await resolveRunRequest(inherited, {
-      env: { ELWOOD_TRUST: "false" },
-      homeDir: root,
-      invocationCwd: root,
-      stdin: { isTTY: true, source: stdin() },
-    });
+    const first = await resolveRunRequest(
+      flagged,
+      { env: {}, homeDir: root, invocationCwd: root, stdin: { isTTY: true, source: stdin() } },
+      detectCodex,
+    );
+    const second = await resolveRunRequest(
+      inherited,
+      {
+        env: { ELWOOD_TRUST: "false" },
+        homeDir: root,
+        invocationCwd: root,
+        stdin: { isTTY: true, source: stdin() },
+      },
+      detectCodex,
+    );
     expect(first.resolution?.sources).toMatchObject({ trust: "--trust", debug: "--debug" });
     expect(second.resolution?.sources.trust).toBe("ELWOOD_TRUST");
   });
@@ -119,12 +126,11 @@ describe("effective CLI request", () => {
       "go",
     ]);
     if (parsed.command !== "run") throw new Error("expected run");
-    const draft = await resolveRunRequest(parsed, {
-      env: {},
-      homeDir: root,
-      invocationCwd: root,
-      stdin: { isTTY: true, source: stdin() },
-    });
+    const draft = await resolveRunRequest(
+      parsed,
+      { env: {}, homeDir: root, invocationCwd: root, stdin: { isTTY: true, source: stdin() } },
+      detectCodex,
+    );
     const request = await finalizeRunRequest(draft);
     expect(request.cwd).toBe(workspace);
     expect(request.images).toEqual([
@@ -138,12 +144,11 @@ describe("effective CLI request", () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-cli-request-"));
     const parsed = parseCliArgs(["go"]);
     if (parsed.command !== "run") throw new Error("expected run");
-    const draft = await resolveRunRequest(parsed, {
-      env: {},
-      homeDir: root,
-      invocationCwd: root,
-      stdin: { isTTY: true, source: stdin() },
-    });
+    const draft = await resolveRunRequest(
+      parsed,
+      { env: {}, homeDir: root, invocationCwd: root, stdin: { isTTY: true, source: stdin() } },
+      detectCodex,
+    );
     await expect(finalizeRunRequest(draft)).resolves.toMatchObject({ cwd: root });
   });
 
@@ -170,10 +175,10 @@ describe("effective CLI request", () => {
       throw new Error("expected runs");
     }
     await expect(resolveRunRequest(incompatible, context)).rejects.toThrow(/Claude/iu);
-    await expect(resolveRunRequest(structured, context)).rejects.toThrow(/stream/iu);
+    await expect(resolveRunRequest(structured, context, detectCodex)).rejects.toThrow(/stream/iu);
     for (const headed of [headedStream, headedVerbose, headedJsonl]) {
       if (headed.command !== "run") throw new Error("expected headed run");
-      await expect(resolveRunRequest(headed, context)).rejects.toThrow(/head/iu);
+      await expect(resolveRunRequest(headed, context, detectCodex)).rejects.toThrow(/head/iu);
     }
   });
 });

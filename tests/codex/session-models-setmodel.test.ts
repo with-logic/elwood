@@ -3,7 +3,7 @@
  * Covers PRD §5.7 and C-CODEX-14.
  */
 
-import { chmodSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -58,8 +58,8 @@ describe("CodexSessionApi setModel", () => {
   });
 
   test("C-CODEX-14 restore runs even when picker automation rejects late", async () => {
-    // Finding #3: Codex writes config.toml during confirmation, then the final
-    // waitForScreen times out so super.setModel REJECTS. The finally-restore must
+    // Codex writes config.toml during confirmation, then the final waitForScreen
+    // times out so super.setModel REJECTS. The finally-restore must
     // still run (user default restored) AND the primary error must propagate.
     const cwd = tempDir();
     const configPath = sandboxCodexHome(cwd);
@@ -79,8 +79,9 @@ describe("CodexSessionApi setModel", () => {
   });
 
   test("C-CODEX-14 both picker AND restore failing surfaces a bounded diagnostic", async () => {
-    // The picker times out (primary error) AND the restore write fails (config.toml
-    // made read-only): the primary error must still propagate, but the swallowed
+    // The picker times out (primary error) AND the restore fails (config.toml is
+    // replaced by a directory, which fails for every uid — a read-only file would
+    // not stop root): the primary error must still propagate, but the swallowed
     // restore failure must be REPORTED so the user learns config may stay mutated.
     const cwd = tempDir();
     const configPath = sandboxCodexHome(cwd);
@@ -92,23 +93,44 @@ describe("CodexSessionApi setModel", () => {
     const persisted = 'model = "gpt-5.4"\nmodel_reasoning_effort = "medium"\n\n[hooks]\n';
     const setting = session.setModel("gpt-5.4", { timeoutMs: 1_000 });
     await driveUntilConfigWritten(configPath, persisted);
-    chmodSync(configPath, 0o400); // the restore write now throws EACCES
-    try {
-      await expect(setting).rejects.toMatchObject({ code: "model_automation_failed" });
-      // The restore failure did not vanish: it is a bounded content-free warning.
-      expect(warnings).toMatchObject([{ code: "codex_default_model_persisted" }]);
-      // Content-free: `raw` carries only the config path and a bounded errno code,
-      // never a raw error message (which could leak credentials/conversation data).
-      const raw = String(warnings[0]?.raw ?? "");
-      expect(raw).toMatch(/config\.toml \([A-Z]+\)$/);
-    } finally {
-      chmodSync(configPath, 0o600);
-    }
+    rmSync(configPath);
+    mkdirSync(configPath); // the restore's read now throws EISDIR
+    await expect(setting).rejects.toMatchObject({ code: "model_automation_failed" });
+    // The restore failure did not vanish: it is a bounded content-free warning.
+    expect(warnings).toMatchObject([{ code: "codex_default_model_persisted" }]);
+    // Content-free: `raw` carries only the config path and a bounded errno code,
+    // never a raw error message (which could leak credentials/conversation data).
+    expect(warnings[0]?.raw).toMatch(/config\.toml \(EISDIR\)$/);
+  });
+
+  test("C-CODEX-14 a config.toml the picker CREATED is left in place with an accurate warning", async () => {
+    // No config.toml existed before the switch, so there is no snapshot to restore:
+    // the new file is left alone and the warning says so, rather than claiming the
+    // file "changed in other ways".
+    const cwd = tempDir();
+    const configPath = sandboxCodexHome(cwd);
+    rmSync(configPath);
+    installFakes();
+    const session = await startCodex({ cwd });
+    const warnings = collectWarnings(session);
+    await becomeReady(session.elwoodSessionId, cwd);
+    await expect.poll(() => session.status).toBe("ready");
+    const setting = session.setModel("gpt-5.4", { timeoutMs: 30_000 });
+    const created = 'model = "gpt-5.4"\nmodel_reasoning_effort = "medium"\n';
+    await driveSetModel(configPath, created);
+    await setting;
+    expect(readFileSync(configPath, "utf8")).toBe(created);
+    expect(warnings).toMatchObject([
+      {
+        code: "codex_default_model_persisted",
+        message: expect.stringContaining("did not exist before the switch"),
+        raw: configPath,
+      },
+    ]);
   });
 
   test("C-CODEX-14 two interleaving sessions cannot persist the wrong model", async () => {
-    // Finding #2: a single process-global config.toml with two concurrent
-    // setModel switches. The process-wide config lock serializes the whole
+    // A single process-global config.toml with two concurrent setModel switches. The process-wide config lock serializes the whole
     // snapshot/picker/restore transaction so session B cannot snapshot A's
     // transiently-persisted model and restore it as the user's default.
     const cwd = tempDir();
@@ -141,10 +163,11 @@ describe("CodexSessionApi setModel", () => {
 });
 
 /** Collect live `warning` events (warnings are emit-only, never persisted). */
+type SeenWarning = { code: string; message?: string; raw?: string };
 function collectWarnings(session: {
-  on: (event: "warning", handler: (event: { code: string; raw?: string }) => void) => unknown;
-}): { code: string; raw?: string }[] {
-  const warnings: { code: string; raw?: string }[] = [];
+  on: (event: "warning", handler: (event: SeenWarning) => void) => unknown;
+}): SeenWarning[] {
+  const warnings: SeenWarning[] = [];
   session.on("warning", (event) => warnings.push(event));
   return warnings;
 }

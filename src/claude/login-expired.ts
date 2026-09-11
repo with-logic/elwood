@@ -4,7 +4,7 @@
  * reached readiness — login expiring during use — Elwood surfaces a bounded,
  * content-free `login_expired` warning and leaves the session alive so the caller
  * can recover in place via `session.login()`, tear down, or re-auth out of band.
- * The startup-time form of the same banner is handled fatally in runtime/startup.ts.
+ * The startup-time form of the same banner is handled fatally in runtime/startup/index.ts.
  */
 
 import type { ElwoodWarningEvent } from "../core/types.ts";
@@ -17,7 +17,7 @@ export const LOGIN_RECOVERY_COMMAND = "/login" as const;
 // (§5.7, C-CLAUDE-18).
 export const LOGIN_EXPIRED_MESSAGE =
   "Claude's login expired mid-session; it cannot act until re-authenticated. Run /login (or session.login()) to recover.";
-export const LOGIN_EXPIRED_RAW = "login_expired recovery=/login";
+const LOGIN_EXPIRED_RAW = "login_expired recovery=/login";
 
 /**
  * Edge-detects the login-expired banner so the warning fires ONCE per occurrence.
@@ -42,7 +42,7 @@ export class LoginExpiredWatcher {
     return !this.present;
   }
 
-  /** Advance to "present" after the caller emits the live warning. */
+  /** Advance to "present"; the caller commits BEFORE its live fan-out (see above). */
   commit(): void {
     this.present = true;
   }

@@ -21,12 +21,13 @@ import {
   invokeHookBridge,
   makeProject,
   observeSession,
+  skipIf,
   skipReason,
   waitFor,
 } from "./helpers.ts";
 
 test("C-E2E-03 real Codex bridge handles typed hook responses", {
-  skip: skipReason("codex"),
+  skip: skipIf(skipReason("codex")),
   timeout: e2eTimeoutMs,
 }, async () => {
   const project = makeProject("codex");
@@ -123,7 +124,7 @@ test("C-E2E-03 real Codex bridge handles typed hook responses", {
       agent_id: "agent-1",
       agent_type: "general-purpose",
     });
-    assert.ok(observed.hooks.some((event) => hookName(event) === "SubagentStart"));
+    assert.ok(observed.hooks.some((event) => event.hook_event_name === "SubagentStart"));
     await expectCodex(
       session,
       {
@@ -141,7 +142,7 @@ test("C-E2E-03 real Codex bridge handles typed hook responses", {
       hook_event_name: "PostCompact",
       trigger: "manual",
     });
-    assert.ok(observed.hooks.some((event) => hookName(event) === "PostCompact"));
+    assert.ok(observed.hooks.some((event) => event.hook_event_name === "PostCompact"));
     session.on("hook:PreCompact", () => ({ invalid: true }) as never);
     await invokeHookBridge(project, session.elwoodSessionId, {
       ...base,
@@ -170,9 +171,3 @@ test("C-E2E-03 real Codex bridge handles typed hook responses", {
     );
   }
 });
-
-function hookName(event: unknown): string | undefined {
-  return event && typeof event === "object"
-    ? ((event as { readonly hook_event_name?: unknown }).hook_event_name as string | undefined)
-    : undefined;
-}

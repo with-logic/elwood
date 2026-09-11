@@ -5,16 +5,11 @@
 import { describe, expect, test } from "vitest";
 import { writeJson } from "../../src/cli/output/json.ts";
 import { JsonlRenderer } from "../../src/cli/output/jsonl.ts";
-import {
-  progressFromActivity,
-  progressFromTurn,
-  progressFromWarning,
-} from "../../src/cli/output/records.ts";
+import { progressFromTurn, progressFromWarning } from "../../src/cli/output/records.ts";
 import { createCliSanitizer } from "../../src/cli/output/sanitize.ts";
 import { StreamingTextRenderer, writeFinalText } from "../../src/cli/output/text.ts";
 import type { CliTerminalRecord } from "../../src/cli/output/types.ts";
 import { AsyncOutputSink } from "../../src/cli/stream.ts";
-import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
 
 class Writer {
   value = "";
@@ -107,18 +102,7 @@ describe("CLI output protocols", () => {
     });
   });
 
-  test("C-CLI-11 lifecycle and warning projections admit only portable fields", () => {
-    const activity = {
-      kind: "status",
-      status: "ready",
-      raw: { screen: "secret" },
-    } as ElwoodActivityEvent;
-    expect(progressFromActivity(activity)).toEqual({
-      schemaVersion: 1,
-      type: "status",
-      status: "ready",
-    });
-    expect(progressFromActivity({ ...activity, kind: "hook" })).toBeUndefined();
+  test("C-CLI-11 warning projection admits only portable fields", () => {
     const projected = progressFromWarning(
       {
         elwoodSessionId: "s1",

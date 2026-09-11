@@ -5,29 +5,11 @@
  * PTY-exit callback can still emit terminal:exit, transition to terminal status, and reap.
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { writeFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-import {
-  createTranscriptWatcher,
-  type TranscriptActivityEmitter,
-  type WarningSink,
-} from "../../src/claude/session-transcript.ts";
-import type { ElwoodActivityEvent } from "../../src/core/activity.ts";
+import { createTranscriptWatcher, type WarningSink } from "../../src/claude/session/transcript.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
-
-function fakeEmitter(
-  sink: (event: ElwoodActivityEvent) => void = () => {},
-): TranscriptActivityEmitter {
-  return { emit: (_event, payload) => sink(payload) };
-}
-
-const assistant = (text: string) => ({
-  type: "assistant",
-  message: { content: [{ type: "text", text }] },
-});
-const tmpFile = () => join(mkdtempSync(join(tmpdir(), "elwood-tx-")), "t.jsonl");
+import { assistant, fakeEmitter, tmpFile } from "./claude-transcript-helpers.ts";
 
 describe("C-CLAUDE-15 / C-LIFE-10 finishSafely error boundary", () => {
   test("contains a throwing final flush and routes a bounded diagnostic", () => {
@@ -46,7 +28,7 @@ describe("C-CLAUDE-15 / C-LIFE-10 finishSafely error boundary", () => {
     watcher.observe(path); // baseline at EOF
     writeFileSync(path, `${JSON.stringify(assistant("committed"))}\n`); // unread until flush
     expect(() => finishSafely()).not.toThrow();
-    // MAJOR: a failed FINAL flush is phase-labelled so an operator can tell lost
+    // A failed FINAL flush is phase-labelled so an operator can tell lost
     // trailing shutdown activity from a live-watcher poll failure.
     const stopped = recorded.find((w) => w.code === "transcript_poll_stopped");
     expect(stopped).toBeDefined();

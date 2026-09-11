@@ -7,7 +7,7 @@
  */
 
 import { readBytes } from "../../core/transcript/cursor-io.ts";
-import { completeUtf8Length } from "../../runtime/probe.ts";
+import { completeUtf8Length } from "../../core/utf8.ts";
 
 export {
   type ByteReader,

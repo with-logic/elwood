@@ -7,7 +7,7 @@
  * byte-identical across adapters except the `agent` tag, so they live here.
  */
 
-import type { ElwoodAgentKind } from "../activity.ts";
+import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { ElwoodWarningEvent } from "../types.ts";
 import type { TranscriptDropNotice, TranscriptReadErrorNotice } from "./drops.ts";
 

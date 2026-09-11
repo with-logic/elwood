@@ -5,19 +5,9 @@
  */
 
 import { describe, expect, test } from "vitest";
-import type { ElwoodActivityEvent, ElwoodActivityKind } from "../../src/core/activity.ts";
+import type { ElwoodActivityKind } from "../../src/core/activity/index.ts";
 import { toTurnEvent, turnEventBytes } from "../../src/core/simple/events.ts";
-
-function activity(partial: Partial<ElwoodActivityEvent>): ElwoodActivityEvent {
-  return {
-    elwoodSessionId: "s1",
-    agent: "claude",
-    source: "transcript",
-    kind: "assistant_message",
-    label: "x",
-    ...partial,
-  };
-}
+import { activity } from "../helpers/activity.ts";
 
 describe("toTurnEvent (C-API-48)", () => {
   test("maps the four content kinds", () => {

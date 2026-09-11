@@ -18,7 +18,7 @@ export async function readPromptInput(
   const chunks: Buffer[] = [];
   if (stdin.isTTY !== true) {
     for await (const chunk of stdin.source) {
-      const buffer = typeof chunk === "string" ? Buffer.from(chunk) : Buffer.from(chunk);
+      const buffer = Buffer.from(chunk);
       byteCount += buffer.byteLength;
       if (!separatorCounted && buffer.byteLength > 0) {
         byteCount += 2;

@@ -4,8 +4,8 @@
  */
 
 import { describe, expect, test } from "vitest";
-import type { ClaudeToolInputByName } from "../../src/claude/tool-types.ts";
-import { isClaudeHookResult } from "../../src/claude/validate-result.ts";
+import type { ClaudeToolInputByName } from "../../src/claude/hooks/tool-types.ts";
+import { isClaudeHookResult } from "../../src/claude/validate/result.ts";
 import { updateFor } from "./claude-result-validate-helpers.ts";
 
 describe("Claude hook result validation", () => {
@@ -71,6 +71,10 @@ describe("Claude hook result validation", () => {
     expect(isClaudeHookResult("TaskCreated", { continue: false, stopReason: "wait" })).toBe(true);
     expect(isClaudeHookResult("TaskCreated", { continue: true })).toBe(false);
     expect(isClaudeHookResult("PostToolUse", { additionalContext: "recorded" })).toBe(true);
+    // Every PostToolUse field is optional, so the type-valid `{}` is a no-op result, not
+    // a spurious `invalid_response` (matches `{}` for context events like SessionStart).
+    expect(isClaudeHookResult("PostToolUse", {})).toBe(true);
+    expect(isClaudeHookResult("SessionStart", {})).toBe(true);
     expect(isClaudeHookResult("PostToolUse", { updatedToolOutput: "ok" })).toBe(true);
     expect(isClaudeHookResult("PostToolUse", { extra: "bad" })).toBe(false);
   });

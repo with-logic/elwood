@@ -4,9 +4,11 @@
  * through C-ATTN-03.
  */
 
-import type { ScreenFactTable } from "../core/screen-facts.ts";
-import { withTrustBlockingRules } from "../core/trust-blocking.ts";
+import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
+import { withTrustBlockingRules } from "../core/trust/blocking.ts";
 import { CodexUpdatePromptTracker, codexUpdatePromptVisible } from "./update-prompt.ts";
+
+const verifiedAgainst = "codex-cli 0.142.5";
 
 /**
  * Verified against codex-cli 0.142.5. The working spinner renders
@@ -18,12 +20,13 @@ import { CodexUpdatePromptTracker, codexUpdatePromptVisible } from "./update-pro
  * "›" option caret, so the turn watcher's blocking-prompt guard keeps that
  * from reading as an idle composer. The OSC window title carries a
  * braille-spinner glyph (U+2800–U+28FF) while a turn runs and the plain
- * directory name when idle. Verified on codex-cli 0.142.5.
+ * directory name when idle. The update-prompt rule takes its matcher as a
+ * parameter: production injects a per-session `CodexUpdatePromptTracker` (a split
+ * prompt stays blocking until a frame with no update evidence clears it), so the
+ * rules that ship are built here, once, rather than rewritten after the fact.
  */
-export const codexScreenFactTable: ScreenFactTable = {
-  agent: "codex",
-  verifiedAgainst: "codex-cli 0.142.5",
-  rules: [
+function codexScreenFactRules(updatePromptVisible: (frame: string) => boolean): ScreenFactRule[] {
+  return [
     { id: "codex-composer-marker", fact: "composer_visible", all: [/^\s*›/m] },
     { id: "codex-working-spinner", fact: "working_visible", all: [/esc to interrupt/i] },
     {
@@ -42,32 +45,29 @@ export const codexScreenFactTable: ScreenFactTable = {
       fact: "blocking_prompt_visible",
       all: [/Would you like to|Allow command\?/i, /Press enter to confirm or esc to cancel/i],
     },
-    {
-      id: "codex-update-prompt",
-      fact: "blocking_prompt_visible",
-      match: codexUpdatePromptVisible,
-    },
-  ],
+    { id: "codex-update-prompt", fact: "blocking_prompt_visible", match: updatePromptVisible },
+  ];
+}
+
+/** The stateless table (single-frame update matcher) for frame-level fact tests. */
+export const codexScreenFactTable: ScreenFactTable = {
+  agent: "codex",
+  verifiedAgainst,
+  rules: codexScreenFactRules(codexUpdatePromptVisible),
 };
 
 /**
- * Appends the shared per-agent trust blocking rules (C-ATTN-03; PRD §5.1). An
- * `always`-answered prompt (hook trust) is auto-handled and never blocks, so
- * `blockingTrustSpecs` already excludes it even when autotrust is off.
+ * The table a session actually runs: a per-session update-prompt tracker plus the
+ * shared per-agent trust blocking rules (C-ATTN-03; PRD §5.1). An `always`-answered
+ * prompt (hook trust) is auto-handled and never blocks, so `blockingTrustSpecs`
+ * already excludes it even when autotrust is off.
  */
 export function codexScreenFactTableForTrustPolicy(autotrust: boolean): ScreenFactTable {
   const updatePrompt = new CodexUpdatePromptTracker();
-  const tracked = {
-    ...codexScreenFactTable,
-    rules: codexScreenFactTable.rules.map((rule) =>
-      rule.id === "codex-update-prompt"
-        ? {
-            id: "codex-update-prompt",
-            fact: "blocking_prompt_visible",
-            match: updatePrompt.observe.bind(updatePrompt),
-          }
-        : rule,
-    ),
-  } satisfies ScreenFactTable;
+  const tracked: ScreenFactTable = {
+    agent: "codex",
+    verifiedAgainst,
+    rules: codexScreenFactRules(updatePrompt.observe.bind(updatePrompt)),
+  };
   return withTrustBlockingRules(tracked, "codex", autotrust);
 }

@@ -109,8 +109,9 @@ describe("web dev app hard shutdown", () => {
 });
 
 async function waitForChild(pid: number): Promise<void> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    if (spawnSync("pgrep", ["-P", String(pid)]).status === 0) return;
+  const deadline = Date.now() + 2_000;
+  while (spawnSync("pgrep", ["-P", String(pid)]).status !== 0) {
+    if (Date.now() > deadline) throw new Error(`pid ${pid} never spawned a child`);
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }

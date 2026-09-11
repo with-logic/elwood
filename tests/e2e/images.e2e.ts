@@ -22,6 +22,7 @@ import {
   makeProject,
   observeSession,
   prepareInteractivePrompt,
+  skipIf,
   skipReason,
   waitFor,
 } from "./helpers.ts";
@@ -29,7 +30,7 @@ import {
 const fixture = join(import.meta.dirname, "..", "fixtures", "sample.png");
 
 test("C-E2E-12 Claude attaches a pasted image path (real CLI shows [Image #N])", {
-  skip: skipReason("claude"),
+  skip: skipIf(skipReason("claude")),
   timeout: 120_000,
 }, async () => {
   const project = makeProject("claude");
@@ -61,7 +62,7 @@ test("C-E2E-12 Claude attaches a pasted image path (real CLI shows [Image #N])",
 const macOnly = process.platform === "darwin" ? false : "Codex image attach is macOS-only";
 
 test("C-E2E-13 Codex attaches a clipboard image and restores the clipboard (real CLI)", {
-  skip: macOnly || skipReason("codex"),
+  skip: skipIf(macOnly, skipReason("codex")),
   timeout: 120_000,
 }, async () => {
   const project = makeProject("codex");

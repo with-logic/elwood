@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { reapFailureWarning } from "../../src/core/activity.ts";
+import { reapFailureWarning } from "../../src/core/activity/index.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
 
 /** Narrow to the `reap_failed` member so its bounded fields are readable. */
