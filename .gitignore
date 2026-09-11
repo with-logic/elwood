@@ -1,23 +1,21 @@
 node_modules/
 dist/
 coverage/
-bun.lockb
 .DS_Store
 *.log
 
-# Stale bun --compile artifacts left by aborted builds.
-.*.bun-build
+# Session state written by local dev runs and tests that start in this checkout.
+.elwood/
+.tmp-elwood-*
 
-# Local AI assistant runtime files.
+# Local AI assistant runtime files and planning scratchpads.
 .claude/
-
-# Local planning scratchpad.
 tickets/
 
 # This repository is spec-first; the PRD must be tracked even if a global
 # gitignore excludes files named PRD.md.
 !PRD.md
 
-# Ephemeral code-review / validate-review artifacts (regenerated each run).
+# Ephemeral code-review artifacts (regenerated each run).
 REVIEW.md
 VALIDATION.md

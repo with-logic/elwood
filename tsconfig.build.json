@@ -1,17 +1,14 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "allowImportingTsExtensions": true,
     "declaration": true,
     "declarationMap": true,
-    "module": "ESNext",
-    "moduleResolution": "bundler",
     "noEmit": false,
     "outDir": "dist",
     "rootDir": "src",
     "sourceMap": true,
-    "rewriteRelativeImportExtensions": true,
-    "types": ["node"]
+    "rewriteRelativeImportExtensions": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/app/**"]
 }

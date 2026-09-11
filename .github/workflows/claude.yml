@@ -4,6 +4,11 @@
 # .github/pr-review-prompt.md. On @claude mentions in PR comments, review
 # comments, or submitted reviews, lets Claude respond directly.
 #
+# Both jobs run only for pull requests from branches in this repository and,
+# for mentions, only when the commenter is an owner, member, or collaborator.
+# Fork pull requests never receive repository secrets, and an unrestricted
+# mention trigger would let any account spend API credit and run tools.
+#
 # Required secret:
 #   - ANTHROPIC_API_KEY
 name: Claude Code
@@ -21,7 +26,10 @@ on:
 jobs:
   claude-review-pr:
     name: "Claude: Review new PR"
-    if: github.event_name == 'pull_request' && github.event.action == 'opened'
+    if: |
+      github.event_name == 'pull_request' &&
+      github.event.action == 'opened' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -36,10 +44,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v6
         with:
-          bun-version: latest
+          node-version-file: .node-version
 
       - name: Read PR review prompt
         id: read-prompt
@@ -57,22 +64,22 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: ${{ steps.read-prompt.outputs.prompt }}
-          path_to_bun_executable: ~/.bun/bin/bun
           track_progress: "true"
           claude_args: |
-            --model claude-sonnet-4-6
+            --model claude-sonnet-5
             --allowedTools Bash,View,WebFetch,WebSearch,Glob,Grep
 
   claude-mention:
     name: "Claude: Respond to mention"
     if: |
-      (github.event_name == 'issue_comment' &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association || github.event.review.author_association) &&
+      ((github.event_name == 'issue_comment' &&
         github.event.issue.pull_request &&
         contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' &&
         contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review' &&
-        contains(github.event.review.body, '@claude'))
+        contains(github.event.review.body, '@claude')))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -94,23 +101,29 @@ jobs:
             --json headRepository,headRefName \
             --jq '"repo=\(.headRepository.nameWithOwner)\nref=\(.headRefName)"' >> "$GITHUB_OUTPUT"
 
+      - name: Refuse fork pull requests
+        if: steps.pr.outputs.repo != github.repository
+        run: |
+          echo "::notice::@claude mentions are handled only for branches in this repository."
+          exit 0
+
       - name: Checkout PR head
+        if: steps.pr.outputs.repo == github.repository
         uses: actions/checkout@v6
         with:
-          repository: ${{ steps.pr.outputs.repo }}
           ref: ${{ steps.pr.outputs.ref }}
           fetch-depth: 0
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v6
+        if: steps.pr.outputs.repo == github.repository
         with:
-          bun-version: latest
+          node-version-file: .node-version
 
       - name: Run Claude Code - Respond
+        if: steps.pr.outputs.repo == github.repository
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          path_to_bun_executable: ~/.bun/bin/bun
           claude_args: |
-            --model claude-sonnet-4-6
+            --model claude-sonnet-5
             --allowedTools Bash,Read,View,Edit,Write,MultiEdit,WebFetch,WebSearch,Glob,Grep

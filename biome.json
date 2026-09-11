@@ -30,13 +30,11 @@
     "rules": {
       "recommended": true,
 
-      "a11y": { "recommended": true },
-
       "complexity": {
         "recommended": true,
         "noExcessiveCognitiveComplexity": {
           "level": "error",
-          "options": { "maxAllowedComplexity": 70 }
+          "options": { "maxAllowedComplexity": 20 }
         },
         "noForEach": "error",
         "noUselessStringConcat": "error",
@@ -47,13 +45,23 @@
 
       "correctness": {
         "recommended": true,
-        "noUndeclaredDependencies": "error",
+        "noUndeclaredDependencies": {
+          "level": "error",
+          "options": {
+            "devDependencies": [
+              "**/src/app/**",
+              "**/tests/**",
+              "**/scripts/**",
+              "**/examples/**",
+              "**/*.config.ts"
+            ]
+          }
+        },
         "noUndeclaredVariables": "error",
         "noUnusedFunctionParameters": "error",
         "noUnusedImports": "error",
         "noUnusedPrivateClassMembers": "error",
         "noUnusedVariables": "error",
-        "useExhaustiveDependencies": "error",
         "useImportExtensions": "error"
       },
 
@@ -69,7 +77,6 @@
       "style": {
         "recommended": true,
         "noDefaultExport": "error",
-        "noDoneCallback": "error",
         "noEnum": "error",
         "noNamespace": "error",
         "noNegationElse": "error",
@@ -88,7 +95,6 @@
         "useConsistentBuiltinInstantiation": "error",
         "useConst": "error",
         "useDefaultParameterLast": "error",
-        "useEnumInitializers": "error",
         "useExponentiationOperator": "error",
         "useExportType": "error",
         "useFilenamingConvention": {
@@ -100,12 +106,7 @@
           }
         },
         "useForOf": "error",
-        "useFragmentSyntax": "error",
         "useImportType": "error",
-        "useNamingConvention": {
-          "level": "off",
-          "options": { "strictCase": false, "requireAscii": true }
-        },
         "useNodejsImportProtocol": "error",
         "useNumberNamespace": "error",
         "useShorthandAssign": "error",
@@ -125,14 +126,11 @@
         "noFocusedTests": "error",
         "noMisplacedAssertion": "error",
         "noSkippedTests": "error",
-        "noSuspiciousSemicolonInJsx": "error",
         "useAwait": "error",
         "useErrorMessage": "error",
         "useGuardForIn": "error",
         "useNumberToFixedDigitsArgument": "error"
-      },
-
-      "nursery": { "recommended": false }
+      }
     }
   },
   "assist": {
@@ -144,31 +142,16 @@
       "includes": ["tests/**"],
       "linter": {
         "rules": {
-          "style": {
-            "noNonNullAssertion": "off",
-            "noDefaultExport": "off"
-          },
+          "style": { "noDefaultExport": "off" },
           "suspicious": {
             "noConsole": "off",
             "noExplicitAny": "off",
             "noEmptyBlockStatements": "off"
           },
-          "correctness": {
-            "noUndeclaredDependencies": "off"
-          },
-          "complexity": {
-            "noExcessiveCognitiveComplexity": "off"
-          },
-          "performance": {
-            "noDelete": "off"
-          }
+          "complexity": { "noExcessiveCognitiveComplexity": "off" },
+          "performance": { "noDelete": "off" }
         }
       }
-    },
-    {
-      "includes": ["scripts/**/*.sh"],
-      "linter": { "enabled": false },
-      "formatter": { "enabled": false }
     }
   ]
 }

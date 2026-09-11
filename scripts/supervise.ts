@@ -1,17 +1,22 @@
 /**
- * Process supervisor for runnable examples that own real PTYs.
- * Implements PRD §11.
+ * Process supervisor for PTY-owning developer entrypoints (`npm run dev:web` and the
+ * `example:*` scripts). Implements PRD §11: the entry runs under the SAME Node binary
+ * as the supervisor, in its own process group, so a terminal Ctrl-C (or the
+ * supervisor's own exit) SIGKILLs the entire spawned tree even when the app-level
+ * handler or an agent child is wedged. The child's exit status is mirrored.
+ *
+ *   node --no-warnings scripts/supervise.ts <entry.ts> [...args]
  */
 
 import { spawn, spawnSync } from "node:child_process";
 
-const [, , target, ...args] = process.argv;
-if (!target) {
-  process.stderr.write("Usage: node scripts/run-example.ts <example.ts> [...args]\n");
+const [, , entry, ...args] = process.argv;
+if (!entry) {
+  process.stderr.write("Usage: node scripts/supervise.ts <entry.ts> [...args]\n");
   process.exit(2);
 }
 
-const child = spawn("node", ["--no-warnings", "--experimental-strip-types", target, ...args], {
+const child = spawn(process.execPath, ["--no-warnings", entry, ...args], {
   detached: true,
   env: process.env,
   stdio: "inherit",

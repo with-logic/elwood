@@ -4,7 +4,6 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleDetection": "force",
-    "jsx": "react-jsx",
     "allowJs": false,
     "isolatedModules": true,
 
@@ -14,15 +13,6 @@
     "noEmit": true,
 
     "strict": true,
-    "alwaysStrict": true,
-    "noImplicitAny": true,
-    "noImplicitThis": true,
-    "strictBindCallApply": true,
-    "strictFunctionTypes": true,
-    "strictNullChecks": true,
-    "strictPropertyInitialization": true,
-    "useUnknownInCatchVariables": true,
-
     "exactOptionalPropertyTypes": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
@@ -37,7 +27,7 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
 
-    "types": ["node", "vitest/globals"]
+    "types": ["node"]
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "examples/**/*.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "examples/**/*.ts", "scripts/**/*.ts"]
 }

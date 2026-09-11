@@ -10,16 +10,25 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+permissions:
+  contents: read
+
 jobs:
   check:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    name: check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
     steps:
       - uses: actions/checkout@v6
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v6
         with:
-          bun-version: latest
+          node-version-file: .node-version
+          cache: npm
       - name: Install dependencies
-        run: bun install --frozen-lockfile
-      - name: Typecheck, lint, test
-        run: bun run check
+        run: npm ci
+      - name: Build, typecheck, lint, line cap, unit and conformance tests
+        run: npm run check

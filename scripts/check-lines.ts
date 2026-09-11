@@ -6,7 +6,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const maxLines = 200;
-const roots = ["src", "tests", "scripts"] as const;
+const roots = ["src", "tests", "scripts", "examples"] as const;
 const extensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
 const skippedDirectories = new Set(["node_modules", "dist", "coverage", ".git"]);
 

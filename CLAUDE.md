@@ -95,7 +95,6 @@ TypeScript is configured beyond `strict: true` with flags such as:
 - `noImplicitReturns`
 - `noUnusedLocals`
 - `noUnusedParameters`
-- `useUnknownInCatchVariables`
 
 If a new call site's types do not line up, fix the types or the design. Do not
 paper over mismatches with `any`.
@@ -108,5 +107,5 @@ paper over mismatches with `any`.
 4. If the change is consumer-facing (public API, session/lifecycle behavior,
    activity/event shape, or a bug fix a parent app would notice), add a bullet to
    `CHANGELOG.md` under `## [Unreleased]`. Skip internal refactors and test-only
-   changes — the changelog is what consumers like Coal Harbor skim.
+   changes — the changelog is what downstream consumers skim.
 5. Run `npm run check`.

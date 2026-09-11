@@ -1,41 +1,40 @@
 # PR Review Instructions
 
-You are reviewing a pull request for the Elwood repository. Provide actionable,
-specific feedback grounded in the project's documented standards.
+You are reviewing a pull request for Elwood. Give specific, actionable feedback
+grounded in the project's documented standards.
 
-## Step 1: Read The Standards
+## Step 1: Read the standards
 
-Before reviewing implementation code, read:
+1. `CLAUDE.md` (also `AGENTS.md`) for the spec-first workflow, file
+   organization, strict TypeScript and Biome setup, and the 100% coverage gate.
+2. `PRD.md` for the behavior contract. Any change a second implementation
+   would have to make requires a PRD update.
+3. `CONTRIBUTING.md` for the merge gate (`npm run check`) and the e2e suite.
+4. `docs/cli-behavior.md` if the diff touches readiness, turn detection, trust
+   prompts, resume, or input paths. Those areas are verified against the real
+   CLIs, not only by unit tests.
 
-1. `CLAUDE.md` for the spec-first workflow, organization conventions, strict
-   TypeScript/Biome setup, and 100% coverage requirement.
-2. `PRD.md` for the product contract. Changes that any conformant
-   implementation would need require a PRD update.
-
-## Step 2: Review Against Standards
+## Step 2: Review against the standards
 
 Always flag:
 
-- PRD drift: externally observable behavior changed without a matching PRD
-  update, or a PRD update not reflected in code and tests.
-- Coverage gaps: new implementation code without tests, unreachable defensive
-  branches, skipped tests, or patterns that make 100% coverage impractical.
-- Files over 200 lines.
-- Default exports in implementation code.
-- Missing top-of-file docstrings in source files.
-- `any` types without a strong justification.
+- PRD drift: observable behavior changed without a matching PRD update, or a
+  PRD update not reflected in code and tests.
+- Coverage gaps: new code without tests, unreachable defensive branches,
+  skipped tests, or patterns that make 100% coverage impractical.
+- Files over 200 lines, default exports, or missing top-of-file docstrings.
+- `any` without a strong justification.
 - User-visible errors without stable names or documented behavior.
-- Security issues such as command injection, path traversal, unsafe filesystem
-  access, or secret leakage.
+- Missing `CHANGELOG.md` entries for consumer-facing changes.
+- Security issues: command injection, path traversal, unsafe filesystem
+  access, secret leakage, or a prompt answered that should have blocked.
 
-Mention briefly:
+Mention briefly: minor style issues Biome will not fix, and comments that are
+misleading or narrate obvious code.
 
-- Minor style issues that Biome will not fix.
-- Comments that are misleading or narrate obvious code.
-
-## Step 3: Write The Review
+## Step 3: Write the review
 
 - Lead with blocking issues.
 - Reference exact files and lines.
 - Explain why each issue matters and suggest the smallest fix.
-- Avoid restating standards unless tied to a concrete diff line.
+- Do not restate standards unless tied to a concrete diff line.
