@@ -1,406 +1,172 @@
 # Changelog
 
-All notable **consumer-facing** changes to Elwood are recorded here — new or
+All notable **consumer-facing** changes to Elwood are recorded here: new or
 changed public API, session/lifecycle behavior, activity/event shapes, and bug
-fixes a parent app would notice. Internal refactors, test-only changes, and doc
-tweaks are omitted. The format follows [Keep a Changelog](https://keepachangelog.com);
-this project is pre-1.0, so everything lands under **Unreleased** until the first
-tagged release.
+fixes a host application would notice. Internal refactors, test-only changes,
+and doc tweaks are omitted. The format follows
+[Keep a Changelog](https://keepachangelog.com); this project is pre-1.0, so
+everything lands under **Unreleased** until the first tagged release.
 
-Conformance criteria (`C-API-*`, `C-CODEX-*`, `C-TURN-*`, …) reference `PRD.md`.
+Observable behavior is specified in `PRD.md`; the conformance criteria that
+back each entry are listed in PRD.md §14.
 
 ## [Unreleased]
 
-### Added
-
-- **The `elwood` CLI now explains and cleanly overrides its effective behavior.**
-  `--no-stream` and `--no-verbose` reverse inherited boolean defaults,
-  `--no-defaults` bypasses saved config and `ELWOOD_*` run settings, and
-  `elwood config effective` reports validated launch/output values with their
-  provenance without starting an agent. Routine warnings now reach stderr for
-  text and JSON runs, `--verbose` is a concise elapsed progress view, and
-  `--debug` retains full sanitized event detail. JSONL records include elapsed
-  timing plus tool-call correlation IDs when available. Help, validation errors,
-  resume/persona/ephemeral wording, and the new scripting guide now make defaults,
-  recovery actions, and lifecycle effects explicit. (§5.8/§12A,
-  C-API-48/C-CLI-02/03/08/10/11/14/19/20)
-- **The `elwood` CLI can now mirror the live agent TUI in the current terminal.**
-  `--head` sends the agent's ordered raw VT/ANSI stream to terminal stderr while
-  preserving the final text or JSON result on stdout, including cursor-addressed
-  redraws, alternate screens, colors, spinners, and OSC title changes. It follows
-  terminal resizes, restores terminal modes on every handled outcome, and treats
-  Ctrl-C like the existing interrupt lifecycle. The display is intentionally
-  view-only and cannot be combined with `--stream`, `--verbose`, or JSONL.
-  Pending terminal writes are bounded by bytes and frame count, so a stalled
-  terminal becomes a clean run failure instead of an unbounded memory queue.
-  An argument-free `elwood` invocation now prints help instead of waiting for a
-  prompt. (§12A.1/§12A.6, C-CLI-02/C-CLI-18)
-
-### Fixed
-
-- **Headed runs no longer suspend themselves or leave the invoking terminal unusable.**
-  Interactive version and capability probes now run in an isolated process session,
-  preventing their shell-managed commands from stealing the real terminal's foreground
-  process group. `--head` can therefore restore cooked input and display modes before
-  returning to an interactive shell, without a cleanup-time `SIGTTOU` stop or leaked
-  terminal-protocol replies. Its defensive restore now also pops the Kitty keyboard
-  enhancement mode used by current agent TUIs, so subsequent shell keystrokes remain
-  ordinary text instead of encoded key-event sequences. (§12A.6, C-CLI-18)
-- **Codex's startup update dialog no longer wedges headed or headless runs.**
-  Codex 0.153.x can paint its numbered update menu before its input loop accepts
-  the first safe Skip hotkey. Elwood now retries that hotkey for a bounded interval
-  only after revalidating the complete current update dialog, and the CLI no longer
-  mistakes the responder-owned dialog's replayed blocking edge for a human prompt.
-  A persistent or unanswerable update dialog now fails and cleans up boundedly even
-  without `--timeout`; no retry can escape into the composer or another dialog.
-  (§5.5/§12A.2, C-CODEX-12/C-CLI-05)
-- **Headless turns now survive real-CLI startup, resume, and teardown races.**
-  Codex 0.153.3 can accept the 10-second fallback paste into its cold-start
-  placeholder, swallow it during a later boot repaint, and appear to finish an
-  empty turn; ergonomic turns now require positive submission evidence, replay
-  an unaccepted prompt at most twice, and fail explicitly instead of reporting
-  false success. A resumed Claude turn no longer treats its stale composer as
-  an immediate end before real work paints. The headless owner also ignores
-  transient attention from trust prompts it is already authorized to answer,
-  and macOS teardown retries the short-lived post-exit `EPERM` process-group
-  window instead of surfacing `cleanup_failed`. (§5.3/§5.8/§12A, C-API-48,
-  C-TURN-03, C-CLI-05/09)
-- **Claude model switches now complete through model/effort cache warnings.**
-  Claude 2.1.258 may interpose `Switch model?` or `Change effort level?` after
-  Elwood applies a session-only picker choice; Elwood previously treated that
-  dialog as successful picker closure and returned while the session was still
-  waiting. Elwood now recognizes numbered and unnumbered variants, navigates
-  from the rendered cursor to the affirmative action, confirms the built-in
-  cache warning, and waits for the idle composer before resolving `setModel`.
-  Recognition is scoped to the bottom-most live dialog and revalidated before
-  Enter, so transcript text cannot spoof a cache warning or composer. Hook-requested
-  `PreModelSwitch` confirmations remain blocking and human-controlled. (§5.3,
-  C-API-24/C-ATTN-04)
-- **Concurrent Codex starts no longer race global npm updates.** Codex's live
-  update dialog is now input-blocking until its rendered frame clears, so queued
-  persona/caller input cannot press Enter on the default "Update now" action when
-  a prompt layout is partial or drifts. Elwood still skips every recognized safe
-  option automatically. Separately, `autoupdate` now holds an atomic per-user,
-  per-adapter cross-process lease around the global updater; another Elwood host
-  waits asynchronously, skips its duplicate install, and validates the resulting
-  binary. The lease uses a stable account cache across differing `TMPDIR` values,
-  records its owner/generation so live or successor updates cannot be evicted,
-  and recovers dead owners safely. Failed partial installs also invalidate version
-  and capability caches before validation. Coal Harbor and other consumers need
-  no API or configuration changes. (§5.5/§9.2, C-CODEX-12/C-PERF-04/C-LIFE-09)
-- **Claude's current cursor-style workspace trust prompt is auto-approved again.**
-  Claude 2.1.252 replaced the older numbered, affirmative-first layout with an
-  unnumbered menu that defaults to `No, exit`; the responder recognized its header
-  but found no numbered affirmative, wrote nothing, and the readiness fallback
-  could report `ready` over the still-visible gate. Elwood now supports both
-  layouts, navigates cursor menus to the affirmative before Enter, keeps their
-  entire option region out of header recognition, and verifies the real trust
-  screen clears before readiness. The gate remains independent of Claude's
-  `bypassPermissions` / `--dangerously-skip-permissions` policy. (§5.1/§5.3,
-  C-CLAUDE-10/C-CLAUDE-14/C-E2E-09)
-- **Modern Codex final replies now carry their text on `assistant_message`
-  activity.** Codex 0.149.1 writes replies as assistant `message` response items
-  with `phase: "final_answer"` and `content[].output_text`; Elwood previously
-  expected a plain string (or a legacy `agent_message` duplicate), so consumers
-  received a textless event and could silently discard the reply. Elwood now
-  extracts the full final-answer text—including `@mentions`—while keeping
-  commentary and user/developer transcript records out of assistant activity.
-  (§5.4/§7A.4, C-API-12/C-CODEX-16)
-- **Claude's `Not logged in · Run /login` sign-out is now detected mid-session.**
-  A ready Claude session that gets logged out mid-run renders `Not logged in`
-  (paired with a `run /login` hint) — a different wording than the `Login expired`
-  / `Session expired` / `OAuth token revoked` banners Elwood already recognized.
-  That form previously went undetected mid-session, so no `login_expired` warning
-  fired. It now surfaces the same content-free `login_expired` warning (+ `warning`
-  activity), leaving the session alive to recover via `session.login()`. (§5.3/§5.7,
-  C-CLAUDE-17/18)
-- **Codex's in-TUI update prompt is now re-skipped on the restart loop.** Elwood
-  always skips Codex's interactive "update available" prompt (it never selects
-  "Update now"; the real update is the `autoupdate` preflight). The skip was latched
-  once per session, so if Codex restarted and the SAME update screen reappeared — the
-  update did not take — the session got stuck looping on it. The skip is now
-  edge-triggered: it re-arms when the update screen leaves the frame and re-skips the
-  reappearance. (§5.5, C-CODEX-12)
-- **Autoupdate is now best-effort and never fails a start on its own.** When
-  `autoupdate: true` and `claude update` / `codex update` fails (a flaky network,
-  a partial native-installer download, contention during a fleet launch), Elwood no
-  longer rejects `startClaude`/`startCodex` with `claude_update_failed` /
-  `codex_update_failed`. If the INSTALLED CLI still meets the minimum version, the
-  session starts from it and Elwood emits a live `agent_update_failed` warning (safe
-  diagnostics only: installed version, an allowlisted error code, bounded stderr).
-  Startup fails only when the installed version is actually below the minimum. The
-  warning is zero-burden — a consumer that does not subscribe to `warning` is
-  unaffected and the session still reaches `ready`. (§9.2, C-LIFE-11)
-- **A failed shared update no longer poisons the process.** A once-per-process
-  update/probe cache that rejected was retained and replayed, so one failed
-  `claude update` could reject every concurrent roster start AND every later start
-  until the process restarted. Cached probes (autoupdate, version read, capability
-  detection) now never retain a rejected result: concurrent callers share one attempt
-  and a later caller re-attempts rather than inheriting the failure. (§9.2,
-  C-LIFE-09/11)
+First public release.
 
 ### Added
 
-- **Elwood now ships a first-party headless `elwood` command.** The short
-  `elwood "prompt"` form and explicit `elwood run` form execute one real Claude
-  Code or Codex turn with clean text, JSON, JSONL, or streaming output. The CLI
-  supports stdin and ordered images, global typed config with flag/environment
-  precedence, model/reasoning/persona controls, non-interactive trust and
-  permission policy, exact keep/resume/ephemeral continuation, bounded timeouts,
-  signal-safe cleanup, backpressure, and stable exit statuses. Its compiled ESM
-  executable is included in installed package artifacts; no TypeScript loader or
-  parent-app integration is required. (§12A, C-CLI-01…17)
-- **Claude and Codex now share persisted recurring session loops.** Raw,
-  common, and lazy session surfaces expose `createLoop`, `listLoops`, and
-  `cancelLoop`; the package-root `parseLoopCommand` helper maps explicit
-  `/loop <message>` and `/loop <interval> <message>` UX into readonly idle/fixed
-  requests without changing literal `sendMessage`/`sendPrompt` behavior. Loops
-  use readiness-safe, serial delivery, deterministic delay-only jitter, a
-  five-minute idle cadence or bounded fixed cadence, a 50-loop/session limit,
-  65,536-byte messages, and seven-day wall-clock expiry. A redacted `loop`
-  event reports created/fired/cancelled/expired/failed lifecycle without prompt
-  text. Definitions live in a private versioned sidecar: stop/exit/crash preserve
-  them and resume starts fresh clocks with no catch-up, while kill clears them
-  and teardown removes them. Stable loop errors cover validation, capacity,
-  not-found cancellation, persistence, and scheduling/submission failures.
-  (§5.9/§8/§9/§10, C-LOOP-01…21)
-- **`reasoningEffort` is now a first-class start/resume option on both adapters.**
-  `startClaude`/`resumeClaude` accept `reasoningEffort?: ClaudeReasoningEffort`
-  (`low`/`medium`/`high`/`xhigh`/`max`), forwarded to Claude's `--effort` flag;
-  `startCodex`/`resumeCodex` accept `reasoningEffort?: CodexReasoningEffort`
-  (`none`/`minimal`/`low`/`medium`/`high`/`xhigh`/`max`), forwarded as the reserved
-  `-c model_reasoning_effort=<value>` override (applied after caller `configOverrides`
-  so it wins a duplicate). The two enums differ per CLI; Elwood validates the value
-  against the adapter's enum BEFORE spawn and rejects an out-of-enum value with the
-  typed `claude_invalid_reasoning_effort` / `codex_invalid_reasoning_effort` error
-  (Codex otherwise fails server-side only at the first turn). Effort is independent of
-  `model`, applies to the launched session only, and is NOT persisted — a resume must
-  re-supply it, exactly like `model`. Both enums are exported. (§5.1/§5.5, §5.2/§5.6,
-  C-CLAUDE-20, C-CODEX-21)
-- **`ClaudeSession` / `CodexSession` classes are now the primary API.** One class per
-  adapter exposes BOTH the ergonomic `send`/`stream` convenience AND the full control
-  surface (`sendMessage`, `sendPrompt`, `sendGuidance`, `sendKeys`, `resize`,
-  `interrupt`, `compact`, `listModels`, `setModel`, `on`/`off`, `waitForStatus`,
-  `waitForActivity`, `stop`/`kill`/`teardown`, Claude's `login`), and every method is
-  lazy-start-aware. Construct synchronously (`cwd` defaults to `process.cwd()`, so
-  `new ClaudeSession()` is valid); the underlying session starts lazily on first use
-  (or an explicit `start()`). `on`/`off` may be called before start (buffered, attached
-  on start). `await session.send(prompt)` returns the turn's assistant text as a string
-  (every `assistant_message`, `\n\n`-joined; no thinking/tool text).
-  `for await (const ev of session.stream(prompt))` yields simplified typed events —
-  `{type:"text"|"thinking"|"tool_call"|"tool_result"}` — as they arrive. `send` is
-  `stream` drained for text; turns are serialized; `close()` stops the session (safe in
-  a `finally`). The turn boundary is DETERMINISTIC: it ends the instant the transcript
-  catches up to the `Stop` hook's expected final text (a completeness oracle, not a
-  timer), with a bounded quiet-window fallback for pure-tool turns. There is no
-  whole-turn timeout by default — a turn may run for hours — with an opt-in `timeoutMs`
-  ceiling and a tight post-`ready` `catchUpMs` cap (default 10s) that fails fast if the
-  transcript never catches up. Buffered turn state is bounded (rolling oracle window;
-  unconsumed events capped by both count and total UTF-8 bytes) so an hours-long or
-  verbose turn cannot exhaust the host; the opt-in `timeoutMs` is armed only after submission,
-  so it never rejects a prompt that then submits. (§5.8, C-API-47…53)
-
-### Deprecated
-
-- **`startClaude` / `startCodex` are deprecated** in favor of the `ClaudeSession` /
-  `CodexSession` classes (which lazily wrap the same session). They remain functional
-  and internally used; migrate to `new ClaudeSession(options)`. The low-level session
-  interface type is now exported as `ClaudeSessionApi` / `CodexSessionApi` (the class
-  owns the `ClaudeSession` / `CodexSession` name).
+- Claude Code and Codex CLI adapters that run the real interactive CLI in a
+  PTY, launched through the user's login shell, and observe it through a
+  headless xterm.js model. macOS only; Claude Code 2.1.144+ and Codex CLI
+  0.124.0+ with a `strictVersionCheck` option to fail closed on unparseable
+  versions.
+- `ClaudeSession` / `CodexSession` classes as the primary API: synchronous
+  construction, lazy start on first use, `send(prompt)` returning the turn's
+  assistant text, `stream(prompt)` yielding typed `text` / `thinking` /
+  `tool_call` / `tool_result` events, and `close()`. Turns end on a
+  deterministic transcript boundary, with no whole-turn timeout unless
+  `timeoutMs` is passed. The eager `startClaude` / `startCodex` factories are
+  deprecated but remain available.
+- The full control surface on every session: `sendMessage`, `sendPrompt`,
+  `sendGuidance`, `sendKeys` (string or raw `Uint8Array`), `resize`,
+  `interrupt`, `compact`, `listModels`, `setModel`, `waitForStatus`,
+  `waitForActivity`, `stop`, `kill`, and `teardown`, plus the exported
+  `ElwoodAgentSession` type for code generic over either adapter.
+- Typed hook handlers for Claude and Codex hook events, delivered over a
+  local, token-protected IPC bridge with runtime validation. Handlers fail
+  open; failures surface as `hookError`.
+- A unified `activity` event stream (messages, reasoning, tool calls and
+  results, web searches, hooks, warnings, lifecycle) with normalized
+  `toolName` / `toolInput` / `toolOutput` / `turnId` fields, alongside `hook`,
+  `hook:<Name>`, `warning`, `loop`, `status`, `terminal:data`,
+  `terminal:exit`, and Codex-only `codex:transcript`.
+- Raw `terminal:data` output for host-rendered terminals, with a 128 KB
+  replay buffer for late subscribers and exactly-once `terminal:exit`.
+- Persisted, resumable sessions: a minimal session record under
+  `<cwd>/.elwood` or a caller `stateDir`, `resumeClaude` / `resumeCodex`, and
+  `startOrResumeClaude` / `startOrResumeCodex`, which fall back to a fresh
+  start only on `state_not_found`, `resume_unavailable`, or
+  `adapter_mismatch`. Resume restores the persisted launch posture and
+  reaches readiness in about one second.
+- Recurring loops (`createLoop`, `listLoops`, `cancelLoop`, and the opt-in
+  `parseLoopCommand` helper) with fixed or idle cadence, per-session limits,
+  seven-day expiry, a redacted `loop` event, and a private sidecar that
+  survives stop and resume.
+- Image attachment on `send`, `stream`, and every send method via `images`
+  (`{ path }` or `{ data, format }`), validated and bounded before submission
+  and confirmed by the CLI's `[Image #N]` chip. Codex attachment drives the
+  macOS clipboard under a process-wide lock.
+- Model control: `listModels` / `setModel` through the adapter's `/model`
+  picker without touching the user's saved defaults, `model` and
+  `reasoningEffort` start options on both adapters, and the standalone
+  `listClaudeModels` / `listCodexModels` probes.
+- Claude login recovery: `claude_not_authenticated` at startup, a live
+  `login_expired` warning mid-session, and `ClaudeSession.login()` to drive
+  `/login` with a human-supplied authorization code.
+- A `persona` start option delivered as the guaranteed first user message,
+  and an optional best-effort `autoupdate` preflight that never fails a start
+  when the installed CLI already meets the minimum version.
+- Automatic answers for a narrow allowlist of startup prompts: workspace trust
+  (opt-in `autotrust`), Codex hook-trust and update dialogs, and Claude's
+  browser-tools onboarding. Any other dialog leaves the session `blocked`.
+- The `elwood` executable: one headless turn with text, `--output json`, or
+  `--output jsonl` protocols, `--stream`, `--verbose`, `--debug`, stdin and
+  ordered `--image` input, `--timeout`, `--persona`, model and posture flags,
+  `--keep` / `--resume` / `--ephemeral` continuation, signal-safe cleanup, and
+  stable exit statuses (`0`, `1`, `2`, `124`, `130`).
+- `--head` mode that mirrors the live agent TUI in the current terminal on
+  stderr while keeping the final result on stdout, view-only, with terminal
+  state restored on every outcome.
+- `elwood config` with one strict global JSON file, typed keys, `ELWOOD_*`
+  environment overrides, flag > environment > config > built-in precedence,
+  `--no-defaults`, and `config effective` to explain resolved values and their
+  sources without starting an agent.
+- CLI agent auto-detection: with no `--agent`, `ELWOOD_AGENT`, or config
+  `agent`, a new run tries `claude` then `codex` in the login shell and fails
+  with `no_agent_found` (status 2) when neither resolves. Error records
+  emitted before an agent was selected report `agent: null`.
 
 ### Changed
 
-- **A `terminal:data` subscriber added after startup is now registered BEFORE its
-  buffered output is replayed.** A subscriber handler that throws while processing the
-  replayed startup buffer stays subscribed for future terminal data instead of being
-  silently dropped. Behavior is unchanged for non-throwing handlers.
-- **Warnings are now live-only; the `session.warnings` property is removed.** A
-  warning is emitted once, when observed, as a `warning` event plus its `activity`
-  — it is never persisted, never replayed to a late subscriber, never deduplicated
-  across time, and never accumulated into a running count. Consumers must collect
-  warnings off the `warning` event (a late subscriber no longer sees a replayed
-  snapshot). Transcript drop / read-error warnings lose their `droppedCount` /
-  `droppedBytes` / `errorCount` fields (a content-free live warning keeping its
-  `cause` / `lastErrorCode` label); drops are coalesced per scan pass — many
-  malformed records in one bounded scan surface at most one warning per
-  `(path, cause)` rather than one per record. The `initial_ready_fallback` warning
-  loses its `reason` field. This closes the
-  false-unread-on-resume reports at the source: a resumed session no longer replays
-  a prior session's stale warnings as if they were live. (C-API-14, C-CLAUDE-15,
-  C-API-42)
-
-- **`session.json` is now minimal.** The persisted session record holds only what
-  resume genuinely needs: schema version, `elwoodSessionId`, adapter, `cwd`, and
-  per-adapter resume state (the CLI's conversation id + launch posture). Session
-  status, timestamps, warnings, caller metadata, terminal size, the hook-bridge
-  token, the socket path, and Elwood-owned runtime file paths are no longer written.
-  Runtime paths are derived on demand from `(stateDir, id, adapter)`; the socket
-  home is a deterministic fingerprint of that same identity (stable across a
-  session's launches, distinct for a shared explicit id in another state dir),
-  while the bridge token and the socket file inside the home are minted fresh on
-  every start/resume and never trusted from disk. Behavior for callers is unchanged except that a resumed session no
-  longer restores a persisted terminal size — pass `initialSize` on resume to set
-  geometry (it otherwise falls back to the default). (§8.2)
-
-- **Resumed sessions reach readiness in ~1s instead of ~10s.** On resume, Codex does
-  not re-fire its `SessionStart` hook, so readiness previously fell through to the 10s
-  starvation deadline; Claude's `InstructionsLoaded` *does* re-fire on resume. A
-  resumed session now marks ready on whichever arrives first — the readiness hook or
-  the first rendered composer frame (the input loop is live on resume, unlike the
-  cold-start placeholder, so the composer is a safe signal there). A blocking dialog
-  on that first frame does **not** mark ready (its caret is byte-identical to the
-  composer marker), so readiness waits for the dialog to clear. Cold-start behavior
-  is unchanged. (C-API-28)
-
-- **Codex exec tool calls now surface the *bare* command, not the JS harness.**
-  The modern Codex `exec` tool wraps its command in a JavaScript snippet
-  (`const r = await tools.exec_command({"cmd":"echo hi",…}); text(r.output);`).
-  A `tool_call` activity's `toolInput` is now the unwrapped command (`echo hi`; a
-  `command` array is space-joined), with the `workdir`/`yield_time_ms`/… harness
-  fields stripped. The classic `shell`/`exec_command` JSON `arguments` form is
-  unwrapped the same way; an unparseable wrapper falls back to the raw string.
-  Consumers can drop any client-side unwrapping. (C-CODEX-19)
-
-- **`sendPrompt`, `sendMessage`, and `sendGuidance` all serialize on the same control
-  queue — but with different readiness policies (per §5.3), not "all held until
-  ready".** `sendMessage` waits for the next `ready` transition before it submits;
-  `sendPrompt` writes immediately without waiting for turn readiness (it still
-  serializes against other queued ops); `sendGuidance` queues like `sendMessage`
-  before first readiness and while blocked, but during a post-ready running turn it
-  overtakes readiness-waiting operations and enters the TUI immediately. Only
-  `sendKeys` bypasses the queue entirely — the deliberate raw-input escape hatch.
+- Published as `@with-logic/elwood` under the MIT license.
+- Warnings are live-only events. Nothing is persisted, replayed, or counted;
+  there is no `session.warnings` property.
+- The persisted session record holds only schema version, `elwoodSessionId`,
+  adapter, `cwd`, and per-adapter resume state. Terminal size is not
+  persisted; pass `initialSize` on resume.
+- Codex `tool_call` activity reports the bare exec command as `toolInput`
+  rather than the CLI's JavaScript harness wrapper.
+- `ClaudeEventMap`, `ClaudeEventName`, and `ClaudeEventHandler` are the
+  primary names for the Claude session event map; `ElwoodEventMap`,
+  `ElwoodEventName`, and `ElwoodEventHandler` remain as deprecated aliases.
+- An object-form Codex `PreToolUse` handler's `unknown` entry now receives only
+  `mcp__*` / `unknown:*` tools; a `Bash` / `apply_patch` event with no per-tool
+  handler yields no decision.
+- The local dev apps are no longer compiled into `dist/`, and their `ws` and
+  browser xterm dependencies moved to `devDependencies`, so consumers install
+  only what the library uses.
 
 ### Fixed
 
-- **A failed or slow overlapping launch can no longer break a live session's hook
-  bridge.** The per-session socket home is stable and shared across a session's
-  launches; a failed start/resume now removes only its own socket file, never the
-  whole home, so it cannot delete a concurrently-live launch's bound socket (which
-  would have silently failed every later hook). Teardown still removes the whole
-  home. The home is also restored to private `0700` on every launch and rejects a
-  planted non-directory at its predictable path. (§8.1, §9.1)
-- **A relative `cwd` is resolved once at the start boundary.** `startClaude`/
-  `startCodex` now resolve `cwd` (like `stateDir`) to absolute BEFORE the awaited
-  preflight, so a `process.cwd()` change during preflight can no longer split where
-  state is written and persisted from where the CLI launches. (§8.2)
-- **A transcript drop/read-error warning can no longer fire after `terminal:exit`.**
-  A Claude poll that found the watcher finished mid-pass could still flush that
-  pass's drop past the permanent terminal latch; it now discards the pass. (§5.4)
-- **Every startup warning is delivered.** The startup warning buffer no longer caps
-  silently at 64 entries — a pathological startup can no longer drop the tail
-  (including the guaranteed `version_unparseable` warning). (C-API-14)
-
-- **Resume no longer emits a phantom turn / false "unread".** After a resumed
-  session reached readiness, the transcript replay repainted prior turns whose
-  footer lines read as "working", fabricating a spurious `running → ready` cycle on
-  every resume. Rendered turn edges are now suppressed through the replay until the
-  composer has stayed quiet and non-blocking for a SUSTAINED run of frames — the
-  real Codex CLI repaints those footers in bursts with brief quiet gaps, so
-  releasing on the first quiet frame let a later burst still fire the phantom;
-  a working/blocking frame during suppression resets the run. Evidence-based turns
-  (a caller submission, hooks) are unaffected. Verified against the real Codex CLI.
-  (C-TURN-03)
-
-- **A resume could never leave the queue permanently starved by a failed
-  transition.** Initial readiness now latches only *after* its callback completes,
-  so a throwing readiness callback is retried on the next hook/frame/deadline
-  rather than consuming readiness and wedging the queue. (C-API-28)
-
-- **The 8 MiB hook-request cap is now measured identically on both sides.** The
-  child bridge script capped RAW stdin while the parent IPC server capped the
-  JSON-wrapped wire envelope, so an escape-heavy hook input (backslash/quote-heavy
-  tool output) could pass the child's cap yet be rejected by the server, silently
-  losing the hook decision. The child now measures the same encoded envelope the
-  server does and fails open before connecting, so the two never disagree. (C-HOOK-16)
-
-- **Hook payloads with multibyte characters split across socket chunks are no longer
-  corrupted.** Both the child bridge script and the parent IPC server decoded each
-  byte chunk independently, so a UTF-8 code point straddling two chunks (emoji,
-  CJK, accented text) became replacement characters before the hook input was parsed.
-  Both sides now accumulate raw bytes and decode once at the frame boundary. (C-HOOK-16)
-
-- **A throwing warning listener never stops transcript observation.** Warning
-  delivery is contained at the emit site, so a throwing `warning`/`activity`
-  listener cannot escape into the poll loop and stop the transcript watcher or
-  wedge frame processing. The watcher stays live (both adapters). Warnings are
-  live-only: a contained failure means that one live warning is not delivered, not
-  that any aggregate is retained or replayed.
-
-- **An empty-ish non-array `images` value now rejects instead of sending silently.**
-  An untyped caller passing `""` or `{ length: 0 }` as `images` took a no-image fast
-  path and the text was sent with no error; only a genuinely absent list (or an empty
-  array) skips attachment now — anything else is validated and rejects `invalid_image`.
-  (C-API-44)
-
-- **`transcript_read_error`'s `lastErrorCode` is always a string (both adapters).** A
-  non-string errno `code` (e.g. a numeric code) is normalized to `"UNKNOWN"` instead
-  of round-tripping a number through the string-typed warning field.
-
-- **Transcript reading no longer spins on an incomplete UTF-8 tail.** A partial
-  write that ends mid-code-point made the reader re-read the same bytes up to
-  64×/second per session; it now reports no-progress and resumes on the next tick
-  once the rest of the code point is committed (both adapters).
-
-- **A malformed `images` send on a terminated session rejects `session_not_running`,
-  not `invalid_image`.** Image validation used to run before the lifecycle guard, so a
-  bad image on a stopped/killed/torn-down session reported the wrong error; terminal
-  status now takes precedence. (C-API-25)
-
-- **A per-session ceiling now bounds queued image-clone memory.** Beyond the
-  per-submission 50 MiB limit, at most 200 MiB of cloned image bytes may be held across
-  all not-yet-attached queued submissions; a submission that would exceed it rejects
-  `invalid_image`, and reservations release as submissions settle. This prevents a slow
-  paste/confirmation from letting many legal queued sends retain gigabytes of clones.
-  (C-API-44)
-
-- **Codex transcript reading is bounded and crash-safe.** The reader reads in
-  fixed-size chunks with a max-pending ceiling, streams a large backlog across poll
-  ticks, and drains within a bounded budget at exit — a hundreds-of-MiB transcript
-  can no longer OOM or block the event loop. Lost data surfaces as the content-free,
-  count-free `transcript_records_dropped` warning (a live event, cause-tagged, not
-  persisted or counted); a scan that throws is contained and surfaced as
-  `transcript_poll_stopped` (both now `agent: "codex" | "claude"`).
-  `finish()` is terminal and idempotent. (C-CODEX-20)
-
-- **Guidance/message delivery is never wedged by a throwing listener.** A throwing
-  `status` or `activity` listener can no longer wedge the control queue mid-turn:
-  the queue is released first and any warning delivery is isolated. (C-API-42)
-
-- **Runtime cleanup is failure-safe and retryable.** A failed `stop`/`kill`/
-  `teardown` no longer latches — a later call retries — and every cleanup step runs
-  even if an earlier one throws, so a failing bridge stop never leaks the terminal
-  or transcript watcher. (§9.4)
-
-- **A runtime-cleanup failure in `stop()`/`kill()` now rejects with the typed
-  `termination_failed`, not a raw `Error`.** The cleanup aggregator threw a bare
-  `Error` on the assumption its caller wrapped it, but the shutdown boundary awaited
-  it directly — so a failing bridge/watcher/terminal cleanup could escape `stop()`
-  /`kill()` untyped, violating the stable public error contract. It is now folded
-  into `termination_failed` with the underlying reason as `cause`. (§10, C-LIFE-10)
-
-- **Image attachment size limits apply to file-path inputs too.** Path images now
-  count toward the same aggregate byte ceiling as byte inputs, and an entry must be
-  exactly `{path}` or `{data, format}` (extra keys are rejected). (C-API-44)
-
-- **A `{data}` image buffer is now cloned at the send call, not at queue dispatch.**
-  Previously the defensive clone ran inside the queued op, so a caller that reused
-  or mutated its `Uint8Array` between the `sendMessage`/`sendPrompt`/`sendGuidance`
-  call and the (possibly much later) dispatch could change what got attached — the
-  opposite of the documented guarantee. The clone now happens synchronously at the
-  call. A knock-on: a malformed or over-limit `images` input now rejects
-  synchronously *before* the submission is queued (rather than at dispatch), so it
-  never occupies a queue slot; the promise still rejects with `invalid_image`.
-  Path readability/size checks still run at dispatch (a file made unreadable after
-  the call still rejects). (C-API-44)
-
-- Post-exit `stop()`/`kill()` are documented correctly: they do not re-signal the
-  PTY but still confirm/retry the process-group reap and may reject with
-  `termination_failed` (they are not silent no-ops).
-
-### Notes for consumers
-
-- **Observe readiness through the signals Elwood sends — not the state file.** Use
-  `session.status`, the `status` event, or `await session.waitForStatus(s => s ===
-  "ready")` on the live session object. The persisted `session.json` is internal
-  state (it exists to enable resume); its `status`/timing is not part of the
-  readiness contract and should not be polled.
+- Trust, update, and model-switch dialogs on current Claude and Codex releases
+  are recognized and answered; unrecognized dialogs block instead of guessing.
+- Hook payloads are measured identically on both sides of the bridge, and
+  multibyte characters split across socket chunks are decoded correctly.
+- Cleanup is retryable: a failed `stop` / `kill` / `teardown` never latches,
+  and post-exit `stop` / `kill` reject with the typed `termination_failed`
+  rather than a bare `Error`.
+- Headed CLI runs restore the invoking terminal's input and keyboard modes.
+- `startOrResumeClaude` / `startOrResumeCodex` forward `reasoningEffort` (and
+  every other resume option) on the resume path; a resumed session no longer
+  silently loses the requested effort.
+- A hook event other than `Stop` arriving after `Stop` (for example
+  `Notification` or `FileChanged`) no longer clears the turn-completeness
+  oracle, so late assistant text cannot leak into the next `send` / `stream`
+  turn.
+- Codex sessions no longer emit a false `transcript_records_dropped`
+  (`unread_backlog`) warning on every turn after roughly 256 turns; each `Stop`
+  now reads the transcript with a bounded per-pass scan.
+- `terminal:data` replay never begins with U+FFFD; the 128 KB replay buffer
+  trims on a UTF-8 code-point boundary.
+- `compact()` no longer sends a stray Enter when the `/compact` write resolves
+  after the compact timeout has already rejected.
+- `send` / `stream` bind a turn to the first event that carries a `turnId`
+  (Codex) rather than the first event of any kind.
+- A transcript truncation or rotation discards the old file's buffered partial
+  line instead of gluing it onto the new file's first record.
+- A `PostToolUse` handler returning `{}` is accepted as "no decision" instead of
+  failing open with a spurious `invalid_response` `hookError`.
+- The per-hook `timeout` written into generated Claude settings and Codex
+  overrides is now `hookTimeoutMs` rounded up plus five seconds, so the CLI
+  never kills a hook before Elwood's fail-open reply arrives.
+- `ClaudeSession.login()` no longer accumulates abort listeners and pending
+  promises over a long polling flow.
+- Codex `setModel` restores `config.toml` atomically (temp file plus rename,
+  symlink written through, mode preserved); a crash can no longer leave the
+  user's config empty. When no `config.toml` existed before the switch, the
+  `codex_default_model_persisted` warning now says the picker created the file
+  and Elwood left it in place.
+- `setModel` reports "Could not locate the picker cursor." (still
+  `model_automation_failed`) when rows parse but no cursor is rendered.
+- Session records and the loop sidecar are read without following symlinks and
+  are rejected as `state_corrupt` unless they are private (`0600`) regular
+  files owned by the current user. Socket homes are keyed on the resolved
+  `stateDir`, so relative spellings of one state directory share one home.
+- A loop cancelled before its submission rejects with the typed
+  `loop_submission_failed` error (with `details.loopId`) instead of a bare
+  `Error`.
+- A CLI version or update probe that times out or overflows now kills its whole
+  process group, so a grandchild cannot outlive the bound or pin the event
+  loop.
+- Hook-bridge decisions larger than about 64 KiB are no longer truncated on
+  macOS.
+- The node-pty spawn helper's executable bit is checked before it is set, and a
+  failed `chmod` is tolerated on read-only installs.
+- `elwood` structured error records emitted before an agent was selected report
+  `agent: null` instead of a hard-coded `"codex"`; auto-detection probes both
+  agents concurrently; a login shell that cannot run the probe fails with
+  `no_agent_found` naming the shell and errno; adapter-option conflicts with an
+  auto-detected agent say so and suggest `--agent <other>`; config write
+  failures name the path and errno; text-mode error diagnostics are suppressed
+  only when stderr has closed, not stdout.

@@ -8,7 +8,7 @@ daemon).
 ## The loop
 
 ```ts
-import { startOrResumeClaude, type ElwoodAgentSession } from "elwood";
+import { startOrResumeClaude, type ElwoodAgentSession } from "@with-logic/elwood";
 
 const { session, resumed } = await startOrResumeClaude({
   cwd: workspacePath,
@@ -68,7 +68,7 @@ cap does not constrain your state layout.
   Elwood's own e2e suite does exactly this.
 - **User keystrokes** should be forwarded with the `Uint8Array` overload of
   `sendKeys` for verbatim delivery; the string overload applies terminal
-  input semantics (see README).
+  input semantics (see [api.md](api.md)).
 - **Interrupting a turn** (a stop button, the user's Escape) should call
   `interrupt()` rather than forwarding a raw Escape byte: it no-ops safely
   when no turn is running and resolves once the session is `ready` again.

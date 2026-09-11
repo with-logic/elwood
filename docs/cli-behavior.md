@@ -6,6 +6,15 @@ and that a green unit suite at 100% coverage does **not** catch, because they
 only surface against the real CLI. This file records what we learned empirically
 so the next engineer or agent does not rediscover it the hard way.
 
+## Upstream references
+
+Elwood no longer vendors copies of the agent CLIs' documentation. The official
+sources are:
+
+- Claude Code: https://code.claude.com/docs/
+- Codex CLI: https://developers.openai.com/codex/ (short sourced notes in
+  `docs/codex/`)
+
 Each fact below was verified against a real CLI (versions noted where relevant).
 When a fact drives an implementation decision, the code and the matching PRD
 conformance criterion are cited. If you change behavior here, update `PRD.md`
@@ -19,9 +28,9 @@ invalid and will conclude the hook "never fires". (This once produced a false
 "CODEX_HOME disables hooks" claim, since retracted — Codex hooks work fine under
 sandboxed homes, and user `config.toml` hooks merge additively with `-c` hooks.)
 Because `SessionStart` is Elwood's authoritative Codex readiness signal
-(`markInitialReadyFromHook`, `src/codex/session-hooks.ts`), cold-start readiness
+(`markInitialReadyFromHook`, `src/codex/session/hooks.ts`), cold-start readiness
 comes from that hook, bounded by a **10 s starvation deadline** armed on the
-first render frame (`src/runtime/initial-ready.ts`, `maxWaitMs = 10_000`). C-API-28.
+first render frame (`src/runtime/readiness/initial-ready.ts`, `maxWaitMs = 10_000`). C-API-28.
 
 **Codex 0.153.3 can still swallow the deadline-released first paste under load.**
 Its cold composer may accept the paste visually, repaint another startup spinner,
@@ -39,7 +48,7 @@ not.** So a resumed Claude session reaches ready fast via its hook, while a
 resumed Codex session would otherwise wait out the full 10 s deadline (the
 conversation already exists, so no `SessionStart` re-fires). To avoid that, on
 **resume only**, Elwood also accepts the rendered composer as a readiness signal
-(`createReadinessGate(onReady, resumed)`, `src/runtime/session-readiness.ts`).
+(`createReadinessGate(onReady, resumed)`, `src/runtime/session/readiness.ts`).
 
 **The composer marker is safe as a readiness signal on resume, but NOT on cold
 start.** On a cold start the composer (`›` for Codex, `❯` for Claude) is a
@@ -179,8 +188,8 @@ under both `--permission-mode bypassPermissions` and the exact
 Under `autotrust`, detect-and-approve: if a trust prompt is detected, answer yes
 rather than leave the agent hanging on the gate. Keep the cheap safety: never
 select a destructive-rider affirmative, and never answer a specific-affirmative
-prompt (e.g. hook trust) with a generic "Yes". `src/core/trust-responder.ts`,
-`src/core/trust-prompts.ts`, verified by `tests/e2e/trust-prompt-claude.e2e.ts`.
+prompt (e.g. hook trust) with a generic "Yes". `src/core/trust/responder.ts`,
+`src/core/trust/prompts.ts`, verified by `tests/e2e/trust-prompt-claude.e2e.ts`.
 
 **Do not equate `autotrust` with “not blocking” until the write clears the real
 screen.** Trust rules are omitted from human-blocking classification under
@@ -294,7 +303,7 @@ captured strings.
 ## Input / paste
 
 - Caller and LLM text sent via `sendPrompt`/`sendMessage`/`sendGuidance` is
-  sanitized (`sanitizePasteText`, `src/core/session-input.ts`): it strips
+  sanitized (`sanitizePasteText`, `src/core/input/index.ts`): it strips
   bracketed-paste markers (`ESC[200~`/`ESC[201~`) and C0/C1 controls except
   tab/nl/cr, so text can't escape bracketed paste and inject a dialog-confirming
   Enter. C-API-40.
