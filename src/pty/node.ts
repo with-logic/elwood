@@ -3,7 +3,7 @@
  * Implements PRD §4.1.
  */
 
-import { chmodSync, existsSync, statSync } from "node:fs";
+import { chmodSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { spawn } from "node-pty";
 import { moduleRequire } from "../core/module-require.ts";
@@ -28,7 +28,7 @@ export const nodePtyFactory: PtyFactory = (options: PtySpawnOptions): PtyProcess
       return () => disposable.dispose();
     },
     onExit(handler) {
-      const disposable = pty.onExit((event) => handler(event));
+      const disposable = pty.onExit(handler);
       return () => disposable.dispose();
     },
     write(data) {
@@ -62,8 +62,25 @@ export function nodePtySpawnHelperPath(): string {
   );
 }
 
+/**
+ * Some package managers strip the execute bit from node-pty's prebuilt
+ * `spawn-helper`, which makes every PTY spawn fail with EACCES. Restore it only
+ * when it is actually missing: an already-executable helper is left untouched
+ * (never write into node_modules on every spawn), and a chmod that fails — a
+ * root-installed global, a read-only layer, a pnpm content store — is tolerated
+ * because node-pty itself reports the real spawn failure if the helper is unusable.
+ */
 export function ensureNodePtySpawnHelperExecutable(path = nodePtySpawnHelperPath()): void {
-  if (!existsSync(path)) return;
-  const mode = statSync(path).mode;
-  chmodSync(path, mode | 0o755);
+  let mode: number;
+  try {
+    mode = statSync(path).mode;
+  } catch {
+    return; // absent helper (not every platform ships one): nothing to repair
+  }
+  if ((mode & 0o111) !== 0) return;
+  try {
+    chmodSync(path, mode | 0o755);
+  } catch {
+    // Best effort: a read-only install cannot be repaired from here.
+  }
 }

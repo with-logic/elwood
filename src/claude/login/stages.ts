@@ -7,7 +7,7 @@
  */
 
 import { elwoodError } from "../../core/errors.ts";
-import type { ScreenTerminal } from "../../core/tui-screen.ts";
+import type { ScreenTerminal } from "../../core/models/tui-screen.ts";
 import { abortError, holdWhileBlocked, pollDelay, raceSettle } from "./abort.ts";
 import type { LoginIo } from "./driver.ts";
 import {

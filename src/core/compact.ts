@@ -3,15 +3,15 @@
  * Implements PRD §5.3, §5.7, and C-API-22.
  */
 
-import { terminalStatuses } from "../runtime/session-status.ts";
 import { elwoodError } from "./errors.ts";
+import { terminalStatuses } from "./status-categories.ts";
 import type { ElwoodSessionStatus, Unsubscribe } from "./types.ts";
 
 export const defaultCompactTimeoutMs = 120_000;
 export const compactCommand = "/compact";
 const defaultNudgeDelayMs = 3_000;
 
-export type CompactWiring = {
+type CompactWiring = {
   readonly submit: () => Promise<void>;
   readonly nudge: () => void;
   readonly onHookName: (handler: (name: string) => void) => Unsubscribe;
@@ -46,7 +46,7 @@ export function sessionCompact(
   });
 }
 
-export function runCompact(wiring: CompactWiring): Promise<void> {
+function runCompact(wiring: CompactWiring): Promise<void> {
   return new Promise((resolve, reject) => {
     let settled = false;
     let compactStarted = false;
@@ -77,6 +77,10 @@ export function runCompact(wiring: CompactWiring): Promise<void> {
     });
     wiring.submit().then(
       () => {
+        // The submission can resolve AFTER the compact already settled (the
+        // timeout rejected, or the session ended): never arm a nudge then, or a
+        // stray Enter would land in a session whose compact() already failed.
+        if (settled) return;
         // A slash-command popup can swallow the submitting Enter keystroke.
         // If the adapter has not acknowledged the command via PreCompact by
         // then, one extra Enter is sent; at an empty composer it is a no-op.

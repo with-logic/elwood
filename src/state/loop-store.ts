@@ -3,11 +3,11 @@
  * Implements PRD §8.2 and C-LOOP-11/C-LOOP-13/C-LOOP-21.
  */
 
-import { lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { elwoodError, errnoCode } from "../core/errors.ts";
+import { elwoodError } from "../core/errors.ts";
 import type { LoopDefinition } from "../core/loops/scheduler-state.ts";
 import { safeSessionDir, writePrivateFileAtomic } from "./files.ts";
+import { currentFileOwner, readPrivateFile } from "./private-read.ts";
 import { LOOP_SIDECAR_SCHEMA_VERSION, validateLoopSidecar } from "./validate-loops.ts";
 
 export type PersistedLoopDefinition = LoopDefinition;
@@ -19,29 +19,20 @@ export function readLoopDefinitions(
   stateDir: string,
   elwoodSessionId: string,
 ): readonly PersistedLoopDefinition[] {
-  const path = sidecarPath(stateDir, elwoodSessionId);
-  let metadata: ReturnType<typeof lstatSync>;
+  const corrupt = () => corruptState(elwoodSessionId);
+  let text: string | undefined;
   try {
-    metadata = lstatSync(path);
-  } catch (error) {
-    if (errnoCode(error) === "ENOENT") return [];
-    throw corruptState(elwoodSessionId);
+    text = readPrivateFile(sidecarPath(stateDir, elwoodSessionId), currentFileOwner(), corrupt);
+  } catch {
+    throw corrupt(); // an invalid session id or an unsafe/unreadable sidecar
   }
-  const expectedUid = process.getuid?.();
-  if (
-    !metadata.isFile() ||
-    expectedUid === undefined ||
-    metadata.uid !== expectedUid ||
-    (metadata.mode & 0o077) !== 0
-  ) {
-    throw corruptState(elwoodSessionId);
-  }
+  if (text === undefined) return [];
   try {
-    const definitions = validateLoopSidecar(JSON.parse(readFileSync(path, "utf8")));
-    if (definitions === null) throw corruptState(elwoodSessionId);
+    const definitions = validateLoopSidecar(JSON.parse(text));
+    if (definitions === null) throw corrupt();
     return definitions;
   } catch {
-    throw corruptState(elwoodSessionId);
+    throw corrupt();
   }
 }
 

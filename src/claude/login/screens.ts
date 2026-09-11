@@ -16,7 +16,7 @@ export const authUrlVisible =
 export const pasteCodePrompt = /paste code here/i;
 
 /** A successful login. */
-export const loginSucceeded = /login(?: successful| successful\.)|logged in as|login successful/i;
+export const loginSucceeded = /login successful|logged in as/i;
 
 /** An explicit login failure or a rejected/invalid authorization code. */
 export const loginFailed =

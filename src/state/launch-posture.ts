@@ -3,7 +3,7 @@
  * launched with. Implements PRD §5.2, §5.6, §8.2, C-STATE-13, and C-API-32.
  */
 
-import type { CodexApprovalPolicy, CodexSandboxMode } from "../codex/session-types.ts";
+import type { CodexApprovalPolicy, CodexSandboxMode } from "../codex/session/types.ts";
 import type { ClaudePermissionMode, ClaudeToolRule } from "../core/types.ts";
 import type { SessionRecord } from "./store.ts";
 
@@ -24,7 +24,9 @@ export type AdapterState<Posture> = {
   readonly launch?: Posture;
 };
 
-function compact<T extends object>(posture: { [K in keyof T]: T[K] | undefined }): T | undefined {
+export function compact<T extends object>(
+  posture: { [K in keyof T]: T[K] | undefined },
+): T | undefined {
   const entries = Object.entries(posture).filter((entry) => entry[1] !== undefined);
   return entries.length > 0 ? (Object.fromEntries(entries) as T) : undefined;
 }

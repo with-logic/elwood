@@ -83,7 +83,14 @@ export class TurnGate {
     this.oracle.observeText(text);
     this.reconcile();
   }
+  /**
+   * Feed one normalized boundary signal. `undefined` is NOT a boundary (a non-`Stop` hook such as
+   * `Notification` arriving after `Stop`) and leaves an installed oracle untouched — else late
+   * assistant text would fall through to the quiet window and leak into the next turn. A string
+   * installs the oracle; an empty one clears it (→ quiet settle).
+   */
   expectText(text: string | undefined): void {
+    if (text === undefined) return;
     // Installing a NON-EMPTY oracle after `ready` (the Stop hook can lag `ready`) must cancel any
     // quiet-window fallback already armed: the promised text now governs completion, so the turn
     // waits for it (or the catch-up cap), not a quiet settle.

@@ -8,7 +8,7 @@
  * once the CLI reports success AND the session is usable again.
  */
 
-import type { ScreenTerminal } from "../../core/tui-screen.ts";
+import type { ScreenTerminal } from "../../core/models/tui-screen.ts";
 import { awaitLoginOutcome, selectMethodIfShown } from "./stages.ts";
 import type { ClaudeLoginOptions } from "./types.ts";
 

@@ -20,7 +20,9 @@ export type SessionRuntime = {
   readonly sessionDir: string;
   readonly settingsPath: string;
   readonly bridgeScriptPath: string;
-  /** A fresh, short per-launch socket FILE inside the session's stable home (§8.1). */
+  /** The session's STABLE private socket home; teardown removes it whole (§8.1). */
+  readonly socketHome: string;
+  /** A fresh, short per-launch socket FILE inside `socketHome` (§8.1). */
   readonly socketPath: string;
   /** A fresh bridge token minted for this launch (§8.2). */
   readonly bridgeToken: string;
@@ -51,6 +53,7 @@ export function sessionRuntime(input: SessionRuntimeInput): SessionRuntime {
     sessionDir: dir,
     settingsPath: join(dir, `${adapter}-settings.json`),
     bridgeScriptPath: join(dir, "hook-bridge.mjs"),
+    socketHome,
     socketPath: join(socketHome, `${randomUUID().slice(0, 8)}.sock`),
     bridgeToken: newBridgeToken(),
   };

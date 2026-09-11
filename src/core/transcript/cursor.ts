@@ -58,6 +58,12 @@ export class BoundedTranscriptCursor {
     const size = fileSize(this.path);
     // Truncation restarts from 0, but the offset is COMMITTED only after the read
     // succeeds, so a truncate-then-read throw doesn't replay already-emitted data.
+    // The buffered partial line and any in-progress oversized discard belonged to
+    // the OLD file, so both reset with the cursor.
+    if (size < this.offset) {
+      this.pending = "";
+      this.discarding = false;
+    }
     const from = size < this.offset ? 0 : this.offset;
     if (size <= from) {
       this.offset = from;

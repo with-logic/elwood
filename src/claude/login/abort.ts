@@ -3,8 +3,11 @@
  * C-API-43). Every await in the driver races a single combined signal so the flow
  * settles on the FIRST of its overall deadline, a session-close abort, or the
  * awaited work itself — never hanging past the timeout or after termination.
+ * Every helper removes its abort listener once it settles, so a long flow that
+ * polls for minutes never pins listeners or pending promises on the signal.
  */
 
+import { setTimeout as sleep } from "node:timers/promises";
 import { elwoodError } from "../../core/errors.ts";
 
 const pollMs = 100;
@@ -40,40 +43,40 @@ export function abortError(signal: AbortSignal): Error {
     : elwoodError("login_timeout", "Claude /login did not complete in time.");
 }
 
-/** Reject as soon as `signal` aborts; used to race against interactive awaits. */
-export function abortRejection(signal: AbortSignal): Promise<never> {
-  return new Promise((_resolve, reject) => {
-    if (signal.aborted) {
-      reject(abortError(signal));
-      return;
-    }
-    signal.addEventListener("abort", () => reject(abortError(signal)), { once: true });
-  });
+/**
+ * Race a promise against the combined signal so it can never outlast the deadline.
+ * The abort listener is registered for the duration of the race only and removed
+ * in `finally`, whichever side settles first.
+ */
+export async function raceSettle<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) throw abortError(signal);
+  const rejection = Promise.withResolvers<never>();
+  const onAbort = () => rejection.reject(abortError(signal));
+  signal.addEventListener("abort", onAbort, { once: true });
+  try {
+    return await Promise.race([work, rejection.promise]);
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
 }
 
-/** Race a promise against the combined signal so it can never outlast the deadline. */
-export function raceSettle<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
-  return Promise.race([work, abortRejection(signal)]);
+/**
+ * Sleep `ms`, or reject early with the typed abort error if the signal aborts.
+ * The timer is unref'd and the abort listener is owned by the timer promise, so
+ * both are released as soon as the sleep settles either way.
+ */
+export async function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
+  try {
+    await sleep(ms, undefined, { signal, ref: false });
+  } catch {
+    // The only rejection `sleep` produces is the abort; surface it typed.
+    throw abortError(signal);
+  }
 }
 
 /** Sleep for one poll interval, or reject early if the signal aborts. */
 export function pollDelay(signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) {
-      reject(abortError(signal));
-      return;
-    }
-    const timer = setTimeout(resolve, pollMs);
-    timer.unref?.();
-    signal.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        reject(abortError(signal));
-      },
-      { once: true },
-    );
-  });
+  return abortableDelay(pollMs, signal);
 }
 
 /**

@@ -40,6 +40,7 @@ export class TurnBoundary {
     if (this.reached) return;
     this.reached = true;
     if (this.drainTimer) clearTimeout(this.drainTimer);
+    this.drainTimer = undefined; // so `draining` reports the truth once the boundary has landed
     this.resolve();
     this.onReach();
   }

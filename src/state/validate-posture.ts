@@ -8,7 +8,7 @@
  * each union and are checked against the public types at compile time below.
  */
 
-import type { CodexApprovalPolicy, CodexSandboxMode } from "../codex/session-types.ts";
+import type { CodexApprovalPolicy, CodexSandboxMode } from "../codex/session/types.ts";
 import type { ClaudePermissionMode } from "../core/types.ts";
 import type { ClaudeLaunchPosture, CodexLaunchPosture } from "./launch-posture.ts";
 import { isRecord, isStringArray } from "./validate-predicates.ts";

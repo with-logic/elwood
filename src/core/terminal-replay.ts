@@ -1,9 +1,11 @@
 /**
  * Live-only startup replay for terminal data and pre-return attention.
- * Implements PRD §5.3, §8.3, and C-CLI-05.
+ * Implements PRD §5.3, §8.3, and C-CLI-05. The buffer is bounded in BYTES (128 KB
+ * default) but trims on a UTF-8 code-point boundary, so a replayed `terminal:data`
+ * never opens with a split multibyte sequence decoded as U+FFFD.
  */
 
-import type { ElwoodActivityEvent } from "./activity.ts";
+import type { ElwoodActivityEvent } from "./activity/index.ts";
 
 type TerminalDataEvent = {
   readonly elwoodSessionId: string;
@@ -31,7 +33,7 @@ export class TerminalReplayBuffer {
       this.size -= Buffer.byteLength(this.chunks.shift()!);
     }
     if (this.size > this.maxBytes && this.chunks[0] !== undefined) {
-      this.chunks[0] = Buffer.from(this.chunks[0]).subarray(-this.maxBytes).toString("utf8");
+      this.chunks[0] = trimToCodePoint(Buffer.from(this.chunks[0]), this.maxBytes);
       this.size = Buffer.byteLength(this.chunks[0]);
     }
   }
@@ -64,4 +66,16 @@ export class TerminalReplayBuffer {
     }, 0);
     timer.unref?.();
   }
+}
+
+/**
+ * The last at-most-`maxBytes` bytes of `bytes`, decoded from a code-point boundary: a cut that
+ * lands inside a multibyte sequence skips its leading continuation bytes (0b10xxxxxx) so the
+ * kept tail is never shorter than the bound by more than one code point and never starts with
+ * U+FFFD.
+ */
+function trimToCodePoint(bytes: Buffer, maxBytes: number): string {
+  let start = bytes.length - maxBytes;
+  while (start < bytes.length && ((bytes[start] as number) & 0xc0) === 0x80) start += 1;
+  return bytes.subarray(start).toString("utf8");
 }

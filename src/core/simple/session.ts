@@ -3,12 +3,12 @@
  * Implements PRD §5.8.
  */
 
-import type { ElwoodActivityEvent } from "../activity.ts";
+import type { ElwoodActivityEvent } from "../activity/index.ts";
 import type { ElwoodAgentSession } from "../agent-session.ts";
 import { elwoodError, toError } from "../errors.ts";
 import type { SendOptions } from "../images/types.ts";
-import type { ElwoodLoopRequest } from "../loops/types.ts";
-import type { AgentModelOption } from "../model-rows.ts";
+import type { ElwoodLoopRequest, ElwoodLoopSnapshot } from "../loops/types.ts";
+import type { AgentModelOption } from "../models/rows.ts";
 import type {
   ActivityMatch,
   ElwoodSessionStatus,
@@ -151,14 +151,14 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
   async waitForActivity(match: ActivityMatch, timeoutMs?: number): Promise<ElwoodActivityEvent> {
     return (await this.start()).waitForActivity(match, timeoutMs);
   }
-  createLoop(request: ElwoodLoopRequest) {
-    return this.start().then((live) => live.createLoop(request));
+  async createLoop(request: ElwoodLoopRequest): Promise<ElwoodLoopSnapshot> {
+    return (await this.start()).createLoop(request);
   }
-  listLoops() {
-    return this.start().then((live) => live.listLoops());
+  async listLoops(): Promise<readonly ElwoodLoopSnapshot[]> {
+    return (await this.start()).listLoops();
   }
-  cancelLoop(loopId: string) {
-    return this.start().then((live) => live.cancelLoop(loopId));
+  async cancelLoop(loopId: string): Promise<void> {
+    return (await this.start()).cancelLoop(loopId);
   }
 
   /** Stop the underlying session, joining an in-flight lazy start (C-API-51). */

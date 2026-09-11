@@ -6,9 +6,9 @@
  * are recomputed at each launch and live in memory only.
  */
 
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { ElwoodError, elwoodError } from "../core/errors.ts";
+import { elwoodError, toError } from "../core/errors.ts";
 import {
   safeSessionDir,
   secureMkdir,
@@ -17,6 +17,7 @@ import {
   writeSharedFile,
 } from "./files.ts";
 import type { AdapterState, ClaudeLaunchPosture, CodexLaunchPosture } from "./launch-posture.ts";
+import { currentFileOwner, type FileOwner, readPrivateFile } from "./private-read.ts";
 import { removeSocketHome } from "./socket-home.ts";
 import { validateSessionRecord } from "./validate.ts";
 
@@ -73,24 +74,29 @@ export function writeSessionRecord(record: SessionRecord, sessionDir: string): v
   writePrivateFileAtomic(recordPath(sessionDir), `${JSON.stringify(record, null, 2)}\n`);
 }
 
-export function readSessionRecord(stateDir: string, id: string): SessionRecord {
-  const dir = safeSessionDir(stateDir, id);
+/**
+ * Read a session record without following symlinks and only when it is a private
+ * regular file owned by `owner` (§8.2): a planted link or a shared/foreign-owned
+ * record is `state_corrupt`, never trusted for resume. Absence is `state_not_found`.
+ */
+export function readSessionRecord(
+  stateDir: string,
+  id: string,
+  owner: FileOwner | undefined = currentFileOwner(),
+): SessionRecord {
+  const corrupt = (cause: string) =>
+    elwoodError("state_corrupt", `Session state is corrupt for ${id}`, { cause });
+  const text = readPrivateFile(recordPath(safeSessionDir(stateDir, id)), owner, corrupt);
+  if (text === undefined) throw elwoodError("state_not_found", `No Elwood session found for ${id}`);
+  let raw: unknown;
   try {
-    const raw = JSON.parse(readFileSync(recordPath(dir), "utf8"));
-    const parsed = validateSessionRecord(raw, id);
-    if (!parsed) {
-      throw elwoodError("state_corrupt", `Session state is invalid for ${id}`);
-    }
-    return parsed;
+    raw = JSON.parse(text);
   } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-      throw elwoodError("state_not_found", `No Elwood session found for ${id}`);
-    }
-    if (error instanceof ElwoodError) throw error;
-    throw elwoodError("state_corrupt", `Session state is corrupt for ${id}`, {
-      cause: error instanceof Error ? error.message : String(error),
-    });
+    throw corrupt(toError(error).message);
   }
+  const parsed = validateSessionRecord(raw, id);
+  if (!parsed) throw elwoodError("state_corrupt", `Session state is invalid for ${id}`);
+  return parsed;
 }
 
 export function updateSessionResumeId(
@@ -105,7 +111,8 @@ export function updateSessionResumeId(
 export type RemoveSessionFilesInput = {
   readonly stateDir: string;
   readonly elwoodSessionId: string;
-  readonly socketPath: string;
+  /** The session's stable socket home directory (§8.1), removed whole. */
+  readonly socketHome: string;
 };
 
 /** Remove a session's derived directory AND its whole stable socket home (§8.1). */
@@ -116,7 +123,7 @@ export function removeSessionFiles(input: RemoveSessionFilesInput): void {
   // metadata + runtime files behind. Collect the first failure and report it after
   // both ran, so teardown removes everything it can and still surfaces the fault.
   let firstError: unknown;
-  firstError = tryRemove(() => removeSocketHome(input.socketPath), firstError);
+  firstError = tryRemove(() => removeSocketHome(input.socketHome), firstError);
   firstError = tryRemove(() => rmSync(dir, { recursive: true, force: true }), firstError);
   if (firstError !== undefined) {
     throw elwoodError("teardown_failed", "Could not remove Elwood session files.", {

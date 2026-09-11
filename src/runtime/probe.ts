@@ -5,8 +5,10 @@
  * `update`, or `--help` probe.
  */
 
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
+import { completeUtf8Length } from "../core/utf8.ts";
 import type { CommandResult } from "./seams.ts";
+import { rethrowUnlessGroupGone } from "./shutdown/reap-tree.ts";
 
 const defaultProbeTimeoutMs = 15_000;
 const maxProbeOutputBytes = 1_000_000;
@@ -27,11 +29,9 @@ class CappedBuffer {
   overflowed = false;
 
   append(chunk: Buffer): void {
+    // Once the cap is hit the probe is aborted and its pipes destroyed, so no chunk
+    // ever arrives after `overflowed` is set; the first over-cap chunk is the last.
     const remaining = maxProbeOutputBytes - this.byteLength;
-    if (remaining <= 0) {
-      this.overflowed = true;
-      return;
-    }
     if (chunk.length > remaining) {
       this.chunks.push(chunk.subarray(0, remaining));
       this.byteLength = maxProbeOutputBytes;
@@ -52,26 +52,6 @@ class CappedBuffer {
   }
 }
 
-/**
- * Returns the length of the longest prefix of `bytes` that ends on a complete
- * UTF-8 code point, dropping at most a 3-byte incomplete trailing sequence.
- * Exported for focused boundary tests (C-PERF-03).
- */
-export function completeUtf8Length(bytes: Buffer): number {
-  const end = bytes.length;
-  // Scan back over continuation bytes (0b10xxxxxx) to the lead byte.
-  let lead = end - 1;
-  while (lead >= 0 && (bytes[lead] as number) >= 0x80 && (bytes[lead] as number) < 0xc0) lead--;
-  if (lead < 0) return end;
-  const leadByte = bytes[lead] as number;
-  // ASCII byte is itself complete.
-  if (leadByte < 0x80) return end;
-  // The scan stopped on a lead byte (>= 0xc0), so it heads a 2-, 3-, or 4-byte
-  // sequence. Keep all if that sequence is complete; else drop the partial lead.
-  const expected = leadByte >= 0xf0 ? 4 : leadByte >= 0xe0 ? 3 : 2;
-  return end - lead === expected ? end : lead;
-}
-
 export function runProbe(command: string, args: readonly string[]): Promise<CommandResult> {
   return new Promise((resolve) => {
     // Probe shells are interactive so they load the same user PATH as the PTY launch. Give
@@ -83,12 +63,12 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
     const err = new CappedBuffer();
     let settled = false;
     // Kill only when WE abort the probe (timeout/overflow); a normal exit or
-    // spawn failure needs no signal (C-PERF-03, review-security).
+    // spawn failure needs no signal (C-PERF-03).
     const settle = (result: CommandResult, kill = false): void => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (kill) child.kill("SIGKILL");
+      if (kill) abortProbe(child);
       resolve(result);
     };
     const onData = (buffer: CappedBuffer) => (chunk: Buffer) => {
@@ -110,6 +90,27 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
     }, probeTimeoutMs);
     timer.unref?.();
   });
+}
+
+/**
+ * Aborts a probe Elwood gave up on. `detached: true` made the shell its own
+ * process-group leader, so SIGKILLing the GROUP (not just the shell pid) also
+ * reaches grandchildren such as an installer spawned under `claude update` via
+ * `zsh -l -i -c`; a survivor would otherwise inherit the stdio pipes, keep them
+ * open, and pin the host event loop long after the probe "timed out". The pipes
+ * are destroyed here for the same reason: nothing a killed probe still writes is
+ * wanted, and an open pipe alone keeps the loop alive.
+ */
+function abortProbe(child: ChildProcess): void {
+  try {
+    // A spawn failure settles via `error` on the next tick, before any timer or
+    // data can request a kill, so a killed child always has a pid.
+    process.kill(-(child.pid as number), "SIGKILL");
+  } catch (error) {
+    rethrowUnlessGroupGone(error);
+  }
+  child.stdout?.destroy();
+  child.stderr?.destroy();
 }
 
 function mapError(error: NodeJS.ErrnoException): {

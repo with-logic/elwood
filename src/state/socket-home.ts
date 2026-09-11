@@ -22,7 +22,7 @@
 import { createHash } from "node:crypto";
 import { chmodSync, lstatSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { elwoodError } from "../core/errors.ts";
 
 /** The ONE prefix every Elwood socket home carries (shared by creation + cleanup). */
@@ -41,17 +41,20 @@ export type SocketHomeIdentity = {
  * identity `(stateDir, id, adapter)` — short enough to keep the socket path under the
  * 104-byte cap, wide enough to make an accidental cross-session collision negligible.
  * Deterministic, so any launch of the session finds the same home; identity-scoped, so
- * a shared explicit id in a different state dir never aliases onto the same home.
+ * a shared explicit id in a different state dir never aliases onto the same home. The
+ * state dir is resolved first so equivalent spellings (relative, `..`, trailing slash)
+ * of one directory map to one home, matching how session dirs are keyed (§8.1).
  */
 export function sessionSocketHome(identity: SocketHomeIdentity): string {
-  const key = `${identity.stateDir}\0${identity.adapter}\0${identity.elwoodSessionId}`;
+  const stateDir = resolve(identity.stateDir);
+  const key = `${stateDir}\0${identity.adapter}\0${identity.elwoodSessionId}`;
   const fingerprint = createHash("sha256").update(key).digest("hex").slice(0, 16);
   return join(tmpdir(), `${SOCKET_HOME_PREFIX}${fingerprint}`);
 }
 
-/** Whether `socketPath` lives in a home this naming scheme minted (owned cleanup). */
-export function ownsSocketHome(socketPath: string): boolean {
-  return basename(dirname(socketPath)).startsWith(SOCKET_HOME_PREFIX);
+/** Whether `home` is a directory this naming scheme minted (owned cleanup). */
+export function ownsSocketHome(home: string): boolean {
+  return basename(home).startsWith(SOCKET_HOME_PREFIX);
 }
 
 /**
@@ -91,7 +94,7 @@ function lstatIfPresent(path: string): ReturnType<typeof lstatSync> | undefined 
  * it. Only removes files under a home this naming scheme owns.
  */
 export function removeOwnSocketFile(socketPath: string): void {
-  if (!ownsSocketHome(socketPath)) return;
+  if (!ownsSocketHome(dirname(socketPath))) return;
   rmSync(socketPath, { force: true });
 }
 
@@ -101,7 +104,7 @@ export function removeOwnSocketFile(socketPath: string): void {
  * TEARDOWN — the terminal, single-owner path — never on a failed overlapping launch.
  * Only removes homes this naming scheme owns; any other layout is left untouched.
  */
-export function removeSocketHome(socketPath: string): void {
-  if (!ownsSocketHome(socketPath)) return;
-  rmSync(dirname(socketPath), { recursive: true, force: true });
+export function removeSocketHome(home: string): void {
+  if (!ownsSocketHome(home)) return;
+  rmSync(home, { recursive: true, force: true });
 }

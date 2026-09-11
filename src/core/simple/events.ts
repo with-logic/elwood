@@ -5,7 +5,7 @@
  * never lifecycle/hook/warning telemetry, which stays on the underlying session events.
  */
 
-import type { ElwoodActivityEvent } from "../activity.ts";
+import type { ElwoodActivityEvent } from "../activity/index.ts";
 
 /** A simplified turn event surfaced by `stream` (a stable facade over activity kinds). */
 export type TurnEvent =

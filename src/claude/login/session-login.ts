@@ -7,10 +7,16 @@
  * aborts when the session closes. Kept out of the session file for the size cap.
  */
 
-import type { ControlQueue } from "../../core/control-queue.ts";
-import { commandEnterDelayMs } from "../../core/session-input.ts";
-import type { ScreenTerminal } from "../../core/tui-screen.ts";
-import { abortError, deadlineSignal, holdWhileBlocked, raceSettle } from "./abort.ts";
+import type { ControlQueue } from "../../core/control-queue/index.ts";
+import { commandEnterDelayMs } from "../../core/input/index.ts";
+import type { ScreenTerminal } from "../../core/models/tui-screen.ts";
+import {
+  abortableDelay,
+  abortError,
+  deadlineSignal,
+  holdWhileBlocked,
+  raceSettle,
+} from "./abort.ts";
 import { driveLogin } from "./driver.ts";
 import { type ClaudeLoginOptions, defaultLoginTimeoutMs } from "./types.ts";
 
@@ -120,10 +126,6 @@ async function submitLoginCommand(
 ): Promise<void> {
   await holdWhileBlocked(deps.blocked, signal);
   await raceSettle(Promise.resolve(deps.terminal.sendInput(command)), signal);
-  await raceSettle(delay(commandEnterDelayMs), signal);
+  await abortableDelay(commandEnterDelayMs, signal);
   await raceSettle(Promise.resolve(deps.terminal.sendInput("\r")), signal);
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

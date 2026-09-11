@@ -81,8 +81,9 @@ export function runTurn(
     acceptReady: () => gate.observeReady(),
     fail: (error) => gate.fail(toError(error)),
   });
+  // Bound to the first content event that CARRIES a `turnId` (Codex tags; Claude never does);
+  // untagged events always belong to this turn, a differently tagged one is a prior turn's.
   let turnId: string | undefined;
-  let bound = false;
   // The turn only ENDS on a settle once it has demonstrably STARTED — a `running` status or
   // the first content event — so the idle `ready` the session sits at when the prompt is
   // submitted does not end the turn before any work runs. This (with the serializer holding
@@ -113,10 +114,9 @@ export function runTurn(
   const offActivity = session.on("activity", (event) => {
     const simple = toTurnEvent(event);
     if (simple || (event.kind === "user_message" && event.text === prompt)) acceptance.accept();
-    if (!bound && simple) {
-      bound = true;
+    if (simple) {
       started = true;
-      turnId = event.turnId;
+      turnId ??= event.turnId; // bind on the FIRST tagged event, not merely the first event
     }
     if (simple && (event.turnId === undefined || event.turnId === turnId)) {
       // Queue the event FIRST, then feed the oracle: observeText can end() the turn, and
@@ -130,8 +130,10 @@ export function runTurn(
   const readBoundarySignal = options.readBoundarySignal ?? defaultBoundarySignal;
   const offHook = session.on("hook", (event) => {
     // The adapter NORMALIZES its raw hook into the completeness signal (the expected final
-    // assistant text). The core reads only that — never raw hook fields. Used as a completeness
-    // ORACLE only (never displayed — respects C-CLAUDE-15).
+    // assistant text of a turn-BOUNDARY hook; `undefined` for any other hook, which the gate
+    // ignores so a late `Notification` cannot wipe an installed oracle). The core reads only
+    // that — never raw hook fields. Used as a completeness ORACLE only (never displayed —
+    // respects C-CLAUDE-15).
     if (defaultAcceptanceSignal(event, prompt)) acceptance.accept();
     gate.expectText(readBoundarySignal(event));
   });
@@ -176,6 +178,7 @@ export function runTurn(
         () => gate.fail(elwoodError("wait_timeout", "turn timed out")),
         options.timeoutMs,
       );
+      timer.unref?.(); // a pending ceiling must not keep the host alive by itself
     }
     try {
       await gate.done(); // resolves on genuine settle (→ boundary); rejects on consumer failure

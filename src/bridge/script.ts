@@ -46,9 +46,15 @@ function finish() {
   try {
     const parsed = JSON.parse(response || "{}");
     finished = true;
+    // Set the exit code and let the event loop drain rather than calling
+    // process.exit() synchronously: pipe writes are asynchronous on macOS, so a
+    // synchronous exit could truncate a decision larger than the pipe buffer
+    // (~64 KiB) before Claude read it. Destroying the socket releases the last
+    // handle, so the process exits on its own once stdout/stderr have flushed.
+    process.exitCode = typeof parsed.exitCode === "number" ? parsed.exitCode : 0;
     if (parsed.stdout) process.stdout.write(parsed.stdout);
     if (parsed.stderr) process.stderr.write(parsed.stderr);
-    process.exit(typeof parsed.exitCode === "number" ? parsed.exitCode : 0);
+    client.destroy();
   } catch {}
 }
 
