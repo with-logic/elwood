@@ -852,11 +852,27 @@ dialog::backdrop {
   transition:
     transform 0.2s,
     background 0.2s,
+    border-color 0.2s,
     opacity 0.2s;
   backdrop-filter: blur(1px);
+  /* A slow, shallow drift toward the hover colour: enough to read as
+     clickable, not enough to compete with the robot for attention. */
+  animation: play-pulse 4.5s ease-in-out infinite;
+}
+@keyframes play-pulse {
+  0%,
+  100% {
+    background: #f9f8f01a;
+    border-color: #f9f8f0aa;
+  }
+  50% {
+    background: #4a34291a;
+    border-color: #b9a093aa;
+  }
 }
 .terminal:hover .terminal-play,
 .terminal:focus-visible .terminal-play {
+  animation: none;
   opacity: 1;
   background: var(--signal);
   border-color: var(--signal);
