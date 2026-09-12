@@ -347,9 +347,9 @@ body:before {
   text-align: center;
 }
 .install h2 {
-  font: 400 clamp(22px, 2.2vw, 34px) / 1.2 var(--display);
-  letter-spacing: -0.015em;
-  margin: 0 0 28px;
+  font: 400 clamp(42px, 5.6vw, 92px) / 1.02 var(--display);
+  letter-spacing: -0.022em;
+  margin: 0 0 34px;
 }
 .install-command {
   display: inline-flex;
@@ -732,7 +732,7 @@ dialog::backdrop {
     padding: 20px 24px;
   }
   .install h2 {
-    font-size: 20px;
+    font-size: 44px;
   }
   .install-command code {
     font-size: 12px;
