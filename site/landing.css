@@ -58,8 +58,12 @@ button:disabled {
   opacity: 0.4;
   cursor: wait;
 }
+/* The `hidden` attribute is how scripts hide controls (the touch pad, the
+   error line). It must outrank any later component rule that sets `display`,
+   so this is a deliberate exception to the no-!important rule. */
 [hidden] {
-  display: none;
+  /* biome-ignore lint/complexity/noImportantStyles: hidden must beat component display rules */
+  display: none !important;
 }
 body:before {
   content: "";
@@ -352,6 +356,56 @@ body:before {
   margin: 0;
   columns: 2;
   column-gap: 7%;
+}
+.install {
+  max-width: 1280px;
+  margin: auto;
+  padding: 30px 6% 20px;
+  text-align: center;
+}
+.install h2 {
+  font: 400 clamp(22px, 2.2vw, 34px) / 1.2 var(--display);
+  letter-spacing: -0.015em;
+  margin: 0 0 28px;
+}
+.install-command {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  border-radius: 3px;
+  overflow: hidden;
+  max-width: 100%;
+}
+.install-command code {
+  font: 15px / 1 var(--mono);
+  color: #f5f1e5;
+  padding: 18px 22px;
+  white-space: nowrap;
+  overflow-x: auto;
+  display: flex;
+  align-items: center;
+}
+.install-copy {
+  border: 0;
+  border-left: 1px solid #4e5344;
+  background: transparent;
+  color: #c6cfb9;
+  font: 11px var(--mono);
+  padding: 0 18px;
+  white-space: nowrap;
+}
+.install-copy:hover {
+  background: var(--signal);
+  color: var(--paper);
+}
+.install-note {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 18px 0 0;
+}
+.install-note code {
+  font-size: 12px;
 }
 .ways {
   max-width: 1280px;
@@ -690,6 +744,16 @@ dialog::backdrop {
   }
   .thesis {
     padding: 65px 24px 30px;
+  }
+  .install {
+    padding: 20px 24px;
+  }
+  .install h2 {
+    font-size: 20px;
+  }
+  .install-command code {
+    font-size: 12px;
+    padding: 14px 16px;
   }
   .thesis-title {
     font-size: 44px;

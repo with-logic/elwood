@@ -364,6 +364,21 @@ new IntersectionObserver(
 document.fonts.ready.then(resize);
 resize();
 
+// The install command is the one thing most visitors want to take with them.
+for (const button of document.querySelectorAll(".install-copy")) {
+  button.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(button.dataset.command);
+      button.textContent = "Copied";
+    } catch {
+      button.textContent = "Copy failed";
+    }
+    setTimeout(() => {
+      button.textContent = "Copy";
+    }, 2000);
+  });
+}
+
 let terminalDemo;
 terminal.addEventListener("click", async () => {
   try {
