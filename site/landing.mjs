@@ -8,7 +8,6 @@ const dialog = document.querySelector("#robot-help");
 const title = document.querySelector(".hero-title");
 const terminal = document.querySelector(".terminal");
 const errorLabel = document.querySelector(".robot-error");
-const touch = document.querySelector(".touch-pad");
 const pauseButtons = [
   ...document.querySelectorAll('[data-action="pause"], [data-command="pause"]'),
 ];
@@ -20,7 +19,6 @@ let resizing = false;
 let booted = false;
 let visible = true;
 let previousFocus = null;
-const coarse = matchMedia("(pointer: coarse)").matches;
 
 const scene = new LandingScene(canvas, {
   onReady() {
@@ -41,7 +39,6 @@ const scene = new LandingScene(canvas, {
   onMode(mode) {
     if (mode === "manual") hero.dataset.manual = "";
     else delete hero.dataset.manual;
-    if (coarse) touch.hidden = mode !== "manual";
   },
 });
 
@@ -202,7 +199,6 @@ function play() {
   hero.scrollIntoView({ block: "start", behavior: "instant" });
   scene.resumePlayback();
   scene.interact();
-  if (coarse) touch.hidden = false;
 }
 document.querySelector('[data-action="play"]').addEventListener("click", play);
 for (const button of pauseButtons) button.addEventListener("click", togglePaused);

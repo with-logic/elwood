@@ -58,8 +58,8 @@ button:disabled {
   opacity: 0.4;
   cursor: wait;
 }
-/* The `hidden` attribute is how scripts hide controls (the touch pad, the
-   error line). It must outrank any later component rule that sets `display`,
+/* The `hidden` attribute is how scripts hide controls (the error line, the
+   robot grip). It must outrank any later component rule that sets `display`,
    so this is a deliberate exception to the no-!important rule. */
 [hidden] {
   /* biome-ignore lint/complexity/noImportantStyles: hidden must beat component display rules */
@@ -316,23 +316,6 @@ body:before {
   text-align: center;
   background: var(--paper);
   padding: 10px;
-}
-.touch-pad {
-  position: absolute;
-  bottom: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 7;
-  gap: 6px;
-  display: flex;
-}
-.touch-pad button {
-  background: var(--paper);
-  border: 1px solid var(--rule);
-  min-height: 42px;
-  min-width: 42px;
-  padding: 8px;
-  touch-action: none;
 }
 .thesis {
   max-width: 1280px;
@@ -824,12 +807,6 @@ dialog::backdrop {
   .help-actions button {
     font-size: 10px;
     padding: 10px;
-  }
-  .touch-pad {
-    bottom: auto;
-    top: 80px;
-    left: 20px;
-    transform: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
