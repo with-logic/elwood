@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="site/assets/landing/robot.webp" alt="" width="96" />
+  <img src="site/assets/landing/icon-512.webp" alt="" width="96" height="96" />
   <h1>Elwood</h1>
 </div>
 
