@@ -1,6 +1,6 @@
 /**
  * Static production help for the first-party headless Elwood command.
- * Implements PRD §12A.1/§12A.7-§12A.10 and C-CLI-02/C-CLI-21 through C-CLI-24.
+ * Implements PRD §12A.1/§12A.7-§12A.10 and C-CLI-02/C-CLI-21 through C-CLI-26.
  */
 
 export const cliHelp = `Usage: elwood [options] [prompt...]

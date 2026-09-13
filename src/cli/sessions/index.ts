@@ -1,7 +1,7 @@
 /**
  * `elwood sessions`: list CLI-owned session records as a table or one JSON document
  * without launching an agent.
- * Implements PRD §12A.8 and C-CLI-22.
+ * Implements PRD §12A.8 and C-CLI-24.
  */
 
 import type { ParsedListCommand } from "../command-types.ts";
@@ -39,7 +39,7 @@ export async function runSessionsCommand(
   dependencies: SessionsCommandDependencies = defaults,
 ): Promise<number> {
   // `sessions` reads only `stateDir` and `output`, so it resolves with a detector
-  // that never probes: listing records must not touch the login shell (C-CLI-22).
+  // that never probes: listing records must not touch the login shell (C-CLI-24).
   const settings = await resolveRunSettings(parsed.run, context, listingAgent);
   assertListingOutput(settings, "sessions");
   const clean = createCliSanitizer();

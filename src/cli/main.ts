@@ -1,6 +1,6 @@
 /**
  * Side-effect-free routing for metadata, config, listing, interactive, and headless execution.
- * Implements PRD §12A and C-CLI-02/C-CLI-11/C-CLI-14/C-CLI-17/C-CLI-21 through C-CLI-24.
+ * Implements PRD §12A and C-CLI-02/C-CLI-11/C-CLI-14/C-CLI-17/C-CLI-21 through C-CLI-26.
  */
 
 import { parseCliArgs } from "./args/index.ts";

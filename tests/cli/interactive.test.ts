@@ -1,7 +1,7 @@
 /**
  * Interactive-mode TTY gating, resume lookup, SIGINT hand-off, and the foreground
  * spawner against real local processes.
- * Covers PRD §12A.9 and C-CLI-23.
+ * Covers PRD §12A.9 and C-CLI-25.
  */
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -33,7 +33,7 @@ function parsed(argv: readonly string[]): ParsedInteractiveCommand {
 async function* emptyStdin(): AsyncGenerator<string> {}
 
 describe("runInteractiveCommand", () => {
-  test("C-CLI-23 requires terminal stdin and stdout before resolving anything", async () => {
+  test("C-CLI-25 requires terminal stdin and stdout before resolving anything", async () => {
     const signals = new FakeSignals();
     const base = { env: {}, invocationCwd: tmpdir(), homeDir: tmpdir(), signals };
     const dependencies = {
@@ -59,7 +59,7 @@ describe("runInteractiveCommand", () => {
     ).rejects.toThrow("interactive requires terminal stdin and stdout.");
   });
 
-  test("C-CLI-23 spawns the resolved launch with SIGINT ignored, then releases the handler", async () => {
+  test("C-CLI-25 spawns the resolved launch with SIGINT ignored, then releases the handler", async () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-interactive-"));
     roots.push(root);
     const signals = new FakeSignals();
@@ -104,7 +104,7 @@ describe("runInteractiveCommand", () => {
     expect(signals.handler).toBeUndefined();
   });
 
-  test("C-CLI-23 an id loads the stored record with resume semantics", async () => {
+  test("C-CLI-25 an id loads the stored record with resume semantics", async () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-interactive-"));
     roots.push(root);
     const stored = updateSessionResumeId(
@@ -156,7 +156,7 @@ describe("runInteractiveCommand", () => {
 });
 
 describe("spawnInteractiveAgent", () => {
-  test("C-CLI-23 returns the agent's own exit status from a real foreground process", async () => {
+  test("C-CLI-25 returns the agent's own exit status from a real foreground process", async () => {
     const launch = (args: readonly string[]): InteractiveLaunch => ({
       agent: "codex",
       command: "/bin/sh",
@@ -167,7 +167,7 @@ describe("spawnInteractiveAgent", () => {
     expect(await spawnInteractiveAgent(launch(["-c", "kill -TERM $$"]))).toBe(143);
   });
 
-  test("C-CLI-23 a missing or unstartable command maps to the adapter's error codes", async () => {
+  test("C-CLI-25 a missing or unstartable command maps to the adapter's error codes", async () => {
     await expect(
       spawnInteractiveAgent({
         agent: "claude",
@@ -185,7 +185,7 @@ describe("spawnInteractiveAgent", () => {
     ).rejects.toMatchObject({ code: "codex_start_failed" });
   });
 
-  test("C-CLI-23 exit status mapping covers signals without numbers", () => {
+  test("C-CLI-25 exit status mapping covers signals without numbers", () => {
     expect(exitStatus(0, null)).toBe(0);
     expect(exitStatus(null, "SIGINT")).toBe(130);
     expect(exitStatus(null, null)).toBe(1);

@@ -1,6 +1,6 @@
 /**
  * Process and PTY drivers for the compiled-CLI command e2e (sessions, resume, models,
- * interactive). Implements PRD §12A.7-§12A.10 and C-CLI-21 through C-CLI-24.
+ * interactive). Implements PRD §12A.7-§12A.10 and C-CLI-23 through C-CLI-26.
  */
 
 import { spawn } from "node:child_process";

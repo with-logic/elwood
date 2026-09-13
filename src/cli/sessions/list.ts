@@ -1,7 +1,7 @@
 /**
  * Enumerates CLI-owned session records with timestamps and a socket-presence
  * liveness signal, skipping (never failing on) unreadable records.
- * Implements PRD §12A.8 and C-CLI-22.
+ * Implements PRD §12A.8 and C-CLI-24.
  */
 
 import { readdirSync, statSync } from "node:fs";

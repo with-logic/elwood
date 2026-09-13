@@ -62,7 +62,7 @@ describe("CLI process adapter", () => {
   });
 });
 
-test("C-CLI-23 binds terminal stdout so interactive mode can require a TTY", async () => {
+test("C-CLI-25 binds terminal stdout so interactive mode can require a TTY", async () => {
   const stdout = Object.assign(new MemoryWriter(), { isTTY: true });
   const proc: CliProcess = {
     argv: ["node", "entry", "interactive"],

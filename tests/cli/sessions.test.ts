@@ -1,6 +1,6 @@
 /**
  * The sessions command's table, JSON, empty, skipped-record, and JSONL-rejection paths.
- * Covers PRD §12A.8 and C-CLI-22.
+ * Covers PRD §12A.8 and C-CLI-24.
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -37,7 +37,7 @@ function harness(env: Readonly<Record<string, string>> = {}) {
 }
 
 describe("runSessionsCommand", () => {
-  test("C-CLI-22 renders an aligned table and warns about skipped records on stderr", async () => {
+  test("C-CLI-24 renders an aligned table and warns about skipped records on stderr", async () => {
     const stateDir = stateRoot();
     plant(stateDir, "s-one", "claude", { resumeId: "c1", lastUsed: 1_800_000_000_000 });
     plant(stateDir, "s-two", "codex", { lastUsed: 1_700_000_000_000 });
@@ -61,7 +61,7 @@ describe("runSessionsCommand", () => {
     expect(h.stderr.value).not.toContain("\u001b");
   });
 
-  test("C-CLI-22 emits one JSON document and an empty array for an empty state directory", async () => {
+  test("C-CLI-24 emits one JSON document and an empty array for an empty state directory", async () => {
     const stateDir = join(stateRoot(), "unused");
     const h = harness();
     expect(
@@ -79,7 +79,7 @@ describe("runSessionsCommand", () => {
     expect(h.stderr.value).toBe("");
   });
 
-  test("C-CLI-22 empty text listing writes only a stderr notice", async () => {
+  test("C-CLI-24 empty text listing writes only a stderr notice", async () => {
     const stateDir = stateRoot();
     const h = harness();
     expect(await runSessionsCommand(sessionsCommand(["--state-dir", stateDir]), h.context)).toBe(0);
@@ -87,7 +87,7 @@ describe("runSessionsCommand", () => {
     expect(h.stderr.value).toBe(`No Elwood sessions in ${stateDir}.\n`);
   });
 
-  test("C-CLI-22 rejects JSONL from a flag or an inherited source by name", async () => {
+  test("C-CLI-24 rejects JSONL from a flag or an inherited source by name", async () => {
     const stateDir = stateRoot();
     await expect(
       runSessionsCommand(

@@ -1,6 +1,6 @@
 /**
  * Parses Elwood's hybrid direct/explicit command grammar without side effects.
- * Implements PRD §12A.1/§12A.7-§12A.10 and C-CLI-02/C-CLI-04/C-CLI-06/C-CLI-23.
+ * Implements PRD §12A.1/§12A.7-§12A.10 and C-CLI-02/C-CLI-04/C-CLI-06/C-CLI-23 through C-CLI-26.
  */
 
 import { parseArgs } from "node:util";

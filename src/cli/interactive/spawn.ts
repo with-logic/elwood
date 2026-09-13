@@ -1,7 +1,7 @@
 /**
  * Foreground agent spawning for `elwood interactive`: inherited stdio, no PTY, no
  * observation, the agent's own exit status.
- * Implements PRD §12A.9 and C-CLI-23.
+ * Implements PRD §12A.9 and C-CLI-25.
  */
 
 import { spawn } from "node:child_process";

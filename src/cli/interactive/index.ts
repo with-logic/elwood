@@ -1,7 +1,7 @@
 /**
  * `elwood interactive [id]`: resolve Elwood settings, then run the agent's own CLI in
  * the foreground with no PTY, bridge, automation, observation, or state writes.
- * Implements PRD §12A.9 and C-CLI-23.
+ * Implements PRD §12A.9 and C-CLI-25.
  */
 
 import { readPrivateSessionRecord } from "../../state/private-session.ts";

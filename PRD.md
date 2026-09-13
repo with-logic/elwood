@@ -2863,7 +2863,11 @@ arguments is another exact top-level help form and MUST NOT read piped or termin
 stdin. `elwood run` remains an explicit run and therefore requires prompt input,
 including when that input comes only from piped stdin.
 
-<<<<<<< HEAD
+`resume`, `interactive`, `sessions`, and `models` are further first-argument
+commands with the same reservation rule; they are specified in §12A.7 through
+§12A.10. Each accepts `-h`/`--help` and prints the top-level help without
+reading configuration or launching an agent.
+
 A new session defaults to the invocation directory; `-C`/`--cwd` overrides it.
 When no flag, environment variable, or configuration key selects an agent, a
 new session auto-detects one: Elwood tries `claude` first, then `codex`, and
@@ -2883,16 +2887,6 @@ with the auto-detected agent, and the recovery additionally offers selecting the
 other adapter with `--agent`. Resume never auto-detects; it uses the stored
 adapter. Elwood MUST fail when the selected adapter is unavailable and MUST NOT
 silently fall back to another adapter.
-=======
-`resume`, `interactive`, `sessions`, and `models` are further first-argument
-commands with the same reservation rule; they are specified in §12A.7 through
-§12A.10. Each accepts `-h`/`--help` and prints the top-level help without
-reading configuration or launching an agent.
-
-A new session defaults to Codex and the invocation directory. `-C`/`--cwd`
-overrides that directory. Elwood MUST fail when the selected adapter is
-unavailable and MUST NOT silently fall back to another adapter.
->>>>>>> e8930e4 (feat(cli): add sessions, resume, interactive and models subcommands)
 
 Non-empty piped stdin is appended to positional prompt text after one blank
 line; terminal stdin is never read. Whitespace-only input is a usage error.
@@ -3534,15 +3528,12 @@ Each criterion has:
 | C-CLI-18 | §12A.6 | `--head` fails before launch without terminal stdin/stderr and rejects stream/verbose/debug/JSONL; otherwise it mirrors ordered raw PTY bytes (including full-screen VT/ANSI control sequences) only to terminal stderr, uses and follows its size, keeps final text/JSON stdout clean, treats raw Ctrl-C like SIGINT, and restores terminal input/display modes before final output on every handled outcome. Outstanding mirror work is capped at 4 MiB or 1,024 frames; overflow fails the run after draining accepted bytes and restoring the terminal instead of growing memory without bound. A terminal-gone error from an input handle already closed by its host is contained because only that host can then restore the terminal, and it does not replace a completed result. |
 | C-CLI-19 | §12A.4 | `config effective` prints validated effective launch/output values (including `head` and the full Claude tool posture) with config location/load state and per-setting provenance (including `auto-detected` for a probed agent), supports exact stored resume inspection using the same posture merge as launch, reads no prompt input, and starts no agent. |
 | C-CLI-20 | §12A.5 | Text validation errors use user-facing language, identify relevant paths and inherited-setting sources, suggest an unambiguous nearby long option, and retain the stable structured error code. |
-<<<<<<< HEAD
 | C-CLI-21 | §12A.1 §12A.4 | When no flag, environment variable, or config key selects an agent, a new session (and `config effective`) probes the user's login shell for `claude` and `codex` concurrently and uses the first in that order whose command resolves, reporting source `auto-detected`; the probe never runs an agent, resume never probes, and when neither resolves the invocation fails before launch with code `no_agent_found` and status 2, naming both agents, an install hint, and the `--agent`/`ELWOOD_AGENT`/config selection paths. A probe that cannot run (missing or broken login shell, probe timeout) fails with the same code and status but names the shell and underlying error rather than claiming no agent is installed; adapter-option conflicts with an auto-detected agent say so and offer `--agent` for the other adapter. |
 | C-CLI-22 | §12A.2 §12A.4 | `--high-trust` / `--no-high-trust`, `ELWOOD_HIGH_TRUST` (strict boolean), and the `highTrust` config key layer with normal precedence and expand, for the effective adapter, to Claude `bypassPermissions` or Codex `danger-full-access` + `never`; an effective flag/environment `true` combined with an explicit per-agent posture flag or variable is a usage error naming both sources on new and resumed runs; saved per-agent posture keys are overridden by high trust while a saved `highTrust` yields field by field to explicit per-agent flags/variables; and `config effective` reports `highTrust` plus posture values whose source is the deciding high-trust source. |
-=======
-| C-CLI-21 | §12A.7 | `elwood resume <id> [options] [prompt...]` is a parse-time rewrite of `elwood run --resume <id>` sharing one resolution/execution path: stored adapter and workspace loading, `--cwd`/explicit-adapter/`--keep`/persona/`--ephemeral` rules, and positional-plus-piped prompt composition are identical; a missing id or an additional `--resume` is a usage error. |
-| C-CLI-22 | §12A.8 | `elwood sessions` lists private, owner-matched session records under the effective state directory without launching an agent, reporting id, adapter, workspace, ISO-8601 `createdAt`/`lastUsedAt`, `resumable`, and socket-presence `live`, ordered by most recent use; unreadable records are skipped with a stderr warning, an empty or absent state directory is a status-0 empty listing (stderr notice in text, empty array in JSON), text is an aligned header table, JSON is one version-1 `sessions` document, and JSONL, prompt words, or other run options are usage errors. |
-| C-CLI-23 | §12A.9 | `elwood interactive [id]` spawns the selected agent's own CLI in the foreground with inherited stdio, no PTY/bridge/automation/state, `SIGINT` passed through, and the agent's exit status; it fails with status 2 before spawning without terminal stdin and stdout or with `--output json|jsonl`, `--stream`, `--verbose`, `--debug`, `--head`, `--timeout`, `--persona`, `--image`, `--keep`, `--ephemeral`, `--resume`, or extra positionals; explicitly selected agent, model, effort, workspace, and posture map through the adapters' shared launch-argument builders while built-in posture defaults are omitted; and `[id]` loads the stored record with `--resume` semantics, merges stored posture field by field, and passes the agent's own conversation id or fails as `resume_unavailable`. |
-| C-CLI-24 | §12A.10 | `elwood models` starts a fresh headless session with normal setting precedence, lists models through the public picker operation without changing the model, always tears the session and its state down, prints an aligned table (`*` current, `(default)`) or one version-1 `models` document of `AgentModelOption` rows, maps timeout/interruption/blocked-prompt/agent-exit/picker failures to the existing error conventions and statuses, and rejects stream, head, persona, image, keep, resume, ephemeral, positional, and JSONL inputs as usage errors. |
->>>>>>> e8930e4 (feat(cli): add sessions, resume, interactive and models subcommands)
+| C-CLI-23 | §12A.7 | `elwood resume <id> [options] [prompt...]` is a parse-time rewrite of `elwood run --resume <id>` sharing one resolution/execution path: stored adapter and workspace loading, `--cwd`/explicit-adapter/`--keep`/persona/`--ephemeral` rules, and positional-plus-piped prompt composition are identical; a missing id or an additional `--resume` is a usage error. |
+| C-CLI-24 | §12A.8 | `elwood sessions` lists private, owner-matched session records under the effective state directory without launching an agent, reporting id, adapter, workspace, ISO-8601 `createdAt`/`lastUsedAt`, `resumable`, and socket-presence `live`, ordered by most recent use; unreadable records are skipped with a stderr warning, an empty or absent state directory is a status-0 empty listing (stderr notice in text, empty array in JSON), text is an aligned header table, JSON is one version-1 `sessions` document, and JSONL, prompt words, or other run options are usage errors. |
+| C-CLI-25 | §12A.9 | `elwood interactive [id]` spawns the selected agent's own CLI in the foreground with inherited stdio, no PTY/bridge/automation/state, `SIGINT` passed through, and the agent's exit status; it fails with status 2 before spawning without terminal stdin and stdout or with `--output json|jsonl`, `--stream`, `--verbose`, `--debug`, `--head`, `--timeout`, `--persona`, `--image`, `--keep`, `--ephemeral`, `--resume`, or extra positionals; explicitly selected agent, model, effort, workspace, and posture map through the adapters' shared launch-argument builders while built-in posture defaults are omitted; and `[id]` loads the stored record with `--resume` semantics, merges stored posture field by field, and passes the agent's own conversation id or fails as `resume_unavailable`. |
+| C-CLI-26 | §12A.10 | `elwood models` starts a fresh headless session with normal setting precedence, lists models through the public picker operation without changing the model, always tears the session and its state down, prints an aligned table (`*` current, `(default)`) or one version-1 `models` document of `AgentModelOption` rows, maps timeout/interruption/blocked-prompt/agent-exit/picker failures to the existing error conventions and statuses, and rejects stream, head, persona, image, keep, resume, ephemeral, positional, and JSONL inputs as usage errors. |
 
 #### C-E2E: Real Adapter Flows (§12)
 

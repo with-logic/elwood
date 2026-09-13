@@ -1,6 +1,6 @@
 /**
  * Parsed shapes for the non-run first-argument commands.
- * Implements PRD §12A.7 through §12A.10 and C-CLI-21 through C-CLI-24.
+ * Implements PRD §12A.7 through §12A.10 and C-CLI-23 through C-CLI-26.
  */
 
 import type { ParsedRunCommand } from "./types.ts";

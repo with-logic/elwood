@@ -2,7 +2,7 @@
  * Session event wiring shared by the headless run and model-listing executors:
  * blocked-prompt classification, Codex update-prompt attention, status, warnings,
  * premature exit, and optional raw-frame mirroring.
- * Implements PRD §12A.2/§12A.10 and C-CLI-05/C-CLI-09/C-CLI-24.
+ * Implements PRD §12A.2/§12A.10 and C-CLI-05/C-CLI-09/C-CLI-26.
  */
 
 import { blockingTrustSpecs, trustPromptAllowlist } from "../../core/trust/prompts.ts";

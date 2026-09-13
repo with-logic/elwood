@@ -138,14 +138,15 @@ mirror the agent in its own xterm. A late subscriber first receives up to
 128 KB of replayed history as one chunk. `sendKeys(Uint8Array)` forwards a
 user's keystrokes verbatim.
 
-<<<<<<< HEAD
 **Status lifecycle.** `status` moves through `starting`, `ready`, `running`,
 and `blocked` (a dialog needs a human) and ends in `stopped`, `exited`,
 `killed`, or `torn_down`. Every real turn is a `running` to `ready` beat.
-=======
-ANSI terminal frames, raw hook payloads, screen contents, bridge credentials,
-and stacks are excluded from production output. Writes honor backpressure, and
-a downstream pipe closing early triggers cleanup without an uncaught `EPIPE`.
+
+**State directory.** Elwood keeps a minimal session record under
+`<cwd>/.elwood` by default, or under an explicit `stateDir`. It holds what
+resume needs and nothing else.
+
+## Headless CLI
 
 ### Live terminal view
 
@@ -332,11 +333,6 @@ timeouts, and cleanup options, run `examples/full.ts`:
 npm run example:full
 npm run example:full -- --agent codex --cwd . --prompt "Summarize this repo in one paragraph."
 ```
->>>>>>> e8930e4 (feat(cli): add sessions, resume, interactive and models subcommands)
-
-**State directory.** Elwood keeps a minimal session record under
-`<cwd>/.elwood` by default, or under an explicit `stateDir`. It holds what
-resume needs and nothing else.
 
 ## Hooks and policy
 

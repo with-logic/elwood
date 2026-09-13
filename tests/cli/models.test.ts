@@ -1,6 +1,6 @@
 /**
  * Model-listing executor: picker rows, protocols, and lifecycle failure mapping.
- * Covers PRD §12A.10 and C-CLI-24.
+ * Covers PRD §12A.10 and C-CLI-26.
  */
 
 import { describe, expect, test } from "vitest";
@@ -48,7 +48,7 @@ function harness(overrides: Partial<EffectiveRunRequest> = {}) {
 }
 
 describe("executeModels", () => {
-  test("C-CLI-24 prints an aligned table marking current and default, then tears down", async () => {
+  test("C-CLI-26 prints an aligned table marking current and default, then tears down", async () => {
     const h = harness();
     expect(await h.run()).toBe(0);
     expect(h.stdout.value).toBe(
@@ -65,7 +65,7 @@ describe("executeModels", () => {
     expect(h.stderr.value).toBe("");
   });
 
-  test("C-CLI-24 emits one sanitized JSON models document", async () => {
+  test("C-CLI-26 emits one sanitized JSON models document", async () => {
     const h = harness({ output: "json" });
     expect(await h.run()).toBe(0);
     const document = JSON.parse(h.stdout.value);
@@ -76,7 +76,7 @@ describe("executeModels", () => {
     expect(h.stdout.value.endsWith("\n")).toBe(true);
   });
 
-  test("C-CLI-24 maps a picker failure to an error record with cleanup and status 1", async () => {
+  test("C-CLI-26 maps a picker failure to an error record with cleanup and status 1", async () => {
     const h = harness({ output: "json" });
     h.session.underlying.listModels = () => Promise.reject(new Error("picker failed"));
     expect(await h.run()).toBe(1);
@@ -92,7 +92,7 @@ describe("executeModels", () => {
     expect(h.session.teardowns).toBe(1);
   });
 
-  test("C-CLI-24 text failures go to stderr and cleanup failure changes the status", async () => {
+  test("C-CLI-26 text failures go to stderr and cleanup failure changes the status", async () => {
     const h = harness();
     h.session.cleanupError = new Error("nope");
     expect(await h.run()).toBe(1);
@@ -100,7 +100,7 @@ describe("executeModels", () => {
     expect(h.stderr.value).toBe("elwood: Cleanup failed.\n");
   });
 
-  test("C-CLI-24 a deadline during launch times out with status 124", async () => {
+  test("C-CLI-26 a deadline during launch times out with status 124", async () => {
     const h = harness({ timeoutMs: 50 });
     let release: (() => void) | undefined;
     h.session.underlying.listModels = () =>
@@ -117,7 +117,7 @@ describe("executeModels", () => {
     release?.();
   });
 
-  test("C-CLI-24 a deadline while the agent is still starting also times out", async () => {
+  test("C-CLI-26 a deadline while the agent is still starting also times out", async () => {
     const h = harness({ timeoutMs: 50, output: "json" });
     h.session.start = () => new Promise(() => undefined);
     const pending = h.run();
@@ -129,7 +129,7 @@ describe("executeModels", () => {
     expect(h.session.teardowns).toBe(1);
   });
 
-  test("C-CLI-24 SIGINT interrupts with status 130 and a blocked prompt fails as blocked_prompt", async () => {
+  test("C-CLI-26 SIGINT interrupts with status 130 and a blocked prompt fails as blocked_prompt", async () => {
     const interrupted = harness({ output: "json" });
     interrupted.session.underlying.listModels = () => {
       interrupted.signals.emit();
@@ -148,7 +148,7 @@ describe("executeModels", () => {
     expect(blocked.session.kills).toBe(1);
   });
 
-  test("C-CLI-24 a Claude listing needs no update guard and ignores status events", async () => {
+  test("C-CLI-26 a Claude listing needs no update guard and ignores status events", async () => {
     const h = harness({ agent: "claude", output: "json" });
     h.session.underlying.listModels = () => {
       h.session.emitter.emit("status", { elwoodSessionId: "s1", status: "running" });
@@ -159,7 +159,7 @@ describe("executeModels", () => {
     expect(h.stderr.value).toBe("");
   });
 
-  test("C-CLI-24 warnings and premature exit surface like a run", async () => {
+  test("C-CLI-26 warnings and premature exit surface like a run", async () => {
     const h = harness();
     h.session.underlying.listModels = () => {
       h.session.emitter.emit("warning", {

@@ -1,7 +1,7 @@
 /**
  * Maps an effective CLI request (plus an optional stored record) onto the agent's own
  * command line through the adapters' shared launch-argument builders.
- * Implements PRD §12A.9 and C-CLI-23.
+ * Implements PRD §12A.9 and C-CLI-25.
  */
 
 import { claudeLaunchArguments } from "../../claude/command.ts";

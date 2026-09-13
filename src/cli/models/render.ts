@@ -1,6 +1,6 @@
 /**
  * Table and JSON rendering for `elwood models`.
- * Implements PRD §12A.10 and C-CLI-24.
+ * Implements PRD §12A.10 and C-CLI-26.
  */
 
 import type { AgentModelOption } from "../../core/models/rows.ts";

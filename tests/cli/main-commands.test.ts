@@ -1,6 +1,6 @@
 /**
  * Routing for the sessions, interactive, and models commands through the CLI main.
- * Covers PRD §12A.7-§12A.10 and C-CLI-21 through C-CLI-24.
+ * Covers PRD §12A.7-§12A.10 and C-CLI-23 through C-CLI-26.
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 describe("CLI command routing", () => {
-  test("C-CLI-21 resume <id> resolves through the run path with the rewritten flags", async () => {
+  test("C-CLI-23 resume <id> resolves through the run path with the rewritten flags", async () => {
     const seen: ParsedRunCommand[] = [];
     const dependencies = mainDependencies({
       resolve: (parsed) => {
@@ -38,7 +38,7 @@ describe("CLI command routing", () => {
     expect(seen[0]).toMatchObject({ flags: { resume: "abc" }, promptWords: ["hello"] });
   });
 
-  test("C-CLI-22 sessions lists real state without resolving or preparing a run", async () => {
+  test("C-CLI-24 sessions lists real state without resolving or preparing a run", async () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-main-sessions-"));
     roots.push(root);
     const dependencies = mainDependencies({
@@ -65,7 +65,7 @@ describe("CLI command routing", () => {
     expect(rejected.stderr.value).toBe("elwood: --keep cannot be combined with sessions.\n");
   });
 
-  test("C-CLI-23 interactive delegates the parsed command and context, mapping failures", async () => {
+  test("C-CLI-25 interactive delegates the parsed command and context, mapping failures", async () => {
     const h = mainHarness();
     let received: unknown;
     const dependencies = mainDependencies({
@@ -96,7 +96,7 @@ describe("CLI command routing", () => {
     );
   });
 
-  test("C-CLI-24 models resolves settings, prepares a session, and runs the listing executor", async () => {
+  test("C-CLI-26 models resolves settings, prepares a session, and runs the listing executor", async () => {
     const h = mainHarness();
     const session = new FakeCliSession();
     const calls: string[] = [];
@@ -118,7 +118,7 @@ describe("CLI command routing", () => {
     expect(calls).toEqual(["settings:claude", "prepare:claude", "list:claude:true:object"]);
   });
 
-  test("C-CLI-24 models rejects JSONL and reports a failed preparation in the selected protocol", async () => {
+  test("C-CLI-26 models rejects JSONL and reports a failed preparation in the selected protocol", async () => {
     const jsonl = mainHarness();
     const dependencies = mainDependencies({
       settings: () =>
@@ -147,7 +147,7 @@ describe("CLI command routing", () => {
     });
   });
 
-  test("C-CLI-24 the default models executor loads the real implementation", async () => {
+  test("C-CLI-26 the default models executor loads the real implementation", async () => {
     const session = new FakeCliSession();
     session.underlying.listModels = () => Promise.resolve([]);
     const stdout = new MemoryWriter();

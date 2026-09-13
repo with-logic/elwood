@@ -1,6 +1,6 @@
 /**
  * Session listing over a real private state directory.
- * Covers PRD §12A.8 and C-CLI-22.
+ * Covers PRD §12A.8 and C-CLI-24.
  */
 
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -16,7 +16,7 @@ import { cleanupSessionFixtures, plant, roots, socketHomes, stateRoot } from "./
 afterEach(cleanupSessionFixtures);
 
 describe("listCliSessions", () => {
-  test("C-CLI-22 lists records most recently used first with timestamps, resumable, and live", () => {
+  test("C-CLI-24 lists records most recently used first with timestamps, resumable, and live", () => {
     const stateDir = stateRoot();
     plant(stateDir, "older", "codex", { lastUsed: 1_700_000_000_000 });
     plant(stateDir, "oldest-b", "codex", { lastUsed: 1_600_000_000_000 });
@@ -54,7 +54,7 @@ describe("listCliSessions", () => {
     expect(Date.parse(result.sessions[0]?.createdAt ?? "")).toBeGreaterThan(0);
   });
 
-  test("C-CLI-22 skips unreadable records and ignores non-directories", () => {
+  test("C-CLI-24 skips unreadable records and ignores non-directories", () => {
     const stateDir = stateRoot();
     plant(stateDir, "good", "codex");
     secureMkdir(sessionDir(stateDir, "broken"));
@@ -69,7 +69,7 @@ describe("listCliSessions", () => {
     );
   });
 
-  test("C-CLI-22 treats a missing sessions directory as empty and a corrupt one as an error", () => {
+  test("C-CLI-24 treats a missing sessions directory as empty and a corrupt one as an error", () => {
     const root = mkdtempSync(join(tmpdir(), "elwood-sessions-missing-"));
     roots.push(root);
     expect(listCliSessions(join(root, "absent"))).toEqual({ sessions: [], skipped: [] });

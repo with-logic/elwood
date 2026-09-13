@@ -2,7 +2,7 @@
  * `elwood models`: start one throwaway headless session, list its models through the
  * public picker operation, always tear it down, and render rows or an error record
  * under the run lifecycle's deadline, SIGINT, blocked-prompt, and cleanup rules.
- * Implements PRD §12A.10 and C-CLI-24.
+ * Implements PRD §12A.10 and C-CLI-26.
  */
 
 import type { AgentModelOption } from "../../core/models/rows.ts";

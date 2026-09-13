@@ -1,7 +1,7 @@
 /**
  * Compiled-process coverage for the sessions, resume, models, and interactive
  * commands against both real agents.
- * Implements PRD §12A.7-§12A.10 and C-CLI-21 through C-CLI-24.
+ * Implements PRD §12A.7-§12A.10 and C-CLI-23 through C-CLI-26.
  */
 
 import assert from "node:assert/strict";
@@ -44,7 +44,7 @@ type ResultDocument = {
 const skipTurns = turnsEnabled ? false : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
 
 for (const agent of ["claude", "codex"] as const) {
-  test(`C-CLI-21 C-CLI-22 elwood sessions lists a kept real ${agent} session and resume <id> continues it`, {
+  test(`C-CLI-23 C-CLI-24 elwood sessions lists a kept real ${agent} session and resume <id> continues it`, {
     skip: skipReason(agent) || skipTurns,
     timeout: e2eTimeoutMs * 2 + 30_000,
   }, async () => {
@@ -136,7 +136,7 @@ for (const agent of ["claude", "codex"] as const) {
     }
   });
 
-  test(`C-CLI-24 elwood models lists real ${agent} models and leaves no state behind`, {
+  test(`C-CLI-26 elwood models lists real ${agent} models and leaves no state behind`, {
     skip: skipReason(agent),
     timeout: e2eTimeoutMs + 30_000,
   }, async () => {
@@ -169,7 +169,7 @@ for (const agent of ["claude", "codex"] as const) {
     }
   });
 
-  test(`C-CLI-23 elwood interactive opens the real ${agent} TUI in a PTY and exits with its status`, {
+  test(`C-CLI-25 elwood interactive opens the real ${agent} TUI in a PTY and exits with its status`, {
     skip: skipReason(agent),
     timeout: e2eTimeoutMs + 30_000,
   }, async () => {
@@ -185,7 +185,7 @@ for (const agent of ["claude", "codex"] as const) {
   });
 }
 
-test("C-CLI-23 elwood interactive refuses a non-terminal stdin with status 2", async () => {
+test("C-CLI-25 elwood interactive refuses a non-terminal stdin with status 2", async () => {
   const result = await invoke(["interactive", "--agent=codex"], tmpdir());
   assert.equal(result.status, 2);
   assert.match(result.stderr, /interactive requires terminal stdin and stdout/);

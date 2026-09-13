@@ -2,7 +2,7 @@
  * Parse-time handling for the `resume`, `interactive`, `sessions`, and `models`
  * commands: `resume` rewrites onto the run path, the others reuse the run option
  * grammar and reject the options that have no meaning for them.
- * Implements PRD §12A.7-§12A.10 and C-CLI-21 through C-CLI-24.
+ * Implements PRD §12A.7-§12A.10 and C-CLI-23 through C-CLI-26.
  */
 
 import type { CliSubcommand } from "./command-types.ts";
@@ -75,7 +75,7 @@ export function parseSubcommand(
   return { command, run: parsed };
 }
 
-/** `resume <id> [prompt...]` becomes exactly `run --resume <id> [prompt...]` (C-CLI-21). */
+/** `resume <id> [prompt...]` becomes exactly `run --resume <id> [prompt...]` (C-CLI-23). */
 function rewriteResume(parsed: ParsedRunCommand): ParsedRunCommand {
   if (parsed.flags.resume !== undefined)
     throw usage("resume <id> cannot be combined with --resume; give the session id once.");

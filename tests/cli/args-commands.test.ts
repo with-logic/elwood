@@ -1,6 +1,6 @@
 /**
  * Parse-time grammar for the resume, interactive, sessions, and models commands.
- * Covers PRD §12A.7-§12A.10 and C-CLI-21 through C-CLI-24.
+ * Covers PRD §12A.7-§12A.10 and C-CLI-23 through C-CLI-26.
  */
 
 import { describe, expect, test } from "vitest";
@@ -14,7 +14,7 @@ function run(argv: readonly string[]): ParsedRunCommand {
 }
 
 describe("resume subcommand", () => {
-  test("C-CLI-21 rewrites resume <id> [prompt...] onto the run path", () => {
+  test("C-CLI-23 rewrites resume <id> [prompt...] onto the run path", () => {
     const parsed = run(["resume", "abc", "--output", "json", "what", "code?"]);
     expect(parsed.flags).toMatchObject({ resume: "abc", output: "json", images: [] });
     expect(parsed.promptWords).toEqual(["what", "code?"]);
@@ -22,13 +22,13 @@ describe("resume subcommand", () => {
     expect(parsed.explicit.has("output")).toBe(true);
   });
 
-  test("C-CLI-21 accepts an id with no prompt words so piped stdin can supply the prompt", () => {
+  test("C-CLI-23 accepts an id with no prompt words so piped stdin can supply the prompt", () => {
     const parsed = run(["resume", "abc"]);
     expect(parsed.flags.resume).toBe("abc");
     expect(parsed.promptWords).toEqual([]);
   });
 
-  test("C-CLI-21 requires an id and rejects a second --resume", () => {
+  test("C-CLI-23 requires an id and rejects a second --resume", () => {
     expect(() => parseCliArgs(["resume"])).toThrow("resume requires a session id");
     expect(() => parseCliArgs(["resume", "--output", "json"])).toThrow(
       "resume requires a session id",
@@ -41,7 +41,7 @@ describe("resume subcommand", () => {
   test.each([
     ["--help", "help"],
     ["-V", "version"],
-  ])("C-CLI-21 %s passes through as %s", (flag, command) => {
+  ])("C-CLI-23 %s passes through as %s", (flag, command) => {
     expect(parseCliArgs(["resume", flag])).toEqual({ command });
     expect(parseCliArgs(["interactive", flag])).toEqual({ command });
     expect(parseCliArgs(["sessions", flag])).toEqual({ command });
@@ -50,7 +50,7 @@ describe("resume subcommand", () => {
 });
 
 describe("interactive command", () => {
-  test("C-CLI-23 parses a fresh launch with run options and no id", () => {
+  test("C-CLI-25 parses a fresh launch with run options and no id", () => {
     const parsed = parseCliArgs(["interactive", "--agent", "claude", "-C", "work"]);
     expect(parsed).toMatchObject({
       command: "interactive",
@@ -59,7 +59,7 @@ describe("interactive command", () => {
     expect("id" in parsed).toBe(false);
   });
 
-  test("C-CLI-23 carries the id as the run's resume flag", () => {
+  test("C-CLI-25 carries the id as the run's resume flag", () => {
     const parsed = parseCliArgs(["interactive", "abc", "--model", "opus"]);
     expect(parsed).toMatchObject({
       command: "interactive",
@@ -87,11 +87,11 @@ describe("interactive command", () => {
     [["--output", "json"], "--output json cannot be combined with interactive."],
     [["--output=jsonl"], "--output jsonl cannot be combined with interactive."],
     [["a", "b"], "interactive accepts at most one session id and no prompt."],
-  ])("C-CLI-23 rejects %j", (args, message) => {
+  ])("C-CLI-25 rejects %j", (args, message) => {
     expect(() => parseCliArgs(["interactive", ...args])).toThrow(message);
   });
 
-  test("C-CLI-23 keeps text output and trust flags", () => {
+  test("C-CLI-25 keeps text output and trust flags", () => {
     expect(parseCliArgs(["interactive", "--output", "text", "--no-trust"])).toMatchObject({
       command: "interactive",
       run: { flags: { output: "text", trust: false } },
@@ -100,7 +100,7 @@ describe("interactive command", () => {
 });
 
 describe("sessions command", () => {
-  test("C-CLI-22 accepts state-dir, output, and no-defaults only", () => {
+  test("C-CLI-24 accepts state-dir, output, and no-defaults only", () => {
     const parsed = parseCliArgs(["sessions", "--state-dir", "s", "--output=json", "--no-defaults"]);
     expect(parsed).toMatchObject({
       command: "sessions",
@@ -114,13 +114,13 @@ describe("sessions command", () => {
     [["--trust"], "--trust cannot be combined with sessions."],
     [["--timeout", "1s", "--keep"], "--timeout and --keep cannot be combined with sessions."],
     [["list"], "sessions accepts options, not a prompt."],
-  ])("C-CLI-22 rejects %j", (args, message) => {
+  ])("C-CLI-24 rejects %j", (args, message) => {
     expect(() => parseCliArgs(["sessions", ...args])).toThrow(message);
   });
 });
 
 describe("models command", () => {
-  test("C-CLI-24 accepts launch-relevant run options", () => {
+  test("C-CLI-26 accepts launch-relevant run options", () => {
     const parsed = parseCliArgs([
       "models",
       "--agent",
@@ -166,7 +166,7 @@ describe("models command", () => {
     [["--resume", "x"], "--resume cannot be combined with models."],
     [["--ephemeral"], "--ephemeral cannot be combined with models."],
     [["list"], "models accepts options, not a prompt."],
-  ])("C-CLI-24 rejects %j", (args, message) => {
+  ])("C-CLI-26 rejects %j", (args, message) => {
     expect(() => parseCliArgs(["models", ...args])).toThrow(message);
   });
 });

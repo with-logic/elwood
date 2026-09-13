@@ -1,6 +1,6 @@
 /**
  * Aligned, header-first text tables for the listing commands.
- * Implements PRD §12A.8/§12A.10 and C-CLI-22/C-CLI-24.
+ * Implements PRD §12A.8/§12A.10 and C-CLI-24/C-CLI-26.
  */
 
 /** Render a left-aligned table; every cell is one line, columns are two spaces apart. */

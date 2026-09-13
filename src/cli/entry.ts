@@ -2,7 +2,7 @@
 
 /**
  * Binds the side-effect-free Elwood command to Node streams, environment, and SIGINT.
- * Implements PRD §12A and C-CLI-01/C-CLI-02/C-CLI-07/C-CLI-12/C-CLI-23.
+ * Implements PRD §12A and C-CLI-01/C-CLI-02/C-CLI-07/C-CLI-12/C-CLI-25.
  */
 
 import { realpathSync } from "node:fs";
