@@ -10,6 +10,7 @@ import * as shell from "../../src/runtime/shell.ts";
 const roots: string[] = [];
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 function fixture() {
@@ -52,4 +53,37 @@ test("C-CLI-25 failing shell startup maps to an adapter start error", async () =
   await expect(
     spawnInteractiveAgent({ agent: "codex", command: "unused", args: [], cwd: f.root }),
   ).rejects.toMatchObject({ code: "codex_start_failed" });
+});
+
+test.each([
+  "",
+  "printf 'startup noise'",
+  "printf '\\0partial'",
+])("C-CLI-25 successful shell exit without a complete frame preserves PATH (%s)", async (output) => {
+  const f = fixture();
+  writeFileSync(f.startup, `#!/bin/sh\n${output}\nexit 0\n`);
+  writeFileSync(join(f.bin, "elwood-test-agent"), "#!/bin/sh\nexit 7\n", { mode: 0o700 });
+  vi.stubEnv("PATH", f.bin);
+  expect(
+    await spawnInteractiveAgent({
+      agent: "claude",
+      command: "elwood-test-agent",
+      args: [],
+      cwd: f.root,
+    }),
+  ).toBe(7);
+});
+test("C-CLI-25 a framed empty PATH remains authoritative", async () => {
+  const f = fixture();
+  writeFileSync(f.startup, "#!/bin/sh\nprintf '\\0\\0'\n");
+  writeFileSync(join(f.bin, "elwood-test-agent"), "#!/bin/sh\nexit 7\n", { mode: 0o700 });
+  vi.stubEnv("PATH", f.bin);
+  await expect(
+    spawnInteractiveAgent({
+      agent: "codex",
+      command: "elwood-test-agent",
+      args: [],
+      cwd: f.root,
+    }),
+  ).rejects.toMatchObject({ code: "codex_not_found" });
 });

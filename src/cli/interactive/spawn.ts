@@ -55,7 +55,7 @@ function spawnFailure(launch: InteractiveLaunch, error: unknown) {
 }
 
 /** Match detection PATH without inserting a shell between terminal signals and the agent. */
-function loginShellPath(): Promise<string> {
+function loginShellPath(): Promise<string | undefined> {
   return new Promise((resolve, reject) => {
     // NUL framing separates the exported PATH from incidental shell-startup stdout.
     execFile(
@@ -64,7 +64,11 @@ function loginShellPath(): Promise<string> {
       { timeout: 10_000 },
       (error, stdout) => {
         if (error) reject(error);
-        else resolve(stdout.split("\u0000").at(-2)!);
+        else {
+          const parts = stdout.split("\u0000");
+          // Early-exiting shell startup can succeed without running the probe.
+          resolve(parts.length >= 3 ? parts.at(-2) : process.env["PATH"]);
+        }
       },
     );
   });

@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-13
+
+- Preserve the inherited PATH when an interactive login shell exits successfully
+  without returning the PATH probe.
+
 - Keep permission dialogs blocking across cursor movement and hold slash-command
   input and recovery Enter while a decision is pending; cancel expired picker submissions.
 - Reject planted state-directory and generated-file links before permission changes or writes.
