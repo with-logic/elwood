@@ -156,6 +156,17 @@ jobs:
       # npmjs.com configuration is updated to match. Provenance is implied by
       # trusted publishing, so the flag is not passed.
       # Requires npm >= 11.5.1 and Node >= 22.14.0 (Node 24.x ships npm 11.6+).
+      #
+      # BOOTSTRAP: a trusted publisher can only be attached to a package that
+      # already exists on the registry — npmjs.com has no page for a name that
+      # has never been published, and `npm access` has no trusted-publisher
+      # subcommand. So version 0.1.0 must be published once by hand from a
+      # logged-in machine (`npm publish --access public`, with the
+      # `@with-logic:registry` line in ~/.npmrc overridden so it targets
+      # npmjs.org rather than GitHub Packages). After that first publish,
+      # configure the trusted publisher at
+      # npmjs.com/package/@with-logic/elwood/access and every later release
+      # runs tokenlessly through this workflow.
       - name: Publish to npm
         run: npm publish --access public
 
