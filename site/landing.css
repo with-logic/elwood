@@ -866,8 +866,8 @@ dialog::backdrop {
     border-color: #f9f8f0aa;
   }
   50% {
-    background: #4a34291a;
-    border-color: #b9a093aa;
+    background: #fa54263d;
+    border-color: #fbb9a6aa;
   }
 }
 .terminal:hover .terminal-play,
