@@ -477,16 +477,18 @@ body:before {
 .mark-needle {
   width: 1.05em;
   height: 1.05em;
-  vertical-align: -0.2em;
+  /* Text sits on the baseline; an inline SVG aligns to its box bottom, a
+     descender's depth lower. Lift both marks so they sit on the baseline too. */
+  vertical-align: -0.04em;
   fill: currentColor;
 }
 .mark-heart {
   color: var(--signal);
 }
 .mark-needle {
-  width: 1.15em;
-  height: 1.15em;
-  vertical-align: -0.26em;
+  width: 1.25em;
+  height: 1.25em;
+  vertical-align: -0.16em;
 }
 .footer-links {
   display: flex;

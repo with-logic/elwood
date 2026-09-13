@@ -12,7 +12,7 @@ A responsive landing page for the Elwood TypeScript library, with a wandering ro
 python3 -m http.server 8766 --bind 127.0.0.1
 ```
 
-Open [the landing page](http://127.0.0.1:8766/). No build step, framework, WebGL, Three.js, or external runtime service is required. The original [animation workshop](http://127.0.0.1:8766/playground.html) remains available. The 4K production masters and their review gallery live outside this repository (see the repository `.gitignore`); the runtime sprite sheets under `assets/game/` are committed.
+Open [the landing page](http://127.0.0.1:8766/). No build step, framework, WebGL, Three.js, or external runtime service is required. `playground.html` is the internal animation workshop used to tune the robot's motion: it is not linked from the site and `.vercelignore` keeps it out of the deployment. The 4K production masters and their review gallery live outside this repository (see the repository `.gitignore`); the runtime sprite sheets under `assets/game/` are committed.
 
 Elwood idles for five seconds on arrival, then wanders by default, mixing walks, camera-facing turns, 28 personality moments and pauses. Arrow keys take over immediately. After manual control stops, he holds his stance for five seconds, then plays animated idle for 3.5 seconds before resuming exploration. Held poses recover before that idle period. Sitting, crossed arms, fainting and floating linger for varying periods under automatic control, then recover before the next action. Manual holds remain until another action or the inactivity handoff.
 

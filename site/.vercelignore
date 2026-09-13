@@ -1,0 +1,12 @@
+# Development-only files. They stay in the repository but are not deployed.
+# The animation workshop is an internal tool for tuning the robot's motion,
+# not a public page.
+playground.html
+playground.css
+playground.mjs
+tests/
+scripts/
+docs/
+references/
+README.md
+biome.json
