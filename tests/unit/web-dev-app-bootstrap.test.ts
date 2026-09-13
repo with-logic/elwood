@@ -12,7 +12,7 @@ import {
   sendSocket,
   startWebDevApp,
   type WebDevApp,
-} from "../../src/app/web-dev.ts";
+} from "../../dev/web/dev.ts";
 import { waitFor } from "./web-dev-app-helpers.ts";
 
 const running: WebDevApp[] = [];

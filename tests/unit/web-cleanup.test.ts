@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { closeWebDevResources } from "../../src/app/web-cleanup.ts";
+import { closeWebDevResources } from "../../dev/web/cleanup.ts";
 import { fakeSharedSession } from "../helpers/fake-shared-session.ts";
 
 describe("web dev cleanup", () => {

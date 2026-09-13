@@ -9,7 +9,7 @@ import {
   parseTestAppArgs,
   runTestApp,
   summarizeHookResult,
-} from "../../src/app/test-app.ts";
+} from "../../dev/test-app.ts";
 import { claudeHookEventNames } from "../../src/claude/hooks/names.ts";
 import { codexHookEventNames } from "../../src/codex/hooks/names.ts";
 import { fakeSharedSession } from "../helpers/fake-shared-session.ts";

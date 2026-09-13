@@ -10,8 +10,8 @@ import {
   statusEvent,
   terminalExitEvent,
   warningEvent,
-} from "../../src/app/web-events.ts";
-import { summarizeHookEvent } from "../../src/app/web-log.ts";
+} from "../../dev/web/events.ts";
+import { summarizeHookEvent } from "../../dev/web/log.ts";
 import type {
   ClaudeHookEventFor,
   ElwoodActivityEvent,

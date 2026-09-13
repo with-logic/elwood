@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { installHardShutdown, runShutdown } from "../../src/app/web-shutdown.ts";
+import { installHardShutdown, runShutdown } from "../../dev/web/shutdown.ts";
 
 const watchedEvents = [
   "SIGINT",

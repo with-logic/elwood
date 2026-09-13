@@ -3,10 +3,10 @@
  * Implements PRD §11.
  */
 
-import { childPids } from "./child-lookup.ts";
+import { childPids } from "../child-lookup.ts";
 
-export type { ChildLookupDiagnostic } from "./child-lookup.ts";
-export { classifyChildLookup, setChildLookupReporter } from "./child-lookup.ts";
+export type { ChildLookupDiagnostic } from "../child-lookup.ts";
+export { classifyChildLookup, setChildLookupReporter } from "../child-lookup.ts";
 
 type ShutdownSignal = "SIGINT" | "SIGTERM" | "SIGHUP" | "SIGTSTP" | "SIGTTIN" | "SIGTTOU";
 type ExitSignal = "SIGKILL";

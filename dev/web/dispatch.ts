@@ -16,15 +16,15 @@ import {
   parseAgentKind,
   type SharedSession,
   type startAgentSession,
-} from "./agent-runtime.ts";
-import * as events from "./web-events.ts";
+} from "../agent-runtime.ts";
+import * as events from "./events.ts";
 import {
   type ClientMessage,
   parseClientMessage,
   type ServerMessage,
   sizeFrom,
-} from "./web-messages.ts";
-import type { WebSessionSlot } from "./web-session-slot.ts";
+} from "./messages.ts";
+import type { WebSessionSlot } from "./session-slot.ts";
 
 export type DispatchDeps = {
   readonly slot: WebSessionSlot;

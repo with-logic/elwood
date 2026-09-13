@@ -6,8 +6,8 @@
  * own explicit `teardown` message).
  */
 
-import type { AgentKind } from "./agent-runtime.ts";
-import type { ClientMessage, ClientMessageType } from "./web-messages.ts";
+import type { AgentKind } from "../agent-runtime.ts";
+import type { ClientMessage, ClientMessageType } from "./messages.ts";
 
 /**
  * Parse and validate a raw JSON frame into a `ClientMessage`. Parses to

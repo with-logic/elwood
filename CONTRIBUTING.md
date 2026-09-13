@@ -82,7 +82,9 @@ npm run dev:app -- --cwd /path/to/project --resume <elwoodSessionId>
 npm run dev:web
 ```
 
-They live under `src/app/` and are not part of the published package.
+They live under `dev/`, outside `src/`, and are not part of the published
+package. They are development utilities, so they are typechecked and linted
+like everything else but are excluded from the coverage gate.
 
 ## Repository map
 
@@ -97,6 +99,6 @@ They live under `src/app/` and are not part of the published package.
 | `src/state/` | Session records and private sidecar files. |
 | `src/bridge/` | Local hook bridge server and generated bridge script. |
 | `src/terminal/`, `src/pty/` | Headless xterm.js model and node-pty adapter. |
-| `src/app/` | Local terminal and browser dev apps (not published). |
+| `dev/` | Local terminal and browser dev apps (not published, not coverage-gated). |
 | `tests/` | Unit, conformance, and e2e suites. |
 | `docs/` | Guides and the record of empirically learned CLI behavior. |

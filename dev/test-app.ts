@@ -3,7 +3,7 @@
  * Implements PRD §11.
  */
 
-import type { TerminalSize } from "../index.ts";
+import type { TerminalSize } from "../src/index.ts";
 import {
   type AgentKind,
   type AgentRuntime,

@@ -10,6 +10,10 @@ export default defineConfig({
   test: {
     coverage: {
       all: true,
+      // Only shipped code is gated. The developer apps under dev/ still have
+      // tests and those tests still run, but they do not count toward the
+      // 100% thresholds: the coverage number should describe what consumers
+      // install, and dev/ is excluded from the published build.
       include: ["src/**/*.ts"],
       exclude: ["tests/**"],
       provider: "istanbul",

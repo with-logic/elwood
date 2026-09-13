@@ -5,8 +5,8 @@
 
 import type { IncomingMessage } from "node:http";
 import { describe, expect, test } from "vitest";
-import { activityEvent, terminalExitEvent } from "../../src/app/web-events.ts";
-import { isAllowedUpgrade } from "../../src/app/web-security.ts";
+import { activityEvent, terminalExitEvent } from "../../dev/web/events.ts";
+import { isAllowedUpgrade } from "../../dev/web/security.ts";
 import type { ElwoodActivityEvent } from "../../src/index.ts";
 
 describe("browser dev app edge handling", () => {

@@ -5,7 +5,7 @@
 
 import type { Server } from "node:http";
 import type { WebSocket, WebSocketServer } from "ws";
-import type { SharedSession } from "./agent-runtime.ts";
+import type { SharedSession } from "../agent-runtime.ts";
 
 export async function closeWebDevResources(input: {
   readonly server: Server;

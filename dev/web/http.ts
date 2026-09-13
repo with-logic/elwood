@@ -6,9 +6,9 @@
 import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
-import { moduleRequire } from "../core/module-require.ts";
-import { clientScript, renderHtml } from "./web-assets.ts";
-import { isLocalHost, type PortSource, resolvePort } from "./web-security.ts";
+import { moduleRequire } from "../../src/core/module-require.ts";
+import { clientScript, renderHtml } from "./assets.ts";
+import { isLocalHost, type PortSource, resolvePort } from "./security.ts";
 
 const require = moduleRequire(import.meta.url);
 

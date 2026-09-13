@@ -5,8 +5,8 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { dispatchClientMessage } from "../../src/app/web-dispatch.ts";
-import type { ServerMessage } from "../../src/app/web-messages.ts";
+import { dispatchClientMessage } from "../../dev/web/dispatch.ts";
+import type { ServerMessage } from "../../dev/web/messages.ts";
 import { fakeSession, frame, harnessWith, start } from "./web-dispatch-helpers.ts";
 
 describe("web dispatch errors and events", () => {

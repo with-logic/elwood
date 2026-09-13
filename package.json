@@ -60,9 +60,9 @@
     "check:lines": "node --no-warnings scripts/check-lines.ts",
     "check": "npm run build && npm run typecheck && npm run lint && npm run check:lines && npm test",
     "check:all": "npm run check && npm run test:e2e",
-    "test:e2e": "exec node --no-warnings --experimental-test-coverage --test-coverage-include='src/**/*.ts' --test-coverage-exclude='src/app/**' --test-coverage-exclude='tests/**' --test-timeout=240000 --test-concurrency=1 --test tests/e2e/*.e2e.ts",
-    "dev:app": "exec node --no-warnings src/app/dev.ts",
-    "dev:web": "exec node --no-warnings scripts/supervise.ts src/app/web-dev.ts",
+    "test:e2e": "exec node --no-warnings --experimental-test-coverage --test-coverage-include='src/**/*.ts' --test-coverage-exclude='tests/**' --test-timeout=240000 --test-concurrency=1 --test tests/e2e/*.e2e.ts",
+    "dev:app": "exec node --no-warnings dev/dev.ts",
+    "dev:web": "exec node --no-warnings scripts/supervise.ts dev/web/dev.ts",
     "example:minimal": "exec node --no-warnings scripts/supervise.ts examples/minimal.ts",
     "example:stream": "exec node --no-warnings scripts/supervise.ts examples/stream.ts",
     "example:full": "exec node --no-warnings scripts/supervise.ts examples/full.ts"

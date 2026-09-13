@@ -64,7 +64,7 @@
           "level": "error",
           "options": {
             "devDependencies": [
-              "**/src/app/**",
+              "**/dev/**",
               "**/tests/**",
               "**/scripts/**",
               "**/examples/**",

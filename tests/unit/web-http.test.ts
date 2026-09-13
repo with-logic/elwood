@@ -6,7 +6,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { describe, expect, test } from "vitest";
-import { createHttpHandler } from "../../src/app/web-http.ts";
+import { createHttpHandler } from "../../dev/web/http.ts";
 
 describe("web http routing", () => {
   test("C-APP-08 a request without a url serves the app shell", () => {

@@ -13,7 +13,7 @@ import {
   classifyChildLookup,
   pgrepExecutable,
   setChildLookupReporter,
-} from "../../src/app/child-lookup.ts";
+} from "../../dev/child-lookup.ts";
 
 type PgrepResult = Pick<SpawnSyncReturns<string>, "error" | "signal" | "status">;
 // `error` is omitted (not set to undefined) to satisfy exactOptionalPropertyTypes.

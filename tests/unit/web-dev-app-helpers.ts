@@ -5,8 +5,8 @@
 
 import type { AddressInfo } from "node:net";
 import { WebSocket } from "ws";
-import type { AgentLaunchOptions, SharedSession } from "../../src/app/agent-runtime.ts";
-import { createWebDevApp, type WebDevApp } from "../../src/app/web-dev.ts";
+import type { AgentLaunchOptions, SharedSession } from "../../dev/agent-runtime.ts";
+import { createWebDevApp, type WebDevApp } from "../../dev/web/dev.ts";
 
 export { fakeSharedSession as fakeSession } from "../helpers/fake-shared-session.ts";
 

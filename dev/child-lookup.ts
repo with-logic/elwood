@@ -30,7 +30,7 @@ type ChildLookupReporter = (diagnostic: ChildLookupDiagnostic) => void;
 // plus an errno/signal/status detail), so it never leaks conversation content.
 let reportChildLookup: ChildLookupReporter = (diagnostic) => {
   process.stderr.write(
-    `web-shutdown child-lookup failed pid=${diagnostic.pid} reason=${diagnostic.reason} detail=${diagnostic.detail}\n`,
+    `shutdown child-lookup failed pid=${diagnostic.pid} reason=${diagnostic.reason} detail=${diagnostic.detail}\n`,
   );
 };
 

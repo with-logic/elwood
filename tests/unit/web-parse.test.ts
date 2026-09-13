@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { parseClientMessage } from "../../src/app/web-parse.ts";
+import { parseClientMessage } from "../../dev/web/parse.ts";
 
 describe("client message validation", () => {
   test("C-APP-08 accepts each well-formed variant", () => {

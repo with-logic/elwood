@@ -3,10 +3,10 @@
  * Supports PRD §11 (C-APP-01..09) coverage in the web-dispatch*.test.ts files.
  */
 
-import type { AgentLaunchOptions, SharedSession } from "../../src/app/agent-runtime.ts";
-import { dispatchClientMessage } from "../../src/app/web-dispatch.ts";
-import type { ServerMessage } from "../../src/app/web-messages.ts";
-import { WebSessionSlot } from "../../src/app/web-session-slot.ts";
+import type { AgentLaunchOptions, SharedSession } from "../../dev/agent-runtime.ts";
+import { dispatchClientMessage } from "../../dev/web/dispatch.ts";
+import type { ServerMessage } from "../../dev/web/messages.ts";
+import { WebSessionSlot } from "../../dev/web/session-slot.ts";
 import { fakeSharedSession } from "../helpers/fake-shared-session.ts";
 
 export type { FakeSharedSession as FakeSession } from "../helpers/fake-shared-session.ts";

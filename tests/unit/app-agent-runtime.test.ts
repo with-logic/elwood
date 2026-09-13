@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { defaultAgentRuntime, startAgentSession } from "../../src/app/agent-runtime.ts";
+import { defaultAgentRuntime, startAgentSession } from "../../dev/agent-runtime.ts";
 import { fakeSharedSession } from "../helpers/fake-shared-session.ts";
 
 describe("app adapter runtime", () => {

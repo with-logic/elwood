@@ -3,8 +3,8 @@
  * Implements PRD §11.
  */
 
-import { clientScript } from "./web-client.ts";
-import { webStyles } from "./web-styles.ts";
+import { clientScript } from "./client.ts";
+import { webStyles } from "./styles.ts";
 
 export { clientScript };
 

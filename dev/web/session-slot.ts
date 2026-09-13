@@ -16,7 +16,7 @@
  * visible; with no reporter the failure is still contained, never leaked.
  */
 
-import type { SharedSession } from "./agent-runtime.ts";
+import type { SharedSession } from "../agent-runtime.ts";
 
 /** Reports a discarded session's teardown failure so it is not silently lost. */
 export type TeardownErrorReporter = (elwoodSessionId: string, error: unknown) => void;

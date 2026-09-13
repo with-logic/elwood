@@ -12,7 +12,7 @@ import {
   isAllowedUpgrade,
   isLocalHost,
   resolvePort,
-} from "../../src/app/web-security.ts";
+} from "../../dev/web/security.ts";
 
 const request = (url: string, host = "localhost:4317", origin = "http://localhost:4317") =>
   ({ url, headers: { host, origin } }) as never;

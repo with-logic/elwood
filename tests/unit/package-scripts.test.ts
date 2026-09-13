@@ -28,7 +28,7 @@ describe("package scripts", () => {
       expect(existsSync("scripts/supervise.ts")).toBe(true);
       expect(existsSync(match?.[1] ?? ""), `${name} entry exists`).toBe(true);
     }
-    expect(packageJson.scripts?.["dev:web"]).toContain("src/app/web-dev.ts");
+    expect(packageJson.scripts?.["dev:web"]).toContain("dev/web/dev.ts");
   });
 
   test("C-E2E-05 check:all runs the default check gate followed by test:e2e", () => {

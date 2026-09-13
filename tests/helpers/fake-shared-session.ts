@@ -9,7 +9,7 @@ import type {
   CommonEventHandler,
   CommonEventName,
   SharedSession,
-} from "../../src/app/agent-runtime.ts";
+} from "../../dev/agent-runtime.ts";
 
 type Size = { readonly cols: number; readonly rows: number };
 type Handler = CommonEventHandler<CommonEventName>;

@@ -3,7 +3,7 @@
  * Implements PRD §6 and §11.
  */
 
-import type { AgentHookEvent } from "./agent-runtime.ts";
+import type { AgentHookEvent } from "../agent-runtime.ts";
 
 export function summarizeHookEvent(event: AgentHookEvent): string {
   if (event.hook_event_name === "Stop" && event.last_assistant_message) {

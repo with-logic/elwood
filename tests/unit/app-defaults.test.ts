@@ -4,8 +4,8 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { startAgentSession } from "../../src/app/agent-runtime.ts";
-import { parseTestAppArgs, runTestApp } from "../../src/app/test-app.ts";
+import { startAgentSession } from "../../dev/agent-runtime.ts";
+import { parseTestAppArgs, runTestApp } from "../../dev/test-app.ts";
 import { resetRuntimeSeamsForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
 
 describe("dev app default runtimes", () => {

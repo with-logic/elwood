@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { WebSessionSlot } from "../../src/app/web-session-slot.ts";
+import { WebSessionSlot } from "../../dev/web/session-slot.ts";
 import { type FakeSharedSession, fakeSharedSession } from "../helpers/fake-shared-session.ts";
 
 describe("web session slot", () => {

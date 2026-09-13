@@ -5,9 +5,9 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest";
-import type { AgentLaunchOptions } from "../../src/app/agent-runtime.ts";
-import { childPids } from "../../src/app/child-lookup.ts";
-import type { WebDevApp } from "../../src/app/web-dev.ts";
+import type { AgentLaunchOptions } from "../../dev/agent-runtime.ts";
+import { childPids } from "../../dev/child-lookup.ts";
+import type { WebDevApp } from "../../dev/web/dev.ts";
 import {
   collect,
   connect,

@@ -3,10 +3,14 @@
  * Implements PRD §11.
  */
 
-import type { ElwoodActivityEvent, ElwoodStatusDecision, ElwoodWarningEvent } from "../index.ts";
-import type { AgentHookEvent, CommonEventMap } from "./agent-runtime.ts";
-import { summarizeHookEvent } from "./web-log.ts";
-import type { DebugEventEntry, DebugEventKind, DebugEventLevel } from "./web-messages.ts";
+import type {
+  ElwoodActivityEvent,
+  ElwoodStatusDecision,
+  ElwoodWarningEvent,
+} from "../../src/index.ts";
+import type { AgentHookEvent, CommonEventMap } from "../agent-runtime.ts";
+import { summarizeHookEvent } from "./log.ts";
+import type { DebugEventEntry, DebugEventKind, DebugEventLevel } from "./messages.ts";
 
 let sequence = 0;
 

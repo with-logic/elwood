@@ -1,8 +1,8 @@
 /** Focused unit coverage for browser dev app assets and message parsing. Covers PRD §11. */
 
 import { describe, expect, test } from "vitest";
-import { clientScript, renderHtml } from "../../src/app/web-assets.ts";
-import { parseClientMessage, sizeFrom } from "../../src/app/web-messages.ts";
+import { clientScript, renderHtml } from "../../dev/web/assets.ts";
+import { parseClientMessage, sizeFrom } from "../../dev/web/messages.ts";
 
 describe("browser dev app helpers", () => {
   test("C-APP-08 renders the shell and client script", () => {

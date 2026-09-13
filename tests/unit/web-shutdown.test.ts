@@ -5,11 +5,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { describe, expect, test } from "vitest";
-import {
-  installHardShutdown,
-  killProcessTreeSync,
-  runShutdown,
-} from "../../src/app/web-shutdown.ts";
+import { installHardShutdown, killProcessTreeSync, runShutdown } from "../../dev/web/shutdown.ts";
 
 describe("web dev app hard shutdown", () => {
   test("C-APP-08 registers exit and job-control signals without reading stdin", async () => {

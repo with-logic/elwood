@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { childPids } from "../../src/app/child-lookup.ts";
+import { childPids } from "../../dev/child-lookup.ts";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
 import { cleanup, makeProject, skipIf, skipReason, waitFor } from "./helpers.ts";
 

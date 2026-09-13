@@ -6,10 +6,10 @@
 
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
-import { bootstrapDevAppIfMain, type DevAppProcess, runDevApp } from "../../src/app/dev.ts";
+import { bootstrapDevAppIfMain, type DevAppProcess, runDevApp } from "../../dev/dev.ts";
 import { fakeSharedSession } from "../helpers/fake-shared-session.ts";
 
-const devUrl = new URL("../../src/app/dev.ts", import.meta.url).href;
+const devUrl = new URL("../../dev/dev.ts", import.meta.url).href;
 
 describe("dev app entrypoint", () => {
   test("C-APP-01 runDevApp starts a session through an injected runtime", async () => {

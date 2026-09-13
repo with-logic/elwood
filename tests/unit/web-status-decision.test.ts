@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { statusEvent } from "../../src/app/web-events.ts";
+import { statusEvent } from "../../dev/web/events.ts";
 
 describe("dev app status decisions", () => {
   test("C-API-33 the explain reason enriches the status entry when supplied", () => {

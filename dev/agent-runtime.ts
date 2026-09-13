@@ -26,7 +26,7 @@ import {
   startCodex,
   type TerminalSize,
   type Unsubscribe,
-} from "../index.ts";
+} from "../src/index.ts";
 
 export type AgentKind = "claude" | "codex";
 export type AgentHooks = ClaudeHookHandlers | CodexHookHandlers;

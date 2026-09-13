@@ -5,8 +5,8 @@
  */
 
 import { describe, expect, test } from "vitest";
-import type { SharedSession } from "../../src/app/agent-runtime.ts";
-import { dispatchClientMessage } from "../../src/app/web-dispatch.ts";
+import type { SharedSession } from "../../dev/agent-runtime.ts";
+import { dispatchClientMessage } from "../../dev/web/dispatch.ts";
 import { fakeSession, frame, harnessWith, start } from "./web-dispatch-helpers.ts";
 
 describe("web dispatch", () => {

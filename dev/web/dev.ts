@@ -11,15 +11,15 @@ import { createServer, type Server } from "node:http";
 import { argv } from "node:process";
 import { fileURLToPath } from "node:url";
 import type { WebSocket, WebSocketServer } from "ws";
-import { startAgentSession } from "./agent-runtime.ts";
-import { closeWebDevResources } from "./web-cleanup.ts";
-import { type DispatchDeps, dispatchClientMessage } from "./web-dispatch.ts";
-import * as events from "./web-events.ts";
-import { createHttpHandler } from "./web-http.ts";
-import type { ServerMessage } from "./web-messages.ts";
-import { createBrowserToken, createGuardedWebSocketServer } from "./web-security.ts";
-import { WebSessionSlot } from "./web-session-slot.ts";
-import { installHardShutdown, setChildLookupReporter } from "./web-shutdown.ts";
+import { startAgentSession } from "../agent-runtime.ts";
+import { closeWebDevResources } from "./cleanup.ts";
+import { type DispatchDeps, dispatchClientMessage } from "./dispatch.ts";
+import * as events from "./events.ts";
+import { createHttpHandler } from "./http.ts";
+import type { ServerMessage } from "./messages.ts";
+import { createBrowserToken, createGuardedWebSocketServer } from "./security.ts";
+import { WebSessionSlot } from "./session-slot.ts";
+import { installHardShutdown, setChildLookupReporter } from "./shutdown.ts";
 
 export type WebDevApp = {
   readonly server: Server;

@@ -3,8 +3,8 @@
  * Implements PRD §11.
  */
 
-import type { TerminalSize } from "../index.ts";
-import type { AgentKind } from "./agent-runtime.ts";
+import type { TerminalSize } from "../../src/index.ts";
+import type { AgentKind } from "../agent-runtime.ts";
 
 export type ClientMessage =
   | {
@@ -57,7 +57,7 @@ export type ServerMessage =
   | { readonly type: "session"; readonly id: string; readonly cwd: string; readonly status: string }
   | { readonly type: "status"; readonly status: string };
 
-export { parseClientMessage } from "./web-parse.ts";
+export { parseClientMessage } from "./parse.ts";
 
 export function sizeFrom(input: { readonly cols: number; readonly rows: number }): TerminalSize {
   return { cols: input.cols, rows: input.rows };
