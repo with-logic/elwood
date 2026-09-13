@@ -1,6 +1,6 @@
 {
   "name": "@with-logic/elwood",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Control interactive agentic coding CLIs (Claude Code, Codex) through real terminal sessions: typed hooks, a unified activity stream, resumable sessions, and a headless CLI.",
   "license": "MIT",
   "author": "Logic App, Inc.",

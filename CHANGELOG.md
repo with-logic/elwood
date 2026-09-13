@@ -12,7 +12,16 @@ back each entry are listed in PRD.md §14.
 
 ## [Unreleased]
 
-First public release.
+## [0.1.1]
+
+First usable public release.
+
+0.1.0 was published from a checkout that sat 18 commits behind `main`. It
+shipped without the `resume`, `sessions`, `interactive` and `models`
+subcommands, without `--high-trust`, without agent auto-detection, and with a
+stale README. Nothing was wrong with 0.1.0's own code; it was simply built from
+the wrong commit. 0.1.1 is the same work published from `main`, and is the
+version to install.
 
 ### Added
 
