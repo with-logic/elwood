@@ -1,5 +1,8 @@
 <div align="center">
-  <img src="site/assets/landing/icon-512.webp" alt="" width="96" height="96" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="site/assets/landing/robot-mark-dark.webp" />
+    <img src="site/assets/landing/robot-mark-light.webp" alt="" width="96" height="96" />
+  </picture>
   <h1>Elwood</h1>
   <p><a href="https://elwood.bot">elwood.bot</a></p>
 </div>
@@ -10,8 +13,6 @@ Write scripts that control normal interactive Claude Code and Codex sessions,
 which use your regular subscription rather than metered API billing. Elwood
 starts the actual agent CLI in a hidden terminal and types into it the way you
 would. The agent keeps its tools, hooks, configuration, and login.
-
-Prompted with ❤️ by [Logic, Inc](https://logic.inc) in Seattle, WA <img src="site/assets/landing/space-needle.svg" alt="" width="13" height="13" />
 
 ```sh
 npm install -g @with-logic/elwood
@@ -561,3 +562,10 @@ MIT. See [LICENSE](LICENSE).
 Setup, the merge gate, the e2e suite, the dev apps, and the repository map are
 in [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately as
 described in [SECURITY.md](SECURITY.md).
+
+---
+
+<div align="center">
+  Prompted with ❤️ by <a href="https://logic.inc">Logic, Inc</a> in Seattle, WA
+  <img src="site/assets/landing/space-needle.svg" alt="" width="13" height="13" />
+</div>
