@@ -5,6 +5,7 @@
 
 import { delay } from "../delay.ts";
 import { elwoodError } from "../errors.ts";
+import { sendPickerInput } from "./input.ts";
 import type { AgentModelOption, ParsedModelPicker } from "./rows.ts";
 import {
   defaultModelTimeoutMs,
@@ -19,7 +20,8 @@ export function pickerTimeout(options?: { readonly timeoutMs?: number }): number
 
 export type ModelPickerIo = {
   readonly terminal: ScreenTerminal;
-  readonly submit: (command: string) => Promise<void>;
+  readonly blocked?: () => boolean;
+  readonly submit: (command: string, signal: AbortSignal) => Promise<void>;
 };
 
 export type ModelPickerSpec = {
@@ -40,7 +42,7 @@ export async function listPickerModels(
   timeoutMs: number,
 ): Promise<readonly AgentModelOption[]> {
   const parsed = await openAndParse(io, spec, timeoutMs);
-  await io.terminal.sendInput(escapeKey);
+  await sendPickerInput(io, escapeKey, spec.isOpen);
   await waitForScreen(
     io.terminal,
     (text) => !spec.isOpen(text),
@@ -62,7 +64,7 @@ export async function setPickerModel(
   // alone covers a caller that passes the display label in any case.
   const target = parsed.options.findIndex((option) => option.id === wanted);
   if (target === -1 || parsed.cursorIndex === -1) {
-    await io.terminal.sendInput(escapeKey);
+    await sendPickerInput(io, escapeKey, spec.isOpen);
     const reason =
       target === -1 ? `Unknown model id "${id}".` : "Could not locate the picker cursor.";
     throw elwoodError("model_automation_failed", reason, {
@@ -72,7 +74,7 @@ export async function setPickerModel(
   const delta = target - parsed.cursorIndex;
   const key = delta > 0 ? arrowDown : arrowUp;
   for (let step = 0; step < Math.abs(delta); step += 1) {
-    await io.terminal.sendInput(key);
+    await sendPickerInput(io, key, spec.isOpen);
     await delay(arrowStepMs);
   }
   await waitForScreen(
@@ -91,14 +93,14 @@ async function openAndParse(
 ): Promise<ParsedModelPicker> {
   const text = await openCommandScreen({
     terminal: io.terminal,
-    submit: () => io.submit("/model"),
+    submit: (signal) => io.submit("/model", signal),
     isOpen: spec.isOpen,
     timeoutMs,
     label: `${spec.agent} model picker`,
   });
   const parsed = spec.parse(text);
   if (parsed.options.length === 0) {
-    await io.terminal.sendInput(escapeKey);
+    await sendPickerInput(io, escapeKey, spec.isOpen);
     throw elwoodError("model_automation_failed", "Could not parse any model picker rows.");
   }
   return parsed;

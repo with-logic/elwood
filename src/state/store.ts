@@ -9,6 +9,7 @@
 import { existsSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { elwoodError, toError } from "../core/errors.ts";
+import { assertStatePath } from "./directories.ts";
 import {
   safeSessionDir,
   secureMkdir,
@@ -57,6 +58,8 @@ export function prepareStateDir(
   options: { readonly gitignore?: boolean } = {},
 ): void {
   const root = resolve(stateDir);
+  assertStatePath(root);
+  assertStatePath(join(root, "sessions"));
   if (options.gitignore === true) {
     sharedMkdir(root);
   } else {
@@ -124,7 +127,10 @@ export function removeSessionFiles(input: RemoveSessionFilesInput): void {
   // both ran, so teardown removes everything it can and still surfaces the fault.
   let firstError: unknown;
   firstError = tryRemove(() => removeSocketHome(input.socketHome), firstError);
-  firstError = tryRemove(() => rmSync(dir, { recursive: true, force: true }), firstError);
+  firstError = tryRemove(() => {
+    assertStatePath(dir);
+    rmSync(dir, { recursive: true, force: true });
+  }, firstError);
   if (firstError !== undefined) {
     throw elwoodError("teardown_failed", "Could not remove Elwood session files.", {
       cause: firstError instanceof Error ? firstError.message : String(firstError),

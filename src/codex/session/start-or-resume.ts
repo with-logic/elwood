@@ -37,6 +37,7 @@ function resumeOptions(elwoodSessionId: string, start: StartCodexOptions): Resum
     approvalPolicy: start.approvalPolicy,
     autoupdate: start.autoupdate,
     autotrust: start.autotrust,
+    highTrust: start.highTrust,
     hookTimeoutMs: start.hookTimeoutMs,
     strictVersionCheck: start.strictVersionCheck,
   });

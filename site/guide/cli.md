@@ -6,7 +6,7 @@ The `elwood` command runs one agent turn, writes the reply, and exits. It still 
 elwood "Summarize this repository."
 ```
 
-`elwood run` is the explicit form of the same command. With no arguments, `elwood` prints help. The built-in default agent is Codex; choose Claude explicitly or [save a default](configuration.html).
+`elwood run` is the explicit form of the same command. With no arguments, `elwood` prints help. Without an explicit agent choice, Elwood tries Claude first, then Codex. You can [save a default](configuration.html).
 
 ## Input
 

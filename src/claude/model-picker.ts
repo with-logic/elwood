@@ -3,6 +3,7 @@
  * Implements PRD §5.3, C-API-23, and C-API-24.
  */
 
+import { sendPickerInput } from "../core/models/input.ts";
 import type { ModelPickerSpec } from "../core/models/picker.ts";
 import { claudeModelPickerHeader, parseClaudeModelPicker } from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
@@ -22,7 +23,7 @@ export const claudeModelPicker: ModelPickerSpec = {
   // "s" applies for this session only. Enter or a number key would save the
   // selection as the user's default for new sessions, which §4.5 forbids.
   apply: async (io, timeoutMs) => {
-    await io.terminal.sendInput("s");
+    await sendPickerInput(io, "s", (text) => claudeModelPickerHeader.test(text));
     const next = await waitForScreen(
       io.terminal,
       (text) => cacheConfirmationWithCursor(text) || isClaudeIdleComposer(text),
@@ -33,14 +34,15 @@ export const claudeModelPicker: ModelPickerSpec = {
     if (confirmation?.isCacheWarning === true) {
       const delta = confirmation.affirmativeIndex - confirmation.selectedIndex;
       const key = delta > 0 ? arrowDown : arrowUp;
-      for (let step = 0; step < Math.abs(delta); step += 1) await io.terminal.sendInput(key);
+      for (let step = 0; step < Math.abs(delta); step += 1)
+        await sendPickerInput(io, key, cacheConfirmationWithCursor, true);
       await waitForScreen(
         io.terminal,
         affirmativeCacheConfirmation,
         timeoutMs,
         "active Claude cache confirmation before apply",
       );
-      await io.terminal.sendInput(enterKey);
+      await sendPickerInput(io, enterKey, affirmativeCacheConfirmation, true);
     }
     await waitForScreen(
       io.terminal,

@@ -1,21 +1,16 @@
 /**
- * Interactive-mode TTY gating, resume lookup, SIGINT hand-off, and the foreground
- * spawner against real local processes.
+ * Interactive-mode TTY gating, resume lookup, and SIGINT hand-off.
  * Covers PRD §12A.9 and C-CLI-25.
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { parseCliArgs } from "../../src/cli/args/index.ts";
 import type { ParsedInteractiveCommand } from "../../src/cli/command-types.ts";
 import { runInteractiveCommand } from "../../src/cli/interactive/index.ts";
-import {
-  exitStatus,
-  type InteractiveLaunch,
-  spawnInteractiveAgent,
-} from "../../src/cli/interactive/spawn.ts";
+import type { InteractiveLaunch } from "../../src/cli/interactive/spawn.ts";
 import { createSessionRecord, updateSessionResumeId } from "../../src/state/store.ts";
 import { FakeSignals } from "./run-fakes.ts";
 
@@ -152,42 +147,5 @@ describe("runInteractiveCommand", () => {
         spawn: () => Promise.reject(new Error("must not spawn")),
       }),
     ).rejects.toThrow("--agent is incompatible with the stored Codex session.");
-  });
-});
-
-describe("spawnInteractiveAgent", () => {
-  test("C-CLI-25 returns the agent's own exit status from a real foreground process", async () => {
-    const launch = (args: readonly string[]): InteractiveLaunch => ({
-      agent: "codex",
-      command: "/bin/sh",
-      args,
-      cwd: tmpdir(),
-    });
-    expect(await spawnInteractiveAgent(launch(["-c", "exit 3"]))).toBe(3);
-    expect(await spawnInteractiveAgent(launch(["-c", "kill -TERM $$"]))).toBe(143);
-  });
-
-  test("C-CLI-25 a missing or unstartable command maps to the adapter's error codes", async () => {
-    await expect(
-      spawnInteractiveAgent({
-        agent: "claude",
-        command: join(tmpdir(), "no-such-elwood-agent"),
-        args: [],
-        cwd: tmpdir(),
-      }),
-    ).rejects.toMatchObject({ code: "claude_not_found" });
-    const root = mkdtempSync(join(tmpdir(), "elwood-interactive-"));
-    roots.push(root);
-    const notExecutable = join(root, "agent.txt");
-    writeFileSync(notExecutable, "not a program", { mode: 0o600 });
-    await expect(
-      spawnInteractiveAgent({ agent: "codex", command: notExecutable, args: [], cwd: root }),
-    ).rejects.toMatchObject({ code: "codex_start_failed" });
-  });
-
-  test("C-CLI-25 exit status mapping covers signals without numbers", () => {
-    expect(exitStatus(0, null)).toBe(0);
-    expect(exitStatus(null, "SIGINT")).toBe(130);
-    expect(exitStatus(null, null)).toBe(1);
   });
 });

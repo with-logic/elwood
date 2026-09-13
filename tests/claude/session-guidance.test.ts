@@ -72,6 +72,18 @@ describe("ClaudeSessionApi guidance", () => {
     await expect.poll(() => session.status).toBe("blocked");
     const guidance = session.sendGuidance("after-human-decision");
     expect(ptys[0]!.writes).toEqual([]);
+    for (const selected of [2, 3]) {
+      const rows = ["1. Yes", "2. Yes, and allow edits for this session", "3. No"];
+      const menu = rows
+        .map((row, index) => `${index + 1 === selected ? "❯" : " "} ${row}`)
+        .join("\r\n");
+      ptys[0]!.emitData(
+        `\u001b[2J\u001b[HDo you want to create\r\nelwood.txt?\r\n${menu}\r\nEsc to cancel\r\n`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(session.status).toBe("blocked");
+      expect(ptys[0]!.writes).toEqual([]);
+    }
     ptys[0]!.emitData("\u001b[2J\u001b[H❯ \r\n  ready again\r\n");
     await guidance;
     expect(ptys[0]!.writes).toEqual(["\u001b[200~after-human-decision\u001b[201~", "\r"]);

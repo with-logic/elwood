@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { ElwoodError, elwoodError, errnoCode } from "../core/errors.ts";
+import { assertStatePath } from "./directories.ts";
 import { assertSessionId, safeSessionDir } from "./files.ts";
 import type { FileOwner } from "./private-read.ts";
 import { sessionSocketHome } from "./socket-home.ts";
@@ -34,6 +35,7 @@ export function ensurePrivateStateRoot(
 function ensurePrivateDirectory(path: string, owner: SessionOwner): void {
   let fd: number | undefined;
   try {
+    assertStatePath(path);
     mkdirSync(path, { recursive: true, mode: 0o700 });
     fd = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
     assertPrivateDirectory(fstatSync(fd), owner);

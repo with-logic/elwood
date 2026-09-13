@@ -95,9 +95,10 @@ for await (const event of session.stream("Run the test suite and report failures
 await session.close();
 ```
 
-`CodexSession` has the same shape. `autotrust: true` lets Elwood answer the
-CLI's workspace trust prompt for `cwd` on your behalf; leave it off when a human
-should make that decision. There is no default turn timeout; pass
+`CodexSession` has the same shape. `autotrust: true` lets Elwood answer its
+allowlisted workspace and extension trust prompts on your behalf; see
+[Security and privacy](#security-and-privacy) for the full scope. Leave it off
+when a human should make those decisions. There is no default turn timeout; pass
 `send(prompt, { timeoutMs })` (a `TurnOptions` field) to bound one turn.
 
 ## Quickstart: CLI
@@ -277,8 +278,8 @@ statuses and error documents.
 ### Trust and security
 
 Headless mode is non-interactive. With the default `--trust`, Elwood answers only
-its allowlisted workspace-directory and extension trust dialogs (plus the
-Elwood-owned Codex hook trust needed for operation). `--no-trust` disables the
+its allowlisted workspace-directory and extension trust dialogs. Codex hook
+trust is bypassed session-wide, including hooks beyond Elwood’s own hooks. `--no-trust` disables the
 workspace/extension approvals. Any other recognized dialog fails safely as
 `blocked_prompt` instead of hanging or guessing.
 
@@ -453,10 +454,13 @@ immediate; both are safe after the process has already exited.
 
 ## Security and privacy
 
-- Elwood answers only a narrow allowlist of prompts: workspace trust (opt-in via
-  `autotrust`), Codex hook-trust and update dialogs, and Claude's browser-tools
-  onboarding. Any other dialog leaves the session `blocked` for a human; the
-  CLI fails such runs as `blocked_prompt`.
+- With `autotrust`, Elwood answers allowlisted workspace, skill/plugin/MCP,
+  and Claude bypass-permissions acceptance dialogs. The library defaults to
+  `autotrust: false`; the CLI defaults to `--trust`. Codex hook trust is bypassed
+  for the entire launched session even without autotrust. Codex update dialogs
+  are skipped, and Claude browser-tools onboarding is dismissed. Other recognized
+  dialogs leave the session `blocked` for a human; the CLI fails such runs as
+  `blocked_prompt`.
 - `--high-trust` (library `highTrust: true`) is the agent-neutral "never ask"
   switch: Claude `bypassPermissions`, or Codex `danger-full-access` with
   approval policy `never`. It removes the agent's own guardrails, so point it
@@ -468,9 +472,11 @@ immediate; both are safe after the process has already exited.
 - The persisted session record holds schema version, `elwoodSessionId`,
   adapter, `cwd`, and per-adapter resume state. Loop definitions are the only
   persisted prompt text, in an owner-only `0600` sidecar.
-- Prompts, terminal output, hook payloads, hook responses, transcripts,
-  warnings, bridge tokens, and socket paths are never persisted. Tokens are
-  minted fresh on every start and never trusted from disk.
+- Elwood does not persist ordinary prompts, terminal output, hook payloads,
+  hook responses, transcripts, or warnings. Fresh bridge tokens and socket paths
+  are embedded in generated owner-only bridge scripts (`0600`), but excluded
+  from session records and never read back as credentials on resume. `teardown()`
+  removes these scripts; `stop()` preserves them with the session's runtime files.
 - Hook bridge traffic stays on local IPC with a per-session token and an 8 MiB
   request cap.
 - Elwood does not modify the user's global agent configuration. Claude gets
@@ -526,11 +532,11 @@ immediate; both are safe after the process has already exited.
   low-level examples.
 - [prd/](prd/README.md): the behavior specification and conformance criteria.
 - [CHANGELOG.md](CHANGELOG.md): consumer-facing changes.
-- [site/](site/): the landing page and the generated documentation site.
+- [site/](https://github.com/with-logic/elwood/tree/main/site): the landing page and the generated documentation site.
 
 ## The website
 
-[`site/`](site/) is the landing page and the generated documentation site,
+[`site/`](https://github.com/with-logic/elwood/tree/main/site) is the landing page and the generated documentation site,
 deployed to Vercel from this repository and served at [elwood.bot](https://elwood.bot). It is a static site with no framework
 and no build step: HTML, CSS, ES modules, and the robot's sprite sheets.
 
@@ -539,7 +545,7 @@ cd site && python3 -m http.server 8766 --bind 127.0.0.1
 ```
 
 The documentation page is generated from Markdown sources in
-[`site/docs/guide/`](site/docs/guide/) and reads the CLI's help text out of
+[`site/docs/guide/`](https://github.com/with-logic/elwood/tree/main/site/docs/guide) and reads the CLI's help text out of
 `src/cli/help.ts`, so the published flag reference cannot drift from the code:
 
 ```sh

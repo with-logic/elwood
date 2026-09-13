@@ -42,7 +42,7 @@ export const claudeScreenFactTable: ScreenFactTable = {
     {
       id: "claude-permission-dialog",
       fact: "blocking_prompt_visible",
-      all: [/Do you want to .+\?/i, /^\s*❯\s*1\.\s*Yes/im, /Esc to cancel/i],
+      all: [/Do you want to [^?]+\?/i, /^\s*(?:❯\s*)?1\.\s*Yes/im, /Esc to cancel/i],
     },
     {
       id: "claude-model-switch-confirmation",

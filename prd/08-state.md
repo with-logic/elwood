@@ -19,6 +19,15 @@ The default `.elwood/` directory and generated `.elwood/.gitignore` should be
 readable by normal local tooling, while session-specific subdirectories remain
 private.
 
+Before creating or changing state, Elwood MUST reject a symlink at the state
+root, sessions directory, or session directory, and reject user-owned symlink
+ancestors that redirect those paths. System-owned path aliases (such as macOS
+`/tmp`) remain supported. Directory permission changes and generated-file writes
+MUST use no-follow descriptors and verify ownership/type before changing them.
+Unsafe state paths fail as `state_corrupt` before touching the linked target.
+These checks protect against planted checkout paths; they do not isolate a
+hostile process already running as the same OS user.
+
 The hook bridge's Unix domain socket MUST NOT live under `stateDir`. Socket
 paths are capped near 104 bytes on macOS (`sockaddr_un.sun_path`), so a socket
 inside a caller-structured `stateDir` breaks any parent app with nested state
@@ -30,7 +39,8 @@ parent restart (the record persists nothing about it), while two sessions that
 share an explicit session id in different state dirs get DISTINCT homes and can
 never sweep each other's live socket. Each
 launch binds a FRESH socket FILE inside that home, so a stale socket is never
-reused; the socket path is a per-launch runtime value, never persisted, so a
+reused; the socket path is a per-launch runtime value, embedded only in the generated
+private bridge script and never in the session record, so a
 recorded socket path can never be trusted. `teardown` removes the whole socket
 home (every launch's socket) along with the session directory, so no per-launch
 socket can leak undiscoverably across restart/resume cycles. Because `teardown`
@@ -47,8 +57,8 @@ length MUST NOT constrain whether a session can start.
 The schema-version-1 core session record persists only the minimum needed to
 resume or tear down a session after
 the parent app restarts. The persisted record is deliberately small: everything a
-running session needs beyond it is regenerated at each start/resume and lives in
-memory only. The persisted fields are exactly:
+running session needs beyond it is regenerated at each start/resume. Runtime
+bridge scripts contain the fresh IPC token and socket path in owner-only files. The persisted fields are exactly:
 
 - schema version;
 - `elwoodSessionId`;

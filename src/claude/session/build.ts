@@ -140,6 +140,7 @@ export async function buildClaudeSession(
     // Hook-backed readiness + deadline fallback; on resume the first composer also marks ready (C-API-28).
     ready.armDeadline();
     const reading = observeRenderedFrame(observers, frame, session);
+    active.inputBlocking = reading.facts.blocking_prompt_visible;
     observeReadinessFrame(reading.facts); // blocking gate + resume-composer mark
     // Surface a mid-session login-expiry banner once (C-CLAUDE-18); no-op pre-readiness.
     session?.noteLoginExpiry(frame.text);
@@ -178,6 +179,7 @@ export async function buildClaudeSession(
       // Release the startup buffer once the check settles (§9.4).
       await assertStartupThenRelease("claude", startupOutput, () => startupExit);
       active.submitEvidence("startup_usable");
+      if (active.inputBlocking) active.submitEvidence("blocking_prompt_shown");
     },
     { before: beforeCleanup, pty, bridge, terminal, after: () => transcriptWatcher.stop() },
   );

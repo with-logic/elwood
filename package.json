@@ -26,7 +26,12 @@
   "type": "module",
   "files": [
     "dist",
-    "docs/*.md",
+    "docs/**/*.md",
+    "prd/**/*.md",
+    "examples/*.ts",
+    "examples/README.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
     "CHANGELOG.md",
     "README.md"
   ],

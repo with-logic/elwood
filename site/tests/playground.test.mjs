@@ -159,6 +159,11 @@ async function advance(frames = 1) {
   }
 }
 
+async function advanceUntilImage(pattern) {
+  for (let frame = 0; frame < 300 && !pattern.test(drawnImage); frame++) await advance();
+  assert.match(drawnImage, pattern);
+}
+
 await import("../playground.mjs");
 
 test("a front-facing turn follows one source sweep without wrapping across a take seam", async () => {
@@ -202,11 +207,9 @@ test("page boot, real asset loads, keyboard directions, pause and reset work tog
   await advance(36);
   assert.match(drawnImage, /\/idle-front\//);
   key("keydown", "KeyB");
-  await advance(48);
-  assert.match(drawnImage, /\/idle-back\//);
+  await advanceUntilImage(/\/idle-back\//);
   facingButtons[0].onclick();
-  await advance(48);
-  assert.match(drawnImage, /\/idle-front\//);
+  await advanceUntilImage(/\/idle-front\//);
   key("keydown", "ArrowLeft");
   await advance(36);
   assert.match(drawnImage, /\/walk-left\//);

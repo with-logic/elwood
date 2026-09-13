@@ -91,3 +91,23 @@ describe("startOrResumeClaude", () => {
     });
   });
 });
+
+test("C-API-26 highTrust expands and rejects conflicting posture on resume and fallback", async () => {
+  const cwd = tempDir();
+  installFakes();
+  const stateDir = join(cwd, ".elwood");
+  const record = createSessionRecord({ cwd, id: "high", adapter: "claude" });
+  writeSessionRecord(
+    { ...record, claude: { resumeId: "native", launch: { permissionMode: "plan" } } },
+    sessionDir(stateDir, "high"),
+  );
+  for (const elwoodSessionId of ["high", "absent"]) {
+    const result = await startOrResumeClaude({ cwd, elwoodSessionId, highTrust: true });
+    expect(result.resumed).toBe(elwoodSessionId === "high");
+    expect(ptys.at(-1)!.options.args.join(" ")).toContain("--permission-mode 'bypassPermissions'");
+    await result.session.stop();
+    await expect(
+      startOrResumeClaude({ cwd, elwoodSessionId, highTrust: true, permissionMode: "plan" }),
+    ).rejects.toMatchObject({ code: "claude_high_trust_conflict" });
+  }
+});

@@ -130,6 +130,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       });
       ready.armDeadline(); // hook/deadline readiness; resume composer also marks (C-API-28)
       const reading = observeRenderedFrame(observers, frame, session);
+      activeSession.inputBlocking = reading.facts.blocking_prompt_visible;
       observeReadinessFrame(reading.facts); // blocking gate + resume-composer mark
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
@@ -149,18 +150,14 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const id = record.elwoodSessionId;
   const activeSession = session;
   const beforeCleanup = () => activeSession.pauseLoopsForStartupCleanup(ready.cancel);
-  // ONE guarded region for every live-resource step after the session exists (readiness
-  // wiring/replay, exit registration, startup assertion/evidence): a failure in ANY tears
-  // down the now-live PTY/bridge/terminal/watchers before rethrowing (§9.1/§9.4). Mirrors Claude.
+  // Every post-construction failure tears down all live resources (§9.1/§9.4).
   await guardStartupRegion(
     async () => {
       activeSession.startLoops();
       flushPendingWarnings(); // inside the guard: a throwing sink tears down, not leaks (§5.4/§9.4)
-      // The `SessionStart` hook releases the first queued message (C-API-28).
       activeSession.setInitialReadyHook(() => ready.mark());
       ready.replay();
-      // C-LIFE-10: the FINAL flush runs behind finishSafely's boundary, so a throwing
-      // final-flush listener can't skip terminal:exit; submitExit always reaps last.
+      // C-LIFE-10: a failed final flush cannot skip exit or reaping.
       pty.onExit((exit) => {
         startupExit = exit;
         ready.cancel();
@@ -173,9 +170,9 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
           () => activeSession.submitExit(),
         );
       });
-      // Release the startup buffer once the check settles (no lingering transcript, §9.4).
       await assertStartupThenRelease("codex", startupOutput, () => startupExit);
       activeSession.submitEvidence("startup_usable");
+      if (activeSession.inputBlocking) activeSession.submitEvidence("blocking_prompt_shown");
     },
     { before: beforeCleanup, pty, bridge, terminal, after: () => transcriptWatcher.stop() },
   );

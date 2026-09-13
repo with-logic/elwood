@@ -56,7 +56,7 @@ CLI turns use the public normalized turn boundary and preserve normal login
 shell, workspace, instruction, settings, skill, MCP, and hook behavior. By
 default Elwood answers only the folder/directory and extension trust classes
 documented in §5.1. `--no-trust` disables that authorization but does not
-disable Codex's required Elwood-owned hook trust. Any other recognized blocking
+disable Codex's session-wide hook-trust bypass, which also covers non-Elwood hooks. Any other recognized blocking
 prompt fails as `blocked_prompt` and reports only its stable rule label.
 
 The built-in non-interactive launch posture is Claude `dontAsk`, and Codex
@@ -364,3 +364,9 @@ exit, and picker automation failures — use the existing stderr, error-document
 and status conventions, and cleanup still runs exactly once. `--stream`,
 `--head`, `--persona`, `--image`, `--keep`, `--resume`, `--ephemeral`,
 positional words, and JSONL output are usage errors.
+
+Listing sessions resolves only state-directory and output settings. Adapter,
+model, permission, trust, and turn-lifecycle environment defaults are irrelevant
+and MUST NOT prevent listing. Config files still undergo strict schema decoding.
+Interactive foreground launches MUST resolve the executable in the same
+interactive login-shell environment used by auto-detection. C-CLI-24/25.

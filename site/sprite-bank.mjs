@@ -1,4 +1,4 @@
-const ROOT = new URL("./assets/game/", import.meta.url);
+import { gameAssetUrl } from "./game-assets.mjs";
 
 export class SpriteBank {
   #onError;
@@ -14,7 +14,7 @@ export class SpriteBank {
     if (this.clips.has(name)) return this.clips.get(name);
     if (this.clipPromises.has(name)) return this.clipPromises.get(name);
     const promise = (async () => {
-      const response = await fetch(new URL(`${name}/clip.json`, ROOT));
+      const response = await fetch(gameAssetUrl(`${name}/clip.json`));
       if (!response.ok)
         throw new Error(`Couldn’t load ${name}. Check the local server and try again.`);
       const clip = await response.json();
@@ -41,7 +41,7 @@ export class SpriteBank {
     const promise = (async () => {
       const clip = await this.load(name);
       const image = new Image();
-      image.src = new URL(`${name}/${clip.pages[index].file}`, ROOT).href;
+      image.src = gameAssetUrl(`${name}/${clip.pages[index].file}`).href;
       await image.decode();
       this.pages.set(key, image);
       // Only four decoded atlas pages remain resident. All other actions stay

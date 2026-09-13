@@ -94,3 +94,34 @@ describe("tui-screen primitives", () => {
     ).rejects.toMatchObject({ code: "model_automation_failed" });
   });
 });
+
+test("C-API-23 a late initial submission cannot arm retries after its deadline", async () => {
+  vi.useFakeTimers();
+  try {
+    let release!: () => void;
+    let signal!: AbortSignal;
+    const submit = vi.fn((pending: AbortSignal) => {
+      signal = pending;
+      return new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    });
+    const result = openCommandScreen({
+      terminal: scripted("blocked"),
+      submit,
+      isOpen: () => false,
+      timeoutMs: 100,
+      label: "picker",
+      nudgeDelayMs: 10,
+    });
+    const check = expect(result).rejects.toMatchObject({ code: "model_automation_failed" });
+    await vi.advanceTimersByTimeAsync(100);
+    await check;
+    expect(signal.aborted).toBe(true);
+    release();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(submit).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});

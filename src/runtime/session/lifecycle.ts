@@ -1,7 +1,4 @@
-/** Lifecycle core shared by both adapter sessions: identity, status evidence, the control queue,
- * loop/reap/shutdown wiring, record persistence, and the not-running guard every operation runs
- * behind. Implements PRD §5.3, §5.7, §8.2, and §9.4. The caller-facing send/loop/command methods
- * layer on top of this in `base.ts`. */
+/** Session lifetime, input blocking, persistence and cleanup (PRD §5/§8/§9). */
 
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../core/activity/index.ts";
 import { ControlQueue } from "../../core/control-queue/index.ts";
@@ -46,6 +43,7 @@ export abstract class SessionLifecycle {
   protected readonly loops: SessionLoops;
   protected readonly controlQueue: ControlQueue;
   protected everReady = false;
+  inputBlocking = false;
   private readonly agent: ElwoodAgentKind;
   private readonly runtime: SessionRuntime;
   private readonly reapPolicy: SessionReapPolicy;
@@ -56,7 +54,7 @@ export abstract class SessionLifecycle {
   private readonly pasteGuard: PasteGuard = {
     snapshot: () => this.terminal.snapshot().text,
     staged: (screen, prompt) => this.stagedPaste(screen, prompt),
-    blocked: () => this.status === "blocked",
+    blocked: () => this.isInputBlocked(),
   };
 
   protected constructor(
@@ -143,6 +141,9 @@ export abstract class SessionLifecycle {
   pauseLoopsForStartupCleanup(cancelReadiness: () => void): void {
     cancelReadiness();
     this.loops.pause();
+  }
+  protected isInputBlocked(): boolean {
+    return this.inputBlocking || this.status === "blocked";
   }
   submitEvidence(kind: StatusEvidenceKind): StatusDecision {
     return this.statusEngine.submit(kind);

@@ -35,10 +35,12 @@ export type CommandSurfaceDeps = {
   readonly statusEvents: SessionStatusEmitter;
   readonly status: () => ElwoodSessionStatus;
   readonly everReady: () => boolean;
+  readonly blocked: () => boolean;
   readonly picker: () => ModelPickerSpec;
   readonly submit: (
     command: string,
     kind: "compact" | "list_models" | "set_model",
+    signal: AbortSignal,
   ) => Promise<void>;
 };
 
@@ -73,11 +75,14 @@ export class CommandSurface {
   }
 
   compact(options?: Timeout): Promise<void> {
-    const submit = () => this.deps.submit(compactCommand, "compact");
+    const pending = new AbortController();
+    const submit = () => this.deps.submit(compactCommand, "compact", pending.signal);
     const nudge = () => {
-      ignoreInputFailure(this.deps.terminal.sendInput("\r"));
+      if (!this.deps.blocked()) ignoreInputFailure(this.deps.terminal.sendInput("\r"));
     };
-    return sessionCompact(this.deps.statusEvents, submit, nudge, options?.timeoutMs);
+    return sessionCompact(this.deps.statusEvents, submit, nudge, options?.timeoutMs).finally(() =>
+      pending.abort(),
+    );
   }
 
   listModels(options?: Timeout): Promise<readonly AgentModelOption[]> {
@@ -89,6 +94,10 @@ export class CommandSurface {
   }
 
   private io(kind: "list_models" | "set_model"): ModelPickerIo {
-    return { terminal: this.deps.terminal, submit: (c) => this.deps.submit(c, kind) };
+    return {
+      terminal: this.deps.terminal,
+      blocked: this.deps.blocked,
+      submit: (c, signal) => this.deps.submit(c, kind, signal),
+    };
   }
 }

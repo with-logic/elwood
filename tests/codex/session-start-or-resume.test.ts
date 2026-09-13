@@ -51,3 +51,23 @@ describe("startOrResumeCodex", () => {
     await fresh.session.stop();
   });
 });
+
+test("C-API-26 highTrust expands and rejects conflicting posture on resume and fallback", async () => {
+  const cwd = tempDir();
+  installFakes();
+  const stateDir = join(cwd, ".elwood");
+  const record = createSessionRecord({ cwd, id: "high", adapter: "codex" });
+  writeSessionRecord(
+    { ...record, codex: { resumeId: "native", launch: { sandbox: "read-only" } } },
+    safeSessionDir(stateDir, "high"),
+  );
+  for (const elwoodSessionId of ["high", "absent"]) {
+    const result = await startOrResumeCodex({ cwd, elwoodSessionId, highTrust: true });
+    expect(result.resumed).toBe(elwoodSessionId === "high");
+    expect(ptys.at(-1)!.options.args.join(" ")).toContain("--sandbox 'danger-full-access'");
+    await result.session.stop();
+    await expect(
+      startOrResumeCodex({ cwd, elwoodSessionId, highTrust: true, sandbox: "read-only" }),
+    ).rejects.toMatchObject({ code: "codex_high_trust_conflict" });
+  }
+});

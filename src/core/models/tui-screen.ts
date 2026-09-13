@@ -32,13 +32,35 @@ export async function waitForScreen(
 
 export async function openCommandScreen(input: {
   readonly terminal: ScreenTerminal;
-  readonly submit: () => Promise<void>;
+  readonly submit: (signal: AbortSignal) => Promise<void>;
   readonly isOpen: (text: string) => boolean;
   readonly timeoutMs: number;
   readonly label: string;
   readonly nudgeDelayMs?: number;
 }): Promise<string> {
-  await input.submit();
+  const pending = new AbortController();
+  let deadline: ReturnType<typeof setTimeout>;
+  const expired = new Promise<never>((_resolve, reject) => {
+    deadline = setTimeout(() => {
+      const error = elwoodError("model_automation_failed", `Timed out waiting for ${input.label}.`);
+      pending.abort(error);
+      reject(error);
+    }, input.timeoutMs);
+  });
+  try {
+    return await Promise.race([openWithRetries(input, pending.signal), expired]);
+  } finally {
+    clearTimeout(deadline!);
+    pending.abort();
+  }
+}
+
+async function openWithRetries(
+  input: Parameters<typeof openCommandScreen>[0],
+  signal: AbortSignal,
+): Promise<string> {
+  await input.submit(signal);
+  if (signal.aborted) throw signal.reason;
   // The command text or its Enter can be dropped when the TUI is redrawing
   // (e.g. an MCP-server boot streaming into the composer at startup). A bare
   // Enter nudge cannot recover a lost command line, so re-submit the whole
@@ -57,17 +79,20 @@ export async function openCommandScreen(input: {
       resubmitting = true;
       // A rejected re-submit (e.g. the session closed while polling) is
       // propagated unchanged so the caller settles with the real error.
-      input.submit().then(() => {
+      input.submit(signal).then(() => {
         resubmitting = false;
       }, reject);
     }, nudgeDelayMs);
   });
+  const stop = () => clearInterval(nudgeTimer);
+  signal.addEventListener("abort", stop, { once: true });
   try {
     return await Promise.race([
       waitForScreen(input.terminal, input.isOpen, input.timeoutMs, input.label),
       submitFailed,
     ]);
   } finally {
-    clearInterval(nudgeTimer);
+    stop();
+    signal.removeEventListener("abort", stop);
   }
 }

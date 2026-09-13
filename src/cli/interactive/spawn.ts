@@ -4,9 +4,10 @@
  * Implements PRD §12A.9 and C-CLI-25.
  */
 
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { constants } from "node:os";
 import { causeDetails, elwoodError, errnoCode } from "../../core/errors.ts";
+import { probeShellCommand, userShell } from "../../runtime/shell.ts";
 import type { CliAgent } from "../types.ts";
 
 export type InteractiveLaunch = {
@@ -19,16 +20,20 @@ export type InteractiveLaunch = {
 /** Runs the agent in the foreground and resolves with its exit status. */
 export type InteractiveSpawner = (launch: InteractiveLaunch) => Promise<number>;
 
-export const spawnInteractiveAgent: InteractiveSpawner = (launch) =>
-  new Promise((resolve, reject) => {
+export const spawnInteractiveAgent: InteractiveSpawner = async (launch) => {
+  const path = await loginShellPath().catch((error: unknown) => {
+    throw spawnFailure(launch, error);
+  });
+  return new Promise((resolve, reject) => {
     const child = spawn(launch.command, launch.args, {
       cwd: launch.cwd,
-      env: process.env,
+      env: { ...process.env, PATH: path },
       stdio: "inherit",
     });
     child.once("error", (error) => reject(spawnFailure(launch, error)));
     child.once("exit", (code, signal) => resolve(exitStatus(code, signal)));
   });
+};
 
 /** A signal-terminated agent maps to the shell convention 128 + signal number. */
 export function exitStatus(code: number | null, signal: NodeJS.Signals | null): number {
@@ -47,4 +52,20 @@ function spawnFailure(launch: InteractiveLaunch, error: unknown) {
       : `Could not start ${launch.command} in the foreground.`,
     causeDetails(error),
   );
+}
+
+/** Match detection PATH without inserting a shell between terminal signals and the agent. */
+function loginShellPath(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    // NUL framing separates the exported PATH from incidental shell-startup stdout.
+    execFile(
+      userShell(),
+      probeShellCommand("printf '\\0%s\\0' \"$PATH\""),
+      { timeout: 10_000 },
+      (error, stdout) => {
+        if (error) reject(error);
+        else resolve(stdout.split("\u0000").at(-2)!);
+      },
+    );
+  });
 }

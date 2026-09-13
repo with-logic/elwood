@@ -67,7 +67,10 @@ describe("C-CLAUDE-15 over-length discard boundary", () => {
     // over-length record on it still surfaces a drop (it is NOT suppressed by a stale marker).
     const path = tmpFile();
     const drops: TranscriptDropNotice[] = [];
-    const watcher = new ClaudeTranscriptWatcher("s1", () => {}, { onDrop: (d) => drops.push(d) });
+    const watcher = new ClaudeTranscriptWatcher("s1", () => {}, {
+      onDrop: (d) => drops.push(d),
+      now: () => 0, // Cursor reset, not the independent wall-clock drain limit.
+    });
     writeFileSync(path, "");
     watcher.observe(path);
     writeFileSync(path, `${"x".repeat(2 * 1024 * 1024)}\n`);

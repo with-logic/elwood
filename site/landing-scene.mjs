@@ -1,3 +1,4 @@
+import { gameAssetUrl } from "./game-assets.mjs";
 import { Autonomy, NO_INPUT } from "./autonomy.mjs";
 import { mirroredPose } from "./rotation.mjs";
 import { SpriteBank } from "./sprite-bank.mjs";
@@ -86,7 +87,7 @@ export class LandingScene {
   }
   async boot() {
     try {
-      const response = await fetch("assets/game/manifest.json");
+      const response = await fetch(gameAssetUrl("manifest.json"));
       if (!response.ok) throw new Error("The robot is taking a moment. Refresh to try again.");
       const manifest = await response.json();
       const w = this.world;

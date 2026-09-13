@@ -12,6 +12,15 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Keep permission dialogs blocking across cursor movement and hold slash-command
+  input and recovery Enter while a decision is pending; cancel expired picker submissions.
+- Reject planted state-directory and generated-file links before permission changes or writes.
+- Forward `highTrust` on start-or-resume, wait for model-discovery readiness,
+  and resolve session listings independently of agent-specific environment defaults.
+- Align foreground interactive launches with login-shell agent detection.
+- Correct trust and IPC-persistence documentation, include linked package references,
+  and revalidate mutable website sprites using fresh URLs for previously cached clients.
+
 ## [0.1.1]
 
 First usable public release.

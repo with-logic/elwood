@@ -5,11 +5,13 @@
 
 import { randomUUID } from "node:crypto";
 import {
-  chmodSync,
   closeSync,
+  constants,
   existsSync,
+  fchmodSync,
+  fstatSync,
   fsyncSync,
-  mkdirSync,
+  ftruncateSync,
   openSync,
   renameSync,
   rmSync,
@@ -17,6 +19,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { elwoodError } from "../core/errors.ts";
+import { assertStatePath, makeStateDirectory } from "./directories.ts";
 
 export function newBridgeToken(): string {
   return randomUUID();
@@ -35,25 +38,21 @@ export function safeSessionDir(stateDir: string, id: string): string {
 }
 
 export function secureMkdir(path: string): void {
-  mkdirSync(path, { recursive: true, mode: 0o700 });
-  chmodSync(path, 0o700);
+  makeStateDirectory(path, 0o700);
 }
 
 export function sharedMkdir(path: string): void {
-  mkdirSync(path, { recursive: true, mode: 0o755 });
-  chmodSync(path, 0o755);
+  makeStateDirectory(path, 0o755);
 }
 
 export function writeSharedFile(path: string, content: string): void {
   sharedMkdir(dirname(path));
-  writeFileSync(path, content, { mode: 0o644 });
-  chmodSync(path, 0o644);
+  writeStateFile(path, content, 0o644);
 }
 
 export function writePrivateFile(path: string, content: string): void {
   secureMkdir(dirname(path));
-  writeFileSync(path, content, { mode: 0o600 });
-  chmodSync(path, 0o600);
+  writeStateFile(path, content, 0o600);
 }
 
 /**
@@ -66,9 +65,14 @@ export function writePrivateFileAtomic(path: string, content: string): void {
   secureMkdir(dirname(path));
   const tmp = `${path}.tmp-${process.pid}-${randomUUID().slice(0, 8)}`;
   try {
-    const fd = openSync(tmp, "w", 0o600);
+    const fd = openSync(
+      tmp,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      0o600,
+    );
     try {
       writeFileSync(fd, content);
+      fchmodSync(fd, 0o600);
       fsyncSync(fd);
     } finally {
       closeSync(fd);
@@ -78,7 +82,6 @@ export function writePrivateFileAtomic(path: string, content: string): void {
     rmSync(tmp, { force: true });
     throw error;
   }
-  chmodSync(path, 0o600);
   fsyncDir(dirname(path));
 }
 
@@ -87,6 +90,30 @@ export function fsyncDir(path: string): void {
   const fd = openSync(path, "r");
   try {
     fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Validate before truncation; no-follow also rejects a planted leaf link. */
+function writeStateFile(path: string, content: string, mode: number): void {
+  assertStatePath(path);
+  const fd = openSync(
+    path,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    mode,
+  );
+  try {
+    const info = fstatSync(fd);
+    if (!info.isFile() || info.uid !== process.getuid?.() || info.nlink !== 1) {
+      throw elwoodError(
+        "state_corrupt",
+        `State file must be an owned, single-link regular file: ${path}`,
+      );
+    }
+    fchmodSync(fd, mode);
+    ftruncateSync(fd, 0);
+    writeFileSync(fd, content);
   } finally {
     closeSync(fd);
   }

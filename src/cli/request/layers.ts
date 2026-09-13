@@ -37,13 +37,6 @@ export function layeredSettings(
 ): LayeredSettings {
   const flags = parsed.flags;
   const key = (name: string) => configKey(configPath, name);
-  const stateLocation = resolveStateLocation(context.env, context.homeDir);
-  const state = layered(
-    sourced(flags.stateDir, "--state-dir"),
-    sourced(env.stateDir, "ELWOOD_STATE_DIR"),
-    sourced(config.stateDir, key("stateDir")),
-    sourced(stateLocation.path, stateLocation.source),
-  );
   const persona = layered(
     sourced(flags.persona, "--persona"),
     sourced(env.persona, "ELWOOD_PERSONA"),
@@ -57,12 +50,7 @@ export function layeredSettings(
       sourced(config.timeout, key("timeout")),
       sourced<string>(undefined, "built-in"),
     ),
-    stateDir: sourced(
-      state.source === stateLocation.source
-        ? state.value!
-        : resolve(context.invocationCwd, nonBlank(state.value!, "stateDir")),
-      state.source,
-    ),
+    stateDir: resolveStateSetting(parsed, env, config, configPath, context),
     persona: sourced(optionalNonBlank(persona.value, "persona"), persona.source),
     model: layered<string>(
       sourced(flags.model, "--model"),
@@ -104,4 +92,27 @@ export function explicitAdapterOptions(
       env.codexSandbox !== undefined ||
       env.codexApprovalPolicy !== undefined,
   };
+}
+
+/** Resolve the state path without selecting or validating any agent (C-CLI-24). */
+export function resolveStateSetting(
+  parsed: ParsedRunCommand,
+  env: EnvSettings,
+  config: CliConfig,
+  configPath: string,
+  context: LayerContext,
+): SourcedValue<string> {
+  const stateLocation = resolveStateLocation(context.env, context.homeDir);
+  const state = layered(
+    sourced(parsed.flags.stateDir, "--state-dir"),
+    sourced(env.stateDir, "ELWOOD_STATE_DIR"),
+    sourced(config.stateDir, configKey(configPath, "stateDir")),
+    sourced(stateLocation.path, stateLocation.source),
+  );
+  return sourced(
+    state.source === stateLocation.source
+      ? state.value!
+      : resolve(context.invocationCwd, nonBlank(state.value!, "stateDir")),
+    state.source,
+  );
 }

@@ -1,3 +1,4 @@
+import { gameAssetUrl } from "./game-assets.mjs";
 import { SpriteBank } from "./sprite-bank.mjs";
 import { blendAtSocket, positionPose, samePoseImage, transitionPose } from "./sprite-pose.mjs";
 import { SpriteRenderer } from "./sprite-renderer.mjs";
@@ -572,7 +573,7 @@ async function boot() {
   loading.hidden = false;
   document.querySelector("#retry").hidden = true;
   try {
-    const response = await fetch("assets/game/manifest.json");
+    const response = await fetch(gameAssetUrl("manifest.json"));
     if (!response.ok)
       throw new Error("Couldn’t load the animation library. Check the local server and try again.");
     const manifest = await response.json();

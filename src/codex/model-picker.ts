@@ -3,6 +3,7 @@
  * Implements PRD §5.7, C-API-23, and C-API-24.
  */
 
+import { sendPickerInput } from "../core/models/input.ts";
 import type { ModelPickerSpec } from "../core/models/picker.ts";
 import { codexModelPickerHeader, parseCodexModelPicker } from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
@@ -17,14 +18,14 @@ export const codexModelPicker: ModelPickerSpec = {
   // Enter confirms the model, then Codex asks for a reasoning level with the
   // cursor pre-set on that model's default; a second Enter keeps it.
   apply: async (io, timeoutMs) => {
-    await io.terminal.sendInput("\r");
+    await sendPickerInput(io, "\r", (text) => codexModelPickerHeader.test(text));
     await waitForScreen(
       io.terminal,
       (text) => reasoningHeader.test(text),
       timeoutMs,
       "codex reasoning level screen",
     );
-    await io.terminal.sendInput("\r");
+    await sendPickerInput(io, "\r", (text) => reasoningHeader.test(text));
     await waitForScreen(
       io.terminal,
       (text) => changeConfirmed.test(text) && !reasoningHeader.test(text),

@@ -265,7 +265,7 @@ The `elwood` command runs one agent turn, writes the reply, and exits. It still 
 elwood "Summarize this repository."
 ```
 
-`elwood run` is the explicit form of the same command. With no arguments, `elwood` prints help. The built-in default agent is Codex; choose Claude explicitly or [save a default](configuration.html).
+`elwood run` is the explicit form of the same command. With no arguments, `elwood` prints help. Without an explicit agent choice, Elwood tries Claude first, then Codex. You can [save a default](configuration.html).
 
 ## Input
 
@@ -596,7 +596,7 @@ By default neither agent stops to ask a human for approval. The two agents expre
 
 Neither default grants every possible tool permission. A successful turn may explain that it could not perform an operation.
 
-`--high-trust` is the agent-neutral way to say "never ask for anything". For whichever agent runs it selects Claude `bypassPermissions`, or Codex `danger-full-access` with approval policy `never`, so you do not have to remember which value means what for each agent.
+`--high-trust` is the agent-neutral way to say "never ask for agent permissions". For whichever agent runs it selects Claude `bypassPermissions`, or Codex `danger-full-access` with approval policy `never`, so you do not have to remember which value means what for each agent.
 
 ```sh
 elwood --high-trust "Fix the failing tests and commit."

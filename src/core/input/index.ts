@@ -131,7 +131,7 @@ async function writePastedPrompt(
     throwIfInputAborted(signal);
     await terminal.sendInput("\r");
   } catch (error) {
-    if (signal?.aborted) await clearStagedComposer(terminal);
+    if (signal?.aborted && !guard?.blocked?.()) await clearStagedComposer(terminal);
     throw error;
   }
   schedule(nudge, nudgeDelayMs);
@@ -178,9 +178,18 @@ export async function writeQueuedInput(
     // returned promise resolves only after that Enter is dispatched, so a queued
     // command's Enter always lands before the next operation writes.
     command: async () => {
+      if (guard?.blocked?.()) await waitWhileBlocked(guard, signal);
+      throwIfInputAborted(signal);
       await terminal.sendInput(input);
-      await waitForInput(enterDelayMs, signal);
-      await terminal.sendInput("\r");
+      try {
+        await waitForInput(enterDelayMs, signal);
+        await waitWhileBlocked(guard, signal);
+        throwIfInputAborted(signal);
+        await terminal.sendInput("\r");
+      } catch (error) {
+        if (signal?.aborted && !guard?.blocked?.()) await clearStagedComposer(terminal);
+        throw error;
+      }
     },
   };
   await submitters[mode]();

@@ -183,7 +183,7 @@ elwood<span class="w"> </span><span class="s2">"Where are the tests?"</span>
 <div class="highlight"><pre><span></span><code>elwood<span class="w"> </span><span class="s2">"Summarize this repository."</span>
 </code></pre></div>
 
-<p><code>elwood run</code> is the explicit form of the same command. With no arguments, <code>elwood</code> prints help. The built-in default agent is Codex; choose Claude explicitly or <a href="#configuration">save a default</a>.</p>
+<p><code>elwood run</code> is the explicit form of the same command. With no arguments, <code>elwood</code> prints help. Without an explicit agent choice, Elwood tries Claude first, then Codex. You can <a href="#configuration">save a default</a>.</p>
 <h2 id="cli--input">Input</h2>
 <p>Positional words become the prompt. Piped input is appended after a blank line:</p>
 <div class="highlight"><pre><span></span><code>git<span class="w"> </span>diff<span class="w"> </span><span class="p">|</span><span class="w"> </span>elwood<span class="w"> </span><span class="s2">"Review this diff for correctness."</span>
@@ -491,7 +491,7 @@ elwood<span class="w"> </span>--no-defaults<span class="w"> </span>--agent<span 
 </tbody>
 </table>
 <p>Neither default grants every possible tool permission. A successful turn may explain that it could not perform an operation.</p>
-<p><code>--high-trust</code> is the agent-neutral way to say "never ask for anything". For whichever agent runs it selects Claude <code>bypassPermissions</code>, or Codex <code>danger-full-access</code> with approval policy <code>never</code>, so you do not have to remember which value means what for each agent.</p>
+<p><code>--high-trust</code> is the agent-neutral way to say "never ask for agent permissions". For whichever agent runs it selects Claude <code>bypassPermissions</code>, or Codex <code>danger-full-access</code> with approval policy <code>never</code>, so you do not have to remember which value means what for each agent.</p>
 <div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>--high-trust<span class="w"> </span><span class="s2">"Fix the failing tests and commit."</span>
 </code></pre></div>
 

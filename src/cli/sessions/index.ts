@@ -6,13 +6,12 @@
 
 import type { ParsedListCommand } from "../command-types.ts";
 import { createCliSanitizer, formatDiagnosticValue } from "../output/sanitize.ts";
-import type { AgentDetector } from "../request/agent-detect.ts";
-import { resolveRunSettings } from "../request/index.ts";
 import { usage } from "../request/values.ts";
 import type { AsyncOutputSink } from "../stream.ts";
 import { renderTable } from "../table.ts";
-import type { CliEnvironment, ResolvedRunRequest } from "../types.ts";
+import type { CliEnvironment, CliOutputMode } from "../types.ts";
 import { type CliSessionListing, listCliSessions } from "./list.ts";
+import { resolveListingSettings } from "./settings.ts";
 
 export type SessionsCommandContext = {
   readonly env: CliEnvironment;
@@ -30,17 +29,12 @@ const defaults: SessionsCommandDependencies = { list: listCliSessions };
 
 const header = ["ID", "AGENT", "LIVE", "RESUMABLE", "LAST USED", "CREATED", "WORKSPACE"];
 
-/** Listing commands never select a real agent; this stands in without probing. */
-const listingAgent: AgentDetector = () => Promise.resolve("claude");
-
 export async function runSessionsCommand(
   parsed: ParsedListCommand,
   context: SessionsCommandContext,
   dependencies: SessionsCommandDependencies = defaults,
 ): Promise<number> {
-  // `sessions` reads only `stateDir` and `output`, so it resolves with a detector
-  // that never probes: listing records must not touch the login shell (C-CLI-24).
-  const settings = await resolveRunSettings(parsed.run, context, listingAgent);
+  const settings = resolveListingSettings(parsed.run, context);
   assertListingOutput(settings, "sessions");
   const clean = createCliSanitizer();
   const result = dependencies.list(settings.stateDir);
@@ -80,7 +74,10 @@ export async function runSessionsCommand(
 
 /** Listings are text or JSON only; an inherited JSONL selection names its source. */
 export function assertListingOutput(
-  settings: ResolvedRunRequest,
+  settings: {
+    readonly output: CliOutputMode;
+    readonly resolution?: { readonly sources: { readonly output: string } };
+  },
   command: "sessions" | "models",
 ): void {
   if (settings.output !== "jsonl") return;

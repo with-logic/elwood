@@ -39,6 +39,7 @@ function resumeOptions(elwoodSessionId: string, start: StartClaudeOptions): Resu
     tools: start.tools,
     autoupdate: start.autoupdate,
     autotrust: start.autotrust,
+    highTrust: start.highTrust,
     hookTimeoutMs: start.hookTimeoutMs,
     strictVersionCheck: start.strictVersionCheck,
   });

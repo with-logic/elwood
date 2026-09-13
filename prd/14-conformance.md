@@ -223,7 +223,7 @@ Each criterion has:
 
 | ID | Section | Criterion |
 |---|---:|---|
-| C-STATE-01 | §8.1 | Default state is written under `<cwd>/.elwood/`. |
+| C-STATE-01 | §8.1 | Default state is written under `<cwd>/.elwood/`; planted state-directory and generated-file links are rejected before changing external contents or modes (§8.1/8.2). |
 | C-STATE-02 | §8.1 | Passing `stateDir` stores state under the caller-provided directory. |
 | C-STATE-03 | §8.2 | Session metadata is written atomically. |
 | C-STATE-04 | §8.2 | Session metadata contains enough information to resume after parent process restart. |

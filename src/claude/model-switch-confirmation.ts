@@ -60,7 +60,16 @@ function switchDialogRegion(text: string): SwitchDialogRegion | undefined {
     if (title === "Change effort level?") latest = { index, subject: "effort level" };
   }
   if (latest === undefined) return undefined;
-  return { subject: latest.subject, text: lines.slice(latest.index).join("\n") };
+  const region = lines.slice(latest.index);
+  const lastOption = region.findLastIndex((line) => optionPattern.test(line));
+  // A later dialog can lack a switch title. Its question/options must not inherit
+  // the earlier cache warning's authority merely because they share a viewport.
+  const footer =
+    /^\s*(?:Enter to confirm|Esc to cancel)(?:\s*[·•]\s*(?:Enter to confirm|Esc to cancel))*\s*$/i;
+  if (region.slice(lastOption + 1).some((line) => line.trim() !== "" && !footer.test(line))) {
+    return undefined;
+  }
+  return { subject: latest.subject, text: region.join("\n") };
 }
 
 function switchOptions(text: string): readonly SwitchOption[] {

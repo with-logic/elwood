@@ -13,7 +13,7 @@ By default neither agent stops to ask a human for approval. The two agents expre
 
 Neither default grants every possible tool permission. A successful turn may explain that it could not perform an operation.
 
-`--high-trust` is the agent-neutral way to say "never ask for anything". For whichever agent runs it selects Claude `bypassPermissions`, or Codex `danger-full-access` with approval policy `never`, so you do not have to remember which value means what for each agent.
+`--high-trust` is the agent-neutral way to say "never ask for agent permissions". For whichever agent runs it selects Claude `bypassPermissions`, or Codex `danger-full-access` with approval policy `never`, so you do not have to remember which value means what for each agent.
 
 ```sh
 elwood --high-trust "Fix the failing tests and commit."

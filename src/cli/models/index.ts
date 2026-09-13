@@ -58,8 +58,13 @@ export async function executeModels(
     lifecycle.beginLaunch();
     const started = await lifecycle.race(session.start());
     if (started.completed) {
-      const listed = await lifecycle.race(started.value.listModels());
-      if (listed.completed) models = listed.value;
+      const ready = await lifecycle.race(
+        started.value.waitForStatus((status) => status === "ready"),
+      );
+      if (ready.completed) {
+        const listed = await lifecycle.race(started.value.listModels());
+        if (listed.completed) models = listed.value;
+      }
     }
   } catch (error) {
     lifecycle.fail(error);
