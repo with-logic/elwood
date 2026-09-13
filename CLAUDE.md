@@ -3,13 +3,14 @@
 This file is the briefing for anyone, human or AI, working on Elwood. Read it
 before making implementation changes.
 
-Elwood is specified by `PRD.md`. The PRD is the contract; this document explains
+Elwood is specified by the documents in `prd/` (start at `prd/README.md`).
+The PRD is the contract; this document explains
 how we implement it.
 
 ## Working Agreement: Specification Changes
 
 If you are asked to make a change that is not specific to our implementation,
-update `PRD.md` first.
+update `prd/` first.
 
 Examples of what triggers a PRD update:
 
@@ -101,7 +102,7 @@ paper over mismatches with `any`.
 
 ## Common Workflow
 
-1. Update `PRD.md` for spec-visible behavior.
+1. Update `prd/` for spec-visible behavior.
 2. Implement the smallest matching slice in `src/`.
 3. Add conformance tests in `tests/`.
 4. If the change is consumer-facing (public API, session/lifecycle behavior,

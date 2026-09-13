@@ -17,7 +17,7 @@ sources are:
 
 Each fact below was verified against a real CLI (versions noted where relevant).
 When a fact drives an implementation decision, the code and the matching PRD
-conformance criterion are cited. If you change behavior here, update `PRD.md`
+conformance criterion are cited. If you change behavior here, update `prd/`
 first (see `CLAUDE.md` / `AGENTS.md`), then this file.
 
 ## Readiness

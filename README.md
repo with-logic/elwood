@@ -48,7 +48,7 @@ transcripts the CLI already provides.
 - **Two ways in.** A TypeScript library for applications, and an `elwood`
   command for shell scripts and pipelines.
 
-`PRD.md` is the source of truth for observable behavior. If this README, the
+[`prd/`](prd/README.md) is the source of truth for observable behavior. If this README, the
 tests, or the implementation disagree with the PRD, the PRD wins.
 
 ## Requirements
@@ -524,7 +524,7 @@ immediate; both are safe after the process has already exited.
   and hooks.
 - [examples/README.md](examples/README.md): runnable minimal, streaming, and
   low-level examples.
-- [PRD.md](PRD.md): the behavior specification and conformance criteria.
+- [prd/](prd/README.md): the behavior specification and conformance criteria.
 - [CHANGELOG.md](CHANGELOG.md): consumer-facing changes.
 - [site/](site/): the landing page and the generated documentation site.
 

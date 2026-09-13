@@ -7,7 +7,7 @@ grounded in the project's documented standards.
 
 1. `CLAUDE.md` (also `AGENTS.md`) for the spec-first workflow, file
    organization, strict TypeScript and Biome setup, and the 100% coverage gate.
-2. `PRD.md` for the behavior contract. Any change a second implementation
+2. `prd/` for the behavior contract. Any change a second implementation
    would have to make requires a PRD update.
 3. `CONTRIBUTING.md` for the merge gate (`npm run check`) and the e2e suite.
 4. `docs/cli-behavior.md` if the diff touches readiness, turn detection, trust

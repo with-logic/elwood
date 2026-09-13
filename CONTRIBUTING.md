@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping with Elwood. This project is spec-first: `PRD.md` is the
+Thanks for helping with Elwood. This project is spec-first: `prd/` is the
 contract for observable behavior, and `CLAUDE.md` (also linked as `AGENTS.md`)
 is the implementation guide for anyone, human or AI, changing code. Read both
 before opening a pull request.
@@ -48,7 +48,7 @@ directories automatically.
 1. If the change is observable by a user, an API consumer, or a second
    implementation (commands, flags, events, output shapes, config, state,
    errors, defaults, limits, security guarantees, conformance criteria), update
-   `PRD.md` first.
+   `prd/` first.
 2. Implement the smallest matching slice in `src/`.
 3. Add or update tests in `tests/`. Conformance tests name their criterion in
    the title, for example `C-CLI-03 resume rejects --cwd`.
@@ -88,7 +88,7 @@ They live under `src/app/` and are not part of the published package.
 
 | Path | Purpose |
 |---|---|
-| `PRD.md` | Source of truth for behavior and conformance criteria. |
+| `prd/` | Source of truth for behavior and conformance criteria (one file per section). |
 | `src/index.ts` | Public package exports. |
 | `src/core/` | Adapter-neutral session machinery: control queue, status detection, turns, loops, images, warnings. |
 | `src/runtime/` | Shared session base class, startup checks, teardown, and test seams. |

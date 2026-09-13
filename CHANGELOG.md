@@ -7,8 +7,8 @@ and doc tweaks are omitted. The format follows
 [Keep a Changelog](https://keepachangelog.com); this project is pre-1.0, so
 everything lands under **Unreleased** until the first tagged release.
 
-Observable behavior is specified in `PRD.md`; the conformance criteria that
-back each entry are listed in PRD.md §14.
+Observable behavior is specified in `prd/`; the conformance criteria that
+back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
@@ -61,7 +61,7 @@ version to install.
   `{"type":"models"}` document of `AgentModelOption` rows. The adapters' launch
   flag mapping now lives in shared `claudeLaunchArguments`/`codexLaunchArguments`
   builders so interactive and headless launches cannot drift. (§12A.7–§12A.10,
-  C-CLI-21 through C-CLI-24)
+  C-CLI-23 through C-CLI-26)
 
 - Claude Code and Codex CLI adapters that run the real interactive CLI in a
   PTY, launched through the user's login shell, and observe it through a

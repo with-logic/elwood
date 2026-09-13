@@ -12,9 +12,12 @@ coverage/
 .claude/
 tickets/
 
-# This repository is spec-first; the PRD must be tracked even if a global
-# gitignore excludes files named PRD.md.
+# This repository is spec-first; the specification must be tracked even if a
+# global gitignore excludes files named PRD.md. The spec now lives in prd/,
+# but keep the negation in case a stray global rule matches those names too.
 !PRD.md
+!prd/
+!prd/**
 
 # Ephemeral code-review artifacts (regenerated each run).
 REVIEW.md
