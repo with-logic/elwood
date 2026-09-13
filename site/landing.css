@@ -471,6 +471,23 @@ body:before {
 .page-footer p {
   color: var(--muted);
 }
+/* Small inline marks in the footer credit: they take the surrounding text
+   colour and size, so they read as punctuation rather than decoration. */
+.mark-heart,
+.mark-needle {
+  width: 1.05em;
+  height: 1.05em;
+  vertical-align: -0.2em;
+  fill: currentColor;
+}
+.mark-heart {
+  color: var(--signal);
+}
+.mark-needle {
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.26em;
+}
 .footer-links {
   display: flex;
   gap: 28px;

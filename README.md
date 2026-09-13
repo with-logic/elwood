@@ -11,7 +11,7 @@ which use your regular subscription rather than metered API billing. Elwood
 starts the actual agent CLI in a hidden terminal and types into it the way you
 would. The agent keeps its tools, hooks, configuration, and login.
 
-Prompted with love by [Logic, Inc](https://logic.inc) in Seattle, WA.
+Prompted with ❤️ by [Logic, Inc](https://logic.inc) in Seattle, WA <img src="site/assets/landing/space-needle.svg" alt="" width="13" height="13" />
 
 ```sh
 npm install -g @with-logic/elwood
