@@ -1,6 +1,7 @@
 <div align="center">
   <img src="site/assets/landing/icon-512.webp" alt="" width="96" height="96" />
   <h1>Elwood</h1>
+  <p><a href="https://elwood.bot">elwood.bot</a></p>
 </div>
 
 **Automate real Claude Code and Codex sessions in headless PTYs.**
@@ -10,7 +11,7 @@ which use your regular subscription rather than metered API billing. Elwood
 starts the actual agent CLI in a hidden terminal and types into it the way you
 would. The agent keeps its tools, hooks, configuration, and login.
 
-Elwood is an open-source project by [Logic, Inc](https://logic.inc).
+Prompted with love by [Logic, Inc](https://logic.inc) in Seattle, WA.
 
 ```sh
 npm install -g @with-logic/elwood
@@ -533,7 +534,7 @@ immediate; both are safe after the process has already exited.
 ## The website
 
 [`site/`](site/) is the landing page and the generated documentation site,
-deployed to Vercel from this repository. It is a static site with no framework
+deployed to Vercel from this repository and served at [elwood.bot](https://elwood.bot). It is a static site with no framework
 and no build step: HTML, CSS, ES modules, and the robot's sprite sheets.
 
 ```sh
