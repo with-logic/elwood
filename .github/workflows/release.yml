@@ -19,7 +19,7 @@ on:
 
 permissions:
   contents: write # Create releases and push tags.
-  id-token: write # npm provenance via OIDC.
+  id-token: write # npm trusted publishing (OIDC); no long-lived token.
 
 jobs:
   resolve:
@@ -99,7 +99,6 @@ jobs:
     # reject other platforms at startup.
     runs-on: macos-latest
     timeout-minutes: 20
-    environment: npm-publish
     steps:
       - uses: actions/checkout@v6
         with:
@@ -150,10 +149,15 @@ jobs:
           git tag "${{ needs.resolve.outputs.tag }}"
           git push origin "${{ needs.resolve.outputs.tag }}"
 
+      # Publishes via npm trusted publishing (OIDC) — no NPM_TOKEN required.
+      # This relies on a trusted publisher configured at npmjs.com for
+      # @with-logic/elwood pointing at this repository AND this workflow
+      # filename (release.yml). Renaming this file breaks publishing until the
+      # npmjs.com configuration is updated to match. Provenance is implied by
+      # trusted publishing, so the flag is not passed.
+      # Requires npm >= 11.5.1 and Node >= 22.14.0 (Node 24.x ships npm 11.6+).
       - name: Publish to npm
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
