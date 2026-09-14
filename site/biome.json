@@ -4,6 +4,7 @@
   "files": {
     "includes": [
       "*.mjs",
+      "landing/**/*.mjs",
       "*.html",
       "*.css",
       "tests/**/*.mjs",
