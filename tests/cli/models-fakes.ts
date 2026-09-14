@@ -26,7 +26,12 @@ export function modelsHarness(fail?: "claude" | "codex") {
         ]);
       sessions.push(session);
       return Promise.resolve({
-        request: effectiveRequest({ agent: request.agent, output: request.output }),
+        request: effectiveRequest({
+          agent: request.agent,
+          output: request.output,
+          verbose: request.verbose,
+          ...(request.debug === undefined ? {} : { debug: request.debug }),
+        }),
         session,
       });
     },

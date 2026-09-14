@@ -81,7 +81,11 @@ test("C-CLI-26 a warning write failure cleans the active probe and prevents anot
     },
   };
   expect(
-    await main(["models", "--output", "json"], { ...h.context, stderr, signals }, dependencies),
+    await main(
+      ["models", "--output", "json", "--verbose"],
+      { ...h.context, stderr, signals },
+      dependencies,
+    ),
   ).toBe(1);
   expect(h.agents).toEqual(["claude"]);
   expect(h.sessions[0]!.teardowns).toBe(1);

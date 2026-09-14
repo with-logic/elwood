@@ -119,11 +119,13 @@ stacks, bridge credentials, and terminal escape sequences.
 
 Text is the default output. It writes the combined assistant response — every
 observed assistant text message in order, separated by one blank line — with one
-trailing newline when non-empty and zero bytes for an empty response. Concise,
-sanitized warnings are written to stderr by default for text and JSON runs;
-JSONL represents them only as ordered warning records to avoid duplicate
-diagnostics. `--verbose` adds concise elapsed-time phase, tool-name, and cleanup
-progress to stderr without replaying assistant or thinking text. `--debug` emits
+trailing newline when non-empty and zero bytes for an empty response. Live session
+warnings are quiet by default for text and JSON runs, including model probes.
+`--verbose` enables concise sanitized warnings and elapsed-time phase, tool-name,
+and cleanup progress on stderr without replaying assistant or thinking text.
+`--debug` also enables warnings. JSONL always represents warnings as ordered
+records without duplicating them on stderr. Fatal errors and `sessions` warnings
+about omitted unreadable records remain visible without verbosity. `--debug` emits
 full sanitized normalized event details to stderr and is intended for diagnosis
 rather than routine progress. `--stream` is text-only, emits assistant chunks once with one
 blank line between distinct messages, preserves partial output on failure, and

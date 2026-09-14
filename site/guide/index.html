@@ -220,7 +220,7 @@ elwood<span class="w"> </span>--image<span class="w"> </span>screenshot.png<span
 </tr>
 </tbody>
 </table>
-<p>Text and JSON diagnostics use stderr. JSONL includes warning records in its ordered stdout stream. A response can contain useful partial text even when the run fails: inspect the exit code and terminal record type.</p>
+<p>Text errors use stderr; JSON errors are emitted as terminal records on stdout. Routine session warnings are quiet unless <code>--verbose</code> or <code>--debug</code> is enabled. JSONL includes warning records in its ordered stdout stream. A response can contain useful partial text even when the run fails: inspect the exit code and terminal record type.</p>
 <div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>--output<span class="w"> </span>json<span class="w"> </span><span class="s2">"Describe the architecture."</span>
 </code></pre></div>
 
@@ -241,7 +241,7 @@ elwood<span class="w"> </span>--image<span class="w"> </span>screenshot.png<span
 <div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>--stream<span class="w"> </span>--verbose<span class="w"> </span><span class="s2">"Explain the build pipeline."</span>
 </code></pre></div>
 
-<p><code>--stream</code> emits assistant text as it arrives. <code>--verbose</code> prints concise elapsed progress to stderr. Streaming is valid only with text output; use <code>--no-stream</code> if a saved setting enables it and you need JSON.</p>
+<p><code>--stream</code> emits assistant text as it arrives. <code>--verbose</code> prints concise elapsed progress and session warnings to stderr. Streaming is valid only with text output; use <code>--no-stream</code> if a saved setting enables it and you need JSON.</p>
 <p>To see the actual TUI, use <code>--head</code>:</p>
 <div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>--head<span class="w"> </span><span class="s2">"Explain the architecture."</span>
 </code></pre></div>
@@ -778,7 +778,7 @@ Continuation and output:
   --ephemeral                 Remove new or resumed Elwood state afterward
   --output &lt;text|json|jsonl&gt;  Stdout protocol (default: text)
   --stream / --no-stream      Toggle incremental text output (default: off)
-  --verbose / --no-verbose    Toggle concise elapsed progress on stderr (default: off)
+  --verbose / --no-verbose    Toggle warnings and concise progress on stderr (default: off)
   --debug                     Write full sanitized event details to stderr
   --head                      View the full agent TUI in this terminal
   --state-dir &lt;path&gt;          Override CLI-owned state storage

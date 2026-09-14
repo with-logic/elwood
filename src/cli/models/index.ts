@@ -54,7 +54,10 @@ export async function executeModels(
     lifecycle,
     {
       status: () => undefined,
-      warning: (event) => warnings.push(writeWarning(io.stderr, event, clean)),
+      warning: (event) => {
+        if (request.verbose || request.debug === true)
+          warnings.push(writeWarning(io.stderr, event, clean));
+      },
     },
     undefined,
     updateAttention,

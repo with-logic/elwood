@@ -5,9 +5,9 @@ exit codes, and safe shell recipes. Start with [cli.md](cli.md) for usage.
 
 ## Text, verbose, and stream
 
-Text is the default output protocol. Warnings and diagnostics go to stderr,
-never into the answer on stdout. `--verbose` adds compact elapsed phase,
-tool-name, warning, and cleanup progress; it does not repeat assistant or
+Text is the default output protocol. Live session warnings are quiet by default,
+including during `elwood models`. Errors remain visible. `--verbose` adds compact
+elapsed phase, tool-name, warning, and cleanup progress on stderr; it does not repeat assistant or
 thinking text. `--debug` adds full sanitized event details. `--stream` emits
 assistant text as it arrives and is valid only with text output; use
 `--no-stream` when config enabled streaming but a script needs JSON.
@@ -80,7 +80,9 @@ share `toolCallId` when the agent supplies one. This example also uses
 ```
 
 JSONL warning records stay on stdout so the machine protocol remains ordered;
-text and JSON runs surface warnings on stderr.
+text and JSON runs surface session warnings on stderr only with `--verbose`
+or `--debug`. `ELWOOD_VERBOSE=true` or config `verbose: true` also enables them;
+`--no-verbose` overrides inherited verbosity (but not explicit `--debug`).
 
 ## Session and model listings
 
@@ -111,7 +113,8 @@ in JSON mode, and `sessions` never starts an agent:
 check, so a force-killed owner can leave a stale "live" until the session is
 next started or torn down. An empty state directory yields an empty `sessions`
 array (text mode prints a notice on stderr and nothing on stdout). Unreadable
-records are skipped with one stderr warning each.
+records are skipped with one stderr warning each, even without verbosity,
+because the listing omits those results.
 
 `elwood models` probes Claude then Codex, regardless of saved or environment
 agent defaults. Text includes an `AGENT` column. JSON contains successful

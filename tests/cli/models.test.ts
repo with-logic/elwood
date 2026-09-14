@@ -159,7 +159,7 @@ describe("executeModels", () => {
     expect(h.stderr.value).toBe("");
   });
 
-  test("C-CLI-26 warnings and premature exit surface like a run", async () => {
+  test("C-CLI-26 quiet warnings do not hide premature exit", async () => {
     const h = harness();
     h.session.underlying.listModels = () => {
       h.session.emitter.emit("warning", {
@@ -175,8 +175,6 @@ describe("executeModels", () => {
       return new Promise(() => undefined);
     };
     expect(await h.run()).toBe(1);
-    expect(h.stderr.value).toBe(
-      "elwood: warning [version_unparseable]: odd version\nelwood: Agent exited before completing the turn.\n",
-    );
+    expect(h.stderr.value).toBe("elwood: Agent exited before completing the turn.\n");
   });
 });

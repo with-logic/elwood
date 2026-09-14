@@ -288,7 +288,7 @@ Repeat `--image` for multiple images. Input is limited to 8 MiB. The command doe
 | `--output json` | A script that needs one result | One terminal document with response, status and cleanup |
 | `--output jsonl` | Progress in another program | Ordered event records, then one result or error |
 
-Text and JSON diagnostics use stderr. JSONL includes warning records in its ordered stdout stream. A response can contain useful partial text even when the run fails: inspect the exit code and terminal record type.
+Text errors use stderr; JSON errors are emitted as terminal records on stdout. Routine session warnings are quiet unless `--verbose` or `--debug` is enabled. JSONL includes warning records in its ordered stdout stream. A response can contain useful partial text even when the run fails: inspect the exit code and terminal record type.
 
 ```sh
 elwood --output json "Describe the architecture."
@@ -316,7 +316,7 @@ Illustrative successful output:
 elwood --stream --verbose "Explain the build pipeline."
 ```
 
-`--stream` emits assistant text as it arrives. `--verbose` prints concise elapsed progress to stderr. Streaming is valid only with text output; use `--no-stream` if a saved setting enables it and you need JSON.
+`--stream` emits assistant text as it arrives. `--verbose` prints concise elapsed progress and session warnings to stderr. Streaming is valid only with text output; use `--no-stream` if a saved setting enables it and you need JSON.
 
 To see the actual TUI, use `--head`:
 
@@ -820,7 +820,7 @@ Continuation and output:
   --ephemeral                 Remove new or resumed Elwood state afterward
   --output <text|json|jsonl>  Stdout protocol (default: text)
   --stream / --no-stream      Toggle incremental text output (default: off)
-  --verbose / --no-verbose    Toggle concise elapsed progress on stderr (default: off)
+  --verbose / --no-verbose    Toggle warnings and concise progress on stderr (default: off)
   --debug                     Write full sanitized event details to stderr
   --head                      View the full agent TUI in this terminal
   --state-dir <path>          Override CLI-owned state storage

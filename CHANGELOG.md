@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Keep live session warnings quiet in text and JSON CLI output, including model
+  discovery; enable them with `--verbose` or `--debug`. JSONL warning events and
+  fatal errors remain available as before.
+
 - List both Claude and Codex catalogs in bare `elwood models`, with agent
   associations, partial failure diagnostics, and one shared timeout budget.
   Explicit `--agent` keeps the single-agent output contract.

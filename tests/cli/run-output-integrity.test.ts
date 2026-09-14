@@ -62,12 +62,14 @@ describe("RunOutput diagnostic integrity", () => {
   });
 
   test("C-CLI-10 warnings accepted before finish are rendered and later warnings are ignored", async () => {
-    const h = harness(request());
+    const h = harness(request({ verbose: true }));
     h.output.warning(warning("during cleanup"));
     await h.output.finish(result);
     h.output.warning(warning("after finish"));
     await h.output.flush();
-    expect(h.stderr.value).toBe("elwood: warning [version_unparseable]: during cleanup\n");
+    expect(h.stderr.value).toBe(
+      "[0.0s] Warning version_unparseable: during cleanup\n[0.0s] Completed; session removed\n",
+    );
   });
 
   test("C-CLI-12 dynamic diagnostics are sanitized and escaped onto one line", async () => {

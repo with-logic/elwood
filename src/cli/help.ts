@@ -47,7 +47,7 @@ Continuation and output:
   --ephemeral                 Remove new or resumed Elwood state afterward
   --output <text|json|jsonl>  Stdout protocol (default: text)
   --stream / --no-stream      Toggle incremental text output (default: off)
-  --verbose / --no-verbose    Toggle concise elapsed progress on stderr (default: off)
+  --verbose / --no-verbose    Toggle warnings and concise progress on stderr (default: off)
   --debug                     Write full sanitized event details to stderr
   --head                      View the full agent TUI in this terminal
   --state-dir <path>          Override CLI-owned state storage
