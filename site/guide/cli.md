@@ -107,14 +107,16 @@ Each record reports its id, agent, workspace, creation and last-used times, whet
 
 ## Listing models
 
-`elwood models` starts the selected agent briefly, opens and cancels the agent's own model picker, tears the session down, and prints what it found. Your configured model is left unchanged.
+`elwood models` probes Claude then Codex and notes the agent beside each model. Each probe briefly opens and cancels its model picker, then removes its session state. Your configured models stay unchanged. Use `--agent` to list only one adapter; environment and saved agent defaults do not narrow the bare command.
 
 ```sh
 elwood models
 elwood models --agent codex --output json
 ```
 
-Text marks the current model with `*` and the default with `(default)`. JSON emits one `{"schemaVersion": 1, "type": "models", ...}` document whose rows carry `id`, `label`, `description`, `isCurrent`, and `isDefault`.
+Text marks the current model with `*` and the default with `(default)`. JSON emits one `{"schemaVersion": 1, "type": "models", ...}` document. Combined listings have `agents: [{agent, models}]` and `errors: [...]`; explicit `--agent` retains `agent` and `models`. Rows carry `id`, `label`, `description`, `isCurrent`, and `isDefault`.
+
+If one adapter fails or is unavailable, the available catalog is still returned with per-agent errors and a nonzero exit status. `--timeout` is a whole-command budget shared by both probes. Ctrl-C stops further probes. Each probe uses its matching adapter settings.
 
 ## The agent's own terminal
 

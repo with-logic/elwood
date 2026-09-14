@@ -29,7 +29,7 @@ Commands:
   resume <id> [prompt...]     Resume a kept session; same as run --resume <id>
   interactive [id]            Open the agent's own TUI here with Elwood's settings
   sessions                    List Elwood-owned session records; never starts an agent
-  models                      List the agent's models (starts the agent briefly)
+  models                      List both agents' models (starts each briefly)
   config                      Inspect or update global defaults; see config --help
   help                        Show this help
 
@@ -95,11 +95,14 @@ Session listing:
   directory is a normal, empty result.
 
 Model listing:
-  elwood models starts the selected agent briefly, opens and cancels its own
-  model picker, tears the session down, and prints the rows. Text marks the
-  current model with * and the default with (default); --output json emits one
-  {"schemaVersion":1,"type":"models",...} document. Honors --agent, --cwd,
-  --model, --reasoning-effort, --timeout, --state-dir, trust, and posture flags.
+  elwood models probes Claude then Codex, showing each model's agent. --agent
+  limits the listing to that agent; saved/environment agent defaults do not.
+  Each probe opens and cancels the picker, then removes its session state.
+  Text marks current with * and default with (default); JSON emits one models
+  document: agents/errors arrays for both, or agent/models with --agent.
+  Partial failures retain available models and exit nonzero. --timeout is one
+  budget for the whole command; Ctrl-C stops further probes. Honors --cwd,
+  --model, --reasoning-effort, --state-dir, trust, and matching posture flags.
 
   -h, --help                  Show this help
   -V, --version               Show the Elwood version
@@ -109,7 +112,7 @@ Model listing:
 
 JSON terminal records have `schemaVersion: 1`, `type`, `agent`, `response`, `sessionId`, `durationMs`, and `cleanup`. Error records add `error: { code, message }`. `cleanup.action` is `none`, `preserve` or `teardown`; `cleanup.status` is `succeeded` or `failed`, with an optional error message.
 
-`elwood sessions` and `elwood models` emit their own single documents, `{"schemaVersion": 1, "type": "sessions", ...}` and `{"schemaVersion": 1, "type": "models", ...}`. Both accept `--output text` (the default) or `--output json`; JSONL is not a listing protocol.
+`elwood sessions` and `elwood models` emit their own single documents, `{"schemaVersion": 1, "type": "sessions", ...}` and `{"schemaVersion": 1, "type": "models", ...}`. Both accept `--output text` (the default) or `--output json`; JSONL is not a listing protocol. Bare `models` includes `agents: [{agent, models}]` and `errors: [...]` for Claude and Codex; explicit `--agent` retains `agent` and `models`. Incomplete catalogs exit nonzero, and `--timeout` is shared by both probes.
 
 JSONL records add a monotonically increasing `sequence` and elapsed `elapsedMs`. Progress record types are `text`, `thinking`, `tool`, `status` and `warning`. A tool record has `phase: "call"` or `"result"`, optional content and a shared `toolCallId` when available. Exactly one terminal `result` or `error` ends the stream.
 
@@ -157,6 +160,6 @@ Examples:
 - `--ephemeral` removes new or resumed Elwood state afterward. Both preserve state by default; explicit `--keep` and `--ephemeral` cannot be combined.
 - `--high-trust` cannot combine with an explicit `--claude-permission-mode`, `--codex-sandbox` or `--codex-approval-policy`. Use `--no-high-trust` to reverse an inherited value.
 - `elwood interactive` needs a terminal and rejects the scripted flags (`--output json`/`jsonl`, `--stream`, `--verbose`, `--debug`, `--head`, `--timeout`, `--persona`, `--image`, `--keep`, `--ephemeral`, `--resume`).
-- `elwood sessions` never starts an agent; `elwood models` starts one briefly and leaves no session state behind.
+- `elwood sessions` never starts an agent; `elwood models` probes Claude then Codex (or only the explicit `--agent`) and leaves no session state behind.
 
 Flags override environment, which overrides global configuration, which overrides built-ins. [See all configuration keys](configuration.html).

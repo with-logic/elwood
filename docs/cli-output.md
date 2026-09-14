@@ -26,7 +26,9 @@ a downstream pipe closing early triggers cleanup without an uncaught `EPIPE`.
 
 `--output json` emits exactly one version-1 document. Its stable fields are
 `schemaVersion`, `type`, `agent`, `response`, `sessionId`, `durationMs`,
-`cleanup`, and, on failure, `error`:
+`cleanup`, and, on failure, `error`. The examples below use `--ephemeral`, so
+cleanup removes session state and `sessionId` is null. By default, CLI turns
+preserve state and return a resumable session ID once one is available:
 
 ```json
 {
@@ -66,7 +68,8 @@ a usage error or `no_agent_found`) reports `"agent": null`.
 `--output jsonl` emits sequenced version-1 `text`, `thinking`, `tool`,
 `status`, and `warning` records followed by exactly one `result` or `error`
 record. Every record has `sequence` and `elapsedMs`; tool calls and results
-share `toolCallId` when the agent supplies one:
+share `toolCallId` when the agent supplies one. This example also uses
+`--ephemeral`:
 
 ```jsonl
 {"schemaVersion":1,"type":"status","status":"running","sequence":1,"elapsedMs":114}
@@ -110,8 +113,32 @@ next started or torn down. An empty state directory yields an empty `sessions`
 array (text mode prints a notice on stderr and nothing on stdout). Unreadable
 records are skipped with one stderr warning each.
 
-`elwood models` starts the agent briefly to read its own model picker, then
-tears the session down:
+`elwood models` probes Claude then Codex, regardless of saved or environment
+agent defaults. Text includes an `AGENT` column. JSON contains successful
+catalogs and canonical per-agent error records in one document:
+
+```json
+{
+  "schemaVersion": 1,
+  "type": "models",
+  "agents": [
+    { "agent": "claude", "models": [] },
+    { "agent": "codex", "models": [] }
+  ],
+  "errors": []
+}
+```
+
+Each probe opens and cancels its model picker and always removes its session
+state. An empty `models` array means that probe succeeded with no rows. If an
+adapter fails, its catalog is absent from `agents` and its canonical error
+record appears in `errors`, including `agent`, `error`, `durationMs`, and
+`cleanup`. Available catalogs remain present. Incomplete results exit nonzero:
+130 for interruption, then 124 for timeout, 2 for usage errors, or 1 for other
+failures, in that precedence order. `--timeout` is a whole-command budget; no
+next probe starts after timeout or Ctrl-C.
+
+Explicit `elwood models --agent claude` retains its single-agent document:
 
 ```json
 {
@@ -125,7 +152,7 @@ tears the session down:
 }
 ```
 
-Failures use the same `error` document and statuses as a run. Useful recipes:
+Single-agent failures use the same `error` document and statuses as a run. Useful recipes:
 
 ```sh
 id=$(elwood sessions --output json | jq -r '.sessions[0].id')

@@ -12,7 +12,7 @@ The following flag list is synchronized from the library's first-party CLI help 
 
 JSON terminal records have `schemaVersion: 1`, `type`, `agent`, `response`, `sessionId`, `durationMs`, and `cleanup`. Error records add `error: { code, message }`. `cleanup.action` is `none`, `preserve` or `teardown`; `cleanup.status` is `succeeded` or `failed`, with an optional error message.
 
-`elwood sessions` and `elwood models` emit their own single documents, `{"schemaVersion": 1, "type": "sessions", ...}` and `{"schemaVersion": 1, "type": "models", ...}`. Both accept `--output text` (the default) or `--output json`; JSONL is not a listing protocol.
+`elwood sessions` and `elwood models` emit their own single documents, `{"schemaVersion": 1, "type": "sessions", ...}` and `{"schemaVersion": 1, "type": "models", ...}`. Both accept `--output text` (the default) or `--output json`; JSONL is not a listing protocol. Bare `models` includes `agents: [{agent, models}]` and `errors: [...]` for Claude and Codex; explicit `--agent` retains `agent` and `models`. Incomplete catalogs exit nonzero, and `--timeout` is shared by both probes.
 
 JSONL records add a monotonically increasing `sequence` and elapsed `elapsedMs`. Progress record types are `text`, `thinking`, `tool`, `status` and `warning`. A tool record has `phase: "call"` or `"result"`, optional content and a shared `toolCallId` when available. Exactly one terminal `result` or `error` ends the stream.
 
@@ -41,6 +41,6 @@ Do not treat `response` alone as proof of success. Inspect both the process stat
 - `--ephemeral` removes new or resumed Elwood state afterward. Both preserve state by default; explicit `--keep` and `--ephemeral` cannot be combined.
 - `--high-trust` cannot combine with an explicit `--claude-permission-mode`, `--codex-sandbox` or `--codex-approval-policy`. Use `--no-high-trust` to reverse an inherited value.
 - `elwood interactive` needs a terminal and rejects the scripted flags (`--output json`/`jsonl`, `--stream`, `--verbose`, `--debug`, `--head`, `--timeout`, `--persona`, `--image`, `--keep`, `--ephemeral`, `--resume`).
-- `elwood sessions` never starts an agent; `elwood models` starts one briefly and leaves no session state behind.
+- `elwood sessions` never starts an agent; `elwood models` probes Claude then Codex (or only the explicit `--agent`) and leaves no session state behind.
 
 Flags override environment, which overrides global configuration, which overrides built-ins. [See all configuration keys](configuration.html).

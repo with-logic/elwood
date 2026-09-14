@@ -261,21 +261,25 @@ command rejects `--output json|jsonl`, `--stream`, `--verbose`, `--debug`,
 
 ### Listing models
 
-`elwood models` starts the selected agent briefly, opens and cancels its own
-model picker, tears the session down, and prints the rows. Text marks the
-current model with `*` and the default with `(default)`; JSON is one
-`{"schemaVersion":1,"type":"models",...}` document of `AgentModelOption` rows:
+`elwood models` lists Claude and Codex models, with each model's agent noted.
+It probes Claude then Codex, briefly opening and cancelling each model picker,
+and removes both probe sessions afterward. `--agent` limits the listing to one
+agent; saved configuration and `ELWOOD_AGENT` do not narrow the bare command.
+Text marks the current model with `*` and the default with `(default)`.
 
 ```sh
 elwood models
+elwood models --output json | jq '.agents[] | {agent, models}'
 elwood models --agent claude --output json | jq -r '.models[] | select(.isCurrent) | .id'
 ```
 
-Starting the agent is unavoidable because the picker is the only source of the
-list. The command honors `--agent`, `--cwd`, `--model`, `--reasoning-effort`,
-`--timeout`, `--state-dir`, trust, and posture flags, leaves no Elwood state
-behind, and maps failures (timeout, interruption, blocked prompts) to the usual
-statuses and error documents.
+JSON is one `{"schemaVersion":1,"type":"models",...}` document. Combined
+listings contain `agents: [{agent, models}]` and `errors: [...]`; explicit
+`--agent` retains the single `agent` and `models` fields. If one agent fails or
+is unavailable, the other catalog remains available and the command exits
+nonzero. `--timeout` is one budget shared by both probes, and Ctrl-C stops
+further probes. Workspace, model, reasoning, trust, state-directory, and
+matching adapter posture settings apply; the configured model stays unchanged.
 
 ### Trust and security
 

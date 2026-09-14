@@ -18,6 +18,7 @@ import type { AsyncOutputSink } from "../stream.ts";
 import type { EffectiveRunRequest } from "../types.ts";
 import { CodexUpdateAttentionGuard } from "../update-attention.ts";
 import { renderModels } from "./render.ts";
+import type { ModelsResult } from "./result.ts";
 
 export type ExecuteModelsIo = {
   readonly stdout: AsyncOutputSink;
@@ -26,6 +27,7 @@ export type ExecuteModelsIo = {
 export type ExecuteModelsDependencies = {
   readonly signals: CliSignalSource;
   readonly clock?: CliLifecycleClock;
+  readonly onResult?: (result: ModelsResult) => void;
 };
 
 export async function executeModels(
@@ -60,6 +62,7 @@ export async function executeModels(
   let models: readonly AgentModelOption[] | undefined;
   lifecycle.start();
   try {
+    if (lifecycle.failure !== undefined) throw lifecycle.failure;
     lifecycle.beginLaunch();
     const started = await lifecycle.race(session.start());
     if (started.completed) {
@@ -82,11 +85,15 @@ export async function executeModels(
   const failure = lifecycle.failure;
   if (failure === undefined) {
     // Both races completed (the lifecycle only stops on a recorded failure), so rows exist.
-    await renderModels(request.output, request.agent, models!, io.stdout);
+    if (dependencies.onResult === undefined)
+      await renderModels(request.output, request.agent, models!, io.stdout);
+    else dependencies.onResult({ agent: request.agent, models: models! });
     return 0;
   }
   const record = errorRecord(request.agent, failure, lifecycle.durationMs(), cleanup);
-  await renderErrorRecord(request.output, record, io.stdout, io.stderr);
+  if (dependencies.onResult === undefined)
+    await renderErrorRecord(request.output, record, io.stdout, io.stderr);
+  else dependencies.onResult({ agent: request.agent, error: record, exitCode: failure.exitCode });
   return failure.exitCode;
 }
 

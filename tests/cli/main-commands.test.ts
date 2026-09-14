@@ -132,7 +132,7 @@ describe("CLI command routing", () => {
     const failed = mainHarness();
     expect(
       await main(
-        ["models", "--output", "json"],
+        ["models", "--agent", "claude", "--output", "json"],
         failed.context,
         mainDependencies({
           settings: () => Promise.resolve(resolvedRequest({ output: "json", agent: "claude" })),

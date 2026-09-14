@@ -347,7 +347,7 @@ and status 1.
 ### 12A.10 Model listing
 
 `elwood models [options] [--output <text|json>]` briefly starts a headless
-session for the selected agent — honoring agent, workspace, model, reasoning
+session for each requested agent — honoring workspace, model, reasoning
 effort, timeout, trust, state directory, and adapter posture with normal
 precedence — waits for readiness, drives the agent's own model picker through
 the public `listModels` operation (which opens and cancels the picker and leaves
@@ -356,7 +356,30 @@ runs no persona turn, uses a fresh session identity under the effective state
 directory, and always tears that identity down, so no Elwood state remains
 afterward. Starting the agent is unavoidable and the help text says so.
 
-Text output is an aligned table with a header row: `*` in the first column marks
+Without an explicit `--agent`, the command MUST probe Claude and then Codex
+sequentially, regardless of `ELWOOD_AGENT` or a saved agent default. Each probe
+uses its own adapter settings; adapter-specific flags and environment posture
+settings apply only to their matching adapter. Shared settings apply to both.
+`--timeout` is one budget for the whole command, including settings resolution
+and preparation. Each probe receives only the remaining budget. Once exhausted,
+the next adapter MUST NOT start; available catalogs remain in the partial result. A failed or unavailable adapter MUST NOT
+hide the other adapter’s available models. SIGINT stops the command and MUST
+NOT launch the next adapter. Every started probe is cleaned up before the next.
+
+For combined listings, text includes an `AGENT` column and per-agent errors go
+to stderr. JSON is exactly one document
+`{ "schemaVersion": 1, "type": "models", "agents": [{ "agent": "...", "models": [...] }], "errors": [...] }`.
+`agents` contains successful catalogs (including empty catalogs), and `errors`
+contains the canonical version-1 error records with agent, error, duration, and
+cleanup fields. Both arrays retain probe order. Status is 0 only if both probes
+succeeded; otherwise interruption (130) takes precedence over timeout (124),
+usage errors (2), and other failures (1). Output-protocol errors and global
+config-file read, parse, or schema errors fail before any probe. Adapter-specific
+setting validation failures are recorded for that adapter and permit the other
+adapter to proceed. An explicit `--agent` preserves the single-agent output
+and error contract below. All model probes remain ephemeral.
+
+Single-agent text output is an aligned table with a header row: `*` in the first column marks
 the current model, followed by the id, label, `(default)` when the row is the
 adapter's default, and the description. JSON output is exactly one version-1
 document `{ "schemaVersion": 1, "type": "models", "agent": "...", "models": [...] }`

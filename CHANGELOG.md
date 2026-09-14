@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- List both Claude and Codex catalogs in bare `elwood models`, with agent
+  associations, partial failure diagnostics, and one shared timeout budget.
+  Explicit `--agent` keeps the single-agent output contract.
+
 - Preserve new CLI sessions by default so they can be listed and resumed; use
   `--ephemeral` to remove new or resumed Elwood state after the run.
 
