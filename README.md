@@ -107,7 +107,7 @@ when a human should make those decisions. There is no default turn timeout; pass
 elwood "Summarize this repository"
 git diff | elwood --agent claude "Review this diff for correctness"
 elwood --output json "Run the tests and summarize failures" | jq -r .response
-elwood --keep --output json "Remember that the release color is teal"
+elwood --output json "Remember that the release color is teal"
 elwood --resume <sessionId> "What is the release color?"
 ```
 
@@ -179,11 +179,13 @@ combined with `--stream`, `--verbose`, `--debug`, or `--output jsonl`.
 
 ### Continuation and cleanup
 
-New runs are ephemeral unless `--keep` is supplied. A kept text run reports its
-session ID on stderr; JSON and JSONL include it in the terminal record:
+New and resumed headless runs preserve Elwood state by default. A resumable
+session ID is reported on stderr for text output and in the terminal record for
+JSON and JSONL. `--keep` explicitly selects the default; use `--ephemeral` for
+one-off runs that should remove their Elwood state afterward:
 
 ```sh
-first=$(elwood --keep --output json "Remember that the release color is teal")
+first=$(elwood --output json "Remember that the release color is teal")
 id=$(printf '%s' "$first" | jq -r .sessionId)
 elwood --resume "$id" "What is the release color?"
 elwood --resume "$id" --ephemeral "Finish this conversation"
@@ -232,7 +234,7 @@ signal: a socket left behind by a force-killed owner reads as live until that
 session is next started or torn down. Unreadable records are skipped with a
 stderr warning, and an empty state directory is a normal empty result.
 `resume <id>` follows every `--resume` rule: stored agent and workspace, no
-`--cwd`, no `--keep`, no persona, and piped stdin composes the same way.
+`--cwd`, no persona, and piped stdin composes the same way.
 
 `elwood interactive [id]` opens the real `claude` or `codex` TUI in the current
 terminal — no hidden PTY, no automation, no observation, no Elwood state — with

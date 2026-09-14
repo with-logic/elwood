@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Preserve new CLI sessions by default so they can be listed and resumed; use
+  `--ephemeral` to remove new or resumed Elwood state after the run.
+
 ## [0.1.2] - 2026-09-13
 
 - Preserve the inherited PATH when an interactive login shell exits successfully

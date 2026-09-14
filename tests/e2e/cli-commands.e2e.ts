@@ -44,7 +44,7 @@ type ResultDocument = {
 const skipTurns = turnsEnabled ? false : "ELWOOD_E2E_SKIP_TURNS=1 disables turn flows";
 
 for (const agent of ["claude", "codex"] as const) {
-  test(`C-CLI-23 C-CLI-24 elwood sessions lists a kept real ${agent} session and resume <id> continues it`, {
+  test(`C-CLI-23 C-CLI-24 elwood sessions lists a default-kept real ${agent} session and resume <id> continues it`, {
     skip: skipReason(agent) || skipTurns,
     timeout: e2eTimeoutMs * 2 + 30_000,
   }, async () => {
@@ -58,7 +58,6 @@ for (const agent of ["claude", "codex"] as const) {
           [
             `--agent=${agent}`,
             state,
-            "--keep",
             "--output=json",
             "--timeout=3m",
             `Remember the code ${secret}. Reply with only remembered.`,

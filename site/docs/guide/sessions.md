@@ -88,7 +88,7 @@ Use `await session.start()` if you want startup to complete before the first pro
 
 `close()` stops the process, with a kill fallback if graceful stopping fails. It does not delete Elwood's saved metadata. `teardown()` is the separate operation for removing Elwood-owned state. Neither operation reverses files the agent edited or deletes history owned by the agent CLI.
 
-For shell-based continuation across processes, [use `--keep` and `--resume`](cli.html#resuming-a-session). For advanced TypeScript resume, `resumeClaude()` / `resumeCodex()` return the low-level session API. They do not return the ergonomic class, so do not assume they have `send()` or `stream()`.
+For shell-based continuation across processes, [use the default session retention and `--resume`](cli.html#resuming-a-session). For advanced TypeScript resume, `resumeClaude()` / `resumeCodex()` return the low-level session API. They do not return the ergonomic class, so do not assume they have `send()` or `stream()`.
 
 ## Timeouts and cancellation
 

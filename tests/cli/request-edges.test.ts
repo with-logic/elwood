@@ -126,8 +126,6 @@ describe("effective request edges", () => {
 
   test.each([
     [["--keep", "--ephemeral", "go"], /cannot be combined/iu],
-    [["--ephemeral", "go"], /requires --resume/iu],
-    [["--keep", "--resume", "s", "go"], /only valid/iu],
     [["--resume", "s", "--persona", "p", "go"], /persona/iu],
     [["--agent", "claude", "--codex-sandbox", "read-only", "go"], /--codex-sandbox/iu],
     [["--agent", "claude", "--codex-approval-policy", "never", "go"], /--codex-approval/iu],

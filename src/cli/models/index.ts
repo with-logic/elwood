@@ -34,7 +34,12 @@ export async function executeModels(
   io: ExecuteModelsIo,
   dependencies: ExecuteModelsDependencies,
 ): Promise<number> {
-  const lifecycle = new CliLifecycle(request, session, dependencies.signals, dependencies.clock);
+  const lifecycle = new CliLifecycle(
+    { ...request, keep: false, ephemeral: true },
+    session,
+    dependencies.signals,
+    dependencies.clock,
+  );
   const clean = createCliSanitizer();
   const warnings: Promise<unknown>[] = [];
   const updateAttention =

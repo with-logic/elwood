@@ -38,7 +38,7 @@ Do not treat `response` alone as proof of success. Inspect both the process stat
 - `--head` requires terminal stdin and stderr. It cannot combine with stream, verbose, debug or JSONL. It is view-only; Ctrl-C still interrupts.
 - `--resume` restores the stored agent and workspace. Any `--cwd` or conflicting `--agent` is invalid.
 - `--persona` performs a real setup turn for new sessions and cannot be used with resume.
-- `--ephemeral` removes resumed Elwood state afterward. New sessions are already ephemeral unless `--keep` is set.
+- `--ephemeral` removes new or resumed Elwood state afterward. Both preserve state by default; explicit `--keep` and `--ephemeral` cannot be combined.
 - `--high-trust` cannot combine with an explicit `--claude-permission-mode`, `--codex-sandbox` or `--codex-approval-policy`. Use `--no-high-trust` to reverse an inherited value.
 - `elwood interactive` needs a terminal and rejects the scripted flags (`--output json`/`jsonl`, `--stream`, `--verbose`, `--debug`, `--head`, `--timeout`, `--persona`, `--image`, `--keep`, `--ephemeral`, `--resume`).
 - `elwood sessions` never starts an agent; `elwood models` starts one briefly and leaves no session state behind.

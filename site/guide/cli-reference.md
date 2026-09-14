@@ -22,7 +22,7 @@ Examples:
   elwood "Summarize this repository"
   git diff | elwood "Review this diff for correctness"
   elwood run --output json < prompt.txt
-  elwood --keep --output json "Remember this decision"
+  elwood --output json "Remember this decision"
 
 Commands:
   run                         Run one agent turn (default)
@@ -46,9 +46,9 @@ Agent and turn options:
   --no-defaults               Ignore saved config and ELWOOD_* run defaults
 
 Continuation and output:
-  --keep                      Preserve Elwood state for a new session
+  --keep                      Preserve Elwood state (default)
   --resume <id>               Resume the exact stored agent and workspace
-  --ephemeral                 Remove resumed Elwood state afterward
+  --ephemeral                 Remove new or resumed Elwood state afterward
   --output <text|json|jsonl>  Stdout protocol (default: text)
   --stream / --no-stream      Toggle incremental text output (default: off)
   --verbose / --no-verbose    Toggle concise elapsed progress on stderr (default: off)
@@ -154,7 +154,7 @@ Examples:
 - `--head` requires terminal stdin and stderr. It cannot combine with stream, verbose, debug or JSONL. It is view-only; Ctrl-C still interrupts.
 - `--resume` restores the stored agent and workspace. Any `--cwd` or conflicting `--agent` is invalid.
 - `--persona` performs a real setup turn for new sessions and cannot be used with resume.
-- `--ephemeral` removes resumed Elwood state afterward. New sessions are already ephemeral unless `--keep` is set.
+- `--ephemeral` removes new or resumed Elwood state afterward. Both preserve state by default; explicit `--keep` and `--ephemeral` cannot be combined.
 - `--high-trust` cannot combine with an explicit `--claude-permission-mode`, `--codex-sandbox` or `--codex-approval-policy`. Use `--no-high-trust` to reverse an inherited value.
 - `elwood interactive` needs a terminal and rejects the scripted flags (`--output json`/`jsonl`, `--stream`, `--verbose`, `--debug`, `--head`, `--timeout`, `--persona`, `--image`, `--keep`, `--ephemeral`, `--resume`).
 - `elwood sessions` never starts an agent; `elwood models` starts one briefly and leaves no session state behind.

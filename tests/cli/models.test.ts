@@ -36,7 +36,7 @@ function harness(overrides: Partial<EffectiveRunRequest> = {}) {
   session.underlying.listModels = () => Promise.resolve(rows);
   const signals = new FakeSignals();
   const clock = new FakeClock();
-  const request = effectiveRequest({ prompt: "", ...overrides });
+  const request = effectiveRequest({ prompt: "", keep: true, ...overrides });
   const run = () =>
     executeModels(
       request,

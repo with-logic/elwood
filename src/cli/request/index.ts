@@ -115,7 +115,7 @@ export async function resolveRunSettings(
     cwdExplicit: parsed.explicit.has("cwd"),
     imagePaths: parsed.flags.images,
     prompt: "",
-    keep: parsed.flags.keep ?? false,
+    keep: !parsed.flags.ephemeral,
     ...optional(optionalNonBlank(parsed.flags.resume, "resume"), "resume"),
     ephemeral: parsed.flags.ephemeral ?? false,
     resolution: {

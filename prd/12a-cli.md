@@ -86,10 +86,12 @@ launch, persona setup, and the user turn. Signal handlers are active before
 launch. The first `SIGINT` requests interruption and cleanup, a repeated
 `SIGINT` force-kills the process tree, and an interrupted invocation exits 130.
 
-A new invocation tears down its Elwood-owned state after every outcome; teardown
-does not undo workspace changes or remove history owned by the underlying agent.
-`--keep` instead preserves it after stop-or-kill cleanup and reports its session
-ID on stderr in text mode. A resume uses `--resume <id>` to load exactly the
+New and resumed headless runs preserve their Elwood-owned state after every
+outcome by default, after stop-or-kill cleanup. `--keep` explicitly selects this
+default. `--ephemeral` instead requests teardown for either a new or resumed
+run; it cannot be combined with `--keep`. Teardown does not undo workspace
+changes or remove history owned by the underlying agent. A preserved run reports
+its resumable session ID on stderr in text mode. A resume uses `--resume <id>` to load exactly the
 stored adapter and cwd; it never falls back to a new conversation, and `--cwd`
 is therefore rejected with `--resume` rather than overriding the stored
 workspace. Explicit adapter conflicts are usage errors. Before launch, resumed state and its cwd MUST satisfy the private,

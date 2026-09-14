@@ -43,9 +43,9 @@ Illustrative successful output:
   "type": "result",
   "agent": "claude",
   "response": "The project has a CLI, a session layer, and two adapters.",
-  "sessionId": null,
+  "sessionId": "example-session-id",
   "durationMs": 8421,
-  "cleanup": { "action": "teardown", "status": "succeeded" }
+  "cleanup": { "action": "preserve", "status": "succeeded" }
 }
 ```
 
@@ -77,12 +77,12 @@ CLI timeout covers launch, any persona setup turn and the requested turn. Durati
 
 ## Resuming a session
 
-New runs normally remove their Elwood state afterward. `--keep` preserves it so a later process can resume. With text output, the session ID is reported on stderr; JSON includes it in the result.
+New and resumed runs preserve their Elwood state by default so a later process can resume. `--keep` explicitly selects this default; `--ephemeral` removes Elwood state after either a new or resumed run. With text output, the session ID is reported on stderr; JSON includes it in the result.
 
 This Bash/Zsh example requires `jq`:
 
 ```sh
-first=$(elwood --keep --output json \
+first=$(elwood --output json \
   "Remember: this release is called Acorn.") || exit $?
 
 session_id=$(printf '%s' "$first" \
