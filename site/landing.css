@@ -13,11 +13,6 @@
   font-display: swap;
 }
 :root {
-  --paper: #fbf6e7;
-  --ink: #171916;
-  --rule: #77786e;
-  --signal: #fa5426;
-  --muted: #696a60;
   --mono: "Elwood Mono", "Courier New", monospace;
   --display: "Elwood Display", Impact, "Arial Narrow", sans-serif;
   color: var(--ink);
@@ -50,8 +45,9 @@ a:hover {
   text-underline-offset: 5px;
 }
 button:focus-visible,
-a:focus-visible {
-  outline: 2px solid var(--signal);
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid currentColor;
   outline-offset: 5px;
 }
 button:disabled {
@@ -98,7 +94,7 @@ body:before {
   max-height: 1300px;
   overflow: hidden;
   isolation: isolate;
-  background: radial-gradient(ellipse at 50% 40%, #fffaf000, #ede3c333);
+  background: var(--paper);
 }
 .site-header {
   position: static;
@@ -151,7 +147,7 @@ body:before {
 .terminal-bar {
   height: 10px;
   position: relative;
-  border-bottom: 1px solid #777;
+  border-bottom: 1px solid var(--rule);
 }
 .terminal-bar span {
   display: none;
@@ -169,8 +165,8 @@ body:before {
 }
 .terminal-screen {
   height: calc(100% - 10px);
-  background: #141713;
-  color: #f9f8f0;
+  background: var(--ink);
+  color: var(--inverse);
   padding: 4px 6px;
   font-size: 17px;
   line-height: 1.2;
@@ -304,7 +300,7 @@ body:before {
   );
   overflow: visible;
   fill: none;
-  stroke: #272a23;
+  stroke: var(--ink);
   stroke-width: 1.2px;
   pointer-events: none;
   z-index: 3;
@@ -318,7 +314,7 @@ body:before {
   right: 19px;
   bottom: 19px;
   z-index: 7;
-  border: 1px solid #999a8880;
+  border: 1px solid var(--rule);
   border-radius: 50%;
   background: var(--paper);
   font-size: 14px;
@@ -344,7 +340,7 @@ body:before {
   max-width: 1280px;
   margin: auto;
   padding: 120px 6% 50px;
-  border-top: 1px solid #c4bfaf;
+  border-top: 1px solid var(--rule);
 }
 .section-name {
   font-size: 12px;
@@ -385,7 +381,7 @@ body:before {
 }
 .install-command code {
   font: 15px / 1 var(--mono);
-  color: #f5f1e5;
+  color: var(--inverse);
   padding: 18px 22px;
   white-space: nowrap;
   overflow-x: auto;
@@ -394,16 +390,19 @@ body:before {
 }
 .install-copy {
   border: 0;
-  border-left: 1px solid #4e5344;
+  border-left: 1px solid #666666;
   background: transparent;
-  color: #c6cfb9;
+  color: var(--code-muted);
   font: 11px var(--mono);
   padding: 0 18px;
   white-space: nowrap;
 }
+.install-copy:focus-visible {
+  outline-offset: -5px;
+}
 .install-copy:hover {
-  background: var(--signal);
-  color: var(--paper);
+  background: var(--paper);
+  color: var(--ink);
 }
 .install-note {
   font-size: 12px;
@@ -462,17 +461,17 @@ body:before {
 }
 .code-example pre {
   background: var(--ink);
-  color: #f5f1e5;
+  color: var(--inverse);
   margin: 0;
   padding: 25px 20px;
   font: 13px / 1.8 var(--mono);
   overflow: auto;
 }
 .code-muted {
-  color: #afb59c;
+  color: var(--code-muted);
 }
 .code-string {
-  color: #e3c6a1;
+  color: var(--paper);
 }
 .code-example p {
   font-size: 11px;
@@ -531,10 +530,10 @@ dialog {
   max-height: calc(100svh - 40px);
   padding: 30px;
   overflow: auto;
-  box-shadow: 8px 8px 0 #17191615;
+  box-shadow: 8px 8px 0 #00000015;
 }
 dialog::backdrop {
-  background: #17191660;
+  background: #00000060;
   backdrop-filter: blur(3px);
 }
 .help-heading {
@@ -597,19 +596,19 @@ dialog::backdrop {
   flex: 1 1 0;
   min-width: 0;
   min-height: 63px;
-  border: 1px solid #b9b4a5;
+  border: 1px solid var(--rule);
   border-radius: 3px;
-  background: #fffaf4;
+  background: var(--paper);
   padding: 8px 5px;
   text-align: left;
-  box-shadow: 0 2px 0 #c7c1b1;
+  box-shadow: 0 2px 0 var(--ink);
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 .keyboard-key:hover {
   border-color: var(--ink);
-  background: #eee8d8;
+  background: #00000012;
 }
 .keyboard-key:active {
   transform: translateY(1px);
@@ -620,10 +619,10 @@ dialog::backdrop {
 }
 .keyboard-key span {
   font: 9px / 1.3 var(--mono);
-  color: #606154;
+  color: var(--ink);
 }
 .control-key {
-  background: #ebe6d8;
+  background: #00000012;
 }
 .row-1 {
   padding: 0 9px;
@@ -879,9 +878,9 @@ dialog::backdrop {
   width: 38px;
   height: 38px;
   transform: translate(-50%, -50%);
-  border: 1px solid #f9f8f0aa;
-  color: #f9f8f0;
-  background: #f9f8f01a;
+  border: 1px solid #ffffffaa;
+  color: var(--inverse);
+  background: #ffffff1a;
   border-radius: 50%;
   font: 14px / 36px var(--mono);
   text-align: center;
@@ -900,8 +899,8 @@ dialog::backdrop {
 @keyframes play-pulse {
   0%,
   100% {
-    background: #f9f8f01a;
-    border-color: #f9f8f0aa;
+    background: #ffffff1a;
+    border-color: #ffffffaa;
   }
   50% {
     background: #fa54263d;
@@ -912,8 +911,9 @@ dialog::backdrop {
 .terminal:focus-visible .terminal-play {
   animation: none;
   opacity: 1;
-  background: var(--signal);
-  border-color: var(--signal);
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--paper);
   transform: translate(-50%, -50%) scale(1.1);
 }
 .terminal-cursor {
@@ -943,21 +943,21 @@ dialog::backdrop {
 #terminal-demo {
   width: min(900px, calc(100% - 32px));
   padding: 0;
-  background: #141713;
-  color: #efeee3;
-  border: 1px solid #4e5344;
+  background: var(--ink);
+  color: var(--inverse);
+  border: 1px solid #666666;
   border-radius: 4px;
-  box-shadow: 0 24px 60px #17191655;
+  box-shadow: 0 24px 60px #00000055;
   overflow: hidden;
   will-change: transform;
 }
 .demo-window-bar {
   padding: 10px 14px;
-  border-bottom: 1px solid #414638;
+  border-bottom: 1px solid #666666;
   display: flex;
   align-items: center;
   gap: 16px;
-  color: #9ba48d;
+  color: var(--code-muted);
   font: 10px var(--mono);
 }
 .demo-window-bar span:nth-child(2) {
@@ -966,7 +966,7 @@ dialog::backdrop {
 .demo-window-bar button {
   border: 0;
   background: none;
-  color: #c6cfb9;
+  color: var(--code-muted);
   font-size: 22px;
   line-height: 1;
   padding: 0 4px;
@@ -994,12 +994,12 @@ dialog::backdrop {
   align-items: center;
   gap: 10px;
   padding: 14px 18px;
-  border-top: 1px solid #414638;
+  border-top: 1px solid #666666;
 }
 .demo-controls button {
-  border: 1px solid #4e5344;
+  border: 1px solid #666666;
   background: transparent;
-  color: #efeee3;
+  color: var(--inverse);
   width: 36px;
   height: 36px;
   padding: 0;
@@ -1022,17 +1022,17 @@ dialog::backdrop {
   display: block;
 }
 .demo-controls button:hover {
-  border-color: #9ba48d;
+  border-color: var(--code-muted);
 }
 .demo-progress {
   flex: 1;
   min-width: 30px;
-  accent-color: var(--signal);
+  accent-color: var(--paper);
 }
 .demo-time {
   font-size: 10px;
   white-space: nowrap;
-  color: #9ba48d;
+  color: var(--code-muted);
 }
 .demo-chapters {
   display: flex;
@@ -1041,73 +1041,73 @@ dialog::backdrop {
   padding: 0 18px 18px;
 }
 .demo-chapters button {
-  border: 1px solid #414638;
+  border: 1px solid #666666;
   background: transparent;
-  color: #c6cfb9;
+  color: var(--code-muted);
   padding: 8px 10px;
   font-size: 10px;
 }
 .demo-chapters button:hover {
-  border-color: #9ba48d;
+  border-color: var(--code-muted);
   color: #fff;
 }
 .demo-chapters button[aria-pressed="true"] {
-  background: #efeee3;
-  color: #141713;
-  border-color: #efeee3;
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--inverse);
 }
 .demo-cursor {
   display: inline-block;
   width: 0.6em;
   height: 1.1em;
   vertical-align: -0.2em;
-  background: #efeee3;
+  background: var(--inverse);
   animation: terminal-blink 1s steps(2, start) infinite;
 }
 .tk-prompt {
-  color: #9ba48d;
+  color: var(--code-muted);
 }
 .tk-cmd {
-  color: #f5f1e5;
+  color: var(--inverse);
   font-weight: 700;
 }
 .tk-flag {
-  color: #afb59c;
+  color: var(--code-muted);
 }
 .tk-str {
-  color: #e3c6a1;
+  color: var(--paper);
 }
 .tk-op {
-  color: #9ba48d;
+  color: var(--code-muted);
 }
 .tk-kw {
-  color: #afb59c;
+  color: var(--code-muted);
 }
 .tk-num {
-  color: #d9a37a;
+  color: var(--paper);
 }
 .tk-key {
-  color: #bfcbe0;
+  color: var(--inverse);
 }
 .tk-punc {
-  color: #8e9284;
+  color: var(--code-muted);
 }
 .tk-vim {
-  color: #141713;
-  background: #afb59c;
+  color: var(--ink);
+  background: var(--code-muted);
   padding: 0 4px;
 }
 .tk-ex {
-  color: #e3c6a1;
+  color: var(--paper);
 }
 .tk-type {
-  color: #bfcbe0;
+  color: var(--inverse);
 }
 .tk-out {
-  color: #cfcbbd;
+  color: var(--inverse);
 }
 .tk-comment {
-  color: #7d8274;
+  color: var(--code-muted);
   font-style: italic;
 }
 @media (max-width: 600px) {
