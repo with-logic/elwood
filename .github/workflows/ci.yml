@@ -32,3 +32,7 @@ jobs:
         run: npm ci
       - name: Build, typecheck, lint, line cap, unit and conformance tests
         run: npm run check
+      - name: Review pipeline regression tests
+        run: |
+          node --test scripts/review/tests/*.test.mjs
+          python3 -m unittest discover -s scripts/review/tests -p '*_test.py' -v
