@@ -1,0 +1,38 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "elwood-review": {
+      "description": "Applies one Elwood review lens, or merges reports; scripts/review/run.sh owns the fan-out",
+      "mode": "primary",
+      "permission": {
+        "edit": "deny",
+        "task": "deny"
+      }
+    }
+  },
+  "provider": {
+    "openai": {
+      "npm": "@ai-sdk/openai",
+      "name": "OpenAI",
+      "options": {
+        "apiKey": "{env:OPENAI_API_KEY}"
+      },
+      "models": {
+        "gpt-5.6-luna": {
+          "name": "Luna",
+          "limit": {
+            "context": 400000,
+            "output": 128000
+          },
+          "tool_call": true
+        }
+      }
+    }
+  },
+  "compaction": {
+    "auto": true,
+    "prune": false,
+    "preserve_recent_tokens": 16384,
+    "reserved": 20000
+  }
+}

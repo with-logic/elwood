@@ -1,9 +1,13 @@
 # Contributing
 
-Thanks for helping with Elwood. This project is spec-first: `prd/` is the
-contract for observable behavior, and `CLAUDE.md` (also linked as `AGENTS.md`)
-is the implementation guide for anyone, human or AI, changing code. Read both
-before opening a pull request.
+Elwood is open source, but we do not accept outside pull requests. GitHub
+restricts PR creation to repository collaborators with write access or higher.
+You are welcome to use and fork Elwood under its MIT license, and to report
+bugs through issues or security concerns through `SECURITY.md`.
+
+The instructions below are for maintainers. This project is spec-first:
+`prd/` is the contract for observable behavior, and `CLAUDE.md` (also linked as
+`AGENTS.md`) is the implementation guide. Read both before changing code.
 
 ## Requirements
 
@@ -60,6 +64,10 @@ directories automatically.
 
 ## Pull requests
 
+- Use branches in this repository. Fork PRs are not reviewed by automation.
+- The eleven-lens AI review can approve a completed review with no blocker or
+  major findings. Required CI checks and branch protections still apply; the
+  review workflow does not merge PRs. See [.github/PIPELINE.md](.github/PIPELINE.md).
 - Keep pull requests small and focused on one change.
 - Do not include secrets, access tokens, credentials, or private data in
   issues, tests, logs, screenshots, or fixtures.
