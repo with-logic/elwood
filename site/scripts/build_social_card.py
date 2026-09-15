@@ -1,8 +1,8 @@
 """Renders the GitHub/Open Graph social card from the landing page's own assets.
 
 The card is 1280x640 (GitHub's recommended size, and a safe 2:1 for Open Graph).
-Everything it draws comes from site/assets/landing: the robot, the Anton
-wordmark, the Roboto Mono tagline, and the palette in landing.css, so the card
+Artwork and typography come from site/assets/landing: the robot, the Anton
+wordmark, the Roboto Mono tagline, and the palette in theme.css, so the card
 cannot drift from the site it advertises.
 
 Layout is margin-driven rather than hand-placed. The robot and the text block
@@ -17,11 +17,12 @@ TTF in a temp dir so Pillow can rasterise them).
 
 from __future__ import annotations
 
+import re
 import tempfile
 from pathlib import Path
 
 from fontTools.ttLib import TTFont
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageColor, ImageDraw, ImageFont
 
 SITE = Path(__file__).resolve().parents[1]
 LANDING = SITE / "assets" / "landing"
@@ -29,11 +30,21 @@ FONTS = LANDING / "fonts"
 
 WIDTH, HEIGHT = 1280, 640
 
-# Straight from landing.css so the card and the page cannot disagree.
-PAPER = (251, 246, 231)
-INK = (23, 25, 22)
-SIGNAL = (250, 84, 38)
-MUTED = (105, 106, 96)
+# Use the same tokens as both public pages, rather than a second palette.
+THEME = (SITE / "theme.css").read_text()
+
+
+def color(token: str) -> tuple[int, int, int]:
+    match = re.search(rf"--{token}:\s*(#[0-9a-fA-F]{{6}});", THEME)
+    if match is None:
+        raise ValueError(f"Missing theme color: {token}")
+    return ImageColor.getrgb(match.group(1))
+
+
+PAPER = color("paper")
+INK = color("ink")
+SIGNAL = color("signal")
+MUTED = color("muted")
 
 MARGIN = 96  # Equal on all four sides; the whole composition sits inside it.
 GAP = 56  # Space between the robot and the rule.
@@ -57,7 +68,25 @@ def text_size(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont
     return right - left, bottom - top
 
 
+def build_icons() -> None:
+    """Render the existing robot bust on the shared brand background."""
+    robot = Image.open(LANDING / "robot.webp").convert("RGBA")
+    # The antenna, torso and arms stay readable even at favicon sizes.
+    bust = robot.crop((0, 0, robot.width, robot.width))
+    icon = Image.new("RGB", (512, 512), PAPER)
+    bust = bust.resize((448, 448), Image.Resampling.LANCZOS)
+    icon.paste(bust, ((512 - bust.width) // 2, (512 - bust.height) // 2), bust)
+    # Keep the names used by existing GitHub and npm READMEs working.
+    for filename in ("icon-512.webp", "robot-mark-light.webp", "robot-mark-dark.webp"):
+        icon.save(LANDING / filename, quality=90, method=6)
+    icon.resize((180, 180), Image.Resampling.LANCZOS).save(
+        LANDING / "apple-touch-icon.png", optimize=True
+    )
+    icon.save(LANDING / "favicon.ico", sizes=[(16, 16), (32, 32), (48, 48)])
+
+
 def main() -> None:
+    build_icons()
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
         anton = ImageFont.truetype(str(as_truetype(FONTS / "anton.woff2", tmp_dir)), 132)

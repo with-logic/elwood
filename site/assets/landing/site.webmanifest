@@ -3,11 +3,11 @@
   "short_name": "Elwood",
   "description": "Automate real Claude Code and Codex sessions in headless PTYs.",
   "icons": [
-    { "src": "/assets/landing/icon-512.webp", "sizes": "512x512", "type": "image/webp" },
-    { "src": "/assets/landing/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+    { "src": "/assets/landing/icon-512.webp?v=yellow", "sizes": "512x512", "type": "image/webp" },
+    { "src": "/assets/landing/apple-touch-icon.png?v=yellow", "sizes": "180x180", "type": "image/png" }
   ],
-  "theme_color": "#fbf6e7",
-  "background_color": "#fbf6e7",
+  "theme_color": "#ffda1a",
+  "background_color": "#ffda1a",
   "display": "standalone",
   "start_url": "/"
 }

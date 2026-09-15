@@ -1,0 +1,10 @@
+/* Shared public-site palette; see docs/design/landing.md. */
+:root {
+  --paper: #ffda1a;
+  --ink: #000000;
+  --rule: #000000;
+  --signal: #fa5426;
+  --muted: #000000;
+  --inverse: #ffffff;
+  --code-muted: #b3b3b3;
+}

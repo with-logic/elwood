@@ -120,3 +120,18 @@ node scripts/verify_pickup.mjs /tmp/elwood-canvas-check/node_modules/@napi-rs/ca
 ```
 
 The pickup check verifies all 336 suspended connector positions across both directions, exact release attachment and recovery, then renders a [motion inspection sheet](docs/reviews/new-motions.png).
+
+## Brand assets
+
+The public site uses bold yellow and black throughout. `theme.css` owns the
+shared palette for the landing page, guide, and generated social cards and icons.
+Keep browser theme metadata and `assets/landing/site.webmanifest` in sync when
+changing the background. Regenerate the artwork from the existing robot and fonts:
+
+```sh
+uv run --with 'fonttools[woff]' --with pillow scripts/build_social_card.py
+```
+
+This writes both social-card formats, the 512px icon, Apple touch icon, and
+multi-size favicon, and light/dark README marks. The transparent robot and animation sprite sheets retain
+their original artwork.

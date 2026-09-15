@@ -78,7 +78,7 @@ export class LandingScene {
       const x = random() * 640;
       const strength = (1 - Math.abs(x - 320) / 320) ** 1.8;
       const y = 17 + (random() - 0.5) * 17 * strength;
-      c.strokeStyle = `rgba(42,40,28,${strength * random() * 0.42})`;
+      c.strokeStyle = `rgba(0,0,0,${strength * random() * 0.42})`;
       c.lineWidth = random() < 0.9 ? 0.65 : 1.1;
       c.beginPath();
       c.moveTo(x, y);
@@ -537,7 +537,7 @@ export class LandingScene {
     const end = display.endpoint;
     const start = { x: cfg.terminal.x / zoom, y: (cfg.terminal.y - originY) / zoom };
     this.tether.update(dt, start, end, { floor: FLOOR, platforms: this.world.platforms });
-    c.strokeStyle = "#272a23";
+    c.strokeStyle = "#000000";
     c.lineWidth = 0.9 / Math.max(1, zoom / 1.5);
     c.lineCap = "round";
     c.lineJoin = "round";
