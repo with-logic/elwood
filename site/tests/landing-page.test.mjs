@@ -180,7 +180,21 @@ globalThis.requestAnimationFrame = (fn) => {
   return id;
 };
 globalThis.cancelAnimationFrame = (id) => frames.delete(id);
-globalThis.fetch = async (url) => new Response(await readFile(new URL(String(url), root)));
+let releaseManifest;
+let notifyManifest;
+const manifestRequested = new Promise((resolve) => {
+  notifyManifest = resolve;
+});
+const manifestReady = new Promise((resolve) => {
+  releaseManifest = resolve;
+});
+globalThis.fetch = async (url) => {
+  if (new URL(String(url), root).pathname.endsWith("/manifest.json")) {
+    notifyManifest();
+    await manifestReady;
+  }
+  return new Response(await readFile(new URL(String(url), root)));
+};
 globalThis.Image = class {
   async decode() {
     assert.equal((await readFile(new URL(this.src))).subarray(8, 12).toString(), "WEBP");
@@ -217,10 +231,27 @@ async function advance(count) {
 }
 const button = (key, value) => buttons.find((b) => b.dataset[key] === value);
 
+test("the connected HTML poster is laid out while animation metadata is still downloading", async () => {
+  await manifestRequested;
+  assert.equal(scene.ready, false);
+  assert.equal(element(".hero").dataset.ready, undefined);
+  const rope = element(".robot-rope");
+  const poster = element(".robot-poster");
+  assert.equal(Number.parseFloat(rope.style.top), 174);
+  assert.equal(
+    Number.parseFloat(rope.style.top) + Number.parseFloat(rope.style.height),
+    Number.parseFloat(poster.style.top),
+    "The lightweight cable must reach the poster without any sprite data",
+  );
+  assert.match(html, /<svg class="robot-rope"[^>]*>[\s\S]*?<path[^>]+d="M20 0 C4 35 36 65 20 100"/);
+  releaseManifest();
+});
+
 test("landing keyboard aliases, shortcut dialog and focus recovery work through the real page handlers", async () => {
   for (let i = 0; i < 200 && !scene.ready; i++)
     await new Promise((resolve) => setTimeout(resolve, 5));
   assert.equal(scene.ready, true);
+  assert.equal(element(".hero").dataset.ready, "", "The first canvas paint replaces the fallback");
   key("keydown", "ArrowLeft");
   await advance(50);
   assert.equal(scene.world.player.animation, "walk-left");
