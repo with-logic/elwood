@@ -175,7 +175,7 @@ elwood<span class="w"> </span><span class="s2">"Where are the tests?"</span>
 <h2 id="sessions--startup-and-cleanup">Startup and cleanup</h2>
 <p>Use <code>await session.start()</code> if you want startup to complete before the first prompt. It is idempotent; concurrent calls share the same startup. You can register event handlers before startup.</p>
 <p><code>close()</code> stops the process, with a kill fallback if graceful stopping fails. It does not delete Elwood's saved metadata. <code>teardown()</code> is the separate operation for removing Elwood-owned state. Neither operation reverses files the agent edited or deletes history owned by the agent CLI.</p>
-<p>For shell-based continuation across processes, <a href="#cli--resuming-a-session">use <code>--keep</code> and <code>--resume</code></a>. For advanced TypeScript resume, <code>resumeClaude()</code> / <code>resumeCodex()</code> return the low-level session API. They do not return the ergonomic class, so do not assume they have <code>send()</code> or <code>stream()</code>.</p>
+<p>For shell-based continuation across processes, <a href="#cli--resuming-a-session">use the default session retention and <code>--resume</code></a>. For advanced TypeScript resume, <code>resumeClaude()</code> / <code>resumeCodex()</code> return the low-level session API. They do not return the ergonomic class, so do not assume they have <code>send()</code> or <code>stream()</code>.</p>
 <h2 id="sessions--timeouts-and-cancellation">Timeouts and cancellation</h2>
 <p>A <code>send()</code> or <code>stream()</code> timeout rejects that call with <code>wait_timeout</code>. The agent may still be working. The next queued turn waits for the agent's actual turn boundary; a timeout does not make it safe to submit raw input concurrently.</p>
 <p>Use <code>await session.interrupt()</code> to request an interruption. Keep cleanup in <code>finally</code>. Do not mix low-level <code>sendMessage()</code>, <code>sendPrompt()</code> or <code>sendGuidance()</code> with an in-flight ergonomic turn: those raw methods are not part of its turn queue.</p></section><section class="doc-section" id="cli" aria-labelledby="cli--title"><div class="section-tools"><span>CLI</span><button class="copy-section" data-slug="cli">Copy as Markdown</button><a href="cli.md">.md</a></div><h1 id="cli--title">The CLI</h1>
@@ -220,7 +220,7 @@ elwood<span class="w"> </span>--image<span class="w"> </span>screenshot.png<span
 </tr>
 </tbody>
 </table>
-<p>Text and JSON diagnostics use stderr. JSONL includes warning records in its ordered stdout stream. A response can contain useful partial text even when the run fails: inspect the exit code and terminal record type.</p>
+<p>Text errors use stderr; JSON errors are emitted as terminal records on stdout. Routine session warnings are quiet unless <code>--verbose</code> or <code>--debug</code> is enabled. JSONL includes warning records in its ordered stdout stream. A response can contain useful partial text even when the run fails: inspect the exit code and terminal record type.</p>
 <div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>--output<span class="w"> </span>json<span class="w"> </span><span class="s2">"Describe the architecture."</span>
 </code></pre></div>
 
@@ -230,9 +230,9 @@ elwood<span class="w"> </span>--image<span class="w"> </span>screenshot.png<span
 <span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"result"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"agent"</span><span class="p">:</span><span class="w"> </span><span class="s2">"claude"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"response"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The project has a CLI, a session layer, and two adapters."</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">"sessionId"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"sessionId"</span><span class="p">:</span><span class="w"> </span><span class="s2">"example-session-id"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"durationMs"</span><span class="p">:</span><span class="w"> </span><span class="mi">8421</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">"cleanup"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"action"</span><span class="p">:</span><span class="w"> </span><span class="s2">"teardown"</span><span class="p">,</span><span class="w"> </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"succeeded"</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="nt">"cleanup"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"action"</span><span class="p">:</span><span class="w"> </span><span class="s2">"preserve"</span><span class="p">,</span><span class="w"> </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"succeeded"</span><span class="w"> </span><span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div>
 
@@ -241,7 +241,7 @@ elwood<span class="w"> </span>--image<span class="w"> </span>screenshot.png<span
 <div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>--stream<span class="w"> </span>--verbose<span class="w"> </span><span class="s2">"Explain the build pipeline."</span>
 </code></pre></div>
 
-<p><code>--stream</code> emits assistant text as it arrives. <code>--verbose</code> prints concise elapsed progress to stderr. Streaming is valid only with text output; use <code>--no-stream</code> if a saved setting enables it and you need JSON.</p>
+<p><code>--stream</code> emits assistant text as it arrives. <code>--verbose</code> prints concise elapsed progress and session warnings to stderr. Streaming is valid only with text output; use <code>--no-stream</code> if a saved setting enables it and you need JSON.</p>
 <p>To see the actual TUI, use <code>--head</code>:</p>
 <div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>--head<span class="w"> </span><span class="s2">"Explain the architecture."</span>
 </code></pre></div>
@@ -253,9 +253,9 @@ elwood<span class="w"> </span>--image<span class="w"> </span>screenshot.png<span
 
 <p>CLI timeout covers launch, any persona setup turn and the requested turn. Durations use a positive integer plus <code>ms</code>, <code>s</code>, <code>m</code> or <code>h</code>. There is no default whole-invocation timeout. A timeout exits with status 124.</p>
 <h2 id="cli--resuming-a-session">Resuming a session</h2>
-<p>New runs normally remove their Elwood state afterward. <code>--keep</code> preserves it so a later process can resume. With text output, the session ID is reported on stderr; JSON includes it in the result.</p>
+<p>New and resumed runs preserve their Elwood state by default so a later process can resume. <code>--keep</code> explicitly selects this default; <code>--ephemeral</code> removes Elwood state after either a new or resumed run. With text output, the session ID is reported on stderr; JSON includes it in the result.</p>
 <p>This Bash/Zsh example requires <code>jq</code>:</p>
-<div class="highlight"><pre><span></span><code><span class="nv">first</span><span class="o">=</span><span class="k">$(</span>elwood<span class="w"> </span>--keep<span class="w"> </span>--output<span class="w"> </span>json<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><span class="nv">first</span><span class="o">=</span><span class="k">$(</span>elwood<span class="w"> </span>--output<span class="w"> </span>json<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span><span class="s2">"Remember: this release is called Acorn."</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="nv">$?</span>
 
 <span class="nv">session_id</span><span class="o">=</span><span class="k">$(</span><span class="nb">printf</span><span class="w"> </span><span class="s1">'%s'</span><span class="w"> </span><span class="s2">"</span><span class="nv">$first</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
@@ -274,12 +274,13 @@ elwood<span class="w"> </span>sessions<span class="w"> </span>--output<span clas
 
 <p>Each record reports its id, agent, workspace, creation and last-used times, whether it is resumable, and whether it is live (a launch's bridge socket is present). JSON emits one <code>{"schemaVersion": 1, "type": "sessions", ...}</code> document. An empty state directory is a normal, empty result.</p>
 <h2 id="cli--listing-models">Listing models</h2>
-<p><code>elwood models</code> starts the selected agent briefly, opens and cancels the agent's own model picker, tears the session down, and prints what it found. Your configured model is left unchanged.</p>
+<p><code>elwood models</code> probes Claude then Codex and notes the agent beside each model. Each probe briefly opens and cancels its model picker, then removes its session state. Your configured models stay unchanged. Use <code>--agent</code> to list only one adapter; environment and saved agent defaults do not narrow the bare command.</p>
 <div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>models
 elwood<span class="w"> </span>models<span class="w"> </span>--agent<span class="w"> </span>codex<span class="w"> </span>--output<span class="w"> </span>json
 </code></pre></div>
 
-<p>Text marks the current model with <code>*</code> and the default with <code>(default)</code>. JSON emits one <code>{"schemaVersion": 1, "type": "models", ...}</code> document whose rows carry <code>id</code>, <code>label</code>, <code>description</code>, <code>isCurrent</code>, and <code>isDefault</code>.</p>
+<p>Text marks the current model with <code>*</code> and the default with <code>(default)</code>. JSON emits one <code>{"schemaVersion": 1, "type": "models", ...}</code> document. Combined listings have <code>agents: [{agent, models}]</code> and <code>errors: [...]</code>; explicit <code>--agent</code> retains <code>agent</code> and <code>models</code>. Rows carry <code>id</code>, <code>label</code>, <code>description</code>, <code>isCurrent</code>, and <code>isDefault</code>.</p>
+<p>If one adapter fails or is unavailable, the available catalog is still returned with per-agent errors and a nonzero exit status. <code>--timeout</code> is a whole-command budget shared by both probes. Ctrl-C stops further probes. Each probe uses its matching adapter settings.</p>
 <h2 id="cli--the-agents-own-terminal">The agent's own terminal</h2>
 <p><code>elwood interactive</code> hands your terminal to the real agent TUI, exactly as running <code>claude</code> or <code>codex</code> yourself would, but with Elwood's resolved settings passed as the agent's own flags.</p>
 <div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>interactive
@@ -748,14 +749,14 @@ Examples:
   elwood "Summarize this repository"
   git diff | elwood "Review this diff for correctness"
   elwood run --output json &lt; prompt.txt
-  elwood --keep --output json "Remember this decision"
+  elwood --output json "Remember this decision"
 
 Commands:
   run                         Run one agent turn (default)
   resume &lt;id&gt; [prompt...]     Resume a kept session; same as run --resume &lt;id&gt;
   interactive [id]            Open the agent's own TUI here with Elwood's settings
   sessions                    List Elwood-owned session records; never starts an agent
-  models                      List the agent's models (starts the agent briefly)
+  models                      List both agents' models (starts each briefly)
   config                      Inspect or update global defaults; see config --help
   help                        Show this help
 
@@ -772,12 +773,12 @@ Agent and turn options:
   --no-defaults               Ignore saved config and ELWOOD_* run defaults
 
 Continuation and output:
-  --keep                      Preserve Elwood state for a new session
+  --keep                      Preserve Elwood state (default)
   --resume &lt;id&gt;               Resume the exact stored agent and workspace
-  --ephemeral                 Remove resumed Elwood state afterward
+  --ephemeral                 Remove new or resumed Elwood state afterward
   --output &lt;text|json|jsonl&gt;  Stdout protocol (default: text)
   --stream / --no-stream      Toggle incremental text output (default: off)
-  --verbose / --no-verbose    Toggle concise elapsed progress on stderr (default: off)
+  --verbose / --no-verbose    Toggle warnings and concise progress on stderr (default: off)
   --debug                     Write full sanitized event details to stderr
   --head                      View the full agent TUI in this terminal
   --state-dir &lt;path&gt;          Override CLI-owned state storage
@@ -821,11 +822,14 @@ Session listing:
   directory is a normal, empty result.
 
 Model listing:
-  elwood models starts the selected agent briefly, opens and cancels its own
-  model picker, tears the session down, and prints the rows. Text marks the
-  current model with * and the default with (default); --output json emits one
-  {"schemaVersion":1,"type":"models",...} document. Honors --agent, --cwd,
-  --model, --reasoning-effort, --timeout, --state-dir, trust, and posture flags.
+  elwood models probes Claude then Codex, showing each model's agent. --agent
+  limits the listing to that agent; saved/environment agent defaults do not.
+  Each probe opens and cancels the picker, then removes its session state.
+  Text marks current with * and default with (default); JSON emits one models
+  document: agents/errors arrays for both, or agent/models with --agent.
+  Partial failures retain available models and exit nonzero. --timeout is one
+  budget for the whole command; Ctrl-C stops further probes. Honors --cwd,
+  --model, --reasoning-effort, --state-dir, trust, and matching posture flags.
 
   -h, --help                  Show this help
   -V, --version               Show the Elwood version
@@ -833,7 +837,7 @@ Model listing:
 
 <h2 id="cli-reference--output-records">Output records</h2>
 <p>JSON terminal records have <code>schemaVersion: 1</code>, <code>type</code>, <code>agent</code>, <code>response</code>, <code>sessionId</code>, <code>durationMs</code>, and <code>cleanup</code>. Error records add <code>error: { code, message }</code>. <code>cleanup.action</code> is <code>none</code>, <code>preserve</code> or <code>teardown</code>; <code>cleanup.status</code> is <code>succeeded</code> or <code>failed</code>, with an optional error message.</p>
-<p><code>elwood sessions</code> and <code>elwood models</code> emit their own single documents, <code>{"schemaVersion": 1, "type": "sessions", ...}</code> and <code>{"schemaVersion": 1, "type": "models", ...}</code>. Both accept <code>--output text</code> (the default) or <code>--output json</code>; JSONL is not a listing protocol.</p>
+<p><code>elwood sessions</code> and <code>elwood models</code> emit their own single documents, <code>{"schemaVersion": 1, "type": "sessions", ...}</code> and <code>{"schemaVersion": 1, "type": "models", ...}</code>. Both accept <code>--output text</code> (the default) or <code>--output json</code>; JSONL is not a listing protocol. Bare <code>models</code> includes <code>agents: [{agent, models}]</code> and <code>errors: [...]</code> for Claude and Codex; explicit <code>--agent</code> retains <code>agent</code> and <code>models</code>. Incomplete catalogs exit nonzero, and <code>--timeout</code> is shared by both probes.</p>
 <p>JSONL records add a monotonically increasing <code>sequence</code> and elapsed <code>elapsedMs</code>. Progress record types are <code>text</code>, <code>thinking</code>, <code>tool</code>, <code>status</code> and <code>warning</code>. A tool record has <code>phase: "call"</code> or <code>"result"</code>, optional content and a shared <code>toolCallId</code> when available. Exactly one terminal <code>result</code> or <code>error</code> ends the stream.</p>
 <p>Do not treat <code>response</code> alone as proof of success. Inspect both the process status and terminal record type.</p>
 <h2 id="cli-reference--exit-codes">Exit codes</h2>
@@ -894,10 +898,10 @@ Examples:
 <li><code>--head</code> requires terminal stdin and stderr. It cannot combine with stream, verbose, debug or JSONL. It is view-only; Ctrl-C still interrupts.</li>
 <li><code>--resume</code> restores the stored agent and workspace. Any <code>--cwd</code> or conflicting <code>--agent</code> is invalid.</li>
 <li><code>--persona</code> performs a real setup turn for new sessions and cannot be used with resume.</li>
-<li><code>--ephemeral</code> removes resumed Elwood state afterward. New sessions are already ephemeral unless <code>--keep</code> is set.</li>
+<li><code>--ephemeral</code> removes new or resumed Elwood state afterward. Both preserve state by default; explicit <code>--keep</code> and <code>--ephemeral</code> cannot be combined.</li>
 <li><code>--high-trust</code> cannot combine with an explicit <code>--claude-permission-mode</code>, <code>--codex-sandbox</code> or <code>--codex-approval-policy</code>. Use <code>--no-high-trust</code> to reverse an inherited value.</li>
 <li><code>elwood interactive</code> needs a terminal and rejects the scripted flags (<code>--output json</code>/<code>jsonl</code>, <code>--stream</code>, <code>--verbose</code>, <code>--debug</code>, <code>--head</code>, <code>--timeout</code>, <code>--persona</code>, <code>--image</code>, <code>--keep</code>, <code>--ephemeral</code>, <code>--resume</code>).</li>
-<li><code>elwood sessions</code> never starts an agent; <code>elwood models</code> starts one briefly and leaves no session state behind.</li>
+<li><code>elwood sessions</code> never starts an agent; <code>elwood models</code> probes Claude then Codex (or only the explicit <code>--agent</code>) and leaves no session state behind.</li>
 </ul>
 <p>Flags override environment, which overrides global configuration, which overrides built-ins. <a href="#configuration">See all configuration keys</a>.</p></section><section class="doc-section" id="troubleshooting" aria-labelledby="troubleshooting--title"><div class="section-tools"><span>Troubleshooting</span><button class="copy-section" data-slug="troubleshooting">Copy as Markdown</button><a href="troubleshooting.md">.md</a></div><h1 id="troubleshooting--title">Troubleshooting</h1>
 <p>Start with the smallest reproducible command in the same directory as the failing run:</p>

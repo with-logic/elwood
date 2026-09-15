@@ -21,6 +21,7 @@ tickets/
 
 # Ephemeral code-review artifacts (regenerated each run).
 REVIEW.md
+.worktrees/
 VALIDATION.md
 
 # Site: generated animation masters and internal review media live outside the

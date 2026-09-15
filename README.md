@@ -107,7 +107,7 @@ when a human should make those decisions. There is no default turn timeout; pass
 elwood "Summarize this repository"
 git diff | elwood --agent claude "Review this diff for correctness"
 elwood --output json "Run the tests and summarize failures" | jq -r .response
-elwood --keep --output json "Remember that the release color is teal"
+elwood --output json "Remember that the release color is teal"
 elwood --resume <sessionId> "What is the release color?"
 ```
 
@@ -179,11 +179,13 @@ combined with `--stream`, `--verbose`, `--debug`, or `--output jsonl`.
 
 ### Continuation and cleanup
 
-New runs are ephemeral unless `--keep` is supplied. A kept text run reports its
-session ID on stderr; JSON and JSONL include it in the terminal record:
+New and resumed headless runs preserve Elwood state by default. A resumable
+session ID is reported on stderr for text output and in the terminal record for
+JSON and JSONL. `--keep` explicitly selects the default; use `--ephemeral` for
+one-off runs that should remove their Elwood state afterward:
 
 ```sh
-first=$(elwood --keep --output json "Remember that the release color is teal")
+first=$(elwood --output json "Remember that the release color is teal")
 id=$(printf '%s' "$first" | jq -r .sessionId)
 elwood --resume "$id" "What is the release color?"
 elwood --resume "$id" --ephemeral "Finish this conversation"
@@ -232,7 +234,7 @@ signal: a socket left behind by a force-killed owner reads as live until that
 session is next started or torn down. Unreadable records are skipped with a
 stderr warning, and an empty state directory is a normal empty result.
 `resume <id>` follows every `--resume` rule: stored agent and workspace, no
-`--cwd`, no `--keep`, no persona, and piped stdin composes the same way.
+`--cwd`, no persona, and piped stdin composes the same way.
 
 `elwood interactive [id]` opens the real `claude` or `codex` TUI in the current
 terminal — no hidden PTY, no automation, no observation, no Elwood state — with
@@ -259,21 +261,25 @@ command rejects `--output json|jsonl`, `--stream`, `--verbose`, `--debug`,
 
 ### Listing models
 
-`elwood models` starts the selected agent briefly, opens and cancels its own
-model picker, tears the session down, and prints the rows. Text marks the
-current model with `*` and the default with `(default)`; JSON is one
-`{"schemaVersion":1,"type":"models",...}` document of `AgentModelOption` rows:
+`elwood models` lists Claude and Codex models, with each model's agent noted.
+It probes Claude then Codex, briefly opening and cancelling each model picker,
+and removes both probe sessions afterward. `--agent` limits the listing to one
+agent; saved configuration and `ELWOOD_AGENT` do not narrow the bare command.
+Text marks the current model with `*` and the default with `(default)`.
 
 ```sh
 elwood models
+elwood models --output json | jq '.agents[] | {agent, models}'
 elwood models --agent claude --output json | jq -r '.models[] | select(.isCurrent) | .id'
 ```
 
-Starting the agent is unavoidable because the picker is the only source of the
-list. The command honors `--agent`, `--cwd`, `--model`, `--reasoning-effort`,
-`--timeout`, `--state-dir`, trust, and posture flags, leaves no Elwood state
-behind, and maps failures (timeout, interruption, blocked prompts) to the usual
-statuses and error documents.
+JSON is one `{"schemaVersion":1,"type":"models",...}` document. Combined
+listings contain `agents: [{agent, models}]` and `errors: [...]`; explicit
+`--agent` retains the single `agent` and `models` fields. If one agent fails or
+is unavailable, the other catalog remains available and the command exits
+nonzero. `--timeout` is one budget shared by both probes, and Ctrl-C stops
+further probes. Workspace, model, reasoning, trust, state-directory, and
+matching adapter posture settings apply; the configured model stays unchanged.
 
 ### Trust and security
 

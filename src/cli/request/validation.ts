@@ -37,10 +37,6 @@ export function validateSpecificFlags(
 export function validateLifecycle(parsed: ParsedRunCommand, env: EnvSettings): void {
   if (parsed.flags.keep && parsed.flags.ephemeral)
     throw usage("--keep and --ephemeral cannot be combined.");
-  if (parsed.flags.ephemeral && parsed.flags.resume === undefined)
-    throw usage("--ephemeral requires --resume.");
-  if (parsed.flags.keep && parsed.flags.resume !== undefined)
-    throw usage("--keep is only valid for a new session.");
   if (parsed.flags.cwd !== undefined && parsed.flags.resume !== undefined)
     throw usage("--cwd cannot be used with --resume; resume uses the stored workspace.");
   if (parsed.flags.resume !== undefined) {

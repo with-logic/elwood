@@ -12,6 +12,19 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-14
+
+- Keep live session warnings quiet in text and JSON CLI output, including model
+  discovery; enable them with `--verbose` or `--debug`. JSONL warning events and
+  fatal errors remain available as before.
+
+- List both Claude and Codex catalogs in bare `elwood models`, with agent
+  associations, partial failure diagnostics, and one shared timeout budget.
+  Explicit `--agent` keeps the single-agent output contract.
+
+- Preserve new CLI sessions by default so they can be listed and resumed; use
+  `--ephemeral` to remove new or resumed Elwood state after the run.
+
 ## [0.1.2] - 2026-09-13
 
 - Preserve the inherited PATH when an interactive login shell exits successfully

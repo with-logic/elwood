@@ -86,10 +86,12 @@ launch, persona setup, and the user turn. Signal handlers are active before
 launch. The first `SIGINT` requests interruption and cleanup, a repeated
 `SIGINT` force-kills the process tree, and an interrupted invocation exits 130.
 
-A new invocation tears down its Elwood-owned state after every outcome; teardown
-does not undo workspace changes or remove history owned by the underlying agent.
-`--keep` instead preserves it after stop-or-kill cleanup and reports its session
-ID on stderr in text mode. A resume uses `--resume <id>` to load exactly the
+New and resumed headless runs preserve their Elwood-owned state after every
+outcome by default, after stop-or-kill cleanup. `--keep` explicitly selects this
+default. `--ephemeral` instead requests teardown for either a new or resumed
+run; it cannot be combined with `--keep`. Teardown does not undo workspace
+changes or remove history owned by the underlying agent. A preserved run reports
+its resumable session ID on stderr in text mode. A resume uses `--resume <id>` to load exactly the
 stored adapter and cwd; it never falls back to a new conversation, and `--cwd`
 is therefore rejected with `--resume` rather than overriding the stored
 workspace. Explicit adapter conflicts are usage errors. Before launch, resumed state and its cwd MUST satisfy the private,
@@ -117,11 +119,13 @@ stacks, bridge credentials, and terminal escape sequences.
 
 Text is the default output. It writes the combined assistant response — every
 observed assistant text message in order, separated by one blank line — with one
-trailing newline when non-empty and zero bytes for an empty response. Concise,
-sanitized warnings are written to stderr by default for text and JSON runs;
-JSONL represents them only as ordered warning records to avoid duplicate
-diagnostics. `--verbose` adds concise elapsed-time phase, tool-name, and cleanup
-progress to stderr without replaying assistant or thinking text. `--debug` emits
+trailing newline when non-empty and zero bytes for an empty response. Live session
+warnings are quiet by default for text and JSON runs, including model probes.
+`--verbose` enables concise sanitized warnings and elapsed-time phase, tool-name,
+and cleanup progress on stderr without replaying assistant or thinking text.
+`--debug` also enables warnings. JSONL always represents warnings as ordered
+records without duplicating them on stderr. Fatal errors and `sessions` warnings
+about omitted unreadable records remain visible without verbosity. `--debug` emits
 full sanitized normalized event details to stderr and is intended for diagnosis
 rather than routine progress. `--stream` is text-only, emits assistant chunks once with one
 blank line between distinct messages, preserves partial output on failure, and
@@ -345,7 +349,7 @@ and status 1.
 ### 12A.10 Model listing
 
 `elwood models [options] [--output <text|json>]` briefly starts a headless
-session for the selected agent — honoring agent, workspace, model, reasoning
+session for each requested agent — honoring workspace, model, reasoning
 effort, timeout, trust, state directory, and adapter posture with normal
 precedence — waits for readiness, drives the agent's own model picker through
 the public `listModels` operation (which opens and cancels the picker and leaves
@@ -354,7 +358,30 @@ runs no persona turn, uses a fresh session identity under the effective state
 directory, and always tears that identity down, so no Elwood state remains
 afterward. Starting the agent is unavoidable and the help text says so.
 
-Text output is an aligned table with a header row: `*` in the first column marks
+Without an explicit `--agent`, the command MUST probe Claude and then Codex
+sequentially, regardless of `ELWOOD_AGENT` or a saved agent default. Each probe
+uses its own adapter settings; adapter-specific flags and environment posture
+settings apply only to their matching adapter. Shared settings apply to both.
+`--timeout` is one budget for the whole command, including settings resolution
+and preparation. Each probe receives only the remaining budget. Once exhausted,
+the next adapter MUST NOT start; available catalogs remain in the partial result. A failed or unavailable adapter MUST NOT
+hide the other adapter’s available models. SIGINT stops the command and MUST
+NOT launch the next adapter. Every started probe is cleaned up before the next.
+
+For combined listings, text includes an `AGENT` column and per-agent errors go
+to stderr. JSON is exactly one document
+`{ "schemaVersion": 1, "type": "models", "agents": [{ "agent": "...", "models": [...] }], "errors": [...] }`.
+`agents` contains successful catalogs (including empty catalogs), and `errors`
+contains the canonical version-1 error records with agent, error, duration, and
+cleanup fields. Both arrays retain probe order. Status is 0 only if both probes
+succeeded; otherwise interruption (130) takes precedence over timeout (124),
+usage errors (2), and other failures (1). Output-protocol errors and global
+config-file read, parse, or schema errors fail before any probe. Adapter-specific
+setting validation failures are recorded for that adapter and permit the other
+adapter to proceed. An explicit `--agent` preserves the single-agent output
+and error contract below. All model probes remain ephemeral.
+
+Single-agent text output is an aligned table with a header row: `*` in the first column marks
 the current model, followed by the id, label, `(default)` when the row is the
 adapter's default, and the description. JSON output is exactly one version-1
 document `{ "schemaVersion": 1, "type": "models", "agent": "...", "models": [...] }`

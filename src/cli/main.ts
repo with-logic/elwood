@@ -17,12 +17,14 @@ import {
   explicitStructuredOutput,
   renderErrorRecord,
 } from "./main-failure.ts";
+import { executeCombinedModels } from "./models/combined.ts";
 import type { executeModels } from "./models/index.ts";
 import { resolveRunRequest, resolveRunSettings } from "./request/index.ts";
 import { optional, usage } from "./request/values.ts";
 import type { executeRun } from "./run/index.ts";
 import type { prepareCliSession } from "./session/index.ts";
 import { assertListingOutput, runSessionsCommand } from "./sessions/index.ts";
+import { resolveListingSettings } from "./sessions/settings.ts";
 import { AsyncOutputSink, type CliWritable } from "./stream.ts";
 import type { CliEnvironment, PromptStdin } from "./types.ts";
 import { readCliVersion } from "./version.ts";
@@ -105,6 +107,20 @@ export async function main(
       return await dependencies.interactive(parsed, context);
     }
     if (parsed.command === "models") {
+      if (parsed.run.flags.agent === undefined) {
+        const settings = resolveListingSettings(parsed.run, context);
+        output = settings.output;
+        agent = null;
+        assertListingOutput(settings, "models");
+        return await executeCombinedModels(
+          parsed.run,
+          output,
+          context,
+          { stdout, stderr },
+          dependencies,
+          startedAt,
+        );
+      }
       const settings = await dependencies.settings(parsed.run, context);
       assertListingOutput(settings, "models");
       output = settings.output;

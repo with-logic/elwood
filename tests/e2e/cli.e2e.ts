@@ -134,6 +134,7 @@ test("C-E2E-19 elwood fails closed on a declined Claude workspace trust gate", {
         "--agent=claude",
         `--state-dir=${project.stateDir}`,
         "--no-trust",
+        "--ephemeral",
         "--output=json",
         "--timeout=45s",
         "Reply with hello.",

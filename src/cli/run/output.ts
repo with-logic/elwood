@@ -13,7 +13,7 @@ import { StreamingTextRenderer, writeFinalText } from "../output/text.ts";
 import type { CliProgressRecord, CliTerminalRecord, CliTextSanitizer } from "../output/types.ts";
 import type { AsyncOutputSink } from "../stream.ts";
 import { agentDisplayName, type EffectiveRunRequest } from "../types.ts";
-import { completionLine, conciseLine, debugLine, warningLine } from "./output-lines.ts";
+import { completionLine, conciseLine, debugLine } from "./output-lines.ts";
 
 export type RunOutputHooks = {
   readonly consumerClosed: () => void;
@@ -75,12 +75,9 @@ export class RunOutput {
 
   warning(event: ElwoodWarningEvent): void {
     if (this.ended) return;
-    const record = progressFromWarning(event, this.clean);
-    if (this.request.output !== "jsonl" && !this.request.verbose && this.request.debug !== true) {
-      this.queueDiagnostic(warningLine(record, this.diagnosticValue));
+    if (this.request.output !== "jsonl" && !this.request.verbose && this.request.debug !== true)
       return;
-    }
-    void this.enqueue(record);
+    void this.enqueue(progressFromWarning(event, this.clean));
   }
 
   starting(): void {

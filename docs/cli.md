@@ -83,8 +83,9 @@ Boolean environment values are exactly `true` or `false`.
 Run `elwood --help` for the full flag list. Launch controls include `--model`,
 `--reasoning-effort`, `--persona`, `--claude-permission-mode`,
 `--codex-sandbox`, `--codex-approval-policy`, `--state-dir`, `--verbose`,
-`--debug`, and `--trust` / `--no-trust`. The built-in non-interactive posture
-is Claude `dontAsk`, or Codex `workspace-write` with approval policy `never`.
+`--debug`, and `--trust` / `--no-trust`. Live session warnings are quiet by
+default; use `--verbose` or `--debug` to see them, including for `elwood models`.
+The built-in non-interactive posture is Claude `dontAsk`, or Codex `workspace-write` with approval policy `never`.
 
 For an unattended run that must never stop on a permission prompt, prefer the
 agent-neutral `--high-trust` over per-agent posture flags. It selects Claude

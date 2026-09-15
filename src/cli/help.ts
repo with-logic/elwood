@@ -18,14 +18,14 @@ Examples:
   elwood "Summarize this repository"
   git diff | elwood "Review this diff for correctness"
   elwood run --output json < prompt.txt
-  elwood --keep --output json "Remember this decision"
+  elwood --output json "Remember this decision"
 
 Commands:
   run                         Run one agent turn (default)
   resume <id> [prompt...]     Resume a kept session; same as run --resume <id>
   interactive [id]            Open the agent's own TUI here with Elwood's settings
   sessions                    List Elwood-owned session records; never starts an agent
-  models                      List the agent's models (starts the agent briefly)
+  models                      List both agents' models (starts each briefly)
   config                      Inspect or update global defaults; see config --help
   help                        Show this help
 
@@ -42,12 +42,12 @@ Agent and turn options:
   --no-defaults               Ignore saved config and ELWOOD_* run defaults
 
 Continuation and output:
-  --keep                      Preserve Elwood state for a new session
+  --keep                      Preserve Elwood state (default)
   --resume <id>               Resume the exact stored agent and workspace
-  --ephemeral                 Remove resumed Elwood state afterward
+  --ephemeral                 Remove new or resumed Elwood state afterward
   --output <text|json|jsonl>  Stdout protocol (default: text)
   --stream / --no-stream      Toggle incremental text output (default: off)
-  --verbose / --no-verbose    Toggle concise elapsed progress on stderr (default: off)
+  --verbose / --no-verbose    Toggle warnings and concise progress on stderr (default: off)
   --debug                     Write full sanitized event details to stderr
   --head                      View the full agent TUI in this terminal
   --state-dir <path>          Override CLI-owned state storage
@@ -91,11 +91,14 @@ Session listing:
   directory is a normal, empty result.
 
 Model listing:
-  elwood models starts the selected agent briefly, opens and cancels its own
-  model picker, tears the session down, and prints the rows. Text marks the
-  current model with * and the default with (default); --output json emits one
-  {"schemaVersion":1,"type":"models",...} document. Honors --agent, --cwd,
-  --model, --reasoning-effort, --timeout, --state-dir, trust, and posture flags.
+  elwood models probes Claude then Codex, showing each model's agent. --agent
+  limits the listing to that agent; saved/environment agent defaults do not.
+  Each probe opens and cancels the picker, then removes its session state.
+  Text marks current with * and default with (default); JSON emits one models
+  document: agents/errors arrays for both, or agent/models with --agent.
+  Partial failures retain available models and exit nonzero. --timeout is one
+  budget for the whole command; Ctrl-C stops further probes. Honors --cwd,
+  --model, --reasoning-effort, --state-dir, trust, and matching posture flags.
 
   -h, --help                  Show this help
   -V, --version               Show the Elwood version

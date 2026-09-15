@@ -70,12 +70,12 @@ describe("RunOutput", () => {
     expect(h.stderr.value).toBe("");
   });
 
-  test("C-CLI-10 warnings surface on text and JSON stderr without JSONL duplication", async () => {
+  test("C-CLI-10 warnings are quiet on text and JSON by default while JSONL retains them", async () => {
     for (const output of ["text", "json"] as const) {
       const h = harness(request({ output }));
       h.output.warning(warning);
       await h.output.finish(() => terminal());
-      expect(h.stderr.value).toBe("elwood: warning [version_unparseable]: version warning\n");
+      expect(h.stderr.value).toBe("");
     }
     const jsonl = harness(request({ output: "jsonl" }));
     jsonl.output.warning(warning);
@@ -166,7 +166,7 @@ describe("RunOutput", () => {
   });
 
   test("C-CLI-12 stderr EPIPE suppresses the text-mode error diagnostic", async () => {
-    const h = harness(request());
+    const h = harness(request({ verbose: true }));
     h.stderr.failAt = 1;
     h.output.warning({
       elwoodSessionId: "s1",

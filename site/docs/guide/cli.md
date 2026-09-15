@@ -29,7 +29,7 @@ Repeat `--image` for multiple images. Input is limited to 8 MiB. The command doe
 | `--output json` | A script that needs one result | One terminal document with response, status and cleanup |
 | `--output jsonl` | Progress in another program | Ordered event records, then one result or error |
 
-Text and JSON diagnostics use stderr. JSONL includes warning records in its ordered stdout stream. A response can contain useful partial text even when the run fails: inspect the exit code and terminal record type.
+Text errors use stderr; JSON errors are emitted as terminal records on stdout. Routine session warnings are quiet unless `--verbose` or `--debug` is enabled. JSONL includes warning records in its ordered stdout stream. A response can contain useful partial text even when the run fails: inspect the exit code and terminal record type.
 
 ```sh
 elwood --output json "Describe the architecture."
@@ -43,9 +43,9 @@ Illustrative successful output:
   "type": "result",
   "agent": "claude",
   "response": "The project has a CLI, a session layer, and two adapters.",
-  "sessionId": null,
+  "sessionId": "example-session-id",
   "durationMs": 8421,
-  "cleanup": { "action": "teardown", "status": "succeeded" }
+  "cleanup": { "action": "preserve", "status": "succeeded" }
 }
 ```
 
@@ -57,7 +57,7 @@ Illustrative successful output:
 elwood --stream --verbose "Explain the build pipeline."
 ```
 
-`--stream` emits assistant text as it arrives. `--verbose` prints concise elapsed progress to stderr. Streaming is valid only with text output; use `--no-stream` if a saved setting enables it and you need JSON.
+`--stream` emits assistant text as it arrives. `--verbose` prints concise elapsed progress and session warnings to stderr. Streaming is valid only with text output; use `--no-stream` if a saved setting enables it and you need JSON.
 
 To see the actual TUI, use `--head`:
 
@@ -77,12 +77,12 @@ CLI timeout covers launch, any persona setup turn and the requested turn. Durati
 
 ## Resuming a session
 
-New runs normally remove their Elwood state afterward. `--keep` preserves it so a later process can resume. With text output, the session ID is reported on stderr; JSON includes it in the result.
+New and resumed runs preserve their Elwood state by default so a later process can resume. `--keep` explicitly selects this default; `--ephemeral` removes Elwood state after either a new or resumed run. With text output, the session ID is reported on stderr; JSON includes it in the result.
 
 This Bash/Zsh example requires `jq`:
 
 ```sh
-first=$(elwood --keep --output json \
+first=$(elwood --output json \
   "Remember: this release is called Acorn.") || exit $?
 
 session_id=$(printf '%s' "$first" \
@@ -107,14 +107,16 @@ Each record reports its id, agent, workspace, creation and last-used times, whet
 
 ## Listing models
 
-`elwood models` starts the selected agent briefly, opens and cancels the agent's own model picker, tears the session down, and prints what it found. Your configured model is left unchanged.
+`elwood models` probes Claude then Codex and notes the agent beside each model. Each probe briefly opens and cancels its model picker, then removes its session state. Your configured models stay unchanged. Use `--agent` to list only one adapter; environment and saved agent defaults do not narrow the bare command.
 
 ```sh
 elwood models
 elwood models --agent codex --output json
 ```
 
-Text marks the current model with `*` and the default with `(default)`. JSON emits one `{"schemaVersion": 1, "type": "models", ...}` document whose rows carry `id`, `label`, `description`, `isCurrent`, and `isDefault`.
+Text marks the current model with `*` and the default with `(default)`. JSON emits one `{"schemaVersion": 1, "type": "models", ...}` document. Combined listings have `agents: [{agent, models}]` and `errors: [...]`; explicit `--agent` retains `agent` and `models`. Rows carry `id`, `label`, `description`, `isCurrent`, and `isDefault`.
+
+If one adapter fails or is unavailable, the available catalog is still returned with per-agent errors and a nonzero exit status. `--timeout` is a whole-command budget shared by both probes. Ctrl-C stops further probes. Each probe uses its matching adapter settings.
 
 ## The agent's own terminal
 
