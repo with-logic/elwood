@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-14
+
 - Keep live session warnings quiet in text and JSON CLI output, including model
   discovery; enable them with `--verbose` or `--debug`. JSONL warning events and
   fatal errors remain available as before.
