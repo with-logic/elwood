@@ -47,7 +47,7 @@ a:hover {
 button:focus-visible,
 a:focus-visible,
 input:focus-visible {
-  outline: 2px solid currentColor;
+  outline: 2px solid var(--ink);
   outline-offset: 5px;
 }
 button:disabled {
@@ -398,6 +398,7 @@ body:before {
   white-space: nowrap;
 }
 .install-copy:focus-visible {
+  outline-color: currentColor;
   outline-offset: -5px;
 }
 .install-copy:hover {
@@ -951,6 +952,10 @@ dialog::backdrop {
   overflow: hidden;
   will-change: transform;
 }
+#terminal-demo button:focus-visible,
+#terminal-demo input:focus-visible {
+  outline-color: var(--paper);
+}
 .demo-window-bar {
   padding: 10px 14px;
   border-bottom: 1px solid #666666;
@@ -984,6 +989,10 @@ dialog::backdrop {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   tab-size: 2;
+}
+.demo-output:focus-visible {
+  outline: 2px solid var(--paper);
+  outline-offset: -5px;
 }
 .demo-output::selection,
 .demo-output ::selection {
