@@ -40,7 +40,7 @@ if (typeof document !== 'undefined') {
     if (pages) { render(); return; }
     status.textContent = 'Loading the index…';
     try {
-      loading ??= fetch('search.json').then(response => { if (!response.ok) throw Error('index'); return response.json(); }).then(indexPages).finally(() => { loading = null; });
+      loading ??= fetch('/guide/search.json').then(response => { if (!response.ok) throw Error('index'); return response.json(); }).then(indexPages).finally(() => { loading = null; });
       pages = await loading; render();
     } catch { status.textContent = 'Search could not load. Close this panel and use the contents list, or reopen to retry.'; }
   }
@@ -70,13 +70,13 @@ if (typeof document !== 'undefined') {
   for (const button of document.querySelectorAll('.copy-section')) {
     button.addEventListener('click', async () => {
       button.textContent = 'Copying…';
-      try { await copyText(button, await fetchText(`${button.dataset.slug}.md`), 'Copy as Markdown'); } catch { button.textContent = 'Copy failed'; setTimeout(() => { button.textContent = 'Copy as Markdown'; }, 2000); }
+      try { await copyText(button, await fetchText(`/guide/${button.dataset.slug}.md`), 'Copy as Markdown'); } catch { button.textContent = 'Copy failed'; setTimeout(() => { button.textContent = 'Copy as Markdown'; }, 2000); }
     });
   }
   for (const button of document.querySelectorAll('#copy-all-side')) {
     button.addEventListener('click', async () => {
       button.textContent = 'Copying…';
-      try { await copyText(button, await fetchText('../llms-full.txt'), 'Copy docs as Markdown'); } catch { button.textContent = 'Copy failed'; setTimeout(() => { button.textContent = 'Copy docs as Markdown'; }, 2000); }
+      try { await copyText(button, await fetchText('/llms-full.txt'), 'Copy docs as Markdown'); } catch { button.textContent = 'Copy failed'; setTimeout(() => { button.textContent = 'Copy docs as Markdown'; }, 2000); }
     });
   }
 
