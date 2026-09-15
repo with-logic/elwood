@@ -76,7 +76,9 @@ def build_icons() -> None:
     icon = Image.new("RGB", (512, 512), PAPER)
     bust = bust.resize((448, 448), Image.Resampling.LANCZOS)
     icon.paste(bust, ((512 - bust.width) // 2, (512 - bust.height) // 2), bust)
-    icon.save(LANDING / "icon-512.webp", quality=90, method=6)
+    # Keep the names used by existing GitHub and npm READMEs working.
+    for filename in ("icon-512.webp", "robot-mark-light.webp", "robot-mark-dark.webp"):
+        icon.save(LANDING / filename, quality=90, method=6)
     icon.resize((180, 180), Image.Resampling.LANCZOS).save(
         LANDING / "apple-touch-icon.png", optimize=True
     )

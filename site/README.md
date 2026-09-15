@@ -133,5 +133,5 @@ uv run --with 'fonttools[woff]' --with pillow scripts/build_social_card.py
 ```
 
 This writes both social-card formats, the 512px icon, Apple touch icon, and
-multi-size favicon. The transparent robot and animation sprite sheets retain
+multi-size favicon, and light/dark README marks. The transparent robot and animation sprite sheets retain
 their original artwork.
