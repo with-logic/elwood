@@ -1,4 +1,4 @@
-/** Posts a completed review against its exact commit, without merging or bypassing CI. */
+/** Posts complete verdicts or incomplete-review comments against the reviewed commit. */
 import { readFile } from "node:fs/promises";
 import { currentPr } from "./github.mjs";
 import { eligible, verdict } from "./policy.mjs";
@@ -17,12 +17,29 @@ export async function post({ github, context, core, number, head, base, complete
   const body = `<!-- elwood:review -->\nReviewed commit: ${head}\n\n${report}`;
   if (body.length > 65_000)
     throw new Error("Review exceeds GitHub's body limit; inspect the artifact");
-  await github.rest.pulls.createReview({
+  const { data: submitted } = await github.rest.pulls.createReview({
     ...context.repo,
     pull_number: pr.number,
     commit_id: head,
     event,
     body,
   });
+  const latest = await currentPr(github, context, pr.number);
+  if (
+    !eligible(latest.pr, repository, latest.permission) ||
+    latest.pr.head.sha !== head ||
+    latest.pr.base.sha !== base
+  ) {
+    if (event !== "COMMENT") {
+      await github.rest.pulls.dismissReview({
+        ...context.repo,
+        pull_number: pr.number,
+        review_id: submitted.id,
+        message: "Review superseded: the PR or reviewed commits changed during publication.",
+      });
+    }
+    core.notice("Review superseded during publication; no actionable verdict remains.");
+    return;
+  }
   core.info(`Submitted ${event} for ${head}`);
 }

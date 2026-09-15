@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eligible, verdict } from "../policy.mjs";
+import { findingFixture, reportFixture } from "./report-fixture.mjs";
 
 const pr = {
   state: "open",
@@ -26,58 +27,33 @@ test("only open, ready maintainer PRs from the same repository are eligible", ()
   }
 });
 
-test("approval requires one exact clean verdict and a successful review run", () => {
-  for (const line of [
-    "Verdict: clean, no notes",
-    "Verdict: not ready - 0 blocker(s), 0 major(s), 2 minor(s), 1 nit(s)",
-  ]) {
-    assert.equal(verdict(`# Review\n${line}\n`, true), "APPROVE");
-    assert.equal(verdict(`# Review\n${line}\n`, false), "COMMENT");
+test("approval requires complete consistent evidence and a successful review run", () => {
+  const clean = reportFixture();
+  const minor = reportFixture(
+    { "review-clarity": findingFixture() },
+    "Verdict: not ready - 0 blocker(s), 0 major(s), 1 minor(s), 0 nit(s)",
+  );
+  for (const body of [clean, minor]) {
+    assert.equal(verdict(body, true), "APPROVE");
+    assert.equal(verdict(body, false), "COMMENT");
   }
   for (const body of [
     "",
-    "Verdict: clean-ish",
-    "Verdict: clean, no notes\nVerdict: not ready - 1 blocker(s), 0 major(s), 0 minor(s), 0 nit(s)",
-    "Verdict: not ready - 0 blocker(s), 3 major(s), 0 minor(s), 0 nit(s)",
-    "Verdict: not ready - 10 blocker(s), 0 major(s), 0 minor(s), 0 nit(s)",
-    "Verdict: not ready - incomplete review coverage (blocker)",
-  ]) {
-    assert.equal(verdict(body, true), "REQUEST_CHANGES");
-  }
-});
-
-test("blocking finding headings override a contradictory approving verdict", () => {
-  for (const line of [
-    "Verdict: clean, no notes",
-    "Verdict: not ready - 0 blocker(s), 0 major(s), 2 minor(s), 1 nit(s)",
-  ]) {
-    for (const heading of [
-      "#### blocker: Exposed credential",
-      "#### major: Authorization bypass",
-      "  #### MAJOR: Authorization bypass",
-      "#### **major**: Authorization bypass",
-    ]) {
-      const body = `# Review\n${line}\n\n## Findings By Dimension\n\n### review-security\n\n${heading}\n- Finding: A required security boundary is missing.\n`;
-      assert.equal(verdict(body, true), "REQUEST_CHANGES", heading);
-      assert.equal(verdict(body, false), "COMMENT", heading);
-    }
-  }
-});
-
-test("minor and nit finding headings still allow approval with zero blocking findings", () => {
-  const body = `# Review
-Verdict: not ready - 0 blocker(s), 0 major(s), 1 minor(s), 1 nit(s)
-
-## Findings By Dimension
-
-### review-clarity
-
-#### minor: Explain the unusual branch
-- Finding: The workaround needs a comment explaining the upstream bug.
-
-#### nit: Fix a typo
-- Finding: The comment misspells a word.
-`;
-  assert.equal(verdict(body, true), "APPROVE");
-  assert.equal(verdict(body, false), "COMMENT");
+    "# Review\nVerdict: clean, no notes\n",
+    clean.replace("### review-security", "### review-unrelated"),
+    clean.replace("### review-security", "### review-clarity"),
+    clean.replace("- review-security: completed", ""),
+    clean.replace("- review-security: completed", "- review-security: missing"),
+    `${clean}- review-security: completed\n`,
+    clean.replace("No findings.", "I did not finish"),
+    `${clean}\nVerdict: clean, no notes`,
+    clean + findingFixture("blocker"),
+    findingFixture("major") + clean,
+    minor.replace("1 minor(s)", "0 minor(s)"),
+    reportFixture({ "review-security": findingFixture("blocker") }),
+    reportFixture({ "review-security": findingFixture("major") }),
+    reportFixture({ "review-clarity": findingFixture() }),
+    reportFixture({ "review-clarity": "#### minor: Missing evidence" }),
+  ])
+    assert.equal(verdict(body, true), "REQUEST_CHANGES", body);
 });

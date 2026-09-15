@@ -38,6 +38,5 @@ clean_lines=$(count_matches '^verdict: *clean')
 verdict_lines=$(count_matches '^verdict:')
 if [ "$clean_lines" -gt 0 ] && [ "$verdict_lines" -ne 1 ]; then
   echo "review: clean verdict is ambiguous ($verdict_lines verdict lines) — not writing REVIEW.md" >&2
-  head -20 "$tmp/REVIEW.md" >&2
   exit 1
 fi

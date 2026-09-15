@@ -1,83 +1,10 @@
 /** Tests API boundaries for the review gate and exact-commit approval posting. */
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import test from "node:test";
 import { gate } from "../gate.mjs";
 import { post } from "../post.mjs";
-
-function fixture() {
-  const outputs = {};
-  const posted = [];
-  const failures = [];
-  const pr = {
-    number: 10,
-    state: "open",
-    draft: false,
-    user: { login: "maintainer", type: "User" },
-    head: { sha: "head", repo: { full_name: "with-logic/elwood" } },
-    base: { ref: "main", sha: "base" },
-  };
-  const state = { permission: "write", reviews: [] };
-  const github = {
-    rest: {
-      pulls: {
-        get() {
-          return { data: pr };
-        },
-        listReviews: "listReviews",
-        createReview(review) {
-          posted.push(review);
-        },
-      },
-      repos: {
-        getCollaboratorPermissionLevel() {
-          return { data: { permission: state.permission } };
-        },
-      },
-    },
-    paginate() {
-      return state.reviews;
-    },
-  };
-  const core = {
-    setOutput(key, value) {
-      outputs[key] = value;
-    },
-    setFailed(message) {
-      failures.push(message);
-    },
-    notice(message) {
-      outputs.notice = message;
-    },
-    info(message) {
-      outputs.info = message;
-    },
-  };
-  return {
-    github,
-    core,
-    context: { repo: { owner: "with-logic", repo: "elwood" } },
-    number: "10",
-    head: "head",
-    base: "base",
-    complete: true,
-    outputs,
-    posted,
-    failures,
-    pr,
-    state,
-  };
-}
-
-async function report(t) {
-  const dir = await mkdtemp(join(tmpdir(), "elwood-review-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
-  const path = join(dir, "REVIEW.md");
-  await writeFile(path, "# Review\nVerdict: clean, no notes\n");
-  return path;
-}
+import { fixture, report } from "./github-fixture.mjs";
+import { reportFixture } from "./report-fixture.mjs";
 
 test("gate exports current commits only for eligible authors", async () => {
   const f = fixture();
@@ -124,7 +51,7 @@ test("dismissed clean approvals do not consume the non-converging round cap", as
   const f = fixture();
   f.state.reviews = Array.from({ length: 4 }, () => ({
     user: { login: "github-actions[bot]" },
-    body: "<!-- elwood:review -->\n# Review\nVerdict: clean, no notes\n",
+    body: `<!-- elwood:review -->\n${reportFixture()}`,
     state: "DISMISSED",
     commit_id: "old",
   }));
@@ -184,4 +111,34 @@ test("only completed clean reviews approve, attached to the reviewed commit", as
   assert.equal(f.posted[0].commit_id, "head");
   await post({ ...f, reportPath, complete: false });
   assert.equal(f.posted[1].event, "COMMENT");
+});
+
+test("publication dismisses its own stale verdict after a concurrent push", async (t) => {
+  for (const field of ["head", "base"]) {
+    const f = fixture();
+    const reportPath = await report(t);
+    const dismissed = [];
+    f.github.rest.pulls.createReview = (review) => {
+      f.posted.push(review);
+      f.pr[field].sha = "pushed-during-publication";
+      return { data: { id: 123 } };
+    };
+    f.github.rest.pulls.dismissReview = (request) => dismissed.push(request);
+    await post({ ...f, reportPath });
+    assert.equal(dismissed[0].review_id, 123);
+    assert.match(f.outputs.notice, /superseded/);
+  }
+});
+
+test("dismissal failure surfaces rather than claiming a stale verdict was neutralized", async (t) => {
+  const f = fixture();
+  const reportPath = await report(t);
+  f.github.rest.pulls.createReview = () => {
+    f.pr.head.sha = "new-head";
+    return { data: { id: 123 } };
+  };
+  f.github.rest.pulls.dismissReview = () => {
+    throw new Error("dismissal refused");
+  };
+  await assert.rejects(post({ ...f, reportPath }), /dismissal refused/);
 });

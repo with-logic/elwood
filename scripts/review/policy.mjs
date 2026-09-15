@@ -1,4 +1,6 @@
 /** Maintainer-only eligibility and deterministic verdicts for the PR review workflow. */
+import { reportCounts } from "./report.mjs";
+
 export function eligible(pr, repository, permission) {
   return (
     pr.state === "open" &&
@@ -11,13 +13,21 @@ export function eligible(pr, repository, permission) {
 
 export function verdict(body, complete) {
   if (!complete) return "COMMENT";
-  // Finding headings must agree with a verdict claiming zero blockers and majors.
-  const blockingFinding = /^ {0,3}####[\t ]+(?:\*\*)?(?:blocker|major)\b/imu;
-  if (blockingFinding.test(body)) return "REQUEST_CHANGES";
+  const actual = reportCounts(body);
+  if (!actual || actual.blocker || actual.major) return "REQUEST_CHANGES";
   const lines = body.split(/\r?\n/u).filter((line) => /^verdict:/iu.test(line));
   if (lines.length !== 1) return "REQUEST_CHANGES";
-  const clean = /^Verdict: clean, no notes$/iu;
+  if (/^Verdict: clean, no notes$/iu.test(lines[0])) {
+    return actual.minor === 0 && actual.nit === 0 ? "APPROVE" : "REQUEST_CHANGES";
+  }
   const counts =
-    /^Verdict: not ready [-—] 0 blocker\(s\), 0 major\(s\), \d+ minor\(s\), \d+ nit\(s\)$/iu;
-  return clean.test(lines[0]) || counts.test(lines[0]) ? "APPROVE" : "REQUEST_CHANGES";
+    /^Verdict: not ready [-—] (\d+) blocker\(s\), (\d+) major\(s\), (\d+) minor\(s\), (\d+) nit\(s\)$/iu.exec(
+      lines[0],
+    );
+  return counts &&
+    ["blocker", "major", "minor", "nit"].every(
+      (severity, index) => actual[severity] === Number(counts[index + 1]),
+    )
+    ? "APPROVE"
+    : "REQUEST_CHANGES";
 }

@@ -17,15 +17,14 @@ run_lens() {
     # it as failed anyway. Treat it here, where we can still retry it.
     [ "$code" -eq 0 ] && [ -s "$tmp/$lens.md" ] && return 0
 
-    # A lens the cap killed is never retried: 124 is `timeout`, 137 is our
-    # SIGKILL. That lens did not hiccup, it ran out of clock, and a retry buys
+    # A lens the cap killed is never retried: 124 is the process-group wall-clock cap, 137 is SIGKILL. That lens did not hiccup, it ran out of clock, and a retry buys
     # another full cap for the same ending — three attempts would spend 45
     # minutes of a 40-minute deadline and starve synthesis. This is also the
     # bound that keeps a bad-credentials or provider-outage run cheap: those
     # fail in milliseconds, so three attempts cost three instants.
     case "$code" in
       124|137)
-        # Report the elapsed time, not lens_timeout_seconds: the effective cap
+        # Report the elapsed time, not process_timeout_seconds: the effective cap
         # is the smaller of that and the remaining deadline, so naming the
         # configured value would point at the wrong number when the deadline
         # was what actually ran out.

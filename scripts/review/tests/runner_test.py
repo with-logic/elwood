@@ -11,7 +11,7 @@ SOURCE = Path(__file__).resolve().parents[1]
 LENSES = sorted(p.name for p in (SOURCE.parents[1] / '.claude/skills').glob('review-*'))
 
 STUB = r'''#!/usr/bin/env python3
-import os, pathlib, re, sys, time
+import os, pathlib, re, subprocess, sys, time
 root = pathlib.Path(os.environ['REVIEW_TEST_ROOT'])
 prompt = sys.argv[sys.argv.index('--variant') + 2]
 match = re.search(r'using the /(review-[a-z0-9-]+) skill', prompt)
@@ -22,17 +22,40 @@ marker.write_text(str(count))
 mode = os.environ.get('REVIEW_TEST_MODE', 'clean')
 if match:
     if mode == 'all-failed' or (mode == 'missing' and name == 'review-architecture-conventions'):
+        print('PRIVATE-REVIEW-TEXT', file=sys.stderr)
         sys.exit(1)
     if mode == 'timeout' and name == 'review-architecture-conventions':
+        subprocess.Popen([sys.executable, '-c',
+            'import pathlib,time; time.sleep(6); pathlib.Path(' + repr(str(root / 'orphan')) + ').touch()'])
         time.sleep(20)
     if mode == 'retry' and count == 1:
         sys.exit(1)
-    print('No findings.')
+    if mode == 'malformed' and name == 'review-security':
+        print('The lens stopped before finishing.')
+    elif mode in ['finding', 'oversize', 'aggregate'] and (mode == 'aggregate' or name == 'review-security'):
+        if mode in ['oversize', 'aggregate']: print('X' * (70000 if mode == 'oversize' else 30000))
+        print('#### major: Propagated finding\n- Confidence: high\n- Location: fixture:1\n- Finding: It fails.\n- If unfixed: Failure persists.\n- Fix: Fix it.\n- Fix cost: One line.')
+    else:
+        print('No findings.')
+    (root / ('done-' + name)).touch()
 else:
+    attachments = [pathlib.Path(sys.argv[i + 1]) for i, arg in enumerate(sys.argv) if arg == '-f']
+    assert attachments
+    if mode in ['clean', 'finding', 'retry']: assert len(attachments) == 11
+    reports = {}
+    for path in attachments:
+        assert (root / ('done-' + path.stem)).exists(), 'Synthesis ran before lens finished'
+        reports[path.stem] = path.read_text()
     print('# Review')
     if mode != 'no-verdict':
-        print('Verdict: clean, no notes')
-    print('\nAll lenses inspected the fixture.')
+        print('Verdict: not ready - 0 blocker(s), 1 major(s), 0 minor(s), 0 nit(s)'
+              if mode == 'finding' else 'Verdict: clean, no notes')
+    print('\n## Findings By Dimension')
+    for name, report in reports.items():
+        print('\n### ' + name + '\n\n' + report)
+    print('\n## Reviewer Coverage')
+    for name in reports:
+        print('- ' + name + ': completed')
 '''
 
 
@@ -62,8 +85,8 @@ class RunnerTest(unittest.TestCase):
     def run_review(self, mode='clean', base=None):
         env = {**os.environ, 'PATH': f'{self.bin}:{os.environ["PATH"]}',
                'OPENAI_API_KEY': 'fixture-not-a-key', 'REVIEW_TEST_ROOT': str(self.root),
-               'REVIEW_TEST_MODE': mode, 'ELWOOD_REVIEW_ATTEMPTS': '2',
-               'ELWOOD_REVIEW_TIMEOUT': '1' if mode == 'timeout' else '10', 'ELWOOD_REVIEW_DEADLINE': '30'}
+               'REVIEW_TEST_MODE': mode, 'ELWOOD_REVIEW_LENS_ATTEMPTS': '2',
+               'ELWOOD_REVIEW_PROCESS_TIMEOUT_SECONDS': '3' if mode == 'timeout' else '10', 'ELWOOD_REVIEW_DEADLINE_SECONDS': '30'}
         return subprocess.run(['bash', str(self.root / 'scripts/review/run.sh'), base or self.base],
                               env=env, capture_output=True, text=True, timeout=40)
 
@@ -86,6 +109,7 @@ class RunnerTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse((self.root / 'REVIEW.md').exists())
         self.assertFalse((self.root / 'call-synthesis').exists())
+        self.assertNotIn('PRIVATE-REVIEW-TEXT', result.stderr)
 
     def test_empty_failure_is_retried(self):
         result = self.run_review('retry')
@@ -126,6 +150,29 @@ class RunnerTest(unittest.TestCase):
         report = (self.root / 'REVIEW.md').read_text()
         self.assertIn('incomplete review coverage (blocker)', report)
         self.assertNotIn('Verdict: clean', report)
+        time.sleep(4)
+        self.assertFalse((self.root / 'orphan').exists())
+
+    def test_findings_reach_synthesis_in_their_attachments(self):
+        result = self.run_review('finding')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('#### major: Propagated finding', (self.root / 'REVIEW.md').read_text())
+
+    def test_nonempty_malformed_lens_cannot_approve(self):
+        result = self.run_review('malformed')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('incomplete review coverage', (self.root / 'REVIEW.md').read_text())
+
+    def test_report_size_limits_never_silently_truncate_evidence(self):
+        result = self.run_review('oversize')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('65536-byte report limit', result.stderr)
+        self.assertIn('incomplete review coverage', (self.root / 'REVIEW.md').read_text())
+        (self.root / 'call-synthesis').unlink()
+        result = self.run_review('aggregate')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('262144-byte synthesis budget', result.stderr)
+        self.assertFalse((self.root / 'call-synthesis').exists())
 
 
 if __name__ == '__main__':

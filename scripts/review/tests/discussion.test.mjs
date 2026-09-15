@@ -80,20 +80,38 @@ test("discussion writes the PR and filtered paginated comments and reviews", asy
     const { github } = fixture();
     const comments = Symbol("comments");
     const reviews = Symbol("reviews");
+    const inline = Symbol("inline");
     github.rest.pulls = {
       get: () => ({ data: { title: "A fix", body: "Details" } }),
       listReviews: reviews,
+      listReviewComments: inline,
     };
     github.rest.issues = { listComments: comments };
     github.paginate = (method, args) => {
       assert.equal(args.per_page, 100);
       if (method === comments) {
         assert.equal(args.issue_number, 12);
-        return [record("public", "NONE"), record("maintainer")];
+        return [record("public", "NONE"), { ...record("maintainer"), created_at: "2026-01-02" }];
       }
+      if (method === inline)
+        return [
+          {
+            ...record("maintainer"),
+            created_at: "2026-01-01",
+            html_url: "inline-url",
+            in_reply_to_id: 7,
+          },
+          record("public", "NONE"),
+        ];
       assert.equal(method, reviews);
       assert.equal(args.pull_number, 12);
-      return [{ ...record("github-actions[bot]", "NONE", "Bot"), state: "COMMENTED" }];
+      return [
+        {
+          ...record("github-actions[bot]", "NONE", "Bot"),
+          state: "COMMENTED",
+          submitted_at: "2026-01-03",
+        },
+      ];
     };
     await discussion({ github, context, number: "12", path });
     const result = JSON.parse(await readFile(path, "utf8"));
@@ -101,9 +119,15 @@ test("discussion writes the PR and filtered paginated comments and reviews", asy
     assert.equal(result.body, "Details");
     assert.deepEqual(
       result.discussion.map((entry) => entry.author),
-      ["maintainer", "github-actions[bot]"],
+      ["maintainer", "maintainer", "github-actions[bot]"],
     );
-    assert.equal(result.discussion[1].state, "COMMENTED");
+    assert.equal(result.discussion[2].state, "COMMENTED");
+    assert.deepEqual(
+      result.discussion.map((entry) => entry.source),
+      ["inline", "comment", "review"],
+    );
+    assert.equal(result.discussion[0].reply_to, 7);
+    assert.equal(result.discussion[0].url, "inline-url");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

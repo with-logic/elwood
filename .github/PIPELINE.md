@@ -21,12 +21,19 @@ on `main` with a PR number.
    `scripts/review/lenses.txt` must match the eleven skill directories exactly;
    missing or failed reports prevent approval. Empty failures
    retry at most three times; each process has a 15-minute cap and the whole
-   review has a 40-minute deadline.
+   review has a 40-minute deadline. Each report is limited to 65,536 bytes;
+   synthesis accepts at most 262,144 bytes of reports. Exceeding either limit
+   prevents approval, without silently truncating findings. Failure logs contain
+   phase, lens, exit status, and timing metadata rather than raw model output.
 3. Transfer the report to a separate posting job. That job rechecks eligibility
-   and both commit SHAs. A changed head or base discards the result.
+   and both commit SHAs. A changed head or base discards the result. After posting,
+   it checks again and dismisses its own actionable review if the PR changed
+   during publication; a failed dismissal fails the job visibly. GitHub offers
+   no atomic compare-and-post API.
 4. Submit an approval only when the review job succeeded and its one exact
-   verdict says clean or zero blockers and zero majors, with no contradictory
-   blocker/major finding headings. Other completed
+   verdict says clean or zero blockers and zero majors. All eleven dimension
+   sections and coverage entries must exist, each finding must have its required
+   fields, and the verdict counts must match the findings. Other completed
    verdicts request changes; partial failed reviews are comments. No report
    means no review. The report remains available as a seven-day run artifact.
 
@@ -53,7 +60,10 @@ must be enabled; default workflow permissions stay read-only.
 The review job has read-only GitHub permissions, does not persist checkout
 credentials, and does not pass a GitHub token into model processes. A separate
 step fetches PR discussion for context, keeping only current maintainers and
-GitHub's Actions/Dependabot bots. Public comments and reviews are excluded.
+GitHub's Actions/Dependabot bots, including inline review threads.
+Records retain source, time, URL, and reply identity and are ordered by time.
+Comments and reviews from users without current maintainer permission are
+excluded.
 If this fetch fails, review continues without discussion context.
 Only the final posting job receives
 `pull-requests: write`, and it receives no provider key. There is no public
@@ -74,5 +84,9 @@ Both commands also run in required CI. The runner tests use real temporary Git
 repositories and a deterministic OpenCode substitute; they make no model calls.
 To run a real local review, install OpenCode and ripgrep, export `OPENAI_API_KEY`,
 and run `bash scripts/review/run.sh origin/main`. This overwrites local `REVIEW.md`
-and uses provider quota. Optional `ELWOOD_REVIEW_MODEL`, `ELWOOD_REVIEW_TIMEOUT`,
-`ELWOOD_REVIEW_DEADLINE`, and `ELWOOD_REVIEW_ATTEMPTS` configure that local run.
+and uses provider quota. Optional `ELWOOD_REVIEW_MODEL`,
+`ELWOOD_REVIEW_PROCESS_TIMEOUT_SECONDS` (each lens or synthesis process),
+`ELWOOD_REVIEW_DEADLINE_SECONDS` (whole run), and `ELWOOD_REVIEW_LENS_ATTEMPTS`
+(attempts per lens) configure that local run. Python 3 enforces each process cap
+on a separate process group, including its descendants. Invalid numeric settings
+use their defaults; leading zeroes are interpreted as decimal.

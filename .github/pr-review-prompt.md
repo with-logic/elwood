@@ -38,3 +38,9 @@ misleading or narrate obvious code.
 - Reference exact files and lines.
 - Explain why each issue matters and suggest the smallest fix.
 - Do not restate standards unless tied to a concrete diff line.
+
+The review workflow's explicit trust boundary is documented in
+`.github/PIPELINE.md`: current repository writers are trusted to change workflows,
+while public PRs are disabled. Models do not receive a GitHub write token, and
+model tool permissions are not an OS sandbox. Evaluate security findings against
+those guarantees; still report a concrete credential leak or permission bypass.

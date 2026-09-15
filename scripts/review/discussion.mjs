@@ -1,4 +1,4 @@
-/** Keeps public comments out of the credentialed maintainer-review context. */
+/** Includes only current maintainers and trusted automation in review discussion context. */
 import { writeFile } from "node:fs/promises";
 import { authorPermission } from "./github.mjs";
 
@@ -17,7 +17,15 @@ export async function trustedDiscussion(github, context, records) {
       permissions.set(user.login, await authorPermission(github, context, user));
     }
     if (automation || ["write", "maintain", "admin"].includes(permissions.get(user.login))) {
-      trusted.push({ author: user.login, body: record.body, state: record.state });
+      trusted.push({
+        author: user.login,
+        body: record.body,
+        state: record.state,
+        source: record.source,
+        created_at: record.created_at ?? record.submitted_at,
+        url: record.html_url,
+        reply_to: record.in_reply_to_id,
+      });
     }
   }
   return trusted;
@@ -25,7 +33,7 @@ export async function trustedDiscussion(github, context, records) {
 
 export async function discussion({ github, context, number, path }) {
   const pull_number = Number(number);
-  const [pr, comments, reviews] = await Promise.all([
+  const [pr, comments, reviews, inline] = await Promise.all([
     github.rest.pulls.get({ ...context.repo, pull_number }),
     github.paginate(github.rest.issues.listComments, {
       ...context.repo,
@@ -33,8 +41,18 @@ export async function discussion({ github, context, number, path }) {
       per_page: 100,
     }),
     github.paginate(github.rest.pulls.listReviews, { ...context.repo, pull_number, per_page: 100 }),
+    github.paginate(github.rest.pulls.listReviewComments, {
+      ...context.repo,
+      pull_number,
+      per_page: 100,
+    }),
   ]);
-  const records = await trustedDiscussion(github, context, [...comments, ...reviews]);
+  const records = await trustedDiscussion(github, context, [
+    ...comments.map((record) => ({ ...record, source: "comment" })),
+    ...reviews.map((record) => ({ ...record, source: "review" })),
+    ...inline.map((record) => ({ ...record, source: "inline" })),
+  ]);
+  records.sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
   await writeFile(
     path,
     JSON.stringify({ title: pr.data.title, body: pr.data.body, discussion: records }),
