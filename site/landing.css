@@ -88,6 +88,10 @@ body:before {
   transform: none;
 }
 .hero {
+  --terminal-top: 72px;
+  --terminal-width: clamp(126px, 9.5vw, 160px);
+  --poster-height: clamp(175px, 16vw, 260px);
+  --poster-bottom: calc(12.1vw + 92px);
   position: relative;
   height: 100svh;
   min-height: 720px;
@@ -133,9 +137,9 @@ body:before {
 .terminal {
   position: absolute;
   left: 50%;
-  top: 72px;
+  top: var(--terminal-top);
   transform: translateX(-50%);
-  width: clamp(126px, 9.5vw, 160px);
+  width: var(--terminal-width);
   aspect-ratio: 1.45;
   border: 1px solid var(--ink);
   border-radius: 2px;
@@ -276,14 +280,36 @@ body:before {
 }
 .robot-poster {
   position: absolute;
-  height: clamp(175px, 16vw, 260px);
+  height: var(--poster-height);
   width: auto;
   left: 50%;
-  bottom: calc(12.1vw + 92px);
+  bottom: var(--poster-bottom);
   transform: translateX(-50%);
   z-index: 3;
   object-fit: contain;
 }
+.robot-rope {
+  position: absolute;
+  left: calc(50% - 20px);
+  top: calc(var(--terminal-top) + var(--terminal-width) / 1.45 + 4px);
+  width: 40px;
+  height: calc(
+    100% -
+    var(--terminal-top) -
+    var(--terminal-width) /
+    1.45 -
+    4px -
+    var(--poster-bottom) -
+    var(--poster-height)
+  );
+  overflow: visible;
+  fill: none;
+  stroke: #272a23;
+  stroke-width: 1.2px;
+  pointer-events: none;
+  z-index: 3;
+}
+.hero[data-ready] .robot-rope,
 .hero[data-ready] .robot-poster {
   visibility: hidden;
 }
@@ -306,17 +332,14 @@ body:before {
   border-color: var(--ink);
 }
 .robot-error {
-  position: absolute;
-  z-index: 5;
-  top: 190px;
-  left: 50%;
-  transform: translateX(-50%);
+  margin: 0;
+  padding: 12px 24px;
   font-size: 11px;
-  max-width: 270px;
+  line-height: 1.6;
   text-align: center;
-  background: var(--paper);
-  padding: 10px;
+  color: var(--muted);
 }
+
 .thesis {
   max-width: 1280px;
   margin: auto;
@@ -409,10 +432,12 @@ body:before {
   max-width: 46ch;
 }
 .way {
+  min-width: 0;
   display: flex;
   flex-direction: column;
 }
 .way .code-example {
+  align-self: stretch;
   margin: 24px 0 0;
   display: flex;
   flex-direction: column;
@@ -640,6 +665,7 @@ dialog::backdrop {
     font-size: 12px;
   }
   .hero {
+    --terminal-top: 84px;
     min-height: 680px;
   }
   .system-note {
@@ -654,9 +680,6 @@ dialog::backdrop {
   }
   .hero-title {
     font-size: 9.3vw;
-  }
-  .terminal {
-    top: 84px;
   }
   .thesis {
     padding-top: 80px;
@@ -680,6 +703,10 @@ dialog::backdrop {
 }
 @media (max-width: 600px) {
   .hero {
+    --terminal-top: 124px;
+    --terminal-width: 114px;
+    --poster-height: min(150px, 18svh);
+    --poster-bottom: calc(112px + min(49.4vw, 197.6px));
     height: 100svh;
     min-height: 700px;
     max-height: 980px;
@@ -700,10 +727,6 @@ dialog::backdrop {
     gap: 22px;
     font-size: 10px;
   }
-  .terminal {
-    top: 124px;
-    width: 114px;
-  }
   .system-note {
     top: auto;
     bottom: 22px;
@@ -723,7 +746,7 @@ dialog::backdrop {
     bottom: 110px;
   }
   .hero-title {
-    font-size: 20vw;
+    font-size: min(13vw, 52px);
     line-height: 0.95;
     letter-spacing: -0.04em;
   }
@@ -732,10 +755,6 @@ dialog::backdrop {
   }
   .word {
     line-height: 0.95;
-  }
-  .robot-poster {
-    height: 180px;
-    bottom: calc(51vw + 90px);
   }
   .help-toggle {
     right: 13px;

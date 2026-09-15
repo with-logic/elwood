@@ -19,7 +19,9 @@ test("mutable game manifests and images escape old immutable URLs and revalidate
     return new Response(JSON.stringify({ pages: [{ file: "page-000.webp" }] }));
   };
   globalThis.Image = class {
-    async decode() { requested.push(new URL(this.src)); }
+    async decode() {
+      requested.push(new URL(this.src));
+    }
   };
   try {
     const bank = new SpriteBank(() => {});
@@ -30,5 +32,8 @@ test("mutable game manifests and images escape old immutable URLs and revalidate
     for (const url of requested) assert.equal(url.search, manifest.search);
     assert.match(requested[0].pathname, /idle\/clip.json$/);
     assert.match(requested[1].pathname, /idle\/page-000.webp$/);
-  } finally { globalThis.fetch = fetch; globalThis.Image = Image; }
+  } finally {
+    globalThis.fetch = fetch;
+    globalThis.Image = Image;
+  }
 });

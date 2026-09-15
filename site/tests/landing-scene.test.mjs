@@ -293,3 +293,64 @@ test("dedicated pickup stays above the floor and release preserves the connector
     "Release must not shift the tether plug before gravity acts",
   );
 });
+
+test("the fallback hands off once, only after decoded artwork and its tether are painted", async () => {
+  let releasePage;
+  let requestedPage;
+  const waiting = new Promise((resolve) => {
+    requestedPage = resolve;
+  });
+  const page = new Promise((resolve) => {
+    releasePage = resolve;
+  });
+  const decode = Image.prototype.decode;
+  Image.prototype.decode = async function () {
+    requestedPage();
+    await page;
+    return decode.call(this);
+  };
+  let paints = 0;
+  const loading = new LandingScene(canvas(), {
+    onPaint() {
+      paints++;
+    },
+  });
+  try {
+    const boot = loading.boot();
+    await waiting;
+    assert.equal(paints, 0, "A pending sprite page must leave the HTML fallback visible");
+    releasePage();
+    await boot;
+    assert.equal(paints, 1);
+    assert.ok(loading.tether.points);
+    assert.ok(loading.lastPose);
+    loading.paint(0);
+    assert.equal(paints, 1, "The handoff happens only once");
+  } finally {
+    Image.prototype.decode = decode;
+    loading.pause("test", true);
+  }
+});
+
+test("an unavailable initial pose or failed sprite request keeps the fallback", async () => {
+  let paints = 0;
+  const failures = [];
+  const loading = new LandingScene(canvas(), {
+    onPaint() {
+      paints++;
+    },
+    onError(error) {
+      failures.push(error.message);
+    },
+  });
+  loading.bank.prepare = async () => {
+    throw new Error("offline");
+  };
+  await loading.boot();
+  assert.deepEqual(failures, ["offline"]);
+  assert.equal(paints, 0);
+  loading.ready = true;
+  loading.pose = () => null;
+  loading.paint(0);
+  assert.equal(paints, 0, "Ready state alone is not a successful canvas paint");
+});

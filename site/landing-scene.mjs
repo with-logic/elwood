@@ -1,5 +1,6 @@
-import { gameAssetUrl } from "./game-assets.mjs";
+/** Renders the interactive robot and tether described in docs/design/landing.md. */
 import { Autonomy, NO_INPUT } from "./autonomy.mjs";
+import { gameAssetUrl } from "./game-assets.mjs";
 import { mirroredPose } from "./rotation.mjs";
 import { SpriteBank } from "./sprite-bank.mjs";
 import {
@@ -14,7 +15,7 @@ import { Tether } from "./tether.mjs";
 import { FLOOR, HEIGHT, World } from "./world.mjs";
 
 export class LandingScene {
-  constructor(canvas, { onReady, onError, onMode, onBounds } = {}) {
+  constructor(canvas, { onReady, onPaint, onError, onMode, onBounds } = {}) {
     this.canvas = canvas;
     this.context = canvas.getContext("2d");
     this.renderer = new SpriteRenderer(this.context, document.createElement("canvas"));
@@ -26,6 +27,7 @@ export class LandingScene {
       fits: (name) => this.performanceFits(name),
     });
     this.onReady = onReady;
+    this.onPaint = onPaint;
     this.onError = onError;
     this.onMode = onMode;
     this.onBounds = onBounds;
@@ -544,6 +546,9 @@ export class LandingScene {
     for (const mark of this.groundMarks) c.drawImage(this.dirt, mark.x - 104, mark.y - 5, 208, 13);
     if (!display.outgoing) this.transition = null;
     this.renderer.draw(display.incoming, display.outgoing, blend, scale, ratio * zoom);
+    // Remove the HTML fallback only once both live artwork and tether exist.
+    this.onPaint?.();
+    this.onPaint = null;
     const visiblePose = display.incoming;
     const f = visiblePose.frame;
     this.onBounds?.({

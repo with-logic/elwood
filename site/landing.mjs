@@ -1,12 +1,15 @@
+/** Connects poster layout, loading and input to the page; docs/design/landing.md. */
+import { fitTitle, layoutPoster } from "./landing/layout.mjs";
 import { LandingScene } from "./landing-scene.mjs";
 import { bindRobotDrag } from "./robot-drag.mjs";
-import { FLOOR, HEIGHT } from "./world.mjs";
 
 const hero = document.querySelector(".hero");
 const canvas = document.querySelector("#elwood-scene");
 const dialog = document.querySelector("#robot-help");
 const title = document.querySelector(".hero-title");
 const terminal = document.querySelector(".terminal");
+const poster = document.querySelector(".robot-poster");
+const rope = document.querySelector(".robot-rope");
 const errorLabel = document.querySelector(".robot-error");
 const pauseButtons = [
   ...document.querySelectorAll('[data-action="pause"], [data-command="pause"]'),
@@ -21,8 +24,10 @@ let visible = true;
 let previousFocus = null;
 
 const scene = new LandingScene(canvas, {
-  onReady() {
+  onPaint() {
     hero.dataset.ready = "";
+  },
+  onReady() {
     grip.hidden = false;
     resize();
   },
@@ -44,100 +49,11 @@ const scene = new LandingScene(canvas, {
 
 bindRobotDrag(scene, grip);
 
-function fitTitle() {
-  const mobile = hero.clientWidth <= 600;
-  for (const element of title.querySelectorAll(".title-line, .word")) element.style.fontSize = "";
-  // Each line (each word on phones) fills the poster width; the whole block
-  // then shrinks uniformly if it would crowd the robot out of the hero.
-  const units = [...title.querySelectorAll(mobile ? ".word" : ".title-line")];
-  const sizes = units.map((element) => {
-    const natural = element.getBoundingClientRect().width;
-    const base = Number.parseFloat(getComputedStyle(element).fontSize);
-    return natural > 0 && base > 0 ? (base * title.clientWidth) / natural : 0;
-  });
-  const height = sizes.reduce((sum, size) => sum + size * 0.9, 0);
-  const limit = hero.clientHeight * (mobile ? 0.36 : 0.25);
-  const shrink = height > limit ? limit / height : 1;
-  units.forEach((element, i) => {
-    if (sizes[i]) element.style.fontSize = `${sizes[i] * shrink}px`;
-  });
-}
 function resize() {
   if (resizing) return;
   resizing = true;
-  fitTitle();
-  const rect = hero.getBoundingClientRect();
-  const term = terminal.getBoundingClientRect();
-  // The headline block is a solid ledge: he stands on it,
-  // can walk off either side to the baseline, and climbs back up. He stays a
-  // little shorter than the block so the climb reads, with cable to spare.
-  // Measure the lettering from the words themselves: the line wrappers have
-  // no box of their own on phones, where each word sits on its own row.
-  const titleBox = title.getBoundingClientRect();
-  const lineBox = [...title.querySelectorAll(".word")]
-    .map((word) => word.getBoundingClientRect())
-    .reduce(
-      (box, b) =>
-        b.width > 0
-          ? {
-              left: Math.min(box.left, b.left),
-              right: Math.max(box.right ?? Number.NEGATIVE_INFINITY, b.right ?? b.left + b.width),
-              top: Math.min(box.top, b.top),
-              bottom: Math.max(
-                box.bottom ?? Number.NEGATIVE_INFINITY,
-                b.bottom ?? b.top + b.height,
-              ),
-            }
-          : box,
-      {
-        left: Number.POSITIVE_INFINITY,
-        right: Number.NEGATIVE_INFINITY,
-        top: Number.POSITIVE_INFINITY,
-        bottom: Number.NEGATIVE_INFINITY,
-      },
-    );
-  if (!(lineBox.right > lineBox.left))
-    Object.assign(lineBox, {
-      left: titleBox.left,
-      right: titleBox.left + titleBox.width,
-      top: titleBox.top,
-      bottom: titleBox.bottom ?? titleBox.top + titleBox.height,
-    });
-  lineBox.width = lineBox.right - lineBox.left;
-  // He stands a hair above the lettering rather than on the ink itself.
-  const lift = 2;
-  const headingHeight = lineBox.bottom - lineBox.top + lift;
-  const floorY = lineBox.bottom - rect.top;
-  const room = Math.max(120, floorY - headingHeight - (term.bottom - rect.top) - 95);
-  const robotHeight = Math.min(260, Math.max(165, rect.width * 0.17), room, headingHeight * 0.9);
-  const scale = robotHeight / HEIGHT;
-  const robotX = rect.width * 0.5;
-  const platforms =
-    headingHeight > 0
-      ? [
-          {
-            id: "heading",
-            x: (lineBox.left - rect.left) / scale,
-            width: lineBox.width / scale,
-            top: FLOOR - headingHeight / scale,
-            solid: true,
-          },
-        ]
-      : [];
-  scene.configure({
-    width: rect.width,
-    height: rect.height,
-    scale,
-    floorY,
-    robotX,
-    terminal: { x: term.left - rect.left + term.width / 2, y: term.bottom - rect.top + 4 },
-    platforms,
-  });
-  const still = document.querySelector(".robot-poster");
-  still.style.height = `${robotHeight}px`;
-  still.style.left = `${robotX}px`;
-  still.style.top = `${floorY - headingHeight - robotHeight}px`;
-  still.style.bottom = "auto";
+  fitTitle(hero, title);
+  layoutPoster({ hero, title, terminal, scene, poster, rope });
   resizing = false;
 }
 function updateHeld() {
