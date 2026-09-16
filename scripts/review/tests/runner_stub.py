@@ -15,7 +15,8 @@ assert policy['*'] == 'deny' and policy['bash'] == 'deny'
 assert policy['read']['*.env'] == 'deny'
 assert {key for key, value in policy.items() if value == 'allow'} == {'glob'}
 assert policy['grep'] == 'deny' and policy['skill'] == 'deny'
-assert set(policy['read']) == {'*', '*.env', '*.env.*', '*.env.example'}
+assert policy['read'] == {'*': 'allow', '*.env': 'deny', '*.env.*': 'deny', '*.env.example': 'allow'}
+assert all(policy[key] == 'deny' for key in ['bash', 'webfetch', 'websearch', 'external_directory', 'lsp', 'grep', 'skill'])
 
 if match:
     attachment = pathlib.Path(sys.argv[sys.argv.index('-f') + 1])

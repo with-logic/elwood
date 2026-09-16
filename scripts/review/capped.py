@@ -26,8 +26,10 @@ def run(seconds, command):
             child.wait(timeout=1)
         except subprocess.TimeoutExpired:
             pass
-        stop_group(child.pid, signal.SIGKILL)
-        child.wait()
+        finally:
+            # A signal during the grace-period wait must not skip the final kill/reap.
+            stop_group(child.pid, signal.SIGKILL)
+            child.wait()
 
 
 def interrupted(signum, _frame):

@@ -8,9 +8,17 @@ export async function publishDiscussion(path, body, write = writeFile) {
     await write(temporary, body);
     await rename(temporary, path);
   } catch (error) {
-    await rm(path, { force: true });
+    const results = await Promise.allSettled([
+      rm(path, { force: true }),
+      rm(temporary, { force: true }),
+    ]);
+    const failures = results
+      .filter((result) => result.status === "rejected")
+      .map((result) => result.reason);
+    if (failures.length)
+      throw new AggregateError([error, ...failures], "Discussion publication and cleanup failed", {
+        cause: error,
+      });
     throw error;
-  } finally {
-    await rm(temporary, { force: true });
   }
 }

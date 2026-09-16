@@ -114,13 +114,35 @@ test("only completed clean reviews approve, attached to the reviewed commit", as
 });
 
 test("publication dismisses its own stale verdict after a concurrent push", async (t) => {
-  for (const field of ["head", "base"]) {
+  for (const alter of [
+    (f) => {
+      f.pr.head.sha = "new";
+    },
+    (f) => {
+      f.pr.base.sha = "new";
+    },
+    (f) => {
+      f.state.permission = "read";
+    },
+    (f) => {
+      f.pr.draft = true;
+    },
+    (f) => {
+      f.pr.state = "closed";
+    },
+    (f) => {
+      f.pr.base.ref = "other";
+    },
+    (f) => {
+      f.pr.head.repo.full_name = "other/elwood";
+    },
+  ]) {
     const f = fixture();
     const reportPath = await report(t);
     const dismissed = [];
     f.github.rest.pulls.createReview = (review) => {
       f.posted.push(review);
-      f.pr[field].sha = "pushed-during-publication";
+      alter(f);
       return { data: { id: 123 } };
     };
     f.github.rest.pulls.dismissReview = (request) => dismissed.push(request);

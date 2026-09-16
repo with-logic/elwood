@@ -11,6 +11,8 @@ model="${ELWOOD_REVIEW_MODEL:-openai/gpt-5.6-luna}"
 . "$root/scripts/review/runtime.sh"
 
 head=$(git -C "$root" rev-parse HEAD)
+git -C "$root" diff --no-renames --name-only -z "$base...$head" > "$tmp/changed-paths"
+python3 "$root/scripts/review/diff-paths.py" < "$tmp/changed-paths"
 git -C "$root" diff --no-ext-diff --no-textconv "$base...$head" > "$tmp/review.diff"
 if [ "$(wc -c < "$tmp/review.diff")" -gt 262144 ]; then
   echo "review: diff exceeds the 262144-byte input budget; manual review required" >&2

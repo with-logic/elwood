@@ -46,3 +46,19 @@ test("a partial write leaves neither a target nor a temporary context file", asy
   );
   assert.deepEqual(await readdir(directory), []);
 });
+
+test("cleanup failure preserves the primary write error", async (t) => {
+  const { directory } = await fixture(t);
+  const original = new Error("primary write failure");
+  await assert.rejects(
+    publishDiscussion(directory, "body", () => {
+      throw original;
+    }),
+    (error) => {
+      assert.equal(error.cause, original);
+      assert.equal(error.errors[0], original);
+      assert.ok(error.errors.length > 1);
+      return true;
+    },
+  );
+});

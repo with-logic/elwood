@@ -6,11 +6,12 @@ export const lenses = readFileSync(new URL("./lenses.txt", import.meta.url), "ut
   .trim()
   .split(/\r?\n/u);
 const headings = /^ {0,3}#{1,6}[\t ]+(?:\*\*)?(blocker|major|minor|nit)(?:\*\*)?:[^\n]+$/gimu;
+const allHeadings = /^ {0,3}#{1,6}(?:[\t ]+[^\n]*|$)/gmu;
 const fields = ["Confidence", "Location", "Finding", "If unfixed", "Fix", "Fix cost"];
 
 export function findingCounts(body) {
   const matches = [...body.matchAll(headings)];
-  if (!matches.length) return null;
+  if (!matches.length || [...body.matchAll(allHeadings)].length !== matches.length) return null;
   const counts = { blocker: 0, major: 0, minor: 0, nit: 0 };
   for (const [index, match] of matches.entries()) {
     const content = body.slice(match.index + match[0].length, matches[index + 1]?.index);
@@ -25,6 +26,15 @@ export function validLens(body) {
 }
 
 export function reportCounts(body) {
+  const structural =
+    /^(?:# Review|## Findings By Dimension|## Reviewer Coverage|## Notes|### review-[a-z-]+)[\t ]*$/u;
+  const finding = new RegExp(headings.source, "imu");
+  if (
+    [...body.matchAll(allHeadings)].some(
+      ([heading]) => !(structural.test(heading) || finding.test(heading)),
+    )
+  )
+    return null;
   const parts = body.split(/^### (review-[a-z-]+)[\t ]*$/mu);
   if (parts.length !== 1 + lenses.length * 2) return null;
   const seen = new Set();

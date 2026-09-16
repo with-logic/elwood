@@ -77,7 +77,9 @@ Only the final posting job receives
 comment/mention trigger and no `pull_request_target` execution of PR code.
 
 Maintainers with write access remain trusted to change workflows. The harness
-precomputes a diff with external diff helpers and text conversion disabled,
+rejects changed environment-file paths (including deleted and renamed files)
+before creating any diff attachment, then precomputes a diff with external diff
+helpers and text conversion disabled,
 rejects diffs above 262,144 bytes without truncation, and attaches it to each lens.
 Before model execution, a non-following workspace walk rejects symlinks that
 resolve outside the workspace or to environment files, including directory
