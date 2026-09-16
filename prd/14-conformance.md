@@ -331,3 +331,11 @@ Each criterion has:
 | C-E2E-14 | §5.8 | Against a REAL Claude (or Codex) CLI, a lazily-started `ClaudeSession`/`CodexSession` answers two sequential `send` calls: the first returns non-empty assistant text, and the second — referring back to the first — returns text consistent with retained conversation context, proving `send` collects a turn's assistant text and the ergonomic layer preserves multi-turn context (C-API-47, C-API-49). |
 | C-E2E-15 | §5.8 | Against a REAL CLI, `stream(prompt)` for a task that DETERMINISTICALLY uses a workspace tool (reading a planted file) yields the turn's simplified typed events in arrival order — a `tool_call` FOLLOWED by its `tool_result`, and at least one `text` — and ends when the turn settles, verified against the installed CLI (C-API-48). |
 | C-E2E-16 | §5.1 §5.5 | Against the REAL CLIs, a session started with `highTrust: true` reaches `ready` on both adapters: Claude's rendered composer shows its bypass-permissions footer with no acceptance dialog left visible (answered when the installed CLI renders one), and Codex's persisted launch posture is `danger-full-access` / `never` (C-API-54, C-CLAUDE-21). |
+
+#### C-REVIEW: Maintainer automation (§16)
+
+| ID | Section | Criterion |
+|---|---:|---|
+| C-REVIEW-01 | §16 | Opening a ready PR or marking it ready can produce its first automatic report; existing automated reports suppress subsequent automatic reviews, and pushes do not trigger reviews. |
+| C-REVIEW-02 | §16 | Authorized explicit requests can repeat without a round limit or current-approval skip. |
+| C-REVIEW-03 | §16 | Only exact newly-created `/elwood review` PR comments and workflow dispatches from current human writers qualify; unauthorized requests cannot execute or cancel model reviews. |

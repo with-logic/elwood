@@ -1,81 +1,8 @@
-/** Tests API boundaries for the review gate and exact-commit approval posting. */
+/** Tests API boundaries for exact-commit approval posting; PRD §16. */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { gate } from "../gate.mjs";
 import { post } from "../post.mjs";
 import { fixture, report } from "./github-fixture.mjs";
-import { reportFixture } from "./report-fixture.mjs";
-
-test("gate exports current commits only for eligible authors", async () => {
-  const f = fixture();
-  await gate(f);
-  assert.deepEqual(f.outputs, { should: "true", number: "10", head: "head", base: "base" });
-  f.state.permission = "read";
-  await gate(f);
-  assert.equal(f.outputs.should, "false");
-});
-
-test("gate refuses repeated rounds, but ignores other bots' review-shaped text", async () => {
-  const f = fixture();
-  f.state.reviews = Array.from({ length: 4 }, () => ({
-    user: { login: "stranger" },
-    body: "<!-- elwood:review -->",
-    state: "COMMENT",
-  }));
-  await gate(f);
-  assert.equal(f.outputs.should, "true");
-  for (const review of f.state.reviews) review.user.login = "github-actions[bot]";
-  await gate(f);
-  assert.equal(f.outputs.should, "false");
-  assert.equal(f.failures.length, 1);
-});
-
-test("old-commit approval does not skip review of a new commit", async () => {
-  const f = fixture();
-  f.state.reviews = [
-    {
-      user: { login: "github-actions[bot]" },
-      body: "<!-- elwood:review -->",
-      state: "APPROVED",
-      commit_id: "old",
-    },
-  ];
-  await gate(f);
-  assert.equal(f.outputs.should, "true");
-  f.state.reviews[0].commit_id = "head";
-  await gate(f);
-  assert.equal(f.outputs.should, "false");
-});
-
-test("dismissed clean approvals do not consume the non-converging round cap", async () => {
-  const f = fixture();
-  f.state.reviews = Array.from({ length: 4 }, () => ({
-    user: { login: "github-actions[bot]" },
-    body: `<!-- elwood:review -->\n${reportFixture()}`,
-    state: "DISMISSED",
-    commit_id: "old",
-  }));
-  await gate(f);
-  assert.equal(f.outputs.should, "true");
-  assert.deepEqual(f.failures, []);
-});
-
-test("dismissed non-approving reports still consume the round cap", async () => {
-  for (const body of [
-    "Verdict: not ready - 0 blocker(s), 1 major(s), 0 minor(s), 0 nit(s)",
-    "The reviewer did not finish.",
-  ]) {
-    const f = fixture();
-    f.state.reviews = Array.from({ length: 4 }, () => ({
-      user: { login: "github-actions[bot]" },
-      body: `<!-- elwood:review -->\n${body}`,
-      state: "DISMISSED",
-    }));
-    await gate(f);
-    assert.equal(f.outputs.should, "false");
-    assert.equal(f.failures.length, 1);
-  }
-});
 
 test("posting rechecks permissions, state, and both commits", async (t) => {
   const reportPath = await report(t);

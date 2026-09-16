@@ -8,9 +8,13 @@ PRs. Issues remain available for feedback; security reports follow `SECURITY.md`
 ## Review pipeline
 
 `workflows/claude.yml` replaces the former Claude Action with Slog's eleven-lens
-OpenCode review approach. The workflow runs on PR creation, reopening, new
-commits, and transition out of draft. Maintainers can also dispatch **AI Review**
-on `main` with a PR number.
+OpenCode review approach. The workflow runs automatically on PR creation or
+transition out of draft,
+only until its first automated report. Pushes do not trigger another review.
+To review again, a maintainer posts exactly `/elwood review` as a new PR comment
+or dispatches **AI Review** with a PR number. Both explicit paths are repeatable
+without a round limit, including after approval. Dispatch normally uses `main`;
+maintainers may select their same-repository workflow branch for validation.
 
 1. Check the live PR and its author's repository permission. Only ready PRs
    from this repository into `main` qualify. GitHub's Dependabot is also allowed
@@ -44,11 +48,13 @@ database/persistence, error handling, naming, observability, performance,
 security, testing, and type safety. Elwood's database lens covers its filesystem
 state, atomic updates, schema validation, and resume guarantees.
 
-A current-commit automated approval skips duplicate work. Dismissed approving automated reports do not count as failed rounds, whether
-dismissed after a push or manually. Four non-approving
-rounds stop automation with a failed eligibility check and require a maintainer
-review. Reviews never merge PRs or bypass the required CI checks, signed commits,
-or branch protections. Approval requirements remain enabled.
+Explicit requests verify the requester's current write, maintain, or admin
+permission separately from the PR author's eligibility. Bot comments, public
+comments, edited comments, issue comments, and embedded commands do not qualify.
+Review concurrency starts only after authorization, so rejected comments cannot
+cancel an active review. A newer authorized request may replace an active run.
+Reviews never merge PRs or bypass required CI, signed commits, or branch
+protections. Approval requirements remain enabled.
 
 ## Credentials and permissions
 
@@ -73,8 +79,10 @@ Comments and reviews from users without current maintainer permission are
 excluded.
 If this fetch fails, review continues without discussion context.
 Only the final posting job receives
-`pull-requests: write`, and it receives no provider key. There is no public
-comment/mention trigger and no `pull_request_target` execution of PR code.
+`pull-requests: write`, and it receives no provider key. Public comments cannot
+trigger review execution. There is no general mention
+handler and no `pull_request_target` execution of PR code. The PR comment trigger
+becomes available after this workflow reaches the default branch.
 
 Maintainers with write access remain trusted to change workflows. The harness
 rejects changed environment-file paths (including deleted and renamed files)

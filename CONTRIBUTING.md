@@ -65,6 +65,8 @@ directories automatically.
 ## Pull requests
 
 - Use branches in this repository. Fork PRs are not reviewed by automation.
+- After the first automatic review, post exactly `/elwood review` as a new PR
+  comment to request another. Only current maintainers can trigger it.
 - The eleven-lens AI review can approve a completed review with no blocker or
   major findings. Required CI checks and branch protections still apply; the
   review workflow does not merge PRs. See [.github/PIPELINE.md](.github/PIPELINE.md).

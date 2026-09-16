@@ -37,6 +37,7 @@ resolves exactly as it did when this was one document.
 | §13 | Implementation latitude | [13-latitude.md](13-latitude.md) |
 | §14 | Conformance | [14-conformance.md](14-conformance.md) |
 | §15 | Open implementation notes | [15-open-notes.md](15-open-notes.md) |
+| §16 | Maintainer review automation | [16-maintainer-review.md](16-maintainer-review.md) |
 
 ## Conformance criteria
 
