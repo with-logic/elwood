@@ -43,6 +43,8 @@ describe("bridge server socket lifecycle", () => {
     await server.start();
     const socket = createConnection({ path: socketPath, allowHalfOpen: true });
     await new Promise<void>((resolve) => socket.once("connect", resolve));
+    // Consume the reply so Node can observe the remote FIN and emit close.
+    socket.resume();
     const closed = new Promise<void>((resolve) => socket.once("close", resolve));
     socket.end(`${JSON.stringify({ token: "token", input })}\n`); // framed data + FIN
     await new Promise((resolve) => setTimeout(resolve, 20)); // let data + end both fire

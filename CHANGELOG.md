@@ -12,6 +12,14 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Snapshot image bytes and relative paths when facade methods are called, including
+  turns queued behind another response or waiting for session startup.
+- Serialize model-picker automation through completion and cancellation, preventing
+  overlapping commands or messages from landing in a picker.
+- Batch terminal rendering and pause PTY reads above a bounded backlog, improving
+  throughput across parallel sessions. Runtime cleanup drains received output
+  before disposal; direct terminal disposal settles pending writes immediately.
+
 ## [0.1.3] - 2026-09-14
 
 - Keep live session warnings quiet in text and JSON CLI output, including model

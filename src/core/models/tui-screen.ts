@@ -37,6 +37,7 @@ export async function openCommandScreen(input: {
   readonly timeoutMs: number;
   readonly label: string;
   readonly nudgeDelayMs?: number;
+  readonly signal?: AbortSignal;
 }): Promise<string> {
   const pending = new AbortController();
   let deadline: ReturnType<typeof setTimeout>;
@@ -48,7 +49,15 @@ export async function openCommandScreen(input: {
     }, input.timeoutMs);
   });
   try {
-    return await Promise.race([openWithRetries(input, pending.signal), expired]);
+    return await Promise.race([
+      openWithRetries(
+        input,
+        input.signal === undefined
+          ? pending.signal
+          : AbortSignal.any([pending.signal, input.signal]),
+      ),
+      expired,
+    ]);
   } finally {
     clearTimeout(deadline!);
     pending.abort();

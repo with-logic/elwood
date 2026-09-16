@@ -3,7 +3,7 @@ import { elwoodError } from "../errors.ts";
 import type { ModelPickerIo } from "./picker.ts";
 
 export function sendPickerInput(
-  io: ModelPickerIo,
+  io: Pick<ModelPickerIo, "terminal" | "blocked">,
   input: string,
   expected: (text: string) => boolean,
   ownsBlockingDialog = false,

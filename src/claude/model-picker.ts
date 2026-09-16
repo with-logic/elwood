@@ -19,6 +19,9 @@ const arrowUp = "\u001b[A";
 export const claudeModelPicker: ModelPickerSpec = {
   agent: "claude",
   isOpen: (text) => claudeModelPickerHeader.test(text),
+  isActive: (text) =>
+    claudeModelPickerHeader.test(text) ||
+    parseClaudeSwitchConfirmation(text)?.isCacheWarning === true,
   parse: parseClaudeModelPicker,
   // "s" applies for this session only. Enter or a number key would save the
   // selection as the user's default for new sessions, which §4.5 forbids.

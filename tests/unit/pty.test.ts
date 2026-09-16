@@ -55,6 +55,8 @@ describe("node PTY adapter", () => {
           return { dispose: () => calls.push("off-exit") };
         },
         write: (data: string) => calls.push(`write:${data}`),
+        pause: () => calls.push("pause"),
+        resume: () => calls.push("resume"),
         resize: (cols: number, rows: number) => {
           if (cols === 31) throw new Error("ioctl(2) failed, EBADF");
           if (cols === 32) throw new Error("ioctl(2) failed, EINVAL");
@@ -86,6 +88,8 @@ describe("node PTY adapter", () => {
     expect(() => pty.resize({ cols: 32, rows: 10 })).toThrow("EINVAL");
     pty.write("hello\n");
     pty.write(new Uint8Array([113, 10]));
+    pty.flowControl?.pause();
+    pty.flowControl?.resume();
     pty.kill();
     offData();
     offExit();
@@ -96,6 +100,7 @@ describe("node PTY adapter", () => {
       expect.arrayContaining(["resize:30x10", "write:hello\n", "write:q\n", "kill:SIGTERM"]),
     );
     expect(calls).toEqual(expect.arrayContaining(["off-data", "off-exit"]));
+    expect(calls).toEqual(expect.arrayContaining(["pause", "resume"]));
     // The runtime seam defaults to this same factory.
     const runtimePty = currentPtyFactory()({
       command: "fake",
