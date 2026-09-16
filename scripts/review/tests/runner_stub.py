@@ -33,6 +33,11 @@ assert {key for key, value in policy.items() if value == 'allow'} == {'glob'}
 assert policy['grep'] == 'deny' and policy['skill'] == 'deny'
 assert policy['read'] == {'*': 'allow', '*.env': 'deny', '*.env.*': 'deny', '*.env.example': 'allow'}
 assert all(policy[key] == 'deny' for key in ['bash', 'webfetch', 'websearch', 'external_directory', 'lsp', 'grep', 'skill'])
+context = root / 'scripts/review/discussion.txt'
+if context.exists():
+    paths = [pathlib.Path(sys.argv[i + 1]) for i, arg in enumerate(sys.argv) if arg == '-f']
+    assert context in paths, 'PR context was not attached to this model call'
+    assert context.read_text() == 'TRUSTED_PR_CONTEXT'
 
 if match:
     attachment = pathlib.Path(sys.argv[sys.argv.index('-f') + 1])
@@ -60,7 +65,8 @@ else:
     if mode == 'synth-failed':
         print('PRIVATE-SYNTHESIS-TEXT', file=sys.stderr)
         sys.exit(2)
-    attachments = [pathlib.Path(sys.argv[i + 1]) for i, arg in enumerate(sys.argv) if arg == '-f']
+    attachments = [pathlib.Path(sys.argv[i + 1]) for i, arg in enumerate(sys.argv)
+                   if arg == '-f' and pathlib.Path(sys.argv[i + 1]) != context]
     assert attachments
     if mode in ['clean', 'finding', 'retry']: assert len(attachments) == 11
     reports = {}

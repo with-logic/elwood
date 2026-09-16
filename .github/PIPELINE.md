@@ -82,11 +82,13 @@ Records retain source, time, URL, and reply identity and are ordered by time.
 Optional discussion context retains at most the last three pages per source
 (up to four requests including page discovery) and 65,536 serialized bytes.
 Older records are omitted whole, with an explicit `truncated` flag. The gate
-still reads complete review history: truncating it could hide a previous approval
-or a failed round.
+still reads complete review history: truncating it could hide a prior automated
+report and repeat the automatic review.
 Comments and reviews from users without current maintainer permission are
 excluded.
 If this fetch fails, review continues without discussion context.
+The resulting snapshot is attached directly to every lens and synthesis call.
+The runner logs whether that context was attached or unavailable.
 Only the final posting job receives
 `pull-requests: write`, and it receives no provider key. Public comments cannot
 trigger review execution. There is no general mention

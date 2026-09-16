@@ -27,3 +27,10 @@ that approval. Reports link to the workflow run and the rerun command. Failed
 or canceled authorized runs report their outcome on the still-current PR.
 The workflow allows 25 minutes per reviewer process within a 40-minute overall
 review deadline.
+
+The harness fetches the PR title, description, review bodies, and top-level and
+inline comments. A bounded snapshot containing only current maintainers and
+trusted GitHub automation is attached directly to every lens and synthesis.
+Discussion is evidence, never an instruction to approve or disregard a finding.
+Fetch failure permits review without context and is reported in the run log;
+it must not be represented as an empty discussion.

@@ -52,11 +52,13 @@ class RunnerTest(unittest.TestCase):
                               env=env, capture_output=True, text=True, timeout=40)
 
     def test_all_eleven_lenses_run_before_clean_synthesis(self):
+        (self.root / 'scripts/review/discussion.txt').write_text('TRUSTED_PR_CONTEXT')
         runtime = self.root / 'scripts/review/runtime.sh'
         with runtime.open('a') as stream:
             stream.write('\nkill_tree() { echo "$1" >> "$root/cleanup-pids"; }\n')
         result = self.run_review()
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('discussion context attached to all lenses and synthesis', result.stderr)
         self.assertFalse((self.root / 'cleanup-pids').exists())
         self.assertEqual(len(list(self.root.glob('call-review-*'))), 11)
         self.assertEqual((self.root / 'call-synthesis').read_text(), '1')
@@ -123,6 +125,7 @@ class RunnerTest(unittest.TestCase):
     def test_findings_reach_synthesis_in_their_attachments(self):
         result = self.run_review('finding')
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('discussion context unavailable', result.stderr)
         self.assertIn('#### major: Propagated finding', (self.root / 'REVIEW.md').read_text())
 
     def test_nonempty_malformed_lens_cannot_approve(self):
