@@ -1,5 +1,5 @@
 /**
- * CJS-bundler-safe createRequire construction.
+ * CJS-bundler-safe createRequire construction (PRD §13 implementation latitude).
  * Bundlers that lower this library to CJS (Electron main bundles, rollup)
  * rewrite import.meta.url to undefined but provide the CJS __filename, so
  * callers pass import.meta.url and this falls back when it was lowered away.

@@ -1,9 +1,6 @@
 /**
- * Recognition-focused coverage for the allowlisted trust-prompt automation: partial
- * renders, option-only spoofing, and blank-line layouts. The policy is "never block —
- * say yes to any RECOGNIZED allowlisted prompt", so the only guard exercised here is
- * recognition (allowlisted id + non-option HEADER wording); there is deliberately NO
- * region isolation or destructive-rider refusal. Covers PRD §5.1 (C-CLAUDE-14, C-CODEX-15).
+ * Trust recognition preserves wrapped/descriptive layouts while isolating the
+ * active dialog. Covers PRD §5.4, C-TRUST-01, C-CLAUDE-14, and C-CODEX-15.
  */
 
 import { describe, expect, test, vi } from "vitest";
@@ -149,7 +146,7 @@ describe("trust-prompt automation security", () => {
     }
   });
 
-  test("C-CLAUDE-14 the ONLY guard is allowlisted + non-option-header recognition", () => {
+  test("C-CLAUDE-14 only an allowlisted non-option header identifies a trust prompt", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
     // Policy: never leave the agent waiting — a RECOGNIZED trust prompt is answered
@@ -181,9 +178,7 @@ describe("trust-prompt automation security", () => {
     // A single trust dialog whose header and options are separated by a blank +
     // descriptive line — the real rendered shape. Elwood recognizes the header and
     // answers the affirmative so the agent never waits on the trust gate. There is
-    // NO region isolation by design (say-yes-to-anything policy): recognition is the
-    // only guard and the first affirmative option in the frame is answered; a stacked
-    // second dialog is an accepted consequence of the policy, not a guarantee here.
+    // no second dialog here: blank/descriptive rows remain part of this one.
     const frame =
       "Do you trust this folder?\n\nReview the files first.\n1. Yes, proceed\n2. No, exit";
     expect(

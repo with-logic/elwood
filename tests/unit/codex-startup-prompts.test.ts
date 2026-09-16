@@ -43,9 +43,8 @@ describe("Codex startup prompt responder", () => {
 
   test("C-CODEX-06 trusts hook review prompts once, even without autotrust", () => {
     const writes: string[] = [];
-    // Hook trust is Elwood's OWN integration (required for the session to work),
-    // so it is answered regardless of autotrust — unlike third-party trust. The
-    // phrase and its answer appear in the SAME frame (as the real CLI renders).
+    // Codex hook trust covers every configured hook, including third-party hooks,
+    // and is answered independently of autotrust within its own active dialog.
     const responder = new CodexStartupPromptResponder();
     const frame = "Hooks need review\n› 1. Review hooks\n  2. Trust all and continue";
     responder.handle(frame, writer(writes));
@@ -70,11 +69,7 @@ describe("Codex startup prompt responder", () => {
   });
 
   test("C-CODEX-15 a foreign 'Yes, continue' is never selected for HOOK trust", () => {
-    // Hook trust's affirmative is SPECIFIC ("Trust all"/"Trust hooks"), so even
-    // with a foreign "1. Yes, continue" in the frame, it is never selected: the
-    // prompt is recognized but has no matchable affirmative, so it is transient
-    // option_pending and nothing is written. (The per-prompt accept — not
-    // blank-line scoping — is what protects hook trust from a generic foreign 'Yes'.)
+    // An unrelated active question cannot inherit an earlier hook-trust header.
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder("s1", true);
     const result = responder.handle(
@@ -82,7 +77,7 @@ describe("Codex startup prompt responder", () => {
       writer(writes),
     );
     expect(writes).toEqual([]);
-    expect(outcomesOf(result.outcomes)).toEqual([{ kind: "option_pending", prompt: "hook_trust" }]);
+    expect(outcomesOf(result.outcomes)).toEqual([]);
   });
 
   test("C-CODEX-11 a recognized directory-trust dialog is answered (detect → approve)", () => {

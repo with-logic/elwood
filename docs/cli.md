@@ -15,8 +15,9 @@ elwood run --output json < prompt.txt
 ```
 
 `elwood "prompt"` runs in the current directory, waits for one complete turn,
-prints the combined assistant text to stdout, then tears its Elwood session
-state down. It does not undo files the agent changed or remove history owned by
+prints the combined assistant text to stdout, then stops the agent and preserves
+its Elwood session state for later listing or resumption. Use `--ephemeral` to
+remove that state afterward. It does not undo files the agent changed or remove history owned by
 the agent CLI. `elwood run "prompt"` is the same command in explicit form.
 
 Positional words are joined with spaces. Non-empty piped stdin is appended after
@@ -141,11 +142,13 @@ combined with `--stream`, `--verbose`, `--debug`, or `--output jsonl`.
 
 ## Continuation and cleanup
 
-New runs are ephemeral unless `--keep` is supplied. A kept text run reports its
-session ID on stderr; JSON and JSONL include it in the terminal record:
+New and resumed runs preserve state by default; `--keep` explicitly selects
+that default. Text output contains only the agent response. Add
+`--show-session-id` to print the retained ID on stderr, or run `elwood sessions`
+to find it later. JSON and JSONL include it in the terminal record:
 
 ```sh
-first=$(elwood --keep --output json "Remember that the release color is teal")
+first=$(elwood --output json "Remember that the release color is teal")
 id=$(printf '%s' "$first" | jq -r .sessionId)
 elwood --resume "$id" "What is the release color?"
 elwood --resume "$id" --ephemeral "Finish this conversation"
@@ -166,9 +169,10 @@ remain. It is supported only for new sessions, never with `--resume`.
 ## Trust and security
 
 Headless mode is non-interactive. With the default `--trust`, Elwood answers
-only its allowlisted workspace-directory and extension trust dialogs, plus the
-Elwood-owned Codex hook trust needed for operation. `--no-trust` disables the
-workspace and extension approvals. Any other recognized dialog fails safely as
+only its allowlisted workspace-directory and extension trust dialogs.
+`--no-trust` disables those approvals. Codex hook trust is always bypassed for
+the entire session, including third-party hooks configured in Codex, because
+Elwood needs its own hook bridge to run. This bypass is independent of `--trust`. Any other recognized dialog fails safely as
 `blocked_prompt` instead of hanging or guessing.
 
 Piped text and image paths are prompt input with the same authority as text

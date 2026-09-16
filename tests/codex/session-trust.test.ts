@@ -95,8 +95,10 @@ describe("CodexSessionApi trust prompts", () => {
     ptys[0]!.emitData("Do you trust the contents of this directory?");
     await expect.poll(() => attention).toContain("workspace_trust");
     expect(ptys[0]!.writes).toEqual([]);
-    // Frame 2: the affirmative now paints — Elwood answers it.
-    ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. Yes, continue");
+    // Frame 2 redraws the same dialog with its affirmative.
+    ptys[0]!.emitData(
+      "\u001b[2J\u001b[HDo you trust the contents of this directory?\r\n› 1. Yes, continue",
+    );
     await expect.poll(() => ptys[0]!.writes).toEqual(["1\r"]);
     expect(warnings).not.toContain("trust_prompt_unanswerable");
   });

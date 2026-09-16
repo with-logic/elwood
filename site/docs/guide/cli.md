@@ -14,7 +14,7 @@ Positional words become the prompt. Piped input is appended after a blank line:
 
 ```sh
 git diff | elwood "Review this diff for correctness."
-elwood < prompt.txt
+elwood run < prompt.txt
 elwood -C ../service "Explain the entry point."
 elwood --image screenshot.png "What looks wrong?"
 ```
@@ -28,6 +28,9 @@ Repeat `--image` for multiple images. Input is limited to 8 MiB. The command doe
 | `--output text` | A person or a text file | Combined assistant reply; default |
 | `--output json` | A script that needs one result | One terminal document with response, status and cleanup |
 | `--output jsonl` | Progress in another program | Ordered event records, then one result or error |
+
+Text output contains only the agent response by default. Add `--show-session-id`
+to print the retained session ID on stderr, or find it later with `elwood sessions`.
 
 Text errors use stderr; JSON errors are emitted as terminal records on stdout. Routine session warnings are quiet unless `--verbose` or `--debug` is enabled. JSONL includes warning records in its ordered stdout stream. A response can contain useful partial text even when the run fails: inspect the exit code and terminal record type.
 
@@ -77,7 +80,7 @@ CLI timeout covers launch, any persona setup turn and the requested turn. Durati
 
 ## Resuming a session
 
-New and resumed runs preserve their Elwood state by default so a later process can resume. `--keep` explicitly selects this default; `--ephemeral` removes Elwood state after either a new or resumed run. With text output, the session ID is reported on stderr; JSON includes it in the result.
+New and resumed runs preserve their Elwood state by default so a later process can resume. `--keep` explicitly selects this default; `--ephemeral` removes Elwood state after either a new or resumed run. With text output, `--show-session-id` opts into the session ID on stderr; JSON includes it in the result.
 
 This Bash/Zsh example requires `jq`:
 

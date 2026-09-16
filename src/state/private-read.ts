@@ -39,7 +39,7 @@ export function readPrivateFile(
 function inspect(path: string, owner: FileOwner | undefined): Outcome {
   let fd: number | undefined;
   try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     const fault = privacyFault(fstatSync(fd), owner);
     return fault === undefined ? { text: readFileSync(fd, "utf8") } : { fault };
   } catch (error) {

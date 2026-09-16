@@ -9,7 +9,14 @@ import { existsSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import { drivePty, invoke, parse } from "./cli-commands-helpers.ts";
-import { e2eTimeoutMs, makeProject, pathRemoved, skipReason, turnsEnabled } from "./helpers.ts";
+import {
+  e2eTimeoutMs,
+  makeProject,
+  pathRemoved,
+  skipIf,
+  skipReason,
+  turnsEnabled,
+} from "./helpers.ts";
 
 type SessionsDocument = {
   readonly schemaVersion: 1;
@@ -45,7 +52,7 @@ const skipTurns = turnsEnabled ? false : "ELWOOD_E2E_SKIP_TURNS=1 disables turn 
 
 for (const agent of ["claude", "codex"] as const) {
   test(`C-CLI-23 C-CLI-24 elwood sessions lists a default-kept real ${agent} session and resume <id> continues it`, {
-    skip: skipReason(agent) || skipTurns,
+    skip: skipIf(skipReason(agent), skipTurns),
     timeout: e2eTimeoutMs * 2 + 30_000,
   }, async () => {
     const project = makeProject(agent);
@@ -136,7 +143,7 @@ for (const agent of ["claude", "codex"] as const) {
   });
 
   test(`C-CLI-26 elwood models lists real ${agent} models and leaves no state behind`, {
-    skip: skipReason(agent),
+    skip: skipIf(skipReason(agent)),
     timeout: e2eTimeoutMs + 30_000,
   }, async () => {
     const project = makeProject(agent);
@@ -169,7 +176,7 @@ for (const agent of ["claude", "codex"] as const) {
   });
 
   test(`C-CLI-25 elwood interactive opens the real ${agent} TUI in a PTY and exits with its status`, {
-    skip: skipReason(agent),
+    skip: skipIf(skipReason(agent)),
     timeout: e2eTimeoutMs + 30_000,
   }, async () => {
     const project = makeProject(agent);

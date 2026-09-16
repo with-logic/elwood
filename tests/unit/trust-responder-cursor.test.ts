@@ -33,6 +33,7 @@ describe("cursor-style trust prompts", () => {
     });
     if (result?.kind === "answered") await result.settled;
     expect(writes).toEqual(["1\r"]);
+    expect(optionKeystrokes(selectableOptions(frame)[0]!)).toEqual(["1\r"]);
   });
 
   test("C-CLAUDE-14 derives selected, upward, and multi-step affirmative input", () => {

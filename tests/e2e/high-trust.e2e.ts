@@ -19,7 +19,7 @@ import {
   startClaude,
   startCodex,
 } from "../../src/index.ts";
-import { cleanup, makeProject, observeSession, skipReason, waitFor } from "./helpers.ts";
+import { cleanup, makeProject, observeSession, skipIf, skipReason, waitFor } from "./helpers.ts";
 
 type Launch = {
   readonly claude?: { readonly launch?: { readonly permissionMode?: string } };
@@ -37,7 +37,7 @@ function bypassDialogVisible(text: string): boolean {
 }
 
 test("C-E2E-16 real Claude started with highTrust reaches ready in bypass-permissions mode", {
-  skip: skipReason("claude"),
+  skip: skipIf(skipReason("claude")),
   timeout: 180_000,
 }, async () => {
   const project = makeProject("claude");
@@ -87,7 +87,7 @@ test("C-E2E-16 real Claude started with highTrust reaches ready in bypass-permis
 });
 
 test("C-E2E-16 real Codex started with highTrust reaches ready with danger-full-access", {
-  skip: skipReason("codex"),
+  skip: skipIf(skipReason("codex")),
   timeout: 180_000,
 }, async () => {
   const project = makeProject("codex");

@@ -5,31 +5,22 @@
  * Policy (PRD §5.1): an agent must NEVER be left waiting on a trust gate.
  * Under the caller's full-trust posture, when an allowlisted trust prompt is
  * visible in the current frame, Elwood selects its affirmative option and sends
- * it — always say yes. Elwood only auto-answers ALLOWLISTED prompts (an
- * off-allowlist confirmation is left to the human), and never re-answers the same
- * prompt; those are the only limits.
+ * it. Recognition binds the header and answer to one active dialog and every
+ * write revalidates it; unrelated confirmations remain with the human.
  */
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
-import { delay } from "../delay.ts";
-import {
-  nonOptionText,
-  optionInput,
-  optionKeystrokes,
-  selectableOptions,
-} from "../terminal-options.ts";
+import { optionInput } from "../terminal-options.ts";
+import { trustDialog } from "./dialog.ts";
 import {
   type TrustPromptIdFor,
-  trustHeaderMatches,
   trustPromptAllowlist,
   trustPromptHeaderVisible,
 } from "./prompts.ts";
+import { writeTrustOption } from "./write.ts";
 
 /** The concrete allowlist entry type (preserves the derived literal `id`). */
 type TrustPromptEntry = (typeof trustPromptAllowlist)[number];
-
-const cursorRetryMs = 250;
-const cursorNavigationTimeoutMs = 5_000;
 
 /** An answered trust prompt; `prompt` is narrowed to the responder's agent. */
 export type TrustPromptAutomation<A extends ElwoodAgentKind = ElwoodAgentKind> = {
@@ -83,19 +74,13 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     write: (input: string) => TrustWriteResult,
     readFrame?: () => string,
   ): TrustPromptResult<A> {
-    const header = nonOptionText(frame);
     for (const spec of this.specs) {
       const id = spec.id as TrustPromptIdFor<A>;
-      // `answerPolicy: "always"` prompts (Elwood's own hook bridge) answer
-      // regardless of autotrust; every other trust prompt requires the caller's
-      // full-trust posture.
-      if (!(this.autotrust || spec.answerPolicy === "always")) continue;
-      // Recognized when the prompt's HEADER wording appears on a NON-OPTION line
-      // (via the shared `trustHeaderMatches`), so a phrase living only inside an
-      // option label can't spoof a prompt. That is the ONLY guard — recognition
-      // means "say yes".
-      if (this.settled.has(id) || !trustHeaderMatches(header, spec)) continue;
-      const options = selectableOptions(frame);
+      // Codex hook trust covers all configured hooks regardless of autotrust.
+      if (!(this.autotrust || spec.answerPolicy === "always") || this.settled.has(id)) continue;
+      const dialog = trustDialog(frame, spec.headerPattern);
+      if (dialog === undefined) continue;
+      const options = dialog.options;
       const option = options.find((candidate) => spec.accept.test(candidate.label));
       if (option === undefined) {
         // Affirmative not rendered yet (partial frame). Report once, but DON'T
@@ -110,12 +95,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       // promise rejects so the caller emits a warning instead of a false "answered".
       this.settled.add(id);
       const input = optionInput(option);
-      const operation =
-        option.style === "cursor"
-          ? readFrame === undefined
-            ? Promise.reject(new Error("Cursor trust navigation requires live screen reads."))
-            : navigateCursorOption(spec, input, write, readFrame)
-          : writeOptionKeys(optionKeystrokes(option), write);
+      const operation = writeTrustOption(spec, option, write, frame, readFrame);
       const settled = operation.catch((error: unknown) => {
         this.settled.delete(id);
         throw error;
@@ -124,59 +104,6 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     }
     return undefined;
   }
-}
-
-/** Writes one option's keys in order (numbered prompts and parser-only tests). */
-async function writeOptionKeys(
-  keys: readonly string[],
-  write: (input: string) => TrustWriteResult,
-): Promise<void> {
-  for (const key of keys) await write(key);
-}
-
-/** Navigates a cursor prompt one observed frame at a time, retrying swallowed startup input. */
-async function navigateCursorOption(
-  spec: TrustPromptEntry,
-  originalInput: string,
-  write: (input: string) => TrustWriteResult,
-  readFrame: () => string,
-): Promise<void> {
-  const deadline = Date.now() + cursorNavigationTimeoutMs;
-  while (Date.now() < deadline) {
-    const before = readFrame();
-    if (!trustPromptHeaderVisible(before, spec)) {
-      throw new Error("Cursor trust prompt disappeared before confirmation.");
-    }
-    const target = selectableOptions(before).find((option) => spec.accept.test(option.label));
-    if (target?.style !== "cursor") {
-      await delay(cursorRetryMs);
-      continue;
-    }
-    const key = target.offset === 0 ? "\r" : target.offset < 0 ? "\u001b[A" : "\u001b[B";
-    await write(key);
-    const progress = await waitForCursorProgress(spec, target.offset, readFrame);
-    if (progress === "cleared") return;
-  }
-  throw new Error(`Cursor trust navigation timed out (${originalInput}).`);
-}
-
-async function waitForCursorProgress(
-  spec: TrustPromptEntry,
-  priorOffset: number,
-  readFrame: () => string,
-): Promise<"cleared" | "retry"> {
-  const deadline = Date.now() + cursorRetryMs;
-  while (Date.now() < deadline) {
-    await delay(20);
-    const frame = readFrame();
-    if (!trustPromptHeaderVisible(frame, spec)) {
-      if (priorOffset === 0) return "cleared";
-      throw new Error("Cursor trust prompt disappeared before confirmation.");
-    }
-    const target = selectableOptions(frame).find((option) => spec.accept.test(option.label));
-    if (target?.style === "cursor" && target.offset !== priorOffset) return "retry";
-  }
-  return "retry";
 }
 
 /** Whether any allowlisted trust prompt for `agent` is showing its header in `text`. */

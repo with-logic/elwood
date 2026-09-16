@@ -10,38 +10,19 @@
  */
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
-import { nonOptionText } from "../terminal-options.ts";
 import { trustPromptAllowlist } from "./allowlist.ts";
+import { trustDialog } from "./dialog.ts";
 
 export { trustPromptAllowlist } from "./allowlist.ts";
 
-/**
- * The fields common to every allowlisted trust prompt. The prompt and its answer
- * are BOTH matched within the same current frame: `headerPattern` identifies the
- * prompt by its HEADER wording, and `accept` matches the exact affirmative option
- * label in that same prompt. This prevents a stale phrase from one frame pairing
- * with a "Yes" from a different, current dialog (which could auto-confirm an
- * unrelated security gate). `headerPattern` is a HEADER matcher, not a
- * whole-frame matcher: it is only safe when tested against the frame's non-option
- * lines (via `trustHeaderMatches`), never applied raw to the full frame.
- */
+/** Header and affirmative matchers for one active dialog (C-TRUST-01). */
 type TrustPromptBase = {
-  /**
-   * Identifies the prompt by its HEADER wording. MUST be tested only against the
-   * frame's non-option lines (see `trustHeaderMatches`) — applying it raw to the
-   * full frame would let an option-only trust phrase spoof recognition.
-   * Verified against the CLI versions below.
-   */
+  /** Anchored standalone header, matched only inside an active trust-dialog region. */
   readonly headerPattern: RegExp;
   /** Matches the exact affirmative option label for THIS prompt (per-prompt, not generic). */
   readonly accept: RegExp;
 };
 
-/**
- * When an allowlisted prompt is answered. `"autotrust"` prompts are answered ONLY
- * under the caller's full-trust posture; `"always"` prompts are answered
- * regardless of it (Elwood's own hook bridge, never third-party code).
- */
 /** The Claude trust-prompt ids: folder trust plus the CLI's first-run skill/plugin/MCP gates. */
 type ClaudeTrustPromptId =
   | "workspace_trust"
@@ -50,17 +31,20 @@ type ClaudeTrustPromptId =
   | "mcp_trust"
   | "bypass_permissions";
 
+/**
+ * When an allowlisted prompt is answered. `"autotrust"` prompts are answered ONLY
+ * under the caller's full-trust posture; `"always"` prompts are answered
+ * regardless of it (Codex trusts all configured hooks, including third-party hooks).
+ */
 export type TrustAnswerPolicy = "always" | "autotrust";
 
 /**
  * One allowlisted trust prompt, as an agent+id-DISCRIMINATED union so that (a) a
  * typo in `id` cannot compile into a public startup label, and (b)
  * `answerPolicy: "always"` — answered regardless of `autotrust` — is permitted
- * ONLY on Codex `hook_trust`, Elwood's OWN integration (the hook bridge) that the
- * session requires to work. Every third-party trust prompt (skills, plugins, MCP
- * servers, folder trust) is `answerPolicy: "autotrust"`, staying gated on the
- * caller's full-trust posture, so the invalid "third-party prompt answered
- * always" state is unrepresentable.
+ * ONLY on Codex `hook_trust`. Codex hook trust is session-wide, covering Elwood's
+ * bridge and every third-party hook. Other trust prompts (skills, plugins, MCP
+ * servers, folder trust) remain gated on the caller's full-trust posture.
  */
 export type TrustPromptSpec =
   | ({
@@ -76,26 +60,13 @@ export type TrustPromptSpec =
   | ({
       readonly agent: "codex";
       readonly id: "hook_trust";
-      /** Answered regardless of `autotrust`: Elwood's own hook bridge (never third-party code). */
+      /** Answered regardless of `autotrust`: all configured Codex hooks, including third-party code. */
       readonly answerPolicy: "always";
     } & TrustPromptBase);
 
-/**
- * True when `spec`'s HEADER wording appears in `header` — the frame's NON-option
- * text as produced by `nonOptionText`. This is the ONE shared, option-aware
- * recognizer: the responder, the cursor navigator, and the screen-fact blocking
- * rules all go through it (each computes `nonOptionText` once per frame and
- * tests every spec against that), so a numbered or cursor-selectable option whose
- * label merely contains a trust phrase is never recognized as a prompt. Matching
- * joined non-option lines also keeps wrapped headers matchable (§5.1).
- */
-export function trustHeaderMatches(header: string, spec: TrustPromptBase): boolean {
-  return spec.headerPattern.test(header);
-}
-
-/** `trustHeaderMatches` over a raw frame, for callers that test a single spec. */
+/** True when the active dialog has this standalone, non-option trust header. */
 export function trustPromptHeaderVisible(frame: string, spec: TrustPromptBase): boolean {
-  return trustHeaderMatches(nonOptionText(frame), spec);
+  return trustDialog(frame, spec.headerPattern) !== undefined;
 }
 
 /**

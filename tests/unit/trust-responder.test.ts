@@ -107,12 +107,10 @@ describe("allowlisted trust prompt automation", () => {
     expect(writes).toEqual([]);
   });
 
-  test("C-CLAUDE-14 a recognized trust prompt is answered from the frame's affirmative", () => {
+  test("C-TRUST-01 only the bottom-most trust header owns the active affirmative", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
-    // Policy: never leave the agent waiting — a recognized trust prompt is answered
-    // from the frame's affirmative option. Here folder-trust is recognized (its
-    // header is on a non-option line) and answered "1".
+    // The earlier folder-trust question does not own the skill dialog's answer.
     const frame = "Do you trust this folder?\nLoad this skill?\n1. Yes, trust it";
     expect(
       responder.handle(frame, (input) => {
@@ -120,7 +118,7 @@ describe("allowlisted trust prompt automation", () => {
       }),
     ).toMatchObject({
       kind: "answered",
-      automation: { prompt: "workspace_trust", input: "1" },
+      automation: { prompt: "skill_trust", input: "1" },
     });
     expect(writes).toEqual(["1\r"]);
   });

@@ -8,6 +8,8 @@
  */
 
 import { execFile } from "node:child_process";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { elwoodError } from "../../core/errors.ts";
 import { currentPlatform } from "../../runtime/seams.ts";
@@ -63,8 +65,9 @@ export async function snapshotClipboardText(): Promise<string> {
 export async function restoreClipboardText(text: string): Promise<boolean> {
   try {
     const child = run(PBCOPY, [], { timeout: 5_000 });
-    child.child.stdin?.end(text); // inside try so a synchronous spawn/stdin failure can't escape
-    await child;
+    // execFile's default stdio always supplies stdin. Own stream errors as well as
+    // process completion: a child that exits early can otherwise crash the host.
+    await Promise.all([child, pipeline(Readable.from([text]), child.child.stdin!)]);
     return true;
   } catch {
     return false;

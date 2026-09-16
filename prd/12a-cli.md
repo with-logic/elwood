@@ -91,7 +91,10 @@ outcome by default, after stop-or-kill cleanup. `--keep` explicitly selects this
 default. `--ephemeral` instead requests teardown for either a new or resumed
 run; it cannot be combined with `--keep`. Teardown does not undo workspace
 changes or remove history owned by the underlying agent. A preserved run reports
-its resumable session ID on stderr in text mode. A resume uses `--resume <id>` to load exactly the
+its resumable session ID on stderr in text mode only when `--show-session-id`
+is supplied. By default, successful text output contains only the agent response;
+`elwood sessions` lists retained IDs. The flag affects only the text footer, not
+the `sessionId` field in JSON/JSONL, and emits nothing for ephemeral sessions. A resume uses `--resume <id>` to load exactly the
 stored adapter and cwd; it never falls back to a new conversation, and `--cwd`
 is therefore rejected with `--resume` rather than overriding the stored
 workspace. Explicit adapter conflicts are usage errors. Before launch, resumed state and its cwd MUST satisfy the private,
@@ -341,7 +344,7 @@ the agent owns the resumed conversation, later `elwood resume <id>` runs see
 whatever the user said interactively.
 
 `--output json`, `--output jsonl`, `--stream`, `--verbose`, `--debug`, `--head`,
-`--timeout`, `--persona`, `--image`, `--keep`, `--ephemeral`, and `--resume`
+`--timeout`, `--persona`, `--image`, `--keep`, `--show-session-id`, `--ephemeral`, and `--resume`
 are usage errors with `interactive`, and more than one positional word is a usage
 error. A launch that cannot spawn fails with the adapter's not-found error code
 and status 1.
@@ -389,7 +392,7 @@ whose rows are the `AgentModelOption` objects. Every string is sanitized under
 §12A.3. Failures — timeout (124), interruption (130), blocked prompts, agent
 exit, and picker automation failures — use the existing stderr, error-document,
 and status conventions, and cleanup still runs exactly once. `--stream`,
-`--head`, `--persona`, `--image`, `--keep`, `--resume`, `--ephemeral`,
+`--head`, `--persona`, `--image`, `--keep`, `--show-session-id`, `--resume`, `--ephemeral`,
 positional words, and JSONL output are usage errors.
 
 Listing sessions resolves only state-directory and output settings. Adapter,

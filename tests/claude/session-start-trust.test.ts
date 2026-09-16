@@ -98,7 +98,9 @@ describe("ClaudeSessionApi trust-prompt render delay", () => {
     await expect.poll(() => warnings).toContain("startup_prompt_write_failed");
     // Retryable: the next frame re-attempts the answer with a now-succeeding write.
     ptys[0]!.failOnWrite = undefined;
-    ptys[0]!.emitData("Do you trust this folder?\r\n1. Yes, I trust this folder\r\n");
+    ptys[0]!.emitData(
+      "\u001b[2J\u001b[HDo you trust this folder?\r\n1. Yes, I trust this folder\r\n",
+    );
     await expect.poll(() => ptys[0]!.writes).toContain("1\r");
   });
 });

@@ -47,6 +47,7 @@ Agent and turn options:
 
 Continuation and output:
   --keep                      Preserve Elwood state (default)
+  --show-session-id           Print the retained session ID on stderr (default: off)
   --resume <id>               Resume the exact stored agent and workspace
   --ephemeral                 Remove new or resumed Elwood state afterward
   --output <text|json|jsonl>  Stdout protocol (default: text)
@@ -84,7 +85,7 @@ Interactive mode:
   writes no session state. With an id, the stored session's own conversation is
   resumed in its stored workspace with its stored posture. Requires a terminal on
   stdin and stdout; cannot be combined with --output json/jsonl, --stream,
-  --verbose, --debug, --head, --timeout, --persona, --image, --keep, --ephemeral,
+  --verbose, --debug, --head, --timeout, --persona, --image, --keep, --show-session-id, --ephemeral,
   or --resume. Built-in posture defaults are not applied unless configured.
 
 Session listing:

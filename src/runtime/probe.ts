@@ -6,9 +6,10 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
+import { errnoCode } from "../core/errors.ts";
 import { completeUtf8Length } from "../core/utf8.ts";
+import { boundedErrorToken, isReapErrorCode } from "../core/warnings/reasons.ts";
 import type { CommandResult } from "./seams.ts";
-import { rethrowUnlessGroupGone } from "./shutdown/reap-tree.ts";
 
 const defaultProbeTimeoutMs = 15_000;
 const maxProbeOutputBytes = 1_000_000;
@@ -68,8 +69,18 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (kill) abortProbe(child);
-      resolve(result);
+      const cleanupFailure = kill ? abortProbe(child) : undefined;
+      resolve(
+        cleanupFailure === undefined
+          ? result
+          : {
+              ...result,
+              error: {
+                ...result.error,
+                message: `${result.error!.message}; process cleanup failed (${cleanupFailure})`,
+              },
+            },
+      );
     };
     const onData = (buffer: CappedBuffer) => (chunk: Buffer) => {
       buffer.append(chunk);
@@ -101,16 +112,18 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
  * are destroyed here for the same reason: nothing a killed probe still writes is
  * wanted, and an open pipe alone keeps the loop alive.
  */
-function abortProbe(child: ChildProcess): void {
+function abortProbe(child: ChildProcess): string | undefined {
   try {
     // A spawn failure settles via `error` on the next tick, before any timer or
     // data can request a kill, so a killed child always has a pid.
     process.kill(-(child.pid as number), "SIGKILL");
   } catch (error) {
-    rethrowUnlessGroupGone(error);
+    if (errnoCode(error) !== "ESRCH") return boundedErrorToken(error, isReapErrorCode);
+  } finally {
+    child.stdout?.destroy();
+    child.stderr?.destroy();
   }
-  child.stdout?.destroy();
-  child.stderr?.destroy();
+  return undefined;
 }
 
 function mapError(error: NodeJS.ErrnoException): {

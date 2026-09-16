@@ -79,7 +79,10 @@ elwood<span class="w"> </span><span class="s2">"Where are the tests?"</span>
 <p>Save this as <strong>ask.mts</strong>. The <code>.mts</code> extension makes this an ES module, including top-level <code>await</code>.</p>
 <div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">"@with-logic/elwood"</span><span class="p">;</span>
 
-<span class="kd">const</span><span class="w"> </span><span class="nx">session</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="p">({</span><span class="w"> </span><span class="nx">cwd</span><span class="o">:</span><span class="w"> </span><span class="kt">process.cwd</span><span class="p">()</span><span class="w"> </span><span class="p">});</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">session</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">ClaudeSession</span><span class="p">({</span>
+<span class="w">  </span><span class="nx">cwd</span><span class="o">:</span><span class="w"> </span><span class="kt">process.cwd</span><span class="p">(),</span>
+<span class="w">  </span><span class="nx">autotrust</span><span class="o">:</span><span class="w"> </span><span class="kt">true</span><span class="p">,</span><span class="w"> </span><span class="c1">// Approve allowlisted trust prompts for this known project.</span>
+<span class="p">});</span>
 
 <span class="k">try</span><span class="w"> </span><span class="p">{</span>
 <span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">reply</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">session</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span>
@@ -96,6 +99,10 @@ elwood<span class="w"> </span><span class="s2">"Where are the tests?"</span>
 <div class="highlight"><pre><span></span><code>node<span class="w"> </span>ask.mts
 </code></pre></div>
 
+<p><code>autotrust: true</code> approves allowlisted workspace and extension trust prompts. Use it
+only for a project and extensions you trust. To keep the library default of
+<code>autotrust: false</code>, first run <code>claude</code> in this exact project directory, approve its
+trust prompts, and exit. A hidden session cannot ask you to approve them.</p>
 <p><code>new ClaudeSession()</code> is synchronous. The first <code>send()</code> starts the agent; the constructor alone does not. <code>send()</code> resolves to a string after the turn settles. <code>finally</code> closes the process even if the turn fails.</p>
 <p>The turn timeout bounds the response wait. It does not itself kill the agent, and it is not a whole-launch timeout. The <code>finally</code> block still matters. Use the CLI's <code>--timeout</code> when you need a single deadline covering launch and the turn.</p>
 <h2 id="quickstart--follow-up-turns">Follow-up turns</h2>
@@ -187,7 +194,7 @@ elwood<span class="w"> </span><span class="s2">"Where are the tests?"</span>
 <h2 id="cli--input">Input</h2>
 <p>Positional words become the prompt. Piped input is appended after a blank line:</p>
 <div class="highlight"><pre><span></span><code>git<span class="w"> </span>diff<span class="w"> </span><span class="p">|</span><span class="w"> </span>elwood<span class="w"> </span><span class="s2">"Review this diff for correctness."</span>
-elwood<span class="w"> </span>&lt;<span class="w"> </span>prompt.txt
+elwood<span class="w"> </span>run<span class="w"> </span>&lt;<span class="w"> </span>prompt.txt
 elwood<span class="w"> </span>-C<span class="w"> </span>../service<span class="w"> </span><span class="s2">"Explain the entry point."</span>
 elwood<span class="w"> </span>--image<span class="w"> </span>screenshot.png<span class="w"> </span><span class="s2">"What looks wrong?"</span>
 </code></pre></div>
@@ -220,6 +227,8 @@ elwood<span class="w"> </span>--image<span class="w"> </span>screenshot.png<span
 </tr>
 </tbody>
 </table>
+<p>Text output contains only the agent response by default. Add <code>--show-session-id</code>
+to print the retained session ID on stderr, or find it later with <code>elwood sessions</code>.</p>
 <p>Text errors use stderr; JSON errors are emitted as terminal records on stdout. Routine session warnings are quiet unless <code>--verbose</code> or <code>--debug</code> is enabled. JSONL includes warning records in its ordered stdout stream. A response can contain useful partial text even when the run fails: inspect the exit code and terminal record type.</p>
 <div class="highlight"><pre><span></span><code>elwood<span class="w"> </span>--output<span class="w"> </span>json<span class="w"> </span><span class="s2">"Describe the architecture."</span>
 </code></pre></div>
@@ -253,7 +262,7 @@ elwood<span class="w"> </span>--image<span class="w"> </span>screenshot.png<span
 
 <p>CLI timeout covers launch, any persona setup turn and the requested turn. Durations use a positive integer plus <code>ms</code>, <code>s</code>, <code>m</code> or <code>h</code>. There is no default whole-invocation timeout. A timeout exits with status 124.</p>
 <h2 id="cli--resuming-a-session">Resuming a session</h2>
-<p>New and resumed runs preserve their Elwood state by default so a later process can resume. <code>--keep</code> explicitly selects this default; <code>--ephemeral</code> removes Elwood state after either a new or resumed run. With text output, the session ID is reported on stderr; JSON includes it in the result.</p>
+<p>New and resumed runs preserve their Elwood state by default so a later process can resume. <code>--keep</code> explicitly selects this default; <code>--ephemeral</code> removes Elwood state after either a new or resumed run. With text output, <code>--show-session-id</code> opts into the session ID on stderr; JSON includes it in the result.</p>
 <p>This Bash/Zsh example requires <code>jq</code>:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">first</span><span class="o">=</span><span class="k">$(</span>elwood<span class="w"> </span>--output<span class="w"> </span>json<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span><span class="s2">"Remember: this release is called Acorn."</span><span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span><span class="nv">$?</span>
@@ -774,6 +783,7 @@ Agent and turn options:
 
 Continuation and output:
   --keep                      Preserve Elwood state (default)
+  --show-session-id           Print the retained session ID on stderr (default: off)
   --resume &lt;id&gt;               Resume the exact stored agent and workspace
   --ephemeral                 Remove new or resumed Elwood state afterward
   --output &lt;text|json|jsonl&gt;  Stdout protocol (default: text)
@@ -811,7 +821,7 @@ Interactive mode:
   writes no session state. With an id, the stored session's own conversation is
   resumed in its stored workspace with its stored posture. Requires a terminal on
   stdin and stdout; cannot be combined with --output json/jsonl, --stream,
-  --verbose, --debug, --head, --timeout, --persona, --image, --keep, --ephemeral,
+  --verbose, --debug, --head, --timeout, --persona, --image, --keep, --show-session-id, --ephemeral,
   or --resume. Built-in posture defaults are not applied unless configured.
 
 Session listing:
