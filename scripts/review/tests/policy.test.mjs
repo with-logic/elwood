@@ -33,7 +33,14 @@ test("approval requires complete consistent evidence and a successful review run
     { "review-clarity": findingFixture() },
     "Verdict: not ready - 0 blocker(s), 0 major(s), 1 minor(s), 0 nit(s)",
   );
-  for (const body of [clean, minor]) {
+  for (const body of [
+    clean,
+    minor,
+    minor.replace(
+      "review-clarity: completed",
+      "review-clarity: 1 retained finding; shared findings deduplicated",
+    ),
+  ]) {
     assert.equal(verdict(body, true), "APPROVE");
     assert.equal(verdict(body, false), "COMMENT");
   }

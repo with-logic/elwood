@@ -24,20 +24,36 @@ export async function post({ github, context, core, number, head, base, complete
     event,
     body,
   });
-  const latest = await currentPr(github, context, pr.number);
+  const dismiss = async () => {
+    if (event !== "COMMENT")
+      await github.rest.pulls.dismissReview({
+        ...context.repo,
+        pull_number: pr.number,
+        review_id: submitted.id,
+        message: "Review superseded: publication could not confirm the current PR and commits.",
+      });
+  };
+  let latest;
+  try {
+    latest = await currentPr(github, context, pr.number);
+  } catch (error) {
+    try {
+      await dismiss();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "Review revalidation failed and the submitted review could not be dismissed",
+        { cause: error },
+      );
+    }
+    throw error;
+  }
   if (
     !eligible(latest.pr, repository, latest.permission) ||
     latest.pr.head.sha !== head ||
     latest.pr.base.sha !== base
   ) {
-    if (event !== "COMMENT") {
-      await github.rest.pulls.dismissReview({
-        ...context.repo,
-        pull_number: pr.number,
-        review_id: submitted.id,
-        message: "Review superseded: the PR or reviewed commits changed during publication.",
-      });
-    }
+    await dismiss();
     core.notice("Review superseded during publication; no actionable verdict remains.");
     return;
   }

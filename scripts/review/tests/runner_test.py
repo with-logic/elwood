@@ -11,7 +11,7 @@ SOURCE = Path(__file__).resolve().parents[1]
 LENSES = sorted(p.name for p in (SOURCE.parents[1] / '.claude/skills').glob('review-*'))
 
 STUB = r'''#!/usr/bin/env python3
-import os, pathlib, re, subprocess, sys, time
+import json, os, pathlib, re, subprocess, sys, time
 root = pathlib.Path(os.environ['REVIEW_TEST_ROOT'])
 prompt = sys.argv[sys.argv.index('--variant') + 2]
 match = re.search(r'using the /(review-[a-z0-9-]+) skill', prompt)
@@ -20,7 +20,16 @@ marker = root / ('call-' + name)
 count = int(marker.read_text()) + 1 if marker.exists() else 1
 marker.write_text(str(count))
 mode = os.environ.get('REVIEW_TEST_MODE', 'clean')
+assert '--auto' not in sys.argv
+policy = json.loads(os.environ['OPENCODE_CONFIG_CONTENT'])['agent']['elwood-review']['permission']
+assert policy['*'] == 'deny' and policy['bash'] == 'deny'
+assert policy['read']['*.env'] == 'deny'
+
 if match:
+    attachment = pathlib.Path(sys.argv[sys.argv.index('-f') + 1])
+    assert attachment.name == 'review.diff' and attachment.exists()
+    assert '+bounded fixture diff' in attachment.read_text()
+    assert 'static review only' in prompt
     if mode == 'all-failed' or (mode == 'missing' and name == 'review-architecture-conventions'):
         print('PRIVATE-REVIEW-TEXT', file=sys.stderr)
         sys.exit(1)
@@ -65,6 +74,7 @@ class RunnerTest(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         shutil.copytree(SOURCE, self.root / 'scripts/review', ignore=shutil.ignore_patterns('tests'))
+        shutil.copy(SOURCE.parents[1] / 'opencode.json', self.root / 'opencode.json')
         for name in LENSES:
             skill = self.root / '.claude/skills' / name
             skill.mkdir(parents=True)
@@ -78,6 +88,10 @@ class RunnerTest(unittest.TestCase):
         self.git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
                  '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-qm', 'baseline')
         self.base = self.git('rev-parse', 'HEAD').strip()
+        (self.root / 'fixture.txt').write_text('bounded fixture diff\n')
+        self.git('add', 'fixture.txt')
+        self.git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+                 '-c', 'commit.gpgsign=false', 'commit', '-qm', 'candidate')
 
     def git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.root), *args], text=True)
@@ -91,8 +105,12 @@ class RunnerTest(unittest.TestCase):
                               env=env, capture_output=True, text=True, timeout=40)
 
     def test_all_eleven_lenses_run_before_clean_synthesis(self):
+        runtime = self.root / 'scripts/review/runtime.sh'
+        with runtime.open('a') as stream:
+            stream.write('\nkill_tree() { echo "$1" >> "$root/cleanup-pids"; }\n')
         result = self.run_review()
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / 'cleanup-pids').exists())
         self.assertEqual(len(list(self.root.glob('call-review-*'))), 11)
         self.assertEqual((self.root / 'call-synthesis').read_text(), '1')
         self.assertIn('Verdict: clean, no notes', (self.root / 'REVIEW.md').read_text())
@@ -162,11 +180,12 @@ class RunnerTest(unittest.TestCase):
         result = self.run_review('malformed')
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('incomplete review coverage', (self.root / 'REVIEW.md').read_text())
+        self.assertIn('category=schema exit=1 elapsed_seconds=', result.stderr)
 
     def test_report_size_limits_never_silently_truncate_evidence(self):
         result = self.run_review('oversize')
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('65536-byte report limit', result.stderr)
+        self.assertIn('category=size', result.stderr)
         self.assertIn('incomplete review coverage', (self.root / 'REVIEW.md').read_text())
         (self.root / 'call-synthesis').unlink()
         result = self.run_review('aggregate')

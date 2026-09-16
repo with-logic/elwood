@@ -1,6 +1,7 @@
 /** Includes only current maintainers and trusted automation in review discussion context. */
 import { writeFile } from "node:fs/promises";
 import { authorPermission } from "./github.mjs";
+import { boundedContext, recentHistory } from "./history.mjs";
 
 export async function trustedDiscussion(github, context, records) {
   const permissions = new Map();
@@ -35,26 +36,33 @@ export async function discussion({ github, context, number, path }) {
   const pull_number = Number(number);
   const [pr, comments, reviews, inline] = await Promise.all([
     github.rest.pulls.get({ ...context.repo, pull_number }),
-    github.paginate(github.rest.issues.listComments, {
+    recentHistory(github.rest.issues.listComments, {
       ...context.repo,
       issue_number: pull_number,
       per_page: 100,
     }),
-    github.paginate(github.rest.pulls.listReviews, { ...context.repo, pull_number, per_page: 100 }),
-    github.paginate(github.rest.pulls.listReviewComments, {
+    recentHistory(github.rest.pulls.listReviews, { ...context.repo, pull_number, per_page: 100 }),
+    recentHistory(github.rest.pulls.listReviewComments, {
       ...context.repo,
       pull_number,
       per_page: 100,
     }),
   ]);
   const records = await trustedDiscussion(github, context, [
-    ...comments.map((record) => ({ ...record, source: "comment" })),
-    ...reviews.map((record) => ({ ...record, source: "review" })),
-    ...inline.map((record) => ({ ...record, source: "inline" })),
+    ...comments.records.map((record) => ({ ...record, source: "comment" })),
+    ...reviews.records.map((record) => ({ ...record, source: "review" })),
+    ...inline.records.map((record) => ({ ...record, source: "inline" })),
   ]);
   records.sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
   await writeFile(
     path,
-    JSON.stringify({ title: pr.data.title, body: pr.data.body, discussion: records }),
+    JSON.stringify(
+      boundedContext(
+        pr.data.title,
+        pr.data.body,
+        records,
+        comments.truncated || reviews.truncated || inline.truncated,
+      ),
+    ),
   );
 }

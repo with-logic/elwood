@@ -27,7 +27,7 @@ Verdict: not ready — incomplete review coverage (blocker)
 
 - Confidence: high
 - Location: the review run itself; see the job log for each lens's error
-- Finding: no report from: ${incomplete}. The findings below come only from the
+- Finding: no usable report from: ${incomplete}. The findings below come only from the
   lenses that ran, so absence of a finding in a missing dimension means nothing
   was looked for, not that nothing is there.
 - If unfixed: the diff merges with one or more review dimensions never applied,

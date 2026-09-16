@@ -8,7 +8,7 @@ export const lenses = readFileSync(new URL("./lenses.txt", import.meta.url), "ut
 const headings = /^ {0,3}#{1,6}[\t ]+(?:\*\*)?(blocker|major|minor|nit)(?:\*\*)?:[^\n]+$/gimu;
 const fields = ["Confidence", "Location", "Finding", "If unfixed", "Fix", "Fix cost"];
 
-export function findings(body) {
+export function findingCounts(body) {
   const matches = [...body.matchAll(headings)];
   if (!matches.length) return null;
   const counts = { blocker: 0, major: 0, minor: 0, nit: 0 };
@@ -21,7 +21,7 @@ export function findings(body) {
 }
 
 export function validLens(body) {
-  return body.trim() === "No findings." || findings(body) !== null;
+  return body.trim() === "No findings." || findingCounts(body) !== null;
 }
 
 export function reportCounts(body) {
@@ -35,7 +35,7 @@ export function reportCounts(body) {
     if (!lenses.includes(lens) || seen.has(lens)) return null;
     seen.add(lens);
     if (content === "No findings.") continue;
-    const counts = findings(content);
+    const counts = findingCounts(content);
     if (!counts) return null;
     for (const severity of Object.keys(totals)) totals[severity] += counts[severity];
   }
@@ -52,7 +52,7 @@ export function reportCounts(body) {
     !entries.every(
       (entry) =>
         lenses.includes(entry[1]) &&
-        /^(?:no findings|completed|\d+ findings?)(?:$|[,;.(\s])/iu.test(entry[2]) &&
+        /^(?:no findings|completed|\d+(?: retained)? findings?)(?:$|[,;.(\s])/iu.test(entry[2]) &&
         !/\b(?:missing|failed|incomplete|timed out)\b/iu.test(entry[2]),
     )
   )

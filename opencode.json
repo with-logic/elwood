@@ -5,8 +5,21 @@
       "description": "Applies one Elwood review lens, or merges reports; scripts/review/run.sh owns the fan-out",
       "mode": "primary",
       "permission": {
-        "edit": "deny",
-        "task": "deny"
+        "*": "deny",
+        "read": {
+          "*": "allow",
+          "*.env": "deny",
+          "*.env.*": "deny",
+          "*.env.example": "allow"
+        },
+        "glob": "allow",
+        "grep": "allow",
+        "skill": "allow",
+        "bash": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "external_directory": "deny",
+        "lsp": "deny"
       }
     }
   },

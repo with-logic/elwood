@@ -4,7 +4,7 @@
 # shellcheck disable=SC2154,SC2034
 
 run_lens() {
-  local lens="$1" attempt=1 started code elapsed
+  local lens="$1" attempt=1 started code elapsed failure_kind
   while :; do
     started=$(date +%s)
     # `code=$?` after an `if` would capture the `if`, not the command, so take
@@ -22,6 +22,8 @@ run_lens() {
     # minutes of a 40-minute deadline and starve synthesis. This is also the
     # bound that keeps a bad-credentials or provider-outage run cheap: those
     # fail in milliseconds, so three attempts cost three instants.
+    case "$code" in 124|137) failure_kind=timeout ;; esac
+    echo "review: phase=lens lens=$lens category=$failure_kind exit=$code elapsed_seconds=$elapsed attempt=$attempt" >&2
     case "$code" in
       124|137)
         # Report the elapsed time, not process_timeout_seconds: the effective cap

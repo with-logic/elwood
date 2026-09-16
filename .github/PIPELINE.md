@@ -24,15 +24,17 @@ on `main` with a PR number.
    review has a 40-minute deadline. Each report is limited to 65,536 bytes;
    synthesis accepts at most 262,144 bytes of reports. Exceeding either limit
    prevents approval, without silently truncating findings. Failure logs contain
-   phase, lens, exit status, and timing metadata rather than raw model output.
+   phase, lens, failure category, exit status, and timing metadata rather than
+   raw model output.
 3. Transfer the report to a separate posting job. That job rechecks eligibility
    and both commit SHAs. A changed head or base discards the result. After posting,
    it checks again and dismisses its own actionable review if the PR changed
    during publication; a failed dismissal fails the job visibly. GitHub offers
    no atomic compare-and-post API.
-4. Submit an approval only when the review job succeeded and its one exact
-   verdict says clean or zero blockers and zero majors. All eleven dimension
-   sections and coverage entries must exist, each finding must have its required
+4. Submit an approval only when the review job succeeded and the report is
+   complete and consistent, with zero blockers and zero majors. Minor-only
+   reports qualify. All eleven dimension sections and coverage entries must exist,
+   each finding must have its required
    fields, and the verdict counts must match the findings. Other completed
    verdicts request changes; partial failed reviews are comments. No report
    means no review. The report remains available as a seven-day run artifact.
@@ -62,6 +64,11 @@ credentials, and does not pass a GitHub token into model processes. A separate
 step fetches PR discussion for context, keeping only current maintainers and
 GitHub's Actions/Dependabot bots, including inline review threads.
 Records retain source, time, URL, and reply identity and are ordered by time.
+Optional discussion context retains at most the last three pages per source
+(up to four requests including page discovery) and 65,536 serialized bytes.
+Older records are omitted whole, with an explicit `truncated` flag. The gate
+still reads complete review history: truncating it could hide a previous approval
+or a failed round.
 Comments and reviews from users without current maintainer permission are
 excluded.
 If this fetch fails, review continues without discussion context.
@@ -69,9 +76,15 @@ Only the final posting job receives
 `pull-requests: write`, and it receives no provider key. There is no public
 comment/mention trigger and no `pull_request_target` execution of PR code.
 
-Maintainers with write access remain trusted to change workflows. Model tool
-permissions are a convenience, not an OS sandbox. These controls exclude public
-contributors; they do not isolate malicious repository administrators.
+Maintainers with write access remain trusted to change workflows. The harness
+precomputes a diff with external diff helpers and text conversion disabled and
+attaches it to each lens. Model processes receive a runtime OpenCode configuration
+that denies tools by default and allows only workspace read, glob, grep, and skill.
+Shell, web fetch/search, external-directory access, LSP, edits, and delegation are
+denied. Environment files remain excluded from reads except `*.env.example`.
+There is no `--auto` tool approval. Models perform static review; required CI owns
+executed checks. These are model tool restrictions, not an OS sandbox.
+These controls exclude public contributors; they do not isolate malicious repository administrators.
 
 ## Local verification
 

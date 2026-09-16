@@ -87,7 +87,7 @@ test("discussion writes the PR and filtered paginated comments and reviews", asy
       listReviewComments: inline,
     };
     github.rest.issues = { listComments: comments };
-    github.paginate = (method, args) => {
+    const response = (method, args) => {
       assert.equal(args.per_page, 100);
       if (method === comments) {
         assert.equal(args.issue_number, 12);
@@ -113,6 +113,9 @@ test("discussion writes the PR and filtered paginated comments and reviews", asy
         },
       ];
     };
+    github.rest.issues.listComments = (args) => ({ data: response(comments, args) });
+    github.rest.pulls.listReviews = (args) => ({ data: response(reviews, args) });
+    github.rest.pulls.listReviewComments = (args) => ({ data: response(inline, args) });
     await discussion({ github, context, number: "12", path });
     const result = JSON.parse(await readFile(path, "utf8"));
     assert.equal(result.title, "A fix");
