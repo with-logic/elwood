@@ -20,7 +20,7 @@ export async function authorPermission(github, context, user) {
       });
       permission = response.data.permission;
     } catch (error) {
-      if (error.status !== 404) throw error;
+      if (typeof error !== "object" || error === null || error.status !== 404) throw error;
     }
   }
   return permission;

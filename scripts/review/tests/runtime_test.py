@@ -27,7 +27,7 @@ class RuntimeTest(unittest.TestCase):
             marker = Path(directory) / 'escaped'
             ready = Path(directory) / 'ready'
             child = ('import pathlib,signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); '
-                     f'pathlib.Path({str(ready)!r}).touch(); time.sleep(2); '
+                     f'pathlib.Path({str(ready)!r}).write_text(str(__import__("os").getpid())); time.sleep(2); '
                      f'pathlib.Path({str(marker)!r}).touch()')
             leader = f'import subprocess,sys,time; subprocess.Popen([sys.executable,"-c",{child!r}]); time.sleep(20)'
             process = subprocess.Popen([sys.executable, str(ROOT / 'scripts/review/capped.py'),
@@ -39,7 +39,15 @@ class RuntimeTest(unittest.TestCase):
                 self.assertTrue(ready.exists())
                 process.send_signal(signal.SIGTERM)
                 self.assertEqual(process.wait(timeout=3), 143)
-                time.sleep(2)
+                child_pid = int(ready.read_text())
+                deadline = time.monotonic() + 3
+                while time.monotonic() < deadline:
+                    state = subprocess.run(['ps', '-p', str(child_pid), '-o', 'stat='],
+                                           capture_output=True, text=True).stdout.strip()
+                    if not state or state.startswith('Z'):
+                        break
+                    time.sleep(.02)
+                self.assertTrue(not state or state.startswith('Z'), 'Descendant is still running')
                 self.assertFalse(marker.exists())
             finally:
                 if process.poll() is None:

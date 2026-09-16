@@ -13,8 +13,8 @@
           "*.env.example": "allow"
         },
         "glob": "allow",
-        "grep": "allow",
-        "skill": "allow",
+        "grep": "deny",
+        "skill": "deny",
         "bash": "deny",
         "webfetch": "deny",
         "websearch": "deny",

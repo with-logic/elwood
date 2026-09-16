@@ -1,7 +1,7 @@
 /** Exercises GitHub author permissions and the narrowly scoped Dependabot exception. */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { currentPr } from "../github.mjs";
+import { authorPermission, currentPr } from "../github.mjs";
 import { eligible } from "../policy.mjs";
 
 function fixture(user = { login: "maintainer", type: "User" }) {
@@ -79,5 +79,24 @@ test("permission API failures propagate rather than granting eligibility", async
     f.state.error = error;
     await assert.rejects(f.read(), (caught) => caught === error);
     assert.equal(f.calls.length, 1);
+  }
+});
+
+test("nullish and primitive permission failures preserve the original rejection", async () => {
+  for (const rejection of [null, undefined, "network unavailable", 0]) {
+    const github = {
+      rest: { repos: { getCollaboratorPermissionLevel: () => Promise.reject(rejection) } },
+    };
+    let caught = Symbol("not caught");
+    try {
+      await authorPermission(
+        github,
+        { repo: { owner: "with-logic", repo: "elwood" } },
+        { login: "writer" },
+      );
+    } catch (error) {
+      caught = error;
+    }
+    assert.equal(caught, rejection);
   }
 });

@@ -10,62 +10,8 @@ import unittest
 SOURCE = Path(__file__).resolve().parents[1]
 LENSES = sorted(p.name for p in (SOURCE.parents[1] / '.claude/skills').glob('review-*'))
 
-STUB = r'''#!/usr/bin/env python3
-import json, os, pathlib, re, subprocess, sys, time
-root = pathlib.Path(os.environ['REVIEW_TEST_ROOT'])
-prompt = sys.argv[sys.argv.index('--variant') + 2]
-match = re.search(r'using the /(review-[a-z0-9-]+) skill', prompt)
-name = match[1] if match else 'synthesis'
-marker = root / ('call-' + name)
-count = int(marker.read_text()) + 1 if marker.exists() else 1
-marker.write_text(str(count))
-mode = os.environ.get('REVIEW_TEST_MODE', 'clean')
-assert '--auto' not in sys.argv
-policy = json.loads(os.environ['OPENCODE_CONFIG_CONTENT'])['agent']['elwood-review']['permission']
-assert policy['*'] == 'deny' and policy['bash'] == 'deny'
-assert policy['read']['*.env'] == 'deny'
+from runner_stub import STUB
 
-if match:
-    attachment = pathlib.Path(sys.argv[sys.argv.index('-f') + 1])
-    assert attachment.name == 'review.diff' and attachment.exists()
-    assert '+bounded fixture diff' in attachment.read_text()
-    assert 'static review only' in prompt
-    if mode == 'all-failed' or (mode == 'missing' and name == 'review-architecture-conventions'):
-        print('PRIVATE-REVIEW-TEXT', file=sys.stderr)
-        sys.exit(1)
-    if mode == 'timeout' and name == 'review-architecture-conventions':
-        subprocess.Popen([sys.executable, '-c',
-            'import pathlib,time; time.sleep(6); pathlib.Path(' + repr(str(root / 'orphan')) + ').touch()'])
-        time.sleep(20)
-    if mode == 'retry' and count == 1:
-        sys.exit(1)
-    if mode == 'malformed' and name == 'review-security':
-        print('The lens stopped before finishing.')
-    elif mode in ['finding', 'oversize', 'aggregate'] and (mode == 'aggregate' or name == 'review-security'):
-        if mode in ['oversize', 'aggregate']: print('X' * (70000 if mode == 'oversize' else 30000))
-        print('#### major: Propagated finding\n- Confidence: high\n- Location: fixture:1\n- Finding: It fails.\n- If unfixed: Failure persists.\n- Fix: Fix it.\n- Fix cost: One line.')
-    else:
-        print('No findings.')
-    (root / ('done-' + name)).touch()
-else:
-    attachments = [pathlib.Path(sys.argv[i + 1]) for i, arg in enumerate(sys.argv) if arg == '-f']
-    assert attachments
-    if mode in ['clean', 'finding', 'retry']: assert len(attachments) == 11
-    reports = {}
-    for path in attachments:
-        assert (root / ('done-' + path.stem)).exists(), 'Synthesis ran before lens finished'
-        reports[path.stem] = path.read_text()
-    print('# Review')
-    if mode != 'no-verdict':
-        print('Verdict: not ready - 0 blocker(s), 1 major(s), 0 minor(s), 0 nit(s)'
-              if mode == 'finding' else 'Verdict: clean, no notes')
-    print('\n## Findings By Dimension')
-    for name, report in reports.items():
-        print('\n### ' + name + '\n\n' + report)
-    print('\n## Reviewer Coverage')
-    for name in reports:
-        print('- ' + name + ': completed')
-'''
 
 
 class RunnerTest(unittest.TestCase):
@@ -83,7 +29,8 @@ class RunnerTest(unittest.TestCase):
         self.bin.mkdir()
         (self.bin / 'opencode').write_text(STUB)
         (self.bin / 'opencode').chmod(0o755)
-        (self.bin / 'rg').symlink_to('/usr/bin/true')
+        (self.bin / 'rg').write_text('#!/bin/sh\nexit 0\n')
+        (self.bin / 'rg').chmod(0o755)
         self.git('init', '-q')
         self.git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
                  '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-qm', 'baseline')
@@ -96,9 +43,9 @@ class RunnerTest(unittest.TestCase):
     def git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.root), *args], text=True)
 
-    def run_review(self, mode='clean', base=None):
+    def run_review(self, mode='clean', base=None, api_key='fixture-not-a-key'):
         env = {**os.environ, 'PATH': f'{self.bin}:{os.environ["PATH"]}',
-               'OPENAI_API_KEY': 'fixture-not-a-key', 'REVIEW_TEST_ROOT': str(self.root),
+               'OPENAI_API_KEY': api_key, 'REVIEW_TEST_ROOT': str(self.root),
                'REVIEW_TEST_MODE': mode, 'ELWOOD_REVIEW_LENS_ATTEMPTS': '2',
                'ELWOOD_REVIEW_PROCESS_TIMEOUT_SECONDS': '3' if mode == 'timeout' else '10', 'ELWOOD_REVIEW_DEADLINE_SECONDS': '30'}
         return subprocess.run(['bash', str(self.root / 'scripts/review/run.sh'), base or self.base],
@@ -141,7 +88,9 @@ class RunnerTest(unittest.TestCase):
         self.assertIn('Verdict: not ready', (self.root / 'REVIEW.md').read_text())
 
     def test_invalid_base_never_calls_the_model(self):
+        (self.root / 'REVIEW.md').write_text('STALE CLEAN REVIEW')
         result = self.run_review(base='does-not-exist')
+        self.assertFalse((self.root / 'REVIEW.md').exists())
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('does not resolve', result.stderr)
         self.assertEqual(list(self.root.glob('call-*')), [])
@@ -192,6 +141,29 @@ class RunnerTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('262144-byte synthesis budget', result.stderr)
         self.assertFalse((self.root / 'call-synthesis').exists())
+
+    def test_missing_key_invalidates_stale_report_before_preflight(self):
+        (self.root / 'REVIEW.md').write_text('STALE CLEAN REVIEW')
+        result = self.run_review(api_key='')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.root / 'REVIEW.md').exists())
+        self.assertFalse(list(self.root.glob('call-*')))
+
+    def test_large_diff_fails_before_any_model_process(self):
+        (self.root / 'fixture.txt').write_text('x' * 270000)
+        self.git('add', 'fixture.txt')
+        self.git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+                 '-c', 'commit.gpgsign=false', 'commit', '-qm', 'large diff')
+        result = self.run_review()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('diff exceeds the 262144-byte input budget', result.stderr)
+        self.assertFalse(list(self.root.glob('call-*')))
+
+    def test_synthesis_failure_has_bounded_phase_category_and_timing(self):
+        result = self.run_review('synth-failed')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('phase=synthesis category=process exit=2 elapsed_seconds=', result.stderr)
+        self.assertNotIn('PRIVATE-SYNTHESIS-TEXT', result.stderr)
 
 
 if __name__ == '__main__':

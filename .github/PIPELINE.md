@@ -20,7 +20,7 @@ on `main` with a PR number.
    then synthesize their findings into `REVIEW.md`. The named roster in
    `scripts/review/lenses.txt` must match the eleven skill directories exactly;
    missing or failed reports prevent approval. Empty failures
-   retry at most three times; each process has a 15-minute cap and the whole
+   are attempted at most three times; each process has a 15-minute cap and the whole
    review has a 40-minute deadline. Each report is limited to 65,536 bytes;
    synthesis accepts at most 262,144 bytes of reports. Exceeding either limit
    prevents approval, without silently truncating findings. Failure logs contain
@@ -44,8 +44,8 @@ database/persistence, error handling, naming, observability, performance,
 security, testing, and type safety. Elwood's database lens covers its filesystem
 state, atomic updates, schema validation, and resume guarantees.
 
-A current-commit automated approval skips duplicate work. Approvals dismissed
-after a new push do not count as failed rounds. Four non-approving
+A current-commit automated approval skips duplicate work. Dismissed approving automated reports do not count as failed rounds, whether
+dismissed after a push or manually. Four non-approving
 rounds stop automation with a failed eligibility check and require a maintainer
 review. Reviews never merge PRs or bypass the required CI checks, signed commits,
 or branch protections. Approval requirements remain enabled.
@@ -77,11 +77,14 @@ Only the final posting job receives
 comment/mention trigger and no `pull_request_target` execution of PR code.
 
 Maintainers with write access remain trusted to change workflows. The harness
-precomputes a diff with external diff helpers and text conversion disabled and
-attaches it to each lens. Model processes receive a runtime OpenCode configuration
-that denies tools by default and allows only workspace read, glob, grep, and skill.
-Shell, web fetch/search, external-directory access, LSP, edits, and delegation are
-denied. Environment files remain excluded from reads except `*.env.example`.
+precomputes a diff with external diff helpers and text conversion disabled,
+rejects diffs above 262,144 bytes without truncation, and attaches it to each lens.
+Before model execution, a non-following workspace walk rejects symlinks that
+resolve outside the workspace or to environment files, including directory
+aliases; unresolved links and loops are rejected. Model processes receive a runtime OpenCode configuration
+that denies tools by default and allows only workspace read and glob.
+Grep, skill execution, shell, web fetch/search, external-directory access, LSP,
+edits, and delegation are denied. Lens instructions are read directly as files. Environment files remain excluded from reads except `*.env.example`.
 There is no `--auto` tool approval. Models perform static review; required CI owns
 executed checks. These are model tool restrictions, not an OS sandbox.
 These controls exclude public contributors; they do not isolate malicious repository administrators.

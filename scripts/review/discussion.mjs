@@ -1,7 +1,8 @@
 /** Includes only current maintainers and trusted automation in review discussion context. */
-import { writeFile } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { authorPermission } from "./github.mjs";
 import { boundedContext, recentHistory } from "./history.mjs";
+import { publishDiscussion } from "./publish-discussion.mjs";
 
 export async function trustedDiscussion(github, context, records) {
   const permissions = new Map();
@@ -33,6 +34,7 @@ export async function trustedDiscussion(github, context, records) {
 }
 
 export async function discussion({ github, context, number, path }) {
+  await rm(path, { force: true });
   const pull_number = Number(number);
   const [pr, comments, reviews, inline] = await Promise.all([
     github.rest.pulls.get({ ...context.repo, pull_number }),
@@ -54,7 +56,7 @@ export async function discussion({ github, context, number, path }) {
     ...inline.records.map((record) => ({ ...record, source: "inline" })),
   ]);
   records.sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
-  await writeFile(
+  await publishDiscussion(
     path,
     JSON.stringify(
       boundedContext(
