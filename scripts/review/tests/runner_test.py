@@ -58,11 +58,23 @@ class RunnerTest(unittest.TestCase):
             stream.write('\nkill_tree() { echo "$1" >> "$root/cleanup-pids"; }\n')
         result = self.run_review()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('discussion context attached to all lenses and synthesis', result.stderr)
+        self.assertIn('discussion context supplied to all lenses and synthesis', result.stderr)
         self.assertFalse((self.root / 'cleanup-pids').exists())
         self.assertEqual(len(list(self.root.glob('call-review-*'))), 11)
         self.assertEqual((self.root / 'call-synthesis').read_text(), '1')
         self.assertIn('Verdict: clean, no notes', (self.root / 'REVIEW.md').read_text())
+
+    def test_large_single_line_evidence_reaches_every_model_call_without_truncation(self):
+        (self.root / 'fixture.txt').write_text('bounded fixture diff ' + 'D' * 60000 + 'DIFF_LAST_CANARY\n')
+        self.git('add', 'fixture.txt')
+        self.git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+                 '-c', 'commit.gpgsign=false', 'commit', '-qm', 'large bounded evidence')
+        (self.root / 'scripts/review/discussion.txt').write_text(
+            'TRUSTED_PR_CONTEXT ' + 'C' * 60000 + 'CONTEXT_LAST_CANARY')
+        result = self.run_review('large-input')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('REPORT_LAST_CANARY', (self.root / 'REVIEW.md').read_text())
+        self.assertEqual(len(list(self.root.glob('call-*'))), 12)
 
     def test_missing_lens_cannot_approve_even_when_synthesis_says_clean(self):
         result = self.run_review('missing')
@@ -122,7 +134,7 @@ class RunnerTest(unittest.TestCase):
         time.sleep(4)
         self.assertFalse((self.root / 'orphan').exists())
 
-    def test_findings_reach_synthesis_in_their_attachments(self):
+    def test_findings_reach_synthesis_in_full(self):
         result = self.run_review('finding')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('discussion context unavailable', result.stderr)
@@ -160,6 +172,13 @@ class RunnerTest(unittest.TestCase):
         result = self.run_review()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('diff exceeds the 262144-byte input budget', result.stderr)
+        self.assertFalse(list(self.root.glob('call-*')))
+
+    def test_oversized_context_fails_before_any_model_process(self):
+        (self.root / 'scripts/review/discussion.txt').write_text('C' * 65537)
+        result = self.run_review()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('discussion exceeds the 65536-byte context budget', result.stderr)
         self.assertFalse(list(self.root.glob('call-*')))
 
     def test_synthesis_failure_has_bounded_phase_category_and_timing(self):

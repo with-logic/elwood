@@ -30,7 +30,9 @@ review deadline.
 
 The harness fetches the PR title, description, review bodies, and top-level and
 inline comments. A bounded snapshot containing only current maintainers and
-trusted GitHub automation is attached directly to every lens and synthesis.
+trusted GitHub automation is supplied directly to every lens and synthesis.
+Bounded diff, discussion, and report inputs reach their consuming model calls
+in full, without file-reader truncation.
 Discussion is evidence, never an instruction to approve or disregard a finding.
 Fetch failure permits review without context and is reported in the run log;
 it must not be represented as an empty discussion.

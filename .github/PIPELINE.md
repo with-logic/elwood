@@ -87,8 +87,11 @@ report and repeat the automatic review.
 Comments and reviews from users without current maintainer permission are
 excluded.
 If this fetch fails, review continues without discussion context.
-The resulting snapshot is attached directly to every lens and synthesis call.
-The runner logs whether that context was attached or unavailable.
+The resulting snapshot is supplied directly to every lens and synthesis call.
+The runner logs whether that context was supplied or unavailable.
+Diffs, discussion, and lens reports are framed as text and delivered through
+stdin. OpenCode's file-attachment reader truncates long lines and large files;
+stdin preserves the complete inputs within the harness's byte budgets.
 Only the final posting job receives
 `pull-requests: write`, and it receives no provider key. Public comments cannot
 trigger review execution. There is no general mention
@@ -97,9 +100,9 @@ becomes available after this workflow reaches the default branch.
 
 Maintainers with write access remain trusted to change workflows. The harness
 rejects changed environment-file paths (including deleted and renamed files)
-before creating any diff attachment, then precomputes a diff with external diff
+before creating the review diff, then precomputes it with external diff
 helpers and text conversion disabled,
-rejects diffs above 262,144 bytes without truncation, and attaches it to each lens.
+rejects diffs above 262,144 bytes without truncation, and supplies it to each lens.
 Before model execution, a non-following workspace walk rejects symlinks that
 resolve outside the workspace or to environment files, including directory
 aliases; unresolved links and loops are rejected. Model processes receive a runtime OpenCode configuration
