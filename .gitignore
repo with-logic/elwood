@@ -9,7 +9,11 @@ coverage/
 .tmp-elwood-*
 
 # Local AI assistant runtime files and planning scratchpads.
-.claude/
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/review/
+!.claude/skills/review-*/
 tickets/
 
 # This repository is spec-first; the specification must be tracked even if a
@@ -23,6 +27,8 @@ tickets/
 REVIEW.md
 .worktrees/
 VALIDATION.md
+scripts/review/discussion.txt
+scripts/review/**/__pycache__/
 
 # Site: generated animation masters and internal review media live outside the
 # repository. `site/assets/game/` (the runtime sprite sheets) IS committed.
@@ -30,3 +36,6 @@ site/assets/production/
 site/docs/reviews/
 site/**/__pycache__/
 site/assets/frame.png
+
+# Cached CI reviewer binaries.
+.review-tools/
