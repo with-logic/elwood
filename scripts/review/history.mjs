@@ -1,4 +1,4 @@
-/** Bounds optional review context while keeping recent records; gate decisions use full history. */
+/** Bounds optional review context while keeping recent records; gate decisions use full history. Implements PRD §16. */
 export async function recentHistory(method, args) {
   const first = await method({ ...args, per_page: 100, page: 1 });
   const lastLink = (first.headers?.link ?? "").split(",").find((link) => /rel="last"/u.test(link));

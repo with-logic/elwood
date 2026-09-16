@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Normalizes the report verdict and rejects ambiguous clean output. See .github/PIPELINE.md.
+# Normalizes the report verdict and rejects ambiguous clean output. Implements PRD §16; see .github/PIPELINE.md.
 # Sourced by run.sh; variables are shared with the other review helpers.
 # shellcheck disable=SC2154,SC2034
 

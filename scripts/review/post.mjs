@@ -1,9 +1,19 @@
-/** Posts complete verdicts or incomplete-review comments against the reviewed commit. */
+/** Posts exact-commit verdicts while preserving existing approval; implements PRD §16. */
 import { readFile } from "node:fs/promises";
 import { currentPr } from "./github.mjs";
 import { eligible, verdict } from "./policy.mjs";
 
-export async function post({ github, context, core, number, head, base, complete, reportPath }) {
+export async function post({
+  github,
+  context,
+  core,
+  number,
+  head,
+  base,
+  complete,
+  reportPath,
+  runUrl,
+}) {
   const { pr, permission } = await currentPr(github, context, Number(number));
   const repository = `${context.repo.owner}/${context.repo.repo}`;
   if (!eligible(pr, repository, permission) || pr.head.sha !== head || pr.base.sha !== base) {
@@ -12,9 +22,21 @@ export async function post({ github, context, core, number, head, base, complete
   }
   const report = await readFile(reportPath, "utf8");
   if (!report.trim()) throw new Error("No review report was produced");
-  const event = verdict(report, complete);
+  let event = verdict(report, complete);
+  if (event === "REQUEST_CHANGES") {
+    const result = await github.graphql(
+      `query($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
+          pullRequest(number: $number) { reviewDecision }
+        }
+      }`,
+      { ...context.repo, number: pr.number },
+    );
+    if (result.repository.pullRequest.reviewDecision === "APPROVED") event = "COMMENT";
+  }
   // GitHub limits review bodies to 65,536 characters. Truncation could hide findings.
-  const body = `<!-- elwood:review -->\nReviewed commit: ${head}\n\n${report}`;
+  const footer = runUrl ? `\n\n[Review run](${runUrl}) · Rerun: \`/elwood review\`.\n` : "";
+  const body = `<!-- elwood:review -->\nReviewed commit: ${head}\n\n${report}${footer}`;
   if (body.length > 65_000)
     throw new Error("Review exceeds GitHub's body limit; inspect the artifact");
   const { data: submitted } = await github.rest.pulls.createReview({

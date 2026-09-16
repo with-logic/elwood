@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bound one review process and its descendants; see .github/PIPELINE.md."""
+"""Bound one review process and its descendants; implements PRD §16; see .github/PIPELINE.md."""
 import os
 import signal
 import subprocess

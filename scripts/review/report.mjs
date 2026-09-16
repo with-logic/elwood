@@ -1,4 +1,4 @@
-/** Checks review evidence against the Markdown contract in .claude/skills/review/SKILL.md. */
+/** Checks review evidence against the Markdown contract in .claude/skills/review/SKILL.md. Implements PRD §16. */
 import { readFileSync, realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 

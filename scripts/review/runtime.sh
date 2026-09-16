@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bounds the review processes, validates the diff base, and cleans up on cancellation. See .github/PIPELINE.md.
+# Bounds the review processes, validates the diff base, and cleans up on cancellation. Implements PRD §16; see .github/PIPELINE.md.
 # Sourced by run.sh; variables are shared with the other review helpers.
 # shellcheck disable=SC2154,SC2034
 

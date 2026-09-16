@@ -1,7 +1,7 @@
 /** Exercises GitHub author permissions and the narrowly scoped Dependabot exception. */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { authorPermission, currentPr } from "../github.mjs";
+import { currentPr, effectiveUserPermission } from "../github.mjs";
 import { eligible } from "../policy.mjs";
 
 function fixture(user = { login: "maintainer", type: "User" }) {
@@ -89,7 +89,7 @@ test("nullish and primitive permission failures preserve the original rejection"
     };
     let caught = Symbol("not caught");
     try {
-      await authorPermission(
+      await effectiveUserPermission(
         github,
         { repo: { owner: "with-logic", repo: "elwood" } },
         { login: "writer" },

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Retries empty failed lens reports within the shared review deadline. See .github/PIPELINE.md.
+# Retries empty failed lens reports within the shared review deadline. Implements PRD §16; see .github/PIPELINE.md.
 # Sourced by run.sh; variables are shared with the other review helpers.
 # shellcheck disable=SC2154,SC2034
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject symlinks that bypass review file permissions; see .github/PIPELINE.md."""
+"""Reject symlinks that bypass review file permissions; implements PRD §16; see .github/PIPELINE.md."""
 import fnmatch
 import json
 import os

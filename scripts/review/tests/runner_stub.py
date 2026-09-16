@@ -1,6 +1,21 @@
 """Deterministic OpenCode substitute for real runner-process tests."""
 STUB = r'''#!/usr/bin/env python3
-import json, os, pathlib, re, subprocess, sys, time
+import atexit, io, json, os, pathlib, re, subprocess, sys, time
+original_stdout = sys.stdout
+sys.stdout = io.StringIO()
+def emit_events():
+    text = sys.stdout.getvalue()
+    sys.stdout = original_stdout
+    def event(kind, message, **part):
+        print(json.dumps({'type': kind, 'part': {'messageID': message, **part}}))
+    event('step_start', 'progress')
+    event('text', 'progress', text='Inspecting the code first.')
+    event('tool_use', 'progress', state={'output': 'PRIVATE TOOL OUTPUT'})
+    event('step_finish', 'progress', reason='tool-calls')
+    event('step_start', 'answer')
+    event('text', 'answer', text=text)
+    event('step_finish', 'answer', reason='stop')
+atexit.register(emit_events)
 root = pathlib.Path(os.environ['REVIEW_TEST_ROOT'])
 prompt = sys.argv[sys.argv.index('--variant') + 2]
 match = re.search(r'using the /(review-[a-z0-9-]+) skill', prompt)
@@ -10,6 +25,7 @@ count = int(marker.read_text()) + 1 if marker.exists() else 1
 marker.write_text(str(count))
 mode = os.environ.get('REVIEW_TEST_MODE', 'clean')
 assert '--auto' not in sys.argv
+assert sys.argv[sys.argv.index('--format') + 1] == 'json'
 policy = json.loads(os.environ['OPENCODE_CONFIG_CONTENT'])['agent']['elwood-review']['permission']
 assert policy['*'] == 'deny' and policy['bash'] == 'deny'
 assert policy['read']['*.env'] == 'deny'

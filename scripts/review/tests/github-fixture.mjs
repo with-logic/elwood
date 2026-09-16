@@ -18,6 +18,9 @@ export function fixture() {
   };
   const state = { permission: "write", reviews: [] };
   const github = {
+    graphql() {
+      return { repository: { pullRequest: { reviewDecision: "REVIEW_REQUIRED" } } };
+    },
     rest: {
       pulls: {
         get() {

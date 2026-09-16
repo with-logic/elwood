@@ -1,4 +1,4 @@
-/** Publishes optional discussion atomically; failed writes leave no partial context. */
+/** Publishes optional discussion atomically; failed writes leave no partial context. Implements PRD §16. */
 import { randomUUID } from "node:crypto";
 import { rename, rm, writeFile } from "node:fs/promises";
 

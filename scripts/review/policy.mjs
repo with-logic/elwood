@@ -1,4 +1,4 @@
-/** Maintainer-only eligibility and deterministic verdicts for the PR review workflow. */
+/** Maintainer-only eligibility and deterministic verdicts for the PR review workflow. Implements PRD §16. */
 import { reportCounts } from "./report.mjs";
 
 export function eligible(pr, repository, permission) {
@@ -15,13 +15,16 @@ export function verdict(body, complete) {
   if (!complete) return "COMMENT";
   const actual = reportCounts(body);
   if (!actual || actual.blocker || actual.major) return "REQUEST_CHANGES";
+  const reportLines = body.split(/\r?\n/u);
+  if (reportLines[0] !== "# Review" || !/^Verdict:/u.test(reportLines[1] ?? ""))
+    return "REQUEST_CHANGES";
   const lines = body.split(/\r?\n/u).filter((line) => /^verdict:/iu.test(line));
   if (lines.length !== 1) return "REQUEST_CHANGES";
   if (/^Verdict: clean, no notes$/iu.test(lines[0])) {
     return actual.minor === 0 && actual.nit === 0 ? "APPROVE" : "REQUEST_CHANGES";
   }
   const counts =
-    /^Verdict: not ready [-—] (\d+) blocker\(s\), (\d+) major\(s\), (\d+) minor\(s\), (\d+) nit\(s\)$/iu.exec(
+    /^Verdict: (?:ready|not ready) [-—] (\d+) blocker\(s\), (\d+) major\(s\), (\d+) minor\(s\), (\d+) nit\(s\)$/iu.exec(
       lines[0],
     );
   return counts &&

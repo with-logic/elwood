@@ -1,6 +1,6 @@
-/** Includes only current maintainers and trusted automation in review discussion context. */
+/** Includes only current maintainers and trusted automation in review discussion context. Implements PRD §16. */
 import { rm } from "node:fs/promises";
-import { authorPermission } from "./github.mjs";
+import { effectiveUserPermission } from "./github.mjs";
 import { boundedContext, recentHistory } from "./history.mjs";
 import { publishDiscussion } from "./publish-discussion.mjs";
 
@@ -16,7 +16,7 @@ export async function trustedDiscussion(github, context, records) {
     if (!(automation || ["OWNER", "MEMBER", "COLLABORATOR"].includes(record.author_association)))
       continue;
     if (!(automation || permissions.has(user.login))) {
-      permissions.set(user.login, await authorPermission(github, context, user));
+      permissions.set(user.login, await effectiveUserPermission(github, context, user));
     }
     if (automation || ["write", "maintain", "admin"].includes(permissions.get(user.login))) {
       trusted.push({

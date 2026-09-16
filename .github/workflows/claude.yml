@@ -34,7 +34,7 @@ jobs:
       head: ${{ steps.gate.outputs.head }}
       base: ${{ steps.gate.outputs.base }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
@@ -47,103 +47,21 @@ jobs:
             await gate({ github, context, core, number: process.env.PR_NUMBER });
 
   review:
-    name: Eleven review lenses
+    name: Review and publish
     needs: gate
     if: needs.gate.outputs.should == 'true'
-    # Untrusted comments must pass the gate before they can cancel a review.
+    # Authorization precedes cancellation; this lock spans review AND publication.
     concurrency:
       group: ai-review-${{ needs.gate.outputs.number }}
       cancel-in-progress: true
-    runs-on: ubuntu-latest
-    timeout-minutes: 50
-    permissions:
-      contents: read
-      pull-requests: read
-    env:
-      REVIEW_TOOLS: ${{ github.workspace }}/.review-tools
-    outputs:
-      artifact: ${{ steps.report.outputs.artifact-id }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.head }}
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-      - name: Cache pinned reviewer tools
-        id: tools
-        continue-on-error: true
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: ${{ env.REVIEW_TOOLS }}
-          key: elwood-review-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/review/install.sh') }}
-      - name: Install reviewer tools
-        if: steps.tools.outputs.cache-hit != 'true'
-        timeout-minutes: 5
-        run: bash scripts/review/install.sh
-      - name: Verify reviewer tools and expose PATH
-        run: |
-          test -x "$REVIEW_TOOLS/lib/node_modules/opencode-ai/bin/opencode.exe"
-          test -x "$REVIEW_TOOLS/bin/rg"
-          echo "$REVIEW_TOOLS/bin" >> "$GITHUB_PATH"
-      - name: Read prior discussion
-        timeout-minutes: 2
-        continue-on-error: true
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        env:
-          PR_NUMBER: ${{ needs.gate.outputs.number }}
-        with:
-          script: |
-            const { discussion } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/review/discussion.mjs`);
-            await discussion({ github, context, number: process.env.PR_NUMBER,
-              path: `${process.env.GITHUB_WORKSPACE}/scripts/review/discussion.txt` });
-      - name: Run eleven lenses and synthesize
-        timeout-minutes: 42
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ELWOOD_REVIEW_BASE: ${{ needs.gate.outputs.base }}
-        run: bash scripts/review/run.sh
-      - name: Preserve the review report
-        id: report
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: review-${{ needs.gate.outputs.head }}
-          path: REVIEW.md
-          if-no-files-found: error
-          retention-days: 7
-
-  publish:
-    name: Post review and decide
-    needs: [gate, review]
-    if: ${{ !cancelled() && needs.gate.outputs.should == 'true' && needs.review.outputs.artifact != '' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
     permissions:
       contents: read
       actions: read
       pull-requests: write
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.gate.outputs.head }}
-          persist-credentials: false
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
-        with:
-          name: review-${{ needs.gate.outputs.head }}
-          path: review-artifact
-      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        env:
-          PR_NUMBER: ${{ needs.gate.outputs.number }}
-          REVIEW_HEAD: ${{ needs.gate.outputs.head }}
-          REVIEW_BASE: ${{ needs.gate.outputs.base }}
-          REVIEW_COMPLETE: ${{ needs.review.result == 'success' }}
-        with:
-          script: |
-            const { post } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/review/post.mjs`);
-            await post({ github, context, core,
-              number: process.env.PR_NUMBER, head: process.env.REVIEW_HEAD,
-              base: process.env.REVIEW_BASE, complete: process.env.REVIEW_COMPLETE === 'true',
-              reportPath: `${process.env.GITHUB_WORKSPACE}/review-artifact/REVIEW.md` });
+    uses: ./.github/workflows/review-run.yml
+    with:
+      number: ${{ needs.gate.outputs.number }}
+      head: ${{ needs.gate.outputs.head }}
+      base: ${{ needs.gate.outputs.base }}
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

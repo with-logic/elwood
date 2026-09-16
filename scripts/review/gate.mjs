@@ -1,5 +1,5 @@
 /** Authorizes one automatic review and explicit maintainer reruns; implements PRD §16. */
-import { authorPermission, currentPr } from "./github.mjs";
+import { currentPr, effectiveUserPermission } from "./github.mjs";
 import { eligible } from "./policy.mjs";
 
 async function requested(github, context) {
@@ -20,7 +20,7 @@ async function requested(github, context) {
   // The Dependabot exception applies to PR authors, never command requesters.
   return (
     user?.type === "User" &&
-    ["write", "maintain", "admin"].includes(await authorPermission(github, context, user))
+    ["write", "maintain", "admin"].includes(await effectiveUserPermission(github, context, user))
   );
 }
 

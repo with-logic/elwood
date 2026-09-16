@@ -178,7 +178,7 @@ invent exemptions or claim the runtime coverage gate covers those files.
 A missing test still deserves a specific finding, without inflated severity.
 
 Refusing to inflate is not leniency. The verdict gates auto-approval: every
-inflated blocker spends a review round and trains the reader to skim past
+inflated blocker needlessly requests changes and trains the reader to skim past
 severities. Reserve the top two grades for what actually deserves to stop a
 merge, and the reader will trust them when they appear.
 
@@ -215,8 +215,7 @@ Use this structure:
 
 ```markdown
 # Review
-
-Verdict: <clean, no notes | ready with N minor(s), N nit(s) | not ready — N blocker(s), N major(s) | incomplete — missing lens/check evidence>
+Verdict: <clean, no notes | ready - 0 blocker(s), 0 major(s), N minor(s), N nit(s) | not ready - N blocker(s), N major(s), N minor(s), N nit(s)>
 
 ## Findings By Dimension
 
@@ -246,6 +245,10 @@ Verdict: <clean, no notes | ready with N minor(s), N nit(s) | not ready — N bl
 
 - <only include if relevant: missing reviewer responses, assumptions about the diff>
 ```
+
+The heading and verdict are the first and second lines, with no preamble or
+blank line between them. Use `ready` for minor/nit-only findings. Write heading
+and coverage names as plain text, without backticks or bold markup.
 
 `REVIEW.md` must include one `### review-<dimension>` section for every dimension, in the same order as the table in step 2. If a dimension produced no findings, write `No findings.` under that dimension. When one issue was found by multiple dimensions, place it under the dimension with the strongest explanation and list the other dimensions in `Also flagged by`.
 

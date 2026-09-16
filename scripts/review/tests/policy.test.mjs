@@ -36,6 +36,7 @@ test("approval requires complete consistent evidence and a successful review run
   for (const body of [
     clean,
     minor,
+    minor.replace("Verdict: not ready", "Verdict: ready"),
     minor.replace(
       "review-clarity: completed",
       "review-clarity: 1 retained finding; shared findings deduplicated",
@@ -56,6 +57,9 @@ test("approval requires complete consistent evidence and a successful review run
     clean.replace("- review-security: completed", "- review-security: missing"),
     `${clean}- review-security: completed\n`,
     clean.replace("No findings.", "I did not finish"),
+    `${clean.replace("Verdict: clean, no notes\n", "")}\nVerdict: clean, no notes\n`,
+    `${clean.replace("Verdict: clean, no notes\n", "")}\n\`\`\`\nVerdict: clean, no notes\n\`\`\`\n`,
+    clean.replace("# Review", "# Wrong report"),
     `${clean}\nVerdict: clean, no notes`,
     clean + findingFixture("blocker"),
     findingFixture("major") + clean,

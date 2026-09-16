@@ -8,8 +8,8 @@ PRs. Issues remain available for feedback; security reports follow `SECURITY.md`
 ## Review pipeline
 
 `workflows/claude.yml` replaces the former Claude Action with Slog's eleven-lens
-OpenCode review approach. The workflow runs automatically on PR creation or
-transition out of draft,
+OpenCode review approach, compared with Slog `origin/main` at `432a10c`.
+The workflow runs automatically on PR creation or transition out of draft,
 only until its first automated report. Pushes do not trigger another review.
 To review again, a maintainer posts exactly `/elwood review` as a new PR comment
 or dispatches **AI Review** with a PR number. Both explicit paths are repeatable
@@ -21,11 +21,13 @@ maintainers may select their same-repository workflow branch for validation.
    on same-repository branches. Public associations such as MEMBER do not grant
    eligibility. Forks are excluded.
 2. Run all eleven vendored `review-*` skills as independent OpenCode processes,
-   then synthesize their findings into `REVIEW.md`. The named roster in
+   then synthesize their findings into `REVIEW.md`. OpenCode emits structured
+   events; only the final completed assistant answer enters report validation,
+   keeping progress narration out of the evidence. The named roster in
    `scripts/review/lenses.txt` must match the eleven skill directories exactly;
    missing or failed reports prevent approval. Empty failures
-   are attempted at most three times; each process has a 15-minute cap and the whole
-   review has a 40-minute deadline. Each report is limited to 65,536 bytes;
+   are attempted at most three times; each process has a 25-minute CI cap
+   (15 minutes for local defaults), with a 40-minute overall review deadline. Each report is limited to 65,536 bytes;
    synthesis accepts at most 262,144 bytes of reports. Exceeding either limit
    prevents approval, without silently truncating findings. Failure logs contain
    phase, lens, failure category, exit status, and timing metadata rather than
@@ -37,11 +39,16 @@ maintainers may select their same-repository workflow branch for validation.
    no atomic compare-and-post API.
 4. Submit an approval only when the review job succeeded and the report is
    complete and consistent, with zero blockers and zero majors. Minor-only
-   reports qualify. All eleven dimension sections and coverage entries must exist,
+   reports qualify and use a `ready` verdict. All eleven dimension sections and coverage entries must exist,
    each finding must have its required
-   fields, and the verdict counts must match the findings. Other completed
-   verdicts request changes; partial failed reviews are comments. No report
-   means no review. The report remains available as a seven-day run artifact.
+   fields, and the verdict counts must match the findings. The canonical verdict
+   must be the second line, immediately after `# Review`. Other completed
+   verdicts request changes unless the PR is already approved at publication;
+   in that case, findings are comments that preserve the approval. Partial failed
+   reviews are comments. No report means no review. Reports include the run link
+   and `/elwood review` command. Failed or canceled
+   authorized runs publish a notice if the reviewed PR is still current and
+   eligible. The report remains available as a seven-day run artifact.
 
 There are eleven dimensions: architecture/conventions, clarity, concurrency,
 database/persistence, error handling, naming, observability, performance,
@@ -51,8 +58,10 @@ state, atomic updates, schema validation, and resume guarantees.
 Explicit requests verify the requester's current write, maintain, or admin
 permission separately from the PR author's eligibility. Bot comments, public
 comments, edited comments, issue comments, and embedded commands do not qualify.
-Review concurrency starts only after authorization, so rejected comments cannot
-cancel an active review. A newer authorized request may replace an active run.
+The authorized caller holds one concurrency group across the reusable
+`review-run.yml` workflow, covering both model execution and publication.
+Rejected comments cannot cancel an active review. A newer authorized request
+may replace an active run, including its publisher.
 Reviews never merge PRs or bypass required CI, signed commits, or branch
 protections. Approval requirements remain enabled.
 

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Publishes REVIEW.md atomically, marking incomplete coverage as non-approving. See .github/PIPELINE.md.
+# Publishes REVIEW.md atomically, marking incomplete coverage as non-approving. Implements PRD §16; see .github/PIPELINE.md.
 # Sourced by run.sh; variables are shared with the other review helpers.
 # shellcheck disable=SC2154,SC2034
 
 final="$tmp/REVIEW.final.md"
 : > "$final"
 if [ -n "$incomplete" ]; then
-  # Case-insensitive, matching the gate's `grep -qiE`: a synthesized
-  # lowercase `verdict: clean` left intact would approve an incomplete review.
+  # Demote every case variant so the partial artifact has one effective verdict.
+  # The local check below verifies that no synthesized verdict survived.
   # Must not be an `&&` chain: a failed sed there is silently swallowed and the
   # body's original "Verdict: clean" survives into an incomplete review.
   if ! sed -i.bak -E 's/^[Vv][Ee][Rr][Dd][Ii][Cc][Tt]:/Lens-only verdict (superseded):/' "$tmp/REVIEW.md"; then

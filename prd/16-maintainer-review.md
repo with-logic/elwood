@@ -21,3 +21,9 @@ Every run evaluates the current PR head and base. Automatic approval requires
 all eleven review dimensions, consistent validated evidence, no blocker or
 major findings, and revalidation of eligibility and both commits at publication.
 Review automation never merges a PR or bypasses repository protections.
+If the PR is already approved when publication checks its review decision,
+new findings that would request changes are posted as a comment, preserving
+that approval. Reports link to the workflow run and the rerun command. Failed
+or canceled authorized runs report their outcome on the still-current PR.
+The workflow allows 25 minutes per reviewer process within a 40-minute overall
+review deadline.

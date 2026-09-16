@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject changed environment-file paths before attaching a diff; see .github/PIPELINE.md."""
+"""Reject changed environment-file paths before attaching a diff; implements PRD §16; see .github/PIPELINE.md."""
 import os
 import sys
 from workspace import environment_file

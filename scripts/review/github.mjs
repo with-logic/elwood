@@ -1,11 +1,11 @@
-/** Fetches current PR permissions; public associations alone never grant review eligibility. */
+/** Fetches current PR permissions; public associations alone never grant review eligibility. Implements PRD §16. */
 export async function currentPr(github, context, number) {
   const { owner, repo } = context.repo;
   const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
-  return { pr, permission: await authorPermission(github, context, pr.user) };
+  return { pr, permission: await effectiveUserPermission(github, context, pr.user) };
 }
 
-export async function authorPermission(github, context, user) {
+export async function effectiveUserPermission(github, context, user) {
   const { owner, repo } = context.repo;
   let permission = "none";
   // Dependabot is GitHub's own dependency updater, not an outside contributor.
