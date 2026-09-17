@@ -19,6 +19,9 @@ back each entry are listed in `prd/14-conformance.md`.
 - Batch terminal rendering and pause PTY reads above a bounded backlog, improving
   throughput across parallel sessions. Runtime cleanup drains received output
   before disposal; direct terminal disposal settles pending writes immediately.
+- Keep text CLI output limited to agent responses by default. Use
+  `--show-session-id` to print the retained session ID on stderr, or find it
+  with `elwood sessions`. Session retention and JSON/JSONL records are unchanged.
 - Validate all concrete Claude tool input fields and typed hook fields, constrain
   permission rewrites to tool-specific handlers, and accept nullable Codex descriptions.
 - Match Claude task identifiers and plan permission objects to the native hook

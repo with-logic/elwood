@@ -47,6 +47,7 @@ Agent and turn options:
 
 Continuation and output:
   --keep                      Preserve Elwood state (default)
+  --show-session-id           Print the retained session ID on stderr (default: off)
   --resume <id>               Resume the exact stored agent and workspace
   --ephemeral                 Remove new or resumed Elwood state afterward
   --output <text|json|jsonl>  Stdout protocol (default: text)
@@ -84,7 +85,7 @@ Interactive mode:
   writes no session state. With an id, the stored session's own conversation is
   resumed in its stored workspace with its stored posture. Requires a terminal on
   stdin and stdout; cannot be combined with --output json/jsonl, --stream,
-  --verbose, --debug, --head, --timeout, --persona, --image, --keep, --ephemeral,
+  --verbose, --debug, --head, --timeout, --persona, --image, --keep, --show-session-id, --ephemeral,
   or --resume. Built-in posture defaults are not applied unless configured.
 
 Session listing:
@@ -159,7 +160,7 @@ Examples:
 - `--persona` performs a real setup turn for new sessions and cannot be used with resume.
 - `--ephemeral` removes new or resumed Elwood state afterward. Both preserve state by default; explicit `--keep` and `--ephemeral` cannot be combined.
 - `--high-trust` cannot combine with an explicit `--claude-permission-mode`, `--codex-sandbox` or `--codex-approval-policy`. Use `--no-high-trust` to reverse an inherited value.
-- `elwood interactive` needs a terminal and rejects the scripted flags (`--output json`/`jsonl`, `--stream`, `--verbose`, `--debug`, `--head`, `--timeout`, `--persona`, `--image`, `--keep`, `--ephemeral`, `--resume`).
-- `elwood sessions` never starts an agent; `elwood models` probes Claude then Codex (or only the explicit `--agent`) and leaves no session state behind.
+- `elwood interactive` needs a terminal and rejects the scripted flags (`--output json`/`jsonl`, `--stream`, `--verbose`, `--debug`, `--head`, `--timeout`, `--persona`, `--image`, `--keep`, `--show-session-id`, `--ephemeral`, `--resume`).
+- `elwood sessions` never starts an agent; `elwood models` probes Claude then Codex (or only the explicit `--agent`) and leaves no session state behind. Both reject `--show-session-id`; use that flag only with `run` or `resume`.
 
 Flags override environment, which overrides global configuration, which overrides built-ins. [See all configuration keys](configuration.html).
