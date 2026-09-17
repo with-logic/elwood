@@ -27,7 +27,11 @@ export function registerInitialHooks(
 ): void {
   if (!handlers) return;
   for (const [name, handler] of Object.entries(handlers)) {
-    emitter.listen(`hook:${name}` as CodexEventName, hookHandler(name, handler));
+    emitter.listen(
+      `hook:${name}` as CodexEventName,
+      hookHandler(name, handler),
+      typeof handler === "function" ? "event" : "tool-keyed",
+    );
   }
 }
 
