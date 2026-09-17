@@ -66,4 +66,14 @@ describe("C-API-28 createReadinessGate per-frame", () => {
     gate.observeReadinessFrame(facts(true, false)); // composer is a boot placeholder: no mark
     expect(ready).toBe(0);
   });
+
+  test("automation-owned trust defers both a hook and resume composer without human blocking", () => {
+    let ready = 0;
+    const gate = createReadinessGate(() => ready++, true);
+    gate.observeReadinessFrame(facts(true), true);
+    gate.ready.mark();
+    expect(ready).toBe(0);
+    gate.observeReadinessFrame(facts(true), false);
+    expect(ready).toBe(1);
+  });
 });

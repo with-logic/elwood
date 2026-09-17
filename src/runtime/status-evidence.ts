@@ -50,9 +50,12 @@ const requiresLiveSession = new Set<StatusEvidenceKind>([
 export function decideStatus(
   from: ElwoodSessionStatus,
   evidence: StatusEvidenceKind,
+  inputBlocked = false,
 ): StatusDecision {
   const target = evidenceTargets[evidence];
   const ignored = (reason: string): StatusDecision => ({ evidence, from, to: undefined, reason });
+  if (inputBlocked && target === "ready")
+    return ignored("ignored: a trust gate or closing session holds input");
   // Turn/blocking evidence describes in-session activity; before the session
   // is live (`starting`) it must not fabricate `ready`/`running`/`blocked`.
   if (requiresLiveSession.has(evidence) && !liveStatuses.has(from)) {
@@ -118,8 +121,8 @@ export class SessionStatusEngine {
     return this.log;
   }
 
-  submit(kind: StatusEvidenceKind): StatusDecision {
-    const decision = decideStatus(this.current, kind);
+  submit(kind: StatusEvidenceKind, inputBlocked = false): StatusDecision {
+    const decision = decideStatus(this.current, kind, inputBlocked);
     this.log.push(decision);
     if (this.log.length > maxStatusDecisions) this.log.shift();
     if (decision.to !== undefined) this.apply(decision.to);

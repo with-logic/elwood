@@ -16,7 +16,7 @@ export type PasteGuard = {
   readonly snapshot: () => string;
   readonly staged: (screen: string, prompt: string) => boolean;
   /**
-   * True when a blocking human-decision dialog is on screen. A dialog can
+   * True when a human or automation-owned dialog is on screen. A dialog can
    * appear during the paste-settle window; sending the submitting Enter then
    * would confirm the dialog's highlighted option (e.g. approve a tool). The
    * Enter is therefore held while this is true and retried once it clears.
@@ -66,7 +66,7 @@ export function sanitizePasteText(text: string): string {
  * the staged state submits, and a surplus Enter on an empty composer is a no-op,
  * so the recovery is safe on both adapters.
  *
- * While a blocking human-decision dialog is on screen, the WHOLE submission is
+ * While a human or automation-owned dialog is on screen, the WHOLE submission is
  * held: neither the paste nor any Enter reaches the terminal until the dialog
  * clears, so caller/model text can never be interpreted as the dialog's
  * shortcuts or confirm its highlighted option (C-API-37 dialog safety). Paste

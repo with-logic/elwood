@@ -84,11 +84,9 @@ describe("Codex startup prompt retry on rejected write", () => {
       },
       () => frame,
     );
-    const rejection = expect(result).rejects.toThrow(
-      "Codex update prompt no longer exposes a safe skip option.",
-    );
+    const cancellation = expect(result).resolves.toBe("cancelled");
     await vi.runAllTimersAsync();
-    await rejection;
+    await cancellation;
   });
 
   test("C-CODEX-12 retries a swallowed skip only while its safe option stays visible", async () => {
@@ -119,11 +117,9 @@ describe("Codex startup prompt retry on rejected write", () => {
       },
       () => "Update available! 0.153.3 -> 0.153.4\n  1. Update now\n› 2. Skip",
     );
-    const rejection = expect(result).rejects.toThrow(
-      "Codex update prompt did not clear after safe-option retries.",
-    );
+    const cancellation = expect(result).resolves.toBe("cancelled");
     await vi.runAllTimersAsync();
-    await rejection;
+    await cancellation;
     expect(writes).toHaveLength(20);
   });
 
@@ -135,7 +131,7 @@ describe("Codex startup prompt retry on rejected write", () => {
     // leaving the update prompt for a later frame to re-attempt.
     const rejecting = responder.handle(frame, () => Promise.reject(new Error("pty closed")));
     expect(outcomesOf(rejecting.outcomes)).toEqual([
-      { kind: "answered", prompt: "update", input: "2" },
+      { kind: "attempted", prompt: "update", input: "2" },
     ]);
     await expect(rejecting.outcomes[0]?.settled).rejects.toThrow("pty closed");
     // Retryable: the next frame re-attempts the skip with a fulfilling write.
@@ -144,7 +140,7 @@ describe("Codex startup prompt retry on rejected write", () => {
       writes.push(input);
     });
     expect(outcomesOf(retried.outcomes)).toEqual([
-      { kind: "answered", prompt: "update", input: "2" },
+      { kind: "attempted", prompt: "update", input: "2" },
     ]);
     expect(writes).toEqual(["2"]);
     await drain(retried.outcomes);
@@ -160,7 +156,7 @@ describe("Codex startup prompt retry on rejected write", () => {
       writes.push(input);
     });
     expect(outcomesOf(retried.outcomes)).toEqual([
-      { kind: "answered", prompt: "workspace_trust", input: "1" },
+      { kind: "attempted", prompt: "workspace_trust", input: "1" },
     ]);
     expect(writes).toEqual(["1\r"]);
     await drain(retried.outcomes);

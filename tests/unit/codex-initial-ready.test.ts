@@ -151,3 +151,20 @@ describe("initialReady", () => {
     expect(calls).toBe(0);
   });
 });
+
+test("C-TRUST-01 cancelled readiness cannot rearm, replay, or consume a late hook", () => {
+  vi.useFakeTimers();
+  const callback = vi.fn();
+  const ready = initialReady(callback);
+  ready.cancel();
+  ready.mark();
+  ready.armDeadline();
+  ready.replay();
+  expect(callback).not.toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(0);
+  const completed = initialReady(callback);
+  completed.mark();
+  completed.cancel();
+  completed.replay();
+  expect(callback).toHaveBeenCalledTimes(1);
+});

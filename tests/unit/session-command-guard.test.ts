@@ -100,3 +100,20 @@ test("C-API-37 terminal failure propagates without a retry or cleanup Enter", as
   await vi.advanceTimersByTimeAsync(150);
   await check;
 });
+
+test("C-API-37 cancelling a command in a live unblocked composer clears its staged text", async () => {
+  const h = harness();
+  h.state.blocked = false;
+  const controller = new AbortController();
+  const pending = h.queue.send("/model", "list_models", undefined, {
+    cancel: { signal: controller.signal, error: () => new Error("caller cancelled") },
+  });
+  const rejected = expect(pending).rejects.toThrow("caller cancelled");
+  expect(h.writes).toEqual(["/model"]);
+  controller.abort();
+  await vi.advanceTimersByTimeAsync(500);
+  await rejected;
+  expect(h.writes).toEqual(["/model", "\u0015\u000b"]);
+  expect(h.state.blocked).toBe(false);
+  h.queue.close();
+});

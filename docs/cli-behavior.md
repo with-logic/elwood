@@ -196,6 +196,85 @@ select a destructive-rider affirmative, and never answer a specific-affirmative
 prompt (e.g. hook trust) with a generic "Yes". `src/core/trust/responder.ts`,
 `src/core/trust/prompts.ts`, verified by `tests/e2e/trust-prompt-claude.e2e.ts`.
 
+### Native regions and live confirmation
+
+Claude 2.1.252 places `Accessing workspace:` and the workspace path **before**
+the trust question. The question may wrap; its explanatory copy is:
+
+```
+(Like your own code, a well-known open source project, or work from your team). If not,
+take a moment to review what's in this folder first.
+Claude Code'll be able to read, edit, and execute files here.
+Security guide
+```
+
+The 2.1.206 capture omits `, or work from your team`. Blank rows and wrapping
+remain part of one dialog. Unknown explanatory text, titles, or option rows do
+not authorize an answer. Conversation prefixes (`●`, `•`, user/composer markers)
+remain provenance even when they precede an exact quoted trust question; slicing
+at the question must not discard them.
+
+Native Codex 0.154.0 captures at 100 columns (2026-09-16) place
+`> You are in /absolute/project/path` before the directory question. The question
+and explanation begin on the same row and wrap:
+
+```
+Do you trust the contents of this directory? Working with untrusted contents comes with higher
+risk of prompt injection. Trusting the directory allows project-local config, hooks, and exec
+policies to load.
+› 1. Yes, continue
+  2. No, quit
+Press enter to continue
+```
+
+Its hook gate renders `Hooks need review`, `1 hook is new or changed.`, and
+`Hooks can run outside the sandbox after you trust them.`, followed by
+`Review hooks`, `Trust all and continue`, and
+`Continue without trusting (hooks won't run)` as numbered choices. Its footer is
+`Press enter to confirm or esc to go back` — accepting only `esc to cancel`
+incorrectly rejects this real dialog. These PTY captures supersede the earlier
+0.144.4 binary-string evidence for those layouts. No captured path follows the
+trust header; do not add generic path/prose acceptance based on that assumption.
+
+The native Codex 0.154.0 input loop can swallow the first numbered confirmation:
+the PTY write fulfills while the directory gate stays visible. In the 2026-09-16
+high-trust probe, a manual repeat at eight seconds cleared that same gate; the
+first write had already produced premature startup activity at roughly one second.
+Numbered automation therefore retries every 250 ms for at most five seconds,
+revalidates the same header and exact option identity before each write, and
+reports answered only after the gate clears. A native directory-to-hook transition
+confirms directory clearance without sending an old answer to the hook gate.
+An observed clear-and-reappear generation cancels the old attempt.
+
+Cursor navigation rereads between individual arrows and Enter. Both navigation
+styles now belong to one session-owned coordinator: each observed dialog
+generation owns its reservation, deadline, exact affirmative, and completion.
+An old cancelled attempt cannot release or settle a reappeared gate. The five-
+second bound starts at the first native-header candidate, including partial
+painting. Candidate recognition holds input; only the stricter native-dialog
+recognizer authorizes writes. Unknown replacement text is not clearance. Native
+composer chrome or a verified successor gate confirms clearance; a bare caret
+alone cannot distinguish a composer from a one-option dialog.
+
+A stable unsupported or exhausted gate becomes recoverable `blocked` with the
+existing attention rule id after five seconds, even when the terminal emits no
+new data. This is the deliberate fallback approved for autotrust. A later valid
+layout or new generation re-arms safe automation; an unchanged redraw does not
+restart an expired loop. Once fallback is visible, the block remains until
+verified clearance. Raw human keys remain available, while queued persona,
+paste, and command input stays held. Stop, kill, teardown, startup cleanup and
+PTY exit cancel pending automation and timers before disposal. Only a rejected
+PTY write belonging to a still-live matching attempt emits
+`startup_prompt_write_failed`; cancellation and late settlement stay quiet.
+
+A fulfilled write alone does not prove the gate cleared. Real-CLI checks use a
+separate raw visibility oracle so production recognition failures cannot make
+the tests report the gate absent. Sanitized native Claude 2.1.274 and Codex
+0.154.0 post-trust composer captures anchor the positive-clearance tests.
+A no-model Codex resize probe at 100×12, 100×8 and 100×6 confirms that the welcome
+box can scroll away while its composer and model/reasoning/path footer remain.
+Those native rows also prove clearance; welcome presence is not required.
+
 ### Bypass-permissions acceptance dialog (`--high-trust`)
 
 Claude Code carries a one-time disclaimer for bypass mode. Its wording, taken
@@ -236,13 +315,12 @@ therefore version/account-gated, and Elwood must be correct in BOTH states:
   security reasons` is the CLI's own refusal; Elwood does not special-case it —
   it surfaces as the ordinary start failure with the CLI's message.
 
-**Do not equate `autotrust` with “not blocking” until the write clears the real
-screen.** Trust rules are omitted from human-blocking classification under
-`autotrust`, because automation owns the gate. If option parsing drifts and writes
-nothing, the 10 s initial-ready starvation deadline can otherwise report `ready`
-over a still-visible trust dialog. C-E2E-09 therefore requires both `ready` and a
-cleared trust screen; a complete but unanswerable real frame is a failure, not a
-skip.
+**Do not equate `autotrust` with readiness until the real gate clears.** The
+automation gate holds the 10 s initial-ready fallback and queued input from the
+first native trust candidate. Successful bounded automation does not report a
+human block; unsupported or exhausted attempts transfer to the recoverable block
+above. C-E2E-09 requires both `ready` and a cleared trust screen; an unanswerable
+real frame is a failure, not a skip.
 
 The responder emits one transient `attention` when a recognized header paints
 before its affirmative option. A headless owner must ignore that transient only

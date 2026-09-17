@@ -6,12 +6,15 @@
  * the failure.
  */
 
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { startClaude } from "../../src/index.ts";
 import { setGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
-afterEach(resetFakes);
+afterEach(() => {
+  vi.useRealTimers();
+  resetFakes();
+});
 
 /** A group killer that always throws EPERM — never a real system kill (injected fake). */
 function throwingKiller(): void {
@@ -61,6 +64,21 @@ describe("C-LIFE-10 session reap-failure handling", () => {
     ptys.at(-1)!.emitExit({ exitCode: 0 }); // exit reap fails, leaves reaper unlatched
     expect(session.status).toBe("exited");
     await expect(session.stop()).rejects.toMatchObject({ code: "termination_failed" });
+  });
+
+  test("C-LIFE-10 a PTY that survives SIGKILL still rejects held submissions", async () => {
+    installFakes();
+    const session = await startClaude({ cwd: tempDir() });
+    const pty = ptys.at(-1)!;
+    vi.spyOn(pty, "kill").mockImplementation(() => {}); // never exits
+    const held = session.sendMessage("held behind readiness");
+    const rejected = expect(held).rejects.toMatchObject({ code: "session_not_running" });
+    vi.useFakeTimers();
+    const stopped = expect(session.stop()).rejects.toMatchObject({ code: "termination_failed" });
+    await vi.advanceTimersByTimeAsync(120_000);
+    await stopped;
+    expect(session.status).not.toBe("stopped"); // no terminal evidence ever arrived
+    await rejected;
   });
 
   test("C-LIFE-10 stop() after a successful exit-reap does NOT re-signal the dead PTY", async () => {

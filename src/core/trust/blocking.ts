@@ -9,37 +9,30 @@
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { ScreenFactRule, ScreenFactTable } from "../screen-facts.ts";
-import { nonOptionText } from "../terminal-options.ts";
-import { blockingTrustSpecs, trustHeaderMatches } from "./prompts.ts";
+import { parseTrustCandidates, type TrustDialog } from "./dialog.ts";
+import { blockingTrustSpecs } from "./prompts.ts";
 
-/**
- * `base` plus one `blocking_prompt_visible` rule per trust prompt that stays
- * unanswered under `autotrust`. Each rule recognizes the prompt only by its
- * HEADER outside the option region (`trustHeaderMatches`, the same recognizer
- * the responder uses; the non-option text is computed once per frame and cached
- * across the rules), so an unrelated numbered/cursor option containing a trust
- * phrase is NOT mistaken for a blocking trust prompt (PRD §5.1). Returns `base`
- * unchanged when no trust prompt blocks (e.g. every allowlisted prompt is
- * auto-answered).
- */
+/** Holds known native candidates even when their body is unsafe to automate. */
 export function withTrustBlockingRules(
   base: ScreenFactTable,
   agent: ElwoodAgentKind,
   autotrust: boolean,
 ): ScreenFactTable {
   let cachedFrame: string | undefined;
-  let cachedHeader = "";
-  const headerFor = (text: string) => {
-    if (text !== cachedFrame) {
+  let cachedDialogs: readonly TrustDialog[] = [];
+  const dialogFor = (text: string) => {
+    if (cachedFrame !== text) {
       cachedFrame = text;
-      cachedHeader = nonOptionText(text);
+      cachedDialogs = parseTrustCandidates(text).map((candidate) => candidate.dialog);
     }
-    return cachedHeader;
+    return cachedDialogs;
   };
   const rules: ScreenFactRule[] = blockingTrustSpecs(agent, autotrust).map((spec) => ({
     id: `${agent}-${spec.id}-prompt`,
     fact: "blocking_prompt_visible",
-    match: (text) => trustHeaderMatches(headerFor(text), spec),
+    match: (text) => {
+      return dialogFor(text).some((dialog) => spec.headerPattern.test(dialog.header));
+    },
   }));
   return rules.length === 0 ? base : { ...base, rules: [...base.rules, ...rules] };
 }

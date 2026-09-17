@@ -45,7 +45,7 @@ describe("bypass-permissions acceptance dialog", () => {
         writes.push(input);
       }),
     ).toMatchObject({
-      kind: "answered",
+      kind: "attempted",
       automation: { prompt: "bypass_permissions", input: "2" },
     });
     expect(writes).toEqual(["2\r"]);
@@ -70,10 +70,10 @@ describe("bypass-permissions acceptance dialog", () => {
       () => rendered,
     );
     expect(result).toMatchObject({
-      kind: "answered",
+      kind: "attempted",
       automation: { prompt: "bypass_permissions", input: "down+enter" },
     });
-    if (result?.kind !== "answered") throw new Error("expected an answered prompt");
+    if (result?.kind !== "attempted") throw new Error("expected an answered prompt");
     await result.settled;
     expect(writes).toEqual(["\u001b[B", "\r"]);
   });

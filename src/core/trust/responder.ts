@@ -1,187 +1,197 @@
-/**
- * Detects and answers the allowlisted family of adapter startup trust prompts.
- * Implements PRD §5.1 and §9.1 (C-CLAUDE-10, C-CODEX-11, C-CLAUDE-14, C-CODEX-15).
- *
- * Policy (PRD §5.1): an agent must NEVER be left waiting on a trust gate.
- * Under the caller's full-trust posture, when an allowlisted trust prompt is
- * visible in the current frame, Elwood selects its affirmative option and sends
- * it — always say yes. Elwood only auto-answers ALLOWLISTED prompts (an
- * off-allowlist confirmation is left to the human), and never re-answers the same
- * prompt; those are the only limits.
- */
-
+/** Owns trust episodes, bounded attempts, and recoverable blocking (PRD §5.4/C-TRUST-01). */
 import type { ElwoodAgentKind } from "../activity/index.ts";
-import { delay } from "../delay.ts";
-import {
-  nonOptionText,
-  optionInput,
-  optionKeystrokes,
-  selectableOptions,
-} from "../terminal-options.ts";
-import {
-  type TrustPromptIdFor,
-  trustHeaderMatches,
-  trustPromptAllowlist,
-  trustPromptHeaderVisible,
-} from "./prompts.ts";
+import { optionInput } from "../terminal-options.ts";
+import type { TrustPromptIdFor } from "./prompts.ts";
+import type { Episode, TrustPromptResult, TrustWriteResult } from "./types.ts";
+import { choiceIdentity, type TrustView, trustView } from "./view.ts";
+import { TrustAttempt } from "./write.ts";
 
-/** The concrete allowlist entry type (preserves the derived literal `id`). */
-type TrustPromptEntry = (typeof trustPromptAllowlist)[number];
+export type { TrustPromptAutomation, TrustPromptResult, TrustWriteResult } from "./types.ts";
+export { trustPromptVisible } from "./view.ts";
 
-const cursorRetryMs = 250;
-const cursorNavigationTimeoutMs = 5_000;
-
-/** An answered trust prompt; `prompt` is narrowed to the responder's agent. */
-export type TrustPromptAutomation<A extends ElwoodAgentKind = ElwoodAgentKind> = {
-  readonly prompt: TrustPromptIdFor<A>;
-  readonly input: string;
-};
-
-/**
- * The completion of an answered trust write: a `void | Promise<void>` write is
- * normalized to a promise that resolves on success and rejects once the prompt
- * has been un-settled (kept retryable) on a rejected write.
- */
-export type TrustWriteResult = void | Promise<void>;
-
-/**
- * The outcome of handling a frame: an answered prompt, a recognized prompt whose
- * affirmative option has not rendered yet (a TRANSIENT render delay — under the
- * say-yes policy a later frame carrying the option is still answered, so this is
- * never a terminal wedge), or nothing.
- */
-export type TrustPromptResult<A extends ElwoodAgentKind = ElwoodAgentKind> =
-  | {
-      readonly kind: "answered";
-      readonly automation: TrustPromptAutomation<A>;
-      // Resolves when the affirmative write fulfills; rejects (after the prompt is
-      // un-settled, so a later frame re-attempts it) if the write is rejected.
-      readonly settled: Promise<void>;
-    }
-  | { readonly kind: "option_pending"; readonly prompt: TrustPromptIdFor<A> }
-  | undefined;
-
+const episodeTimeoutMs = 5_000;
 export class TrustPromptResponder<A extends ElwoodAgentKind> {
-  // Whether the caller launched under full trust (`autotrust`). `answerPolicy:
-  // "always"` prompts (hook trust) are answered even when this is false.
+  private episode: Episode | undefined;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private readonly attempts = new Set<TrustAttempt>();
+  private disposed = false;
+  private readonly agent: A;
   private readonly autotrust: boolean;
-  private readonly specs: readonly TrustPromptEntry[];
-  private readonly settled = new Set<TrustPromptIdFor<A>>();
-  // A prompt whose "option not rendered yet" state was reported once, kept
-  // SEPARATE from `settled` so a later frame with the real option can still be
-  // answered — the pending state is transient, not terminal.
-  private readonly reportedPending = new Set<TrustPromptIdFor<A>>();
-
-  constructor(agent: A, autotrust = false) {
+  private readonly onStateChange: (() => void) | undefined;
+  constructor(agent: A, autotrust = false, onStateChange?: () => void) {
+    this.agent = agent;
     this.autotrust = autotrust;
-    this.specs = trustPromptAllowlist.filter((spec) => spec.agent === agent);
+    this.onStateChange = onStateChange;
   }
 
-  /** `frame` MUST be the CURRENT rendered screen, not an accumulated buffer. */
+  get inputBlocking(): boolean {
+    return this.episode !== undefined;
+  }
+  get blockedPrompt(): TrustPromptIdFor<A> | undefined {
+    const id = this.episode?.blocked ? this.episode.candidate.spec.id : undefined;
+    return id as TrustPromptIdFor<A> | undefined;
+  }
+
+  /** The current frame owns recognition; no accumulated transcript grants trust. */
   handle(
     frame: string,
     write: (input: string) => TrustWriteResult,
     readFrame?: () => string,
   ): TrustPromptResult<A> {
-    const header = nonOptionText(frame);
-    for (const spec of this.specs) {
-      const id = spec.id as TrustPromptIdFor<A>;
-      // `answerPolicy: "always"` prompts (Elwood's own hook bridge) answer
-      // regardless of autotrust; every other trust prompt requires the caller's
-      // full-trust posture.
-      if (!(this.autotrust || spec.answerPolicy === "always")) continue;
-      // Recognized when the prompt's HEADER wording appears on a NON-OPTION line
-      // (via the shared `trustHeaderMatches`), so a phrase living only inside an
-      // option label can't spoof a prompt. That is the ONLY guard — recognition
-      // means "say yes".
-      if (this.settled.has(id) || !trustHeaderMatches(header, spec)) continue;
-      const options = selectableOptions(frame);
-      const option = options.find((candidate) => spec.accept.test(candidate.label));
-      if (option === undefined) {
-        // Affirmative not rendered yet (partial frame). Report once, but DON'T
-        // settle — a later frame with the option can still be answered.
-        if (this.reportedPending.has(id)) continue;
-        this.reportedPending.add(id);
-        return { kind: "option_pending", prompt: id };
-      }
-      // Settle OPTIMISTICALLY so a second frame in the same tick does not re-answer,
-      // but keep the settle contingent on the write: if the write is rejected we
-      // un-settle here so a later frame re-attempts it, and the returned `settled`
-      // promise rejects so the caller emits a warning instead of a false "answered".
-      this.settled.add(id);
-      const input = optionInput(option);
-      const operation =
-        option.style === "cursor"
-          ? readFrame === undefined
-            ? Promise.reject(new Error("Cursor trust navigation requires live screen reads."))
-            : navigateCursorOption(spec, input, write, readFrame)
-          : writeOptionKeys(optionKeystrokes(option), write);
-      const settled = operation.catch((error: unknown) => {
-        this.settled.delete(id);
+    if (this.disposed) return undefined;
+    const priorIdentity = this.episode?.lastIdentity;
+    const view = trustView(frame, this.agent);
+    this.observe(view);
+    const episode = this.episode;
+    if (view.kind !== "candidate" || episode === undefined || view.key !== episode.candidate.key)
+      return undefined;
+    const identity = choiceIdentity(view);
+    episode.lastIdentity = identity;
+    if (
+      episode.expired &&
+      identity !== undefined &&
+      (identity !== episode.expiredIdentity || priorIdentity === undefined)
+    ) {
+      episode.attemptedIdentity = undefined;
+      this.arm(episode);
+    }
+    if (readFrame === undefined && episode.attempt) return undefined;
+    if (episode.attempt && episode.attempt.identity !== identity) {
+      episode.attempt.cancel();
+      episode.attempt = undefined;
+      episode.attemptedIdentity = undefined;
+    }
+    if (identity === undefined) {
+      if (!view.valid || episode.reportedPending) return undefined;
+      episode.reportedPending = true;
+      return { kind: "option_pending", prompt: view.spec.id as TrustPromptIdFor<A> };
+    }
+    if (
+      episode.expired ||
+      episode.attempt ||
+      episode.legacyAnswered ||
+      episode.attemptedIdentity === identity
+    )
+      return undefined;
+    const read = readFrame === undefined ? undefined : () => trustView(readFrame(), this.agent);
+    const attempt = new TrustAttempt(view, identity);
+    episode.attempt = attempt;
+    episode.attemptedIdentity = identity;
+    this.attempts.add(attempt);
+    const settled = attempt.start(write, read, episode.deadlineAtMs).then(
+      (completion) => {
+        this.attempts.delete(attempt);
+        if (this.disposed || attempt.invalidated) return "cancelled" as const;
+        if (this.episode !== episode || episode.attempt !== attempt) return completion;
+        episode.attempt = undefined;
+        if (attempt.lostChoice) episode.attemptedIdentity = undefined;
+        if (read === undefined && completion === "answered") {
+          episode.legacyAnswered = true;
+          clearTimeout(this.timer);
+        } else if (read !== undefined) {
+          const latest = read();
+          if (attempt.cleared) this.release(true);
+          this.observe(latest);
+          this.notify();
+          if (attempt.cleared && latest.kind === "candidate" && latest.spec.id === view.spec.id)
+            return "cancelled" as const;
+        }
+        return completion;
+      },
+      (error: unknown) => {
+        this.attempts.delete(attempt);
+        if (this.episode !== episode || episode.attempt !== attempt) return "cancelled" as const;
+        episode.attempt = undefined;
+        episode.attemptedIdentity = undefined;
         throw error;
-      });
-      return { kind: "answered", automation: { prompt: id, input }, settled };
-    }
-    return undefined;
+      },
+    );
+    return {
+      kind: "attempted",
+      automation: {
+        prompt: view.spec.id as TrustPromptIdFor<A>,
+        input: optionInput(view.option!),
+      },
+      settled,
+    };
   }
-}
 
-/** Writes one option's keys in order (numbered prompts and parser-only tests). */
-async function writeOptionKeys(
-  keys: readonly string[],
-  write: (input: string) => TrustWriteResult,
-): Promise<void> {
-  for (const key of keys) await write(key);
-}
-
-/** Navigates a cursor prompt one observed frame at a time, retrying swallowed startup input. */
-async function navigateCursorOption(
-  spec: TrustPromptEntry,
-  originalInput: string,
-  write: (input: string) => TrustWriteResult,
-  readFrame: () => string,
-): Promise<void> {
-  const deadline = Date.now() + cursorNavigationTimeoutMs;
-  while (Date.now() < deadline) {
-    const before = readFrame();
-    if (!trustPromptHeaderVisible(before, spec)) {
-      throw new Error("Cursor trust prompt disappeared before confirmation.");
-    }
-    const target = selectableOptions(before).find((option) => spec.accept.test(option.label));
-    if (target?.style !== "cursor") {
-      await delay(cursorRetryMs);
-      continue;
-    }
-    const key = target.offset === 0 ? "\r" : target.offset < 0 ? "\u001b[A" : "\u001b[B";
-    await write(key);
-    const progress = await waitForCursorProgress(spec, target.offset, readFrame);
-    if (progress === "cleared") return;
+  /** Session closing owns all cancellation, including writes whose promises settle late. */
+  dispose(): void {
+    this.disposed = true;
+    clearTimeout(this.timer);
+    for (const attempt of this.attempts) attempt.cancel();
+    this.episode = undefined;
   }
-  throw new Error(`Cursor trust navigation timed out (${originalInput}).`);
-}
 
-async function waitForCursorProgress(
-  spec: TrustPromptEntry,
-  priorOffset: number,
-  readFrame: () => string,
-): Promise<"cleared" | "retry"> {
-  const deadline = Date.now() + cursorRetryMs;
-  while (Date.now() < deadline) {
-    await delay(20);
-    const frame = readFrame();
-    if (!trustPromptHeaderVisible(frame, spec)) {
-      if (priorOffset === 0) return "cleared";
-      throw new Error("Cursor trust prompt disappeared before confirmation.");
+  private observe(view: TrustView): void {
+    if (view.kind === "clear") {
+      this.release(true);
+      return;
     }
-    const target = selectableOptions(frame).find((option) => spec.accept.test(option.label));
-    if (target?.style === "cursor" && target.offset !== priorOffset) return "retry";
+    if (view.kind === "unknown") {
+      if (this.episode) {
+        this.episode.attempt?.cancel();
+        this.episode.attempt = undefined;
+        this.episode.attemptedIdentity = undefined;
+        this.episode.lastIdentity = undefined;
+      }
+      return;
+    }
+    if (!(this.autotrust || view.spec.answerPolicy === "always")) {
+      if (view.valid) this.release(true);
+      return;
+    }
+    if (this.episode?.candidate.key === view.key) {
+      this.episode.lastIdentity = choiceIdentity(view);
+      return;
+    }
+    const blocked = this.episode?.blocked ?? false;
+    this.release(view.valid);
+    // A cleared-and-reappeared class cannot inherit an old pending success.
+    for (const attempt of this.attempts) {
+      if (attempt.candidate.spec.id === view.spec.id) attempt.cancel();
+    }
+    const episode: Episode = {
+      candidate: view,
+      deadlineAtMs: 0,
+      blocked,
+      expired: false,
+      expiredIdentity: undefined,
+      lastIdentity: choiceIdentity(view),
+      attemptedIdentity: undefined,
+      reportedPending: false,
+      legacyAnswered: false,
+      attempt: undefined,
+    };
+    this.episode = episode;
+    this.arm(episode);
   }
-  return "retry";
-}
 
-/** Whether any allowlisted trust prompt for `agent` is showing its header in `text`. */
-export function trustPromptVisible(text: string, agent: ElwoodAgentKind): boolean {
-  return trustPromptAllowlist.some(
-    (spec) => spec.agent === agent && trustPromptHeaderVisible(text, spec),
-  );
+  private arm(episode: Episode): void {
+    clearTimeout(this.timer);
+    episode.expired = false;
+    episode.deadlineAtMs = Date.now() + episodeTimeoutMs;
+    this.timer = setTimeout(() => {
+      episode.expired = true;
+      episode.expiredIdentity = episode.lastIdentity;
+      episode.blocked = true;
+      episode.attempt?.cancel();
+      episode.attempt = undefined;
+      this.notify();
+    }, episodeTimeoutMs);
+    this.timer.unref();
+  }
+  private release(cleared: boolean): void {
+    clearTimeout(this.timer);
+    this.episode?.attempt?.cancel(cleared);
+    this.episode = undefined;
+  }
+  private notify(): void {
+    try {
+      this.onStateChange?.();
+    } catch {
+      /* An observer cannot retain owned timers or writes. */
+    }
+  }
 }

@@ -37,7 +37,7 @@ describe("ClaudeStartupPromptResponder", () => {
       writes.push(input);
     });
     expect(outcomesOf(first)).toEqual([
-      { kind: "answered", prompt: "browser_tools", input: "esc" },
+      { kind: "attempted", prompt: "browser_tools", input: "esc" },
     ]);
     expect(writes).toEqual([esc]);
     await drain(first);
@@ -49,18 +49,15 @@ describe("ClaudeStartupPromptResponder", () => {
     expect(writes).toEqual([esc]);
   });
 
-  test("C-CLAUDE-10 workspace trust and browser prompts automate in a single frame", () => {
+  test("C-TRUST-01 a browser prompt below an old trust dialog does not approve trust", () => {
     const responder = new ClaudeStartupPromptResponder(true);
     const writes: string[] = [];
     const combined = `Do you trust this folder?\n ❯ 1. Yes, continue\n${browserPrompt}`;
     const settled = responder.handle(combined, (input) => {
       writes.push(input);
     });
-    expect(outcomesOf(settled).map((outcome) => outcome.prompt)).toEqual([
-      "workspace_trust",
-      "browser_tools",
-    ]);
-    expect(writes).toEqual(["1\r", esc]);
+    expect(outcomesOf(settled).map((outcome) => outcome.prompt)).toEqual(["browser_tools"]);
+    expect(writes).toEqual([esc]);
   });
 
   test("C-CLAUDE-11 detection requires both prompt phrases", () => {
@@ -76,7 +73,7 @@ describe("ClaudeStartupPromptResponder", () => {
     // has not rendered yet, so it is surfaced as a transient option_pending and
     // not answered — a later frame carrying the option would still answer it.
     const settled = responder.handle(
-      "New MCP server found in this project\n1. Do something unexpected\n2. No",
+      "New MCP server found in this project\n2. Continue without using this MCP server",
       (input) => {
         writes.push(input);
       },
@@ -96,13 +93,13 @@ describe("ClaudeStartupPromptResponder", () => {
       return Promise.reject(new Error("pty closed"));
     });
     expect(outcomesOf(rejecting)).toEqual([
-      { kind: "answered", prompt: "browser_tools", input: "esc" },
+      { kind: "attempted", prompt: "browser_tools", input: "esc" },
     ]);
     await expect(rejecting[0]?.settled).rejects.toThrow("pty closed");
     // Retryable: a later frame re-attempts the decline (write count grows to 2).
     const retried = responder.handle(browserPrompt, () => undefined);
     expect(outcomesOf(retried)).toEqual([
-      { kind: "answered", prompt: "browser_tools", input: "esc" },
+      { kind: "attempted", prompt: "browser_tools", input: "esc" },
     ]);
     await drain(retried);
     expect(attempts).toBe(1);
@@ -119,7 +116,7 @@ describe("ClaudeStartupPromptResponder", () => {
       writes.push(input);
     });
     expect(outcomesOf(retried)).toEqual([
-      { kind: "answered", prompt: "workspace_trust", input: "1" },
+      { kind: "attempted", prompt: "workspace_trust", input: "1" },
     ]);
     expect(writes).toEqual(["1\r"]);
     await drain(retried);
