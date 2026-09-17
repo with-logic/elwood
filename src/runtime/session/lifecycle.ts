@@ -21,7 +21,7 @@ import type {
   StatusEvidenceKind,
 } from "../status-evidence.ts";
 import { SessionLoops } from "./loops.ts";
-import { notRunningError } from "./not-running.ts";
+import { closingController, notRunningError } from "./not-running.ts";
 import { SessionReapPolicy } from "./reap.ts";
 import { SessionShutdownBinding } from "./shutdown-binding.ts";
 import { createSessionStatusEngine, type SessionStatusEmitter } from "./status-wiring.ts";
@@ -38,7 +38,7 @@ export abstract class SessionLifecycle {
   protected everReady = false;
   inputBlocking = false;
   automationBlocking = false;
-  readonly closing = new AbortController();
+  readonly closing = closingController(() => this.controlQueue.close());
   private readonly agent: ElwoodAgentKind;
   private readonly runtime: SessionRuntime;
   private readonly reapPolicy: SessionReapPolicy;
