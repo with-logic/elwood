@@ -5,11 +5,17 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, readFile, rename, rmdir, stat, unlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rmdir, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { join } from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
-import { errnoCode } from "../../core/errors.ts";
+import {
+  type LeaseOwner,
+  ownerFile,
+  readOptionalText,
+  releaseLease,
+  serializeOwner,
+} from "./owner.ts";
+import { pathExists, recoveryPath, waitForOwner } from "./waiting.ts";
 
 export type UpdateAdapter = "claude" | "codex";
 
@@ -21,8 +27,6 @@ export type UpdateLeaseOptions = {
 
 const defaultPollMs = 50;
 const defaultStaleMs = 30_000;
-const ownerFile = "owner";
-type LeaseOwner = { readonly pid: number; readonly token: string };
 
 function defaultLeaseRoot(): string {
   const user = userInfo();
@@ -51,7 +55,7 @@ export async function coordinatedAutoupdate(
   await chmod(root, 0o700);
   const owner = { pid: process.pid, token: randomUUID() } satisfies LeaseOwner;
   const completion = join(root, `${adapter}.completed`);
-  const priorCompletion = await readCompletion(completion);
+  const priorCompletion = await readOptionalText(completion);
   let observedActive = (await pathExists(path)) || (await pathExists(recoveryPath(path)));
   let recoveredStale = false;
   while (!(await claimLease(path, owner))) {
@@ -66,7 +70,7 @@ export async function coordinatedAutoupdate(
   }
   if (
     !recoveredStale &&
-    (observedActive || (await readCompletion(completion)) !== priorCompletion)
+    (observedActive || (await readOptionalText(completion)) !== priorCompletion)
   ) {
     await releaseLease(path, owner);
     return;
@@ -96,105 +100,5 @@ async function claimLease(path: string, owner: LeaseOwner): Promise<boolean> {
   } catch {
     await rmdir(path).catch(() => undefined);
     return false;
-  }
-}
-
-async function waitForOwner(
-  path: string,
-  pollMs: number,
-  staleMs: number,
-): Promise<"released" | "stale_removed"> {
-  for (;;) {
-    let lease: Awaited<ReturnType<typeof stat>>;
-    try {
-      lease = await stat(path);
-    } catch {
-      if (await restoreRecovery(path)) continue;
-      return "released";
-    }
-    if (Date.now() - lease.mtimeMs >= staleMs) {
-      const recovered = await recoverStaleLease(path);
-      if (recovered === "removed") return "stale_removed";
-      if (recovered === "unrecoverable") return "released";
-    }
-    await delay(pollMs);
-  }
-}
-
-async function recoverStaleLease(path: string): Promise<"removed" | "alive" | "unrecoverable"> {
-  const expected = await readOwner(path);
-  if (expected !== undefined && ownerIsAlive(expected.pid)) return "alive";
-  const recovery = recoveryPath(path);
-  try {
-    await rename(path, recovery);
-  } catch {
-    return (await pathExists(recovery)) ? "alive" : "unrecoverable";
-  }
-  const moved = await readOwner(recovery);
-  if (expected?.token !== moved?.token || (moved !== undefined && ownerIsAlive(moved.pid))) {
-    return "unrecoverable";
-  }
-  try {
-    if (moved !== undefined) await unlink(join(recovery, ownerFile));
-    await rmdir(recovery);
-    return "removed";
-  } catch {
-    return "unrecoverable";
-  }
-}
-
-async function restoreRecovery(path: string): Promise<boolean> {
-  try {
-    await rename(recoveryPath(path), path);
-    return true;
-  } catch {
-    return pathExists(path);
-  }
-}
-
-function recoveryPath(path: string): string {
-  return `${path}.recovery`;
-}
-
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await stat(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function releaseLease(path: string, owner: LeaseOwner): Promise<void> {
-  const current = await readOwner(path);
-  if (current?.token !== owner.token) return;
-  await unlink(join(path, ownerFile)).catch(() => undefined);
-  await rmdir(path).catch(() => undefined);
-}
-
-/** File contents, or undefined when absent/unreadable (never throws). */
-async function readCompletion(path: string): Promise<string | undefined> {
-  try {
-    return await readFile(path, "utf8");
-  } catch {
-    return undefined;
-  }
-}
-
-async function readOwner(path: string): Promise<LeaseOwner | undefined> {
-  const match = /^(\d+):([0-9a-f-]+)$/.exec((await readCompletion(join(path, ownerFile))) ?? "");
-  return match ? { pid: Number(match[1]), token: match[2] as string } : undefined;
-}
-
-function serializeOwner(owner: LeaseOwner): string {
-  return `${owner.pid}:${owner.token}`;
-}
-
-function ownerIsAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return errnoCode(error) !== "ESRCH";
   }
 }
