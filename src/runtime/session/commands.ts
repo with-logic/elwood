@@ -8,11 +8,11 @@
  */
 
 import { compactCommand, sessionCompact } from "../../core/compact.ts";
+import type { ControlQueue } from "../../core/control-queue/index.ts";
 import { ignoreInputFailure } from "../../core/input/index.ts";
 import { interruptKey, sessionInterrupt } from "../../core/interrupt.ts";
 import {
   listPickerModels,
-  type ModelPickerIo,
   type ModelPickerSpec,
   pickerTimeout,
   setPickerModel,
@@ -20,6 +20,7 @@ import {
 import type { AgentModelOption } from "../../core/models/rows.ts";
 import type { ScreenTerminal } from "../../core/models/tui-screen.ts";
 import type { ElwoodSessionStatus } from "../../core/types.ts";
+import { PickerTransactions } from "./picker.ts";
 import type { SessionStatusEmitter } from "./status-wiring.ts";
 
 type Timeout = { readonly timeoutMs?: number };
@@ -37,16 +38,14 @@ export type CommandSurfaceDeps = {
   readonly everReady: () => boolean;
   readonly blocked: () => boolean;
   readonly picker: () => ModelPickerSpec;
-  readonly submit: (
-    command: string,
-    kind: "compact" | "list_models" | "set_model",
-    signal: AbortSignal,
-  ) => Promise<void>;
+  readonly controlQueue: ControlQueue;
+  readonly submitDirect: (command: string, signal: AbortSignal) => Promise<void>;
 };
 
 /** Builds each command's interrupt/compact/picker closures from the injected primitives. */
 export class CommandSurface {
   private readonly deps: CommandSurfaceDeps;
+  private readonly picker: PickerTransactions;
   // Coalesces concurrent interrupts: a second call while one is in flight joins
   // the first rather than writing a second Escape, which could land on the now
   // idle composer after the first cancels the turn (a non-neutral keystroke).
@@ -54,6 +53,7 @@ export class CommandSurface {
 
   constructor(deps: CommandSurfaceDeps) {
     this.deps = deps;
+    this.picker = new PickerTransactions(deps);
   }
 
   interrupt(options?: Timeout): Promise<void> {
@@ -76,9 +76,13 @@ export class CommandSurface {
 
   compact(options?: Timeout): Promise<void> {
     const pending = new AbortController();
-    const submit = () => this.deps.submit(compactCommand, "compact", pending.signal);
+    const submit = () =>
+      this.deps.controlQueue.send(compactCommand, "compact", undefined, {
+        cancel: { signal: pending.signal, error: () => pending.signal.reason },
+      });
     const nudge = () => {
-      if (!this.deps.blocked()) ignoreInputFailure(this.deps.terminal.sendInput("\r"));
+      if (!(this.deps.blocked() || this.picker.ownsInput()))
+        ignoreInputFailure(this.deps.terminal.sendInput("\r"));
     };
     return sessionCompact(this.deps.statusEvents, submit, nudge, options?.timeoutMs).finally(() =>
       pending.abort(),
@@ -86,18 +90,22 @@ export class CommandSurface {
   }
 
   listModels(options?: Timeout): Promise<readonly AgentModelOption[]> {
-    return listPickerModels(this.io("list_models"), this.deps.picker(), pickerTimeout(options));
+    const spec = this.deps.picker();
+    const timeout = pickerTimeout(options);
+    return this.picker.run("list_models", spec, timeout, (io) =>
+      listPickerModels(io, spec, timeout),
+    );
   }
 
   setModel(id: string, options?: Timeout): Promise<void> {
-    return setPickerModel(this.io("set_model"), this.deps.picker(), id, pickerTimeout(options));
+    const spec = this.deps.picker();
+    const timeout = pickerTimeout(options);
+    return this.picker.run("set_model", spec, timeout, (io) =>
+      setPickerModel(io, spec, id, timeout),
+    );
   }
 
-  private io(kind: "list_models" | "set_model"): ModelPickerIo {
-    return {
-      terminal: this.deps.terminal,
-      blocked: this.deps.blocked,
-      submit: (c, signal) => this.deps.submit(c, kind, signal),
-    };
+  blocksInput(): boolean {
+    return this.picker.blocksInput();
   }
 }

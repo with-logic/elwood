@@ -14,6 +14,7 @@ const changeConfirmed = /Model changed to/;
 export const codexModelPicker: ModelPickerSpec = {
   agent: "codex",
   isOpen: (text) => codexModelPickerHeader.test(text),
+  isActive: (text) => codexModelPickerHeader.test(text) || reasoningHeader.test(text),
   parse: parseCodexModelPicker,
   // Enter confirms the model, then Codex asks for a reasoning level with the
   // cursor pre-set on that model's default; a second Enter keeps it.
