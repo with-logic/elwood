@@ -13,6 +13,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import { codexStartupFrame } from "../helpers/codex-startup-frame.ts";
 import { becomeReady, FakePty, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -31,7 +32,9 @@ describe("§5.7 Codex frame-path warning containment (C-API-14 live-only)", () =
     // A frame that emits a warning (MCP banner) through the throwing listener: the
     // throw must be contained so the frame still emits terminal:data. Wait on the
     // observable (the banner frame arriving) rather than a fixed sleep.
-    const banner = "⚠ The linear MCP server is not logged in. Run `codex mcp login linear`.";
+    const banner = codexStartupFrame(
+      "⚠ The linear MCP server is not logged in. Run `codex mcp login linear`.",
+    );
     ptys[0]!.emitData(banner);
     await expect.poll(() => data.some((d) => d.includes("linear"))).toBe(true);
     // Readiness still reaches ready via the SessionStart hook despite the throwing listener.
@@ -80,7 +83,11 @@ describe("C-API-14 Codex preflight warning is observable on the returned session
       pty.onData = (handler) => {
         const off = realOnData(handler);
         queueMicrotask(() =>
-          pty.emitData("⚠ The linear MCP server is not logged in. Run `codex mcp login linear`."),
+          pty.emitData(
+            codexStartupFrame(
+              "⚠ The linear MCP server is not logged in. Run `codex mcp login linear`.",
+            ),
+          ),
         );
         return off;
       };
@@ -105,7 +112,9 @@ describe("C-API-14 Codex warnings are live-only (no late replay)", () => {
     const early: string[] = [];
     const offEarly = session.on("warning", (event) => early.push(event.code));
     ptys[0]!.emitData(
-      "⚠ The github MCP server is not logged in. Run `codex mcp login github`.\r\n",
+      codexStartupFrame(
+        "⚠ The github MCP server is not logged in. Run `codex mcp login github`.\r\n",
+      ),
     );
     await expect.poll(() => early).toContain("mcp_server_not_logged_in");
     offEarly(); // detach: the github banner is now firmly in the PAST
@@ -121,7 +130,9 @@ describe("C-API-14 Codex warnings are live-only (no late replay)", () => {
     expect(seen).toEqual([]); // no replay of the github banner
     // A NEW, different banner (distinct line) reaches the late subscriber (and only it).
     ptys[0]!.emitData(
-      "⚠ The linear MCP server is not logged in. Run `codex mcp login linear`.\r\n",
+      codexStartupFrame(
+        "⚠ The linear MCP server is not logged in. Run `codex mcp login linear`.\r\n",
+      ),
     );
     await expect.poll(() => seen).toEqual([{ code: "mcp_server_not_logged_in", server: "linear" }]);
   });

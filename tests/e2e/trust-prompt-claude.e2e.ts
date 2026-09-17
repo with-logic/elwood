@@ -39,7 +39,7 @@ async function trustInputFor(frame: string): Promise<string | undefined> {
     },
     () => rendered,
   );
-  if (result?.kind !== "answered" || result.automation.prompt !== "workspace_trust")
+  if (result?.kind !== "attempted" || result.automation.prompt !== "workspace_trust")
     return undefined;
   await result.settled;
   return written.join("");

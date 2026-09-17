@@ -12,7 +12,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
-import { trustPromptVisible } from "../../src/core/trust/responder.ts";
 import {
   type ClaudeSessionApi,
   type CodexSessionApi,
@@ -20,6 +19,7 @@ import {
   startCodex,
 } from "../../src/index.ts";
 import { cleanup, makeProject, observeSession, skipIf, skipReason, waitFor } from "./helpers.ts";
+import { trustPromptVisible } from "./trust-screens.ts";
 
 type Launch = {
   readonly claude?: { readonly launch?: { readonly permissionMode?: string } };
@@ -100,7 +100,15 @@ test("C-E2E-16 real Codex started with highTrust reaches ready with danger-full-
       autotrust: true,
       hooks: {},
     });
-    await waitFor(() => (session?.status === "ready" ? true : undefined), "codex ready", 90_000);
+    await waitFor(
+      () =>
+        session?.status === "ready" &&
+        !trustPromptVisible(session.terminal.snapshot().text, "codex")
+          ? true
+          : undefined,
+      "codex ready with no native trust dialog",
+      90_000,
+    );
     assert.deepEqual(
       readRecord(project.stateDir, session.elwoodSessionId).codex?.launch,
       { sandbox: "danger-full-access", approvalPolicy: "never" },

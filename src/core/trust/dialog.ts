@@ -8,7 +8,10 @@ const headerStart =
   /^(?:Do you|Quick safety|Is this|Load this|Trust the|New MCP|WARNING:|Claude Code running|Hooks need)/i;
 const numberedRow = /^\s*[❯›>]?\s*\d+[.)]\s*\S/;
 const footerRow =
-  /^\s*(?:(?:Enter to confirm|Esc to cancel)(?:\s*[·•]\s*(?:Enter to confirm|Esc to cancel))*|Press enter to (?:continue|confirm or esc to cancel))\s*$/i;
+  /^\s*(?:(?:Enter to confirm|Esc to cancel)(?:\s*[·•]\s*(?:Enter to confirm|Esc to cancel))*|Press enter to (?:continue|confirm or esc to (?:cancel|go back)))\s*$/i;
+// Native Codex's location prelude begins with >; conversation/composer rows do too.
+const conversationRow =
+  /^\s*(?:[●•]|[❯›](?!\s*\d+[.)])|>(?!\s+You are in (?:\/|[A-Z]:[\\/]))(?!\s*\d+[.)])|(?:user|assistant)\s*:)/i;
 
 export type TrustDialog = {
   readonly header: string;
@@ -26,6 +29,9 @@ export function parseTrustDialog(frame: string): TrustDialog | undefined {
     else if (!insideNumberedOption && headerStart.test(line.trim())) start = row;
   }
   if (start < 0) return undefined;
+  // Keep the provenance of a candidate when removing its prelude. Exact native
+  // copy quoted below a conversation row is still conversation content.
+  if (lines.slice(0, start).some((line) => conversationRow.test(line))) return undefined;
   const tail = lines.slice(start);
   const text = tail.join("\n");
   const header = nonOptionText(text);

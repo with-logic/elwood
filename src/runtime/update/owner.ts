@@ -8,6 +8,7 @@ import { ElwoodError, errnoCode } from "../../core/errors.ts";
 import { processGroupGone } from "../probe-cleanup.ts";
 
 export const ownerFile = "owner";
+export const pendingOwnerFile = "owner.next";
 export type LeaseOwner = {
   readonly pid: number;
   readonly token: string;
@@ -43,6 +44,8 @@ export function serializeOwner(owner: LeaseOwner): string {
 }
 
 export function ownerIsAlive(owner: LeaseOwner): boolean {
+  // An active parent owns the whole callback, including gaps between version
+  // and update probes. A dead prior group does not authorize a competing update.
   if (owner.cleanupGroup !== undefined && !owner.activeProbe)
     return !processGroupGone(owner.cleanupGroup);
   if (parentIsAlive(owner.pid)) return true;
@@ -69,7 +72,7 @@ export async function retainProbeOwner(
   group: number,
   signal?: AbortSignal,
 ): Promise<void> {
-  const temporary = join(path, "owner.next");
+  const temporary = join(path, pendingOwnerFile);
   try {
     await writeFile(
       temporary,

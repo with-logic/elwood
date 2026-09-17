@@ -82,3 +82,20 @@ test.each([
   );
   expect(JSON.stringify(warning)).not.toContain("private server name");
 });
+
+test("C-LIFE-11 contention reports a skipped active updater rather than a failed local command", () => {
+  const warning = updateFailedWarning(
+    "codex",
+    "0.154.0",
+    elwoodError("codex_update_failed", "internal", {
+      updateReason: "active_owner",
+      cleanupErrorCode: "ETIMEDOUT",
+    }),
+  );
+  expect(warning.errorCode).toBe("update_active");
+  expect(warning.message).toBe(
+    "`codex update` skipped: another updater is active or its cleanup is unconfirmed; continuing with the installed CLI 0.154.0.",
+  );
+  expect(warning.cleanupErrorCode).toBe("ETIMEDOUT");
+  expect(warning.raw).toBe("");
+});

@@ -1,30 +1,18 @@
 /** Native explanatory copy is positive trust evidence; foreign prose is not (C-TRUST-01). */
+import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
 import { claudeScreenFactTableForTrustPolicy } from "../../src/claude/screen-table.ts";
 import { readScreenFacts } from "../../src/core/screen-facts.ts";
 import * as dialog from "../../src/core/trust/dialog.ts";
 import { TrustPromptResponder, trustPromptVisible } from "../../src/core/trust/responder.ts";
 
-afterEach(() => vi.restoreAllMocks());
+const directory = readFileSync(
+  new URL("../fixtures/codex-0.154.0/directory.txt", import.meta.url),
+  "utf8",
+);
+const hooks = readFileSync(new URL("../fixtures/codex-0.154.0/hooks.txt", import.meta.url), "utf8");
 
-// Native strings from the installed codex 0.144.4 executable; no agent turn required.
-const directory = [
-  "> You are in /Users/example/a project",
-  "Do you trust the contents of this directory?",
-  "Working with untrusted contents comes with higher risk of prompt injection.",
-  "Trusting the directory allows project-local config, hooks, and exec policies to load.",
-  "› 1. Yes, continue",
-  "  2. No, quit",
-  "Press enter to continue",
-].join("\n");
-const hooks = [
-  "Hooks need review",
-  "2 hooks are new or changed.",
-  "Hooks can run outside the sandbox after you trust them.",
-  "› 1. Review hooks",
-  "  2. Trust all and continue",
-  "  3. Continue without trusting (hooks won't run)",
-].join("\n");
+afterEach(() => vi.restoreAllMocks());
 
 test.each([
   [directory, true, "workspace_trust", "1\r"],
@@ -34,7 +22,7 @@ test.each([
   const result = new TrustPromptResponder("codex", trust).handle(frame, (input) => {
     writes.push(input);
   });
-  expect(result).toMatchObject({ kind: "answered", automation: { prompt: label } });
+  expect(result).toMatchObject({ kind: "attempted", automation: { prompt: label } });
   expect(writes).toEqual([key]);
   expect(trustPromptVisible(frame, "codex")).toBe(true);
 });

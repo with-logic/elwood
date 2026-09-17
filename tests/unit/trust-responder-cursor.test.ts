@@ -28,10 +28,10 @@ describe("cursor-style trust prompts", () => {
       writes.push(input);
     });
     expect(result).toMatchObject({
-      kind: "answered",
+      kind: "attempted",
       automation: { prompt: "workspace_trust", input: "1" },
     });
-    if (result?.kind === "answered") await result.settled;
+    if (result?.kind === "attempted") await result.settled;
     expect(writes).toEqual(["1\r"]);
     expect(optionKeystrokes(selectableOptions(frame)[0]!)).toEqual(["1\r"]);
   });
@@ -91,10 +91,10 @@ describe("cursor-style trust prompts", () => {
       () => rendered,
     );
     expect(result).toMatchObject({
-      kind: "answered",
+      kind: "attempted",
       automation: { prompt: "workspace_trust", input: "down+enter" },
     });
-    if (result?.kind === "answered") await result.settled;
+    if (result?.kind === "attempted") await result.settled;
     expect(writes).toEqual(["\u001b[B", "\r"]);
   });
 
@@ -113,7 +113,7 @@ describe("cursor-style trust prompts", () => {
       },
       () => rendered,
     );
-    if (result?.kind === "answered") await result.settled;
+    if (result?.kind === "attempted") await result.settled;
     expect(writes).toEqual(["\u001b[A", "\r"]);
   });
 });

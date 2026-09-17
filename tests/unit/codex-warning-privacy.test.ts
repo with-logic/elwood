@@ -1,12 +1,20 @@
 /** Native MCP banner recognition excludes private conversation content (PRD §5.7, C-API-14). */
+
 import { expect, test } from "vitest";
 import { codexWarningsFromText } from "../../src/codex/startup-prompts.ts";
+import { codexStartupFrame } from "../helpers/codex-startup-frame.ts";
 
 const startup = "MCP startup incomplete (failed: linear)";
 const login = "The linear MCP server is not logged in. Run `codex mcp login linear`.";
 
 test.each([
   startup,
+  `⚠ ${login}`,
+  `⚠ ${startup}\n› next composer`,
+  `continued private prose\n⚠ ${login}\n› next composer`,
+  `• Private answer\n${codexStartupFrame(`⚠ ${login}`)}`,
+  codexStartupFrame(`› Private question\n⚠ ${login}`),
+  `│ >_ OpenAI Codex (v0.154.0) │\nUnknown copy\n⚠ ${login}`,
   login,
   `› Private question\n⚠ ${login}`,
   `• Private answer\n⚠ ${startup}`,
@@ -28,7 +36,7 @@ test.each([
 
 test("C-API-14 preserves native warning icons and canonical diagnostic content", () => {
   const warnings = codexWarningsFromText(
-    `  ⚠ ${login}  \n⚠️ MCP startup incomplete (failed: linear, github)`,
+    codexStartupFrame(`  ⚠ ${login}  \n⚠️ MCP startup incomplete (failed: linear, github)`),
     "session",
   );
   expect(warnings).toHaveLength(2);

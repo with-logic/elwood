@@ -132,6 +132,7 @@ export async function buildClaudeSession(
       (input) => renderedTerminal.sendInput(input),
       () => latestRenderedText,
     );
+    active.automationBlocking = promptResponder.inputBlocking;
     // Warning delivery is CONTAINED on the frame path: a throwing `warning`/`activity`
     // listener must never skip readiness, login detection, or terminal:data (§5.7).
     emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
@@ -141,7 +142,7 @@ export async function buildClaudeSession(
     ready.armDeadline();
     const reading = observeRenderedFrame(observers, frame, session);
     active.inputBlocking = reading.facts.blocking_prompt_visible;
-    observeReadinessFrame(reading.facts); // blocking gate + resume-composer mark
+    observeReadinessFrame(reading.facts, active.automationBlocking); // blocking gate + resume-composer mark
     // Surface a mid-session login-expiry banner once (C-CLAUDE-18); no-op pre-readiness.
     session?.noteLoginExpiry(frame.text);
     emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });

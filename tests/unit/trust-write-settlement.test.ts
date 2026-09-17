@@ -6,14 +6,14 @@ import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/tru
 afterEach(() => vi.useRealTimers());
 
 function observe(result: TrustPromptResult<"claude">) {
-  if (result?.kind !== "answered") throw new Error("expected attempted answer");
+  if (result?.kind !== "attempted") throw new Error("expected attempted answer");
   const emit = vi.fn();
   const emitWarnings = vi.fn();
   emitSettledStartupOutcomes(
     { emit },
     "claude",
     "s1",
-    [{ outcome: { kind: "answered", ...result.automation }, settled: result.settled }],
+    [{ outcome: { kind: "attempted", ...result.automation }, settled: result.settled }],
     { emitWarnings },
   );
   return { emit, emitWarnings, settled: result.settled };
@@ -34,7 +34,7 @@ test.each([
   expect(write).not.toHaveBeenCalled();
   expect(observed.emit).not.toHaveBeenCalled();
   expect(observed.emitWarnings).not.toHaveBeenCalled();
-  const retry = observe(responder.handle(numbered, write, () => numbered));
+  const retry = observe(responder.handle(numbered, write));
   await retry.settled;
   expect(write).toHaveBeenCalledWith("1\r");
   expect(retry.emit).toHaveBeenCalledTimes(1);

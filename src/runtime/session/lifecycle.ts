@@ -44,6 +44,7 @@ export abstract class SessionLifecycle {
   protected readonly controlQueue: ControlQueue;
   protected everReady = false;
   inputBlocking = false;
+  automationBlocking = false;
   private readonly agent: ElwoodAgentKind;
   private readonly runtime: SessionRuntime;
   private readonly reapPolicy: SessionReapPolicy;
@@ -116,7 +117,6 @@ export abstract class SessionLifecycle {
       submitEvidence: (kind) => void this.submitEvidence(kind),
     });
   }
-
   get elwoodSessionId(): string {
     return this.record.elwoodSessionId;
   }
@@ -143,7 +143,7 @@ export abstract class SessionLifecycle {
     this.loops.pause();
   }
   protected isInputBlocked(): boolean {
-    return this.inputBlocking || this.status === "blocked";
+    return this.inputBlocking || this.automationBlocking || this.status === "blocked";
   }
   submitEvidence(kind: StatusEvidenceKind): StatusDecision {
     return this.statusEngine.submit(kind);

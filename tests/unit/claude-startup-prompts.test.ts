@@ -37,7 +37,7 @@ describe("ClaudeStartupPromptResponder", () => {
       writes.push(input);
     });
     expect(outcomesOf(first)).toEqual([
-      { kind: "answered", prompt: "browser_tools", input: "esc" },
+      { kind: "attempted", prompt: "browser_tools", input: "esc" },
     ]);
     expect(writes).toEqual([esc]);
     await drain(first);
@@ -93,13 +93,13 @@ describe("ClaudeStartupPromptResponder", () => {
       return Promise.reject(new Error("pty closed"));
     });
     expect(outcomesOf(rejecting)).toEqual([
-      { kind: "answered", prompt: "browser_tools", input: "esc" },
+      { kind: "attempted", prompt: "browser_tools", input: "esc" },
     ]);
     await expect(rejecting[0]?.settled).rejects.toThrow("pty closed");
     // Retryable: a later frame re-attempts the decline (write count grows to 2).
     const retried = responder.handle(browserPrompt, () => undefined);
     expect(outcomesOf(retried)).toEqual([
-      { kind: "answered", prompt: "browser_tools", input: "esc" },
+      { kind: "attempted", prompt: "browser_tools", input: "esc" },
     ]);
     await drain(retried);
     expect(attempts).toBe(1);
@@ -116,7 +116,7 @@ describe("ClaudeStartupPromptResponder", () => {
       writes.push(input);
     });
     expect(outcomesOf(retried)).toEqual([
-      { kind: "answered", prompt: "workspace_trust", input: "1" },
+      { kind: "attempted", prompt: "workspace_trust", input: "1" },
     ]);
     expect(writes).toEqual(["1\r"]);
     await drain(retried);

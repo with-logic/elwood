@@ -23,7 +23,7 @@ test("C-PERF-04 a delayed registrar cannot reopen a timed-out gate or release it
   );
   expect(result.error?.code).toBe("ETIMEDOUT");
   const release = vi.fn(() => Promise.resolve());
-  await registry.release(release);
+  await registry.releaseWhenRegistrationsSettle(release);
   expect(release).not.toHaveBeenCalled();
   finish();
   await expect.poll(() => release.mock.calls.length).toBe(1);
@@ -40,7 +40,7 @@ test("C-PERF-04 failed registration still releases after settlement and contains
   );
   const operation = registry.register(1, new AbortController().signal);
   const release = vi.fn(() => Promise.reject(new Error("cleanup")));
-  await registry.release(release);
+  await registry.releaseWhenRegistrationsSettle(release);
   reject(new Error("registration"));
   await expect(operation).rejects.toThrow("registration");
   await expect.poll(() => release.mock.calls.length).toBe(1);

@@ -23,28 +23,24 @@ import { writeTrustOption } from "./write.ts";
 /** The concrete allowlist entry type (preserves the derived literal `id`). */
 type TrustPromptEntry = (typeof trustPromptAllowlist)[number];
 
-/** An answered trust prompt; `prompt` is narrowed to the responder's agent. */
+/** An attempted trust response; `prompt` is narrowed to the responder's agent. */
 export type TrustPromptAutomation<A extends ElwoodAgentKind = ElwoodAgentKind> = {
   readonly prompt: TrustPromptIdFor<A>;
   readonly input: string;
 };
 
-/**
- * The completion of an answered trust write: a `void | Promise<void>` write is
- * normalized to a promise that resolves on success and rejects once the prompt
- * has been un-settled (kept retryable) on a rejected write.
- */
+/** Raw PTY writer result; the navigation owner separately settles answered or cancelled. */
 export type TrustWriteResult = void | Promise<void>;
 
 /**
- * The outcome of handling a frame: an answered prompt, a recognized prompt whose
+ * The outcome of handling a frame: a cancellable write attempt, a recognized prompt whose
  * affirmative option has not rendered yet (a TRANSIENT render delay — under the
  * say-yes policy a later frame carrying the option is still answered, so this is
  * never a terminal wedge), or nothing.
  */
 export type TrustPromptResult<A extends ElwoodAgentKind = ElwoodAgentKind> =
   | {
-      readonly kind: "answered";
+      readonly kind: "attempted";
       readonly automation: TrustPromptAutomation<A>;
       // Cancellation is a safe skip; both cancellation and write failure allow retry.
       readonly settled: Promise<StartupWriteCompletion>;
@@ -56,6 +52,14 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
   // Whether the caller launched under full trust (`autotrust`). `answerPolicy:
   // "always"` prompts (hook trust) are answered even when this is false.
   private readonly autotrust: boolean;
+  private visible = false;
+  private dialogKey: string | undefined;
+  private generation = 0;
+
+  /** Automation owns input until the current native trust dialog clears. */
+  get inputBlocking(): boolean {
+    return this.visible;
+  }
   private readonly specs: readonly TrustPromptEntry[];
   private readonly settled = new Set<TrustPromptIdFor<A>>();
   // A prompt whose "option not rendered yet" state was reported once, kept
@@ -75,6 +79,26 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     readFrame?: () => string,
   ): TrustPromptResult<A> {
     const dialog = parseTrustDialog(frame);
+    const key =
+      dialog === undefined
+        ? undefined
+        : JSON.stringify([
+            dialog.header,
+            dialog.options.map((option) => [
+              option.style,
+              option.label,
+              option.style === "numbered" ? option.number : "",
+            ]),
+          ]);
+    // Clearing preserves the epoch for successful settlement; a reappearing or
+    // replaced dialog starts a new epoch before any old attempt can retry.
+    if (key !== undefined && key !== this.dialogKey) this.generation += 1;
+    this.dialogKey = key;
+    this.visible = this.specs.some(
+      (spec) =>
+        (this.autotrust || spec.answerPolicy === "always") &&
+        activeTrustDialogVisible(dialog, spec),
+    );
     if (dialog === undefined) return undefined;
     for (const spec of this.specs) {
       const id = spec.id as TrustPromptIdFor<A>;
@@ -94,7 +118,15 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       // releases it for retry; only a rejected write becomes a warning upstream.
       this.settled.add(id);
       const input = optionInput(option);
-      const operation = writeTrustOption(spec, option, write, frame, readFrame);
+      const generation = this.generation;
+      const operation = writeTrustOption(
+        spec,
+        option,
+        write,
+        dialog,
+        () => this.generation === generation,
+        readFrame,
+      );
       const settled = operation.then(
         (completion) => {
           if (completion === "cancelled") this.settled.delete(id);
@@ -105,7 +137,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
           throw error;
         },
       );
-      return { kind: "answered", automation: { prompt: id, input }, settled };
+      return { kind: "attempted", automation: { prompt: id, input }, settled };
     }
     return undefined;
   }

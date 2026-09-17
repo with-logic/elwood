@@ -32,6 +32,7 @@ export type UpdateLeaseOptions = {
 
 const defaultPollMs = 50;
 const defaultStaleMs = 30_000;
+const defaultWaitMs = 60_000;
 
 function defaultLeaseRoot(): string {
   const user = userInfo();
@@ -46,6 +47,8 @@ export function updateLockPath(adapter: UpdateAdapter, root = defaultLeaseRoot()
  * Runs `update` only for the lease owner. A contender waits until that owner
  * settles and then returns without a duplicate update; callers re-read version
  * state after this resolves. Waiting uses timers, never a blocking filesystem loop.
+ * After 60 seconds by default, an active/unconfirmed owner rejects with the adapter's
+ * update_failed error and cleanupErrorCode ETIMEDOUT; preflight warns and continues.
  */
 export async function coordinatedAutoupdate(
   adapter: UpdateAdapter,
@@ -56,7 +59,7 @@ export async function coordinatedAutoupdate(
   const path = updateLockPath(adapter, root);
   const pollMs = options.pollMs ?? defaultPollMs;
   const staleMs = options.staleMs ?? defaultStaleMs;
-  const deadline = Date.now() + (options.waitMs ?? 60_000);
+  const deadline = Date.now() + (options.waitMs ?? defaultWaitMs);
   await mkdir(root, { recursive: true, mode: 0o700 });
   await chmod(root, 0o700);
   const owner = { pid: process.pid, token: randomUUID() } satisfies LeaseOwner;
@@ -78,6 +81,7 @@ export async function coordinatedAutoupdate(
         "Another updater has not finished or confirmed cleanup.",
         {
           cleanupErrorCode: "ETIMEDOUT",
+          updateReason: "active_owner",
         },
       );
     }
@@ -96,6 +100,13 @@ export async function coordinatedAutoupdate(
   let retained = false;
   try {
     await probes.run(update);
+    const group = await probes.unfinishedGroup();
+    if (group !== undefined) {
+      throw elwoodError(`${adapter}_update_failed`, "Updater descendants have not exited.", {
+        cleanupErrorCode: "ETIMEDOUT",
+        cleanupProcessGroup: group,
+      });
+    }
   } catch (error) {
     const group = unresolvedProbeGroup(error);
     if (group !== undefined) {
@@ -107,7 +118,7 @@ export async function coordinatedAutoupdate(
     throw error;
   } finally {
     if (!retained) {
-      await probes.release(async () => {
+      await probes.releaseWhenRegistrationsSettle(async () => {
         await Promise.allSettled([writeFile(completion, owner.token, { mode: 0o600 })]);
         await releaseLease(path, owner);
       });

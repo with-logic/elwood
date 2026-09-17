@@ -5,7 +5,14 @@
 import { rename, rmdir, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { type LeaseOwner, ownerFile, ownerIsAlive, parentIsAlive, readOwner } from "./owner.ts";
+import {
+  type LeaseOwner,
+  ownerFile,
+  ownerIsAlive,
+  parentIsAlive,
+  pendingOwnerFile,
+  readOwner,
+} from "./owner.ts";
 
 export async function waitForOwner(
   path: string,
@@ -57,6 +64,7 @@ async function recoverStaleLease(path: string): Promise<"removed" | "alive" | "u
   }
   try {
     if (moved !== undefined) await unlink(join(recovery, ownerFile));
+    await unlink(join(recovery, pendingOwnerFile)).catch(() => undefined);
     await rmdir(recovery);
     return "removed";
   } catch {

@@ -191,6 +191,75 @@ select a destructive-rider affirmative, and never answer a specific-affirmative
 prompt (e.g. hook trust) with a generic "Yes". `src/core/trust/responder.ts`,
 `src/core/trust/prompts.ts`, verified by `tests/e2e/trust-prompt-claude.e2e.ts`.
 
+### Native regions and live confirmation
+
+Claude 2.1.252 places `Accessing workspace:` and the workspace path **before**
+the trust question. The question may wrap; its explanatory copy is:
+
+```
+(Like your own code, a well-known open source project, or work from your team). If not,
+take a moment to review what's in this folder first.
+Claude Code'll be able to read, edit, and execute files here.
+Security guide
+```
+
+The 2.1.206 capture omits `, or work from your team`. Blank rows and wrapping
+remain part of one dialog. Unknown explanatory text, titles, or option rows do
+not authorize an answer. Conversation prefixes (`●`, `•`, user/composer markers)
+remain provenance even when they precede an exact quoted trust question; slicing
+at the question must not discard them.
+
+Native Codex 0.154.0 captures at 100 columns (2026-09-16) place
+`> You are in /absolute/project/path` before the directory question. The question
+and explanation begin on the same row and wrap:
+
+```
+Do you trust the contents of this directory? Working with untrusted contents comes with higher
+risk of prompt injection. Trusting the directory allows project-local config, hooks, and exec
+policies to load.
+› 1. Yes, continue
+  2. No, quit
+Press enter to continue
+```
+
+Its hook gate renders `Hooks need review`, `1 hook is new or changed.`, and
+`Hooks can run outside the sandbox after you trust them.`, followed by
+`Review hooks`, `Trust all and continue`, and
+`Continue without trusting (hooks won't run)` as numbered choices. Its footer is
+`Press enter to confirm or esc to go back` — accepting only `esc to cancel`
+incorrectly rejects this real dialog. These PTY captures supersede the earlier
+0.144.4 binary-string evidence for those layouts. No captured path follows the
+trust header; do not add generic path/prose acceptance based on that assumption.
+
+The native Codex 0.154.0 input loop can swallow the first numbered confirmation:
+the PTY write fulfills while the directory gate stays visible. In the 2026-09-16
+high-trust probe, a manual repeat at eight seconds cleared that same gate; the
+first write had already produced premature startup activity at roughly one second.
+Numbered automation therefore retries every 250 ms for at most five seconds,
+revalidates the same header and exact option identity before each write, and
+reports answered only after the gate clears. A native directory-to-hook transition
+confirms directory clearance without sending an old answer to the hook gate.
+An observed clear-and-reappear generation cancels the old attempt.
+
+Cursor navigation rereads between individual arrows and Enter. Both styles cancel
+quietly when the dialog changes or the five-second attempt expires. A cancellation remains retryable;
+it emits neither answered activity nor a PTY-write warning. Only a rejected PTY
+write produces `startup_prompt_write_failed`. An automation-owned visible trust
+gate holds initial readiness and queued paste/command input until it clears,
+independently of human-blocking attention. A fulfilled write alone does not
+prove the gate cleared. Real-CLI checks use a separate raw visibility oracle so
+production recognition failures cannot make the tests report the gate absent.
+
+### Native Codex startup warnings
+
+Codex 0.154.0 normally collapses MCP failures to
+`⚠ 1 MCP startup issue · ctrl + t for details`. Its Ctrl+T overlay retains the
+canonical detailed MCP and login warning rows beneath the boxed welcome header.
+The collapsed count cannot supply server names or recovery instructions; Elwood
+does not send Ctrl+T automatically. Captures and the local failing-server/401
+real-CLI test verify the detailed rows. The current welcome chrome and native
+warning prefixes distinguish these banners from conversational quotations.
+
 ### Bypass-permissions acceptance dialog (`--high-trust`)
 
 Claude Code carries a one-time disclaimer for bypass mode. Its wording, taken
@@ -233,9 +302,8 @@ therefore version/account-gated, and Elwood must be correct in BOTH states:
 
 **Do not equate `autotrust` with “not blocking” until the write clears the real
 screen.** Trust rules are omitted from human-blocking classification under
-`autotrust`, because automation owns the gate. If option parsing drifts and writes
-nothing, the 10 s initial-ready starvation deadline can otherwise report `ready`
-over a still-visible trust dialog. C-E2E-09 therefore requires both `ready` and a
+`autotrust`, because automation owns the gate. A separate automation gate holds
+the 10 s initial-ready fallback and queued input while native trust remains visible. C-E2E-09 therefore requires both `ready` and a
 cleared trust screen; a complete but unanswerable real frame is a failure, not a
 skip.
 

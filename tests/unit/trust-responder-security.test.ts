@@ -9,7 +9,7 @@ import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/tru
 
 /** The write settlement of an ANSWERED prompt; any other outcome fails the test (never vacuous). */
 function settlementOf(result: TrustPromptResult<"claude">): Promise<StartupWriteCompletion> {
-  if (result?.kind !== "answered") throw new Error(`not answered: ${result?.kind}`);
+  if (result?.kind !== "attempted") throw new Error(`not answered: ${result?.kind}`);
   return result.settled;
 }
 
@@ -35,7 +35,7 @@ describe("trust-prompt automation security", () => {
       responder.handle("Do you trust this folder?\n1. Yes, proceed\n2. No, cancel", (input) => {
         writes.push(input);
       }),
-    ).toMatchObject({ kind: "answered", automation: { prompt: "workspace_trust", input: "1" } });
+    ).toMatchObject({ kind: "attempted", automation: { prompt: "workspace_trust", input: "1" } });
     expect(writes).toEqual(["1\r"]);
   });
 
@@ -165,7 +165,7 @@ describe("trust-prompt automation security", () => {
       responder.handle("Do you trust the plugin?\n1. Yes, trust it\n2. No", (input) => {
         writes.push(input);
       }),
-    ).toMatchObject({ kind: "answered", automation: { prompt: "plugin_trust", input: "1" } });
+    ).toMatchObject({ kind: "attempted", automation: { prompt: "plugin_trust", input: "1" } });
     expect(writes).toEqual(["1\r"]);
   });
 
@@ -183,7 +183,7 @@ describe("trust-prompt automation security", () => {
         writes.push(input);
       }),
     ).toMatchObject({
-      kind: "answered",
+      kind: "attempted",
       automation: { prompt: "workspace_trust", input: "1" },
     });
     expect(writes).toEqual(["1\r"]);

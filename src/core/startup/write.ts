@@ -15,7 +15,6 @@ import {
   emitStartupPromptActivity,
   type StartupActivityEmitter,
   type StartupPromptLabelFor,
-  type StartupPromptOutcome,
 } from "./automation.ts";
 
 /** A disappeared/changed dialog cancels safely without claiming a failed PTY write. */
@@ -23,17 +22,16 @@ export type StartupWriteCompletion = "answered" | "cancelled";
 
 /**
  * A settled startup-prompt automation, discriminated by `outcome.kind` so the
- * invalid pairings are unrepresentable: an `answered` outcome ALWAYS carries the
+ * invalid pairings are unrepresentable: an `attempted` outcome ALWAYS carries the
  * write-completion `settled` promise (resolves on success or safe cancellation,
- * rejects on a failed write), and an
- * `option_pending` outcome (no write happened) NEVER carries one. This makes a
- * false success ("answered" with no write to await) and a silently lost warning
- * (write present on a non-answered outcome) impossible to construct (§5.4, §5.7).
+ * rejects on a failed write), and an `option_pending` outcome (no write happened)
+ * NEVER carries one. An attempt without completion and a silently lost warning
+ * (write present on a pending outcome) are impossible to construct (§5.4, §5.7).
  */
 export type SettledStartupOutcome<A extends ElwoodAgentKind> =
   | {
       readonly outcome: {
-        readonly kind: "answered";
+        readonly kind: "attempted";
         readonly prompt: StartupPromptLabelFor<A>;
         readonly input: string;
       };
@@ -52,7 +50,7 @@ export type StartupWarningSink = {
 
 /**
  * Emit each settled automation's activity at the RIGHT time: an `option_pending`
- * or write-less outcome emits immediately; a write-backed `answered` outcome emits
+ * or write-less outcome emits immediately; an `attempted` outcome emits
  * its `startup_prompt` activity only once the write resolves, and on rejection
  * emits a bounded warning instead. A safely cancelled attempt emits neither.
  */
@@ -82,7 +80,7 @@ export function emitSettledStartupOutcomes<A extends ElwoodAgentKind>(
       }
       continue;
     }
-    // An `answered` outcome always carries the write-completion promise: its
+    // An `attempted` outcome always carries the write-completion promise: its
     // activity is emitted only once the write fulfills, and a rejected write
     // surfaces a bounded warning instead of a false "answered" activity.
     const { outcome, settled } = settledOutcome;
@@ -94,7 +92,10 @@ export function emitSettledStartupOutcomes<A extends ElwoodAgentKind>(
       .then(
         (completion) => {
           if (completion !== "cancelled")
-            emitStartupPromptActivity(emitter, agent, elwoodSessionId, outcome);
+            emitStartupPromptActivity(emitter, agent, elwoodSessionId, {
+              ...outcome,
+              kind: "answered",
+            });
         },
         () => warnings?.emitWarnings([writeFailedWarning(agent, elwoodSessionId, outcome)]),
       )
@@ -108,7 +109,7 @@ export function emitSettledStartupOutcomes<A extends ElwoodAgentKind>(
 function writeFailedWarning<A extends ElwoodAgentKind>(
   agent: A,
   elwoodSessionId: string,
-  outcome: StartupPromptOutcome<A>,
+  outcome: { readonly prompt: StartupPromptLabelFor<A> },
 ): ElwoodWarningEvent {
   // `outcome.prompt` is already the agent-correlated label, so no cast discards
   // the correlation: an off-agent (label, agent) pairing cannot be constructed.

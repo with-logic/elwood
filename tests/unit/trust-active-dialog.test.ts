@@ -7,6 +7,12 @@ const permission =
 const trust = "Do you trust this folder?\n1. Yes\n2. No\nEnter to confirm";
 
 test.each([
+  `● Assistant response\n\n${trust}`,
+  `• Assistant response\n  ${trust.replaceAll("\n", "\n  ")}`,
+  `❯ User transcript\n\n${trust}`,
+  `> User transcript\n\n${trust}`,
+  `user: quoted dialog\n${trust}`,
+  `assistant: quoted dialog\n${trust}`,
   `● The README says: Do you trust this folder?\n\n${permission}`,
   `Do you trust this folder?\n\n${permission}`,
   `${trust}\n\n${permission}`,
@@ -40,10 +46,10 @@ test.each([
     writes.push(key);
   });
   expect(result).toMatchObject({
-    kind: "answered",
+    kind: "attempted",
     automation: { prompt: "skill_trust", input: "2" },
   });
-  if (result?.kind !== "answered") throw new Error("expected answer");
+  if (result?.kind !== "attempted") throw new Error("expected answer");
   await result.settled;
   expect(writes).toEqual(["2\r"]);
 });
@@ -58,17 +64,19 @@ test("C-TRUST-01 revalidates a numbered dialog before writing and leaves it retr
     },
     () => `${trust}\n${permission}`,
   );
-  if (result?.kind !== "answered") throw new Error("expected attempted answer");
+  if (result?.kind !== "attempted") throw new Error("expected attempted answer");
   await expect(result.settled).resolves.toBe("cancelled");
   expect(writes).toEqual([]);
+  let retryFrame = trust;
   const retry = responder.handle(
     trust,
     (key) => {
       writes.push(key);
+      retryFrame = "Ready";
     },
-    () => trust,
+    () => retryFrame,
   );
-  if (retry?.kind !== "answered") throw new Error("expected retry");
+  if (retry?.kind !== "attempted") throw new Error("expected retry");
   await retry.settled;
   expect(writes).toEqual(["1\r"]);
 });
@@ -85,7 +93,7 @@ test("C-TRUST-01 cursor navigation does not confirm a replacement dialog under a
     },
     () => frame,
   );
-  if (result?.kind !== "answered") throw new Error("expected attempted answer");
+  if (result?.kind !== "attempted") throw new Error("expected attempted answer");
   await expect(result.settled).resolves.toBe("cancelled");
   expect(writes).toEqual(["\u001b[B"]);
 });

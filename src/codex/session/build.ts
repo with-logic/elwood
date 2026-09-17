@@ -124,6 +124,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
         (i) => renderedTerminal.sendInput(i),
         () => renderedTerminal.snapshot().text,
       );
+      activeSession.automationBlocking = promptResponder.inputBlocking;
       warnGate.emitWarnings(result.warnings);
       emitSettledStartupOutcomes(emitter, "codex", record.elwoodSessionId, result.outcomes, {
         emitWarnings: (w) => warnGate.emitWarnings(w),
@@ -131,7 +132,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       ready.armDeadline(); // hook/deadline readiness; resume composer also marks (C-API-28)
       const reading = observeRenderedFrame(observers, frame, session);
       activeSession.inputBlocking = reading.facts.blocking_prompt_visible;
-      observeReadinessFrame(reading.facts); // blocking gate + resume-composer mark
+      observeReadinessFrame(reading.facts, activeSession.automationBlocking); // blocking gate + resume-composer mark
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );

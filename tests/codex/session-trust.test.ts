@@ -30,6 +30,8 @@ describe("CodexSessionApi trust prompts", () => {
     session.on("activity", (event) => activity.push(`${event.kind}:${event.label}`));
     ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. Yes, continue");
     await expect.poll(() => ptys[0]!.writes).toEqual(["1\r"]);
+    expect(activity).not.toContain("startup_prompt:workspace_trust");
+    ptys[0]!.emitData("\u001b[2J\u001b[H› ");
     await expect.poll(() => activity).toContain("startup_prompt:workspace_trust");
   });
 

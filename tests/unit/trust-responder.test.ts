@@ -24,7 +24,7 @@ describe("allowlisted trust prompt automation", () => {
       responder.handle("Do you trust this folder?\n1. Yes", (input) => {
         writes.push(input);
       }),
-    ).toMatchObject({ kind: "answered", automation: { prompt: "workspace_trust", input: "1" } });
+    ).toMatchObject({ kind: "attempted", automation: { prompt: "workspace_trust", input: "1" } });
     expect(
       responder.handle("Do you trust this folder?", (input) => {
         writes.push(input);
@@ -52,7 +52,7 @@ describe("allowlisted trust prompt automation", () => {
           writes.push(input);
         }),
       ).toMatchObject({
-        kind: "answered",
+        kind: "attempted",
         automation: { prompt: id, input: option },
       });
       expect(writes).toEqual([`${option}\r`]);
@@ -109,7 +109,7 @@ describe("allowlisted trust prompt automation", () => {
         writes.push(input);
       }),
     ).toMatchObject({
-      kind: "answered",
+      kind: "attempted",
       automation: { prompt: "skill_trust", input: "1" },
     });
     expect(writes).toEqual(["1\r"]);
@@ -130,7 +130,7 @@ describe("allowlisted trust prompt automation", () => {
         writes.push(input);
       }),
     ).toMatchObject({
-      kind: "answered",
+      kind: "attempted",
       automation: { prompt: "workspace_trust", input: "1" },
     });
     expect(writes).toEqual(["1\r"]);
@@ -155,7 +155,7 @@ describe("allowlisted trust prompt automation", () => {
       responder.handle("Do you trust this folder?\n1. Yes, proceed", (input) => {
         writes.push(input);
       }),
-    ).toMatchObject({ kind: "answered", automation: { prompt: "workspace_trust", input: "1" } });
+    ).toMatchObject({ kind: "attempted", automation: { prompt: "workspace_trust", input: "1" } });
     expect(writes).toEqual(["1\r"]);
   });
 });

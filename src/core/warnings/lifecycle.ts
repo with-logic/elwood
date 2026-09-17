@@ -11,6 +11,8 @@ import type { ReapErrorCode } from "./reasons.ts";
  * minimum, so the session started from it. Safe diagnostics only: the installed version in use,
  * an allowlisted `errorCode` (a probe timeout/`errno`), and bounded `raw` stderr — never terminal
  * transcripts, prompts, tokens, or environment secrets.
+ * Optional `cleanupErrorCode` records unconfirmed probe cleanup. Contention uses
+ * `errorCode: "update_active"` and a canonical skipped-update message.
  */
 export type AgentUpdateFailedWarning = {
   readonly elwoodSessionId: string;

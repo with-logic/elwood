@@ -11,6 +11,7 @@ import {
   type SettledCodexStartupOutcome,
 } from "../../src/codex/startup-prompts.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
+import { codexStartupFrame } from "../helpers/codex-startup-frame.ts";
 
 /** The bare outcomes of a settled-outcome list, for concise assertions. */
 function outcomesOf(settled: readonly SettledCodexStartupOutcome[]) {
@@ -92,7 +93,7 @@ describe("Codex startup prompt responder", () => {
     );
     expect(writes).toEqual(["1\r"]);
     expect(outcomesOf(result.outcomes)).toEqual([
-      { kind: "answered", prompt: "workspace_trust", input: "1" },
+      { kind: "attempted", prompt: "workspace_trust", input: "1" },
     ]);
   });
 
@@ -115,7 +116,7 @@ describe("Codex startup prompt responder", () => {
       writer(writes),
     );
     expect(outcomesOf(result.outcomes)).toEqual([
-      { kind: "answered", prompt: "workspace_trust", input: "1" },
+      { kind: "attempted", prompt: "workspace_trust", input: "1" },
     ]);
     expect(writes).toEqual(["1\r"]);
   });
@@ -173,7 +174,9 @@ describe("Codex startup prompt responder", () => {
 
   test("C-CODEX-09 parses typed MCP startup warnings", () => {
     const warnings = codexWarningsFromText(
-      "⚠ The linear MCP server is not logged in. Run `codex mcp login linear`.\n⚠ MCP startup incomplete (failed: linear, github)",
+      codexStartupFrame(
+        "⚠ The linear MCP server is not logged in. Run `codex mcp login linear`.\n⚠ MCP startup incomplete (failed: linear, github)",
+      ),
       "s1",
     );
     expect(warnings[0]).toMatchObject({

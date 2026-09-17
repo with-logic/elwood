@@ -34,3 +34,15 @@ test("C-PERF-03 an unconfirmed group is returned after the bounded cleanup windo
     kill(-child.pid!, "SIGKILL");
   }
 });
+
+test("C-PERF-03 a group disappearing between liveness and signal needs no retry", async () => {
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true });
+  vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+    if (signal === "SIGKILL") {
+      kill(pid, signal);
+      throw Object.assign(new Error("exited concurrently"), { code: "ESRCH" });
+    }
+    return kill(pid, signal);
+  });
+  await expect(abortProbe(child)).resolves.toEqual({});
+});

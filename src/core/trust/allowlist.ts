@@ -33,7 +33,8 @@ const trustHooksOption = new RegExp(`^${notDecline}.*\\btrust\\b.*\\b(hooks?|all
 const acceptOption = new RegExp(`^${notDecline}.*\\byes\\b.*\\baccept\\b`, "i");
 
 /**
- * The allowlist. Wording verified against claude 2.1.205–2.1.268 and codex-cli 0.142.5.
+ * The allowlist. Claude folder captures: 2.1.206/2.1.252; bypass copy: 2.1.268.
+ * Codex directory/hooks: native 0.154.0 PTY captures (docs/cli-behavior.md).
  * `workspace`/`directory` trust are the folder-trust gates; `skill`, `plugin`,
  * and `mcp` cover the CLI's first-run trust prompts for loading third-party
  * skills, plugins, and MCP servers under a full-trust launch.

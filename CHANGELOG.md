@@ -14,16 +14,21 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Bind automatic trust approvals to the active dialog and revalidate every write,
   preventing quoted transcript headers or unknown intervening titles from
-  authorizing unrelated permissions. Cancel stale trust attempts quietly.
+  authorizing unrelated permissions. Cancel stale trust attempts quietly while
+  keeping readiness and queued input gated until the native dialog clears. Retry
+  early numbered trust writes that the CLI has not yet consumed.
 - Recognize only native Codex warning banners, keeping quoted private prompt text
-  out of warning events.
+  out of warning events by requiring the current native welcome region.
 - Validate all concrete Claude tool input fields and typed hook fields, constrain
   permission rewrites to tool-specific handlers, and accept nullable Codex descriptions.
 - Reject FIFO state/config files without hanging, and contain clipboard pipe
   failures while retaining the clipboard lock until the restore process exits.
 - Bound subprocess cleanup, report content-free `cleanupErrorCode` diagnostics,
   and retain update exclusion until an unresolved updater process group exits.
-  Contenders wait at most 60 seconds before skipping a still-owned update.
+  Contenders wait at most 60 seconds before skipping a still-owned update, with
+  an explicit active-updater diagnostic. Keep exclusion after a normal updater
+  exit while descendants remain, recover interrupted owner writes, and continue
+  failed probe cleanup asynchronously without extending host shutdown.
 
 ## [0.1.3] - 2026-09-14
 

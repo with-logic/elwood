@@ -1,7 +1,7 @@
 /**
  * Recognized native trust-dialog explanations, excluding arbitrary intervening prose.
  * Implements PRD §5.4/C-TRUST-01. Claude copy is captured in trust-responder-cursor
- * and trust-bypass-permissions tests; Codex copy is present in the installed 0.144.4 binary.
+ * and trust-bypass-permissions tests; Codex directory/hooks were captured from 0.154.0.
  */
 
 export const noTrustDescription = /^$/;
