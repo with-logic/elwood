@@ -1,6 +1,7 @@
 /** Builds a live ClaudeSessionApi from a record + runtime. Implements PRD §5, §6, §8, §9. */
 import { defaultTerminalSize } from "../../core/defaults.ts";
 import { causeDetails, elwoodError } from "../../core/errors.ts";
+import { guardedAutomationWrite } from "../../core/startup/barrier.ts";
 import { createStartupWarningGate, deliverFrameWarnings } from "../../core/startup/frame.ts";
 import { emitSettledStartupOutcomes } from "../../core/startup/write.ts";
 import { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
@@ -131,12 +132,13 @@ export async function buildClaudeSession(
     terminalReplay.push(data);
     latestRenderedText = renderedTerminal.snapshot().text;
     const frame = { text: latestRenderedText, title: renderedTerminal.title };
-    // The write RETURNS its `sendInput` completion (no longer swallowed): the
-    // responder settles the prompt and its `startup_prompt` activity only after
-    // the write fulfills, and a rejected write stays retryable + warns (C-CLAUDE-16).
+    // The write RETURNS its `sendInput` completion: the responder settles the prompt and
+    // its `startup_prompt` activity only after the write fulfills, and a rejected write
+    // stays retryable + warns (C-CLAUDE-16). It clears the render barrier first, so it
+    // never lands on a stale snapshot (C-API-56).
     const autos = promptResponder.handle(
       frame.text,
-      (input) => renderedTerminal.sendInput(input),
+      guardedAutomationWrite(renderedTerminal, (input) => renderedTerminal.sendInput(input)),
       () => latestRenderedText,
     );
     // Warning delivery is CONTAINED on the frame path: a throwing `warning`/`activity`

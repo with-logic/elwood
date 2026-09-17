@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Stop automated startup-prompt writes from reaching a trust dialog that arrived
+  while the previous screen was still rendering. The Codex update skip (including
+  its retries), the Claude browser-tools decline, and trust navigation now observe
+  all received PTY output and re-check the settled frame before writing, the same
+  guarantee queued caller input already had. A withheld automated write is silent
+  and stays retryable; it emits no `startup_prompt` activity and no warning.
 - Bound Codex in-TUI update skipping to one attempt per appearance of the update
   screen: an exhausted retry no longer restarts on the next frame of the same
   screen, and a stale attempt's late completion cannot start an overlapping retry
