@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Emit the `attention` activity for a blocking prompt that painted while the
+  session was still `starting`. Such a session already became `blocked`, but
+  without the human-decision event, so a headless `elwood` run never reported
+  `blocked_prompt`.
 - Snapshot image bytes and relative paths when facade methods are called, including
   turns queued behind another response or waiting for session startup. Facade copies
   count against the same 200 MiB per-session ceiling as sends on the raw `session`.

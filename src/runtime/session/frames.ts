@@ -1,4 +1,5 @@
 /** Session-owned frame and trust-deadline observation (PRD §5.3/§5.4, C-TRUST-01). */
+import { activityFromAttention, blockingRuleIds } from "../../core/attention.ts";
 import {
   observeRenderedReading,
   type RenderedObservers,
@@ -28,6 +29,7 @@ export function createSessionFrameObserver(
   readiness: ReadinessGate,
 ) {
   let frame: RenderedFrame | undefined;
+  let ruleIds: readonly string[] = [];
   const refresh = () => {
     const active = session();
     if (active === undefined || active.closing.signal.aborted || frame === undefined) return;
@@ -36,6 +38,7 @@ export function createSessionFrameObserver(
     const released = active.automationBlocking && !state.inputBlocking;
     active.automationBlocking = state.inputBlocking;
     active.inputBlocking = reading.facts.blocking_prompt_visible;
+    ruleIds = blockingRuleIds(reading);
     readiness.ready.armDeadline();
     try {
       observeRenderedReading(observers, reading, active);
@@ -53,6 +56,17 @@ export function createSessionFrameObserver(
     observe: (current: RenderedFrame) => {
       frame = current;
       refresh();
+    },
+    /**
+     * Blocking evidence is ignored while `starting`, yet that frame already spent the
+     * attention edge. Once live, block on a still-visible gate AND announce it, so a
+     * startup gate never yields `blocked` without its human-decision activity (C-ATTN-03).
+     */
+    blockOnceLive: (active: FrameSession) => {
+      if (active.inputBlocking && active.submitEvidence("blocking_prompt_shown").to === "blocked")
+        observers.emitActivity(
+          activityFromAttention(observers.agent, observers.elwoodSessionId, ruleIds),
+        );
     },
   };
 }
