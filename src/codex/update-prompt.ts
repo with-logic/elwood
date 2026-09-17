@@ -30,6 +30,11 @@ export class CodexUpdatePromptTracker {
   private active = false;
   private generation = 0;
 
+  /** Identifies the current appearance; it changes whenever the update screen clears or appears. */
+  get currentGeneration(): number {
+    return this.generation;
+  }
+
   observe(frameText: string): boolean {
     if (codexUpdatePromptVisible(frameText)) {
       if (!this.active) this.generation += 1;
@@ -61,13 +66,16 @@ function isSafeUpdateContinuation(frameText: string): boolean {
 const retryIntervalMs = 250;
 const retryTimeoutMs = 5_000;
 
+/** `exhausted`: the retry budget ended while the safe option was still visible. */
+export type CodexUpdateSkipCompletion = StartupWriteCompletion | "exhausted";
+
 /** Retries a possibly swallowed startup hotkey only while its safe option remains visible. */
 export async function writeCodexUpdateSkip(
   option: string,
   write: (input: string) => TrustWriteResult,
   readFrame?: () => string,
   currentUpdateFrame: (frameText: string) => boolean = codexUpdatePromptVisible,
-): Promise<StartupWriteCompletion> {
+): Promise<CodexUpdateSkipCompletion> {
   if (readFrame === undefined) {
     await write(option);
     return "answered";
@@ -85,7 +93,7 @@ export async function writeCodexUpdateSkip(
     wrote = true;
     await wait(retryIntervalMs);
   }
-  return "cancelled";
+  return "exhausted";
 }
 
 function wait(ms: number): Promise<void> {

@@ -32,7 +32,9 @@ export class CodexStartupPromptResponder {
   private readonly elwoodSessionId: string;
   private readonly trust: TrustPromptResponder<"codex">;
   private readonly updatePrompt = new CodexUpdatePromptTracker();
-  private skippedUpdate: boolean;
+  // The update-screen generation that owns the skip latch (0 = none). Only that
+  // generation's own completion may release it; a stale completion is a no-op.
+  private skipGeneration = 0;
   // The banner identities that fired a warning on the PREVIOUS frame. A warning fires
   // only on the EDGE a banner first appears; a banner still present next frame is NOT
   // re-emitted (that would replay the same live incident indefinitely, C-API-14). A
@@ -46,7 +48,6 @@ export class CodexStartupPromptResponder {
     // Owns the whole allowlisted trust family (directory + hook trust), not just
     // one prompt; extended by adding entries to trustPromptAllowlist.
     this.trust = new TrustPromptResponder("codex", autotrust, onStateChange);
-    this.skippedUpdate = false;
   }
 
   get blockedPrompt() {
@@ -81,9 +82,10 @@ export class CodexStartupPromptResponder {
     }
     // Skipping an available update is not a trust decision, so it stays here.
     // The skip is EDGE-triggered and scoped to the CURRENT frame's update screen:
-    // `skippedUpdate` latches after a successful skip so a persistent update screen is
-    // not re-answered every frame, but it RE-ARMS the moment the update screen leaves
-    // the frame. That breaks the observed restart loop — Codex restarts itself, the
+    // `skipGeneration` latches one bounded attempt per appearance — answered OR
+    // exhausted — so a persistent update screen is not re-answered every frame, but it
+    // RE-ARMS the moment the update screen leaves the frame (a new generation). That
+    // breaks the observed restart loop — Codex restarts itself, the
     // update does not take, and the SAME update screen reappears; a cleared frame
     // between the two appearances (Codex's restart draws a normal composer) re-arms us
     // to skip the reappearance. Gating the attempt on the CURRENT frame (not just the
@@ -93,14 +95,17 @@ export class CodexStartupPromptResponder {
     // the option, since Codex can split the banner and its numbered options across two
     // consecutive frames.
     const onUpdateScreen = this.updatePrompt.observe(screenText);
-    if (!onUpdateScreen) this.skippedUpdate = false;
-    if (onUpdateScreen && !this.skippedUpdate) {
+    const generation = this.updatePrompt.currentGeneration;
+    if (onUpdateScreen && this.skipGeneration !== generation) {
       const option = findNumberedOption(this.buffer, codexUpdateOptionPattern);
       if (option) {
         // Settle OPTIMISTICALLY but keep the skip retryable if the write is
         // rejected, so a later frame re-attempts it rather than falsely reporting
         // the update as skipped (C-CODEX-17).
-        this.skippedUpdate = true;
+        this.skipGeneration = generation;
+        const rearm = () => {
+          if (this.skipGeneration === generation) this.skipGeneration = 0;
+        };
         const settled = writeCodexUpdateSkip(
           option,
           write,
@@ -108,11 +113,12 @@ export class CodexStartupPromptResponder {
           this.updatePrompt.currentFramePredicate(),
         ).then(
           (completion) => {
-            if (completion === "cancelled") this.skippedUpdate = false;
+            if (completion === "exhausted") return "cancelled";
+            if (completion === "cancelled") rearm();
             return completion;
           },
           (error: unknown) => {
-            this.skippedUpdate = false;
+            rearm();
             throw error;
           },
         );

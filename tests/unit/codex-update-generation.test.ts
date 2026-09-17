@@ -51,6 +51,41 @@ describe("Codex update prompt generations", () => {
     expect(writes).toEqual(["2", "3"]);
   });
 
+  test("C-CODEX-12 a stale attempt's late rejection cannot re-arm the next generation", async () => {
+    const responder = new CodexStartupPromptResponder("s1");
+    let rejectFirst = (_error: Error): void => {};
+    const pending = () => new Promise<void>((_resolve, reject) => (rejectFirst = reject));
+    const first = responder.handle(update, pending, () => update);
+    const writes: string[] = [];
+    const write = (input: string) => void writes.push(input);
+    responder.handle("› Ready", write, () => update);
+    const second = responder.handle(update, write, () => update);
+    rejectFirst(new Error("pty closed"));
+    await expect(first.outcomes[0]?.settled).rejects.toThrow("pty closed");
+    // The reappeared screen's own attempt is still writing: no overlapping loop starts.
+    expect(responder.handle(update, write, () => update).outcomes).toEqual([]);
+    await vi.runAllTimersAsync();
+    await expect(second.outcomes[0]?.settled).resolves.toBe("cancelled");
+    expect(writes).toHaveLength(20);
+  });
+
+  test("C-CODEX-12 an exhausted skip stays latched until the update screen reappears", async () => {
+    const responder = new CodexStartupPromptResponder("s1");
+    const writes: string[] = [];
+    const write = (input: string) => void writes.push(input);
+    const first = responder.handle(update, write, () => update);
+    await vi.runAllTimersAsync();
+    await expect(first.outcomes[0]?.settled).resolves.toBe("cancelled");
+    expect(responder.handle(update, write, () => update).outcomes).toEqual([]);
+    await vi.runAllTimersAsync();
+    expect(writes).toHaveLength(20);
+    // The restart-loop re-arm survives: a cleared frame, then the same screen again.
+    responder.handle("› Ready", write, () => update);
+    const again = responder.handle(update, write, () => "› Ready");
+    expect(again.outcomes[0]?.outcome).toEqual({ kind: "attempted", prompt: "update", input: "2" });
+    await again.outcomes[0]?.settled;
+  });
+
   test("an option-only replacement cannot continue an update generation", () => {
     const tracker = new CodexUpdatePromptTracker();
     expect(tracker.observe(update)).toBe(true);

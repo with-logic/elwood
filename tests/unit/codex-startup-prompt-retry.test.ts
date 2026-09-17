@@ -117,7 +117,7 @@ describe("Codex startup prompt retry on rejected write", () => {
       },
       () => "Update available! 0.153.3 -> 0.153.4\n  1. Update now\n› 2. Skip",
     );
-    const cancellation = expect(result).resolves.toBe("cancelled");
+    const cancellation = expect(result).resolves.toBe("exhausted");
     await vi.runAllTimersAsync();
     await cancellation;
     expect(writes).toHaveLength(20);
