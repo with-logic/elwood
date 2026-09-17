@@ -115,10 +115,7 @@ Save this as **ask.mts**. The `.mts` extension makes this an ES module, includin
 ```ts
 import { ClaudeSession } from "@with-logic/elwood";
 
-const session = new ClaudeSession({
-  cwd: process.cwd(),
-  autotrust: true, // Approve allowlisted trust prompts for this known project.
-});
+const session = new ClaudeSession({ cwd: process.cwd() });
 
 try {
   const reply = await session.send(
@@ -136,11 +133,6 @@ Run it with Node.js 24+:
 ```sh
 node ask.mts
 ```
-
-`autotrust: true` approves allowlisted workspace and extension trust prompts. Use it
-only for a project and extensions you trust. To keep the library default of
-`autotrust: false`, first run `claude` in this exact project directory, approve its
-trust prompts, and exit. A hidden session cannot ask you to approve them.
 
 `new ClaudeSession()` is synchronous. The first `send()` starts the agent; the constructor alone does not. `send()` resolves to a string after the turn settles. `finally` closes the process even if the turn fails.
 
@@ -281,7 +273,7 @@ Positional words become the prompt. Piped input is appended after a blank line:
 
 ```sh
 git diff | elwood "Review this diff for correctness."
-elwood run < prompt.txt
+elwood < prompt.txt
 elwood -C ../service "Explain the entry point."
 elwood --image screenshot.png "What looks wrong?"
 ```
@@ -295,9 +287,6 @@ Repeat `--image` for multiple images. Input is limited to 8 MiB. The command doe
 | `--output text` | A person or a text file | Combined assistant reply; default |
 | `--output json` | A script that needs one result | One terminal document with response, status and cleanup |
 | `--output jsonl` | Progress in another program | Ordered event records, then one result or error |
-
-Text output contains only the agent response by default. Add `--show-session-id`
-to print the retained session ID on stderr, or find it later with `elwood sessions`.
 
 Text errors use stderr; JSON errors are emitted as terminal records on stdout. Routine session warnings are quiet unless `--verbose` or `--debug` is enabled. JSONL includes warning records in its ordered stdout stream. A response can contain useful partial text even when the run fails: inspect the exit code and terminal record type.
 
@@ -347,7 +336,7 @@ CLI timeout covers launch, any persona setup turn and the requested turn. Durati
 
 ## Resuming a session
 
-New and resumed runs preserve their Elwood state by default so a later process can resume. `--keep` explicitly selects this default; `--ephemeral` removes Elwood state after either a new or resumed run. With text output, `--show-session-id` opts into the session ID on stderr; JSON includes it in the result.
+New and resumed runs preserve their Elwood state by default so a later process can resume. `--keep` explicitly selects this default; `--ephemeral` removes Elwood state after either a new or resumed run. With text output, the session ID is reported on stderr; JSON includes it in the result.
 
 This Bash/Zsh example requires `jq`:
 
@@ -373,7 +362,7 @@ elwood sessions
 elwood sessions --output json
 ```
 
-Each record reports its id, agent, workspace, creation and last-used times, whether it is resumable, and whether it is live (a launch's bridge socket is present). JSON emits one `{"schemaVersion": 1, "type": "sessions", ...}` document. An empty state directory is a normal, empty result. Run flags such as `--show-session-id` are invalid for `sessions`.
+Each record reports its id, agent, workspace, creation and last-used times, whether it is resumable, and whether it is live (a launch's bridge socket is present). JSON emits one `{"schemaVersion": 1, "type": "sessions", ...}` document. An empty state directory is a normal, empty result.
 
 ## Listing models
 
@@ -386,7 +375,7 @@ elwood models --agent codex --output json
 
 Text marks the current model with `*` and the default with `(default)`. JSON emits one `{"schemaVersion": 1, "type": "models", ...}` document. Combined listings have `agents: [{agent, models}]` and `errors: [...]`; explicit `--agent` retains `agent` and `models`. Rows carry `id`, `label`, `description`, `isCurrent`, and `isDefault`.
 
-If one adapter fails or is unavailable, the available catalog is still returned with per-agent errors and a nonzero exit status. `--timeout` is a whole-command budget shared by both probes. Ctrl-C stops further probes. Each probe uses its matching adapter settings. `models` rejects `--stream`, `--head`, `--persona`, `--image`, `--keep`, `--show-session-id`, `--resume`, `--ephemeral`, prompt words, and JSONL output.
+If one adapter fails or is unavailable, the available catalog is still returned with per-agent errors and a nonzero exit status. `--timeout` is a whole-command budget shared by both probes. Ctrl-C stops further probes. Each probe uses its matching adapter settings.
 
 ## The agent's own terminal
 
@@ -398,7 +387,7 @@ elwood interactive --agent codex --model gpt-5.4
 elwood interactive "$session_id"
 ```
 
-With an id, the stored session's conversation reopens in its stored workspace with its stored posture. Elwood does not observe or record an interactive conversation and writes no session state. It requires a terminal on stdin and stdout, and cannot be combined with `--output json`/`jsonl`, `--stream`, `--verbose`, `--debug`, `--head`, `--timeout`, `--persona`, `--image`, `--keep`, `--show-session-id`, `--ephemeral`, or `--resume`.
+With an id, the stored session's conversation reopens in its stored workspace with its stored posture. Elwood does not observe or record an interactive conversation and writes no session state. It requires a terminal on stdin and stdout, and cannot be combined with `--output json`/`jsonl`, `--stream`, `--verbose`, `--debug`, `--head`, `--timeout`, `--persona`, `--image`, `--keep`, `--ephemeral`, or `--resume`.
 
 ## Reproducible runs
 
@@ -827,7 +816,6 @@ Agent and turn options:
 
 Continuation and output:
   --keep                      Preserve Elwood state (default)
-  --show-session-id           Print the retained session ID on stderr (default: off)
   --resume <id>               Resume the exact stored agent and workspace
   --ephemeral                 Remove new or resumed Elwood state afterward
   --output <text|json|jsonl>  Stdout protocol (default: text)
@@ -865,7 +853,7 @@ Interactive mode:
   writes no session state. With an id, the stored session's own conversation is
   resumed in its stored workspace with its stored posture. Requires a terminal on
   stdin and stdout; cannot be combined with --output json/jsonl, --stream,
-  --verbose, --debug, --head, --timeout, --persona, --image, --keep, --show-session-id, --ephemeral,
+  --verbose, --debug, --head, --timeout, --persona, --image, --keep, --ephemeral,
   or --resume. Built-in posture defaults are not applied unless configured.
 
 Session listing:
@@ -940,8 +928,8 @@ Examples:
 - `--persona` performs a real setup turn for new sessions and cannot be used with resume.
 - `--ephemeral` removes new or resumed Elwood state afterward. Both preserve state by default; explicit `--keep` and `--ephemeral` cannot be combined.
 - `--high-trust` cannot combine with an explicit `--claude-permission-mode`, `--codex-sandbox` or `--codex-approval-policy`. Use `--no-high-trust` to reverse an inherited value.
-- `elwood interactive` needs a terminal and rejects the scripted flags (`--output json`/`jsonl`, `--stream`, `--verbose`, `--debug`, `--head`, `--timeout`, `--persona`, `--image`, `--keep`, `--show-session-id`, `--ephemeral`, `--resume`).
-- `elwood sessions` never starts an agent; `elwood models` probes Claude then Codex (or only the explicit `--agent`) and leaves no session state behind. Both reject `--show-session-id`; use that flag only with `run` or `resume`.
+- `elwood interactive` needs a terminal and rejects the scripted flags (`--output json`/`jsonl`, `--stream`, `--verbose`, `--debug`, `--head`, `--timeout`, `--persona`, `--image`, `--keep`, `--ephemeral`, `--resume`).
+- `elwood sessions` never starts an agent; `elwood models` probes Claude then Codex (or only the explicit `--agent`) and leaves no session state behind.
 
 Flags override environment, which overrides global configuration, which overrides built-ins. [See all configuration keys](configuration.html).
 

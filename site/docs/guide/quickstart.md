@@ -53,10 +53,7 @@ Save this as **ask.mts**. The `.mts` extension makes this an ES module, includin
 ```ts
 import { ClaudeSession } from "@with-logic/elwood";
 
-const session = new ClaudeSession({
-  cwd: process.cwd(),
-  autotrust: true, // Approve allowlisted trust prompts for this known project.
-});
+const session = new ClaudeSession({ cwd: process.cwd() });
 
 try {
   const reply = await session.send(
@@ -74,11 +71,6 @@ Run it with Node.js 24+:
 ```sh
 node ask.mts
 ```
-
-`autotrust: true` approves allowlisted workspace and extension trust prompts. Use it
-only for a project and extensions you trust. To keep the library default of
-`autotrust: false`, first run `claude` in this exact project directory, approve its
-trust prompts, and exit. A hidden session cannot ask you to approve them.
 
 `new ClaudeSession()` is synchronous. The first `send()` starts the agent; the constructor alone does not. `send()` resolves to a string after the turn settles. `finally` closes the process even if the turn fails.
 

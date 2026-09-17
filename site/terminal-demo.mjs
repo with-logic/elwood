@@ -1,8 +1,6 @@
 const code = `import { ClaudeSession } from "@with-logic/elwood";
 
-const session = new ClaudeSession({
-  autotrust: true, // A project and extensions you trust.
-});
+const session = new ClaudeSession();
 try {
   for await (const event of session.stream(
     "Where does this app handle authentication?",
@@ -67,7 +65,7 @@ export const CHAPTERS = [
         replace: true,
       },
       {
-        text: '\n\n{\n  "schemaVersion": 1,\n  "type": "result",\n  "agent": "claude",\n  "response": "src/auth.ts owns authentication.",\n  "sessionId": "example-session-id",\n  "durationMs": 2841,\n  "cleanup": { "action": "preserve", "status": "succeeded" }\n}',
+        text: '\n\n{\n  "schemaVersion": 1,\n  "type": "result",\n  "agent": "claude",\n  "response": "src/auth.ts owns authentication.",\n  "sessionId": null,\n  "durationMs": 2841,\n  "cleanup": { "action": "teardown", "status": "succeeded" }\n}',
         hold: 6,
       },
     ],
