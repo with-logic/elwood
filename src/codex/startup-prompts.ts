@@ -105,8 +105,9 @@ export class CodexStartupPromptResponder {
         // the update as skipped (C-CODEX-17).
         this.skipGeneration = generation;
         // A later appearance owns the latch AND the settlement: a superseded attempt
-        // neither re-arms, answers, nor warns on its behalf (C-CODEX-12).
-        const superseded = () => this.updatePrompt.supersedes(generation);
+        // neither re-arms, answers, nor warns on its behalf. A write rejected after the
+        // screen merely cleared is quiet too — nothing is left to retry or block on —
+        // while a clear after our key is exactly what success means (C-CODEX-12).
         const settled = writeCodexUpdateSkip(
           option,
           write,
@@ -114,12 +115,13 @@ export class CodexStartupPromptResponder {
           this.updatePrompt.currentFramePredicate(),
         ).then(
           (completion) => {
-            if (completion === "exhausted" || superseded()) return "cancelled";
+            const superseded = this.updatePrompt.supersedes(generation);
+            if (completion === "exhausted" || superseded) return "cancelled";
             if (completion === "cancelled") this.skipGeneration = 0;
             return completion;
           },
           (error: unknown): StartupWriteCompletion => {
-            if (superseded()) return "cancelled";
+            if (this.updatePrompt.currentGeneration !== generation) return "cancelled";
             this.skipGeneration = 0;
             throw error;
           },

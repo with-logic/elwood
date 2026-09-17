@@ -98,6 +98,31 @@ describe("Codex update prompt generations", () => {
     expect(writes).toHaveLength(20);
   });
 
+  test.each([
+    "resolves",
+    "rejects",
+  ] as const)("C-CODEX-17 a pending write that %s after the screen merely cleared", async (mode) => {
+    const responder = new CodexStartupPromptResponder("s1");
+    let settle = { resolves: (): void => {}, rejects: (_error: Error): void => {} };
+    const pending = () =>
+      new Promise<void>((resolves, rejects) => (settle = { resolves, rejects }));
+    let frame = update;
+    const first = responder.handle(frame, pending, () => frame);
+    frame = "› Ready";
+    responder.handle(frame, pending, () => frame);
+    const emit = vi.fn();
+    const emitWarnings = vi.fn();
+    emitSettledStartupOutcomes({ emit }, "codex", "s1", first.outcomes, { emitWarnings });
+    settle[mode](new Error("pty closed"));
+    await vi.runAllTimersAsync();
+    // Clearing after our key IS success; a failed write with no prompt left to retry
+    // or block on is quiet — its warning would fail a healthy CLI run as blocked_prompt.
+    const completion = mode === "resolves" ? "answered" : "cancelled";
+    await expect(first.outcomes[0]?.settled).resolves.toBe(completion);
+    expect(emit).toHaveBeenCalledTimes(mode === "resolves" ? 1 : 0);
+    expect(emitWarnings).not.toHaveBeenCalled();
+  });
+
   test("C-CODEX-12 an exhausted skip stays latched until the update screen reappears", async () => {
     const responder = new CodexStartupPromptResponder("s1");
     const writes: string[] = [];
