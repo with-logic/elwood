@@ -90,6 +90,7 @@ describe("CodexSessionApi resume options", () => {
     // The queued turn paints before a quiet replay-settling frame. No Stop hook
     // fires: rendered state alone must retain the end edge and reopen the queue.
     ptys[1]!.emitData("• Working (3s • esc to interrupt)\r\n› ");
+    await resumed.terminal.settled(); // The busy and idle states are distinct observed frames.
     ptys[1]!.emitData("\u001b[2J\u001b[H› ");
     await expect.poll(() => resumed.status).toBe("ready");
     await resumed.sendMessage("second message drains");
