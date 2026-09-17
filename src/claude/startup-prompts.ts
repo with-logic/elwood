@@ -31,10 +31,19 @@ export class ClaudeStartupPromptResponder {
     return this.trust.inputBlocking;
   }
 
+  /**
+   * `write` answers TRUST prompts and belongs to `TrustPromptResponder` alone.
+   * `writeAutomation` carries every NON-trust automated key (here, the browser-tools
+   * decline). They are separate parameters so the two classes of write can be guarded
+   * differently — only non-trust automation may be withheld when a trust gate is on
+   * screen, since answering such a gate is the trust responder's own job (#42).
+   * Defaults to `write`, so a caller that passes one writer keeps today's behavior.
+   */
   handle(
     screenText: string,
     write: (input: string) => TrustWriteResult,
     readFrame?: () => string,
+    writeAutomation: (input: string) => TrustWriteResult = write,
   ): readonly SettledStartupOutcome<"claude">[] {
     const settled: SettledStartupOutcome<"claude">[] = [];
     const trust = this.trust.handle(screenText, write, readFrame);
@@ -49,7 +58,7 @@ export class ClaudeStartupPromptResponder {
       // OPTIMISTICALLY, but keep the decline retryable if the write is rejected
       // so a later frame re-attempts it rather than reporting a false "answered".
       this.browserDeclined = true;
-      const writeSettled = Promise.resolve(write(declineKey)).catch((error: unknown) => {
+      const writeSettled = Promise.resolve(writeAutomation(declineKey)).catch((error: unknown) => {
         this.browserDeclined = false;
         throw error;
       });
