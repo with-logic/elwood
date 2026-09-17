@@ -78,9 +78,11 @@ test("C-PERF-04 a live owner is never evicted solely because staleMs elapsed", a
 // `update_active` is shared behaviour but each adapter has its own preflight path, so both
 // are exercised: a Claude-only regression would otherwise leave the suite green.
 test.each([
-  ["codex", preflightCodex, "codex-cli 0.154.0", "0.154.0", "codex update"],
-  ["claude", preflightClaude, "2.1.144", "2.1.144", "claude update"],
-] as const)("C-PERF-04 a %s contender that stops waiting starts from the installed CLI with update_active", async (adapter, preflight, versionOutput, installedVersion, updateCommand) => {
+  // The priming version is the pre-update one and must itself clear the adapter's minimum,
+  // so the priming preflight succeeds and only the cache's staleness is under test.
+  ["codex", preflightCodex, "codex-cli 0.155.0", "0.155.0", "codex update", "codex-cli 0.154.0"],
+  ["claude", preflightClaude, "2.1.145", "2.1.145", "claude update", "2.1.144"],
+] as const)("C-PERF-04 a %s contender that stops waiting starts from the installed CLI with update_active", async (adapter, preflight, versionOutput, installedVersion, updateCommand, stalePriming) => {
   const root = tempDir("elwood-update-wait-warning-");
   const release = Promise.withResolvers<void>();
   const entered = Promise.withResolvers<void>();
@@ -100,17 +102,27 @@ test.each([
     coordinatedAutoupdate(updating, update, { root, pollMs: 1, waitMs: 10 }),
   );
   const commands: string[] = [];
+  let versionReply: string = stalePriming;
   setCommandRunnerForTests((_command, args) => {
     commands.push(args.join(" "));
-    return { status: 0, stdout: versionOutput, stderr: "" };
+    return { status: 0, stdout: versionReply, stderr: "" };
   });
   try {
+    // Prime the version cache with the pre-update version, as a first preflight would. The
+    // contended attempt must still re-read it (C-PERF-02: invalidate after every attempt,
+    // including a peer-owned one), or it would report this stale version instead.
+    await preflight(false, false);
+    const primingReads = commands.length;
+    expect(primingReads).toBeGreaterThan(0);
+    versionReply = versionOutput;
     expect(await preflight(false, true)).toMatchObject({
       code: "agent_update_failed",
       errorCode: "update_active",
       installedVersion,
       raw: "",
     });
+    // A fresh read happened after the peer-owned attempt, and no local updater ran.
+    expect(commands.length).toBeGreaterThan(primingReads);
     expect(commands.some((command) => command.includes(updateCommand))).toBe(false);
   } finally {
     release.resolve();

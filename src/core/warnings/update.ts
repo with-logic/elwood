@@ -32,6 +32,12 @@ const maxStderr = 2_000;
  * Build the warning from the contained update error. `installedVersion` is the parsed version the
  * session will actually run (the preflight re-read it after the failed update). `errorCode` is the
  * update probe's allowlisted `errno` (e.g. `ETIMEDOUT`) when present, else a generic token.
+ *
+ * An error carrying `updateReason: "active_owner"` is contention, not failure: another process
+ * held the update lease until this caller's wait expired, so no local update command ran. That
+ * yields `errorCode: "update_active"` and a message saying the update was skipped, with empty
+ * diagnostics — there is no errno or updater stderr to report, and retrying is the caller's
+ * next startup, not something to drive off this warning.
  */
 export function updateFailedWarning(
   agent: ElwoodAgentKind,
