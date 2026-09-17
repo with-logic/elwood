@@ -5,13 +5,19 @@
  * files); the real NSPasteboard round-trip is exercised by the serial e2e.
  */
 
+import { Writable } from "node:stream";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 // `error` is `unknown` on purpose: these tests exercise arbitrary rejection
 // values (strings, objects with stderr, plain messages), matching what a real
 // process failure can surface — no cast is needed to install them.
-type ExecResult = { stdout?: string; error?: unknown };
+type ExecResult = {
+  stdout?: string;
+  error?: unknown;
+  stdinError?: boolean;
+  completion?: Promise<void>;
+};
 const results: { value: ExecResult } = { value: { stdout: "" } };
 const calls: { file: string; args: readonly string[] }[] = [];
 
@@ -21,10 +27,16 @@ const calls: { file: string; args: readonly string[] }[] = [];
 function fakeExecFile(file: string, args: readonly string[]) {
   calls.push({ file, args });
   const { value } = results;
-  const child = { stdin: { end: () => undefined } };
+  const child = {
+    stdin: new Writable({
+      write(_chunk, _encoding, callback) {
+        callback(value.stdinError ? Object.assign(new Error("closed"), { code: "EPIPE" }) : null);
+      },
+    }),
+  };
   const promise = value.error
     ? Promise.reject(value.error)
-    : Promise.resolve({ stdout: value.stdout ?? "", stderr: "" });
+    : Promise.resolve(value.completion).then(() => ({ stdout: value.stdout ?? "", stderr: "" }));
   return Object.assign(promise, { child });
 }
 (fakeExecFile as unknown as Record<symbol, unknown>)[promisify.custom] = fakeExecFile;
@@ -99,6 +111,30 @@ describe("Codex clipboard helpers (C-API-46)", () => {
     await expect(restoreClipboardText("text")).resolves.toBe(true);
     results.value = { error: new Error("pbcopy boom") };
     await expect(restoreClipboardText("text")).resolves.toBe(false);
+  });
+
+  test("C-API-46 restore contains an asynchronous stdin failure even if the child succeeds", async () => {
+    results.value = { stdinError: true };
+    await expect(restoreClipboardText("text")).resolves.toBe(false);
+  });
+
+  test("C-API-46 an early stdin error retains restore ownership until pbcopy exits", async () => {
+    let complete!: () => void;
+    results.value = {
+      stdinError: true,
+      completion: new Promise<void>((resolve) => {
+        complete = resolve;
+      }),
+    };
+    let settled = false;
+    const restore = restoreClipboardText("prior clipboard").then((result) => {
+      settled = true;
+      return result;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(settled).toBe(false);
+    complete();
+    await expect(restore).resolves.toBe(false);
   });
 
   test("C-API-46 setClipboardImage uses the generic reason for a non-object error", async () => {
