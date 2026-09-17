@@ -1,4 +1,4 @@
-/** Terminal render throughput regressions (PRD §4.1, C-PERF-06). */
+/** Terminal render throughput and backpressure regressions (PRD §4.1, C-PERF-06). */
 
 import { expect, test, vi } from "vitest";
 import type { PtyProcess } from "../../src/pty/types.ts";

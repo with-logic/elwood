@@ -23,6 +23,10 @@ export const nodePtyFactory: PtyFactory = (options: PtySpawnOptions): PtyProcess
   });
   return {
     pid: pty.pid,
+    flowControl: {
+      pause: () => pty.pause(),
+      resume: () => pty.resume(),
+    },
     onData(handler) {
       const disposable = pty.onData(handler);
       return () => disposable.dispose();

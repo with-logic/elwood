@@ -52,8 +52,9 @@ export function attachPtyTerminal(
   onRendered: (data: string, terminal: ElwoodTerminal) => void,
 ): ElwoodTerminal {
   const terminal = new HeadlessTerminal(size, (input) => pty.write(input));
-  const output = new PtyOutput((data) =>
-    terminal.writeOutput(data, () => onRendered(data, terminal)),
+  const output = new PtyOutput(
+    (data) => terminal.writeOutput(data, () => onRendered(data, terminal)),
+    pty.flowControl,
   );
   terminal.attachOutput(output);
   const unsubscribe = pty.onData((data) => {
