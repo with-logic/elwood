@@ -47,6 +47,7 @@ export const runOptionTable: Readonly<Record<string, RunOptionSpec>> = {
   "codex-approval-policy": { type: "string", key: "codexApprovalPolicy" },
   cwd: { type: "string", key: "cwd", short: "C" },
   image: { type: "string", key: "images", multiple: true },
+  "show-session-id": { type: "boolean", key: "showSessionId", value: true },
   keep: { type: "boolean", key: "keep", value: true },
   resume: { type: "string", key: "resume" },
   ephemeral: { type: "boolean", key: "ephemeral", value: true },

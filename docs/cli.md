@@ -143,8 +143,9 @@ combined with `--stream`, `--verbose`, `--debug`, or `--output jsonl`.
 ## Continuation and cleanup
 
 New and resumed runs preserve state by default; `--keep` explicitly selects
-that default. A retained text run reports its session ID on stderr; JSON and
-JSONL include it in the terminal record:
+that default. Text output contains only the agent response. Add
+`--show-session-id` to print the retained ID on stderr, or run `elwood sessions`
+to find it later. JSON and JSONL include it in the terminal record:
 
 ```sh
 first=$(elwood --output json "Remember that the release color is teal")

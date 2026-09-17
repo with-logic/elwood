@@ -189,8 +189,9 @@ combined with `--stream`, `--verbose`, `--debug`, or `--output jsonl`.
 ### Continuation and cleanup
 
 New and resumed headless runs preserve Elwood state by default. A resumable
-session ID is reported on stderr for text output and in the terminal record for
-JSON and JSONL. `--keep` explicitly selects the default; use `--ephemeral` for
+session ID is included in the terminal record for JSON and JSONL. Text output
+prints only the agent response; use `--show-session-id` for an ID footer on
+stderr or `elwood sessions` to list retained sessions. `--keep` explicitly selects the default; use `--ephemeral` for
 one-off runs that should remove their Elwood state afterward:
 
 ```sh
