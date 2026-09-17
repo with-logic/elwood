@@ -30,7 +30,10 @@ test("C-TRUST-01 Codex update-skip never writes into a held trust gate, first wr
     expect(outcomes).toEqual([]);
     expect(writes).toEqual([]);
   }
-  // The real update screen is answered; a gate that replaces it mid-retry gets no key.
+  // The real update screen gets its key; a gate that replaces it mid-retry gets none,
+  // and the skip does NOT settle as answered — the update screen never cleared, it was
+  // replaced, so reporting success would emit `startup_prompt` for an update that
+  // did not take (C-CODEX-12).
   let frame = update;
   const writes: string[] = [];
   const responder = new CodexStartupPromptResponder("s", true);
@@ -39,6 +42,26 @@ test("C-TRUST-01 Codex update-skip never writes into a held trust gate, first wr
     frame = heldKnown;
   };
   const { outcomes } = responder.handle(frame, write, () => frame);
+  await vi.advanceTimersByTimeAsync(6_000);
+  expect(writes).toEqual(["2"]);
+  await expect(outcomes[0]?.settled).resolves.toBe("cancelled");
+});
+
+test("C-CODEX-12 an update screen that genuinely clears still settles as answered", async () => {
+  // The contrast case: nothing trust-shaped replaces it, so normal clearance is
+  // still success. Without this, "cancelled" could be reached by over-broad matching.
+  vi.useFakeTimers();
+  let frame = update;
+  const writes: string[] = [];
+  const responder = new CodexStartupPromptResponder("s", true);
+  const { outcomes } = responder.handle(
+    frame,
+    (input) => {
+      writes.push(input);
+      frame = "› \n  (ready)";
+    },
+    () => frame,
+  );
   await vi.advanceTimersByTimeAsync(6_000);
   expect(writes).toEqual(["2"]);
   await expect(outcomes[0]?.settled).resolves.toBe("answered");

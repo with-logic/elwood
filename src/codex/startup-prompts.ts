@@ -97,8 +97,10 @@ export class CodexStartupPromptResponder {
     // consecutive frames.
     const onUpdateScreen = this.updatePrompt.observe(screenText);
     const generation = this.updatePrompt.currentGeneration;
-    // A trust gate (held allowlisted candidate or off-allowlist) is never the update
-    // screen, even when its rows resemble the update options.
+    // A trust gate (held allowlisted candidate or off-allowlist) is never ELIGIBLE for
+    // update-skip automation, even when its rows resemble the update options. Note this
+    // gates the WRITE only: `updatePrompt.observe` above still tracks such a frame as an
+    // update appearance, so generation latching and re-arming are unaffected.
     const noTrustGate = (frame: string) => !trustGateVisible(frame, "codex");
     if (onUpdateScreen && this.skipGeneration !== generation && noTrustGate(screenText)) {
       const option = findNumberedOption(this.buffer, codexUpdateOptionPattern);
@@ -112,7 +114,10 @@ export class CodexStartupPromptResponder {
         // after our key is what success means (C-CODEX-12).
         const sameUpdate = this.updatePrompt.currentFramePredicate();
         const current = (frame: string) => sameUpdate(frame) && noTrustGate(frame);
-        const settled = writeCodexUpdateSkip(option, write, readFrame, current).then(
+        // A trust gate painted over the update screen INVALIDATES the skip: the update
+        // never cleared, so it must not settle as answered (C-CODEX-12, C-TRUST-01).
+        const invalidated = (frame: string) => trustGateVisible(frame, "codex");
+        const settled = writeCodexUpdateSkip(option, write, readFrame, current, invalidated).then(
           (completion) => {
             const replaced = this.updatePrompt.hasLaterAppearance(generation);
             if (completion === "exhausted" || replaced) return "cancelled";
