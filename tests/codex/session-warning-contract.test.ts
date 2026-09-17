@@ -11,7 +11,7 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest";
-import { startCodex } from "../../src/index.ts";
+import { resumeCodex, startCodex } from "../../src/index.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import { codexStartupFrame } from "../helpers/codex-startup-frame.ts";
 import { becomeReady, FakePty, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
@@ -19,6 +19,22 @@ import { becomeReady, FakePty, installFakes, ptys, resetFakes, tempDir } from ".
 afterEach(resetFakes);
 
 describe("§5.7 Codex frame-path warning containment (C-API-14 live-only)", () => {
+  test("C-API-14 a resumed transcript cannot warn even when no marker is ever in frame", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const first = await startCodex({ cwd });
+    await becomeReady(first.elwoodSessionId, cwd);
+    await first.stop();
+    const resumed = await resumeCodex({ cwd, elwoodSessionId: first.elwoodSessionId });
+    const codes: string[] = [];
+    resumed.on("warning", (event) => codes.push(event.code));
+    // The replay lands already scrolled: copied welcome rows, no conversation marker.
+    ptys[1]!.emitData(codexStartupFrame("⚠ MCP startup incomplete (failed: evil)"));
+    await resumed.terminal.settled();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(codes).toEqual([]);
+  });
+
   test("C-API-14 a welcome box pasted by the caller cannot warn after its marker scrolls away", async () => {
     const cwd = tempDir();
     installFakes();

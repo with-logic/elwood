@@ -28,3 +28,11 @@ test("C-API-14 every caller path reports input; automation and other members do 
   terminal.dispose();
   await expect(inner.sendInput("x")).rejects.toThrow("disposed");
 });
+
+test("C-API-14 a resumed session reports prior input before any frame is read", () => {
+  const inner = createHeadlessTerminal({ cols: 40, rows: 5 }, () => {});
+  const onInput = vi.fn();
+  reportCallerInput(inner, onInput, true);
+  expect(onInput).toHaveBeenCalledTimes(1);
+  inner.dispose();
+});

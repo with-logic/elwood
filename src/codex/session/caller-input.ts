@@ -16,7 +16,14 @@ export type CallerInput = {
  * which skip xterm's data event) and the public `xterm.input()`, which skips
  * `sendInput`. xterm fires its data event synchronously, so a flag scopes automation.
  */
-export function reportCallerInput(inner: ElwoodTerminal, onInput: () => void): CallerInput {
+export function reportCallerInput(
+  inner: ElwoodTerminal,
+  onInput: () => void,
+  priorInput = false,
+): CallerInput {
+  // A resumed session replays a transcript that already holds caller and model text,
+  // possibly without any conversation marker left in the frames this process sees.
+  if (priorInput) onInput();
   let automating = false;
   inner.xterm.onData(() => {
     if (!automating) onInput();

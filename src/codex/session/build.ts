@@ -138,7 +138,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );
-  const callerInput = reportCallerInput(terminal, () => promptResponder.endStartup());
+  const callerInput = reportCallerInput(terminal, () => promptResponder.endStartup(), resumed);
   session = new CodexSessionImpl(
     record,
     stateDir,
