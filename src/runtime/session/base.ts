@@ -65,12 +65,17 @@ export abstract class AgentSessionBase extends SessionLifecycle {
       statusEvents,
       status: () => this.status,
       everReady: () => this.everReady,
-      blocked: () => this.isInputBlocked(),
+      blocked: () => super.isInputBlocked(),
       picker: () => this.picker,
       controlQueue: this.controlQueue,
       submitDirect: (command, signal) =>
         writeQueuedInput(terminal, command, "command", this.pasteGuard, signal),
     });
+  }
+
+  /** Every queued writer also holds on a model dialog that outlived its cleanup (C-API-55). */
+  protected override isInputBlocked(): boolean {
+    return super.isInputBlocked() || this.commands.blocksInput();
   }
 
   sendPrompt(prompt: string, options?: SendOptions): Promise<void> {

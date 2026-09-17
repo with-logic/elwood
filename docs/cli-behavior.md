@@ -154,6 +154,11 @@ legacy string/`agent_message` support. C-CODEX-16.
   a quoted picker above another dialog. Picker rows carry a description column, so
   a caret row without one (`❯ 1. Yes`, a numbered composer line) marks the region
   below the quote as someone else's.
+- **Escape on a follow-up stage returns to the picker, not the composer.** On both
+  Claude 2.1.274 (cache warning) and Codex 0.154.0 (reasoning level) one Escape
+  reopens `Select model` / `Select Model and Effort`; a second closes it. Failure
+  cleanup therefore sends one Escape per stage and never repeats one: a second
+  Escape during a slow repaint would land on the composer. C-API-55.
 - **Codex persists `/model` picker selections into the user `config.toml`.**
   `setModel` restores the prior default via compare-and-swap after switching
   (C-CODEX-14), skipping with a `codex_default_model_persisted` warning on a

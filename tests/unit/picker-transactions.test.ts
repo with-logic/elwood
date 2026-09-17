@@ -1,5 +1,6 @@
 /** Model transactions own the input queue until they settle (PRD §5.3, C-API-55). */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { delay } from "../../src/core/delay.ts";
 import { waitForScreen } from "../../src/core/models/tui-screen.ts";
@@ -41,7 +42,9 @@ test("C-API-55 queue wait consumes the deadline without opening a picker", async
   const { queue, picker, writes } = setup();
   const preceding = queue.runExclusive("list_models", () => delay(100));
   const work = vi.fn(async () => 1);
-  const failed = expect(picker.run("list_models", 50, work)).rejects.toMatchObject({
+  const failed = expect(
+    picker.run("list_models", claudeModelPicker, 50, work),
+  ).rejects.toMatchObject({
     code: "model_automation_failed",
   });
   await vi.advanceTimersByTimeAsync(50);
@@ -57,7 +60,7 @@ test("C-API-55 queue wait consumes the deadline without opening a picker", async
 test("C-API-55 a queued message is dispatched only after the transaction settles", async () => {
   const { queue, picker, writes } = setup();
   queue.markReady();
-  const listed = picker.run("list_models", 5000, async (io) => {
+  const listed = picker.run("list_models", claudeModelPicker, 5000, async (io) => {
     await io.submit("/model", new AbortController().signal);
     await delay(300);
     await io.terminal.sendInput(escapeKey);
@@ -79,7 +82,7 @@ test.each([
   const { queue, picker, writes } = setup();
   queue.markReady();
   const failed = expect(
-    picker.run("set_model", 50, async (io) => {
+    picker.run("set_model", claudeModelPicker, 50, async (io) => {
       await delay(100);
       if (method === "submit") return io.submit("/model", new AbortController().signal);
       return method === "snapshot" ? io.terminal.snapshot() : io.terminal.sendInput("s");
@@ -95,7 +98,7 @@ test("C-API-55 terminating during navigation aborts without further writes", asy
   const { queue, picker, writes } = setup();
   queue.markReady();
   const failed = expect(
-    picker.run("set_model", 5000, async (io) => {
+    picker.run("set_model", claudeModelPicker, 5000, async (io) => {
       await io.submit("/model", new AbortController().signal);
       await waitForScreen(io.terminal, () => false, 5000, "cursor");
     }),

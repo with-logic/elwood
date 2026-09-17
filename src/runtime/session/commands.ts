@@ -89,16 +89,22 @@ export class CommandSurface {
   }
 
   listModels(options?: Timeout): Promise<readonly AgentModelOption[]> {
+    const spec = this.deps.picker();
     const timeoutMs = pickerTimeout(options);
-    return this.picker.run("list_models", timeoutMs, (io) =>
-      listPickerModels(io, this.deps.picker(), timeoutMs),
+    return this.picker.run("list_models", spec, timeoutMs, (io) =>
+      listPickerModels(io, spec, timeoutMs),
     );
   }
 
   setModel(id: string, options?: Timeout): Promise<void> {
+    const spec = this.deps.picker();
     const timeoutMs = pickerTimeout(options);
-    return this.picker.run("set_model", timeoutMs, (io) =>
-      setPickerModel(io, this.deps.picker(), id, timeoutMs),
+    return this.picker.run("set_model", spec, timeoutMs, (io) =>
+      setPickerModel(io, spec, id, timeoutMs),
     );
+  }
+
+  blocksInput(): boolean {
+    return this.picker.blocksInput();
   }
 }
