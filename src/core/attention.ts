@@ -21,11 +21,15 @@ export class AttentionWatcher {
     if (reading.facts.blocking_prompt_visible === this.blocked) return undefined;
     this.blocked = !this.blocked;
     if (!this.blocked) return { edge: "cleared", ruleIds: [] };
-    const ruleIds = reading.matched
-      .filter((rule) => rule.fact === "blocking_prompt_visible")
-      .map((rule) => rule.id);
-    return { edge: "raised", ruleIds };
+    return { edge: "raised", ruleIds: blockingRuleIds(reading) };
   }
+}
+
+/** Ids of the blocking rules a reading matched: the attention label's parts. */
+export function blockingRuleIds(reading: ScreenFactReading): readonly string[] {
+  return reading.matched
+    .filter((rule) => rule.fact === "blocking_prompt_visible")
+    .map((rule) => rule.id);
 }
 
 export function activityFromAttention(
