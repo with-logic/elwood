@@ -163,3 +163,15 @@ test("C-TRUST-01 a header without its native body receives no key until the body
   await expect(attempt).resolves.toBe("answered");
   expect(responder.inputBlocking).toBe(false);
 });
+
+test("C-TRUST-01 a body painting under a held header keeps the generation and its deadline", async () => {
+  const responder = new TrustPromptResponder("claude", true);
+  const write = vi.fn();
+  expect(responder.handle("Do you trust this folder?", write)).toBeUndefined();
+  await vi.advanceTimersByTimeAsync(4_900);
+  const attempt = settled(responder.handle(trust, write, () => trust));
+  await vi.advanceTimersByTimeAsync(100);
+  expect(responder.blockedPrompt).toBe("workspace_trust");
+  await expect(attempt).resolves.toBe("cancelled");
+  expect(write).toHaveBeenCalledExactlyOnceWith("1\r");
+});
