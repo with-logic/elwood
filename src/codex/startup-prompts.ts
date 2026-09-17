@@ -5,7 +5,7 @@
 
 import type { SettledStartupOutcome } from "../core/startup/write.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
-import { unknownGateVisible } from "../core/trust/blocking.ts";
+import { trustGateVisible } from "../core/trust/blocking.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { type CodexBannerWarning, codexWarningsFromText } from "./startup-warnings.ts";
@@ -95,9 +95,10 @@ export class CodexStartupPromptResponder {
     // consecutive frames.
     const onUpdateScreen = this.updatePrompt.observe(screenText);
     if (!onUpdateScreen) this.skippedUpdate = false;
-    // An off-allowlist gate is hold-only even when its rows resemble the update options.
-    const unheld = (frame: string) => !unknownGateVisible(frame, "codex");
-    if (onUpdateScreen && !this.skippedUpdate && unheld(screenText)) {
+    // A trust gate (held allowlisted candidate or off-allowlist) is never the update
+    // screen, even when its rows resemble the update options.
+    const noTrustGate = (frame: string) => !trustGateVisible(frame, "codex");
+    if (onUpdateScreen && !this.skippedUpdate && noTrustGate(screenText)) {
       const option = findNumberedOption(this.buffer, codexUpdateOptionPattern);
       if (option) {
         // Settle OPTIMISTICALLY but keep the skip retryable if the write is
@@ -109,7 +110,7 @@ export class CodexStartupPromptResponder {
           option,
           write,
           readFrame,
-          (frame) => sameUpdate(frame) && unheld(frame),
+          (frame) => sameUpdate(frame) && noTrustGate(frame),
         ).then(
           (completion) => {
             if (completion === "cancelled") this.skippedUpdate = false;

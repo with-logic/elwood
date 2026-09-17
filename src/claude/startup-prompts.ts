@@ -6,7 +6,7 @@
  */
 
 import type { SettledStartupOutcome } from "../core/startup/write.ts";
-import { unknownGateVisible } from "../core/trust/blocking.ts";
+import { trustGateVisible } from "../core/trust/blocking.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 
 // The prompt's documented decline keystroke (ESC).
@@ -47,7 +47,7 @@ export class ClaudeStartupPromptResponder {
     if (
       !this.browserDeclined &&
       browserToolsPromptVisible(screenText) &&
-      !unknownGateVisible(screenText, "claude") // an off-allowlist gate is hold-only (C-TRUST-01)
+      !trustGateVisible(screenText, "claude") // a trust gate is never declined blind (C-TRUST-01)
     ) {
       // Escape is the prompt's documented decline path and needs no option
       // number, so it stays correct if the option ordering changes. Settle
