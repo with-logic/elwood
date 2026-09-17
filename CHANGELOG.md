@@ -12,6 +12,15 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Bound subprocess cleanup, report content-free `cleanupErrorCode` diagnostics,
+  and retain update exclusion until an unresolved updater process group exits.
+  Contenders wait at most 60 seconds before skipping a still-owned update, with
+  an explicit active-updater diagnostic. Keep exclusion after any updater exit,
+  successful or failed, while descendants remain in any group the update started,
+  recover interrupted owner writes, and continue failed probe cleanup
+  asynchronously without extending host shutdown. A process group is signaled
+  only while its leader is unreaped, so a reissued group id is never killed, and
+  cleanup confirmed within its bound no longer reports a `cleanupErrorCode`.
 - Reject FIFO state/config files without hanging.
 - Bind automatic trust approvals to the active dialog and revalidate every write,
   preventing quoted transcript headers or unknown intervening titles from

@@ -104,12 +104,21 @@ export function causeDetails(error: unknown): Readonly<Record<string, string>> {
  */
 export function probeFailureDetails(result: {
   readonly stderr: string;
-  readonly error?: { readonly code?: string | undefined; readonly message: string };
-}): Readonly<Record<string, string>> {
-  const details: Record<string, string> = { stderr: result.stderr };
+  readonly error?: {
+    readonly code?: string | undefined;
+    readonly message: string;
+    readonly cleanupErrorCode?: string;
+    readonly cleanupProcessGroup?: number;
+  };
+}): Readonly<Record<string, string | number>> {
+  const details: Record<string, string | number> = { stderr: result.stderr };
   if (result.error) {
     details["cause"] = result.error.message;
     if (typeof result.error.code === "string") details["errno"] = result.error.code;
+    if (result.error.cleanupErrorCode !== undefined)
+      details["cleanupErrorCode"] = result.error.cleanupErrorCode;
+    if (result.error.cleanupProcessGroup !== undefined)
+      details["cleanupProcessGroup"] = result.error.cleanupProcessGroup;
   }
   return details;
 }

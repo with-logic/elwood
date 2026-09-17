@@ -4,12 +4,15 @@
  */
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
+import type { ReapErrorCode } from "./reasons.ts";
 
 /**
  * Best-effort `claude update` / `codex update` failed but the INSTALLED CLI still meets the
  * minimum, so the session started from it. Safe diagnostics only: the installed version in use,
  * an allowlisted `errorCode` (a probe timeout/`errno`), and bounded `raw` stderr — never terminal
  * transcripts, prompts, tokens, or environment secrets.
+ * Optional `cleanupErrorCode` records unconfirmed probe cleanup. Contention uses
+ * `errorCode: "update_active"` and a canonical skipped-update message.
  */
 export type AgentUpdateFailedWarning = {
   readonly elwoodSessionId: string;
@@ -20,5 +23,6 @@ export type AgentUpdateFailedWarning = {
   readonly message: string;
   readonly installedVersion: string;
   readonly errorCode: string;
+  readonly cleanupErrorCode?: ReapErrorCode | "ETIMEDOUT";
   readonly raw: string;
 };

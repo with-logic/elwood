@@ -54,7 +54,8 @@ warning and continues by default, with an option for callers to make this fatal.
 
 The `agent_update_failed` warning carries only safe diagnostics — the adapter,
 the installed version that will be used, the update command's exit status, an
-allowlisted error code (e.g. a timeout/`errno`), and bounded captured stderr —
+allowlisted error code (e.g. a timeout/`errno`), an optional content-free
+`cleanupErrorCode` when probe termination remains unresolved, and bounded captured stderr —
 never terminal transcripts, prompts, tokens, or environment secrets. Like all
 warnings it is live-only and requires no consumer handling: a caller that does
 not subscribe to the `warning` event is unaffected and the session still reaches
@@ -80,11 +81,42 @@ a second update. This mutual exclusion also applies across separate Elwood paren
 processes for the same macOS user and adapter: an atomic lease names the adapter in
 a stable per-account cache independent of `TMPDIR`; contenders wait without
 blocking the event loop, then invalidate their local caches and continue without
-running a duplicate update. The lease records the owner's process id and a unique
+running a duplicate update. Contender waiting is bounded to 60 seconds; an owner
+that has not finished by then causes the contender to skip its update and warn,
+without deleting the owner’s lease. This warning uses `errorCode: "update_active"`
+and a canonical message explaining that the update was skipped because another
+updater remains active or its cleanup is unconfirmed. The lease records the owner's process id and a unique
 generation. Cleanup removes only the generation it owns, a live owner is never
 evicted solely because the stale bound elapsed, and recovery of a dead owner's
 lease is itself serialized before removal, so neither cleanup nor concurrent stale
-recovery can evict a successor. Within one parent process, a FAILED shared update
+recovery can evict a successor. During an update lease, each probe starts behind a fixed stdin gate. Its process
+group is durably recorded on the lease before the real CLI may execute. A failed
+registration never opens the gate; an aborted or expired gate cannot open later.
+The live owner's normal registered probe remains a wait condition for contenders;
+a dead owner's surviving group retains exclusion. The record names every
+still-live group the callback has registered, not only the latest, so an earlier
+probe's descendants keep exclusion while a later probe runs. The active parent owns the entire update callback, including gaps between
+registered probes. Cleanup-marked records instead use group-only liveness.
+Validated stale-owner recovery also removes known temporary owner records. Registration writes that finish
+late retain lease ownership until they settle. Each owner write uses its own
+temporary record and commits only while its generation still owns the lease, so a
+late write can neither replace nor disturb a successor's record, and its gate stays closed.
+A probe that exits on its own, with any exit status, does not release its lease while descendants
+remain in any process group the update registered; this holds whether the update
+callback succeeded or failed. Elwood waits up to one additional second
+for those groups to exit, then retains the lease and reports unconfirmed cleanup;
+normal completion does not signal the group. Aborted probes retry process-group termination,
+fall back to terminating the direct child once group signals have kept failing, and await exit within a bounded
+cleanup window. A process-group id is signaled only while the probe's direct child
+(the group leader) is still unreaped, because only then is the number guaranteed
+not to have been reissued to an unrelated group; afterwards Elwood only observes
+the group until it exits and never signals the bare number. Cleanup that is
+confirmed within the window reports no cleanup error. If the group cannot be confirmed gone, the lease retains that
+process-group identity even after the parent exits. Contenders skip their update
+and receive a bounded cleanup warning rather than waiting indefinitely or starting
+a competing installer. Recovery removes this guard only after confirming the
+recorded process group has exited; elapsed time or the parent's death alone is
+insufficient. Within one parent process, a FAILED shared update
 is likewise shared once — every concurrent caller observes the same failure,
 re-reads the installed version, and proceeds through the compatibility gate; the
 failure is never cached in a way that rejects those callers or poisons a later
@@ -98,7 +130,12 @@ failure.
 Each probe is bounded so a broken or hostile CLI on PATH cannot hang or flood
 the host: a probe that does not exit within a default timeout (15 seconds) or
 whose captured output exceeds a per-stream byte cap (1,000,000 bytes) is
-killed, and its captured output is truncated to the cap. Truncation happens on
+killed, and its captured output is truncated to the cap. Abort cleanup has an
+additional one-second bound. Every unresolved aborted probe, including version
+and capability probes, remains owned by an asynchronous reaper while the parent
+is alive. Retries use an unreferenced timer, do not prolong host shutdown, and
+stop signaling after a successful group kill; ownership ends when the group is
+confirmed gone. Update groups additionally retain durable exclusion as described above. Truncation happens on
 a UTF-8 code-point boundary — an incomplete trailing sequence is dropped — so
 the decoded output re-encodes to at most the cap rather than growing via a
 replacement character. This applies to every
