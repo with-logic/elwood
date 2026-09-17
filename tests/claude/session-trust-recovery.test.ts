@@ -17,7 +17,7 @@ vi.mock("../../src/claude/attach-images.ts", () => ({
 }));
 const { startClaude } = await import("../../src/index.ts");
 
-import { claudeComposer } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTrust } from "../fixtures/trust-composer.ts";
 import { trustRecoveryTests } from "../helpers/trust-recovery.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -32,8 +32,8 @@ trustRecoveryTests({
     const session = await startClaude({ cwd: tempDir(), autotrust: true });
     return { session, pty: ptys.at(-1)! };
   },
-  native: "Do you trust this folder?\n1. Yes\n2. No",
-  cursor: "Do you trust this folder?\n❯ No, exit\n  Yes, I trust this folder",
+  native: `${claudeTrust}\n1. Yes\n2. No`,
+  cursor: `${claudeTrust}\n❯ No, exit\n  Yes, I trust this folder`,
   attachGuard: () => attachGuard,
   clear: claudeComposer,
 });

@@ -17,7 +17,7 @@ vi.mock("../../src/codex/images/attach.ts", () => ({
 }));
 const { startCodex } = await import("../../src/index.ts");
 
-import { codexComposer } from "../fixtures/trust-composer.ts";
+import { codexComposer, codexTrust } from "../fixtures/trust-composer.ts";
 import { trustRecoveryTests } from "../helpers/trust-recovery.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -32,8 +32,8 @@ trustRecoveryTests({
     const session = await startCodex({ cwd: tempDir(), autotrust: true });
     return { session, pty: ptys.at(-1)! };
   },
-  native: "Do you trust the contents of this directory?\n1. Yes, continue\n2. No, quit",
-  cursor: "Do you trust the contents of this directory?\n❯ No, quit\n  Yes, continue",
+  native: `${codexTrust}\n1. Yes, continue\n2. No, quit`,
+  cursor: `${codexTrust}\n❯ No, quit\n  Yes, continue`,
   attachGuard: () => attachGuard,
   clear: codexComposer,
 });
