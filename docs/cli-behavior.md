@@ -137,6 +137,11 @@ legacy string/`agent_message` support. C-CODEX-16.
 
 ## Model selection persistence
 
+- **A configured legacy Codex model may be absent from `/model`.** On Codex
+  0.154.0, `gpt-5.1-codex` still appeared in the session header but not in the
+  visible catalog; every returned row correctly had `isCurrent: false`.
+  Real picker tests should let the installed CLI choose its launch default,
+  rather than pinning a model that can disappear from the catalog.
 - **Codex persists `/model` picker selections into the user `config.toml`.**
   `setModel` restores the prior default via compare-and-swap after switching
   (C-CODEX-14), skipping with a `codex_default_model_persisted` warning on a
