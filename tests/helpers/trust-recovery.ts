@@ -44,7 +44,9 @@ export function trustRecoveryTests(harness: Harness): void {
     session.on("warning", (event) => warnings.push(event.code));
     const queued = session.sendMessage("held until native clearance");
     vi.useFakeTimers();
-    const unsupported = harness.native.replace("\n", "\nUnknown native copy\n");
+    const nativeRows = harness.native.split("\n");
+    nativeRows.splice(1, 0, "Unknown native copy");
+    const unsupported = nativeRows.join("\n");
     repaint(pty, unsupported);
     await vi.advanceTimersByTimeAsync(4_900);
     expect(pty.writes).toEqual([]);
