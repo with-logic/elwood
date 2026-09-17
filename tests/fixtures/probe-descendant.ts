@@ -11,11 +11,13 @@ import { coordinatedAutoupdate } from "../../src/runtime/update/lock.ts";
 
 const mode = process.argv[2];
 // This fixture writes wherever argv points, so it only accepts a temp directory.
-const root = resolve(process.argv[3]!);
+const rootVariable = "ELWOOD_PROBE_FIXTURE_ROOT";
+const root = resolve(process.argv[3] ?? process.env[rootVariable]!);
 if (!root.startsWith(`${resolve(tmpdir())}${sep}`))
   throw new Error("fixture root must be temporary");
 const file = fileURLToPath(import.meta.url);
 const descendantFile = join(root, "descendant");
+const mutatedFile = join(root, "mutated");
 if (mode === "descendant") {
   writeFileSync(descendantFile, String(process.pid));
   // Even a failed test cannot leave the fixture alive indefinitely.
@@ -35,10 +37,12 @@ if (mode === "descendant") {
       "codex",
       async () => {
         if (mode === "contender") {
-          writeFileSync(join(root, "mutated"), "once");
+          writeFileSync(mutatedFile, "once");
           return;
         }
-        const result = await runProbe(process.execPath, ["--no-warnings", file, "leader", root]);
+        // The probe's arguments stay constant; its root travels in the inherited environment.
+        process.env[rootVariable] = root;
+        const result = await runProbe(process.execPath, ["--no-warnings", file, "leader"]);
         if (result.status !== 0)
           throw elwoodError("codex_update_failed", "probe failed", probeFailureDetails(result));
       },
