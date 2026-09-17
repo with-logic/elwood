@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Bound Codex in-TUI update skipping to one attempt per appearance of the update
+  screen: an exhausted retry no longer restarts on the next frame of the same
+  screen, and a stale attempt's late completion cannot start an overlapping retry
+  loop or report success or a write failure for the newer screen. A skip write
+  rejected after the update screen already cleared no longer fails a healthy
+  headless run as `blocked_prompt`. A reappearing update screen is still skipped again.
 - Emit the `attention` activity for a blocking prompt that painted while the
   session was still `starting`. Such a session already became `blocked`, but
   without the human-decision event, so a headless `elwood` run never reported
