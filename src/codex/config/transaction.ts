@@ -28,8 +28,13 @@ type CodexModelSwitch = {
    * alive and able to persist its selection (the session is closing): the caller gets
    * the rejection at once, while the restore, and with it the config lock, waits for
    * that promise. Returning nothing restores first, as a plain failed switch always has.
+   *
+   * The wait is BEST-EFFORT and bounded: it settles on the observed PTY exit, or on its
+   * own deadline if the process never reports one. So the restore is ordered after a
+   * confirmed exit in the normal case, but a CLI that never exits cannot hold the
+   * process-wide config lock indefinitely — it is a bound, not a guarantee of exit.
    */
-  readonly cliGone?: () => Promise<unknown> | undefined;
+  readonly waitForCliExit?: () => Promise<unknown> | undefined;
 };
 
 export function runCodexModelSwitch(io: CodexModelSwitch): Promise<void> {
@@ -43,10 +48,10 @@ export function runCodexModelSwitch(io: CodexModelSwitch): Promise<void> {
       } catch (error) {
         failed = true;
         primary = error;
-        const gone = io.cliGone?.();
-        if (gone !== undefined) {
+        const exitWait = io.waitForCliExit?.();
+        if (exitWait !== undefined) {
           reject(primary);
-          await gone;
+          await exitWait;
         }
       }
       restoreAfterSwitch(io, snapshot, failed);

@@ -110,7 +110,7 @@ describe("runCodexModelSwitch (C-CODEX-14)", () => {
     const primary = new Error("session_not_running");
     const first = io({ apply: () => Promise.reject(primary) });
     const second = io({ apply: () => Promise.resolve() });
-    const rejected = runCodexModelSwitch({ ...first.spec, cliGone: () => gone });
+    const rejected = runCodexModelSwitch({ ...first.spec, waitForCliExit: () => gone });
     const queued = runCodexModelSwitch(second.spec);
     await expect(rejected).rejects.toBe(primary);
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -127,7 +127,7 @@ describe("runCodexModelSwitch (C-CODEX-14)", () => {
     const primary = new Error("timed out");
     const { spec, restored } = io({ apply: () => Promise.reject(primary) });
     const seen: number[] = [];
-    await runCodexModelSwitch({ ...spec, cliGone: () => undefined }).catch(() =>
+    await runCodexModelSwitch({ ...spec, waitForCliExit: () => undefined }).catch(() =>
       seen.push(restored.length),
     );
     expect(seen).toEqual([1]);

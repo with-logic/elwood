@@ -14,10 +14,14 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Serialize `listModels`/`setModel` through the session input queue: a model
   operation owns the queue until its picker flow settles, so overlapping model
-  calls, commands, and messages can no longer be typed into a picker while the
-  operation that opened it is running.
-- A Codex `setModel` interrupted by session termination restores `config.toml`
-  only after the CLI process has exited.
+  calls, queued commands, and messages can no longer be typed into a picker while
+  the operation that opened it is running. `compact`'s delayed recovery Enter is
+  cancelled once a later operation takes the composer, rather than queued behind it.
+- A Codex `setModel` interrupted by session termination waits for the CLI process
+  to exit before restoring `config.toml`, bounded at five seconds so a process that
+  never reports an exit cannot hold the shared config lock. Session status alone
+  (`stopped`, `killed`, `torn_down`) no longer releases the restore, since teardown
+  records those even when its signal did not take.
 - Bound Codex in-TUI update skipping to one attempt per appearance of the update
   screen: an exhausted retry no longer restarts on the next frame of the same
   screen, and a stale attempt's late completion cannot start an overlapping retry
