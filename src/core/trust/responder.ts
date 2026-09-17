@@ -79,17 +79,9 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     readFrame?: () => string,
   ): TrustPromptResult<A> {
     const dialog = parseTrustDialog(frame);
-    const key =
-      dialog === undefined
-        ? undefined
-        : JSON.stringify([
-            dialog.header,
-            dialog.options.map((option) => [
-              option.style,
-              option.label,
-              option.style === "numbered" ? option.number : "",
-            ]),
-          ]);
+    // Native choices can finish painting after the header/affirmative. Their
+    // exact safety is revalidated per write; partial painting is not a new dialog.
+    const key = dialog?.header;
     // Clearing preserves the epoch for successful settlement; a reappearing or
     // replaced dialog starts a new epoch before any old attempt can retry.
     if (key !== undefined && key !== this.dialogKey) this.generation += 1;

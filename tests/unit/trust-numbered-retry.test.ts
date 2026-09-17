@@ -148,3 +148,19 @@ test("C-CLAUDE-16 live numbered PTY rejection warns instead of retrying", async 
     expect.objectContaining({ code: "startup_prompt_write_failed" }),
   ]);
 });
+
+test("C-TRUST-01 later native decline rows preserve the active numbered retry", async () => {
+  const responder = new TrustPromptResponder("claude", true);
+  let frame = "Do you trust this folder?\n1. Yes";
+  const write = vi.fn(() => {
+    if (write.mock.calls.length === 2) frame = "Ready";
+  });
+  const observed = observe(responder.handle(frame, write, () => frame));
+  frame = trust;
+  expect(responder.handle(frame, write, () => frame)).toBeUndefined();
+  await vi.runAllTimersAsync();
+  await expect(observed.settled).resolves.toBe("answered");
+  expect(write.mock.calls).toEqual([["1\r"], ["1\r"]]);
+  expect(observed.emit).toHaveBeenCalledTimes(1);
+  expect(observed.emitWarnings).not.toHaveBeenCalled();
+});
