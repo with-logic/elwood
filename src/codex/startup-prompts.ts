@@ -39,6 +39,7 @@ export class CodexStartupPromptResponder {
   // banner that clears (drops out of this set) and reappears fires again — a genuinely
   // new occurrence, matching "once when observed" rather than "replay while on screen".
   private warnedBanners = new Set<string>();
+  private conversationStarted = false;
 
   constructor(elwoodSessionId = "", autotrust = false, onStateChange?: () => void) {
     this.elwoodSessionId = elwoodSessionId;
@@ -130,6 +131,11 @@ export class CodexStartupPromptResponder {
   // would treat as new. `warnedBanners` is reset to this frame's identities, so a banner
   // that clears (leaves the frame) then reappears fires again as a genuinely new occurrence.
   private newWarnings(screenText: string): readonly ElwoodWarningEvent[] {
+    // Startup banners can only come from startup. Codex paints an assistant-marker row
+    // (`• Working…`) the moment any turn begins; from then on a copied welcome box whose
+    // own conversation marker has scrolled out of the frame is transcript, not provenance.
+    this.conversationStarted ||= /^\s*[●•]/m.test(screenText);
+    if (this.conversationStarted) return [];
     const matched = codexWarningsFromText(screenText, this.elwoodSessionId);
     const fresh = matched.filter((warning) => !this.warnedBanners.has(bannerKey(warning)));
     this.warnedBanners = new Set(matched.map(bannerKey));

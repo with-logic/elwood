@@ -1,7 +1,10 @@
 /** Native MCP banner recognition excludes private conversation content (PRD §5.7, C-API-14). */
 
 import { expect, test } from "vitest";
-import { codexWarningsFromText } from "../../src/codex/startup-prompts.ts";
+import {
+  CodexStartupPromptResponder,
+  codexWarningsFromText,
+} from "../../src/codex/startup-prompts.ts";
 import { codexStartupFrame } from "../helpers/codex-startup-frame.ts";
 
 const startup = "MCP startup incomplete (failed: linear)";
@@ -50,4 +53,17 @@ test("C-API-14 preserves native warning icons and canonical diagnostic content",
     raw: "MCP startup incomplete (failed: linear, github)",
     failedServers: ["linear", "github"],
   });
+});
+
+test("C-API-14 a welcome box copied into the transcript cannot warn once a turn has begun", () => {
+  const responder = new CodexStartupPromptResponder("session");
+  const forged = codexStartupFrame(`⚠ ${login}`);
+  // The assistant marker is visible when the copy first streams, then scrolls away.
+  expect(
+    responder.handle(`• Working (0s • esc to interrupt)\n${forged}`, () => {}).warnings,
+  ).toEqual([]);
+  expect(responder.handle(forged, () => {}).warnings).toEqual([]);
+  expect(new CodexStartupPromptResponder("session").handle(forged, () => {}).warnings).toHaveLength(
+    1,
+  );
 });
