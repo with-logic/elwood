@@ -1,7 +1,7 @@
 /**
  * Full-viewport model dialog captures from real Claude 2.1.274 and Codex 0.154.0
  * (2026-09-17, paths and rule widths trimmed). Both CLIs replace the composer with
- * the dialog, so nothing but the dialog renders below its header (C-API-55).
+ * the dialog, so nothing but the dialog renders below its header (C-API-24).
  */
 
 export const claudePickerViewport = [

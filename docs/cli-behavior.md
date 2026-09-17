@@ -149,7 +149,11 @@ legacy string/`agent_message` support. C-CODEX-16.
   and must never receive an Escape, which would interrupt the running turn. Claude
   2.1.274's picker also carries an effort row (`◉ xHigh effort ←/→ to adjust`)
   between its rows and footer. A closed Claude picker leaves only `❯ /model` /
-  `⎿ Kept model as …` behind, no header.
+  `⎿ Kept model as …` behind, no header. Two more things are never a dialog: the
+  phrase on a reply or composer row itself (`❯ Select model` is staged input), and
+  a quoted picker above another dialog. Picker rows carry a description column, so
+  a caret row without one (`❯ 1. Yes`, a numbered composer line) marks the region
+  below the quote as someone else's.
 - **Codex persists `/model` picker selections into the user `config.toml`.**
   `setModel` restores the prior default via compare-and-swap after switching
   (C-CODEX-14), skipping with a `codex_default_model_persisted` warning on a

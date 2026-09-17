@@ -78,3 +78,46 @@ test.each([
 ] as const)("C-API-24 the captured %s is recognized as its live stage", (_name, spec, captured, stage) => {
   expect(spec.activeDialog(captured)).toBe(stage);
 });
+
+/** Rows both CLIs render as live bottom-most content that is not a model dialog. */
+const permissionDialog = [
+  "Do you want to proceed?",
+  "❯ 1. Yes",
+  "  2. Yes, and don't ask again for this command",
+  "  3. No, and tell Claude what to do differently (esc)",
+  "",
+  "Esc to cancel",
+].join("\n");
+
+test.each([
+  [
+    "Claude composer holding the phrase",
+    claudeModelPicker,
+    "⏺ Done.\n\n────\n❯ Select model\n────",
+  ],
+  ["Claude reply starting with the phrase", claudeModelPicker, "⏺ Select model"],
+  ["Codex composer holding the phrase", codexModelPicker, "• Done.\n\n› Select Model and Effort"],
+  ["Codex composer holding the level phrase", codexModelPicker, "› Select Reasoning Level for x"],
+] as const)("C-API-24 a %s on its own row is not a dialog header", (_name, spec, text) => {
+  expect(spec.activeDialog(text)).toBeUndefined();
+});
+
+test.each([
+  [
+    "a permission dialog",
+    claudeModelPicker,
+    `⏺ It shows:\n${claudePickerViewport}\n\n${permissionDialog}`,
+  ],
+  [
+    "a numbered composer row",
+    claudeModelPicker,
+    `⏺ It shows:\n${claudePicker}\n\n❯ 1. do the first thing`,
+  ],
+  [
+    "a Codex approval dialog",
+    codexModelPicker,
+    `• It shows:\n${codexReasoningViewport}\n\nAllow command?\n› 1. Yes, proceed (y)\n  2. No (esc)`,
+  ],
+] as const)("C-API-24 a quoted dialog above %s is not the live dialog", (_name, spec, text) => {
+  expect(spec.activeDialog(text)).toBeUndefined();
+});
