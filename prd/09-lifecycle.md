@@ -84,7 +84,18 @@ running a duplicate update. The lease records the owner's process id and a uniqu
 generation. Cleanup removes only the generation it owns, a live owner is never
 evicted solely because the stale bound elapsed, and recovery of a dead owner's
 lease is itself serialized before removal, so neither cleanup nor concurrent stale
-recovery can evict a successor. Within one parent process, a FAILED shared update
+recovery can evict a successor. The lease is published atomically: a claimant writes
+its owner record inside a private staging directory and renames that directory into
+place, so a lease either does not exist or holds a complete owner record: no
+ownerless or partially written lease is ever published. A claimant interrupted
+before the rename leaves only its staging directory; one interrupted after it leaves
+a complete lease naming a dead owner, which ordinary stale recovery removes. Each
+lease holder removes a bounded number of leftover staging directories. A lease directory that already exists, even one without an
+owner record, is a wait condition: it is recovered as stale rather than claimed
+over. An unreadable owner record still fails safe: it may belong
+to a live updater writing a record format this version cannot read, so it is never
+treated as dead. That is why a claim must not be able to publish one.
+Within one parent process, a FAILED shared update
 is likewise shared once — every concurrent caller observes the same failure,
 re-reads the installed version, and proceeds through the compatibility gate; the
 failure is never cached in a way that rejects those callers or poisons a later

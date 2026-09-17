@@ -43,6 +43,10 @@ back each entry are listed in `prd/14-conformance.md`.
   a bare allowlisted header with affirmative options is held, never typed into,
   and becomes answerable only once its native body paints (recoverable `blocked`
   after five seconds otherwise). Skill, plugin, and MCP gates are unchanged.
+- Publish the cross-process update lease atomically. An Elwood process killed
+  while claiming the lease could leave a partial owner record that made every
+  later `autoupdate` on that machine skip its update until the cache was removed
+  by hand.
 - Queued input now renders and observes all PTY output already received before
   each write, so a trust or permission dialog that was received but not yet
   rendered still holds the paste, its Enter, and recovery Enters. The compact
