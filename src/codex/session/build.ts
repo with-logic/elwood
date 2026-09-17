@@ -92,7 +92,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
   const readiness = createReadinessGate(() => {
-    turnWatcher.arm(resumed); // resume arms in settling mode (no phantom replay turn)
+    observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
   }, resumed);
   const { ready } = readiness;
@@ -105,7 +105,6 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     elwoodSessionId: record.elwoodSessionId,
     emitActivity: (event: activity.ElwoodActivityEvent) => emitter.emit("activity", event),
   };
-  const turnWatcher = observers.turn;
   const frameObserver = createSessionFrameObserver(
     observers,
     () => session,
@@ -128,7 +127,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       // Automation owns completion; failures report through the contained warning gate.
       const result = promptResponder.handle(
         frame.text,
-        (i) => renderedTerminal.sendInput(i),
+        callerInput.automation,
         () => renderedTerminal.snapshot().text,
       );
       warnGate.emitWarnings(result.warnings);
@@ -139,12 +138,13 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );
+  const callerInput = reportCallerInput(terminal, () => promptResponder.endStartup());
   session = new CodexSessionImpl(
     record,
     stateDir,
     runtime,
     pty,
-    reportCallerInput(terminal, () => promptResponder.endStartup()),
+    callerInput.terminal,
     bridge,
     emitter,
     terminalReplay,

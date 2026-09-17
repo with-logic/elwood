@@ -1,12 +1,27 @@
 /**
- * Reports the session's own terminal writes so startup-only recognition can end
- * the moment caller content can reach the screen. Implements PRD §5.7 / C-API-14.
+ * Reports every caller-side terminal write so startup-only recognition can end
+ * before caller content can reach the screen. Implements PRD §5.7 / C-API-14.
  */
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 
-/** Startup automation keeps writing through `inner`; only the session's view notifies. */
-export function reportCallerInput(inner: ElwoodTerminal, onInput: () => void): ElwoodTerminal {
-  return {
+export type CallerInput = {
+  /** The session's view of the terminal: every write through it is caller input. */
+  readonly terminal: ElwoodTerminal;
+  /** Startup automation's writer: the only input that does not end startup. */
+  readonly automation: (input: string) => Promise<void>;
+};
+
+/**
+ * Two hooks, because there are two caller paths: `sendInput` (strings and raw bytes,
+ * which skip xterm's data event) and the public `xterm.input()`, which skips
+ * `sendInput`. xterm fires its data event synchronously, so a flag scopes automation.
+ */
+export function reportCallerInput(inner: ElwoodTerminal, onInput: () => void): CallerInput {
+  let automating = false;
+  inner.xterm.onData(() => {
+    if (!automating) onInput();
+  });
+  const terminal: ElwoodTerminal = {
     get xterm() {
       return inner.xterm;
     },
@@ -26,4 +41,13 @@ export function reportCallerInput(inner: ElwoodTerminal, onInput: () => void): E
     settled: () => inner.settled(),
     dispose: () => inner.dispose(),
   };
+  const automation = (input: string) => {
+    automating = true;
+    try {
+      return inner.sendInput(input);
+    } finally {
+      automating = false;
+    }
+  };
+  return { terminal, automation };
 }

@@ -3,11 +3,11 @@ import { expect, test, vi } from "vitest";
 import { reportCallerInput } from "../../src/codex/session/caller-input.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 
-test("C-API-14 only sendInput reports caller input; every other member delegates", async () => {
+test("C-API-14 every caller path reports input; automation and other members do not", async () => {
   const written: (string | Uint8Array)[] = [];
   const inner = createHeadlessTerminal({ cols: 40, rows: 5 }, (input) => written.push(input));
   const onInput = vi.fn();
-  const terminal = reportCallerInput(inner, onInput);
+  const { terminal, automation } = reportCallerInput(inner, onInput);
   await terminal.writeOutput("hello");
   await terminal.settled();
   terminal.resize({ cols: 50, rows: 6 });
@@ -17,10 +17,14 @@ test("C-API-14 only sendInput reports caller input; every other member delegates
     "",
     inner.xterm,
   ]);
+  await automation("1\r");
   expect(onInput).not.toHaveBeenCalled();
-  await terminal.sendInput("typed");
+  // Raw bytes skip xterm's data event; the public xterm skips sendInput.
+  await terminal.sendInput(new Uint8Array([22]));
   expect(onInput).toHaveBeenCalledTimes(1);
-  expect(written).toEqual(["typed"]);
+  terminal.xterm.input("typed");
+  expect(onInput).toHaveBeenCalledTimes(2);
+  expect(written).toEqual(["1\r", new Uint8Array([22]), "typed"]);
   terminal.dispose();
   await expect(inner.sendInput("x")).rejects.toThrow("disposed");
 });
