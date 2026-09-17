@@ -40,6 +40,8 @@ back each entry are listed in `prd/14-conformance.md`.
   permission rewrites to tool-specific handlers, and accept nullable Codex descriptions.
 - Match Claude task identifiers and plan permission objects to the native hook
   schemas so valid task and plan inputs reach their handlers.
+- Contain clipboard pipe failures during Codex image attachment, and retain the
+  clipboard lock until the restore process exits.
 
 ## [0.1.3] - 2026-09-14
 

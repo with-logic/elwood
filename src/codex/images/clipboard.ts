@@ -8,6 +8,8 @@
  */
 
 import { execFile } from "node:child_process";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { elwoodError } from "../../core/errors.ts";
 import { currentPlatform } from "../../runtime/seams.ts";
@@ -62,10 +64,16 @@ export async function snapshotClipboardText(): Promise<string> {
  */
 export async function restoreClipboardText(text: string): Promise<boolean> {
   try {
+    // `spawn` throws synchronously for some launch failures (e.g. E2BIG): no
+    // child exists then, so the restore simply failed and the caller must warn.
     const child = run(PBCOPY, [], { timeout: 5_000 });
-    child.child.stdin?.end(text); // inside try so a synchronous spawn/stdin failure can't escape
-    await child;
-    return true;
+    // Own both failures and their completion: a broken stdin must not release
+    // the clipboard lock while pbcopy can still mutate the shared pasteboard.
+    const settled = await Promise.allSettled([
+      child,
+      pipeline(Readable.from([text]), child.child.stdin!),
+    ]);
+    return settled.every((result) => result.status === "fulfilled");
   } catch {
     return false;
   }
