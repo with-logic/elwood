@@ -2,7 +2,7 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "vitest";
 import { capturedImageSnapshot, ImageCaptures } from "../../src/core/images/capture.ts";
-import { QueuedImageBudget } from "../../src/core/images/queued-budget.ts";
+import { QueuedImageBudget, sessionImageBudget } from "../../src/core/images/queued-budget.ts";
 import type { SendOptions } from "../../src/core/images/types.ts";
 import { enqueueSubmission } from "../../src/runtime/session/image-attach.ts";
 
@@ -43,4 +43,17 @@ test("C-API-44 absent/empty images need no reservation and options are detached"
   const empty = captures.capture({ images: [] });
   expect(empty.options?.images).toEqual([]);
   empty.release();
+});
+
+test("C-API-44 a session keeps one budget of its own until a facade shares the facade's", () => {
+  const session = {};
+  const own = sessionImageBudget(session);
+  expect(sessionImageBudget(session)).toBe(own);
+  expect(sessionImageBudget({})).not.toBe(own); // never shared ACROSS sessions
+  const captures = new ImageCaptures(3);
+  captures.shareWith(session);
+  const held = captures.capture({ images: [{ data: new Uint8Array(2), format: "png" }] });
+  expect(() => sessionImageBudget(session).reserve(2)).toThrow(/queued image/);
+  held.release();
+  sessionImageBudget(session).reserve(3);
 });

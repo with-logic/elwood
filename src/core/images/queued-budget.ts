@@ -23,3 +23,21 @@ export class QueuedImageBudget {
     this.usedBytes = Math.max(0, this.usedBytes - bytes);
   }
 }
+
+// ONE budget per session object. A facade registers its own before it exposes the session it
+// launched, so both surfaces reserve against the same ceiling rather than 200 MiB each.
+const sessionBudgets = new WeakMap<object, QueuedImageBudget>();
+
+/** The budget every image submission on `session` reserves against (created on first use). */
+export function sessionImageBudget(session: object): QueuedImageBudget {
+  const existing = sessionBudgets.get(session);
+  if (existing !== undefined) return existing;
+  const created = new QueuedImageBudget();
+  sessionBudgets.set(session, created);
+  return created;
+}
+
+/** Makes `budget` the one `session` reserves against, replacing the session's own. */
+export function shareImageBudget(session: object, budget: QueuedImageBudget): void {
+  sessionBudgets.set(session, budget);
+}

@@ -1,5 +1,5 @@
 /** Private facade-owned image copies shared with submission (PRD §5.3/§5.8, C-API-44). */
-import { QueuedImageBudget } from "./queued-budget.ts";
+import { QueuedImageBudget, shareImageBudget } from "./queued-budget.ts";
 import { type ImageSnapshot, snapshotImages } from "./resolve.ts";
 import type { ImageInput, SendOptions } from "./types.ts";
 
@@ -15,6 +15,11 @@ export class ImageCaptures {
   private readonly budget: QueuedImageBudget;
   constructor(maxQueuedBytes?: number) {
     this.budget = new QueuedImageBudget(maxQueuedBytes);
+  }
+
+  /** Bound the launched raw `session` by this same budget, so the two surfaces share a ceiling. */
+  shareWith(session: object): void {
+    shareImageBudget(session, this.budget);
   }
 
   capture<T extends SendOptions>(

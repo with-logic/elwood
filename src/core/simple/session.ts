@@ -67,6 +67,7 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
         // throw. If it did so before `live` were set, the start would reject with a live PTY
         // that `close()` could never see — an orphaned CLI process. `attachAll` contains each
         // attach so a throwing consumer handler cannot abort the start or orphan the session.
+        this.images.shareWith(session); // before `session` is reachable: ONE clone ceiling (C-API-44)
         this.live = session;
         this.starting = undefined;
         this.subscriptions.attachAll(session);

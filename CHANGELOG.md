@@ -13,7 +13,8 @@ back each entry are listed in `prd/14-conformance.md`.
 ## [Unreleased]
 
 - Snapshot image bytes and relative paths when facade methods are called, including
-  turns queued behind another response or waiting for session startup.
+  turns queued behind another response or waiting for session startup. Facade copies
+  count against the same 200 MiB per-session ceiling as sends on the raw `session`.
 - Reject FIFO state/config files without hanging.
 - Bind automatic trust approvals to the active dialog and revalidate every write,
   preventing quoted transcript headers or unknown intervening titles from
