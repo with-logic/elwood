@@ -12,6 +12,7 @@ import {
 } from "../../src/codex/startup-prompts.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 import { codexHooks, codexTrust } from "../fixtures/trust-composer.ts";
+import { codexStartupFrame } from "../helpers/codex-startup-frame.ts";
 
 /** The bare outcomes of a settled-outcome list, for concise assertions. */
 function outcomesOf(settled: readonly SettledCodexStartupOutcome[]) {
@@ -174,7 +175,9 @@ describe("Codex startup prompt responder", () => {
 
   test("C-CODEX-09 parses typed MCP startup warnings", () => {
     const warnings = codexWarningsFromText(
-      "The linear MCP server is not logged in. Run `codex mcp login linear`.\nMCP startup incomplete (failed: linear, github)",
+      codexStartupFrame(
+        "⚠ The linear MCP server is not logged in. Run `codex mcp login linear`.\n⚠ MCP startup incomplete (failed: linear, github)",
+      ),
       "s1",
     );
     expect(warnings[0]).toMatchObject({

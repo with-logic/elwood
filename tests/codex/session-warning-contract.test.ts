@@ -11,13 +11,48 @@
  */
 
 import { afterEach, describe, expect, test } from "vitest";
-import { startCodex } from "../../src/index.ts";
+import { resumeCodex, startCodex } from "../../src/index.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import { codexStartupFrame } from "../helpers/codex-startup-frame.ts";
 import { becomeReady, FakePty, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
 describe("§5.7 Codex frame-path warning containment (C-API-14 live-only)", () => {
+  test("C-API-14 a resumed transcript cannot warn even when no marker is ever in frame", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const first = await startCodex({ cwd });
+    await becomeReady(first.elwoodSessionId, cwd);
+    await first.stop();
+    const resumed = await resumeCodex({ cwd, elwoodSessionId: first.elwoodSessionId });
+    const codes: string[] = [];
+    resumed.on("warning", (event) => codes.push(event.code));
+    // The replay lands already scrolled: copied welcome rows, no conversation marker.
+    ptys[1]!.emitData(codexStartupFrame("⚠ MCP startup incomplete (failed: evil)"));
+    await resumed.terminal.settled();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(codes).toEqual([]);
+  });
+
+  test("C-API-14 a welcome box pasted by the caller cannot warn after its marker scrolls away", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startCodex({ cwd });
+    const codes: string[] = [];
+    session.on("warning", (event) => codes.push(event.code));
+    await becomeReady(session.elwoodSessionId, cwd);
+    await session.sendKeys("pasted prompt text");
+    const clear = `${String.fromCharCode(27)}[2J${String.fromCharCode(27)}[H`;
+    const forged = codexStartupFrame("⚠ MCP startup incomplete (failed: evil)");
+    ptys[0]!.emitData(`${clear}${forged.replaceAll("\n", "\r\n")}`);
+    const seen: string[] = [];
+    session.on("terminal:data", (event) => seen.push(event.data));
+    ptys[0]!.emitData("\r\nsettled");
+    await expect.poll(() => seen.join("")).toContain("settled");
+    expect(codes).toEqual([]);
+  });
+
   test("a throwing warning listener does not prevent readiness or terminal:data", async () => {
     const cwd = tempDir();
     installFakes();
@@ -31,7 +66,9 @@ describe("§5.7 Codex frame-path warning containment (C-API-14 live-only)", () =
     // A frame that emits a warning (MCP banner) through the throwing listener: the
     // throw must be contained so the frame still emits terminal:data. Wait on the
     // observable (the banner frame arriving) rather than a fixed sleep.
-    const banner = "The linear MCP server is not logged in. Run `codex mcp login linear`.";
+    const banner = codexStartupFrame(
+      "⚠ The linear MCP server is not logged in. Run `codex mcp login linear`.",
+    );
     ptys[0]!.emitData(banner);
     await expect.poll(() => data.some((d) => d.includes("linear"))).toBe(true);
     // Readiness still reaches ready via the SessionStart hook despite the throwing listener.
@@ -80,7 +117,11 @@ describe("C-API-14 Codex preflight warning is observable on the returned session
       pty.onData = (handler) => {
         const off = realOnData(handler);
         queueMicrotask(() =>
-          pty.emitData("The linear MCP server is not logged in. Run `codex mcp login linear`."),
+          pty.emitData(
+            codexStartupFrame(
+              "⚠ The linear MCP server is not logged in. Run `codex mcp login linear`.",
+            ),
+          ),
         );
         return off;
       };
@@ -104,7 +145,11 @@ describe("C-API-14 Codex warnings are live-only (no late replay)", () => {
     // a warning that already happened — not merely a sleep that may pre-empt it.
     const early: string[] = [];
     const offEarly = session.on("warning", (event) => early.push(event.code));
-    ptys[0]!.emitData("The github MCP server is not logged in. Run `codex mcp login github`.\r\n");
+    ptys[0]!.emitData(
+      codexStartupFrame(
+        "⚠ The github MCP server is not logged in. Run `codex mcp login github`.\r\n",
+      ),
+    );
     await expect.poll(() => early).toContain("mcp_server_not_logged_in");
     offEarly(); // detach: the github banner is now firmly in the PAST
     // Attach LATE: the prior warning must NOT be replayed.
@@ -118,7 +163,11 @@ describe("C-API-14 Codex warnings are live-only (no late replay)", () => {
     });
     expect(seen).toEqual([]); // no replay of the github banner
     // A NEW, different banner (distinct line) reaches the late subscriber (and only it).
-    ptys[0]!.emitData("The linear MCP server is not logged in. Run `codex mcp login linear`.\r\n");
+    ptys[0]!.emitData(
+      codexStartupFrame(
+        "⚠ The linear MCP server is not logged in. Run `codex mcp login linear`.\r\n",
+      ),
+    );
     await expect.poll(() => seen).toEqual([{ code: "mcp_server_not_logged_in", server: "linear" }]);
   });
 });
