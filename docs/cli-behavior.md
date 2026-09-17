@@ -161,7 +161,24 @@ legacy string/`agent_message` support. C-CODEX-16.
   at most one cursor); any other caret or numbered row (`❯ 1. Yes`, `  1. Yes`, a
   staged `❯ 1. fix this  then that`) restarts the numbering, follows the blank or
   rule that separates the composer, or lacks the column, and marks the region as
-  someone else's.
+  someone else's. The block must also be COMPLETE before Elwood treats it as live:
+  every captured picker and reasoning screen carries at least two numbered rows and
+  a closing hint row (`Esc to cancel`, `esc to go back`). A header with neither —
+  a transcript quoting `Select model` above a trust or hook prompt, or above a
+  reply's own numbered list — is a fragment, and Escaping it would dismiss the live
+  prompt underneath. The CURSOR is deliberately not required: a complete picker
+  still painting its cursor is live and must keep holding input, and `setPickerModel`
+  rejects the missing cursor on its own.
+- **The cache-warning dialog indents its own action rows under its title; the composer
+  does not.** The warning screen carries no closing hint row, so completeness cannot be
+  judged the way the picker's is. What separates a live warning from one the transcript
+  quotes is the column: every captured warning renders `Yes, switch to …` / `No, go back`
+  indented at or past the `Switch model?` / `Change effort level?` title, while the
+  composer sits at the viewport's left edge. A staged draft that happens to read
+  `❯ Yes, switch to Fable` under a quoted warning is therefore outdented past the title,
+  and `parseClaudeSwitchConfirmation` rejects the region rather than treating that draft
+  as the live follow-up — otherwise cleanup would send Enter or Escape into the user's
+  own input or a running turn. C-API-24, C-ATTN-04.
 - **Codex persists `/model` picker selections into the user `config.toml`.**
   `setModel` restores the prior default via compare-and-swap after switching
   (C-CODEX-14), skipping with a `codex_default_model_persisted` warning on a

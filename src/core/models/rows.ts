@@ -77,23 +77,36 @@ const caretRow = /^\s*[❯›]/;
 const numberedRow = /^\s*[❯›]?\s*(\d+)[.)]\s/;
 // Both CLIs separate the transcript from the composer or a lower dialog with one of these.
 const blockEnd = /^\s*(?:[─━]{3}.*)?$/;
+// Every captured picker and reasoning screen closes with one of these hint rows.
+const dialogFooter = /\b(?:esc to cancel|esc to go back)\b/i;
+/** A real picker always offers a choice, so one row is a quoted fragment, not a dialog. */
+const minimumRows = 2;
 
 /**
- * Whether `lines` (the header row down to the end of the viewport) hold one native
- * dialog and nothing else: no reply row, and every caret or numbered row belongs to a
- * single contiguous block of picker rows numbered from 1 with at most one cursor.
- * A staged composer line, a permission or approval option, or a second numbered list
- * is on a caret row outside that block, restarts the numbering, follows a blank or
- * rule, or lacks the description column, so none of them can pass for the dialog.
+ * Whether `lines` (the header row down to the end of the viewport) hold one COMPLETE
+ * native dialog and nothing else. Two conditions must both hold.
+ *
+ * Nothing foreign: no reply row, and every caret or numbered row belongs to a single
+ * contiguous block of picker rows numbered from 1 with at most one cursor. A staged
+ * composer line, a permission or approval option, or a second numbered list is on a
+ * caret row outside that block, restarts the numbering, follows a blank or rule, or
+ * lacks the description column, so none of them can pass for the dialog.
+ *
+ * Nothing missing: the block itself renders — at least two numbered rows and the
+ * CLI's closing hint row. A header alone, a header above unrelated prose such as a
+ * trust or hook prompt, and a picker still painting its rows all lack one of those, so
+ * they are a quoted or partial fragment rather than a dialog Elwood may drive.
  */
 function isNativeRegion(lines: readonly string[]): boolean {
   let next = 1;
   let cursors = 0;
   let closed = false;
+  let footer = false;
   for (const line of lines) {
     const number = numberedRow.exec(line)?.[1];
     if (number === undefined) {
       if (replyRow.test(line) || caretRow.test(line)) return false;
+      footer ||= dialogFooter.test(line);
       closed ||= next > 1 && blockEnd.test(line);
       continue;
     }
@@ -101,7 +114,7 @@ function isNativeRegion(lines: readonly string[]): boolean {
     next += 1;
     if (caretRow.test(line)) cursors += 1;
   }
-  return cursors <= 1;
+  return cursors <= 1 && footer && next > minimumRows;
 }
 
 /**

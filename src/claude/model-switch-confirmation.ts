@@ -20,6 +20,14 @@ export type ClaudeSwitchConfirmation = {
 };
 
 const optionPattern = /^\s*([❯›])?\s*(?:\d+[.)]\s*)?(Yes,\s*switch to\b.*|No,\s*go back)\s*$/i;
+function indentOf(line: string): number {
+  return line.length - line.trimStart().length;
+}
+
+/** True when any action row sits left of the dialog's own title column. */
+function isOutdentedAction(region: readonly string[], titleIndent: number): boolean {
+  return region.some((line) => optionPattern.test(line) && indentOf(line) < titleIndent);
+}
 const cacheLead = "Your next response will be slower and use more tokens";
 const cacheTail = "means the full history gets re-read on your next message.";
 const hookLead = "A PreModelSwitch hook asked you to confirm";
@@ -61,6 +69,11 @@ function switchDialogRegion(text: string): SwitchDialogRegion | undefined {
   }
   if (latest === undefined) return undefined;
   const region = lines.slice(latest.index);
+  // Claude indents a dialog's own rows under its title. A quoted warning's composer sits
+  // at the viewport's left edge, so an action row outdented past the title is the user's
+  // staged draft, not this dialog's. Without this, `❯ Yes, switch to …` typed below a
+  // quoted warning reads as the live follow-up and cleanup Escapes into a running turn.
+  if (isOutdentedAction(region, indentOf(region[0] as string))) return undefined;
   const lastOption = region.findLastIndex((line) => optionPattern.test(line));
   // A later dialog can lack a switch title. Its question/options must not inherit
   // the earlier cache warning's authority merely because they share a viewport.
