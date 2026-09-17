@@ -26,9 +26,11 @@ preserved, while event chunk boundaries and
 intermediate frames are not guaranteed. Render observers inspect each completed
 batch before subsequent terminal writes are parsed. Real PTY
 output pauses at 1 MiB of unrendered UTF-8 data and resumes below 512 KiB, without
-dropping output. The high-water mark can be exceeded by the single chunk already
-delivered; OS/native buffers are outside this accounting. This is backpressure,
-not a total process-memory cap. Disposing the terminal cancels pending render
+dropping output. A paused PTY resumes as soon as its child process exits, and is
+not paused again afterwards, so a backlog still draining at exit cannot strand
+unread output behind a pause. The high-water mark can be exceeded by the single
+chunk already delivered; OS/native buffers are outside this accounting. This is
+backpressure, not a total process-memory cap. Disposing the terminal cancels pending render
 notifications and settles outstanding write and `settled()` promises.
 
 ### 4.2 macOS shell behavior

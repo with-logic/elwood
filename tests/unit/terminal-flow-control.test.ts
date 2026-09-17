@@ -1,6 +1,8 @@
 /** Byte-based terminal backpressure regressions (PRD §4.1, C-PERF-06). */
 
 import { expect, test, vi } from "vitest";
+import type { PtyProcess } from "../../src/pty/types.ts";
+import { attachPtyTerminal } from "../../src/terminal/headless.ts";
 import {
   PtyOutput,
   renderHighWaterBytes,
@@ -47,6 +49,57 @@ test("C-PERF-06 disposal resumes paused PTYs and ignores later completions/input
   output.flush();
   expect(callbacks).toHaveLength(16);
   expect(flow.resume).toHaveBeenCalledTimes(1);
+});
+
+test("C-PERF-06 child exit lifts the pause and never re-pauses a dead producer", async () => {
+  const { output, flow, callbacks } = controlledOutput();
+  output.push("x".repeat(renderHighWaterBytes + 1));
+  expect(flow.pause).toHaveBeenCalledTimes(1);
+  // The child exited with the backlog still pending: reads must resume NOW, well
+  // before disposal, or node-pty can destroy the socket with the tail unread.
+  output.releaseFlowControl();
+  expect(flow.resume).toHaveBeenCalledTimes(1);
+  // Tail output delivered after exit must not re-pause a PTY nobody will resume.
+  output.push("x".repeat(renderHighWaterBytes + 1));
+  expect(flow.pause).toHaveBeenCalledTimes(1);
+  for (const complete of callbacks) complete();
+  await Promise.resolve();
+  expect(flow.resume).toHaveBeenCalledTimes(1);
+  output.dispose();
+});
+
+test("C-PERF-06 attachPtyTerminal resumes a paused PTY when the child exits", async () => {
+  const flow = { pause: vi.fn(), resume: vi.fn() };
+  let emit: (data: string) => void = () => undefined;
+  let exit: () => void = () => undefined;
+  const renders: Array<() => void> = [];
+  const pty: PtyProcess = {
+    pid: 1,
+    onData: (handler) => {
+      emit = handler;
+      return () => undefined;
+    },
+    onExit: (handler) => {
+      exit = () => handler({ exitCode: 0 });
+      return () => undefined;
+    },
+    write: () => undefined,
+    resize: () => "resized",
+    kill: () => undefined,
+    flowControl: flow,
+  };
+  const terminal = attachPtyTerminal({ cols: 10, rows: 3 }, pty, () =>
+    renders.push(() => undefined),
+  );
+  emit("x".repeat(renderHighWaterBytes + 1));
+  expect(flow.pause).toHaveBeenCalledTimes(1);
+  expect(flow.resume).not.toHaveBeenCalled();
+  exit(); // reads resume at exit, not at disposal
+  expect(flow.resume).toHaveBeenCalledTimes(1);
+  await terminal.settled();
+  terminal.dispose();
+  expect(flow.resume).toHaveBeenCalledTimes(1); // disposal finds nothing left to resume
+  expect(renders.length).toBeGreaterThan(0);
 });
 
 test("C-PERF-06 adapters without flow control still render a burst", async () => {

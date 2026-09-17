@@ -1,5 +1,7 @@
 /**
- * Coalesces adjacent PTY chunks and bounds pending rendering with backpressure.
+ * Coalesces adjacent PTY chunks and, when the adapter supplies `flowControl`,
+ * bounds the pending rendering backlog with backpressure. Adapters without flow
+ * control still batch, but their backlog is unbounded.
  * Implements PRD §4.1 and C-PERF-06.
  */
 
@@ -23,6 +25,8 @@ export class PtyOutput {
   private pendingBytes = 0;
   private scheduled: NodeJS.Timeout | undefined;
   private disposed = false;
+  /** Cleared at child exit: a pause after that could never be lifted by a producer. */
+  private throttled = true;
 
   constructor(write: (data: string) => Promise<void>, flow: PtyProcess["flowControl"]) {
     this.write = write;
@@ -41,7 +45,12 @@ export class PtyOutput {
       this.chunks.push(chunk);
       this.bufferedBytes += bytes;
       this.pendingBytes += bytes;
-      if (!this.paused && this.pendingBytes >= renderHighWaterBytes && this.flow) {
+      if (
+        this.throttled &&
+        !this.paused &&
+        this.pendingBytes >= renderHighWaterBytes &&
+        this.flow
+      ) {
         this.paused = this.flow;
         this.paused.pause();
       }
@@ -67,6 +76,15 @@ export class PtyOutput {
       () => this.release(bytes),
       () => this.release(bytes),
     );
+  }
+
+  /**
+   * Stop throttling reads and stay unpaused. Used at child exit, where the producer
+   * is gone: further accounting could only re-pause a PTY nobody will resume.
+   */
+  releaseFlowControl(): void {
+    this.throttled = false;
+    this.resume();
   }
 
   dispose(): void {

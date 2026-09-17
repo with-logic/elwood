@@ -57,10 +57,16 @@ export function attachPtyTerminal(
     pty.flowControl,
   );
   terminal.attachOutput(output);
-  const unsubscribe = pty.onData((data) => {
-    output.push(data);
+  // Once the child is gone there is no producer left to throttle, and node-pty
+  // destroys the socket shortly after exit. Releasing the pause here means a
+  // backlog still draining at exit cannot strand unread tail output behind it.
+  const off = [
+    pty.onData((data) => output.push(data)),
+    pty.onExit(() => output.releaseFlowControl()),
+  ];
+  terminal.onDispose(() => {
+    for (const unsubscribe of off) unsubscribe();
   });
-  terminal.onDispose(unsubscribe);
   return terminal;
 }
 
