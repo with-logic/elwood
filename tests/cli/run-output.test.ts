@@ -143,7 +143,7 @@ describe("RunOutput", () => {
   });
 
   test("C-CLI-10 text errors and kept identities stay on stderr", async () => {
-    const h = harness(request({ keep: true, showSessionId: true }));
+    const h = harness(request({ keep: true }));
     await h.output.finish(() =>
       errorTerminal({
         sessionId: "s1",

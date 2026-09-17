@@ -113,7 +113,6 @@ export class RunOutput {
     if (
       this.request.output === "text" &&
       this.request.keep &&
-      this.request.showSessionId === true &&
       record.sessionId !== null &&
       record.cleanup.status === "succeeded"
     ) {

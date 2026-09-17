@@ -85,7 +85,6 @@ export type RunFlags = {
   readonly cwd?: string;
   readonly images: readonly string[];
   readonly keep?: boolean;
-  readonly showSessionId?: boolean;
   readonly resume?: string;
   readonly ephemeral?: boolean;
 };
@@ -149,7 +148,6 @@ export type ResolvedRunRequest = {
   readonly imagePaths: readonly string[];
   readonly prompt: string;
   readonly keep: boolean;
-  readonly showSessionId?: boolean;
   readonly resume?: string;
   readonly ephemeral: boolean;
   readonly resolution?: CliRequestResolution;

@@ -212,7 +212,3 @@ fi
 Do not use `jq -r .response` alone as a success check. Error documents can
 carry a partial `response`, and streamed text can be partial when the process
 exits nonzero.
-
-For retained text runs, `--show-session-id` opts into a session-ID footer on stderr.
-Without it, use `elwood sessions` to find the ID. JSON and JSONL always keep their
-existing `sessionId` field.

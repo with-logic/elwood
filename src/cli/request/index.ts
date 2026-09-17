@@ -116,7 +116,6 @@ export async function resolveRunSettings(
     imagePaths: parsed.flags.images,
     prompt: "",
     keep: !parsed.flags.ephemeral,
-    showSessionId: parsed.flags.showSessionId ?? false,
     ...optional(optionalNonBlank(parsed.flags.resume, "resume"), "resume"),
     ephemeral: parsed.flags.ephemeral ?? false,
     resolution: {

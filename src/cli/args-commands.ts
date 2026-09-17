@@ -30,7 +30,6 @@ const flagNames: Readonly<Record<RunOptionKey, string>> = {
   cwd: "--cwd",
   images: "--image",
   keep: "--keep",
-  showSessionId: "--show-session-id",
   resume: "--resume",
   ephemeral: "--ephemeral",
 };
@@ -44,7 +43,6 @@ const interactiveRejected: readonly RunOptionKey[] = [
   "persona",
   "images",
   "keep",
-  "showSessionId",
   "ephemeral",
   "resume",
 ];
@@ -54,7 +52,6 @@ const modelsRejected: readonly RunOptionKey[] = [
   "persona",
   "images",
   "keep",
-  "showSessionId",
   "resume",
   "ephemeral",
 ];
