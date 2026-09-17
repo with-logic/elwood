@@ -3,7 +3,7 @@
  * Implements PRD §9.2 and C-LIFE-09's best-effort, stale-safe behavior.
  */
 
-import { mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, expect, test, vi } from "vitest";
 import { coordinatedAutoupdate, updateLockPath } from "../../src/runtime/update/lock.ts";
@@ -11,7 +11,8 @@ import { tempDir } from "../helpers/tmp.ts";
 
 const failures = vi.hoisted(() => ({
   ownerWrite: false,
-  ownerRmdir: false,
+  stagingRm: false,
+  rootReaddir: false,
   recoveryRename: false,
   recoveryRmdir: false,
   staleUnlink: false,
@@ -40,12 +41,12 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     rmdir: (...args: Parameters<typeof actual.rmdir>) => {
       const path = String(args[0]);
       if (failures.recoveryRmdir && path.endsWith(".recovery")) return denied();
-      if (failures.ownerRmdir && path.endsWith(".lock")) {
-        failures.ownerRmdir = false;
-        return denied();
-      }
       return actual.rmdir(...args);
     },
+    rm: (...args: Parameters<typeof actual.rm>) =>
+      failures.stagingRm && String(args[0]).includes(".claim.") ? denied() : actual.rm(...args),
+    opendir: ((...args: Parameters<typeof actual.opendir>) =>
+      failures.rootReaddir ? denied() : actual.opendir(...args)) as typeof actual.opendir,
     unlink: (...args: Parameters<typeof actual.unlink>) => {
       const path = String(args[0]);
       if ((failures.staleUnlink || failures.releaseUnlink) && path.endsWith("/owner"))
@@ -65,7 +66,8 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 
 beforeEach(() => {
   failures.ownerWrite = false;
-  failures.ownerRmdir = false;
+  failures.stagingRm = false;
+  failures.rootReaddir = false;
   failures.recoveryRename = false;
   failures.recoveryRmdir = false;
   failures.staleUnlink = false;
@@ -83,10 +85,27 @@ test("default lease options coordinate through the stable account cache", async 
   rmSync(failures.mockHome, { recursive: true, force: true });
 });
 
-test("an owner-record write failure recovers even when its first cleanup fails", async () => {
+test("an owner-record write failure skips this update and cannot block the next", async () => {
   const root = await sandbox("owner-write");
+  const attempts: string[] = [];
+  const update = (name: string) =>
+    coordinatedAutoupdate("codex", async () => void attempts.push(name), options(root));
+  // The claim fails before the lease exists, and cannot even remove its own staging.
   failures.ownerWrite = true;
-  failures.ownerRmdir = true;
+  failures.stagingRm = true;
+  await update("unwritable");
+  expect(attempts).toEqual([]);
+  // The orphaned staging is no lease: the next claim succeeds though its sweep fails too.
+  await update("next");
+  failures.stagingRm = false;
+  await update("sweeping");
+  expect(attempts).toEqual(["next", "sweeping"]);
+  expect(readdirSync(root)).toEqual(["codex.completed"]);
+});
+
+test("an unreadable lease root cannot stop the lease holder from updating", async () => {
+  const root = await sandbox("root-readdir");
+  failures.rootReaddir = true;
   let ran = false;
   await coordinatedAutoupdate(
     "codex",
