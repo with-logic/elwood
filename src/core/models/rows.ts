@@ -71,19 +71,29 @@ function parseRows(region: string, decorate: (labelText: string) => RowFlags): P
 export type ModelDialogStage = "picker" | "follow-up";
 
 // An agent reply or the composer renders below any header the transcript merely quotes.
-// Picker cursor rows (`❯ 3. Fable`) are the only caret rows inside a native dialog.
-const conversationRow = /^\s*(?:[●•⏺]|[❯›](?!\s*\d+[.)]))/;
+const replyRow = /^\s*[●•⏺]/;
+const caretRow = /^\s*[❯›]/;
+
+/**
+ * A row no native model dialog contains: a reply row, or a caret row that is not a
+ * picker row. Picker rows carry a description column, which a permission or approval
+ * option (`❯ 1. Yes`) and a numbered composer line lack, so neither can pass for one.
+ */
+function isForeignRow(line: string): boolean {
+  return replyRow.test(line) || (caretRow.test(line) && !rowPattern.test(line));
+}
 
 /**
  * The row of the last `header` when it opens the bottom-most viewport region, else -1.
- * Both CLIs replace the composer with the dialog, so header text with a conversation
- * or composer row below it is transcript content: Elwood must neither cancel it
- * (Escape would interrupt a running turn) nor hold input on it (C-API-55).
+ * Both CLIs replace the composer with the dialog, so a header with a foreign row below
+ * it is transcript content, and a header ON a foreign row is composer or reply text.
+ * Elwood must neither cancel such text (Escape would interrupt a running turn or clear
+ * staged input) nor hold input on it (C-API-24).
  */
 export function bottomDialogRow(text: string, header: RegExp): number {
   const lines = text.split("\n");
   const start = lines.findLastIndex((line) => header.test(line));
-  return lines.slice(start + 1).some((line) => conversationRow.test(line)) ? -1 : start;
+  return lines.slice(Math.max(start, 0)).some(isForeignRow) ? -1 : start;
 }
 
 function pickerRegion(text: string, header: RegExp): string {
