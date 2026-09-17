@@ -542,8 +542,9 @@ Four real-PTY edges were invisible to the unit fixtures:
   Run probes in a detached process session so they keep interactive PATH resolution
   without participating in the caller terminal's job control.
 - Current agent TUIs push Kitty keyboard enhancements with `CSI > flags u`. Head mode
-  stops mirroring before agent teardown, so it cannot rely on the agent's matching
-  cleanup sequence reaching the physical terminal. The defensive reset must emit
+  mirrors through session cleanup (so the drained final frames are shown), but an
+  agent signalled or force-killed there is not guaranteed to emit its matching
+  cleanup sequence, so head mode cannot rely on one reaching the physical terminal. The defensive reset must emit
   `CSI < u` before leaving the alternate screen; otherwise every later shell keystroke
   can remain encoded as a `CSI u` key event, making even a typed `reset` unusable.
 
