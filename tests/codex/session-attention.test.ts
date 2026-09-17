@@ -5,12 +5,12 @@
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { startCodex } from "../../src/index.ts";
-import { codexTrust, toCrlf } from "../fixtures/trust-composer.ts";
+import { codexTrust, tty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-const trustPrompt = `${toCrlf(codexTrust)}\r\n› 1. Yes, continue\r\n`;
+const trustPrompt = `${tty(codexTrust)}\r\n› 1. Yes, continue\r\n`;
 
 describe("CodexSessionApi attention wiring", () => {
   test("C-ATTN-03 an auto-answered Codex trust prompt does not block", async () => {

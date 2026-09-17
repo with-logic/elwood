@@ -1,7 +1,7 @@
 /** Automation-owned trust holds readiness and input without human attention (C-API-28). */
 import { afterEach, expect, test, vi } from "vitest";
 import { startClaude } from "../../src/index.ts";
-import { claudeComposer, claudeTrust, toCrlf } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTrust, tty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(() => {
@@ -18,7 +18,7 @@ test("C-TRUST-01 expired cursor navigation holds the readiness deadline until th
   session.on("activity", (event) => activity.push(`${event.kind}:${event.label}`));
   const queued = session.sendMessage("hello");
   vi.useFakeTimers();
-  ptys[0]!.emitData(`${toCrlf(claudeTrust)}\r\n❯ No, exit\r\n  Yes, I trust this folder`);
+  ptys[0]!.emitData(`${tty(claudeTrust)}\r\n❯ No, exit\r\n  Yes, I trust this folder`);
   await vi.advanceTimersByTimeAsync(11_000);
   expect(ptys[0]!.writes.length).toBeGreaterThan(0);
   expect(ptys[0]!.writes.every((input) => input === "\u001b[B")).toBe(true);
@@ -46,7 +46,7 @@ test("C-TRUST-01 a trust gate appearing after readiness holds the entire queued 
   const warnings: string[] = [];
   session.on("activity", (event) => activity.push(`${event.kind}:${event.label}`));
   session.on("warning", (event) => warnings.push(event.code));
-  ptys[0]!.emitData(`\u001b[2J\u001b[H${toCrlf(claudeTrust)}\r\n1. Yes\r\n2. No`);
+  ptys[0]!.emitData(`\u001b[2J\u001b[H${tty(claudeTrust)}\r\n1. Yes\r\n2. No`);
   await vi.advanceTimersByTimeAsync(10);
   const queued = session.sendMessage("held");
   await vi.advanceTimersByTimeAsync(5_500);
