@@ -5,6 +5,7 @@
 
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
 import { sessionWaitForActivity, sessionWaitForStatus } from "../../core/session-wait.ts";
+import { terminalStatuses } from "../../core/status-categories.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent } from "../../core/types.ts";
 import { emitSessionWarnings } from "../../core/warnings/session.ts";
@@ -28,6 +29,9 @@ import {
   codexRestoreFailedWarning,
   codexRestoreSkippedWarning,
 } from "./warnings.ts";
+
+/** How long a setModel interrupted by close waits for the CLI to exit before restoring. */
+const cliExitWaitMs = 5_000;
 
 export class CodexSessionImpl extends AgentSessionBase implements CodexSessionApi {
   protected readonly picker = codexModelPicker;
@@ -84,11 +88,21 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   override setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
     return runCodexModelSwitch({
       snapshot: snapshotCodexConfig,
-      apply: () => super.setModel(id, options),
+      apply: () => super.setModel(id, options).catch((error) => this.afterCliExit(error)),
       restore: (snapshot) => this.restoreCodexDefault(snapshot),
       onRestoreError: (error) =>
         this.emitWarnings([codexRestoreFailedWarning(this.elwoodSessionId, error)]),
     });
+  }
+  // A closing session rejects the picker at once, while the dying CLI can still persist
+  // the selection it had confirmed: hold the restore until the process is gone.
+  private async afterCliExit(error: unknown): Promise<never> {
+    // Settled either way: a CLI that outlives the bound must not block the restore for good.
+    if (this.closing.signal.aborted)
+      await Promise.allSettled([
+        this.waitForStatus((status) => terminalStatuses.has(status), cliExitWaitMs),
+      ]);
+    throw error;
   }
   private restoreCodexDefault(snapshot: string | undefined): void {
     const outcome = restoreCodexConfig(snapshot);
