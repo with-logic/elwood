@@ -4,6 +4,7 @@
  */
 
 import { runCleanupSteps } from "../../runtime/shutdown/teardown.ts";
+import { drainAndDisposeTerminal } from "../../runtime/shutdown/terminal.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import type { CodexTranscriptWatcher } from "../transcript/index.ts";
 
@@ -21,6 +22,6 @@ export function stopCodexRuntime(
   return runCleanupSteps([
     () => bridge.stop(),
     () => transcriptWatcher?.finish(),
-    () => terminal.dispose(),
+    () => drainAndDisposeTerminal(terminal),
   ]);
 }
