@@ -12,7 +12,7 @@ export const renderBatchBytes = 64 * 1024;
 export const renderBatchDelayMs = 4;
 // A UTF-16 code unit occupies at most three UTF-8 bytes. Slicing at 16K units
 // leaves room for whole surrogate pairs while keeping every piece below 64 KiB.
-const pieceUnits = renderBatchBytes / 4;
+const pieceCodeUnits = renderBatchBytes / 4;
 
 export class PtyOutput {
   private readonly write: (data: string) => Promise<void>;
@@ -32,7 +32,7 @@ export class PtyOutput {
   push(data: string): void {
     if (this.disposed) return;
     for (let start = 0; start < data.length; ) {
-      let end = Math.min(start + pieceUnits, data.length);
+      let end = Math.min(start + pieceCodeUnits, data.length);
       const last = data.charCodeAt(end - 1);
       if (end < data.length && last >= 0xd800 && last <= 0xdbff) end--;
       const chunk = data.slice(start, end);

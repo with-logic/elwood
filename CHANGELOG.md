@@ -15,6 +15,8 @@ back each entry are listed in `prd/14-conformance.md`.
 - Batch terminal rendering and pause PTY reads above a bounded backlog, improving
   throughput across parallel sessions. Runtime cleanup drains received output
   before disposal; direct terminal disposal settles pending writes immediately.
+  `--head` now mirrors through cleanup, so the agent's final frames (for example
+  its last words before an unexpected exit) are no longer cut off.
 - Reject FIFO state/config files without hanging.
 - Bind automatic trust approvals to the active dialog and revalidate every write,
   preventing quoted transcript headers or unknown intervening titles from
