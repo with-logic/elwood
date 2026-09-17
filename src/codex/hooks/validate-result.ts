@@ -5,6 +5,7 @@
 
 import { isOneOf, isRecord, optionalString } from "../../core/predicates.ts";
 import type { CodexHookEvent, CodexHookEventName, CodexHookResult } from "./index.ts";
+import { optionalNullableString } from "./values.ts";
 
 export function isCodexHookResult(
   event: CodexHookEventName | CodexHookEvent,
@@ -108,7 +109,7 @@ function isCodexToolInputUpdate(toolName: string | undefined, value: unknown): b
   if (toolName !== "Bash" && toolName !== "apply_patch") return true;
   return (
     keysAre(value, ["command", "description"]) &&
-    optionalString(value["description"]) &&
+    optionalNullableString(value["description"]) &&
     ("command" in value ? typeof value["command"] === "string" : true)
   );
 }

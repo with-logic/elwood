@@ -75,17 +75,25 @@ type CodexToolInputUpdateForEvent<Event> = Event extends {
   : never;
 
 export type CodexPreToolUseResultFor<Event> =
-  | { readonly permissionDecision: "deny"; readonly permissionDecisionReason: string }
+  | {
+      readonly permissionDecision: "deny";
+      readonly permissionDecisionReason: string;
+      readonly updatedInput?: never;
+    }
   | {
       readonly permissionDecision: "allow";
       readonly updatedInput?: CodexToolInputUpdateForEvent<Event>;
     }
-  | { readonly additionalContext: string };
+  | { readonly additionalContext: string; readonly updatedInput?: never };
 export type CodexPreToolUseResult = CodexPreToolUseResultFor<CodexHookEventFor<"PreToolUse">>;
-type CodexPreToolUseCommonResult =
-  | { readonly permissionDecision: "deny"; readonly permissionDecisionReason: string }
+export type CodexPreToolUseCommonResult =
+  | {
+      readonly permissionDecision: "deny";
+      readonly permissionDecisionReason: string;
+      readonly updatedInput?: never;
+    }
   | { readonly permissionDecision: "allow"; readonly updatedInput?: never }
-  | { readonly additionalContext: string };
+  | { readonly additionalContext: string; readonly updatedInput?: never };
 
 export type CodexPermissionRequestResult = {
   readonly behavior: "allow" | "deny";
@@ -112,6 +120,10 @@ export type CodexHookResultFor<K extends CodexHookEventName> = K extends "PreToo
     : K extends "Stop" | "SubagentStop"
       ? CodexBlockResult | CodexStopResult | undefined
       : undefined;
+
+export type CodexHookCommonResultFor<K extends CodexHookEventName> = K extends "PreToolUse"
+  ? CodexPreToolUseCommonResult | undefined
+  : CodexHookResultFor<K>;
 
 export type CodexHookResultForEvent<Event extends CodexHookEvent> =
   Event["hook_event_name"] extends "PreToolUse"

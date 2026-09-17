@@ -4,8 +4,17 @@
  */
 
 import type { PermissionUpdate } from "../permissions.ts";
+import type {
+  ExitPlanModeInput,
+  IdInput,
+  TaskGetInput,
+  TaskOutputInput,
+  TaskStopInput,
+} from "./inputs/control.ts";
 import type { ClaudeCommonHookFields } from "./names.ts";
 import type { ToolHookEventName } from "./tool-events.ts";
+
+export type { ExitPlanModeInput, IdInput } from "./inputs/control.ts";
 
 export type BashInput = {
   readonly command: string;
@@ -44,13 +53,6 @@ export type AgentInput = {
   readonly model?: string;
 };
 export type SimplePromptInput = { readonly prompt?: string; readonly description?: string };
-export type IdInput = { readonly id: string };
-export type ExitPlanModeInput = {
-  readonly allowedPrompts?: readonly string[];
-  readonly plan?: string;
-  readonly planFilePath?: string;
-};
-
 export type AskUserQuestionInput = {
   readonly questions: readonly {
     readonly question: string;
@@ -112,10 +114,10 @@ export type ClaudeToolInputByName =
   | { readonly tool_name: "Agent"; readonly tool_input: AgentInput }
   | { readonly tool_name: "AskUserQuestion"; readonly tool_input: AskUserQuestionInput }
   | { readonly tool_name: "Bash"; readonly tool_input: BashInput }
-  | {
-      readonly tool_name: "CronDelete" | "TaskGet" | "TaskOutput" | "TaskStop";
-      readonly tool_input: IdInput;
-    }
+  | { readonly tool_name: "CronDelete"; readonly tool_input: IdInput }
+  | { readonly tool_name: "TaskGet"; readonly tool_input: TaskGetInput }
+  | { readonly tool_name: "TaskOutput"; readonly tool_input: TaskOutputInput }
+  | { readonly tool_name: "TaskStop"; readonly tool_input: TaskStopInput }
   | { readonly tool_name: "Edit"; readonly tool_input: EditInput }
   | { readonly tool_name: "ExitPlanMode"; readonly tool_input: ExitPlanModeInput }
   | { readonly tool_name: "Glob"; readonly tool_input: GlobInput }
