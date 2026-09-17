@@ -39,9 +39,9 @@ test("C-PERF-06 a real PTY pauses while rendering stalls and resumes without los
   });
   const exited = new Promise((resolve) => pty.onExit(resolve));
   let paused = false;
-  let queued = 0;
-  let peakQueued = 0;
-  let maxChunk = 0;
+  let queuedBytes = 0;
+  let peakQueuedBytes = 0;
+  let maxChunkBytes = 0;
   const chunks: string[] = [];
   const terminal = attachPtyTerminal(
     { cols: 120, rows: 40 },
@@ -49,9 +49,9 @@ test("C-PERF-06 a real PTY pauses while rendering stalls and resumes without los
       ...pty,
       onData: (handler) =>
         pty.onData((data) => {
-          queued += Buffer.byteLength(data);
-          peakQueued = Math.max(peakQueued, queued);
-          maxChunk = Math.max(maxChunk, Buffer.byteLength(data));
+          queuedBytes += Buffer.byteLength(data);
+          peakQueuedBytes = Math.max(peakQueuedBytes, queuedBytes);
+          maxChunkBytes = Math.max(maxChunkBytes, Buffer.byteLength(data));
           handler(data);
         }),
       flowControl: {
@@ -63,7 +63,7 @@ test("C-PERF-06 a real PTY pauses while rendering stalls and resumes without los
       },
     },
     (data) => {
-      queued -= Buffer.byteLength(data);
+      queuedBytes -= Buffer.byteLength(data);
       chunks.push(data);
     },
   );
@@ -80,7 +80,7 @@ test("C-PERF-06 a real PTY pauses while rendering stalls and resumes without los
   };
   try {
     await expect.poll(() => paused, { timeout: 5000 }).toBe(true);
-    expect(peakQueued).toBeLessThanOrEqual(renderHighWaterBytes + maxChunk);
+    expect(peakQueuedBytes).toBeLessThanOrEqual(renderHighWaterBytes + maxChunkBytes);
     release();
     await exited;
     await terminal.settled();

@@ -102,6 +102,24 @@ test("C-PERF-06 attachPtyTerminal resumes a paused PTY when the child exits", as
   expect(renders.length).toBeGreaterThan(0);
 });
 
+test("C-PERF-06 a rejected render still releases its bytes and resumes the PTY", async () => {
+  const flow = { pause: vi.fn(), resume: vi.fn() };
+  const rejections: Array<(error: unknown) => void> = [];
+  const output = new PtyOutput(
+    () => new Promise((_resolve, reject) => rejections.push(reject)),
+    flow,
+  );
+  output.push("x".repeat(renderHighWaterBytes + 1));
+  expect(flow.pause).toHaveBeenCalledTimes(1);
+  // Every submitted write fails. The reservation must still be released, or a real
+  // PTY would stay paused until disposal with nothing left to drain it.
+  for (const reject of rejections) reject(new Error("render failed"));
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(flow.resume).toHaveBeenCalledTimes(1);
+  output.dispose();
+});
+
 test("C-PERF-06 adapters without flow control still render a burst", async () => {
   let rendered = 0;
   const output = new PtyOutput((data) => {
