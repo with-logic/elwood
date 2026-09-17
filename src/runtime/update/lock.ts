@@ -5,9 +5,9 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, rmdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import {
   type LeaseOwner,
   ownerFile,
@@ -83,22 +83,43 @@ export async function coordinatedAutoupdate(
   }
 }
 
+/**
+ * Publishes the lease atomically: the owner record is written inside a private staging
+ * directory that is then renamed into place, so the lease either does not exist or holds
+ * a complete record. A claimant killed at any point leaves only its staging directory,
+ * never an ownerless or partially written lease that contenders would have to judge by
+ * age. `rename` refuses a non-empty destination, which is exactly an existing lease.
+ */
 async function claimLease(path: string, owner: LeaseOwner): Promise<boolean> {
-  if (await pathExists(recoveryPath(path))) return false;
+  // An existing lease, even an ownerless one left by an older version, is a wait condition:
+  // `rename` would silently replace an empty directory instead of recovering it as stale.
+  if ((await pathExists(recoveryPath(path))) || (await pathExists(path))) return false;
+  const staging = `${path}.claim.${randomUUID()}`;
   try {
-    await mkdir(path, { mode: 0o700 });
+    await mkdir(staging, { mode: 0o700 });
+    await writeFile(join(staging, ownerFile), serializeOwner(owner), { flag: "wx", mode: 0o600 });
+    await rename(staging, path);
   } catch {
+    await rm(staging, { recursive: true, force: true }).catch(() => undefined);
     return false;
   }
-  try {
-    await writeFile(join(path, ownerFile), serializeOwner(owner), { flag: "wx", mode: 0o600 });
-    if (await pathExists(recoveryPath(path))) {
-      await releaseLease(path, owner);
-      return false;
-    }
-    return true;
-  } catch {
-    await rmdir(path).catch(() => undefined);
+  if (await pathExists(recoveryPath(path))) {
+    await releaseLease(path, owner);
     return false;
   }
+  await sweepStaging(path);
+  return true;
+}
+
+/**
+ * Removes staging directories left by claimants killed before their rename. Only the lease
+ * holder sweeps: a live contender's staging can no longer win, and losing it merely turns
+ * that contender's failed rename into a missing source.
+ */
+async function sweepStaging(path: string): Promise<void> {
+  const root = dirname(path);
+  const entries = await readdir(root).catch(() => []);
+  for (const entry of entries)
+    if (entry.startsWith(`${basename(path)}.claim.`))
+      await rm(join(root, entry), { recursive: true, force: true }).catch(() => undefined);
 }

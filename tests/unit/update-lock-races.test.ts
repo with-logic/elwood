@@ -24,8 +24,8 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   return {
     ...actual,
     mkdir: (...args: Parameters<typeof actual.mkdir>) => {
-      const path = String(args[0]);
-      if (races.claimUntilRelease && path.endsWith(".lock")) {
+      // A claim starts by staging its lease; holding it there lets a peer finish first.
+      if (races.claimUntilRelease && String(args[0]).includes(".lock.claim.")) {
         races.claimUntilRelease = false;
         races.claimDelayStarted = true;
         return waitForOwnerRelease().then(() => actual.mkdir(...args));
@@ -34,12 +34,18 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     },
     rename: async (...args: Parameters<typeof actual.rename>) => {
       const destination = String(args[1]);
+      // A claim publishes its staged lease by renaming it into place.
+      const claiming = destination.endsWith(".lock") && String(args[0]).includes(".claim.");
       if (races.contendedRename && destination.endsWith(".recovery")) {
         races.contendedRename = false;
         races.pretendRecoveryExists = true;
         throw Object.assign(new Error("contended"), { code: "EEXIST" });
       }
       const result = await actual.rename(...args);
+      if (races.createRecoveryAfterOwner && claiming) {
+        races.createRecoveryAfterOwner = false;
+        await actual.mkdir(`${destination}.recovery`);
+      }
       if (races.mutateMovedOwner && destination.endsWith(".recovery")) {
         races.mutateMovedOwner = false;
         await actual.writeFile(
@@ -61,15 +67,6 @@ vi.mock("node:fs/promises", async (importOriginal) => {
         return actual.stat(path.slice(0, -".recovery".length));
       }
       return actual.stat(...args);
-    },
-    writeFile: async (...args: Parameters<typeof actual.writeFile>) => {
-      const result = await actual.writeFile(...args);
-      const path = String(args[0]);
-      if (races.createRecoveryAfterOwner && path.endsWith("/owner")) {
-        races.createRecoveryAfterOwner = false;
-        await actual.mkdir(`${path.slice(0, -"/owner".length)}.recovery`);
-      }
-      return result;
     },
   };
 });

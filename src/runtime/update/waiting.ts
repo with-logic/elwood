@@ -2,10 +2,13 @@
  * Update contention and generation-safe recovery of a dead owner's lease.
  * Implements PRD §9.2 / C-PERF-04; time alone never evicts a live updater.
  */
-import { rename, rmdir, stat, unlink } from "node:fs/promises";
+import { rename, rm, rmdir, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { ownerFile, ownerIsAlive, readOwner } from "./owner.ts";
+
+// Far beyond any bounded update: an unreadable lease untouched this long has no live owner.
+const abandonedLeaseMs = 24 * 60 * 60 * 1_000;
 
 export async function waitForOwner(
   path: string,
@@ -20,8 +23,9 @@ export async function waitForOwner(
       if (await restoreRecovery(path)) continue;
       return "released";
     }
-    if (Date.now() - lease.mtimeMs >= staleMs) {
-      const recovered = await recoverStaleLease(path);
+    const untouchedMs = Date.now() - lease.mtimeMs;
+    if (untouchedMs >= staleMs) {
+      const recovered = await recoverStaleLease(path, untouchedMs >= abandonedLeaseMs);
       if (recovered === "removed") return "stale_removed";
       if (recovered === "unrecoverable") return "released";
     }
@@ -29,7 +33,10 @@ export async function waitForOwner(
   }
 }
 
-async function recoverStaleLease(path: string): Promise<"removed" | "alive" | "unrecoverable"> {
+async function recoverStaleLease(
+  path: string,
+  abandoned: boolean,
+): Promise<"removed" | "alive" | "unrecoverable"> {
   const expected = await readOwner(path);
   if (expected !== undefined && ownerIsAlive(expected.pid)) return "alive";
   const recovery = recoveryPath(path);
@@ -44,6 +51,9 @@ async function recoverStaleLease(path: string): Promise<"removed" | "alive" | "u
   }
   try {
     if (moved !== undefined) await unlink(join(recovery, ownerFile));
+    // An unreadable record may belong to a live updater writing a format this version
+    // cannot read, so it stays in place and keeps failing safe until the lease is abandoned.
+    else if (abandoned) await rm(join(recovery, ownerFile), { force: true });
     await rmdir(recovery);
     return "removed";
   } catch {
