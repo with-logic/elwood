@@ -33,7 +33,7 @@ export interface ElwoodTerminal {
    * including output received while waiting. Never rejects; see `renderFailed`.
    */
   settled(): Promise<void>;
-  /** True from a failed render until the screen is fully redrawn: `snapshot()` is stale. */
+  /** True once any render has failed: `snapshot()` can no longer be vouched for. */
   readonly renderFailed: boolean;
   dispose(): void;
 }

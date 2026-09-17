@@ -110,22 +110,22 @@ test("C-API-56 a trust gate received while an earlier chunk is still settling ho
   expect(ptys[0]!.writes).toEqual([PASTE, "\r"]);
 });
 
-test("C-API-56 a gate whose render failed holds the paste until the screen is redrawn", async () => {
+test("C-API-56 after a failed render no later output releases queued input; cancelling frees the queue", async () => {
   const session = await readySession();
   vi.spyOn(session.terminal.xterm, "write").mockImplementationOnce(() => {
     throw new Error("render failed");
   });
   ptys[0]!.emitData(gate); // never parsed: the screen Elwood last observed is stale
-  const queued = session.sendMessage("held");
-  await vi.advanceTimersByTimeAsync(2_000);
+  const compacting = session.compact({ timeoutMs: 3_000 });
+  const rejected = expect(compacting).rejects.toMatchObject({ code: "compact_failed" });
+  await vi.advanceTimersByTimeAsync(1_000);
+  ptys[0]!.emitData("."); // an incremental write cannot restore the lost gate
+  await vi.advanceTimersByTimeAsync(1_000);
+  ptys[0]!.emitData(`${clear}partial`); // nor can an erase prove the redraw that follows is complete
+  await vi.advanceTimersByTimeAsync(1_100);
+  await rejected;
   expect(ptys[0]!.writes).toEqual([]);
-  ptys[0]!.emitData("."); // renders, but redraws nothing: the lost gate is still lost
-  await vi.advanceTimersByTimeAsync(2_000);
-  expect(ptys[0]!.writes).toEqual([]);
-  ptys[0]!.emitData(composer);
-  await vi.advanceTimersByTimeAsync(500);
-  await queued;
-  expect(ptys[0]!.writes).toEqual([PASTE, "\r"]);
+  expect(session.terminal.renderFailed).toBe(true);
 });
 
 test("C-API-56 a PTY that never goes quiet holds the write, and cancelling still releases the queue", async () => {
@@ -162,4 +162,31 @@ test("C-API-56 a trust gate received in the turn the compact recovery Enter is d
   await vi.advanceTimersByTimeAsync(4_000);
   await rejected;
   expect(ptys[0]!.writes).toEqual(["/compact", "\r"]); // no recovery Enter reached the gate
+});
+
+test("C-API-56 the compact recovery Enter is cancelled once a later operation has dispatched", async () => {
+  const session = await readySession();
+  const compacting = session.compact({ timeoutMs: 4_000 }); // recovery Enter due at 2,150 ms
+  const rejected = expect(compacting).rejects.toMatchObject({ code: "compact_failed" });
+  await vi.advanceTimersByTimeAsync(2_100);
+  const guided = session.sendGuidance("held"); // a later operation now owns the composer
+  await vi.advanceTimersByTimeAsync(2_000);
+  await Promise.all([guided, rejected]);
+  expect(ptys[0]!.writes).toEqual(["/compact", "\r", PASTE, "\r"]); // only the guidance's own Enter
+});
+
+test("C-API-56 cancelling while the Enter's observation is pending sends no cleanup keys into the unknown screen", async () => {
+  const session = await readySession();
+  const compacting = session.compact({ timeoutMs: 1_000 });
+  const rejected = expect(compacting).rejects.toMatchObject({ code: "compact_failed" });
+  await vi.advanceTimersByTimeAsync(100);
+  expect(ptys[0]!.writes).toEqual(["/compact"]);
+  vi.spyOn(session.terminal.xterm, "write").mockImplementation((_data, done) => {
+    setTimeout(() => done?.(), 5_000); // the gate is received but will not render in time
+  });
+  ptys[0]!.emitData(gate);
+  await vi.advanceTimersByTimeAsync(1_000);
+  await rejected; // the timeout interrupted the pending observation
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(ptys[0]!.writes).toEqual(["/compact"]); // no Enter, and no Ctrl-U/Ctrl-K either
 });

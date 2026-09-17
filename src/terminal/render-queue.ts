@@ -1,14 +1,11 @@
 /**
- * Ordered xterm writes with generation-aware settlement and a sticky render-failure
+ * Ordered xterm writes with generation-aware settlement and a permanent render-failure
  * state, so callers can tell whether the screen reflects everything received.
  * Implements PRD §4.1/§5.3 and C-API-56.
  */
 
-// Erase Display (whole screen). Everything visible afterwards was drawn after it.
-const eraseDisplay = "\u001b[2J";
-
 export class RenderQueue {
-  /** True from a failed write until a later write redraws the whole screen. */
+  /** True once any write has failed; nothing later can prove the screen complete again. */
   renderFailed = false;
   private tail = Promise.resolve();
   private settling: Promise<void> | undefined;
@@ -23,16 +20,11 @@ export class RenderQueue {
     // Chain the NEXT write off a never-rejecting tail so a single failed write (e.g.
     // a synchronous xterm.write throw) cannot poison every subsequent write. The
     // caller still sees the real result via the returned `write` promise. A failed
-    // write's bytes are gone: a later incremental write cannot restore them, so the
-    // failure stands until the screen is erased and redrawn.
-    this.tail = write.then(
-      () => {
-        if (typeof data === "string" && data.includes(eraseDisplay)) this.renderFailed = false;
-      },
-      () => {
-        this.renderFailed = true;
-      },
-    );
+    // write's bytes are gone and the parser may be mid-sequence; no later output can
+    // prove a complete resynchronization, so the failure is permanent.
+    this.tail = write.catch(() => {
+      this.renderFailed = true;
+    });
     return write;
   }
 

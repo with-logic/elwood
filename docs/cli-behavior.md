@@ -455,7 +455,7 @@ captured strings.
   tab/nl/cr, so text can't escape bracketed paste and inject a dialog-confirming
   Enter. C-API-40.
 - A submission's paste, Enter, and recovery Enters are **held while a blocking
-  dialog is visible** (`holdWhileBlocked` / `writeUnsafe`, `src/core/input/abort.ts`),
+  dialog is visible** (`holdWhileUnsafe` / `writeUnsafe`, `src/core/input/abort.ts`),
   so a dialog appearing in the paste→Enter window can't be auto-confirmed. "Visible"
   means observed: each write first awaits `terminal.settled()`, because a dialog can
   be received before it is rendered. xterm parses the first write after user input

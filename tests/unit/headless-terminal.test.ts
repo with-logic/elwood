@@ -123,7 +123,7 @@ describe("headless terminal", () => {
     await expect(terminal.writeOutput("ok")).resolves.toBeUndefined();
     expect(terminal.renderFailed).toBe(true); // an incremental write cannot restore lost output
     await terminal.writeOutput("\u001b[2J\u001b[Hredrawn");
-    expect(terminal.renderFailed).toBe(false); // everything now on screen was drawn after the erase
+    expect(terminal.renderFailed).toBe(true); // nor can an erase prove the redraw is complete
     terminal.dispose();
   });
 

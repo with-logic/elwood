@@ -42,6 +42,7 @@ export type CommandSurfaceDeps = {
     command: string,
     kind: "compact" | "list_models" | "set_model",
     signal: AbortSignal,
+    onDispatch?: (operation: AbortSignal) => void,
   ) => Promise<void>;
 };
 
@@ -77,7 +78,12 @@ export class CommandSurface {
 
   compact(options?: Timeout): Promise<void> {
     const pending = new AbortController();
-    const submit = () => this.deps.submit(compactCommand, "compact", pending.signal);
+    // The queue aborts an operation's signal when the NEXT one dispatches: from then on
+    // the composer belongs to that operation, and a recovery Enter would land in it.
+    const submit = () =>
+      this.deps.submit(compactCommand, "compact", pending.signal, (operation) =>
+        operation.addEventListener("abort", () => pending.abort(), { once: true }),
+      );
     // The recovery Enter decides on everything received, not the last frame (C-API-56).
     const { terminal, blocked } = this.deps;
     const nudge = () =>

@@ -6,7 +6,7 @@
 import type { ControlSubmitMode } from "../control-queue/index.ts";
 import {
   clearStagedComposer,
-  holdWhileBlocked,
+  holdWhileUnsafe,
   type InputTerminal,
   throwIfInputAborted,
   waitForInput,
@@ -92,7 +92,7 @@ async function writePastedPrompt(
   // pasting caller/model text into it risks the TUI interpreting shortcuts, so no
   // bytes may reach a dialog until it clears (C-API-37 dialog safety). A write-only
   // terminal with nothing blocking has nothing to wait for and writes synchronously.
-  if (terminal.settled || guard?.blocked?.()) await holdWhileBlocked(terminal, guard, signal);
+  if (terminal.settled || guard?.blocked?.()) await holdWhileUnsafe(terminal, guard, signal);
   throwIfInputAborted(signal);
   // Sanitize: caller/model text is data, so an embedded end sentinel or control
   // byte must not escape paste mode into live keystrokes (§5.3).
@@ -129,7 +129,7 @@ async function writePastedPrompt(
     // would confirm the dialog's highlighted option instead of submitting the
     // staged paste (C-API-37 dialog safety). The paste stays staged behind the
     // dialog and submits once it clears.
-    await holdWhileBlocked(terminal, guard, signal);
+    await holdWhileUnsafe(terminal, guard, signal);
     throwIfInputAborted(signal);
     await terminal.sendInput("\r");
   } catch (error) {
@@ -161,12 +161,12 @@ export async function writeQueuedInput(
     // returned promise resolves only after that Enter is dispatched, so a queued
     // command's Enter always lands before the next operation writes.
     command: async () => {
-      if (terminal.settled || guard?.blocked?.()) await holdWhileBlocked(terminal, guard, signal);
+      if (terminal.settled || guard?.blocked?.()) await holdWhileUnsafe(terminal, guard, signal);
       throwIfInputAborted(signal);
       await terminal.sendInput(input);
       try {
         await waitForInput(enterDelayMs, signal);
-        await holdWhileBlocked(terminal, guard, signal);
+        await holdWhileUnsafe(terminal, guard, signal);
         throwIfInputAborted(signal);
         await terminal.sendInput("\r");
       } catch (error) {

@@ -39,8 +39,8 @@ function delayUnref(ms: number): Promise<void> {
   });
 }
 
-/** How often a held write re-checks a blocking dialog before firing. */
-const blockedPollMs = 50;
+/** How often a held write re-checks every unsafe state: dialog, unobserved output, failed render. */
+const unsafeRetryMs = 50;
 /** One bounded attempt to observe received output: sustained output or a render backlog can exceed it. */
 export const observeBudgetMs = 1_000;
 
@@ -49,13 +49,13 @@ export const observeBudgetMs = 1_000;
  * same turn this resolves, before any further PTY output can be delivered (C-API-56).
  * Cancellation interrupts the wait; the caller then rejects instead of writing.
  */
-export async function holdWhileBlocked(
+export async function holdWhileUnsafe(
   terminal: InputTerminal,
   guard?: { readonly blocked?: () => boolean },
   signal?: AbortSignal,
 ): Promise<void> {
   while (!signal?.aborted && (await writeUnsafe(terminal, guard, signal))) {
-    await delayUnref(blockedPollMs);
+    await delayUnref(unsafeRetryMs);
   }
 }
 
@@ -63,8 +63,8 @@ export async function holdWhileBlocked(
  * True while a write must be withheld. `blocked` reads the last OBSERVED frame, and
  * rendering is asynchronous (§4.1): a dialog can be received yet unrendered, where
  * writing would type into it. So first observe everything received. When that cannot
- * be done — observation does not complete within the budget, a render failed and the
- * screen has not been redrawn since, or the wait was cancelled — the screen cannot be
+ * be done — observation does not complete within the budget, a render has failed,
+ * or the wait was cancelled — the screen cannot be
  * vouched for and the answer is `true`: fail closed, never write through.
  */
 export async function writeUnsafe(
