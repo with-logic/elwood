@@ -35,6 +35,11 @@ export class CodexUpdatePromptTracker {
     return this.generation;
   }
 
+  /** True once a LATER appearance replaced `generation`; its own clear is only `generation + 1`. */
+  supersedes(generation: number): boolean {
+    return this.generation > generation + 1;
+  }
+
   observe(frameText: string): boolean {
     if (codexUpdatePromptVisible(frameText)) {
       if (!this.active) this.generation += 1;

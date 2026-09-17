@@ -3,7 +3,7 @@
  * Implements PRD §4.4, §5.5, and §5.7.
  */
 
-import type { SettledStartupOutcome } from "../core/startup/write.ts";
+import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/startup/write.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
@@ -103,9 +103,9 @@ export class CodexStartupPromptResponder {
         // rejected, so a later frame re-attempts it rather than falsely reporting
         // the update as skipped (C-CODEX-17).
         this.skipGeneration = generation;
-        const rearm = () => {
-          if (this.skipGeneration === generation) this.skipGeneration = 0;
-        };
+        // A later appearance owns the latch AND the settlement: a superseded attempt
+        // neither re-arms, answers, nor warns on its behalf (C-CODEX-12).
+        const superseded = () => this.updatePrompt.supersedes(generation);
         const settled = writeCodexUpdateSkip(
           option,
           write,
@@ -113,12 +113,13 @@ export class CodexStartupPromptResponder {
           this.updatePrompt.currentFramePredicate(),
         ).then(
           (completion) => {
-            if (completion === "exhausted") return "cancelled";
-            if (completion === "cancelled") rearm();
+            if (completion === "exhausted" || superseded()) return "cancelled";
+            if (completion === "cancelled") this.skipGeneration = 0;
             return completion;
           },
-          (error: unknown) => {
-            rearm();
+          (error: unknown): StartupWriteCompletion => {
+            if (superseded()) return "cancelled";
+            this.skipGeneration = 0;
             throw error;
           },
         );

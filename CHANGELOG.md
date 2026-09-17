@@ -15,7 +15,8 @@ back each entry are listed in `prd/14-conformance.md`.
 - Bound Codex in-TUI update skipping to one attempt per appearance of the update
   screen: an exhausted retry no longer restarts on the next frame of the same
   screen, and a stale attempt's late completion cannot start an overlapping retry
-  loop. A reappearing update screen is still skipped again.
+  loop or report success or a write failure for the newer screen. A reappearing
+  update screen is still skipped again.
 - Reject FIFO state/config files without hanging.
 - Bind automatic trust approvals to the active dialog and revalidate every write,
   preventing quoted transcript headers or unknown intervening titles from

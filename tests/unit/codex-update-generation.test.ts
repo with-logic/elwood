@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
 import { CodexUpdatePromptTracker } from "../../src/codex/update-prompt.ts";
+import { emitSettledStartupOutcomes } from "../../src/core/startup/write.ts";
 
 const update = "Update available! 0.153.3 -> 0.153.4\n› 1. Update now\n  2. Skip";
 
@@ -51,7 +52,35 @@ describe("Codex update prompt generations", () => {
     expect(writes).toEqual(["2", "3"]);
   });
 
-  test("C-CODEX-12 a stale attempt's late rejection cannot re-arm the next generation", async () => {
+  test("C-CODEX-12 a superseded attempt's late success is not reported for the next generation", async () => {
+    const responder = new CodexStartupPromptResponder("s1");
+    let frame = update;
+    const first = responder.handle(
+      frame,
+      () => {},
+      () => frame,
+    );
+    frame = "› Ready";
+    responder.handle(
+      frame,
+      () => {},
+      () => frame,
+    );
+    frame = update;
+    responder.handle(
+      frame,
+      () => {},
+      () => frame,
+    );
+    const emit = vi.fn();
+    emitSettledStartupOutcomes({ emit }, "codex", "s1", first.outcomes, undefined);
+    // The first attempt's next poll sees a newer appearance: no `startup_prompt` for it.
+    await vi.advanceTimersByTimeAsync(250);
+    await expect(first.outcomes[0]?.settled).resolves.toBe("cancelled");
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  test("C-CODEX-12 a superseded attempt's late rejection cannot re-arm or warn for the next generation", async () => {
     const responder = new CodexStartupPromptResponder("s1");
     let rejectFirst = (_error: Error): void => {};
     const pending = () => new Promise<void>((_resolve, reject) => (rejectFirst = reject));
@@ -61,7 +90,7 @@ describe("Codex update prompt generations", () => {
     responder.handle("› Ready", write, () => update);
     const second = responder.handle(update, write, () => update);
     rejectFirst(new Error("pty closed"));
-    await expect(first.outcomes[0]?.settled).rejects.toThrow("pty closed");
+    await expect(first.outcomes[0]?.settled).resolves.toBe("cancelled");
     // The reappeared screen's own attempt is still writing: no overlapping loop starts.
     expect(responder.handle(update, write, () => update).outcomes).toEqual([]);
     await vi.runAllTimersAsync();
