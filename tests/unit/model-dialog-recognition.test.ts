@@ -121,3 +121,39 @@ test.each([
 ] as const)("C-API-24 a quoted dialog above %s is not the live dialog", (_name, spec, text) => {
   expect(spec.activeDialog(text)).toBeUndefined();
 });
+
+test.each([
+  [
+    "double-spaced staged Claude composer text",
+    claudeModelPicker,
+    `⏺ It shows:\n${claudePickerViewport}\n\n────\n❯ 1. fix the bug  then run the tests\n────`,
+  ],
+  [
+    "double-spaced staged Codex composer text",
+    codexModelPicker,
+    `• It shows:\n${codexPickerViewport}\n\n› 1. fix the bug  then run the tests`,
+  ],
+  [
+    "a composer row continuing the quoted numbering",
+    codexModelPicker,
+    `• It shows:\n${codexPickerCurrentIsDefault}\n\n› 5. another model  described like a row`,
+  ],
+  [
+    "an approval prompt whose options carry no caret",
+    claudeModelPicker,
+    `⏺ It shows:\n${claudePicker}\n\nDo you want to proceed?\n  1. Yes\n  2. No`,
+  ],
+  [
+    "an approval prompt with described options",
+    codexModelPicker,
+    `• It shows:\n${codexReasoningScreen}\n\nAllow command?\n  1. Yes  (recommended)\n  2. No  (esc)`,
+  ],
+] as const)("C-API-24 a quoted dialog above %s is not the live dialog", (_name, spec, text) => {
+  expect(spec.activeDialog(text)).toBeUndefined();
+});
+
+test("C-API-24 a region with two cursor rows is not one native picker", () => {
+  const twoCursors = claudePicker.replace("     4. Sonnet ", "   ❯ 4. Sonnet ");
+  expect(claudeModelPicker.activeDialog(claudePicker)).toBe("picker");
+  expect(claudeModelPicker.activeDialog(twoCursors)).toBeUndefined();
+});

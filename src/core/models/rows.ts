@@ -1,6 +1,7 @@
 /**
- * Parses rendered adapter model picker rows into typed options.
- * Implements PRD §5.3 AgentModelOption and C-API-23.
+ * Parses rendered adapter model picker rows into typed options, and recognizes a
+ * model dialog only as the bottom-most native region of the viewport.
+ * Implements PRD §5.3 AgentModelOption, C-API-23, and C-API-24.
  */
 
 export type AgentModelOption = {
@@ -73,27 +74,47 @@ export type ModelDialogStage = "picker" | "follow-up";
 // An agent reply or the composer renders below any header the transcript merely quotes.
 const replyRow = /^\s*[●•⏺]/;
 const caretRow = /^\s*[❯›]/;
+const numberedRow = /^\s*[❯›]?\s*(\d+)[.)]\s/;
+// Both CLIs separate the transcript from the composer or a lower dialog with one of these.
+const blockEnd = /^\s*(?:[─━]{3}.*)?$/;
 
 /**
- * A row no native model dialog contains: a reply row, or a caret row that is not a
- * picker row. Picker rows carry a description column, which a permission or approval
- * option (`❯ 1. Yes`) and a numbered composer line lack, so neither can pass for one.
+ * Whether `lines` (the header row down to the end of the viewport) hold one native
+ * dialog and nothing else: no reply row, and every caret or numbered row belongs to a
+ * single contiguous block of picker rows numbered from 1 with at most one cursor.
+ * A staged composer line, a permission or approval option, or a second numbered list
+ * is on a caret row outside that block, restarts the numbering, follows a blank or
+ * rule, or lacks the description column, so none of them can pass for the dialog.
  */
-function isForeignRow(line: string): boolean {
-  return replyRow.test(line) || (caretRow.test(line) && !rowPattern.test(line));
+function isNativeRegion(lines: readonly string[]): boolean {
+  let next = 1;
+  let cursors = 0;
+  let closed = false;
+  for (const line of lines) {
+    const number = numberedRow.exec(line)?.[1];
+    if (number === undefined) {
+      if (replyRow.test(line) || caretRow.test(line)) return false;
+      closed ||= next > 1 && blockEnd.test(line);
+      continue;
+    }
+    if (closed || Number(number) !== next || !rowPattern.test(line)) return false;
+    next += 1;
+    if (caretRow.test(line)) cursors += 1;
+  }
+  return cursors <= 1;
 }
 
 /**
- * The row of the last `header` when it opens the bottom-most viewport region, else -1.
- * Both CLIs replace the composer with the dialog, so a header with a foreign row below
- * it is transcript content, and a header ON a foreign row is composer or reply text.
- * Elwood must neither cancel such text (Escape would interrupt a running turn or clear
- * staged input) nor hold input on it (C-API-24).
+ * The row of the last `header` when it opens the bottom-most native region, else -1.
+ * Both CLIs replace the composer with the dialog, so a header with anything foreign at
+ * or below it is transcript, composer, or another dialog's content. Elwood must neither
+ * cancel such text (Escape would interrupt a running turn, clear staged input, or
+ * dismiss a human's prompt) nor hold input on it (C-API-24).
  */
 export function bottomDialogRow(text: string, header: RegExp): number {
   const lines = text.split("\n");
   const start = lines.findLastIndex((line) => header.test(line));
-  return lines.slice(Math.max(start, 0)).some(isForeignRow) ? -1 : start;
+  return isNativeRegion(lines.slice(Math.max(start, 0))) ? start : -1;
 }
 
 function pickerRegion(text: string, header: RegExp): string {

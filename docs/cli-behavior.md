@@ -156,9 +156,12 @@ legacy string/`agent_message` support. C-CODEX-16.
   between its rows and footer. A closed Claude picker leaves only `❯ /model` /
   `⎿ Kept model as …` behind, no header. Two more things are never a dialog: the
   phrase on a reply or composer row itself (`❯ Select model` is staged input), and
-  a quoted picker above another dialog. Picker rows carry a description column, so
-  a caret row without one (`❯ 1. Yes`, a numbered composer line) marks the region
-  below the quote as someone else's.
+  a quoted picker above another dialog. Below its header a native dialog holds
+  exactly one contiguous block of picker rows (description column, numbered from 1,
+  at most one cursor); any other caret or numbered row (`❯ 1. Yes`, `  1. Yes`, a
+  staged `❯ 1. fix this  then that`) restarts the numbering, follows the blank or
+  rule that separates the composer, or lacks the column, and marks the region as
+  someone else's.
 - **Codex persists `/model` picker selections into the user `config.toml`.**
   `setModel` restores the prior default via compare-and-swap after switching
   (C-CODEX-14), skipping with a `codex_default_model_persisted` warning on a
