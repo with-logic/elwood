@@ -45,8 +45,8 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     },
     rm: (...args: Parameters<typeof actual.rm>) =>
       failures.stagingRm && String(args[0]).includes(".claim.") ? denied() : actual.rm(...args),
-    readdir: ((...args: Parameters<typeof actual.readdir>) =>
-      failures.rootReaddir ? denied() : actual.readdir(...args)) as typeof actual.readdir,
+    opendir: ((...args: Parameters<typeof actual.opendir>) =>
+      failures.rootReaddir ? denied() : actual.opendir(...args)) as typeof actual.opendir,
     unlink: (...args: Parameters<typeof actual.unlink>) => {
       const path = String(args[0]);
       if ((failures.staleUnlink || failures.releaseUnlink) && path.endsWith("/owner"))

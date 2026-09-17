@@ -5,7 +5,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, opendir, rename, rm, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 import {
@@ -69,10 +69,11 @@ export async function coordinatedAutoupdate(
     if (waited === "released") return;
     recoveredStale = true;
   }
-  if (
-    !recoveredStale &&
-    (observedActive || (await readOptionalText(completion)) !== priorCompletion)
-  ) {
+  // Recovering a dead lease licenses this caller to update in its place, unless a peer
+  // completed an update meanwhile: recovery vacates the lease path before this claim, and
+  // a peer that claimed, updated, and released in that gap has already done the work.
+  const peerCompleted = (await readOptionalText(completion)) !== priorCompletion;
+  if (peerCompleted || (observedActive && !recoveredStale)) {
     await releaseLease(path, owner);
     return;
   }
@@ -114,15 +115,25 @@ async function claimLease(path: string, owner: LeaseOwner): Promise<boolean> {
 }
 
 /**
- * Removes staging directories left by claimants killed before their rename. Only the lease
- * holder sweeps: a live contender's staging can no longer win, and losing it merely turns
- * that contender's failed rename into a missing source. Each holder removes a bounded
- * number, so a pile of leftovers delays no single update; later holders finish the job.
+ * Removes what interrupted peers left beside the lease: claim staging from claimants killed
+ * before their rename, and directories a cleaner was killed while holding privately. Only
+ * the lease holder sweeps: a live contender's staging can no longer win, and losing it
+ * merely turns that contender's failed rename into a missing source. Each holder removes a
+ * bounded number, so a pile of leftovers delays no single update; later holders finish.
  */
 async function sweepStaging(path: string): Promise<void> {
   const root = dirname(path);
-  const entries = await readdir(root).catch(() => []);
-  const staging = entries.filter((entry) => entry.startsWith(`${basename(path)}.claim.`));
-  for (const entry of staging.slice(0, maxSweptStaging))
-    await rm(join(root, entry), { recursive: true, force: true }).catch(() => undefined);
+  const leftovers = [".claim.", ".recovery."].map((infix) => `${basename(path)}${infix}`);
+  let swept = 0;
+  try {
+    // Streamed, so the scan stops with the deletions instead of listing every leftover.
+    for await (const entry of await opendir(root)) {
+      if (!leftovers.some((prefix) => entry.name.startsWith(prefix))) continue;
+      await rm(join(root, entry.name), { recursive: true, force: true }).catch(() => undefined);
+      swept += 1;
+      if (swept === maxSweptStaging) break;
+    }
+  } catch {
+    // Sweeping is housekeeping: an unreadable root must not stop the lease holder's update.
+  }
 }

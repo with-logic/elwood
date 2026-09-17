@@ -96,9 +96,13 @@ over. An unreadable owner record fails safe on the stale
 bound: it may belong to a live updater writing a record format this version cannot
 read, so it is not treated as dead. Only a lease left untouched for 24 hours, far
 beyond any bounded update, is presumed abandoned and recovered with its unreadable
-record. Because such a record carries no generation token, the abandoned lease is
+record. Because such a record offers no generation token this version can parse or
+trust, the abandoned lease is
 identified by its directory identity and deleted only from a private name: a
 successor that reached the recovery path meanwhile is handed back untouched.
+A caller that recovered a dead lease updates in its place unless a peer completed an
+update meanwhile: recovery vacates the lease path before the recoverer's own claim, and
+a peer that claimed, updated, and released in that gap has already done the work.
 Within one parent process, a FAILED shared update
 is likewise shared once — every concurrent caller observes the same failure,
 re-reads the installed version, and proceeds through the compatibility gate; the

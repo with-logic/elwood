@@ -69,8 +69,9 @@ async function recoverStaleLease(
 }
 
 /**
- * An unreadable record carries no token, so the directory itself is the generation: the
- * one judged abandoned is identified by inode and birth time. The cleaner first takes the
+ * An unreadable record offers no generation token this version can parse or trust, even
+ * when a newer format wrote one, so the directory itself is the generation: the one judged
+ * abandoned is identified by inode and birth time. The cleaner first takes the
  * recovered directory under a private name, where nothing else can replace it, and deletes
  * it only if it is that directory. Anything else reached the shared recovery path while
  * this cleaner was paused; it is handed back untouched and recovery fails safe.

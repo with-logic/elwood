@@ -113,8 +113,11 @@ test("C-PERF-04 an unreadable lease untouched for a day is presumed abandoned an
 
 test("C-PERF-04 each lease holder sweeps a bounded number of leftover staging directories", async () => {
   const root = tempDir("elwood-update-lock-sweep-");
-  for (let index = 0; index < 10; index += 1) mkdirSync(join(root, `codex.lock.claim.${index}`));
-  const leftovers = () => readdirSync(root).filter((entry) => entry.includes(".claim.")).length;
+  for (let index = 0; index < 9; index += 1) mkdirSync(join(root, `codex.lock.claim.${index}`));
+  // A cleaner killed while holding a recovered lease privately leaves this behind.
+  mkdirSync(join(root, "codex.lock.recovery.killed-cleaner"));
+  const leftovers = () =>
+    readdirSync(root).filter((entry) => /\.(claim|recovery)\./.test(entry)).length;
   const update = () => coordinatedAutoupdate("codex", () => Promise.resolve(), { root });
   await update();
   expect(leftovers()).toBe(2);
