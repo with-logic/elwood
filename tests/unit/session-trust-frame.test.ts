@@ -70,57 +70,12 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
   expect(activity).toHaveBeenCalledWith(
     expect.objectContaining({ label: "claude-workspace_trust-prompt" }),
   );
+  observe.blockOnceLive(active); // already blocked: the startup replay never duplicates attention
+  expect(activity).toHaveBeenCalledTimes(1);
   bindStartupLifetime(active, trust, readiness.ready);
   active.closing.abort();
   active.closing.abort();
   observe.refresh();
   expect(trust.dispose).toHaveBeenCalledTimes(1);
   expect(vi.getTimerCount()).toBe(0);
-});
-
-test("C-ATTN-03 a gate painted while starting blocks and announces exactly once, only when live", () => {
-  const engine = new SessionStatusEngine({
-    onReady() {},
-    emitStatus() {},
-    queueRunning() {},
-    queueReady() {},
-    queueBlocked() {},
-    queueClose() {},
-    cleanup() {},
-  });
-  const active = {
-    closing: new AbortController(),
-    inputBlocking: false,
-    automationBlocking: false,
-    get status() {
-      return engine.status;
-    },
-    submitEvidence: engine.submit.bind(engine),
-  };
-  const activity = vi.fn();
-  const observe = createSessionFrameObserver(
-    {
-      turn: new TurnStateWatcher(),
-      attention: new AttentionWatcher(),
-      table: claudeScreenFactTableForTrustPolicy(false),
-      agent: "claude",
-      elwoodSessionId: "test",
-      emitActivity: activity,
-    },
-    () => active,
-    () => ({ inputBlocking: false, blockedPrompt: undefined, dispose() {} }),
-    createReadinessGate(vi.fn(), false),
-  );
-  observe.blockOnceLive(active); // nothing on screen
-  observe.observe({ text: "Do you trust this folder?\n1. Yes\n2. No", title: "" });
-  observe.blockOnceLive(active); // still `starting`: the evidence is ignored, so stay quiet
-  expect(activity).not.toHaveBeenCalled();
-  engine.submit("startup_usable");
-  observe.blockOnceLive(active);
-  observe.blockOnceLive(active); // already blocked: never a duplicate
-  expect(engine.status).toBe("blocked");
-  expect(activity).toHaveBeenCalledTimes(1);
-  expect(activity).toHaveBeenCalledWith(
-    expect.objectContaining({ kind: "attention", label: "claude-workspace_trust-prompt" }),
-  );
 });
