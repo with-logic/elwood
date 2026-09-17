@@ -43,6 +43,9 @@ back each entry are listed in `prd/14-conformance.md`.
   a bare allowlisted header with affirmative options is held, never typed into,
   and becomes answerable only once its native body paints (recoverable `blocked`
   after five seconds otherwise). Skill, plugin, and MCP gates are unchanged.
+- Release the cross-process update lease atomically. A second Elwood process polling
+  at the instant the owner released could recover the half-removed lease as stale
+  and run a duplicate `autoupdate` right after the first.
 - Publish the cross-process update lease atomically. An Elwood process killed
   while claiming the lease could leave a partial owner record that made every
   later `autoupdate` on that machine skip its update until the cache was removed

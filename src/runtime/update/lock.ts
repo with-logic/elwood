@@ -13,6 +13,7 @@ import {
   ownerFile,
   readOptionalText,
   releaseLease,
+  retiredLeaseInfix,
   serializeOwner,
 } from "./owner.ts";
 import { pathExists, recoveryPath, waitForOwner } from "./waiting.ts";
@@ -123,7 +124,8 @@ async function claimLease(path: string, owner: LeaseOwner): Promise<boolean> {
  */
 async function sweepStaging(path: string): Promise<void> {
   const root = dirname(path);
-  const leftover = `${basename(path)}.claim.`;
+  // Claim staging AND leases already retired by their owner: both are this adapter's debris.
+  const leftovers = [".claim.", retiredLeaseInfix].map((infix) => `${basename(path)}${infix}`);
   let swept = 0;
   let inspected = 0;
   try {
@@ -132,7 +134,7 @@ async function sweepStaging(path: string): Promise<void> {
     for await (const entry of await opendir(root)) {
       inspected += 1;
       if (inspected > maxInspectedEntries) break;
-      if (!entry.name.startsWith(leftover)) continue;
+      if (!leftovers.some((prefix) => entry.name.startsWith(prefix))) continue;
       await rm(join(root, entry.name), { recursive: true, force: true }).catch(() => undefined);
       swept += 1;
       if (swept === maxSweptStaging) break;

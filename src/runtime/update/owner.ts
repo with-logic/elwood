@@ -2,11 +2,13 @@
  * Update lease owner records: identity, liveness, and generation-checked release.
  * Implements PRD §9.2 / C-PERF-04: cleanup removes only the generation it owns.
  */
-import { readFile, rmdir, unlink } from "node:fs/promises";
+import { readFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { errnoCode } from "../../core/errors.ts";
 
 export const ownerFile = "owner";
+/** Marks a lease directory already retired by its owner and awaiting deletion. */
+export const retiredLeaseInfix = ".released.";
 export type LeaseOwner = { readonly pid: number; readonly token: string };
 
 /** File contents, or undefined when absent/unreadable (never throws). */
@@ -36,9 +38,18 @@ export function ownerIsAlive(pid: number): boolean {
   }
 }
 
+/**
+ * Retires the lease atomically by renaming it away before deleting it. Removing the record
+ * and then the directory would expose an ownerless lease in between, which a polling
+ * contender recovers as stale and follows with a duplicate update.
+ */
 export async function releaseLease(path: string, owner: LeaseOwner): Promise<void> {
   const current = await readOwner(path);
   if (current?.token !== owner.token) return;
-  await unlink(join(path, ownerFile)).catch(() => undefined);
-  await rmdir(path).catch(() => undefined);
+  const retired = `${path}${retiredLeaseInfix}${owner.token}`;
+  const renamed = await rename(path, retired).then(
+    () => true,
+    () => false,
+  );
+  if (renamed) await rm(retired, { recursive: true, force: true }).catch(() => undefined);
 }

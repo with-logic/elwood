@@ -90,7 +90,10 @@ place, so a lease either does not exist or holds a complete owner record: no
 ownerless or partially written lease is ever published. A claimant interrupted
 before the rename leaves only its staging directory; one interrupted after it leaves
 a complete lease naming a dead owner, which ordinary stale recovery removes. Each
-lease holder removes a bounded number of leftover staging directories. A lease directory that already exists, even one without an
+lease holder removes a bounded number of leftover staging directories. Release is
+atomic in the same way: the owner renames its lease away and then deletes it, so a
+contender polling during release sees a whole lease or none, never an ownerless one
+it would recover as stale and follow with a duplicate update. A lease directory that already exists, even one without an
 owner record, is a wait condition: it is recovered as stale rather than claimed
 over. An unreadable owner record still fails safe: it may belong
 to a live updater writing a record format this version cannot read, so it is never
