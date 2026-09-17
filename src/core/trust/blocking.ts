@@ -9,7 +9,8 @@
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { ScreenFactRule, ScreenFactTable } from "../screen-facts.ts";
-import { blockingTrustSpecs, trustPromptHeaderVisible } from "./prompts.ts";
+import { parseTrustDialog, type TrustDialog } from "./dialog.ts";
+import { activeTrustDialogVisible, blockingTrustSpecs } from "./prompts.ts";
 
 /** Adds blocking facts using the same active-dialog recognizer as automation. */
 export function withTrustBlockingRules(
@@ -17,10 +18,19 @@ export function withTrustBlockingRules(
   agent: ElwoodAgentKind,
   autotrust: boolean,
 ): ScreenFactTable {
+  let cachedFrame: string | undefined;
+  let cachedDialog: TrustDialog | undefined;
+  const dialogFor = (text: string) => {
+    if (cachedFrame !== text) {
+      cachedFrame = text;
+      cachedDialog = parseTrustDialog(text);
+    }
+    return cachedDialog;
+  };
   const rules: ScreenFactRule[] = blockingTrustSpecs(agent, autotrust).map((spec) => ({
     id: `${agent}-${spec.id}-prompt`,
     fact: "blocking_prompt_visible",
-    match: (text) => trustPromptHeaderVisible(text, spec),
+    match: (text) => activeTrustDialogVisible(dialogFor(text), spec),
   }));
   return rules.length === 0 ? base : { ...base, rules: [...base.rules, ...rules] };
 }

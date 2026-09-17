@@ -11,6 +11,8 @@ import type { StartupPromptOutcome } from "../../src/core/startup/automation.ts"
 import type { TrustPromptSpec } from "../../src/core/trust/prompts.ts";
 
 const headerPattern = /trust/i;
+const descriptionPattern = /^$/;
+const optionPattern = /^(Yes|No)$/;
 const accept = /yes/i;
 
 describe("trust-prompt type guards", () => {
@@ -19,6 +21,8 @@ describe("trust-prompt type guards", () => {
       agent: "claude",
       id: "plugin_trust",
       headerPattern,
+      descriptionPattern,
+      optionPattern,
       accept,
       answerPolicy: "autotrust",
     } satisfies TrustPromptSpec;
@@ -26,6 +30,8 @@ describe("trust-prompt type guards", () => {
       agent: "codex",
       id: "hook_trust",
       headerPattern,
+      descriptionPattern,
+      optionPattern,
       accept,
       answerPolicy: "always",
     } satisfies TrustPromptSpec;
@@ -35,6 +41,8 @@ describe("trust-prompt type guards", () => {
       // @ts-expect-error a misspelled/unknown Claude id is not a valid trust label.
       id: "plugin_truts",
       headerPattern,
+      descriptionPattern,
+      optionPattern,
       accept,
       answerPolicy: "autotrust",
     } satisfies TrustPromptSpec;
@@ -42,6 +50,8 @@ describe("trust-prompt type guards", () => {
       agent: "claude",
       id: "plugin_trust",
       headerPattern,
+      descriptionPattern,
+      optionPattern,
       accept,
       answerPolicy: "always",
       // @ts-expect-error only Codex hook_trust may be answerPolicy "always"; third-party prompts stay gated.
@@ -50,6 +60,8 @@ describe("trust-prompt type guards", () => {
       agent: "codex",
       id: "workspace_trust",
       headerPattern,
+      descriptionPattern,
+      optionPattern,
       accept,
       answerPolicy: "always",
       // @ts-expect-error only hook_trust may be answerPolicy "always"; Codex folder trust stays gated.

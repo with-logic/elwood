@@ -4,14 +4,9 @@
  * Shared by the trust-prompt e2e (PRD §5.1, C-E2E-09).
  */
 
-import { trustPromptAllowlist, trustPromptHeaderVisible } from "../../src/core/trust/prompts.ts";
+import { trustPromptVisible } from "../../src/core/trust/responder.ts";
 
-/** True when an allowlisted trust prompt for `agent` is visible in `text`. */
-export function trustPromptVisible(text: string, agent: "claude" | "codex"): boolean {
-  return trustPromptAllowlist.some(
-    (spec) => spec.agent === agent && trustPromptHeaderVisible(text, spec),
-  );
-}
+export { trustPromptVisible };
 
 /** True for known and wording-drifted variants of Claude's rendered folder-trust screen. */
 export function folderTrustScreenVisible(frame: string): boolean {

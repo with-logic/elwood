@@ -135,7 +135,12 @@ export function codexWarningsFromText(
 ): readonly CodexBannerWarning[] {
   const warnings: CodexBannerWarning[] = [];
   for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim().replace(/^⚠\uFE0F?\s+/, "");
+    // Native banners precede the composer/transcript and carry their own marker.
+    // A matching sentence inside a private turn must never become diagnostics.
+    if (/^\s*[›❯●•>]/.test(raw)) break;
+    const banner = /^\s*⚠\uFE0F?\s+(.+?)\s*$/.exec(raw);
+    if (banner === null) continue;
+    const line = banner[1]!;
     const login = /^The ([\w.-]+) MCP server is not logged in\. Run `(codex mcp login \1)`\.$/.exec(
       line,
     );

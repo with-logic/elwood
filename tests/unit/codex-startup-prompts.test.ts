@@ -173,7 +173,7 @@ describe("Codex startup prompt responder", () => {
 
   test("C-CODEX-09 parses typed MCP startup warnings", () => {
     const warnings = codexWarningsFromText(
-      "The linear MCP server is not logged in. Run `codex mcp login linear`.\nMCP startup incomplete (failed: linear, github)",
+      "⚠ The linear MCP server is not logged in. Run `codex mcp login linear`.\n⚠ MCP startup incomplete (failed: linear, github)",
       "s1",
     );
     expect(warnings[0]).toMatchObject({

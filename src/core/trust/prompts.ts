@@ -11,7 +11,7 @@
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { trustPromptAllowlist } from "./allowlist.ts";
-import { trustDialog } from "./dialog.ts";
+import type { TrustDialog } from "./dialog.ts";
 
 export { trustPromptAllowlist } from "./allowlist.ts";
 
@@ -19,6 +19,10 @@ export { trustPromptAllowlist } from "./allowlist.ts";
 type TrustPromptBase = {
   /** Anchored standalone header, matched only inside an active trust-dialog region. */
   readonly headerPattern: RegExp;
+  /** Complete native explanatory copy after the header; unknown prose fails closed. */
+  readonly descriptionPattern: RegExp;
+  /** Every parsed row must be one of this dialog's native choices, including declines. */
+  readonly optionPattern: RegExp;
   /** Matches the exact affirmative option label for THIS prompt (per-prompt, not generic). */
   readonly accept: RegExp;
 };
@@ -64,9 +68,18 @@ export type TrustPromptSpec =
       readonly answerPolicy: "always";
     } & TrustPromptBase);
 
-/** True when the active dialog has this standalone, non-option trust header. */
-export function trustPromptHeaderVisible(frame: string, spec: TrustPromptBase): boolean {
-  return trustDialog(frame, spec.headerPattern) !== undefined;
+/** Match one already-parsed active dialog against its header and native explanation. */
+export function activeTrustDialogVisible(
+  dialog: TrustDialog | undefined,
+  spec: TrustPromptBase,
+): boolean {
+  if (dialog === undefined) return false;
+  const header = spec.headerPattern.exec(dialog.header);
+  return (
+    header !== null &&
+    spec.descriptionPattern.test(dialog.header.slice(header[0].length).trim()) &&
+    dialog.options.every((option) => spec.optionPattern.test(option.label))
+  );
 }
 
 /**

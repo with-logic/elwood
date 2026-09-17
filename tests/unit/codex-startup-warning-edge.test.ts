@@ -14,7 +14,7 @@ describe("C-API-14 Codex startup-banner edge detection", () => {
     // A banner that stays on screen across consecutive frames must fire exactly once,
     // not replay every frame (§5.7) — the re-emit downstream dedup previously masked.
     const responder = new CodexStartupPromptResponder("s1");
-    const banner = "The linear MCP server is not logged in. Run `codex mcp login linear`.";
+    const banner = "⚠ The linear MCP server is not logged in. Run `codex mcp login linear`.";
     const first = responder.handle(banner, () => {});
     const second = responder.handle(`${banner}\nplus some later output`, () => {});
     expect(first.warnings.map((w) => w.code)).toEqual(["mcp_server_not_logged_in"]);
@@ -23,14 +23,14 @@ describe("C-API-14 Codex startup-banner edge detection", () => {
 
   test("an unrelated follow-up frame does not replay a scrolled-off banner", () => {
     const responder = new CodexStartupPromptResponder("s1");
-    responder.handle("MCP startup incomplete (failed: linear)", () => {});
+    responder.handle("⚠ MCP startup incomplete (failed: linear)", () => {});
     const next = responder.handle("just ordinary output, no banner here", () => {});
     expect(next.warnings).toEqual([]); // banner gone from the frame → nothing to re-emit
   });
 
   test("a banner that clears and reappears fires again (new occurrence)", () => {
     const responder = new CodexStartupPromptResponder("s1");
-    const banner = "The github MCP server is not logged in. Run `codex mcp login github`.";
+    const banner = "⚠ The github MCP server is not logged in. Run `codex mcp login github`.";
     const one = responder.handle(banner, () => {});
     responder.handle("cleared", () => {}); // banner leaves the frame
     const two = responder.handle(banner, () => {}); // the SAME banner reappears
@@ -43,11 +43,11 @@ describe("C-API-14 Codex startup-banner edge detection", () => {
     // rendered line, so emulator reflow/padding across frames is not a new occurrence.
     const responder = new CodexStartupPromptResponder("s1");
     responder.handle(
-      "The linear MCP server is not logged in. Run `codex mcp login linear`.",
+      "⚠ The linear MCP server is not logged in. Run `codex mcp login linear`.",
       () => {},
     );
     const padded = responder.handle(
-      "   The linear MCP server is not logged in. Run `codex mcp login linear`.   ",
+      "   ⚠ The linear MCP server is not logged in. Run `codex mcp login linear`.   ",
       () => {},
     );
     expect(padded.warnings).toEqual([]);

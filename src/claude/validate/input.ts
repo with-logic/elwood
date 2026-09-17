@@ -13,7 +13,7 @@ import {
 } from "../hooks/names.ts";
 import { isToolHookEventName } from "../hooks/tool-events.ts";
 import { hasOptionalEventFields } from "./event-fields.ts";
-import { isClaudeToolInput } from "./tool-update.ts";
+import { isClaudeToolInput } from "./tool-shapes.ts";
 
 // Compile-time coupling: the runtime allow-list must stay EXACTLY the public union
 // it validates. `AssertEqual` errors if either side gains or loses a member, so a

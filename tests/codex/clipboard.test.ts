@@ -12,7 +12,12 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 // `error` is `unknown` on purpose: these tests exercise arbitrary rejection
 // values (strings, objects with stderr, plain messages), matching what a real
 // process failure can surface — no cast is needed to install them.
-type ExecResult = { stdout?: string; error?: unknown; stdinError?: boolean };
+type ExecResult = {
+  stdout?: string;
+  error?: unknown;
+  stdinError?: boolean;
+  completion?: Promise<void>;
+};
 const results: { value: ExecResult } = { value: { stdout: "" } };
 const calls: { file: string; args: readonly string[] }[] = [];
 
@@ -31,7 +36,7 @@ function fakeExecFile(file: string, args: readonly string[]) {
   };
   const promise = value.error
     ? Promise.reject(value.error)
-    : Promise.resolve({ stdout: value.stdout ?? "", stderr: "" });
+    : Promise.resolve(value.completion).then(() => ({ stdout: value.stdout ?? "", stderr: "" }));
   return Object.assign(promise, { child });
 }
 (fakeExecFile as unknown as Record<symbol, unknown>)[promisify.custom] = fakeExecFile;
@@ -111,6 +116,25 @@ describe("Codex clipboard helpers (C-API-46)", () => {
   test("C-API-46 restore contains an asynchronous stdin failure even if the child succeeds", async () => {
     results.value = { stdinError: true };
     await expect(restoreClipboardText("text")).resolves.toBe(false);
+  });
+
+  test("C-API-46 an early stdin error retains restore ownership until pbcopy exits", async () => {
+    let complete!: () => void;
+    results.value = {
+      stdinError: true,
+      completion: new Promise<void>((resolve) => {
+        complete = resolve;
+      }),
+    };
+    let settled = false;
+    const restore = restoreClipboardText("prior clipboard").then((result) => {
+      settled = true;
+      return result;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(settled).toBe(false);
+    complete();
+    await expect(restore).resolves.toBe(false);
   });
 
   test("C-API-46 setClipboardImage uses the generic reason for a non-object error", async () => {

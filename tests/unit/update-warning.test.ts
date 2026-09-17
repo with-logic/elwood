@@ -63,3 +63,22 @@ describe("dedupeInFlight identity-guarded eviction", () => {
     await expect(cache.get("k")).resolves.toBe("winner"); // survived the identity-guarded eviction
   });
 });
+
+test.each([
+  "EPERM",
+  "ETIMEDOUT",
+  "private server name",
+  undefined,
+])("C-LIFE-11 cleanup diagnostics remain bounded: %s", (cleanupErrorCode) => {
+  const warning = updateFailedWarning(
+    "codex",
+    "0.153.0",
+    elwoodError("codex_update_failed", "failed", {
+      cleanupErrorCode,
+    }),
+  );
+  expect(warning.cleanupErrorCode).toBe(
+    cleanupErrorCode === "EPERM" || cleanupErrorCode === "ETIMEDOUT" ? cleanupErrorCode : undefined,
+  );
+  expect(JSON.stringify(warning)).not.toContain("private server name");
+});

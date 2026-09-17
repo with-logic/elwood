@@ -10,12 +10,13 @@
  */
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
+import type { StartupWriteCompletion } from "../startup/write.ts";
 import { optionInput } from "../terminal-options.ts";
-import { trustDialog } from "./dialog.ts";
+import { parseTrustDialog } from "./dialog.ts";
 import {
+  activeTrustDialogVisible,
   type TrustPromptIdFor,
   trustPromptAllowlist,
-  trustPromptHeaderVisible,
 } from "./prompts.ts";
 import { writeTrustOption } from "./write.ts";
 
@@ -45,9 +46,8 @@ export type TrustPromptResult<A extends ElwoodAgentKind = ElwoodAgentKind> =
   | {
       readonly kind: "answered";
       readonly automation: TrustPromptAutomation<A>;
-      // Resolves when the affirmative write fulfills; rejects (after the prompt is
-      // un-settled, so a later frame re-attempts it) if the write is rejected.
-      readonly settled: Promise<void>;
+      // Cancellation is a safe skip; both cancellation and write failure allow retry.
+      readonly settled: Promise<StartupWriteCompletion>;
     }
   | { readonly kind: "option_pending"; readonly prompt: TrustPromptIdFor<A> }
   | undefined;
@@ -74,12 +74,13 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     write: (input: string) => TrustWriteResult,
     readFrame?: () => string,
   ): TrustPromptResult<A> {
+    const dialog = parseTrustDialog(frame);
+    if (dialog === undefined) return undefined;
     for (const spec of this.specs) {
       const id = spec.id as TrustPromptIdFor<A>;
       // Codex hook trust covers all configured hooks regardless of autotrust.
       if (!(this.autotrust || spec.answerPolicy === "always") || this.settled.has(id)) continue;
-      const dialog = trustDialog(frame, spec.headerPattern);
-      if (dialog === undefined) continue;
+      if (!activeTrustDialogVisible(dialog, spec)) continue;
       const options = dialog.options;
       const option = options.find((candidate) => spec.accept.test(candidate.label));
       if (option === undefined) {
@@ -89,26 +90,31 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
         this.reportedPending.add(id);
         return { kind: "option_pending", prompt: id };
       }
-      // Settle OPTIMISTICALLY so a second frame in the same tick does not re-answer,
-      // but keep the settle contingent on the write: if the write is rejected we
-      // un-settle here so a later frame re-attempts it, and the returned `settled`
-      // promise rejects so the caller emits a warning instead of a false "answered".
+      // Reserve this class while navigation runs. Cancellation or a failed write
+      // releases it for retry; only a rejected write becomes a warning upstream.
       this.settled.add(id);
       const input = optionInput(option);
       const operation = writeTrustOption(spec, option, write, frame, readFrame);
-      const settled = operation.catch((error: unknown) => {
-        this.settled.delete(id);
-        throw error;
-      });
+      const settled = operation.then(
+        (completion) => {
+          if (completion === "cancelled") this.settled.delete(id);
+          return completion;
+        },
+        (error: unknown) => {
+          this.settled.delete(id);
+          throw error;
+        },
+      );
       return { kind: "answered", automation: { prompt: id, input }, settled };
     }
     return undefined;
   }
 }
 
-/** Whether any allowlisted trust prompt for `agent` is showing its header in `text`. */
+/** Whether the active dialog matches any allowlisted trust prompt for `agent`. */
 export function trustPromptVisible(text: string, agent: ElwoodAgentKind): boolean {
+  const dialog = parseTrustDialog(text);
   return trustPromptAllowlist.some(
-    (spec) => spec.agent === agent && trustPromptHeaderVisible(text, spec),
+    (spec) => spec.agent === agent && activeTrustDialogVisible(dialog, spec),
   );
 }

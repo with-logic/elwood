@@ -12,10 +12,3 @@ export function isClaudeToolInputUpdate(toolName: string | undefined, value: unk
   const checks = toolSchema(toolName ?? "");
   return checks === undefined || partial(value, checks);
 }
-
-export function isClaudeToolInput(toolName: string, value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  const checks = toolSchema(toolName);
-  // Future input fields are retained, but every declared field must match its type.
-  return checks === undefined || Object.entries(checks).every(([key, check]) => check(value[key]));
-}

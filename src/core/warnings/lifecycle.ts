@@ -4,6 +4,7 @@
  */
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
+import type { ReapErrorCode } from "./reasons.ts";
 
 /**
  * Best-effort `claude update` / `codex update` failed but the INSTALLED CLI still meets the
@@ -20,5 +21,6 @@ export type AgentUpdateFailedWarning = {
   readonly message: string;
   readonly installedVersion: string;
   readonly errorCode: string;
+  readonly cleanupErrorCode?: ReapErrorCode | "ETIMEDOUT";
   readonly raw: string;
 };

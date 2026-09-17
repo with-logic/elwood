@@ -16,13 +16,17 @@ back each entry are listed in `prd/14-conformance.md`.
   `--show-session-id` to print the retained session ID on stderr, or find it
   with `elwood sessions`. Session retention and JSON/JSONL records are unchanged.
 - Bind automatic trust approvals to the active dialog and revalidate every write,
-  preventing quoted transcript headers from authorizing unrelated permissions.
+  preventing quoted transcript headers or unknown intervening titles from
+  authorizing unrelated permissions. Cancel stale trust attempts quietly.
 - Recognize only native Codex warning banners, keeping quoted private prompt text
   out of warning events.
 - Validate all concrete Claude tool input fields and typed hook fields, constrain
   permission rewrites to tool-specific handlers, and accept nullable Codex descriptions.
-- Reject FIFO state/config files without hanging, contain clipboard pipe failures,
-  and settle failed subprocess probes even when process-group cleanup fails.
+- Reject FIFO state/config files without hanging, and contain clipboard pipe
+  failures while retaining the clipboard lock until the restore process exits.
+- Bound subprocess cleanup, report content-free `cleanupErrorCode` diagnostics,
+  and retain update exclusion until an unresolved updater process group exits.
+  Contenders wait at most 60 seconds before skipping a still-owned update.
 
 ## [0.1.3] - 2026-09-14
 

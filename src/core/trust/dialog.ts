@@ -1,54 +1,45 @@
 /**
- * Binds trust headers and options to one active terminal dialog.
- * Implements PRD §5.4 and C-TRUST-01; blank/wrapped explanatory rows stay in the dialog.
+ * Parses one active terminal dialog before matching the trust allowlist.
+ * Implements PRD §5.4 and C-TRUST-01; native copy is validated separately per prompt.
  */
 import { nonOptionText, type SelectableOption, selectableOptions } from "../terminal-options.ts";
 
 const headerStart =
-  /^(?:Do you|Quick safety|Is this|Load this|Trust the|New MCP|WARNING:|Claude Code|Hooks need)/i;
+  /^(?:Do you|Quick safety|Is this|Load this|Trust the|New MCP|WARNING:|Claude Code running|Hooks need)/i;
 const numberedRow = /^\s*[❯›>]?\s*\d+[.)]\s*\S/;
 const footerRow =
-  /^\s*(?:Enter to confirm|Esc to cancel)(?:\s*[·•]\s*(?:Enter to confirm|Esc to cancel))*\s*$/i;
-const transcriptRow = /^\s*(?:[●•│╭╰]|[─━]{3}|[❯›]\s*$)/;
-const foreignTitle =
-  /^\s*(?:Bash command|PowerShell command|Edit file|Write file|Permission request)\s*$/i;
+  /^\s*(?:(?:Enter to confirm|Esc to cancel)(?:\s*[·•]\s*(?:Enter to confirm|Esc to cancel))*|Press enter to (?:continue|confirm or esc to cancel))\s*$/i;
 
-type TrustDialog = {
+export type TrustDialog = {
+  readonly header: string;
   readonly options: readonly SelectableOption[];
 };
 
-/** Finds the last standalone matching header whose entire tail is one dialog. */
-export function trustDialog(frame: string, headerPattern: RegExp): TrustDialog | undefined {
+/** Parse the last standalone candidate once; never borrow an earlier candidate's options. */
+export function parseTrustDialog(frame: string): TrustDialog | undefined {
   const lines = frame.split("\n");
-  for (let start = lines.length - 1; start >= 0; start--) {
-    if (!headerStart.test(lines[start]!.trim())) continue;
-    const tail = lines.slice(start);
-    const text = tail.join("\n");
-    const header = nonOptionText(text).trim();
-    const match = headerPattern.exec(header);
-    if (match === null) continue;
-    // An indented continuation of an earlier numbered option is still option
-    // text. A fresh dialog after a completed option block needs a separating row.
-    const previous = lines.slice(0, start);
-    const priorOption = previous.findLastIndex((line) => numberedRow.test(line));
-    if (priorOption >= 0 && !previous.slice(priorOption + 1).some(isSeparator)) continue;
-    const remainingHeader = header.slice(match[0].length).replace(/^\s*\?/, "");
-    // Another question/title cannot inherit an earlier trust header's authority.
-    if (remainingHeader.includes("?") || tail.some((line) => foreignTitle.test(line))) continue;
-    const options = selectableOptions(text);
-    const headerLength = nonOptionText(text).length;
-    let offset = 0;
-    const optionStart = tail.findIndex((line) => {
-      const afterHeader = offset > headerLength;
-      offset += line.length + 1;
-      return afterHeader;
-    });
-    const headerRows = optionStart < 0 ? tail : tail.slice(0, optionStart);
-    if (headerRows.some((line) => transcriptRow.test(line))) continue;
-    if (optionStart >= 0 && !validOptionTail(tail.slice(optionStart), options)) continue;
-    return { options };
+  let start = -1;
+  let insideNumberedOption = false;
+  for (const [row, line] of lines.entries()) {
+    if (numberedRow.test(line)) insideNumberedOption = true;
+    else if (isSeparator(line)) insideNumberedOption = false;
+    else if (!insideNumberedOption && headerStart.test(line.trim())) start = row;
   }
-  return undefined;
+  if (start < 0) return undefined;
+  const tail = lines.slice(start);
+  const text = tail.join("\n");
+  const header = nonOptionText(text);
+  const options = selectableOptions(text);
+  // nonOptionText joins original rows with a space, preserving their lengths.
+  // Replacing each newline by a space therefore gives the same boundary.
+  let offset = 0;
+  const optionStart = tail.findIndex((line) => {
+    const afterHeader = offset > header.length;
+    offset += line.length + 1;
+    return afterHeader;
+  });
+  if (optionStart >= 0 && !validOptionTail(tail.slice(optionStart), options)) return undefined;
+  return { header: header.trim().replace(/\s+/g, " "), options };
 }
 
 function isSeparator(line: string): boolean {

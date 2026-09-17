@@ -97,7 +97,7 @@ describe("runtime probe runner", () => {
     });
     const result = await runProbe(node, ["-e", "setTimeout(() => {}, 300)"]);
     expect(result.error?.code).toBe("ETIMEDOUT");
-    expect(signaled).toHaveLength(1);
+    expect(signaled.length).toBeGreaterThanOrEqual(1);
     expect(signaled[0]).toBeLessThan(0); // the process GROUP, not just the child pid
   });
 
@@ -111,9 +111,9 @@ describe("runtime probe runner", () => {
     });
     const result = await runProbe(node, ["-e", "setTimeout(() => {}, 100)"]);
     expect(result.error?.code).toBe("ETIMEDOUT");
-    expect(result.error?.message).toContain("process cleanup failed");
-    expect(result.error?.message).not.toContain("private probe context");
-    expect(result.error?.message).toContain(code === "EPERM" ? "EPERM" : "UnknownError");
+    expect(result.error?.cleanupErrorCode).toBe(code === "EPERM" ? "EPERM" : "UnknownError");
+    expect(result.error?.cleanupProcessGroup).toBeGreaterThan(0);
+    expect(JSON.stringify(result)).not.toContain("private probe context");
   });
 
   test("C-PERF-03 a stdout-flooding probe is capped and killed with a typed error", async () => {

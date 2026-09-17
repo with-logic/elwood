@@ -13,6 +13,12 @@ test.each([
   `${trust}\n\n❯ Explain this dialog`,
   `${trust}\n\nNew permission dialog\n❯ Yes\n  No`,
   "Do you trust this folder?\n● A quoted prompt\n1. Yes\n2. No",
+  "Do you trust this folder?\n\nEnable elevated execution\n1. Yes\n2. No",
+  "Do you trust this folder?\n\nThis unrelated operation will remove credentials.\n1. Yes\n2. No",
+  "Do you trust this folder?\n  Enable elevated execution\n❯ Yes\n  No",
+  "Do you trust this folder?\n❯ Yes\n  No\n  This unrelated operation will remove credentials.",
+  "Do you trust this folder?\n1. Yes, proceed and remove credentials\n2. No",
+  "Quick safety check: Is this a project you wish to delete or one you trust?\n1. Yes\n2. No",
 ])("C-TRUST-01 never borrows a header or options from earlier viewport content: %s", (frame) => {
   const writes: string[] = [];
   expect(
@@ -53,7 +59,7 @@ test("C-TRUST-01 revalidates a numbered dialog before writing and leaves it retr
     () => `${trust}\n${permission}`,
   );
   if (result?.kind !== "answered") throw new Error("expected attempted answer");
-  await expect(result.settled).rejects.toThrow("disappeared before confirmation");
+  await expect(result.settled).resolves.toBe("cancelled");
   expect(writes).toEqual([]);
   const retry = responder.handle(
     trust,
@@ -80,6 +86,6 @@ test("C-TRUST-01 cursor navigation does not confirm a replacement dialog under a
     () => frame,
   );
   if (result?.kind !== "answered") throw new Error("expected attempted answer");
-  await expect(result.settled).rejects.toThrow("disappeared before confirmation");
+  await expect(result.settled).resolves.toBe("cancelled");
   expect(writes).toEqual(["\u001b[B"]);
 });

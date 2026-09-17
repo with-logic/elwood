@@ -106,7 +106,7 @@ elwood sessions
 elwood sessions --output json
 ```
 
-Each record reports its id, agent, workspace, creation and last-used times, whether it is resumable, and whether it is live (a launch's bridge socket is present). JSON emits one `{"schemaVersion": 1, "type": "sessions", ...}` document. An empty state directory is a normal, empty result.
+Each record reports its id, agent, workspace, creation and last-used times, whether it is resumable, and whether it is live (a launch's bridge socket is present). JSON emits one `{"schemaVersion": 1, "type": "sessions", ...}` document. An empty state directory is a normal, empty result. Run flags such as `--show-session-id` are invalid for `sessions`.
 
 ## Listing models
 
@@ -119,7 +119,7 @@ elwood models --agent codex --output json
 
 Text marks the current model with `*` and the default with `(default)`. JSON emits one `{"schemaVersion": 1, "type": "models", ...}` document. Combined listings have `agents: [{agent, models}]` and `errors: [...]`; explicit `--agent` retains `agent` and `models`. Rows carry `id`, `label`, `description`, `isCurrent`, and `isDefault`.
 
-If one adapter fails or is unavailable, the available catalog is still returned with per-agent errors and a nonzero exit status. `--timeout` is a whole-command budget shared by both probes. Ctrl-C stops further probes. Each probe uses its matching adapter settings.
+If one adapter fails or is unavailable, the available catalog is still returned with per-agent errors and a nonzero exit status. `--timeout` is a whole-command budget shared by both probes. Ctrl-C stops further probes. Each probe uses its matching adapter settings. `models` rejects `--stream`, `--head`, `--persona`, `--image`, `--keep`, `--show-session-id`, `--resume`, `--ephemeral`, prompt words, and JSONL output.
 
 ## The agent's own terminal
 
@@ -131,7 +131,7 @@ elwood interactive --agent codex --model gpt-5.4
 elwood interactive "$session_id"
 ```
 
-With an id, the stored session's conversation reopens in its stored workspace with its stored posture. Elwood does not observe or record an interactive conversation and writes no session state. It requires a terminal on stdin and stdout, and cannot be combined with `--output json`/`jsonl`, `--stream`, `--verbose`, `--debug`, `--head`, `--timeout`, `--persona`, `--image`, `--keep`, `--ephemeral`, or `--resume`.
+With an id, the stored session's conversation reopens in its stored workspace with its stored posture. Elwood does not observe or record an interactive conversation and writes no session state. It requires a terminal on stdin and stdout, and cannot be combined with `--output json`/`jsonl`, `--stream`, `--verbose`, `--debug`, `--head`, `--timeout`, `--persona`, `--image`, `--keep`, `--show-session-id`, `--ephemeral`, or `--resume`.
 
 ## Reproducible runs
 

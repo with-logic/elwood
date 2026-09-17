@@ -5,10 +5,9 @@
  * `update`, or `--help` probe.
  */
 
-import { type ChildProcess, spawn } from "node:child_process";
-import { errnoCode } from "../core/errors.ts";
 import { completeUtf8Length } from "../core/utf8.ts";
-import { boundedErrorToken, isReapErrorCode } from "../core/warnings/reasons.ts";
+import { abortProbe } from "./probe-cleanup.ts";
+import { spawnProbe } from "./probe-spawn.ts";
 import type { CommandResult } from "./seams.ts";
 
 const defaultProbeTimeoutMs = 15_000;
@@ -59,7 +58,8 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
     // them a fresh session: an interactive shell otherwise enables job control on Elwood's
     // controlling terminal and can leave its short-lived command's process group in the
     // foreground, causing headed cleanup to stop on SIGTTOU before restoring terminal modes.
-    const child = spawn(command, [...args], { detached: true });
+    const gate = new AbortController();
+    const { child, open } = spawnProbe(command, args, gate.signal);
     const out = new CappedBuffer();
     const err = new CappedBuffer();
     let settled = false;
@@ -68,18 +68,17 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
     const settle = (result: CommandResult, kill = false): void => {
       if (settled) return;
       settled = true;
+      gate.abort();
       clearTimeout(timer);
-      const cleanupFailure = kill ? abortProbe(child) : undefined;
-      resolve(
-        cleanupFailure === undefined
-          ? result
-          : {
-              ...result,
-              error: {
-                ...result.error,
-                message: `${result.error!.message}; process cleanup failed (${cleanupFailure})`,
-              },
-            },
+      if (!kill) {
+        resolve(result);
+        return;
+      }
+      void abortProbe(child).then((cleanup) =>
+        resolve({
+          ...result,
+          error: { ...result.error!, ...cleanup },
+        }),
       );
     };
     const onData = (buffer: CappedBuffer) => (chunk: Buffer) => {
@@ -100,30 +99,13 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
       settle(timedOut(out.text(), err.text()), true);
     }, probeTimeoutMs);
     timer.unref?.();
+    void open.catch((error: NodeJS.ErrnoException) => {
+      settle(
+        { status: null, stdout: out.text(), stderr: err.text(), error: mapError(error) },
+        true,
+      );
+    });
   });
-}
-
-/**
- * Aborts a probe Elwood gave up on. `detached: true` made the shell its own
- * process-group leader, so SIGKILLing the GROUP (not just the shell pid) also
- * reaches grandchildren such as an installer spawned under `claude update` via
- * `zsh -l -i -c`; a survivor would otherwise inherit the stdio pipes, keep them
- * open, and pin the host event loop long after the probe "timed out". The pipes
- * are destroyed here for the same reason: nothing a killed probe still writes is
- * wanted, and an open pipe alone keeps the loop alive.
- */
-function abortProbe(child: ChildProcess): string | undefined {
-  try {
-    // A spawn failure settles via `error` on the next tick, before any timer or
-    // data can request a kill, so a killed child always has a pid.
-    process.kill(-(child.pid as number), "SIGKILL");
-  } catch (error) {
-    if (errnoCode(error) !== "ESRCH") return boundedErrorToken(error, isReapErrorCode);
-  } finally {
-    child.stdout?.destroy();
-    child.stderr?.destroy();
-  }
-  return undefined;
 }
 
 function mapError(error: NodeJS.ErrnoException): {

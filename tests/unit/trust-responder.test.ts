@@ -4,15 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { trustPromptAllowlist, trustPromptHeaderVisible } from "../../src/core/trust/prompts.ts";
-import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
-
-/** True when an allowlisted trust prompt for `agent` is visible in `text`. */
-function trustPromptVisible(text: string, agent: "claude" | "codex"): boolean {
-  return trustPromptAllowlist.some(
-    (spec) => spec.agent === agent && trustPromptHeaderVisible(text, spec),
-  );
-}
+import { TrustPromptResponder, trustPromptVisible } from "../../src/core/trust/responder.ts";
 
 describe("allowlisted trust prompt automation", () => {
   test("C-API-18 stays disabled unless callers opt in", () => {
@@ -132,7 +124,7 @@ describe("allowlisted trust prompt automation", () => {
     // between them do not block the answer — the prior line-boundary rule wedged
     // the agent here.
     const frame =
-      "Do you trust this folder?\n\nClaude Code can read/edit here.\n\n1. Yes, proceed\n2. No";
+      "Do you trust this folder?\n\nClaude Code'll be able to read, edit, and execute files here.\n\n1. Yes, proceed\n2. No";
     expect(
       responder.handle(frame, (input) => {
         writes.push(input);

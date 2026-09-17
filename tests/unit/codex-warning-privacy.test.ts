@@ -6,6 +6,12 @@ const startup = "MCP startup incomplete (failed: linear)";
 const login = "The linear MCP server is not logged in. Run `codex mcp login linear`.";
 
 test.each([
+  startup,
+  login,
+  `› Private question\n⚠ ${login}`,
+  `• Private answer\n⚠ ${startup}`,
+  `⚠ ${login} extra context`,
+  `⚠ ${startup} extra context`,
   `› Explain "${startup}". My private context: SAMPLE_SECRET_123`,
   `● ${login} My private context: SAMPLE_SECRET_123`,
   `SAMPLE_SECRET_123 ${startup}`,

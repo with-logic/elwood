@@ -63,15 +63,14 @@ export async function snapshotClipboardText(): Promise<string> {
  * warning if the user's prior clipboard may have been lost (C-API-46).
  */
 export async function restoreClipboardText(text: string): Promise<boolean> {
-  try {
-    const child = run(PBCOPY, [], { timeout: 5_000 });
-    // execFile's default stdio always supplies stdin. Own stream errors as well as
-    // process completion: a child that exits early can otherwise crash the host.
-    await Promise.all([child, pipeline(Readable.from([text]), child.child.stdin!)]);
-    return true;
-  } catch {
-    return false;
-  }
+  const child = run(PBCOPY, [], { timeout: 5_000 });
+  // Own both failures and their completion: a broken stdin must not release
+  // the clipboard lock while pbcopy can still mutate the shared pasteboard.
+  const settled = await Promise.allSettled([
+    child,
+    pipeline(Readable.from([text]), child.child.stdin!),
+  ]);
+  return settled.every((result) => result.status === "fulfilled");
 }
 
 /**

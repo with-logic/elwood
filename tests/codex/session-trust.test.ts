@@ -45,7 +45,9 @@ describe("CodexSessionApi trust prompts", () => {
     await expect.poll(() => warnings).toContain("startup_prompt_write_failed");
     // Retryable: a later frame re-attempts the answer with a now-succeeding write.
     ptys[0]!.failOnWrite = undefined;
-    ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. Yes, continue");
+    ptys[0]!.emitData(
+      "\u001b[2J\u001b[HDo you trust the contents of this directory?\r\n› 1. Yes, continue",
+    );
     await expect.poll(() => ptys[0]!.writes).toContain("1\r");
   });
 

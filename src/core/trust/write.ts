@@ -3,9 +3,10 @@
  * Implements PRD §5.4, C-CLAUDE-14, C-CODEX-15, and C-TRUST-01.
  */
 import { delay } from "../delay.ts";
-import { optionInput, type SelectableOption } from "../terminal-options.ts";
-import { trustDialog } from "./dialog.ts";
-import type { TrustPromptSpec } from "./prompts.ts";
+import type { StartupWriteCompletion } from "../startup/write.ts";
+import type { SelectableOption } from "../terminal-options.ts";
+import { parseTrustDialog, type TrustDialog } from "./dialog.ts";
+import { activeTrustDialogVisible, type TrustPromptSpec } from "./prompts.ts";
 import type { TrustWriteResult } from "./responder.ts";
 
 const cursorRetryMs = 250;
@@ -20,16 +21,12 @@ export async function writeTrustOption(
   write: Write,
   initialFrame: string,
   readFrame?: () => string,
-): Promise<void> {
+): Promise<StartupWriteCompletion> {
   if (option.style === "cursor") {
-    if (readFrame === undefined)
-      throw new Error("Cursor trust navigation requires live screen reads.");
-    return navigateCursorOption(spec, optionInput(option), write, readFrame);
+    if (readFrame === undefined) return "cancelled";
+    return navigateCursorOption(spec, write, readFrame);
   }
-  const current = trustDialog(
-    readFrame === undefined ? initialFrame : readFrame(),
-    spec.headerPattern,
-  );
+  const current = currentDialog(readFrame === undefined ? initialFrame : readFrame(), spec);
   if (
     !current?.options.some(
       (candidate) =>
@@ -38,22 +35,21 @@ export async function writeTrustOption(
         spec.accept.test(candidate.label),
     )
   ) {
-    throw new Error("Trust prompt disappeared before confirmation.");
+    return "cancelled";
   }
   await write(`${option.number}\r`);
+  return "answered";
 }
 
 async function navigateCursorOption(
   spec: TrustPromptSpec,
-  originalInput: string,
   write: Write,
   readFrame: () => string,
-): Promise<void> {
+): Promise<StartupWriteCompletion> {
   const deadline = Date.now() + cursorNavigationTimeoutMs;
   while (Date.now() < deadline) {
-    const dialog = trustDialog(readFrame(), spec.headerPattern);
-    if (dialog === undefined)
-      throw new Error("Cursor trust prompt disappeared before confirmation.");
+    const dialog = currentDialog(readFrame(), spec);
+    if (dialog === undefined) return "cancelled";
     const target = dialog.options.find((option) => spec.accept.test(option.label));
     if (target?.style !== "cursor") {
       await delay(cursorRetryMs);
@@ -62,26 +58,32 @@ async function navigateCursorOption(
     const key = target.offset === 0 ? "\r" : target.offset < 0 ? "\u001b[A" : "\u001b[B";
     await write(key);
     const progress = await waitForCursorProgress(spec, target.offset, readFrame);
-    if (progress === "cleared") return;
+    if (progress === "cleared") return "answered";
+    if (progress === "cancelled") return "cancelled";
   }
-  throw new Error(`Cursor trust navigation timed out (${originalInput}).`);
+  return "cancelled";
 }
 
 async function waitForCursorProgress(
   spec: TrustPromptSpec,
   priorOffset: number,
   readFrame: () => string,
-): Promise<"cleared" | "retry"> {
+): Promise<"cleared" | "retry" | "cancelled"> {
   const deadline = Date.now() + cursorRetryMs;
   while (Date.now() < deadline) {
     await delay(20);
-    const dialog = trustDialog(readFrame(), spec.headerPattern);
+    const dialog = currentDialog(readFrame(), spec);
     if (dialog === undefined) {
       if (priorOffset === 0) return "cleared";
-      throw new Error("Cursor trust prompt disappeared before confirmation.");
+      return "cancelled";
     }
     const target = dialog.options.find((option) => spec.accept.test(option.label));
     if (target?.style === "cursor" && target.offset !== priorOffset) return "retry";
   }
   return "retry";
+}
+
+function currentDialog(frame: string, spec: TrustPromptSpec): TrustDialog | undefined {
+  const dialog = parseTrustDialog(frame);
+  return activeTrustDialogVisible(dialog, spec) ? dialog : undefined;
 }

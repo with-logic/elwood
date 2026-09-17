@@ -305,8 +305,8 @@ nothing to stdout, one concise notice naming the state directory to stderr, and
 exits 0. JSON output is exactly one version-1 document
 `{ "schemaVersion": 1, "type": "sessions", "stateDir": "...", "sessions": [...] }`
 whose array may be empty. JSONL is not a listing protocol; selecting it from any
-source is a usage error that names the source. Any other run option or a
-positional word is a usage error.
+source is a usage error that names the source. Any other run option (including
+`--show-session-id`) or a positional word is a usage error.
 
 ### 12A.9 Interactive mode
 

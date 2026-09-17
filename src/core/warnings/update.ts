@@ -10,6 +10,7 @@
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { ElwoodError } from "../errors.ts";
 import type { AgentUpdateFailedWarning } from "./lifecycle.ts";
+import { isReapErrorCode } from "./reasons.ts";
 
 /**
  * `Omit` that DISTRIBUTES over a union (`W extends unknown` triggers distribution), unlike the
@@ -37,6 +38,9 @@ export function updateFailedWarning(
 ): UpdateFailedWarning {
   const details = error instanceof ElwoodError ? error.details : {};
   const errno = typeof details["errno"] === "string" ? details["errno"] : undefined;
+  const cleanupCode = details["cleanupErrorCode"];
+  const cleanupErrorCode =
+    cleanupCode === "ETIMEDOUT" || isReapErrorCode(cleanupCode) ? cleanupCode : undefined;
   const stderr = typeof details["stderr"] === "string" ? details["stderr"] : "";
   return {
     agent,
@@ -46,6 +50,7 @@ export function updateFailedWarning(
     message: `\`${agent} update\` failed; continuing with the installed CLI ${installedVersion}.`,
     installedVersion,
     errorCode: errno ?? "update_failed",
+    ...(cleanupErrorCode === undefined ? {} : { cleanupErrorCode }),
     raw: stderr.slice(0, maxStderr),
   };
 }
