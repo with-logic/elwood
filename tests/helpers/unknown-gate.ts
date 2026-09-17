@@ -1,12 +1,13 @@
 /** Adapter-boundary matrix: off-allowlist native gates hold input, hold-only (C-TRUST-01). */
 import { expect, test, vi } from "vitest";
 import type { ElwoodActivityEvent, ElwoodSessionStatus } from "../../src/index.ts";
-import type { FakePty } from "./fake-pty.ts";
+import { FakePty } from "./fake-pty.ts";
 
 type Session = {
   readonly elwoodSessionId: string;
   readonly cwd: string;
   readonly status: ElwoodSessionStatus;
+  statusDecisions(): readonly { readonly from: string; readonly to?: string | undefined }[];
   readonly terminal: { snapshot(): { readonly text: string } };
   sendMessage(input: string): Promise<void>;
   sendKeys(input: string): Promise<void>;
@@ -20,6 +21,8 @@ type Harness = {
   /** Fires the adapter's pre-input readiness hook, as the real CLI does behind a gate. */
   readonly ready: (session: Session, pty: FakePty) => Promise<unknown>;
   readonly clear: string;
+  /** A complete allowlisted gate, human-owned while `autotrust` is off. */
+  readonly known: string;
 };
 
 /** A reworded trust question no allowlist entry names, in the native option/footer shape. */
@@ -60,10 +63,11 @@ export function unknownGateTests(harness: Harness): void {
   ])("C-TRUST-01 an off-allowlist native gate holds queued input, unanswered (autotrust %s)", async (autotrust) => {
     await run(harness, autotrust, async (session, pty, attention) => {
       const queued = session.sendMessage("hello");
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }); // the first frame arms the deadline
       await repaint(session, pty, rewordedGate);
       await harness.ready(session, pty);
-      vi.useFakeTimers();
-      await vi.advanceTimersByTimeAsync(11_000); // past the readiness deadline too
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+      await vi.advanceTimersByTimeAsync(11_000); // the hook AND the 10 s readiness deadline
       expect(pty.writes).toEqual([]);
       expect(session.status).toBe("blocked");
       expect(attention).toEqual([`${harness.agent}-unknown_gate-prompt`]);
@@ -75,6 +79,31 @@ export function unknownGateTests(harness: Harness): void {
       expect(session.status).not.toBe("blocked");
       expect(attention).toHaveLength(1);
     });
+  });
+
+  test.each([
+    ["allowlisted", harness.known, false, `${harness.agent}-workspace_trust-prompt`],
+    ["off-allowlist", rewordedGate, true, `${harness.agent}-unknown_gate-prompt`],
+  ] as const)("C-ATTN-03 an %s gate painted while starting still announces its label once live", async (_name, gate, autotrust, label) => {
+    // Paint the gate on the first PTY subscription: before the session is live.
+    const subscribe = FakePty.prototype.onData;
+    let painted = false;
+    vi.spyOn(FakePty.prototype, "onData").mockImplementation(function (this: FakePty, handler) {
+      const off = subscribe.call(this, handler);
+      if (!painted) queueMicrotask(() => this.emitData(gate.replaceAll("\n", "\r\n")));
+      painted = true;
+      return off;
+    });
+    try {
+      await run(harness, autotrust, async (session, pty, attention) => {
+        await vi.waitFor(() => expect(session.status).toBe("blocked"));
+        expect(session.statusDecisions()[0]).toMatchObject({ from: "starting", to: undefined });
+        expect(attention).toEqual([label]);
+        expect(pty.writes).toEqual([]);
+      });
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   test("C-TRUST-01 the same gate quoted below a conversation row never holds input", async () => {

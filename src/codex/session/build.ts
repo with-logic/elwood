@@ -177,7 +177,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       });
       await assertStartupThenRelease("codex", startupOutput, () => startupExit);
       activeSession.submitEvidence("startup_usable");
-      if (activeSession.inputBlocking) activeSession.submitEvidence("blocking_prompt_shown");
+      frameObserver.blockOnceLive(activeSession);
     },
     { before: beforeCleanup, pty, bridge, terminal, after: () => transcriptWatcher.stop() },
   );

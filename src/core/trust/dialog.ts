@@ -24,7 +24,12 @@ export function parseTrustDialog(frame: string): TrustDialog | undefined {
   return candidate?.validTail ? candidate.dialog : undefined;
 }
 
-type Candidate = { readonly dialog: TrustDialog; readonly validTail: boolean };
+type Candidate = {
+  readonly dialog: TrustDialog;
+  readonly validTail: boolean;
+  /** The frame ends in a native footer row: the dialog finished painting. */
+  readonly footer: boolean;
+};
 
 /**
  * A provenance-checked header may hold input even while its native body is incomplete.
@@ -69,6 +74,7 @@ function candidateAt(lines: readonly string[], start: number): Candidate | undef
     dialog: { header: header.trim().replace(/\s+/g, " "), options },
     validTail:
       !unknownTail && (optionStart < 0 || validOptionTail(tail.slice(optionStart), options)),
+    footer: footerRow.test(text.slice(text.trimEnd().lastIndexOf("\n") + 1)),
   };
 }
 

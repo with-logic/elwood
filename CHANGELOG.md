@@ -12,12 +12,18 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Hold queued input on native-looking trust gates Elwood does not recognize. A
-  reworded or brand-new CLI gate (header, selectable options, nothing below but
-  its footer, no conversation above) now blocks for a human with the attention
-  label `<agent>-unknown_gate-prompt` under every `autotrust` value and is never
-  answered automatically; previously readiness could type the queued message and
-  Enter into it. Dialogs that already block keep their existing labels.
+- Hold queued input on an unrecognized gate behind a recognized native header
+  prefix (`Do you`, `Is this`, `Trust the`, ... — PRD §5.4 lists them): a reworded
+  question with selectable options and a frame-ending native footer, and no
+  conversation above, now blocks for a human with the attention label
+  `<agent>-unknown_gate-prompt` under every `autotrust` value and is never answered
+  automatically; previously readiness could type the queued message and Enter
+  into it. Gates outside that grammar (other leading words, other footers) are
+  still not held. Dialogs that already block keep their existing labels.
+- Emit the `attention` activity for a blocking prompt that painted while the
+  session was still `starting`. Such a session already became `blocked`, but
+  without the human-decision event, so a headless `elwood` run never reported
+  `blocked_prompt`.
 - Reject FIFO state/config files without hanging.
 - Bind automatic trust approvals to the active dialog and revalidate every write,
   preventing quoted transcript headers or unknown intervening titles from

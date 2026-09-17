@@ -14,13 +14,13 @@ const tables = {
 const matrix = (["claude", "codex"] as const).flatMap((agent) =>
   [true, false].map((autotrust) => [agent, autotrust] as const),
 );
-const blocking = (agent: "claude" | "codex", autotrust: boolean, text: string) =>
+const blockingRuleIds = (agent: "claude" | "codex", autotrust: boolean, text: string) =>
   readScreenFacts(tables[agent](autotrust), { text, title: "" })
     .matched.filter((rule) => rule.fact === "blocking_prompt_visible")
     .map((rule) => rule.id);
 
-const newCursorGate =
-  "Is this plugin source one you trust?\n❯ No, exit\n  Yes, run plugins\n\nEnter to confirm · Esc to cancel";
+const footer = "Enter to confirm · Esc to cancel";
+const newCursorGate = `Is this plugin source one you trust?\n❯ No, exit\n  Yes, run plugins\n\n${footer}`;
 
 describe.each(matrix)("%s unknown gate (autotrust %s)", (agent, autotrust) => {
   test("C-ATTN-03 reworded and brand-new header-shaped gates hold under one stable rule id", () => {
@@ -29,7 +29,7 @@ describe.each(matrix)("%s unknown gate (autotrust %s)", (agent, autotrust) => {
       newCursorGate,
       `Accessing workspace:\n/tmp/p\n${newCursorGate}`,
     ])
-      expect(blocking(agent, autotrust, gate)).toEqual([`${agent}-unknown_gate-prompt`]);
+      expect(blockingRuleIds(agent, autotrust, gate)).toEqual([`${agent}-unknown_gate-prompt`]);
     expect(trustView(rewordedGate, agent)).toEqual({ kind: "unknown" });
   });
 
@@ -41,10 +41,12 @@ describe.each(matrix)("%s unknown gate (autotrust %s)", (agent, autotrust) => {
       `${rewordedGate}\n• quoted above`,
       prose,
       "Do you trust this workspace?\n\nReading project settings",
+      "Do you trust this workspace?\n1. Yes\n2. No", // options painted, native footer not yet
+      `Unrecognized migration\n  Do you want to retry\n❯ No, cancel\n\n${footer}`, // header-like OPTION
       claudeComposer,
       codexComposer,
     ])
-      expect(blocking(agent, autotrust, frame)).toEqual([]);
+      expect(blockingRuleIds(agent, autotrust, frame)).toEqual([]);
     const composer = agent === "claude" ? claudeComposer : codexComposer;
     expect(trustView(composer, agent)).toEqual({ kind: "clear" });
   });
@@ -55,10 +57,10 @@ describe.each(matrix)("%s unknown gate (autotrust %s)", (agent, autotrust) => {
         ? "Do you trust this folder?"
         : "Do you trust the contents of this directory?";
     const known = autotrust ? [] : [`${agent}-workspace_trust-prompt`];
-    expect(blocking(agent, autotrust, `${header}\n1. Yes\n2. No`)).toEqual(known);
-    expect(blocking(agent, autotrust, `${header}\nDo you also agree?\n1. Yes\n2. No`)).toEqual(
-      known,
-    );
+    expect(blockingRuleIds(agent, autotrust, `${header}\n1. Yes\n2. No`)).toEqual(known);
+    expect(
+      blockingRuleIds(agent, autotrust, `${header}\nDo you also agree?\n1. Yes\n2. No`),
+    ).toEqual(known);
   });
 });
 
@@ -67,12 +69,12 @@ test("C-ATTN-01 dialogs an adapter table already names keep their label", () => 
   const approval =
     "Do you want this? Would you like to run the following command?\n› 1. Yes\n  2. No\n\nPress enter to confirm or esc to cancel";
   for (const autotrust of [true, false]) {
-    expect(blocking("claude", autotrust, permission)).toEqual(["claude-permission-dialog"]);
-    expect(blocking("codex", autotrust, approval)).toEqual(["codex-approval-dialog"]);
+    expect(blockingRuleIds("claude", autotrust, permission)).toEqual(["claude-permission-dialog"]);
+    expect(blockingRuleIds("codex", autotrust, approval)).toEqual(["codex-approval-dialog"]);
   }
 });
 
 test("C-TRUST-01 another adapter's allowlisted wording is still an unknown gate here", () => {
-  const claudeFolder = "Do you trust this folder?\n1. Yes\n2. No";
-  expect(blocking("codex", true, claudeFolder)).toEqual(["codex-unknown_gate-prompt"]);
+  const claudeFolder = `Do you trust this folder?\n1. Yes\n2. No\n${footer}`;
+  expect(blockingRuleIds("codex", true, claudeFolder)).toEqual(["codex-unknown_gate-prompt"]);
 });
