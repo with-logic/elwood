@@ -1,6 +1,7 @@
 /** Builds a live ClaudeSessionApi from a record + runtime. Implements PRD §5, §6, §8, §9. */
 import { defaultTerminalSize } from "../../core/defaults.ts";
 import { causeDetails, elwoodError } from "../../core/errors.ts";
+import { guardedAutomationWrite } from "../../core/startup/barrier.ts";
 import { createStartupWarningGate, deliverFrameWarnings } from "../../core/startup/frame.ts";
 import { emitSettledStartupOutcomes } from "../../core/startup/write.ts";
 import { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
@@ -134,11 +135,10 @@ export async function buildClaudeSession(
     // The write RETURNS its `sendInput` completion (no longer swallowed): the
     // responder settles the prompt and its `startup_prompt` activity only after
     // the write fulfills, and a rejected write stays retryable + warns (C-CLAUDE-16).
-    const autos = promptResponder.handle(
-      frame.text,
-      (input) => renderedTerminal.sendInput(input),
-      () => latestRenderedText,
-    );
+    const send = (input: string) => renderedTerminal.sendInput(input);
+    const read = () => latestRenderedText;
+    const guarded = guardedAutomationWrite(renderedTerminal, send, read, "claude");
+    const autos = promptResponder.handle(frame.text, send, read, guarded);
     // Warning delivery is CONTAINED on the frame path: a throwing `warning`/`activity`
     // listener must never skip readiness, login detection, or terminal:data (§5.7).
     emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {

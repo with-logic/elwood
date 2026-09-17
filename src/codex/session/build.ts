@@ -3,6 +3,7 @@ import * as activity from "../../core/activity/index.ts";
 import { AttentionWatcher } from "../../core/attention.ts";
 import { defaultTerminalSize } from "../../core/defaults.ts";
 import { causeDetails, elwoodError } from "../../core/errors.ts";
+import { guardedAutomationWrite } from "../../core/startup/barrier.ts";
 import { createStartupWarningGate, deliverFrameWarnings } from "../../core/startup/frame.ts";
 import { emitSettledStartupOutcomes } from "../../core/startup/write.ts";
 import { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
@@ -125,11 +126,10 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       // One snapshot per render: reused for prompt automation, readiness, detection.
       const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
       // Automation owns completion; failures report through the contained warning gate.
-      const result = promptResponder.handle(
-        frame.text,
-        callerInput.automation,
-        () => renderedTerminal.snapshot().text,
-      );
+      const send = callerInput.automation;
+      const read = () => renderedTerminal.snapshot().text;
+      const guarded = guardedAutomationWrite(renderedTerminal, send, read, "codex");
+      const result = promptResponder.handle(frame.text, send, read, guarded);
       warnGate.emitWarnings(result.warnings);
       emitSettledStartupOutcomes(emitter, "codex", record.elwoodSessionId, result.outcomes, {
         emitWarnings: (w) => warnGate.emitWarnings(w),
