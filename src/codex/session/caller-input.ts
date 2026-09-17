@@ -46,6 +46,9 @@ export function reportCallerInput(
     resize: (size) => inner.resize(size),
     snapshot: () => inner.snapshot(),
     settled: () => inner.settled(),
+    get renderFailed() {
+      return inner.renderFailed;
+    },
     dispose: () => inner.dispose(),
   };
   const automation = (input: string) => {
