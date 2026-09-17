@@ -95,13 +95,18 @@ type Capture =
  * failing — the point of C-E2E-09 is to catch drift, not to be brittle.
  */
 async function captureTrustFrame(session: ClaudeSessionApi): Promise<Capture> {
+  let unanswerableSince: number | undefined;
   try {
     return await waitFor(
       async () => {
         const text = session.terminal.snapshot().text;
         if ((await trustInputFor(text)) !== undefined)
           return { kind: "answerable", frame: text } as const;
-        if (completeFolderTrustScreenVisible(text)) {
+        // Options may paint before the native body, which production holds for up to
+        // five seconds; only a frame that STAYS unanswerable past that is drift.
+        if (completeFolderTrustScreenVisible(text)) unanswerableSince ??= Date.now();
+        else unanswerableSince = undefined;
+        if (unanswerableSince !== undefined && Date.now() - unanswerableSince > 5_000) {
           throw new Error(
             `Claude rendered a complete but unanswerable folder-trust frame:\n${text}`,
           );
