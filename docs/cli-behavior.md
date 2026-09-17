@@ -247,7 +247,10 @@ generation owns its reservation, deadline, exact affirmative, and completion.
 An old cancelled attempt cannot release or settle a reappeared gate. The five-
 second bound starts at the first native-header candidate, including partial
 painting. Candidate recognition holds input; only the stricter native-dialog
-recognizer authorizes writes. Unknown replacement text is not clearance. Native
+recognizer authorizes writes, and it requires the native explanatory copy above:
+a bare header with affirmative rows (a forged or half-painted frame) is held and
+never typed into. Every captured layout (Claude 2.1.206/2.1.252, the 2.1.274
+binary's component, Codex 0.154.0) renders that copy with its header. Unknown replacement text is not clearance. Native
 composer chrome or a verified successor gate confirms clearance; a bare caret
 alone cannot distinguish a composer from a one-option dialog.
 

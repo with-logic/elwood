@@ -102,4 +102,20 @@ describe("ClaudeSessionApi trust-prompt render delay", () => {
     ptys[0]!.emitData(`\u001b[2J\u001b[H${tty(claudeTrust)}\r\n1. Yes, I trust this folder\r\n`);
     await expect.poll(() => ptys[0]!.writes).toContain("1\r");
   });
+
+  test("C-TRUST-01 a header without its native body holds input untyped until the body paints", async () => {
+    installFakes();
+    const session = await startClaude({ cwd: tempDir(), autotrust: true });
+    const frames: string[] = [];
+    session.on("terminal:data", (event) => frames.push(event.data));
+    const queued = session.sendMessage("held");
+    ptys[0]!.emitData("Do you trust this folder?\r\n1. Yes, I trust this folder\r\n");
+    await expect.poll(() => frames.join("")).toContain("1. Yes, I trust this folder");
+    expect(ptys[0]!.writes).toEqual([]);
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${tty(claudeTrust)}\r\n1. Yes, I trust this folder\r\n`);
+    await expect.poll(() => ptys[0]!.writes).toEqual(["1\r"]);
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${tty(claudeComposer)}`);
+    await queued;
+    expect(ptys[0]!.writes).toContain("\u001b[200~held\u001b[201~");
+  });
 });

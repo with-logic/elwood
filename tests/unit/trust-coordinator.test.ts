@@ -13,6 +13,7 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 test.each([
+  "Do you trust this folder?\n1. Yes\n2. No",
   unsupported,
   `${claudeTrust}\n1. Yes\nUnknown footer`,
 ])("C-TRUST-01 unsupported native candidates hold input and expire without new output: %s", async (frame) => {
@@ -144,4 +145,21 @@ test("C-TRUST-01 a native successor retains expired blocking until the successor
   await vi.runAllTimersAsync();
   await expect(attempt).resolves.toBe("answered");
   expect(responder.blockedPrompt).toBeUndefined();
+});
+
+test("C-TRUST-01 a header without its native body receives no key until the body paints", async () => {
+  const responder = new TrustPromptResponder("claude", true);
+  const write = vi.fn();
+  let frame = "Do you trust this folder?\n1. Yes\n2. No";
+  expect(responder.handle(frame, write, () => frame)).toBeUndefined();
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(responder.inputBlocking).toBe(true);
+  expect(write).not.toHaveBeenCalled();
+  frame = trust;
+  const attempt = settled(responder.handle(frame, write, () => frame));
+  expect(write).toHaveBeenCalledExactlyOnceWith("1\r");
+  frame = claudeComposer;
+  await vi.advanceTimersByTimeAsync(250);
+  await expect(attempt).resolves.toBe("answered");
+  expect(responder.inputBlocking).toBe(false);
 });
