@@ -76,13 +76,20 @@ export class CommandSurface {
 
   compact(options?: Timeout): Promise<void> {
     const pending = new AbortController();
+    const cancel = { signal: pending.signal, error: () => pending.signal.reason };
     const submit = () =>
-      this.deps.controlQueue.send(compactCommand, "compact", undefined, {
-        cancel: { signal: pending.signal, error: () => pending.signal.reason },
-      });
-    const nudge = () => {
-      if (!this.deps.blocked()) ignoreInputFailure(this.deps.terminal.sendInput("\r"));
+      this.deps.controlQueue.send(compactCommand, "compact", undefined, { cancel });
+    // The recovery Enter is a queued write like any other (C-API-55): it waits behind a
+    // model operation that owns the queue instead of landing in its picker or being
+    // skipped for good, and it is dropped once compaction settles or the session closes.
+    // Enter on any model dialog (one that survived cleanup, or a human's) would apply it.
+    const enter = async () => {
+      const screen = this.deps.terminal.snapshot().text;
+      if (!(this.deps.blocked() || this.deps.picker().activeDialog(screen) !== undefined))
+        await this.deps.terminal.sendInput("\r");
     };
+    const nudge = () =>
+      ignoreInputFailure(this.deps.controlQueue.runExclusive("compact", enter, cancel));
     return sessionCompact(this.deps.statusEvents, submit, nudge, options?.timeoutMs).finally(() =>
       pending.abort(),
     );

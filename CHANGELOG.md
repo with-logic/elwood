@@ -21,6 +21,9 @@ back each entry are listed in `prd/14-conformance.md`.
   before releasing queued input, and holds queued messages, commands, and `/login`
   while a dialog it could not cancel stays visible. Picker text quoted in a reply
   is never cancelled, so cleanup cannot interrupt a running turn.
+- `compact`'s recovery Enter can no longer be typed into a model picker opened by
+  a concurrent `listModels`/`setModel` (where Enter saves the highlighted model as
+  the default): it now waits for the picker operation to release the input queue.
 - Snapshot image bytes and relative paths when facade methods are called, including
   turns queued behind another response or waiting for session startup. Facade copies
   count against the same 200 MiB per-session ceiling as sends on the raw `session`.
