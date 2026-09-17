@@ -14,7 +14,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Serialize model-picker automation through completion and cancellation, preventing
   overlapping commands or messages from landing in a picker, including one that
-  opens up to a second after its operation timed out.
+  opens up to a second after its operation timed out and a follow-up dialog
+  (Codex reasoning level, Claude cache warning) painted after the failure. A model
+  operation now rejects without writing when a model dialog is already visible.
 - Reject FIFO state/config files without hanging.
 - Bind automatic trust approvals to the active dialog and revalidate every write,
   preventing quoted transcript headers or unknown intervening titles from

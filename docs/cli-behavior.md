@@ -142,6 +142,14 @@ legacy string/`agent_message` support. C-CODEX-16.
   visible catalog; every returned row correctly had `isCurrent: false`.
   Real picker tests should let the installed CLI choose its launch default,
   rather than pinning a model that can disappear from the catalog.
+- **A closed picker leaves no header behind.** On Claude 2.1.274 the viewport keeps
+  only `❯ /model` / `⎿ Kept model as …` (or `Set model to … for this session
+  only`), captured from a real session. Elwood therefore treats `Select model` /
+  `Select Model and Effort` / `Select Reasoning Level` text that is visible BEFORE
+  it submits `/model` as not its own (a human's picker or a transcript quote) and
+  rejects the operation without writing. Real list → set → list in one session
+  passes with that guard on Claude 2.1.274 and Codex 0.154.0 (the Codex residue
+  was not captured, only the passing run). C-API-55.
 - **Codex persists `/model` picker selections into the user `config.toml`.**
   `setModel` restores the prior default via compare-and-swap after switching
   (C-CODEX-14), skipping with a `codex_default_model_persisted` warning on a

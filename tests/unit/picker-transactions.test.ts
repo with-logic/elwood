@@ -70,10 +70,11 @@ test.each([
   "snapshot",
   "sendInput",
 ] as const)("C-API-55 deadline aborts active %s and closes the owned dialog", async (method) => {
-  const { queue, picker, writes } = setup(claudePicker);
+  const { queue, picker, state, writes } = setup();
   queue.markReady();
   const failed = expect(
     picker.run("set_model", claudeModelPicker, 50, async (io) => {
+      state.text = claudePicker;
       await delay(100);
       return method === "snapshot" ? io.terminal.snapshot() : io.terminal.sendInput("s");
     }),
@@ -86,12 +87,15 @@ test.each([
 });
 
 test("C-API-55 failed cancellation holds input until manual dismissal", async () => {
-  const { queue, picker, state, writes } = setup(claudePicker);
+  const { queue, picker, state, writes } = setup();
   state.cancelWorks = false;
   queue.markReady();
   const error = new Error("parse failed");
   const failed = expect(
-    picker.run("set_model", claudeModelPicker, 2000, () => Promise.reject(error)),
+    picker.run("set_model", claudeModelPicker, 2000, () => {
+      state.text = claudePicker;
+      return Promise.reject(error);
+    }),
   ).rejects.toBe(error);
   await vi.advanceTimersByTimeAsync(1000);
   await failed;
@@ -144,11 +148,12 @@ test("C-API-55 a submitted command whose dialog never appears releases input aft
 });
 
 test("C-API-55 terminating during navigation aborts without cleanup writes", async () => {
-  const { queue, picker, writes } = setup(claudePicker);
+  const { queue, picker, state, writes } = setup();
   queue.markReady();
   const failed = expect(
     picker.run("set_model", claudeModelPicker, 5000, async (io) => {
       await io.submit("/model", new AbortController().signal);
+      state.text = claudePicker;
       await waitForScreen(io.terminal, () => false, 5000, "cursor");
     }),
   ).rejects.toThrow("closed");
