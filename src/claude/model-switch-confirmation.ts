@@ -23,11 +23,13 @@ const optionPattern = /^\s*([❯›])?\s*(?:\d+[.)]\s*)?(Yes,\s*switch to\b.*|No
 
 /**
  * The rows of the dialog's own action block: the LAST run of consecutive action rows.
- * Claude renders `Yes, switch to …` and `No, go back` adjacent, so a staged composer
- * line that happens to read like an action is separated from the quoted pair by the
- * warning's prose, a blank line, or a rule, and forms its own shorter run. Returning
- * only the final run means such a draft yields one option, which is not a Yes/No set
- * and so is not a dialog — the caller then declines to drive it.
+ * Claude renders `Yes, switch to …` and `No, go back` adjacent, so a staged composer line
+ * that reads like an action is separated from the quoted pair by the warning's prose and
+ * forms its own run. Taking the final run means a draft BELOW a quoted warning yields one
+ * option, which is not a Yes/No set, so the caller declines to drive it.
+ *
+ * Blank rows do not end a run: the terminal pads the screen below the real options, and
+ * treating that padding as a boundary would discard the dialog's own block entirely.
  */
 function actionBlock(region: readonly string[]): readonly string[] {
   let block: string[] = [];
@@ -37,12 +39,11 @@ function actionBlock(region: readonly string[]): readonly string[] {
       current.push(line);
       continue;
     }
-    // A run ends at the first non-action row. Keep the longest complete run seen, so the
-    // trailing blank rows the terminal pads the screen with cannot discard the real block.
-    if (current.length > block.length) block = current;
+    if (line.trim() === "") continue;
+    if (current.length > 0) block = current;
     current = [];
   }
-  return current.length > block.length ? current : block;
+  return current.length > 0 ? current : block;
 }
 const cacheLead = "Your next response will be slower and use more tokens";
 const cacheTail = "means the full history gets re-read on your next message.";
