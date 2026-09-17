@@ -33,10 +33,13 @@ describe("headless terminal", () => {
   test("C-API-15 snapshots pad missing buffer lines and ignore writes after dispose", async () => {
     const terminal = createHeadlessTerminal({ cols: 10, rows: 5 }, () => undefined);
     await terminal.writeOutput("hello");
+    terminal.resize({ cols: 12, rows: 5 });
+    expect(terminal.size).toEqual({ cols: 12, rows: 5 });
     terminal.xterm.resize(10, 2);
     const snapshot = terminal.snapshot();
     expect(snapshot.lines).toHaveLength(5);
     expect(snapshot.lines.slice(2)).toEqual(["", "", ""]);
+    terminal.dispose();
     terminal.dispose();
     await expect(terminal.writeOutput("after dispose")).resolves.toBeUndefined();
   });

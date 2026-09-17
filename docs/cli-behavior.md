@@ -137,6 +137,11 @@ legacy string/`agent_message` support. C-CODEX-16.
 
 ## Model selection persistence
 
+- **A configured legacy Codex model may be absent from `/model`.** On Codex
+  0.154.0, `gpt-5.1-codex` still appeared in the session header but not in the
+  visible catalog; every returned row correctly had `isCurrent: false`.
+  Real picker tests should let the installed CLI choose its launch default,
+  rather than pinning a model that can disappear from the catalog.
 - **Codex persists `/model` picker selections into the user `config.toml`.**
   `setModel` restores the prior default via compare-and-swap after switching
   (C-CODEX-14), skipping with a `codex_default_model_persisted` warning on a
@@ -537,8 +542,9 @@ Four real-PTY edges were invisible to the unit fixtures:
   Run probes in a detached process session so they keep interactive PATH resolution
   without participating in the caller terminal's job control.
 - Current agent TUIs push Kitty keyboard enhancements with `CSI > flags u`. Head mode
-  stops mirroring before agent teardown, so it cannot rely on the agent's matching
-  cleanup sequence reaching the physical terminal. The defensive reset must emit
+  mirrors through session cleanup (so the drained final frames are shown), but an
+  agent signalled or force-killed there is not guaranteed to emit its matching
+  cleanup sequence, so head mode cannot rely on one reaching the physical terminal. The defensive reset must emit
   `CSI < u` before leaving the alternate screen; otherwise every later shell keystroke
   can remain encoded as a `CSI u` key event, making even a typed `reset` unusable.
 

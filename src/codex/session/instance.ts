@@ -170,6 +170,6 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     });
   }
   protected async stopRuntime(): Promise<void> {
-    await stopCodexRuntime(this.bridge, this.transcriptWatcher, this.terminal);
+    await stopCodexRuntime(this.bridge, this.transcriptWatcher, this.terminal, this.pty);
   }
 }

@@ -16,6 +16,7 @@ import type { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import { AgentSessionBase } from "../../runtime/session/base.ts";
 import { runCleanupSteps } from "../../runtime/shutdown/teardown.ts";
+import { drainAndDisposeTerminal } from "../../runtime/shutdown/terminal.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
@@ -181,6 +182,9 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   }
   protected stopRuntime(): Promise<void> {
     // Dispose the terminal even if the bridge stop rejects — no first-failure leak (§9.4).
-    return runCleanupSteps([() => this.bridge.stop(), () => this.terminal.dispose()]);
+    return runCleanupSteps([
+      () => this.bridge.stop(),
+      () => drainAndDisposeTerminal(this.terminal, this.pty),
+    ]);
   }
 }

@@ -184,7 +184,7 @@ export async function buildClaudeSession(
       // Release the startup buffer once the check settles (§9.4).
       await assertStartupThenRelease("claude", startupOutput, () => startupExit);
       active.submitEvidence("startup_usable");
-      if (active.inputBlocking) active.submitEvidence("blocking_prompt_shown");
+      frameObserver.blockOnceLive(active);
     },
     { before: beforeCleanup, pty, bridge, terminal, after: () => transcriptWatcher.stop() },
   );
