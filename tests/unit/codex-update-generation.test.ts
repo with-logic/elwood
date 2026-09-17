@@ -55,23 +55,13 @@ describe("Codex update prompt generations", () => {
   test("C-CODEX-12 a superseded attempt's late success is not reported for the next generation", async () => {
     const responder = new CodexStartupPromptResponder("s1");
     let frame = update;
-    const first = responder.handle(
-      frame,
-      () => {},
-      () => frame,
-    );
+    const write = (): void => {};
+    const read = () => frame;
+    const first = responder.handle(frame, write, read);
     frame = "› Ready";
-    responder.handle(
-      frame,
-      () => {},
-      () => frame,
-    );
+    responder.handle(frame, write, read);
     frame = update;
-    responder.handle(
-      frame,
-      () => {},
-      () => frame,
-    );
+    responder.handle(frame, write, read);
     const emit = vi.fn();
     emitSettledStartupOutcomes({ emit }, "codex", "s1", first.outcomes, undefined);
     // The first attempt's next poll sees a newer appearance: no `startup_prompt` for it.
@@ -98,18 +88,22 @@ describe("Codex update prompt generations", () => {
     expect(writes).toHaveLength(20);
   });
 
+  // The clear is `observed` by handle(), still `unobserved` (only the live frame shows it),
+  // or `unread` (a legacy caller without a live frame reader).
   test.each([
-    "resolves",
-    "rejects",
-  ] as const)("C-CODEX-17 a pending write that %s after the screen merely cleared", async (mode) => {
+    ["resolves", "observed"],
+    ["rejects", "observed"],
+    ["rejects", "unobserved"],
+    ["rejects", "unread"],
+  ] as const)("C-CODEX-17 a pending write that %s after a merely cleared (%s) screen", async (mode, clear) => {
     const responder = new CodexStartupPromptResponder("s1");
     let settle = { resolves: (): void => {}, rejects: (_error: Error): void => {} };
     const pending = () =>
       new Promise<void>((resolves, rejects) => (settle = { resolves, rejects }));
     let frame = update;
-    const first = responder.handle(frame, pending, () => frame);
+    const first = responder.handle(frame, pending, clear === "unread" ? undefined : () => frame);
     frame = "› Ready";
-    responder.handle(frame, pending, () => frame);
+    if (clear !== "unobserved") responder.handle(frame, pending);
     const emit = vi.fn();
     const emitWarnings = vi.fn();
     emitSettledStartupOutcomes({ emit }, "codex", "s1", first.outcomes, { emitWarnings });
@@ -135,9 +129,10 @@ describe("Codex update prompt generations", () => {
     expect(writes).toHaveLength(20);
     // The restart-loop re-arm survives: a cleared frame, then the same screen again.
     responder.handle("› Ready", write, () => update);
-    const again = responder.handle(update, write, () => "› Ready");
-    expect(again.outcomes[0]?.outcome).toEqual({ kind: "attempted", prompt: "update", input: "2" });
-    await again.outcomes[0]?.settled;
+    const again = responder.handle(update, write, () => (writes.length > 20 ? "› Ready" : update));
+    await vi.runAllTimersAsync();
+    await expect(again.outcomes[0]?.settled).resolves.toBe("answered");
+    expect(writes).toHaveLength(21);
   });
 
   test("an option-only replacement cannot continue an update generation", () => {

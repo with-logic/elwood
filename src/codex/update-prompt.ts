@@ -36,7 +36,7 @@ export class CodexUpdatePromptTracker {
   }
 
   /** True once a LATER appearance replaced `generation`; its own clear is only `generation + 1`. */
-  supersedes(generation: number): boolean {
+  hasLaterAppearance(generation: number): boolean {
     return this.generation > generation + 1;
   }
 

@@ -83,10 +83,9 @@ export class CodexStartupPromptResponder {
     }
     // Skipping an available update is not a trust decision, so it stays here.
     // The skip is EDGE-triggered and scoped to the CURRENT frame's update screen:
-    // `skipGeneration` latches one bounded attempt per appearance — answered OR
-    // exhausted — so a persistent update screen is not re-answered every frame, but it
-    // RE-ARMS the moment the update screen leaves the frame (a new generation). That
-    // breaks the observed restart loop — Codex restarts itself, the
+    // `skipGeneration` latches one bounded attempt per appearance so a persistent screen is
+    // not re-answered every frame, but it RE-ARMS the moment the update screen leaves
+    // the frame. That breaks the observed restart loop — Codex restarts itself, the
     // update does not take, and the SAME update screen reappears; a cleared frame
     // between the two appearances (Codex's restart draws a normal composer) re-arms us
     // to skip the reappearance. Gating the attempt on the CURRENT frame (not just the
@@ -104,25 +103,23 @@ export class CodexStartupPromptResponder {
         // rejected, so a later frame re-attempts it rather than falsely reporting
         // the update as skipped (C-CODEX-17).
         this.skipGeneration = generation;
-        // A later appearance owns the latch AND the settlement: a superseded attempt
-        // neither re-arms, answers, nor warns on its behalf. A write rejected after the
-        // screen merely cleared is quiet too — nothing is left to retry or block on —
-        // while a clear after our key is exactly what success means (C-CODEX-12).
-        const settled = writeCodexUpdateSkip(
-          option,
-          write,
-          readFrame,
-          this.updatePrompt.currentFramePredicate(),
-        ).then(
+        // A later appearance owns the latch AND the settlement. A write rejected once the
+        // screen cleared is quiet too (nothing is left to retry or block on); a clear
+        // after our key is what success means (C-CODEX-12).
+        const current = this.updatePrompt.currentFramePredicate();
+        const settled = writeCodexUpdateSkip(option, write, readFrame, current).then(
           (completion) => {
-            const superseded = this.updatePrompt.supersedes(generation);
-            if (completion === "exhausted" || superseded) return "cancelled";
+            const replaced = this.updatePrompt.hasLaterAppearance(generation);
+            if (completion === "exhausted" || replaced) return "cancelled";
             if (completion === "cancelled") this.skipGeneration = 0;
             return completion;
           },
           (error: unknown): StartupWriteCompletion => {
-            if (this.updatePrompt.currentGeneration !== generation) return "cancelled";
-            this.skipGeneration = 0;
+            const replaced = this.updatePrompt.hasLaterAppearance(generation);
+            if (!replaced) this.skipGeneration = 0; // retryable within its own appearance
+            // The LIVE frame can clear before handle() sees it; with no reader, the
+            // attempt's own frame reduces this to the generation check.
+            if (!current(readFrame?.() ?? screenText)) return "cancelled";
             throw error;
           },
         );
