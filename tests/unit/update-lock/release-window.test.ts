@@ -4,7 +4,8 @@
  * none, never an ownerless one it would recover as stale and follow with a duplicate update.
  */
 
-import { readdirSync } from "node:fs";
+import { mkdirSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { beforeEach, expect, test, vi } from "vitest";
 import { coordinatedAutoupdate } from "../../../src/runtime/update/lock.ts";
@@ -101,4 +102,22 @@ test("a retired lease that cannot be deleted is swept by a later holder", async 
   release.deleteDenied = false;
   await coordinatedAutoupdate("codex", () => Promise.resolve(), { root });
   expect(readdirSync(root)).toEqual(["codex.completed"]);
+});
+
+test("C-PERF-04 both kinds of leftover share one removal budget", async () => {
+  const root = tempDir("elwood-update-lock-mixed-");
+  // Six of each kind: a per-prefix budget of 8 would clear all twelve, the shared budget
+  // clears exactly 8 and leaves 4 for the next holder. The mix also keeps the count
+  // independent of which prefix `readdir` happens to yield first.
+  for (let index = 0; index < 6; index += 1) {
+    mkdirSync(join(root, `codex.lock.claim.${index}`));
+    mkdirSync(join(root, `codex.lock.released.${index}`));
+  }
+  const leftovers = () =>
+    readdirSync(root).filter((entry) => entry.includes(".claim.") || entry.includes(".released."))
+      .length;
+  await coordinatedAutoupdate("codex", () => Promise.resolve(), { root });
+  expect(leftovers()).toBe(4);
+  await coordinatedAutoupdate("codex", () => Promise.resolve(), { root });
+  expect(leftovers()).toBe(0);
 });
