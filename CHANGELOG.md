@@ -12,6 +12,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Reject FIFO state/config files without hanging.
 - Bind automatic trust approvals to the active dialog and revalidate every write,
   preventing quoted transcript headers or unknown intervening titles from
   authorizing unrelated permissions. Cancel stale trust attempts quietly while

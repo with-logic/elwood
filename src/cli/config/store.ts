@@ -33,7 +33,8 @@ export function readConfig(path: string, identity = currentIdentity()): CliConfi
 export function readConfigWithStatus(path: string, identity = currentIdentity()): ConfigReadResult {
   let fd: number | undefined;
   try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    // O_NONBLOCK: opening a FIFO read-only would otherwise block until a writer appears.
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     assertPrivateFile(fstatSync(fd), identity);
     return { config: parseConfigText(readFileSync(fd, "utf8")), loaded: true };
   } catch (error) {
