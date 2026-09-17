@@ -1,6 +1,6 @@
 /**
  * Shared hook-backed initial-readiness marker with a starvation deadline.
- * Implements PRD §5.3, C-API-19, and C-API-28.
+ * Implements PRD §5.3/§9.4, C-API-19, and C-API-28.
  *
  * On a COLD start both adapters gate the first queued message on a pre-input
  * readiness hook — Claude's `InstructionsLoaded`, Codex's `SessionStart` — the CLI's
@@ -19,6 +19,7 @@
  */
 
 export type InitialReady = {
+  /** Permanently cancel readiness, including frames drained after process exit. */
   readonly cancel: () => void;
   readonly replay: () => void;
   readonly armDeadline: () => void;
