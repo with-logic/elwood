@@ -2,7 +2,7 @@
  * Bounded update contention and generation-safe recovery.
  * Implements PRD §9.2 / C-PERF-04; time alone never evicts a live updater.
  */
-import { rename, rmdir, stat, unlink } from "node:fs/promises";
+import { readdir, rename, rmdir, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
@@ -10,7 +10,7 @@ import {
   ownerFile,
   ownerIsAlive,
   parentIsAlive,
-  pendingOwnerFile,
+  pendingOwnerPrefix,
   readOwner,
 } from "./owner.ts";
 
@@ -30,7 +30,7 @@ export async function waitForOwner(
       return "released";
     }
     const current = await readOwner(path);
-    const groupOwner = current?.cleanupGroup !== undefined;
+    const groupOwner = current?.cleanupGroups !== undefined;
     if (cleanupPending(current)) return "cleanup_pending";
     if ((groupOwner && !ownerIsAlive(current)) || Date.now() - lease.mtimeMs >= staleMs) {
       const recovered = await recoverStaleLease(path);
@@ -43,8 +43,8 @@ export async function waitForOwner(
 
 function cleanupPending(owner: LeaseOwner | undefined): boolean {
   return (
-    owner?.cleanupGroup !== undefined &&
-    !(owner.activeProbe && parentIsAlive(owner.pid)) &&
+    owner?.cleanupGroups !== undefined &&
+    !(owner.callbackOwnsLease && parentIsAlive(owner.pid)) &&
     ownerIsAlive(owner)
   );
 }
@@ -64,7 +64,10 @@ async function recoverStaleLease(path: string): Promise<"removed" | "alive" | "u
   }
   try {
     if (moved !== undefined) await unlink(join(recovery, ownerFile));
-    await unlink(join(recovery, pendingOwnerFile)).catch(() => undefined);
+    // Late writers name their pending records uniquely; a malformed owner record
+    // is deliberately left in place so an unreadable lease keeps failing safe.
+    for (const entry of await readdir(recovery))
+      if (entry.startsWith(pendingOwnerPrefix)) await unlink(join(recovery, entry));
     await rmdir(recovery);
     return "removed";
   } catch {

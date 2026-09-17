@@ -17,14 +17,15 @@ export type ProbeCleanup = {
 };
 
 const cleanupWindowMs = 1_000;
+const groupOnlyRetryMs = 500;
 const cleanupRetryMs = 25;
 const deferredRetryMs = 1_000;
 const retained = new Set<ProbeReaper>();
 let retryTimer: ReturnType<typeof setInterval> | undefined;
 
-export function processGroupGone(pid: number): boolean {
+export function processGroupGone(processGroupId: number): boolean {
   try {
-    process.kill(-pid, 0);
+    process.kill(-processGroupId, 0);
     return false;
   } catch (error) {
     return errnoCode(error) === "ESRCH";
@@ -32,58 +33,73 @@ export function processGroupGone(pid: number): boolean {
 }
 
 export async function abortProbe(child: ChildProcess): Promise<ProbeCleanup> {
-  // Abort only follows timeout/output from a successfully spawned process.
-  const pid = child.pid!;
+  // Abort only follows timeout/output from a successfully spawned process, and
+  // a detached child leads the process group named by its own pid.
+  const processGroupId = child.pid!;
   child.stdin?.destroy();
   child.stdout?.destroy();
   child.stderr?.destroy();
-  const reaper = new ProbeReaper(child, pid);
-  const deadline = Date.now() + cleanupWindowMs;
+  const reaper = new ProbeReaper(child, processGroupId);
+  const started = Date.now();
   do {
-    if (reaper.reap()) return reaper.errorCode ? { cleanupErrorCode: reaper.errorCode } : {};
+    // Confirmed cleanup is not a failure, whichever signal achieved it.
+    if (reaper.reap(Date.now() - started >= groupOnlyRetryMs)) return {};
     await delay(cleanupRetryMs);
-  } while (Date.now() < deadline);
+  } while (Date.now() - started < cleanupWindowMs);
   // Every failed probe retains cleanup ownership; update leases additionally
   // preserve exclusion after parent exit. Neither keeps the event loop pinned.
   child.unref();
   retained.add(reaper);
   retryTimer ??= setInterval(reapRetained, deferredRetryMs);
   retryTimer.unref();
-  return { cleanupErrorCode: reaper.errorCode ?? "ETIMEDOUT", cleanupProcessGroup: pid };
+  return {
+    cleanupErrorCode: reaper.errorCode ?? "ETIMEDOUT",
+    cleanupProcessGroup: processGroupId,
+  };
 }
 
-/** Observe normal updater completion without signaling its remaining descendants. */
-export async function waitForProbeGroup(pid: number): Promise<boolean> {
+/** Observe normal updater completion without signaling remaining descendants. */
+export async function waitForProbeGroups(
+  processGroupIds: readonly number[],
+): Promise<readonly number[]> {
   const deadline = Date.now() + cleanupWindowMs;
-  do {
+  let live = processGroupIds.filter((id) => !processGroupGone(id));
+  while (live.length > 0 && Date.now() < deadline) {
     await delay(cleanupRetryMs);
-    if (processGroupGone(pid)) return true;
-  } while (Date.now() < deadline);
-  return false;
+    live = live.filter((id) => !processGroupGone(id));
+  }
+  return live;
 }
 
-/** Successful SIGKILL latches signal ownership; later polls only confirm disappearance. */
+/**
+ * A process-group id is provably ours only while Node has not reaped the group's
+ * leader: the unreaped pid cannot be reissued, so no unrelated group can take the
+ * number. After that the id may be recycled, so the reaper only observes it. A
+ * successful SIGKILL also latches; later polls only confirm disappearance.
+ */
 class ProbeReaper {
   errorCode: ProbeCleanup["cleanupErrorCode"];
   private signaled = false;
   private readonly child: ChildProcess;
-  private readonly pid: number;
-  constructor(child: ChildProcess, pid: number) {
+  private readonly processGroupId: number;
+  constructor(child: ChildProcess, processGroupId: number) {
     this.child = child;
-    this.pid = pid;
+    this.processGroupId = processGroupId;
   }
 
-  reap(): boolean {
-    if (processGroupGone(this.pid)) return true;
-    if (this.signaled) return false;
+  reap(fallBackToLeader = true): boolean {
+    if (processGroupGone(this.processGroupId)) return true;
+    const leaderReaped = this.child.exitCode !== null || this.child.signalCode !== null;
+    if (this.signaled || leaderReaped) return false;
     try {
-      process.kill(-this.pid, "SIGKILL");
+      process.kill(-this.processGroupId, "SIGKILL");
       this.signaled = true;
     } catch (error) {
       if (errnoCode(error) === "ESRCH") return true;
       this.errorCode = boundedErrorToken(error, isReapErrorCode);
-      // The native handle targets the direct child even when group signaling fails.
-      this.child.kill("SIGKILL");
+      // The native handle targets the direct child even when group signaling
+      // fails. It also ends group retries, so it waits out the retry-only phase.
+      if (fallBackToLeader) this.child.kill("SIGKILL");
     }
     return false;
   }

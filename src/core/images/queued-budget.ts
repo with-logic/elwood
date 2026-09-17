@@ -9,17 +9,17 @@ import { imageLimits } from "./types.ts";
  * queued clones (C-API-44).
  */
 export class QueuedImageBudget {
-  private used = 0;
-  private readonly ceiling: number;
-  constructor(ceiling = imageLimits.maxQueuedBytes) {
-    this.ceiling = ceiling;
+  private usedBytes = 0;
+  private readonly maxQueuedBytes: number;
+  constructor(maxQueuedBytes = imageLimits.maxQueuedBytes) {
+    this.maxQueuedBytes = maxQueuedBytes;
   }
   reserve(bytes: number): void {
-    if (this.used + bytes > this.ceiling)
+    if (this.usedBytes + bytes > this.maxQueuedBytes)
       throw elwoodError("invalid_image", "Too many queued image bytes for this session.");
-    this.used += bytes;
+    this.usedBytes += bytes;
   }
   release(bytes: number): void {
-    this.used = Math.max(0, this.used - bytes);
+    this.usedBytes = Math.max(0, this.usedBytes - bytes);
   }
 }

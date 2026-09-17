@@ -1,5 +1,5 @@
 /** Failed probe cleanup keeps updater exclusion across owners (PRD §9.2, C-PERF-04). */
-import { readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { elwoodError, probeFailureDetails } from "../../src/core/errors.ts";
@@ -96,10 +96,22 @@ test("C-PERF-04 expired registration removes its temporary record without replac
   await writeFile(join(root, "owner"), "123:abc");
   const controller = new AbortController();
   controller.abort();
-  await retainProbeOwner(root, { pid: 123, token: "abc" }, 456, controller.signal);
+  await retainProbeOwner(root, { pid: 123, token: "abc" }, [456], controller.signal);
   expect(await readFile(join(root, "owner"), "utf8")).toBe("123:abc");
-  await expect(readFile(join(root, "owner.next"))).rejects.toMatchObject({ code: "ENOENT" });
+  expect(await readdir(root)).toEqual(["owner"]);
   await expect(
-    retainProbeOwner(join(root, "missing"), { pid: 123, token: "abc" }, 456),
+    retainProbeOwner(join(root, "missing"), { pid: 123, token: "abc" }, [456]),
   ).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+test("C-PERF-04 a registration outliving its lease cannot replace a successor or open its gate", async () => {
+  const path = tempDir("elwood-successor-lease-");
+  // Generation "abc" was recovered and "def" claimed the lease before the write landed.
+  await writeFile(join(path, "owner"), "456:def");
+  await expect(
+    retainProbeOwner(path, { pid: 123, token: "abc" }, [789], new AbortController().signal),
+  ).rejects.toThrow("another generation");
+  await expect(retainProbeOwner(path, { pid: 123, token: "abc" }, [789])).rejects.toThrow();
+  expect(await readFile(join(path, "owner"), "utf8")).toBe("456:def");
+  expect(await readdir(path)).toEqual(["owner"]);
 });

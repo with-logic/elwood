@@ -13,8 +13,8 @@ export function capturedImageSnapshot(images: readonly ImageInput[]): ImageSnaps
 
 export class ImageCaptures {
   private readonly budget: QueuedImageBudget;
-  constructor(ceiling?: number) {
-    this.budget = new QueuedImageBudget(ceiling);
+  constructor(maxQueuedBytes?: number) {
+    this.budget = new QueuedImageBudget(maxQueuedBytes);
   }
 
   capture<T extends SendOptions>(

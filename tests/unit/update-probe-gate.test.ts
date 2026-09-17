@@ -5,7 +5,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { elwoodError, probeFailureDetails } from "../../src/core/errors.ts";
 import { runProbe, setProbeTimeoutMsForTests } from "../../src/runtime/probe.ts";
 import { coordinatedAutoupdate, updateLockPath } from "../../src/runtime/update/lock.ts";
-import { readOwner } from "../../src/runtime/update/owner.ts";
+import { readOwner, retainProbeOwner } from "../../src/runtime/update/owner.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 vi.mock("node:fs/promises", async (importOriginal) => ({
@@ -31,7 +31,7 @@ test("C-PERF-04 registration failure never executes the updater", async () => {
   const marker = join(root, "mutated");
   const original = fs.rename;
   vi.spyOn(fs, "rename").mockImplementation((from, to) => {
-    if (String(from).endsWith("owner.next"))
+    if (String(from).includes("owner.next."))
       return Promise.reject(Object.assign(new Error("registration"), { code: "EIO" }));
     return original(from, to);
   });
@@ -46,7 +46,7 @@ test("C-PERF-04 registered live owners remain a wait condition, then skip the du
   const root = tempDir("elwood-gate-");
   const first = update(root, "setTimeout(() => {}, 100)");
   await expect
-    .poll(async () => (await readOwner(updateLockPath("codex", root)))?.activeProbe)
+    .poll(async () => (await readOwner(updateLockPath("codex", root)))?.callbackOwnsLease)
     .toBe(true);
   let settled = false;
   const duplicate = vi.fn(() => Promise.resolve());
@@ -67,7 +67,7 @@ test("C-PERF-04 failed cleanup marking preserves the pre-registered group and ty
   const rename = fs.rename;
   let writes = 0;
   vi.spyOn(fs, "rename").mockImplementation((from, to) => {
-    if (String(from).endsWith("owner.next") && writes++ > 0)
+    if (String(from).includes("owner.next.") && writes++ > 0)
       return Promise.reject(new Error("disk failed"));
     return rename(from, to);
   });
@@ -78,8 +78,8 @@ test("C-PERF-04 failed cleanup marking preserves the pre-registered group and ty
     details: { errno: "ETIMEDOUT", cleanupErrorCode: "EPERM" },
   });
   const owner = await readOwner(updateLockPath("codex", root));
-  expect(owner?.cleanupGroup).toBeGreaterThan(0);
-  expect(owner?.activeProbe).toBe(true);
+  expect(owner?.cleanupGroups?.[0]).toBeGreaterThan(0);
+  expect(owner?.callbackOwnsLease).toBe(true);
   kill.mockImplementation((pid) => {
     throw Object.assign(new Error("state"), { code: pid > 0 ? "ESRCH" : "EPERM" });
   });
@@ -88,4 +88,31 @@ test("C-PERF-04 failed cleanup marking preserves the pre-registered group and ty
     coordinatedAutoupdate("codex", duplicate, { root, pollMs: 1, staleMs: 0 }),
   ).rejects.toMatchObject({ code: "codex_update_failed" });
   expect(duplicate).not.toHaveBeenCalled();
+});
+
+test("C-PERF-04 an expired registration cannot unlink the cleanup record written beside it", async () => {
+  const path = tempDir("elwood-gate-");
+  const owner = { pid: 123, token: "abc" };
+  await fs.writeFile(join(path, "owner"), "123:abc");
+  const { writeFile, unlink, rename } = fs;
+  const bothWritten = Promise.withResolvers<void>();
+  let writes = 0;
+  vi.spyOn(fs, "writeFile").mockImplementation(async (...args) => {
+    await writeFile(...args);
+    if (++writes === 2) bothWritten.resolve();
+  });
+  vi.spyOn(fs, "unlink").mockImplementation(async (target) => {
+    await bothWritten.promise;
+    return unlink(target);
+  });
+  const expired = new AbortController();
+  expired.abort();
+  const lateRegistration = retainProbeOwner(path, owner, [456], expired.signal);
+  vi.spyOn(fs, "rename").mockImplementation(async (from, to) => {
+    await lateRegistration;
+    return rename(from, to);
+  });
+  await retainProbeOwner(path, owner, [789]);
+  expect(await fs.readFile(join(path, "owner"), "utf8")).toBe("123:abc:789");
+  expect(await fs.readdir(path)).toEqual(["owner"]);
 });

@@ -6,18 +6,20 @@ import { abortProbe, processGroupGone } from "../../src/runtime/probe-cleanup.ts
 const kill = process.kill.bind(process);
 afterEach(() => vi.restoreAllMocks());
 
-test("C-PERF-03 a group signal failure falls back to the child and waits for its exit", async () => {
+test("C-PERF-03 persistent group signal failure falls back to the child and reports confirmed cleanup", async () => {
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true });
   expect(processGroupGone(child.pid!)).toBe(false);
   let attempts = 0;
   vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
-    if (signal === "SIGKILL" && attempts++ === 0) {
-      throw Object.assign(new Error("private"), { code: "EPERM" });
-    }
-    return kill(pid, signal);
+    if (signal !== "SIGKILL") return kill(pid, signal);
+    attempts += 1;
+    throw Object.assign(new Error("private"), { code: "EPERM" });
   });
-  const result = await abortProbe(child);
-  expect(result).toEqual({ cleanupErrorCode: "EPERM" });
+  const started = Date.now();
+  // Cleanup confirmed through the fallback is not a cleanup failure.
+  expect(await abortProbe(child)).toEqual({});
+  expect(Date.now() - started).toBeGreaterThanOrEqual(500);
+  expect(attempts).toBeGreaterThan(1);
   expect(child.signalCode).toBe("SIGKILL");
   expect(processGroupGone(child.pid!)).toBe(true);
 });

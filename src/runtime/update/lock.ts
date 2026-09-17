@@ -8,11 +8,11 @@ import { randomUUID } from "node:crypto";
 import { chmod, mkdir, rmdir, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { join } from "node:path";
-import { elwoodError } from "../../core/errors.ts";
+import { ElwoodError, elwoodError } from "../../core/errors.ts";
 import {
   type LeaseOwner,
   ownerFile,
-  readCompletion,
+  readOptionalText,
   releaseLease,
   retainProbeOwner,
   serializeOwner,
@@ -64,7 +64,7 @@ export async function coordinatedAutoupdate(
   await chmod(root, 0o700);
   const owner = { pid: process.pid, token: randomUUID() } satisfies LeaseOwner;
   const completion = join(root, `${adapter}.completed`);
-  const priorCompletion = await readCompletion(completion);
+  const priorCompletion = await readOptionalText(completion);
   let observedActive = (await pathExists(path)) || (await pathExists(recoveryPath(path)));
   let recoveredStale = false;
   while (!(await claimLease(path, owner))) {
@@ -89,41 +89,50 @@ export async function coordinatedAutoupdate(
   }
   if (
     !recoveredStale &&
-    (observedActive || (await readCompletion(completion)) !== priorCompletion)
+    (observedActive || (await readOptionalText(completion)) !== priorCompletion)
   ) {
     await releaseLease(path, owner);
     return;
   }
-  const probes = new ProbeRegistration((group, signal) =>
-    retainProbeOwner(path, owner, group, signal),
+  const probes = new ProbeRegistration((groups, signal) =>
+    retainProbeOwner(path, owner, groups, signal),
   );
-  let retained = false;
-  try {
-    await probes.run(update);
-    const group = await probes.unfinishedGroup();
-    if (group !== undefined) {
-      throw elwoodError(`${adapter}_update_failed`, "Updater descendants have not exited.", {
-        cleanupErrorCode: "ETIMEDOUT",
-        cleanupProcessGroup: group,
-      });
-    }
-  } catch (error) {
-    const group = unresolvedProbeGroup(error);
-    if (group !== undefined) {
-      retained = true;
-      // The active group was already persisted before exec. If marking cleanup
-      // fails, retain that record and preserve the original typed diagnostics.
-      await retainProbeOwner(path, owner, group).catch(() => undefined);
-    }
-    throw error;
-  } finally {
-    if (!retained) {
-      await probes.releaseWhenRegistrationsSettle(async () => {
-        await Promise.allSettled([writeFile(completion, owner.token, { mode: 0o600 })]);
-        await releaseLease(path, owner);
-      });
-    }
+  const outcome = await probes.run(update).then(
+    () => undefined,
+    (error: unknown) => ({ error }),
+  );
+  // Success and failure alike: a probe that exited on its own, zero or not, may
+  // have left updater descendants in any group this callback registered.
+  const aborted = unresolvedProbeGroup(outcome?.error);
+  const unfinished = [
+    ...new Set([...(aborted === undefined ? [] : [aborted]), ...(await probes.unfinishedGroups())]),
+  ];
+  const [group] = unfinished;
+  if (group === undefined) {
+    await probes.releaseWhenRegistrationsSettle(async () => {
+      await Promise.allSettled([writeFile(completion, owner.token, { mode: 0o600 })]);
+      await releaseLease(path, owner);
+    });
+    if (outcome !== undefined) throw outcome.error;
+    return;
   }
+  // The active groups were already persisted before exec. If marking cleanup
+  // fails, retain that record and preserve the original typed diagnostics.
+  await retainProbeOwner(path, owner, unfinished).catch(() => undefined);
+  throw unconfirmedCleanup(adapter, outcome, group);
+}
+
+function unconfirmedCleanup(
+  adapter: UpdateAdapter,
+  outcome: { readonly error: unknown } | undefined,
+  group: number,
+): unknown {
+  const cleanup = { cleanupErrorCode: "ETIMEDOUT", cleanupProcessGroup: group };
+  if (outcome === undefined)
+    return elwoodError(`${adapter}_update_failed`, "Updater descendants have not exited.", cleanup);
+  const { error } = outcome;
+  if (!(error instanceof ElwoodError) || unresolvedProbeGroup(error) !== undefined) return error;
+  return elwoodError(error.code, error.message, { ...error.details, ...cleanup });
 }
 
 async function claimLease(path: string, owner: LeaseOwner): Promise<boolean> {

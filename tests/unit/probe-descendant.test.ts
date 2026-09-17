@@ -51,30 +51,65 @@ test("C-PERF-04 normal leader exit and parent death keep exclusion until the rea
   }
 });
 
-test("C-PERF-03 a failed version/help probe reaps its real surviving descendant after returning", async () => {
+// SIGKILLs aimed at a process group, with whether its leader was already reaped.
+function denyGroupSignals(allow: () => boolean) {
+  const attempts: { readonly leaderReaped: boolean }[] = [];
+  vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+    if (pid >= 0 || signal !== "SIGKILL") return kill(pid, signal);
+    let leaderReaped = false;
+    try {
+      kill(-pid, 0);
+    } catch {
+      leaderReaped = true;
+    }
+    attempts.push({ leaderReaped });
+    if (!allow()) throw Object.assign(new Error("denied"), { code: "EPERM" });
+    return kill(pid, signal);
+  });
+  return attempts;
+}
+
+test("C-PERF-03 a reaped leader's group id is only observed, never signaled as a bare number", async () => {
   const root = tempDir("elwood-probe-reaper-");
   setProbeTimeoutMsForTests(1_500);
   const intervals = vi.spyOn(globalThis, "setInterval");
   const cleared = vi.spyOn(globalThis, "clearInterval");
   let allowGroupSignal = false;
-  vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
-    if (pid < 0 && signal === "SIGKILL" && !allowGroupSignal)
-      throw Object.assign(new Error("denied"), { code: "EPERM" });
-    return kill(pid, signal);
-  });
+  const attempts = denyGroupSignals(() => allowGroupSignal);
   try {
     const result = await runProbe(process.execPath, ["--no-warnings", fixture, "linger", root]);
     expect(result.error).toMatchObject({ code: "ETIMEDOUT", cleanupErrorCode: "EPERM" });
     const group = Number(readFileSync(join(root, "leader"), "utf8"));
     expect(result.error?.cleanupProcessGroup).toBe(group);
-    expect(processGroupGone(group)).toBe(false);
+    // The direct-child fallback reaped the leader; its descendant still holds the id.
+    expect(() => kill(group, 0)).toThrow();
     const timer = intervals.mock.results.at(-1)?.value;
     expect(timer.hasRef()).toBe(false);
+    // Once the leader is reaped the number could name a recycled, unrelated group,
+    // so even a now-permitted signal must not be sent across retained retries.
     allowGroupSignal = true;
-    await expect.poll(() => processGroupGone(group), { timeout: 4_000 }).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 2_200));
+    expect(attempts.length).toBeGreaterThan(1);
+    expect(attempts.filter((attempt) => attempt.leaderReaped)).toEqual([]);
+    expect(processGroupGone(group)).toBe(false);
+    kill(Number(readFileSync(join(root, "descendant"), "utf8")), "SIGKILL");
     await expect
-      .poll(() => cleared.mock.calls.some(([value]) => value === timer), { timeout: 2_000 })
+      .poll(() => cleared.mock.calls.some(([value]) => value === timer), { timeout: 3_000 })
       .toBe(true);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test("C-PERF-03 group retries reach real descendants while the unreaped leader pins the id", async () => {
+  const root = tempDir("elwood-probe-retry-");
+  setProbeTimeoutMsForTests(1_500);
+  const attempts = denyGroupSignals(() => attempts.length > 3);
+  try {
+    const result = await runProbe(process.execPath, ["--no-warnings", fixture, "linger", root]);
+    expect(result.error).toEqual({ code: "ETIMEDOUT", message: expect.any(String) });
+    expect(attempts).toHaveLength(4);
+    expect(processGroupGone(Number(readFileSync(join(root, "leader"), "utf8")))).toBe(true);
   } finally {
     cleanup(root);
   }

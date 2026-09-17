@@ -22,7 +22,7 @@ if (mode === "descendant") {
   writeFileSync(descendantFile, String(process.pid));
   // Even a failed test cannot leave the fixture alive indefinitely.
   setTimeout(() => process.exit(), 20_000);
-} else if (mode === "leader" || mode === "linger") {
+} else if (mode === "leader" || mode === "linger" || mode === "failed") {
   writeFileSync(join(root, "leader"), String(process.pid));
   spawn(process.execPath, ["--no-warnings", file, "descendant", root], {
     stdio: "ignore",
@@ -31,6 +31,7 @@ if (mode === "descendant") {
   while (!existsSync(descendantFile) && Date.now() < deadline) await delay(10);
   if (!existsSync(descendantFile)) throw new Error("descendant did not start");
   if (mode === "linger") await delay(20_000);
+  if (mode === "failed") process.exitCode = 1;
 } else {
   try {
     await coordinatedAutoupdate(

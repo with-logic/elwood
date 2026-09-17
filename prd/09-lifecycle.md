@@ -93,16 +93,25 @@ recovery can evict a successor. During an update lease, each probe starts behind
 group is durably recorded on the lease before the real CLI may execute. A failed
 registration never opens the gate; an aborted or expired gate cannot open later.
 The live owner's normal registered probe remains a wait condition for contenders;
-a dead owner's surviving group retains exclusion. The active parent owns the entire update callback, including gaps between
+a dead owner's surviving group retains exclusion. The record names every
+still-live group the callback has registered, not only the latest, so an earlier
+probe's descendants keep exclusion while a later probe runs. The active parent owns the entire update callback, including gaps between
 registered probes. Cleanup-marked records instead use group-only liveness.
 Validated stale-owner recovery also removes known temporary owner records. Registration writes that finish
-late retain lease ownership until they settle, so they cannot overwrite a successor.
-A normally exiting update probe does not release its lease while descendants
-remain in its registered process group. Elwood waits up to one additional second
-for that group to exit, then retains the lease and reports unconfirmed cleanup;
+late retain lease ownership until they settle. Each owner write uses its own
+temporary record and commits only while its generation still owns the lease, so a
+late write can neither replace nor disturb a successor's record, and its gate stays closed.
+A probe that exits on its own, with any exit status, does not release its lease while descendants
+remain in any process group the update registered; this holds whether the update
+callback succeeded or failed. Elwood waits up to one additional second
+for those groups to exit, then retains the lease and reports unconfirmed cleanup;
 normal completion does not signal the group. Aborted probes retry process-group termination,
-fall back to terminating the direct child, and await exit within a bounded
-cleanup window. If the group cannot be confirmed gone, the lease retains that
+fall back to terminating the direct child once group signals have kept failing, and await exit within a bounded
+cleanup window. A process-group id is signaled only while the probe's direct child
+(the group leader) is still unreaped, because only then is the number guaranteed
+not to have been reissued to an unrelated group; afterwards Elwood only observes
+the group until it exits and never signals the bare number. Cleanup that is
+confirmed within the window reports no cleanup error. If the group cannot be confirmed gone, the lease retains that
 process-group identity even after the parent exits. Contenders skip their update
 and receive a bounded cleanup warning rather than waiting indefinitely or starting
 a competing installer. Recovery removes this guard only after confirming the

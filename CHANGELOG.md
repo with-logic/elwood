@@ -15,7 +15,8 @@ back each entry are listed in `prd/14-conformance.md`.
 - Snapshot image bytes and relative paths when facade methods are called, including
   turns queued behind another response or waiting for session startup.
 - Serialize model-picker automation through completion and cancellation, preventing
-  overlapping commands or messages from landing in a picker.
+  overlapping commands or messages from landing in a picker, including one that
+  opens up to a second after its operation timed out.
 - Batch terminal rendering and pause PTY reads above a bounded backlog, improving
   throughput across parallel sessions. Runtime cleanup drains received output
   before disposal; direct terminal disposal settles pending writes immediately.
@@ -29,9 +30,12 @@ back each entry are listed in `prd/14-conformance.md`.
 - Bound subprocess cleanup, report content-free `cleanupErrorCode` diagnostics,
   and retain update exclusion until an unresolved updater process group exits.
   Contenders wait at most 60 seconds before skipping a still-owned update, with
-  an explicit active-updater diagnostic. Keep exclusion after a normal updater
-  exit while descendants remain, recover interrupted owner writes, and continue
-  failed probe cleanup asynchronously without extending host shutdown.
+  an explicit active-updater diagnostic. Keep exclusion after any updater exit,
+  successful or failed, while descendants remain in any group the update started,
+  recover interrupted owner writes, and continue failed probe cleanup
+  asynchronously without extending host shutdown. A process group is signaled
+  only while its leader is unreaped, so a reissued group id is never killed, and
+  cleanup confirmed within its bound no longer reports a `cleanupErrorCode`.
 - Contain clipboard pipe failures during Codex image attachment, and retain the
   clipboard lock until the restore process exits.
 
