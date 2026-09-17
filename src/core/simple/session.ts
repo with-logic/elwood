@@ -6,6 +6,7 @@
 import type { ElwoodActivityEvent } from "../activity/index.ts";
 import type { ElwoodAgentSession } from "../agent-session.ts";
 import { elwoodError, toError } from "../errors.ts";
+import { ImageCaptures } from "../images/capture.ts";
 import type { SendOptions } from "../images/types.ts";
 import type { ElwoodLoopRequest, ElwoodLoopSnapshot } from "../loops/types.ts";
 import type { AgentModelOption } from "../models/rows.ts";
@@ -16,19 +17,19 @@ import type {
   TerminalSize,
   Unsubscribe,
 } from "../types.ts";
+import { capturedSend, capturedTurn } from "./captured-input.ts";
 import type { TurnEvent } from "./events.ts";
 import { SubscriptionRegistry } from "./subscriptions.ts";
-import { runTurn } from "./turn.ts";
 import { TurnQueue } from "./turn-queue.ts";
 import type { BoundarySignalReader, TurnOptions } from "./turn-types.ts";
 
 export type { TurnOptions } from "./turn-types.ts";
-
 /** Lazy public session over one Elwood agent; only ergonomic turns serialize. */
 export abstract class SessionBase<S extends ElwoodAgentSession> {
   private live: S | undefined;
   private starting: Promise<S> | undefined;
   private readonly turns = new TurnQueue();
+  private readonly images = new ImageCaptures();
   private readonly subscriptions = new SubscriptionRegistry<S>();
 
   /**
@@ -66,6 +67,7 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
         // throw. If it did so before `live` were set, the start would reject with a live PTY
         // that `close()` could never see — an orphaned CLI process. `attachAll` contains each
         // attach so a throwing consumer handler cannot abort the start or orphan the session.
+        this.images.shareWith(session); // before `session` is reachable: ONE clone ceiling (C-API-44)
         this.live = session;
         this.starting = undefined;
         this.subscriptions.attachAll(session);
@@ -81,15 +83,7 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
 
   /** Stream one turn's simplified content events; ends when the turn settles (C-API-48). */
   stream(prompt: string, options?: TurnOptions): AsyncGenerator<TurnEvent> {
-    // Trigger the lazy start SYNCHRONOUSLY (memoized) so a `close()` racing this call joins the
-    // same start and can't miss a session a deferred microtask would launch after close (C-API-51).
-    // The slot is reserved synchronously too (call order, not iteration order — C-API-50).
-    const starting = this.start();
-    // Pass THIS adapter's normalizer so the runner reads only the signal, not raw hook fields.
-    const readBoundarySignal = this.readBoundarySignal;
-    return this.turns.enqueue(() =>
-      starting.then((s) => runTurn(s, prompt, { ...(options ?? {}), readBoundarySignal })),
-    );
+    return capturedTurn(this.images, this.turns, this, this.readBoundarySignal, prompt, options);
   }
 
   /** Send one turn and resolve with its assistant text, `\n\n`-joined (C-API-49). */
@@ -118,14 +112,14 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
   // Control surface: each awaits lazy start, then delegates; only `send`/`stream` serialize. NOTE:
   // the turn-PRODUCING raw methods (`sendMessage`/`sendPrompt`/`sendGuidance`) are NOT in the
   // ergonomic queue — don't call them concurrently with an in-flight `send`/`stream` (§5.8).
-  async sendPrompt(prompt: string, options?: SendOptions): Promise<void> {
-    return (await this.start()).sendPrompt(prompt, options);
+  sendPrompt(prompt: string, options?: SendOptions): Promise<void> {
+    return capturedSend(this.images, this, "sendPrompt", prompt, options);
   }
-  async sendMessage(message: string, options?: SendOptions): Promise<void> {
-    return (await this.start()).sendMessage(message, options);
+  sendMessage(message: string, options?: SendOptions): Promise<void> {
+    return capturedSend(this.images, this, "sendMessage", message, options);
   }
-  async sendGuidance(message: string, options?: SendOptions): Promise<void> {
-    return (await this.start()).sendGuidance(message, options);
+  sendGuidance(message: string, options?: SendOptions): Promise<void> {
+    return capturedSend(this.images, this, "sendGuidance", message, options);
   }
   async sendKeys(input: string | Uint8Array): Promise<void> {
     return (await this.start()).sendKeys(input);
