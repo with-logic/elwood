@@ -54,6 +54,14 @@ describe.each(matrix)("%s unknown gate (autotrust %s)", (agent, autotrust) => {
     expect(trustView(composer, agent)).toEqual({ kind: "clear" });
   });
 
+  test("C-TRUST-01 a header-like CURSOR option label cannot hide the gate above it", () => {
+    // The option row itself starts with allowlist-adjacent wording. Header scanning
+    // must skip whole cursor-option blocks the way it already skips numbered ones,
+    // or the option becomes the bottom-most candidate and demotes the real gate.
+    const gate = `Do you want to allow this new sandbox policy?\n\n❯ Yes, allow it\n  Do you want to review it first\n\n${footer}`;
+    expect(blockingRuleIds(agent, autotrust, gate)).toEqual([`${agent}-unknown_gate-prompt`]);
+  });
+
   test("C-ATTN-03 an allowlisted header keeps its own owner, even above header-like text", () => {
     const header =
       agent === "claude"

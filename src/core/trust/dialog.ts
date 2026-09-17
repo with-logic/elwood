@@ -2,7 +2,12 @@
  * Parses one active terminal dialog before matching the trust allowlist.
  * Implements PRD §5.4 and C-TRUST-01; native copy is validated separately per prompt.
  */
-import { nonOptionText, type SelectableOption, selectableOptions } from "../terminal-options.ts";
+import {
+  cursorOptionRows,
+  nonOptionText,
+  type SelectableOption,
+  selectableOptions,
+} from "../terminal-options.ts";
 
 const headerStart =
   /^(?:Do you|Quick safety|Is this|Load this|Trust the|New MCP|WARNING:|Claude Code running|Hooks need)/i;
@@ -40,8 +45,13 @@ type Candidate = {
 export function parseTrustCandidates(frame: string): readonly Candidate[] {
   const lines = frame.split("\n");
   const starts: number[] = [];
+  // A cursor block's unselected rows carry no caret, so only the parsed bounds can
+  // tell them from prose; numbered rows announce themselves and are tracked inline.
+  const cursorBlock = cursorOptionRows(lines);
   let insideNumberedOption = false;
   for (const [row, line] of lines.entries()) {
+    if (cursorBlock !== undefined && row >= cursorBlock.firstRow && row <= cursorBlock.lastRow)
+      continue;
     if (numberedRow.test(line)) insideNumberedOption = true;
     else if (isSeparator(line)) insideNumberedOption = false;
     else if (!insideNumberedOption && headerStart.test(line.trim())) starts.unshift(row);
