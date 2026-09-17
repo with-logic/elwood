@@ -28,6 +28,7 @@ export type UpdateLeaseOptions = {
 const defaultPollMs = 50;
 const defaultStaleMs = 30_000;
 const maxSweptStaging = 8;
+const maxInspectedEntries = 64;
 
 function defaultLeaseRoot(): string {
   const user = userInfo();
@@ -70,11 +71,10 @@ export async function coordinatedAutoupdate(
     if (waited === "released") return;
     recoveredStale = true;
   }
-  // Recovering a dead lease licenses this caller to update in its place, unless a peer
-  // completed an update meanwhile: recovery vacates the lease path before this claim, and
-  // a peer that claimed, updated, and released in that gap has already done the work.
-  const peerCompleted = (await readOptionalText(completion)) !== priorCompletion;
-  if (peerCompleted || (observedActive && !recoveredStale)) {
+  if (
+    !recoveredStale &&
+    (observedActive || (await readOptionalText(completion)) !== priorCompletion)
+  ) {
     await releaseLease(path, owner);
     return;
   }
@@ -125,9 +125,13 @@ async function sweepStaging(path: string): Promise<void> {
   const root = dirname(path);
   const leftover = `${basename(path)}.claim.`;
   let swept = 0;
+  let inspected = 0;
   try {
-    // Streamed, so the scan stops with the deletions instead of listing every leftover.
+    // Streamed and bounded in both deletions and entries read: the root is shared with the
+    // other adapter, whose own lease holders sweep its leftovers.
     for await (const entry of await opendir(root)) {
+      inspected += 1;
+      if (inspected > maxInspectedEntries) break;
       if (!entry.name.startsWith(leftover)) continue;
       await rm(join(root, entry.name), { recursive: true, force: true }).catch(() => undefined);
       swept += 1;

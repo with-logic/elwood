@@ -85,3 +85,33 @@ test("C-PERF-04 each lease holder sweeps a bounded number of leftover staging di
   await update();
   expect(leftovers()).toBe(0);
 });
+
+test("C-PERF-04 the sweep reads a bounded number of entries and leaves the other adapter's leftovers", async () => {
+  const root = tempDir("elwood-update-lock-sweep-bound-");
+  for (let index = 0; index < 70; index += 1) mkdirSync(join(root, `claude.lock.claim.${index}`));
+  await coordinatedAutoupdate("codex", () => Promise.resolve(), { root });
+  expect(readdirSync(root).filter((entry) => entry.startsWith("claude.lock.claim."))).toHaveLength(
+    70,
+  );
+});
+
+test("C-PERF-04 a fresh ownerless lease is a wait condition, neither claimed over nor removed early", async () => {
+  const root = tempDir("elwood-update-lock-fresh-ownerless-");
+  const lease = updateLockPath("codex", root);
+  // What an older version's claimant leaves between creating its lease and writing its record.
+  mkdirSync(lease);
+  let ran = false;
+  const contender = coordinatedAutoupdate(
+    "codex",
+    () => {
+      ran = true;
+      return Promise.resolve();
+    },
+    { root, pollMs: 5, staleMs: 400 },
+  );
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(ran).toBe(false);
+  expect(readdirSync(lease)).toEqual([]);
+  await contender;
+  expect(ran).toBe(true);
+});

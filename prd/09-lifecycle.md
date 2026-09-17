@@ -95,9 +95,6 @@ owner record, is a wait condition: it is recovered as stale rather than claimed
 over. An unreadable owner record still fails safe: it may belong
 to a live updater writing a record format this version cannot read, so it is never
 treated as dead. That is why a claim must not be able to publish one.
-A caller that recovered a dead lease updates in its place unless a peer completed an
-update meanwhile: recovery vacates the lease path before the recoverer's own claim, and
-a peer that claimed, updated, and released in that gap has already done the work.
 Within one parent process, a FAILED shared update
 is likewise shared once — every concurrent caller observes the same failure,
 re-reads the installed version, and proceeds through the compatibility gate; the
