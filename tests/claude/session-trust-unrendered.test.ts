@@ -86,6 +86,16 @@ test("C-API-56 a trust gate received in the turn a recovery nudge is due holds t
   expect(ptys[0]!.writes).toEqual([PASTE, "\r"]); // no recovery Enter reached the gate
 });
 
+test("C-API-56 a trust gate received but not yet rendered holds queued command text", async () => {
+  const session = await readySession();
+  ptys[0]!.emitData(gate);
+  const compacting = session.compact({ timeoutMs: 1_000 });
+  const rejected = expect(compacting).rejects.toMatchObject({ code: "compact_failed" });
+  await vi.advanceTimersByTimeAsync(1_100);
+  await rejected;
+  expect(ptys[0]!.writes).toEqual([]); // neither `/compact` nor cleanup keys reached the gate
+});
+
 test("C-API-56 a trust gate received while an earlier chunk is still settling holds the paste", async () => {
   const session = await readySession();
   ptys[0]!.emitData("\r\nthinking"); // an ordinary chunk is mid-render as the write is queued
@@ -100,13 +110,16 @@ test("C-API-56 a trust gate received while an earlier chunk is still settling ho
   expect(ptys[0]!.writes).toEqual([PASTE, "\r"]);
 });
 
-test("C-API-56 a gate whose render failed holds the paste until a later frame renders", async () => {
+test("C-API-56 a gate whose render failed holds the paste until the screen is redrawn", async () => {
   const session = await readySession();
   vi.spyOn(session.terminal.xterm, "write").mockImplementationOnce(() => {
     throw new Error("render failed");
   });
   ptys[0]!.emitData(gate); // never parsed: the screen Elwood last observed is stale
   const queued = session.sendMessage("held");
+  await vi.advanceTimersByTimeAsync(2_000);
+  expect(ptys[0]!.writes).toEqual([]);
+  ptys[0]!.emitData("."); // renders, but redraws nothing: the lost gate is still lost
   await vi.advanceTimersByTimeAsync(2_000);
   expect(ptys[0]!.writes).toEqual([]);
   ptys[0]!.emitData(composer);

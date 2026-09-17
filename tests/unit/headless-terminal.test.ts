@@ -121,7 +121,26 @@ describe("headless terminal", () => {
     spy.mockRestore();
     // The chain was not left permanently rejected: a following write resolves.
     await expect(terminal.writeOutput("ok")).resolves.toBeUndefined();
-    expect(terminal.renderFailed).toBe(false);
+    expect(terminal.renderFailed).toBe(true); // an incremental write cannot restore lost output
+    await terminal.writeOutput("\u001b[2J\u001b[Hredrawn");
+    expect(terminal.renderFailed).toBe(false); // everything now on screen was drawn after the erase
+    terminal.dispose();
+  });
+
+  test("C-API-56 concurrent settled() callers share one traversal instead of stacking waiters", async () => {
+    const terminal = createHeadlessTerminal({ cols: 10, rows: 3 }, () => undefined);
+    const stalled: Array<() => void> = [];
+    const spy = vi.spyOn(terminal.xterm, "write").mockImplementation((_data, done) => {
+      stalled.push(() => done?.());
+    });
+    void terminal.writeOutput("stalled");
+    const first = terminal.settled();
+    expect(terminal.settled()).toBe(first); // a retry joins the in-flight settlement
+    await Promise.resolve();
+    for (const done of stalled) done();
+    await first;
+    expect(terminal.settled()).not.toBe(first); // a finished traversal is not reused
+    spy.mockRestore();
     terminal.dispose();
   });
 

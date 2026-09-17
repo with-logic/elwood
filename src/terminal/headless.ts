@@ -6,6 +6,7 @@
 import xtermHeadless from "@xterm/headless";
 import type { TerminalSize } from "../core/types.ts";
 import type { PtyProcess } from "../pty/types.ts";
+import { RenderQueue } from "./render-queue.ts";
 
 export type XtermTerminal = import("@xterm/headless").Terminal;
 
@@ -32,7 +33,7 @@ export interface ElwoodTerminal {
    * including output received while waiting. Never rejects; see `renderFailed`.
    */
   settled(): Promise<void>;
-  /** True while the latest output failed to render, so `snapshot()` may be stale. */
+  /** True from a failed render until the screen is fully redrawn: `snapshot()` is stale. */
   readonly renderFailed: boolean;
   dispose(): void;
 }
@@ -67,8 +68,7 @@ export function attachPtyTerminal(
 class HeadlessTerminal implements ElwoodTerminal {
   readonly xterm: XtermTerminal;
   private currentSize: TerminalSize;
-  renderFailed = false;
-  private writeQueue = Promise.resolve();
+  private readonly renders: RenderQueue;
   private readonly onInput: (input: string | Uint8Array) => void;
   private readonly inputWaiters: Array<{
     readonly resolve: () => void;
@@ -86,6 +86,7 @@ class HeadlessTerminal implements ElwoodTerminal {
       cols: size.cols,
       rows: size.rows,
     });
+    this.renders = new RenderQueue((data, done) => this.xterm.write(data, done));
     this.xterm.onData((input) => this.forwardInput(input));
     this.xterm.onTitleChange((title) => {
       this.currentTitle = title;
@@ -100,24 +101,13 @@ class HeadlessTerminal implements ElwoodTerminal {
     return this.currentTitle;
   }
 
+  get renderFailed(): boolean {
+    return this.renders.renderFailed;
+  }
+
   writeOutput(data: string | Uint8Array): Promise<void> {
     if (this.disposed) return Promise.resolve();
-    const write = this.writeQueue.then(
-      () => new Promise<void>((resolve) => this.xterm.write(data, resolve)),
-    );
-    // Chain the NEXT write off a never-rejecting tail so a single failed write
-    // (e.g. a synchronous xterm.write throw) cannot poison every subsequent write.
-    // The caller still sees the real result via the returned `write` promise; the
-    // tail records whether the screen still reflects everything received.
-    this.writeQueue = write.then(
-      () => {
-        this.renderFailed = false;
-      },
-      () => {
-        this.renderFailed = true;
-      },
-    );
-    return write;
+    return this.renders.enqueue(data);
   }
 
   sendInput(input: string | Uint8Array): Promise<void> {
@@ -150,14 +140,8 @@ class HeadlessTerminal implements ElwoodTerminal {
     };
   }
 
-  async settled(): Promise<void> {
-    // Output received while waiting extends the queue, so settle again until a pass
-    // adds nothing. Each PTY chunk's observer is a continuation of its own write
-    // registered before this await, so it has run by the time this resumes.
-    for (let tail: Promise<void> | undefined; tail !== this.writeQueue; ) {
-      tail = this.writeQueue;
-      await tail;
-    }
+  settled(): Promise<void> {
+    return this.renders.settled();
   }
 
   dispose(): void {
