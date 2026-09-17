@@ -84,7 +84,11 @@ const minimumRows = 2;
 
 /**
  * Whether `lines` (the header row down to the end of the viewport) hold one COMPLETE
- * native dialog and nothing else. Two conditions must both hold.
+ * native dialog and nothing else. Three conditions must all hold.
+ *
+ * The HEADER is a header. A composer row carrying the phrase (`❯ 1. Select model  draft`)
+ * is a caret or numbered row itself, so it can never open a region: that is what let a
+ * staged draft satisfy the picker grammar on its own.
  *
  * Nothing foreign: no reply row, and every caret or numbered row belongs to a single
  * contiguous block of picker rows numbered from 1 with at most one cursor. A staged
@@ -92,25 +96,41 @@ const minimumRows = 2;
  * caret row outside that block, restarts the numbering, follows a blank or rule, or
  * lacks the description column, so none of them can pass for the dialog.
  *
- * Nothing missing: the block itself renders — at least two numbered rows and the
- * CLI's closing hint row. A header alone, a header above unrelated prose such as a
- * trust or hook prompt, and a picker still painting its rows all lack one of those, so
- * they are a quoted or partial fragment rather than a dialog Elwood may drive.
+ * Nothing missing and nothing after: the block renders at least two numbered rows and
+ * then the CLI's closing hint row, which TERMINATES it — only blank lines and rules may
+ * follow. A header alone, a header above a trust or hook prompt, a picker still painting
+ * its rows, and a complete quoted picker with a live prompt below it all fail one of
+ * these, so none is a dialog Elwood may drive.
  */
+/** A header must be prose: an option or composer row merely containing the phrase is not one. */
+function opensRegion(header: string | undefined): header is string {
+  return header !== undefined && !caretRow.test(header) && !numberedRow.test(header);
+}
+
 function isNativeRegion(lines: readonly string[]): boolean {
+  const [header, ...body] = lines;
+  if (!opensRegion(header)) return false;
   let next = 1;
   let cursors = 0;
-  let closed = false;
   let footer = false;
-  for (const line of lines) {
-    const number = numberedRow.exec(line)?.[1];
-    if (number === undefined) {
-      if (replyRow.test(line) || caretRow.test(line)) return false;
-      footer ||= dialogFooter.test(line);
-      closed ||= next > 1 && blockEnd.test(line);
+  for (const line of body) {
+    // Nothing but blank lines and rules may follow the closing hint row: a complete
+    // quoted picker can otherwise sit above a live trust prompt and still read as live.
+    // This also subsumes the old "a blank line closes the row block" rule — a second
+    // numbered list can no longer reach the rows at all, it is foreign content after
+    // the footer, or it breaks the numbering below.
+    if (footer) {
+      if (!blockEnd.test(line)) return false;
       continue;
     }
-    if (closed || Number(number) !== next || !rowPattern.test(line)) return false;
+    // A row must be a full picker row (`1. Label  Description`) numbered in sequence.
+    // Anything else — a renumbered second list, a row without the description column —
+    // is not this dialog's, so the region is not one native block.
+    if (!rowPattern.test(line) || Number(numberedRow.exec(line)?.[1]) !== next) {
+      if (replyRow.test(line) || caretRow.test(line) || numberedRow.test(line)) return false;
+      footer = dialogFooter.test(line);
+      continue;
+    }
     next += 1;
     if (caretRow.test(line)) cursors += 1;
   }

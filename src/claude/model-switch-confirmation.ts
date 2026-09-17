@@ -20,13 +20,29 @@ export type ClaudeSwitchConfirmation = {
 };
 
 const optionPattern = /^\s*([❯›])?\s*(?:\d+[.)]\s*)?(Yes,\s*switch to\b.*|No,\s*go back)\s*$/i;
-function indentOf(line: string): number {
-  return line.length - line.trimStart().length;
-}
 
-/** True when any action row sits left of the dialog's own title column. */
-function isOutdentedAction(region: readonly string[], titleIndent: number): boolean {
-  return region.some((line) => optionPattern.test(line) && indentOf(line) < titleIndent);
+/**
+ * The rows of the dialog's own action block: the LAST run of consecutive action rows.
+ * Claude renders `Yes, switch to …` and `No, go back` adjacent, so a staged composer
+ * line that happens to read like an action is separated from the quoted pair by the
+ * warning's prose, a blank line, or a rule, and forms its own shorter run. Returning
+ * only the final run means such a draft yields one option, which is not a Yes/No set
+ * and so is not a dialog — the caller then declines to drive it.
+ */
+function actionBlock(region: readonly string[]): readonly string[] {
+  let block: string[] = [];
+  let current: string[] = [];
+  for (const line of region) {
+    if (optionPattern.test(line)) {
+      current.push(line);
+      continue;
+    }
+    // A run ends at the first non-action row. Keep the longest complete run seen, so the
+    // trailing blank rows the terminal pads the screen with cannot discard the real block.
+    if (current.length > block.length) block = current;
+    current = [];
+  }
+  return current.length > block.length ? current : block;
 }
 const cacheLead = "Your next response will be slower and use more tokens";
 const cacheTail = "means the full history gets re-read on your next message.";
@@ -57,6 +73,15 @@ export function isClaudeIdleComposer(text: string): boolean {
   return /^\s*[❯›]\s*$/m.test(text);
 }
 
+/** An agent reply bullet; the row a quoted dialog hangs directly beneath. */
+const replyRow = /^\s*[●•⏺]/;
+
+/** True when the row immediately above the title is an agent reply rather than a separator. */
+function quotesTheTitle(lines: readonly string[], titleIndex: number): boolean {
+  const above = lines[titleIndex - 1];
+  return above !== undefined && replyRow.test(above);
+}
+
 function switchDialogRegion(text: string): SwitchDialogRegion | undefined {
   const lines = text.split("\n");
   let latest:
@@ -68,12 +93,12 @@ function switchDialogRegion(text: string): SwitchDialogRegion | undefined {
     if (title === "Change effort level?") latest = { index, subject: "effort level" };
   }
   if (latest === undefined) return undefined;
+  // A live dialog replaces the composer, so the transcript above it always ends in the
+  // separator Claude draws (a rule, or the blank line before it). A title sitting DIRECTLY
+  // under an agent reply row is prose the reply is quoting, and the "options" below it are
+  // that quote plus whatever the user has since staged.
+  if (quotesTheTitle(lines, latest.index)) return undefined;
   const region = lines.slice(latest.index);
-  // Claude indents a dialog's own rows under its title. A quoted warning's composer sits
-  // at the viewport's left edge, so an action row outdented past the title is the user's
-  // staged draft, not this dialog's. Without this, `❯ Yes, switch to …` typed below a
-  // quoted warning reads as the live follow-up and cleanup Escapes into a running turn.
-  if (isOutdentedAction(region, indentOf(region[0] as string))) return undefined;
   const lastOption = region.findLastIndex((line) => optionPattern.test(line));
   // A later dialog can lack a switch title. Its question/options must not inherit
   // the earlier cache warning's authority merely because they share a viewport.
@@ -86,10 +111,11 @@ function switchDialogRegion(text: string): SwitchDialogRegion | undefined {
 }
 
 function switchOptions(text: string): readonly SwitchOption[] {
-  const options = text.split("\n").flatMap((line) => {
-    const match = optionPattern.exec(line);
-    if (match === null) return [];
-    return [{ affirmative: /^Yes,/i.test(match[2] as string), selected: match[1] !== undefined }];
+  // Only the dialog's own CONTIGUOUS action block counts, so a staged composer row that
+  // reads like an action cannot pair up with an option quoted elsewhere in the viewport.
+  const options = actionBlock(text.split("\n")).map((line) => {
+    const match = optionPattern.exec(line) as RegExpExecArray;
+    return { affirmative: /^Yes,/i.test(match[2] as string), selected: match[1] !== undefined };
   });
   return options.slice(-2);
 }

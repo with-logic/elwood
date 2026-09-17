@@ -5,7 +5,12 @@
 import { expect, test } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
-import { claudeCacheWarningViewport } from "../helpers/model-dialog-viewports.ts";
+import {
+  claudeCacheWarningViewport,
+  claudePickerViewport,
+  codexPickerViewport,
+  codexReasoningViewport,
+} from "../helpers/model-dialog-viewports.ts";
 import {
   claudeModelCacheConfirmationOnNo,
   claudeModelCacheConfirmationOnYes,
@@ -61,20 +66,69 @@ test.each([
     claudeModelPicker,
     [...quotedCacheWarning, "❯ Yes, switch to Fable"].join("\n"),
   ],
+  [
+    // The title itself sits at column zero here, so no indentation test can catch it.
+    "an UNINDENTED quoted cache warning above a staged composer action",
+    claudeModelPicker,
+    [
+      "⏺ It shows:",
+      "Switch model?",
+      "Your next response will be slower and use more tokens",
+      "This conversation is cached for the current model. Switching to Fable means the full history gets re-read on your next message.",
+      "  No, go back",
+      "❯ Yes, switch to Fable",
+    ].join("\n"),
+  ],
+  [
+    "a COMPLETE quoted picker above a live trust prompt",
+    claudeModelPicker,
+    [
+      "   Select model",
+      "   ❯ 1. Default  Opus",
+      "     2. Haiku  Fast",
+      claudeFooter,
+      "",
+      "Do you trust the files in this folder?",
+    ].join("\n"),
+  ],
+  [
+    "a numbered composer draft that satisfies the picker grammar",
+    claudeModelPicker,
+    "❯ 1. Select model  draft\n  2. next  text\n  Esc to cancel",
+  ],
+  [
+    "a second numbered list that restarts the numbering",
+    claudeModelPicker,
+    ["   Select model", "   ❯ 1. A  x", "     2. B  y", "     1. C  z", claudeFooter].join("\n"),
+  ],
+  [
+    "a numbered row without the description column",
+    claudeModelPicker,
+    ["   Select model", "   ❯ 1. A  x", "     2. B  y", "     3. Bare", claudeFooter].join("\n"),
+  ],
 ] as const)("C-API-24 %s is not a complete native dialog", (_name, spec, text) => {
   expect(spec.activeDialog(text)).toBeUndefined();
 });
 
 /**
- * The guard above keys on the composer being outdented past the dialog's own title
- * column, so the real indented captures must still read as the live follow-up.
+ * The guards above tighten the SHARED recognizer, so every real capture must still be
+ * driven. A recognizer that fails closed on a live dialog would release queued input
+ * into an open picker, which is the same hazard from the other side.
  */
 test.each([
-  ["the captured 2.1.274 viewport", claudeCacheWarningViewport],
-  ["the cursor-on-Yes capture", claudeModelCacheConfirmationOnYes],
-  ["the cursor-on-No capture", claudeModelCacheConfirmationOnNo],
-] as const)("C-API-24 %s is still a live cache warning", (_name, text) => {
-  expect(claudeModelPicker.activeDialog(text)).toBe("follow-up");
+  ["the captured 2.1.274 cache warning", claudeModelPicker, claudeCacheWarningViewport],
+  ["the cursor-on-Yes capture", claudeModelPicker, claudeModelCacheConfirmationOnYes],
+  ["the cursor-on-No capture", claudeModelPicker, claudeModelCacheConfirmationOnNo],
+  ["the captured 0.154.0 reasoning screen", codexModelPicker, codexReasoningViewport],
+] as const)("C-API-24 %s is still a live follow-up", (_name, spec, text) => {
+  expect(spec.activeDialog(text)).toBe("follow-up");
+});
+
+test.each([
+  ["the captured 2.1.274 picker", claudeModelPicker, claudePickerViewport],
+  ["the captured 0.154.0 picker", codexModelPicker, codexPickerViewport],
+] as const)("C-API-24 %s is still a live picker", (_name, spec, text) => {
+  expect(spec.activeDialog(text)).toBe("picker");
 });
 
 /**

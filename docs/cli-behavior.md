@@ -169,16 +169,24 @@ legacy string/`agent_message` support. C-CODEX-16.
   prompt underneath. The CURSOR is deliberately not required: a complete picker
   still painting its cursor is live and must keep holding input, and `setPickerModel`
   rejects the missing cursor on its own.
-- **The cache-warning dialog indents its own action rows under its title; the composer
-  does not.** The warning screen carries no closing hint row, so completeness cannot be
-  judged the way the picker's is. What separates a live warning from one the transcript
-  quotes is the column: every captured warning renders `Yes, switch to …` / `No, go back`
-  indented at or past the `Switch model?` / `Change effort level?` title, while the
-  composer sits at the viewport's left edge. A staged draft that happens to read
-  `❯ Yes, switch to Fable` under a quoted warning is therefore outdented past the title,
-  and `parseClaudeSwitchConfirmation` rejects the region rather than treating that draft
-  as the live follow-up — otherwise cleanup would send Enter or Escape into the user's
-  own input or a running turn. C-API-24, C-ATTN-04.
+- **A live switch dialog is never hung directly off an agent reply row.** The warning
+  screen carries no closing hint row, so completeness cannot be judged the way the
+  picker's is. Indentation cannot judge it either — the title itself may sit at column
+  zero, so a column test passes a staged draft straight through. Nor can option ORDER:
+  `Yes` normally precedes `No`, but a real reordered layout exists where the cursor starts
+  on `No` above `Yes` (`claudeModelCacheConfirmationYesBelow`), so an affirmative-first
+  rule rejects a live dialog. What does hold is the separator: Claude replaces the composer
+  with the dialog, so a live one is preceded by its rule (or the blank line before it),
+  never by an agent reply bullet. `parseClaudeSwitchConfirmation` therefore rejects a title
+  sitting DIRECTLY under a reply row, and reads options only from the dialog's own
+  contiguous run of action rows, so a staged `❯ Yes, switch to Fable` below a quoted
+  warning cannot pair with a quoted `No, go back`. C-API-24, C-ATTN-04.
+- **A picker's closing hint row TERMINATES its region.** Only blank lines and rules may
+  follow it. Otherwise a transcript quoting a complete picker — footer and all — above a
+  live trust or hook prompt still reads as a live picker, and Escaping it would dismiss
+  the human's prompt instead. For the same reason the header must be prose: a numbered
+  composer draft (`❯ 1. Select model  draft` / `2. next  text` / `Esc to cancel`)
+  otherwise satisfies the row and footer grammar entirely on its own. C-API-24.
 - **Codex persists `/model` picker selections into the user `config.toml`.**
   `setModel` restores the prior default via compare-and-swap after switching
   (C-CODEX-14), skipping with a `codex_default_model_persisted` warning on a
