@@ -6,6 +6,7 @@
  */
 
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
+import { sessionImageBudget } from "../../core/images/queued-budget.ts";
 import type { SendOptions } from "../../core/images/types.ts";
 import type { ElwoodLoopRequest, ElwoodLoopSnapshot } from "../../core/loops/types.ts";
 import type { ModelPickerSpec } from "../../core/models/picker.ts";
@@ -22,7 +23,6 @@ import {
   type AttachDriver,
   type AttachTask,
   enqueueSubmission,
-  QueuedImageBudget,
   type SubmitKind,
 } from "./image-attach.ts";
 import { SessionLifecycle } from "./lifecycle.ts";
@@ -34,7 +34,6 @@ type Timeout = { readonly timeoutMs?: number };
 export abstract class AgentSessionBase extends SessionLifecycle {
   protected abstract readonly picker: ModelPickerSpec;
   private readonly commands: CommandSurface;
-  private readonly imageBudget = new QueuedImageBudget();
 
   protected constructor(
     agent: ElwoodAgentKind,
@@ -124,6 +123,8 @@ export abstract class AgentSessionBase extends SessionLifecycle {
   private enqueue(input: string, kind: SubmitKind, options?: SendOptions): Promise<void> {
     const driver: AttachDriver = (paths, signal) => this.attachImages(paths, signal);
     const send = (attach?: AttachTask) => this.controlQueue.send(input, kind, attach);
-    return this.inSession(() => enqueueSubmission(options?.images, driver, send, this.imageBudget));
+    // Looked up per call: a facade that launched this session shares ITS budget (C-API-44).
+    const budget = sessionImageBudget(this);
+    return this.inSession(() => enqueueSubmission(options?.images, driver, send, budget));
   }
 }
