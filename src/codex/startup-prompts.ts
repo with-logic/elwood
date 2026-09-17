@@ -40,6 +40,7 @@ export class CodexStartupPromptResponder {
   // banner that clears (drops out of this set) and reappears fires again — a genuinely
   // new occurrence, matching "once when observed" rather than "replay while on screen".
   private warnedBanners = new Set<string>();
+  private conversationStarted = false;
 
   constructor(elwoodSessionId = "", autotrust = false, onStateChange?: () => void) {
     this.elwoodSessionId = elwoodSessionId;
@@ -134,7 +135,19 @@ export class CodexStartupPromptResponder {
   // the same banner with different padding/wrapping across frames, which raw-line keying
   // would treat as new. `warnedBanners` is reset to this frame's identities, so a banner
   // that clears (leaves the frame) then reappears fires again as a genuinely new occurrence.
+  /** The session is about to write caller input; nothing after this is a startup banner. */
+  endStartup(): void {
+    this.conversationStarted = true;
+  }
+
   private newWarnings(screenText: string): readonly ElwoodWarningEvent[] {
+    // Startup banners can only come from startup: once caller content or a resumed
+    // transcript can be on screen, a copied welcome box whose own conversation marker
+    // has scrolled out of the frame is content, not provenance. EVERY assistant-marker
+    // row ends it — no spinner exemption, since a message can quote spinner text and
+    // native Codex 0.154.0 startup renders no `•` row at all (docs/cli-behavior.md).
+    this.conversationStarted ||= /^\s*[●•]/m.test(screenText);
+    if (this.conversationStarted) return [];
     const matched = codexWarningsFromText(screenText, this.elwoodSessionId);
     const fresh = matched.filter((warning) => !this.warnedBanners.has(bannerKey(warning)));
     this.warnedBanners = new Set(matched.map(bannerKey));

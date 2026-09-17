@@ -1,0 +1,39 @@
+/ T R A N S C R I P T / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / 
+╭──────────────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.154.0)                               │
+│                                                          │
+│ model:     gpt-6-astra   /model to change                │
+│ directory: /private/…/elwood-native-codex-CAPTURE/project │
+╰──────────────────────────────────────────────────────────╯
+
+  Tip: This is GPT-6, a new generation of intelligence. Astra is state-of-the-art in coding,
+  computer use, science, and professional work. Give it a hard problem, a half-formed idea, or
+  anything you've been meaning to build. See where it takes you.
+
+⚠ The elwood_probe MCP server is not logged in. Run `codex mcp login elwood_probe`.
+⚠ MCP startup incomplete (failed: elwood_probe)
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+~
+───────────────────────────────────────────────────────────────────────────────────────────── 100% ─
+ ↑/↓ to scroll   pgup/pgdn to page   home/end to jump
+ q close   esc to edit prev
