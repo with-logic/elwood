@@ -88,11 +88,16 @@ test("C-PERF-04 each lease holder sweeps a bounded number of leftover staging di
 
 test("C-PERF-04 the sweep reads a bounded number of entries and leaves the other adapter's leftovers", async () => {
   const root = tempDir("elwood-update-lock-sweep-bound-");
+  // `readdir` returns these in creation order here, so the codex leftover sits past the
+  // read bound: an unbounded scan would walk every claude entry and reach it, a bounded
+  // one stops first. The other adapter's leftovers are never this holder's to remove.
   for (let index = 0; index < 70; index += 1) mkdirSync(join(root, `claude.lock.claim.${index}`));
+  const beyondBound = "codex.lock.claim.beyond-the-read-bound";
+  mkdirSync(join(root, beyondBound));
   await coordinatedAutoupdate("codex", () => Promise.resolve(), { root });
-  expect(readdirSync(root).filter((entry) => entry.startsWith("claude.lock.claim."))).toHaveLength(
-    70,
-  );
+  const entries = readdirSync(root);
+  expect(entries.filter((entry) => entry.startsWith("claude.lock.claim."))).toHaveLength(70);
+  expect(entries).toContain(beyondBound);
 });
 
 test("C-PERF-04 a fresh ownerless lease is a wait condition, neither claimed over nor removed early", async () => {
