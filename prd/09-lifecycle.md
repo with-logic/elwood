@@ -115,6 +115,15 @@ surface as a start-blocking error; it is contained and surfaces as the live
 killed probe is signaled only because Elwood aborted it; a probe that exits or
 fails to spawn on its own is not signaled.
 
+A probe is complete when its direct child exits. The timeout bounds that exit,
+not the closing of output pipes: an updater can exit while a descendant it started
+still holds the inherited stdout/stderr pipes. Output the direct child already
+wrote is drained for at most 250 milliseconds after the exit; a descendant that
+still holds the pipes is neither waited for nor signaled, its later output is
+discarded without breaking the pipe it writes to, and the held pipes do not keep
+the host process alive. The probe reports the direct child's exit status, never a
+timeout caused by a descendant.
+
 After spawning the PTY, Elwood waits briefly for immediate process exits or
 known authentication/startup failure banners before reporting the session as
 running. The default wait must be long enough to catch typical local CLI startup

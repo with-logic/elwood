@@ -1,6 +1,6 @@
 /**
  * Bounded one-shot subprocess probe used by the command-runner seam.
- * Implements PRD §9.2 bounded probe runtime/output (C-PERF-01, C-PERF-03): a
+ * Implements PRD §9.2 bounded probe runtime/output (C-PERF-01, C-PERF-03, C-PERF-05): a
  * misbehaving CLI on PATH must not hang or flood memory during a `--version`,
  * `update`, or `--help` probe.
  */
@@ -12,6 +12,7 @@ import { rethrowUnlessGroupGone } from "./shutdown/reap-tree.ts";
 
 const defaultProbeTimeoutMs = 15_000;
 const maxProbeOutputBytes = 1_000_000;
+const exitDrainMs = 250;
 let probeTimeoutMs = defaultProbeTimeoutMs;
 
 export function setProbeTimeoutMsForTests(value: number): void {
@@ -82,8 +83,27 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
     child.on("error", (e: NodeJS.ErrnoException) => {
       settle({ status: null, stdout: out.text(), stderr: err.text(), error: mapError(e) });
     });
+    let drain: ReturnType<typeof setTimeout> | undefined;
+    let drainTurn: ReturnType<typeof setImmediate> | undefined;
     child.on("close", (code) => {
+      clearTimeout(drain);
+      clearImmediate(drainTurn);
       settle({ status: code, stdout: out.text(), stderr: err.text() });
+    });
+    // The direct child's exit completes the probe (C-PERF-05). `close` also waits for every
+    // holder of the stdio pipes, and a descendant can inherit them and outlive the child,
+    // so output the child already wrote gets one bounded drain and `close` stops deciding.
+    child.on("exit", (code) => {
+      clearTimeout(timer);
+      // The extra loop turn lets a poll phase deliver bytes already in the pipes (and any
+      // `close`) even when a stalled host loop reaches this timer after the bound.
+      drain = setTimeout(() => {
+        drainTurn = setImmediate(() => {
+          settle({ status: code, stdout: out.text(), stderr: err.text() });
+          releaseInheritedPipes([child.stdout as ProbePipe, child.stderr as ProbePipe]);
+        });
+      }, exitDrainMs);
+      drain.unref();
     });
     const timer = setTimeout(() => {
       settle(timedOut(out.text(), err.text()), true);
@@ -128,4 +148,20 @@ function timedOut(stdout: string, stderr: string): CommandResult {
 function overflow(stdout: string, stderr: string): CommandResult {
   const message = `probe output exceeded ${maxProbeOutputBytes} bytes`;
   return { status: null, stdout, stderr, error: { code: "E2BIG", message } };
+}
+
+/** A spawned child's stdio pipe is a socket; the `Readable` typing of `child.stdout` hides `unref`. */
+type ProbePipe = import("node:net").Socket;
+
+/**
+ * Stops capturing from pipes a descendant still holds without closing them: a closed
+ * read end would fail the descendant's next write (normal completion never signals the
+ * group), while a referenced one would keep the host event loop alive.
+ */
+function releaseInheritedPipes(pipes: readonly ProbePipe[]): void {
+  for (const pipe of pipes) {
+    pipe.removeAllListeners("data");
+    pipe.resume();
+    pipe.unref();
+  }
 }

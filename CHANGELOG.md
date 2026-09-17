@@ -16,6 +16,9 @@ back each entry are listed in `prd/14-conformance.md`.
   turns queued behind another response or waiting for session startup. Facade copies
   count against the same 200 MiB per-session ceiling as sends on the raw `session`.
 - Reject FIFO state/config files without hanging.
+- Complete version, capability, and update probes when their direct child exits.
+  A descendant that inherited the probe's output pipes no longer delays startup
+  until the 15-second timeout or turns a finished update into a false timeout.
 - Bind automatic trust approvals to the active dialog and revalidate every write,
   preventing quoted transcript headers or unknown intervening titles from
   authorizing unrelated permissions. Cancel stale trust attempts quietly while
