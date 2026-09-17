@@ -76,6 +76,11 @@ function unknownGateVisible(regions: TrustRegions, agent: ElwoodAgentKind): bool
  * write while it holds. Of the frames it covers, only allowlisted candidates are ever
  * answered, and only by `TrustPromptResponder` under the trust policy; an off-allowlist
  * gate is hold-only and stays for the human, so nothing here may answer it.
+ *
+ * Boundary, deliberately narrow: "off-allowlist gate" means the grammar `unknownGateVisible`
+ * documents — a recognized header prefix, a complete option dialog, a native footer ending
+ * the frame, no conversation row above. A prompt outside that grammar is NOT reported here,
+ * so this is a positive signal to withhold a write, never a proof that a frame is safe.
  */
 export function trustGateVisible(frame: string, agent: ElwoodAgentKind): boolean {
   const regions = parseTrustCandidates(frame);
