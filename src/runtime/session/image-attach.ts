@@ -10,36 +10,18 @@
  * Implements PRD §5.3 (C-API-44).
  */
 
-import { elwoodError } from "../../core/errors.ts";
+import { capturedImageSnapshot } from "../../core/images/capture.ts";
+import type { QueuedImageBudget } from "../../core/images/queued-budget.ts";
+
+export { QueuedImageBudget } from "../../core/images/queued-budget.ts";
+
 import {
   type ImageSnapshot,
   materializeImages,
   snapshotImages,
   validateImagePaths,
 } from "../../core/images/index.ts";
-import { type ImageInput, imageLimits } from "../../core/images/types.ts";
-
-/**
- * A per-session aggregate byte budget for image clones held across ALL not-yet-attached
- * queued submissions. Reserved synchronously when a submission's bytes are cloned and
- * released when it settles, so a slow paste can't let a caller retain gigabytes of
- * queued clones (C-API-44).
- */
-export class QueuedImageBudget {
-  private used = 0;
-  private readonly ceiling: number;
-  constructor(ceiling = imageLimits.maxQueuedBytes) {
-    this.ceiling = ceiling;
-  }
-  reserve(bytes: number): void {
-    if (this.used + bytes > this.ceiling)
-      throw elwoodError("invalid_image", "Too many queued image bytes for this session.");
-    this.used += bytes;
-  }
-  release(bytes: number): void {
-    this.used = Math.max(0, this.used - bytes);
-  }
-}
+import type { ImageInput } from "../../core/images/types.ts";
 
 /** A text-submission kind carried by the control queue. */
 export type SubmitKind = "prompt" | "message" | "guidance";
@@ -74,21 +56,24 @@ export function enqueueSubmission(
   // slipping past validation as a no-image send (C-API-44).
   if (images === undefined) return send();
   let snapshot: ImageSnapshot;
+  const captured = capturedImageSnapshot(images);
+  // A facade already owns and budgets these private immutable copies.
+  const reservation = captured === undefined ? budget : undefined;
   try {
-    snapshot = snapshotImages(images); // validates shape + clones bytes at the call
-    budget?.reserve(snapshot.inlineByteTotal); // reserve the clone bytes vs the session ceiling
+    snapshot = captured ?? snapshotImages(images); // validates shape + clones bytes at the call
+    reservation?.reserve(snapshot.inlineByteTotal); // reserve the clone bytes vs the session ceiling
   } catch (error) {
     return Promise.reject(error);
   }
   const bytes = snapshot.inlineByteTotal;
   if (snapshot.images.length === 0) {
-    budget?.release(bytes); // nothing to attach: give the reservation back
+    reservation?.release(bytes); // nothing to attach: give the reservation back
     return send();
   }
   // Release on EVERY settle path (attach done, reject, or the op never dispatching), so
   // the clone memory is always accounted back even when a session closes mid-queue.
   const done = send((signal) => runAttach(snapshot, driver, signal));
-  done.finally(() => budget?.release(bytes)).catch(() => undefined);
+  done.finally(() => reservation?.release(bytes)).catch(() => undefined);
   return done;
 }
 
