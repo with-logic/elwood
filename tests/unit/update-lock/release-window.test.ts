@@ -16,7 +16,12 @@ beforeEach(() => Object.assign(release, { held: false, renameDenied: false, dele
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
   const denied = () => Promise.reject(Object.assign(new Error("denied"), { code: "EACCES" }));
-  // Hold the release open after its first step, long enough for a 1 ms poller to look.
+  // Hold the release open after its first step, long enough for a 1 ms poller to look. This
+  // stays a duration rather than a barrier signalled by the contender's poll: a contender is
+  // not obliged to poll — with an atomic release it can claim the freed path outright and
+  // never stat again — so a barrier either hangs or has to be raced against a timeout that
+  // closes the window early. Measured against a deliberately non-atomic release, the hold
+  // below catches the duplicate 8/8 runs where a poll barrier caught it 5/8.
   const held = async <T>(step: Promise<T>): Promise<T> => {
     const result = await step;
     if (release.held) await delay(50);
@@ -24,6 +29,8 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   };
   return {
     ...actual,
+    // The first step of a two-step release, kept so this test pins the invariant against any
+    // release protocol rather than only the atomic one below it.
     unlink: (...args: Parameters<typeof actual.unlink>) =>
       String(args[0]).endsWith(".lock/owner")
         ? held(actual.unlink(...args))
@@ -70,9 +77,19 @@ test("C-PERF-04 a contender polling during the owner's release never runs a dupl
 test("a release failure cannot mask update success", async () => {
   const root = tempDir("elwood-update-lock-release-denied-");
   release.renameDenied = true;
+  let updated = false;
   await expect(
-    coordinatedAutoupdate("codex", () => Promise.resolve(), { root }),
+    coordinatedAutoupdate(
+      "codex",
+      () => {
+        updated = true;
+        return Promise.resolve();
+      },
+      { root },
+    ),
   ).resolves.toBeUndefined();
+  // Resolving is not enough: the update itself must have run despite the failed release.
+  expect(updated).toBe(true);
 });
 
 test("a retired lease that cannot be deleted is swept by a later holder", async () => {
