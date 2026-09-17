@@ -135,12 +135,14 @@ async function sweepLeaseLeftovers(path: string): Promise<void> {
     // Streamed and bounded in both deletions and entries read: the root is shared with the
     // other adapter, whose own lease holders sweep its leftovers.
     for await (const entry of await opendir(root)) {
+      if (leftovers.some((prefix) => entry.name.startsWith(prefix))) {
+        await rm(join(root, entry.name), { recursive: true, force: true }).catch(() => undefined);
+        swept += 1;
+        if (swept === maxSweptLeftovers) break;
+      }
+      // Counted after the entry is handled, so exactly `maxInspectedEntries` are ever read.
       inspected += 1;
-      if (inspected > maxInspectedEntries) break;
-      if (!leftovers.some((prefix) => entry.name.startsWith(prefix))) continue;
-      await rm(join(root, entry.name), { recursive: true, force: true }).catch(() => undefined);
-      swept += 1;
-      if (swept === maxSweptLeftovers) break;
+      if (inspected === maxInspectedEntries) break;
     }
   } catch {
     // Sweeping is housekeeping: an unreadable root must not stop the lease holder's update.
