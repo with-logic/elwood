@@ -1,10 +1,16 @@
 /** Both navigation styles retain exact choices and generation ownership (C-TRUST-01). */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
-import { claudeComposer, codexComposer } from "../fixtures/trust-composer.ts";
+import {
+  claudeComposer,
+  claudeTrust,
+  codexComposer,
+  codexHooks,
+  codexTrust,
+} from "../fixtures/trust-composer.ts";
 
-const numbered = "Do you trust this folder?\n1. Yes\n2. No";
-const cursor = "Do you trust this folder?\n❯ Yes\n  No";
+const numbered = `${claudeTrust}\n1. Yes\n2. No`;
+const cursor = `${claudeTrust}\n❯ Yes\n  No`;
 function settled(result: TrustPromptResult<"claude"> | TrustPromptResult<"codex">) {
   if (result?.kind !== "attempted") throw new Error("expected attempt");
   return result.settled;
@@ -16,8 +22,8 @@ test.each([
   cursor.replace("❯ Yes", "❯ Yes, proceed"),
   cursor.replace("this folder", "the folder"),
   numbered,
-  "Do you trust this folder?\n❯ No",
-  "Do you trust this folder?\n❯ Yes\n  No\nUnknown footer",
+  `${claudeTrust}\n❯ No`,
+  `${claudeTrust}\n❯ Yes\n  No\nUnknown footer`,
   "Unknown permission\n❯ Yes",
 ])("C-TRUST-01 a cursor confirmation cannot succeed on replacement: %s", async (replacement) => {
   let frame = cursor;
@@ -34,7 +40,7 @@ test.each([
 });
 
 test("C-TRUST-01 arrows alone cannot report trust answered when the composer appears", async () => {
-  let frame = "Do you trust this folder?\n❯ No\n  Yes";
+  let frame = `${claudeTrust}\n❯ No\n  Yes`;
   const write = vi.fn(() => {
     frame = claudeComposer;
   });
@@ -60,7 +66,7 @@ test("C-TRUST-01 swallowed cursor confirmation retries its exact choice", async 
 });
 
 test("C-TRUST-01 later native cursor rows do not replace the active choice", async () => {
-  let frame = "Do you trust this folder?\n❯ Yes";
+  let frame = `${claudeTrust}\n❯ Yes`;
   const responder = new TrustPromptResponder("claude", true);
   const write = vi.fn(() => {
     if (write.mock.calls.length === 2) frame = claudeComposer;
@@ -107,9 +113,9 @@ test("C-TRUST-01 pre-write positive clearance does not report a write that never
 
 test("C-TRUST-01 hook completion can hand ownership to an unauthorized native directory gate", async () => {
   const responder = new TrustPromptResponder("codex");
-  let frame = "Hooks need review\n1. Trust all and continue\n2. Review hooks";
+  let frame = `${codexHooks}\n1. Trust all and continue\n2. Review hooks`;
   const write = vi.fn(() => {
-    frame = "Do you trust the contents of this directory?\n1. Yes, continue";
+    frame = `${codexTrust}\n1. Yes, continue`;
   });
   const attempt = settled(responder.handle(frame, write, () => frame));
   await vi.runAllTimersAsync();

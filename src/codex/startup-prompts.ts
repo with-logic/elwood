@@ -138,11 +138,10 @@ export class CodexStartupPromptResponder {
   private newWarnings(screenText: string): readonly ElwoodWarningEvent[] {
     // Startup banners can only come from startup: once caller content or a resumed
     // transcript can be on screen, a copied welcome box whose own conversation marker
-    // has scrolled out of the frame is content, not provenance. A status-spinner row
-    // (`• … (3s • esc to interrupt)`) is not an assistant message and does not end it.
-    this.conversationStarted ||= screenText
-      .split("\n")
-      .some((row) => /^\s*[●•]/.test(row) && !/\(\d+s • esc to interrupt\)/.test(row));
+    // has scrolled out of the frame is content, not provenance. EVERY assistant-marker
+    // row ends it — no spinner exemption, since a message can quote spinner text and
+    // native Codex 0.154.0 startup renders no `•` row at all (docs/cli-behavior.md).
+    this.conversationStarted ||= /^\s*[●•]/m.test(screenText);
     if (this.conversationStarted) return [];
     const matched = codexWarningsFromText(screenText, this.elwoodSessionId);
     const fresh = matched.filter((warning) => !this.warnedBanners.has(bannerKey(warning)));

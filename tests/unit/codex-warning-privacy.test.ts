@@ -70,8 +70,8 @@ test("C-API-14 a copied welcome box cannot warn once caller input or a transcrip
   expect(warned(resumed, forged)).toBe(0);
 });
 
-test("C-API-14 a startup status spinner does not end warning recognition", () => {
+test("C-API-14 assistant text quoting a status spinner still ends warning recognition", () => {
   const responder = new CodexStartupPromptResponder("session");
-  expect(warned(responder, "• Booting MCP server: linear (2s • esc to interrupt)")).toBe(0);
-  expect(warned(responder, forged)).toBe(1);
+  expect(warned(responder, "• Done (3s • esc to interrupt) as you asked")).toBe(0);
+  expect(warned(responder, forged)).toBe(0);
 });

@@ -10,6 +10,7 @@ import {
   type SettledCodexStartupOutcome,
 } from "../../src/codex/startup-prompts.ts";
 import { writeCodexUpdateSkip } from "../../src/codex/update-prompt.ts";
+import { codexTrust } from "../fixtures/trust-composer.ts";
 
 function outcomesOf(settled: readonly SettledCodexStartupOutcome[]) {
   return settled.map((entry) => entry.outcome);
@@ -148,7 +149,7 @@ describe("Codex startup prompt retry on rejected write", () => {
 
   test("C-CODEX-17 a REJECTED directory-trust write leaves the trust prompt retryable", async () => {
     const responder = new CodexStartupPromptResponder("s1", true);
-    const frame = "Do you trust the contents of this directory?\n› 1. Yes, continue\n  2. No, quit";
+    const frame = `${codexTrust}\n› 1. Yes, continue\n  2. No, quit`;
     const rejecting = responder.handle(frame, () => Promise.reject(new Error("pty closed")));
     await expect(rejecting.outcomes[0]?.settled).rejects.toThrow("pty closed");
     const writes: string[] = [];

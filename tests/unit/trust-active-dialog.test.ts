@@ -1,11 +1,11 @@
 /** Active trust-dialog isolation and live-write validation (PRD §5.4, C-TRUST-01). */
 import { expect, test } from "vitest";
 import { TrustPromptResponder, trustPromptVisible } from "../../src/core/trust/responder.ts";
-import { claudeComposer } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTrust } from "../fixtures/trust-composer.ts";
 
 const permission =
   "Bash command\n  echo test\nDo you want to proceed?\n❯ 1. Yes\n  2. No\nEsc to cancel";
-const trust = "Do you trust this folder?\n1. Yes\n2. No\nEnter to confirm";
+const trust = `${claudeTrust}\n1. Yes\n2. No\nEnter to confirm`;
 
 test.each([
   `● Assistant response\n\n${trust}`,
@@ -22,9 +22,9 @@ test.each([
   "Do you trust this folder?\n● A quoted prompt\n1. Yes\n2. No",
   "Do you trust this folder?\n\nEnable elevated execution\n1. Yes\n2. No",
   "Do you trust this folder?\n\nThis unrelated operation will remove credentials.\n1. Yes\n2. No",
-  "Do you trust this folder?\n  Enable elevated execution\n❯ Yes\n  No",
-  "Do you trust this folder?\n❯ Yes\n  No\n  This unrelated operation will remove credentials.",
-  "Do you trust this folder?\n1. Yes, proceed and remove credentials\n2. No",
+  `${claudeTrust}\n  Enable elevated execution\n❯ Yes\n  No`,
+  `${claudeTrust}\n❯ Yes\n  No\n  This unrelated operation will remove credentials.`,
+  `${claudeTrust}\n1. Yes, proceed and remove credentials\n2. No`,
   "Quick safety check: Is this a project you wish to delete or one you trust?\n1. Yes\n2. No",
 ])("C-TRUST-01 never borrows a header or options from earlier viewport content: %s", (frame) => {
   const writes: string[] = [];
@@ -83,7 +83,7 @@ test("C-TRUST-01 revalidates a numbered dialog before writing and leaves it retr
 });
 
 test("C-TRUST-01 cursor navigation does not confirm a replacement dialog under a stale header", async () => {
-  const initial = "Do you trust this folder?\n❯ No\n  Yes";
+  const initial = `${claudeTrust}\n❯ No\n  Yes`;
   let frame = initial;
   const writes: string[] = [];
   const result = new TrustPromptResponder("claude", true).handle(

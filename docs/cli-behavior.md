@@ -280,6 +280,15 @@ does not send Ctrl+T automatically. Captures and the local failing-server/401
 real-CLI test verify the detailed rows. The current welcome chrome and native
 warning prefixes distinguish these banners from conversational quotations.
 
+Native 0.154.0 startup renders no `•`/`●` row at any point: recorded frame by frame
+(2026-09-17) through the directory gate, hooks gate, welcome, and composer with
+both an MCP endpoint that fails at once and one that accepts the connection and
+never answers (the collapsed warning appears after ~10 s with no boot spinner).
+Warning recognition therefore ends at the first assistant-marker row or the
+first caller-side write, whichever comes first; after that a copied welcome box
+whose own marker has scrolled away is content. A CLI version that painted a `•`
+boot spinner before its warnings would lose those warnings rather than forge any.
+
 ### Bypass-permissions acceptance dialog (`--high-trust`)
 
 Claude Code carries a one-time disclaimer for bypass mode. Its wording, taken
