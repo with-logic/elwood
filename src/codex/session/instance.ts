@@ -11,6 +11,7 @@ import { emitSessionWarnings } from "../../core/warnings/session.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import { AgentSessionBase } from "../../runtime/session/base.ts";
+import { notRunningError } from "../../runtime/session/not-running.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
@@ -22,6 +23,7 @@ import { codexModelPicker } from "../model-picker.ts";
 import type { CodexTranscriptWatcher } from "../transcript/index.ts";
 import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";
+import { CliExitBarrier } from "./cli-exit.ts";
 import type { CodexEventHandler, CodexEventMap, CodexEventName, CodexSessionApi } from "./types.ts";
 import {
   clipboardRestoreFailedWarning,
@@ -29,17 +31,13 @@ import {
   codexRestoreSkippedWarning,
 } from "./warnings.ts";
 
-/** How long a setModel interrupted by close waits for the CLI to exit before restoring. */
-const cliExitWaitMs = 5_000;
-
 export class CodexSessionImpl extends AgentSessionBase implements CodexSessionApi {
   protected readonly picker = codexModelPicker;
   private readonly bridge: CodexHookBridge;
   private readonly emitter: TypedEmitter<CodexEventMap>;
   private readonly transcriptWatcher: CodexTranscriptWatcher | undefined;
   private onInitialReady: (() => void) | undefined;
-  /** Whether the PTY has actually exited — the only proof the CLI can no longer write. */
-  private ptyExited = false;
+  private readonly cliExit: CliExitBarrier;
 
   constructor(
     record: SessionRecord,
@@ -67,11 +65,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     this.bridge = bridge;
     this.emitter = emitter;
     this.transcriptWatcher = transcriptWatcher;
-    // Latched here, not read from status: `waitForCliExit` runs AFTER the picker rejected, by
-    // which time the exit that closed the session has usually already fired.
-    pty.onExit(() => {
-      this.ptyExited = true;
-    });
+    this.cliExit = new CliExitBarrier(pty);
   }
 
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {
@@ -96,34 +90,20 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
       snapshot: snapshotCodexConfig,
       apply: () => super.setModel(id, options),
       waitForCliExit: () => this.waitForCliExit(),
+      // Still QUEUED behind another session's switch when this one closes: reject now
+      // rather than wait out that transaction and its exit bound. Once this switch holds
+      // the lock it owns config.toml, so cancellation no longer applies.
+      cancel: { signal: this.closing.signal, error: () => notRunningError("codex") },
       restore: (snapshot) => this.restoreCodexDefault(snapshot),
       onRestoreError: (error) =>
         this.emitWarnings([codexRestoreFailedWarning(this.elwoodSessionId, error)]),
     });
   }
   // A closing session rejects the picker at once, while the dying CLI can still persist
-  // the selection it had confirmed. The barrier is the PTY's own exit, not session status:
-  // `stopped`, `killed`, and `torn_down` are recorded by the shutdown path itself and are
-  // reached even when the signal did not take, so waiting on status would release the
-  // restore into a still-dying Codex's final config write. (A status wait cannot express
-  // this either — it rejects on ANY unmatched terminal status, which settles the gate just
-  // the same.) The bound keeps a CLI that never exits from holding the config lock forever.
+  // the selection it had confirmed, so the restore waits on the PTY's own exit.
   private waitForCliExit(): Promise<unknown> | undefined {
     if (!this.closing.signal.aborted) return undefined;
-    return this.waitForPtyExit(cliExitWaitMs);
-  }
-  private waitForPtyExit(timeoutMs: number): Promise<unknown> {
-    if (this.ptyExited) return Promise.resolve(undefined);
-    return new Promise((resolve) => {
-      const settle = (): void => {
-        clearTimeout(timer);
-        off();
-        resolve(undefined);
-      };
-      const off = this.pty.onExit(() => settle());
-      const timer = setTimeout(settle, timeoutMs);
-      timer.unref?.();
-    });
+    return this.cliExit.wait();
   }
   private restoreCodexDefault(snapshot: string | undefined): void {
     const outcome = restoreCodexConfig(snapshot);

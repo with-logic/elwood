@@ -7,6 +7,7 @@
  * must never mask the primary automation error).
  */
 
+import type { MutexCancel } from "../../core/async-mutex.ts";
 import { withCodexConfigLock } from "./lock.ts";
 
 type CodexModelSwitch = {
@@ -24,10 +25,12 @@ type CodexModelSwitch = {
    */
   readonly onRestoreError?: (error: unknown) => void;
   /**
-   * Called when the switch rejected. A returned promise means the CLI may still be
-   * alive and able to persist its selection (the session is closing): the caller gets
-   * the rejection at once, while the restore, and with it the config lock, waits for
-   * that promise. Returning nothing restores first, as a plain failed switch always has.
+   * Consulted on BOTH outcomes, because the question is whether the CLI can still write
+   * config.toml, not whether our automation succeeded. A returned promise means the CLI
+   * may still be alive and able to persist its selection (the session is closing): a
+   * rejecting caller gets its error at once, while the restore, and with it the config
+   * lock, waits for that promise. Returning nothing restores immediately, which is the
+   * ordinary non-closing path.
    *
    * The wait is BEST-EFFORT and bounded: it settles on the observed PTY exit, or on its
    * own deadline if the process never reports one. So the restore is ordered after a
@@ -35,6 +38,13 @@ type CodexModelSwitch = {
    * process-wide config lock indefinitely — it is a bound, not a guarantee of exit.
    */
   readonly waitForCliExit?: () => Promise<unknown> | undefined;
+  /**
+   * Cancels this switch while it is still WAITING for the process-wide config lock, so a
+   * session that closes behind another session's transaction rejects at once instead of
+   * waiting out that transaction (including its exit bound). Once this switch holds the
+   * lock it owns config.toml and must finish its snapshot/restore.
+   */
+  readonly cancel?: MutexCancel;
 };
 
 export function runCodexModelSwitch(io: CodexModelSwitch): Promise<void> {
@@ -48,15 +58,21 @@ export function runCodexModelSwitch(io: CodexModelSwitch): Promise<void> {
       } catch (error) {
         failed = true;
         primary = error;
-        const exitWait = io.waitForCliExit?.();
-        if (exitWait !== undefined) {
-          reject(primary);
-          await exitWait;
-        }
+      }
+      // The barrier is about the CLI still being able to WRITE, which has nothing to do
+      // with whether our picker automation succeeded. A switch that applied cleanly and
+      // then raced termination must defer its restore just as a failed one does, or the
+      // dying process's final config write lands after it. `waitForCliExit` returns
+      // undefined unless the session is closing, so the ordinary path is unchanged.
+      const exitWait = io.waitForCliExit?.();
+      if (exitWait !== undefined) {
+        // The caller learns the outcome at once; only the restore waits.
+        if (failed) reject(primary);
+        await exitWait;
       }
       restoreAfterSwitch(io, snapshot, failed);
       if (failed) throw primary;
-    });
+    }, io.cancel);
     // A rejection already delivered above makes this one a no-op.
     transaction.then(resolve, reject);
   });

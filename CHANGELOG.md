@@ -21,7 +21,13 @@ back each entry are listed in `prd/14-conformance.md`.
   to exit before restoring `config.toml`, bounded at five seconds so a process that
   never reports an exit cannot hold the shared config lock. Session status alone
   (`stopped`, `killed`, `torn_down`) no longer releases the restore, since teardown
-  records those even when its signal did not take.
+  records those even when its signal did not take. The wait now applies whether the
+  switch succeeded or failed: the question is whether the dying CLI can still write
+  `config.toml`, not whether Elwood's automation worked.
+- A Codex `setModel` still waiting for the process-wide `config.toml` lock rejects
+  with `session_not_running` as soon as its own session closes, instead of staying
+  pending until the session ahead of it finishes its transaction and exit wait. A
+  cancelled call never runs its switch when the lock frees.
 - Bound Codex in-TUI update skipping to one attempt per appearance of the update
   screen: an exhausted retry no longer restarts on the next frame of the same
   screen, and a stale attempt's late completion cannot start an overlapping retry
