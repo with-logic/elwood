@@ -54,5 +54,16 @@ test("C-API-23 overlapping lists and a message wait for each picker to close", a
     { input: "/model", inPicker: false },
   ]);
   expect(writes.find((write) => write.input.includes("hello"))?.inPicker).toBe(false);
+  // The message follows BOTH complete open/cancel flows; none of its bytes interleave.
+  expect(writes.map((write) => write.input)).toEqual([
+    "/model",
+    "\r",
+    "\u001b",
+    "/model",
+    "\r",
+    "\u001b",
+    "\u001b[200~hello\u001b[201~",
+    "\r",
+  ]);
   queue.close();
 });

@@ -12,6 +12,9 @@ type PickerDeps = {
   readonly blocked: () => boolean;
 };
 
+type Progress = { submitted: boolean; dialog: boolean };
+const recoveryMs = 1_000;
+
 export class PickerTransactions {
   private readonly deps: PickerDeps;
   private recovery: ((text: string) => boolean) | undefined;
@@ -53,11 +56,13 @@ export class PickerTransactions {
         kind,
         async (closed) => {
           const signal = AbortSignal.any([closed, deadline.signal]);
+          const seen = { submitted: false, dialog: false };
           this.active = true;
           try {
-            result = await work(this.io(signal));
+            result = await work(this.io(signal, spec, seen));
           } catch (error) {
-            if (!closed.aborted) await this.recover(spec);
+            // A submitted command whose dialog never rendered can still open it.
+            if (!closed.aborted) await this.recover(spec, seen.submitted && !seen.dialog);
             throw error;
           } finally {
             this.active = false;
@@ -71,11 +76,13 @@ export class PickerTransactions {
     }
   }
 
-  private io(signal: AbortSignal): ModelPickerIo {
+  private io(signal: AbortSignal, spec: ModelPickerSpec, seen: Progress): ModelPickerIo {
     const terminal: ScreenTerminal = {
       snapshot: () => {
         signal.throwIfAborted();
-        return this.deps.terminal.snapshot();
+        const snapshot = this.deps.terminal.snapshot();
+        seen.dialog ||= spec.isActive(snapshot.text);
+        return snapshot;
       },
       sendInput: (input) => {
         signal.throwIfAborted();
@@ -86,20 +93,27 @@ export class PickerTransactions {
       terminal,
       signal,
       blocked: this.deps.blocked,
-      submit: (command, pending) =>
-        this.deps.submitDirect(command, AbortSignal.any([signal, pending])),
+      submit: (command, pending) => {
+        seen.submitted = true;
+        return this.deps.submitDirect(command, AbortSignal.any([signal, pending]));
+      },
     };
   }
 
-  private async recover(spec: ModelPickerSpec): Promise<void> {
+  /** One bound covers a late dialog appearing, its cancellation, and its clearing. */
+  private async recover(spec: ModelPickerSpec, awaitLateDialog: boolean): Promise<void> {
     const terminal = this.deps.terminal;
+    const deadline = Date.now() + recoveryMs;
     try {
-      if (!spec.isActive(terminal.snapshot().text)) return;
+      if (!spec.isActive(terminal.snapshot().text)) {
+        if (!awaitLateDialog) return;
+        await waitForScreen(terminal, spec.isActive, recoveryMs, "late model picker");
+      }
       await sendPickerInput({ terminal }, "\u001b", spec.isActive, true);
       await waitForScreen(
         terminal,
         (text) => !spec.isActive(text),
-        1_000,
+        deadline - Date.now(),
         "model picker cancellation",
       );
     } catch {

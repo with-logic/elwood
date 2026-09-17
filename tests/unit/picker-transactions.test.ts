@@ -27,8 +27,12 @@ function setup(text = "❯ ") {
       if (input === "\u001b" && state.cancelWorks) state.text = "❯ ";
     },
   };
+  const leaked: string[] = [];
   const queue = new ControlQueue(
-    async () => {},
+    (input) => {
+      if (claudeModelPicker.isActive(state.text)) leaked.push(String(input));
+      return Promise.resolve();
+    },
     () => new Error("closed"),
     () => {},
   );
@@ -42,7 +46,7 @@ function setup(text = "❯ ") {
       return Promise.resolve();
     },
   });
-  return { state, writes, queue, picker };
+  return { state, writes, leaked, queue, picker };
 }
 
 test("C-API-55 queue wait consumes the deadline without opening a picker", async () => {
@@ -95,6 +99,46 @@ test("C-API-55 failed cancellation holds input until manual dismissal", async ()
   expect(picker.blocksInput()).toBe(true);
   state.text = "❯ ";
   expect(picker.blocksInput()).toBe(false);
+  expect(picker.blocksInput()).toBe(false);
+  queue.close();
+});
+
+test("C-API-55 a dialog opening just after the deadline is cancelled before input is released", async () => {
+  const { queue, picker, state, writes, leaked } = setup();
+  queue.markReady();
+  const failed = expect(
+    picker.run("set_model", claudeModelPicker, 50, async (io) => {
+      await io.submit("/model", new AbortController().signal);
+      await waitForScreen(io.terminal, claudeModelPicker.isOpen, 5000, "picker");
+    }),
+  ).rejects.toMatchObject({ code: "model_automation_failed" });
+  // The CLI acts on the already-submitted command only after the operation timed out.
+  setTimeout(() => {
+    state.text = claudePicker;
+  }, 300);
+  await vi.advanceTimersByTimeAsync(350);
+  const message = queue.send("hello", "message");
+  await vi.advanceTimersByTimeAsync(1000);
+  await Promise.all([failed, message]);
+  expect(leaked).toEqual([]);
+  expect(writes).toEqual(["/model", "\u001b"]);
+  expect(picker.blocksInput()).toBe(false);
+  queue.close();
+});
+
+test("C-API-55 a submitted command whose dialog never appears releases input after the bound", async () => {
+  const { queue, picker, writes } = setup();
+  queue.markReady();
+  const failed = expect(
+    picker.run("list_models", claudeModelPicker, 50, async (io) => {
+      await io.submit("/model", new AbortController().signal);
+      await waitForScreen(io.terminal, claudeModelPicker.isOpen, 5000, "picker");
+    }),
+  ).rejects.toMatchObject({ code: "model_automation_failed" });
+  const message = queue.send("hello", "message");
+  await vi.advanceTimersByTimeAsync(1100);
+  await Promise.all([failed, message]);
+  expect(writes).toEqual(["/model"]);
   expect(picker.blocksInput()).toBe(false);
   queue.close();
 });
