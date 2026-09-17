@@ -123,4 +123,23 @@ describe("CodexSessionApi trust prompts", () => {
     await expect.poll(() => ptys[0]!.writes).toEqual(["1\r"]);
     expect(warnings).not.toContain("trust_prompt_unanswerable");
   });
+
+  test("C-TRUST-01 a header without its native body holds input untyped until the body paints", async () => {
+    installFakes();
+    const session = await startCodex({ cwd: tempDir(), autotrust: true });
+    const frames: string[] = [];
+    session.on("terminal:data", (event) => frames.push(event.data));
+    const attention: string[] = [];
+    session.on("activity", (e) => e.kind === "attention" && attention.push(e.label));
+    const queued = session.sendMessage("held");
+    ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. Yes, continue");
+    await expect.poll(() => frames.join("")).toContain("1. Yes, continue");
+    expect(ptys[0]!.writes).toEqual([]);
+    expect(attention).toEqual([]); // held silently: no transient attention without the body
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${tty(codexTrust)}\r\n› 1. Yes, continue`);
+    await expect.poll(() => ptys[0]!.writes).toEqual(["1\r"]);
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${tty(codexComposer)}`);
+    await queued;
+    expect(ptys[0]!.writes).toContain("\u001b[200~held\u001b[201~");
+  });
 });

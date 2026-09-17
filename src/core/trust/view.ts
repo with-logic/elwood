@@ -33,7 +33,8 @@ export function trustView(frame: string, agent: ElwoodAgentKind): TrustView {
       return {
         kind: "candidate",
         spec,
-        key: `${spec.id}:${header[0]}`,
+        // Trimmed: the separator after a header varies as its body paints, the gate does not.
+        key: `${spec.id}:${header[0].trim()}`,
         dialog: region.dialog,
         valid,
         option: valid
