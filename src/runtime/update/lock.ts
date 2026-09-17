@@ -60,9 +60,10 @@ export async function coordinatedAutoupdate(
   let observedActive = (await pathExists(path)) || (await pathExists(recoveryPath(path)));
   let recoveredStale = false;
   while (!(await claimLease(path, owner))) {
-    // Losing the claim IS an observation of an active owner. Sampling only before
-    // the loop misses a peer that claimed in the interim, and that contender would
-    // then treat its own later claim as the first attempt and run a duplicate
+    // Losing the claim to an existing lease IS an observation of an active owner; a claim
+    // that failed on its own staging finds no lease below and returns as released. Sampling
+    // only before the loop misses a peer that claimed in the interim, and that contender
+    // would then treat its own later claim as the first attempt and run a duplicate
     // update (PRD §9.2: a contender skips its duplicate attempt).
     observedActive = true;
     const waited = await waitForOwner(path, pollMs, staleMs);
@@ -115,20 +116,19 @@ async function claimLease(path: string, owner: LeaseOwner): Promise<boolean> {
 }
 
 /**
- * Removes what interrupted peers left beside the lease: claim staging from claimants killed
- * before their rename, and directories a cleaner was killed while holding privately. Only
- * the lease holder sweeps: a live contender's staging can no longer win, and losing it
- * merely turns that contender's failed rename into a missing source. Each holder removes a
- * bounded number, so a pile of leftovers delays no single update; later holders finish.
+ * Removes staging directories left by claimants killed before their rename. Only the lease
+ * holder sweeps: a live contender's staging can no longer win, and losing it merely turns
+ * that contender's failed rename into a missing source. Each holder removes a bounded
+ * number, so a pile of leftovers delays no single update; later holders finish the job.
  */
 async function sweepStaging(path: string): Promise<void> {
   const root = dirname(path);
-  const leftovers = [".claim.", ".recovery."].map((infix) => `${basename(path)}${infix}`);
+  const leftover = `${basename(path)}.claim.`;
   let swept = 0;
   try {
     // Streamed, so the scan stops with the deletions instead of listing every leftover.
     for await (const entry of await opendir(root)) {
-      if (!leftovers.some((prefix) => entry.name.startsWith(prefix))) continue;
+      if (!entry.name.startsWith(leftover)) continue;
       await rm(join(root, entry.name), { recursive: true, force: true }).catch(() => undefined);
       swept += 1;
       if (swept === maxSweptStaging) break;

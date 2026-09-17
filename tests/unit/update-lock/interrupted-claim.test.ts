@@ -4,14 +4,7 @@
  * SIGKILLed inside the filesystem call under test, leaving whatever that call leaves.
  */
 import { spawn } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  utimesSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, test } from "vitest";
@@ -82,42 +75,10 @@ test.each([
   expect(readdirSync(root)).toEqual(["codex.completed"]);
 });
 
-test("C-PERF-04 an unreadable lease untouched for a day is presumed abandoned and recovered", async () => {
-  const root = tempDir("elwood-update-lock-abandoned-");
-  const path = updateLockPath("codex", root);
-  const lease = (ageMs: number) => {
-    mkdirSync(path);
-    writeFileSync(join(path, "owner"), "123");
-    const touched = new Date(Date.now() - ageMs);
-    utimesSync(path, touched, touched);
-  };
-  const attempts: string[] = [];
-  const update = (name: string) =>
-    coordinatedAutoupdate("codex", async () => void attempts.push(name), {
-      root,
-      pollMs: 5,
-      staleMs: 50,
-    });
-  // Left by a version that wrote the record in place, or by storage that lost the write.
-  lease(25 * 60 * 60 * 1_000);
-  await update("after a day");
-  expect(attempts).toEqual(["after a day"]);
-  // Merely stale, it may belong to a live updater this version cannot read: fail safe.
-  lease(23 * 60 * 60 * 1_000);
-  await update("within the day");
-  expect(attempts).toEqual(["after a day"]);
-  // Failing safe keeps the possibly live lease and its record, wherever recovery left it.
-  const kept = [path, `${path}.recovery`].find((candidate) => existsSync(candidate));
-  expect(readFileSync(join(kept as string, "owner"), "utf8")).toBe("123");
-});
-
 test("C-PERF-04 each lease holder sweeps a bounded number of leftover staging directories", async () => {
   const root = tempDir("elwood-update-lock-sweep-");
-  for (let index = 0; index < 9; index += 1) mkdirSync(join(root, `codex.lock.claim.${index}`));
-  // A cleaner killed while holding a recovered lease privately leaves this behind.
-  mkdirSync(join(root, "codex.lock.recovery.killed-cleaner"));
-  const leftovers = () =>
-    readdirSync(root).filter((entry) => /\.(claim|recovery)\./.test(entry)).length;
+  for (let index = 0; index < 10; index += 1) mkdirSync(join(root, `codex.lock.claim.${index}`));
+  const leftovers = () => readdirSync(root).filter((entry) => entry.includes(".claim.")).length;
   const update = () => coordinatedAutoupdate("codex", () => Promise.resolve(), { root });
   await update();
   expect(leftovers()).toBe(2);

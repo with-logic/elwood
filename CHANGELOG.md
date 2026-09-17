@@ -36,8 +36,7 @@ back each entry are listed in `prd/14-conformance.md`.
 - Publish the cross-process update lease atomically. An Elwood process killed
   while claiming the lease could leave a partial owner record that made every
   later `autoupdate` on that machine skip its update until the cache was removed
-  by hand. A lease whose record is unreadable is now recovered once it has been
-  untouched for 24 hours.
+  by hand.
 - Keep text CLI output limited to agent responses by default. Use
   `--show-session-id` to print the retained session ID on stderr, or find it
   with `elwood sessions`. Session retention and JSON/JSONL records are unchanged.

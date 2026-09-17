@@ -92,14 +92,9 @@ before the rename leaves only its staging directory; one interrupted after it le
 a complete lease naming a dead owner, which ordinary stale recovery removes. Each
 lease holder removes a bounded number of leftover staging directories. A lease directory that already exists, even one without an
 owner record, is a wait condition: it is recovered as stale rather than claimed
-over. An unreadable owner record fails safe on the stale
-bound: it may belong to a live updater writing a record format this version cannot
-read, so it is not treated as dead. Only a lease left untouched for 24 hours, far
-beyond any bounded update, is presumed abandoned and recovered with its unreadable
-record. Because such a record offers no generation token this version can parse or
-trust, the abandoned lease is
-identified by its directory identity and deleted only from a private name: a
-successor that reached the recovery path meanwhile is handed back untouched.
+over. An unreadable owner record still fails safe: it may belong
+to a live updater writing a record format this version cannot read, so it is never
+treated as dead. That is why a claim must not be able to publish one.
 A caller that recovered a dead lease updates in its place unless a peer completed an
 update meanwhile: recovery vacates the lease path before the recoverer's own claim, and
 a peer that claimed, updated, and released in that gap has already done the work.
