@@ -19,11 +19,11 @@ import type {
 } from "../../core/types.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import type {
-  CodexHookCommonResultFor,
   CodexHookEvent,
   CodexHookEventFor,
   CodexHookEventName,
   CodexHookHandlers,
+  CodexHookResultFor,
 } from "../hooks/index.ts";
 import type { CodexTranscriptEvent } from "../transcript/index.ts";
 
@@ -83,7 +83,7 @@ export type CodexEventHandler<E extends CodexEventName> = (
   event: CodexEventMap[E],
 ) => E extends `hook:${infer K}`
   ? K extends CodexHookEventName
-    ? CodexHookCommonResultFor<K> | Promise<CodexHookCommonResultFor<K>>
+    ? CodexHookResultFor<K> | Promise<CodexHookResultFor<K>>
     : undefined
   : void;
 

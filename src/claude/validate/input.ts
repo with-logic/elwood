@@ -4,7 +4,13 @@
  * Implements PRD §6.4.
  */
 
-import { isOneOf, isRecord, isString, optionalString } from "../../core/predicates.ts";
+import {
+  isOneOf,
+  isRecord,
+  isString,
+  optionalBoolean,
+  optionalString,
+} from "../../core/predicates.ts";
 import type { ClaudeHookEvent } from "../hooks/index.ts";
 import {
   type ClaudeEffortLevel,
@@ -12,8 +18,6 @@ import {
   claudeHookPermissionModes,
 } from "../hooks/names.ts";
 import { isToolHookEventName } from "../hooks/tool-events.ts";
-import { hasOptionalEventFields } from "./event-fields.ts";
-import { isClaudeToolInput } from "./tool-shapes.ts";
 
 // Compile-time coupling: the runtime allow-list must stay EXACTLY the public union
 // it validates. `AssertEqual` errors if either side gains or loses a member, so a
@@ -47,7 +51,7 @@ const eventChecks: { readonly [E in Exclude<ClaudeHookEventName, ToolEvent>]: Ev
   SubagentStop: strings("agent_id", "agent_type", "agent_transcript_path"),
   TaskCreated: strings("task_id", "task_subject"),
   TaskCompleted: strings("task_id", "task_subject"),
-  Stop: () => true,
+  Stop: (value) => optionalBoolean(value["stop_hook_active"]),
   StopFailure: strings("error"),
   TeammateIdle: strings("teammate_name", "team_name"),
   ConfigChange: strings("source"),
@@ -56,7 +60,8 @@ const eventChecks: { readonly [E in Exclude<ClaudeHookEventName, ToolEvent>]: Ev
     hasStrings(value, ["file_path"]) && isOneOf(value["event"], ["change", "add", "unlink"]),
   WorktreeCreate: strings("name"),
   WorktreeRemove: strings("worktree_path"),
-  PreCompact: compactTrigger,
+  PreCompact: (value) =>
+    compactTrigger(value) && isNullableOptionalString(value["custom_instructions"]),
   PostCompact: (value) => compactTrigger(value) && hasStrings(value, ["compact_summary"]),
   SessionEnd: strings("reason"),
   Elicitation: strings("mcp_server_name", "message"),
@@ -73,7 +78,7 @@ export function isClaudeHookInput(value: unknown): value is ClaudeHookEvent {
   if (!(isRecord(value) && hasStrings(value, ["hook_event_name", "session_id", "cwd"]))) {
     return false;
   }
-  if (!(hasValidCommonFields(value) && hasOptionalEventFields(value))) return false;
+  if (!hasValidCommonFields(value)) return false;
   const eventName = value["hook_event_name"] as string;
   if (isToolHookEventName(eventName)) return hasToolEventFields(eventName, value);
   return (
@@ -101,7 +106,7 @@ function isValidEffort(value: unknown): boolean {
 function hasToolEventFields(eventName: string, value: Fields): boolean {
   return (
     typeof value["tool_name"] === "string" &&
-    isClaudeToolInput(value["tool_name"], value["tool_input"]) &&
+    isToolInput(value["tool_name"], value["tool_input"]) &&
     hasToolSpecificEventFields(eventName, value)
   );
 }
@@ -111,6 +116,25 @@ function hasToolSpecificEventFields(eventName: string, value: Fields): boolean {
   if (eventName === "PostToolUseFailure") return typeof value["error"] === "string";
   if (eventName === "PermissionDenied") return hasStrings(value, ["tool_use_id", "reason"]);
   return true;
+}
+
+const toolInputChecks: Readonly<Record<string, (input: Fields) => boolean>> = {
+  Agent: (input) => typeof input["prompt"] === "string",
+  AskUserQuestion: isAskUserQuestionInput,
+  Bash: (input) => typeof input["command"] === "string",
+  Edit: (input) => hasStrings(input, ["file_path", "old_string", "new_string"]),
+  Glob: (input) => typeof input["pattern"] === "string",
+  Grep: (input) => typeof input["pattern"] === "string",
+  Read: (input) => typeof input["file_path"] === "string",
+  WebFetch: (input) => hasStrings(input, ["url", "prompt"]),
+  WebSearch: (input) => typeof input["query"] === "string",
+  Write: (input) => hasStrings(input, ["file_path", "content"]),
+};
+
+function isToolInput(toolName: string, input: unknown): boolean {
+  if (!isRecord(input)) return false;
+  const check = Object.hasOwn(toolInputChecks, toolName) ? toolInputChecks[toolName] : undefined;
+  return check === undefined || check(input);
 }
 
 function hasInstructionsLoaded(value: Fields): boolean {
@@ -137,15 +161,32 @@ function hasUserPromptExpansion(value: Fields): boolean {
 function hasPostToolBatch(value: unknown): boolean {
   return (
     Array.isArray(value) &&
-    value.every(
-      (item) =>
-        isRecord(item) &&
-        optionalString(item["tool_use_id"]) &&
-        hasToolEventFields("PostToolUse", item),
-    )
+    value.every((item) => isRecord(item) && hasToolEventFields("PostToolUse", item))
   );
+}
+
+function isAskUserQuestionInput(input: Fields): boolean {
+  return Array.isArray(input["questions"]) && input["questions"].every(isQuestion);
+}
+
+function isQuestion(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasStrings(value, ["question", "header"]) &&
+    Array.isArray(value["options"]) &&
+    value["options"].every(isQuestionOption) &&
+    optionalBoolean(value["multiSelect"])
+  );
+}
+
+function isQuestionOption(value: unknown): boolean {
+  return isRecord(value) && isString(value["label"]) && optionalString(value["description"]);
 }
 
 function hasStrings(value: Fields, keys: readonly string[]): boolean {
   return keys.every((key) => isString(value[key]));
+}
+
+function isNullableOptionalString(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === "string";
 }

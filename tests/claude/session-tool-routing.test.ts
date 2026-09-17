@@ -47,7 +47,7 @@ describe("ClaudeSessionApi object-form tool hook routing", () => {
     expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
   });
 
-  test("C-HOOK-10 malformed nameless tool events produce no decision", async () => {
+  test("C-HOOK-10 object-form handlers tolerate events without a tool name", async () => {
     const emitter = new TypedEmitter<ClaudeEventMap>();
     registerInitialHooks(emitter, {
       PreToolUse: { unknown: () => ({ permissionDecision: "deny" }) },
@@ -55,6 +55,6 @@ describe("ClaudeSessionApi object-form tool hook routing", () => {
     const result = await emitter.request("hook:PreToolUse", {
       hook_event_name: "PreToolUse",
     } as never);
-    expect(result).toBeUndefined();
+    expect(result).toEqual({ permissionDecision: "deny" });
   });
 });

@@ -19,8 +19,6 @@ back each entry are listed in `prd/14-conformance.md`.
   early numbered trust writes that the CLI has not yet consumed.
 - Recognize only native Codex warning banners, keeping quoted private prompt text
   out of warning events by requiring the current native welcome region.
-- Validate all concrete Claude tool input fields and typed hook fields, constrain
-  permission rewrites to tool-specific handlers, and accept nullable Codex descriptions.
 - Reject FIFO state/config files without hanging, and contain clipboard pipe
   failures while retaining the clipboard lock until the restore process exits.
 

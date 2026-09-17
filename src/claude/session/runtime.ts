@@ -103,11 +103,7 @@ export function registerInitialHooks(
 ): void {
   if (!handlers) return;
   for (const [name, handler] of Object.entries(handlers)) {
-    emitter.listen(
-      `hook:${name}` as ElwoodEventName,
-      hookHandler(name, handler),
-      typeof handler === "function" ? "event" : "tool-keyed",
-    );
+    emitter.listen(`hook:${name}` as ElwoodEventName, hookHandler(name, handler));
   }
 }
 
@@ -153,12 +149,7 @@ function hookHandler(name: string, handler: unknown): ElwoodEventHandler<ElwoodE
   return ((event: unknown) => {
     const toolName =
       isRecord(event) && typeof event["tool_name"] === "string" ? event["tool_name"] : "";
-    const toolHandler =
-      (Object.hasOwn(handler, toolName) ? handler[toolName] : undefined) ??
-      ((toolName.startsWith("mcp__") || toolName.startsWith("unknown:")) &&
-      Object.hasOwn(handler, "unknown")
-        ? handler["unknown"]
-        : undefined);
+    const toolHandler = handler[toolName] ?? handler["unknown"];
     return typeof toolHandler === "function" ? toolHandler(event) : undefined;
   }) as ElwoodEventHandler<ElwoodEventName>;
 }

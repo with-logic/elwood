@@ -65,9 +65,9 @@ describe("tool-specific hook response types", () => {
       permissionDecision: "allow",
       updatedInput: { command: "echo ok" },
     };
+    // @ts-expect-error Codex Bash command rewrites must remain strings.
     const invalid: CodexHookResultForEvent<CodexBashEvent> = {
       permissionDecision: "allow",
-      // @ts-expect-error Codex Bash command rewrites must remain strings.
       updatedInput: { command: 42 },
     };
     expect(typeof valid).toBe("object");

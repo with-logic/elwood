@@ -4,12 +4,12 @@
  */
 
 import type {
-  ClaudeHookCommonResultFor,
   ClaudeHookEvent,
   ClaudeHookEventFor,
   ClaudeHookEventName,
   ClaudeHookHandlers,
   ClaudeHookResult,
+  ClaudeHookResultFor,
 } from "../claude/hooks/index.ts";
 import type { CodexHookEventName } from "../codex/hooks/names.ts";
 import type { ElwoodActivityEvent } from "./activity/index.ts";
@@ -152,7 +152,7 @@ export type ClaudeEventHandler<E extends ClaudeEventName> = (
   event: ClaudeEventMap[E],
 ) => E extends `hook:${infer K}`
   ? K extends ClaudeHookEventName
-    ? ClaudeHookCommonResultFor<K> | Promise<ClaudeHookCommonResultFor<K>>
+    ? ClaudeHookResultFor<K> | Promise<ClaudeHookResultFor<K>>
     : ClaudeHookResult | Promise<ClaudeHookResult>
   : void;
 
