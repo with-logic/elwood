@@ -1,6 +1,5 @@
 /** Real adapter-boundary recovery and shutdown matrix for C-TRUST-01. */
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
 import type {
@@ -9,6 +8,7 @@ import type {
   ElwoodWarningEvent,
 } from "../../src/index.ts";
 import type { FakePty } from "./fake-pty.ts";
+import { tempDir } from "./tmp.ts";
 
 type Session = {
   readonly status: ElwoodSessionStatus;
@@ -51,7 +51,7 @@ async function withSession(
 export function trustRecoveryTests(harness: Harness): void {
   test("C-TRUST-01 an automation-owned trust gate holds image attachment", async () => {
     await withSession(harness, async ({ session, pty }) => {
-      const image = join(mkdtempSync(join(tmpdir(), "elwood-trust-")), "shot.png");
+      const image = join(tempDir("elwood-trust-"), "shot.png");
       writeFileSync(image, PNG);
       repaint(pty, harness.clear);
       await session.sendMessage("look", { images: [{ path: image }] });
