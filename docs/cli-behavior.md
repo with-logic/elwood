@@ -270,16 +270,6 @@ A no-model Codex resize probe at 100×12, 100×8 and 100×6 confirms that the we
 box can scroll away while its composer and model/reasoning/path footer remain.
 Those native rows also prove clearance; welcome presence is not required.
 
-### Native Codex startup warnings
-
-Codex 0.154.0 normally collapses MCP failures to
-`⚠ 1 MCP startup issue · ctrl + t for details`. Its Ctrl+T overlay retains the
-canonical detailed MCP and login warning rows beneath the boxed welcome header.
-The collapsed count cannot supply server names or recovery instructions; Elwood
-does not send Ctrl+T automatically. Captures and the local failing-server/401
-real-CLI test verify the detailed rows. The current welcome chrome and native
-warning prefixes distinguish these banners from conversational quotations.
-
 ### Bypass-permissions acceptance dialog (`--high-trust`)
 
 Claude Code carries a one-time disclaimer for bypass mode. Its wording, taken
