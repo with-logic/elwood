@@ -34,8 +34,9 @@ test.each([
   ["Codex reasoning level", codexModelPicker, quotedInReply("•", codexReasoningScreen, "› ")],
 ] as const)("C-API-55 a %s quoted in a running turn's reply is never cancelled or held on", async (_name, spec, forged) => {
   const writes: string[] = [];
+  const screen = { text: "  Working (esc to interrupt)\n\n❯ " };
   const terminal = {
-    snapshot: () => ({ text: forged }),
+    snapshot: () => ({ text: screen.text }),
     sendInput: (input: string | Uint8Array) => void writes.push(String(input)),
   };
   const queue = new ControlQueue(
@@ -51,9 +52,12 @@ test.each([
   });
   queue.markReady();
   const failure = new Error("timed out");
-  await expect(picker.run("list_models", spec, 5000, () => Promise.reject(failure))).rejects.toBe(
-    failure,
-  );
+  // The reply streams the quote in while the operation is failing.
+  const failed = picker.run("list_models", spec, 5000, () => {
+    screen.text = forged;
+    return Promise.reject(failure);
+  });
+  await expect(failed).rejects.toBe(failure);
   // An Escape here would interrupt the running turn.
   expect(writes).toEqual([]);
   expect(picker.blocksInput()).toBe(false);

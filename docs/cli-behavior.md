@@ -170,6 +170,11 @@ legacy string/`agent_message` support. C-CODEX-16.
   elsewhere in the viewport (a reply quoting the prompt) as the returned composer
   while the shell is up. Before this, `setModel` resolved on that frame without
   ever confirming the switch. C-API-24, C-API-55.
+- **Picker text visible before `/model` is submitted is not Elwood's.** A closed
+  picker leaves no header behind, so `Select model` / `Select Model and Effort` /
+  `Select Reasoning Level` text that precedes the command is a human's dialog or a
+  transcript quote (which the unanchored open check would otherwise parse and
+  drive). The operation rejects without writing. C-API-55.
 - **Codex persists `/model` picker selections into the user `config.toml`.**
   `setModel` restores the prior default via compare-and-swap after switching
   (C-CODEX-14), skipping with a `codex_default_model_persisted` warning on a
