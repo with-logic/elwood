@@ -1,7 +1,7 @@
 /** Classifies native candidates separately from safe trust writes (PRD §5.4, C-TRUST-01). */
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { SelectableOption } from "../terminal-options.ts";
-import { parseTrustCandidate, parseTrustDialog, type TrustDialog } from "./dialog.ts";
+import { parseTrustCandidates, parseTrustDialog, type TrustDialog } from "./dialog.ts";
 import { activeTrustDialogVisible, type TrustPromptSpec, trustPromptAllowlist } from "./prompts.ts";
 
 export type TrustCandidate = {
@@ -23,8 +23,8 @@ export function trustPromptVisible(text: string, agent: ElwoodAgentKind): boolea
 }
 
 export function trustView(frame: string, agent: ElwoodAgentKind): TrustView {
-  const region = parseTrustCandidate(frame);
-  if (region !== undefined) {
+  const regions = parseTrustCandidates(frame);
+  for (const region of regions) {
     for (const spec of trustPromptAllowlist) {
       if (spec.agent !== agent) continue;
       const header = spec.headerPattern.exec(region.dialog.header);
@@ -41,8 +41,8 @@ export function trustView(frame: string, agent: ElwoodAgentKind): TrustView {
           : undefined,
       };
     }
-    return { kind: "unknown" };
   }
+  if (regions.length > 0) return { kind: "unknown" };
   return { kind: nativeComposer(frame, agent) ? "clear" : "unknown" };
 }
 

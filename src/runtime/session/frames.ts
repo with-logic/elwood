@@ -33,11 +33,17 @@ export function createSessionFrameObserver(
     if (active === undefined || active.closing.signal.aborted || frame === undefined) return;
     const state = trust();
     const reading = readRenderedFrame(observers, frame, state.blockedPrompt);
+    const released = active.automationBlocking && !state.inputBlocking;
     active.automationBlocking = state.inputBlocking;
     active.inputBlocking = reading.facts.blocking_prompt_visible;
     readiness.ready.armDeadline();
     try {
       observeRenderedReading(observers, reading, active);
+      // A human gate that handed off to an automation-owned one had its clear edge
+      // ignored while automation held input. Only that edge may leave `blocked`, so
+      // replay it once automation releases with nothing blocking left on screen.
+      if (released && !reading.facts.blocking_prompt_visible)
+        active.submitEvidence("blocking_prompt_cleared");
     } finally {
       readiness.observeReadinessFrame(reading.facts, active.automationBlocking);
     }

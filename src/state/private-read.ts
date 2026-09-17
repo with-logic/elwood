@@ -39,8 +39,7 @@ export function readPrivateFile(
 function inspect(path: string, owner: FileOwner | undefined): Outcome {
   let fd: number | undefined;
   try {
-    // O_NONBLOCK: opening a FIFO read-only would otherwise block until a writer appears.
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     const fault = privacyFault(fstatSync(fd), owner);
     return fault === undefined ? { text: readFileSync(fd, "utf8") } : { fault };
   } catch (error) {

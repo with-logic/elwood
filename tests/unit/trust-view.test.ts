@@ -45,6 +45,7 @@ test.each([
   "● Unknown explanatory bullet\n1. Yes",
   "assistant: unknown tail\n1. Yes",
   "1. Yes\nUnknown footer\n",
+  "1. Yes\n2. No\n\nDo you like this?",
 ])("C-ATTN-03 unsupported unauthorized native candidates remain human-blocking: %s", (tail) => {
   const table = withTrustBlockingRules(
     { agent: "claude" as const, verifiedAgainst: "test", rules: [] },
@@ -73,4 +74,9 @@ test("C-ATTN-03 static human rules omit automation-owned trust candidates", () =
       rule.match?.("Do you trust the contents of this directory?\nUnknown copy"),
     ),
   ).toBe(true);
+});
+
+test("C-TRUST-01 header-like text below a known gate holds input and authorizes no key", () => {
+  const frame = "Do you trust this folder?\n1. Yes\n2. No\n\nDo you like this?";
+  expect(trustView(frame, "claude")).toMatchObject({ kind: "candidate", valid: false });
 });

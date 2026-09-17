@@ -20,7 +20,6 @@ back each entry are listed in `prd/14-conformance.md`.
   navigation styles to the session and current dialog generation; unsupported or
   exhausted trust automation becomes a recoverable block after five seconds.
   Image attachment is held by the same trust gate as text input.
-- Reject FIFO state/config files without hanging.
 - Validate all concrete Claude tool input fields and typed hook fields, constrain
   permission rewrites to tool-specific handlers, and accept nullable Codex descriptions.
 - Match Claude task identifiers and plan permission objects to the native hook

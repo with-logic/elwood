@@ -20,23 +20,35 @@ export type TrustDialog = {
 
 /** Parse the last standalone candidate once; never borrow an earlier candidate's options. */
 export function parseTrustDialog(frame: string): TrustDialog | undefined {
-  const candidate = parseTrustCandidate(frame);
+  const candidate = parseTrustCandidates(frame)[0];
   return candidate?.validTail ? candidate.dialog : undefined;
 }
 
-/** A provenance-checked header may hold input even while its native body is incomplete. */
-export function parseTrustCandidate(
-  frame: string,
-): { readonly dialog: TrustDialog; readonly validTail: boolean } | undefined {
+type Candidate = { readonly dialog: TrustDialog; readonly validTail: boolean };
+
+/**
+ * A provenance-checked header may hold input even while its native body is incomplete.
+ * Every standalone header region, bottom-most first. Only the bottom-most can be a
+ * safe write target; an earlier one exists so that header-like text BELOW a known
+ * gate cannot make the gate disappear from input holding (it fails closed instead).
+ */
+export function parseTrustCandidates(frame: string): readonly Candidate[] {
   const lines = frame.split("\n");
-  let start = -1;
+  const starts: number[] = [];
   let insideNumberedOption = false;
   for (const [row, line] of lines.entries()) {
     if (numberedRow.test(line)) insideNumberedOption = true;
     else if (isSeparator(line)) insideNumberedOption = false;
-    else if (!insideNumberedOption && headerStart.test(line.trim())) start = row;
+    else if (!insideNumberedOption && headerStart.test(line.trim())) starts.unshift(row);
   }
-  if (start < 0) return undefined;
+  return starts.flatMap((start, index) => {
+    const candidate = candidateAt(lines, start);
+    if (candidate === undefined) return [];
+    return [index === 0 ? candidate : { ...candidate, validTail: false }];
+  });
+}
+
+function candidateAt(lines: readonly string[], start: number): Candidate | undefined {
   // Keep the provenance of a candidate when removing its prelude. Exact native
   // copy quoted below a conversation row is still conversation content.
   if (lines.slice(0, start).some((line) => conversationRow.test(line))) return undefined;

@@ -50,7 +50,7 @@ test("C-CLAUDE-14 the native MCP title admits its server name, not arbitrary tra
 });
 
 test("C-TRUST-01 all blocking trust classes share one parsed viewport", () => {
-  const parse = vi.spyOn(dialog, "parseTrustCandidate");
+  const parse = vi.spyOn(dialog, "parseTrustCandidates");
   const table = claudeScreenFactTableForTrustPolicy(false);
   const frame = { text: "Load this skill?\n1. Yes\n2. No", title: "" };
   expect(readScreenFacts(table, frame).facts.blocking_prompt_visible).toBe(true);
@@ -66,7 +66,7 @@ test("C-TRUST-01 visibility and recognition parse once before comparing eligible
   const frame = "Hooks need review";
   expect(trustPromptVisible(frame, "codex")).toBe(true);
   expect(parse).toHaveBeenCalledTimes(1);
-  const parseCandidate = vi.spyOn(dialog, "parseTrustCandidate");
+  const parseCandidate = vi.spyOn(dialog, "parseTrustCandidates");
   expect(new TrustPromptResponder("codex").handle(frame, vi.fn())).toMatchObject({
     kind: "option_pending",
   });
