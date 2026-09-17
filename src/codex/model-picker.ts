@@ -18,7 +18,10 @@ const changeConfirmed = /Model changed to/;
 export const codexModelPicker: ModelPickerSpec = {
   agent: "codex",
   isOpen: (text) => codexModelPickerHeader.test(text),
-  activeDialog: (text) => {
+  activeDialog: (text, authority) => {
+    // Nothing on screen is our dialog unless we opened one; the grammar below only has to
+    // locate Elwood's own dialog, never adjudicate arbitrary agent output (C-API-24).
+    if (!authority.opened) return undefined;
     const picker = bottomDialogRow(text, codexModelPickerHeader);
     const level = bottomDialogRow(text, reasoningHeader);
     if (picker < 0 && level < 0) return undefined;

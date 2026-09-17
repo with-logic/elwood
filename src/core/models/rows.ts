@@ -71,6 +71,32 @@ function parseRows(region: string, decorate: (labelText: string) => RowFlags): P
 /** The picker itself, or the stage an accepted row opens (reasoning level, cache warning). */
 export type ModelDialogStage = "picker" | "follow-up";
 
+/**
+ * Proof that ELWOOD opened the dialog this text is being read for, and the thing that
+ * grants a rendered region authority over input.
+ *
+ * Recognition is a grammar over UNTRUSTED bytes: the agent can print anything, including a
+ * verbatim picker. No pattern can prove a region is native — each rule only rules out the
+ * spoof someone already thought of, which is why successive review rounds kept finding a
+ * new string (same-line conversation text, double-spaced staged input, unmarked numbered
+ * prompts, a column-zero warning, content after the footer, a numbered composer draft).
+ *
+ * Provenance inverts the burden. A region may be treated as a live dialog ONLY while a
+ * `listModels`/`setModel` transaction Elwood itself started is in flight — it wrote
+ * `/model` and is waiting on the result — or while cleanup is tracking a dialog that
+ * transaction left behind. Every other frame is out of scope by construction, whatever it
+ * renders. The grammar then only has to tell Elwood's OWN dialog apart from the rest of
+ * its own screen, which is a bounded problem, rather than adjudicate arbitrary text.
+ * Implements C-API-24.
+ */
+export type ModelDialogAuthority = {
+  /**
+   * True only inside a transaction Elwood opened, after its `/model` write. Callers cannot
+   * synthesize this from screen text: it comes from the transaction's own state.
+   */
+  readonly opened: boolean;
+};
+
 // An agent reply or the composer renders below any header the transcript merely quotes.
 const replyRow = /^\s*[●•⏺]/;
 const caretRow = /^\s*[❯›]/;

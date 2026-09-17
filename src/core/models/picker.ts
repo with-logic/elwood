@@ -6,7 +6,12 @@
 import { delay } from "../delay.ts";
 import { elwoodError } from "../errors.ts";
 import { sendPickerInput } from "./input.ts";
-import type { AgentModelOption, ModelDialogStage, ParsedModelPicker } from "./rows.ts";
+import type {
+  AgentModelOption,
+  ModelDialogAuthority,
+  ModelDialogStage,
+  ParsedModelPicker,
+} from "./rows.ts";
 import {
   defaultModelTimeoutMs,
   openCommandScreen,
@@ -27,8 +32,17 @@ export type ModelPickerIo = {
 export type ModelPickerSpec = {
   readonly agent: string;
   readonly isOpen: (text: string) => boolean;
-  /** The live, bottom-most model dialog: the only one Elwood may cancel or hold input on. */
-  readonly activeDialog: (text: string) => ModelDialogStage | undefined;
+  /**
+   * The live, bottom-most model dialog: the only one Elwood may cancel or hold input on.
+   * `authority` is REQUIRED and carries proof Elwood opened this dialog (see
+   * `ModelDialogAuthority`); without it every frame is `undefined`, whatever it renders.
+   * The parameter is not optional so a caller cannot reach recognition without first
+   * saying, in the type system, on whose authority it is reading the screen.
+   */
+  readonly activeDialog: (
+    text: string,
+    authority: ModelDialogAuthority,
+  ) => ModelDialogStage | undefined;
   readonly parse: (text: string) => ParsedModelPicker;
   readonly apply: (io: ModelPickerIo, timeoutMs: number) => Promise<void>;
 };

@@ -24,7 +24,10 @@ export const claudeModelPicker: ModelPickerSpec = {
   agent: "claude",
   isOpen: (text) => claudeModelPickerHeader.test(text),
   // A PreModelSwitch hook confirmation shares the warning's shell but is the caller's.
-  activeDialog: (text) => {
+  activeDialog: (text, authority) => {
+    // Nothing on screen is our dialog unless we opened one; the grammar below only has to
+    // locate Elwood's own dialog, never adjudicate arbitrary agent output (C-API-24).
+    if (!authority.opened) return undefined;
     if (parseClaudeSwitchConfirmation(text)?.isCacheWarning === true) return "follow-up";
     return bottomDialogRow(text, claudeModelPickerHeader) < 0 ? undefined : "picker";
   },

@@ -5,6 +5,7 @@
 import { expect, test } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
+import type { ModelDialogAuthority } from "../../src/core/models/rows.ts";
 import {
   claudeCacheWarningViewport,
   claudePickerViewport,
@@ -15,6 +16,9 @@ import {
   claudeModelCacheConfirmationOnNo,
   claudeModelCacheConfirmationOnYes,
 } from "../helpers/model-pickers.ts";
+
+/** Elwood opened this dialog: the authority every recognition call must carry. */
+const opened: ModelDialogAuthority = { opened: true };
 
 const claudeFooter = "   Enter to set as default · s to use this session only · Esc to cancel";
 /** A reply quoting the warning: the dialog's own rows stay indented under its title. */
@@ -107,7 +111,7 @@ test.each([
     ["   Select model", "   ❯ 1. A  x", "     2. B  y", "     3. Bare", claudeFooter].join("\n"),
   ],
 ] as const)("C-API-24 %s is not a complete native dialog", (_name, spec, text) => {
-  expect(spec.activeDialog(text)).toBeUndefined();
+  expect(spec.activeDialog(text, opened)).toBeUndefined();
 });
 
 /**
@@ -121,14 +125,14 @@ test.each([
   ["the cursor-on-No capture", claudeModelPicker, claudeModelCacheConfirmationOnNo],
   ["the captured 0.154.0 reasoning screen", codexModelPicker, codexReasoningViewport],
 ] as const)("C-API-24 %s is still a live follow-up", (_name, spec, text) => {
-  expect(spec.activeDialog(text)).toBe("follow-up");
+  expect(spec.activeDialog(text, opened)).toBe("follow-up");
 });
 
 test.each([
   ["the captured 2.1.274 picker", claudeModelPicker, claudePickerViewport],
   ["the captured 0.154.0 picker", codexModelPicker, codexPickerViewport],
 ] as const)("C-API-24 %s is still a live picker", (_name, spec, text) => {
-  expect(spec.activeDialog(text)).toBe("picker");
+  expect(spec.activeDialog(text, opened)).toBe("picker");
 });
 
 /**
@@ -139,5 +143,27 @@ test.each([
  */
 test("C-API-24 a complete picker that has not painted its cursor is still live", () => {
   const painting = `   Select model\n     1. Default  Opus\n     2. Haiku  Fast\n${claudeFooter}`;
-  expect(claudeModelPicker.activeDialog(painting)).toBe("picker");
+  expect(claudeModelPicker.activeDialog(painting, opened)).toBe("picker");
+});
+
+/**
+ * The structural guarantee, and the reason this is no longer a pattern arms race.
+ *
+ * Every earlier round answered a specific spoof with a specific rule, and the next round
+ * produced a different string for the same idea. Authority closes the CLASS instead: with
+ * no transaction open, recognition returns `undefined` for ANY text — including the exact
+ * frames Elwood drives when it does hold a transaction. So no rendered content, spoofed or
+ * genuine, can reach cleanup outside an operation Elwood itself started.
+ */
+const unopened: ModelDialogAuthority = { opened: false };
+
+test.each([
+  ["the captured Claude picker", claudeModelPicker, claudePickerViewport],
+  ["the captured Claude cache warning", claudeModelPicker, claudeCacheWarningViewport],
+  ["the cursor-on-Yes capture", claudeModelPicker, claudeModelCacheConfirmationOnYes],
+  ["the cursor-on-No capture", claudeModelPicker, claudeModelCacheConfirmationOnNo],
+  ["the captured Codex picker", codexModelPicker, codexPickerViewport],
+  ["the captured Codex reasoning screen", codexModelPicker, codexReasoningViewport],
+] as const)("C-API-24 %s is not a live dialog when Elwood has not opened one", (_name, spec, text) => {
+  expect(spec.activeDialog(text, unopened)).toBeUndefined();
 });
