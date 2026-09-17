@@ -6,6 +6,7 @@
 import type { ControlSubmitMode } from "../control-queue/index.ts";
 import {
   clearStagedComposer,
+  holdWhileBlocked,
   type InputTerminal,
   throwIfInputAborted,
   waitForInput,
@@ -28,8 +29,6 @@ export const commandEnterDelayMs = 150;
 export const pasteSettleDelayMs = 150;
 export const pasteNudgeDelayMs = 1_000;
 export const pasteNudgeAttempts = 2;
-/** How often the submitting Enter re-checks a blocking dialog before firing. */
-export const blockedPollMs = 50;
 
 /** Explicitly best-effort input for startup/recovery automation. */
 export function ignoreInputFailure(input: void | Promise<void>): void {
@@ -90,9 +89,9 @@ async function writePastedPrompt(
   // Hold the WHOLE submission — paste included — while a blocking dialog is on
   // screen. A dialog can appear before an overtaking guidance's paste dispatches;
   // pasting caller/model text into it risks the TUI interpreting shortcuts, so no
-  // bytes may reach a dialog until it clears (C-API-37 dialog safety). Only await
-  // when actually blocked, so the common path still writes the paste synchronously.
-  if (guard?.blocked?.()) await waitWhileBlocked(guard, signal);
+  // bytes may reach a dialog until it clears (C-API-37 dialog safety). A write-only
+  // terminal with nothing blocking has nothing to wait for and writes synchronously.
+  if (terminal.settled || guard?.blocked?.()) await holdWhileBlocked(terminal, guard, signal);
   throwIfInputAborted(signal);
   // Sanitize: caller/model text is data, so an embedded end sentinel or control
   // byte must not escape paste mode into live keystrokes (§5.3).
@@ -103,6 +102,8 @@ async function writePastedPrompt(
   };
   let nudges = 0;
   const nudge = async () => {
+    // Decide on the current screen: a dialog may be received but not yet rendered.
+    await terminal.settled?.();
     // Stop once a LATER submission has begun: a stale nudge must never fire an
     // Enter into a newer prompt's paste (the staged chip is not prompt-specific).
     if (signal?.aborted || !guard || nudges >= pasteNudgeAttempts) return;
@@ -127,7 +128,7 @@ async function writePastedPrompt(
     // would confirm the dialog's highlighted option instead of submitting the
     // staged paste (C-API-37 dialog safety). The paste stays staged behind the
     // dialog and submits once it clears.
-    await waitWhileBlocked(guard, signal);
+    await holdWhileBlocked(terminal, guard, signal);
     throwIfInputAborted(signal);
     await terminal.sendInput("\r");
   } catch (error) {
@@ -135,26 +136,6 @@ async function writePastedPrompt(
     throw error;
   }
   schedule(nudge, nudgeDelayMs);
-}
-
-function waitWhileBlocked(guard?: PasteGuard, signal?: AbortSignal): Promise<void> {
-  if (!guard?.blocked?.()) return Promise.resolve();
-  return new Promise((resolve) => {
-    const poll = () => {
-      if (signal?.aborted) {
-        resolve();
-        return;
-      }
-      if (!guard.blocked?.()) {
-        resolve();
-        return;
-      }
-      const timer = setTimeout(poll, blockedPollMs);
-      timer.unref?.();
-    };
-    const timer = setTimeout(poll, blockedPollMs);
-    timer.unref?.();
-  });
 }
 
 export async function writeQueuedInput(
@@ -178,12 +159,12 @@ export async function writeQueuedInput(
     // returned promise resolves only after that Enter is dispatched, so a queued
     // command's Enter always lands before the next operation writes.
     command: async () => {
-      if (guard?.blocked?.()) await waitWhileBlocked(guard, signal);
+      if (terminal.settled || guard?.blocked?.()) await holdWhileBlocked(terminal, guard, signal);
       throwIfInputAborted(signal);
       await terminal.sendInput(input);
       try {
         await waitForInput(enterDelayMs, signal);
-        await waitWhileBlocked(guard, signal);
+        await holdWhileBlocked(terminal, guard, signal);
         throwIfInputAborted(signal);
         await terminal.sendInput("\r");
       } catch (error) {
