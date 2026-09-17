@@ -18,6 +18,15 @@ state, warnings, or startup prompts. Elwood MUST send `sendPrompt` and
 `sendKeys` input through the headless terminal input path so parent app input,
 programmatic prompts, and low-level keys share one terminal control mechanism.
 
+PTY output is submitted to xterm's ordered write buffer without serializing each
+chunk behind a separate timer. Adjacent chunks may be coalesced into bounded
+render batches of at most 64 KiB, flushing sooner when full or after a 4 ms
+scheduling window (subject to host event-loop scheduling); raw byte order is
+preserved, while event chunk boundaries and
+intermediate frames are not guaranteed. Render observers inspect each completed
+batch before subsequent terminal writes are parsed. Disposing the terminal cancels pending render
+notifications and settles outstanding write and `settled()` promises.
+
 ### 4.2 macOS shell behavior
 
 On macOS, Elwood MUST start the PTY in the user's configured shell in a way that
