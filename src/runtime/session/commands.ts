@@ -8,7 +8,7 @@
  */
 
 import { compactCommand, sessionCompact } from "../../core/compact.ts";
-import { writeUnsafe } from "../../core/input/abort.ts";
+import { holdWhileUnsafe } from "../../core/input/abort.ts";
 import { ignoreInputFailure } from "../../core/input/index.ts";
 import { interruptKey, sessionInterrupt } from "../../core/interrupt.ts";
 import {
@@ -84,12 +84,13 @@ export class CommandSurface {
       this.deps.submit(compactCommand, "compact", pending.signal, (operation) =>
         operation.addEventListener("abort", () => pending.abort(), { once: true }),
       );
-    // The recovery Enter decides on everything received, not the last frame (C-API-56).
+    // The recovery Enter decides on everything received, not the last frame, and is
+    // held and retried like any queued write until it is safe or cancelled (C-API-56).
     const { terminal, blocked } = this.deps;
     const nudge = () =>
       ignoreInputFailure(
-        writeUnsafe(terminal, { blocked }, pending.signal).then((unsafe) =>
-          unsafe ? undefined : terminal.sendInput("\r"),
+        holdWhileUnsafe(terminal, { blocked }, pending.signal).then(() =>
+          pending.signal.aborted ? undefined : terminal.sendInput("\r"),
         ),
       );
     return sessionCompact(this.deps.statusEvents, submit, nudge, options?.timeoutMs).finally(() =>

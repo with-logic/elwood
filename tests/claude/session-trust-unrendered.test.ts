@@ -150,7 +150,7 @@ test("C-API-56 a PTY that never goes quiet holds the write, and cancelling still
   expect(ptys[0]!.writes).toEqual([PASTE, "\r"]);
 });
 
-test("C-API-56 a trust gate received in the turn the compact recovery Enter is due holds it", async () => {
+test("C-API-56 a trust gate received as the compact recovery Enter is due holds it until the gate clears", async () => {
   const session = await readySession();
   // `/compact` and its Enter land by 150 ms; the recovery Enter is due 2,000 ms later.
   // Registered first, this timer delivers the gate just before that nudge runs.
@@ -159,9 +159,13 @@ test("C-API-56 a trust gate received in the turn the compact recovery Enter is d
   const rejected = expect(compacting).rejects.toMatchObject({ code: "compact_failed" });
   await vi.advanceTimersByTimeAsync(200);
   ptys[0]!.emitData(`${clear}❯ /compact`); // the TUI echoes the command
-  await vi.advanceTimersByTimeAsync(4_000);
-  await rejected;
+  await vi.advanceTimersByTimeAsync(2_800);
   expect(ptys[0]!.writes).toEqual(["/compact", "\r"]); // no recovery Enter reached the gate
+  ptys[0]!.emitData(composer); // the gate clears while the compact is still pending
+  await vi.advanceTimersByTimeAsync(200);
+  expect(ptys[0]!.writes).toEqual(["/compact", "\r", "\r"]); // retried, not dropped
+  await vi.advanceTimersByTimeAsync(1_000);
+  await rejected;
 });
 
 test("C-API-56 the compact recovery Enter is cancelled once a later operation has dispatched", async () => {
