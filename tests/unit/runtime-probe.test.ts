@@ -97,23 +97,8 @@ describe("runtime probe runner", () => {
     });
     const result = await runProbe(node, ["-e", "setTimeout(() => {}, 300)"]);
     expect(result.error?.code).toBe("ETIMEDOUT");
-    expect(signaled.length).toBeGreaterThanOrEqual(1);
+    expect(signaled).toHaveLength(1);
     expect(signaled[0]).toBeLessThan(0); // the process GROUP, not just the child pid
-  });
-
-  test.each([
-    "EPERM",
-    "unexpected",
-  ])("C-PERF-03 abort failure %s still settles without leaking error text", async (code) => {
-    setProbeTimeoutMsForTests(25);
-    vi.spyOn(process, "kill").mockImplementation(() => {
-      throw Object.assign(new Error("private probe context"), { code, name: "PrivateError" });
-    });
-    const result = await runProbe(node, ["-e", "setTimeout(() => {}, 100)"]);
-    expect(result.error?.code).toBe("ETIMEDOUT");
-    expect(result.error?.cleanupErrorCode).toBe(code === "EPERM" ? "EPERM" : "UnknownError");
-    expect(result.error?.cleanupProcessGroup).toBeGreaterThan(0);
-    expect(JSON.stringify(result)).not.toContain("private probe context");
   });
 
   test("C-PERF-03 a stdout-flooding probe is capped and killed with a typed error", async () => {

@@ -4,14 +4,12 @@
  * when the installed CLI is compatible) and surfaced as this live warning with the diagnostics
  * the PRD allows — the installed version in use, the update probe's errno, and the updater's own
  * stderr capped at 2 KB in `raw` (the CLI updater's output, never session transcripts or
- * prompts). Optional cleanupErrorCode is a bounded diagnostic for unresolved probe
- * cleanup; contention instead reports that the local update was skipped.
+ * prompts).
  */
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { ElwoodError } from "../errors.ts";
 import type { AgentUpdateFailedWarning } from "./lifecycle.ts";
-import { isReapErrorCode } from "./reasons.ts";
 
 /**
  * `Omit` that DISTRIBUTES over a union (`W extends unknown` triggers distribution), unlike the
@@ -31,7 +29,6 @@ const maxStderr = 2_000;
  * Build the warning from the contained update error. `installedVersion` is the parsed version the
  * session will actually run (the preflight re-read it after the failed update). `errorCode` is the
  * update probe's allowlisted `errno` (e.g. `ETIMEDOUT`) when present, else a generic token.
- * `cleanupErrorCode` distinguishes unresolved process cleanup from ordinary failure.
  */
 export function updateFailedWarning(
   agent: ElwoodAgentKind,
@@ -40,22 +37,15 @@ export function updateFailedWarning(
 ): UpdateFailedWarning {
   const details = error instanceof ElwoodError ? error.details : {};
   const errno = typeof details["errno"] === "string" ? details["errno"] : undefined;
-  const cleanupCode = details["cleanupErrorCode"];
-  const cleanupErrorCode =
-    cleanupCode === "ETIMEDOUT" || isReapErrorCode(cleanupCode) ? cleanupCode : undefined;
   const stderr = typeof details["stderr"] === "string" ? details["stderr"] : "";
-  const activeOwner = details["updateReason"] === "active_owner";
   return {
     agent,
     source: "lifecycle",
     code: "agent_update_failed",
     severity: "warning",
-    message: activeOwner
-      ? `\`${agent} update\` skipped: another updater is active or its cleanup is unconfirmed; continuing with the installed CLI ${installedVersion}.`
-      : `\`${agent} update\` failed; continuing with the installed CLI ${installedVersion}.`,
+    message: `\`${agent} update\` failed; continuing with the installed CLI ${installedVersion}.`,
     installedVersion,
-    errorCode: activeOwner ? "update_active" : (errno ?? "update_failed"),
-    ...(cleanupErrorCode === undefined ? {} : { cleanupErrorCode }),
+    errorCode: errno ?? "update_failed",
     raw: stderr.slice(0, maxStderr),
   };
 }
