@@ -5,7 +5,11 @@
 
 import { sendPickerInput } from "../core/models/input.ts";
 import type { ModelPickerSpec } from "../core/models/picker.ts";
-import { claudeModelPickerHeader, parseClaudeModelPicker } from "../core/models/rows.ts";
+import {
+  bottomDialogRow,
+  claudeModelPickerHeader,
+  parseClaudeModelPicker,
+} from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
 import {
   isClaudeIdleComposer,
@@ -19,6 +23,11 @@ const arrowUp = "\u001b[A";
 export const claudeModelPicker: ModelPickerSpec = {
   agent: "claude",
   isOpen: (text) => claudeModelPickerHeader.test(text),
+  // A PreModelSwitch hook confirmation shares the warning's shell but is the caller's.
+  activeDialog: (text) => {
+    if (parseClaudeSwitchConfirmation(text)?.isCacheWarning === true) return "follow-up";
+    return bottomDialogRow(text, claudeModelPickerHeader) < 0 ? undefined : "picker";
+  },
   parse: parseClaudeModelPicker,
   // "s" applies for this session only. Enter or a number key would save the
   // selection as the user's default for new sessions, which §4.5 forbids.
