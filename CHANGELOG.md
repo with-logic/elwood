@@ -23,6 +23,12 @@ back each entry are listed in `prd/14-conformance.md`.
   permission rewrites to tool-specific handlers, and accept nullable Codex descriptions.
 - Match Claude task identifiers and plan permission objects to the native hook
   schemas so valid task and plan inputs reach their handlers.
+- Bound subprocess cleanup, report content-free `cleanupErrorCode` diagnostics,
+  and retain update exclusion until an unresolved updater process group exits.
+  Contenders wait at most 60 seconds before skipping a still-owned update, with
+  an explicit active-updater diagnostic. Keep exclusion after a normal updater
+  exit while descendants remain, recover interrupted owner writes, and continue
+  failed probe cleanup asynchronously without extending host shutdown.
 
 ## [0.1.3] - 2026-09-14
 
