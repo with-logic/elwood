@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Serialize `listModels`/`setModel` through the session input queue: a model
+  operation owns the queue until its picker flow settles, so overlapping model
+  calls, commands, and messages can no longer be typed into an open picker.
 - Snapshot image bytes and relative paths when facade methods are called, including
   turns queued behind another response or waiting for session startup. Facade copies
   count against the same 200 MiB per-session ceiling as sends on the raw `session`.

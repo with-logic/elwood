@@ -55,6 +55,19 @@ describe("ClaudeSessionApi compact", () => {
     await expect(compacted).rejects.toMatchObject({ code: "compact_failed" });
   });
 
+  test("C-API-22 timed-out compact is removed before readiness arrives", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startClaude({ cwd });
+    await expect(session.compact({ timeoutMs: 10 })).rejects.toMatchObject({
+      code: "compact_failed",
+    });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
+    await session.sendMessage("hello after timeout");
+    expect(ptys[0]!.writes).not.toContain("/compact");
+    expect(ptys[0]!.writes).toContain("\u001b[200~hello after timeout\u001b[201~");
+  });
+
   test("C-API-22 compact rejects with session_not_running when the session stops first", async () => {
     const cwd = tempDir();
     installFakes();

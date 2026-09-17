@@ -21,6 +21,7 @@ export function pickerTimeout(options?: { readonly timeoutMs?: number }): number
 export type ModelPickerIo = {
   readonly terminal: ScreenTerminal;
   readonly blocked?: () => boolean;
+  readonly signal?: AbortSignal;
   readonly submit: (command: string, signal: AbortSignal) => Promise<void>;
 };
 
@@ -93,6 +94,7 @@ async function openAndParse(
 ): Promise<ParsedModelPicker> {
   const text = await openCommandScreen({
     terminal: io.terminal,
+    ...(io.signal === undefined ? {} : { signal: io.signal }),
     submit: (signal) => io.submit("/model", signal),
     isOpen: spec.isOpen,
     timeoutMs,

@@ -8,6 +8,7 @@
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
 import { sessionImageBudget } from "../../core/images/queued-budget.ts";
 import type { SendOptions } from "../../core/images/types.ts";
+import { writeQueuedInput } from "../../core/input/index.ts";
 import type { ElwoodLoopRequest, ElwoodLoopSnapshot } from "../../core/loops/types.ts";
 import type { ModelPickerSpec } from "../../core/models/picker.ts";
 import type { AgentModelOption } from "../../core/models/rows.ts";
@@ -66,10 +67,9 @@ export abstract class AgentSessionBase extends SessionLifecycle {
       everReady: () => this.everReady,
       blocked: () => this.isInputBlocked(),
       picker: () => this.picker,
-      submit: (command, kind, signal) =>
-        this.controlQueue.send(command, kind, undefined, {
-          cancel: { signal, error: () => signal.reason },
-        }),
+      controlQueue: this.controlQueue,
+      submitDirect: (command, signal) =>
+        writeQueuedInput(terminal, command, "command", this.pasteGuard, signal),
     });
   }
 
