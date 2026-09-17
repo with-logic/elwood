@@ -82,8 +82,10 @@ export async function executeRun(
   }
   resizeEnabled = false;
   updateAttention?.dispose();
-  await head?.close();
+  // Cleanup drains received PTY output (§9.4); keep mirroring until that tail has been
+  // emitted, then restore the terminal before the final stdout protocol (§12A.6).
   const cleanup = await lifecycle.cleanup();
+  await head?.close();
   try {
     await output.finish(() => terminalRecord(request, session, lifecycle, cleanup, output));
   } catch (error) {
