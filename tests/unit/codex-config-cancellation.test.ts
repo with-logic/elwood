@@ -89,3 +89,27 @@ test("C-CODEX-14 a SUCCESSFUL switch still waits for the CLI exit before restori
   await switching;
   expect(order).toEqual(["applied", "exit", "restored"]);
 });
+
+/**
+ * An `AbortSignal` does not replay a past abort to a newly added listener, so the
+ * already-aborted case needs its own check. Without it a `setModel` called on a session
+ * that had ALREADY closed waits out the current holder and its five-second exit barrier.
+ */
+test("C-CODEX-14 a switch started on an already-closed session rejects at once", async () => {
+  const { release, held } = holdTheLock();
+  const closed = new AbortController();
+  closed.abort();
+  const queued = runCodexModelSwitch({
+    snapshot: () => "snap",
+    apply: () => Promise.resolve(),
+    restore: () => undefined,
+    cancel: { signal: closed.signal, error: () => new Error("session_not_running") },
+  }).catch((error: Error) => error.message);
+  const outcome = await Promise.race([
+    queued,
+    new Promise((resolve) => setTimeout(() => resolve("STILL_PENDING"), 300)),
+  ]);
+  expect(outcome).toBe("session_not_running");
+  release();
+  await held;
+});

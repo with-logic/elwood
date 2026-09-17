@@ -43,11 +43,13 @@ export function createAsyncMutex(): AsyncMutex {
 
 /**
  * Rejects as soon as `cancel` aborts; never leaks a listener once `run` settles.
- * An already-aborted signal needs no separate check: `addEventListener` invokes the
- * listener immediately in that case.
+ * An ALREADY-aborted signal must be checked explicitly: `addEventListener` does not
+ * replay a past abort, so a caller that was closed before it ever asked for the lock
+ * would otherwise wait out the current holder and its exit barrier.
  */
 function cancelled<T>(cancel: MutexCancel, run: Promise<T>): Promise<T> {
   return new Promise<T>((_resolve, reject) => {
+    if (cancel.signal.aborted) return reject(cancel.error());
     const onAbort = (): void => reject(cancel.error());
     cancel.signal.addEventListener("abort", onAbort, { once: true });
     void run
