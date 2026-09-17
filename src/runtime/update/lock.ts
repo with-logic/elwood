@@ -27,6 +27,7 @@ export type UpdateLeaseOptions = {
 
 const defaultPollMs = 50;
 const defaultStaleMs = 30_000;
+const maxSweptStaging = 8;
 
 function defaultLeaseRoot(): string {
   const user = userInfo();
@@ -85,10 +86,11 @@ export async function coordinatedAutoupdate(
 
 /**
  * Publishes the lease atomically: the owner record is written inside a private staging
- * directory that is then renamed into place, so the lease either does not exist or holds
- * a complete record. A claimant killed at any point leaves only its staging directory,
- * never an ownerless or partially written lease that contenders would have to judge by
- * age. `rename` refuses a non-empty destination, which is exactly an existing lease.
+ * directory that is then renamed into place, so no partial or ownerless lease is ever
+ * published. A claimant killed before that rename leaves only its staging directory; one
+ * killed after it leaves a complete lease naming a dead owner, which ordinary stale
+ * recovery removes. `rename` refuses a non-empty destination, which is exactly an
+ * existing lease.
  */
 async function claimLease(path: string, owner: LeaseOwner): Promise<boolean> {
   // An existing lease, even an ownerless one left by an older version, is a wait condition:
@@ -114,12 +116,13 @@ async function claimLease(path: string, owner: LeaseOwner): Promise<boolean> {
 /**
  * Removes staging directories left by claimants killed before their rename. Only the lease
  * holder sweeps: a live contender's staging can no longer win, and losing it merely turns
- * that contender's failed rename into a missing source.
+ * that contender's failed rename into a missing source. Each holder removes a bounded
+ * number, so a pile of leftovers delays no single update; later holders finish the job.
  */
 async function sweepStaging(path: string): Promise<void> {
   const root = dirname(path);
   const entries = await readdir(root).catch(() => []);
-  for (const entry of entries)
-    if (entry.startsWith(`${basename(path)}.claim.`))
-      await rm(join(root, entry), { recursive: true, force: true }).catch(() => undefined);
+  const staging = entries.filter((entry) => entry.startsWith(`${basename(path)}.claim.`));
+  for (const entry of staging.slice(0, maxSweptStaging))
+    await rm(join(root, entry), { recursive: true, force: true }).catch(() => undefined);
 }

@@ -3,7 +3,7 @@
  * Implements PRD §9.2 and C-LIFE-09/C-PERF-04 generation safety.
  */
 
-import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, expect, test, vi } from "vitest";
 import { coordinatedAutoupdate, updateLockPath } from "../../src/runtime/update/lock.ts";
@@ -95,11 +95,16 @@ test("a delayed claimant observes a peer completion and skips its duplicate", as
 test("a recovery marker appearing after claim prevents the updater from starting", async () => {
   const root = sandbox("post-claim-recovery");
   races.createRecoveryAfterOwner = true;
+  const recovery = `${updateLockPath("codex", root)}.recovery`;
   let attempts = 0;
   await run(root, () => {
     attempts += 1;
+    // The claim that saw the marker backed off; this one ran only once it was gone.
+    expect(races.createRecoveryAfterOwner).toBe(false);
+    expect(existsSync(recovery)).toBe(false);
   });
   expect(attempts).toBe(1);
+  expect(existsSync(recovery)).toBe(false);
 });
 
 test("a generation changed during stale recovery fails safe", async () => {

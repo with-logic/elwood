@@ -86,16 +86,19 @@ evicted solely because the stale bound elapsed, and recovery of a dead owner's
 lease is itself serialized before removal, so neither cleanup nor concurrent stale
 recovery can evict a successor. The lease is published atomically: a claimant writes
 its owner record inside a private staging directory and renames that directory into
-place, so a lease either does not exist or holds a complete owner record. A
-claimant interrupted at any point leaves only its staging directory, never an
-ownerless or partially written lease, and the next lease holder removes leftover
-staging directories. A lease directory that already exists, even one without an
+place, so a lease either does not exist or holds a complete owner record: no
+ownerless or partially written lease is ever published. A claimant interrupted
+before the rename leaves only its staging directory; one interrupted after it leaves
+a complete lease naming a dead owner, which ordinary stale recovery removes. Each
+lease holder removes a bounded number of leftover staging directories. A lease directory that already exists, even one without an
 owner record, is a wait condition: it is recovered as stale rather than claimed
 over. An unreadable owner record fails safe on the stale
 bound: it may belong to a live updater writing a record format this version cannot
 read, so it is not treated as dead. Only a lease left untouched for 24 hours, far
 beyond any bounded update, is presumed abandoned and recovered with its unreadable
-record.
+record. Because such a record carries no generation token, the abandoned lease is
+identified by its directory identity and deleted only from a private name: a
+successor that reached the recovery path meanwhile is handed back untouched.
 Within one parent process, a FAILED shared update
 is likewise shared once — every concurrent caller observes the same failure,
 re-reads the installed version, and proceeds through the compatibility gate; the

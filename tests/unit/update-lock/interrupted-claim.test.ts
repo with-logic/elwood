@@ -4,7 +4,14 @@
  * SIGKILLed inside the filesystem call under test, leaving whatever that call leaves.
  */
 import { spawn } from "node:child_process";
-import { mkdirSync, readdirSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, test } from "vitest";
@@ -15,7 +22,8 @@ const lockUrl = pathToFileURL(
   fileURLToPath(new URL("../../../src/runtime/update/lock.ts", import.meta.url)),
 ).href;
 
-// `writeFile` dies after a partial record reaches the disk; `rename` dies before it publishes.
+// `writeFile` dies after a partial record reaches the disk, `rename` dies before it
+// publishes, and `published` dies right after the real rename put the lease in place.
 const claimant = `
   import fs from "node:fs";
   import { syncBuiltinESMExports } from "node:module";
@@ -27,7 +35,12 @@ const claimant = `
       die();
     };
   } else {
-    fs.promises.rename = async () => die();
+    const { rename } = fs.promises;
+    const published = process.env.ELWOOD_TEST_DIE_IN === "published";
+    fs.promises.rename = async (from, to) => {
+      if (published) await rename(from, to);
+      die();
+    };
   }
   syncBuiltinESMExports();
   const { coordinatedAutoupdate } = await import(${JSON.stringify(lockUrl)});
@@ -44,13 +57,18 @@ function runClaimant(root: string, dieIn: string): Promise<NodeJS.Signals | null
 }
 
 test.each([
-  "writeFile",
-  "rename",
-])("C-PERF-04 a claimant killed inside %s leaves a lease the next updater recovers", async (dieIn) => {
+  ["writeFile", "staging"],
+  ["rename", "staging"],
+  ["published", "lease"],
+] as const)("C-PERF-04 a claimant killed at %s leaves only a %s, which the next updater recovers", async (dieIn, left) => {
   const root = tempDir("elwood-update-lock-interrupted-");
   expect(await runClaimant(root, dieIn)).toBe("SIGKILL");
-  // Whatever the dead claimant left behind, it is not a lease other updaters must judge.
-  expect(readdirSync(root)).not.toEqual([]);
+  // Before publication only staging exists; after it, a complete lease naming a dead owner.
+  const lease = updateLockPath("codex", root);
+  expect(existsSync(lease)).toBe(left === "lease");
+  expect(readdirSync(root).some((entry) => entry.includes(".claim."))).toBe(left === "staging");
+  if (left === "lease")
+    expect(readFileSync(join(lease, "owner"), "utf8")).toMatch(/^\d+:[0-9a-f-]{36}$/);
   let ran = false;
   await coordinatedAutoupdate(
     "codex",
@@ -88,4 +106,18 @@ test("C-PERF-04 an unreadable lease untouched for a day is presumed abandoned an
   lease(23 * 60 * 60 * 1_000);
   await update("within the day");
   expect(attempts).toEqual(["after a day"]);
+  // Failing safe keeps the possibly live lease and its record, wherever recovery left it.
+  const kept = [path, `${path}.recovery`].find((candidate) => existsSync(candidate));
+  expect(readFileSync(join(kept as string, "owner"), "utf8")).toBe("123");
+});
+
+test("C-PERF-04 each lease holder sweeps a bounded number of leftover staging directories", async () => {
+  const root = tempDir("elwood-update-lock-sweep-");
+  for (let index = 0; index < 10; index += 1) mkdirSync(join(root, `codex.lock.claim.${index}`));
+  const leftovers = () => readdirSync(root).filter((entry) => entry.includes(".claim.")).length;
+  const update = () => coordinatedAutoupdate("codex", () => Promise.resolve(), { root });
+  await update();
+  expect(leftovers()).toBe(2);
+  await update();
+  expect(leftovers()).toBe(0);
 });
