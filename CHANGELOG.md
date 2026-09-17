@@ -21,6 +21,9 @@ back each entry are listed in `prd/14-conformance.md`.
   before releasing queued input, and holds queued messages, commands, and `/login`
   while a dialog it could not cancel stays visible. Picker text quoted in a reply
   is never cancelled, so cleanup cannot interrupt a running turn.
+- `setModel` no longer resolves on the partially painted frame that precedes
+  Claude's cache warning (it reported success without confirming the switch), and
+  queued input stays held while a Claude switch dialog is still painting.
 - Snapshot image bytes and relative paths when facade methods are called, including
   turns queued behind another response or waiting for session startup. Facade copies
   count against the same 200 MiB per-session ceiling as sends on the raw `session`.

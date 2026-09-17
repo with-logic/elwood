@@ -114,7 +114,8 @@ export class PickerTransactions {
       for (const bound = Date.now() + cleanupMs; Date.now() < bound; await delay(pollMs)) {
         const stage = spec.activeDialog(terminal.snapshot().text);
         if (stage === undefined) return;
-        if (stage === escaped) continue;
+        // A `painting` shell may turn out to be a hook confirmation: wait, never write.
+        if (stage === "painting" || stage === escaped) continue;
         escaped = stage;
         await sendPickerInput({ terminal }, escapeKey, isActive, true);
       }

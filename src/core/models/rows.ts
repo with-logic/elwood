@@ -67,8 +67,11 @@ function parseRows(region: string, decorate: (labelText: string) => RowFlags): P
   return { options, cursorIndex };
 }
 
-/** The picker itself, or the stage an accepted row opens (reasoning level, cache warning). */
-export type ModelDialogStage = "picker" | "follow-up";
+/**
+ * The picker itself, the stage an accepted row opens (reasoning level, cache warning),
+ * or a dialog shell still `painting`: it holds input but is never sent a key.
+ */
+export type ModelDialogStage = "picker" | "follow-up" | "painting";
 
 // An agent reply or the composer renders below any header the transcript merely quotes.
 const replyRow = /^\s*[●•⏺]/;
@@ -78,9 +81,11 @@ const caretRow = /^\s*[❯›]/;
  * A row no native model dialog contains: a reply row, or a caret row that is not a
  * picker row. Picker rows carry a description column, which a permission or approval
  * option (`❯ 1. Yes`) and a numbered composer line lack, so neither can pass for one.
+ * `ownRow` admits a dialog's own caret rows that are not picker rows (switch options).
  */
-function isForeignRow(line: string): boolean {
-  return replyRow.test(line) || (caretRow.test(line) && !rowPattern.test(line));
+function isForeignRow(line: string, ownRow?: RegExp): boolean {
+  if (replyRow.test(line)) return true;
+  return caretRow.test(line) && !rowPattern.test(line) && ownRow?.test(line) !== true;
 }
 
 /**
@@ -90,10 +95,10 @@ function isForeignRow(line: string): boolean {
  * Elwood must neither cancel such text (Escape would interrupt a running turn or clear
  * staged input) nor hold input on it (C-API-24).
  */
-export function bottomDialogRow(text: string, header: RegExp): number {
+export function bottomDialogRow(text: string, header: RegExp, ownRow?: RegExp): number {
   const lines = text.split("\n");
   const start = lines.findLastIndex((line) => header.test(line));
-  return lines.slice(Math.max(start, 0)).some(isForeignRow) ? -1 : start;
+  return lines.slice(Math.max(start, 0)).some((line) => isForeignRow(line, ownRow)) ? -1 : start;
 }
 
 function pickerRegion(text: string, header: RegExp): string {

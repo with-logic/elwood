@@ -159,6 +159,17 @@ legacy string/`agent_message` support. C-CODEX-16.
   reopens `Select model` / `Select Model and Effort`; a second closes it. Failure
   cleanup therefore sends one Escape per stage and never repeats one: a second
   Escape during a slow repaint would land on the composer. C-API-55.
+- **Claude paints its cache warning over the picker, with one partial frame.** A
+  5 ms frame capture on Claude 2.1.274 (2026-09-17) shows no idle composer between
+  the `s` key and the warning: 28 ms after the key one frame has `Switch model?`
+  and the cache copy above STALE picker rows (`❯ 1. Fable …`), with neither
+  `Select model` nor the Yes/No options; 7 ms later the dialog is complete
+  (numbered, cursor on `1. Yes, switch to …`). In that frame the title-only shell
+  cannot be told from a `PreModelSwitch` hook confirmation, so Elwood holds input on
+  it and never writes to it, and `setModel` does not treat a caret-only row
+  elsewhere in the viewport (a reply quoting the prompt) as the returned composer
+  while the shell is up. Before this, `setModel` resolved on that frame without
+  ever confirming the switch. C-API-24, C-API-55.
 - **Codex persists `/model` picker selections into the user `config.toml`.**
   `setModel` restores the prior default via compare-and-swap after switching
   (C-CODEX-14), skipping with a `codex_default_model_persisted` warning on a

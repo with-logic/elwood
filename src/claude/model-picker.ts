@@ -13,6 +13,7 @@ import {
 import { waitForScreen } from "../core/models/tui-screen.ts";
 import {
   isClaudeIdleComposer,
+  isClaudeSwitchShell,
   parseClaudeSwitchConfirmation,
 } from "./model-switch-confirmation.ts";
 
@@ -25,7 +26,9 @@ export const claudeModelPicker: ModelPickerSpec = {
   isOpen: (text) => claudeModelPickerHeader.test(text),
   // A PreModelSwitch hook confirmation shares the warning's shell but is the caller's.
   activeDialog: (text) => {
-    if (parseClaudeSwitchConfirmation(text)?.isCacheWarning === true) return "follow-up";
+    const confirmation = parseClaudeSwitchConfirmation(text);
+    if (confirmation !== undefined) return confirmation.isCacheWarning ? "follow-up" : undefined;
+    if (isClaudeSwitchShell(text)) return "painting";
     return bottomDialogRow(text, claudeModelPickerHeader) < 0 ? undefined : "picker";
   },
   parse: parseClaudeModelPicker,
@@ -35,7 +38,7 @@ export const claudeModelPicker: ModelPickerSpec = {
     await sendPickerInput(io, "s", (text) => claudeModelPickerHeader.test(text));
     const next = await waitForScreen(
       io.terminal,
-      (text) => cacheConfirmationWithCursor(text) || isClaudeIdleComposer(text),
+      (text) => cacheConfirmationWithCursor(text) || switchSettled(text),
       timeoutMs,
       "claude model switch confirmation or idle composer",
     );
@@ -55,15 +58,17 @@ export const claudeModelPicker: ModelPickerSpec = {
     }
     await waitForScreen(
       io.terminal,
-      (text) =>
-        isClaudeIdleComposer(text) &&
-        parseClaudeSwitchConfirmation(text) === undefined &&
-        !claudeModelPickerHeader.test(text),
+      (text) => switchSettled(text) && !claudeModelPickerHeader.test(text),
       timeoutMs,
       "claude idle composer after model switch",
     );
   },
 };
+
+/** The idle composer with no switch dialog on screen, complete or still painting. */
+function switchSettled(text: string): boolean {
+  return isClaudeIdleComposer(text) && !isClaudeSwitchShell(text);
+}
 
 function cacheConfirmationWithCursor(text: string): boolean {
   const confirmation = parseClaudeSwitchConfirmation(text);

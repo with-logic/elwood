@@ -50,6 +50,29 @@ export const claudeCacheWarningViewport = [
   "    2. No, go back",
 ].join("\n");
 
+/**
+ * The one frame Claude 2.1.274 rendered between the picker (after `s`) and the complete
+ * warning, 28 ms after the key: the title and copy are painted over stale picker rows,
+ * and neither `Select model` nor the Yes/No options exist yet.
+ */
+export const claudeCacheWarningPartialViewport = [
+  "⏺ ok",
+  "",
+  "✻ Brewed for 1s · done 4:16 AM",
+  "",
+  "❯ /model",
+  "",
+  "────────────────────────────────────────",
+  "  Switch model?",
+  "  Your next response will be slower and use more tokens",
+  "",
+  "  This conversation is cached for the current model. Switching to Fable 5.1 means the full history gets re-read on your next message.",
+  "",
+  "  ❯ 1. Fable                  Fable 5.1 · Most capable for your hardest and longest-running tasks",
+  "    4. Sonnet                 Sonnet 5 · Efficient for routine tasks",
+  "    5. Haiku                  Haiku 4.5 · Fastest for quick answers",
+].join("\n");
+
 export const codexPickerViewport = [
   "⚠ `--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.",
   "",
