@@ -1,7 +1,4 @@
-/**
- * Public Claude hook type barrel.
- * Implements PRD §6 and §7.
- */
+/** Public Claude hook type barrel, implementing PRD §6 and §7. */
 
 export type { ClaudeHookHandlers } from "../handler-types.ts";
 export type {
@@ -10,6 +7,7 @@ export type {
   PermissionUpdate,
   PermissionUpdateDestination,
 } from "../permissions.ts";
+export type { ClaudeHookCommonResultFor } from "./common-result.ts";
 export type {
   ClaudeBackgroundTask,
   ClaudeHookEvent,
@@ -69,12 +67,13 @@ export type PreToolUseDecisionResultFor<Event> = {
 export type PreToolUseDecisionResult = PreToolUseDecisionResultFor<
   ClaudeHookEventFor<"PreToolUse">
 >;
-export type PreToolUseCommonResult =
-  | (Omit<PreToolUseDecisionResult, "updatedInput"> & { readonly updatedInput?: never })
-  | { readonly additionalContext: string };
+export type PreToolUseCommonResult = (
+  | Omit<PreToolUseDecisionResult, "updatedInput">
+  | { readonly additionalContext: string }
+) & { readonly updatedInput?: never };
 export type PreToolUseResultFor<Event> =
   | PreToolUseDecisionResultFor<Event>
-  | { readonly additionalContext: string };
+  | { readonly additionalContext: string; readonly updatedInput?: never };
 export type PreToolUseResult = PreToolUseResultFor<ClaudeHookEventFor<"PreToolUse">>;
 
 export type TopLevelBlockResult = {
@@ -83,13 +82,16 @@ export type TopLevelBlockResult = {
   readonly additionalContext?: string;
 };
 
-export type PermissionRequestResult = {
+export type PermissionRequestResultFor<Event> = {
   readonly behavior: "allow" | "deny";
-  readonly updatedInput?: ClaudeToolInputUpdateForEvent<ClaudeHookEventFor<"PermissionRequest">>;
+  readonly updatedInput?: ClaudeToolInputUpdateForEvent<Event>;
   readonly updatedPermissions?: readonly PermissionUpdate[];
   readonly message?: string;
   readonly interrupt?: boolean;
 };
+export type PermissionRequestResult = PermissionRequestResultFor<
+  ClaudeHookEventFor<"PermissionRequest">
+>;
 export type PermissionRequestCommonResult = Omit<PermissionRequestResult, "updatedInput"> & {
   readonly updatedInput?: never;
 };
@@ -179,7 +181,9 @@ export type ClaudeHookResultFor<K extends ClaudeHookEventName> = K extends "PreT
 export type ClaudeHookResultForEvent<Event extends ClaudeHookEventFor<ClaudeHookEventName>> =
   Event["hook_event_name"] extends "PreToolUse"
     ? PreToolUseResultFor<Event> | undefined
-    : ClaudeHookResultFor<Event["hook_event_name"]>;
+    : Event["hook_event_name"] extends "PermissionRequest"
+      ? PermissionRequestResultFor<Event> | undefined
+      : ClaudeHookResultFor<Event["hook_event_name"]>;
 
 export type ClaudeHookResult =
   | undefined

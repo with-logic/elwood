@@ -5,6 +5,7 @@
 
 import { isOneOf, isRecord, optionalString } from "../../core/predicates.ts";
 import type { CodexHookEvent } from "./index.ts";
+import { optionalNullableString } from "./values.ts";
 
 export { isCodexHookResult } from "./validate-result.ts";
 
@@ -87,10 +88,6 @@ export function isKnownCommandTool(value: string): boolean {
 
 function isPublicToolName(value: string): boolean {
   return isKnownCommandTool(value) || value.startsWith("mcp__") || value.startsWith("unknown:");
-}
-
-function optionalNullableString(value: unknown): boolean {
-  return value === undefined || value === null || typeof value === "string";
 }
 
 function optionalPermissionMode(value: unknown): boolean {

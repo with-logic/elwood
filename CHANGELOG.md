@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Validate all concrete Claude tool input fields and typed hook fields, constrain
+  permission rewrites to tool-specific handlers, and accept nullable Codex descriptions.
+- Match Claude task identifiers and plan permission objects to the native hook
+  schemas so valid task and plan inputs reach their handlers.
+
 ## [0.1.3] - 2026-09-14
 
 - Keep live session warnings quiet in text and JSON CLI output, including model
