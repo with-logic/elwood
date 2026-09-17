@@ -28,7 +28,9 @@ import {
   waitFor,
 } from "./helpers.ts";
 
-const BASELINE_CONFIG = 'model = "gpt-5.1-codex"\nmodel_reasoning_effort = "medium"\n';
+// Let the installed CLI select its current default. A pinned legacy model can
+// disappear from the rendered catalog, leaving every visible isCurrent false.
+const BASELINE_CONFIG = 'model_reasoning_effort = "medium"\n';
 
 /** The root model defaults on disk; Codex appends unrelated trust bookkeeping at boot. */
 function rootModelKeys(configPath: string): readonly string[] {

@@ -261,8 +261,11 @@ final nonzero result.
 While attached, Elwood temporarily puts terminal stdin into raw mode and
 discards ordinary keyboard, mouse, paste, and terminal-response bytes: v1 head
 mode is observational, not interactive. Every Ctrl-C byte follows the same
-first-interrupt/repeated-force-kill lifecycle as SIGINT. On every normal,
-failure, timeout, or interruption outcome, Elwood MUST remove its input and
+first-interrupt/repeated-force-kill lifecycle as SIGINT. The mirror MUST stay
+attached through session cleanup, so PTY output received before the run ended —
+including the tail that runtime cleanup drains (§9.4) — reaches the display
+rather than being discarded with a still-pending render batch. After cleanup, on
+every normal, failure, timeout, or interruption outcome, Elwood MUST remove its input and
 resize listeners, restore terminal stdin's prior raw/cooked mode, flush pending
 display writes, reset attributes, disable mouse and bracketed-paste modes, show
 the cursor, and leave the alternate screen before emitting the final stdout

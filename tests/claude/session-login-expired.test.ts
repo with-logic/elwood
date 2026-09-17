@@ -82,17 +82,12 @@ describe("ClaudeSessionApi mid-session login expiry (C-CLAUDE-18)", () => {
     installFakes();
     const session = await startClaude({ cwd });
     const warnings = collectLoginWarnings(session);
-    // Both banner frames render through the detached `writeOutput(...).then(...)`
-    // chain; count `terminal:data` deliveries so the negative assertion runs only
-    // AFTER both frames have actually reached the login observer — not before.
-    let frames = 0;
-    session.on("terminal:data", () => {
-      frames += 1;
-    });
     // No readiness hook yet: a banner here is the startup case, not mid-session.
+    // Await each render so these are two observed frames, regardless of batching.
     ptys[0]!.emitData(EXPIRED);
+    await session.terminal.settled();
     ptys[0]!.emitData(EXPIRED);
-    await expect.poll(() => frames).toBeGreaterThanOrEqual(2);
+    await session.terminal.settled();
     // Both frames were observed by the login path, yet no mid-session warning fired.
     expect(warnings).toHaveLength(0);
   });
