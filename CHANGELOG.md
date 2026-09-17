@@ -16,6 +16,7 @@ back each entry are listed in `prd/14-conformance.md`.
   screen: an exhausted retry no longer restarts on the next frame of the same
   screen, and a stale attempt's late completion cannot start an overlapping retry
   loop. A reappearing update screen is still skipped again.
+- Reject FIFO state/config files without hanging.
 - Bind automatic trust approvals to the active dialog and revalidate every write,
   preventing quoted transcript headers or unknown intervening titles from
   authorizing unrelated permissions. Cancel stale trust attempts quietly while
