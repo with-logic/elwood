@@ -6,6 +6,7 @@
 import xtermHeadless from "@xterm/headless";
 import type { TerminalSize } from "../core/types.ts";
 import type { PtyProcess } from "../pty/types.ts";
+import { PtyOutput } from "./pty-output.ts";
 import { RenderQueue } from "./render-queue.ts";
 
 export type XtermTerminal = import("@xterm/headless").Terminal;
@@ -51,15 +52,12 @@ export function attachPtyTerminal(
   onRendered: (data: string, terminal: ElwoodTerminal) => void,
 ): ElwoodTerminal {
   const terminal = new HeadlessTerminal(size, (input) => pty.write(input));
+  const output = new PtyOutput((data) =>
+    terminal.writeOutput(data, () => onRendered(data, terminal)),
+  );
+  terminal.attachOutput(output);
   const unsubscribe = pty.onData((data) => {
-    // Own the whole continuation: a throwing public `terminal:data` listener reached
-    // via onRendered, or a render failure, must not surface as an unhandled rejection
-    // on normal PTY output. There is no caller to reject to on the render path, so the
-    // failure is swallowed here (the write itself already can't poison the queue).
-    void terminal
-      .writeOutput(data)
-      .then(() => onRendered(data, terminal))
-      .catch(() => undefined);
+    output.push(data);
   });
   terminal.onDispose(unsubscribe);
   return terminal;
@@ -69,6 +67,7 @@ class HeadlessTerminal implements ElwoodTerminal {
   readonly xterm: XtermTerminal;
   private currentSize: TerminalSize;
   private readonly renders: RenderQueue;
+  private ptyOutput: PtyOutput | undefined;
   private readonly onInput: (input: string | Uint8Array) => void;
   private readonly inputWaiters: Array<{
     readonly resolve: () => void;
@@ -86,7 +85,10 @@ class HeadlessTerminal implements ElwoodTerminal {
       cols: size.cols,
       rows: size.rows,
     });
-    this.renders = new RenderQueue((data, done) => this.xterm.write(data, done));
+    this.renders = new RenderQueue(
+      (data, done) => this.xterm.write(data, done),
+      () => this.ptyOutput?.flush(),
+    );
     this.xterm.onData((input) => this.forwardInput(input));
     this.xterm.onTitleChange((title) => {
       this.currentTitle = title;
@@ -105,9 +107,10 @@ class HeadlessTerminal implements ElwoodTerminal {
     return this.renders.renderFailed;
   }
 
-  writeOutput(data: string | Uint8Array): Promise<void> {
+  writeOutput(data: string | Uint8Array, onRendered?: () => void): Promise<void> {
     if (this.disposed) return Promise.resolve();
-    return this.renders.enqueue(data);
+    this.ptyOutput?.flush(); // keep a direct write ordered after PTY output already received
+    return this.renders.enqueue(data, onRendered);
   }
 
   sendInput(input: string | Uint8Array): Promise<void> {
@@ -148,11 +151,17 @@ class HeadlessTerminal implements ElwoodTerminal {
     if (this.disposed) return;
     this.disposed = true;
     for (const dispose of this.disposers.splice(0)) dispose();
+    this.ptyOutput?.dispose();
+    this.renders.dispose();
     this.xterm.dispose();
   }
 
   onDispose(dispose: () => void): void {
     this.disposers.push(dispose);
+  }
+
+  attachOutput(output: PtyOutput): void {
+    this.ptyOutput = output;
   }
 
   private forwardInput(input: string): void {
