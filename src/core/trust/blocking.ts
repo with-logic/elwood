@@ -43,7 +43,10 @@ export function withTrustBlockingRules(
   rules.push({
     id: `${agent}-unknown_gate-prompt`,
     fact: "blocking_prompt_visible",
-    fallback: true, // yields to a dialog the adapter table already names (permission prompts)
+    // Yields to ANY earlier rule that already set `blocking_prompt_visible` for this
+    // frame — permission and approval dialogs, but also the update and model-switch
+    // rules — so a gate an adapter table already names keeps its own label.
+    fallback: true,
     match: (text) => unknownGateVisible(regionsFor(text), agent),
   });
   return { ...base, rules: [...base.rules, ...rules] };
@@ -69,7 +72,10 @@ function unknownGateVisible(regions: TrustRegions, agent: ElwoodAgentKind): bool
 /**
  * Any trust gate is on screen: an allowlisted candidate (even a hold-only one whose body
  * or options are unsupported) or an off-allowlist gate. Non-trust startup automation
- * consults this before EVERY write; only the trust responder may answer such a frame.
+ * (update skip, browser-tools decline) consults this before EVERY write and MUST NOT
+ * write while it holds. Of the frames it covers, only allowlisted candidates are ever
+ * answered, and only by `TrustPromptResponder` under the trust policy; an off-allowlist
+ * gate is hold-only and stays for the human, so nothing here may answer it.
  */
 export function trustGateVisible(frame: string, agent: ElwoodAgentKind): boolean {
   const regions = parseTrustCandidates(frame);
