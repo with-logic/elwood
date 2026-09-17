@@ -10,3 +10,15 @@ export const codexComposer =
 /** Real Codex 0.154.0 ready session resized to 100×6, without a model turn. */
 export const codexSmallComposer =
   "Tip: New Use /fast to enable our fastest inference with increased plan usage.\n \n \n› Ask Codex to do anything\n \n  gpt-5.6-sol low · /tmp/elwood-composer-CAPTURE/p…";
+
+/** Complete native header+body regions; a bare header is hold-only (C-TRUST-01), so
+ * answerable fixtures append option rows. Claude copy: 2.1.252; Codex: 0.154.0. */
+export const claudeBody =
+  "(Like your own code, a well-known open source project, or work from your\nteam). If not, take a moment to review what's in this folder first.\nClaude Code'll be able to read, edit, and execute files here.\nSecurity guide";
+export const claudeTrust = `Do you trust this folder?\n${claudeBody}`;
+export const codexTrust =
+  "Do you trust the contents of this directory? Working with untrusted contents\ncomes with higher risk of prompt injection. Trusting the directory allows\nproject-local config, hooks, and exec policies to load.";
+export const codexHooks =
+  "Hooks need review\n1 hook is new or changed.\nHooks can run outside the sandbox after you trust them.";
+/** PTY writes need carriage returns; frames handed straight to a parser do not. */
+export const tty = (frame: string): string => frame.replaceAll("\n", "\r\n");

@@ -9,6 +9,7 @@ import {
   ClaudeStartupPromptResponder,
 } from "../../src/claude/startup-prompts.ts";
 import type { SettledStartupOutcome } from "../../src/core/startup/write.ts";
+import { claudeTrust } from "../fixtures/trust-composer.ts";
 
 // Captured from a real claude session that wedged an embedded start.
 const browserPrompt = [
@@ -52,7 +53,7 @@ describe("ClaudeStartupPromptResponder", () => {
   test("C-TRUST-01 a browser prompt below an old trust dialog does not approve trust", () => {
     const responder = new ClaudeStartupPromptResponder(true);
     const writes: string[] = [];
-    const combined = `Do you trust this folder?\n ❯ 1. Yes, continue\n${browserPrompt}`;
+    const combined = `${claudeTrust}\n ❯ 1. Yes, continue\n${browserPrompt}`;
     const settled = responder.handle(combined, (input) => {
       writes.push(input);
     });
@@ -107,7 +108,7 @@ describe("ClaudeStartupPromptResponder", () => {
 
   test("C-CLAUDE-16 a REJECTED trust write leaves the trust prompt retryable", async () => {
     const responder = new ClaudeStartupPromptResponder(true);
-    const frame = "Do you trust this folder?\n ❯ 1. Yes, continue";
+    const frame = `${claudeTrust}\n ❯ 1. Yes, continue`;
     const rejecting = responder.handle(frame, () => Promise.reject(new Error("pty closed")));
     await expect(rejecting[0]?.settled).rejects.toThrow("pty closed");
     // Not settled: a later frame answers it, this time with a fulfilling write.

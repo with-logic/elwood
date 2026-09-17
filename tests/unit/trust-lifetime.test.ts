@@ -1,10 +1,10 @@
 /** Pending PTY writes never outlive their trust generation or session (C-TRUST-01). */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
-import { claudeComposer } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTrust } from "../fixtures/trust-composer.ts";
 
-const numbered = "Do you trust this folder?\n1. Yes\n2. No";
-const cursor = "Do you trust this folder?\n❯ Yes\n  No";
+const numbered = `${claudeTrust}\n1. Yes\n2. No`;
+const cursor = `${claudeTrust}\n❯ Yes\n  No`;
 function settled(result: TrustPromptResult<"claude">) {
   if (result?.kind !== "attempted") throw new Error("expected attempt");
   return result.settled;
