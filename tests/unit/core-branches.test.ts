@@ -12,6 +12,7 @@ import {
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { ElwoodError } from "../../src/core/errors.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
+import { claudeTrust } from "../fixtures/trust-composer.ts";
 
 describe("core activity branches", () => {
   test("C-API-12 falls back to the event name when tool metadata is missing", () => {
@@ -87,7 +88,7 @@ describe("core activity branches", () => {
   test("C-CLAUDE-10 flags a recognized workspace-trust prompt with no rendered affirmative option as option_pending", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
-    const result = responder.handle("Do you trust this folder?\n1. No, exit", (input) => {
+    const result = responder.handle(`${claudeTrust}\n1. No, exit`, (input) => {
       writes.push(input);
     });
     expect(result).toEqual({ kind: "option_pending", prompt: "workspace_trust" });

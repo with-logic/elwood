@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from "vitest";
 import { TrustPromptResponder, trustPromptVisible } from "../../src/core/trust/responder.ts";
+import { claudeTrust, codexHooks, codexTrust } from "../fixtures/trust-composer.ts";
 
 describe("allowlisted trust prompt automation", () => {
   test("C-API-18 stays disabled unless callers opt in", () => {
@@ -21,12 +22,12 @@ describe("allowlisted trust prompt automation", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
     expect(
-      responder.handle("Do you trust this folder?\n1. Yes", (input) => {
+      responder.handle(`${claudeTrust}\n1. Yes`, (input) => {
         writes.push(input);
       }),
     ).toMatchObject({ kind: "attempted", automation: { prompt: "workspace_trust", input: "1" } });
     expect(
-      responder.handle("Do you trust this folder?", (input) => {
+      responder.handle(claudeTrust, (input) => {
         writes.push(input);
       }),
     ).toBeUndefined();
@@ -73,9 +74,9 @@ describe("allowlisted trust prompt automation", () => {
   });
 
   test("C-CODEX-11 C-CODEX-15 detects Codex directory and hook trust prompts", () => {
-    expect(trustPromptVisible("Do you trust the contents of this directory?", "codex")).toBe(true);
+    expect(trustPromptVisible(codexTrust, "codex")).toBe(true);
     // Hook trust is now an allowlisted trust prompt, so it is recognized too.
-    expect(trustPromptVisible("Hooks need review", "codex")).toBe(true);
+    expect(trustPromptVisible(codexHooks, "codex")).toBe(true);
     expect(trustPromptVisible("Some unrelated banner", "codex")).toBe(false);
   });
 
@@ -86,13 +87,13 @@ describe("allowlisted trust prompt automation", () => {
     // responder writes nothing AND surfaces `option_pending` (a transient
     // render-delay signal), once. A wrong "No, cancel" option is never selected.
     expect(
-      responder.handle("Do you trust this folder?\n1. No, cancel", (input) => {
+      responder.handle(`${claudeTrust}\n1. No, cancel`, (input) => {
         writes.push(input);
       }),
     ).toEqual({ kind: "option_pending", prompt: "workspace_trust" });
     // Reported once: a second identical frame does not re-flag.
     expect(
-      responder.handle("Do you trust this folder?\n1. No, cancel", (input) => {
+      responder.handle(`${claudeTrust}\n1. No, cancel`, (input) => {
         writes.push(input);
       }),
     ).toBeUndefined();
@@ -143,7 +144,7 @@ describe("allowlisted trust prompt automation", () => {
     // ONCE (a transient render-delay signal) but NOT settled, so the next frame
     // can still answer.
     expect(
-      responder.handle("Do you trust this folder?", (input) => {
+      responder.handle(claudeTrust, (input) => {
         writes.push(input);
       }),
     ).toEqual({
@@ -152,7 +153,7 @@ describe("allowlisted trust prompt automation", () => {
     });
     // Frame 2: the option has now rendered — the prompt answers normally.
     expect(
-      responder.handle("Do you trust this folder?\n1. Yes, proceed", (input) => {
+      responder.handle(`${claudeTrust}\n1. Yes, proceed`, (input) => {
         writes.push(input);
       }),
     ).toMatchObject({ kind: "attempted", automation: { prompt: "workspace_trust", input: "1" } });
