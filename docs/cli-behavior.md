@@ -137,6 +137,19 @@ legacy string/`agent_message` support. C-CODEX-16.
 
 ## Model selection persistence
 
+- **A model dialog replaces the composer; nothing renders below it.** Full-viewport
+  captures from Claude 2.1.274 and Codex 0.154.0 (2026-09-17,
+  `tests/helpers/model-dialog-viewports.ts`) show the picker, Codex's reasoning
+  level, and Claude's cache warning each ending the viewport, while the closed
+  state puts the composer back (`❯` between rules; `› Ask Codex to do anything`).
+  Rows ABOVE the dialog are ordinary transcript: Claude keeps `❯ /model` and reply
+  rows (`⏺` on 2.1.274, `●` earlier) there, so provenance is "no conversation or
+  composer row BELOW the header", never "none above". Picker text quoted in a reply
+  always has the working row and composer beneath it, so it is not a live dialog
+  and must never receive an Escape, which would interrupt the running turn. Claude
+  2.1.274's picker also carries an effort row (`◉ xHigh effort ←/→ to adjust`)
+  between its rows and footer. A closed Claude picker leaves only `❯ /model` /
+  `⎿ Kept model as …` behind, no header.
 - **Codex persists `/model` picker selections into the user `config.toml`.**
   `setModel` restores the prior default via compare-and-swap after switching
   (C-CODEX-14), skipping with a `codex_default_model_persisted` warning on a

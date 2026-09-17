@@ -67,6 +67,25 @@ function parseRows(region: string, decorate: (labelText: string) => RowFlags): P
   return { options, cursorIndex };
 }
 
+/** The picker itself, or the stage an accepted row opens (reasoning level, cache warning). */
+export type ModelDialogStage = "picker" | "follow-up";
+
+// An agent reply or the composer renders below any header the transcript merely quotes.
+// Picker cursor rows (`❯ 3. Fable`) are the only caret rows inside a native dialog.
+const conversationRow = /^\s*(?:[●•⏺]|[❯›](?!\s*\d+[.)]))/;
+
+/**
+ * The row of the last `header` when it opens the bottom-most viewport region, else -1.
+ * Both CLIs replace the composer with the dialog, so header text with a conversation
+ * or composer row below it is transcript content: Elwood must neither cancel it
+ * (Escape would interrupt a running turn) nor hold input on it (C-API-55).
+ */
+export function bottomDialogRow(text: string, header: RegExp): number {
+  const lines = text.split("\n");
+  const start = lines.findLastIndex((line) => header.test(line));
+  return lines.slice(start + 1).some((line) => conversationRow.test(line)) ? -1 : start;
+}
+
 function pickerRegion(text: string, header: RegExp): string {
   const lines = text.split("\n");
   for (let index = lines.length - 1; index >= 0; index -= 1) {

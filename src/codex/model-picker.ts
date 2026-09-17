@@ -5,7 +5,11 @@
 
 import { sendPickerInput } from "../core/models/input.ts";
 import type { ModelPickerSpec } from "../core/models/picker.ts";
-import { codexModelPickerHeader, parseCodexModelPicker } from "../core/models/rows.ts";
+import {
+  bottomDialogRow,
+  codexModelPickerHeader,
+  parseCodexModelPicker,
+} from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
 
 const reasoningHeader = /Select Reasoning Level/;
@@ -14,6 +18,12 @@ const changeConfirmed = /Model changed to/;
 export const codexModelPicker: ModelPickerSpec = {
   agent: "codex",
   isOpen: (text) => codexModelPickerHeader.test(text),
+  activeDialog: (text) => {
+    const picker = bottomDialogRow(text, codexModelPickerHeader);
+    const level = bottomDialogRow(text, reasoningHeader);
+    if (picker < 0 && level < 0) return undefined;
+    return level > picker ? "follow-up" : "picker";
+  },
   parse: parseCodexModelPicker,
   // Enter confirms the model, then Codex asks for a reasoning level with the
   // cursor pre-set on that model's default; a second Enter keeps it.
