@@ -166,3 +166,20 @@ test("C-TRUST-01 later native decline rows preserve the active numbered retry", 
   expect(observed.emit).toHaveBeenCalledTimes(1);
   expect(observed.emitWarnings).not.toHaveBeenCalled();
 });
+
+test("C-TRUST-01 a choice lost between frames is attempted again when it returns", async () => {
+  let frame = trust;
+  const write = vi.fn(() => {
+    // The CLI swallows the first key and repaints without its affirmative row.
+    frame = write.mock.calls.length === 1 ? "Do you trust this folder?\n2. No" : claudeComposer;
+  });
+  const responder = new TrustPromptResponder("claude", true);
+  const first = settled(responder.handle(trust, write, () => frame));
+  await vi.advanceTimersByTimeAsync(300);
+  await expect(first).resolves.toBe("cancelled");
+  frame = trust;
+  const second = settled(responder.handle(trust, write, () => frame));
+  await vi.runAllTimersAsync();
+  await expect(second).resolves.toBe("answered");
+  expect(write.mock.calls).toEqual([["1\r"], ["1\r"]]);
+});

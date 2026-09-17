@@ -78,12 +78,13 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     episode.attempt = attempt;
     episode.attemptedIdentity = identity;
     this.attempts.add(attempt);
-    const settled = attempt.start(write, read, episode.deadline).then(
+    const settled = attempt.start(write, read, episode.deadlineAtMs).then(
       (completion) => {
         this.attempts.delete(attempt);
         if (this.disposed || attempt.invalidated) return "cancelled" as const;
         if (this.episode !== episode || episode.attempt !== attempt) return completion;
         episode.attempt = undefined;
+        if (attempt.lostChoice) episode.attemptedIdentity = undefined;
         if (read === undefined && completion === "answered") {
           episode.legacyAnswered = true;
           clearTimeout(this.timer);
@@ -153,7 +154,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     }
     const episode: Episode = {
       candidate: view,
-      deadline: 0,
+      deadlineAtMs: 0,
       blocked,
       expired: false,
       expiredIdentity: undefined,
@@ -170,7 +171,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
   private arm(episode: Episode): void {
     clearTimeout(this.timer);
     episode.expired = false;
-    episode.deadline = Date.now() + episodeTimeoutMs;
+    episode.deadlineAtMs = Date.now() + episodeTimeoutMs;
     this.timer = setTimeout(() => {
       episode.expired = true;
       episode.expiredIdentity = episode.lastIdentity;

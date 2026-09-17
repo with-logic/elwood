@@ -54,7 +54,8 @@ export function decideStatus(
 ): StatusDecision {
   const target = evidenceTargets[evidence];
   const ignored = (reason: string): StatusDecision => ({ evidence, from, to: undefined, reason });
-  if (inputBlocked && target === "ready") return ignored("ignored: current trust gate holds input");
+  if (inputBlocked && target === "ready")
+    return ignored("ignored: a trust gate or closing session holds input");
   // Turn/blocking evidence describes in-session activity; before the session
   // is live (`starting`) it must not fabricate `ready`/`running`/`blocked`.
   if (requiresLiveSession.has(evidence) && !liveStatuses.has(from)) {

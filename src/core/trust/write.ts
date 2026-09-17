@@ -11,9 +11,11 @@ export class TrustAttempt {
   readonly candidate: TrustCandidate;
   readonly identity: string;
   private readonly controller = new AbortController();
-  private confirmed = false;
+  private confirmationWriteFulfilled = false;
   private clearance = false;
   invalidated = false;
+  /** The polled choice vanished mid-attempt; its return deserves a fresh attempt. */
+  lostChoice = false;
 
   constructor(candidate: TrustCandidate, identity: string) {
     this.candidate = candidate;
@@ -27,16 +29,19 @@ export class TrustAttempt {
   start(
     write: (input: string) => TrustWriteResult,
     read: (() => TrustView) | undefined,
-    deadline: number,
+    deadlineAtMs: number,
   ): Promise<StartupWriteCompletion> {
-    const operation = read === undefined ? this.atomic(write) : this.run(write, read, deadline);
+    const operation = read === undefined ? this.atomic(write) : this.run(write, read, deadlineAtMs);
     return operation.catch((error: unknown) => {
       if (this.controller.signal.aborted) return this.completion();
       throw error;
     });
   }
 
-  /** Only an observed clear/successor after a fulfilled confirmation permits success. */
+  /**
+   * With a live reader, only an observed clear/successor after a fulfilled confirmation
+   * permits success. Without one (`atomic`), a fulfilled numbered write is the only evidence.
+   */
   cancel(cleared = false): void {
     if (!cleared) this.invalidated = true;
     this.clearance = cleared;
@@ -44,7 +49,9 @@ export class TrustAttempt {
   }
 
   private completion(): StartupWriteCompletion {
-    return this.clearance && this.confirmed && !this.invalidated ? "answered" : "cancelled";
+    return this.clearance && this.confirmationWriteFulfilled && !this.invalidated
+      ? "answered"
+      : "cancelled";
   }
 
   private async atomic(
@@ -59,11 +66,11 @@ export class TrustAttempt {
   private async run(
     write: (input: string) => TrustWriteResult,
     read: () => TrustView,
-    deadline: number,
+    deadlineAtMs: number,
   ): Promise<StartupWriteCompletion> {
     let retryAt = 0;
     let previousOffset: number | undefined;
-    while (!this.controller.signal.aborted && Date.now() < deadline) {
+    while (!this.controller.signal.aborted && Date.now() < deadlineAtMs) {
       const option = this.readChoice(read());
       if (typeof option === "string") return option;
       const step = trustStep(option);
@@ -85,9 +92,9 @@ export class TrustAttempt {
   ): Promise<boolean> {
     const result = write(step.key);
     // A void writer has already fulfilled before an observer can replace the frame.
-    if (result === undefined && step.confirm) this.confirmed = true;
+    if (result === undefined && step.confirm) this.confirmationWriteFulfilled = true;
     const fulfilled = await this.own(result);
-    if (fulfilled && step.confirm) this.confirmed = true;
+    if (fulfilled && step.confirm) this.confirmationWriteFulfilled = true;
     return fulfilled;
   }
 
@@ -98,7 +105,10 @@ export class TrustAttempt {
       this.clearance = true;
       return this.completion();
     }
-    if (view.kind !== "candidate" || choiceIdentity(view) !== this.identity) return "cancelled";
+    if (view.kind !== "candidate" || choiceIdentity(view) !== this.identity) {
+      this.lostChoice = true;
+      return "cancelled";
+    }
     return view.option!; // Identity exists only for a validated affirmative.
   }
 
