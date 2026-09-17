@@ -2,6 +2,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
+import { preflightClaude } from "../../src/claude/preflight.ts";
 import { preflightCodex } from "../../src/codex/preflight.ts";
 import { setCommandRunnerForTests, setPlatformForTests } from "../../src/runtime/seams.ts";
 import { coordinatedAutoupdate, updateLockPath } from "../../src/runtime/update/lock.ts";
@@ -74,12 +75,17 @@ test("C-PERF-04 a live owner is never evicted solely because staleMs elapsed", a
   }
 });
 
-test("C-LIFE-11 a contender that stops waiting starts from the installed CLI with update_active", async () => {
+// `update_active` is shared behaviour but each adapter has its own preflight path, so both
+// are exercised: a Claude-only regression would otherwise leave the suite green.
+test.each([
+  ["codex", preflightCodex, "codex-cli 0.154.0", "0.154.0", "codex update"],
+  ["claude", preflightClaude, "2.1.144", "2.1.144", "claude update"],
+] as const)("C-PERF-04 a %s contender that stops waiting starts from the installed CLI with update_active", async (adapter, preflight, versionOutput, installedVersion, updateCommand) => {
   const root = tempDir("elwood-update-wait-warning-");
   const release = Promise.withResolvers<void>();
   const entered = Promise.withResolvers<void>();
   const owner = coordinatedAutoupdate(
-    "codex",
+    adapter,
     () => {
       entered.resolve();
       return release.promise;
@@ -90,22 +96,22 @@ test("C-LIFE-11 a contender that stops waiting starts from the installed CLI wit
   resetAutoupdateForTests();
   resetPreflightCacheForTests();
   setPlatformForTests("darwin");
-  setUpdateCoordinatorForTests((adapter, update) =>
-    coordinatedAutoupdate(adapter, update, { root, pollMs: 1, waitMs: 10 }),
+  setUpdateCoordinatorForTests((updating, update) =>
+    coordinatedAutoupdate(updating, update, { root, pollMs: 1, waitMs: 10 }),
   );
   const commands: string[] = [];
   setCommandRunnerForTests((_command, args) => {
     commands.push(args.join(" "));
-    return { status: 0, stdout: "codex-cli 0.154.0", stderr: "" };
+    return { status: 0, stdout: versionOutput, stderr: "" };
   });
   try {
-    expect(await preflightCodex(false, true)).toMatchObject({
+    expect(await preflight(false, true)).toMatchObject({
       code: "agent_update_failed",
       errorCode: "update_active",
-      installedVersion: "0.154.0",
+      installedVersion,
       raw: "",
     });
-    expect(commands.some((command) => command.includes("codex update"))).toBe(false);
+    expect(commands.some((command) => command.includes(updateCommand))).toBe(false);
   } finally {
     release.resolve();
     await owner;

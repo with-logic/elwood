@@ -4,7 +4,10 @@
  * when the installed CLI is compatible) and surfaced as this live warning with the diagnostics
  * the PRD allows — the installed version in use, the update probe's errno, and the updater's own
  * stderr capped at 2 KB in `raw` (the CLI updater's output, never session transcripts or
- * prompts). Contention instead reports that the local update was skipped.
+ * prompts). Contention is not a failed update and reports differently: an error carrying
+ * `updateReason: "active_owner"` — another process held the update lease until this caller's
+ * wait expired — becomes `errorCode: "update_active"` with a message saying the update was
+ * skipped, and no diagnostics, because no local updater ran to produce an errno or stderr.
  */
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
