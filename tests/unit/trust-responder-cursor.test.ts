@@ -10,7 +10,7 @@ import {
   selectableOptions,
 } from "../../src/core/terminal-options.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
-import { claudeComposer } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTrust } from "../fixtures/trust-composer.ts";
 
 describe("cursor-style trust prompts", () => {
   test("C-CLAUDE-10 keeps the real Claude 2.1.206 numbered layout working", async () => {
@@ -102,7 +102,7 @@ describe("cursor-style trust prompts", () => {
   });
 
   test("C-CLAUDE-14 navigates upward before confirming", async () => {
-    const frame = "Do you trust this folder?\n  Yes, I trust this folder\n❯ No";
+    const frame = `${claudeTrust}\n  Yes, I trust this folder\n❯ No`;
     const writes: string[] = [];
     let rendered = frame;
     const result = new TrustPromptResponder("claude", true).handle(
@@ -111,7 +111,7 @@ describe("cursor-style trust prompts", () => {
         writes.push(input);
         rendered =
           input === "\u001b[A"
-            ? "Do you trust this folder?\n❯ Yes, I trust this folder\n  No"
+            ? `${claudeTrust}\n❯ Yes, I trust this folder\n  No`
             : claudeComposer;
       },
       () => rendered,

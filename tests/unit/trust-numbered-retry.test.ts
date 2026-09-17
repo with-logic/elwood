@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { emitSettledStartupOutcomes } from "../../src/core/startup/write.ts";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
-import { claudeComposer } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTrust } from "../fixtures/trust-composer.ts";
 
-const trust = "Do you trust this folder?\n1. Yes\n2. No";
+const trust = `${claudeTrust}\n1. Yes\n2. No`;
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
@@ -54,10 +54,10 @@ test("C-TRUST-01 swallowed first numbered write retries and reports success only
 });
 
 test.each([
-  "Do you trust this folder?\n1. Yes, proceed\n2. No",
-  "Do you trust this folder?\n1. No\n2. Yes",
-  "Do you trust this folder?\n2. No",
-  "Do you trust this folder?\n❯ Yes\n  No",
+  `${claudeTrust}\n1. Yes, proceed\n2. No`,
+  `${claudeTrust}\n1. No\n2. Yes`,
+  `${claudeTrust}\n2. No`,
+  `${claudeTrust}\n❯ Yes\n  No`,
   "Do you trust this folder?\nClaude Code'll be able to read, edit, and execute files here.\n1. Yes\n2. No",
   "Do you trust this folder?\nUnknown explanation\n1. Yes\n2. No",
   "Enable elevated access?\n1. Yes\n2. No",
@@ -153,7 +153,7 @@ test("C-CLAUDE-16 live numbered PTY rejection warns instead of retrying", async 
 
 test("C-TRUST-01 later native decline rows preserve the active numbered retry", async () => {
   const responder = new TrustPromptResponder("claude", true);
-  let frame = "Do you trust this folder?\n1. Yes";
+  let frame = `${claudeTrust}\n1. Yes`;
   const write = vi.fn(() => {
     if (write.mock.calls.length === 2) frame = claudeComposer;
   });
@@ -171,7 +171,7 @@ test("C-TRUST-01 a choice lost between frames is attempted again when it returns
   let frame = trust;
   const write = vi.fn(() => {
     // The CLI swallows the first key and repaints without its affirmative row.
-    frame = write.mock.calls.length === 1 ? "Do you trust this folder?\n2. No" : claudeComposer;
+    frame = write.mock.calls.length === 1 ? `${claudeTrust}\n2. No` : claudeComposer;
   });
   const responder = new TrustPromptResponder("claude", true);
   const first = settled(responder.handle(trust, write, () => frame));

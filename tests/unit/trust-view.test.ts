@@ -2,7 +2,12 @@
 import { expect, test } from "vitest";
 import { withTrustBlockingRules } from "../../src/core/trust/blocking.ts";
 import { trustView } from "../../src/core/trust/view.ts";
-import { claudeComposer, codexComposer, codexSmallComposer } from "../fixtures/trust-composer.ts";
+import {
+  claudeComposer,
+  claudeTrust,
+  codexComposer,
+  codexSmallComposer,
+} from "../fixtures/trust-composer.ts";
 
 test.each([
   ["claude", claudeComposer],
@@ -79,6 +84,6 @@ test("C-ATTN-03 static human rules omit automation-owned trust candidates", () =
 });
 
 test("C-TRUST-01 header-like text below a known gate holds input and authorizes no key", () => {
-  const frame = "Do you trust this folder?\n1. Yes\n2. No\n\nDo you like this?";
+  const frame = `${claudeTrust}\n1. Yes\n2. No\n\nDo you like this?`;
   expect(trustView(frame, "claude")).toMatchObject({ kind: "candidate", valid: false });
 });

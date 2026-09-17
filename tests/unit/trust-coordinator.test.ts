@@ -1,9 +1,9 @@
 /** Candidate holds, bounded recovery, and verified clearance (C-TRUST-01). */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
-import { claudeComposer } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTrust } from "../fixtures/trust-composer.ts";
 
-const trust = "Do you trust this folder?\n1. Yes\n2. No";
+const trust = `${claudeTrust}\n1. Yes\n2. No`;
 const unsupported = "Do you trust this folder?\nNew native explanation\n1. Yes";
 function settled(result: TrustPromptResult<"claude">) {
   if (result?.kind !== "attempted") throw new Error("expected attempt");
@@ -14,7 +14,7 @@ afterEach(() => vi.useRealTimers());
 
 test.each([
   unsupported,
-  "Do you trust this folder?\n1. Yes\nUnknown footer",
+  `${claudeTrust}\n1. Yes\nUnknown footer`,
 ])("C-TRUST-01 unsupported native candidates hold input and expire without new output: %s", async (frame) => {
   const changed = vi.fn();
   const responder = new TrustPromptResponder("claude", true, changed);
@@ -39,7 +39,7 @@ test.each([
 test("C-TRUST-01 partial first paint owns the deadline even when choices arrive late", async () => {
   const responder = new TrustPromptResponder("claude", true);
   const write = vi.fn();
-  expect(responder.handle("Do you trust this folder?", write)?.kind).toBe("option_pending");
+  expect(responder.handle(claudeTrust, write)?.kind).toBe("option_pending");
   await vi.advanceTimersByTimeAsync(4_900);
   const attempt = settled(responder.handle(trust, write, () => trust));
   await vi.advanceTimersByTimeAsync(100);
