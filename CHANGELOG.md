@@ -24,6 +24,10 @@ back each entry are listed in `prd/14-conformance.md`.
   navigation styles to the session and current dialog generation; unsupported or
   exhausted trust automation becomes a recoverable block after five seconds.
   Image attachment is held by the same trust gate as text input.
+- Require a trust dialog's native explanatory copy before any automatic approval:
+  a bare allowlisted header with affirmative options is held, never typed into,
+  and becomes answerable only once its native body paints (recoverable `blocked`
+  after five seconds otherwise). Skill, plugin, and MCP gates are unchanged.
 - Keep text CLI output limited to agent responses by default. Use
   `--show-session-id` to print the retained session ID on stderr, or find it
   with `elwood sessions`. Session retention and JSON/JSONL records are unchanged.

@@ -3,10 +3,13 @@ import { expect, test } from "vitest";
 import { withTrustBlockingRules } from "../../src/core/trust/blocking.ts";
 import { trustView } from "../../src/core/trust/view.ts";
 import {
+  claudeBody,
   claudeComposer,
   claudeTrust,
   codexComposer,
+  codexHooks,
   codexSmallComposer,
+  codexTrust,
 } from "../fixtures/trust-composer.ts";
 
 test.each([
@@ -84,4 +87,45 @@ test("C-ATTN-03 static human rules omit automation-owned trust candidates", () =
 test("C-TRUST-01 header-like text below a known gate holds input and authorizes no key", () => {
   const frame = `${claudeTrust}\n1. Yes\n2. No\n\nDo you like this?`;
   expect(trustView(frame, "claude")).toMatchObject({ kind: "candidate", valid: false });
+});
+
+const bypass =
+  "WARNING: Claude Code running in Bypass Permissions mode\nIn Bypass Permissions mode, Claude Code will not ask for your approval before running potentially dangerous commands.";
+test.each([
+  ["claude", claudeTrust, "❯ Yes, I trust this folder\n  No, exit"],
+  ["claude", `Is this a project you created or one you trust?\n${claudeBody}`, "1. Yes\n2. No"],
+  ["claude", `${claudeTrust.split("\n")[0]}\n${claudeBody.split("\n")[2]}`, "1. Yes\n2. No"],
+  ["claude", bypass, "1. No, exit\n2. Yes, I accept"],
+  ["codex", codexTrust, "› 1. Yes, continue\n  2. No, quit"],
+  ["codex", codexHooks, "1. Review hooks\n2. Trust all and continue"],
+] as const)("C-TRUST-01 a %s header without its whole native body holds input but authorizes no key: %s", (agent, region, options) => {
+  const header = /^[^?\n]+\??/.exec(region)?.[0];
+  for (const partial of [
+    header,
+    `${header}\nSecurity guide`,
+    `${header}\n1 hook is new or changed.`,
+  ]) {
+    const held = trustView(`${partial}\n${options}`, agent);
+    expect(held).toMatchObject({ kind: "candidate", valid: false, option: undefined });
+  }
+  // Every truncation of the native copy is a half-painted body: only whole sentences answer.
+  const whole = /(?:folder first|files here|dangerous commands|to load|trust them)\.$|guide$/;
+  for (let end = (header as string).length; end < region.length; end++) {
+    const partial = region.slice(0, end).trimEnd();
+    const view = trustView(`${partial}\n${options}`, agent);
+    expect([partial, view.kind, "valid" in view && view.valid]).toEqual([
+      partial,
+      "candidate",
+      whole.test(partial),
+    ]);
+    if (!whole.test(partial)) expect(view).toMatchObject({ option: undefined });
+  }
+  const complete = trustView(`${region}\n${options}`, agent);
+  expect(complete).toMatchObject({ kind: "candidate", valid: true });
+  expect(complete.kind === "candidate" && complete.option?.label).toMatch(/Yes|Trust all/);
+});
+
+test("C-CLAUDE-14 gates with no captured native body stay answerable from their header", () => {
+  const view = trustView("Load this skill?\n1. Yes, load this skill\n2. No", "claude");
+  expect(view).toMatchObject({ kind: "candidate", valid: true, option: { number: "1" } });
 });
