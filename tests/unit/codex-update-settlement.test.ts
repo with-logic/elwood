@@ -24,8 +24,10 @@ test.each([
   await expect(result.outcomes[0]?.settled).resolves.toBe("cancelled");
   expect(emitWarnings).not.toHaveBeenCalled();
   expect(emit).not.toHaveBeenCalled();
+  // An unpainted option stays retryable; exhaustion stays latched for this appearance.
   const retried = responder.handle(prompt, write);
-  await expect(retried.outcomes[0]?.settled).resolves.toBe("answered");
+  if (mode === "expired") expect(retried.outcomes).toEqual([]);
+  else await expect(retried.outcomes[0]?.settled).resolves.toBe("answered");
 });
 
 test("C-CODEX-17 a vanished update cancels before any write", async () => {

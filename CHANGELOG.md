@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Bound Codex in-TUI update skipping to one attempt per appearance of the update
+  screen: an exhausted retry no longer restarts on the next frame of the same
+  screen, and a stale attempt's late completion cannot start an overlapping retry
+  loop or report success or a write failure for the newer screen. A skip write
+  rejected after the update screen already cleared no longer fails a healthy
+  headless run as `blocked_prompt`. A reappearing update screen is still skipped again.
 - Emit the `attention` activity for a blocking prompt that painted while the
   session was still `starting`. Such a session already became `blocked`, but
   without the human-decision event, so a headless `elwood` run never reported
@@ -37,6 +43,14 @@ back each entry are listed in `prd/14-conformance.md`.
   a bare allowlisted header with affirmative options is held, never typed into,
   and becomes answerable only once its native body paints (recoverable `blocked`
   after five seconds otherwise). Skill, plugin, and MCP gates are unchanged.
+- Queued input now renders and observes all PTY output already received before
+  each write, so a trust or permission dialog that was received but not yet
+  rendered still holds the paste, its Enter, and recovery Enters. The compact
+  recovery Enter follows the same rule and is cancelled once a later queued
+  operation dispatches. On the terminal handle, `settled()` now also covers output
+  received while waiting (it still never rejects), and the new read-only
+  `renderFailed` property reports a failed render, after which queued input stays
+  withheld.
 - Keep text CLI output limited to agent responses by default. Use
   `--show-session-id` to print the retained session ID on stderr, or find it
   with `elwood sessions`. Session retention and JSON/JSONL records are unchanged.

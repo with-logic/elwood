@@ -8,6 +8,7 @@
  */
 
 import { compactCommand, sessionCompact } from "../../core/compact.ts";
+import { holdWhileUnsafe } from "../../core/input/abort.ts";
 import { ignoreInputFailure } from "../../core/input/index.ts";
 import { interruptKey, sessionInterrupt } from "../../core/interrupt.ts";
 import {
@@ -41,6 +42,7 @@ export type CommandSurfaceDeps = {
     command: string,
     kind: "compact" | "list_models" | "set_model",
     signal: AbortSignal,
+    onDispatch?: (operation: AbortSignal) => void,
   ) => Promise<void>;
 };
 
@@ -76,10 +78,21 @@ export class CommandSurface {
 
   compact(options?: Timeout): Promise<void> {
     const pending = new AbortController();
-    const submit = () => this.deps.submit(compactCommand, "compact", pending.signal);
-    const nudge = () => {
-      if (!this.deps.blocked()) ignoreInputFailure(this.deps.terminal.sendInput("\r"));
-    };
+    // The queue aborts an operation's signal when the NEXT one dispatches: from then on
+    // the composer belongs to that operation, and a recovery Enter would land in it.
+    const submit = () =>
+      this.deps.submit(compactCommand, "compact", pending.signal, (operation) =>
+        operation.addEventListener("abort", () => pending.abort(), { once: true }),
+      );
+    // The recovery Enter decides on everything received, not the last frame, and is
+    // held and retried like any queued write until it is safe or cancelled (C-API-56).
+    const { terminal, blocked } = this.deps;
+    const nudge = () =>
+      ignoreInputFailure(
+        holdWhileUnsafe(terminal, { blocked }, pending.signal).then(() =>
+          pending.signal.aborted ? undefined : terminal.sendInput("\r"),
+        ),
+      );
     return sessionCompact(this.deps.statusEvents, submit, nudge, options?.timeoutMs).finally(() =>
       pending.abort(),
     );
