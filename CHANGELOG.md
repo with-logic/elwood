@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Hold queued input on native-looking trust gates Elwood does not recognize. A
+  reworded or brand-new CLI gate (header, selectable options, nothing below but
+  its footer, no conversation above) now blocks for a human with the attention
+  label `<agent>-unknown_gate-prompt` under every `autotrust` value and is never
+  answered automatically; previously readiness could type the queued message and
+  Enter into it. Dialogs that already block keep their existing labels.
 - Reject FIFO state/config files without hanging.
 - Bind automatic trust approvals to the active dialog and revalidate every write,
   preventing quoted transcript headers or unknown intervening titles from

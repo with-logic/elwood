@@ -262,6 +262,14 @@ PTY exit cancel pending automation and timers before disposal. Only a rejected
 PTY write belonging to a still-live matching attempt emits
 `startup_prompt_write_failed`; cancellation and late settlement stay quiet.
 
+Both CLIs reword gates often, so an off-allowlist gate fails closed: a header-shaped
+region (`headerStart` in `src/core/trust/dialog.ts`) with selectable options, only
+option/footer rows beneath it, and no conversation row above it holds input as
+`<agent>-unknown_gate-prompt` and is never written to. Both CLIs paint the composer
+below conversation content, so quoted or model-written question-plus-list prose fails
+that tail test. A new gate whose first words fall outside `headerStart` (e.g.
+`Allow ...?`) is still NOT held.
+
 A fulfilled write alone does not prove the gate cleared. Real-CLI checks use a
 separate raw visibility oracle so production recognition failures cannot make
 the tests report the gate absent. Sanitized native Claude 2.1.274 and Codex
