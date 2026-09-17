@@ -6,7 +6,7 @@
 import { describe, expect, test, vi } from "vitest";
 import type { StartupWriteCompletion } from "../../src/core/startup/write.ts";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
-import { claudeComposer } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTrust } from "../fixtures/trust-composer.ts";
 
 /** Await an attempted prompt’s completion; a missing attempt fails the test (never vacuous). */
 function settlementOf(result: TrustPromptResult<"claude">): Promise<StartupWriteCompletion> {
@@ -21,19 +21,19 @@ describe("trust-prompt automation security", () => {
     // Frame 1: header + a non-affirmative option ("No, cancel") only — the real
     // "Yes" hasn't rendered. It surfaces option_pending ONCE but must NOT settle.
     expect(
-      responder.handle("Do you trust this folder?\n1. No, cancel", (input) => {
+      responder.handle(`${claudeTrust}\n1. No, cancel`, (input) => {
         writes.push(input);
       }),
     ).toEqual({ kind: "option_pending", prompt: "workspace_trust" });
     // Same partial frame again: reported once, so no second pending signal.
     expect(
-      responder.handle("Do you trust this folder?\n1. No, cancel", (input) => {
+      responder.handle(`${claudeTrust}\n1. No, cancel`, (input) => {
         writes.push(input);
       }),
     ).toBeUndefined();
     // Frame 2: the affirmative finally rendered — the prompt is answered, not wedged.
     expect(
-      responder.handle("Do you trust this folder?\n1. Yes, proceed\n2. No, cancel", (input) => {
+      responder.handle(`${claudeTrust}\n1. Yes, proceed\n2. No, cancel`, (input) => {
         writes.push(input);
       }),
     ).toMatchObject({ kind: "attempted", automation: { prompt: "workspace_trust", input: "1" } });
@@ -88,13 +88,13 @@ describe("trust-prompt automation security", () => {
   });
 
   test("C-CLAUDE-14 cursor navigation fails closed without live screen reads", async () => {
-    const frame = "Do you trust this folder?\n❯ No\n  Yes, I trust this folder";
+    const frame = `${claudeTrust}\n❯ No\n  Yes, I trust this folder`;
     const result = new TrustPromptResponder("claude", true).handle(frame, () => undefined);
     await expect(settlementOf(result)).resolves.toBe("cancelled");
   });
 
   test("C-CLAUDE-14 cursor navigation never continues into a replacement screen", async () => {
-    const initial = "Do you trust this folder?\n❯ No\n  Yes, I trust this folder";
+    const initial = `${claudeTrust}\n❯ No\n  Yes, I trust this folder`;
     let frame = initial;
     const result = new TrustPromptResponder("claude", true).handle(
       initial,
@@ -116,13 +116,13 @@ describe("trust-prompt automation security", () => {
   test("C-CLAUDE-14 unchanged or partial cursor frames time out and stay retryable", async () => {
     vi.useFakeTimers();
     try {
-      const initial = "Do you trust this folder?\n❯ No\n  Yes, I trust this folder";
+      const initial = `${claudeTrust}\n❯ No\n  Yes, I trust this folder`;
       const started = Date.now();
       const responder = new TrustPromptResponder("claude", true);
       const result = responder.handle(
         initial,
         () => undefined,
-        () => (Date.now() - started < 300 ? initial : "Do you trust this folder?"),
+        () => (Date.now() - started < 300 ? initial : claudeTrust),
       );
       const cancelled = expect(settlementOf(result)).resolves.toBe("cancelled");
       await vi.runAllTimersAsync();
@@ -133,7 +133,7 @@ describe("trust-prompt automation security", () => {
         (input) => {
           retryFrame =
             input === "\u001b[B"
-              ? "Do you trust this folder?\n  No\n❯ Yes, I trust this folder"
+              ? `${claudeTrust}\n  No\n❯ Yes, I trust this folder`
               : claudeComposer;
         },
         () => retryFrame,

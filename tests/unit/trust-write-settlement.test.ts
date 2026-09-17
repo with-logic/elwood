@@ -2,6 +2,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { emitSettledStartupOutcomes } from "../../src/core/startup/write.ts";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
+import { claudeTrust } from "../fixtures/trust-composer.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -19,8 +20,8 @@ function observe(result: TrustPromptResult<"claude">) {
   return { emit, emitWarnings, settled: result.settled };
 }
 
-const numbered = "Do you trust this folder?\n1. Yes\n2. No";
-const cursor = "Do you trust this folder?\n❯ No\n  Yes";
+const numbered = `${claudeTrust}\n1. Yes\n2. No`;
+const cursor = `${claudeTrust}\n❯ No\n  Yes`;
 const replacement = "Enable elevated access\n1. Yes\n2. No";
 
 test.each([
