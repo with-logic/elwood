@@ -70,6 +70,8 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
   expect(activity).toHaveBeenCalledWith(
     expect.objectContaining({ label: "claude-workspace_trust-prompt" }),
   );
+  observe.blockOnceLive(active); // already blocked: the startup replay never duplicates attention
+  expect(activity).toHaveBeenCalledTimes(1);
   bindStartupLifetime(active, trust, readiness.ready);
   active.closing.abort();
   active.closing.abort();
