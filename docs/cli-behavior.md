@@ -320,10 +320,12 @@ human block; unsupported or exhausted attempts transfer to the recoverable block
 above. C-E2E-09 requires both `ready` and a cleared trust screen; an unanswerable
 real frame is a failure, not a skip.
 
-The responder emits one transient `attention` when a recognized header paints
-before its affirmative option. A headless owner must ignore that transient only
-when its trust policy already authorizes the exact allowlisted prompt; `--no-trust`
-and generic permission dialogs remain human blocks. The startup replay buffer can
+The responder emits one transient `attention` when a recognized header and its
+native body paint before the affirmative option. A header whose body has not
+validated is held silently: it emits no transient `attention`, only the
+five-second fallback if it never completes. A headless owner must ignore that
+transient only when its trust policy already authorizes the exact allowlisted
+prompt; `--no-trust` and generic permission dialogs remain human blocks. The startup replay buffer can
 deliver this attention after the responder has already continued, so treating
 every attention event as fatal produces a false `blocked_prompt`.
 

@@ -94,10 +94,11 @@ const bypass =
 test.each([
   ["claude", claudeTrust, "❯ Yes, I trust this folder\n  No, exit"],
   ["claude", `Is this a project you created or one you trust?\n${claudeBody}`, "1. Yes\n2. No"],
+  ["claude", `${claudeTrust.split("\n")[0]}\n${claudeBody.split("\n")[2]}`, "1. Yes\n2. No"],
   ["claude", bypass, "1. No, exit\n2. Yes, I accept"],
   ["codex", codexTrust, "› 1. Yes, continue\n  2. No, quit"],
   ["codex", codexHooks, "1. Review hooks\n2. Trust all and continue"],
-] as const)("C-TRUST-01 a %s header without its native body holds input but authorizes no key: %s", (agent, region, options) => {
+] as const)("C-TRUST-01 a %s header without its whole native body holds input but authorizes no key: %s", (agent, region, options) => {
   const header = /^[^?\n]+\??/.exec(region)?.[0];
   for (const partial of [
     header,
@@ -106,6 +107,18 @@ test.each([
   ]) {
     const held = trustView(`${partial}\n${options}`, agent);
     expect(held).toMatchObject({ kind: "candidate", valid: false, option: undefined });
+  }
+  // Every truncation of the native copy is a half-painted body: only whole sentences answer.
+  const whole = /(?:folder first|files here|dangerous commands|to load|trust them)\.$|guide$/;
+  for (let end = (header as string).length; end < region.length; end++) {
+    const partial = region.slice(0, end).trimEnd();
+    const view = trustView(`${partial}\n${options}`, agent);
+    expect([partial, view.kind, "valid" in view && view.valid]).toEqual([
+      partial,
+      "candidate",
+      whole.test(partial),
+    ]);
+    if (!whole.test(partial)) expect(view).toMatchObject({ option: undefined });
   }
   const complete = trustView(`${region}\n${options}`, agent);
   expect(complete).toMatchObject({ kind: "candidate", valid: true });

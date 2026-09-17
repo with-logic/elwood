@@ -21,4 +21,4 @@ export const codexTrust =
 export const codexHooks =
   "Hooks need review\n1 hook is new or changed.\nHooks can run outside the sandbox after you trust them.";
 /** PTY writes need carriage returns; frames handed straight to a parser do not. */
-export const tty = (frame: string): string => frame.replaceAll("\n", "\r\n");
+export const toCrlf = (frame: string): string => frame.replaceAll("\n", "\r\n");

@@ -12,9 +12,13 @@
 /** Skill/plugin/MCP gates have no captured explanatory copy; none is accepted. */
 export const noTrustDescription = /^$/;
 
-// Either sentence proves the native body; 2.1.206 omits ", or work from your team".
-export const claudeWorkspaceDescription =
-  /^(?=\(Like your own code|Claude Code'll)(?:\(Like your own code, a well-known open source project(?:, or work from your team)?\)\. If not, take a moment to review what's in this folder first\.\s*)?(?:Claude Code'll be able to read, edit, and execute files here\.\s*)?(?:Security guide)?$/;
+// Whole sentences only, so a half-painted body never validates. Either sentence
+// proves the native body; 2.1.206 omits ", or work from your team".
+const likeYourOwn = String.raw`\(Like your own code, a well-known open source project(?:, or work from your team)?\)\. If not, take a moment to review what's in this folder first\.`;
+const ableTo = String.raw`Claude Code'll be able to read, edit, and execute files here\.`;
+export const claudeWorkspaceDescription = new RegExp(
+  `^(?:${likeYourOwn}\\s*(?:${ableTo}\\s*)?|${ableTo}\\s*)(?:Security guide)?$`,
+);
 
 export const claudeBypassDescription =
   /^In Bypass Permissions mode, Claude Code will not ask for your approval before running potentially dangerous commands\.\s*(?:By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode\.)?$/;
