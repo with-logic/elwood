@@ -12,14 +12,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
-import { trustPromptVisible } from "../../src/core/trust/responder.ts";
+import { trustView } from "../../src/core/trust/view.ts";
 import {
   type ClaudeSessionApi,
   type CodexSessionApi,
   startClaude,
   startCodex,
 } from "../../src/index.ts";
-import { cleanup, makeProject, observeSession, skipReason, waitFor } from "./helpers.ts";
+import { cleanup, makeProject, observeSession, skipIf, skipReason, waitFor } from "./helpers.ts";
+import { trustPromptVisible } from "./trust-screens.ts";
 
 type Launch = {
   readonly claude?: { readonly launch?: { readonly permissionMode?: string } };
@@ -37,7 +38,7 @@ function bypassDialogVisible(text: string): boolean {
 }
 
 test("C-E2E-16 real Claude started with highTrust reaches ready in bypass-permissions mode", {
-  skip: skipReason("claude"),
+  skip: skipIf(skipReason("claude")),
   timeout: 180_000,
 }, async () => {
   const project = makeProject("claude");
@@ -87,7 +88,7 @@ test("C-E2E-16 real Claude started with highTrust reaches ready in bypass-permis
 });
 
 test("C-E2E-16 real Codex started with highTrust reaches ready with danger-full-access", {
-  skip: skipReason("codex"),
+  skip: skipIf(skipReason("codex")),
   timeout: 180_000,
 }, async () => {
   const project = makeProject("codex");
@@ -100,12 +101,34 @@ test("C-E2E-16 real Codex started with highTrust reaches ready with danger-full-
       autotrust: true,
       hooks: {},
     });
-    await waitFor(() => (session?.status === "ready" ? true : undefined), "codex ready", 90_000);
+    await waitFor(
+      () =>
+        session?.status === "ready" &&
+        !trustPromptVisible(session.terminal.snapshot().text, "codex")
+          ? true
+          : undefined,
+      "codex ready with no native trust dialog",
+      90_000,
+    );
     assert.deepEqual(
       readRecord(project.stateDir, session.elwoodSessionId).codex?.launch,
       { sandbox: "danger-full-access", approvalPolicy: "never" },
       "the persisted posture carries the expanded sandbox and approval policy",
     );
+    await session.resize({ cols: 100, rows: 6 });
+    const compact = await waitFor(
+      () => {
+        const frame = session!.terminal.snapshot().text;
+        return !frame.includes("OpenAI Codex") &&
+          /^\s*›/m.test(frame) &&
+          /^\s+\S+ \S+ · \//m.test(frame)
+          ? frame
+          : undefined;
+      },
+      "native composer after welcome scrolls offscreen",
+      10_000,
+    );
+    assert.equal(trustView(compact, "codex").kind, "clear");
   } finally {
     await cleanup(session);
   }

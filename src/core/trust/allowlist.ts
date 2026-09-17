@@ -5,6 +5,21 @@
  * Implements PRD §5.1/§5.4/§5.5 (C-CLAUDE-10, C-CLAUDE-14, C-CLAUDE-21, C-CODEX-15).
  */
 
+import {
+  claudeBypassDescription,
+  claudeWorkspaceDescription,
+  codexHooksDescription,
+  codexWorkspaceDescription,
+  noTrustDescription,
+} from "./copy.ts";
+import {
+  claudeBypassOptions,
+  claudeExtensionOptions,
+  claudeMcpOptions,
+  claudeWorkspaceOptions,
+  codexHooksOptions,
+  codexWorkspaceOptions,
+} from "./options.ts";
 import type { TrustPromptSpec } from "./prompts.ts";
 
 // Affirmative option shapes. Each rejects decline words so "No, ..." never
@@ -18,36 +33,45 @@ const trustHooksOption = new RegExp(`^${notDecline}.*\\btrust\\b.*\\b(hooks?|all
 const acceptOption = new RegExp(`^${notDecline}.*\\byes\\b.*\\baccept\\b`, "i");
 
 /**
- * The allowlist. Wording verified against claude 2.1.205–2.1.268 and codex-cli 0.142.5.
+ * The allowlist. Claude folder captures: 2.1.206/2.1.252; bypass copy: 2.1.268.
+ * Codex directory/hooks: native 0.154.0 PTY captures (docs/cli-behavior.md).
  * `workspace`/`directory` trust are the folder-trust gates; `skill`, `plugin`,
  * and `mcp` cover the CLI's first-run trust prompts for loading third-party
  * skills, plugins, and MCP servers under a full-trust launch.
  */
 // Each `headerPattern` matches the prompt's QUESTION/HEADER wording — never a
 // phrase that lives only in an affirmative option — so recognition anchors on a
-// header line (matched via `trustHeaderMatches` over the frame's non-option
-// text), which a hostile option cannot spoof (PRD §5.1).
+// standalone header inside the active dialog; option and transcript wording
+// cannot supply authority to another dialog (PRD §5.4).
 export const trustPromptAllowlist = [
   {
     // Header renders as "Do you trust this folder?" or "Quick safety check: Is
     // this a project you created or one you trust?" (claude 2.1.205/2.1.206).
     id: "workspace_trust",
     agent: "claude",
-    headerPattern: /do you trust this folder|project you .*\bor one you trust/i,
+    headerPattern:
+      /^(?:do you trust this folder|(?:Quick safety check:\s*)?Is this a project you created or one you trust)\?(?:\s|$)/i,
+    descriptionPattern: claudeWorkspaceDescription,
+    optionPattern: claudeWorkspaceOptions,
     accept: yesOption,
     answerPolicy: "autotrust",
   },
   {
     id: "skill_trust",
     agent: "claude",
-    headerPattern: /do you (?:want to )?(?:trust|load) (?:this|the) skill|load this skill\?/i,
+    headerPattern:
+      /^(?:do you (?:want to )?(?:trust|load) (?:this|the) skill|load this skill)\?(?:\s|$)/i,
+    descriptionPattern: noTrustDescription,
+    optionPattern: claudeExtensionOptions,
     accept: yesOption,
     answerPolicy: "autotrust",
   },
   {
     id: "plugin_trust",
     agent: "claude",
-    headerPattern: /do you (?:want to )?trust (?:this|the) plugin|trust the plugin\?/i,
+    headerPattern: /^(?:do you (?:want to )?trust (?:this|the) plugin|trust the plugin)\?(?:\s|$)/i,
+    descriptionPattern: noTrustDescription,
+    optionPattern: claudeExtensionOptions,
     accept: yesOption,
     answerPolicy: "autotrust",
   },
@@ -57,7 +81,10 @@ export const trustPromptAllowlist = [
     // accept — the generic yes-matcher would leave it wedged.
     id: "mcp_trust",
     agent: "claude",
-    headerPattern: /New MCP server found|do you trust (?:this|the) MCP server/i,
+    headerPattern:
+      /^(?:New MCP server found in this project(?:: [\w.:-]+)?|do you trust (?:this|the) MCP server\?)(?:\s|$)/i,
+    descriptionPattern: noTrustDescription,
+    optionPattern: claudeMcpOptions,
     accept: useMcpOption,
     answerPolicy: "autotrust",
   },
@@ -67,7 +94,9 @@ export const trustPromptAllowlist = [
     // (C-CLAUDE-21). "running in" keeps the live footer from matching.
     id: "bypass_permissions",
     agent: "claude",
-    headerPattern: /running in Bypass Permissions mode/i,
+    headerPattern: /^(?:WARNING:\s*)?Claude Code running in Bypass Permissions mode(?:\s|$)/i,
+    descriptionPattern: claudeBypassDescription,
+    optionPattern: claudeBypassOptions,
     accept: acceptOption,
     answerPolicy: "autotrust",
   },
@@ -76,16 +105,20 @@ export const trustPromptAllowlist = [
     // (PRD §5.4) even though its wording differs from Claude's.
     id: "workspace_trust",
     agent: "codex",
-    headerPattern: /Do you trust the contents of this directory/i,
+    headerPattern: /^Do you trust the contents of this directory\?(?:\s|$)/i,
+    descriptionPattern: codexWorkspaceDescription,
+    optionPattern: codexWorkspaceOptions,
     accept: yesOption,
     answerPolicy: "autotrust",
   },
-  // Hook trust is Elwood's own integration, required for the session to work, so
-  // it is always answered (not gated on autotrust) — see `answerPolicy: "always"`.
+  // Codex trusts every configured hook, including third-party hooks, because the
+  // bridge requires hook trust. This is session-wide and independent of autotrust.
   {
     id: "hook_trust",
     agent: "codex",
-    headerPattern: /Hooks need review/i,
+    headerPattern: /^Hooks need review(?:\s|$)/i,
+    descriptionPattern: codexHooksDescription,
+    optionPattern: codexHooksOptions,
     // Specific to hook trust's own option ("Trust all and continue"), never a
     // generic "Yes" that could belong to a different dialog in the same frame.
     accept: trustHooksOption,

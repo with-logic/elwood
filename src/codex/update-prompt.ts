@@ -3,6 +3,7 @@
  * Implements PRD §5.5 and C-CODEX-12 for both prompt automation and input blocking.
  */
 
+import type { StartupWriteCompletion } from "../core/startup/write.ts";
 import { nonOptionText, numberedOptions } from "../core/terminal-options.ts";
 import type { TrustWriteResult } from "../core/trust/responder.ts";
 
@@ -66,25 +67,25 @@ export async function writeCodexUpdateSkip(
   write: (input: string) => TrustWriteResult,
   readFrame?: () => string,
   currentUpdateFrame: (frameText: string) => boolean = codexUpdatePromptVisible,
-): Promise<void> {
+): Promise<StartupWriteCompletion> {
   if (readFrame === undefined) {
     await write(option);
-    return;
+    return "answered";
   }
   const deadline = Date.now() + retryTimeoutMs;
+  let wrote = false;
   while (Date.now() < deadline) {
     const frame = readFrame();
-    if (!currentUpdateFrame(frame)) return;
+    if (!currentUpdateFrame(frame)) return wrote ? "answered" : "cancelled";
     const safeOption = numberedOptions(frame).find((candidate) =>
       codexUpdateOptionPattern.test(candidate.label),
     );
-    if (safeOption === undefined) {
-      throw new Error("Codex update prompt no longer exposes a safe skip option.");
-    }
+    if (safeOption === undefined) return "cancelled";
     await write(safeOption.number);
+    wrote = true;
     await wait(retryIntervalMs);
   }
-  throw new Error("Codex update prompt did not clear after safe-option retries.");
+  return "cancelled";
 }
 
 function wait(ms: number): Promise<void> {

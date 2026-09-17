@@ -8,6 +8,7 @@
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { startClaude } from "../../src/index.ts";
+import { claudeComposer } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -27,7 +28,7 @@ describe("ClaudeSessionApi trust-prompt render delay", () => {
       "\u001b[2J\u001b[HQuick safety check: Is this a project you created or one you trust?\r\n\r\n  No, exit\r\n❯ Yes, I trust this folder",
     );
     await vi.waitFor(() => expect(ptys[0]!.writes).toEqual(["\u001b[B", "\r"]));
-    ptys[0]!.emitData("\u001b[2J\u001b[HClaude ready\r\n❯ ");
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${claudeComposer.replaceAll("\n", "\r\n")}`);
     await vi.waitFor(() => expect(activity).toContain("startup_prompt:workspace_trust"));
   });
 
@@ -98,7 +99,9 @@ describe("ClaudeSessionApi trust-prompt render delay", () => {
     await expect.poll(() => warnings).toContain("startup_prompt_write_failed");
     // Retryable: the next frame re-attempts the answer with a now-succeeding write.
     ptys[0]!.failOnWrite = undefined;
-    ptys[0]!.emitData("Do you trust this folder?\r\n1. Yes, I trust this folder\r\n");
+    ptys[0]!.emitData(
+      "\u001b[2J\u001b[HDo you trust this folder?\r\n1. Yes, I trust this folder\r\n",
+    );
     await expect.poll(() => ptys[0]!.writes).toContain("1\r");
   });
 });

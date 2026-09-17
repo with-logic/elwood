@@ -2,7 +2,7 @@
 
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../core/activity/index.ts";
 import { ControlQueue } from "../../core/control-queue/index.ts";
-import { elwoodError, toError } from "../../core/errors.ts";
+import { toError } from "../../core/errors.ts";
 import { type PasteGuard, writeQueuedInput } from "../../core/input/index.ts";
 import { registerPrivateOutputSecrets } from "../../core/private-output-secrets.ts";
 import { terminalStatuses } from "../../core/status-categories.ts";
@@ -21,21 +21,14 @@ import type {
   StatusEvidenceKind,
 } from "../status-evidence.ts";
 import { SessionLoops } from "./loops.ts";
+import { closingController, notRunningError } from "./not-running.ts";
 import { SessionReapPolicy } from "./reap.ts";
 import { SessionShutdownBinding } from "./shutdown-binding.ts";
 import { createSessionStatusEngine, type SessionStatusEmitter } from "./status-wiring.ts";
 
-export function notRunningError(agent: ElwoodAgentKind): Error {
-  const title = agent === "claude" ? "Claude" : "Codex";
-  return elwoodError("session_not_running", `${title} session is not running.`);
-}
-
 type TerminalDataListener = Parameters<TerminalReplayBuffer["replay"]>[0];
 type AttentionListener = (event: ElwoodActivityEvent) => unknown;
-// A listener of SOME session event: the adapters' `on()` overloads pair each event name
-// with its payload type, and `replayFor` restates that pairing for the replayable two.
 type SessionListener = (event: never) => unknown;
-
 export abstract class SessionLifecycle {
   protected record: SessionRecord;
   readonly terminal: ElwoodTerminal;
@@ -44,6 +37,8 @@ export abstract class SessionLifecycle {
   protected readonly controlQueue: ControlQueue;
   protected everReady = false;
   inputBlocking = false;
+  automationBlocking = false;
+  readonly closing = closingController(() => this.controlQueue.close());
   private readonly agent: ElwoodAgentKind;
   private readonly runtime: SessionRuntime;
   private readonly reapPolicy: SessionReapPolicy;
@@ -56,7 +51,6 @@ export abstract class SessionLifecycle {
     staged: (screen, prompt) => this.stagedPaste(screen, prompt),
     blocked: () => this.isInputBlocked(),
   };
-
   protected constructor(
     agent: ElwoodAgentKind,
     record: SessionRecord,
@@ -116,7 +110,6 @@ export abstract class SessionLifecycle {
       submitEvidence: (kind) => void this.submitEvidence(kind),
     });
   }
-
   get elwoodSessionId(): string {
     return this.record.elwoodSessionId;
   }
@@ -127,28 +120,38 @@ export abstract class SessionLifecycle {
     return this.statusEngine.status;
   }
   stop(): Promise<void> {
+    this.closing.abort();
     return this.shutdown.stop();
   }
   kill(): Promise<void> {
+    this.closing.abort();
     return this.shutdown.kill();
   }
   teardown(): Promise<void> {
+    this.closing.abort();
     return this.shutdown.teardown();
   }
   startLoops(): void {
     this.loops.start();
   }
   pauseLoopsForStartupCleanup(cancelReadiness: () => void): void {
+    this.closing.abort();
     cancelReadiness();
     this.loops.pause();
   }
   protected isInputBlocked(): boolean {
-    return this.inputBlocking || this.status === "blocked";
+    return (
+      this.closing.signal.aborted ||
+      this.inputBlocking ||
+      this.automationBlocking ||
+      this.status === "blocked"
+    );
   }
   submitEvidence(kind: StatusEvidenceKind): StatusDecision {
-    return this.statusEngine.submit(kind);
+    return this.statusEngine.submit(kind, this.automationBlocking || this.closing.signal.aborted);
   }
   submitExit(): StatusDecision {
+    this.closing.abort();
     const evidence = this.shutdown.exitEvidence();
     try {
       return this.statusEngine.submit(evidence);
@@ -160,17 +163,13 @@ export abstract class SessionLifecycle {
   statusDecisions(): readonly StatusDecision[] {
     return this.statusEngine.decisions();
   }
-
   protected abstract stagedPaste(screen: string, prompt: string): boolean;
   protected abstract stopRuntime(): Promise<void>;
   protected abstract emitWarnings(warnings: readonly ElwoodWarningEvent[]): void;
-
-  /** Replay buffered past `terminal:data` / pre-return attention to a late subscriber. */
   protected replayFor(event: string, handler: SessionListener): void {
     if (event === "terminal:data") this.terminalReplay.replay(handler as TerminalDataListener);
     if (event === "activity") this.terminalReplay.replayAttention(handler as AttentionListener);
   }
-  /** Run `work` unless the session is terminal (or `allowTerminal`); sync throws reject. */
   protected inSession<T>(work: () => Promise<T> | T, allowTerminal = false): Promise<T> {
     if (!allowTerminal && terminalStatuses.has(this.status)) {
       return Promise.reject(notRunningError(this.agent));
@@ -186,6 +185,7 @@ export abstract class SessionLifecycle {
     this.record = record;
   }
   protected cleanupRuntime(): Promise<void> {
+    this.closing.abort();
     return this.cleanupLatch.attempt();
   }
   protected advanceInitialReady(): void {

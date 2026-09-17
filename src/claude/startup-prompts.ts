@@ -15,8 +15,20 @@ export class ClaudeStartupPromptResponder {
   private readonly trust: TrustPromptResponder<"claude">;
   private browserDeclined = false;
 
-  constructor(autotrust: boolean) {
-    this.trust = new TrustPromptResponder("claude", autotrust);
+  constructor(autotrust: boolean, onStateChange?: () => void) {
+    this.trust = new TrustPromptResponder("claude", autotrust, onStateChange);
+  }
+
+  get blockedPrompt() {
+    return this.trust.blockedPrompt;
+  }
+
+  dispose(): void {
+    this.trust.dispose();
+  }
+
+  get inputBlocking(): boolean {
+    return this.trust.inputBlocking;
   }
 
   handle(
@@ -26,8 +38,8 @@ export class ClaudeStartupPromptResponder {
   ): readonly SettledStartupOutcome<"claude">[] {
     const settled: SettledStartupOutcome<"claude">[] = [];
     const trust = this.trust.handle(screenText, write, readFrame);
-    if (trust?.kind === "answered") {
-      settled.push({ outcome: { kind: "answered", ...trust.automation }, settled: trust.settled });
+    if (trust?.kind === "attempted") {
+      settled.push({ outcome: { kind: "attempted", ...trust.automation }, settled: trust.settled });
     } else if (trust?.kind === "option_pending") {
       settled.push({ outcome: { kind: "option_pending", prompt: trust.prompt } });
     }
@@ -42,7 +54,7 @@ export class ClaudeStartupPromptResponder {
         throw error;
       });
       settled.push({
-        outcome: { kind: "answered", prompt: "browser_tools", input: "esc" },
+        outcome: { kind: "attempted", prompt: "browser_tools", input: "esc" },
         settled: writeSettled,
       });
     }

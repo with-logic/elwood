@@ -10,6 +10,7 @@ import {
   selectableOptions,
 } from "../../src/core/terminal-options.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
+import { claudeComposer } from "../fixtures/trust-composer.ts";
 
 describe("cursor-style trust prompts", () => {
   test("C-CLAUDE-10 keeps the real Claude 2.1.206 numbered layout working", async () => {
@@ -28,11 +29,12 @@ describe("cursor-style trust prompts", () => {
       writes.push(input);
     });
     expect(result).toMatchObject({
-      kind: "answered",
+      kind: "attempted",
       automation: { prompt: "workspace_trust", input: "1" },
     });
-    if (result?.kind === "answered") await result.settled;
+    if (result?.kind === "attempted") await result.settled;
     expect(writes).toEqual(["1\r"]);
+    expect(optionKeystrokes(selectableOptions(frame)[0]!)).toEqual(["1\r"]);
   });
 
   test("C-CLAUDE-14 derives selected, upward, and multi-step affirmative input", () => {
@@ -85,15 +87,17 @@ describe("cursor-style trust prompts", () => {
       (input) => {
         writes.push(input);
         rendered =
-          input === "\u001b[B" ? frame.replace("❯ No, exit\n  Yes", "  No, exit\n❯ Yes") : "Ready";
+          input === "\u001b[B"
+            ? frame.replace("❯ No, exit\n  Yes", "  No, exit\n❯ Yes")
+            : claudeComposer;
       },
       () => rendered,
     );
     expect(result).toMatchObject({
-      kind: "answered",
+      kind: "attempted",
       automation: { prompt: "workspace_trust", input: "down+enter" },
     });
-    if (result?.kind === "answered") await result.settled;
+    if (result?.kind === "attempted") await result.settled;
     expect(writes).toEqual(["\u001b[B", "\r"]);
   });
 
@@ -108,11 +112,11 @@ describe("cursor-style trust prompts", () => {
         rendered =
           input === "\u001b[A"
             ? "Do you trust this folder?\n❯ Yes, I trust this folder\n  No"
-            : "Ready";
+            : claudeComposer;
       },
       () => rendered,
     );
-    if (result?.kind === "answered") await result.settled;
+    if (result?.kind === "attempted") await result.settled;
     expect(writes).toEqual(["\u001b[A", "\r"]);
   });
 });

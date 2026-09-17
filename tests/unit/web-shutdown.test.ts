@@ -86,15 +86,33 @@ describe("web dev app hard shutdown", () => {
   });
 
   test("C-APP-08 process tree cleanup kills real descendants", async () => {
-    const child = spawn("sh", ["-c", "sleep 10 & wait"], { stdio: "ignore" });
+    // A shell waiting only on its child may exit normally before the root kill.
+    // Keep the parent alive independently so SIGKILL tests the root signal itself.
+    const tree = `
+      require("node:child_process").spawn("sleep", ["10"], { stdio: "ignore" });
+      setInterval(() => {}, 1000);
+    `;
+    const child = spawn(process.execPath, ["-e", tree], { stdio: "ignore" });
     expect(typeof child.pid).toBe("number");
-    await waitForChild(child.pid!);
-    killProcessTreeSync(child.pid!, true);
-    const result = await new Promise<{ readonly signal: string | null }>((resolve) => {
+    const exited = new Promise<{ readonly signal: string | null }>((resolve) => {
       child.once("exit", (_code, signal) => resolve({ signal }));
     });
-    expect(result.signal).toBe("SIGKILL");
-    killProcessTreeSync(999_999_999, true);
+    try {
+      const descendant = await waitForChild(child.pid!);
+      killProcessTreeSync(child.pid!, true);
+      expect((await exited).signal).toBe("SIGKILL");
+      await expect
+        .poll(() => {
+          const status = spawnSync("ps", ["-o", "stat=", "-p", String(descendant)], {
+            encoding: "utf8",
+          });
+          return status.stdout.trim();
+        })
+        .toMatch(/^(?:Z|$)/);
+      killProcessTreeSync(999_999_999, true);
+    } finally {
+      killProcessTreeSync(child.pid!, true);
+    }
   });
 
   test("C-APP-08 does not group-signal the caller's own process group", () => {
@@ -104,12 +122,14 @@ describe("web dev app hard shutdown", () => {
   });
 });
 
-async function waitForChild(pid: number): Promise<void> {
+async function waitForChild(pid: number): Promise<number> {
   const deadline = Date.now() + 2_000;
-  while (spawnSync("pgrep", ["-P", String(pid)]).status !== 0) {
-    if (Date.now() > deadline) throw new Error(`pid ${pid} never spawned a child`);
+  while (Date.now() < deadline) {
+    const result = spawnSync("pgrep", ["-P", String(pid)], { encoding: "utf8" });
+    if (result.status === 0) return Number(result.stdout.trim());
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+  throw new Error(`pid ${pid} never spawned a child`);
 }
 
 class FakeProcess {

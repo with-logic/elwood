@@ -99,7 +99,7 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   }
   // Claude reads a pasted absolute path; the paste is held while a dialog shows (C-API-45/37).
   protected attachImages = (paths: readonly string[], signal: AbortSignal): Promise<void> =>
-    attachClaudeImages(this.terminal, paths, signal, () => this.status === "blocked");
+    attachClaudeImages(this.terminal, paths, signal, () => this.isInputBlocked());
   // A narrow session holds the PHYSICAL resize until readiness; it just records the
   // requested geometry now and restores it at the initial-ready transition. A wide
   // session (100+ cols) never deferred; it resizes now.

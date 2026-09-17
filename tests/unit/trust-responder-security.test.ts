@@ -1,17 +1,16 @@
 /**
- * Recognition-focused coverage for the allowlisted trust-prompt automation: partial
- * renders, option-only spoofing, and blank-line layouts. The policy is "never block —
- * say yes to any RECOGNIZED allowlisted prompt", so the only guard exercised here is
- * recognition (allowlisted id + non-option HEADER wording); there is deliberately NO
- * region isolation or destructive-rider refusal. Covers PRD §5.1 (C-CLAUDE-14, C-CODEX-15).
+ * Trust recognition preserves wrapped/descriptive layouts while isolating the
+ * active dialog. Covers PRD §5.4, C-TRUST-01, C-CLAUDE-14, and C-CODEX-15.
  */
 
 import { describe, expect, test, vi } from "vitest";
+import type { StartupWriteCompletion } from "../../src/core/startup/write.ts";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
+import { claudeComposer } from "../fixtures/trust-composer.ts";
 
-/** The write settlement of an ANSWERED prompt; any other outcome fails the test (never vacuous). */
-function settlementOf(result: TrustPromptResult<"claude">): Promise<void> {
-  if (result?.kind !== "answered") throw new Error(`not answered: ${result?.kind}`);
+/** Await an attempted prompt’s completion; a missing attempt fails the test (never vacuous). */
+function settlementOf(result: TrustPromptResult<"claude">): Promise<StartupWriteCompletion> {
+  if (result?.kind !== "attempted") throw new Error(`not attempted: ${result?.kind}`);
   return result.settled;
 }
 
@@ -37,7 +36,7 @@ describe("trust-prompt automation security", () => {
       responder.handle("Do you trust this folder?\n1. Yes, proceed\n2. No, cancel", (input) => {
         writes.push(input);
       }),
-    ).toMatchObject({ kind: "answered", automation: { prompt: "workspace_trust", input: "1" } });
+    ).toMatchObject({ kind: "attempted", automation: { prompt: "workspace_trust", input: "1" } });
     expect(writes).toEqual(["1\r"]);
   });
 
@@ -91,7 +90,7 @@ describe("trust-prompt automation security", () => {
   test("C-CLAUDE-14 cursor navigation fails closed without live screen reads", async () => {
     const frame = "Do you trust this folder?\n❯ No\n  Yes, I trust this folder";
     const result = new TrustPromptResponder("claude", true).handle(frame, () => undefined);
-    await expect(settlementOf(result)).rejects.toThrow("requires live screen reads");
+    await expect(settlementOf(result)).resolves.toBe("cancelled");
   });
 
   test("C-CLAUDE-14 cursor navigation never continues into a replacement screen", async () => {
@@ -104,14 +103,14 @@ describe("trust-prompt automation security", () => {
       },
       () => frame,
     );
-    await expect(settlementOf(result)).rejects.toThrow("disappeared before confirmation");
+    await expect(settlementOf(result)).resolves.toBe("cancelled");
 
     const replaced = new TrustPromptResponder("claude", true).handle(
       initial,
       () => undefined,
       () => "Different prompt\n❯ Yes, proceed",
     );
-    await expect(settlementOf(replaced)).rejects.toThrow("disappeared before confirmation");
+    await expect(settlementOf(replaced)).resolves.toBe("cancelled");
   });
 
   test("C-CLAUDE-14 unchanged or partial cursor frames time out and stay retryable", async () => {
@@ -125,11 +124,9 @@ describe("trust-prompt automation security", () => {
         () => undefined,
         () => (Date.now() - started < 300 ? initial : "Do you trust this folder?"),
       );
-      const rejected = expect(settlementOf(result)).rejects.toThrow(
-        "Cursor trust navigation timed out",
-      );
+      const cancelled = expect(settlementOf(result)).resolves.toBe("cancelled");
       await vi.runAllTimersAsync();
-      await rejected;
+      await cancelled;
       let retryFrame = initial;
       const retry = responder.handle(
         initial,
@@ -137,7 +134,7 @@ describe("trust-prompt automation security", () => {
           retryFrame =
             input === "\u001b[B"
               ? "Do you trust this folder?\n  No\n❯ Yes, I trust this folder"
-              : "Ready";
+              : claudeComposer;
         },
         () => retryFrame,
       );
@@ -149,13 +146,11 @@ describe("trust-prompt automation security", () => {
     }
   });
 
-  test("C-CLAUDE-14 the ONLY guard is allowlisted + non-option-header recognition", () => {
+  test("C-CLAUDE-14 only an allowlisted non-option header identifies a trust prompt", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
-    // Policy: never leave the agent waiting — a RECOGNIZED trust prompt is answered
-    // from its affirmative, whatever the option text. The single remaining guard is
-    // recognition itself: an off-allowlist dialog, and a trust phrase appearing
-    // ONLY in an option label, are NOT recognized and never answered.
+    // A native active dialog is answered from its own affirmative. Off-allowlist
+    // dialogs and trust phrases appearing only inside options do not identify it.
     expect(
       responder.handle("Enable telemetry?\n1. Yes", (input) => {
         writes.push(input);
@@ -171,7 +166,7 @@ describe("trust-prompt automation security", () => {
       responder.handle("Do you trust the plugin?\n1. Yes, trust it\n2. No", (input) => {
         writes.push(input);
       }),
-    ).toMatchObject({ kind: "answered", automation: { prompt: "plugin_trust", input: "1" } });
+    ).toMatchObject({ kind: "attempted", automation: { prompt: "plugin_trust", input: "1" } });
     expect(writes).toEqual(["1\r"]);
   });
 
@@ -181,17 +176,15 @@ describe("trust-prompt automation security", () => {
     // A single trust dialog whose header and options are separated by a blank +
     // descriptive line — the real rendered shape. Elwood recognizes the header and
     // answers the affirmative so the agent never waits on the trust gate. There is
-    // NO region isolation by design (say-yes-to-anything policy): recognition is the
-    // only guard and the first affirmative option in the frame is answered; a stacked
-    // second dialog is an accepted consequence of the policy, not a guarantee here.
+    // no second dialog here: blank/descriptive rows remain part of this one.
     const frame =
-      "Do you trust this folder?\n\nReview the files first.\n1. Yes, proceed\n2. No, exit";
+      "Do you trust this folder?\n\nClaude Code'll be able to read, edit, and execute files here.\n1. Yes, proceed\n2. No, exit";
     expect(
       responder.handle(frame, (input) => {
         writes.push(input);
       }),
     ).toMatchObject({
-      kind: "answered",
+      kind: "attempted",
       automation: { prompt: "workspace_trust", input: "1" },
     });
     expect(writes).toEqual(["1\r"]);

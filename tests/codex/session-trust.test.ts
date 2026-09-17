@@ -3,8 +3,10 @@
  * Covers PRD §5.5 (C-CODEX-06, C-CODEX-11, C-CODEX-15) and C-ATTN-03.
  */
 
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
+import { codexComposer } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -12,7 +14,7 @@ afterEach(resetFakes);
 describe("CodexSessionApi trust prompts", () => {
   test("C-CODEX-06 C-CODEX-15 trusts hooks via the TUI prompt and does NOT block", async () => {
     // autotrust OFF, but hook trust (Elwood's own integration) is still answered
-    // — and because it is answered it must never block (C-ATTN-03).
+    // — automatic handling gets its bounded window before human fallback (C-ATTN-03).
     installFakes({ supportsHookTrustBypass: false });
     const session = await startCodex({ cwd: tempDir() });
     const attention: string[] = [];
@@ -23,6 +25,25 @@ describe("CodexSessionApi trust prompts", () => {
     expect(session.status).not.toBe("blocked");
   });
 
+  test("C-TRUST-01 a human gate handing off to automatic hook trust still reaches ready", async () => {
+    const native = (name: string) =>
+      readFileSync(new URL(`../fixtures/codex-0.154.0/${name}.txt`, import.meta.url), "utf8");
+    const repaint = (frame: string) =>
+      ptys[0]!.emitData(`\u001b[2J\u001b[H${frame.replaceAll("\n", "\r\n")}`);
+    installFakes({ supportsHookTrustBypass: false });
+    const session = await startCodex({ cwd: tempDir() });
+    const queued = session.sendMessage("hello");
+    repaint(native("directory"));
+    await expect.poll(() => session.status).toBe("blocked");
+    // The human answers; the automation-owned hooks gate replaces it in one repaint,
+    // so the only blocked-to-ready edge arrives while automation holds input.
+    repaint(native("hooks"));
+    await expect.poll(() => ptys[0]!.writes).toEqual(["2\r"]);
+    repaint(codexComposer);
+    await queued;
+    expect(ptys[0]!.writes).toContain("\u001b[200~hello\u001b[201~");
+  });
+
   test("C-CODEX-11 autotrust answers Codex directory prompts", async () => {
     installFakes();
     const session = await startCodex({ cwd: tempDir(), autotrust: true });
@@ -30,6 +51,8 @@ describe("CodexSessionApi trust prompts", () => {
     session.on("activity", (event) => activity.push(`${event.kind}:${event.label}`));
     ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. Yes, continue");
     await expect.poll(() => ptys[0]!.writes).toEqual(["1\r"]);
+    expect(activity).not.toContain("startup_prompt:workspace_trust");
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${codexComposer.replaceAll("\n", "\r\n")}`);
     await expect.poll(() => activity).toContain("startup_prompt:workspace_trust");
   });
 
@@ -45,7 +68,9 @@ describe("CodexSessionApi trust prompts", () => {
     await expect.poll(() => warnings).toContain("startup_prompt_write_failed");
     // Retryable: a later frame re-attempts the answer with a now-succeeding write.
     ptys[0]!.failOnWrite = undefined;
-    ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. Yes, continue");
+    ptys[0]!.emitData(
+      "\u001b[2J\u001b[HDo you trust the contents of this directory?\r\n› 1. Yes, continue",
+    );
     await expect.poll(() => ptys[0]!.writes).toContain("1\r");
   });
 
@@ -95,8 +120,10 @@ describe("CodexSessionApi trust prompts", () => {
     ptys[0]!.emitData("Do you trust the contents of this directory?");
     await expect.poll(() => attention).toContain("workspace_trust");
     expect(ptys[0]!.writes).toEqual([]);
-    // Frame 2: the affirmative now paints — Elwood answers it.
-    ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. Yes, continue");
+    // Frame 2 redraws the same dialog with its affirmative.
+    ptys[0]!.emitData(
+      "\u001b[2J\u001b[HDo you trust the contents of this directory?\r\n› 1. Yes, continue",
+    );
     await expect.poll(() => ptys[0]!.writes).toEqual(["1\r"]);
     expect(warnings).not.toContain("trust_prompt_unanswerable");
   });

@@ -107,3 +107,13 @@ describe("decideStatus", () => {
     expect(decideStatus("torn_down", "terminal_exited").to).toBeUndefined();
   });
 });
+
+test.each([
+  "initial_ready",
+  "hook_turn_ended",
+  "rendered_turn_ended",
+  "blocking_prompt_cleared",
+] as const)("C-TRUST-01 %s cannot release a trust-held input gate", (evidence) => {
+  expect(decideStatus("blocked", evidence, true).to).toBeUndefined();
+  expect(decideStatus("running", evidence, true).to).toBeUndefined();
+});

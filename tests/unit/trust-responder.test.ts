@@ -4,15 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { trustPromptAllowlist, trustPromptHeaderVisible } from "../../src/core/trust/prompts.ts";
-import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
-
-/** True when an allowlisted trust prompt for `agent` is visible in `text`. */
-function trustPromptVisible(text: string, agent: "claude" | "codex"): boolean {
-  return trustPromptAllowlist.some(
-    (spec) => spec.agent === agent && trustPromptHeaderVisible(text, spec),
-  );
-}
+import { TrustPromptResponder, trustPromptVisible } from "../../src/core/trust/responder.ts";
 
 describe("allowlisted trust prompt automation", () => {
   test("C-API-18 stays disabled unless callers opt in", () => {
@@ -32,7 +24,7 @@ describe("allowlisted trust prompt automation", () => {
       responder.handle("Do you trust this folder?\n1. Yes", (input) => {
         writes.push(input);
       }),
-    ).toMatchObject({ kind: "answered", automation: { prompt: "workspace_trust", input: "1" } });
+    ).toMatchObject({ kind: "attempted", automation: { prompt: "workspace_trust", input: "1" } });
     expect(
       responder.handle("Do you trust this folder?", (input) => {
         writes.push(input);
@@ -60,7 +52,7 @@ describe("allowlisted trust prompt automation", () => {
           writes.push(input);
         }),
       ).toMatchObject({
-        kind: "answered",
+        kind: "attempted",
         automation: { prompt: id, input: option },
       });
       expect(writes).toEqual([`${option}\r`]);
@@ -107,20 +99,18 @@ describe("allowlisted trust prompt automation", () => {
     expect(writes).toEqual([]);
   });
 
-  test("C-CLAUDE-14 a recognized trust prompt is answered from the frame's affirmative", () => {
+  test("C-TRUST-01 only the bottom-most trust header owns the active affirmative", () => {
     const writes: string[] = [];
     const responder = new TrustPromptResponder("claude", true);
-    // Policy: never leave the agent waiting — a recognized trust prompt is answered
-    // from the frame's affirmative option. Here folder-trust is recognized (its
-    // header is on a non-option line) and answered "1".
+    // The earlier folder-trust question does not own the skill dialog's answer.
     const frame = "Do you trust this folder?\nLoad this skill?\n1. Yes, trust it";
     expect(
       responder.handle(frame, (input) => {
         writes.push(input);
       }),
     ).toMatchObject({
-      kind: "answered",
-      automation: { prompt: "workspace_trust", input: "1" },
+      kind: "attempted",
+      automation: { prompt: "skill_trust", input: "1" },
     });
     expect(writes).toEqual(["1\r"]);
   });
@@ -134,13 +124,13 @@ describe("allowlisted trust prompt automation", () => {
     // between them do not block the answer — the prior line-boundary rule wedged
     // the agent here.
     const frame =
-      "Do you trust this folder?\n\nClaude Code can read/edit here.\n\n1. Yes, proceed\n2. No";
+      "Do you trust this folder?\n\nClaude Code'll be able to read, edit, and execute files here.\n\n1. Yes, proceed\n2. No";
     expect(
       responder.handle(frame, (input) => {
         writes.push(input);
       }),
     ).toMatchObject({
-      kind: "answered",
+      kind: "attempted",
       automation: { prompt: "workspace_trust", input: "1" },
     });
     expect(writes).toEqual(["1\r"]);
@@ -165,7 +155,7 @@ describe("allowlisted trust prompt automation", () => {
       responder.handle("Do you trust this folder?\n1. Yes, proceed", (input) => {
         writes.push(input);
       }),
-    ).toMatchObject({ kind: "answered", automation: { prompt: "workspace_trust", input: "1" } });
+    ).toMatchObject({ kind: "attempted", automation: { prompt: "workspace_trust", input: "1" } });
     expect(writes).toEqual(["1\r"]);
   });
 });

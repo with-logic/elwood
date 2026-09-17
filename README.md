@@ -22,10 +22,19 @@ elwood "Explain this project's architecture."
 ```ts
 import { ClaudeSession } from "@with-logic/elwood";
 
-const session = new ClaudeSession({ cwd: "/path/to/project" });
-console.log(await session.send("Explain this project."));
-await session.close();
+const session = new ClaudeSession({
+  cwd: "/path/to/project",
+  autotrust: true, // Approve allowlisted trust prompts for this known project.
+});
+try {
+  console.log(await session.send("Explain this project."));
+} finally {
+  await session.close();
+}
 ```
+
+Use `autotrust` only for workspaces and extensions you trust. Otherwise, run the
+agent directly in the same directory first and approve its trust prompts.
 
 ---
 
@@ -467,7 +476,9 @@ immediate; both are safe after the process has already exited.
   for the entire launched session even without autotrust. Codex update dialogs
   are skipped, and Claude browser-tools onboarding is dismissed. Other recognized
   dialogs leave the session `blocked` for a human; the CLI fails such runs as
-  `blocked_prompt`.
+  `blocked_prompt`. If safe trust automation cannot clear a gate within five
+  seconds, the library also leaves it `blocked`, retaining queued input. A later
+  supported layout can retry automatically; `sendKeys` permits manual recovery.
 - `--high-trust` (library `highTrust: true`) is the agent-neutral "never ask"
   switch: Claude `bypassPermissions`, or Codex `danger-full-access` with
   approval policy `never`. It removes the agent's own guardrails, so point it

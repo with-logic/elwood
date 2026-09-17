@@ -7,11 +7,15 @@ import type { SettledStartupOutcome } from "../core/startup/write.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
+import { type CodexBannerWarning, codexWarningsFromText } from "./startup-warnings.ts";
+
 import {
   CodexUpdatePromptTracker,
   codexUpdateOptionPattern,
   writeCodexUpdateSkip,
 } from "./update-prompt.ts";
+
+export { codexWarningsFromText } from "./startup-warnings.ts";
 
 /** A Codex startup outcome paired with its PTY-write completion (§5.4, §5.7). */
 export type SettledCodexStartupOutcome = SettledStartupOutcome<"codex">;
@@ -36,13 +40,25 @@ export class CodexStartupPromptResponder {
   // new occurrence, matching "once when observed" rather than "replay while on screen".
   private warnedBanners = new Set<string>();
 
-  constructor(elwoodSessionId = "", autotrust = false) {
+  constructor(elwoodSessionId = "", autotrust = false, onStateChange?: () => void) {
     this.elwoodSessionId = elwoodSessionId;
     this.buffer = "";
     // Owns the whole allowlisted trust family (directory + hook trust), not just
     // one prompt; extended by adding entries to trustPromptAllowlist.
-    this.trust = new TrustPromptResponder("codex", autotrust);
+    this.trust = new TrustPromptResponder("codex", autotrust, onStateChange);
     this.skippedUpdate = false;
+  }
+
+  get blockedPrompt() {
+    return this.trust.blockedPrompt;
+  }
+
+  dispose(): void {
+    this.trust.dispose();
+  }
+
+  get inputBlocking(): boolean {
+    return this.trust.inputBlocking;
   }
 
   handle(
@@ -55,8 +71,11 @@ export class CodexStartupPromptResponder {
     // Trust prompts are matched against the CURRENT frame only: a stale phrase in
     // the accumulated buffer must never pair with a different dialog's answer.
     const trust = this.trust.handle(screenText, write, readFrame);
-    if (trust?.kind === "answered") {
-      outcomes.push({ outcome: { kind: "answered", ...trust.automation }, settled: trust.settled });
+    if (trust?.kind === "attempted") {
+      outcomes.push({
+        outcome: { kind: "attempted", ...trust.automation },
+        settled: trust.settled,
+      });
     } else if (trust?.kind === "option_pending") {
       outcomes.push({ outcome: { kind: "option_pending", prompt: trust.prompt } });
     }
@@ -87,11 +106,17 @@ export class CodexStartupPromptResponder {
           write,
           readFrame,
           this.updatePrompt.currentFramePredicate(),
-        ).catch((error: unknown) => {
-          this.skippedUpdate = false;
-          throw error;
-        });
-        outcomes.push({ outcome: { kind: "answered", prompt: "update", input: option }, settled });
+        ).then(
+          (completion) => {
+            if (completion === "cancelled") this.skippedUpdate = false;
+            return completion;
+          },
+          (error: unknown) => {
+            this.skippedUpdate = false;
+            throw error;
+          },
+        );
+        outcomes.push({ outcome: { kind: "attempted", prompt: "update", input: option }, settled });
       }
     }
     return { warnings: this.newWarnings(screenText), outcomes };
@@ -112,12 +137,6 @@ export class CodexStartupPromptResponder {
   }
 }
 
-/** The two banner warnings the startup responder parses (an exhaustive pair). */
-type CodexBannerWarning = Extract<
-  ElwoodWarningEvent,
-  { readonly code: "mcp_server_not_logged_in" | "mcp_startup_incomplete" }
->;
-
 /** A stable identity for a startup banner: its code plus the server(s) it names. */
 function bannerKey(warning: CodexBannerWarning): string {
   return warning.code === "mcp_server_not_logged_in"
@@ -127,57 +146,4 @@ function bannerKey(warning: CodexBannerWarning): string {
 
 export function findNumberedOption(text: string, pattern: RegExp): string | null {
   return numberedOptions(text).find((option) => pattern.test(option.label))?.number ?? null;
-}
-
-export function codexWarningsFromText(
-  text: string,
-  elwoodSessionId: string,
-): readonly CodexBannerWarning[] {
-  const warnings: CodexBannerWarning[] = [];
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    const login = /The ([\w.-]+) MCP server is not logged in\. Run `([^`]+)`\./.exec(line);
-    if (login) warnings.push(mcpLoginWarning(elwoodSessionId, line, login[1]!, login[2]!));
-    const failed = /MCP startup incomplete \(failed:\s*([^)]+)\)/.exec(line);
-    if (failed) warnings.push(mcpStartupWarning(elwoodSessionId, line, failed[1]!));
-  }
-  return warnings;
-}
-
-function mcpLoginWarning(
-  elwoodSessionId: string,
-  raw: string,
-  mcpServerName: string,
-  recoveryCommand: string,
-): CodexBannerWarning {
-  return {
-    elwoodSessionId,
-    agent: "codex",
-    source: "terminal",
-    code: "mcp_server_not_logged_in",
-    severity: "warning",
-    message: `The ${mcpServerName} MCP server is not logged in.`,
-    mcpServerName,
-    recoveryCommand,
-    raw,
-  };
-}
-
-function mcpStartupWarning(
-  elwoodSessionId: string,
-  raw: string,
-  failed: string,
-): CodexBannerWarning {
-  const failedServers = failed.split(",").map((server) => server.trim());
-  return {
-    elwoodSessionId,
-    agent: "codex",
-    source: "terminal",
-    code: "mcp_startup_incomplete",
-    severity: "warning",
-    message: `MCP startup incomplete: ${failedServers.join(", ")}.`,
-    failedServers,
-    recoveryCommands: failedServers.map((server) => `codex mcp login ${server}`),
-    raw,
-  };
 }

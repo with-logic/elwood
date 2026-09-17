@@ -29,6 +29,14 @@ describe("C-ATTN-03 trust-policy blocking rules are option-aware", () => {
     ).toBe(true);
   });
 
+  test("an authorized trust dialog is owned by automation rather than human blocking", () => {
+    const frame = screen("Do you trust this folder?\n1. Yes\n2. No");
+    expect(
+      readScreenFacts(claudeScreenFactTableForTrustPolicy(true), frame).facts
+        .blocking_prompt_visible,
+    ).toBe(false);
+  });
+
   test("an OPTION-ONLY trust phrase does NOT produce blocking_prompt_visible (claude)", () => {
     // An unrelated dialog whose numbered OPTION merely contains a trust phrase
     // ("2. Do you trust this MCP server?") must not be misclassified as a blocking

@@ -22,7 +22,7 @@ function sink(): StartupWarningSink & { warnings: ElwoodWarningEvent[] } {
 describe("emitSettledStartupOutcomes", () => {
   test("C-CLAUDE-16 pairing an agent with the OTHER agent's outcomes does not compile", () => {
     const codexOutcomes: readonly SettledStartupOutcome<"codex">[] = [
-      { outcome: { kind: "answered", prompt: "update", input: "2" }, settled: Promise.resolve() },
+      { outcome: { kind: "attempted", prompt: "update", input: "2" }, settled: Promise.resolve() },
     ];
     // NoInfer pins A to `agent`, so a Codex outcome cannot be passed with
     // `agent: "claude"` — this would otherwise construct a cross-agent warning.
@@ -63,7 +63,7 @@ describe("emitSettledStartupOutcomes", () => {
     const warnings = sink();
     const outcomes: readonly SettledStartupOutcome<"claude">[] = [
       {
-        outcome: { kind: "answered", prompt: "workspace_trust", input: "1" },
+        outcome: { kind: "attempted", prompt: "workspace_trust", input: "1" },
         settled: Promise.resolve(),
       },
     ];
@@ -81,7 +81,7 @@ describe("emitSettledStartupOutcomes", () => {
     const warnings = sink();
     const outcomes: readonly SettledStartupOutcome<"claude">[] = [
       {
-        outcome: { kind: "answered", prompt: "browser_tools", input: "esc" },
+        outcome: { kind: "attempted", prompt: "browser_tools", input: "esc" },
         settled: Promise.reject(new Error("pty closed")),
       },
     ];
@@ -102,7 +102,7 @@ describe("emitSettledStartupOutcomes", () => {
     const { events, emit } = collect();
     const outcomes: readonly SettledStartupOutcome<"codex">[] = [
       {
-        outcome: { kind: "answered", prompt: "update", input: "2" },
+        outcome: { kind: "attempted", prompt: "update", input: "2" },
         settled: Promise.reject(new Error("pty closed")),
       },
     ];
@@ -122,7 +122,7 @@ describe("emitSettledStartupOutcomes", () => {
     };
     const outcomes: readonly SettledStartupOutcome<"claude">[] = [
       {
-        outcome: { kind: "answered", prompt: "workspace_trust", input: "1" },
+        outcome: { kind: "attempted", prompt: "workspace_trust", input: "1" },
         settled: Promise.resolve(),
       },
     ];

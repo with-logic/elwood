@@ -1,27 +1,22 @@
-/**
- * Screen predicates for the real Claude folder-trust gate: recognizes the
- * allowlisted prompt, wording-drifted variants, and a fully painted option list.
- * Shared by the trust-prompt e2e (PRD §5.1, C-E2E-09).
- */
+/** Independent raw-frame trust oracle for native e2e layout drift (C-E2E-09). */
 
-import { trustPromptAllowlist, trustPromptHeaderVisible } from "../../src/core/trust/prompts.ts";
-
-/** True when an allowlisted trust prompt for `agent` is visible in `text`. */
-export function trustPromptVisible(text: string, agent: "claude" | "codex"): boolean {
-  return trustPromptAllowlist.some(
-    (spec) => spec.agent === agent && trustPromptHeaderVisible(text, spec),
+/** Deliberately broader than automation: unknown body/options must still fail the e2e. */
+export function trustPromptVisible(frame: string, agent: "claude" | "codex"): boolean {
+  const text = frame.replace(/\s+/g, " ");
+  if (agent === "codex")
+    return /trust the contents of this directory|Hooks need review/i.test(text);
+  return /trust this folder|Is this a project you|Accessing workspace:|(?:trust|load) (?:this|the) (?:skill|plugin|MCP server)|New MCP server found|running in Bypass Permissions mode/i.test(
+    text,
   );
 }
 
-/** True for known and wording-drifted variants of Claude's rendered folder-trust screen. */
 export function folderTrustScreenVisible(frame: string): boolean {
-  return (
-    trustPromptVisible(frame, "claude") ||
-    (/Accessing workspace:/i.test(frame) && /trust this folder/i.test(frame))
+  return /trust this folder|Is this a project you|Accessing workspace:/i.test(
+    frame.replace(/\s+/g, " "),
   );
 }
 
-/** A complete folder-trust screen whose options have painted, answerable or not. */
+/** A fully painted affirmative is evidence even if production option parsing drifts. */
 export function completeFolderTrustScreenVisible(frame: string): boolean {
   return (
     folderTrustScreenVisible(frame) && /[❯›].*(?:yes|no)/i.test(frame) && /\byes\b/i.test(frame)

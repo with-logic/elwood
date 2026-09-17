@@ -12,6 +12,14 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Bind automatic trust approvals to the active dialog and revalidate every write,
+  preventing quoted transcript headers or unknown intervening titles from
+  authorizing unrelated permissions. Cancel stale trust attempts quietly while
+  keeping readiness and queued input gated until the native dialog clears. Retry
+  early numbered trust writes that the CLI has not yet consumed. Bound both
+  navigation styles to the session and current dialog generation; unsupported or
+  exhausted trust automation becomes a recoverable block after five seconds.
+  Image attachment is held by the same trust gate as text input.
 - Keep text CLI output limited to agent responses by default. Use
   `--show-session-id` to print the retained session ID on stderr, or find it
   with `elwood sessions`. Session retention and JSON/JSONL records are unchanged.

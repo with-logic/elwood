@@ -61,10 +61,11 @@ export function initialReady(
   isBlocked: () => boolean = () => false,
 ): InitialReady {
   let ready = false;
+  let cancelled = false;
   let deferredByBlock = false;
   let deadline: ReturnType<typeof setTimeout> | undefined;
   const mark = () => {
-    if (ready) return;
+    if (ready || cancelled) return;
     // A blocking dialog is on screen (it may have rendered while still `starting`,
     // so it never latched `blocked`): do NOT release the queue into it. Remember the
     // request and re-fire it from `retryWhenUnblocked` once the dialog clears — never
@@ -82,18 +83,20 @@ export function initialReady(
   };
   return {
     cancel: () => {
+      cancelled = true;
       if (deadline) clearTimeout(deadline);
     },
     mark,
     retryWhenUnblocked: (blockingVisible) => {
       if (!ready && deferredByBlock && !blockingVisible) mark();
     },
-    replay: () => void (ready && callback()),
+    replay: () => void (!cancelled && ready && callback()),
     // Arms on the first frame regardless of hook arrival, so a missing or failed
     // readiness hook cannot starve readiness forever. The deadline's mark is contained
     // (a throwing callback on a timer would otherwise be an uncaught exception); if it
     // fails, `ready` stays false so a later hook or composer frame still retries.
     armDeadline: () => {
+      if (cancelled) return;
       deadline ??= setTimeout(() => {
         try {
           mark();
