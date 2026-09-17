@@ -4,7 +4,7 @@
  * when the installed CLI is compatible) and surfaced as this live warning with the diagnostics
  * the PRD allows — the installed version in use, the update probe's errno, and the updater's own
  * stderr capped at 2 KB in `raw` (the CLI updater's output, never session transcripts or
- * prompts).
+ * prompts). Contention instead reports that the local update was skipped.
  */
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
@@ -38,14 +38,17 @@ export function updateFailedWarning(
   const details = error instanceof ElwoodError ? error.details : {};
   const errno = typeof details["errno"] === "string" ? details["errno"] : undefined;
   const stderr = typeof details["stderr"] === "string" ? details["stderr"] : "";
+  const activeOwner = details["updateReason"] === "active_owner";
   return {
     agent,
     source: "lifecycle",
     code: "agent_update_failed",
     severity: "warning",
-    message: `\`${agent} update\` failed; continuing with the installed CLI ${installedVersion}.`,
+    message: activeOwner
+      ? `\`${agent} update\` skipped: another updater is still active; continuing with the installed CLI ${installedVersion}.`
+      : `\`${agent} update\` failed; continuing with the installed CLI ${installedVersion}.`,
     installedVersion,
-    errorCode: errno ?? "update_failed",
+    errorCode: activeOwner ? "update_active" : (errno ?? "update_failed"),
     raw: stderr.slice(0, maxStderr),
   };
 }

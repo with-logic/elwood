@@ -1,5 +1,5 @@
 /**
- * Update contention and generation-safe recovery of a dead owner's lease.
+ * Bounded update contention and generation-safe recovery of a dead owner's lease.
  * Implements PRD §9.2 / C-PERF-04; time alone never evicts a live updater.
  */
 import { rename, rmdir, stat, unlink } from "node:fs/promises";
@@ -11,8 +11,10 @@ export async function waitForOwner(
   path: string,
   pollMs: number,
   staleMs: number,
-): Promise<"released" | "stale_removed"> {
+  deadlineAtMs: number,
+): Promise<"released" | "stale_removed" | "wait_expired"> {
   for (;;) {
+    if (Date.now() >= deadlineAtMs) return "wait_expired";
     let lease: Awaited<ReturnType<typeof stat>>;
     try {
       lease = await stat(path);

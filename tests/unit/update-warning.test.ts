@@ -63,3 +63,16 @@ describe("dedupeInFlight identity-guarded eviction", () => {
     await expect(cache.get("k")).resolves.toBe("winner"); // survived the identity-guarded eviction
   });
 });
+
+test("C-LIFE-11 contention reports a skipped active updater rather than a failed local command", () => {
+  const warning = updateFailedWarning(
+    "codex",
+    "0.154.0",
+    elwoodError("codex_update_failed", "internal", { updateReason: "active_owner" }),
+  );
+  expect(warning.errorCode).toBe("update_active");
+  expect(warning.message).toBe(
+    "`codex update` skipped: another updater is still active; continuing with the installed CLI 0.154.0.",
+  );
+  expect(warning.raw).toBe("");
+});
