@@ -10,6 +10,7 @@ import {
   type InputTerminal,
   throwIfInputAborted,
   waitForInput,
+  writeUnsafe,
 } from "./abort.ts";
 
 /** Adapter view of "the paste is still staged in the composer". */
@@ -103,13 +104,13 @@ async function writePastedPrompt(
   let nudges = 0;
   const nudge = async () => {
     // Decide on the current screen: a dialog may be received but not yet rendered.
-    await terminal.settled?.();
+    const unsafe = await writeUnsafe(terminal, guard, signal);
     // Stop once a LATER submission has begun: a stale nudge must never fire an
     // Enter into a newer prompt's paste (the staged chip is not prompt-specific).
     if (signal?.aborted || !guard || nudges >= pasteNudgeAttempts) return;
     // A dialog that appears after the first Enter must not be confirmed by a
     // recovery Enter either; skip this attempt and re-check on the next tick.
-    if (guard.blocked?.()) {
+    if (unsafe) {
       schedule(nudge, nudgeDelayMs);
       return;
     }
@@ -132,7 +133,8 @@ async function writePastedPrompt(
     throwIfInputAborted(signal);
     await terminal.sendInput("\r");
   } catch (error) {
-    if (signal?.aborted && !guard?.blocked?.()) await clearStagedComposer(terminal);
+    if (signal?.aborted && !(await writeUnsafe(terminal, guard)))
+      await clearStagedComposer(terminal);
     throw error;
   }
   schedule(nudge, nudgeDelayMs);
@@ -168,7 +170,8 @@ export async function writeQueuedInput(
         throwIfInputAborted(signal);
         await terminal.sendInput("\r");
       } catch (error) {
-        if (signal?.aborted && !guard?.blocked?.()) await clearStagedComposer(terminal);
+        if (signal?.aborted && !(await writeUnsafe(terminal, guard)))
+          await clearStagedComposer(terminal);
         throw error;
       }
     },

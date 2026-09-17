@@ -27,7 +27,13 @@ export interface ElwoodTerminal {
   sendInput(input: string | Uint8Array): Promise<void>;
   resize(size: TerminalSize): void;
   snapshot(): TerminalSnapshot;
+  /**
+   * Resolves once all output received so far has rendered and been observed,
+   * including output received while waiting. Never rejects; see `renderFailed`.
+   */
   settled(): Promise<void>;
+  /** True while the latest output failed to render, so `snapshot()` may be stale. */
+  readonly renderFailed: boolean;
   dispose(): void;
 }
 
@@ -61,6 +67,7 @@ export function attachPtyTerminal(
 class HeadlessTerminal implements ElwoodTerminal {
   readonly xterm: XtermTerminal;
   private currentSize: TerminalSize;
+  renderFailed = false;
   private writeQueue = Promise.resolve();
   private readonly onInput: (input: string | Uint8Array) => void;
   private readonly inputWaiters: Array<{
@@ -99,10 +106,17 @@ class HeadlessTerminal implements ElwoodTerminal {
       () => new Promise<void>((resolve) => this.xterm.write(data, resolve)),
     );
     // Chain the NEXT write off a never-rejecting tail so a single failed write
-    // (e.g. a synchronous xterm.write throw) cannot poison every subsequent write
-    // by leaving `writeQueue` permanently rejected. The caller still sees the real
-    // result via the returned `write` promise.
-    this.writeQueue = write.catch(() => undefined);
+    // (e.g. a synchronous xterm.write throw) cannot poison every subsequent write.
+    // The caller still sees the real result via the returned `write` promise; the
+    // tail records whether the screen still reflects everything received.
+    this.writeQueue = write.then(
+      () => {
+        this.renderFailed = false;
+      },
+      () => {
+        this.renderFailed = true;
+      },
+    );
     return write;
   }
 
@@ -136,8 +150,14 @@ class HeadlessTerminal implements ElwoodTerminal {
     };
   }
 
-  settled(): Promise<void> {
-    return this.writeQueue;
+  async settled(): Promise<void> {
+    // Output received while waiting extends the queue, so settle again until a pass
+    // adds nothing. Each PTY chunk's observer is a continuation of its own write
+    // registered before this await, so it has run by the time this resumes.
+    for (let tail: Promise<void> | undefined; tail !== this.writeQueue; ) {
+      tail = this.writeQueue;
+      await tail;
+    }
   }
 
   dispose(): void {

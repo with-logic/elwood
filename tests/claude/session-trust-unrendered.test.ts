@@ -14,8 +14,12 @@ const clear = "\u001b[2J\u001b[H";
 const gate = `${clear}${tty(claudeTrust)}\r\n1. Yes\r\n2. No`;
 const composer = `${clear}${tty(claudeComposer)}`;
 
-afterEach(() => {
+const sessions: ClaudeSessionApi[] = [];
+
+// Teardown is unconditional, so a failed assertion cannot leak a bridge, PTY, or timers.
+afterEach(async () => {
   vi.useRealTimers();
+  await Promise.all(sessions.splice(0).map((session) => session.teardown()));
   resetFakes();
 });
 
@@ -23,6 +27,7 @@ afterEach(() => {
 async function readySession(): Promise<ClaudeSessionApi> {
   installFakes();
   const session = await startClaude({ cwd: tempDir() });
+  sessions.push(session);
   vi.useFakeTimers();
   ptys[0]!.emitData("Claude ready\r\n❯ ");
   await vi.advanceTimersByTimeAsync(10_010);
@@ -43,8 +48,6 @@ test("C-API-56 a trust gate received but not yet rendered holds the whole queued
   await vi.advanceTimersByTimeAsync(500);
   await queued;
   expect(ptys[0]!.writes).toEqual([PASTE, "\r"]);
-  vi.useRealTimers();
-  await session.teardown();
 });
 
 test("C-API-56 a trust gate received in the turn the Enter is due holds the submitting Enter", async () => {
@@ -64,8 +67,6 @@ test("C-API-56 a trust gate received in the turn the Enter is due holds the subm
   await vi.advanceTimersByTimeAsync(500);
   await queued;
   expect(ptys[0]!.writes.slice(0, 2)).toEqual([PASTE, "\r"]);
-  vi.useRealTimers();
-  await session.teardown();
 });
 
 test("C-API-56 a trust gate received in the turn a recovery nudge is due holds the recovery Enter", async () => {
@@ -83,6 +84,69 @@ test("C-API-56 a trust gate received in the turn a recovery nudge is due holds t
   expect(ptys[0]!.writes).toEqual([PASTE, "\r"]);
   await vi.advanceTimersByTimeAsync(5_000);
   expect(ptys[0]!.writes).toEqual([PASTE, "\r"]); // no recovery Enter reached the gate
-  vi.useRealTimers();
-  await session.teardown();
+});
+
+test("C-API-56 a trust gate received while an earlier chunk is still settling holds the paste", async () => {
+  const session = await readySession();
+  ptys[0]!.emitData("\r\nthinking"); // an ordinary chunk is mid-render as the write is queued
+  const queued = session.sendMessage("held");
+  for (let turn = 0; turn < 10; turn++) await Promise.resolve(); // the barrier is now waiting
+  ptys[0]!.emitData(gate); // received during that wait, behind the first chunk
+  await vi.advanceTimersByTimeAsync(2_000);
+  expect(ptys[0]!.writes).toEqual([]);
+  ptys[0]!.emitData(composer);
+  await vi.advanceTimersByTimeAsync(500);
+  await queued;
+  expect(ptys[0]!.writes).toEqual([PASTE, "\r"]);
+});
+
+test("C-API-56 a gate whose render failed holds the paste until a later frame renders", async () => {
+  const session = await readySession();
+  vi.spyOn(session.terminal.xterm, "write").mockImplementationOnce(() => {
+    throw new Error("render failed");
+  });
+  ptys[0]!.emitData(gate); // never parsed: the screen Elwood last observed is stale
+  const queued = session.sendMessage("held");
+  await vi.advanceTimersByTimeAsync(2_000);
+  expect(ptys[0]!.writes).toEqual([]);
+  ptys[0]!.emitData(composer);
+  await vi.advanceTimersByTimeAsync(500);
+  await queued;
+  expect(ptys[0]!.writes).toEqual([PASTE, "\r"]);
+});
+
+test("C-API-56 a PTY that never goes quiet holds the write, and cancelling still releases the queue", async () => {
+  const session = await readySession();
+  // Each render takes 5 ms and output arrives every millisecond: no settle pass ever
+  // completes with nothing new received.
+  const slow = vi.spyOn(session.terminal.xterm, "write").mockImplementation((_data, done) => {
+    setTimeout(() => done?.(), 5);
+  });
+  const chatter = setInterval(() => ptys[0]!.emitData("."), 1);
+  await vi.advanceTimersByTimeAsync(20); // the flood is under way before the command is queued
+  const compacting = session.compact({ timeoutMs: 1_500 });
+  const rejected = expect(compacting).rejects.toMatchObject({ code: "compact_failed" });
+  await vi.advanceTimersByTimeAsync(1_600);
+  await rejected;
+  expect(ptys[0]!.writes).toEqual([]); // held for the whole flood, never written through
+  clearInterval(chatter);
+  slow.mockRestore();
+  const queued = session.sendMessage("held");
+  await vi.advanceTimersByTimeAsync(10_000); // the backlog renders, then the write is safe
+  await queued;
+  expect(ptys[0]!.writes).toEqual([PASTE, "\r"]);
+});
+
+test("C-API-56 a trust gate received in the turn the compact recovery Enter is due holds it", async () => {
+  const session = await readySession();
+  // `/compact` and its Enter land by 150 ms; the recovery Enter is due 2,000 ms later.
+  // Registered first, this timer delivers the gate just before that nudge runs.
+  setTimeout(() => ptys[0]!.emitData(gate), 2_150);
+  const compacting = session.compact({ timeoutMs: 4_000 });
+  const rejected = expect(compacting).rejects.toMatchObject({ code: "compact_failed" });
+  await vi.advanceTimersByTimeAsync(200);
+  ptys[0]!.emitData(`${clear}❯ /compact`); // the TUI echoes the command
+  await vi.advanceTimersByTimeAsync(4_000);
+  await rejected;
+  expect(ptys[0]!.writes).toEqual(["/compact", "\r"]); // no recovery Enter reached the gate
 });

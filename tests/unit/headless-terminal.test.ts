@@ -117,9 +117,24 @@ describe("headless terminal", () => {
       throw new Error("xterm boom");
     });
     await expect(terminal.writeOutput("boom")).rejects.toThrow("xterm boom");
+    expect(terminal.renderFailed).toBe(true); // the screen no longer reflects what was received
     spy.mockRestore();
     // The chain was not left permanently rejected: a following write resolves.
     await expect(terminal.writeOutput("ok")).resolves.toBeUndefined();
+    expect(terminal.renderFailed).toBe(false);
+    terminal.dispose();
+  });
+
+  test("C-API-56 settled() resumes after the observer of every chunk, including one received while waiting", async () => {
+    const { pty, emit } = fakePty();
+    const observed: string[] = [];
+    const terminal = attachPtyTerminal({ cols: 10, rows: 3 }, pty, (data) => observed.push(data));
+    emit("first");
+    const settled = terminal.settled().then(() => [...observed]);
+    await Promise.resolve();
+    emit("second"); // received while the first chunk is still rendering
+    // Not merely rendered: both observers have already run when the await resumes.
+    await expect(settled).resolves.toEqual(["first", "second"]);
     terminal.dispose();
   });
 });
