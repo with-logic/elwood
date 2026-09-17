@@ -1,7 +1,8 @@
 /** Real updater descendants and cross-process contenders (PRD §9.2, C-PERF-03/04). */
 import { spawn } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve, sep } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { ElwoodError, elwoodError, probeFailureDetails } from "../../src/core/errors.ts";
@@ -9,7 +10,10 @@ import { runProbe } from "../../src/runtime/probe.ts";
 import { coordinatedAutoupdate } from "../../src/runtime/update/lock.ts";
 
 const mode = process.argv[2];
-const root = process.argv[3]!;
+// This fixture writes wherever argv points, so it only accepts a temp directory.
+const root = resolve(process.argv[3]!);
+if (!root.startsWith(`${resolve(tmpdir())}${sep}`))
+  throw new Error("fixture root must be temporary");
 const file = fileURLToPath(import.meta.url);
 const descendantFile = join(root, "descendant");
 if (mode === "descendant") {
