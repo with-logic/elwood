@@ -49,6 +49,52 @@ function runClaimant(root: string, dieIn: string): Promise<NodeJS.Signals | null
   });
 }
 
+// Counts the entries the real sweep pulls out of `opendir`, in a child process so the
+// count observes the real `coordinatedAutoupdate` without patching anything in this one.
+const sweepCounter = `
+  import fs from "node:fs";
+  import { syncBuiltinESMExports } from "node:module";
+  const { opendir } = fs.promises;
+  let walked = 0;
+  fs.promises.opendir = async (...args) => {
+    const dir = await opendir(...args);
+    const inner = dir[Symbol.asyncIterator].bind(dir);
+    dir[Symbol.asyncIterator] = () => {
+      const iterator = inner();
+      return {
+        [Symbol.asyncIterator]() { return this; },
+        async next() {
+          const result = await iterator.next();
+          if (!result.done) walked += 1;
+          return result;
+        },
+      };
+    };
+    return dir;
+  };
+  syncBuiltinESMExports();
+  const { coordinatedAutoupdate } = await import(${JSON.stringify(lockUrl)});
+  await coordinatedAutoupdate("codex", async () => {}, { root: process.env.ELWOOD_TEST_LOCK_ROOT });
+  process.stdout.write(String(walked));
+`;
+
+function runSweepCounter(root: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    let out = "";
+    const child = spawn(
+      process.execPath,
+      ["--no-warnings", "--input-type=module", "-e", sweepCounter],
+      { env: { ...process.env, ELWOOD_TEST_LOCK_ROOT: root }, stdio: ["ignore", "pipe", "ignore"] },
+    );
+    child.stdout.on("data", (chunk) => {
+      out += String(chunk);
+    });
+    child.on("close", (code) =>
+      code === 0 ? resolve(Number(out)) : reject(new Error(`counter exited ${code}`)),
+    );
+  });
+}
+
 test.each([
   ["writeFile", "staging"],
   ["rename", "staging"],
@@ -88,16 +134,22 @@ test("C-PERF-04 each lease holder sweeps a bounded number of leftover staging di
 
 test("C-PERF-04 the sweep reads a bounded number of entries and leaves the other adapter's leftovers", async () => {
   const root = tempDir("elwood-update-lock-sweep-bound-");
-  // `readdir` returns these in creation order here, so the codex leftover sits past the
-  // read bound: an unbounded scan would walk every claude entry and reach it, a bounded
-  // one stops first. The other adapter's leftovers are never this holder's to remove.
-  for (let index = 0; index < 70; index += 1) mkdirSync(join(root, `claude.lock.claim.${index}`));
-  const beyondBound = "codex.lock.claim.beyond-the-read-bound";
-  mkdirSync(join(root, beyondBound));
+  // The bound is on entries *read*, so the observable is how much of the root a holder
+  // walks, not which entries it deletes: with only the other adapter's debris present
+  // nothing is deletable in any enumeration order, and an unbounded scan would still walk
+  // all 1000. Counting the walk keeps this independent of `readdir` order, which differs
+  // by filesystem. `opendir` reads in blocks, so the count is bounded rather than exact.
+  const claudeLeftovers = 1000;
+  for (let index = 0; index < claudeLeftovers; index += 1)
+    mkdirSync(join(root, `claude.lock.claim.${index}`));
+  const walked = await runSweepCounter(root);
+  expect(walked).toBeLessThan(claudeLeftovers);
+  // Again in this process, so the bound's own branch is taken here and not only in the child.
   await coordinatedAutoupdate("codex", () => Promise.resolve(), { root });
-  const entries = readdirSync(root);
-  expect(entries.filter((entry) => entry.startsWith("claude.lock.claim."))).toHaveLength(70);
-  expect(entries).toContain(beyondBound);
+  // The other adapter's leftovers are never this holder's to remove, at any bound.
+  expect(readdirSync(root).filter((entry) => entry.startsWith("claude.lock.claim."))).toHaveLength(
+    claudeLeftovers,
+  );
 });
 
 test("C-PERF-04 a fresh ownerless lease is a wait condition, neither claimed over nor removed early", async () => {
