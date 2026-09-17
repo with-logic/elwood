@@ -1,17 +1,17 @@
 /** Registered group liveness and crash-left owner writes (PRD §9.2, C-PERF-04). */
 import { spawn } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test } from "vitest";
 import { runProbe } from "../../src/runtime/probe.ts";
 import { coordinatedAutoupdate, updateLockPath } from "../../src/runtime/update/lock.ts";
-import { ownerIsAlive, readOwner } from "../../src/runtime/update/owner.ts";
+import { leaseIsAlive, readOwner } from "../../src/runtime/update/owner.ts";
 import { ProbeRegistration } from "../../src/runtime/update/probe-registration.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 test("C-PERF-04 an active parent retains its callback between registered probe groups", () => {
   expect(
-    ownerIsAlive({
+    leaseIsAlive({
       pid: process.pid,
       token: "abc",
       cleanupGroups: [2_147_483_600],
@@ -36,6 +36,8 @@ test("C-PERF-04 stale recovery removes a crash-left owner.next before claiming a
     { root, pollMs: 1, staleMs: 0, waitMs: 100 },
   );
   expect(called).toBe(true);
+  // Neither the lease nor its pending record outlives recovery and the update.
+  expect(await readdir(root)).toEqual(["codex.completed"]);
 });
 
 test("C-PERF-04 normal group confirmation waits for remaining work without signaling", async () => {

@@ -103,13 +103,11 @@ export async function coordinatedAutoupdate(
   );
   // Success and failure alike: a probe that exited on its own, zero or not, may
   // have left updater descendants in any group this callback registered.
-  const aborted = unresolvedProbeGroup(outcome?.error);
-  const unfinished = [
-    ...new Set([...(aborted === undefined ? [] : [aborted]), ...(await probes.unfinishedGroups())]),
-  ];
-  const [group] = unfinished;
-  if (group === undefined) {
-    await probes.releaseWhenRegistrationsSettle(async () => {
+  const abortedGroupId = unresolvedProbeGroup(outcome?.error);
+  const unfinishedGroupIds = await probes.unfinishedGroups(abortedGroupId);
+  const [unfinishedGroupId] = unfinishedGroupIds;
+  if (unfinishedGroupId === undefined) {
+    await probes.afterRegistrationsSettle(async () => {
       await Promise.allSettled([writeFile(completion, owner.token, { mode: 0o600 })]);
       await releaseLease(path, owner);
     });
@@ -118,16 +116,18 @@ export async function coordinatedAutoupdate(
   }
   // The active groups were already persisted before exec. If marking cleanup
   // fails, retain that record and preserve the original typed diagnostics.
-  await retainProbeOwner(path, owner, unfinished).catch(() => undefined);
-  throw unconfirmedCleanup(adapter, outcome, group);
+  await probes.afterRegistrationsSettle(() =>
+    retainProbeOwner(path, owner, unfinishedGroupIds).catch(() => undefined),
+  );
+  throw unconfirmedCleanup(adapter, outcome, unfinishedGroupId);
 }
 
 function unconfirmedCleanup(
   adapter: UpdateAdapter,
   outcome: { readonly error: unknown } | undefined,
-  group: number,
+  unfinishedGroupId: number,
 ): unknown {
-  const cleanup = { cleanupErrorCode: "ETIMEDOUT", cleanupProcessGroup: group };
+  const cleanup = { cleanupErrorCode: "ETIMEDOUT", cleanupProcessGroup: unfinishedGroupId };
   if (outcome === undefined)
     return elwoodError(`${adapter}_update_failed`, "Updater descendants have not exited.", cleanup);
   const { error } = outcome;

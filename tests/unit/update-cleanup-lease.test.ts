@@ -1,4 +1,5 @@
 /** Failed probe cleanup keeps updater exclusion across owners (PRD §9.2, C-PERF-04). */
+import { spawn } from "node:child_process";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
@@ -26,6 +27,10 @@ test("C-PERF-04 retain an unresolved group; contenders skip and recover only aft
       },
     }),
   );
+  // The group stays unobservable, hence unconfirmed, from the first observation on.
+  const signal = vi.spyOn(process, "kill").mockImplementation(() => {
+    throw Object.assign(new Error("cannot inspect"), { code: "EPERM" });
+  });
   await expect(coordinatedAutoupdate("codex", () => Promise.reject(error), options)).rejects.toBe(
     error,
   );
@@ -35,9 +40,6 @@ test("C-PERF-04 retain an unresolved group; contenders skip and recover only aft
   // Parent death cannot evict a surviving updater's group.
   await writeFile(join(path, "owner"), owner.replace(/^\d+:/, "2147483599:"));
   const update = vi.fn(() => Promise.resolve());
-  const signal = vi.spyOn(process, "kill").mockImplementation(() => {
-    throw Object.assign(new Error("cannot inspect"), { code: "EPERM" });
-  });
   await expect(coordinatedAutoupdate("codex", update, options)).rejects.toMatchObject({
     code: "codex_update_failed",
     details: { cleanupErrorCode: "ETIMEDOUT" },
@@ -49,6 +51,21 @@ test("C-PERF-04 retain an unresolved group; contenders skip and recover only aft
   });
   await coordinatedAutoupdate("codex", update, options);
   expect(update).toHaveBeenCalledOnce();
+});
+
+test("C-PERF-04 an aborted group that exits within the observation window releases the lease", async () => {
+  const root = tempDir("elwood-update-exited-");
+  const child = spawn(process.execPath, ["-e", ""], { detached: true });
+  await new Promise((resolve) => child.once("exit", resolve));
+  const error = elwoodError("codex_update_failed", "probe failed", {
+    cleanupErrorCode: "ETIMEDOUT",
+    cleanupProcessGroup: child.pid!,
+  });
+  await expect(coordinatedAutoupdate("codex", () => Promise.reject(error), { root })).rejects.toBe(
+    error,
+  );
+  // No stale cleanup marker: the lease is gone and the attempt is recorded as complete.
+  expect(await readdir(root)).toEqual(["codex.completed"]);
 });
 
 test.each([

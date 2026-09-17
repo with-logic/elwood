@@ -7,8 +7,8 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   type LeaseOwner,
+  leaseIsAlive,
   ownerFile,
-  ownerIsAlive,
   parentIsAlive,
   pendingOwnerPrefix,
   readOwner,
@@ -32,7 +32,7 @@ export async function waitForOwner(
     const current = await readOwner(path);
     const groupOwner = current?.cleanupGroups !== undefined;
     if (cleanupPending(current)) return "cleanup_pending";
-    if ((groupOwner && !ownerIsAlive(current)) || Date.now() - lease.mtimeMs >= staleMs) {
+    if ((groupOwner && !leaseIsAlive(current)) || Date.now() - lease.mtimeMs >= staleMs) {
       const recovered = await recoverStaleLease(path);
       if (recovered === "removed") return "stale_removed";
       if (recovered === "unrecoverable") return "released";
@@ -45,13 +45,13 @@ function cleanupPending(owner: LeaseOwner | undefined): boolean {
   return (
     owner?.cleanupGroups !== undefined &&
     !(owner.callbackOwnsLease && parentIsAlive(owner.pid)) &&
-    ownerIsAlive(owner)
+    leaseIsAlive(owner)
   );
 }
 
 async function recoverStaleLease(path: string): Promise<"removed" | "alive" | "unrecoverable"> {
   const expected = await readOwner(path);
-  if (expected !== undefined && ownerIsAlive(expected)) return "alive";
+  if (expected !== undefined && leaseIsAlive(expected)) return "alive";
   const recovery = recoveryPath(path);
   try {
     await rename(path, recovery);
@@ -59,7 +59,7 @@ async function recoverStaleLease(path: string): Promise<"removed" | "alive" | "u
     return (await pathExists(recovery)) ? "alive" : "unrecoverable";
   }
   const moved = await readOwner(recovery);
-  if (expected?.token !== moved?.token || (moved !== undefined && ownerIsAlive(moved))) {
+  if (expected?.token !== moved?.token || (moved !== undefined && leaseIsAlive(moved))) {
     return "unrecoverable";
   }
   try {

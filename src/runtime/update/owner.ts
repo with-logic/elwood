@@ -54,7 +54,8 @@ export function serializeOwner(owner: LeaseOwner): string {
   return `${owner.pid}:${owner.token}${groups}`;
 }
 
-export function ownerIsAlive(owner: LeaseOwner): boolean {
+/** Lease liveness, not owner-process liveness: a surviving group outlives its parent. */
+export function leaseIsAlive(owner: LeaseOwner): boolean {
   const groupAlive = owner.cleanupGroups?.some((id) => !processGroupGone(id)) ?? false;
   // A live parent owns the whole callback, including gaps between version and
   // update probes. Cleanup-marked records instead use group-only liveness.

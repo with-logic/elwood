@@ -101,10 +101,16 @@ Validated stale-owner recovery also removes known temporary owner records. Regis
 late retain lease ownership until they settle. Each owner write uses its own
 temporary record and commits only while its generation still owns the lease, so a
 late write can neither replace nor disturb a successor's record, and its gate stays closed.
+The lease's final write, whether release or the cleanup record, is ordered after every
+registration write still in flight, and a registration begun after the update callback
+has settled is rejected with its gate closed, so no late active record can replace a
+cleanup record and hold exclusion for the owner's lifetime.
 A probe that exits on its own, with any exit status, does not release its lease while descendants
 remain in any process group the update registered; this holds whether the update
 callback succeeded or failed. Elwood waits up to one additional second
-for those groups to exit, then retains the lease and reports unconfirmed cleanup;
+for those groups to exit, then retains the lease and reports unconfirmed cleanup.
+An aborted probe's unresolved group is observed in that same window, and only
+groups still live when it ends are retained;
 normal completion does not signal the group. Aborted probes retry process-group termination,
 fall back to terminating the direct child once group signals have kept failing, and await exit within a bounded
 cleanup window. A process-group id is signaled only while the probe's direct child
@@ -135,7 +141,8 @@ additional one-second bound. Every unresolved aborted probe, including version
 and capability probes, remains owned by an asynchronous reaper while the parent
 is alive. Retries use an unreferenced timer, do not prolong host shutdown, and
 stop signaling after a successful group kill; ownership ends when the group is
-confirmed gone. Update groups additionally retain durable exclusion as described above. Truncation happens on
+confirmed gone. A retained reaper holds process-liveness state only; the probe's
+captured output is released once its result is delivered. Update groups additionally retain durable exclusion as described above. Truncation happens on
 a UTF-8 code-point boundary — an incomplete trailing sequence is dropped — so
 the decoded output re-encodes to at most the cap rather than growing via a
 replacement character. This applies to every

@@ -50,6 +50,10 @@ class CappedBuffer {
     const bytes = Buffer.concat(this.chunks);
     return bytes.subarray(0, completeUtf8Length(bytes)).toString("utf8");
   }
+
+  release(): void {
+    this.chunks = [];
+  }
 }
 
 export function runProbe(command: string, args: readonly string[]): Promise<CommandResult> {
@@ -70,6 +74,10 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
       settled = true;
       gate.abort();
       clearTimeout(timer);
+      // The result already owns the decoded text. An unresolved probe's reaper
+      // retains the child and its listeners, and through them these captures.
+      out.release();
+      err.release();
       if (!kill) {
         resolve(result);
         return;
