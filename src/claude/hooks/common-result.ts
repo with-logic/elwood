@@ -1,4 +1,4 @@
-/** Event-name hook subscriptions expose decisions and context, without rewrites (PRD §6.4). */
+/** Event-name hook subscriptions expose decisions and context, without tool-input rewrites (PRD §6.4). */
 
 import type {
   ClaudeHookResultFor,

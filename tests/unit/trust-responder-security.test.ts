@@ -7,9 +7,9 @@ import { describe, expect, test, vi } from "vitest";
 import type { StartupWriteCompletion } from "../../src/core/startup/write.ts";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
 
-/** The write settlement of an ANSWERED prompt; any other outcome fails the test (never vacuous). */
+/** Await an attempted prompt’s completion; a missing attempt fails the test (never vacuous). */
 function settlementOf(result: TrustPromptResult<"claude">): Promise<StartupWriteCompletion> {
-  if (result?.kind !== "attempted") throw new Error(`not answered: ${result?.kind}`);
+  if (result?.kind !== "attempted") throw new Error(`not attempted: ${result?.kind}`);
   return result.settled;
 }
 

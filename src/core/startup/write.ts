@@ -4,8 +4,8 @@
  * `startup_prompt` activity emitted) ONLY after its `sendInput` write actually
  * fulfills. A rejected write leaves the prompt retryable and surfaces a bounded,
  * content-free `startup_prompt_write_failed` warning instead of false telemetry
- * (C-CLAUDE-16, C-CODEX-17). Safe cancellation during live trust revalidation
- * emits neither success activity nor a write-failure warning (C-TRUST-01).
+ * (C-CLAUDE-16, C-CODEX-17). Logical cancellation during trust navigation or Codex update retries
+ * emits neither success activity nor a write-failure warning (C-TRUST-01, C-CODEX-12).
  */
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
@@ -17,7 +17,7 @@ import {
   type StartupPromptLabelFor,
 } from "./automation.ts";
 
-/** A disappeared/changed dialog cancels safely without claiming a failed PTY write. */
+/** Lost, changed, or expired trust/update attempts cancel without claiming a PTY failure. */
 export type StartupWriteCompletion = "answered" | "cancelled";
 
 /**
@@ -35,7 +35,7 @@ export type SettledStartupOutcome<A extends ElwoodAgentKind> =
         readonly prompt: StartupPromptLabelFor<A>;
         readonly input: string;
       };
-      // biome-ignore lint/suspicious/noConfusingVoidType: existing PTY callbacks resolve Promise<void>; trust navigation additionally reports cancellation.
+      // biome-ignore lint/suspicious/noConfusingVoidType: existing PTY callbacks resolve Promise<void>; trust and update retries additionally report cancellation.
       readonly settled: Promise<void | StartupWriteCompletion>;
     }
   | {

@@ -6,7 +6,7 @@ import { describe, expect, test } from "vitest";
 import { tempDir } from "../helpers/tmp.ts";
 
 describe("private file FIFO rejection", () => {
-  test.each(["state", "config"])("rejects a %s FIFO before reading", (kind) => {
+  test.each(["state", "config"])("C-CLI-15 rejects a %s FIFO before reading", (kind) => {
     const path = join(tempDir("elwood-fifo-"), "record");
     expect(spawnSync("mkfifo", [path]).status).toBe(0);
     chmodSync(path, 0o600);
