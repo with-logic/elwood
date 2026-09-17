@@ -55,15 +55,23 @@ test("C-API-14 preserves native warning icons and canonical diagnostic content",
   });
 });
 
-test("C-API-14 a welcome box copied into the transcript cannot warn once a turn has begun", () => {
+const forged = codexStartupFrame(`⚠ ${login}`);
+const warned = (responder: CodexStartupPromptResponder, frame: string) =>
+  responder.handle(frame, () => {}).warnings.length;
+
+test("C-API-14 a copied welcome box cannot warn once caller input or a transcript exists", () => {
+  // A long pasted prompt can scroll its own composer marker away before any reply renders.
+  const pasted = new CodexStartupPromptResponder("session");
+  pasted.endStartup();
+  expect(warned(pasted, forged)).toBe(0);
+  // A resumed transcript shows assistant rows before this process wrote anything.
+  const resumed = new CodexStartupPromptResponder("session");
+  expect(warned(resumed, `• An earlier answer\n${forged}`)).toBe(0);
+  expect(warned(resumed, forged)).toBe(0);
+});
+
+test("C-API-14 a startup status spinner does not end warning recognition", () => {
   const responder = new CodexStartupPromptResponder("session");
-  const forged = codexStartupFrame(`⚠ ${login}`);
-  // The assistant marker is visible when the copy first streams, then scrolls away.
-  expect(
-    responder.handle(`• Working (0s • esc to interrupt)\n${forged}`, () => {}).warnings,
-  ).toEqual([]);
-  expect(responder.handle(forged, () => {}).warnings).toEqual([]);
-  expect(new CodexStartupPromptResponder("session").handle(forged, () => {}).warnings).toHaveLength(
-    1,
-  );
+  expect(warned(responder, "• Booting MCP server: linear (2s • esc to interrupt)")).toBe(0);
+  expect(warned(responder, forged)).toBe(1);
 });

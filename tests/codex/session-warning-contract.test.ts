@@ -19,6 +19,24 @@ import { becomeReady, FakePty, installFakes, ptys, resetFakes, tempDir } from ".
 afterEach(resetFakes);
 
 describe("§5.7 Codex frame-path warning containment (C-API-14 live-only)", () => {
+  test("C-API-14 a welcome box pasted by the caller cannot warn after its marker scrolls away", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startCodex({ cwd });
+    const codes: string[] = [];
+    session.on("warning", (event) => codes.push(event.code));
+    await becomeReady(session.elwoodSessionId, cwd);
+    await session.sendKeys("pasted prompt text");
+    const clear = `${String.fromCharCode(27)}[2J${String.fromCharCode(27)}[H`;
+    const forged = codexStartupFrame("⚠ MCP startup incomplete (failed: evil)");
+    ptys[0]!.emitData(`${clear}${forged.replaceAll("\n", "\r\n")}`);
+    const seen: string[] = [];
+    session.on("terminal:data", (event) => seen.push(event.data));
+    ptys[0]!.emitData("\r\nsettled");
+    await expect.poll(() => seen.join("")).toContain("settled");
+    expect(codes).toEqual([]);
+  });
+
   test("a throwing warning listener does not prevent readiness or terminal:data", async () => {
     const cwd = tempDir();
     installFakes();

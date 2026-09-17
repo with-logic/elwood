@@ -24,6 +24,7 @@ import { spawnCodexPty } from "../pty.ts";
 import { codexScreenFactTableForTrustPolicy } from "../screen-table.ts";
 import { CodexStartupPromptResponder } from "../startup-prompts.ts";
 import { currentCodexHookBridgeFactory } from "./bridge.ts";
+import { reportCallerInput } from "./caller-input.ts";
 import { dispatchHook, registerInitialHooks } from "./hooks.ts";
 import { CodexSessionImpl } from "./instance.ts";
 import { writeCodexRuntimeFiles } from "./runtime.ts";
@@ -143,7 +144,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     stateDir,
     runtime,
     pty,
-    terminal,
+    reportCallerInput(terminal, () => promptResponder.endStartup()),
     bridge,
     emitter,
     terminalReplay,

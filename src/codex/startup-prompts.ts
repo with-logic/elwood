@@ -130,11 +130,19 @@ export class CodexStartupPromptResponder {
   // the same banner with different padding/wrapping across frames, which raw-line keying
   // would treat as new. `warnedBanners` is reset to this frame's identities, so a banner
   // that clears (leaves the frame) then reappears fires again as a genuinely new occurrence.
+  /** The session is about to write caller input; nothing after this is a startup banner. */
+  endStartup(): void {
+    this.conversationStarted = true;
+  }
+
   private newWarnings(screenText: string): readonly ElwoodWarningEvent[] {
-    // Startup banners can only come from startup. Codex paints an assistant-marker row
-    // (`• Working…`) the moment any turn begins; from then on a copied welcome box whose
-    // own conversation marker has scrolled out of the frame is transcript, not provenance.
-    this.conversationStarted ||= /^\s*[●•]/m.test(screenText);
+    // Startup banners can only come from startup: once caller content or a resumed
+    // transcript can be on screen, a copied welcome box whose own conversation marker
+    // has scrolled out of the frame is content, not provenance. A status-spinner row
+    // (`• … (3s • esc to interrupt)`) is not an assistant message and does not end it.
+    this.conversationStarted ||= screenText
+      .split("\n")
+      .some((row) => /^\s*[●•]/.test(row) && !/\(\d+s • esc to interrupt\)/.test(row));
     if (this.conversationStarted) return [];
     const matched = codexWarningsFromText(screenText, this.elwoodSessionId);
     const fresh = matched.filter((warning) => !this.warnedBanners.has(bannerKey(warning)));
