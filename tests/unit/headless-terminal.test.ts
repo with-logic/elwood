@@ -117,9 +117,43 @@ describe("headless terminal", () => {
       throw new Error("xterm boom");
     });
     await expect(terminal.writeOutput("boom")).rejects.toThrow("xterm boom");
+    expect(terminal.renderFailed).toBe(true); // the screen no longer reflects what was received
     spy.mockRestore();
     // The chain was not left permanently rejected: a following write resolves.
     await expect(terminal.writeOutput("ok")).resolves.toBeUndefined();
+    expect(terminal.renderFailed).toBe(true); // an incremental write cannot restore lost output
+    await terminal.writeOutput("\u001b[2J\u001b[Hredrawn");
+    expect(terminal.renderFailed).toBe(true); // nor can an erase prove the redraw is complete
+    terminal.dispose();
+  });
+
+  test("C-API-56 concurrent settled() callers share one traversal instead of stacking waiters", async () => {
+    const terminal = createHeadlessTerminal({ cols: 10, rows: 3 }, () => undefined);
+    const stalled: Array<() => void> = [];
+    const spy = vi.spyOn(terminal.xterm, "write").mockImplementation((_data, done) => {
+      stalled.push(() => done?.());
+    });
+    void terminal.writeOutput("stalled");
+    const first = terminal.settled();
+    expect(terminal.settled()).toBe(first); // a retry joins the in-flight settlement
+    await Promise.resolve();
+    for (const done of stalled) done();
+    await first;
+    expect(terminal.settled()).not.toBe(first); // a finished traversal is not reused
+    spy.mockRestore();
+    terminal.dispose();
+  });
+
+  test("C-API-56 settled() resumes after the observer of every chunk, including one received while waiting", async () => {
+    const { pty, emit } = fakePty();
+    const observed: string[] = [];
+    const terminal = attachPtyTerminal({ cols: 10, rows: 3 }, pty, (data) => observed.push(data));
+    emit("first");
+    const settled = terminal.settled().then(() => [...observed]);
+    await Promise.resolve();
+    emit("second"); // received while the first chunk is still rendering
+    // Not merely rendered: both observers have already run when the await resumes.
+    await expect(settled).resolves.toEqual(["first", "second"]);
     terminal.dispose();
   });
 });

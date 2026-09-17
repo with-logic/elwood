@@ -30,6 +30,8 @@ export type ControlSubmissionOrigin =
 export type ControlSendOptions = {
   readonly cancel?: Cancel;
   readonly origin?: ControlSubmissionOrigin;
+  /** Receives the op's own signal at dispatch; it aborts when the NEXT op dispatches. */
+  readonly onDispatch?: (signal: AbortSignal) => void;
 };
 
 type QueuedOperationBase = {
@@ -38,6 +40,7 @@ type QueuedOperationBase = {
   // FROZEN at enqueue: guidance queued before first readiness stays message-like (C-API-37).
   readonly mayBypassReadiness: boolean;
   readonly origin: ControlSubmissionOrigin;
+  readonly onDispatch?: (signal: AbortSignal) => void;
   readonly resolve: () => void;
   readonly reject: (error: Error) => void;
 };

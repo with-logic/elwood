@@ -466,9 +466,12 @@ captured strings.
   bracketed-paste markers (`ESC[200~`/`ESC[201~`) and C0/C1 controls except
   tab/nl/cr, so text can't escape bracketed paste and inject a dialog-confirming
   Enter. C-API-40.
-- A submission's Enter is **held while a blocking dialog is visible**
-  (`waitWhileBlocked`), so a dialog appearing in the paste→Enter window can't be
-  auto-confirmed by the pending Enter.
+- A submission's paste, Enter, and recovery Enters are **held while a blocking
+  dialog is visible** (`holdWhileUnsafe` / `writeUnsafe`, `src/core/input/abort.ts`),
+  so a dialog appearing in the paste→Enter window can't be auto-confirmed. "Visible"
+  means observed: each write first awaits `terminal.settled()`, because a dialog can
+  be received before it is rendered. xterm parses the first write after user input
+  synchronously and later ones on a timer, so that window is real and input-dependent.
 - **Writing a literal ESC byte in source is fragile** — it can be silently
   stripped by an editor/pipeline (this once neutered an interrupt e2e). Always
   write the escape sequence form (``), never a raw ESC character.
