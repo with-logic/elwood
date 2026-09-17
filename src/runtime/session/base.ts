@@ -66,9 +66,10 @@ export abstract class AgentSessionBase extends SessionLifecycle {
       everReady: () => this.everReady,
       blocked: () => this.isInputBlocked(),
       picker: () => this.picker,
-      submit: (command, kind, signal) =>
+      submit: (command, kind, signal, onDispatch) =>
         this.controlQueue.send(command, kind, undefined, {
           cancel: { signal, error: () => signal.reason },
+          ...(onDispatch ? { onDispatch } : {}),
         }),
     });
   }
