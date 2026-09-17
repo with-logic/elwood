@@ -119,6 +119,13 @@ unions.
   `unknown` with a safe raw tool name.
 - Hook bridge JSON must be runtime-validated before it reaches handlers.
 
+Task and plan inputs follow Claude's documented native field names: `TaskGet`
+uses `taskId`; `TaskOutput` uses `task_id`, `block`, and `timeout`; `TaskStop`
+accepts optional `task_id` and the deprecated `shell_id`. `CronDelete` uses `id`.
+`ExitPlanMode.allowedPrompts` contains `{ tool: "Bash", prompt: string }` objects,
+not strings. These shapes apply to both ingress and partial input rewrites.
+See the [Claude tool reference](https://code.claude.com/docs/en/agent-sdk/typescript#tool-input-types).
+
 Invalid states should be unrepresentable where TypeScript can enforce that. For
 example, a `Notification` handler should not be able to return a blocking
 decision, while a `PreToolUse` handler can return `allow`, `deny`, `ask`,

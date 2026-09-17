@@ -1,17 +1,19 @@
 /**
  * Shared hook-handler dispatch with fail-open validation for both adapters.
  * Implements PRD §6.3 (Claude) and §7A.2 (Codex): a handler is raced against
- * the hook timeout, its return value is runtime-validated for the event, and a
+ * the hook timeout, its return value and registration provenance are validated, and a
  * timeout, throw, rejection, or invalid value yields no decision plus a
  * categorized `hookError` (with `timeoutMs` only on a genuine timeout).
  */
 
+import type { HandlerResponse } from "../events/emitter.ts";
 import {
   activityFromHookError,
   type ElwoodActivityEvent,
   type ElwoodAgentKind,
 } from "./activity/index.ts";
 import { raceHookTimeout } from "./hook-timeout.ts";
+import { isRecord } from "./predicates.ts";
 import type { HookErrorEvent } from "./types.ts";
 
 /** A hook event as dispatch sees it: its name is one the `hookError` event can carry. */
@@ -32,7 +34,10 @@ export type HookDispatchOutcome<Result> = {
  */
 export type HookDispatchEmitter<Event extends DispatchableHookEvent> = {
   hasListeners(event: `hook:${Event["hook_event_name"]}`): boolean;
-  request(event: `hook:${Event["hook_event_name"]}`, payload: Event): Promise<unknown>;
+  requestWithProvenance(
+    event: `hook:${Event["hook_event_name"]}`,
+    payload: Event,
+  ): Promise<HandlerResponse | undefined>;
   emit(event: "hookError", payload: HookErrorEvent): void;
   emit(event: "activity", payload: ElwoodActivityEvent): void;
 };
@@ -62,7 +67,10 @@ export function createHookDispatcher<Event extends DispatchableHookEvent, Result
     try {
       const hookName = `hook:${event.hook_event_name}` as const;
       const hasListener = emitter.hasListeners(hookName);
-      const outcome = await raceHookTimeout(emitter.request(hookName, event), timeoutMs);
+      const outcome = await raceHookTimeout(
+        emitter.requestWithProvenance(hookName, event),
+        timeoutMs,
+      );
       if (outcome.timedOut) {
         return failOpen({
           category: "timeout",
@@ -71,13 +79,17 @@ export function createHookDispatcher<Event extends DispatchableHookEvent, Result
         });
       }
       if (!hasListener) return { result: undefined, failedOpen: false };
-      if (!isValidResult(event, outcome.value)) {
+      const response = outcome.value;
+      const result = response?.value;
+      const forbiddenRewrite =
+        response?.provenance !== "tool-keyed" && isRecord(result) && "updatedInput" in result;
+      if (forbiddenRewrite || !isValidResult(event, result)) {
         return failOpen({
           category: "invalid_response",
           message: "Hook handler returned an invalid response for this event.",
         });
       }
-      return { result: outcome.value, failedOpen: false };
+      return { result, failedOpen: false };
     } catch (error) {
       return failOpen({
         category: "handler_error",
