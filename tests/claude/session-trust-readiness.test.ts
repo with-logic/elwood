@@ -1,6 +1,7 @@
 /** Automation-owned trust holds readiness and input without human attention (C-API-28). */
 import { afterEach, expect, test, vi } from "vitest";
 import { startClaude } from "../../src/index.ts";
+import { claudeComposer } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(() => {
@@ -22,11 +23,11 @@ test("C-TRUST-01 expired cursor navigation holds the readiness deadline until th
   expect(ptys[0]!.writes.length).toBeGreaterThan(0);
   expect(ptys[0]!.writes.every((input) => input === "\u001b[B")).toBe(true);
   expect(session.status).not.toBe("ready");
-  expect(session.status).not.toBe("blocked");
+  expect(session.status).toBe("blocked");
   expect(warnings).toEqual([]);
   expect(activity).not.toContain("startup_prompt:workspace_trust");
-  expect(activity).not.toContain("attention:workspace_trust");
-  ptys[0]!.emitData("\u001b[2J\u001b[HClaude ready\r\n❯ ");
+  expect(activity).toContain("attention:claude-workspace_trust-prompt");
+  ptys[0]!.emitData(`\u001b[2J\u001b[H${claudeComposer.replaceAll("\n", "\r\n")}`);
   await vi.advanceTimersByTimeAsync(500);
   await queued;
   expect(ptys[0]!.writes).toContain("\u001b[200~hello\u001b[201~");
@@ -53,8 +54,8 @@ test("C-TRUST-01 a trust gate appearing after readiness holds the entire queued 
   expect(ptys[0]!.writes.every((input) => input === "1\r")).toBe(true);
   expect(warnings).toEqual([]);
   expect(activity).not.toContain("startup_prompt:workspace_trust");
-  expect(activity).not.toContain("attention:workspace_trust");
-  ptys[0]!.emitData("\u001b[2J\u001b[HClaude ready\r\n❯ ");
+  expect(activity).toContain("attention:claude-workspace_trust-prompt");
+  ptys[0]!.emitData(`\u001b[2J\u001b[H${claudeComposer.replaceAll("\n", "\r\n")}`);
   await vi.advanceTimersByTimeAsync(500);
   await queued;
   expect(ptys[0]!.writes).toContain("\u001b[200~held\u001b[201~");

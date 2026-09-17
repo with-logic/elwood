@@ -5,6 +5,7 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
+import { codexComposer } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -12,7 +13,7 @@ afterEach(resetFakes);
 describe("CodexSessionApi trust prompts", () => {
   test("C-CODEX-06 C-CODEX-15 trusts hooks via the TUI prompt and does NOT block", async () => {
     // autotrust OFF, but hook trust (Elwood's own integration) is still answered
-    // — and because it is answered it must never block (C-ATTN-03).
+    // — automatic handling gets its bounded window before human fallback (C-ATTN-03).
     installFakes({ supportsHookTrustBypass: false });
     const session = await startCodex({ cwd: tempDir() });
     const attention: string[] = [];
@@ -31,7 +32,7 @@ describe("CodexSessionApi trust prompts", () => {
     ptys[0]!.emitData("Do you trust the contents of this directory?\r\n› 1. Yes, continue");
     await expect.poll(() => ptys[0]!.writes).toEqual(["1\r"]);
     expect(activity).not.toContain("startup_prompt:workspace_trust");
-    ptys[0]!.emitData("\u001b[2J\u001b[H› ");
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${codexComposer.replaceAll("\n", "\r\n")}`);
     await expect.poll(() => activity).toContain("startup_prompt:workspace_trust");
   });
 

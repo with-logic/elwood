@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { emitSettledStartupOutcomes } from "../../src/core/startup/write.ts";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
+import { claudeComposer } from "../fixtures/trust-composer.ts";
 
 const trust = "Do you trust this folder?\n1. Yes\n2. No";
 beforeEach(() => vi.useFakeTimers());
@@ -35,7 +36,7 @@ function observe(result: TrustPromptResult<"claude">) {
 test("C-TRUST-01 swallowed first numbered write retries and reports success only after clearance", async () => {
   let frame = trust;
   const write = vi.fn(() => {
-    if (write.mock.calls.length === 2) frame = "› Ready";
+    if (write.mock.calls.length === 2) frame = claudeComposer;
   });
   const observed = observe(
     new TrustPromptResponder("claude", true).handle(trust, write, () => frame),
@@ -82,22 +83,20 @@ test("C-TRUST-01 a clear-and-reappear generation between polls cancels the old a
   let frame = trust;
   const write = vi.fn();
   const first = settled(responder.handle(frame, write, () => frame));
-  responder.handle("Ready", write);
-  responder.handle(frame, write, () => frame);
-  await vi.runAllTimersAsync();
-  await expect(first).resolves.toBe("cancelled");
-  expect(write).toHaveBeenCalledExactlyOnceWith("1\r");
-  const retry = settled(
+  responder.handle(claudeComposer, write);
+  const second = settled(
     responder.handle(
       frame,
       () => {
-        frame = "Ready";
+        frame = claudeComposer;
       },
       () => frame,
     ),
   );
   await vi.runAllTimersAsync();
-  await expect(retry).resolves.toBe("answered");
+  await expect(first).resolves.toBe("cancelled");
+  await expect(second).resolves.toBe("answered");
+  expect(write).toHaveBeenCalledExactlyOnceWith("1\r");
 });
 
 test("C-TRUST-01 numbered expiry is bounded, quiet, and retryable", async () => {
@@ -109,6 +108,9 @@ test("C-TRUST-01 numbered expiry is bounded, quiet, and retryable", async () => 
   expect(write).toHaveBeenCalledTimes(20);
   expect(observed.emit).not.toHaveBeenCalled();
   expect(observed.emitWarnings).not.toHaveBeenCalled();
+  expect(responder.handle(trust, write)).toBeUndefined();
+  expect(responder.blockedPrompt).toBe("workspace_trust");
+  responder.handle("Do you trust this folder?\nUnknown explanation", write);
   await expect(settled(responder.handle(trust, write))).resolves.toBe("answered");
   expect(write).toHaveBeenCalledTimes(21);
 });
@@ -153,7 +155,7 @@ test("C-TRUST-01 later native decline rows preserve the active numbered retry", 
   const responder = new TrustPromptResponder("claude", true);
   let frame = "Do you trust this folder?\n1. Yes";
   const write = vi.fn(() => {
-    if (write.mock.calls.length === 2) frame = "Ready";
+    if (write.mock.calls.length === 2) frame = claudeComposer;
   });
   const observed = observe(responder.handle(frame, write, () => frame));
   frame = trust;

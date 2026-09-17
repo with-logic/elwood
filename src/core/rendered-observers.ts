@@ -39,9 +39,41 @@ export function observeRenderedFrame(
   frame: RenderedFrame,
   session: RenderedObserverTarget | undefined,
 ): ScreenFactReading {
+  const reading = readRenderedFrame(observers, frame);
+  observeRenderedReading(observers, reading, session);
+  return reading;
+}
+
+/** Include an expired trust episode as an ordinary blocking fact (C-TRUST-01). */
+export function readRenderedFrame(
+  observers: RenderedObservers,
+  frame: RenderedFrame,
+  trustBlock?: string,
+): ScreenFactReading {
   // Classify the frame once; turn and attention watchers share the reading, and the
   // reading is returned so the caller can drive resume-readiness off the same facts.
   const reading = readScreenFacts(observers.table, frame);
+  return trustBlock === undefined
+    ? reading
+    : {
+        facts: { ...reading.facts, blocking_prompt_visible: true },
+        matched: [
+          ...reading.matched,
+          {
+            id: `${observers.agent}-${trustBlock}-prompt`,
+            fact: "blocking_prompt_visible" as const,
+            region: "screen" as const,
+          },
+        ],
+      };
+}
+
+/** Apply one classified reading after the caller has latched its input guards. */
+export function observeRenderedReading(
+  observers: RenderedObservers,
+  reading: ScreenFactReading,
+  session: RenderedObserverTarget | undefined,
+): void {
   const turnEdge = observers.turn.observe(reading.facts, session?.status === "running");
   if (turnEdge === "started") session?.submitEvidence("rendered_turn_started");
   if (turnEdge === "ended") session?.submitEvidence("rendered_turn_ended");
@@ -54,5 +86,4 @@ export function observeRenderedFrame(
     }
   }
   if (attention?.edge === "cleared") session?.submitEvidence("blocking_prompt_cleared");
-  return reading;
 }

@@ -103,8 +103,8 @@ export function blockingTrustSpecs(
   autotrust: boolean,
 ): readonly TrustPromptSpec[] {
   return trustPromptAllowlist.filter(
-    // An `answerPolicy: "always"` prompt (hook trust) is auto-handled, so it must
-    // NOT be classified as human-blocking. Others block only when autotrust is off.
+    // Static human rules omit automation-owned prompts. The coordinator separately
+    // exposes recoverable human blocking when an owned trust episode expires.
     (spec) => spec.agent === agent && spec.answerPolicy !== "always" && !autotrust,
   );
 }

@@ -1,7 +1,6 @@
 /** Builds a live ClaudeSessionApi from a record + runtime. Implements PRD §5, §6, §8, §9. */
 import { defaultTerminalSize } from "../../core/defaults.ts";
 import { causeDetails, elwoodError } from "../../core/errors.ts";
-import { observeRenderedFrame } from "../../core/rendered-observers.ts";
 import { createStartupWarningGate, deliverFrameWarnings } from "../../core/startup/frame.ts";
 import { emitSettledStartupOutcomes } from "../../core/startup/write.ts";
 import { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
@@ -9,6 +8,7 @@ import type { ClaudeEventMap, StartClaudeOptions } from "../../core/types.ts";
 import { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyExit } from "../../pty/types.ts";
 import { loadRuntimeLoopDefinitions as loadLoops } from "../../runtime/loop-restore.ts";
+import { bindStartupLifetime, createSessionFrameObserver } from "../../runtime/session/frames.ts";
 import { createReadinessGate } from "../../runtime/session/readiness.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../../runtime/startup/buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../../runtime/startup/cleanup.ts";
@@ -68,12 +68,13 @@ export async function buildClaudeSession(
   // over a binding declared later in this function.
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
   const turnWatcher = observers.turn;
-  const { ready, observeReadinessFrame } = createReadinessGate(() => {
+  const readiness = createReadinessGate(() => {
     turnWatcher.arm(resumed); // resume arms in settling mode (no phantom replay turn)
     // completeInitialReady advances readiness in a finally, isolating restore/warning
     // failures internally, so its promise never rejects (not awaited).
     void session?.completeInitialReady();
   }, resumed);
+  const { ready } = readiness;
   const bridge = currentClaudeHookBridgeFactory()(
     runtime.socketPath,
     runtime.bridgeToken,
@@ -117,7 +118,13 @@ export async function buildClaudeSession(
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
-  const promptResponder = new ClaudeStartupPromptResponder(autotrust);
+  const frameObserver = createSessionFrameObserver(
+    observers,
+    () => session,
+    () => promptResponder,
+    readiness,
+  );
+  const promptResponder = new ClaudeStartupPromptResponder(autotrust, frameObserver.refresh);
   let latestRenderedText = "";
   const terminal = attachPtyTerminal(startupSize, pty, (data, renderedTerminal) => {
     startupOutput.push(data);
@@ -132,17 +139,12 @@ export async function buildClaudeSession(
       (input) => renderedTerminal.sendInput(input),
       () => latestRenderedText,
     );
-    active.automationBlocking = promptResponder.inputBlocking;
     // Warning delivery is CONTAINED on the frame path: a throwing `warning`/`activity`
     // listener must never skip readiness, login detection, or terminal:data (§5.7).
     emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
       emitWarnings: (warnings) => warnGate.emitWarnings(warnings),
     });
-    // Hook-backed readiness + deadline fallback; on resume the first composer also marks ready (C-API-28).
-    ready.armDeadline();
-    const reading = observeRenderedFrame(observers, frame, session);
-    active.inputBlocking = reading.facts.blocking_prompt_visible;
-    observeReadinessFrame(reading.facts, active.automationBlocking); // blocking gate + resume-composer mark
+    frameObserver.observe(frame);
     // Surface a mid-session login-expiry banner once (C-CLAUDE-18); no-op pre-readiness.
     session?.noteLoginExpiry(frame.text);
     emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
@@ -160,6 +162,8 @@ export async function buildClaudeSession(
     loopDefinitions,
   );
   const active = session;
+  bindStartupLifetime(active, promptResponder, ready);
+  frameObserver.refresh();
   const beforeCleanup = () => active.pauseLoopsForStartupCleanup(ready.cancel);
   // Guard every live-resource step after session creation: a failure in any of them
   // tears down the now-live PTY, bridge, terminal, and watcher first (PRD §9.1, §9.4).
@@ -172,7 +176,7 @@ export async function buildClaudeSession(
       ready.replay();
       pty.onExit((exit) => {
         startupExit = exit;
-        ready.cancel(); // No queued message can release after exit; drop the pending deadline.
+        active.closing.abort();
         handleClaudeExit(emitter, record.elwoodSessionId, exit, finishSafely, () =>
           active.submitExit(),
         );

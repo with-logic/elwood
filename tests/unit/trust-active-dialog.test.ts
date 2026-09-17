@@ -1,6 +1,7 @@
 /** Active trust-dialog isolation and live-write validation (PRD §5.4, C-TRUST-01). */
 import { expect, test } from "vitest";
 import { TrustPromptResponder, trustPromptVisible } from "../../src/core/trust/responder.ts";
+import { claudeComposer } from "../fixtures/trust-composer.ts";
 
 const permission =
   "Bash command\n  echo test\nDo you want to proceed?\n❯ 1. Yes\n  2. No\nEsc to cancel";
@@ -72,7 +73,7 @@ test("C-TRUST-01 revalidates a numbered dialog before writing and leaves it retr
     trust,
     (key) => {
       writes.push(key);
-      retryFrame = "Ready";
+      retryFrame = claudeComposer;
     },
     () => retryFrame,
   );

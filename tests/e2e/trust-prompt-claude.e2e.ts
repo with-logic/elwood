@@ -5,7 +5,7 @@
  * actual folder-trust frame, and asserts our recognition (header-anchored) +
  * affirmative-option matching accept the real wording — then launches a SECOND
  * fresh session WITH autotrust and asserts the real session/PTY wiring clears the
- * trust gate and reaches readiness (the "never block — always say yes" policy).
+ * trust gate and reaches readiness through bounded safe automation.
  * Implements C-E2E-09 for C-CLAUDE-10/C-CLAUDE-14 (§5.1).
  *
  * If the installed CLI does not render a folder-trust prompt (e.g. it auto-trusts
@@ -18,6 +18,7 @@ import test from "node:test";
 import { optionKeystrokes, selectableOptions } from "../../src/core/terminal-options.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
+import { claudeComposer } from "../fixtures/trust-composer.ts";
 import { cleanup, makeProject, skipIf, skipNow, skipReason, waitFor } from "./helpers.ts";
 import { completeFolderTrustScreenVisible, folderTrustScreenVisible } from "./trust-screens.ts";
 
@@ -39,10 +40,17 @@ async function trustInputFor(frame: string): Promise<string | undefined> {
     },
     () => rendered,
   );
-  if (result?.kind !== "attempted" || result.automation.prompt !== "workspace_trust")
+  if (result?.kind !== "attempted" || result.automation.prompt !== "workspace_trust") {
+    responder.dispose();
     return undefined;
-  await result.settled;
-  return written.join("");
+  }
+  try {
+    if ((await result.settled) !== "answered")
+      throw new Error("Native trust attempt did not clear");
+    return written.join("");
+  } finally {
+    responder.dispose();
+  }
 }
 
 /** The raw PTY keys needed to select the real frame's affirmative option, if any. */
@@ -55,7 +63,7 @@ function affirmativeOptionKeys(frame: string): string | undefined {
 
 /** Minimal repaint model for the direct responder check; live wiring is tested below. */
 function advancePromptFrame(frame: string, input: string): string {
-  if (input === "\r" || /^\d+\r$/.test(input)) return "";
+  if (input === "\r" || /^\d+\r$/.test(input)) return claudeComposer;
   const lines = frame.split("\n");
   const selectedRow = lines.findIndex((line) => /^(\s*)[❯›]\s+/.test(line));
   if (selectedRow < 0) return frame;
@@ -156,7 +164,7 @@ test("C-E2E-09 the allowlist recognizes and the autotrust path clears the REAL C
   // The direct-responder check above cannot prove the LIVE autotrust wiring
   // (session start → PTY submission → readiness transition) actually clears the
   // gate. So drive a SECOND fresh, untrusted session WITH autotrust and assert it
-  // reaches readiness — the "never block, always say yes" policy end-to-end.
+  // reaches readiness through the bounded safe trust coordinator.
   const trusted = makeProject("claude");
   let autoSession: ClaudeSessionApi | undefined;
   try {

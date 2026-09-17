@@ -241,14 +241,34 @@ reports answered only after the gate clears. A native directory-to-hook transiti
 confirms directory clearance without sending an old answer to the hook gate.
 An observed clear-and-reappear generation cancels the old attempt.
 
-Cursor navigation rereads between individual arrows and Enter. Both styles cancel
-quietly when the dialog changes or the five-second attempt expires. A cancellation remains retryable;
-it emits neither answered activity nor a PTY-write warning. Only a rejected PTY
-write produces `startup_prompt_write_failed`. An automation-owned visible trust
-gate holds initial readiness and queued paste/command input until it clears,
-independently of human-blocking attention. A fulfilled write alone does not
-prove the gate cleared. Real-CLI checks use a separate raw visibility oracle so
-production recognition failures cannot make the tests report the gate absent.
+Cursor navigation rereads between individual arrows and Enter. Both navigation
+styles now belong to one session-owned coordinator: each observed dialog
+generation owns its reservation, deadline, exact affirmative, and completion.
+An old cancelled attempt cannot release or settle a reappeared gate. The five-
+second bound starts at the first native-header candidate, including partial
+painting. Candidate recognition holds input; only the stricter native-dialog
+recognizer authorizes writes. Unknown replacement text is not clearance. Native
+composer chrome or a verified successor gate confirms clearance; a bare caret
+alone cannot distinguish a composer from a one-option dialog.
+
+A stable unsupported or exhausted gate becomes recoverable `blocked` with the
+existing attention rule id after five seconds, even when the terminal emits no
+new data. This is the deliberate fallback approved for autotrust. A later valid
+layout or new generation re-arms safe automation; an unchanged redraw does not
+restart an expired loop. Once fallback is visible, the block remains until
+verified clearance. Raw human keys remain available, while queued persona,
+paste, and command input stays held. Stop, kill, teardown, startup cleanup and
+PTY exit cancel pending automation and timers before disposal. Only a rejected
+PTY write belonging to a still-live matching attempt emits
+`startup_prompt_write_failed`; cancellation and late settlement stay quiet.
+
+A fulfilled write alone does not prove the gate cleared. Real-CLI checks use a
+separate raw visibility oracle so production recognition failures cannot make
+the tests report the gate absent. Sanitized native Claude 2.1.274 and Codex
+0.154.0 post-trust composer captures anchor the positive-clearance tests.
+A no-model Codex resize probe at 100×12, 100×8 and 100×6 confirms that the welcome
+box can scroll away while its composer and model/reasoning/path footer remain.
+Those native rows also prove clearance; welcome presence is not required.
 
 ### Native Codex startup warnings
 
@@ -300,12 +320,12 @@ therefore version/account-gated, and Elwood must be correct in BOTH states:
   security reasons` is the CLI's own refusal; Elwood does not special-case it —
   it surfaces as the ordinary start failure with the CLI's message.
 
-**Do not equate `autotrust` with “not blocking” until the write clears the real
-screen.** Trust rules are omitted from human-blocking classification under
-`autotrust`, because automation owns the gate. A separate automation gate holds
-the 10 s initial-ready fallback and queued input while native trust remains visible. C-E2E-09 therefore requires both `ready` and a
-cleared trust screen; a complete but unanswerable real frame is a failure, not a
-skip.
+**Do not equate `autotrust` with readiness until the real gate clears.** The
+automation gate holds the 10 s initial-ready fallback and queued input from the
+first native trust candidate. Successful bounded automation does not report a
+human block; unsupported or exhausted attempts transfer to the recoverable block
+above. C-E2E-09 requires both `ready` and a cleared trust screen; an unanswerable
+real frame is a failure, not a skip.
 
 The responder emits one transient `attention` when a recognized header paints
 before its affirmative option. A headless owner must ignore that transient only

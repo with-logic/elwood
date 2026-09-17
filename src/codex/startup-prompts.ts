@@ -40,13 +40,21 @@ export class CodexStartupPromptResponder {
   // new occurrence, matching "once when observed" rather than "replay while on screen".
   private warnedBanners = new Set<string>();
 
-  constructor(elwoodSessionId = "", autotrust = false) {
+  constructor(elwoodSessionId = "", autotrust = false, onStateChange?: () => void) {
     this.elwoodSessionId = elwoodSessionId;
     this.buffer = "";
     // Owns the whole allowlisted trust family (directory + hook trust), not just
     // one prompt; extended by adding entries to trustPromptAllowlist.
-    this.trust = new TrustPromptResponder("codex", autotrust);
+    this.trust = new TrustPromptResponder("codex", autotrust, onStateChange);
     this.skippedUpdate = false;
+  }
+
+  get blockedPrompt() {
+    return this.trust.blockedPrompt;
+  }
+
+  dispose(): void {
+    this.trust.dispose();
   }
 
   get inputBlocking(): boolean {

@@ -1,144 +1,196 @@
-/**
- * Detects and answers the allowlisted family of adapter startup trust prompts.
- * Implements PRD §5.1 and §9.1 (C-CLAUDE-10, C-CODEX-11, C-CLAUDE-14, C-CODEX-15).
- *
- * Policy (PRD §5.1): an agent must NEVER be left waiting on a trust gate.
- * Under the caller's full-trust posture, when an allowlisted trust prompt is
- * visible in the current frame, Elwood selects its affirmative option and sends
- * it. Recognition binds the header and answer to one active dialog and every
- * write revalidates it; unrelated confirmations remain with the human.
- */
-
+/** Owns trust episodes, bounded attempts, and recoverable blocking (PRD §5.4/C-TRUST-01). */
 import type { ElwoodAgentKind } from "../activity/index.ts";
-import type { StartupWriteCompletion } from "../startup/write.ts";
 import { optionInput } from "../terminal-options.ts";
-import { parseTrustDialog } from "./dialog.ts";
-import {
-  activeTrustDialogVisible,
-  type TrustPromptIdFor,
-  trustPromptAllowlist,
-} from "./prompts.ts";
-import { writeTrustOption } from "./write.ts";
+import type { TrustPromptIdFor } from "./prompts.ts";
+import type { Episode, TrustPromptResult, TrustWriteResult } from "./types.ts";
+import { choiceIdentity, type TrustView, trustView } from "./view.ts";
+import { TrustAttempt } from "./write.ts";
 
-/** The concrete allowlist entry type (preserves the derived literal `id`). */
-type TrustPromptEntry = (typeof trustPromptAllowlist)[number];
+export type { TrustPromptAutomation, TrustPromptResult, TrustWriteResult } from "./types.ts";
+export { trustPromptVisible } from "./view.ts";
 
-/** An attempted trust response; `prompt` is narrowed to the responder's agent. */
-export type TrustPromptAutomation<A extends ElwoodAgentKind = ElwoodAgentKind> = {
-  readonly prompt: TrustPromptIdFor<A>;
-  readonly input: string;
-};
-
-/** Raw PTY writer result; the navigation owner separately settles answered or cancelled. */
-export type TrustWriteResult = void | Promise<void>;
-
-/**
- * The outcome of handling a frame: a cancellable write attempt, a recognized prompt whose
- * affirmative option has not rendered yet (a TRANSIENT render delay — under the
- * say-yes policy a later frame carrying the option is still answered, so this is
- * never a terminal wedge), or nothing.
- */
-export type TrustPromptResult<A extends ElwoodAgentKind = ElwoodAgentKind> =
-  | {
-      readonly kind: "attempted";
-      readonly automation: TrustPromptAutomation<A>;
-      // Cancellation is a safe skip; both cancellation and write failure allow retry.
-      readonly settled: Promise<StartupWriteCompletion>;
-    }
-  | { readonly kind: "option_pending"; readonly prompt: TrustPromptIdFor<A> }
-  | undefined;
-
+const episodeTimeoutMs = 5_000;
 export class TrustPromptResponder<A extends ElwoodAgentKind> {
-  // Whether the caller launched under full trust (`autotrust`). `answerPolicy:
-  // "always"` prompts (hook trust) are answered even when this is false.
+  private episode: Episode | undefined;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private readonly attempts = new Set<TrustAttempt>();
+  private disposed = false;
+  private readonly agent: A;
   private readonly autotrust: boolean;
-  private visible = false;
-  private dialogKey: string | undefined;
-  private generation = 0;
-
-  /** Automation owns input until the current native trust dialog clears. */
-  get inputBlocking(): boolean {
-    return this.visible;
-  }
-  private readonly specs: readonly TrustPromptEntry[];
-  private readonly settled = new Set<TrustPromptIdFor<A>>();
-  // A prompt whose "option not rendered yet" state was reported once, kept
-  // SEPARATE from `settled` so a later frame with the real option can still be
-  // answered — the pending state is transient, not terminal.
-  private readonly reportedPending = new Set<TrustPromptIdFor<A>>();
-
-  constructor(agent: A, autotrust = false) {
+  private readonly onStateChange: (() => void) | undefined;
+  constructor(agent: A, autotrust = false, onStateChange?: () => void) {
+    this.agent = agent;
     this.autotrust = autotrust;
-    this.specs = trustPromptAllowlist.filter((spec) => spec.agent === agent);
+    this.onStateChange = onStateChange;
   }
 
-  /** `frame` MUST be the CURRENT rendered screen, not an accumulated buffer. */
+  get inputBlocking(): boolean {
+    return this.episode !== undefined;
+  }
+  get blockedPrompt(): TrustPromptIdFor<A> | undefined {
+    const id = this.episode?.blocked ? this.episode.candidate.spec.id : undefined;
+    return id as TrustPromptIdFor<A> | undefined;
+  }
+
+  /** The current frame owns recognition; no accumulated transcript grants trust. */
   handle(
     frame: string,
     write: (input: string) => TrustWriteResult,
     readFrame?: () => string,
   ): TrustPromptResult<A> {
-    const dialog = parseTrustDialog(frame);
-    // Native choices can finish painting after the header/affirmative. Their
-    // exact safety is revalidated per write; partial painting is not a new dialog.
-    const key = dialog?.header;
-    // Clearing preserves the epoch for successful settlement; a reappearing or
-    // replaced dialog starts a new epoch before any old attempt can retry.
-    if (key !== undefined && key !== this.dialogKey) this.generation += 1;
-    this.dialogKey = key;
-    this.visible = this.specs.some(
-      (spec) =>
-        (this.autotrust || spec.answerPolicy === "always") &&
-        activeTrustDialogVisible(dialog, spec),
-    );
-    if (dialog === undefined) return undefined;
-    for (const spec of this.specs) {
-      const id = spec.id as TrustPromptIdFor<A>;
-      // Codex hook trust covers all configured hooks regardless of autotrust.
-      if (!(this.autotrust || spec.answerPolicy === "always") || this.settled.has(id)) continue;
-      if (!activeTrustDialogVisible(dialog, spec)) continue;
-      const options = dialog.options;
-      const option = options.find((candidate) => spec.accept.test(candidate.label));
-      if (option === undefined) {
-        // Affirmative not rendered yet (partial frame). Report once, but DON'T
-        // settle — a later frame with the option can still be answered.
-        if (this.reportedPending.has(id)) continue;
-        this.reportedPending.add(id);
-        return { kind: "option_pending", prompt: id };
-      }
-      // Reserve this class while navigation runs. Cancellation or a failed write
-      // releases it for retry; only a rejected write becomes a warning upstream.
-      this.settled.add(id);
-      const input = optionInput(option);
-      const generation = this.generation;
-      const operation = writeTrustOption(
-        spec,
-        option,
-        write,
-        dialog,
-        () => this.generation === generation,
-        readFrame,
-      );
-      const settled = operation.then(
-        (completion) => {
-          if (completion === "cancelled") this.settled.delete(id);
-          return completion;
-        },
-        (error: unknown) => {
-          this.settled.delete(id);
-          throw error;
-        },
-      );
-      return { kind: "attempted", automation: { prompt: id, input }, settled };
+    if (this.disposed) return undefined;
+    const priorIdentity = this.episode?.lastIdentity;
+    const view = trustView(frame, this.agent);
+    this.observe(view);
+    const episode = this.episode;
+    if (view.kind !== "candidate" || episode === undefined || view.key !== episode.candidate.key)
+      return undefined;
+    const identity = choiceIdentity(view);
+    episode.lastIdentity = identity;
+    if (
+      episode.expired &&
+      identity !== undefined &&
+      (identity !== episode.expiredIdentity || priorIdentity === undefined)
+    ) {
+      episode.attemptedIdentity = undefined;
+      this.arm(episode);
     }
-    return undefined;
+    if (readFrame === undefined && episode.attempt) return undefined;
+    if (episode.attempt && episode.attempt.identity !== identity) {
+      episode.attempt.cancel();
+      episode.attempt = undefined;
+      episode.attemptedIdentity = undefined;
+    }
+    if (identity === undefined) {
+      if (!view.valid || episode.reportedPending) return undefined;
+      episode.reportedPending = true;
+      return { kind: "option_pending", prompt: view.spec.id as TrustPromptIdFor<A> };
+    }
+    if (
+      episode.expired ||
+      episode.attempt ||
+      episode.legacyAnswered ||
+      episode.attemptedIdentity === identity
+    )
+      return undefined;
+    const read = readFrame === undefined ? undefined : () => trustView(readFrame(), this.agent);
+    const attempt = new TrustAttempt(view, identity);
+    episode.attempt = attempt;
+    episode.attemptedIdentity = identity;
+    this.attempts.add(attempt);
+    const settled = attempt.start(write, read, episode.deadline).then(
+      (completion) => {
+        this.attempts.delete(attempt);
+        if (this.disposed || attempt.invalidated) return "cancelled" as const;
+        if (this.episode !== episode || episode.attempt !== attempt) return completion;
+        episode.attempt = undefined;
+        if (read === undefined && completion === "answered") {
+          episode.legacyAnswered = true;
+          clearTimeout(this.timer);
+        } else if (read !== undefined) {
+          const latest = read();
+          if (attempt.cleared) this.release(true);
+          this.observe(latest);
+          this.notify();
+          if (attempt.cleared && latest.kind === "candidate" && latest.spec.id === view.spec.id)
+            return "cancelled" as const;
+        }
+        return completion;
+      },
+      (error: unknown) => {
+        this.attempts.delete(attempt);
+        if (this.episode !== episode || episode.attempt !== attempt) return "cancelled" as const;
+        episode.attempt = undefined;
+        episode.attemptedIdentity = undefined;
+        throw error;
+      },
+    );
+    return {
+      kind: "attempted",
+      automation: {
+        prompt: view.spec.id as TrustPromptIdFor<A>,
+        input: optionInput(view.option!),
+      },
+      settled,
+    };
   }
-}
 
-/** Whether the active dialog matches any allowlisted trust prompt for `agent`. */
-export function trustPromptVisible(text: string, agent: ElwoodAgentKind): boolean {
-  const dialog = parseTrustDialog(text);
-  return trustPromptAllowlist.some(
-    (spec) => spec.agent === agent && activeTrustDialogVisible(dialog, spec),
-  );
+  /** Session closing owns all cancellation, including writes whose promises settle late. */
+  dispose(): void {
+    this.disposed = true;
+    clearTimeout(this.timer);
+    for (const attempt of this.attempts) attempt.cancel();
+    this.episode = undefined;
+  }
+
+  private observe(view: TrustView): void {
+    if (view.kind === "clear") {
+      this.release(true);
+      return;
+    }
+    if (view.kind === "unknown") {
+      if (this.episode) {
+        this.episode.attempt?.cancel();
+        this.episode.attempt = undefined;
+        this.episode.attemptedIdentity = undefined;
+        this.episode.lastIdentity = undefined;
+      }
+      return;
+    }
+    if (!(this.autotrust || view.spec.answerPolicy === "always")) {
+      if (view.valid) this.release(true);
+      return;
+    }
+    if (this.episode?.candidate.key === view.key) {
+      this.episode.lastIdentity = choiceIdentity(view);
+      return;
+    }
+    const blocked = this.episode?.blocked ?? false;
+    this.release(view.valid);
+    // A cleared-and-reappeared class cannot inherit an old pending success.
+    for (const attempt of this.attempts) {
+      if (attempt.candidate.spec.id === view.spec.id) attempt.cancel();
+    }
+    const episode: Episode = {
+      candidate: view,
+      deadline: 0,
+      blocked,
+      expired: false,
+      expiredIdentity: undefined,
+      lastIdentity: choiceIdentity(view),
+      attemptedIdentity: undefined,
+      reportedPending: false,
+      legacyAnswered: false,
+      attempt: undefined,
+    };
+    this.episode = episode;
+    this.arm(episode);
+  }
+
+  private arm(episode: Episode): void {
+    clearTimeout(this.timer);
+    episode.expired = false;
+    episode.deadline = Date.now() + episodeTimeoutMs;
+    this.timer = setTimeout(() => {
+      episode.expired = true;
+      episode.expiredIdentity = episode.lastIdentity;
+      episode.blocked = true;
+      episode.attempt?.cancel();
+      episode.attempt = undefined;
+      this.notify();
+    }, episodeTimeoutMs);
+    this.timer.unref();
+  }
+  private release(cleared: boolean): void {
+    clearTimeout(this.timer);
+    this.episode?.attempt?.cancel(cleared);
+    this.episode = undefined;
+  }
+  private notify(): void {
+    try {
+      this.onStateChange?.();
+    } catch {
+      /* An observer cannot retain owned timers or writes. */
+    }
+  }
 }

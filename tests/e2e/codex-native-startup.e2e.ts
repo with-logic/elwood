@@ -12,10 +12,10 @@ test("C-E2E-09 real Codex trust gates clear and native MCP login warnings retain
 }, async (t) => {
   const mcp = await unauthenticatedMcp();
   let native: ReturnType<typeof nativeCodex> | undefined;
+  const responder = new TrustPromptResponder("codex", true);
   try {
     native = nativeCodex(mcp.url);
     const active = native;
-    const responder = new TrustPromptResponder("codex", true);
     // Independent raw-frame predicates prevent a false-negative production parser
     // from making this test believe that a still-visible native gate has cleared.
     const directory = await waitFor(
@@ -108,6 +108,7 @@ test("C-E2E-09 real Codex trust gates clear and native MCP login warnings retain
       );
     }
   } finally {
+    responder.dispose();
     try {
       await native?.close();
     } finally {

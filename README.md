@@ -475,7 +475,9 @@ immediate; both are safe after the process has already exited.
   for the entire launched session even without autotrust. Codex update dialogs
   are skipped, and Claude browser-tools onboarding is dismissed. Other recognized
   dialogs leave the session `blocked` for a human; the CLI fails such runs as
-  `blocked_prompt`.
+  `blocked_prompt`. If safe trust automation cannot clear a gate within five
+  seconds, the library also leaves it `blocked`, retaining queued input. A later
+  supported layout can retry automatically; `sendKeys` permits manual recovery.
 - `--high-trust` (library `highTrust: true`) is the agent-neutral "never ask"
   switch: Claude `bypassPermissions`, or Codex `danger-full-access` with
   approval policy `never`. It removes the agent's own guardrails, so point it

@@ -6,6 +6,7 @@
 import { describe, expect, test, vi } from "vitest";
 import type { StartupWriteCompletion } from "../../src/core/startup/write.ts";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
+import { claudeComposer } from "../fixtures/trust-composer.ts";
 
 /** Await an attempted prompt’s completion; a missing attempt fails the test (never vacuous). */
 function settlementOf(result: TrustPromptResult<"claude">): Promise<StartupWriteCompletion> {
@@ -133,7 +134,7 @@ describe("trust-prompt automation security", () => {
           retryFrame =
             input === "\u001b[B"
               ? "Do you trust this folder?\n  No\n❯ Yes, I trust this folder"
-              : "Ready";
+              : claudeComposer;
         },
         () => retryFrame,
       );

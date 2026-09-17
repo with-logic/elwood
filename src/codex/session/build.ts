@@ -3,7 +3,6 @@ import * as activity from "../../core/activity/index.ts";
 import { AttentionWatcher } from "../../core/attention.ts";
 import { defaultTerminalSize } from "../../core/defaults.ts";
 import { causeDetails, elwoodError } from "../../core/errors.ts";
-import { observeRenderedFrame } from "../../core/rendered-observers.ts";
 import { createStartupWarningGate, deliverFrameWarnings } from "../../core/startup/frame.ts";
 import { emitSettledStartupOutcomes } from "../../core/startup/write.ts";
 import { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
@@ -12,6 +11,7 @@ import { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyExit, PtyProcess } from "../../pty/types.ts";
 import { loadRuntimeLoopDefinitions as loadLoops } from "../../runtime/loop-restore.ts";
 import { finishSessionExit } from "../../runtime/session/exit.ts";
+import { bindStartupLifetime, createSessionFrameObserver } from "../../runtime/session/frames.ts";
 import { createReadinessGate } from "../../runtime/session/readiness.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../../runtime/startup/buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../../runtime/startup/cleanup.ts";
@@ -48,10 +48,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const emitter = new TypedEmitter<CodexEventMap>();
   registerInitialHooks(emitter, options.hooks);
   let session: CodexSessionImpl | undefined;
-  // ALL startup-region warnings — MCP/prompt-write (frame path) AND transcript
-  // drop/read-error diagnostics — route through ONE gate that buffers anything emitted
-  // before startCodex resolves and flushes it on a deferred macrotask after return, so
-  // every source stays observable without late-subscriber replay (C-API-14).
+  // One deferred gate keeps pre-return diagnostics observable to late subscribers.
   const warnGate = createStartupWarningGate({
     emitWarnings: (w) => deliverFrameWarnings(session, w),
   });
@@ -93,10 +90,11 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   let startupExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
-  const { ready, observeReadinessFrame } = createReadinessGate(() => {
+  const readiness = createReadinessGate(() => {
     turnWatcher.arm(resumed); // resume arms in settling mode (no phantom replay turn)
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
   }, resumed);
+  const { ready } = readiness;
   const autotrust = options.autotrust ?? false;
   const observers = {
     turn: new TurnStateWatcher(),
@@ -107,7 +105,17 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     emitActivity: (event: activity.ElwoodActivityEvent) => emitter.emit("activity", event),
   };
   const turnWatcher = observers.turn;
-  const promptResponder = new CodexStartupPromptResponder(record.elwoodSessionId, autotrust);
+  const frameObserver = createSessionFrameObserver(
+    observers,
+    () => session,
+    () => promptResponder,
+    readiness,
+  );
+  const promptResponder = new CodexStartupPromptResponder(
+    record.elwoodSessionId,
+    autotrust,
+    frameObserver.refresh,
+  );
   const terminal = attachPtyTerminal(
     options.initialSize ?? defaultTerminalSize,
     pty,
@@ -116,23 +124,17 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       terminalReplay.push(data);
       // One snapshot per render: reused for prompt automation, readiness, detection.
       const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
-      // The write RETURNS its completion: the responder settles only after it fulfills;
-      // a rejected write retries + warns (C-CODEX-17). Warning delivery is CONTAINED on
-      // the frame path so a throwing listener never skips readiness or terminal:data.
+      // Automation owns completion; failures report through the contained warning gate.
       const result = promptResponder.handle(
         frame.text,
         (i) => renderedTerminal.sendInput(i),
         () => renderedTerminal.snapshot().text,
       );
-      activeSession.automationBlocking = promptResponder.inputBlocking;
       warnGate.emitWarnings(result.warnings);
       emitSettledStartupOutcomes(emitter, "codex", record.elwoodSessionId, result.outcomes, {
         emitWarnings: (w) => warnGate.emitWarnings(w),
       });
-      ready.armDeadline(); // hook/deadline readiness; resume composer also marks (C-API-28)
-      const reading = observeRenderedFrame(observers, frame, session);
-      activeSession.inputBlocking = reading.facts.blocking_prompt_visible;
-      observeReadinessFrame(reading.facts, activeSession.automationBlocking); // blocking gate + resume-composer mark
+      frameObserver.observe(frame);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
   );
@@ -150,6 +152,8 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   );
   const id = record.elwoodSessionId;
   const activeSession = session;
+  bindStartupLifetime(activeSession, promptResponder, ready);
+  frameObserver.refresh();
   const beforeCleanup = () => activeSession.pauseLoopsForStartupCleanup(ready.cancel);
   // Every post-construction failure tears down all live resources (§9.1/§9.4).
   await guardStartupRegion(
@@ -161,7 +165,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       // C-LIFE-10: a failed final flush cannot skip exit or reaping.
       pty.onExit((exit) => {
         startupExit = exit;
-        ready.cancel();
+        activeSession.closing.abort();
         const emitExit = () => {
           emitter.emit("terminal:exit", { elwoodSessionId: id, ...exit });
           emitter.emit("activity", activity.activityFromTerminalExit("codex", id, exit.exitCode));
@@ -177,9 +181,6 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     },
     { before: beforeCleanup, pty, bridge, terminal, after: () => transcriptWatcher.stop() },
   );
-  // Buffer the preflight/version warning through the same gate, then open it: buffered
-  // startup warnings (MCP/transcript) AND the preflight all flush on one deferred
-  // macrotask after return, so a caller subscribing synchronously observes them all.
   if (preflightWarning !== undefined) warnGate.emitWarnings([preflightEvent(id, preflightWarning)]);
   warnGate.openAfterReturn();
   terminalReplay.releaseStartupAttentionAfterReturn();

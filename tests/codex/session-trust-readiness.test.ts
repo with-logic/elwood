@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
 import { startCodex } from "../../src/index.ts";
+import { codexComposer } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 const codexDirectoryTrustFrame = readFileSync(
@@ -41,9 +42,9 @@ test.each([
   expect(answered).toEqual([]);
   expect(warnings).toEqual([]);
   expect(session.status).not.toBe("ready");
-  expect(session.status).not.toBe("blocked");
-  expect(attention).toEqual([]);
-  ptys[0]!.emitData("\u001b[2J\u001b[H› Ready");
+  expect(session.status).toBe("blocked");
+  expect(attention).toContain(`codex-${autotrust ? "workspace_trust" : "hook_trust"}-prompt`);
+  ptys[0]!.emitData(`\u001b[2J\u001b[H${codexComposer.replaceAll("\n", "\r\n")}`);
   await vi.advanceTimersByTimeAsync(500);
   await queued;
   expect(ptys[0]!.writes).toContain("\u001b[200~hello\u001b[201~");

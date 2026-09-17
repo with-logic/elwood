@@ -20,6 +20,14 @@ export type TrustDialog = {
 
 /** Parse the last standalone candidate once; never borrow an earlier candidate's options. */
 export function parseTrustDialog(frame: string): TrustDialog | undefined {
+  const candidate = parseTrustCandidate(frame);
+  return candidate?.validTail ? candidate.dialog : undefined;
+}
+
+/** A provenance-checked header may hold input even while its native body is incomplete. */
+export function parseTrustCandidate(
+  frame: string,
+): { readonly dialog: TrustDialog; readonly validTail: boolean } | undefined {
   const lines = frame.split("\n");
   let start = -1;
   let insideNumberedOption = false;
@@ -33,6 +41,7 @@ export function parseTrustDialog(frame: string): TrustDialog | undefined {
   // copy quoted below a conversation row is still conversation content.
   if (lines.slice(0, start).some((line) => conversationRow.test(line))) return undefined;
   const tail = lines.slice(start);
+  const unknownTail = tail.some((line) => /^\s*(?:[●•]|(?:user|assistant)\s*:)/i.test(line));
   const text = tail.join("\n");
   const header = nonOptionText(text);
   const options = selectableOptions(text);
@@ -44,8 +53,11 @@ export function parseTrustDialog(frame: string): TrustDialog | undefined {
     offset += line.length + 1;
     return afterHeader;
   });
-  if (optionStart >= 0 && !validOptionTail(tail.slice(optionStart), options)) return undefined;
-  return { header: header.trim().replace(/\s+/g, " "), options };
+  return {
+    dialog: { header: header.trim().replace(/\s+/g, " "), options },
+    validTail:
+      !unknownTail && (optionStart < 0 || validOptionTail(tail.slice(optionStart), options)),
+  };
 }
 
 function isSeparator(line: string): boolean {

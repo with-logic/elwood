@@ -16,7 +16,9 @@ back each entry are listed in `prd/14-conformance.md`.
   preventing quoted transcript headers or unknown intervening titles from
   authorizing unrelated permissions. Cancel stale trust attempts quietly while
   keeping readiness and queued input gated until the native dialog clears. Retry
-  early numbered trust writes that the CLI has not yet consumed.
+  early numbered trust writes that the CLI has not yet consumed. Bound both
+  navigation styles to the session and current dialog generation; unsupported or
+  exhausted trust automation becomes a recoverable block after five seconds.
 - Recognize only native Codex warning banners, keeping quoted private prompt text
   out of warning events by requiring the current native welcome region.
 - Reject FIFO state/config files without hanging, and contain clipboard pipe

@@ -10,6 +10,7 @@ import {
   selectableOptions,
 } from "../../src/core/terminal-options.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
+import { claudeComposer } from "../fixtures/trust-composer.ts";
 
 describe("cursor-style trust prompts", () => {
   test("C-CLAUDE-10 keeps the real Claude 2.1.206 numbered layout working", async () => {
@@ -86,7 +87,9 @@ describe("cursor-style trust prompts", () => {
       (input) => {
         writes.push(input);
         rendered =
-          input === "\u001b[B" ? frame.replace("❯ No, exit\n  Yes", "  No, exit\n❯ Yes") : "Ready";
+          input === "\u001b[B"
+            ? frame.replace("❯ No, exit\n  Yes", "  No, exit\n❯ Yes")
+            : claudeComposer;
       },
       () => rendered,
     );
@@ -109,7 +112,7 @@ describe("cursor-style trust prompts", () => {
         rendered =
           input === "\u001b[A"
             ? "Do you trust this folder?\n❯ Yes, I trust this folder\n  No"
-            : "Ready";
+            : claudeComposer;
       },
       () => rendered,
     );

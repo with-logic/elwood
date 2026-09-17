@@ -8,6 +8,7 @@
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { startClaude } from "../../src/index.ts";
+import { claudeComposer } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -27,7 +28,7 @@ describe("ClaudeSessionApi trust-prompt render delay", () => {
       "\u001b[2J\u001b[HQuick safety check: Is this a project you created or one you trust?\r\n\r\n  No, exit\r\n❯ Yes, I trust this folder",
     );
     await vi.waitFor(() => expect(ptys[0]!.writes).toEqual(["\u001b[B", "\r"]));
-    ptys[0]!.emitData("\u001b[2J\u001b[HClaude ready\r\n❯ ");
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${claudeComposer.replaceAll("\n", "\r\n")}`);
     await vi.waitFor(() => expect(activity).toContain("startup_prompt:workspace_trust"));
   });
 

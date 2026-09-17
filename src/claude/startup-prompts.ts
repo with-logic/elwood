@@ -15,8 +15,16 @@ export class ClaudeStartupPromptResponder {
   private readonly trust: TrustPromptResponder<"claude">;
   private browserDeclined = false;
 
-  constructor(autotrust: boolean) {
-    this.trust = new TrustPromptResponder("claude", autotrust);
+  constructor(autotrust: boolean, onStateChange?: () => void) {
+    this.trust = new TrustPromptResponder("claude", autotrust, onStateChange);
+  }
+
+  get blockedPrompt() {
+    return this.trust.blockedPrompt;
+  }
+
+  dispose(): void {
+    this.trust.dispose();
   }
 
   get inputBlocking(): boolean {
