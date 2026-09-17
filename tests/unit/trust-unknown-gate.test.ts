@@ -43,6 +43,9 @@ describe.each(matrix)("%s unknown gate (autotrust %s)", (agent, autotrust) => {
       "Do you trust this workspace?\n\nReading project settings",
       "Do you trust this workspace?\n1. Yes\n2. No", // options painted, native footer not yet
       `Unrecognized migration\n  Do you want to retry\n❯ No, cancel\n\n${footer}`, // header-like OPTION
+      // Outside the PRD §5.4 grammar on purpose: other leading words, or another footer.
+      `Allow project plugins to run?\n\n> 1. Yes\n  2. No\n\n${footer}`,
+      "Do you trust this workspace?\n> 1. Yes\n  2. No\n\nEnter to select · Esc to exit",
       claudeComposer,
       codexComposer,
     ])

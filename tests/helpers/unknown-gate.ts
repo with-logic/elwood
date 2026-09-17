@@ -30,8 +30,9 @@ export const rewordedGate =
   "Do you trust this workspace?\n\n> 1. Yes, continue\n  2. No, quit\n\nPress enter to continue";
 const paste = (text: string) => `\u001b[200~${text}\u001b[201~`;
 /** Repaint, then wait for the render: readiness racing an unpainted gate is not under test. */
+const cleared = (frame: string) => `\u001b[2J\u001b[H${frame.replaceAll("\n", "\r\n")}`;
 async function repaint(session: Session, pty: FakePty, frame: string): Promise<void> {
-  pty.emitData(`\u001b[2J\u001b[H${frame.replaceAll("\n", "\r\n")}`);
+  pty.emitData(cleared(frame));
   const lastRow = frame.split("\n").at(-1)!.trim();
   await vi.waitFor(() => {
     if (!session.terminal.snapshot().text.includes(lastRow)) throw new Error("frame not rendered");
@@ -104,6 +105,25 @@ export function unknownGateTests(harness: Harness): void {
     } finally {
       vi.restoreAllMocks();
     }
+  });
+
+  test("C-API-56 an off-allowlist gate received but not yet rendered still holds the queued paste", async () => {
+    await run(harness, true, async (session, pty, attention) => {
+      await repaint(session, pty, harness.clear);
+      await harness.ready(session, pty);
+      await vi.waitFor(() => expect(session.status).toBe("ready"));
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      // Same tick: the gate's bytes are RECEIVED, but no frame has been observed yet.
+      pty.emitData(cleared(rewordedGate));
+      const queued = session.sendMessage("held");
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(pty.writes).toEqual([]);
+      expect(attention).toEqual([`${harness.agent}-unknown_gate-prompt`]);
+      pty.emitData(cleared(harness.clear));
+      await vi.advanceTimersByTimeAsync(500);
+      await queued;
+      expect(pty.writes).toEqual([paste("held"), "\r"]);
+    });
   });
 
   test("C-TRUST-01 the same gate quoted below a conversation row never holds input", async () => {
