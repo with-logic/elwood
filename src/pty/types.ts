@@ -20,6 +20,11 @@ export type PtySpawnOptions = {
 
 export interface PtyProcess {
   readonly pid: number;
+  /** Optional for test adapters; real PTYs pause reads while the renderer catches up. */
+  readonly flowControl?: {
+    readonly pause: () => void;
+    readonly resume: () => void;
+  };
   onData(handler: (data: string) => void): () => void;
   onExit(handler: (exit: PtyExit) => void): () => void;
   write(data: string | Uint8Array): void;

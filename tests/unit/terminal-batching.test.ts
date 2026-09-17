@@ -11,7 +11,7 @@ test("C-PERF-06 a partial batch flushes after four milliseconds without extendin
   const output = new PtyOutput((data) => {
     batches.push(data);
     return Promise.resolve();
-  });
+  }, undefined);
   try {
     output.push("first");
     vi.advanceTimersByTime(2);
@@ -31,7 +31,7 @@ test("C-PERF-06 batches never exceed 64 KiB or split surrogate pairs", async () 
   const output = new PtyOutput((data) => {
     batches.push(data);
     return Promise.resolve();
-  });
+  }, undefined);
   const pieces = ["x".repeat(16_383), "🧑".repeat(50_000), "\u001b[", "31mred\u001b[0m"];
   output.push(pieces.slice(0, 2).join(""));
   output.push(pieces[2]!);
@@ -50,7 +50,7 @@ test("C-PERF-06 batch failures are contained and later writes still complete", a
   const output = new PtyOutput((data) => {
     rendered.push(data);
     return data === "bad" ? Promise.reject(new Error("render failed")) : Promise.resolve();
-  });
+  }, undefined);
   output.push("bad");
   output.flush();
   await Promise.resolve();
@@ -65,7 +65,7 @@ test("C-PERF-06 disposal drops the staged batch and ignores later PTY output", a
   const output = new PtyOutput((data) => {
     batches.push(data);
     return Promise.resolve();
-  });
+  }, undefined);
   output.push("staged");
   output.dispose();
   output.push("late");

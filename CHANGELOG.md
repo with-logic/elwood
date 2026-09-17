@@ -62,7 +62,10 @@ back each entry are listed in `prd/14-conformance.md`.
   adjacent PTY chunks share one render and one `terminal:data` event (at most
   64 KiB, flushed within 4 ms), so event chunk boundaries and intermediate frames
   are no longer guaranteed. Direct terminal disposal settles pending writes
-  immediately.
+  immediately. Real PTY reads pause when unrendered output reaches 1 MiB and resume
+  below 512 KiB, so a runaway producer cannot grow the render backlog without bound;
+  a paused PTY resumes as soon as its child exits, so a draining backlog cannot
+  strand unread tail output.
 - Recognize only native Codex warning banners, keeping quoted private prompt text
   out of warning events by requiring the current native welcome region.
 - Validate all concrete Claude tool input fields and typed hook fields, constrain
