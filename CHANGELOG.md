@@ -17,7 +17,19 @@ back each entry are listed in `prd/14-conformance.md`.
   screen, and a stale attempt's late completion cannot start an overlapping retry
   loop or report success or a write failure for the newer screen. A reappearing
   update screen is still skipped again.
+- Emit the `attention` activity for a blocking prompt that painted while the
+  session was still `starting`. Such a session already became `blocked`, but
+  without the human-decision event, so a headless `elwood` run never reported
+  `blocked_prompt`.
+- Snapshot image bytes and relative paths when facade methods are called, including
+  turns queued behind another response or waiting for session startup. Facade copies
+  count against the same 200 MiB per-session ceiling as sends on the raw `session`.
 - Reject FIFO state/config files without hanging.
+- Runtime cleanup drains received terminal output before disposing the renderer —
+  for up to one second, including output that arrives while it drains — so the
+  final `terminal:data` tail is delivered (possibly after `terminal:exit`) instead
+  of dropped. `--head` now mirrors through cleanup, so the agent's final frames
+  (for example its last words before an unexpected exit) are no longer cut off.
 - Bind automatic trust approvals to the active dialog and revalidate every write,
   preventing quoted transcript headers or unknown intervening titles from
   authorizing unrelated permissions. Cancel stale trust attempts quietly while
@@ -26,13 +38,21 @@ back each entry are listed in `prd/14-conformance.md`.
   navigation styles to the session and current dialog generation; unsupported or
   exhausted trust automation becomes a recoverable block after five seconds.
   Image attachment is held by the same trust gate as text input.
+- Require a trust dialog's native explanatory copy before any automatic approval:
+  a bare allowlisted header with affirmative options is held, never typed into,
+  and becomes answerable only once its native body paints (recoverable `blocked`
+  after five seconds otherwise). Skill, plugin, and MCP gates are unchanged.
 - Keep text CLI output limited to agent responses by default. Use
   `--show-session-id` to print the retained session ID on stderr, or find it
   with `elwood sessions`. Session retention and JSON/JSONL records are unchanged.
+- Recognize only native Codex warning banners, keeping quoted private prompt text
+  out of warning events by requiring the current native welcome region.
 - Validate all concrete Claude tool input fields and typed hook fields, constrain
   permission rewrites to tool-specific handlers, and accept nullable Codex descriptions.
 - Match Claude task identifiers and plan permission objects to the native hook
   schemas so valid task and plan inputs reach their handlers.
+- Contain clipboard pipe failures during Codex image attachment, and retain the
+  clipboard lock until the restore process exits.
 
 ## [0.1.3] - 2026-09-14
 

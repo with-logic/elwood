@@ -1,9 +1,9 @@
 /** Rejected writes lose publication authority with their reservation (C-TRUST-01). */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
-import { claudeComposer } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTrust } from "../fixtures/trust-composer.ts";
 
-const trust = "Do you trust this folder?\n1. Yes\n2. No";
+const trust = `${claudeTrust}\n1. Yes\n2. No`;
 function settled(result: TrustPromptResult<"claude">) {
   if (result?.kind !== "attempted") throw new Error("expected attempt");
   return result.settled;

@@ -137,6 +137,11 @@ legacy string/`agent_message` support. C-CODEX-16.
 
 ## Model selection persistence
 
+- **A configured legacy Codex model may be absent from `/model`.** On Codex
+  0.154.0, `gpt-5.1-codex` still appeared in the session header but not in the
+  visible catalog; every returned row correctly had `isCurrent: false`.
+  Real picker tests should let the installed CLI choose its launch default,
+  rather than pinning a model that can disappear from the catalog.
 - **Codex persists `/model` picker selections into the user `config.toml`.**
   `setModel` restores the prior default via compare-and-swap after switching
   (C-CODEX-14), skipping with a `codex_default_model_persisted` warning on a
@@ -247,7 +252,10 @@ generation owns its reservation, deadline, exact affirmative, and completion.
 An old cancelled attempt cannot release or settle a reappeared gate. The five-
 second bound starts at the first native-header candidate, including partial
 painting. Candidate recognition holds input; only the stricter native-dialog
-recognizer authorizes writes. Unknown replacement text is not clearance. Native
+recognizer authorizes writes, and it requires the native explanatory copy above:
+a bare header with affirmative rows (a forged or half-painted frame) is held and
+never typed into. Every captured layout (Claude 2.1.206/2.1.252, the 2.1.274
+binary's component, Codex 0.154.0) renders that copy with its header. Unknown replacement text is not clearance. Native
 composer chrome or a verified successor gate confirms clearance; a bare caret
 alone cannot distinguish a composer from a one-option dialog.
 
@@ -269,6 +277,25 @@ the tests report the gate absent. Sanitized native Claude 2.1.274 and Codex
 A no-model Codex resize probe at 100×12, 100×8 and 100×6 confirms that the welcome
 box can scroll away while its composer and model/reasoning/path footer remain.
 Those native rows also prove clearance; welcome presence is not required.
+
+### Native Codex startup warnings
+
+Codex 0.154.0 normally collapses MCP failures to
+`⚠ 1 MCP startup issue · ctrl + t for details`. Its Ctrl+T overlay retains the
+canonical detailed MCP and login warning rows beneath the boxed welcome header.
+The collapsed count cannot supply server names or recovery instructions; Elwood
+does not send Ctrl+T automatically. Captures and the local failing-server/401
+real-CLI test verify the detailed rows. The current welcome chrome and native
+warning prefixes distinguish these banners from conversational quotations.
+
+Native 0.154.0 startup renders no `•`/`●` row at any point: recorded frame by frame
+(2026-09-17) through the directory gate, hooks gate, welcome, and composer with
+both an MCP endpoint that fails at once and one that accepts the connection and
+never answers (the collapsed warning appears after ~10 s with no boot spinner).
+Warning recognition therefore ends at the first assistant-marker row or the
+first caller-side write, whichever comes first; after that a copied welcome box
+whose own marker has scrolled away is content. A CLI version that painted a `•`
+boot spinner before its warnings would lose those warnings rather than forge any.
 
 ### Bypass-permissions acceptance dialog (`--high-trust`)
 
@@ -317,10 +344,12 @@ human block; unsupported or exhausted attempts transfer to the recoverable block
 above. C-E2E-09 requires both `ready` and a cleared trust screen; an unanswerable
 real frame is a failure, not a skip.
 
-The responder emits one transient `attention` when a recognized header paints
-before its affirmative option. A headless owner must ignore that transient only
-when its trust policy already authorizes the exact allowlisted prompt; `--no-trust`
-and generic permission dialogs remain human blocks. The startup replay buffer can
+The responder emits one transient `attention` when a recognized header and its
+native body paint before the affirmative option. A header whose body has not
+validated is held silently: it emits no transient `attention`, only the
+five-second fallback if it never completes. A headless owner must ignore that
+transient only when its trust policy already authorizes the exact allowlisted
+prompt; `--no-trust` and generic permission dialogs remain human blocks. The startup replay buffer can
 deliver this attention after the responder has already continued, so treating
 every attention event as fatal produces a false `blocked_prompt`.
 
@@ -513,8 +542,9 @@ Four real-PTY edges were invisible to the unit fixtures:
   Run probes in a detached process session so they keep interactive PATH resolution
   without participating in the caller terminal's job control.
 - Current agent TUIs push Kitty keyboard enhancements with `CSI > flags u`. Head mode
-  stops mirroring before agent teardown, so it cannot rely on the agent's matching
-  cleanup sequence reaching the physical terminal. The defensive reset must emit
+  mirrors through session cleanup (so the drained final frames are shown), but an
+  agent signalled or force-killed there is not guaranteed to emit its matching
+  cleanup sequence, so head mode cannot rely on one reaching the physical terminal. The defensive reset must emit
   `CSI < u` before leaving the alternate screen; otherwise every later shell keystroke
   can remain encoded as a `CSI u` key event, making even a typed `reset` unusable.
 

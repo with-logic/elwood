@@ -19,7 +19,7 @@ export { trustPromptAllowlist } from "./allowlist.ts";
 type TrustPromptBase = {
   /** Anchored standalone header, matched only inside an active trust-dialog region. */
   readonly headerPattern: RegExp;
-  /** Complete native explanatory copy after the header; unknown prose fails closed. */
+  /** Native copy after the header: required where the prompt has any; unknown prose fails closed. */
   readonly descriptionPattern: RegExp;
   /** Every parsed row must be one of this dialog's native choices, including declines. */
   readonly optionPattern: RegExp;

@@ -191,6 +191,16 @@ generated files, including loop definitions, unless kill or teardown is
 requested. Any unsubmitted due state is discarded. (Session status is live-only and is
 not written to the record, §8.2.)
 
+Runtime cleanup first allows received terminal output to render, then disposes
+the renderer (C-LIFE-12). The drain covers output that arrives while it is in
+progress: it ends only when a whole settle pass completes with nothing new
+received from the PTY, and the entire drain shares one one-second budget. It does
+not delay the native process-exit notification, terminal status, or unconditional
+process-group reap; the final `terminal:data` tail may therefore arrive after
+`terminal:exit`. A stalled renderer, or a PTY that never goes quiet, is disposed
+when the budget expires. Explicit direct `terminal.dispose()` does not wait for
+pending output.
+
 Reaping the leader's process group is unconditional on every exit path
 (C-LIFE-10). On an unsolicited PTY exit the terminal status is submitted first,
 then the group is reaped in a `finally`, so transcript-drain, warning-emission, or

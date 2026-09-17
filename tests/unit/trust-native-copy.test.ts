@@ -5,6 +5,7 @@ import { claudeScreenFactTableForTrustPolicy } from "../../src/claude/screen-tab
 import { readScreenFacts } from "../../src/core/screen-facts.ts";
 import * as dialog from "../../src/core/trust/dialog.ts";
 import { TrustPromptResponder, trustPromptVisible } from "../../src/core/trust/responder.ts";
+import { codexHooks } from "../fixtures/trust-composer.ts";
 
 const directory = readFileSync(
   new URL("../fixtures/codex-0.154.0/directory.txt", import.meta.url),
@@ -32,7 +33,7 @@ test.each([
   "Hooks need review\nUnknown safety migration\n1. Trust all and continue",
   directory.replace("› 1.", "Unrecognized confirmation\n› 1."),
   hooks.replace("› 1.", "This unrelated change needs approval\n› 1."),
-  "Hooks need review\n  Enable elevated execution\n❯ Trust all and continue",
+  `${codexHooks}\n  Enable elevated execution\n❯ Trust all and continue`,
 ])("C-TRUST-01 foreign prose cannot borrow native trust authority: %s", (frame) => {
   const write = vi.fn();
   expect(new TrustPromptResponder("codex", true).handle(frame, write)).toBeUndefined();
@@ -63,7 +64,7 @@ test("C-TRUST-01 all blocking trust classes share one parsed viewport", () => {
 
 test("C-TRUST-01 visibility and recognition parse once before comparing eligible classes", () => {
   const parse = vi.spyOn(dialog, "parseTrustDialog");
-  const frame = "Hooks need review";
+  const frame = codexHooks;
   expect(trustPromptVisible(frame, "codex")).toBe(true);
   expect(parse).toHaveBeenCalledTimes(1);
   const parseCandidate = vi.spyOn(dialog, "parseTrustCandidates");

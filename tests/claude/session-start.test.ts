@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { startClaude } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
-import { flushTerminal } from "../helpers/model-pickers.ts";
+import { claudeBody, tty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -84,7 +84,7 @@ describe("ClaudeSessionApi startup and terminal control", () => {
       if (event.kind === "attention") attention.push(event.label);
     });
     ptys[0]!.emitData(
-      "Quick safety check: Is this a project you created or one you trust?\r\n1. Yes, I trust this folder\r\n",
+      `Quick safety check: Is this a project you created or one you trust?\r\n${tty(claudeBody)}\r\n1. Yes, I trust this folder\r\n`,
     );
     // Wait on the deterministic processed outcome — the autotrust answer being
     // written — rather than a fixed sleep, so the frame has been observed.
@@ -103,7 +103,7 @@ describe("ClaudeSessionApi startup and terminal control", () => {
       if (event.kind === "attention") attention.push(event.label);
     });
     ptys[0]!.emitData(
-      "Quick safety check: Is this a project you created or one you trust?\r\n1. Yes, I trust this folder\r\n",
+      `Quick safety check: Is this a project you created or one you trust?\r\n${tty(claudeBody)}\r\n1. Yes, I trust this folder\r\n`,
     );
     await expect.poll(() => session.status).toBe("blocked");
     expect(attention).toEqual(["claude-workspace_trust-prompt"]);
@@ -152,7 +152,7 @@ describe("ClaudeSessionApi startup and terminal control", () => {
     const seen: string[] = [];
     const activity: string[] = [];
     ptys[0]!.emitData("early");
-    await flushTerminal(5);
+    await session.terminal.settled();
     const unsubscribe = session.on("terminal:data", (event) => seen.push(event.data));
     session.on("activity", (event) => activity.push(event.kind));
     // off() removes a REGISTERED handler: it sees the registration-time replay of
@@ -162,7 +162,7 @@ describe("ClaudeSessionApi startup and terminal control", () => {
     session.on("terminal:data", removable);
     session.off("terminal:data", removable);
     ptys[0]!.emitData("abc");
-    await flushTerminal(5);
+    await session.terminal.settled();
     expect(removed).toEqual(["early"]);
     unsubscribe();
     ptys[0]!.emitData("ignored");

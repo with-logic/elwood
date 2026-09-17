@@ -11,6 +11,8 @@ import {
   type SettledCodexStartupOutcome,
 } from "../../src/codex/startup-prompts.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
+import { codexHooks, codexTrust } from "../fixtures/trust-composer.ts";
+import { codexStartupFrame } from "../helpers/codex-startup-frame.ts";
 
 /** The bare outcomes of a settled-outcome list, for concise assertions. */
 function outcomesOf(settled: readonly SettledCodexStartupOutcome[]) {
@@ -46,7 +48,7 @@ describe("Codex startup prompt responder", () => {
     // Codex hook trust covers every configured hook, including third-party hooks,
     // and is answered independently of autotrust within its own active dialog.
     const responder = new CodexStartupPromptResponder();
-    const frame = "Hooks need review\n› 1. Review hooks\n  2. Trust all and continue";
+    const frame = `${codexHooks}\n› 1. Review hooks\n  2. Trust all and continue`;
     responder.handle(frame, writer(writes));
     responder.handle(frame, writer(writes)); // repeat: answered once
     expect(writes).toEqual(["2\r"]);
@@ -59,7 +61,7 @@ describe("Codex startup prompt responder", () => {
     // matching must NOT: no answer belongs to frame 2's dialog.
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder("s1", true);
-    responder.handle("Hooks need review\n  1. Review hooks", writer(writes));
+    responder.handle(`${codexHooks}\n  1. Review hooks`, writer(writes));
     const result = responder.handle(
       "Delete stored credentials?\n› 1. Yes, continue\n  2. No",
       writer(writes),
@@ -87,7 +89,7 @@ describe("Codex startup prompt responder", () => {
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder("s1", true);
     const result = responder.handle(
-      "Do you trust the contents of this directory?\n› 1. Yes, continue\n  2. No, quit",
+      `${codexTrust}\n› 1. Yes, continue\n  2. No, quit`,
       writer(writes),
     );
     expect(writes).toEqual(["1\r"]);
@@ -100,7 +102,7 @@ describe("Codex startup prompt responder", () => {
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder();
     const result = responder.handle(
-      "Do you trust the contents of this directory?\n› 1. Yes, continue\n  2. No, quit",
+      `${codexTrust}\n› 1. Yes, continue\n  2. No, quit`,
       writer(writes),
     );
     expect(writes).toEqual([]);
@@ -111,7 +113,7 @@ describe("Codex startup prompt responder", () => {
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder("s1", true);
     const result = responder.handle(
-      "Do you trust the contents of this directory?\n› 1. Yes, continue\n  2. No, quit",
+      `${codexTrust}\n› 1. Yes, continue\n  2. No, quit`,
       writer(writes),
     );
     expect(outcomesOf(result.outcomes)).toEqual([
@@ -173,7 +175,9 @@ describe("Codex startup prompt responder", () => {
 
   test("C-CODEX-09 parses typed MCP startup warnings", () => {
     const warnings = codexWarningsFromText(
-      "The linear MCP server is not logged in. Run `codex mcp login linear`.\nMCP startup incomplete (failed: linear, github)",
+      codexStartupFrame(
+        "⚠ The linear MCP server is not logged in. Run `codex mcp login linear`.\n⚠ MCP startup incomplete (failed: linear, github)",
+      ),
       "s1",
     );
     expect(warnings[0]).toMatchObject({

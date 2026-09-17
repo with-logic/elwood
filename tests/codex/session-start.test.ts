@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
+import { codexStartupFrame } from "../helpers/codex-startup-frame.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -75,7 +76,9 @@ describe("CodexSessionApi startup and terminal control", () => {
     session.on("activity", (event) => activity.push(event.kind));
     // First frame carries BOTH banners.
     ptys[0]!.emitData(
-      "The linear MCP server is not logged in. Run `codex mcp login linear`.\nMCP startup incomplete (failed: linear)",
+      codexStartupFrame(
+        "⚠ The linear MCP server is not logged in. Run `codex mcp login linear`.\n⚠ MCP startup incomplete (failed: linear)",
+      ),
     );
     await flushTerminal();
     // An UNRELATED follow-up frame that does NOT re-show the banners must NOT re-emit
