@@ -31,6 +31,13 @@ back each entry are listed in `prd/14-conformance.md`.
 - Keep text CLI output limited to agent responses by default. Use
   `--show-session-id` to print the retained session ID on stderr, or find it
   with `elwood sessions`. Session retention and JSON/JSONL records are unchanged.
+- Bound the cleanup of an aborted version, capability, or update probe to one
+  extra second: retry process-group termination, fall back to the direct child,
+  and keep an unresolved group on an asynchronous reaper that never extends host
+  shutdown or retains captured output. A process group is signaled only while its
+  leader is unreaped, so a reissued group id is never killed. Unconfirmed cleanup
+  surfaces as a content-free `cleanupErrorCode` on `agent_update_failed`; cleanup
+  confirmed within its bound reports none.
 - Validate all concrete Claude tool input fields and typed hook fields, constrain
   permission rewrites to tool-specific handlers, and accept nullable Codex descriptions.
 - Match Claude task identifiers and plan permission objects to the native hook

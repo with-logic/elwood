@@ -5,10 +5,10 @@
  * `update`, or `--help` probe.
  */
 
-import { type ChildProcess, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { completeUtf8Length } from "../core/utf8.ts";
+import { abortProbe } from "./probe-cleanup.ts";
 import type { CommandResult } from "./seams.ts";
-import { rethrowUnlessGroupGone } from "./shutdown/reap-tree.ts";
 
 const defaultProbeTimeoutMs = 15_000;
 const maxProbeOutputBytes = 1_000_000;
@@ -50,6 +50,10 @@ class CappedBuffer {
     const bytes = Buffer.concat(this.chunks);
     return bytes.subarray(0, completeUtf8Length(bytes)).toString("utf8");
   }
+
+  release(): void {
+    this.chunks = [];
+  }
 }
 
 export function runProbe(command: string, args: readonly string[]): Promise<CommandResult> {
@@ -68,8 +72,20 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (kill) abortProbe(child);
-      resolve(result);
+      // The result already owns the decoded text. An unresolved probe's reaper
+      // retains the child and its listeners, and through them these captures.
+      out.release();
+      err.release();
+      if (!kill) {
+        resolve(result);
+        return;
+      }
+      void abortProbe(child).then((cleanup) =>
+        resolve({
+          ...result,
+          error: { ...result.error!, ...cleanup },
+        }),
+      );
     };
     const onData = (buffer: CappedBuffer) => (chunk: Buffer) => {
       buffer.append(chunk);
@@ -90,27 +106,6 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
     }, probeTimeoutMs);
     timer.unref?.();
   });
-}
-
-/**
- * Aborts a probe Elwood gave up on. `detached: true` made the shell its own
- * process-group leader, so SIGKILLing the GROUP (not just the shell pid) also
- * reaches grandchildren such as an installer spawned under `claude update` via
- * `zsh -l -i -c`; a survivor would otherwise inherit the stdio pipes, keep them
- * open, and pin the host event loop long after the probe "timed out". The pipes
- * are destroyed here for the same reason: nothing a killed probe still writes is
- * wanted, and an open pipe alone keeps the loop alive.
- */
-function abortProbe(child: ChildProcess): void {
-  try {
-    // A spawn failure settles via `error` on the next tick, before any timer or
-    // data can request a kill, so a killed child always has a pid.
-    process.kill(-(child.pid as number), "SIGKILL");
-  } catch (error) {
-    rethrowUnlessGroupGone(error);
-  }
-  child.stdout?.destroy();
-  child.stderr?.destroy();
 }
 
 function mapError(error: NodeJS.ErrnoException): {

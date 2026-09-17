@@ -54,7 +54,8 @@ warning and continues by default, with an option for callers to make this fatal.
 
 The `agent_update_failed` warning carries only safe diagnostics — the adapter,
 the installed version that will be used, the update command's exit status, an
-allowlisted error code (e.g. a timeout/`errno`), and bounded captured stderr —
+allowlisted error code (e.g. a timeout/`errno`), an optional content-free
+`cleanupErrorCode` when probe termination remains unresolved, and bounded captured stderr —
 never terminal transcripts, prompts, tokens, or environment secrets. Like all
 warnings it is live-only and requires no consumer handling: a caller that does
 not subscribe to the `warning` event is unaffected and the session still reaches
@@ -98,7 +99,20 @@ failure.
 Each probe is bounded so a broken or hostile CLI on PATH cannot hang or flood
 the host: a probe that does not exit within a default timeout (15 seconds) or
 whose captured output exceeds a per-stream byte cap (1,000,000 bytes) is
-killed, and its captured output is truncated to the cap. Truncation happens on
+killed, and its captured output is truncated to the cap. Abort cleanup has an
+additional one-second bound: an aborted probe retries process-group termination,
+falls back to terminating the direct child once group signals have kept failing,
+and awaits exit within that window. A process-group id is signaled only while the
+probe's direct child (the group leader) is still unreaped, because only then is
+the number guaranteed not to have been reissued to an unrelated group; afterwards
+Elwood only observes the group until it exits and never signals the bare number.
+Cleanup that is confirmed within the window reports no cleanup error. Every
+unresolved aborted probe, including version
+and capability probes, remains owned by an asynchronous reaper while the parent
+is alive. Retries use an unreferenced timer, do not prolong host shutdown, and
+stop signaling after a successful group kill; ownership ends when the group is
+confirmed gone. A retained reaper holds process-liveness state only; the probe's
+captured output is released once its result is delivered. Truncation happens on
 a UTF-8 code-point boundary — an incomplete trailing sequence is dropped — so
 the decoded output re-encodes to at most the cap rather than growing via a
 replacement character. This applies to every
