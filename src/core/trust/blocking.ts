@@ -38,30 +38,37 @@ export function withTrustBlockingRules(
       return regionsFor(text).some(({ dialog }) => spec.headerPattern.test(dialog.header));
     },
   }));
-  const agentTrustPromptSpecs = trustPromptAllowlist.filter((spec) => spec.agent === agent);
-  // A reworded or new gate behind a recognized native header prefix (`headerStart`): the
-  // bottom-most region is a COMPLETE option dialog — a real header, options, nothing
-  // below them but the native footer that ends the frame, no conversation row above —
-  // and NO region names an allowlisted prompt. Enter would answer it, so it holds input
-  // for a human and is never written to. `fallback` yields to a dialog the adapter table
-  // already names (e.g. a "Do you want to ...?" permission prompt).
   rules.push({
     id: `${agent}-unknown_gate-prompt`,
     fact: "blocking_prompt_visible",
-    fallback: true,
-    match: (text) => {
-      const regions = regionsFor(text);
-      const gate = regions[0];
-      return (
-        gate?.validTail === true &&
-        gate.footer &&
-        gate.dialog.header !== "" &&
-        gate.dialog.options.length > 0 &&
-        !regions.some(({ dialog }) =>
-          agentTrustPromptSpecs.some((spec) => spec.headerPattern.test(dialog.header)),
-        )
-      );
-    },
+    fallback: true, // yields to a dialog the adapter table already names (permission prompts)
+    match: (text) => unknownGateVisible(text, agent, regionsFor(text)),
   });
   return { ...base, rules: [...base.rules, ...rules] };
+}
+
+/**
+ * A reworded or new gate behind a recognized native header prefix (`headerStart`): the
+ * bottom-most region is a COMPLETE option dialog — a real header, options, nothing
+ * below them but the native footer that ends the frame, no conversation row above —
+ * and NO region names an allowlisted prompt. Enter would answer it, so it holds input
+ * for a human; every non-trust startup automation consults this before each write.
+ */
+export function unknownGateVisible(
+  frame: string,
+  agent: ElwoodAgentKind,
+  regions = parseTrustCandidates(frame),
+): boolean {
+  const gate = regions[0];
+  return (
+    gate?.validTail === true &&
+    gate.footer &&
+    gate.dialog.header !== "" &&
+    gate.dialog.options.length > 0 &&
+    !regions.some(({ dialog }) =>
+      trustPromptAllowlist.some(
+        (spec) => spec.agent === agent && spec.headerPattern.test(dialog.header),
+      ),
+    )
+  );
 }

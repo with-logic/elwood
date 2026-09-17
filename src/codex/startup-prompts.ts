@@ -5,6 +5,7 @@
 
 import type { SettledStartupOutcome } from "../core/startup/write.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
+import { unknownGateVisible } from "../core/trust/blocking.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { type CodexBannerWarning, codexWarningsFromText } from "./startup-warnings.ts";
@@ -94,18 +95,21 @@ export class CodexStartupPromptResponder {
     // consecutive frames.
     const onUpdateScreen = this.updatePrompt.observe(screenText);
     if (!onUpdateScreen) this.skippedUpdate = false;
-    if (onUpdateScreen && !this.skippedUpdate) {
+    // An off-allowlist gate is hold-only even when its rows resemble the update options.
+    const unheld = (frame: string) => !unknownGateVisible(frame, "codex");
+    if (onUpdateScreen && !this.skippedUpdate && unheld(screenText)) {
       const option = findNumberedOption(this.buffer, codexUpdateOptionPattern);
       if (option) {
         // Settle OPTIMISTICALLY but keep the skip retryable if the write is
         // rejected, so a later frame re-attempts it rather than falsely reporting
         // the update as skipped (C-CODEX-17).
         this.skippedUpdate = true;
+        const sameUpdate = this.updatePrompt.currentFramePredicate();
         const settled = writeCodexUpdateSkip(
           option,
           write,
           readFrame,
-          this.updatePrompt.currentFramePredicate(),
+          (frame) => sameUpdate(frame) && unheld(frame),
         ).then(
           (completion) => {
             if (completion === "cancelled") this.skippedUpdate = false;

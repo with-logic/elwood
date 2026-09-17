@@ -111,7 +111,7 @@ export function unknownGateTests(harness: Harness): void {
       await repaint(session, pty, `● The CLI once asked:\n${rewordedGate}`);
       await harness.ready(session, pty);
       await session.sendMessage("hello");
-      expect(pty.writes).toContain(paste("hello"));
+      expect(pty.writes).toEqual([paste("hello"), "\r"]);
       expect(attention).toEqual([]);
     });
   });
