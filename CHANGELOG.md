@@ -14,7 +14,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Serialize `listModels`/`setModel` through the session input queue: a model
   operation owns the queue until its picker flow settles, so overlapping model
-  calls, commands, and messages can no longer be typed into an open picker.
+  calls, commands, and messages can no longer be typed into a picker while the
+  operation that opened it is running.
 - A Codex `setModel` interrupted by session termination restores `config.toml`
   only after the CLI process has exited.
 - Emit the `attention` activity for a blocking prompt that painted while the

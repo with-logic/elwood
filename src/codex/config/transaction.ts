@@ -23,37 +23,61 @@ type CodexModelSwitch = {
    * omitted in tests that don't assert the diagnostic.
    */
   readonly onRestoreError?: (error: unknown) => void;
+  /**
+   * Called when the switch rejected. A returned promise means the CLI may still be
+   * alive and able to persist its selection (the session is closing): the caller gets
+   * the rejection at once, while the restore, and with it the config lock, waits for
+   * that promise. Returning nothing restores first, as a plain failed switch always has.
+   */
+  readonly cliGone?: () => Promise<unknown> | undefined;
 };
 
 export function runCodexModelSwitch(io: CodexModelSwitch): Promise<void> {
-  return withCodexConfigLock(async () => {
-    const snapshot = io.snapshot();
-    let primary: unknown;
-    let failed = false;
-    try {
-      await io.apply();
-    } catch (error) {
-      failed = true;
-      primary = error;
-    }
-    // Restore whether or not the switch rejected, so a late picker timeout that
-    // fired AFTER Codex wrote config.toml still restores the user's default.
-    try {
-      io.restore(snapshot);
-    } catch (restoreError) {
-      // When the switch succeeded, a restore failure surfaces on its own. When a
-      // primary error is being preserved we cannot also throw the restore failure,
-      // but it must NOT vanish — report it so the user learns config.toml may still
-      // be mutated (the alternative, silently dropping it, was the bug). The report
-      // is CONTAINED here: a throwing reporter must never replace the primary error
-      // this function guarantees to preserve.
-      if (!failed) throw restoreError;
+  return new Promise<void>((resolve, reject) => {
+    const transaction = withCodexConfigLock(async () => {
+      const snapshot = io.snapshot();
+      let primary: unknown;
+      let failed = false;
       try {
-        io.onRestoreError?.(restoreError);
-      } catch {
-        // A throwing reporter must not replace the primary error we preserve below.
+        await io.apply();
+      } catch (error) {
+        failed = true;
+        primary = error;
+        const gone = io.cliGone?.();
+        if (gone !== undefined) {
+          reject(primary);
+          await gone;
+        }
       }
-    }
-    if (failed) throw primary;
+      restoreAfterSwitch(io, snapshot, failed);
+      if (failed) throw primary;
+    });
+    // A rejection already delivered above makes this one a no-op.
+    transaction.then(resolve, reject);
   });
+}
+
+/**
+ * Restores whether or not the switch rejected, so a late picker timeout that fired
+ * AFTER Codex wrote config.toml still restores the user's default. When the switch
+ * succeeded, a restore failure surfaces on its own. When a primary error is being
+ * preserved the restore failure cannot also be thrown, but it must NOT vanish: it is
+ * reported so the user learns config.toml may still be mutated. The report is
+ * CONTAINED: a throwing reporter must never replace the primary error.
+ */
+function restoreAfterSwitch(
+  io: CodexModelSwitch,
+  snapshot: string | undefined,
+  failed: boolean,
+): void {
+  try {
+    io.restore(snapshot);
+  } catch (restoreError) {
+    if (!failed) throw restoreError;
+    try {
+      io.onRestoreError?.(restoreError);
+    } catch {
+      // A throwing reporter must not replace the primary error the caller preserves.
+    }
+  }
 }

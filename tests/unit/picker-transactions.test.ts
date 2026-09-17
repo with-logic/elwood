@@ -1,7 +1,9 @@
 /** Model transactions own the input queue until they settle (PRD §5.3, C-API-55). */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { delay } from "../../src/core/delay.ts";
+import { listPickerModels } from "../../src/core/models/picker.ts";
 import { waitForScreen } from "../../src/core/models/tui-screen.ts";
 import { PickerTransactions } from "../../src/runtime/session/picker.ts";
 
@@ -12,6 +14,7 @@ const escapeKey = String.fromCharCode(27);
 
 function setup() {
   const writes: string[] = [];
+  const attempts = { count: 0 };
   const terminal = {
     snapshot: () => ({ text: "❯ " }),
     sendInput: (input: string | Uint8Array) => void writes.push(String(input)),
@@ -29,12 +32,13 @@ function setup() {
     controlQueue: queue,
     blocked: () => false,
     submitDirect: (command, signal) => {
+      attempts.count += 1;
       signal.throwIfAborted();
       writes.push(command);
       return Promise.resolve();
     },
   });
-  return { writes, queue, picker };
+  return { writes, attempts, queue, picker };
 }
 
 test("C-API-55 queue wait consumes the deadline without opening a picker", async () => {
@@ -105,4 +109,26 @@ test("C-API-55 terminating during navigation aborts without further writes", asy
   await failed;
   await vi.advanceTimersByTimeAsync(200);
   expect(writes).toEqual(["/model"]);
+});
+
+test.each([
+  ["the deadline", false],
+  ["termination", true],
+] as const)("C-API-55 the real opener stops re-submitting /model after %s", async (_name, close) => {
+  // The picker never opens, so the opener would re-submit `/model` every two seconds.
+  const { queue, picker, writes, attempts } = setup();
+  queue.markReady();
+  const failed = picker
+    .run("list_models", close ? 60_000 : 50, (io) =>
+      listPickerModels(io, claudeModelPicker, 60_000),
+    )
+    .catch((error: unknown) => error);
+  await vi.advanceTimersByTimeAsync(100);
+  if (close) queue.close();
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(await failed).toBeInstanceOf(Error);
+  expect(writes).toEqual(["/model"]);
+  // Not even an attempt: the re-submit timer stops with the operation.
+  expect(attempts.count).toBe(1);
+  queue.close();
 });

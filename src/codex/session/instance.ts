@@ -88,21 +88,22 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   override setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
     return runCodexModelSwitch({
       snapshot: snapshotCodexConfig,
-      apply: () => super.setModel(id, options).catch((error) => this.afterCliExit(error)),
+      apply: () => super.setModel(id, options),
+      cliGone: () => this.cliGone(),
       restore: (snapshot) => this.restoreCodexDefault(snapshot),
       onRestoreError: (error) =>
         this.emitWarnings([codexRestoreFailedWarning(this.elwoodSessionId, error)]),
     });
   }
   // A closing session rejects the picker at once, while the dying CLI can still persist
-  // the selection it had confirmed: hold the restore until the process is gone.
-  private async afterCliExit(error: unknown): Promise<never> {
-    // Settled either way: a CLI that outlives the bound must not block the restore for good.
-    if (this.closing.signal.aborted)
-      await Promise.allSettled([
-        this.waitForStatus((status) => terminalStatuses.has(status), cliExitWaitMs),
-      ]);
-    throw error;
+  // the selection it had confirmed. Terminal status is submitted only from the PTY exit
+  // handler, so it proves the process is gone; the bound keeps a CLI that never exits
+  // from holding the config lock for good.
+  private cliGone(): Promise<unknown> | undefined {
+    if (!this.closing.signal.aborted) return undefined;
+    return Promise.allSettled([
+      this.waitForStatus((status) => terminalStatuses.has(status), cliExitWaitMs),
+    ]);
   }
   private restoreCodexDefault(snapshot: string | undefined): void {
     const outcome = restoreCodexConfig(snapshot);
