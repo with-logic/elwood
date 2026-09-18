@@ -90,7 +90,8 @@ export async function abortProbe(child: ChildProcess): Promise<ProbeCleanup> {
 class ProbeReaper {
   errorCode: ProbeCleanup["cleanupErrorCode"];
   private signaled = false;
-  private readonly child: ChildProcess;
+  private leaderReaped = false;
+  private child: ChildProcess | undefined;
   private readonly processGroupId: number;
   constructor(child: ChildProcess, processGroupId: number) {
     this.child = child;
@@ -99,8 +100,17 @@ class ProbeReaper {
 
   reap(fallBackToLeader = true): boolean {
     if (processGroupGone(this.processGroupId)) return true;
-    const leaderReaped = this.child.exitCode !== null || this.child.signalCode !== null;
-    if (this.signaled || leaderReaped) return false;
+    // Reaped is terminal, so it is latched and the handle dropped: from here the id can be
+    // reissued and is only ever observed, and a reaper waiting out a long-lived descendant
+    // has no further use for the child, its streams, or the closures they hold.
+    if (
+      this.child !== undefined &&
+      (this.child.exitCode !== null || this.child.signalCode !== null)
+    ) {
+      this.leaderReaped = true;
+      this.child = undefined;
+    }
+    if (this.signaled || this.leaderReaped || this.child === undefined) return false;
     try {
       process.kill(-this.processGroupId, "SIGKILL");
       this.signaled = true;
@@ -110,7 +120,7 @@ class ProbeReaper {
       // The native handle targets the direct child even when group signaling fails, so
       // it starts only after the group-only phase. Group retries continue beside it
       // until the leader is observed reaped, after which the id is never signaled.
-      if (fallBackToLeader) this.child.kill("SIGKILL");
+      if (fallBackToLeader) this.child?.kill("SIGKILL");
     }
     return false;
   }
