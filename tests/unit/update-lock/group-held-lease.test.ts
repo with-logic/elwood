@@ -53,14 +53,15 @@ test("C-PERF-04 a stale lease is held by its live group alone, whatever its age"
     let ran = false;
     // The recorded parent is long dead and the lease is far past its stale bound, so only
     // the surviving group can be keeping it. A contender must treat the lease as active
-    // and give up on its own bound rather than recover it and update.
+    // and give up rather than recover it and update — and say which kind of active it is:
+    // a surviving group may outlive any bound, so waiting out the deadline is pointless.
     const update = () => {
       ran = true;
       return Promise.resolve();
     };
     await expect(
       coordinatedAutoupdate("codex", update, { root, pollMs: 2, staleMs: 5, waitMs: 100 }),
-    ).rejects.toMatchObject({ details: { updateReason: "active_owner" } });
+    ).rejects.toMatchObject({ details: { updateReason: "cleanup_pending" } });
     expect(ran).toBe(false);
     expect(existsSync(path)).toBe(true);
     // Once the group exits, the same lease is recoverable and the update runs, which

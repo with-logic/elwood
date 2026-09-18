@@ -103,7 +103,20 @@ so a lease left behind would make every later updater on that host wait forever 
 that has already finished updating. Each lease holder removes
 a bounded number of that adapter's leftovers, of both kinds — staging left by an
 interrupted claimant and retired directories left by a release that renamed but did not
-delete — under one shared budget, so later holders finish whatever one holder leaves. A lease directory that already exists, even one without an
+delete — under one shared budget, so later holders finish whatever one holder leaves. An update whose aborted probe reports a process group it could not confirm gone
+(the typed update error's `cleanupProcessGroupId` detail) does not simply release its
+lease. Elwood observes that group for up to one additional second without signaling
+it; a group that exits within the window is not retained. A group still live is
+recorded on the lease as its only holder, so the lease outlives the parent process:
+contenders skip their update immediately with the `update_active` warning and a
+message saying another updater's process group has not exited, rather than waiting
+or starting a competing installer. Recovery removes this guard only after confirming
+every recorded group has exited; elapsed time or the parent's death alone is
+insufficient, and once the groups are gone the lease is recoverable whatever its age.
+If the group record cannot be written, the owner process keeps the obligation itself:
+it retries the record on an unreferenced timer and releases the lease as soon as the
+groups have exited, so a failed write never holds exclusion for the owner's lifetime.
+A lease directory that already exists, even one without an
 owner record, is a wait condition: it is recovered as stale rather than claimed
 over. An unreadable owner record still fails safe: it may belong
 to a live updater writing a record format this version cannot read, so it is never

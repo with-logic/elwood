@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Hold the cross-process update lease for an aborted updater's surviving process
+  group. An update probe that was aborted without confirming its process group had
+  exited used to release the lease anyway, so another Elwood host could start a
+  competing installer while the first updater's descendants were still running.
 - Bound the cleanup of an aborted version, capability, or update probe to one
   extra second: retry process-group termination, fall back to the direct child,
   and keep an unresolved group on an asynchronous reaper that never extends host

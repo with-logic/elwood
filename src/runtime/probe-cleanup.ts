@@ -46,6 +46,24 @@ export function processGroupGone(processGroupId: number): boolean {
   }
 }
 
+/**
+ * Observes an aborted updater's groups for a short window without signaling them, and
+ * returns those still live. A group that exits on its own in that window never retains the
+ * lease, so an update whose descendants are merely slow to finish costs one second rather
+ * than a lease the next host has to wait out.
+ */
+export async function waitForProbeGroups(
+  processGroupIds: readonly number[],
+): Promise<readonly number[]> {
+  const deadline = Date.now() + cleanupWindowMs;
+  let live = processGroupIds.filter((id) => !processGroupGone(id));
+  while (live.length > 0 && Date.now() < deadline) {
+    await delay(cleanupRetryMs);
+    live = live.filter((id) => !processGroupGone(id));
+  }
+  return live;
+}
+
 export async function abortProbe(child: ChildProcess): Promise<ProbeCleanup> {
   // Abort only follows timeout/output from a successfully spawned process, and
   // a detached child leads the process group named by its own pid.
