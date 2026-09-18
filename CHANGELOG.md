@@ -17,7 +17,7 @@ back each entry are listed in `prd/14-conformance.md`.
   and keep an unresolved group on an asynchronous reaper that never extends host
   shutdown or retains captured output. A process group is signaled only while its
   leader is unreaped, so a reissued group id is never killed. An update probe whose
-  group stays unconfirmed keeps the cross-process update lease held for that group.
+  group stays unconfirmed now reports that group in its typed error details.
 - Stop non-trust startup automation from writing into a trust gate that arrived while
   the previous screen was still rendering. The Codex update skip (including its retries)
   and the Claude browser-tools decline now observe all received PTY output and re-check

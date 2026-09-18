@@ -1,4 +1,8 @@
-/** A retained reaper keeps process liveness only, never captured output (PRD §9.2, C-PERF-03). */
+/**
+ * A retained reaper keeps process liveness only, never captured output (PRD §9.2,
+ * C-PERF-03). The reaper holds the child for as long as its group runs, so the capture is
+ * only collectable because `settle` releases the buffers before the reaper takes over.
+ */
 import { setFlagsFromString } from "node:v8";
 import { runInNewContext } from "node:vm";
 import { afterEach, expect, test, vi } from "vitest";

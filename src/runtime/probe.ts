@@ -72,8 +72,10 @@ export function runProbe(command: string, args: readonly string[]): Promise<Comm
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      // The result already owns the decoded text. An unresolved probe's reaper
-      // retains the child and its listeners, and through them these captures.
+      // The result already owns the decoded text. An unresolved probe's reaper retains the
+      // child and its listeners, and through them these captures, so the chunks are dropped
+      // here rather than left for the reaper to outlive. The listeners themselves stay: a
+      // late `close` still has to find `settled` already true, which is the guard below.
       out.release();
       err.release();
       if (!kill) {

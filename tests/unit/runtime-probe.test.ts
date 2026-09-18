@@ -76,7 +76,10 @@ describe("runtime probe runner", () => {
     // The shell backgrounds a grandchild (as `claude update` may spawn an installer)
     // and then hangs. Killing only the shell would leave the grandchild alive AND
     // holding the probe's stdio pipes open, pinning the host event loop for 30s.
-    setProbeTimeoutMsForTests(100);
+    // Generous, because the probe must not time out until the shell has recorded the
+    // grandchild: at a short timeout a loaded machine aborts before `echo` ever runs, and
+    // the test then fails for want of a marker rather than for a surviving grandchild.
+    setProbeTimeoutMsForTests(2_000);
     const marker = join(tempDir("elwood-probe-"), "grandchild.pid");
     const result = await runProbe("/bin/sh", ["-c", `sleep 30 & echo $! > "${marker}"; wait`]);
     expect(result.error?.code).toBe("ETIMEDOUT");
