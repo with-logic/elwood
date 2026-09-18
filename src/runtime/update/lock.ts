@@ -14,6 +14,7 @@ import {
   ownerFile,
   readOptionalText,
   releaseLease,
+  retiredLeaseInfix,
   serializeOwner,
 } from "./owner.ts";
 import { pathExists, recoveryPath, waitForOwner } from "./waiting.ts";
@@ -29,7 +30,7 @@ export type UpdateLeaseOptions = {
 
 const defaultPollMs = 50;
 const defaultStaleMs = 30_000;
-const maxSweptStaging = 8;
+const maxSweptLeftovers = 8;
 const maxInspectedEntries = 64;
 const defaultWaitMs = 60_000;
 
@@ -122,31 +123,37 @@ async function claimLease(path: string, owner: LeaseOwner): Promise<boolean> {
     await releaseLease(path, owner);
     return false;
   }
-  await sweepStaging(path);
+  await sweepLeaseLeftovers(path);
   return true;
 }
 
 /**
- * Removes staging directories left by claimants killed before their rename. Only the lease
- * holder sweeps: a live contender's staging can no longer win, and losing it merely turns
- * that contender's failed rename into a missing source. Each holder removes a bounded
- * number, so a pile of leftovers delays no single update; later holders finish the job.
+ * Removes this adapter's lease leftovers, of which there are two kinds: `.claim.` staging
+ * left by claimants killed before their publishing rename, and `.released.` directories left
+ * by an owner whose retirement was renamed away but not deleted. Only the lease holder
+ * sweeps: a live contender's staging can no longer win, and losing it merely turns that
+ * contender's failed rename into a missing source. Both kinds share one budget — at most
+ * `maxSweptLeftovers` removals from at most `maxInspectedEntries` entries read — so a pile of
+ * debris delays no single update; later holders finish the job.
  */
-async function sweepStaging(path: string): Promise<void> {
+async function sweepLeaseLeftovers(path: string): Promise<void> {
   const root = dirname(path);
-  const leftover = `${basename(path)}.claim.`;
+  // Claim staging AND leases already retired by their owner: both are this adapter's debris.
+  const leftovers = [".claim.", retiredLeaseInfix].map((infix) => `${basename(path)}${infix}`);
   let swept = 0;
   let inspected = 0;
   try {
     // Streamed and bounded in both deletions and entries read: the root is shared with the
     // other adapter, whose own lease holders sweep its leftovers.
     for await (const entry of await opendir(root)) {
+      if (leftovers.some((prefix) => entry.name.startsWith(prefix))) {
+        await rm(join(root, entry.name), { recursive: true, force: true }).catch(() => undefined);
+        swept += 1;
+        if (swept === maxSweptLeftovers) break;
+      }
+      // Counted after the entry is handled, so exactly `maxInspectedEntries` are ever read.
       inspected += 1;
-      if (inspected > maxInspectedEntries) break;
-      if (!entry.name.startsWith(leftover)) continue;
-      await rm(join(root, entry.name), { recursive: true, force: true }).catch(() => undefined);
-      swept += 1;
-      if (swept === maxSweptStaging) break;
+      if (inspected === maxInspectedEntries) break;
     }
   } catch {
     // Sweeping is housekeeping: an unreadable root must not stop the lease holder's update.

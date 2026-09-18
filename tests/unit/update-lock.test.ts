@@ -125,19 +125,11 @@ describe("cross-process autoupdate lease", () => {
     expect(retried).toBe(true);
   });
 
-  test("an owner cleanup failure does not mask update success", async () => {
-    const root = tempDir("elwood-update-lock-cleanup-");
-    await expect(
-      coordinatedAutoupdate(
-        "codex",
-        () => {
-          writeFileSync(join(updateLockPath("codex", root), "unexpected"), "occupied");
-          return Promise.resolve();
-        },
-        leaseOptions(root),
-      ),
-    ).resolves.toBeUndefined();
-  });
+  // A cleanup failure no longer masking update success is covered where the failure can
+  // actually be produced: `update-lock/release-window.test.ts` denies the retired
+  // directory's deletion outright. Occupying the lease with an extra child used to fail
+  // `rmdir`, but the retirement removes the directory recursively, so that fixture tested
+  // the success path while claiming to test the failure one.
 
   test("an old owner never removes a successor generation", async () => {
     const root = tempDir("elwood-update-lock-generation-");

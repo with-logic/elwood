@@ -42,6 +42,8 @@ vi.mock("node:fs/promises", async (importOriginal) => {
         throw Object.assign(new Error("contended"), { code: "EEXIST" });
       }
       const result = await actual.rename(...args);
+      // An owner releases its lease by renaming it away.
+      if (destination.includes(".lock.released.")) races.ownerReleased = true;
       if (races.createRecoveryAfterOwner && claiming) {
         races.createRecoveryAfterOwner = false;
         await actual.mkdir(`${destination}.recovery`);
@@ -53,11 +55,6 @@ vi.mock("node:fs/promises", async (importOriginal) => {
           "99999998:11111111-1111-4111-8111-111111111111",
         );
       }
-      return result;
-    },
-    rmdir: async (...args: Parameters<typeof actual.rmdir>) => {
-      const result = await actual.rmdir(...args);
-      if (String(args[0]).endsWith(".lock")) races.ownerReleased = true;
       return result;
     },
     stat: (...args: Parameters<typeof actual.stat>) => {
