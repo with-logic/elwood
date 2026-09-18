@@ -7,10 +7,12 @@
  * fits the existing boundary seam, and this reader is a `BoundarySignalReader` that extends
  * `defaultBoundarySignal` rather than a separate activity reader.
  *
- * `StopFailure` is a turn BOUNDARY either way: before this it returned `""` (clearing the
- * oracle → quiet settle → empty success), which is exactly the #19 bug. It now returns the
- * object form so the same boundary additionally reports the failure. `error` is the evidence;
- * an empty `last_assistant_message` is NOT (PRD §12A.3).
+ * Previously `defaultBoundarySignal` did not treat `StopFailure` as a boundary at all — only
+ * `Stop` was — so a rejected turn installed no oracle and fell through to the quiet-window
+ * settle, reporting an empty success. That is the #19 bug. This reader deliberately makes
+ * `StopFailure` a boundary whose expected text is empty AND which carries the failure, so the
+ * turn ends as the failure it is. `error` is the evidence; an empty `last_assistant_message`
+ * is NOT (PRD §12A.3).
  */
 
 import {
@@ -26,7 +28,7 @@ export const claudeBoundarySignal: BoundarySignalReader = (event) => {
   const failure = stopFailure(event);
   if (failure === undefined) return defaultBoundarySignal(event);
   // A `StopFailure` ends the turn and carries no completed assistant text, so the expected
-  // text is empty — the SAME boundary as before, now reporting why it failed.
+  // text is empty; the failure rides alongside it so the turn ends as the failure it is.
   return { text: "", failure };
 };
 
@@ -40,12 +42,23 @@ function stopFailure(event: {
   readonly error_details?: unknown;
 }): TurnFailure | undefined {
   if (event.hook_event_name !== "StopFailure") return undefined;
-  const error = typeof event.error === "string" ? event.error : undefined;
-  const details = typeof event.error_details === "string" ? event.error_details : undefined;
+  // BOUND BEFORE USE: a provider payload can be multi-megabyte, so each diagnostic is truncated
+  // before it is stored or interpolated, never after.
+  const error = bounded(nonBlank(event.error));
+  const details = bounded(nonBlank(event.error_details));
   return {
-    message: bounded(details ?? reason(error)),
+    message: details ?? reason(error),
     ...(error === undefined ? {} : { info: error }),
   };
+}
+
+/**
+ * A non-empty, non-whitespace string, else `undefined`. A blank `error_details` must NOT be
+ * treated as authoritative — it would erase the usable `error` reason and surface a blank
+ * `turn_failed` message to consumers.
+ */
+function nonBlank(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
 /** A truthful reason even when the hook names no error, so the failure is never empty. */
@@ -53,6 +66,8 @@ function reason(error: string | undefined): string {
   return error === undefined ? "Claude rejected the turn." : `Claude rejected the turn: ${error}`;
 }
 
-function bounded(message: string): string {
+/** Truncate a diagnostic to the cap, preserving `undefined` so callers keep their fallbacks. */
+function bounded(message: string | undefined): string | undefined {
+  if (message === undefined) return undefined;
   return message.length <= maxMessageLength ? message : `${message.slice(0, maxMessageLength)}…`;
 }

@@ -1,17 +1,13 @@
 /**
- * Unit coverage for CODEX's turn-rejection evidence and the runner that consumes it (PRD
- * §12A.5, C-API-57): a turn the AGENT rejected fails with `turn_failed` instead of settling as
- * an empty success, while a turn that is merely EMPTY still succeeds (§12A.3). Claude's
- * boundary-hook half lives in `turn-failure-claude.test.ts`.
+ * Unit coverage for CODEX's turn-rejection evidence reader (PRD §12A.5, C-API-57): a transcript
+ * `task_complete` carrying an `error` is failure evidence, and its ABSENCE never is — an empty
+ * reply is a success (§12A.3). Claude's boundary-hook reader lives in
+ * `turn-failure-claude.test.ts`; the runner that consumes both is in `turn-failure-runner.test.ts`.
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { claudeBoundarySignal } from "../../src/claude/turn-failure.ts";
+import { describe, expect, test } from "vitest";
 import { codexFailureEvidence } from "../../src/codex/turn-failure.ts";
-import { activity, drive, runFakeTimed } from "./simple-turn-fakes.ts";
-
-beforeEach(() => vi.useFakeTimers());
-afterEach(() => vi.useRealTimers());
+import { activity } from "./simple-turn-fakes.ts";
 
 /** One real `task_complete` transcript item, as codex-cli 0.155.0 writes it. */
 function taskComplete(
@@ -29,12 +25,6 @@ function taskComplete(
     },
   };
 }
-
-/** Both adapters' readers at once, to prove neither misfires on the other's traffic. */
-const bothReaders = {
-  readBoundarySignal: claudeBoundarySignal,
-  readFailureEvidence: codexFailureEvidence,
-};
 
 /** The activity event a Codex transcript item arrives on. */
 function transcript(raw: unknown) {
@@ -108,91 +98,15 @@ describe("C-API-57 Codex reports a rejected turn from its transcript", () => {
     ).toBe('{"error":{}}');
     const long = codexFailureEvidence(transcript(taskComplete({ message: "x".repeat(5_000) })));
     expect(long?.message).toHaveLength(2_001); // 2000 chars + the ellipsis
+    // An oversized JSON envelope is truncated WITHOUT the nested parse (the unwrapped inner
+    // message is not surfaced), so a multi-megabyte payload costs no parsing work.
+    const huge = `{"error":{"message":"inner"}}${" ".repeat(5_000)}`;
+    const bounded = codexFailureEvidence(transcript(taskComplete({ message: huge })));
+    expect(bounded?.message).toHaveLength(2_001);
+    expect(bounded?.message?.startsWith('{"error"')).toBe(true);
     // A non-string classification is dropped rather than carried as a bogus `info`.
     expect(
       codexFailureEvidence(transcript(taskComplete({ message: "r", codex_error_info: 7 })))?.info,
     ).toBeUndefined();
-  });
-});
-describe("C-API-57 the runner fails a rejected turn instead of reporting empty success", () => {
-  test("Codex transcript evidence rejects the turn with turn_failed", async () => {
-    const s = drive((s) => {
-      s.emit("status", { status: "running" });
-      // No `Stop` hook EVER arrives on this path — the rejection is transcript-only.
-      s.emit(
-        "activity",
-        transcript(taskComplete({ message: "nope", codex_error_info: "usage_limit_exceeded" })),
-      );
-      s.emit("status", { status: "ready" });
-    });
-    await expect(
-      runFakeTimed(s, { readFailureEvidence: codexFailureEvidence }),
-    ).rejects.toMatchObject({
-      code: "turn_failed",
-      message: "nope",
-      details: { info: "usage_limit_exceeded" },
-    });
-  });
-
-  test("Claude StopFailure rejects the turn with turn_failed", async () => {
-    const s = drive((s) => {
-      s.emit("status", { status: "running" });
-      s.emit("hook", { hook_event_name: "StopFailure", error: "rate_limit" });
-      s.emit("status", { status: "ready" });
-    });
-    await expect(
-      runFakeTimed(s, { readBoundarySignal: claudeBoundarySignal }),
-    ).rejects.toMatchObject({
-      code: "turn_failed",
-      message: "Claude rejected the turn: rate_limit",
-    });
-  });
-
-  test("§12A.3 a genuinely EMPTY turn still succeeds — absence of text is not failure", async () => {
-    // The obvious wrong implementation would fail this turn. A `Stop` with no text, no assistant
-    // activity, and a `task_complete` WITHOUT an error is a successful empty response.
-    const s = drive((s) => {
-      s.emit("status", { status: "running" });
-      s.emit("activity", transcript(taskComplete()));
-      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: null });
-      s.emit("status", { status: "ready" });
-    });
-    expect(await runFakeTimed(s, bothReaders)).toEqual([]);
-  });
-
-  test("a successful turn with text is unaffected by the failure readers", async () => {
-    const s = drive((s) => {
-      s.emit("status", { status: "running" });
-      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "HELLO" });
-      s.emit("status", { status: "ready" });
-      queueMicrotask(() => s.emit("activity", activity({ text: "HELLO", turnId: "t1" })));
-    });
-    expect(await runFakeTimed(s, bothReaders)).toEqual([{ type: "text", text: "HELLO" }]);
-  });
-
-  test("a rejected turn is never re-submitted to the agent", async () => {
-    // The acceptance watchdog replays a prompt it believes was never accepted. A turn the agent
-    // REJECTED was accepted and refused, so replaying it would re-run a refused turn.
-    const s = drive((s) => {
-      s.emit("status", { status: "running" });
-      s.emit("activity", transcript(taskComplete({ message: "nope" })));
-      s.emit("status", { status: "ready" });
-    });
-    await expect(
-      runFakeTimed(s, { readFailureEvidence: codexFailureEvidence }),
-    ).rejects.toMatchObject({ code: "turn_failed" });
-    expect(s.submissions).toBe(1);
-  });
-
-  test("repeated evidence cannot overwrite the first committed failure", async () => {
-    const s = drive((s) => {
-      s.emit("status", { status: "running" });
-      s.emit("activity", transcript(taskComplete({ message: "first" })));
-      s.emit("activity", transcript(taskComplete({ message: "second" })));
-      s.emit("status", { status: "ready" });
-    });
-    await expect(
-      runFakeTimed(s, { readFailureEvidence: codexFailureEvidence }),
-    ).rejects.toMatchObject({ code: "turn_failed", message: "first" });
   });
 });

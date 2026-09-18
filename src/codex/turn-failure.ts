@@ -46,6 +46,10 @@ function failure(error: Readonly<Record<string, unknown>>): TurnFailure {
  */
 function reason(value: unknown): string {
   if (typeof value !== "string" || value.length === 0) return "Codex rejected the turn.";
+  // A provider rejection can carry a multi-megabyte payload. Only attempt the nested JSON
+  // unwrap while the raw string is within the cap; above it, truncate without parsing rather
+  // than spending the work on a value that is about to be cut down anyway.
+  if (value.length > maxMessageLength) return bounded(value);
   return bounded(unwrapJsonMessage(value) ?? value);
 }
 

@@ -90,16 +90,29 @@ export function rejectTurn(
 }
 
 /**
- * Failure evidence carried by one ACTIVITY event, honoring the runner's turn binding: an event
- * tagged with a PRIOR turn's id belongs to that turn, so a replayed or stale rejection can never
- * fail this one. Untagged evidence always belongs to the current turn.
+ * Failure evidence carried by one ACTIVITY event, honoring the runner's turn binding. Two
+ * properties must hold AT ONCE, and the binding state is what separates them:
+ *
+ * - A REJECTED turn usually produces no assistant content, so nothing has bound `turnId` when
+ *   its `task_complete` arrives — yet the real event IS tagged (Codex sets `payload.turn_id`).
+ *   While the turn is still UNBOUND the first tagged failure is therefore accepted: there is no
+ *   other turn it could belong to, because the serializer holds the prior turn to its real
+ *   boundary before this one starts.
+ * - Once the turn IS bound, a differently tagged event belongs to a PRIOR turn, so a replayed or
+ *   stale rejection is discarded rather than failing a healthy turn.
+ *
+ * Untagged evidence always belongs to the current turn. (Accepting the first tagged failure is
+ * what #19 needs: filtering it out would resurrect the empty-success bug for the contentless
+ * rejection that is the common case.)
  */
 export function activityFailure(
   read: FailureEvidenceReader,
   event: TurnFailureSource & { readonly turnId?: string },
   turnId: string | undefined,
 ): TurnFailure | undefined {
-  if (event.turnId !== undefined && event.turnId !== turnId) return undefined;
+  if (turnId !== undefined && event.turnId !== undefined && event.turnId !== turnId) {
+    return undefined;
+  }
   return read(event);
 }
 

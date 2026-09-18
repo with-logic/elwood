@@ -36,6 +36,35 @@ describe("C-API-57 Claude reports a rejected turn on its StopFailure boundary", 
     );
   });
 
+  test("a BLANK error_details falls back to the error instead of a blank message", () => {
+    // An empty/whitespace detail must not be authoritative: it would erase the usable reason and
+    // surface a blank `turn_failed` message to library and CLI consumers.
+    for (const error_details of ["", "   ", "\n\t "]) {
+      expect(
+        boundaryFailure(
+          claudeBoundarySignal({
+            hook_event_name: "StopFailure",
+            error: "billing_error",
+            error_details,
+          }) ?? "",
+        ),
+      ).toEqual({ message: "Claude rejected the turn: billing_error", info: "billing_error" });
+    }
+    // With neither a usable detail nor a usable error, the reason is still truthful.
+    expect(
+      boundaryFailure(claudeBoundarySignal({ hook_event_name: "StopFailure", error: "  " }) ?? ""),
+    ).toEqual({ message: "Claude rejected the turn." });
+  });
+
+  test("an oversized error is bounded BEFORE it is interpolated into the reason", () => {
+    // Bounding after interpolation would retain the whole multi-megabyte payload.
+    const failure = boundaryFailure(
+      claudeBoundarySignal({ hook_event_name: "StopFailure", error: "z".repeat(5_000) }) ?? "",
+    );
+    expect(failure?.info).toHaveLength(2_001); // 2000 chars + ellipsis
+    expect(failure?.message).toHaveLength("Claude rejected the turn: ".length + 2_001);
+  });
+
   test("an oversized error detail is bounded", () => {
     const signal = claudeBoundarySignal({
       hook_event_name: "StopFailure",

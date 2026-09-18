@@ -150,6 +150,15 @@ a general property of the CLI. Claude is the opposite shape — its `StopFailure
   the signal. It is kept for diagnosis only.
 - A bogus `--model` is a quota-independent way to provoke this in e2e: the
   service rejects the model name (HTTP 400) before consuming any model quota.
+- **The rejection is TAGGED but the turn has no content.** The real capture for a
+  rejected turn is three items: the user `message`, an `item_completed`, and the
+  `task_complete` — the latter two carrying `payload.turn_id`, which
+  `transcriptActivityMeta` surfaces as `activity.turnId`. No assistant content
+  event ever arrives, so anything that binds a turn id from CONTENT first will
+  still be unbound when the rejection lands. A turn-id filter that requires a
+  prior binding therefore discards the very evidence this feature exists to
+  catch; the binding rule must accept the first tagged failure while still
+  rejecting differently-tagged events once bound (C-API-57).
 
 ## Codex transcript replies
 
