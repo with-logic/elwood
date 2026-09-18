@@ -13,7 +13,7 @@ function fixture(user = { login: "maintainer", type: "User" }) {
     state: "open",
     draft: false,
     head: { repo: { full_name: "with-logic/elwood" } },
-    base: { ref: "main" },
+    base: { ref: "main", repo: { full_name: "with-logic/elwood" } },
   };
   const state = { permission: "write", error: null };
   const github = {
