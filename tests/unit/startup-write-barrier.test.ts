@@ -3,10 +3,7 @@
  * cannot be observed, then veto on the settled frame (PRD §5.3/§5.4, C-API-56, #42).
  */
 import { afterEach, expect, test, vi } from "vitest";
-import {
-  codexOptionStillSafe,
-  guardedCodexAutomationWrite,
-} from "../../src/codex/update-prompt.ts";
+import { codexOptionStillSafe, guardedCodexAutomationWrite } from "../../src/codex/update/index.ts";
 import { guardedNonTrustAutomationWrite } from "../../src/core/startup/barrier.ts";
 
 // Unconditional, so a failed assertion cannot leave fake timers installed for later files.

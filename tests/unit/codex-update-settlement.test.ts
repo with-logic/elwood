@@ -1,7 +1,7 @@
 /** Logical update cancellation is quiet; rejected PTY writes warn (C-CODEX-12/17). */
 import { afterEach, expect, test, vi } from "vitest";
 import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
-import { CodexUpdatePromptTracker, writeCodexUpdateSkip } from "../../src/codex/update-prompt.ts";
+import { CodexUpdatePromptTracker, writeCodexUpdateSkip } from "../../src/codex/update/index.ts";
 import { emitSettledStartupOutcomes } from "../../src/core/startup/write.ts";
 
 afterEach(() => vi.useRealTimers());

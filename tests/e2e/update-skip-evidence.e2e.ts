@@ -16,67 +16,12 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import test from "node:test";
-import { setTimeout as delay } from "node:timers/promises";
-import { spawn } from "node-pty";
-import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
-import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
-
-/** The measured real split (#50): the banner frame carries ONLY `1. Update now`. */
-const bannerPaint = `printf 'Update available! 0.151.0 -> 0.152.0\\r\\n  1. Update now'`;
-
-/**
- * Paints the banner frame, then a replacement, and reports every automated key the real
- * responder tried to send. The replacement always reassigns `1` — the contradiction the
- * guard detects — so no digit may go out whatever the replacement's overall shape is.
- */
-async function automatedWritesAfterReplacement(
-  replacement: string,
-): Promise<{ readonly writes: readonly string[]; readonly rendered: string }> {
-  const dir = mkdtempSync(join(tmpdir(), "elwood-skip-e2e-"));
-  const script = join(dir, "paint.sh");
-  writeFileSync(
-    script,
-    [bannerPaint, "sleep 1", `printf '\\033[2J\\033[H${replacement}'`, "sleep 3"].join("\n"),
-  );
-  const writes: string[] = [];
-  // A plain POSIX shell, deliberately not the user's login shell: this process only
-  // PAINTS the frames, and the thing under test is the emulator + guard downstream.
-  const child = spawn("/bin/sh", [script], {
-    cwd: dir,
-    env: { ...process.env, TERM: "xterm-256color" },
-    cols: 100,
-    rows: 40,
-  });
-  const terminal = createHeadlessTerminal({ cols: 100, rows: 40 }, () => {});
-  const responder = new CodexStartupPromptResponder("e2e");
-  const data = child.onData(async (output) => {
-    await terminal.writeOutput(output);
-    // Every automated key Elwood would send to the real Codex process lands here.
-    responder.handle(
-      terminal.snapshot().text,
-      (input) => {
-        writes.push(input);
-      },
-      () => terminal.snapshot().text,
-    );
-  });
-  try {
-    // Let the banner frame paint, be recognized, then be replaced.
-    await delay(4_000);
-    await terminal.settled();
-    return { writes, rendered: terminal.snapshot().text };
-  } finally {
-    data.dispose();
-    child.kill("SIGKILL");
-    await terminal.settled();
-    terminal.dispose();
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
+import {
+  automatedWritesAfterReplacement,
+  blockingAcrossReplacement,
+  completeUpdatePaint,
+} from "./update-skip-harness.ts";
 
 test("C-CODEX-22 a real-PTY all-skip-shaped prompt never receives the update-skip key", {
   timeout: 60_000,
@@ -94,6 +39,40 @@ test("C-CODEX-22 a real-PTY all-skip-shaped prompt never receives the update-ski
     [],
     "no update-skip digit reached the unrelated all-skip-shaped prompt",
   );
+});
+
+test("C-CODEX-22 a real-PTY in-flight retry cannot write into a contradictory replacement", {
+  timeout: 60_000,
+}, async (t) => {
+  // Start from a COMPLETE update screen so a skip attempt is genuinely running (`2. Skip`
+  // is written for the first appearance), then swap in a replacement that reassigns `1`
+  // AND offers a post-action safe option — so the replacement is independently answerable.
+  // The live retry must not carry the first appearance's authorization into it.
+  const { writes, rendered } = await automatedWritesAfterReplacement(
+    "  1. Skip backup\\r\\n  2. Update now\\r\\n  3. Skip",
+    completeUpdatePaint,
+  );
+  assert.match(rendered, /1\.\s*Skip backup/, "the replacement dialog really rendered");
+  assert.match(rendered, /3\.\s*Skip/, "the replacement really offers a post-action safe option");
+  t.diagnostic(`Real PTY frames rendered; automated writes: ${JSON.stringify(writes)}`);
+  // `1` was `Update now` on the captured appearance and is `Skip backup` on the
+  // replacement: it must never be pressed, by the original attempt or its retries.
+  assert.ok(
+    !writes.includes("1"),
+    `a live retry must not press the captured appearance's digit on a replacement; got ${JSON.stringify(writes)}`,
+  );
+});
+
+test("C-CODEX-22 a real-PTY contradictory replacement keeps holding queued input", {
+  timeout: 60_000,
+}, async (t) => {
+  // The hold must survive the end of an appearance. `blocking_prompt_visible` comes from
+  // `dialogVisible`, not from automation eligibility, so a prompt Elwood may not answer
+  // still blocks — otherwise a queued paste and its Enter advance an unrelated dialog.
+  const { blocking, rendered } = await blockingAcrossReplacement("  1. Skip backup\\r\\n  2. Skip");
+  assert.match(rendered, /1\.\s*Skip backup/, "the replacement prompt really rendered");
+  t.diagnostic(`blocking_prompt_visible on the replacement frame: ${blocking}`);
+  assert.equal(blocking, true, "a prompt Elwood must not automate must still hold queued input");
 });
 
 test("C-CODEX-22 a real-PTY first-party-shaped replacement never inherits the skip key", {

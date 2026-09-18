@@ -2,27 +2,27 @@
  * The Codex update-skip WRITE path: the guarded automation writer, the settled-frame
  * option revalidation, and the bounded retry loop. Implements PRD §5.5 and C-CODEX-12.
  *
- * Frame recognition lives in `update-recognition.ts` and the cross-frame appearance
- * lifecycle in `update-tracker.ts`; both are re-exported here so this file remains the
- * single import site for the update prompt.
+ * Frame recognition lives in `recognition.ts` and the cross-frame appearance lifecycle in
+ * `tracker.ts`; both are re-exported here so this file remains the single import site
+ * for the update prompt.
  */
 
-import type { InputTerminal } from "../core/input/abort.ts";
+import type { InputTerminal } from "../../core/input/abort.ts";
 import {
   type AutomationWriteResult,
   guardedNonTrustAutomationWrite,
   type NonTrustAutomationWriter,
-} from "../core/startup/barrier.ts";
-import type { StartupWriteCompletion } from "../core/startup/write.ts";
-import { numberedOptions } from "../core/terminal-options.ts";
-import type { TrustWriteResult } from "../core/trust/responder.ts";
-import { codexUpdateChoiceIdentity, settledFrameKeepsChoice } from "./update-identity.ts";
+} from "../../core/startup/barrier.ts";
+import type { StartupWriteCompletion } from "../../core/startup/write.ts";
+import { numberedOptions } from "../../core/terminal-options.ts";
+import type { TrustWriteResult } from "../../core/trust/responder.ts";
+import { codexUpdateChoiceIdentity, settledFrameKeepsChoice } from "./identity.ts";
 import {
   codexUpdateOptionPattern,
   codexUpdatePromptVisible,
-  isSafeUpdateContinuation,
+  hasContinuationShape,
   safeUpdateOption,
-} from "./update-recognition.ts";
+} from "./recognition.ts";
 
 /** Recognition and lifecycle, re-exported so this stays the update entry point. */
 export {
@@ -30,8 +30,8 @@ export {
   codexUpdatePromptVisible,
   safeUpdateOption,
   updateScreenBanner,
-} from "./update-recognition.ts";
-export { CodexUpdatePromptTracker } from "./update-tracker.ts";
+} from "./recognition.ts";
+export { CodexUpdatePromptTracker } from "./tracker.ts";
 
 const retryIntervalMs = 250;
 const retryTimeoutMs = 5_000;
@@ -65,7 +65,7 @@ export function codexOptionStillSafe(frameText: string, input: string): boolean 
   // the first-party screen, or the safe-choice-only repaint Codex draws mid-flow. An
   // unrelated human prompt that merely happens to carry a "Skip"/"Later" option is NOT
   // this dialog, and must stay for the human (#42 round 3, C-CODEX-12).
-  if (!(codexUpdatePromptVisible(frameText) || isSafeUpdateContinuation(frameText))) return false;
+  if (!(codexUpdatePromptVisible(frameText) || hasContinuationShape(frameText))) return false;
   return options.some(
     (option) => option.number === input && codexUpdateOptionPattern.test(option.label),
   );

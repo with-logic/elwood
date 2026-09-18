@@ -2,16 +2,16 @@
  * Runs ONE bounded Codex update-skip attempt per update-screen appearance and reconciles
  * its completion with the generation that owns it. Implements PRD §5.5 and C-CODEX-12.
  *
- * Extracted from `startup-prompts.ts` verbatim so the startup responder keeps only prompt
+ * Extracted from `../startup-prompts.ts` verbatim so the startup responder keeps only prompt
  * dispatch; every rule here (optimistic latching, trust-gate ineligibility, invalidation,
  * supersession) is the behavior that file already had.
  */
 
-import type { AutomationWriteResult } from "../core/startup/barrier.ts";
-import type { StartupWriteCompletion } from "../core/startup/write.ts";
-import { trustGateVisible } from "../core/trust/blocking.ts";
-import type { TrustWriteResult } from "../core/trust/responder.ts";
-import { type CodexUpdatePromptTracker, writeCodexUpdateSkip } from "./update-prompt.ts";
+import type { AutomationWriteResult } from "../../core/startup/barrier.ts";
+import type { StartupWriteCompletion } from "../../core/startup/write.ts";
+import { trustGateVisible } from "../../core/trust/blocking.ts";
+import type { TrustWriteResult } from "../../core/trust/responder.ts";
+import { type CodexUpdatePromptTracker, writeCodexUpdateSkip } from "./index.ts";
 
 /** The non-trust automation writer the skip and its retries go out through. */
 export type CodexAutomationWriter = (

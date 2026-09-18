@@ -4,16 +4,20 @@
  * Implements PRD §5.5, C-CODEX-12 and C-CODEX-22.
  *
  * This module is the shared BOTTOM of the update stack and imports nothing from its
- * siblings, so recognition (here), cross-frame lifecycle (`update-tracker.ts`) and the
- * write path (`update-prompt.ts`) form a line rather than a cycle.
+ * siblings, so recognition (here), cross-frame lifecycle (`tracker.ts`) and the write
+ * path (`index.ts`) form a line rather than a cycle.
  *
  * Every predicate here judges ONE frame's shape and nothing else. None of them is
  * sufficient on its own to authorize a write: a frame's shape cannot say which
  * APPEARANCE it belongs to, which is exactly the gap issue #50 recorded. Pair them with
- * the appearance's accumulated evidence (`update-evidence.ts`) before acting.
+ * the appearance's accumulated evidence (`evidence.ts`) before acting.
  */
 
-import { type NumberedOption, nonOptionText, numberedOptions } from "../core/terminal-options.ts";
+import {
+  type NumberedOption,
+  nonOptionText,
+  numberedOptions,
+} from "../../core/terminal-options.ts";
 
 export const codexUpdateOptionPattern = /continue\s*without\s*updat|skip|not\s*now|later/i;
 /** The option that PERFORMS the update; never a safe choice, whatever else its label says. */
@@ -74,7 +78,7 @@ export function safeUpdateOption(frameText: string): NumberedOption | undefined 
  * unrelated option-only prompt whose every option is skip-shaped has exactly this shape.
  * The appearance's own evidence is what separates the two.
  */
-export function isSafeUpdateContinuation(frameText: string): boolean {
+export function hasContinuationShape(frameText: string): boolean {
   if (nonOptionText(frameText).trim() !== "") return false;
   return numberedOptions(frameText).some((option) =>
     /continue\s*without\s*updat|skip/i.test(option.label),

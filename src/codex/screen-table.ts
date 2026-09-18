@@ -6,7 +6,7 @@
 
 import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
-import { CodexUpdatePromptTracker, codexUpdatePromptVisible } from "./update-prompt.ts";
+import { CodexUpdatePromptTracker, codexUpdatePromptVisible } from "./update/index.ts";
 
 const verifiedAgainst = "codex-cli 0.142.5";
 
@@ -67,7 +67,12 @@ export function codexScreenFactTableForTrustPolicy(autotrust: boolean): ScreenFa
   const tracked: ScreenFactTable = {
     agent: "codex",
     verifiedAgainst,
-    rules: codexScreenFactRules(updatePrompt.observe.bind(updatePrompt)),
+    // `dialogVisible`, NOT `observe`: this fact decides whether queued caller/persona
+    // input keeps being HELD, and that fails safe in the opposite direction to automation
+    // eligibility. A frame Elwood must not write into (a replacement dialog contradicting
+    // the captured appearance) is still a frame a human owns, so it must keep blocking
+    // rather than release a paste and Enter into it (C-API-56, C-CODEX-22; round 2 of #59).
+    rules: codexScreenFactRules(updatePrompt.dialogVisible.bind(updatePrompt)),
   };
   return withTrustBlockingRules(tracked, "codex", autotrust);
 }

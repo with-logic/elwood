@@ -11,12 +11,12 @@ import { expect, test } from "vitest";
 import {
   codexUpdateChoiceIdentity,
   settledFrameKeepsChoice,
-} from "../../src/codex/update-identity.ts";
+} from "../../src/codex/update/identity.ts";
 import {
   codexUpdatePromptVisible,
   guardedCodexAutomationWrite,
   writeCodexUpdateSkip,
-} from "../../src/codex/update-prompt.ts";
+} from "../../src/codex/update/index.ts";
 import { numberedOptions } from "../../src/core/terminal-options.ts";
 
 test("C-CODEX-12 only the dialog the attempt captured can take its key", async () => {

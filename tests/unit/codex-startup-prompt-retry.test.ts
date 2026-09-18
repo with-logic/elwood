@@ -9,7 +9,7 @@ import {
   CodexStartupPromptResponder,
   type SettledCodexStartupOutcome,
 } from "../../src/codex/startup-prompts.ts";
-import { writeCodexUpdateSkip } from "../../src/codex/update-prompt.ts";
+import { writeCodexUpdateSkip } from "../../src/codex/update/index.ts";
 import { codexTrust } from "../fixtures/trust-composer.ts";
 
 function outcomesOf(settled: readonly SettledCodexStartupOutcome[]) {

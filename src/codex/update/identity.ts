@@ -3,8 +3,12 @@
  * settled frame is still the dialog it started on. Implements PRD §5.5 / C-CODEX-12 (#42).
  */
 
-import { type NumberedOption, nonOptionText, numberedOptions } from "../core/terminal-options.ts";
-import { updateScreenBanner } from "./update-recognition.ts";
+import {
+  type NumberedOption,
+  nonOptionText,
+  numberedOptions,
+} from "../../core/terminal-options.ts";
+import { updateScreenBanner } from "./recognition.ts";
 
 /**
  * The identity of the update choice an attempt captured: the dialog's own non-option

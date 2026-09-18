@@ -23,7 +23,7 @@ import type { CodexPreflightWarning } from "../preflight.ts";
 import { spawnCodexPty } from "../pty.ts";
 import { codexScreenFactTableForTrustPolicy } from "../screen-table.ts";
 import { CodexStartupPromptResponder } from "../startup-prompts.ts";
-import { guardedCodexAutomationWrite } from "../update-prompt.ts";
+import { guardedCodexAutomationWrite } from "../update/index.ts";
 import { currentCodexHookBridgeFactory } from "./bridge.ts";
 import { reportCallerInput } from "./caller-input.ts";
 import { dispatchHook, registerInitialHooks } from "./hooks.ts";

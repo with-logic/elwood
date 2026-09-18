@@ -25,7 +25,10 @@ back each entry are listed in `prd/14-conformance.md`.
   it is itself a complete-looking update screen, so a replacement dialog cannot inherit
   a running attempt's authorization; and the safe option is never the one that performs
   the update, taken only from the rows after it, so a dialog listing a skip-shaped row
-  before `Update now` is left for the human instead of answered on that row.
+  before `Update now` is left for the human instead of answered on that row. Input
+  blocking is now a separate fact from automation eligibility, so a replacement Elwood
+  must not answer keeps holding queued caller and persona input instead of releasing a
+  paste and Enter into it; the hold is released only by a frame showing no dialog.
 - Hold the cross-process update lease for an aborted updater's surviving process
   group. An update probe that was aborted without confirming its process group had
   exited used to release the lease anyway, so another Elwood host could start a

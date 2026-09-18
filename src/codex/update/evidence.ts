@@ -27,7 +27,8 @@
  *     (number 1 was `Update now`; a repaint cannot relabel it)
  */
 
-import { numberedOptions } from "../core/terminal-options.ts";
+import { numberedOptions } from "../../core/terminal-options.ts";
+import { updateScreenBanner } from "./recognition.ts";
 
 /** What one appearance of the update screen has shown so far. */
 export type CodexUpdateAppearanceEvidence = {
@@ -35,11 +36,32 @@ export type CodexUpdateAppearanceEvidence = {
   readonly options: ReadonlyMap<string, string>;
   /** True once a frame carried the first-party banner or the `Update now` option. */
   readonly firstParty: boolean;
+  /**
+   * The banner line this appearance was first identified by, or `""` when it has only
+   * ever been seen through its options. It carries the version pair, which is what
+   * distinguishes one appearance of the update screen from the NEXT — two appearances can
+   * otherwise render identical option sets and would wrongly look like one.
+   */
+  readonly banner: string;
 };
 
 /** A fresh appearance, before any frame has been folded into it. */
 export function emptyUpdateEvidence(): CodexUpdateAppearanceEvidence {
-  return { options: new Map(), firstParty: false };
+  return { options: new Map(), firstParty: false, banner: "" };
+}
+
+/**
+ * Whether a frame's banner contradicts the one this appearance was identified by. A
+ * DIFFERENT version pair is a different appearance even when the options are identical,
+ * so a pending retry cannot act across the swap. A frame with no banner is not a
+ * contradiction: the banner routinely scrolls off during a split appearance.
+ */
+export function bannerContradictsAppearance(
+  evidence: CodexUpdateAppearanceEvidence,
+  frameText: string,
+): boolean {
+  const banner = updateScreenBanner.exec(frameText)?.[0]?.trim() ?? "";
+  return evidence.banner !== "" && banner !== "" && banner !== evidence.banner;
 }
 
 /**
@@ -57,16 +79,23 @@ export function withUpdateFrameEvidence(
   for (const option of numberedOptions(frameText)) {
     if (!options.has(option.number)) options.set(option.number, option.label);
   }
-  return { options, firstParty: evidence.firstParty || firstParty };
+  // The FIRST banner an appearance shows identifies it, for the same reason as the option
+  // labels: a later frame must not be able to rewrite the identity it is checked against.
+  const banner = evidence.banner || (updateScreenBanner.exec(frameText)?.[0]?.trim() ?? "");
+  return { options, firstParty: evidence.firstParty || firstParty, banner };
 }
 
 /**
- * Whether a frame REASSIGNS any option number this appearance already bound to a
- * different label. This is only the consistency half of the continuation question — it
- * says nothing about whether the appearance was ever first-party, and a frame with no
- * options at all trivially passes. Callers that need "is this a continuation" want
- * `frameContinuesAppearance`; callers that need "is this still the same dialog" — which
- * includes complete-looking first-party frames — want this one.
+ * Returns `true` when EVERY option number on `frameText` still carries the label this
+ * appearance bound it to — that is, the frame reassigns nothing. Returns `false` as soon
+ * as one number appears under a different label.
+ *
+ * Note the polarity: `true` means AGREEMENT (safe to treat as the same dialog), which is
+ * how the tracker consumes it. This is only the consistency half of the continuation
+ * question — it says nothing about whether the appearance was ever first-party, and a
+ * frame with no options at all trivially returns `true`. Callers asking "is this a
+ * continuation" want `evidenceAllowsContinuation`; callers asking "is this still the same
+ * dialog" — which includes complete-looking first-party frames — want this one.
  */
 export function appearanceBindingsHold(
   evidence: CodexUpdateAppearanceEvidence,
@@ -88,7 +117,7 @@ export function appearanceBindingsHold(
  * to offer skip-shaped rows fails the second test as soon as it re-uses a number, and
  * fails the first outright when no update screen was ever recognized.
  */
-export function frameContinuesAppearance(
+export function evidenceAllowsContinuation(
   evidence: CodexUpdateAppearanceEvidence,
   frameText: string,
 ): boolean {

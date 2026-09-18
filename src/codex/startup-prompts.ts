@@ -9,8 +9,8 @@ import { numberedOptions } from "../core/terminal-options.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { type CodexBannerWarning, codexWarningsFromText } from "./startup-warnings.ts";
-import { CodexUpdatePromptTracker, safeUpdateOption } from "./update-prompt.ts";
-import { codexUpdateSkipEligible, startCodexUpdateSkip } from "./update-skip-attempt.ts";
+import { CodexUpdatePromptTracker, safeUpdateOption } from "./update/index.ts";
+import { codexUpdateSkipEligible, startCodexUpdateSkip } from "./update/skip-attempt.ts";
 
 export { codexWarningsFromText } from "./startup-warnings.ts";
 

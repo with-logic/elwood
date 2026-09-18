@@ -8,10 +8,10 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
 import {
   emptyUpdateEvidence,
-  frameContinuesAppearance,
+  evidenceAllowsContinuation,
   withUpdateFrameEvidence,
-} from "../../src/codex/update-evidence.ts";
-import { CodexUpdatePromptTracker, safeUpdateOption } from "../../src/codex/update-prompt.ts";
+} from "../../src/codex/update/evidence.ts";
+import { CodexUpdatePromptTracker, safeUpdateOption } from "../../src/codex/update/index.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -108,6 +108,31 @@ describe("C-CODEX-22 update-skip requires the appearance's own first-party evide
   });
 });
 
+describe("C-CODEX-22 input blocking is separate from automation eligibility", () => {
+  test("C-CODEX-22 a contradicted appearance stops automation but keeps holding input", () => {
+    const tracker = new CodexUpdatePromptTracker();
+    expect(tracker.dialogVisible(bannerFrame)).toBe(true);
+    // Automation must fail CLOSED: the digit was chosen for a different dialog.
+    expect(tracker.observe(allSkipPrompt)).toBe(false);
+    // The hold must ALSO fail closed: a prompt we may not answer is still a prompt.
+    expect(tracker.dialogVisible(allSkipPrompt)).toBe(true);
+  });
+
+  test("C-CODEX-22 only a frame with no dialog releases the hold", () => {
+    const tracker = new CodexUpdatePromptTracker();
+    tracker.dialogVisible(bannerFrame);
+    expect(tracker.dialogVisible(allSkipPrompt)).toBe(true);
+    // A positive clearance — the composer, no options at all — drops it.
+    expect(tracker.dialogVisible("› ")).toBe(false);
+  });
+
+  test("C-CODEX-22 a hold is never STARTED for a dialog Elwood did not recognize", () => {
+    const tracker = new CodexUpdatePromptTracker();
+    // No update appearance was ever recognized, so an unrelated prompt does not block.
+    expect(tracker.dialogVisible(allSkipPrompt)).toBe(false);
+  });
+});
+
 describe("C-CODEX-22 safe-option selection respects update-screen layout", () => {
   test("C-CODEX-22 the real layout still yields its safe option", () => {
     expect(safeUpdateOption("  1. Update now\n  2. Skip")?.number).toBe("2");
@@ -136,7 +161,7 @@ describe("C-CODEX-22 safe-option selection respects update-screen layout", () =>
 describe("C-CODEX-22 appearance evidence", () => {
   test("C-CODEX-22 a frame without first-party evidence vouches for nothing", () => {
     const evidence = withUpdateFrameEvidence(emptyUpdateEvidence(), "  2. Skip", false);
-    expect(frameContinuesAppearance(evidence, "  2. Skip")).toBe(false);
+    expect(evidenceAllowsContinuation(evidence, "  2. Skip")).toBe(false);
   });
 
   test("C-CODEX-22 the first label an appearance shows for a number is the one that binds", () => {
@@ -144,12 +169,12 @@ describe("C-CODEX-22 appearance evidence", () => {
     // A contradicting frame cannot rewrite the appearance's history to justify itself.
     evidence = withUpdateFrameEvidence(evidence, allSkipPrompt, false);
     expect(evidence.options.get("1")).toBe("Update now");
-    expect(frameContinuesAppearance(evidence, allSkipPrompt)).toBe(false);
+    expect(evidenceAllowsContinuation(evidence, allSkipPrompt)).toBe(false);
   });
 
   test("C-CODEX-22 an unseen option number is not a contradiction", () => {
     const evidence = withUpdateFrameEvidence(emptyUpdateEvidence(), bannerFrame, true);
-    expect(frameContinuesAppearance(evidence, "  2. Skip\n  3. Skip until next version")).toBe(
+    expect(evidenceAllowsContinuation(evidence, "  2. Skip\n  3. Skip until next version")).toBe(
       true,
     );
   });

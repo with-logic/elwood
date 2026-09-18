@@ -503,6 +503,19 @@ Two version-coupled wrinkles this cost us:
   the update action itself; a frame with no update action (the banner-less
   continuation) is unconstrained, which is what keeps `2. Skip` /
   `3. Skip until next version` working. Found in review round 1 of PR #59.
+- One tracker boolean cannot serve both automation and input blocking, because
+  they fail safe in OPPOSITE directions. "This frame contradicts the captured
+  appearance" must mean *do not write the digit* AND *keep holding queued input*
+  at the same time — the prompt is one Elwood may not answer, not one that has
+  gone away. Wiring the automation flag into `blocking_prompt_visible` (which is
+  what `codexScreenFactTableForTrustPolicy` did) meant that hardening the
+  automation guard silently RELEASED the queued persona paste and its Enter into
+  the very dialog the guard had just refused to touch — the same outcome, reached
+  by the other path. Measured: the persona paste
+  `\e[200~…\e[201~` landed on the replacement prompt. The tracker now exposes
+  `dialogVisible` for blocking and `observe` for automation; the hold persists
+  across any frame still showing options and is dropped only by a frame with none.
+  Found in review round 2 of PR #59.
 - Option labels drift by version. Older codex (0.132/0.133) rendered a numbered
   dialog ("1. Update now / 2. Skip / 3. Skip until next version"). In the installed
   0.149.1 binary, the upgrade notice strings extracted from the native binary read
@@ -510,14 +523,14 @@ Two version-coupled wrinkles this cost us:
   `https://github.com/openai/codex for installation options.`) rather than a
   numbered dialog — so the interactive dialog is not guaranteed on every version.
   The skip is written ONLY when a numbered skip option is actually present
-  (`findNumberedOption` → null ⇒ no write), so a passive banner is a harmless no-op.
+  (`safeUpdateOption` → undefined ⇒ no write), so a passive banner is a harmless no-op.
   Every retry revalidates that the frame still belongs to the captured first-party
   update-prompt generation and uses the safe option's current number. This preserves
   the known safe-option-only continuation layout without letting a cleared/reappeared
   prompt or replacement dialog inherit a stale digit. A prompt that remains blocking
   but cannot be safely answered becomes `blocked_prompt` after the bounded
   responder/grace window, including runs without a whole-invocation timeout.
-  The match set (`src/codex/update-prompt.ts`) is unit-tested against captured
+  The match set (`src/codex/update/recognition.ts`) is unit-tested against captured
   layouts, NOT against a live update event (which requires an actually-stale binary
   to trigger). If Codex changes the dialog wording, this is the first thing to
   re-capture.
