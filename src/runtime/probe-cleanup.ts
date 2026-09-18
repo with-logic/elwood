@@ -55,9 +55,12 @@ export function processGroupGone(processGroupId: number): boolean {
 export async function waitForProbeGroups(
   processGroupIds: readonly number[],
 ): Promise<readonly number[]> {
-  const deadline = Date.now() + cleanupWindowMs;
+  // Monotonic, like the abort window it mirrors: this is a promised bound on how long a
+  // start is delayed, so a backward system-clock adjustment must not extend it, nor a
+  // forward one cut the observation short and hand the lease over early.
+  const deadline = performance.now() + cleanupWindowMs;
   let live = processGroupIds.filter((id) => !processGroupGone(id));
-  while (live.length > 0 && Date.now() < deadline) {
+  while (live.length > 0 && performance.now() < deadline) {
     await delay(cleanupRetryMs);
     live = live.filter((id) => !processGroupGone(id));
   }
@@ -89,8 +92,9 @@ export async function abortProbe(child: ChildProcess): Promise<ProbeCleanup> {
     if (reaper.reap(elapsedMs >= groupOnlyRetryMs)) return {};
     await delay(cleanupRetryMs, undefined, { ref: false });
   }
-  // Every failed probe retains cleanup ownership; update leases additionally
-  // preserve exclusion after parent exit. Neither keeps the event loop pinned.
+  // Only an UNRESOLVED abort gets here — confirmed cleanup has already returned above — and
+  // it is what retains cleanup ownership; update leases additionally preserve exclusion
+  // after parent exit. Neither keeps the event loop pinned.
   retained.add(reaper);
   retryTimer ??= setInterval(reapRetained, deferredRetryMs);
   retryTimer.unref();

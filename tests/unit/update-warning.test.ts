@@ -76,3 +76,29 @@ test("C-PERF-04 contention reports a skipped active updater rather than a failed
   );
   expect(warning.raw).toBe("");
 });
+
+// The second contention reason shares `update_active` but names a different cause, and it
+// must stay distinguishable in the message: a lease held by a surviving process group is
+// not a peer that is merely slow, and it is reported without waiting out the 60s bound.
+test.each([
+  ["claude", "2.1.200"],
+  ["codex", "0.154.0"],
+] as const)(
+  "C-PERF-04 a %s lease held by a surviving updater group reports update_active",
+  (adapter, installedVersion) => {
+    const warning = buildUpdateWarning(
+      adapter,
+      installedVersion,
+      elwoodError(`${adapter}_update_failed`, "internal", {
+        updateReason: "cleanup_pending",
+        cleanupErrorCode: "ETIMEDOUT",
+      }),
+    );
+    expect(warning.errorCode).toBe("update_active");
+    expect(warning.message).toBe(
+      `\`${adapter} update\` skipped: another updater's process group has not exited; continuing with the installed CLI ${installedVersion}.`,
+    );
+    // No local updater ran, so there is no errno to surface and no updater stderr to bound.
+    expect(warning.raw).toBe("");
+  },
+);

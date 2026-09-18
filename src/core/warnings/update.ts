@@ -30,7 +30,10 @@ const maxStderr = 2_000;
 
 /**
  * Reasons an update was skipped rather than attempted, and how each reads to a user. A
- * skipped update carries no errno or updater stderr, because no local updater ran.
+ * skipped update carries no errno or updater stderr, because no local updater ran. Both
+ * reach the consumer as `errorCode: "update_active"` and differ only in timing:
+ * `active_owner` follows the full 60-second contention wait, while `cleanup_pending` is
+ * immediate, because a surviving updater group may outlive any bound worth waiting out.
  */
 const skippedUpdates: ReadonlyMap<unknown, string> = new Map([
   ["active_owner", "another updater is still active"],

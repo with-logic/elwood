@@ -54,6 +54,10 @@ export function updateLockPath(adapter: UpdateAdapter, root = defaultLeaseRoot()
  * state after this resolves. Waiting uses timers, never a blocking filesystem loop.
  * After 60 seconds by default, a still-active owner rejects with the adapter's
  * update_failed error and updateReason active_owner; preflight warns and continues.
+ * A lease already handed to a surviving updater process group does NOT use that wait: it
+ * rejects immediately with updateReason cleanup_pending, because those groups may outlive
+ * any bound this contender could set. Both reasons reach the caller as the same
+ * `update_active` warning, so neither blocks startup.
  */
 export async function coordinatedAutoupdate(
   adapter: UpdateAdapter,
@@ -104,10 +108,16 @@ export async function coordinatedAutoupdate(
     await releaseLease(path, owner);
     return;
   }
-  const outcome = await update().then(
-    () => undefined,
-    (error: unknown) => ({ error }),
-  );
+  // Started through `Promise.resolve().then` so an updater that throws SYNCHRONOUSLY is a
+  // rejection like any other. Calling `update()` bare would let such a throw escape past
+  // the release below with the lease still held, which is the one failure the lease cannot
+  // absorb: no group survives to hold it, so it would simply stand until the stale bound.
+  const outcome = await Promise.resolve()
+    .then(update)
+    .then(
+      () => undefined,
+      (error: unknown) => ({ error }),
+    );
   // An aborted probe's unresolved group is observed once more: only a group still live
   // after that window keeps the lease, and then the lease outlives this process.
   const abortedGroupId = unresolvedProbeGroup(outcome?.error);

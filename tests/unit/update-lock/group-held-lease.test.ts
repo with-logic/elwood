@@ -1,7 +1,9 @@
 /**
  * A persisted owner record naming process groups is honoured by real lease recovery, not
- * just by the parser (PRD §9.2, C-PERF-04). Nothing writes such a record yet; this pins the
- * parser-to-recovery wiring the retention policy will depend on.
+ * just by the parser (PRD §9.2, C-PERF-04). The records here are written directly so
+ * recovery can be driven against states a live handoff reaches only by timing — an already
+ * dead group, a long-stale mtime — independently of the production path that now writes
+ * them (`retainLease`), which is covered by its own tests.
  */
 
 import { spawn } from "node:child_process";
