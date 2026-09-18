@@ -167,3 +167,19 @@ test("C-CODEX-12 an unrelated human prompt carrying a Skip option is not this di
   ).toBe(true);
   expect(codexOptionStillSafe("  2. Skip\n  3. Skip until next version", "2")).toBe(true);
 });
+
+test("C-TRUST-01 an off-allowlist gate vetoes the write, not just an allowlisted one", async () => {
+  // A reworded gate classifies as `unknown` to `trustView`, so vetoing on candidates
+  // alone would let an automated key reach a gate that is the human's to answer (#20).
+  const unknownGate =
+    "Do you trust this workspace?\n\n> 1. Yes, continue\n  2. No, quit\n\nPress enter to continue";
+  const writes: string[] = [];
+  const guarded = guardedNonTrustAutomationWrite(
+    { sendInput: () => undefined, settled: () => Promise.resolve(), renderFailed: false },
+    (input: string) => void writes.push(input),
+    () => unknownGate,
+    "claude",
+  );
+  expect(await guarded("\u001b")).toBe("withheld");
+  expect(writes).toEqual([]);
+});

@@ -2,12 +2,13 @@
  * A render-settlement barrier for NON-TRUST automated startup writes.
  * Implements PRD §5.1/§5.4 and C-API-56: rendering is asynchronous (§4.1), so a trust
  * gate can be RECEIVED while the last observed frame is still the previous screen.
+ * The veto is `trustGateVisible`, which covers allowlisted candidates AND off-allowlist
+ * gates in the native grammar — a reworded gate classifies as `unknown` to `trustView`,
+ * so vetoing on candidates alone would let an automated key reach a human-owned gate.
  * Startup automation decides from that observed frame, so without a barrier the Codex
  * update skip or the Claude browser-tools decline can write into a gate that has
- * arrived but not been classified. `trustView(...).kind === "candidate"` is the veto:
- * any allowlisted gate, including a hold-only one whose body is unsupported. Each write
- * therefore observes everything received, fails closed when it cannot, and only then
- * re-checks the settled frame.
+ * arrived but not been classified. Each write therefore observes everything received,
+ * fails closed when it cannot, and only then re-checks the settled frame.
  *
  * Scope is deliberate: this guards the NON-TRUST writer, never the trust writer.
  * Answering a trust gate is `TrustPromptResponder`'s own job, so vetoing it here would
@@ -21,7 +22,7 @@
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { type InputTerminal, writeUnsafe } from "../input/abort.ts";
-import { trustView } from "../trust/view.ts";
+import { trustGateVisible } from "../trust/blocking.ts";
 
 /** What a non-trust automation write returns; void writers settle immediately. */
 export type NonTrustAutomationWriter = (input: string) => void | Promise<void>;
@@ -49,7 +50,7 @@ export function guardedNonTrustAutomationWrite(
     // exceeds its budget or a render has failed (C-API-56).
     if (await writeUnsafe(terminal)) return "withheld";
     const frame = readFrame();
-    if (trustView(frame, agent).kind === "candidate") return "withheld";
+    if (trustGateVisible(frame, agent)) return "withheld";
     if (!stillValid(frame, input)) return "withheld";
     // A caller may also pass a predicate CAPTURED for this single write, so a later
     // attempt mutating shared state cannot validate an older key (#42 round 3).
