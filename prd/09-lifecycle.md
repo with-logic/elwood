@@ -103,7 +103,20 @@ so a lease left behind would make every later updater on that host wait forever 
 that has already finished updating. Each lease holder removes
 a bounded number of that adapter's leftovers, of both kinds — staging left by an
 interrupted claimant and retired directories left by a release that renamed but did not
-delete — under one shared budget, so later holders finish whatever one holder leaves. A lease directory that already exists, even one without an
+delete — under one shared budget, so later holders finish whatever one holder leaves. An update whose aborted probe reports a process group it could not confirm gone
+(the typed update error's `cleanupProcessGroupId` detail) does not simply release its
+lease. Elwood observes that group for up to one additional second without signaling
+it; a group that exits within the window is not retained. A group still live is
+recorded on the lease as its only holder, so the lease outlives the parent process:
+contenders skip their update immediately with the `update_active` warning and a
+message saying another updater's process group has not exited, rather than waiting
+or starting a competing installer. Recovery removes this guard only after confirming
+every recorded group has exited; elapsed time or the parent's death alone is
+insufficient, and once the groups are gone the lease is recoverable whatever its age.
+If the group record cannot be written, the owner process keeps the obligation itself:
+it retries the record on an unreferenced timer and releases the lease as soon as the
+groups have exited, so a failed write never holds exclusion for the owner's lifetime.
+A lease directory that already exists, even one without an
 owner record, is a wait condition: it is recovered as stale rather than claimed
 over. An unreadable owner record still fails safe: it may belong
 to a live updater writing a record format this version cannot read, so it is never
@@ -122,7 +135,25 @@ failure.
 Each probe is bounded so a broken or hostile CLI on PATH cannot hang or flood
 the host: a probe that does not exit within a default timeout (15 seconds) or
 whose captured output exceeds a per-stream byte cap (1,000,000 bytes) is
-killed, and its captured output is truncated to the cap. Truncation happens on
+killed, and its captured output is truncated to the cap. Abort cleanup has an
+additional one-second bound: an aborted probe retries process-group termination,
+falls back to terminating the direct child once group signals have kept failing,
+and awaits exit within that window. A process-group id is signaled only while the
+probe's direct child (the group leader) is still unreaped, because only then is
+the number guaranteed not to have been reissued to an unrelated group; afterwards
+Elwood only observes the group until it exits and never signals the bare number.
+Cleanup that is confirmed within the window reports no cleanup error; the group is
+observed once more when the window ends, and the window is measured on a monotonic
+clock. Unconfirmed cleanup adds two details to the probe's typed error: the
+allowlisted `cleanupErrorCode`, and `cleanupProcessGroupId`, which is diagnostic
+only — the id may already have been reissued to an unrelated group, so a consumer
+must never signal it. Every
+unresolved aborted probe, including version
+and capability probes, remains owned by an asynchronous reaper while the parent
+is alive. Retries use an unreferenced timer, do not prolong host shutdown, and
+stop signaling after a successful group kill; ownership ends when the group is
+confirmed gone. A retained reaper holds process-liveness state only; the probe's
+captured output is released once its result is delivered. Truncation happens on
 a UTF-8 code-point boundary — an incomplete trailing sequence is dropped — so
 the decoded output re-encodes to at most the cap rather than growing via a
 replacement character. This applies to every

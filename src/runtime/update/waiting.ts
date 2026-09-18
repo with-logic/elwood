@@ -12,7 +12,7 @@ export async function waitForOwner(
   pollMs: number,
   staleMs: number,
   waitUntilMs: number,
-): Promise<"released" | "stale_removed" | "wait_expired"> {
+): Promise<"released" | "stale_removed" | "wait_expired" | "cleanup_pending"> {
   for (;;) {
     if (performance.now() >= waitUntilMs) return "wait_expired";
     let lease: Awaited<ReturnType<typeof stat>>;
@@ -22,7 +22,17 @@ export async function waitForOwner(
       if (await restoreRecovery(path)) continue;
       return "released";
     }
-    if (Date.now() - lease.mtimeMs >= staleMs) {
+    const current = await readOwner(path);
+    // Presence of the record only, not proof that any of those groups still runs; the
+    // liveness question is asked separately below.
+    const hasRecordedProcessGroups = current?.ownedProcessGroupIds !== undefined;
+    // A lease held by a surviving updater group is not worth waiting out: those groups may
+    // outlive any bound this contender could set, so it says so and moves on.
+    if (hasRecordedProcessGroups && current !== undefined && leaseIsAlive(current))
+      return "cleanup_pending";
+    // Groups, unlike a parent process, are confirmed gone rather than merely quiet, so a
+    // lease whose every group has exited is dead whatever its age says.
+    if (hasRecordedProcessGroups || Date.now() - lease.mtimeMs >= staleMs) {
       const recovered = await recoverStaleLease(path);
       if (recovered === "removed") return "stale_removed";
       if (recovered === "unrecoverable") return "released";

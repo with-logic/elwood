@@ -29,6 +29,18 @@ export type UpdateFailedWarning = Omit<AgentUpdateFailedWarning, "elwoodSessionI
 const maxStderr = 2_000;
 
 /**
+ * Reasons an update was skipped rather than attempted, and how each reads to a user. A
+ * skipped update carries no errno or updater stderr, because no local updater ran. Both
+ * reach the consumer as `errorCode: "update_active"` and differ only in timing:
+ * `active_owner` follows the full 60-second contention wait, while `cleanup_pending` is
+ * immediate, because a surviving updater group may outlive any bound worth waiting out.
+ */
+const skippedUpdates: ReadonlyMap<unknown, string> = new Map([
+  ["active_owner", "another updater is still active"],
+  ["cleanup_pending", "another updater's process group has not exited"],
+]);
+
+/**
  * Build the warning from the contained update error. `installedVersion` is the parsed version the
  * session will actually run (the preflight re-read it after the failed update). `errorCode` is the
  * update probe's allowlisted `errno` (e.g. `ETIMEDOUT`) when present, else a generic token.
@@ -47,17 +59,18 @@ export function buildUpdateWarning(
   const details = error instanceof ElwoodError ? error.details : {};
   const errno = typeof details["errno"] === "string" ? details["errno"] : undefined;
   const stderr = typeof details["stderr"] === "string" ? details["stderr"] : "";
-  const activeOwner = details["updateReason"] === "active_owner";
+  const skipped = skippedUpdates.get(details["updateReason"]);
   return {
     agent,
     source: "lifecycle",
     code: "agent_update_failed",
     severity: "warning",
-    message: activeOwner
-      ? `\`${agent} update\` skipped: another updater is still active; continuing with the installed CLI ${installedVersion}.`
-      : `\`${agent} update\` failed; continuing with the installed CLI ${installedVersion}.`,
+    message:
+      skipped === undefined
+        ? `\`${agent} update\` failed; continuing with the installed CLI ${installedVersion}.`
+        : `\`${agent} update\` skipped: ${skipped}; continuing with the installed CLI ${installedVersion}.`,
     installedVersion,
-    errorCode: activeOwner ? "update_active" : (errno ?? "update_failed"),
+    errorCode: skipped === undefined ? (errno ?? "update_failed") : "update_active",
     raw: stderr.slice(0, maxStderr),
   };
 }
