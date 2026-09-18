@@ -11,10 +11,10 @@ export async function waitForOwner(
   path: string,
   pollMs: number,
   staleMs: number,
-  deadlineAtMs: number,
+  waitUntilMs: number,
 ): Promise<"released" | "stale_removed" | "wait_expired"> {
   for (;;) {
-    if (Date.now() >= deadlineAtMs) return "wait_expired";
+    if (performance.now() >= waitUntilMs) return "wait_expired";
     let lease: Awaited<ReturnType<typeof stat>>;
     try {
       lease = await stat(path);

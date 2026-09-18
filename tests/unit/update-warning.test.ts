@@ -5,16 +5,16 @@
 
 import { describe, expect, test } from "vitest";
 import { elwoodError } from "../../src/core/errors.ts";
-import { updateFailedWarning } from "../../src/core/warnings/update.ts";
+import { buildUpdateWarning } from "../../src/core/warnings/update.ts";
 import { dedupeInFlight } from "../../src/runtime/update/once.ts";
 
-describe("updateFailedWarning", () => {
+describe("buildUpdateWarning", () => {
   test("carries the installed version, errno, and bounded stderr from an ElwoodError", () => {
     const error = elwoodError("claude_update_failed", "`claude update` failed.", {
       stderr: "boom",
       errno: "ETIMEDOUT",
     });
-    expect(updateFailedWarning("claude", "2.1.223", error)).toEqual({
+    expect(buildUpdateWarning("claude", "2.1.223", error)).toEqual({
       agent: "claude",
       source: "lifecycle",
       code: "agent_update_failed",
@@ -27,7 +27,7 @@ describe("updateFailedWarning", () => {
   });
 
   test("falls back to a generic error code and empty stderr for a non-ElwoodError / no details", () => {
-    const warning = updateFailedWarning("codex", "0.132.0", new Error("plain failure"));
+    const warning = buildUpdateWarning("codex", "0.132.0", new Error("plain failure"));
     expect(warning.errorCode).toBe("update_failed"); // no allowlisted errno available
     expect(warning.raw).toBe(""); // no stderr to surface
     expect(warning.installedVersion).toBe("0.132.0");
@@ -35,7 +35,7 @@ describe("updateFailedWarning", () => {
 
   test("truncates an oversized stderr to keep the warning payload bounded", () => {
     const error = elwoodError("claude_update_failed", "failed", { stderr: "x".repeat(5000) });
-    const warning = updateFailedWarning("claude", "2.1.223", error);
+    const warning = buildUpdateWarning("claude", "2.1.223", error);
     expect(warning.raw.length).toBeLessThanOrEqual(2000); // the 2 KB `maxStderr` cap
   });
 });
@@ -64,8 +64,8 @@ describe("dedupeInFlight identity-guarded eviction", () => {
   });
 });
 
-test("C-LIFE-11 contention reports a skipped active updater rather than a failed local command", () => {
-  const warning = updateFailedWarning(
+test("C-PERF-04 contention reports a skipped active updater rather than a failed local command", () => {
+  const warning = buildUpdateWarning(
     "codex",
     "0.154.0",
     elwoodError("codex_update_failed", "internal", { updateReason: "active_owner" }),

@@ -39,7 +39,7 @@ const maxStderr = 2_000;
  * diagnostics — there is no errno or updater stderr to report, and retrying is the caller's
  * next startup, not something to drive off this warning.
  */
-export function updateFailedWarning(
+export function buildUpdateWarning(
   agent: ElwoodAgentKind,
   installedVersion: string,
   error: unknown,

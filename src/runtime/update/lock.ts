@@ -59,7 +59,9 @@ export async function coordinatedAutoupdate(
   const path = updateLockPath(adapter, root);
   const pollMs = options.pollMs ?? defaultPollMs;
   const staleMs = options.staleMs ?? defaultStaleMs;
-  const deadlineAtMs = Date.now() + (options.waitMs ?? defaultWaitMs);
+  // Monotonic: the wait is a promised bound, so a backward system-clock adjustment must
+  // not extend it. `mtime` staleness below stays on the wall clock, which is what it is.
+  const waitUntilMs = performance.now() + (options.waitMs ?? defaultWaitMs);
   await mkdir(root, { recursive: true, mode: 0o700 });
   await chmod(root, 0o700);
   const owner = { pid: process.pid, token: randomUUID() } satisfies LeaseOwner;
@@ -74,7 +76,7 @@ export async function coordinatedAutoupdate(
     // would then treat its own later claim as the first attempt and run a duplicate
     // update (PRD §9.2: a contender skips its duplicate attempt).
     observedActive = true;
-    const waited = await waitForOwner(path, pollMs, staleMs, deadlineAtMs);
+    const waited = await waitForOwner(path, pollMs, staleMs, waitUntilMs);
     if (waited === "released") return;
     if (waited === "wait_expired") {
       throw elwoodError(`${adapter}_update_failed`, "Another updater has not finished.", {

@@ -6,7 +6,7 @@
 import { elwoodError, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
-import { type DistributiveOmit, updateFailedWarning } from "../core/warnings/update.ts";
+import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
 import { cachedAutoupdate, cachedVersionRead } from "../runtime/update/once.ts";
@@ -59,9 +59,7 @@ export async function preflightClaude(
   }
   // Installed CLI is compatible: a failed best-effort update is a warning (naming the installed
   // version that will be used), not a start failure.
-  return updateError === undefined
-    ? undefined
-    : updateFailedWarning("claude", version, updateError);
+  return updateError === undefined ? undefined : buildUpdateWarning("claude", version, updateError);
 }
 
 async function runClaudeUpdate(): Promise<void> {
