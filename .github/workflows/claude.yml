@@ -1,8 +1,12 @@
 name: AI Review
 
 on:
+  # No `branches:` filter. GitHub applies that filter BEFORE the job runs, so it would
+  # drop the event for a stacked PR (base = a not-yet-merged parent) and the runtime
+  # eligibility check would never see it — the PR would get no automatic review at all.
+  # The repository boundary is enforced in `policy.mjs eligible`, which requires both
+  # head and base to be in this repository.
   pull_request:
-    branches: [main]
     types: [opened, ready_for_review]
   issue_comment:
     types: [created]

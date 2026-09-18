@@ -5,7 +5,9 @@ open, ready, same-repository PRs authored by current writers or GitHub's
 Dependabot bot. A PR is eligible whether it targets `main` or another branch in
 the same repository, so that a stacked PR — one based on a not-yet-merged parent
 branch — is reviewed rather than silently skipped. The base must be a branch in
-the same repository; eligibility never depends on the base being `main`.
+the same repository; eligibility never depends on the base being `main`, and the
+automatic trigger does not filter by base branch either, since a trigger-level
+filter would discard the event before eligibility is evaluated.
 
 A PR receives one automatic review when opened ready, or when first marked
 ready. Once an automated report exists, later PR events do not repeat it.
