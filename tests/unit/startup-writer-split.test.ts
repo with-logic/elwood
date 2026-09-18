@@ -23,7 +23,7 @@ test("C-CLAUDE-16 the browser-tools decline goes to the automation writer, not t
     () => browserPrompt,
     (input) => void automationWrites.push(input),
   );
-  expect(automationWrites).toEqual([""]);
+  expect(automationWrites).toEqual(["\u001b"]);
   expect(trustWrites).toEqual([]);
 });
 

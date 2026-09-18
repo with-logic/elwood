@@ -28,6 +28,12 @@ back each entry are listed in `prd/14-conformance.md`.
   with `session_not_running` as soon as its own session closes, instead of staying
   pending until the session ahead of it finishes its transaction and exit wait. A
   cancelled call never runs its switch when the lock frees.
+- Stop non-trust startup automation from writing into a trust gate that arrived while
+  the previous screen was still rendering. The Codex update skip (including its retries)
+  and the Claude browser-tools decline now observe all received PTY output and re-check
+  the settled frame before writing, the guarantee queued caller input already had. A
+  withheld write is silent and stays retryable; the trust responder is unaffected and
+  still answers trust gates itself.
 - Hold queued input on an unrecognized gate behind a recognized native header
   prefix (`Do you`, `Is this`, `Trust the`, ... — PRD §5.4 lists them): a reworded
   question with selectable options and a frame-ending native footer, and no
