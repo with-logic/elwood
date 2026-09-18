@@ -15,18 +15,33 @@ export const defaultModelTimeoutMs = 20_000;
 const pollMs = 100;
 const openNudgeDelayMs = 2_000;
 
+/**
+ * Polls until `test` passes, the deadline elapses, or `signal` aborts.
+ *
+ * `signal` is the OPERATION's budget, shared by every phase; `timeoutMs` bounds this phase.
+ * Without the signal a timed-out operation kept polling through each remaining phase's own
+ * timeout while holding the exclusive queue slot, and a match arriving after the deadline
+ * was reported as success. The abort is re-checked after `test` passes for that reason: a
+ * frame that satisfies a phase whose operation has already expired is not a result.
+ */
 export async function waitForScreen(
   terminal: ScreenTerminal,
   test: (text: string) => boolean,
   timeoutMs: number,
   label: string,
+  signal?: AbortSignal,
 ): Promise<string> {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
+    signal?.throwIfAborted();
     const text = terminal.snapshot().text;
-    if (test(text)) return text;
+    if (test(text)) {
+      signal?.throwIfAborted();
+      return text;
+    }
     await delay(pollMs);
   }
+  signal?.throwIfAborted();
   throw elwoodError("model_automation_failed", `Timed out waiting for ${label}.`);
 }
 

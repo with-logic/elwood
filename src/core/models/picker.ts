@@ -90,6 +90,7 @@ export async function listPickerModels(
     (text) => !oursOrOpen(spec)(text),
     timeoutMs,
     `${spec.agent} model picker to close`,
+    io.signal,
   );
   return parsed.options;
 }
@@ -124,6 +125,7 @@ export async function setPickerModel(
     (text) => spec.parse(text).cursorIndex === target,
     timeoutMs,
     `${spec.agent} picker cursor on "${id}"`,
+    io.signal,
   );
   await spec.apply(io, timeoutMs);
 }

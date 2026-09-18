@@ -37,6 +37,7 @@ export const codexModelPicker: ModelPickerSpec = {
       (text) => reasoningHeader.test(text),
       timeoutMs,
       "codex reasoning level screen",
+      io.signal,
     );
     await sendPickerInput(io, "\r", (text) => reasoningHeader.test(text));
     await waitForScreen(
@@ -44,6 +45,7 @@ export const codexModelPicker: ModelPickerSpec = {
       (text) => changeConfirmed.test(text) && !reasoningHeader.test(text),
       timeoutMs,
       "codex model change confirmation",
+      io.signal,
     );
   },
 };

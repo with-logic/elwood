@@ -48,6 +48,7 @@ export const claudeModelPicker: ModelPickerSpec = {
       (text) => cacheConfirmationWithCursor(text) || switchSettled(text),
       timeoutMs,
       "claude model switch confirmation or idle composer",
+      io.signal,
     );
     const confirmation = parseClaudeSwitchConfirmation(next);
     if (confirmation?.isCacheWarning === true) {
@@ -60,6 +61,7 @@ export const claudeModelPicker: ModelPickerSpec = {
         affirmativeCacheConfirmation,
         timeoutMs,
         "active Claude cache confirmation before apply",
+        io.signal,
       );
       await sendPickerInput(io, enterKey, affirmativeCacheConfirmation, true);
     }
@@ -68,6 +70,7 @@ export const claudeModelPicker: ModelPickerSpec = {
       (text) => switchSettled(text) && !claudeModelPickerHeader.test(text),
       timeoutMs,
       "claude idle composer after model switch",
+      io.signal,
     );
   },
 };

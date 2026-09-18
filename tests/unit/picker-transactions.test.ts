@@ -135,3 +135,18 @@ test.each([
   expect(attempts.count).toBe(1);
   queue.close();
 });
+
+/**
+ * A frame that satisfies a phase AFTER the operation's deadline has passed is not a result.
+ * Reads through the aborted terminal throw, but a phase polling a terminal it captured
+ * earlier (or any predicate that matches on the deadline tick) would otherwise return
+ * success from an operation that has already expired and released its slot (C-API-55).
+ */
+test("C-API-55 a screen match after the deadline is not reported as success", async () => {
+  const aborted = new AbortController();
+  const terminal = { snapshot: () => ({ text: "  Select model" }), sendInput: () => undefined };
+  aborted.abort(new Error("deadline"));
+  await expect(
+    waitForScreen(terminal, () => true, 10_000, "a matching screen", aborted.signal),
+  ).rejects.toThrow("deadline");
+});
