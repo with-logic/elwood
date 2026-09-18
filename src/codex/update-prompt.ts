@@ -74,12 +74,20 @@ const retryTimeoutMs = 5_000;
 /** `exhausted`: the retry budget ended while the safe option was still visible. */
 export type CodexUpdateSkipCompletion = StartupWriteCompletion | "exhausted";
 
-/** Retries a possibly swallowed startup hotkey only while its safe option remains visible. */
+/**
+ * Retries a possibly swallowed startup hotkey only while its safe option remains visible.
+ *
+ * `answered` means the update screen CLEARED after our key. A frame that merely stops
+ * being the update screen is not clearance: when `invalidated` recognizes it (a trust
+ * gate painted over the update screen), the skip is reported `cancelled` so no
+ * `startup_prompt` success is emitted for an update that never took (C-CODEX-12).
+ */
 export async function writeCodexUpdateSkip(
   option: string,
   write: (input: string) => TrustWriteResult,
   readFrame?: () => string,
   currentUpdateFrame: (frameText: string) => boolean = codexUpdatePromptVisible,
+  invalidated: (frameText: string) => boolean = () => false,
 ): Promise<CodexUpdateSkipCompletion> {
   if (readFrame === undefined) {
     await write(option);
@@ -89,7 +97,10 @@ export async function writeCodexUpdateSkip(
   let wrote = false;
   while (Date.now() < deadline) {
     const frame = readFrame();
-    if (!currentUpdateFrame(frame)) return wrote ? "answered" : "cancelled";
+    if (!currentUpdateFrame(frame)) {
+      const cleared = wrote && !invalidated(frame);
+      return cleared ? "answered" : "cancelled";
+    }
     const safeOption = numberedOptions(frame).find((candidate) =>
       codexUpdateOptionPattern.test(candidate.label),
     );

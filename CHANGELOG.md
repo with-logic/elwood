@@ -12,6 +12,14 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Hold queued input on an unrecognized gate behind a recognized native header
+  prefix (`Do you`, `Is this`, `Trust the`, ... — PRD §5.4 lists them): a reworded
+  question with selectable options and a frame-ending native footer, and no
+  conversation above, now blocks for a human with the attention label
+  `<agent>-unknown_gate-prompt` under every `autotrust` value and is never answered
+  automatically; previously readiness could type the queued message and Enter
+  into it. Gates outside that grammar (other leading words, other footers) are
+  still not held. Dialogs that already block keep their existing labels.
 - Bound Codex in-TUI update skipping to one attempt per appearance of the update
   screen: an exhausted retry no longer restarts on the next frame of the same
   screen, and a stale attempt's late completion cannot start an overlapping retry

@@ -34,6 +34,8 @@ export type ScreenFactRule = {
   readonly fact: ScreenFactKind;
   /** Where the patterns are evaluated; defaults to the viewport text. */
   readonly region?: ScreenFactRegion;
+  /** Evaluated only while no earlier rule has set this fact, so a specific rule keeps its label. */
+  readonly fallback?: true;
 } & ScreenFactRuleCondition;
 
 export type ScreenFactTable = {
@@ -86,7 +88,7 @@ export function readScreenFacts(table: ScreenFactTable, frame: RenderedFrame): S
   for (const rule of table.rules) {
     const region = rule.region ?? "screen";
     const target = region === "title" ? frame.title : frame.text;
-    if (!ruleMatches(rule, target)) continue;
+    if ((rule.fallback && facts[rule.fact]) || !ruleMatches(rule, target)) continue;
     facts[rule.fact] = true;
     matched.push({ id: rule.id, fact: rule.fact, region });
   }
