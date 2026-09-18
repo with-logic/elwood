@@ -3,6 +3,12 @@
  * Implements PRD §5.5 and C-CODEX-12 for both prompt automation and input blocking.
  */
 
+import type { InputTerminal } from "../core/input/abort.ts";
+import {
+  type AutomationWriteResult,
+  guardedNonTrustAutomationWrite,
+  type NonTrustAutomationWriter,
+} from "../core/startup/barrier.ts";
 import type { StartupWriteCompletion } from "../core/startup/write.ts";
 import { nonOptionText, numberedOptions } from "../core/terminal-options.ts";
 import type { TrustWriteResult } from "../core/trust/responder.ts";
@@ -71,13 +77,41 @@ function isSafeUpdateContinuation(frameText: string): boolean {
 const retryIntervalMs = 250;
 const retryTimeoutMs = 5_000;
 
+/** The Codex non-trust automation barrier, with update-option revalidation bound in. */
+export function guardedCodexAutomationWrite(
+  terminal: InputTerminal,
+  write: NonTrustAutomationWriter,
+  readFrame: () => string,
+): (input: string) => Promise<AutomationWriteResult> {
+  return guardedNonTrustAutomationWrite(terminal, write, readFrame, "codex", codexOptionStillSafe);
+}
+
+/**
+ * Revalidates an update-skip key against the SETTLED frame. The option number was read
+ * from a pre-settle frame, so a replacement or renumbered update screen can move the safe
+ * choice; sending the old number would select whatever now sits at that position. Keys
+ * that are not update-screen option numbers (other automation) are left alone.
+ */
+export function codexOptionStillSafe(frameText: string, input: string): boolean {
+  if (!/^\d+$/.test(input)) return true;
+  const options = numberedOptions(frameText);
+  // Codex can repaint the safe choices WITHOUT the banner, so requiring a full update
+  // screen here would withhold a correct key (C-CODEX-12). The question is narrower:
+  // on the settled frame, does this number still name a safe option? If the frame shows
+  // no numbered options at all it has moved on entirely, and the key is stale.
+  if (options.length === 0) return false;
+  return options.some(
+    (option) => option.number === input && codexUpdateOptionPattern.test(option.label),
+  );
+}
+
 /** `exhausted`: the retry budget ended while the safe option was still visible. */
 export type CodexUpdateSkipCompletion = StartupWriteCompletion | "exhausted";
 
 /** Retries a possibly swallowed startup hotkey only while its safe option remains visible. */
 export async function writeCodexUpdateSkip(
   option: string,
-  write: (input: string) => TrustWriteResult,
+  write: (input: string) => TrustWriteResult | Promise<AutomationWriteResult>,
   readFrame?: () => string,
   currentUpdateFrame: (frameText: string) => boolean = codexUpdatePromptVisible,
 ): Promise<CodexUpdateSkipCompletion> {
@@ -94,7 +128,11 @@ export async function writeCodexUpdateSkip(
       codexUpdateOptionPattern.test(candidate.label),
     );
     if (safeOption === undefined) return "cancelled";
-    await write(safeOption.number);
+    // A guarded writer settles rendering before the key goes out, so it may report the
+    // key WITHHELD (a trust gate, or this option number no longer the safe one on the
+    // settled frame). That is not an answer: leave the screen unanswered for a human
+    // rather than counting a key nobody sent (C-CODEX-12, C-TRUST-01).
+    if ((await write(safeOption.number)) === "withheld") return "cancelled";
     wrote = true;
     await wait(retryIntervalMs);
   }

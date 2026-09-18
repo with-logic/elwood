@@ -16,13 +16,17 @@ const updateScreen = "Update available! 0.148.0 -> 0.149.1\n› 1. Update now\n 
 /** An allowlisted Codex trust gate: recognized on `main`, so it holds without this PR. */
 const trustGate =
   "Do you trust the contents of this directory?\n\n› 1. Yes, continue\n  2. No, quit\n\n  Press enter to continue";
-const cleared = (frame: string) => `[2J[H${frame.replaceAll("\n", "\r\n")}`;
+const cleared = (frame: string) => `\u001b[2J\u001b[H${frame.replaceAll("\n", "\r\n")}`;
 
 test("C-API-56 an update skip is withheld when a trust gate arrives mid-write", async () => {
   installFakes();
   // autotrust off: the gate is human-owned, so nothing may answer it.
   const session = await startCodex({ cwd: tempDir(), autotrust: false });
   const pty = ptys.at(-1)!;
+  const startupPrompts: string[] = [];
+  session.on("activity", (event) => {
+    if ("prompt" in event) startupPrompts.push(String(event.prompt));
+  });
   // The race: the update screen RENDERED (so automation decided to skip), and the gate's
   // bytes arrive in that same turn — received, not yet observed — while the skip key is
   // still in flight. Without the barrier the key lands in the gate.
@@ -36,9 +40,13 @@ test("C-API-56 an update skip is withheld when a trust gate arrives mid-write", 
     pty.emitData(cleared(updateScreen));
     await vi.waitFor(() => expect(session.terminal.snapshot().text).toContain("No, quit"));
     await vi.waitFor(() => expect(session.status).toBe("blocked"), { timeout: 5_000 });
-    // Give the update-skip retry loop a full window to misfire into the gate.
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    expect(pty.writes).toEqual([]); // no "2" reached the gate
+    // Outlast BOTH bounds a late write could hide behind: the 1 s observation budget
+    // and the 5 s update-skip retry window, so a delayed key cannot pass as absent.
+    await new Promise((resolve) => setTimeout(resolve, 6_000));
+    expect(pty.writes).toEqual([]); // no "2" reached the gate, then or later
+    // A key nobody sent must not be reported as an answered prompt.
+    expect(startupPrompts).toEqual([]);
+    expect(session.status).toBe("blocked"); // still the human's to answer
   } finally {
     await session.teardown();
   }

@@ -9,36 +9,49 @@
  * therefore observes everything received, fails closed when it cannot, and only then
  * re-checks the settled frame.
  *
- * Scope is deliberate: this guards `writeAutomation`, never the trust writer. Answering
- * a trust gate is `TrustPromptResponder`'s own job, so vetoing it here would block the
- * one writer that is supposed to act on such a frame.
+ * Scope is deliberate: this guards the NON-TRUST writer, never the trust writer.
+ * Answering a trust gate is `TrustPromptResponder`'s own job, so vetoing it here would
+ * block the one writer that is supposed to act on such a frame.
+ *
+ * Withholding is REPORTED, not silent. The settled frame is the first trustworthy view
+ * of the screen, so a caller that decided from the pre-settle frame must be able to
+ * learn its key never went out — otherwise it latches the prompt as handled and emits
+ * success telemetry for a key nobody sent.
  */
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { type InputTerminal, writeUnsafe } from "../input/abort.ts";
 import { trustView } from "../trust/view.ts";
 
-/** What an automation write returns: adapters await it, void writers settle immediately. */
-export type AutomationWrite = (input: string) => void | Promise<void>;
+/** What a non-trust automation write returns; void writers settle immediately. */
+export type NonTrustAutomationWriter = (input: string) => void | Promise<void>;
+
+/** `withheld`: nothing reached the PTY, and the prompt stays answerable on a later frame. */
+export type AutomationWriteResult = "written" | "withheld";
 
 /**
  * Wrap the NON-TRUST automation writer: observe all received output, then withhold the
- * key if the freshly settled frame shows a trust gate. Withholding is silent and safe —
- * the prompt stays answerable on a later frame — so it is not a write failure and emits
- * neither a `startup_prompt` activity nor a warning.
+ * key if the settled frame shows a trust gate or the caller's own `stillValid` check no
+ * longer holds. `stillValid` runs AFTER settlement, so a caller whose key encodes screen
+ * state (an option number, a latched prompt) can revalidate it against the frame that is
+ * actually on screen rather than the one it decided from.
  */
-export function guardedAutomationWrite(
+export function guardedNonTrustAutomationWrite(
   terminal: InputTerminal,
-  write: AutomationWrite,
+  write: NonTrustAutomationWriter,
   readFrame: () => string,
   agent: ElwoodAgentKind,
-): (input: string) => Promise<void> {
+  stillValid: (frameText: string, input: string) => boolean = () => true,
+): (input: string) => Promise<AutomationWriteResult> {
   return async (input) => {
     // `writeUnsafe` awaits `terminal.settled()`, so the frame read next reflects every
     // byte received before this write was requested. It fails closed when observation
     // exceeds its budget or a render has failed (C-API-56).
-    if (await writeUnsafe(terminal)) return;
-    if (trustView(readFrame(), agent).kind === "candidate") return;
+    if (await writeUnsafe(terminal)) return "withheld";
+    const frame = readFrame();
+    if (trustView(frame, agent).kind === "candidate") return "withheld";
+    if (!stillValid(frame, input)) return "withheld";
     await write(input);
+    return "written";
   };
 }

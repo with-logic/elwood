@@ -17,12 +17,16 @@ const browserPrompt =
 /** An allowlisted Claude trust gate: recognized on `main`, so it holds without this PR. */
 const trustGate =
   "Do you trust this folder?\n\n❯ 1. Yes, proceed\n  2. No, exit\n\nEnter to confirm · Esc to cancel";
-const cleared = (frame: string) => `[2J[H${frame.replaceAll("\n", "\r\n")}`;
+const cleared = (frame: string) => `\u001b[2J\u001b[H${frame.replaceAll("\n", "\r\n")}`;
 
 test("C-API-56 a browser-tools decline is withheld when a trust gate arrives mid-write", async () => {
   installFakes();
   const session = await startClaude({ cwd: tempDir(), autotrust: false });
   const pty = ptys.at(-1)!;
+  const startupPrompts: string[] = [];
+  session.on("activity", (event) => {
+    if ("prompt" in event) startupPrompts.push(String(event.prompt));
+  });
   let painted = false;
   session.on("terminal:data", () => {
     if (painted || !session.terminal.snapshot().text.includes("keep browser tools off")) return;
@@ -33,8 +37,12 @@ test("C-API-56 a browser-tools decline is withheld when a trust gate arrives mid
     pty.emitData(cleared(browserPrompt));
     await vi.waitFor(() => expect(session.terminal.snapshot().text).toContain("No, exit"));
     await vi.waitFor(() => expect(session.status).toBe("blocked"), { timeout: 5_000 });
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    expect(pty.writes).toEqual([]); // no Escape reached the gate
+    // Outlast the 1 s observation budget so a delayed Escape cannot pass as absent.
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    expect(pty.writes).toEqual([]); // no Escape reached the gate, then or later
+    // A key nobody sent must not be reported as an answered prompt.
+    expect(startupPrompts).toEqual([]);
+    expect(session.status).toBe("blocked");
   } finally {
     await session.teardown();
   }

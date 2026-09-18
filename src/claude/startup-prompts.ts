@@ -5,7 +5,8 @@
  * C-CLAUDE-14, and C-CLAUDE-16.
  */
 
-import type { SettledStartupOutcome } from "../core/startup/write.ts";
+import type { AutomationWriteResult } from "../core/startup/barrier.ts";
+import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/startup/write.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 
 // The prompt's documented decline keystroke (ESC).
@@ -43,7 +44,7 @@ export class ClaudeStartupPromptResponder {
     screenText: string,
     write: (input: string) => TrustWriteResult,
     readFrame?: () => string,
-    writeAutomation: (input: string) => TrustWriteResult = write,
+    writeAutomation: (input: string) => TrustWriteResult | Promise<AutomationWriteResult> = write,
   ): readonly SettledStartupOutcome<"claude">[] {
     const settled: SettledStartupOutcome<"claude">[] = [];
     const trust = this.trust.handle(screenText, write, readFrame);
@@ -58,10 +59,19 @@ export class ClaudeStartupPromptResponder {
       // OPTIMISTICALLY, but keep the decline retryable if the write is rejected
       // so a later frame re-attempts it rather than reporting a false "answered".
       this.browserDeclined = true;
-      const writeSettled = Promise.resolve(writeAutomation(declineKey)).catch((error: unknown) => {
-        this.browserDeclined = false;
-        throw error;
-      });
+      // A WITHHELD write never reached the PTY (a trust gate was on the settled frame),
+      // so the decline must not claim success: un-latch it and settle as `cancelled`,
+      // which emits no `startup_prompt` activity and leaves a later frame to retry.
+      const writeSettled = Promise.resolve(writeAutomation(declineKey))
+        .then((result): StartupWriteCompletion => {
+          if (result !== "withheld") return "answered";
+          this.browserDeclined = false;
+          return "cancelled";
+        })
+        .catch((error: unknown) => {
+          this.browserDeclined = false;
+          throw error;
+        });
       settled.push({
         outcome: { kind: "attempted", prompt: "browser_tools", input: "esc" },
         settled: writeSettled,
