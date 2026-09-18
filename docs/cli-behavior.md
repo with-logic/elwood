@@ -486,6 +486,11 @@ Two version-coupled wrinkles this cost us:
   post-settlement broke the banner-less repaint; requiring the captured option set
   to be preserved broke `3. Skip until next version`, whose numbers the banner
   frame never showed). C-CODEX-22, issue #50.
+  Measured through a real PTY and the real emulator
+  (`tests/e2e/update-skip-evidence.e2e.ts`), the unguarded retry loop wrote the
+  digit **twelve times** into the unrelated prompt over a four-second window — the
+  key is not sent once and dropped, it is hammered for the whole retry budget, so
+  an unrelated prompt would have been driven through several of its own options.
 - Option labels drift by version. Older codex (0.132/0.133) rendered a numbered
   dialog ("1. Update now / 2. Skip / 3. Skip until next version"). In the installed
   0.149.1 binary, the upgrade notice strings extracted from the native binary read
