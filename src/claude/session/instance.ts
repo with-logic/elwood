@@ -176,7 +176,7 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   login(options: ClaudeLoginOptions): Promise<void> {
     const onReady = (handler: () => void) =>
       this.emitter.on("status", (e) => e.status === "ready" && handler());
-    const blocked = () => this.status === "blocked";
+    const blocked = () => this.isInputBlocked();
     const deps = { controlQueue: this.controlQueue, terminal: this.terminal, blocked, onReady };
     return this.inSession(() => runSessionLogin(deps, options));
   }

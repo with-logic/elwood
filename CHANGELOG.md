@@ -38,6 +38,16 @@ back each entry are listed in `prd/14-conformance.md`.
   session was still `starting`. Such a session already became `blocked`, but
   without the human-decision event, so a headless `elwood` run never reported
   `blocked_prompt`.
+- A failed `listModels`/`setModel` now cancels the model dialog it left open
+  before releasing queued input, and holds queued messages, commands, and `/login`
+  while a dialog it could not cancel stays visible. Picker text quoted in a reply
+  is never cancelled, so cleanup cannot interrupt a running turn.
+- `setModel` no longer resolves on the partially painted frame that precedes
+  Claude's cache warning (it reported success without confirming the switch), and
+  queued input stays held while a Claude switch dialog is still painting.
+- Model-picker cleanup also covers a dialog that paints up to a second after the
+  failure (a late picker, Codex's reasoning level, Claude's cache warning). A model
+  operation now rejects without writing when model picker text is already visible.
 - Snapshot image bytes and relative paths when facade methods are called, including
   turns queued behind another response or waiting for session startup. Facade copies
   count against the same 200 MiB per-session ceiling as sends on the raw `session`.

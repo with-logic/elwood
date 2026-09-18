@@ -5,10 +5,15 @@
 
 import { sendPickerInput } from "../core/models/input.ts";
 import type { ModelPickerSpec } from "../core/models/picker.ts";
-import { claudeModelPickerHeader, parseClaudeModelPicker } from "../core/models/rows.ts";
+import {
+  bottomDialogRow,
+  claudeModelPickerHeader,
+  parseClaudeModelPicker,
+} from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
 import {
   isClaudeIdleComposer,
+  isClaudeSwitchShell,
   parseClaudeSwitchConfirmation,
 } from "./model-switch-confirmation.ts";
 
@@ -19,6 +24,13 @@ const arrowUp = "\u001b[A";
 export const claudeModelPicker: ModelPickerSpec = {
   agent: "claude",
   isOpen: (text) => claudeModelPickerHeader.test(text),
+  // A PreModelSwitch hook confirmation shares the warning's shell but is the caller's.
+  activeDialog: (text) => {
+    const confirmation = parseClaudeSwitchConfirmation(text);
+    if (confirmation !== undefined) return confirmation.isCacheWarning ? "follow-up" : undefined;
+    if (isClaudeSwitchShell(text)) return "painting";
+    return bottomDialogRow(text, claudeModelPickerHeader) < 0 ? undefined : "picker";
+  },
   parse: parseClaudeModelPicker,
   // "s" applies for this session only. Enter or a number key would save the
   // selection as the user's default for new sessions, which §4.5 forbids.
@@ -26,7 +38,7 @@ export const claudeModelPicker: ModelPickerSpec = {
     await sendPickerInput(io, "s", (text) => claudeModelPickerHeader.test(text));
     const next = await waitForScreen(
       io.terminal,
-      (text) => cacheConfirmationWithCursor(text) || isClaudeIdleComposer(text),
+      (text) => cacheConfirmationWithCursor(text) || switchSettled(text),
       timeoutMs,
       "claude model switch confirmation or idle composer",
     );
@@ -46,15 +58,17 @@ export const claudeModelPicker: ModelPickerSpec = {
     }
     await waitForScreen(
       io.terminal,
-      (text) =>
-        isClaudeIdleComposer(text) &&
-        parseClaudeSwitchConfirmation(text) === undefined &&
-        !claudeModelPickerHeader.test(text),
+      (text) => switchSettled(text) && !claudeModelPickerHeader.test(text),
       timeoutMs,
       "claude idle composer after model switch",
     );
   },
 };
+
+/** The idle composer with no switch dialog on screen, complete or still painting. */
+function switchSettled(text: string): boolean {
+  return isClaudeIdleComposer(text) && !isClaudeSwitchShell(text);
+}
 
 function cacheConfirmationWithCursor(text: string): boolean {
   const confirmation = parseClaudeSwitchConfirmation(text);

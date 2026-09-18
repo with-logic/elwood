@@ -142,6 +142,44 @@ legacy string/`agent_message` support. C-CODEX-16.
   visible catalog; every returned row correctly had `isCurrent: false`.
   Real picker tests should let the installed CLI choose its launch default,
   rather than pinning a model that can disappear from the catalog.
+- **A model dialog replaces the composer; nothing renders below it.** Full-viewport
+  captures from Claude 2.1.274 and Codex 0.154.0 (2026-09-17,
+  `tests/helpers/model-dialog-viewports.ts`) show the picker, Codex's reasoning
+  level, and Claude's cache warning each ending the viewport, while the closed
+  state puts the composer back (`❯` between rules; `› Ask Codex to do anything`).
+  Rows ABOVE the dialog are ordinary transcript: Claude keeps `❯ /model` and reply
+  rows (`⏺` on 2.1.274, `●` earlier) there, so provenance is "no conversation or
+  composer row BELOW the header", never "none above". Picker text quoted in a reply
+  always has the working row and composer beneath it, so it is not a live dialog
+  and must never receive an Escape, which would interrupt the running turn. Claude
+  2.1.274's picker also carries an effort row (`◉ xHigh effort ←/→ to adjust`)
+  between its rows and footer. A closed Claude picker leaves only `❯ /model` /
+  `⎿ Kept model as …` behind, no header. Two more things are never a dialog: the
+  phrase on a reply or composer row itself (`❯ Select model` is staged input), and
+  a quoted picker above another dialog. Picker rows carry a description column, so
+  a caret row without one (`❯ 1. Yes`, a numbered composer line) marks the region
+  below the quote as someone else's.
+- **Escape on a follow-up stage returns to the picker, not the composer.** On both
+  Claude 2.1.274 (cache warning) and Codex 0.154.0 (reasoning level) one Escape
+  reopens `Select model` / `Select Model and Effort`; a second closes it. Failure
+  cleanup therefore sends one Escape per stage and never repeats one: a second
+  Escape during a slow repaint would land on the composer. C-API-55.
+- **Claude paints its cache warning over the picker, with one partial frame.** A
+  5 ms frame capture on Claude 2.1.274 (2026-09-17) shows no idle composer between
+  the `s` key and the warning: 28 ms after the key one frame has `Switch model?`
+  and the cache copy above STALE picker rows (`❯ 1. Fable …`), with neither
+  `Select model` nor the Yes/No options; 7 ms later the dialog is complete
+  (numbered, cursor on `1. Yes, switch to …`). In that frame the title-only shell
+  cannot be told from a `PreModelSwitch` hook confirmation, so Elwood holds input on
+  it and never writes to it, and `setModel` does not treat a caret-only row
+  elsewhere in the viewport (a reply quoting the prompt) as the returned composer
+  while the shell is up. Before this, `setModel` resolved on that frame without
+  ever confirming the switch. C-API-24, C-API-55.
+- **Picker text visible before `/model` is submitted is not Elwood's.** A closed
+  picker leaves no header behind, so `Select model` / `Select Model and Effort` /
+  `Select Reasoning Level` text that precedes the command is a human's dialog or a
+  transcript quote (which the unanchored open check would otherwise parse and
+  drive). The operation rejects without writing. C-API-55.
 - **Codex persists `/model` picker selections into the user `config.toml`.**
   `setModel` restores the prior default via compare-and-swap after switching
   (C-CODEX-14), skipping with a `codex_default_model_persisted` warning on a

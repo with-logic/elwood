@@ -3,6 +3,8 @@
  * Implements PRD §5.3, C-API-24, and C-ATTN-04.
  */
 
+import { bottomDialogRow } from "../core/models/rows.ts";
+
 type SwitchOption = {
   readonly affirmative: boolean;
   readonly selected: boolean;
@@ -42,6 +44,17 @@ export function parseClaudeSwitchConfirmation(text: string): ClaudeSwitchConfirm
 /** True for built-in and hook-requested model/effort switch confirmations. */
 export function isClaudeSwitchConfirmation(text: string): boolean {
   return parseClaudeSwitchConfirmation(text) !== undefined;
+}
+
+/**
+ * A switch title opening the bottom-most region, even before its copy and options
+ * paint. Claude 2.1.274 renders one such frame between the picker and the warning.
+ * It cannot yet be told from a hook confirmation, so it is held on and never answered.
+ */
+export function isClaudeSwitchShell(text: string): boolean {
+  return (
+    bottomDialogRow(text, /^\s*(?:Switch model|Change effort level)\?\s*$/, optionPattern) >= 0
+  );
 }
 
 /** The idle Claude composer, excluding dialog action rows with a caret. */
