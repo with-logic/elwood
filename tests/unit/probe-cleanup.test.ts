@@ -71,6 +71,30 @@ test("C-PERF-03 a group that exits during the final wait is confirmed, not repor
 // fallback latches `signalCode` at the group-only threshold, and `leaderReaped` then
 // short-circuits every later `reap` before it can signal. This asserts the outcome the
 // deadline check also guarantees, so it passes with or without that check.
+test("C-PERF-03 a successfully signaled group is never signaled twice", async () => {
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true });
+  // The group stays live after a "successful" kill, so a reaper that failed to latch would
+  // signal it again on the next retained tick — and by then the id may name someone else.
+  const groupKills: number[] = [];
+  vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+    if (signal === "SIGKILL" && pid < 0) groupKills.push(pid);
+    return true;
+  });
+  try {
+    expect(await abortProbe(child)).toMatchObject({ cleanupProcessGroupId: child.pid });
+    const afterWindow = groupKills.length;
+    expect(afterWindow).toBe(1);
+    // A retained reaper keeps polling; the latch is what stops it signaling again.
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    expect(groupKills.length).toBe(afterWindow);
+  } finally {
+    vi.restoreAllMocks();
+    try {
+      kill(-child.pid!, "SIGKILL");
+    } catch {}
+  }
+});
+
 test("C-PERF-03 nothing is signaled after the cleanup deadline, even a still-live group", async () => {
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true });
   const started = performance.now();
@@ -78,11 +102,19 @@ test("C-PERF-03 nothing is signaled after the cleanup deadline, even a still-liv
   // what keeps `reap` willing to signal again: a kill that succeeds latches `signaled` and
   // would never retry, so a mock that lets the first one through cannot observe a late one.
   const late: (string | number)[] = [];
+  const record = (signal: NodeJS.Signals | number | undefined | string) => {
+    if (performance.now() - started >= 1_000 && signal !== 0) late.push(signal ?? "default");
+  };
   vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
-    const afterDeadline = performance.now() - started >= 1_000;
-    if (afterDeadline && signal !== 0) late.push(signal ?? "default");
+    record(signal);
     if (signal === 0) return true; // observation: the group is always live here
     if (pid < 0) throw Object.assign(new Error("denied"), { code: "EPERM" });
+    return true;
+  });
+  // The direct-child fallback goes through the handle, not `process.kill`, so it has to be
+  // recorded separately or a late child signal would not be seen at all.
+  vi.spyOn(child, "kill").mockImplementation((signal) => {
+    record(signal);
     return true;
   });
   try {
