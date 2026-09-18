@@ -467,6 +467,25 @@ Two version-coupled wrinkles this cost us:
   same blocking prompt. A definite non-update frame clears it. Matching the
   accumulated buffer alone lets benign later prose re-fire against a **stale
   buffered option** — a real bug we hit while building this. C-CODEX-12.
+- The split is not symmetric, and that asymmetry is what makes the continuation
+  safely identifiable. Measured on the real split, the banner frame carries
+  **only** `1. Update now` — `bannerFrameOptions: ["0:1", "0:1", "1:Update now"],
+  hasOption2: false` — and the safe option arrives on a LATER frame from the
+  accumulated buffer, renumbered relative to nothing: the continuation renders
+  `2. Skip` / `3. Skip until next version`, i.e. the numbers **continue past** the
+  banner frame's `1` rather than restarting at it. Codex drops rows that scrolled
+  off and reveals rows that had not painted, but across one appearance it never
+  **reassigns** a number to a different label. That is the only cross-frame
+  invariant available here, and it is the one the guard now uses: the appearance
+  remembers `1 -> "Update now"`, so `2. Skip` is a continuation while
+  `1. Skip backup` is proof of a different dialog. No single-frame predicate can
+  make this call — an option-only frame whose every option is skip-shaped IS the
+  update screen's own signature — which is why three separate attempts to tighten
+  the predicate each fixed a synthetic case and broke a real one (a blanket
+  trust-gate veto broke `TrustPromptResponder`; requiring a full update screen
+  post-settlement broke the banner-less repaint; requiring the captured option set
+  to be preserved broke `3. Skip until next version`, whose numbers the banner
+  frame never showed). C-CODEX-22, issue #50.
 - Option labels drift by version. Older codex (0.132/0.133) rendered a numbered
   dialog ("1. Update now / 2. Skip / 3. Skip until next version"). In the installed
   0.149.1 binary, the upgrade notice strings extracted from the native binary read

@@ -31,6 +31,24 @@ describe("CodexSessionApi message submission", () => {
     expect(ptys[0]!.writes).toContain("\u001b[200~Never update from the live TUI.\u001b[201~");
   });
 
+  test("C-CODEX-22 an all-skip-shaped unrelated prompt never receives the update-skip key", async () => {
+    const cwd = tempDir();
+    installFakes();
+    const session = await startCodex({ cwd, persona: "Never update from the live TUI." });
+    // The measured real split: the banner frame carries ONLY `1. Update now` (#50).
+    ptys[0]!.emitData("Update available! 0.151.0 -> 0.152.0\r\n  1. Update now");
+    await session.terminal.settled();
+    // An UNRELATED option-only prompt whose every option is skip-shaped. On its own frame
+    // it is shaped exactly like an update continuation; only the appearance's captured
+    // evidence (`1` was `Update now`) proves it is a different dialog.
+    ptys[0]!.emitData("[2J[H  1. Skip backup\r\n  2. Skip");
+    await session.terminal.settled();
+    await becomeReady(session.elwoodSessionId, cwd);
+    await new Promise((resolve) => setImmediate(resolve));
+    // No update-skip digit is written into a prompt Elwood never recognized.
+    expect(ptys[0]!.writes.filter((write) => /^\d+$/.test(write))).toEqual([]);
+  });
+
   test("C-API-19 first sendMessage waits for the SessionStart readiness hook", async () => {
     const cwd = tempDir();
     installFakes();

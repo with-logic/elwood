@@ -10,9 +10,13 @@ import {
   type NonTrustAutomationWriter,
 } from "../core/startup/barrier.ts";
 import type { StartupWriteCompletion } from "../core/startup/write.ts";
-import { nonOptionText, numberedOptions } from "../core/terminal-options.ts";
+import { numberedOptions } from "../core/terminal-options.ts";
 import type { TrustWriteResult } from "../core/trust/responder.ts";
 import { codexUpdateChoiceIdentity, settledFrameKeepsChoice } from "./update-identity.ts";
+import { isSafeUpdateContinuation } from "./update-tracker.ts";
+
+/** The cross-frame appearance lifecycle, re-exported so this stays the update entry point. */
+export { CodexUpdatePromptTracker } from "./update-tracker.ts";
 
 export const codexUpdateOptionPattern = /continue\s*without\s*updat|skip|not\s*now|later/i;
 /** The first-party banner; its version pair distinguishes one appearance from the next. */
@@ -30,49 +34,6 @@ export function codexUpdatePromptVisible(frameText: string): boolean {
   return (
     options.some((option) => /update\s+now/i.test(option.label)) &&
     options.some((option) => codexUpdateOptionPattern.test(option.label))
-  );
-}
-
-/** Keeps a split prompt blocking until a frame with no update evidence clears it. */
-export class CodexUpdatePromptTracker {
-  private active = false;
-  private generation = 0;
-
-  /** Identifies the current appearance; it changes whenever the update screen clears or appears. */
-  get currentGeneration(): number {
-    return this.generation;
-  }
-
-  /** True once a LATER appearance replaced `generation`; its own clear is only `generation + 1`. */
-  hasLaterAppearance(generation: number): boolean {
-    return this.generation > generation + 1;
-  }
-
-  observe(frameText: string): boolean {
-    if (codexUpdatePromptVisible(frameText)) {
-      if (!this.active) this.generation += 1;
-      this.active = true;
-    } else if (!(this.active && isSafeUpdateContinuation(frameText))) {
-      if (this.active) this.generation += 1;
-      this.active = false;
-    }
-    return this.active;
-  }
-
-  /** Captures the current prompt generation so an async retry cannot enter a later dialog. */
-  currentFramePredicate(): (frameText: string) => boolean {
-    const generation = this.generation;
-    return (frameText) =>
-      this.active &&
-      this.generation === generation &&
-      (codexUpdatePromptVisible(frameText) || isSafeUpdateContinuation(frameText));
-  }
-}
-
-function isSafeUpdateContinuation(frameText: string): boolean {
-  if (nonOptionText(frameText).trim() !== "") return false;
-  return numberedOptions(frameText).some((option) =>
-    /continue\s*without\s*updat|skip/i.test(option.label),
   );
 }
 

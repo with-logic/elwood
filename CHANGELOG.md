@@ -12,6 +12,16 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Anchor the Codex update-skip key to the first-party evidence of the update
+  appearance it was decided for. Codex splits its update screen across frames, so
+  a banner-less option-only frame used to be accepted as a continuation on shape
+  alone — which meant an unrelated prompt whose every option happened to be
+  skip-shaped (`1. Skip backup` / `2. Skip`) could receive the skip digit. Each
+  appearance now remembers its first-party marker and the label it showed for each
+  option number, and a frame that reassigns one of those numbers clears the prompt
+  instead of continuing it, leaving it unanswered for the human. The genuine split
+  (`1. Update now`, continued by `2. Skip` / `3. Skip until next version`) is still
+  skipped as before (C-CODEX-22).
 - Hold the cross-process update lease for an aborted updater's surviving process
   group. An update probe that was aborted without confirming its process group had
   exited used to release the lease anyway, so another Elwood host could start a
