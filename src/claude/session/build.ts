@@ -17,7 +17,7 @@ import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, writeSessionRecord } from "../../state/store.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
 import { type ClaudePreflightWarning, preflightEvent } from "../preflight.ts";
-import { ClaudeStartupPromptResponder } from "../startup-prompts.ts";
+import { ClaudeStartupPromptResponder, guardedClaudeAutomationWrite } from "../startup-prompts.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
 import { currentClaudeHookBridgeFactory } from "./bridge.ts";
 import { buildClaudeHookErrorHandler, buildClaudeHookHandler } from "./hook-handler.ts";
@@ -134,11 +134,10 @@ export async function buildClaudeSession(
     // The write RETURNS its `sendInput` completion (no longer swallowed): the
     // responder settles the prompt and its `startup_prompt` activity only after
     // the write fulfills, and a rejected write stays retryable + warns (C-CLAUDE-16).
-    const autos = promptResponder.handle(
-      frame.text,
-      (input) => renderedTerminal.sendInput(input),
-      () => latestRenderedText,
-    );
+    const send = (input: string) => renderedTerminal.sendInput(input);
+    const read = () => latestRenderedText;
+    const guarded = guardedClaudeAutomationWrite(renderedTerminal, send, read);
+    const autos = promptResponder.handle(frame.text, send, read, guarded);
     // Warning delivery is CONTAINED on the frame path: a throwing `warning`/`activity`
     // listener must never skip readiness, login detection, or terminal:data (§5.7).
     emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {

@@ -3,6 +3,7 @@
  * Implements PRD §4.4, §5.5, and §5.7.
  */
 
+import type { AutomationWriteResult } from "../core/startup/barrier.ts";
 import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/startup/write.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
 import { trustGateVisible } from "../core/trust/blocking.ts";
@@ -76,7 +77,7 @@ export class CodexStartupPromptResponder {
     screenText: string,
     write: (input: string) => TrustWriteResult,
     readFrame?: () => string,
-    writeAutomation: (input: string) => TrustWriteResult = write,
+    writeAutomation: (input: string) => TrustWriteResult | Promise<AutomationWriteResult> = write,
   ): CodexStartupPromptResult {
     const outcomes: SettledCodexStartupOutcome[] = [];
     this.buffer = `${this.buffer}\n${screenText}`.slice(-maxBufferLength);
@@ -126,7 +127,8 @@ export class CodexStartupPromptResponder {
         // A trust gate painted over the update screen INVALIDATES the skip: the update
         // never cleared, so it must not settle as answered (C-CODEX-12, C-TRUST-01).
         const invalidated = (frame: string) => trustGateVisible(frame, "codex");
-        // The skip is NON-TRUST automation, so it writes through `writeAutomation` (#42).
+        // The skip is NON-TRUST automation, so it writes through `writeAutomation`, which
+        // settles rendering and revalidates the captured choice identity per write (#42).
         const settled = writeCodexUpdateSkip(
           option,
           writeAutomation,
