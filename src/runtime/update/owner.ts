@@ -42,6 +42,12 @@ export function ownerIsAlive(pid: number): boolean {
  * Retires the lease atomically by renaming it away before deleting it. Removing the record
  * and then the directory would expose an ownerless lease in between, which a polling
  * contender recovers as stale and follows with a duplicate update.
+ *
+ * A rename that fails outright must still not leave this owner's lease standing: the owner
+ * is alive, so contenders would read a live pid and wait for an update that already
+ * finished — forever, on that host. The fallback removes the lease where it is instead,
+ * which briefly exposes the ownerless window for that one release. That is the lesser of
+ * the two: a duplicate update is recoverable, an update no one can ever run is not.
  */
 export async function releaseLease(path: string, owner: LeaseOwner): Promise<void> {
   const current = await readOwner(path);
@@ -51,5 +57,7 @@ export async function releaseLease(path: string, owner: LeaseOwner): Promise<voi
     () => true,
     () => false,
   );
-  if (renamed) await rm(retired, { recursive: true, force: true }).catch(() => undefined);
+  // One recursive removal either way: of the retired copy when the rename worked, or of the
+  // lease in place when it did not. Removing the directory takes the owner record with it.
+  await rm(renamed ? retired : path, { recursive: true, force: true }).catch(() => undefined);
 }

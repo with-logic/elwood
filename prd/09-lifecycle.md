@@ -97,7 +97,10 @@ before the rename leaves only its staging directory; one interrupted after it le
 a complete lease naming a dead owner, which ordinary stale recovery removes. Release is
 atomic in the same way: the owner renames its lease away and then deletes it, so a
 contender polling during release sees a whole lease or none, never an ownerless one
-it would recover as stale and follow with a duplicate update. Each lease holder removes
+it would recover as stale and follow with a duplicate update. A release that cannot rename
+at all still removes the lease where it stands rather than leaving it: its owner is alive,
+so a lease left behind would make every later updater on that host wait forever on a process
+that has already finished updating. Each lease holder removes
 a bounded number of that adapter's leftovers, of both kinds — staging left by an
 interrupted claimant and retired directories left by a release that renamed but did not
 delete — under one shared budget, so later holders finish whatever one holder leaves. A lease directory that already exists, even one without an

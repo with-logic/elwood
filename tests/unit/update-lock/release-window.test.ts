@@ -93,6 +93,29 @@ test("a release failure cannot mask update success", async () => {
   expect(updated).toBe(true);
 });
 
+// Bounded, because the regression this guards is an unbounded wait: without the fallback
+// the later update below never returns, so a timeout is the failure signal.
+test("C-PERF-04 a release that cannot retire the lease still frees later updaters", {
+  timeout: 5_000,
+}, async () => {
+  const root = tempDir("elwood-update-lock-release-stranded-");
+  release.renameDenied = true;
+  await coordinatedAutoupdate("codex", () => Promise.resolve(), { root });
+  // The owner is this live process, so a lease left standing here would make every later
+  // updater on the host wait on a pid that is alive but finished — indefinitely.
+  expect(readdirSync(root)).toEqual(["codex.completed"]);
+  let laterUpdated = false;
+  await coordinatedAutoupdate(
+    "codex",
+    () => {
+      laterUpdated = true;
+      return Promise.resolve();
+    },
+    { root, pollMs: 1, staleMs: 50 },
+  );
+  expect(laterUpdated).toBe(true);
+});
+
 test("a retired lease that cannot be deleted is swept by a later holder", async () => {
   const root = tempDir("elwood-update-lock-retired-");
   release.deleteDenied = true;
