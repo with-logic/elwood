@@ -1,7 +1,8 @@
 /**
  * The update lease's owner record: its wire format, the liveness it implies, and the
  * generation-safe write that replaces it (PRD §9.2, C-PERF-04). Process groups here are
- * real, detached, and only ever observed — never signaled.
+ * real and detached. Production liveness code only ever observes a group; the signalling
+ * below is this test disposing of the fixture group it created.
  */
 
 import { spawn } from "node:child_process";
@@ -19,7 +20,12 @@ import {
 } from "../../src/runtime/update/owner.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
-/** A real process group that outlives this call, plus the means to end it. */
+/**
+ * A real process group that outlives this call, plus the means to end it. `stop` waits for
+ * the group to actually stop being observable rather than for the child's `close` event:
+ * reaping is not instantaneous, and a transient `EPERM` counts as live by design, so
+ * polling is what production does and what this must do to avoid a macOS-only race.
+ */
 function spawnGroup(): { id: number; stop: () => Promise<void> } {
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
     detached: true,
@@ -27,14 +33,15 @@ function spawnGroup(): { id: number; stop: () => Promise<void> } {
   });
   child.unref();
   const id = child.pid as number;
-  return {
-    id,
-    stop: () =>
-      new Promise<void>((resolve) => {
-        child.on("close", () => resolve());
-        process.kill(-id, "SIGKILL");
-      }),
+  const stop = async (): Promise<void> => {
+    if (processGroupGone(id)) return;
+    process.kill(-id, "SIGKILL");
+    const deadline = Date.now() + 5_000;
+    while (!processGroupGone(id) && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    if (!processGroupGone(id)) throw new Error(`fixture process group ${id} outlived SIGKILL`);
   };
+  return { id, stop };
 }
 
 function writeRecord(path: string, contents: string): void {
@@ -60,6 +67,10 @@ test.each([
   ["a negative pid", "-1:11111111-2222-3333-4444-555555555555"],
   ["a zero group", "4321:11111111-2222-3333-4444-555555555555:0"],
   ["a group that is not a number", "4321:11111111-2222-3333-4444-555555555555:x"],
+  // `process.kill(-1, 0)` is the broadcast target, so a record naming group 1 would look
+  // alive while this user owns any process at all and hold the lease forever.
+  ["the broadcast group", "4321:11111111-2222-3333-4444-555555555555:1"],
+  ["a broadcast group among valid ones", "4321:11111111-2222-3333-4444-555555555555:222,1"],
 ])("C-PERF-04 a record naming %s is unreadable rather than live", async (_name, contents) => {
   const path = join(tempDir("elwood-owner-invalid-"), "codex.lock");
   writeRecord(path, contents);
@@ -84,7 +95,7 @@ test("C-PERF-04 a record naming groups is alive while any group is, not while it
     expect(leaseIsAlive(held)).toBe(false);
     expect(leaseIsAlive({ pid: held.pid, token: held.token })).toBe(true);
   } finally {
-    if (!processGroupGone(group.id)) await group.stop();
+    await group.stop();
   }
 });
 
@@ -106,6 +117,23 @@ test("C-PERF-04 a retained write cannot replace a successor generation's record"
   // The successor's record is untouched, and the rejected write left nothing behind.
   expect(readFileSync(join(path, ownerFile), "utf8")).toBe(serializeOwner(successor));
   expect(readdirSync(path).filter((entry) => entry.startsWith(pendingOwnerPrefix))).toEqual([]);
+});
+
+test.each([
+  ["no groups at all", [] as readonly number[]],
+  ["the broadcast group", [1]],
+  ["a zero group", [0]],
+  ["a fractional group", [12.5]],
+])("C-PERF-04 retention refuses %s rather than publishing it", async (_name, groups) => {
+  const path = join(tempDir("elwood-owner-refuse-"), "codex.lock");
+  const owner = { pid: process.pid, token: "11111111-2222-3333-4444-555555555555" };
+  writeRecord(path, serializeOwner(owner));
+  await expect(retainProbeOwner(path, owner, groups)).rejects.toThrow(/valid process groups/);
+  // The lease still names its owner and is therefore still releasable. Publishing any of
+  // these would have made the record unreadable, and an unreadable record fails safe
+  // forever: no contender would touch it and its owner could no longer release it.
+  expect(await readOwner(path)).toEqual(owner);
+  expect(readdirSync(path)).toEqual([ownerFile]);
 });
 
 test("C-PERF-04 a retained write that cannot be staged reports the failure", async () => {

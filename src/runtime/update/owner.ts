@@ -31,15 +31,23 @@ export async function readOptionalText(path: string): Promise<string | undefined
 }
 
 const isProcessId = (value: number): boolean => Number.isSafeInteger(value) && value > 0;
+/**
+ * Stricter than a pid: a group is only ever read back as `process.kill(-id, 0)`, and `-1`
+ * is the broadcast target — every process this user may signal. A record naming group 1
+ * would therefore look alive for as long as the user has any process at all, holding the
+ * lease forever. Group 1 is init's group and never an updater's, so rejecting it costs
+ * nothing real.
+ */
+const isProcessGroupId = (value: number): boolean => isProcessId(value) && value > 1;
 
 export async function readOwner(path: string): Promise<LeaseOwner | undefined> {
   const match = ownerPattern.exec((await readOptionalText(join(path, ownerFile))) ?? "");
   if (!match) return undefined;
   const pid = Number(match[1]);
   const ownedProcessGroupIds = match[3]?.split(",").map(Number);
-  // An identity no signal probe can evaluate is malformed, not live; like any unreadable
-  // record it fails safe rather than reaching process.kill.
-  if (![pid, ...(ownedProcessGroupIds ?? [])].every(isProcessId)) return undefined;
+  // An identity no signal probe can safely evaluate is malformed, not live; like any
+  // unreadable record it fails safe rather than reaching process.kill.
+  if (!(isProcessId(pid) && (ownedProcessGroupIds ?? []).every(isProcessGroupId))) return undefined;
   return {
     pid,
     token: match[2] as string,
@@ -78,12 +86,20 @@ export function parentIsAlive(pid: number): boolean {
  * lease. The write lands on a per-write temporary name and is committed by rename, so a
  * late or concurrent write can neither clobber nor unlink another write's pending record,
  * and a write that outlives its lease cannot replace a successor generation's record.
+ *
+ * Rejects rather than publishes a record it could not read back. An empty list serializes
+ * to a trailing colon that `readOwner` refuses, which would make the lease unreadable and
+ * so unreleasable; an out-of-range group would either do the same or, for group 1, hold
+ * the lease against every process this user owns. A caller with no valid surviving group
+ * has nothing to retain and should release instead.
  */
 export async function retainProbeOwner(
   path: string,
   owner: LeaseOwner,
   processGroupIds: readonly number[],
 ): Promise<void> {
+  if (processGroupIds.length === 0 || !processGroupIds.every(isProcessGroupId))
+    throw new Error("An update lease can only be retained for valid process groups.");
   const temporary = join(path, `${pendingOwnerPrefix}${randomUUID()}`);
   try {
     const record = { ...owner, ownedProcessGroupIds: processGroupIds };
