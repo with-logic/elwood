@@ -127,7 +127,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
       const send = callerInput.automation; // automation owns completion; warnings gated
       const read = () => renderedTerminal.snapshot().text;
-      const guarded = guardedCodexAutomationWrite(renderedTerminal, send, read, promptResponder);
+      const guarded = guardedCodexAutomationWrite(renderedTerminal, send, read);
       const result = promptResponder.handle(frame.text, send, read, guarded);
       warnGate.emitWarnings(result.warnings);
       emitSettledStartupOutcomes(emitter, "codex", record.elwoodSessionId, result.outcomes, {

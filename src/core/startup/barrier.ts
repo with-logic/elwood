@@ -42,8 +42,8 @@ export function guardedNonTrustAutomationWrite(
   readFrame: () => string,
   agent: ElwoodAgentKind,
   stillValid: (frameText: string, input: string) => boolean = () => true,
-): (input: string) => Promise<AutomationWriteResult> {
-  return async (input) => {
+): (input: string, perWrite?: (frameText: string) => boolean) => Promise<AutomationWriteResult> {
+  return async (input, perWrite) => {
     // `writeUnsafe` awaits `terminal.settled()`, so the frame read next reflects every
     // byte received before this write was requested. It fails closed when observation
     // exceeds its budget or a render has failed (C-API-56).
@@ -51,6 +51,9 @@ export function guardedNonTrustAutomationWrite(
     const frame = readFrame();
     if (trustView(frame, agent).kind === "candidate") return "withheld";
     if (!stillValid(frame, input)) return "withheld";
+    // A caller may also pass a predicate CAPTURED for this single write, so a later
+    // attempt mutating shared state cannot validate an older key (#42 round 3).
+    if (perWrite !== undefined && !perWrite(frame)) return "withheld";
     await write(input);
     return "written";
   };

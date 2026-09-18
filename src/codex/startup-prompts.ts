@@ -37,8 +37,6 @@ export class CodexStartupPromptResponder {
   // The update-screen generation that owns the skip latch (0 = none). Only that
   // generation's own completion may release it; a stale completion is a no-op.
   private skipGeneration = 0;
-  /** The update predicate of the skip currently in flight, if any (read by the barrier). */
-  private skipInFlight: ((frameText: string) => boolean) | undefined;
   // The banner identities that fired a warning on the PREVIOUS frame. A warning fires
   // only on the EDGE a banner first appears; a banner still present next frame is NOT
   // re-emitted (that would replay the same live incident indefinitely, C-API-14). A
@@ -61,11 +59,6 @@ export class CodexStartupPromptResponder {
 
   dispose(): void {
     this.trust.dispose();
-  }
-
-  /** The in-flight update-skip predicate, for the settled-frame revalidation (C-CODEX-12). */
-  currentSkipPredicate(): ((frameText: string) => boolean) | undefined {
-    return this.skipInFlight;
   }
 
   get inputBlocking(): boolean {

@@ -12,9 +12,11 @@ import {
 import type { StartupWriteCompletion } from "../core/startup/write.ts";
 import { nonOptionText, numberedOptions } from "../core/terminal-options.ts";
 import type { TrustWriteResult } from "../core/trust/responder.ts";
+import { codexUpdateChoiceIdentity, settledFrameKeepsChoice } from "./update-identity.ts";
 
 export const codexUpdateOptionPattern = /continue\s*without\s*updat|skip|not\s*now|later/i;
-const updateScreenBanner =
+/** The first-party banner; its version pair distinguishes one appearance from the next. */
+export const updateScreenBanner =
   /^[^\S\r\n]*(?:Update available!\s+\d+\.\d+\.\d+\s*(?:->|→)\s*\d+\.\d+\.\d+|A new version of Codex is available[.!]?)[^\S\r\n]*$/im;
 
 /**
@@ -82,22 +84,10 @@ export function guardedCodexAutomationWrite(
   terminal: InputTerminal,
   write: NonTrustAutomationWriter,
   readFrame: () => string,
-  /**
-   * The generation-aware update predicate for the attempt in flight, read at write time
-   * so the CURRENT attempt's predicate is used. A replacement dialog can reuse the same
-   * option number for an unrelated human decision, so the option label alone is not
-   * enough: this is what knows the settled frame is still the same update appearance.
-   */
-  skipSource: { currentSkipPredicate(): ((frameText: string) => boolean) | undefined } = {
-    currentSkipPredicate: () => undefined,
-  },
-): (input: string) => Promise<AutomationWriteResult> {
-  return guardedNonTrustAutomationWrite(terminal, write, readFrame, "codex", (frameText, input) => {
-    if (!codexOptionStillSafe(frameText, input)) return false;
-    // Non-option keys are not update automation, so the update predicate does not apply.
-    if (!/^\d+$/.test(input)) return true;
-    return skipSource.currentSkipPredicate()?.(frameText) ?? true;
-  });
+): (input: string, perWrite?: (frameText: string) => boolean) => Promise<AutomationWriteResult> {
+  // The generation-aware predicate is supplied PER WRITE by `writeCodexUpdateSkip`, so an
+  // older attempt can never validate against a newer appearance's state (#42 round 3).
+  return guardedNonTrustAutomationWrite(terminal, write, readFrame, "codex", codexOptionStillSafe);
 }
 
 /**
@@ -114,6 +104,11 @@ export function codexOptionStillSafe(frameText: string, input: string): boolean 
   // on the settled frame, does this number still name a safe option? If the frame shows
   // no numbered options at all it has moved on entirely, and the key is stale.
   if (options.length === 0) return false;
+  // The number must name a safe option AND the frame must still be update-shaped: either
+  // the first-party screen, or the safe-choice-only repaint Codex draws mid-flow. An
+  // unrelated human prompt that merely happens to carry a "Skip"/"Later" option is NOT
+  // this dialog, and must stay for the human (#42 round 3, C-CODEX-12).
+  if (!(codexUpdatePromptVisible(frameText) || isSafeUpdateContinuation(frameText))) return false;
   return options.some(
     (option) => option.number === input && codexUpdateOptionPattern.test(option.label),
   );
@@ -132,7 +127,10 @@ export type CodexUpdateSkipCompletion = StartupWriteCompletion | "exhausted";
  */
 export async function writeCodexUpdateSkip(
   option: string,
-  write: (input: string) => TrustWriteResult | Promise<AutomationWriteResult>,
+  write: (
+    input: string,
+    perWrite?: (frameText: string) => boolean,
+  ) => TrustWriteResult | Promise<AutomationWriteResult>,
   readFrame?: () => string,
   currentUpdateFrame: (frameText: string) => boolean = codexUpdatePromptVisible,
   invalidated: (frameText: string) => boolean = () => false,
@@ -140,7 +138,7 @@ export async function writeCodexUpdateSkip(
   if (readFrame === undefined) {
     // A guarded writer can still withhold (its own settled-frame checks apply), and a
     // key nobody sent is not an answer even with no reader to retry from.
-    return (await write(option)) === "withheld" ? "cancelled" : "answered";
+    return (await write(option, currentUpdateFrame)) === "withheld" ? "cancelled" : "answered";
   }
   const deadline = Date.now() + retryTimeoutMs;
   let wrote = false;
@@ -158,7 +156,14 @@ export async function writeCodexUpdateSkip(
     // key WITHHELD (a trust gate, or this option number no longer the safe one on the
     // settled frame). That is not an answer: leave the screen unanswered for a human
     // rather than counting a key nobody sent (C-CODEX-12, C-TRUST-01).
-    if ((await write(safeOption.number)) === "withheld") return "cancelled";
+    // Bind the write to the identity captured HERE: the same generation predicate AND
+    // the exact dialog/option this attempt decided on. The settled frame must still be
+    // that one, so a later generation, a renumbered dialog, a replacement dialog, or an
+    // unrelated prompt offering a "Skip" all fail the guard rather than take this key.
+    const identity = codexUpdateChoiceIdentity(frame, safeOption);
+    const stillThisChoice = (settledFrame: string): boolean =>
+      settledFrameKeepsChoice(settledFrame, identity, safeOption.number, currentUpdateFrame);
+    if ((await write(safeOption.number, stillThisChoice)) === "withheld") return "cancelled";
     wrote = true;
     await wait(retryIntervalMs);
   }

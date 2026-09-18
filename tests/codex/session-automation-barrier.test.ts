@@ -2,6 +2,11 @@
  * Automated startup writes observe received PTY output before writing, so a screen that
  * arrived while the previous frame was rendering is never written against a stale
  * snapshot (PRD §4.1/§5.1/§5.4, C-API-56).
+ *
+ * Verifying these: the fail-before baseline is `origin/main` (or the last merged commit),
+ * NEVER `HEAD`. Once the branch carries an earlier round's fix, reverting only the call
+ * sites leaves that protection in place and these tests pass — which looks like weak
+ * tests but is a broken harness. Restore every touched source file from `origin/main`.
  */
 import { afterEach, expect, test, vi } from "vitest";
 import { startCodex } from "../../src/index.ts";
@@ -23,10 +28,14 @@ test("C-API-56 an update skip is withheld when a trust gate arrives mid-write", 
   // autotrust off: the gate is human-owned, so nothing may answer it.
   const session = await startCodex({ cwd: tempDir(), autotrust: false });
   const pty = ptys.at(-1)!;
+  // `startup_prompt` activity carries the prompt id in `label`, NOT `prompt`: filtering
+  // on a field that does not exist made this assertion vacuous.
   const startupPrompts: string[] = [];
   session.on("activity", (event) => {
-    if ("prompt" in event) startupPrompts.push(String(event.prompt));
+    if (event.kind === "startup_prompt") startupPrompts.push(event.label);
   });
+  const warnings: string[] = [];
+  session.on("warning", (event) => warnings.push(event.code));
   // The race: the update screen RENDERED (so automation decided to skip), and the gate's
   // bytes arrive in that same turn — received, not yet observed — while the skip key is
   // still in flight. Without the barrier the key lands in the gate.
@@ -47,6 +56,7 @@ test("C-API-56 an update skip is withheld when a trust gate arrives mid-write", 
     expect(pty.writes).toEqual([]); // no "2" reached the gate, then or later
     // A key nobody sent must not be reported as an answered prompt.
     expect(startupPrompts).toEqual([]);
+    expect(warnings).toEqual([]); // nor a write-failure warning for a key nobody sent
     expect(session.status).toBe("blocked"); // still the human's to answer
   } finally {
     await session.teardown();

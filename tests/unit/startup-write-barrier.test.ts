@@ -2,12 +2,17 @@
  * The non-trust automation write barrier: observe received output, fail closed when it
  * cannot be observed, then veto on the settled frame (PRD §5.3/§5.4, C-API-56, #42).
  */
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import {
   codexOptionStillSafe,
   guardedCodexAutomationWrite,
 } from "../../src/codex/update-prompt.ts";
 import { guardedNonTrustAutomationWrite } from "../../src/core/startup/barrier.ts";
+
+// Unconditional, so a failed assertion cannot leave fake timers installed for later files.
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const composer = "› \n  (ready)";
 const codexTrust =
@@ -133,14 +138,32 @@ test("C-CODEX-12 the generation predicate vetoes a replacement dialog reusing th
     { sendInput: () => undefined, settled: () => Promise.resolve(), renderFailed: false },
     (input: string) => void writes.push(input),
     () => skipScreen,
-    { currentSkipPredicate: () => () => sameAppearance },
   );
-  expect(await guarded("2")).toBe("written");
-  // A replacement dialog reuses "2" for something else: the generation predicate says no,
+  // The predicate is CAPTURED per write, so an older attempt cannot validate against a
+  // newer appearance: whatever this attempt captured is what gates this key.
+  const capturedForThisAttempt = () => sameAppearance;
+  expect(await guarded("2", capturedForThisAttempt)).toBe("written");
+  // A replacement dialog reuses "2" for something else: the captured predicate says no,
   // even though the option label still looks safe.
   sameAppearance = false;
-  expect(await guarded("2")).toBe("withheld");
-  // Non-option keys are not update automation, so the update predicate does not gate them.
+  expect(await guarded("2", capturedForThisAttempt)).toBe("withheld");
+  // With no per-write predicate the option check alone applies (non-update automation).
   expect(await guarded("\u001b")).toBe("written");
   expect(writes).toEqual(["2", "\u001b"]);
+});
+
+test("C-CODEX-12 an unrelated human prompt carrying a Skip option is not this dialog", () => {
+  // The safe-option scan alone is not proof of continuity: a human decision that happens
+  // to offer "Skip" must stay human-controlled, so the frame must still be update-shaped.
+  const unrelated = "Delete this project's saved settings?\n  1. Yes, delete\n  2. Skip";
+  expect(codexOptionStillSafe(unrelated, "2")).toBe(false);
+  // Both legitimate shapes still pass: the first-party screen, and the mid-flow repaint
+  // Codex draws with only the safe choices and no banner.
+  expect(
+    codexOptionStillSafe(
+      "Update available! 0.148.0 -> 0.149.1\n\u203a 1. Update now\n  2. Skip",
+      "2",
+    ),
+  ).toBe(true);
+  expect(codexOptionStillSafe("  2. Skip\n  3. Skip until next version", "2")).toBe(true);
 });
