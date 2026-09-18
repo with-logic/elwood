@@ -5,6 +5,7 @@
  */
 import { readFileSync } from "node:fs";
 import { afterEach, expect, test } from "vitest";
+import { withCodexConfigLock } from "../../src/codex/config/lock.ts";
 import { startCodex } from "../../src/index.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import {
@@ -71,4 +72,32 @@ test("C-CODEX-14 a CLI that already exited restores without waiting out the boun
   expect(await setting).toBe("session_not_running");
   await expect.poll(() => readFileSync(configPath, "utf8"), { timeout: 4_000 }).toBe(userConfig);
   expect(Date.now() - started).toBeLessThan(4_000);
+}, 30_000);
+
+/**
+ * The session queue slot must be claimed BEFORE the process-wide `config.toml` lock. With
+ * the lock first, a `sendMessage` issued right after `setModel` dispatched while the switch
+ * was still waiting on another session's transaction — sending under the OLD model, which
+ * is the FIFO violation the exclusive slot exists to prevent (C-API-55, C-CODEX-14).
+ */
+test("C-API-55 a message cannot overtake a setModel waiting for the config lock", async () => {
+  const cwd = tempDir();
+  sandboxCodexHome(cwd);
+  installFakes();
+  const session = await startCodex({ cwd });
+  await becomeReady(session.elwoodSessionId, cwd);
+  await expect.poll(() => session.status).toBe("ready");
+  // Another session in this process holds the config lock.
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  void withCodexConfigLock(() => held);
+  const setting = session.setModel("gpt-5.4", { timeoutMs: 8_000 }).catch(() => undefined);
+  const message = session.sendMessage("hello").catch(() => undefined);
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  // Nothing reached the PTY: the queued message is behind the slot, not ahead of it.
+  expect(ptys[0]!.writes.filter((write) => String(write).includes("hello"))).toEqual([]);
+  release();
+  await Promise.allSettled([setting, message]);
 }, 30_000);

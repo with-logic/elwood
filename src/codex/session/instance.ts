@@ -86,18 +86,24 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   // config.toml — otherwise a late `waitForScreen` timeout would leave the
   // user's global default changed (C-CODEX-14).
   override setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
-    return runCodexModelSwitch({
-      snapshot: snapshotCodexConfig,
-      apply: () => super.setModel(id, options),
-      waitForCliExit: () => this.waitForCliExit(),
-      // Still QUEUED behind another session's switch when this one closes: reject now
-      // rather than wait out that transaction and its exit bound. Once this switch holds
-      // the lock it owns config.toml, so cancellation no longer applies.
-      cancel: { signal: this.closing.signal, error: () => notRunningError("codex") },
-      restore: (snapshot) => this.restoreCodexDefault(snapshot),
-      onRestoreError: (error) =>
-        this.emitWarnings([codexRestoreFailedWarning(this.elwoodSessionId, error)]),
-    });
+    // The queue slot is claimed FIRST (by `super.setModel`), and the config transaction
+    // runs inside it via `around`. Reversing that let a following `sendMessage` dispatch
+    // while this call was still waiting for another session's lock, sending under the old
+    // model — a FIFO violation the slot exists to prevent.
+    return super.setModel(id, options, (flow) =>
+      runCodexModelSwitch({
+        snapshot: snapshotCodexConfig,
+        apply: flow,
+        waitForCliExit: () => this.waitForCliExit(),
+        // Still QUEUED behind another session's switch when this one closes: reject now
+        // rather than wait out that transaction and its exit bound. Once this switch holds
+        // the lock it owns config.toml, so cancellation no longer applies.
+        cancel: { signal: this.closing.signal, error: () => notRunningError("codex") },
+        restore: (snapshot) => this.restoreCodexDefault(snapshot),
+        onRestoreError: (error) =>
+          this.emitWarnings([codexRestoreFailedWarning(this.elwoodSessionId, error)]),
+      }),
+    );
   }
   // A closing session rejects the picker at once, while the dying CLI can still persist
   // the selection it had confirmed, so the restore waits on the PTY's own exit.

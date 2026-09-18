@@ -115,8 +115,12 @@ export abstract class AgentSessionBase extends SessionLifecycle {
   listModels(options?: Timeout): Promise<readonly AgentModelOption[]> {
     return this.inSession(() => this.commands.listModels(options));
   }
-  setModel(id: string, options?: Timeout): Promise<void> {
-    return this.inSession(() => this.commands.setModel(id, options));
+  setModel(
+    id: string,
+    options?: Timeout,
+    around?: (flow: () => Promise<void>) => Promise<void>,
+  ): Promise<void> {
+    return this.inSession(() => this.commands.setModel(id, options, around));
   }
   createLoop(request: ElwoodLoopRequest): Promise<ElwoodLoopSnapshot> {
     return this.inSession(() => this.loops.create(request));

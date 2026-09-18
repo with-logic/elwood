@@ -126,12 +126,23 @@ export class CommandSurface {
     );
   }
 
-  setModel(id: string, options?: Timeout): Promise<void> {
+  /**
+   * `around` lets an adapter wrap the picker flow in its own transaction (Codex's
+   * process-wide `config.toml` lock) INSIDE the queue slot. Acquiring that lock before
+   * the slot would let a following `sendMessage` dispatch first and send under the old
+   * model — the slot is what preserves FIFO ordering, so it must be claimed first.
+   */
+  setModel(
+    id: string,
+    options?: Timeout,
+    around?: (flow: () => Promise<void>) => Promise<void>,
+  ): Promise<void> {
     const spec = this.deps.picker();
     const timeoutMs = pickerTimeout(options);
-    return this.picker.run("set_model", spec, timeoutMs, (io) =>
-      setPickerModel(io, spec, id, timeoutMs),
-    );
+    return this.picker.run("set_model", spec, timeoutMs, (io) => {
+      const flow = () => setPickerModel(io, spec, id, timeoutMs);
+      return around ? around(flow) : flow();
+    });
   }
 
   blocksInput(): boolean {
