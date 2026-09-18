@@ -10,7 +10,12 @@ import {
   codexPickerCurrentIsDefault,
   codexReasoningScreen,
 } from "../helpers/model-pickers.ts";
-import { escapeKey, failure, cleanupHarness as setup } from "../helpers/picker-harness.ts";
+import {
+  escapeKey,
+  failure,
+  releasesAfterClearStreak,
+  cleanupHarness as setup,
+} from "../helpers/picker-harness.ts";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -63,9 +68,8 @@ test.each([
   screen.text = "❯ ";
   // ONE clear frame is not proof: a picker repainting between stages is briefly
   // unrecognizable, and releasing queued input there would type into the frame that
-  // follows. The hold persists until a stable run of clear frames.
-  expect(picker.blocksInput()).toBe(true);
-  expect(picker.blocksInput()).toBe(false);
+  // follows. The hold persists for the full measured streak.
+  expect(releasesAfterClearStreak(picker)).toBe(true);
   // The hold is forgotten: the same text reappearing later belongs to someone else.
   screen.text = claudePicker;
   expect(picker.blocksInput()).toBe(false);

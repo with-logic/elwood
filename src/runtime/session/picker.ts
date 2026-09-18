@@ -4,7 +4,14 @@ import { elwoodError } from "../../core/errors.ts";
 import type { InputTerminal } from "../../core/input/abort.ts";
 import type { ModelPickerIo, ModelPickerSpec } from "../../core/models/picker.ts";
 import type { ScreenTerminal } from "../../core/models/tui-screen.ts";
-import { abortable, cleanUpDialog, escapeKey, ours, type Progress } from "./picker-cleanup.ts";
+import {
+  abortable,
+  cleanUpDialog,
+  clearFrames,
+  escapeKey,
+  ours,
+  type Progress,
+} from "./picker-cleanup.ts";
 
 type PickerDeps = {
   readonly controlQueue: ControlQueue;
@@ -16,14 +23,11 @@ type PickerDeps = {
   readonly picker: () => ModelPickerSpec;
 };
 
-/** Consecutive clear frames that prove a survivor is gone rather than mid-repaint. */
-const survivorClearFrames = 2;
-
 export class PickerTransactions {
   private readonly deps: PickerDeps;
   private survivor: ModelPickerSpec | undefined;
   /** Consecutive frames without the survivor; it is forgotten only after a stable run. */
-  private clearFrames = 0;
+  private clearStreak = 0;
   constructor(deps: PickerDeps) {
     this.deps = deps;
   }
@@ -41,14 +45,14 @@ export class PickerTransactions {
   blocksInput(): boolean {
     if (this.survivor === undefined) return false;
     if (this.survivor.activeDialog(this.deps.terminal.snapshot().text, ours) !== undefined) {
-      this.clearFrames = 0;
+      this.clearStreak = 0;
       return true;
     }
     // ONE unrecognized frame is not proof the survivor is gone: a picker repainting between
     // stages is briefly unrecognizable, and forgetting it there would release queued input
     // into the frame that follows. Cleanup requires the same streak for the same reason.
-    this.clearFrames += 1;
-    if (this.clearFrames < survivorClearFrames) return true;
+    this.clearStreak += 1;
+    if (this.clearStreak < clearFrames) return true;
     this.survivor = undefined;
     return false;
   }

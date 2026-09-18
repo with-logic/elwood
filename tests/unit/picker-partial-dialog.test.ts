@@ -8,7 +8,7 @@ import {
   claudeClosedPickerViewport,
   claudePickerViewport,
 } from "../helpers/model-dialog-viewports.ts";
-import { escapeKey, pickerHarness } from "../helpers/picker-harness.ts";
+import { escapeKey, pickerHarness, releasesAfterClearStreak } from "../helpers/picker-harness.ts";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -32,8 +32,7 @@ test("C-API-55 a surviving cache warning stays held through a partial repaint", 
   expect(picker.blocksInput()).toBe(true);
   screen.text = claudeClosedPickerViewport;
   // A stable run of clear frames releases it; one frame could be another repaint.
-  expect(picker.blocksInput()).toBe(true);
-  expect(picker.blocksInput()).toBe(false);
+  expect(releasesAfterClearStreak(picker)).toBe(true);
   queue.close();
 });
 

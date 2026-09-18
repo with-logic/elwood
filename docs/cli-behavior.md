@@ -187,6 +187,17 @@ legacy string/`agent_message` support. C-CODEX-16.
   the human's prompt instead. For the same reason the header must be prose: a numbered
   composer draft (`❯ 1. Select model  draft` / `2. next  text` / `Esc to cancel`)
   otherwise satisfies the row and footer grammar entirely on its own. C-API-24.
+- **A picker mid-repaint is briefly unrecognizable, so one clear frame proves nothing.**
+  This is the same shape as the resume-replay settling above, and the picker hold reuses
+  that measured value (5 frames) rather than inventing a smaller one: the replay's quiet
+  gaps were measured at one frame and 5 clears them with margin, while the picker's gap
+  length is NOT measured. The failure directions are asymmetric — too high delays
+  releasing the input hold, too low releases queued input into a repainting dialog where
+  Enter applies the highlighted model — so the conservative measured precedent wins until
+  someone captures real picker repaint frames. Cleanup uses a shorter streak on purpose
+  because it is bounded at one second and must send its Escapes inside that budget; it
+  hands off to the survivor hold, which applies the full streak, so nothing is released
+  early. `src/runtime/session/picker-cleanup.ts`, C-API-55.
 - **Escape on a follow-up stage returns to the picker, not the composer.** On both
   Claude 2.1.274 (cache warning) and Codex 0.154.0 (reasoning level) one Escape
   reopens `Select model` / `Select Model and Effort`; a second closes it. Failure

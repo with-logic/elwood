@@ -7,8 +7,20 @@ import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import type { ModelPickerSpec } from "../../src/core/models/picker.ts";
 import type { ModelDialogAuthority } from "../../src/core/models/rows.ts";
 import { PickerTransactions } from "../../src/runtime/session/picker.ts";
+import { clearFrames } from "../../src/runtime/session/picker-cleanup.ts";
 
 export const escapeKey = String.fromCharCode(27);
+
+/**
+ * Observes `blocksInput()` until it releases, asserting it stayed held for the full
+ * measured clear streak first — one clear frame must never be enough (C-API-55).
+ */
+export function releasesAfterClearStreak(picker: { blocksInput(): boolean }): boolean {
+  for (let frame = 1; frame < clearFrames; frame += 1) {
+    if (!picker.blocksInput()) return false;
+  }
+  return !picker.blocksInput();
+}
 /** The rejection the cleanup harness's scripted operation fails with. */
 export const failure = new Error("navigation failed");
 export type Screen = { text: string };

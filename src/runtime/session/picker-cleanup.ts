@@ -20,8 +20,36 @@ export type Progress = {
 };
 
 const cleanupMs = 1_000;
-/** Consecutive clear frames that prove the dialog is gone rather than mid-repaint. */
-const clearFrames = 2;
+/**
+ * Consecutive clear frames that prove a dialog is gone rather than mid-repaint.
+ *
+ * Matches `quietFramesToSettle` in `core/turn-state.ts`, deliberately. That value IS
+ * measured: Codex's resume replay repaints in bursts with brief 1-frame quiet gaps, and 5
+ * clears them with margin (docs/cli-behavior.md, C-TURN-03). Picker repaints are the same
+ * class of problem — a dialog redrawing between stages is briefly unrecognizable — and we
+ * have NOT measured their gap length, so there is no evidence for a smaller number.
+ *
+ * The failure directions are not symmetric, which settles it. Too high only delays
+ * releasing the input hold. Too low releases queued input into a repainting picker, where
+ * Enter applies the highlighted model — the exact bug class this file exists to prevent.
+ * Absent a measurement, take the conservative measured precedent.
+ *
+ * This governs the SURVIVOR hold in `picker.ts`, which is unbounded and only observes, so
+ * a longer streak costs nothing but a little latency. The cleanup loop below uses a
+ * shorter one on purpose: see `cleanupClearFrames`.
+ */
+export const clearFrames = 5;
+
+/**
+ * Cleanup's own streak, deliberately shorter than `clearFrames`.
+ *
+ * Cleanup is BOUNDED at one second and must also send its Escapes inside that budget, so
+ * demanding five clear frames (500 ms at a 100 ms poll) would spend half the budget
+ * proving a clearance it has already driven. It is also the safer of the two positions:
+ * a cleanup that returns early only hands off to the survivor hold, which then applies
+ * the full `clearFrames` streak before releasing any input. Nothing is released early.
+ */
+const cleanupClearFrames = 2;
 const pollMs = 100;
 export const escapeKey = "\u001b";
 /**
@@ -69,7 +97,7 @@ export async function cleanUpDialog(
         // found one has nothing to repaint and returns at once. (Same lesson as resume
         // settling in docs/cli-behavior.md.)
         clearStreak += 1;
-        const settled = !sawDialog || clearStreak >= clearFrames;
+        const settled = !sawDialog || clearStreak >= cleanupClearFrames;
         // The dialog is gone and nothing can still paint: the queue is released.
         if (!lateDialogPossible && settled) return true;
         // Whatever paints after a clear frame is a new dialog, owed its own Escape.
