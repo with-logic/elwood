@@ -51,6 +51,10 @@ back each entry are listed in `prd/14-conformance.md`.
   a bare allowlisted header with affirmative options is held, never typed into,
   and becomes answerable only once its native body paints (recoverable `blocked`
   after five seconds otherwise). Skill, plugin, and MCP gates are unchanged.
+- Publish the cross-process update lease atomically. An Elwood process killed
+  while claiming the lease could leave a partial owner record that made every
+  later `autoupdate` on that machine skip its update until the cache was removed
+  by hand.
 - Queued input now renders and observes all PTY output already received before
   each write, so a trust or permission dialog that was received but not yet
   rendered still holds the paste, its Enter, and recovery Enters. The compact
@@ -62,6 +66,14 @@ back each entry are listed in `prd/14-conformance.md`.
 - Keep text CLI output limited to agent responses by default. Use
   `--show-session-id` to print the retained session ID on stderr, or find it
   with `elwood sessions`. Session retention and JSON/JSONL records are unchanged.
+- Batch terminal rendering, improving throughput across parallel sessions:
+  adjacent PTY chunks share one render and one `terminal:data` event (at most
+  64 KiB, flushed within 4 ms), so event chunk boundaries and intermediate frames
+  are no longer guaranteed. Direct terminal disposal settles pending writes
+  immediately. Real PTY reads pause when unrendered output reaches 1 MiB and resume
+  below 512 KiB, so a runaway producer cannot grow the render backlog without bound;
+  a paused PTY resumes as soon as its child exits, so a draining backlog cannot
+  strand unread tail output.
 - Recognize only native Codex warning banners, keeping quoted private prompt text
   out of warning events by requiring the current native welcome region.
 - Validate all concrete Claude tool input fields and typed hook fields, constrain

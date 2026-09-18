@@ -5,9 +5,9 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, rmdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, opendir, rename, rm, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import {
   type LeaseOwner,
   ownerFile,
@@ -27,6 +27,8 @@ export type UpdateLeaseOptions = {
 
 const defaultPollMs = 50;
 const defaultStaleMs = 30_000;
+const maxSweptStaging = 8;
+const maxInspectedEntries = 64;
 
 function defaultLeaseRoot(): string {
   const user = userInfo();
@@ -59,9 +61,10 @@ export async function coordinatedAutoupdate(
   let observedActive = (await pathExists(path)) || (await pathExists(recoveryPath(path)));
   let recoveredStale = false;
   while (!(await claimLease(path, owner))) {
-    // Losing the claim IS an observation of an active owner. Sampling only before
-    // the loop misses a peer that claimed in the interim, and that contender would
-    // then treat its own later claim as the first attempt and run a duplicate
+    // Losing the claim to an existing lease IS an observation of an active owner; a claim
+    // that failed on its own staging finds no lease below and returns as released. Sampling
+    // only before the loop misses a peer that claimed in the interim, and that contender
+    // would then treat its own later claim as the first attempt and run a duplicate
     // update (PRD §9.2: a contender skips its duplicate attempt).
     observedActive = true;
     const waited = await waitForOwner(path, pollMs, staleMs);
@@ -83,22 +86,58 @@ export async function coordinatedAutoupdate(
   }
 }
 
+/**
+ * Publishes the lease atomically: the owner record is written inside a private staging
+ * directory that is then renamed into place, so no partial or ownerless lease is ever
+ * published. A claimant killed before that rename leaves only its staging directory; one
+ * killed after it leaves a complete lease naming a dead owner, which ordinary stale
+ * recovery removes. `rename` refuses a non-empty destination, which is exactly an
+ * existing lease.
+ */
 async function claimLease(path: string, owner: LeaseOwner): Promise<boolean> {
-  if (await pathExists(recoveryPath(path))) return false;
+  // An existing lease, even an ownerless one left by an older version, is a wait condition:
+  // `rename` would silently replace an empty directory instead of recovering it as stale.
+  if ((await pathExists(recoveryPath(path))) || (await pathExists(path))) return false;
+  const staging = `${path}.claim.${randomUUID()}`;
   try {
-    await mkdir(path, { mode: 0o700 });
+    await mkdir(staging, { mode: 0o700 });
+    await writeFile(join(staging, ownerFile), serializeOwner(owner), { flag: "wx", mode: 0o600 });
+    await rename(staging, path);
   } catch {
+    await rm(staging, { recursive: true, force: true }).catch(() => undefined);
     return false;
   }
-  try {
-    await writeFile(join(path, ownerFile), serializeOwner(owner), { flag: "wx", mode: 0o600 });
-    if (await pathExists(recoveryPath(path))) {
-      await releaseLease(path, owner);
-      return false;
-    }
-    return true;
-  } catch {
-    await rmdir(path).catch(() => undefined);
+  if (await pathExists(recoveryPath(path))) {
+    await releaseLease(path, owner);
     return false;
+  }
+  await sweepStaging(path);
+  return true;
+}
+
+/**
+ * Removes staging directories left by claimants killed before their rename. Only the lease
+ * holder sweeps: a live contender's staging can no longer win, and losing it merely turns
+ * that contender's failed rename into a missing source. Each holder removes a bounded
+ * number, so a pile of leftovers delays no single update; later holders finish the job.
+ */
+async function sweepStaging(path: string): Promise<void> {
+  const root = dirname(path);
+  const leftover = `${basename(path)}.claim.`;
+  let swept = 0;
+  let inspected = 0;
+  try {
+    // Streamed and bounded in both deletions and entries read: the root is shared with the
+    // other adapter, whose own lease holders sweep its leftovers.
+    for await (const entry of await opendir(root)) {
+      inspected += 1;
+      if (inspected > maxInspectedEntries) break;
+      if (!entry.name.startsWith(leftover)) continue;
+      await rm(join(root, entry.name), { recursive: true, force: true }).catch(() => undefined);
+      swept += 1;
+      if (swept === maxSweptStaging) break;
+    }
+  } catch {
+    // Sweeping is housekeeping: an unreadable root must not stop the lease holder's update.
   }
 }
