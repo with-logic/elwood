@@ -63,10 +63,19 @@ export class CodexStartupPromptResponder {
     return this.trust.inputBlocking;
   }
 
+  /**
+   * `write` answers TRUST prompts and belongs to `TrustPromptResponder` alone.
+   * `writeAutomation` carries every NON-trust automated key (here, the update skip and
+   * its retries). They are separate parameters so the two classes of write can be
+   * guarded differently — only non-trust automation may be withheld when a trust gate
+   * is on screen, since answering such a gate is the trust responder's own job (#42).
+   * Defaults to `write`, so a caller that passes one writer keeps today's behavior.
+   */
   handle(
     screenText: string,
     write: (input: string) => TrustWriteResult,
     readFrame?: () => string,
+    writeAutomation: (input: string) => TrustWriteResult = write,
   ): CodexStartupPromptResult {
     const outcomes: SettledCodexStartupOutcome[] = [];
     this.buffer = `${this.buffer}\n${screenText}`.slice(-maxBufferLength);
@@ -107,7 +116,7 @@ export class CodexStartupPromptResponder {
         // screen cleared is quiet too (nothing is left to retry or block on); a clear
         // after our key is what success means (C-CODEX-12).
         const current = this.updatePrompt.currentFramePredicate();
-        const settled = writeCodexUpdateSkip(option, write, readFrame, current).then(
+        const settled = writeCodexUpdateSkip(option, writeAutomation, readFrame, current).then(
           (completion) => {
             const replaced = this.updatePrompt.hasLaterAppearance(generation);
             if (completion === "exhausted" || replaced) return "cancelled";

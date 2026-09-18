@@ -3,7 +3,7 @@
  * Implements PRD §9.2 and C-LIFE-09/C-PERF-04 generation safety.
  */
 
-import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, expect, test, vi } from "vitest";
 import { coordinatedAutoupdate, updateLockPath } from "../../src/runtime/update/lock.ts";
@@ -24,8 +24,8 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   return {
     ...actual,
     mkdir: (...args: Parameters<typeof actual.mkdir>) => {
-      const path = String(args[0]);
-      if (races.claimUntilRelease && path.endsWith(".lock")) {
+      // A claim starts by staging its lease; holding it there lets a peer finish first.
+      if (races.claimUntilRelease && String(args[0]).includes(".lock.claim.")) {
         races.claimUntilRelease = false;
         races.claimDelayStarted = true;
         return waitForOwnerRelease().then(() => actual.mkdir(...args));
@@ -34,12 +34,18 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     },
     rename: async (...args: Parameters<typeof actual.rename>) => {
       const destination = String(args[1]);
+      // A claim publishes its staged lease by renaming it into place.
+      const claiming = destination.endsWith(".lock") && String(args[0]).includes(".claim.");
       if (races.contendedRename && destination.endsWith(".recovery")) {
         races.contendedRename = false;
         races.pretendRecoveryExists = true;
         throw Object.assign(new Error("contended"), { code: "EEXIST" });
       }
       const result = await actual.rename(...args);
+      if (races.createRecoveryAfterOwner && claiming) {
+        races.createRecoveryAfterOwner = false;
+        await actual.mkdir(`${destination}.recovery`);
+      }
       if (races.mutateMovedOwner && destination.endsWith(".recovery")) {
         races.mutateMovedOwner = false;
         await actual.writeFile(
@@ -61,15 +67,6 @@ vi.mock("node:fs/promises", async (importOriginal) => {
         return actual.stat(path.slice(0, -".recovery".length));
       }
       return actual.stat(...args);
-    },
-    writeFile: async (...args: Parameters<typeof actual.writeFile>) => {
-      const result = await actual.writeFile(...args);
-      const path = String(args[0]);
-      if (races.createRecoveryAfterOwner && path.endsWith("/owner")) {
-        races.createRecoveryAfterOwner = false;
-        await actual.mkdir(`${path.slice(0, -"/owner".length)}.recovery`);
-      }
-      return result;
     },
   };
 });
@@ -98,11 +95,16 @@ test("a delayed claimant observes a peer completion and skips its duplicate", as
 test("a recovery marker appearing after claim prevents the updater from starting", async () => {
   const root = sandbox("post-claim-recovery");
   races.createRecoveryAfterOwner = true;
+  const recovery = `${updateLockPath("codex", root)}.recovery`;
   let attempts = 0;
   await run(root, () => {
     attempts += 1;
+    // The claim that saw the marker backed off; this one ran only once it was gone.
+    expect(races.createRecoveryAfterOwner).toBe(false);
+    expect(existsSync(recovery)).toBe(false);
   });
   expect(attempts).toBe(1);
+  expect(existsSync(recovery)).toBe(false);
 });
 
 test("a generation changed during stale recovery fails safe", async () => {
