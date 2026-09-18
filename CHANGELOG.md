@@ -12,6 +12,12 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Bound the cleanup of an aborted version, capability, or update probe to one
+  extra second: retry process-group termination, fall back to the direct child,
+  and keep an unresolved group on an asynchronous reaper that never extends host
+  shutdown or retains captured output. A process group is signaled only while its
+  leader is unreaped, so a reissued group id is never killed. An update probe whose
+  group stays unconfirmed now reports that group in its typed error details.
 - Serialize `listModels`/`setModel` through the session input queue: a model
   operation owns the queue until its picker flow settles, so overlapping model
   calls, queued commands, and messages can no longer be typed into a picker while

@@ -76,7 +76,10 @@ describe("runtime probe runner", () => {
     // The shell backgrounds a grandchild (as `claude update` may spawn an installer)
     // and then hangs. Killing only the shell would leave the grandchild alive AND
     // holding the probe's stdio pipes open, pinning the host event loop for 30s.
-    setProbeTimeoutMsForTests(100);
+    // Generous, because the probe must not time out until the shell has recorded the
+    // grandchild: at a short timeout a loaded machine aborts before `echo` ever runs, and
+    // the test then fails for want of a marker rather than for a surviving grandchild.
+    setProbeTimeoutMsForTests(2_000);
     const marker = join(tempDir("elwood-probe-"), "grandchild.pid");
     const result = await runProbe("/bin/sh", ["-c", `sleep 30 & echo $! > "${marker}"; wait`]);
     expect(result.error?.code).toBe("ETIMEDOUT");
@@ -90,15 +93,35 @@ describe("runtime probe runner", () => {
     // the kill's ESRCH is swallowed and the timed-out result still resolves. The child
     // here exits on its own shortly after, since the stubbed kill never signals it.
     setProbeTimeoutMsForTests(50);
-    const signaled: number[] = [];
-    vi.spyOn(process, "kill").mockImplementation((pid) => {
-      signaled.push(pid);
+    // Signal and target both recorded: `ESRCH` from the signal-0 observation means the
+    // group is already gone, and the point of the test is that abort then stops. Recording
+    // only pids could not tell that apart from a SIGKILL that also happened to see ESRCH.
+    const signaled: { target: number; signal: string | number | undefined }[] = [];
+    vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      signaled.push({ target: pid, signal });
       throw Object.assign(new Error("gone"), { code: "ESRCH" });
     });
     const result = await runProbe(node, ["-e", "setTimeout(() => {}, 300)"]);
     expect(result.error?.code).toBe("ETIMEDOUT");
-    expect(signaled).toHaveLength(1);
-    expect(signaled[0]).toBeLessThan(0); // the process GROUP, not just the child pid
+    expect(signaled[0]).toEqual({ target: expect.any(Number), signal: 0 });
+    expect(signaled[0]?.target).toBeLessThan(0); // the process GROUP, not just the child pid
+    // Nothing was ever actually signaled: a group observed gone is not killed again.
+    expect(signaled.every((call) => call.signal === 0)).toBe(true);
+  });
+
+  test.each([
+    "EPERM",
+    "unexpected",
+  ])("C-PERF-03 abort failure %s still settles without leaking error text", async (code) => {
+    setProbeTimeoutMsForTests(25);
+    vi.spyOn(process, "kill").mockImplementation(() => {
+      throw Object.assign(new Error("private probe context"), { code, name: "PrivateError" });
+    });
+    const result = await runProbe(node, ["-e", "setTimeout(() => {}, 100)"]);
+    expect(result.error?.code).toBe("ETIMEDOUT");
+    expect(result.error?.cleanupErrorCode).toBe(code === "EPERM" ? "EPERM" : "UnknownError");
+    expect(result.error?.cleanupProcessGroupId).toBeGreaterThan(0);
+    expect(JSON.stringify(result)).not.toContain("private probe context");
   });
 
   test("C-PERF-03 a stdout-flooding probe is capped and killed with a typed error", async () => {

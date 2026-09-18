@@ -122,7 +122,25 @@ failure.
 Each probe is bounded so a broken or hostile CLI on PATH cannot hang or flood
 the host: a probe that does not exit within a default timeout (15 seconds) or
 whose captured output exceeds a per-stream byte cap (1,000,000 bytes) is
-killed, and its captured output is truncated to the cap. Truncation happens on
+killed, and its captured output is truncated to the cap. Abort cleanup has an
+additional one-second bound: an aborted probe retries process-group termination,
+falls back to terminating the direct child once group signals have kept failing,
+and awaits exit within that window. A process-group id is signaled only while the
+probe's direct child (the group leader) is still unreaped, because only then is
+the number guaranteed not to have been reissued to an unrelated group; afterwards
+Elwood only observes the group until it exits and never signals the bare number.
+Cleanup that is confirmed within the window reports no cleanup error; the group is
+observed once more when the window ends, and the window is measured on a monotonic
+clock. Unconfirmed cleanup adds two details to the probe's typed error: the
+allowlisted `cleanupErrorCode`, and `cleanupProcessGroupId`, which is diagnostic
+only — the id may already have been reissued to an unrelated group, so a consumer
+must never signal it. Every
+unresolved aborted probe, including version
+and capability probes, remains owned by an asynchronous reaper while the parent
+is alive. Retries use an unreferenced timer, do not prolong host shutdown, and
+stop signaling after a successful group kill; ownership ends when the group is
+confirmed gone. A retained reaper holds process-liveness state only; the probe's
+captured output is released once its result is delivered. Truncation happens on
 a UTF-8 code-point boundary — an incomplete trailing sequence is dropped — so
 the decoded output re-encodes to at most the cap rather than growing via a
 replacement character. This applies to every
