@@ -122,6 +122,35 @@ misattributed to a CLI regression.)
   after done — do not treat spinner presence as a reliable per-frame liveness bit
   at tiny sizes.
 
+## Rejected turns (the agent refuses the turn)
+
+**A rejected Codex turn fires NO `Stop` hook at all.** Verified against
+codex-cli 0.155.0 by launching with a bogus `--model`: the only hooks delivered
+for the whole turn are `SessionStart` and `UserPromptSubmit`. The refusal is
+reported *solely* in the rollout transcript, as an `event_msg` whose payload is
+`task_complete` with `last_agent_message: null` and an `error` object:
+
+```
+{"type":"event_msg","payload":{"type":"task_complete","last_agent_message":null,
+  "error":{"message":"{\"type\":\"error\",\"status\":400,\"error\":{…\"message\":\"The 'x' model is not supported…\"}}",
+  "codex_error_info":"other"}}}
+```
+
+This is why turn-failure evidence could NOT be carried on the boundary-hook seam
+alone: for Codex there is no boundary hook to carry it. The same run with a valid
+model *does* deliver `Stop`, so the hook's absence is specific to rejection, not
+a general property of the CLI. Claude is the opposite shape — its `StopFailure`
+**is** a hook, so its evidence rides the boundary signal. C-API-57, C-E2E-17.
+
+- `error.message` is often a JSON envelope rather than prose; unwrap the
+  innermost `error.message` for something human-readable.
+- **`codex_error_info` is not a reliable discriminator.** The same rejection path
+  reports `other` for an unsupported model and `usage_limit_exceeded` for quota,
+  so keying on its value misses most real failures — the *presence* of `error` is
+  the signal. It is kept for diagnosis only.
+- A bogus `--model` is a quota-independent way to provoke this in e2e: the
+  service rejects the model name (HTTP 400) before consuming any model quota.
+
 ## Codex transcript replies
 
 **Codex 0.149.1 writes committed replies as phased `message` response items, not

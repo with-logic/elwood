@@ -38,6 +38,7 @@ Initial required error names:
 | `login_timeout` | The interactive `/login` re-authentication flow did not report success before the timeout. |
 | `invalid_image` | An `images` input is not attachable: an unsupported/absent byte format, empty bytes, a path that is not a readable file, or a total image count/size beyond the documented limits (C-API-44). Raised before any partial input reaches the composer. |
 | `image_attach_failed` | An image could not be confirmed attached: the CLI's `[Image #N]` chip did not appear before the confirmation timeout, or the OS clipboard could not be read/written. No text is submitted afterward. (A session that TERMINATES mid-attach rejects with `session_not_running`, like any queued op.) (C-API-44/45/46) |
+| `turn_failed` | The agent itself REJECTED the turn, reported by the adapter's own failure evidence (Codex's transcript `task_complete.error`, Claude's `StopFailure` hook). The error message is the adapter's reason; `details.info` carries the adapter's classification and is DIAGNOSTIC only. An empty response is never evidence of failure (§12A.3). |
 | `wait_timeout` | A `waitForStatus`/`waitForActivity` call did not observe its condition before the timeout. |
 | `invalid_loop` | A loop request or recognized `/loop` command violates the documented shape, interval, or UTF-8 message bounds. |
 | `loop_limit_reached` | Creating a loop would exceed 50 unexpired definitions; existing loops are unchanged. |

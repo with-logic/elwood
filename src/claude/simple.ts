@@ -9,7 +9,7 @@
 import { assertClaudeHighTrust } from "../core/high-trust.ts";
 import { resolveSessionPaths } from "../core/simple/resolve-paths.ts";
 import { SessionBase } from "../core/simple/session.ts";
-import { type AssertStopBoundary, defaultBoundarySignal } from "../core/simple/turn.ts";
+import type { AssertStopBoundary } from "../core/simple/turn.ts";
 import type {
   ElwoodEventHandler,
   ElwoodEventName,
@@ -20,6 +20,7 @@ import type { ClaudeHookEventFor } from "./hooks/events.ts";
 import type { ClaudeLoginOptions } from "./login/types.ts";
 import { startClaude } from "./session/index.ts";
 import type { ClaudeSessionApi } from "./session/interface.ts";
+import { claudeBoundarySignal } from "./turn-failure.ts";
 
 // Compile-time TURN-CAPABILITY guard: the completeness oracle reads the `Stop` hook's
 // `last_assistant_message`, so the REAL Claude `Stop` payload must carry the oracle's required
@@ -53,8 +54,11 @@ export class ClaudeSession extends SessionBase<ClaudeSessionApi> {
     return startClaude(this.options);
   }
 
-  /** Claude's `Stop` hook carries `last_assistant_message` — the standard completeness signal. */
-  protected readBoundarySignal = defaultBoundarySignal;
+  /**
+   * Claude's `Stop` hook carries `last_assistant_message` — the standard completeness signal —
+   * and its `StopFailure` hook reports a REJECTED turn on that same boundary (C-API-57).
+   */
+  protected readBoundarySignal = claudeBoundarySignal;
 
   /** Typed event subscription over the Claude event map (buffered before start). */
   on<E extends ElwoodEventName>(event: E, handler: ElwoodEventHandler<E>): Unsubscribe {

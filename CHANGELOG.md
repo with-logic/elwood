@@ -12,6 +12,18 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Fail a turn the agent REJECTED with the new `turn_failed` error instead of
+  reporting it as a successful empty response. A rejected turn previously settled
+  on the quiet window, so `send` resolved with `""`, `stream` yielded nothing, and
+  `elwood` exited 0 with empty output — the agent's own reason was dropped. The
+  error now carries that reason, and the CLI exits 1. Each adapter supplies its own
+  evidence, because the CLIs report rejection differently: Claude's `StopFailure`
+  hook carries it on the turn boundary, while a rejected Codex turn fires no
+  boundary hook at all and is evidenced only by a transcript `task_complete`
+  carrying an `error`. An empty response is still NOT evidence of failure — a
+  legitimately empty reply resolves to `""` and exits 0 as before — and the
+  adapter's classification (`details.info`) is diagnostic only.
+
 - Hold the cross-process update lease for an aborted updater's surviving process
   group. An update probe that was aborted without confirming its process group had
   exited used to release the lease anyway, so another Elwood host could start a

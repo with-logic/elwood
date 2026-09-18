@@ -160,7 +160,7 @@ export class TurnGate {
       if (this.oracle.matched) this.end(); // caught up — deterministic
       return; // still waiting for the transcript to reach the expected text (catch-up cap guards)
     }
-    this.armQuiet(); // no oracle (pure-tool / empty / StopFailure): bounded quiet settle
+    this.armQuiet(); // no oracle (pure-tool / empty boundary): bounded quiet settle
   }
   private armQuiet(): void {
     if (this.ended || this.oracle.hasExpected) return;

@@ -8,8 +8,7 @@ import type { ElwoodAgentSession, ElwoodCommonEventMap } from "../../core/agent-
 import { elwoodError } from "../../core/errors.ts";
 import type { TurnEvent } from "../../core/simple/events.ts";
 import { SessionBase } from "../../core/simple/session.ts";
-import { defaultBoundarySignal } from "../../core/simple/turn.ts";
-import type { TurnOptions } from "../../core/simple/turn-types.ts";
+import type { TurnOptions, TurnReaders } from "../../core/simple/turn-types.ts";
 import type { ElwoodSessionStatus, TerminalSize, Unsubscribe } from "../../core/types.ts";
 import { readPrivateSessionRecord, removeSessionIdentity } from "../../state/private-session.ts";
 import type { SessionRecord } from "../../state/store.ts";
@@ -20,6 +19,7 @@ import {
   createCliLaunch,
   defaultCliLaunchDependencies,
 } from "./launch.ts";
+import { turnReadersFor } from "./turn-readers.ts";
 
 export type CliSessionDependencies = {
   readonly randomId: () => string;
@@ -89,6 +89,8 @@ export class HeadlessCliSession
   private readonly launchSession: () => Promise<ElwoodAgentSession>;
   private setupPromise: Promise<void> | undefined;
   private pendingLaunch: Promise<ElwoodAgentSession> | undefined;
+  protected readonly readBoundarySignal: TurnReaders["readBoundarySignal"];
+  protected override readonly readFailureEvidence: TurnReaders["readFailureEvidence"];
 
   constructor(request: EffectiveRunRequest, id: string, launch: () => Promise<ElwoodAgentSession>) {
     super();
@@ -97,9 +99,10 @@ export class HeadlessCliSession
     this.id = id;
     this.resumed = request.resume !== undefined;
     this.launchSession = launch;
+    const readers = turnReadersFor(request.agent);
+    this.readBoundarySignal = readers.readBoundarySignal;
+    this.readFailureEvidence = readers.readFailureEvidence;
   }
-
-  protected readonly readBoundarySignal = defaultBoundarySignal;
 
   protected launch(): Promise<ElwoodAgentSession> {
     const pending = this.validatedLaunch();

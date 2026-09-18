@@ -21,7 +21,7 @@ import { capturedSend, capturedTurn } from "./captured-input.ts";
 import type { TurnEvent } from "./events.ts";
 import { SubscriptionRegistry } from "./subscriptions.ts";
 import { TurnQueue } from "./turn-queue.ts";
-import type { BoundarySignalReader, TurnOptions } from "./turn-types.ts";
+import { noFailureEvidence, type TurnOptions, type TurnReaders } from "./turn-types.ts";
 
 export type { TurnOptions } from "./turn-types.ts";
 /** Lazy public session over one Elwood agent; only ergonomic turns serialize. */
@@ -45,7 +45,10 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
    * MUST supply one — keeping the runner decoupled from adapter hook fields. Adapters assign
    * `defaultBoundarySignal` unless they differ. (Signal-only; never displayed — C-CLAUDE-15.)
    */
-  protected abstract readonly readBoundarySignal: BoundarySignalReader;
+  protected abstract readonly readBoundarySignal: TurnReaders["readBoundarySignal"];
+
+  /** Activity→rejection evidence, for adapters with no boundary hook to carry it (C-API-57). */
+  protected readonly readFailureEvidence: TurnReaders["readFailureEvidence"] = noFailureEvidence;
 
   /** The started underlying session, or `undefined` before the first start. */
   get session(): S | undefined {
@@ -83,7 +86,9 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
 
   /** Stream one turn's simplified content events; ends when the turn settles (C-API-48). */
   stream(prompt: string, options?: TurnOptions): AsyncGenerator<TurnEvent> {
-    return capturedTurn(this.images, this.turns, this, this.readBoundarySignal, prompt, options);
+    const { readBoundarySignal, readFailureEvidence } = this;
+    const readers = { readBoundarySignal, readFailureEvidence };
+    return capturedTurn(this.images, this.turns, this, readers, prompt, options);
   }
 
   /** Send one turn and resolve with its assistant text, `\n\n`-joined (C-API-49). */

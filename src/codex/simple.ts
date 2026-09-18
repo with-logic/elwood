@@ -19,6 +19,7 @@ import type {
   CodexSessionApi,
   StartCodexOptions,
 } from "./session/types.ts";
+import { codexFailureEvidence } from "./turn-failure.ts";
 
 // Compile-time TURN-CAPABILITY guard (mirrors Claude): the completeness oracle reads the `Stop`
 // hook's `last_assistant_message`, so the REAL Codex `Stop` payload must carry the oracle's
@@ -51,6 +52,13 @@ export class CodexSession extends SessionBase<CodexSessionApi> {
 
   /** Codex's `Stop` hook carries `last_assistant_message` — the standard completeness signal. */
   protected readBoundarySignal = defaultBoundarySignal;
+
+  /**
+   * A REJECTED Codex turn fires no `Stop` hook at all — its only evidence is a transcript
+   * `task_complete` carrying an `error` — so the failure reaches the runner through activity
+   * rather than the boundary signal above (C-API-57).
+   */
+  protected override readonly readFailureEvidence = codexFailureEvidence;
 
   /** Typed event subscription over the Codex event map (buffered before start). */
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): Unsubscribe {

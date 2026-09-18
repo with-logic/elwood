@@ -4,9 +4,20 @@ import { ImageCaptures } from "../../src/core/images/capture.ts";
 import { sessionImageBudget } from "../../src/core/images/queued-budget.ts";
 import { capturedSend, capturedTurn } from "../../src/core/simple/captured-input.ts";
 import { TurnQueue } from "../../src/core/simple/turn-queue.ts";
-import { defaultBoundarySignal } from "../../src/core/simple/turn-types.ts";
+import {
+  defaultBoundarySignal,
+  noFailureEvidence,
+  type TurnReaders,
+} from "../../src/core/simple/turn-types.ts";
+
 import { enqueueSubmission } from "../../src/runtime/session/image-attach.ts";
 import { FakeUnderlying } from "./simple-fakes.ts";
+
+/** The adapter-neutral readers: a standard `Stop` boundary and no activity failure evidence. */
+const defaultReaders: TurnReaders = {
+  readBoundarySignal: defaultBoundarySignal,
+  readFailureEvidence: noFailureEvidence,
+};
 
 const options = { images: [{ data: new Uint8Array([1, 2]), format: "png" as const }] };
 
@@ -22,14 +33,7 @@ test.each([
       return Promise.reject(new Error("launch failed"));
     },
   };
-  const stream = capturedTurn(
-    captures,
-    new TurnQueue(),
-    facade,
-    defaultBoundarySignal,
-    "go",
-    options,
-  );
+  const stream = capturedTurn(captures, new TurnQueue(), facade, defaultReaders, "go", options);
   await expect(stream.next()).rejects.toThrow("launch failed");
   captures.capture(options).release();
 });
@@ -50,7 +54,7 @@ test("C-API-44 consumer timeout retains image budget until the agent boundary", 
   const underlying = new FakeUnderlying();
   underlying.script = () => {};
   const facade = { status: "ready" as const, start: () => Promise.resolve(underlying) };
-  const stream = capturedTurn(captures, new TurnQueue(), facade, defaultBoundarySignal, "go", {
+  const stream = capturedTurn(captures, new TurnQueue(), facade, defaultReaders, "go", {
     ...options,
     timeoutMs: 1,
   });
@@ -74,14 +78,7 @@ test("C-API-44 an ergonomic turn's reservation bounds raw sends on its session u
       async (attach) => attach?.(new AbortController().signal),
       sessionImageBudget(underlying),
     );
-  const turn = capturedTurn(
-    captures,
-    new TurnQueue(),
-    facade,
-    defaultBoundarySignal,
-    "go",
-    options,
-  );
+  const turn = capturedTurn(captures, new TurnQueue(), facade, defaultReaders, "go", options);
   const ended = turn.next();
   await expect(rawSend()).rejects.toMatchObject({ code: "invalid_image" });
   underlying.emitter.emit("status", { elwoodSessionId: "s1", status: "stopped" });

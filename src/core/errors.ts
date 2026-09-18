@@ -40,6 +40,7 @@ export type ElwoodErrorName =
   | "loop_not_found"
   | "loop_persistence_failed"
   | "loop_submission_failed"
+  | "turn_failed"
   | "wait_timeout";
 
 export class ElwoodError extends Error {

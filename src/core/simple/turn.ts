@@ -5,13 +5,14 @@
  * The turn boundary is a COMPLETENESS ORACLE, not a timer. A turn's assistant text is
  * transcript-sourced (C-CLAUDE-15) and the transcript is written ASYNCHRONOUSLY, arriving
  * shortly AFTER the `ready` status. The turn-boundary `Stop` hook carries
- * `last_assistant_message` — the final assistant text of the just-completed turn — used
- * ONLY as a completeness signal (never displayed — it can be ghost text): the turn ends
- * once the transcript-collected assistant text CONTAINS it. With no such signal (a
- * pure-tool turn, or an empty/`null` `last_assistant_message`) the turn ends after a
- * bounded quiet window with no new content.
+ * `last_assistant_message` — the final assistant text of the just-completed turn — used ONLY
+ * as a completeness signal (never displayed — it can be ghost text): the turn ends once the
+ * transcript-collected assistant text CONTAINS it. With no such signal (a pure-tool turn, or
+ * an empty/`null` `last_assistant_message`) it ends after a bounded quiet window.
  *
- * The runner is decoupled from its consumer. `completion` always resolves when the consumer
+ * Completeness is separate from FAILURE: a turn the agent REJECTED fails with `turn_failed` on
+ * the adapter's own evidence (C-API-57), never the absence of text (§12A.3). The runner is
+ * decoupled from its consumer. `completion` always resolves when the consumer
  * settles; its error travels through `events`. The serializer instead holds `boundary`, which
  * resolves on a successful oracle/quiet settle or terminal status. After consumer failure it
  * waits for real `ready`/terminal evidence plus transcript drain, so abandoned streams cannot
@@ -25,16 +26,22 @@
  * with `wait_timeout`. A terminal status ends the turn at once.
  */
 
-import { elwoodError, toError } from "../errors.ts";
+import { toError } from "../errors.ts";
 import { terminalStatuses } from "../status-categories.ts";
-import { boundaryExpectation } from "./boundary-signal.ts";
+import {
+  activityFailure,
+  boundaryExpectation,
+  rejectTurn,
+  signalFailure,
+} from "./boundary-signal.ts";
 import { toTurnEvent } from "./events.ts";
 import { TurnAcceptance } from "./turn-acceptance.ts";
 import { TurnBoundary } from "./turn-boundary.ts";
-import { TurnGate } from "./turn-gate.ts";
+import { armTurnTimeout, FALLBACK_QUIET_MS, gateForTurn } from "./turn-defaults.ts";
 import {
   defaultAcceptanceSignal,
   defaultBoundarySignal,
+  noFailureEvidence,
   type RunningTurn,
   type StreamTurnOptions,
   type TurnSession,
@@ -52,11 +59,6 @@ export type {
 } from "./turn-types.ts";
 export { defaultAcceptanceSignal, defaultBoundarySignal } from "./turn-types.ts";
 
-/** Quiet window (ms) after `ready` for a no-oracle turn to settle once content stops. */
-const FALLBACK_QUIET_MS = 2_000;
-/** Cap (ms) on the POST-`ready` transcript catch-up: a stalled flush bails, not hangs. */
-const CATCH_UP_MS = 10_000;
-
 /**
  * Start a turn: attach listeners, submit the prompt, and drive the gate to the turn's real
  * boundary. Returns the consumer `events` generator, an always-resolving `completion` signal,
@@ -68,13 +70,7 @@ export function runTurn(
   prompt: string,
   options: StreamTurnOptions = {},
 ): RunningTurn {
-  const catchUpMs = options.catchUpMs ?? CATCH_UP_MS;
-  const gate = new TurnGate(
-    options.fallbackQuietMs ?? FALLBACK_QUIET_MS,
-    catchUpMs,
-    options.maxPendingEvents,
-    options.maxPendingBytes,
-  );
+  const gate = gateForTurn(options);
   const sendOptions = options.images === undefined ? undefined : { images: options.images };
   const send = () => session.sendMessage(prompt, sendOptions);
   const acceptance = new TurnAcceptance(options.fallbackQuietMs ?? FALLBACK_QUIET_MS, {
@@ -94,9 +90,9 @@ export function runTurn(
   let sawReady = false; // a `ready` after the turn started was observed (agent turn is idle/done)
   let consumerSettled = false;
 
-  // Listeners are removed only once BOTH the consumer has settled AND the real boundary is
-  // reached: the boundary observer must outlive a consumer failure (a timed-out turn whose agent
-  // is still running), and the consumer view must outlive an early boundary (buffered drain).
+  // Listeners are removed only once BOTH the consumer settled AND the real boundary is reached:
+  // the boundary observer must outlive a consumer failure (a timed-out turn whose agent still
+  // runs), and the consumer view must outlive an early boundary (buffered drain).
   const maybeCleanup = () => {
     if (!(consumerSettled && boundary.isReached)) return;
     gate.dispose();
@@ -105,14 +101,19 @@ export function runTurn(
     offStatus();
   };
   const boundary = new TurnBoundary(maybeCleanup, options.drainMs);
+  const failTurn = rejectTurn(gate, boundary);
   // The gate's SUCCESSFUL settle means the transcript drained — the real boundary. Its rejection
   // (a consumer failure) does NOT reach it here; a post-failure `ready`/terminal does.
   gate.done().then(
     () => boundary.reach(),
     () => undefined,
   );
-
+  // A rejection with no boundary hook (Codex) arrives on activity; only the adapter's OWN error
+  // payload is evidence, and it obeys the same turn binding as content (C-API-57).
+  const readFailure = options.readFailureEvidence ?? noFailureEvidence;
   const offActivity = session.on("activity", (event) => {
+    const evidence = activityFailure(readFailure, event, turnId);
+    if (evidence) failTurn(evidence);
     const simple = toTurnEvent(event);
     if (simple || (event.kind === "user_message" && event.text === prompt)) acceptance.accept();
     if (simple) {
@@ -135,7 +136,12 @@ export function runTurn(
     // installed oracle). The core reads only that — never raw hook fields — and uses it as a
     // completeness ORACLE only, never displayed (C-CLAUDE-15).
     if (defaultAcceptanceSignal(event, prompt)) acceptance.accept();
-    gate.expectText(boundaryExpectation(readBoundarySignal(event)));
+    const signal = readBoundarySignal(event);
+    // A rejection that DOES reach a boundary hook (Claude's `StopFailure`) rides the signal.
+    // Fail BEFORE the gate gets its expected text, so the turn ends as the failure it is.
+    const evidence = signalFailure(signal);
+    if (evidence) failTurn(evidence);
+    gate.expectText(boundaryExpectation(signal));
   });
   const offStatus = session.on("status", ({ status }) => {
     if (status === "running") {
@@ -173,13 +179,7 @@ export function runTurn(
       maybeCleanup();
       return;
     }
-    if (options.timeoutMs !== undefined) {
-      timer = setTimeout(
-        () => gate.fail(elwoodError("wait_timeout", "turn timed out")),
-        options.timeoutMs,
-      );
-      timer.unref?.(); // a pending ceiling must not keep the host alive by itself
-    }
+    timer = armTurnTimeout(options.timeoutMs, (error) => gate.fail(error));
     try {
       await gate.done(); // resolves on genuine settle (→ boundary); rejects on consumer failure
     } catch {
