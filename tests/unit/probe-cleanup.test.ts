@@ -67,6 +67,42 @@ test("C-PERF-03 a group that exits during the final wait is confirmed, not repor
   }
 });
 
+// Defence in depth rather than a regression guard: with group kills denied, the child
+// fallback latches `signalCode` at the group-only threshold, and `leaderReaped` then
+// short-circuits every later `reap` before it can signal. This asserts the outcome the
+// deadline check also guarantees, so it passes with or without that check.
+test("C-PERF-03 nothing is signaled after the cleanup deadline, even a still-live group", async () => {
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true });
+  const started = performance.now();
+  // The group stays live throughout AND every group SIGKILL fails with EPERM, which is
+  // what keeps `reap` willing to signal again: a kill that succeeds latches `signaled` and
+  // would never retry, so a mock that lets the first one through cannot observe a late one.
+  const late: (string | number)[] = [];
+  vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+    const afterDeadline = performance.now() - started >= 1_000;
+    if (afterDeadline && signal !== 0) late.push(signal ?? "default");
+    if (signal === 0) return true; // observation: the group is always live here
+    if (pid < 0) throw Object.assign(new Error("denied"), { code: "EPERM" });
+    return true;
+  });
+  try {
+    // Unresolved by construction, because the group never reads as gone; EPERM rather
+    // than ETIMEDOUT because the denied group kill is the reason cleanup could not finish.
+    expect(await abortProbe(child)).toMatchObject({
+      cleanupErrorCode: "EPERM",
+      cleanupProcessGroupId: child.pid,
+    });
+    expect(late).toEqual([]);
+  } finally {
+    vi.restoreAllMocks();
+    // The real child-fallback SIGKILL above is allowed through, so the group may already
+    // be gone; a failed assertion must not be masked by this cleanup finding that.
+    try {
+      kill(-child.pid!, "SIGKILL");
+    } catch {}
+  }
+});
+
 test("C-PERF-03 an unresolved cleanup window does not keep the host process alive", async () => {
   const cleanup = pathToFileURL(
     fileURLToPath(new URL("../../src/runtime/probe-cleanup.ts", import.meta.url)),
