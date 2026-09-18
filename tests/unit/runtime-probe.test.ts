@@ -93,15 +93,20 @@ describe("runtime probe runner", () => {
     // the kill's ESRCH is swallowed and the timed-out result still resolves. The child
     // here exits on its own shortly after, since the stubbed kill never signals it.
     setProbeTimeoutMsForTests(50);
-    const signaled: number[] = [];
-    vi.spyOn(process, "kill").mockImplementation((pid) => {
-      signaled.push(pid);
+    // Signal and target both recorded: `ESRCH` from the signal-0 observation means the
+    // group is already gone, and the point of the test is that abort then stops. Recording
+    // only pids could not tell that apart from a SIGKILL that also happened to see ESRCH.
+    const signaled: { target: number; signal: string | number | undefined }[] = [];
+    vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      signaled.push({ target: pid, signal });
       throw Object.assign(new Error("gone"), { code: "ESRCH" });
     });
     const result = await runProbe(node, ["-e", "setTimeout(() => {}, 300)"]);
     expect(result.error?.code).toBe("ETIMEDOUT");
-    expect(signaled.length).toBeGreaterThanOrEqual(1);
-    expect(signaled[0]).toBeLessThan(0); // the process GROUP, not just the child pid
+    expect(signaled[0]).toEqual({ target: expect.any(Number), signal: 0 });
+    expect(signaled[0]?.target).toBeLessThan(0); // the process GROUP, not just the child pid
+    // Nothing was ever actually signaled: a group observed gone is not killed again.
+    expect(signaled.every((call) => call.signal === 0)).toBe(true);
   });
 
   test.each([

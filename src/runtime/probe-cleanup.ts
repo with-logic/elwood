@@ -11,6 +11,12 @@ import {
   type ReapErrorCode,
 } from "../core/warnings/reasons.ts";
 
+/**
+ * Unconfirmed cleanup names both the reason and the group still outstanding; confirmed
+ * cleanup names neither. Both fields are optional because `CommandResult` intersects this
+ * into an error shape that exists for every failed probe, not only aborted ones — the two
+ * are nevertheless always written together, by `abortProbe` alone.
+ */
 export type ProbeCleanup = {
   readonly cleanupErrorCode?: ReapErrorCode | "ETIMEDOUT";
   readonly cleanupProcessGroupId?: number;
@@ -52,10 +58,16 @@ export async function abortProbe(child: ChildProcess): Promise<ProbeCleanup> {
   const reaper = new ProbeReaper(child, processGroupId);
   const started = performance.now();
   for (;;) {
-    // Confirmed cleanup is not a failure, whichever signal achieved it. The group is
-    // observed once more after the final wait, so a late exit is not reported unresolved.
-    if (reaper.reap(performance.now() - started >= groupOnlyRetryMs)) return {};
-    if (performance.now() - started >= cleanupWindowMs) break;
+    const elapsedMs = performance.now() - started;
+    // Past the window this is an observation, never a signal: a loaded event loop can
+    // resume this loop late, and the bound is a promise about when Elwood stops signaling,
+    // not merely about when it stops waiting.
+    if (elapsedMs >= cleanupWindowMs) {
+      if (processGroupGone(processGroupId)) return {};
+      break;
+    }
+    // Confirmed cleanup is not a failure, whichever signal achieved it.
+    if (reaper.reap(elapsedMs >= groupOnlyRetryMs)) return {};
     await delay(cleanupRetryMs, undefined, { ref: false });
   }
   // Every failed probe retains cleanup ownership; update leases additionally

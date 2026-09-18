@@ -110,6 +110,10 @@ export function probeFailureDetails(result: {
   readonly error?: {
     readonly code?: string | undefined;
     readonly message: string;
+    // Structurally narrower than `string`: the only producer is `abortProbe`, whose
+    // `ProbeCleanup` type pins this to the bounded allowlist plus `ETIMEDOUT`. Importing
+    // that union here would make `errors.ts` depend on a module that depends on it, so
+    // the constraint is enforced at the producer and documented here.
     readonly cleanupErrorCode?: string;
     readonly cleanupProcessGroupId?: number;
   };

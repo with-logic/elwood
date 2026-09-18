@@ -41,8 +41,10 @@ function denyGroupSignals(allow: () => boolean) {
 
 test("C-PERF-03 a reaped leader's group id is only observed, never signaled as a bare number", async () => {
   const root = tempDir("elwood-probe-reaper-");
-  // Through the environment, not argv: the probe below runs behind a `/bin/sh -c` gate,
-  // and a path passed as an argument there is a command-injection sink.
+  // Through the environment rather than argv. This probe spawns `process.execPath`
+  // directly, so nothing here is shell-gated; the convention exists because the fixture is
+  // reachable from probes that ARE shell-gated, and a path taken from argv and passed on as
+  // an argument is the shape that drew 30 command-injection alerts.
   process.env["ELWOOD_PROBE_FIXTURE_ROOT"] = root;
   setProbeTimeoutMsForTests(1_500);
   const intervals = vi.spyOn(globalThis, "setInterval");
