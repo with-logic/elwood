@@ -31,6 +31,7 @@ function setup() {
     terminal,
     controlQueue: queue,
     blocked: () => false,
+    picker: () => claudeModelPicker,
     submitDirect: (command, signal) => {
       attempts.count += 1;
       signal.throwIfAborted();

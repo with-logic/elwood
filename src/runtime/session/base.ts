@@ -78,6 +78,16 @@ export abstract class AgentSessionBase extends SessionLifecycle {
     return super.isInputBlocked() || this.commands.blocksInput();
   }
 
+  /**
+   * Writes that are NOT part of a picker transaction (`/login` recovery) must additionally
+   * stand off a model dialog a human opened. It is deliberately not part of
+   * `isInputBlocked`: that feeds readiness, and suppressing readiness while any picker is
+   * visible would deadlock Elwood's own picker, whose dialog is on screen by design.
+   */
+  protected foreignDialogBlocksWrite(): boolean {
+    return this.commands.foreignDialogVisible();
+  }
+
   sendPrompt(prompt: string, options?: SendOptions): Promise<void> {
     return this.enqueue(prompt, "prompt", options);
   }

@@ -48,6 +48,7 @@ test.each([
     terminal,
     controlQueue: queue,
     blocked: () => false,
+    picker: () => claudeModelPicker,
     submitDirect: () => Promise.resolve(),
   });
   queue.markReady();
@@ -63,3 +64,73 @@ test.each([
   expect(picker.blocksInput()).toBe(false);
   queue.close();
 });
+
+/**
+ * A model dialog a HUMAN opened is not Elwood's: it never becomes a cleanup `survivor`, so
+ * ownership alone would leave it unguarded. Enter on it still applies the highlighted row
+ * and Escape still discards the human's state, so a write outside any picker transaction
+ * (`/login` recovery) must be withheld while it is up — without suppressing readiness,
+ * which would deadlock Elwood's own picker (C-API-55).
+ */
+test("C-API-55 a human's model picker withholds non-picker writes but not readiness", () => {
+  const screen = { text: claudePicker };
+  const queue = new ControlQueue(
+    () => Promise.resolve(),
+    () => new Error("closed"),
+    () => {},
+  );
+  const picker = new PickerTransactions({
+    terminal: { snapshot: () => ({ text: screen.text }), sendInput: () => undefined },
+    controlQueue: queue,
+    blocked: () => false,
+    picker: () => claudeModelPicker,
+    submitDirect: () => Promise.resolve(),
+  });
+  // Nobody here opened it, so it is not a survivor and must not suppress readiness.
+  expect(picker.blocksInput()).toBe(false);
+  // But a non-picker write must still stand off it.
+  expect(picker.foreignDialogVisible()).toBe(true);
+  // Once the human closes it, writes resume.
+  screen.text = "❯ ";
+  expect(picker.foreignDialogVisible()).toBe(false);
+  queue.close();
+});
+
+/**
+ * A dialog our OWN cleanup could not cancel is already held by `blocksInput`, which feeds
+ * readiness. `foreignDialogVisible` is only for a dialog nobody here opened, so once a
+ * survivor is latched it defers rather than reporting the same dialog twice (C-API-55).
+ */
+test("C-API-55 a survivor is not also reported as a foreign dialog", async () => {
+  // Starts at the composer: the operation itself opens the picker, as in a real flow.
+  const screen = { text: "❯ " };
+  const queue = new ControlQueue(
+    () => Promise.resolve(),
+    () => new Error("closed"),
+    () => {},
+  );
+  const picker = new PickerTransactions({
+    // A permanently failed render means cleanup can never vouch for the screen, so its
+    // Escape is withheld and the dialog is latched as a survivor.
+    terminal: {
+      snapshot: () => ({ text: screen.text }),
+      sendInput: () => undefined,
+      renderFailed: true,
+    },
+    controlQueue: queue,
+    blocked: () => false,
+    picker: () => claudeModelPicker,
+    submitDirect: () => Promise.resolve(),
+  });
+  queue.markReady();
+  const failure = new Error("navigation failed");
+  await expect(
+    picker.run("set_model", claudeModelPicker, 5_000, () => {
+      screen.text = claudePicker;
+      return Promise.reject(failure);
+    }),
+  ).rejects.toBe(failure);
+  expect(picker.blocksInput()).toBe(true);
+  expect(picker.foreignDialogVisible()).toBe(false);
+  queue.close();
+}, 10_000);

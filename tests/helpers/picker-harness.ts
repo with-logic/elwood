@@ -2,7 +2,9 @@
  * A scripted terminal driving the real ControlQueue and PickerTransactions, shared by
  * the model-picker transaction tests (C-API-55).
  */
+import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
+import type { ModelPickerSpec } from "../../src/core/models/picker.ts";
 import { PickerTransactions } from "../../src/runtime/session/picker.ts";
 
 export const escapeKey = String.fromCharCode(27);
@@ -12,7 +14,11 @@ const dialogTitle =
   /Select model|Select Model and Effort|Select Reasoning Level|Switch model\?|Change effort level\?/;
 
 /** `react` scripts how the fake CLI repaints after each command or key Elwood writes. */
-export function pickerHarness(text: string, react: (input: string, screen: Screen) => void) {
+export function pickerHarness(
+  text: string,
+  react: (input: string, screen: Screen) => void,
+  spec: ModelPickerSpec = claudeModelPicker,
+) {
   const screen: Screen = { text };
   const writes: string[] = [];
   const terminal = {
@@ -36,6 +42,7 @@ export function pickerHarness(text: string, react: (input: string, screen: Scree
     terminal,
     controlQueue: queue,
     blocked: () => false,
+    picker: () => spec,
     submitDirect: (command) => Promise.resolve(terminal.sendInput(command)),
   });
   queue.markReady();

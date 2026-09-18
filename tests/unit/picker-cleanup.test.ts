@@ -53,6 +53,7 @@ function setup(
     terminal,
     controlQueue: queue,
     blocked: () => false,
+    picker: () => spec,
     submitDirect: (command) => Promise.resolve(terminal.sendInput(command)),
   });
   queue.markReady();

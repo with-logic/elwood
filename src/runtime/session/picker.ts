@@ -12,6 +12,8 @@ type PickerDeps = {
   /** Also carries the optional observation barrier (`settled`/`renderFailed`) when real. */
   readonly terminal: ScreenTerminal & InputTerminal;
   readonly blocked: () => boolean;
+  /** The adapter's picker spec, for recognizing a dialog nobody here opened. */
+  readonly picker: () => ModelPickerSpec;
 };
 
 export class PickerTransactions {
@@ -21,14 +23,34 @@ export class PickerTransactions {
     this.deps = deps;
   }
 
-  /** Whether a dialog that outlived cleanup is still visible; forgets it once it clears. */
+  /**
+   * Whether a model dialog is on screen that queued input must not be written into.
+   *
+   * TWO cases, and the difference matters. A SURVIVOR is a dialog our own cleanup could not
+   * cancel: it is ours, and it is remembered until it clears. A dialog nobody here opened —
+   * a human who typed `/model` themselves — is NOT ours and never becomes a survivor, but
+   * Enter on it still applies its highlighted row, and Escape still discards the human's
+   * state. So writes are held on any visible model dialog, whoever opened it; ownership
+   * decides what Elwood may DRIVE, not what it may safely type over (C-API-55).
+   */
   blocksInput(): boolean {
-    // `survivor` is only set by our OWN cleanup, so this dialog is one we opened: the
-    // authority that outlived the transaction is what still makes it ours to hold on.
     if (this.survivor?.activeDialog(this.deps.terminal.snapshot().text, ours) !== undefined)
       return true;
     this.survivor = undefined;
     return false;
+  }
+
+  /**
+   * Whether a model dialog nobody here opened is on screen — a human who typed `/model`
+   * themselves. It is NOT ours, so it never becomes a `survivor` and must not suppress
+   * readiness (that would deadlock our own picker, whose dialog is visible by design).
+   * But Enter on it still applies its highlighted row and Escape still discards the
+   * human's state, so a WRITE that is not part of a picker transaction — `/login`
+   * recovery, a queued paste — must be withheld while it is up (C-API-55).
+   */
+  foreignDialogVisible(): boolean {
+    if (this.survivor !== undefined) return false;
+    return this.deps.picker().activeDialog(this.deps.terminal.snapshot().text, ours) !== undefined;
   }
 
   /**

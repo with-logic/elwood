@@ -176,7 +176,9 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   login(options: ClaudeLoginOptions): Promise<void> {
     const onReady = (handler: () => void) =>
       this.emitter.on("status", (e) => e.status === "ready" && handler());
-    const blocked = () => this.isInputBlocked();
+    // Login writes `/login` and an Enter outside any picker transaction, so it must also
+    // stand off a model dialog a human opened: Enter there applies the highlighted row.
+    const blocked = () => this.isInputBlocked() || this.foreignDialogBlocksWrite();
     const deps = { controlQueue: this.controlQueue, terminal: this.terminal, blocked, onReady };
     return this.inSession(() => runSessionLogin(deps, options));
   }
