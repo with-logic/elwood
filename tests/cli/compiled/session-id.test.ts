@@ -88,13 +88,14 @@ describe("C-CLI-27 compiled CLI output", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-    // Each `test.each` case spawns TWELVE compiled-CLI processes (a `reply` and a `sessions`
-    // listing per output protocol, twice over `--show-session-id`). Measured on an idle
-    // machine that is ~32s at ~2.7s per spawn, because each process pays the compiled
-    // entry's module-load cost (~670ms even for `--help`) rather than doing test work.
-    // At 60s that left no headroom and the case timed out whenever the machine was busy —
-    // a load-sensitive failure that looks exactly like a flake (#56). The budget is sized
-    // for the measured serial cost plus room for contention; a genuine hang still fails
-    // well inside the suite runtime.
+    // Each `test.each` case spawns TWENTY-FOUR compiled-CLI processes: six option
+    // combinations (`--show-session-id` off/on × text/json/jsonl), each running FOUR
+    // invocations — `reply`, the `sessions` listing, `resume`, and the ephemeral run.
+    // Measured per case on a lightly loaded machine: ~29s, because every process pays the
+    // compiled entry's module-load cost (~670ms even for `--help`) rather than doing test
+    // work. Against the former 60s budget that is under 2x headroom, so the case timed out
+    // whenever the machine was busy — a load-sensitive failure that reads exactly like a
+    // flake (#56). The budget is sized for the measured cost plus room for contention; a
+    // genuine hang still fails well inside the suite runtime.
   }, 180_000);
 });
