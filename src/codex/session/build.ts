@@ -23,6 +23,7 @@ import type { CodexPreflightWarning } from "../preflight.ts";
 import { spawnCodexPty } from "../pty.ts";
 import { codexScreenFactTableForTrustPolicy } from "../screen-table.ts";
 import { CodexStartupPromptResponder } from "../startup-prompts.ts";
+import { guardedCodexAutomationWrite } from "../update-prompt.ts";
 import { currentCodexHookBridgeFactory } from "./bridge.ts";
 import { reportCallerInput } from "./caller-input.ts";
 import { dispatchHook, registerInitialHooks } from "./hooks.ts";
@@ -122,14 +123,12 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     (data, renderedTerminal) => {
       startupOutput.push(data);
       terminalReplay.push(data);
-      // One snapshot per render: reused for prompt automation, readiness, detection.
+      // One snapshot per render: reused for automation, readiness, detection.
       const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
-      // Automation owns completion; failures report through the contained warning gate.
-      const result = promptResponder.handle(
-        frame.text,
-        callerInput.automation,
-        () => renderedTerminal.snapshot().text,
-      );
+      const send = callerInput.automation; // automation owns completion; warnings gated
+      const read = () => renderedTerminal.snapshot().text;
+      const guarded = guardedCodexAutomationWrite(renderedTerminal, send, read);
+      const result = promptResponder.handle(frame.text, send, read, guarded);
       warnGate.emitWarnings(result.warnings);
       emitSettledStartupOutcomes(emitter, "codex", record.elwoodSessionId, result.outcomes, {
         emitWarnings: (w) => warnGate.emitWarnings(w),

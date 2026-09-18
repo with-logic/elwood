@@ -5,7 +5,13 @@
  * C-CLAUDE-14, and C-CLAUDE-16.
  */
 
-import type { SettledStartupOutcome } from "../core/startup/write.ts";
+import type { InputTerminal } from "../core/input/abort.ts";
+import {
+  type AutomationWriteResult,
+  guardedNonTrustAutomationWrite,
+  type NonTrustAutomationWriter,
+} from "../core/startup/barrier.ts";
+import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/startup/write.ts";
 import { trustGateVisible } from "../core/trust/blocking.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 
@@ -44,7 +50,7 @@ export class ClaudeStartupPromptResponder {
     screenText: string,
     write: (input: string) => TrustWriteResult,
     readFrame?: () => string,
-    writeAutomation: (input: string) => TrustWriteResult = write,
+    writeAutomation: (input: string) => TrustWriteResult | Promise<AutomationWriteResult> = write,
   ): readonly SettledStartupOutcome<"claude">[] {
     const settled: SettledStartupOutcome<"claude">[] = [];
     const trust = this.trust.handle(screenText, write, readFrame);
@@ -63,10 +69,19 @@ export class ClaudeStartupPromptResponder {
       // OPTIMISTICALLY, but keep the decline retryable if the write is rejected
       // so a later frame re-attempts it rather than reporting a false "answered".
       this.browserDeclined = true;
-      const writeSettled = Promise.resolve(writeAutomation(declineKey)).catch((error: unknown) => {
-        this.browserDeclined = false;
-        throw error;
-      });
+      // A WITHHELD write never reached the PTY (a trust gate was on the settled frame),
+      // so the decline must not claim success: un-latch it and settle as `cancelled`,
+      // which emits no `startup_prompt` activity and leaves a later frame to retry.
+      const writeSettled = Promise.resolve(writeAutomation(declineKey))
+        .then((result): StartupWriteCompletion => {
+          if (result !== "withheld") return "answered";
+          this.browserDeclined = false;
+          return "cancelled";
+        })
+        .catch((error: unknown) => {
+          this.browserDeclined = false;
+          throw error;
+        });
       settled.push({
         outcome: { kind: "attempted", prompt: "browser_tools", input: "esc" },
         settled: writeSettled,
@@ -74,6 +89,21 @@ export class ClaudeStartupPromptResponder {
     }
     return settled;
   }
+}
+
+/**
+ * The Claude non-trust automation barrier. The decline is only correct while its own
+ * prompt is still on screen: if the prompt cleared during settlement, an Escape would
+ * land in whatever replaced it (a composer, clearing staged text), so it is withheld.
+ */
+export function guardedClaudeAutomationWrite(
+  terminal: InputTerminal,
+  write: NonTrustAutomationWriter,
+  readFrame: () => string,
+): (input: string) => Promise<AutomationWriteResult> {
+  return guardedNonTrustAutomationWrite(terminal, write, readFrame, "claude", (frameText) =>
+    browserToolsPromptVisible(frameText),
+  );
 }
 
 export function browserToolsPromptVisible(text: string): boolean {
