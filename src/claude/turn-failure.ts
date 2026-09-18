@@ -33,8 +33,11 @@ export const claudeBoundarySignal: BoundarySignalReader = (event) => {
 };
 
 /**
- * The failure a `StopFailure` hook reports, or `undefined` for any other hook. The hook's
- * own `error` field is the evidence; its absence leaves the event to the default reader.
+ * The failure a `StopFailure` hook reports, or `undefined` for any OTHER hook (which the
+ * default reader then handles). The hook's IDENTITY is the evidence: `StopFailure` means
+ * Claude rejected the turn, so a payload whose `error`/`error_details` are missing, blank, or
+ * version-drifted still fails — with the generic reason — rather than settling as an empty
+ * success. Only the reason's wording depends on those fields.
  */
 function stopFailure(event: {
   readonly hook_event_name?: string;

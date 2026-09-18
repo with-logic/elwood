@@ -69,6 +69,34 @@ describe("C-API-57 the shipped session classes fail a rejected turn", () => {
     });
   });
 
+  test("a rejected turn RELEASES its serialized slot, so the next send still runs", async () => {
+    // A rejected turn must reach the serializer's boundary, not hold its slot: otherwise every
+    // later `send`/`stream` queues behind it forever and the session wedges. Proving the
+    // rejection alone would still pass if `boundary.reach()` stopped being called.
+    const underlying = new FakeUnderlying();
+    underlying.script = (emitter, turnId) => {
+      emitter.emit("status", { elwoodSessionId: "s1", status: "running" });
+      if (turnId === "t1") {
+        emitter.emit(
+          "activity",
+          activity({ agent: "codex", kind: "other", label: "task_complete", raw: codexRejection }),
+        );
+      } else {
+        emitter.emit("activity", activity({ text: "second turn ran", turnId }));
+        (emitter as unknown as { emit: (e: string, p: unknown) => void }).emit("hook", {
+          hook_event_name: "Stop",
+          last_assistant_message: "second turn ran",
+        });
+      }
+      emitter.emit("status", { elwoodSessionId: "s1", status: "ready" });
+    };
+    const session = new CodexSession({ cwd: "/fake" });
+    stubLaunch(session, underlying);
+    await expect(session.send("first")).rejects.toMatchObject({ code: "turn_failed" });
+    // The slot was released, so this resolves instead of hanging behind the rejected turn.
+    expect(await session.send("second")).toBe("second turn ran");
+  });
+
   test("ClaudeSession.send rejects with turn_failed on a StopFailure hook", async () => {
     const underlying = new FakeUnderlying();
     claudeRejectedTurn(underlying);

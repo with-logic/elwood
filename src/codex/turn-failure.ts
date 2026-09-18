@@ -23,28 +23,41 @@ const maxMessageLength = 2_000;
 export const codexFailureEvidence: FailureEvidenceReader = (event) => {
   const payload = asRecord(asRecord(event.raw)?.["payload"]);
   if (payload?.["type"] !== "task_complete") return undefined;
-  const error = asRecord(payload["error"]);
-  // PRESENCE of the error payload is the whole test: a `task_complete` WITHOUT one is an
-  // ordinary successful turn, including one whose `last_agent_message` is null.
-  if (!error) return undefined;
-  return failure(error);
+  // PRESENCE of the error payload is the whole test — never its SHAPE. A `task_complete`
+  // WITHOUT one is an ordinary successful turn (including one whose `last_agent_message` is
+  // null); one WITH any non-nullish `error` is a rejection, even if the CLI represents it as a
+  // bare string or a version change alters the shape. Narrowing to an object first would make a
+  // malformed or drifted payload settle as an empty SUCCESS, which is the #19 bug.
+  const raw = payload["error"];
+  if (raw === undefined || raw === null) return undefined;
+  return failure(asRecord(raw) ?? {}, raw);
 };
 
-function failure(error: Readonly<Record<string, unknown>>): TurnFailure {
+/**
+ * Build the failure from an error payload. `raw` is the ORIGINAL value, so a non-object error
+ * (a bare string, or whatever a version change introduces) still yields a truthful reason
+ * instead of a shapeless one. `info` is bounded like the message: it reaches consumers through
+ * public `ElwoodError.details`, so an oversized classification must not be retained unbounded.
+ */
+function failure(error: Readonly<Record<string, unknown>>, raw: unknown): TurnFailure {
   const info = error["codex_error_info"];
   return {
-    message: reason(error["message"]),
-    ...(typeof info === "string" ? { info } : {}),
+    message: reason(error["message"] ?? raw),
+    ...(typeof info === "string" ? { info: bounded(info) } : {}),
   };
 }
 
 /**
  * The human-readable reason. Codex wraps a server rejection as a JSON envelope
  * (`{"type":"error","status":400,"error":{"message":"…"}}`), so unwrap the innermost
- * `error.message` when one parses; otherwise keep the raw string. A non-string/absent
- * message still yields a truthful generic reason rather than an empty error.
+ * `error.message` when one parses; otherwise keep the raw string. A non-string scalar (a
+ * status code, say) is rendered rather than dropped, and an absent/empty one still yields a
+ * truthful generic reason — a rejection never surfaces an empty message.
  */
 function reason(value: unknown): string {
+  if (typeof value === "number" || typeof value === "boolean") {
+    return `Codex rejected the turn: ${String(value)}`;
+  }
   if (typeof value !== "string" || value.length === 0) return "Codex rejected the turn.";
   // A provider rejection can carry a multi-megabyte payload. Only attempt the nested JSON
   // unwrap while the raw string is within the cap; above it, truncate without parsing rather

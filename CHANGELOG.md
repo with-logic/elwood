@@ -22,7 +22,11 @@ back each entry are listed in `prd/14-conformance.md`.
   boundary hook at all and is evidenced only by a transcript `task_complete`
   carrying an `error`. An empty response is still NOT evidence of failure — a
   legitimately empty reply resolves to `""` and exits 0 as before — and the
-  adapter's classification (`details.info`) is diagnostic only.
+  adapter's classification (`details.info`) is diagnostic only. Detection does not
+  depend on the error's SHAPE: any non-nullish `error` a CLI reports fails the turn,
+  including a bare string or a payload a future CLI version changes, so an
+  unrecognized rejection can never quietly read as success. Reasons and
+  classifications are bounded before they reach consumers.
 
 - Hold the cross-process update lease for an aborted updater's surviving process
   group. An update probe that was aborted without confirming its process group had

@@ -150,6 +150,12 @@ a general property of the CLI. Claude is the opposite shape — its `StopFailure
   the signal. It is kept for diagnosis only.
 - A bogus `--model` is a quota-independent way to provoke this in e2e: the
   service rejects the model name (HTTP 400) before consuming any model quota.
+  **The same trigger works on Claude**, which makes the two adapters testable the
+  same way: a bogus `--model` makes the real Claude CLI fire a genuine
+  `StopFailure` whose `error` is `model_not_found`, and Elwood surfaces
+  `turn_failed: Claude rejected the turn: model_not_found`. Verified against the
+  installed CLI — this is the empirical confirmation that Claude's rejection
+  really does ride a hook, where Codex's does not.
 - **The rejection is TAGGED but the turn has no content.** The real capture for a
   rejected turn is three items: the user `message`, an `item_completed`, and the
   `task_complete` — the latter two carrying `payload.turn_id`, which

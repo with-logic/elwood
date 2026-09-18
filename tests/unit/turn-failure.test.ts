@@ -26,6 +26,14 @@ function taskComplete(
   };
 }
 
+/** A `task_complete` whose `error` is an ARBITRARY shape (string, scalar, absent, …). */
+function taskCompleteRaw(error: unknown): Readonly<Record<string, unknown>> {
+  return {
+    type: "event_msg",
+    payload: { type: "task_complete", last_agent_message: null, error },
+  };
+}
+
 /** The activity event a Codex transcript item arrives on. */
 function transcript(raw: unknown) {
   return activity({ agent: "codex", kind: "other", label: "task_complete", raw });
@@ -81,6 +89,36 @@ describe("C-API-57 Codex reports a rejected turn from its transcript", () => {
     expect(codexFailureEvidence(transcript(undefined))).toBeUndefined();
   });
 
+  test("an error of ANY shape is a rejection — presence, never shape, is the signal", () => {
+    // A non-object `error` must never read as success: that is the #19 bug reached by another
+    // payload shape. A bare string, a scalar, or an unrecognized shape all still fail the turn.
+    expect(codexFailureEvidence(transcript(taskCompleteRaw("out of quota")))?.message).toBe(
+      "out of quota",
+    );
+    expect(codexFailureEvidence(transcript(taskCompleteRaw(500)))?.message).toBe(
+      "Codex rejected the turn: 500",
+    );
+    expect(codexFailureEvidence(transcript(taskCompleteRaw(true)))?.message).toBe(
+      "Codex rejected the turn: true",
+    );
+    // An unrecognized shape still fails, with a truthful generic reason.
+    expect(codexFailureEvidence(transcript(taskCompleteRaw(["a"])))?.message).toBe(
+      "Codex rejected the turn.",
+    );
+    // Only a genuinely ABSENT error is success (§12A.3) — `null` included.
+    expect(codexFailureEvidence(transcript(taskCompleteRaw(null)))).toBeUndefined();
+    expect(codexFailureEvidence(transcript(taskCompleteRaw(undefined)))).toBeUndefined();
+  });
+
+  test("the diagnostic classification is BOUNDED like the message", () => {
+    // `info` reaches consumers through public `ElwoodError.details`, so an oversized
+    // classification must not be retained unbounded by anything that logs or serializes it.
+    const failure = codexFailureEvidence(
+      transcript(taskComplete({ message: "r", codex_error_info: "c".repeat(5_000) })),
+    );
+    expect(failure?.info).toHaveLength(2_001); // 2000 chars + the ellipsis
+  });
+
   test("a non-JSON, absent, or oversized reason stays truthful and bounded", () => {
     expect(
       codexFailureEvidence(transcript(taskComplete({ message: "plain reason" })))?.message,
@@ -89,8 +127,9 @@ describe("C-API-57 Codex reports a rejected turn from its transcript", () => {
     expect(codexFailureEvidence(transcript(taskComplete({})))?.message).toBe(
       "Codex rejected the turn.",
     );
+    // A non-string scalar message is RENDERED rather than dropped, so the reason stays useful.
     expect(codexFailureEvidence(transcript(taskComplete({ message: 42 })))?.message).toBe(
-      "Codex rejected the turn.",
+      "Codex rejected the turn: 42",
     );
     // A JSON envelope whose inner message is missing keeps the raw string.
     expect(
