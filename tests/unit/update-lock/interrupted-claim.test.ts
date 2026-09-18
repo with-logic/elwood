@@ -143,7 +143,9 @@ test("C-PERF-04 the sweep reads a bounded number of entries and leaves the other
   for (let index = 0; index < claudeLeftovers; index += 1)
     mkdirSync(join(root, `claude.lock.claim.${index}`));
   const walked = await runSweepCounter(root);
-  expect(walked).toBeLessThan(claudeLeftovers);
+  // The configured limit exactly, out of 1000 available. Asserting the limit rather than
+  // merely "fewer than 1000" is what makes a raised or removed bound fail here.
+  expect(walked).toBe(64);
   // Again in this process, so the bound's own branch is taken here and not only in the child.
   await coordinatedAutoupdate("codex", () => Promise.resolve(), { root });
   // The other adapter's leftovers are never this holder's to remove, at any bound.

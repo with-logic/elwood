@@ -140,7 +140,8 @@ async function sweepLeaseLeftovers(path: string): Promise<void> {
         swept += 1;
         if (swept === maxSweptLeftovers) break;
       }
-      // Counted after the entry is handled, so exactly `maxInspectedEntries` are ever read.
+      // Counted after the entry is handled, so `maxInspectedEntries` is an upper bound that
+      // is never overshot; a short root or the deletion budget above can stop the scan sooner.
       inspected += 1;
       if (inspected === maxInspectedEntries) break;
     }
