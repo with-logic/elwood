@@ -5,6 +5,7 @@
 
 import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/startup/write.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
+import { trustGateVisible } from "../core/trust/blocking.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { type CodexBannerWarning, codexWarningsFromText } from "./startup-warnings.ts";
@@ -105,7 +106,12 @@ export class CodexStartupPromptResponder {
     // consecutive frames.
     const onUpdateScreen = this.updatePrompt.observe(screenText);
     const generation = this.updatePrompt.currentGeneration;
-    if (onUpdateScreen && this.skipGeneration !== generation) {
+    // A trust gate (held allowlisted candidate or off-allowlist) is never ELIGIBLE for
+    // update-skip automation, even when its rows resemble the update options. Note this
+    // gates the WRITE only: `updatePrompt.observe` above still tracks such a frame as an
+    // update appearance, so generation latching and re-arming are unaffected.
+    const noTrustGate = (frame: string) => !trustGateVisible(frame, "codex");
+    if (onUpdateScreen && this.skipGeneration !== generation && noTrustGate(screenText)) {
       const option = findNumberedOption(this.buffer, codexUpdateOptionPattern);
       if (option) {
         // Settle OPTIMISTICALLY but keep the skip retryable if the write is
@@ -115,8 +121,19 @@ export class CodexStartupPromptResponder {
         // A later appearance owns the latch AND the settlement. A write rejected once the
         // screen cleared is quiet too (nothing is left to retry or block on); a clear
         // after our key is what success means (C-CODEX-12).
-        const current = this.updatePrompt.currentFramePredicate();
-        const settled = writeCodexUpdateSkip(option, writeAutomation, readFrame, current).then(
+        const sameUpdate = this.updatePrompt.currentFramePredicate();
+        const current = (frame: string) => sameUpdate(frame) && noTrustGate(frame);
+        // A trust gate painted over the update screen INVALIDATES the skip: the update
+        // never cleared, so it must not settle as answered (C-CODEX-12, C-TRUST-01).
+        const invalidated = (frame: string) => trustGateVisible(frame, "codex");
+        // The skip is NON-TRUST automation, so it writes through `writeAutomation` (#42).
+        const settled = writeCodexUpdateSkip(
+          option,
+          writeAutomation,
+          readFrame,
+          current,
+          invalidated,
+        ).then(
           (completion) => {
             const replaced = this.updatePrompt.hasLaterAppearance(generation);
             if (completion === "exhausted" || replaced) return "cancelled";
