@@ -85,6 +85,18 @@ function firstNumberedRow(lines: readonly string[]): number | undefined {
   return row < 0 ? undefined : row;
 }
 
+/**
+ * Inclusive row span of the frame's cursor-option block, or `undefined` when it has
+ * none. Header scanning excludes these rows so an option label that reads like a
+ * header cannot register as its own candidate region.
+ */
+export function cursorOptionRows(
+  lines: readonly string[],
+): { readonly firstRow: number; readonly lastRow: number } | undefined {
+  const bounds = cursorOptionBounds(lines);
+  return bounds && { firstRow: bounds.firstRow, lastRow: bounds.lastRow };
+}
+
 function positionedCursorOptions(lines: readonly string[]): readonly PositionedCursorOption[] {
   const bounds = cursorOptionBounds(lines);
   if (bounds === undefined) return [];

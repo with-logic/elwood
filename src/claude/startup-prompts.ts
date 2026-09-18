@@ -12,6 +12,7 @@ import {
   type NonTrustAutomationWriter,
 } from "../core/startup/barrier.ts";
 import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/startup/write.ts";
+import { trustGateVisible } from "../core/trust/blocking.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 
 // The prompt's documented decline keystroke (ESC).
@@ -58,7 +59,11 @@ export class ClaudeStartupPromptResponder {
     } else if (trust?.kind === "option_pending") {
       settled.push({ outcome: { kind: "option_pending", prompt: trust.prompt } });
     }
-    if (!this.browserDeclined && browserToolsPromptVisible(screenText)) {
+    if (
+      !this.browserDeclined &&
+      browserToolsPromptVisible(screenText) &&
+      !trustGateVisible(screenText, "claude") // a trust gate is never declined blind (C-TRUST-01)
+    ) {
       // Escape is the prompt's documented decline path and needs no option
       // number, so it stays correct if the option ordering changes. Settle
       // OPTIMISTICALLY, but keep the decline retryable if the write is rejected

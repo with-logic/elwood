@@ -74,7 +74,9 @@ test.each([
 
 test("C-ATTN-03 static human rules omit automation-owned trust candidates", () => {
   const base = { agent: "claude" as const, verifiedAgainst: "test", rules: [] };
-  expect(withTrustBlockingRules(base, "claude", true)).toBe(base);
+  // Only the hold-only off-allowlist fallback remains; no allowlisted prompt gets a static rule.
+  const owned = withTrustBlockingRules(base, "claude", true).rules.map((rule) => rule.id);
+  expect(owned).toEqual(["claude-unknown_gate-prompt"]);
   const codex = withTrustBlockingRules(base, "codex", false);
   expect(codex.rules.some((rule) => rule.match?.("Hooks need review\nUnknown copy"))).toBe(false);
   expect(

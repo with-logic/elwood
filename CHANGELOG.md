@@ -18,6 +18,14 @@ back each entry are listed in `prd/14-conformance.md`.
   the settled frame before writing, the guarantee queued caller input already had. A
   withheld write is silent and stays retryable; the trust responder is unaffected and
   still answers trust gates itself.
+- Hold queued input on an unrecognized gate behind a recognized native header
+  prefix (`Do you`, `Is this`, `Trust the`, ... — PRD §5.4 lists them): a reworded
+  question with selectable options and a frame-ending native footer, and no
+  conversation above, now blocks for a human with the attention label
+  `<agent>-unknown_gate-prompt` under every `autotrust` value and is never answered
+  automatically; previously readiness could type the queued message and Enter
+  into it. Gates outside that grammar (other leading words, other footers) are
+  still not held. Dialogs that already block keep their existing labels.
 - Bound Codex in-TUI update skipping to one attempt per appearance of the update
   screen: an exhausted retry no longer restarts on the next frame of the same
   screen, and a stale attempt's late completion cannot start an overlapping retry
@@ -49,6 +57,9 @@ back each entry are listed in `prd/14-conformance.md`.
   a bare allowlisted header with affirmative options is held, never typed into,
   and becomes answerable only once its native body paints (recoverable `blocked`
   after five seconds otherwise). Skill, plugin, and MCP gates are unchanged.
+- Release the cross-process update lease atomically. A second Elwood process polling
+  at the instant the owner released could recover the half-removed lease as stale
+  and run a duplicate `autoupdate` right after the first.
 - Publish the cross-process update lease atomically. An Elwood process killed
   while claiming the lease could leave a partial owner record that made every
   later `autoupdate` on that machine skip its update until the cache was removed
