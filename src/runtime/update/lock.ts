@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { chmod, mkdir, opendir, rename, rm, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { elwoodError } from "../../core/errors.ts";
 import {
   type LeaseOwner,
   ownerFile,
@@ -24,12 +25,14 @@ export type UpdateLeaseOptions = {
   readonly root?: string;
   readonly pollMs?: number;
   readonly staleMs?: number;
+  readonly waitMs?: number;
 };
 
 const defaultPollMs = 50;
 const defaultStaleMs = 30_000;
 const maxSweptLeftovers = 8;
 const maxInspectedEntries = 64;
+const defaultWaitMs = 60_000;
 
 function defaultLeaseRoot(): string {
   const user = userInfo();
@@ -44,6 +47,8 @@ export function updateLockPath(adapter: UpdateAdapter, root = defaultLeaseRoot()
  * Runs `update` only for the lease owner. A contender waits until that owner
  * settles and then returns without a duplicate update; callers re-read version
  * state after this resolves. Waiting uses timers, never a blocking filesystem loop.
+ * After 60 seconds by default, a still-active owner rejects with the adapter's
+ * update_failed error and updateReason active_owner; preflight warns and continues.
  */
 export async function coordinatedAutoupdate(
   adapter: UpdateAdapter,
@@ -54,6 +59,9 @@ export async function coordinatedAutoupdate(
   const path = updateLockPath(adapter, root);
   const pollMs = options.pollMs ?? defaultPollMs;
   const staleMs = options.staleMs ?? defaultStaleMs;
+  // Monotonic: the wait is a promised bound, so a backward system-clock adjustment must
+  // not extend it. `mtime` staleness below stays on the wall clock, which is what it is.
+  const waitUntilMs = performance.now() + (options.waitMs ?? defaultWaitMs);
   await mkdir(root, { recursive: true, mode: 0o700 });
   await chmod(root, 0o700);
   const owner = { pid: process.pid, token: randomUUID() } satisfies LeaseOwner;
@@ -68,8 +76,13 @@ export async function coordinatedAutoupdate(
     // would then treat its own later claim as the first attempt and run a duplicate
     // update (PRD §9.2: a contender skips its duplicate attempt).
     observedActive = true;
-    const waited = await waitForOwner(path, pollMs, staleMs);
+    const waited = await waitForOwner(path, pollMs, staleMs, waitUntilMs);
     if (waited === "released") return;
+    if (waited === "wait_expired") {
+      throw elwoodError(`${adapter}_update_failed`, "Another updater has not finished.", {
+        updateReason: "active_owner",
+      });
+    }
     recoveredStale = true;
   }
   if (

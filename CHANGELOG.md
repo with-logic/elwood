@@ -81,6 +81,10 @@ back each entry are listed in `prd/14-conformance.md`.
   out of warning events by requiring the current native welcome region.
 - Validate all concrete Claude tool input fields and typed hook fields, constrain
   permission rewrites to tool-specific handlers, and accept nullable Codex descriptions.
+- Bound the wait for another Elwood process's `autoupdate` to 60 seconds. A
+  contender that is still waiting then skips its update and continues with the
+  installed CLI, reporting `agent_update_failed` with `errorCode: "update_active"`
+  instead of waiting indefinitely; the active owner's lease is never evicted.
 - Match Claude task identifiers and plan permission objects to the native hook
   schemas so valid task and plan inputs reach their handlers.
 - Contain clipboard pipe failures during Codex image attachment, and retain the

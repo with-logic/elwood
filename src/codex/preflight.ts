@@ -6,7 +6,7 @@
 import { elwoodError, probeFailureDetails } from "../core/errors.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { compareVersions, parseVersion } from "../core/versions.ts";
-import { type DistributiveOmit, updateFailedWarning } from "../core/warnings/update.ts";
+import { buildUpdateWarning, type DistributiveOmit } from "../core/warnings/update.ts";
 import { type CommandResult, currentCommandRunner, currentPlatform } from "../runtime/seams.ts";
 import { probeShellCommand, userShell } from "../runtime/shell.ts";
 import { cachedAutoupdate, cachedVersionRead, dedupeInFlight } from "../runtime/update/once.ts";
@@ -63,7 +63,7 @@ export async function preflightCodex(
     );
   }
   // Installed CLI is compatible: a failed best-effort update is a warning, not a start failure.
-  return updateError === undefined ? undefined : updateFailedWarning("codex", version, updateError);
+  return updateError === undefined ? undefined : buildUpdateWarning("codex", version, updateError);
 }
 
 async function runCodexUpdate(): Promise<void> {
