@@ -9,7 +9,7 @@ import { numberedOptions } from "../core/terminal-options.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { type CodexBannerWarning, codexWarningsFromText } from "./startup-warnings.ts";
-import { CodexUpdatePromptTracker, codexUpdateOptionPattern } from "./update-prompt.ts";
+import { CodexUpdatePromptTracker, safeUpdateOption } from "./update-prompt.ts";
 import { codexUpdateSkipEligible, startCodexUpdateSkip } from "./update-skip-attempt.ts";
 
 export { codexWarningsFromText } from "./startup-warnings.ts";
@@ -111,7 +111,10 @@ export class CodexStartupPromptResponder {
       this.skipGeneration !== generation &&
       codexUpdateSkipEligible(screenText)
     ) {
-      const option = findNumberedOption(this.buffer, codexUpdateOptionPattern);
+      // The safe option is located with the same layout rule the retry loop uses, so the
+      // digit this attempt reports is the one it would actually press: never the update
+      // ACTION, and never a skip-shaped row listed before it (round 1 of #59).
+      const option = safeUpdateOption(this.buffer)?.number ?? null;
       if (option) {
         // Settle OPTIMISTICALLY but keep the skip retryable if the write is
         // rejected, so a later frame re-attempts it rather than falsely reporting

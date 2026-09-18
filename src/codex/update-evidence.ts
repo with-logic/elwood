@@ -61,6 +61,24 @@ export function withUpdateFrameEvidence(
 }
 
 /**
+ * Whether a frame REASSIGNS any option number this appearance already bound to a
+ * different label. This is only the consistency half of the continuation question — it
+ * says nothing about whether the appearance was ever first-party, and a frame with no
+ * options at all trivially passes. Callers that need "is this a continuation" want
+ * `frameContinuesAppearance`; callers that need "is this still the same dialog" — which
+ * includes complete-looking first-party frames — want this one.
+ */
+export function appearanceBindingsHold(
+  evidence: CodexUpdateAppearanceEvidence,
+  frameText: string,
+): boolean {
+  return numberedOptions(frameText).every((option) => {
+    const known = evidence.options.get(option.number);
+    return known === undefined || known === option.label;
+  });
+}
+
+/**
  * Whether a banner-less option-only frame can be a continuation of THIS appearance.
  *
  * Two requirements, and neither can be satisfied by the frame alone — which is the
@@ -74,9 +92,5 @@ export function frameContinuesAppearance(
   evidence: CodexUpdateAppearanceEvidence,
   frameText: string,
 ): boolean {
-  if (!evidence.firstParty) return false;
-  return numberedOptions(frameText).every((option) => {
-    const known = evidence.options.get(option.number);
-    return known === undefined || known === option.label;
-  });
+  return evidence.firstParty && appearanceBindingsHold(evidence, frameText);
 }

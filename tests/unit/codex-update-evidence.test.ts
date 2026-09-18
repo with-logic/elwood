@@ -11,7 +11,7 @@ import {
   frameContinuesAppearance,
   withUpdateFrameEvidence,
 } from "../../src/codex/update-evidence.ts";
-import { CodexUpdatePromptTracker } from "../../src/codex/update-prompt.ts";
+import { CodexUpdatePromptTracker, safeUpdateOption } from "../../src/codex/update-prompt.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -44,6 +44,38 @@ describe("C-CODEX-22 update-skip requires the appearance's own first-party evide
     expect(writes).toEqual([]);
   });
 
+  test("C-CODEX-22 a first-party-SHAPED replacement cannot inherit the appearance", () => {
+    const tracker = new CodexUpdatePromptTracker();
+    expect(tracker.observe(bannerFrame)).toBe(true);
+    const captured = tracker.currentFramePredicate();
+    const generation = tracker.currentGeneration;
+    // A complete-looking update screen that REASSIGNS the captured `1`. Shape alone would
+    // accept it, which would let the running attempt press `1` on a different dialog.
+    const replacement = "  1. Skip backup\n  2. Update now";
+    // It is still a blocking update screen, but a NEW appearance...
+    expect(tracker.observe(replacement)).toBe(true);
+    expect(tracker.currentGeneration).not.toBe(generation);
+    // ...so the predicate captured on the ORIGINAL appearance no longer authorizes it.
+    expect(captured(replacement)).toBe(false);
+  });
+
+  test("C-CODEX-22 no update-skip key reaches a first-party-shaped replacement", async () => {
+    vi.useFakeTimers();
+    const responder = new CodexStartupPromptResponder("s1");
+    const writes: string[] = [];
+    const write = (input: string) => {
+      writes.push(input);
+    };
+    const replacement = "  1. Skip backup\n  2. Update now";
+    responder.handle(bannerFrame, write);
+    const result = responder.handle(replacement, write, () => replacement);
+    await vi.runAllTimersAsync();
+    await Promise.all(result.outcomes.map((outcome) => outcome.settled));
+    // `1` is bound to `Update now` on the captured appearance; it must never be pressed
+    // on a dialog that reassigned it.
+    expect(writes).not.toContain("1");
+  });
+
   test("C-CODEX-12 a genuine banner-less safe-option repaint still continues its appearance", () => {
     const tracker = new CodexUpdatePromptTracker();
     expect(tracker.observe(bannerFrame)).toBe(true);
@@ -73,6 +105,31 @@ describe("C-CODEX-22 update-skip requires the appearance's own first-party evide
     expect(tracker.observe("› ")).toBe(false);
     // The cleared appearance's `firstParty` must not vouch for an unrelated prompt.
     expect(tracker.observe("  2. Skip\n  3. Skip until next version")).toBe(false);
+  });
+});
+
+describe("C-CODEX-22 safe-option selection respects update-screen layout", () => {
+  test("C-CODEX-22 the real layout still yields its safe option", () => {
+    expect(safeUpdateOption("  1. Update now\n  2. Skip")?.number).toBe("2");
+    expect(
+      safeUpdateOption("  1. Update now\n  2. Skip\n  3. Skip until next version")?.number,
+    ).toBe("2");
+  });
+
+  test("C-CODEX-22 a banner-less continuation is unconstrained by the action ordering", () => {
+    // No update action on the frame, so the first safe row is the right one.
+    expect(safeUpdateOption("  2. Skip\n  3. Skip until next version")?.number).toBe("2");
+  });
+
+  test("C-CODEX-22 a skip-shaped row listed BEFORE the update action is never selected", () => {
+    // Selecting `1` here would press `Skip backup` on a dialog that is not the update
+    // screen's real layout; there is no safe option after the action, so none is offered.
+    expect(safeUpdateOption("  1. Skip backup\n  2. Update now")).toBeUndefined();
+  });
+
+  test("C-CODEX-22 the update action itself is never a safe option", () => {
+    // `Update now (skip prompts)` matches the safe pattern on "skip" but PERFORMS the update.
+    expect(safeUpdateOption("  1. Update now (skip prompts)")).toBeUndefined();
   });
 });
 

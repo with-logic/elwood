@@ -1,6 +1,10 @@
 /**
- * Recognizes first-party Codex in-TUI update screens and their safe options.
- * Implements PRD §5.5 and C-CODEX-12 for both prompt automation and input blocking.
+ * The Codex update-skip WRITE path: the guarded automation writer, the settled-frame
+ * option revalidation, and the bounded retry loop. Implements PRD §5.5 and C-CODEX-12.
+ *
+ * Frame recognition lives in `update-recognition.ts` and the cross-frame appearance
+ * lifecycle in `update-tracker.ts`; both are re-exported here so this file remains the
+ * single import site for the update prompt.
  */
 
 import type { InputTerminal } from "../core/input/abort.ts";
@@ -13,29 +17,21 @@ import type { StartupWriteCompletion } from "../core/startup/write.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
 import type { TrustWriteResult } from "../core/trust/responder.ts";
 import { codexUpdateChoiceIdentity, settledFrameKeepsChoice } from "./update-identity.ts";
-import { isSafeUpdateContinuation } from "./update-tracker.ts";
+import {
+  codexUpdateOptionPattern,
+  codexUpdatePromptVisible,
+  isSafeUpdateContinuation,
+  safeUpdateOption,
+} from "./update-recognition.ts";
 
-/** The cross-frame appearance lifecycle, re-exported so this stays the update entry point. */
+/** Recognition and lifecycle, re-exported so this stays the update entry point. */
+export {
+  codexUpdateOptionPattern,
+  codexUpdatePromptVisible,
+  safeUpdateOption,
+  updateScreenBanner,
+} from "./update-recognition.ts";
 export { CodexUpdatePromptTracker } from "./update-tracker.ts";
-
-export const codexUpdateOptionPattern = /continue\s*without\s*updat|skip|not\s*now|later/i;
-/** The first-party banner; its version pair distinguishes one appearance from the next. */
-export const updateScreenBanner =
-  /^[^\S\r\n]*(?:Update available!\s+\d+\.\d+\.\d+\s*(?:->|→)\s*\d+\.\d+\.\d+|A new version of Codex is available[.!]?)[^\S\r\n]*$/im;
-
-/**
- * A captured first-party banner alone counts so a partial layout fails safe
- * before its options paint. Generic "update available" prose does not count;
- * an option-only frame must carry both the update and safe choices.
- */
-export function codexUpdatePromptVisible(frameText: string): boolean {
-  if (updateScreenBanner.test(frameText)) return true;
-  const options = numberedOptions(frameText);
-  return (
-    options.some((option) => /update\s+now/i.test(option.label)) &&
-    options.some((option) => codexUpdateOptionPattern.test(option.label))
-  );
-}
 
 const retryIntervalMs = 250;
 const retryTimeoutMs = 5_000;
@@ -109,9 +105,7 @@ export async function writeCodexUpdateSkip(
       const cleared = wrote && !invalidated(frame);
       return cleared ? "answered" : "cancelled";
     }
-    const safeOption = numberedOptions(frame).find((candidate) =>
-      codexUpdateOptionPattern.test(candidate.label),
-    );
+    const safeOption = safeUpdateOption(frame);
     if (safeOption === undefined) return "cancelled";
     // A guarded writer settles rendering before the key goes out, so it may report the
     // key WITHHELD (a trust gate, or this option number no longer the safe one on the

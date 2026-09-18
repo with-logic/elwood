@@ -491,6 +491,18 @@ Two version-coupled wrinkles this cost us:
   digit **twelve times** into the unrelated prompt over a four-second window — the
   key is not sent once and dropped, it is hammered for the whole retry budget, so
   an unrelated prompt would have been driven through several of its own options.
+- Option ORDER is load-bearing, and we relied on it without saying so. Every real
+  update screen captured between 0.132 and 0.155 — banner-split or whole — lists
+  `1. Update now` FIRST, with the safe choices after it. `Update now` does not
+  match the safe-option pattern, so "first label matching the safe pattern"
+  happened to select the real skip on every real layout. A dialog that puts a
+  skip-shaped row BEFORE the update action (`1. Skip backup` / `2. Update now`)
+  breaks that unstated assumption, and the selection pressed `1` — again twelve
+  times over the retry budget. The selection now takes a safe option only from
+  the rows AFTER the update action when the frame shows one, and never selects
+  the update action itself; a frame with no update action (the banner-less
+  continuation) is unconstrained, which is what keeps `2. Skip` /
+  `3. Skip until next version` working. Found in review round 1 of PR #59.
 - Option labels drift by version. Older codex (0.132/0.133) rendered a numbered
   dialog ("1. Update now / 2. Skip / 3. Skip until next version"). In the installed
   0.149.1 binary, the upgrade notice strings extracted from the native binary read
