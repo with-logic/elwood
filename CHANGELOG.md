@@ -81,6 +81,10 @@ back each entry are listed in `prd/14-conformance.md`.
   out of warning events by requiring the current native welcome region.
 - Validate all concrete Claude tool input fields and typed hook fields, constrain
   permission rewrites to tool-specific handlers, and accept nullable Codex descriptions.
+- Hold the cross-process update lease for an aborted updater's surviving process
+  group. An update probe that was aborted without confirming its process group had
+  exited used to release the lease anyway, so another Elwood host could start a
+  competing installer while the first updater's descendants were still running.
 - Bound the wait for another Elwood process's `autoupdate` to 60 seconds. A
   contender that is still waiting then skips its update and continues with the
   installed CLI, reporting `agent_update_failed` with `errorCode: "update_active"`

@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { errnoCode } from "../../core/errors.ts";
+import { ElwoodError, errnoCode } from "../../core/errors.ts";
 import { processGroupGone } from "../probe-cleanup.ts";
 
 export const ownerFile = "owner";
@@ -80,6 +80,15 @@ export function parentIsAlive(pid: number): boolean {
   } catch (error) {
     return errnoCode(error) !== "ESRCH";
   }
+}
+
+/**
+ * The process group an aborted update probe could not confirm gone, taken from its typed
+ * error. A probe that cleaned up after itself names no group and retains no lease.
+ */
+export function unresolvedProbeGroup(error: unknown): number | undefined {
+  const group = error instanceof ElwoodError ? error.details["cleanupProcessGroupId"] : undefined;
+  return typeof group === "number" && isProcessGroupId(group) ? group : undefined;
 }
 
 /**

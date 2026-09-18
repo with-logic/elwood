@@ -9,6 +9,7 @@ import { chmod, mkdir, opendir, rename, rm, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { elwoodError } from "../../core/errors.ts";
+import { waitForProbeGroups } from "../probe-cleanup.ts";
 import {
   type LeaseOwner,
   ownerFile,
@@ -16,7 +17,9 @@ import {
   releaseLease,
   retiredLeaseInfix,
   serializeOwner,
+  unresolvedProbeGroup,
 } from "./owner.ts";
+import { retainLease } from "./retained-lease.ts";
 import { pathExists, recoveryPath, waitForOwner } from "./waiting.ts";
 
 export type UpdateAdapter = "claude" | "codex";
@@ -26,6 +29,7 @@ export type UpdateLeaseOptions = {
   readonly pollMs?: number;
   readonly staleMs?: number;
   readonly waitMs?: number;
+  readonly retainRetryMs?: number;
 };
 
 const defaultPollMs = 50;
@@ -33,6 +37,7 @@ const defaultStaleMs = 30_000;
 const maxSweptLeftovers = 8;
 const maxInspectedEntries = 64;
 const defaultWaitMs = 60_000;
+const defaultRetainRetryMs = 1_000;
 
 function defaultLeaseRoot(): string {
   const user = userInfo();
@@ -83,6 +88,13 @@ export async function coordinatedAutoupdate(
         updateReason: "active_owner",
       });
     }
+    if (waited === "cleanup_pending") {
+      throw elwoodError(
+        `${adapter}_update_failed`,
+        "Another updater's process group has not exited.",
+        { updateReason: "cleanup_pending", cleanupErrorCode: "ETIMEDOUT" },
+      );
+    }
     recoveredStale = true;
   }
   if (
@@ -92,12 +104,27 @@ export async function coordinatedAutoupdate(
     await releaseLease(path, owner);
     return;
   }
-  try {
-    await update();
-  } finally {
+  const outcome = await update().then(
+    () => undefined,
+    (error: unknown) => ({ error }),
+  );
+  // An aborted probe's unresolved group is observed once more: only a group still live
+  // after that window keeps the lease, and then the lease outlives this process.
+  const abortedGroupId = unresolvedProbeGroup(outcome?.error);
+  const unfinishedGroupIds =
+    abortedGroupId === undefined ? [] : await waitForProbeGroups([abortedGroupId]);
+  if (unfinishedGroupIds.length === 0) {
     await Promise.allSettled([writeFile(completion, owner.token, { mode: 0o600 })]);
     await releaseLease(path, owner);
+  } else {
+    await retainLease(
+      path,
+      owner,
+      unfinishedGroupIds,
+      options.retainRetryMs ?? defaultRetainRetryMs,
+    );
   }
+  if (outcome !== undefined) throw outcome.error;
 }
 
 /**
