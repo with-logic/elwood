@@ -2,14 +2,24 @@
  * Update lease owner records: identity, liveness, and generation-checked release.
  * Implements PRD §9.2 / C-PERF-04: cleanup removes only the generation it owns.
  */
-import { readFile, rename, rm } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { errnoCode } from "../../core/errors.ts";
+import { processGroupGone } from "../probe-cleanup.ts";
 
 export const ownerFile = "owner";
 /** Marks a lease directory already retired by its owner and awaiting deletion. */
 export const retiredLeaseInfix = ".released.";
-export type LeaseOwner = { readonly pid: number; readonly token: string };
+/** Prefix of a record being written but not yet committed into the lease. */
+export const pendingOwnerPrefix = "owner.next.";
+const ownerPattern = /^(\d+):([0-9a-f-]+)(?::(\d+(?:,\d+)*))?$/;
+export type LeaseOwner = {
+  readonly pid: number;
+  readonly token: string;
+  /** Updater process groups that outlived the update callback and still hold the lease. */
+  readonly ownedProcessGroupIds?: readonly number[];
+};
 
 /** File contents, or undefined when absent/unreadable (never throws). */
 export async function readOptionalText(path: string): Promise<string | undefined> {
@@ -20,21 +30,70 @@ export async function readOptionalText(path: string): Promise<string | undefined
   }
 }
 
+const isProcessId = (value: number): boolean => Number.isSafeInteger(value) && value > 0;
+
 export async function readOwner(path: string): Promise<LeaseOwner | undefined> {
-  const match = /^(\d+):([0-9a-f-]+)$/.exec((await readOptionalText(join(path, ownerFile))) ?? "");
-  return match ? { pid: Number(match[1]), token: match[2] as string } : undefined;
+  const match = ownerPattern.exec((await readOptionalText(join(path, ownerFile))) ?? "");
+  if (!match) return undefined;
+  const pid = Number(match[1]);
+  const ownedProcessGroupIds = match[3]?.split(",").map(Number);
+  // An identity no signal probe can evaluate is malformed, not live; like any unreadable
+  // record it fails safe rather than reaching process.kill.
+  if (![pid, ...(ownedProcessGroupIds ?? [])].every(isProcessId)) return undefined;
+  return {
+    pid,
+    token: match[2] as string,
+    ...(ownedProcessGroupIds === undefined ? {} : { ownedProcessGroupIds }),
+  };
 }
 
 export function serializeOwner(owner: LeaseOwner): string {
-  return `${owner.pid}:${owner.token}`;
+  const groups =
+    owner.ownedProcessGroupIds === undefined ? "" : `:${owner.ownedProcessGroupIds.join(",")}`;
+  return `${owner.pid}:${owner.token}${groups}`;
 }
 
-export function ownerIsAlive(pid: number): boolean {
+/**
+ * Lease liveness, not owner-process liveness. A record naming process groups is held by
+ * those groups alone, so it ends with them rather than with the process that wrote it —
+ * that is what lets an update's surviving children keep the lease past their parent. No
+ * record names groups until something records them, so this is `parentIsAlive` until then.
+ */
+export function leaseIsAlive(owner: LeaseOwner): boolean {
+  if (owner.ownedProcessGroupIds === undefined) return parentIsAlive(owner.pid);
+  return owner.ownedProcessGroupIds.some((id) => !processGroupGone(id));
+}
+
+export function parentIsAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
   } catch (error) {
     return errnoCode(error) !== "ESRCH";
+  }
+}
+
+/**
+ * Replaces this generation's owner record, naming the process groups that now hold the
+ * lease. The write lands on a per-write temporary name and is committed by rename, so a
+ * late or concurrent write can neither clobber nor unlink another write's pending record,
+ * and a write that outlives its lease cannot replace a successor generation's record.
+ */
+export async function retainProbeOwner(
+  path: string,
+  owner: LeaseOwner,
+  processGroupIds: readonly number[],
+): Promise<void> {
+  const temporary = join(path, `${pendingOwnerPrefix}${randomUUID()}`);
+  try {
+    const record = { ...owner, ownedProcessGroupIds: processGroupIds };
+    await writeFile(temporary, serializeOwner(record), { mode: 0o600 });
+    if ((await readOwner(path))?.token !== owner.token)
+      throw new Error("The update lease belongs to another generation.");
+    await rename(temporary, join(path, ownerFile));
+  } catch (error) {
+    await unlink(temporary).catch(() => undefined);
+    throw error;
   }
 }
 
