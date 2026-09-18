@@ -1,3 +1,4 @@
+import type { BoundarySignal } from "./boundary-signal.ts";
 /**
  * Types and conformance probes for one ergonomic turn (PRD §5.8, C-API-48/53). Separated from
  * the `runTurn` runner (turn.ts) so both stay under the file-size cap. Defines the loose
@@ -35,15 +36,19 @@ export type TurnBoundaryContract = {
 /**
  * NORMALIZES a raw adapter `hook` event into the core's completeness signal. The two outcomes
  * are DISTINCT: `undefined` means "not a turn boundary" (the runner ignores the event — an
- * installed oracle stays installed), while a string means "a turn boundary whose expected final
- * assistant text is this" — an EMPTY string is a boundary that carries no text (`null`/absent
- * `last_assistant_message`, e.g. `StopFailure`) and clears the oracle → quiet-window settle.
+ * installed oracle stays installed), while a `BoundarySignal` means "a turn boundary whose
+ * expected final assistant text is this" — an EMPTY string is a boundary that carries no text
+ * (`null`/absent `last_assistant_message`, e.g. `StopFailure`) and clears the oracle →
+ * quiet-window settle.
  * This is the ONE seam where adapter hook shape meets the adapter-neutral runner: `runTurn`
  * consumes only this normalized signal, never raw `hook_event_name`/`last_assistant_message`, so
  * the core is not coupled to adapter hook fields. Each `SessionBase` subclass supplies its own
  * reader (a compile-time REQUIREMENT), so a new adapter cannot wire up turns without one.
  */
-export type BoundarySignalReader = (hookEvent: TurnBoundaryHook) => string | undefined;
+export type { BoundarySignal, TurnFailure } from "./boundary-signal.ts";
+export { boundaryFailure, boundaryText } from "./boundary-signal.ts";
+
+export type BoundarySignalReader = (hookEvent: TurnBoundaryHook) => BoundarySignal | undefined;
 
 /** Normalizes shared hook evidence into positive acceptance for one exact prompt. */
 export type AcceptanceSignalReader = (hookEvent: TurnBoundaryHook, prompt: string) => boolean;

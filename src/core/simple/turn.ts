@@ -27,6 +27,7 @@
 
 import { elwoodError, toError } from "../errors.ts";
 import { terminalStatuses } from "../status-categories.ts";
+import { boundaryExpectation } from "./boundary-signal.ts";
 import { toTurnEvent } from "./events.ts";
 import { TurnAcceptance } from "./turn-acceptance.ts";
 import { TurnBoundary } from "./turn-boundary.ts";
@@ -129,13 +130,12 @@ export function runTurn(
   });
   const readBoundarySignal = options.readBoundarySignal ?? defaultBoundarySignal;
   const offHook = session.on("hook", (event) => {
-    // The adapter NORMALIZES its raw hook into the completeness signal (the expected final
-    // assistant text of a turn-BOUNDARY hook; `undefined` for any other hook, which the gate
-    // ignores so a late `Notification` cannot wipe an installed oracle). The core reads only
-    // that — never raw hook fields. Used as a completeness ORACLE only (never displayed —
-    // respects C-CLAUDE-15).
+    // The adapter NORMALIZES its raw hook into the completeness signal (`undefined` for any
+    // non-boundary hook, which the gate ignores so a late `Notification` cannot wipe an
+    // installed oracle). The core reads only that — never raw hook fields — and uses it as a
+    // completeness ORACLE only, never displayed (C-CLAUDE-15).
     if (defaultAcceptanceSignal(event, prompt)) acceptance.accept();
-    gate.expectText(readBoundarySignal(event));
+    gate.expectText(boundaryExpectation(readBoundarySignal(event)));
   });
   const offStatus = session.on("status", ({ status }) => {
     if (status === "running") {
