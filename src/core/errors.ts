@@ -101,15 +101,27 @@ export function causeDetails(error: unknown): Readonly<Record<string, string>> {
  * Diagnosable details for a failed CLI probe (C-ERR-08): stderr plus the
  * runner's typed cause/errno (e.g. `ETIMEDOUT` on a probe timeout, `E2BIG` on
  * output overflow) so a start failure never drops the underlying reason.
+ * `cleanupErrorCode` and `cleanupProcessGroupId` appear only when an aborted probe's cleanup
+ * stayed unconfirmed. The group id is diagnostic: it may already be reissued to an unrelated
+ * group, so it must never be signaled.
  */
 export function probeFailureDetails(result: {
   readonly stderr: string;
-  readonly error?: { readonly code?: string | undefined; readonly message: string };
-}): Readonly<Record<string, string>> {
-  const details: Record<string, string> = { stderr: result.stderr };
+  readonly error?: {
+    readonly code?: string | undefined;
+    readonly message: string;
+    readonly cleanupErrorCode?: string;
+    readonly cleanupProcessGroupId?: number;
+  };
+}): Readonly<Record<string, string | number>> {
+  const details: Record<string, string | number> = { stderr: result.stderr };
   if (result.error) {
     details["cause"] = result.error.message;
     if (typeof result.error.code === "string") details["errno"] = result.error.code;
+    if (result.error.cleanupErrorCode !== undefined)
+      details["cleanupErrorCode"] = result.error.cleanupErrorCode;
+    if (result.error.cleanupProcessGroupId !== undefined)
+      details["cleanupProcessGroupId"] = result.error.cleanupProcessGroupId;
   }
   return details;
 }

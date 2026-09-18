@@ -12,6 +12,18 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Bound the cleanup of an aborted version, capability, or update probe to one
+  extra second: retry process-group termination, fall back to the direct child,
+  and keep an unresolved group on an asynchronous reaper that never extends host
+  shutdown or retains captured output. A process group is signaled only while its
+  leader is unreaped, so a reissued group id is never killed. An update probe whose
+  group stays unconfirmed keeps the cross-process update lease held for that group.
+- Stop non-trust startup automation from writing into a trust gate that arrived while
+  the previous screen was still rendering. The Codex update skip (including its retries)
+  and the Claude browser-tools decline now observe all received PTY output and re-check
+  the settled frame before writing, the guarantee queued caller input already had. A
+  withheld write is silent and stays retryable; the trust responder is unaffected and
+  still answers trust gates itself.
 - Hold queued input on an unrecognized gate behind a recognized native header
   prefix (`Do you`, `Is this`, `Trust the`, ... — PRD §5.4 lists them): a reworded
   question with selectable options and a frame-ending native footer, and no
