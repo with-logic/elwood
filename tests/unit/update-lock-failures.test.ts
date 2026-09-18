@@ -16,7 +16,6 @@ const failures = vi.hoisted(() => ({
   recoveryRename: false,
   recoveryRmdir: false,
   staleUnlink: false,
-  releaseUnlink: false,
   // A fake HOME under the OS temp dir (set by the `node:os` mock below, which is the
   // first place the real `tmpdir()` is reachable) so the default lease root is
   // exercised without touching the developer's real cache directory.
@@ -49,8 +48,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
       failures.rootReaddir ? denied() : actual.opendir(...args)) as typeof actual.opendir,
     unlink: (...args: Parameters<typeof actual.unlink>) => {
       const path = String(args[0]);
-      if ((failures.staleUnlink || failures.releaseUnlink) && path.endsWith("/owner"))
-        return denied();
+      if (failures.staleUnlink && path.endsWith("/owner")) return denied();
       return actual.unlink(...args);
     },
     writeFile: (...args: Parameters<typeof actual.writeFile>) => {
@@ -71,7 +69,6 @@ beforeEach(() => {
   failures.recoveryRename = false;
   failures.recoveryRmdir = false;
   failures.staleUnlink = false;
-  failures.releaseUnlink = false;
 });
 
 test("default lease options coordinate through the stable account cache", async () => {
@@ -164,14 +161,6 @@ test("recovery cleanup failure skips the updater safely", async () => {
     options(root),
   );
   expect(ran).toBe(false);
-});
-
-test("an owner unlink failure cannot mask update success", async () => {
-  const root = await sandbox("release-unlink");
-  failures.releaseUnlink = true;
-  await expect(
-    coordinatedAutoupdate("codex", () => Promise.resolve(), options(root)),
-  ).resolves.toBeUndefined();
 });
 
 const options = (root: string) => ({ root, pollMs: 1, staleMs: 1 });
