@@ -48,6 +48,9 @@ back each entry are listed in `prd/14-conformance.md`.
 - Model-picker cleanup also covers a dialog that paints up to a second after the
   failure (a late picker, Codex's reasoning level, Claude's cache warning). A model
   operation now rejects without writing when model picker text is already visible.
+- `compact`'s recovery Enter can no longer be typed into a model picker opened by
+  a concurrent `listModels`/`setModel` (where Enter saves the highlighted model as
+  the default): it now waits for the picker operation to release the input queue.
 - Snapshot image bytes and relative paths when facade methods are called, including
   turns queued behind another response or waiting for session startup. Facade copies
   count against the same 200 MiB per-session ceiling as sends on the raw `session`.

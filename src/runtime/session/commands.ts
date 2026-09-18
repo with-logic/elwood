@@ -18,11 +18,20 @@ import {
   pickerTimeout,
   setPickerModel,
 } from "../../core/models/picker.ts";
-import type { AgentModelOption } from "../../core/models/rows.ts";
+import type { AgentModelOption, ModelDialogAuthority } from "../../core/models/rows.ts";
 import type { ScreenTerminal } from "../../core/models/tui-screen.ts";
 import type { ElwoodSessionStatus } from "../../core/types.ts";
 import { PickerTransactions } from "./picker.ts";
 import type { SessionStatusEmitter } from "./status-wiring.ts";
+
+/**
+ * Compact's recovery Enter asks a different question from a picker transaction's: not
+ * "is this OUR dialog" but "is there ANY model dialog here that Enter would apply". It
+ * has no transaction of its own, so it supplies authority to get the grammar's answer and
+ * then REFUSES to write on it — the opposite of driving it. Naming it separately keeps
+ * that distinction visible rather than looking like a borrowed `opened: true`.
+ */
+const anyDialog: ModelDialogAuthority = { opened: true };
 
 type Timeout = { readonly timeoutMs?: number };
 
@@ -77,23 +86,29 @@ export class CommandSurface {
 
   compact(options?: Timeout): Promise<void> {
     const pending = new AbortController();
-    // The queue aborts an operation's signal when the NEXT one dispatches: from then on
-    // the composer belongs to that operation, and a recovery Enter would land in it.
+    const cancel = { signal: pending.signal, error: () => pending.signal.reason };
     const submit = () =>
-      this.deps.controlQueue.send(compactCommand, "compact", undefined, {
-        cancel: { signal: pending.signal, error: () => pending.signal.reason },
-        onDispatch: (operation) =>
-          operation.addEventListener("abort", () => pending.abort(), { once: true }),
-      });
-    // The recovery Enter decides on everything received, not the last frame, and is
-    // held and retried like any queued write until it is safe or cancelled (C-API-56).
+      this.deps.controlQueue.send(compactCommand, "compact", undefined, { cancel });
     const { terminal, blocked } = this.deps;
+    /**
+     * The recovery Enter needs BOTH protections, for two different hazards.
+     *
+     * It runs as a queued operation (C-API-55) so it waits behind a model operation that
+     * owns the queue, rather than landing in that operation's picker or being skipped for
+     * good; and once it holds the slot it still decides on everything RECEIVED rather than
+     * the last rendered frame (C-API-56), because a dialog can already be in the PTY buffer
+     * while the observed screen is still the composer. An Enter on any model dialog — one
+     * that survived cleanup, or a human's — would apply that dialog's highlighted option.
+     */
+    const enter = async () => {
+      await holdWhileUnsafe(terminal, { blocked }, pending.signal);
+      if (pending.signal.aborted) return;
+      if (this.deps.picker().activeDialog(terminal.snapshot().text, anyDialog) !== undefined)
+        return;
+      await terminal.sendInput("\r");
+    };
     const nudge = () =>
-      ignoreInputFailure(
-        holdWhileUnsafe(terminal, { blocked }, pending.signal).then(() =>
-          pending.signal.aborted ? undefined : terminal.sendInput("\r"),
-        ),
-      );
+      ignoreInputFailure(this.deps.controlQueue.runExclusive("compact", enter, cancel));
     return sessionCompact(this.deps.statusEvents, submit, nudge, options?.timeoutMs).finally(() =>
       pending.abort(),
     );
