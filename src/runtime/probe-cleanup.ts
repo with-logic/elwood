@@ -24,7 +24,7 @@ export type ProbeCleanup = {
 };
 
 const cleanupWindowMs = 1_000;
-const groupOnlyRetryMs = 500;
+const leaderFallbackAfterMs = 500;
 const cleanupRetryMs = 25;
 const deferredRetryMs = 1_000;
 const retained = new Set<ProbeReaper>();
@@ -60,15 +60,17 @@ export async function abortProbe(child: ChildProcess): Promise<ProbeCleanup> {
   const started = performance.now();
   for (;;) {
     const elapsedMs = performance.now() - started;
-    // Past the window this is an observation, never a signal: a loaded event loop can
-    // resume this loop late, and the bound is a promise about when Elwood stops signaling,
-    // not merely about when it stops waiting.
+    // Past the window the AWAITED cleanup only observes, never signals: a loaded event loop
+    // can resume this loop late, and the bound is a promise about when the caller stops
+    // waiting AND when this loop stops signaling. It is not a promise that the group is
+    // never signaled again: a retained reaper may still retry below, but only while the
+    // leader is unreaped, which is what keeps a reissued id safe.
     if (elapsedMs >= cleanupWindowMs) {
       if (processGroupGone(processGroupId)) return {};
       break;
     }
     // Confirmed cleanup is not a failure, whichever signal achieved it.
-    if (reaper.reap(elapsedMs >= groupOnlyRetryMs)) return {};
+    if (reaper.reap(elapsedMs >= leaderFallbackAfterMs)) return {};
     await delay(cleanupRetryMs, undefined, { ref: false });
   }
   // Every failed probe retains cleanup ownership; update leases additionally
@@ -90,7 +92,7 @@ export async function abortProbe(child: ChildProcess): Promise<ProbeCleanup> {
  */
 class ProbeReaper {
   errorCode: ProbeCleanup["cleanupErrorCode"];
-  private signaled = false;
+  private groupKillSucceeded = false;
   private leaderReaped = false;
   private child: ChildProcess | undefined;
   private readonly processGroupId: number;
@@ -111,10 +113,10 @@ class ProbeReaper {
       this.leaderReaped = true;
       this.child = undefined;
     }
-    if (this.signaled || this.leaderReaped || this.child === undefined) return false;
+    if (this.groupKillSucceeded || this.leaderReaped || this.child === undefined) return false;
     try {
       process.kill(-this.processGroupId, "SIGKILL");
-      this.signaled = true;
+      this.groupKillSucceeded = true;
     } catch (error) {
       if (errnoCode(error) === "ESRCH") return true;
       this.errorCode = boundedErrorToken(error, isReapErrorCode);
