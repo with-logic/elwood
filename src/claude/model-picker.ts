@@ -13,6 +13,7 @@ import {
 import { waitForScreen } from "../core/models/tui-screen.ts";
 import {
   isClaudeIdleComposer,
+  isClaudeSwitchConfirmation,
   isClaudeSwitchShell,
   parseClaudeSwitchConfirmation,
 } from "./model-switch-confirmation.ts";
@@ -71,9 +72,18 @@ export const claudeModelPicker: ModelPickerSpec = {
   },
 };
 
-/** The idle composer with no switch dialog on screen, complete or still painting. */
+/**
+ * The idle composer with no switch dialog on screen: complete, still painting, or a hook's.
+ *
+ * A `PreModelSwitch` confirmation is deliberately NOT a "shell" — it is the human's dialog,
+ * so Elwood must not hold input on it or answer it. But it is equally not a settled switch:
+ * the model has not changed until the human answers. Resolving here would report a change
+ * that may never happen and release queued input into the open prompt, so a complete
+ * confirmation of ANY kind keeps `setModel` waiting.
+ */
 function switchSettled(text: string): boolean {
-  return isClaudeIdleComposer(text) && !isClaudeSwitchShell(text);
+  if (!isClaudeIdleComposer(text)) return false;
+  return !(isClaudeSwitchShell(text) || isClaudeSwitchConfirmation(text));
 }
 
 function cacheConfirmationWithCursor(text: string): boolean {

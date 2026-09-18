@@ -1,38 +1,18 @@
 /** Exclusive model-picker queue ownership and failure cleanup (PRD §5.3, C-API-55). */
 import type { ControlQueue } from "../../core/control-queue/index.ts";
-import { delay } from "../../core/delay.ts";
 import { elwoodError } from "../../core/errors.ts";
-import { sendPickerInput } from "../../core/models/input.ts";
+import type { InputTerminal } from "../../core/input/abort.ts";
 import type { ModelPickerIo, ModelPickerSpec } from "../../core/models/picker.ts";
-import type { ModelDialogAuthority, ModelDialogStage } from "../../core/models/rows.ts";
 import type { ScreenTerminal } from "../../core/models/tui-screen.ts";
+import { abortable, cleanUpDialog, escapeKey, ours, type Progress } from "./picker-cleanup.ts";
 
 type PickerDeps = {
   readonly controlQueue: ControlQueue;
   readonly submitDirect: (command: string, signal: AbortSignal) => Promise<void>;
-  readonly terminal: ScreenTerminal;
+  /** Also carries the optional observation barrier (`settled`/`renderFailed`) when real. */
+  readonly terminal: ScreenTerminal & InputTerminal;
   readonly blocked: () => boolean;
 };
-
-/** What the operation wrote and saw, so cleanup knows what it may repeat and what can still paint. */
-type Progress = {
-  /** The stage the operation itself last sent Escape to, which cleanup must not repeat. */
-  escapeSentTo: ModelDialogStage | undefined;
-  commandSubmitted: boolean;
-  dialogSeen: boolean;
-  /** A non-Escape key can accept a stage whose follow-up dialog paints late. */
-  keyWritten: boolean;
-};
-const cleanupMs = 1_000;
-const pollMs = 100;
-const escapeKey = "\u001b";
-/**
- * Every recognition call in this file is made from inside a transaction Elwood opened (or,
- * for `blocksInput`, about a dialog that transaction left behind), so all of them carry
- * authority. It is a named constant rather than an inline literal so that a future call
- * site added OUTSIDE a transaction has to reach for it deliberately.
- */
-const ours: ModelDialogAuthority = { opened: true };
 
 export class PickerTransactions {
   private readonly deps: PickerDeps;
@@ -138,59 +118,12 @@ export class PickerTransactions {
     };
   }
 
-  /**
-   * One bounded second covers a late dialog appearing, every Escape, and the clearing.
-   * A submitted command whose picker never rendered can still open it, and an accepted
-   * stage can still paint its follow-up, so cleanup then waits out the bound for one.
-   * Cancelling a follow-up stage returns the CLI to the picker (real Claude 2.1.274 and
-   * Codex 0.154.0), so each stage gets one Escape and none is repeated while that stage
-   * stays up: a second Escape on a slow repaint would land on the composer. A `painting`
-   * shell is never written to. Termination aborts every read and write. A dialog still
-   * visible at the bound keeps queued input held.
-   */
   private async cleanUp(
     spec: ModelPickerSpec,
     progress: Progress,
     closed: AbortSignal,
   ): Promise<void> {
-    const terminal = abortable(this.deps.terminal, closed);
-    const isActive = (text: string) => spec.activeDialog(text, ours) !== undefined;
-    let escaped = progress.escapeSentTo;
-    let lateDialogPossible =
-      progress.keyWritten || (progress.commandSubmitted && !progress.dialogSeen);
-    try {
-      for (const bound = Date.now() + cleanupMs; Date.now() < bound; await delay(pollMs)) {
-        const stage = spec.activeDialog(terminal.snapshot().text, ours);
-        if (stage === undefined) {
-          if (!lateDialogPossible) return;
-          // Whatever paints after a clear frame is a new dialog, owed its own Escape.
-          escaped = undefined;
-          continue;
-        }
-        lateDialogPossible = false;
-        // A `painting` shell may turn out to be a hook confirmation: wait, never write.
-        if (stage === "painting" || stage === escaped) continue;
-        escaped = stage;
-        await sendPickerInput({ terminal }, escapeKey, isActive, true);
-      }
-    } catch {
-      // A terminated session has no input left to hold; a failed write leaves the dialog.
-      if (closed.aborted) return;
-    }
-    if (!lateDialogPossible) this.survivor = spec;
+    const released = await cleanUpDialog(this.deps.terminal, spec, progress, closed);
+    if (!released) this.survivor = spec;
   }
-}
-
-/** Reads and writes throw once `signal` aborts, so nothing reaches a terminated PTY. */
-function abortable(terminal: ScreenTerminal, signal: AbortSignal): ScreenTerminal {
-  return {
-    snapshot: () => {
-      signal.throwIfAborted();
-      return terminal.snapshot();
-    },
-    sendInput: (input) => {
-      signal.throwIfAborted();
-      return terminal.sendInput(input);
-    },
-  };
 }

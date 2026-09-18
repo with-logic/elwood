@@ -65,12 +65,22 @@ export function runCodexModelSwitch(io: CodexModelSwitch): Promise<void> {
       // dying process's final config write lands after it. `waitForCliExit` returns
       // undefined unless the session is closing, so the ordinary path is unchanged.
       const exitWait = io.waitForCliExit?.();
-      if (exitWait !== undefined) {
-        // The caller learns the outcome at once; only the restore waits.
-        if (failed) reject(primary);
+      // A non-undefined wait means the session is CLOSING. The caller is told immediately
+      // and identically either way: a switch that "succeeded" into a terminating session
+      // did not take effect for that session, so reporting success — five seconds later,
+      // once the exit barrier cleared — would be a lie. Only the restore waits.
+      const closing = exitWait !== undefined;
+      if (closing) {
+        // `failed` is always true here in practice: the queue slot's close signal aborts
+        // every picker read and write, so a switch cannot APPLY into a closing session.
+        // The rejection is still delivered before the wait so the caller is never held for
+        // the exit bound, and the restore below is told the call has already settled.
+        reject(primary);
         await exitWait;
       }
-      restoreAfterSwitch(io, snapshot, failed);
+      // `settled` tells the restore its failure can no longer reach the caller through the
+      // returned promise, so it must be REPORTED instead of thrown into a void.
+      restoreAfterSwitch(io, snapshot, failed || closing);
       if (failed) throw primary;
     }, io.cancel);
     // A rejection already delivered above makes this one a no-op.
@@ -81,20 +91,22 @@ export function runCodexModelSwitch(io: CodexModelSwitch): Promise<void> {
 /**
  * Restores whether or not the switch rejected, so a late picker timeout that fired
  * AFTER Codex wrote config.toml still restores the user's default. When the switch
- * succeeded, a restore failure surfaces on its own. When a primary error is being
- * preserved the restore failure cannot also be thrown, but it must NOT vanish: it is
+ * succeeded AND the caller is still listening, a restore failure surfaces on its own. Once
+ * the call has already settled — a preserved primary error, or a termination rejection
+ * delivered before the barrier — the restore failure cannot be thrown, but it must NOT
+ * vanish (that would leave config.toml holding the temporary model silently): it is
  * reported so the user learns config.toml may still be mutated. The report is
  * CONTAINED: a throwing reporter must never replace the primary error.
  */
 function restoreAfterSwitch(
   io: CodexModelSwitch,
   snapshot: string | undefined,
-  failed: boolean,
+  settled: boolean,
 ): void {
   try {
     io.restore(snapshot);
   } catch (restoreError) {
-    if (!failed) throw restoreError;
+    if (!settled) throw restoreError;
     try {
       io.onRestoreError?.(restoreError);
     } catch {

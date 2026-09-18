@@ -3,6 +3,7 @@
  * the process-wide lock rejects as soon as its session closes, and the CLI-exit barrier
  * applies on the success path too (PRD §5.3, C-CODEX-14).
  */
+
 import { expect, test } from "vitest";
 import { runCodexModelSwitch } from "../../src/codex/config/transaction.ts";
 
@@ -64,7 +65,7 @@ test("C-CODEX-14 a cancelled waiter does not run its task once the lock frees", 
   expect(waiterApplied).toBe(false);
 });
 
-test("C-CODEX-14 a SUCCESSFUL switch still waits for the CLI exit before restoring", async () => {
+test("C-CODEX-14 a switch interrupted by close waits for the CLI exit before restoring", async () => {
   const order: string[] = [];
   let releaseExit: () => void = () => undefined;
   const exited = new Promise<void>((resolve) => {
@@ -75,19 +76,42 @@ test("C-CODEX-14 a SUCCESSFUL switch still waits for the CLI exit before restori
   });
   const switching = runCodexModelSwitch({
     snapshot: () => "snap",
-    // The picker APPLIES cleanly; termination then races the restore.
+    // Closing aborts the picker's reads and writes, so the switch rejects; the dying CLI
+    // can still write config.toml, which is what the exit barrier is for.
     apply: () => {
       order.push("applied");
-      return Promise.resolve();
+      return Promise.reject(new Error("session_not_running"));
     },
     waitForCliExit: () => exited,
     restore: () => order.push("restored"),
-  });
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  }).catch((error: Error) => error.message);
+  // The caller is told AT ONCE rather than held for the five-second exit bound.
+  expect(await switching).toBe("session_not_running");
   expect(order, "the restore must not precede the observed exit").toEqual(["applied"]);
   releaseExit();
-  await switching;
+  await exited;
+  await new Promise((resolve) => setTimeout(resolve, 20));
   expect(order).toEqual(["applied", "exit", "restored"]);
+});
+
+/**
+ * Once termination has already rejected the call, a restore failure can no longer reach the
+ * caller through the returned promise. It must be REPORTED rather than swallowed, or
+ * `config.toml` silently keeps the temporary model as the user's default (C-CODEX-14).
+ */
+test("C-CODEX-14 a restore that fails after a termination rejection is still reported", async () => {
+  const reported: string[] = [];
+  const failure = await runCodexModelSwitch({
+    snapshot: () => "snap",
+    apply: () => Promise.reject(new Error("session_not_running")),
+    waitForCliExit: () => Promise.resolve(),
+    restore: () => {
+      throw new Error("compare-and-swap refused");
+    },
+    onRestoreError: (error) => reported.push((error as Error).message),
+  }).catch((error: Error) => error.message);
+  expect(failure).toBe("session_not_running");
+  expect(reported).toEqual(["compare-and-swap refused"]);
 });
 
 /**

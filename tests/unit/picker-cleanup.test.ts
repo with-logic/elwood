@@ -22,10 +22,16 @@ const failure = new Error("navigation failed");
 type Screen = { text: string };
 
 /** `react` scripts how the fake CLI repaints after each command or key Elwood writes. */
-function setup(spec: ModelPickerSpec, react: (input: string, screen: Screen) => void = () => {}) {
+function setup(
+  spec: ModelPickerSpec,
+  react: (input: string, screen: Screen) => void = () => {},
+  /** Observation-barrier state a real terminal carries (`renderFailed`, `settled`). */
+  barrier: { readonly renderFailed?: boolean } = {},
+) {
   const screen: Screen = { text: "❯ " };
   const writes: string[] = [];
   const terminal = {
+    ...barrier,
     snapshot: () => ({ text: screen.text }),
     sendInput: (input: string | Uint8Array) => {
       writes.push(String(input));
@@ -152,5 +158,28 @@ test("C-API-55 an unrelated dialog is left open on failure", async () => {
   await expect(failWith(claudeHookSwitchConfirmation)).rejects.toBe(failure);
   expect(writes).toEqual([]);
   expect(picker.blocksInput()).toBe(false);
+  queue.close();
+});
+
+/**
+ * Cleanup decides its Escape on everything RECEIVED, not the last rendered frame. When the
+ * screen cannot be vouched for — here a failed render — `writeUnsafe` fails closed, so the
+ * Escape is withheld rather than aimed at a stale picker that a permission or hook dialog
+ * may already have replaced in the PTY buffer. The dialog then survives and holds input,
+ * which is the safe outcome (C-API-55, C-API-56).
+ */
+test("C-API-55 cleanup withholds its Escape while the screen cannot be vouched for", async () => {
+  // A render failure is permanent for the terminal: the snapshot is never trustworthy again.
+  const { writes, queue, picker, failWith } = setup(claudeModelPicker, undefined, {
+    renderFailed: true,
+  });
+  const failed = expect(failWith(claudePicker)).rejects.toBe(failure);
+  // Run out the whole cleanup bound: every poll must reach the same fail-closed answer.
+  await vi.advanceTimersByTimeAsync(1_500);
+  await failed;
+  // The `/model` submission is there; no Escape ever followed it.
+  expect(writes.filter((write) => write === escapeKey)).toEqual([]);
+  // Nothing could be cancelled, so the dialog is a survivor and keeps holding input.
+  expect(picker.blocksInput()).toBe(true);
   queue.close();
 });

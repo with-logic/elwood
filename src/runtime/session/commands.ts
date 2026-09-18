@@ -100,9 +100,13 @@ export class CommandSurface {
      * while the observed screen is still the composer. An Enter on any model dialog — one
      * that survived cleanup, or a human's — would apply that dialog's highlighted option.
      */
-    const enter = async () => {
-      await holdWhileUnsafe(terminal, { blocked }, pending.signal);
-      if (pending.signal.aborted) return;
+    const enter = async (closed: AbortSignal) => {
+      // BOTH signals: `pending` ends when compaction settles, `closed` when the queue slot
+      // is revoked (session shutdown). Waiting only on `pending` would leave the hold and
+      // the write running against a dying PTY after the slot was taken away.
+      const live = AbortSignal.any([pending.signal, closed]);
+      await holdWhileUnsafe(terminal, { blocked }, live);
+      if (live.aborted) return;
       if (this.deps.picker().activeDialog(terminal.snapshot().text, anyDialog) !== undefined)
         return;
       await terminal.sendInput("\r");
