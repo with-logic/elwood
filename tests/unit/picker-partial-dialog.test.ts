@@ -31,6 +31,8 @@ test("C-API-55 a surviving cache warning stays held through a partial repaint", 
   screen.text = claudeCacheWarningViewport;
   expect(picker.blocksInput()).toBe(true);
   screen.text = claudeClosedPickerViewport;
+  // A stable run of clear frames releases it; one frame could be another repaint.
+  expect(picker.blocksInput()).toBe(true);
   expect(picker.blocksInput()).toBe(false);
   queue.close();
 });
@@ -85,6 +87,7 @@ test("C-API-55 a painting switch dialog is not written to until it is complete",
   await failed;
   expect(writes).toEqual([escapeKey, escapeKey]);
   expect(shownAtWrite).toEqual([claudeCacheWarningViewport, claudePickerViewport]);
+  // The picker reopened by the last Escape is gone, so nothing survived cleanup.
   expect(picker.blocksInput()).toBe(false);
   queue.close();
 });

@@ -8,6 +8,7 @@ import type { ModelPickerSpec } from "../core/models/picker.ts";
 import {
   bottomDialogRow,
   claudeModelPickerHeader,
+  ownOperation,
   parseClaudeModelPicker,
 } from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
@@ -42,7 +43,14 @@ export const claudeModelPicker: ModelPickerSpec = {
   // "s" applies for this session only. Enter or a number key would save the
   // selection as the user's default for new sessions, which §4.5 forbids.
   apply: async (io, timeoutMs) => {
-    await sendPickerInput(io, "s", (text) => claudeModelPickerHeader.test(text));
+    // The `s` key applies a model, so it is revalidated against the OPERATION'S OWN picker
+    // rather than a bare header: transcript or agent output can print `Select model`, and
+    // this key would then select whatever that screen is showing (C-API-24).
+    await sendPickerInput(
+      io,
+      "s",
+      (text) => claudeModelPicker.activeDialog(text, ownOperation) === "picker",
+    );
     const next = await waitForScreen(
       io.terminal,
       (text) => cacheConfirmationWithCursor(text) || switchSettled(text),

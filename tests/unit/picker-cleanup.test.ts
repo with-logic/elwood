@@ -2,10 +2,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
-import { ControlQueue } from "../../src/core/control-queue/index.ts";
-import { type ModelPickerSpec, setPickerModel } from "../../src/core/models/picker.ts";
-import type { ModelDialogAuthority } from "../../src/core/models/rows.ts";
-import { PickerTransactions } from "../../src/runtime/session/picker.ts";
+import { setPickerModel } from "../../src/core/models/picker.ts";
 import {
   claudeHookSwitchConfirmation,
   claudeModelCacheConfirmationOnNo,
@@ -13,58 +10,10 @@ import {
   codexPickerCurrentIsDefault,
   codexReasoningScreen,
 } from "../helpers/model-pickers.ts";
+import { escapeKey, failure, cleanupHarness as setup } from "../helpers/picker-harness.ts";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
-
-const escapeKey = String.fromCharCode(27);
-const failure = new Error("navigation failed");
-type Screen = { text: string };
-
-/** `react` scripts how the fake CLI repaints after each command or key Elwood writes. */
-function setup(
-  spec: ModelPickerSpec,
-  react: (input: string, screen: Screen) => void = () => {},
-  /** Observation-barrier state a real terminal carries (`renderFailed`, `settled`). */
-  barrier: { readonly renderFailed?: boolean } = {},
-) {
-  const screen: Screen = { text: "❯ " };
-  const writes: string[] = [];
-  const terminal = {
-    ...barrier,
-    snapshot: () => ({ text: screen.text }),
-    sendInput: (input: string | Uint8Array) => {
-      writes.push(String(input));
-      return react(String(input), screen);
-    },
-  };
-  /** The harness stands in for a transaction Elwood opened. */
-  const opened: ModelDialogAuthority = { opened: true };
-  const leaked: string[] = [];
-  const queue = new ControlQueue(
-    (input) => {
-      if (spec.activeDialog(screen.text, opened) !== undefined) leaked.push(String(input));
-      return Promise.resolve();
-    },
-    () => new Error("closed"),
-    () => {},
-  );
-  const picker = new PickerTransactions({
-    terminal,
-    controlQueue: queue,
-    blocked: () => false,
-    picker: () => spec,
-    submitDirect: (command) => Promise.resolve(terminal.sendInput(command)),
-  });
-  queue.markReady();
-  /** An operation that fails with `dialog` still on screen. */
-  const failWith = (dialog: string) =>
-    picker.run("set_model", spec, 5000, () => {
-      screen.text = dialog;
-      return Promise.reject(failure);
-    });
-  return { screen, writes, leaked, queue, picker, failWith };
-}
 
 test("C-API-55 a failed operation's picker is cancelled before queued input is released", async () => {
   // The CLI takes 200ms to repaint after Escape.
@@ -112,13 +61,16 @@ test.each([
   expect(writes).toEqual([escapeKey]);
   expect(picker.blocksInput()).toBe(true);
   screen.text = "❯ ";
+  // ONE clear frame is not proof: a picker repainting between stages is briefly
+  // unrecognizable, and releasing queued input there would type into the frame that
+  // follows. The hold persists until a stable run of clear frames.
+  expect(picker.blocksInput()).toBe(true);
   expect(picker.blocksInput()).toBe(false);
   // The hold is forgotten: the same text reappearing later belongs to someone else.
   screen.text = claudePicker;
   expect(picker.blocksInput()).toBe(false);
   queue.close();
 });
-
 test("C-API-55 an Escape the operation already wrote is not repeated", async () => {
   // The CLI takes 200ms to repaint after Escape; the picker is still on screen at cleanup.
   const { writes, queue, picker } = setup(claudeModelPicker, (input, shown) => {
@@ -181,6 +133,20 @@ test("C-API-55 cleanup withholds its Escape while the screen cannot be vouched f
   // The `/model` submission is there; no Escape ever followed it.
   expect(writes.filter((write) => write === escapeKey)).toEqual([]);
   // Nothing could be cancelled, so the dialog is a survivor and keeps holding input.
+  expect(picker.blocksInput()).toBe(true);
+  queue.close();
+});
+
+test("C-API-55 a survivor that flickers clear for one frame is still held", async () => {
+  const { screen, queue, picker, failWith } = setup(claudeModelPicker, () => {});
+  const failed = expect(failWith(claudePicker)).rejects.toBe(failure);
+  await vi.advanceTimersByTimeAsync(1100);
+  await failed;
+  expect(picker.blocksInput()).toBe(true);
+  // A single unrecognized frame mid-repaint, then the dialog is back.
+  screen.text = "";
+  expect(picker.blocksInput()).toBe(true);
+  screen.text = claudePicker;
   expect(picker.blocksInput()).toBe(true);
   queue.close();
 });

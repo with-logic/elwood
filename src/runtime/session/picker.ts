@@ -16,9 +16,14 @@ type PickerDeps = {
   readonly picker: () => ModelPickerSpec;
 };
 
+/** Consecutive clear frames that prove a survivor is gone rather than mid-repaint. */
+const survivorClearFrames = 2;
+
 export class PickerTransactions {
   private readonly deps: PickerDeps;
   private survivor: ModelPickerSpec | undefined;
+  /** Consecutive frames without the survivor; it is forgotten only after a stable run. */
+  private clearFrames = 0;
   constructor(deps: PickerDeps) {
     this.deps = deps;
   }
@@ -34,8 +39,16 @@ export class PickerTransactions {
    * decides what Elwood may DRIVE, not what it may safely type over (C-API-55).
    */
   blocksInput(): boolean {
-    if (this.survivor?.activeDialog(this.deps.terminal.snapshot().text, ours) !== undefined)
+    if (this.survivor === undefined) return false;
+    if (this.survivor.activeDialog(this.deps.terminal.snapshot().text, ours) !== undefined) {
+      this.clearFrames = 0;
       return true;
+    }
+    // ONE unrecognized frame is not proof the survivor is gone: a picker repainting between
+    // stages is briefly unrecognizable, and forgetting it there would release queued input
+    // into the frame that follows. Cleanup requires the same streak for the same reason.
+    this.clearFrames += 1;
+    if (this.clearFrames < survivorClearFrames) return true;
     this.survivor = undefined;
     return false;
   }

@@ -94,6 +94,14 @@ export type ModelDialogStage = "picker" | "follow-up" | "painting";
  * its own screen, which is a bounded problem, rather than adjudicate arbitrary text.
  * Implements C-API-24.
  */
+/**
+ * The authority an adapter spec uses when revalidating its OWN dialog immediately before a
+ * write. These calls only ever run inside a transaction Elwood opened, so they carry it;
+ * it is a shared named constant so a call site outside a transaction has to reach for it
+ * deliberately rather than inline `{ opened: true }`.
+ */
+export const ownOperation: ModelDialogAuthority = { opened: true };
+
 export type ModelDialogAuthority = {
   /**
    * True only inside a transaction Elwood opened, after its `/model` write. Callers cannot

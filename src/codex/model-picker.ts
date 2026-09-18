@@ -8,6 +8,7 @@ import type { ModelPickerSpec } from "../core/models/picker.ts";
 import {
   bottomDialogRow,
   codexModelPickerHeader,
+  ownOperation,
   parseCodexModelPicker,
 } from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
@@ -31,7 +32,13 @@ export const codexModelPicker: ModelPickerSpec = {
   // Enter confirms the model, then Codex asks for a reasoning level with the
   // cursor pre-set on that model's default; a second Enter keeps it.
   apply: async (io, timeoutMs) => {
-    await sendPickerInput(io, "\r", (text) => codexModelPickerHeader.test(text));
+    // Enter CONFIRMS a model, so it is revalidated against the operation's own picker
+    // rather than a bare header a transcript could print (C-API-24).
+    await sendPickerInput(
+      io,
+      "\r",
+      (text) => codexModelPicker.activeDialog(text, ownOperation) === "picker",
+    );
     await waitForScreen(
       io.terminal,
       (text) => reasoningHeader.test(text),
@@ -39,7 +46,12 @@ export const codexModelPicker: ModelPickerSpec = {
       "codex reasoning level screen",
       io.signal,
     );
-    await sendPickerInput(io, "\r", (text) => reasoningHeader.test(text));
+    // Same for the reasoning stage: only our own follow-up may receive this Enter.
+    await sendPickerInput(
+      io,
+      "\r",
+      (text) => codexModelPicker.activeDialog(text, ownOperation) === "follow-up",
+    );
     await waitForScreen(
       io.terminal,
       (text) => changeConfirmed.test(text) && !reasoningHeader.test(text),
