@@ -12,6 +12,14 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Hold queued input on an unrecognized gate behind a recognized native header
+  prefix (`Do you`, `Is this`, `Trust the`, ... — PRD §5.4 lists them): a reworded
+  question with selectable options and a frame-ending native footer, and no
+  conversation above, now blocks for a human with the attention label
+  `<agent>-unknown_gate-prompt` under every `autotrust` value and is never answered
+  automatically; previously readiness could type the queued message and Enter
+  into it. Gates outside that grammar (other leading words, other footers) are
+  still not held. Dialogs that already block keep their existing labels.
 - Bound Codex in-TUI update skipping to one attempt per appearance of the update
   screen: an exhausted retry no longer restarts on the next frame of the same
   screen, and a stale attempt's late completion cannot start an overlapping retry
@@ -73,6 +81,10 @@ back each entry are listed in `prd/14-conformance.md`.
   out of warning events by requiring the current native welcome region.
 - Validate all concrete Claude tool input fields and typed hook fields, constrain
   permission rewrites to tool-specific handlers, and accept nullable Codex descriptions.
+- Bound the wait for another Elwood process's `autoupdate` to 60 seconds. A
+  contender that is still waiting then skips its update and continues with the
+  installed CLI, reporting `agent_update_failed` with `errorCode: "update_active"`
+  instead of waiting indefinitely; the active owner's lease is never evicted.
 - Match Claude task identifiers and plan permission objects to the native hook
   schemas so valid task and plan inputs reach their handlers.
 - Contain clipboard pipe failures during Codex image attachment, and retain the

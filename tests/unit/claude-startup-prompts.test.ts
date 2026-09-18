@@ -50,15 +50,16 @@ describe("ClaudeStartupPromptResponder", () => {
     expect(writes).toEqual([esc]);
   });
 
-  test("C-TRUST-01 a browser prompt below an old trust dialog does not approve trust", () => {
+  test("C-TRUST-01 a browser prompt below an old trust dialog gets no approval and no blind decline", () => {
     const responder = new ClaudeStartupPromptResponder(true);
     const writes: string[] = [];
     const combined = `${claudeTrust}\n ❯ 1. Yes, continue\n${browserPrompt}`;
     const settled = responder.handle(combined, (input) => {
       writes.push(input);
     });
-    expect(outcomesOf(settled).map((outcome) => outcome.prompt)).toEqual(["browser_tools"]);
-    expect(writes).toEqual([esc]);
+    // A trust candidate on screen holds the frame: neither an approval nor a blind decline.
+    expect(outcomesOf(settled)).toEqual([]);
+    expect(writes).toEqual([]);
   });
 
   test("C-CLAUDE-11 detection requires both prompt phrases", () => {

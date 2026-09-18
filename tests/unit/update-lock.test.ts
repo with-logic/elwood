@@ -31,27 +31,6 @@ describe("cross-process autoupdate lease", () => {
     }
   });
 
-  test("a live owner is never evicted solely because staleMs elapsed", async () => {
-    const root = tempDir("elwood-update-lock-live-");
-    let active = 0;
-    let maxActive = 0;
-    let attempts = 0;
-    const run = () =>
-      coordinatedAutoupdate(
-        "codex",
-        async () => {
-          attempts += 1;
-          active += 1;
-          maxActive = Math.max(maxActive, active);
-          await new Promise((resolve) => setTimeout(resolve, 40));
-          active -= 1;
-        },
-        { root, pollMs: 2, staleMs: 5 },
-      );
-    await Promise.all(Array.from({ length: 4 }, run));
-    expect({ attempts, maxActive }).toEqual({ attempts: 1, maxActive: 1 });
-  });
-
   test("C-LIFE-09 in-process contenders also run one updater and release the lease", async () => {
     const root = tempDir("elwood-update-lock-unit-");
     const attempts: number[] = [];

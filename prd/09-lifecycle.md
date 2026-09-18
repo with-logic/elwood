@@ -80,7 +80,12 @@ a second update. This mutual exclusion also applies across separate Elwood paren
 processes for the same macOS user and adapter: an atomic lease names the adapter in
 a stable per-account cache independent of `TMPDIR`; contenders wait without
 blocking the event loop, then invalidate their local caches and continue without
-running a duplicate update. The lease records the owner's process id and a unique
+running a duplicate update. Contender waiting is bounded to 60 seconds; an owner
+that has not finished by then causes the contender to skip its update and warn,
+without deleting the owner's lease. This warning uses `errorCode: "update_active"`
+and a canonical message explaining that the update was skipped because another
+updater is still active; no local update command ran, so it carries no exit status
+or stderr. The lease records the owner's process id and a unique
 generation. Cleanup removes only the generation it owns, a live owner is never
 evicted solely because the stale bound elapsed, and recovery of a dead owner's
 lease is itself serialized before removal, so neither cleanup nor concurrent stale
