@@ -52,24 +52,21 @@ test("C-PERF-04 a stale lease is held by its live group alone, whatever its age"
     const path = writeGroupHeldLease(root, [group.id]);
     let ran = false;
     // The recorded parent is long dead and the lease is far past its stale bound, so only
-    // the surviving group can be keeping it. A contender must keep waiting rather than
-    // recover it and update. The wait is unbounded on this branch, so the contender is
-    // left polling and the group is killed in `finally` to let it finish.
-    const contender = coordinatedAutoupdate(
-      "codex",
-      () => {
-        ran = true;
-        return Promise.resolve();
-      },
-      { root, pollMs: 2, staleMs: 5 },
-    );
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // the surviving group can be keeping it. A contender must treat the lease as active
+    // and give up on its own bound rather than recover it and update.
+    const update = () => {
+      ran = true;
+      return Promise.resolve();
+    };
+    await expect(
+      coordinatedAutoupdate("codex", update, { root, pollMs: 2, staleMs: 5, waitMs: 100 }),
+    ).rejects.toMatchObject({ details: { updateReason: "active_owner" } });
     expect(ran).toBe(false);
     expect(existsSync(path)).toBe(true);
+    // Once the group exits, the same lease is recoverable and the update runs, which
+    // proves it was the group alone that held it and not its age or its dead parent.
     await group.killGroup();
-    // Once the group is gone the same contender recovers the lease and updates, which
-    // proves it was the group alone that held it.
-    await contender;
+    await coordinatedAutoupdate("codex", update, { root, pollMs: 2, staleMs: 5 });
     expect(ran).toBe(true);
   } finally {
     await group.killGroup();
