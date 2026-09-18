@@ -7,6 +7,7 @@
  * must never mask the primary automation error).
  */
 
+import type { MutexCancel } from "../../core/async-mutex.ts";
 import { withCodexConfigLock } from "./lock.ts";
 
 type CodexModelSwitch = {
@@ -23,37 +24,93 @@ type CodexModelSwitch = {
    * omitted in tests that don't assert the diagnostic.
    */
   readonly onRestoreError?: (error: unknown) => void;
+  /**
+   * Consulted on BOTH outcomes, because the question is whether the CLI can still write
+   * config.toml, not whether our automation succeeded. A returned promise means the CLI
+   * may still be alive and able to persist its selection (the session is closing): a
+   * rejecting caller gets its error at once, while the restore, and with it the config
+   * lock, waits for that promise. Returning nothing restores immediately, which is the
+   * ordinary non-closing path.
+   *
+   * The wait is BEST-EFFORT and bounded: it settles on the observed PTY exit, or on its
+   * own deadline if the process never reports one. So the restore is ordered after a
+   * confirmed exit in the normal case, but a CLI that never exits cannot hold the
+   * process-wide config lock indefinitely — it is a bound, not a guarantee of exit.
+   */
+  readonly waitForCliExit?: () => Promise<unknown> | undefined;
+  /**
+   * Cancels this switch while it is still WAITING for the process-wide config lock, so a
+   * session that closes behind another session's transaction rejects at once instead of
+   * waiting out that transaction (including its exit bound). Once this switch holds the
+   * lock it owns config.toml and must finish its snapshot/restore.
+   */
+  readonly cancel?: MutexCancel;
 };
 
 export function runCodexModelSwitch(io: CodexModelSwitch): Promise<void> {
-  return withCodexConfigLock(async () => {
-    const snapshot = io.snapshot();
-    let primary: unknown;
-    let failed = false;
-    try {
-      await io.apply();
-    } catch (error) {
-      failed = true;
-      primary = error;
-    }
-    // Restore whether or not the switch rejected, so a late picker timeout that
-    // fired AFTER Codex wrote config.toml still restores the user's default.
-    try {
-      io.restore(snapshot);
-    } catch (restoreError) {
-      // When the switch succeeded, a restore failure surfaces on its own. When a
-      // primary error is being preserved we cannot also throw the restore failure,
-      // but it must NOT vanish — report it so the user learns config.toml may still
-      // be mutated (the alternative, silently dropping it, was the bug). The report
-      // is CONTAINED here: a throwing reporter must never replace the primary error
-      // this function guarantees to preserve.
-      if (!failed) throw restoreError;
+  return new Promise<void>((resolve, reject) => {
+    const transaction = withCodexConfigLock(async () => {
+      const snapshot = io.snapshot();
+      let primary: unknown;
+      let failed = false;
       try {
-        io.onRestoreError?.(restoreError);
-      } catch {
-        // A throwing reporter must not replace the primary error we preserve below.
+        await io.apply();
+      } catch (error) {
+        failed = true;
+        primary = error;
       }
-    }
-    if (failed) throw primary;
+      // The barrier is about the CLI still being able to WRITE, which has nothing to do
+      // with whether our picker automation succeeded. A switch that applied cleanly and
+      // then raced termination must defer its restore just as a failed one does, or the
+      // dying process's final config write lands after it. `waitForCliExit` returns
+      // undefined unless the session is closing, so the ordinary path is unchanged.
+      const exitWait = io.waitForCliExit?.();
+      // A non-undefined wait means the session is CLOSING. The caller is told immediately
+      // and identically either way: a switch that "succeeded" into a terminating session
+      // did not take effect for that session, so reporting success — five seconds later,
+      // once the exit barrier cleared — would be a lie. Only the restore waits.
+      const closing = exitWait !== undefined;
+      if (closing) {
+        // `failed` is always true here in practice: the queue slot's close signal aborts
+        // every picker read and write, so a switch cannot APPLY into a closing session.
+        // The rejection is still delivered before the wait so the caller is never held for
+        // the exit bound, and the restore below is told the call has already settled.
+        reject(primary);
+        await exitWait;
+      }
+      // `settled` tells the restore its failure can no longer reach the caller through the
+      // returned promise, so it must be REPORTED instead of thrown into a void.
+      restoreAfterSwitch(io, snapshot, failed || closing);
+      if (failed) throw primary;
+    }, io.cancel);
+    // A rejection already delivered above makes this one a no-op.
+    transaction.then(resolve, reject);
   });
+}
+
+/**
+ * Restores whether or not the switch rejected, so a late picker timeout that fired
+ * AFTER Codex wrote config.toml still restores the user's default. When the switch
+ * succeeded AND the caller is still listening, a restore failure surfaces on its own. Once
+ * the call has already settled — a preserved primary error, or a termination rejection
+ * delivered before the barrier — the restore failure cannot be thrown, but it must NOT
+ * vanish (that would leave config.toml holding the temporary model silently): it is
+ * reported so the user learns config.toml may still be mutated. The report is
+ * CONTAINED: a throwing reporter must never replace the primary error.
+ */
+function restoreAfterSwitch(
+  io: CodexModelSwitch,
+  snapshot: string | undefined,
+  settled: boolean,
+): void {
+  try {
+    io.restore(snapshot);
+  } catch (restoreError) {
+    if (!settled) throw restoreError;
+    try {
+      io.onRestoreError?.(restoreError);
+    } catch {
+      // A throwing reporter must not replace the primary error the caller preserves.
+    }
+  }
 }

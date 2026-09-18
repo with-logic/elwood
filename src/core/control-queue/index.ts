@@ -72,7 +72,6 @@ export class ControlQueue extends ControlQueueState {
         mayBypassReadiness,
         origin: options.origin ?? callerOrigin,
         ...(attach ? { attach } : {}),
-        ...(options.onDispatch ? { onDispatch: options.onDispatch } : {}),
       },
       options.cancel,
     );
@@ -108,7 +107,6 @@ export class ControlQueue extends ControlQueueState {
     let dispatched: Promise<void>;
     try {
       const signal = this.armAbort();
-      operation.onDispatch?.(signal);
       if (!operation.attach) this.beginSubmission(operation, traits);
       dispatched = operation.run
         ? operation.run(signal)

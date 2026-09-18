@@ -142,6 +142,83 @@ legacy string/`agent_message` support. C-CODEX-16.
   visible catalog; every returned row correctly had `isCurrent: false`.
   Real picker tests should let the installed CLI choose its launch default,
   rather than pinning a model that can disappear from the catalog.
+- **A model dialog replaces the composer; nothing renders below it.** Full-viewport
+  captures from Claude 2.1.274 and Codex 0.154.0 (2026-09-17,
+  `tests/helpers/model-dialog-viewports.ts`) show the picker, Codex's reasoning
+  level, and Claude's cache warning each ending the viewport, while the closed
+  state puts the composer back (`❯` between rules; `› Ask Codex to do anything`).
+  Rows ABOVE the dialog are ordinary transcript: Claude keeps `❯ /model` and reply
+  rows (`⏺` on 2.1.274, `●` earlier) there, so provenance is "no conversation or
+  composer row BELOW the header", never "none above". Picker text quoted in a reply
+  always has the working row and composer beneath it, so it is not a live dialog
+  and must never receive an Escape, which would interrupt the running turn. Claude
+  2.1.274's picker also carries an effort row (`◉ xHigh effort ←/→ to adjust`)
+  between its rows and footer. A closed Claude picker leaves only `❯ /model` /
+  `⎿ Kept model as …` behind, no header. Two more things are never a dialog: the
+  phrase on a reply or composer row itself (`❯ Select model` is staged input), and
+  a quoted picker above another dialog. Below its header a native dialog holds
+  exactly one contiguous block of picker rows (description column, numbered from 1,
+  at most one cursor); any other caret or numbered row (`❯ 1. Yes`, `  1. Yes`, a
+  staged `❯ 1. fix this  then that`) restarts the numbering, follows the blank or
+  rule that separates the composer, or lacks the column, and marks the region as
+  someone else's. The block must also be COMPLETE before Elwood treats it as live:
+  every captured picker and reasoning screen carries at least two numbered rows and
+  a closing hint row (`Esc to cancel`, `esc to go back`). A header with neither —
+  a transcript quoting `Select model` above a trust or hook prompt, or above a
+  reply's own numbered list — is a fragment, and Escaping it would dismiss the live
+  prompt underneath. The CURSOR is deliberately not required: a complete picker
+  still painting its cursor is live and must keep holding input, and `setPickerModel`
+  rejects the missing cursor on its own.
+- **A live switch dialog is never hung directly off an agent reply row.** The warning
+  screen carries no closing hint row, so completeness cannot be judged the way the
+  picker's is. Indentation cannot judge it either — the title itself may sit at column
+  zero, so a column test passes a staged draft straight through. Nor can option ORDER:
+  `Yes` normally precedes `No`, but a real reordered layout exists where the cursor starts
+  on `No` above `Yes` (`claudeModelCacheConfirmationYesBelow`), so an affirmative-first
+  rule rejects a live dialog. What does hold is the separator: Claude replaces the composer
+  with the dialog, so a live one is preceded by its rule (or the blank line before it),
+  never by an agent reply bullet. `parseClaudeSwitchConfirmation` therefore rejects a title
+  sitting DIRECTLY under a reply row, and reads options only from the dialog's own
+  contiguous run of action rows, so a staged `❯ Yes, switch to Fable` below a quoted
+  warning cannot pair with a quoted `No, go back`. C-API-24, C-ATTN-04.
+- **A picker's closing hint row TERMINATES its region.** Only blank lines and rules may
+  follow it. Otherwise a transcript quoting a complete picker — footer and all — above a
+  live trust or hook prompt still reads as a live picker, and Escaping it would dismiss
+  the human's prompt instead. For the same reason the header must be prose: a numbered
+  composer draft (`❯ 1. Select model  draft` / `2. next  text` / `Esc to cancel`)
+  otherwise satisfies the row and footer grammar entirely on its own. C-API-24.
+- **A picker mid-repaint is briefly unrecognizable, so one clear frame proves nothing.**
+  This is the same shape as the resume-replay settling above, and the picker hold reuses
+  that measured value (5 frames) rather than inventing a smaller one: the replay's quiet
+  gaps were measured at one frame and 5 clears them with margin, while the picker's gap
+  length is NOT measured. The failure directions are asymmetric — too high delays
+  releasing the input hold, too low releases queued input into a repainting dialog where
+  Enter applies the highlighted model — so the conservative measured precedent wins until
+  someone captures real picker repaint frames. Cleanup uses a shorter streak on purpose
+  because it is bounded at one second and must send its Escapes inside that budget; it
+  hands off to the survivor hold, which applies the full streak, so nothing is released
+  early. `src/runtime/session/picker-cleanup.ts`, C-API-55.
+- **Escape on a follow-up stage returns to the picker, not the composer.** On both
+  Claude 2.1.274 (cache warning) and Codex 0.154.0 (reasoning level) one Escape
+  reopens `Select model` / `Select Model and Effort`; a second closes it. Failure
+  cleanup therefore sends one Escape per stage and never repeats one: a second
+  Escape during a slow repaint would land on the composer. C-API-55.
+- **Claude paints its cache warning over the picker, with one partial frame.** A
+  5 ms frame capture on Claude 2.1.274 (2026-09-17) shows no idle composer between
+  the `s` key and the warning: 28 ms after the key one frame has `Switch model?`
+  and the cache copy above STALE picker rows (`❯ 1. Fable …`), with neither
+  `Select model` nor the Yes/No options; 7 ms later the dialog is complete
+  (numbered, cursor on `1. Yes, switch to …`). In that frame the title-only shell
+  cannot be told from a `PreModelSwitch` hook confirmation, so Elwood holds input on
+  it and never writes to it, and `setModel` does not treat a caret-only row
+  elsewhere in the viewport (a reply quoting the prompt) as the returned composer
+  while the shell is up. Before this, `setModel` resolved on that frame without
+  ever confirming the switch. C-API-24, C-API-55.
+- **Picker text visible before `/model` is submitted is not Elwood's.** A closed
+  picker leaves no header behind, so `Select model` / `Select Model and Effort` /
+  `Select Reasoning Level` text that precedes the command is a human's dialog or a
+  transcript quote (which the unanchored open check would otherwise parse and
+  drive). The operation rejects without writing. C-API-55.
 - **Codex persists `/model` picker selections into the user `config.toml`.**
   `setModel` restores the prior default via compare-and-swap after switching
   (C-CODEX-14), skipping with a `codex_default_model_persisted` warning on a

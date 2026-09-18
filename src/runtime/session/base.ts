@@ -8,6 +8,7 @@
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
 import { sessionImageBudget } from "../../core/images/queued-budget.ts";
 import type { SendOptions } from "../../core/images/types.ts";
+import { writeQueuedInput } from "../../core/input/index.ts";
 import type { ElwoodLoopRequest, ElwoodLoopSnapshot } from "../../core/loops/types.ts";
 import type { ModelPickerSpec } from "../../core/models/picker.ts";
 import type { AgentModelOption } from "../../core/models/rows.ts";
@@ -64,14 +65,27 @@ export abstract class AgentSessionBase extends SessionLifecycle {
       statusEvents,
       status: () => this.status,
       everReady: () => this.everReady,
-      blocked: () => this.isInputBlocked(),
+      blocked: () => super.isInputBlocked(),
       picker: () => this.picker,
-      submit: (command, kind, signal, onDispatch) =>
-        this.controlQueue.send(command, kind, undefined, {
-          cancel: { signal, error: () => signal.reason },
-          ...(onDispatch ? { onDispatch } : {}),
-        }),
+      controlQueue: this.controlQueue,
+      submitDirect: (command, signal) =>
+        writeQueuedInput(terminal, command, "command", this.pasteGuard, signal),
     });
+  }
+
+  /** Every queued writer also holds on a model dialog that outlived its cleanup (C-API-55). */
+  protected override isInputBlocked(): boolean {
+    return super.isInputBlocked() || this.commands.blocksInput();
+  }
+
+  /**
+   * Writes that are NOT part of a picker transaction (`/login` recovery) must additionally
+   * stand off a model dialog a human opened. It is deliberately not part of
+   * `isInputBlocked`: that feeds readiness, and suppressing readiness while any picker is
+   * visible would deadlock Elwood's own picker, whose dialog is on screen by design.
+   */
+  protected foreignDialogBlocksWrite(): boolean {
+    return this.commands.foreignDialogVisible();
   }
 
   sendPrompt(prompt: string, options?: SendOptions): Promise<void> {
@@ -101,8 +115,12 @@ export abstract class AgentSessionBase extends SessionLifecycle {
   listModels(options?: Timeout): Promise<readonly AgentModelOption[]> {
     return this.inSession(() => this.commands.listModels(options));
   }
-  setModel(id: string, options?: Timeout): Promise<void> {
-    return this.inSession(() => this.commands.setModel(id, options));
+  setModel(
+    id: string,
+    options?: Timeout,
+    around?: (flow: () => Promise<void>) => Promise<void>,
+  ): Promise<void> {
+    return this.inSession(() => this.commands.setModel(id, options, around));
   }
   createLoop(request: ElwoodLoopRequest): Promise<ElwoodLoopSnapshot> {
     return this.inSession(() => this.loops.create(request));

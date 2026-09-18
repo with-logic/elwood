@@ -102,4 +102,34 @@ describe("runCodexModelSwitch (C-CODEX-14)", () => {
       }),
     ).rejects.toBe(primary);
   });
+  test("a closing session: the caller is rejected at once, the restore and the lock wait", async () => {
+    let cliExited!: () => void;
+    const gone = new Promise<void>((resolve) => {
+      cliExited = resolve;
+    });
+    const primary = new Error("session_not_running");
+    const first = io({ apply: () => Promise.reject(primary) });
+    const second = io({ apply: () => Promise.resolve() });
+    const rejected = runCodexModelSwitch({ ...first.spec, waitForCliExit: () => gone });
+    const queued = runCodexModelSwitch(second.spec);
+    await expect(rejected).rejects.toBe(primary);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    // The CLI is still alive: nothing is restored and the next transaction has not begun.
+    expect(first.restored).toEqual([]);
+    expect(second.restored).toEqual([]);
+    cliExited();
+    await queued;
+    expect(first.restored).toEqual(["SNAP"]);
+    expect(second.restored).toEqual(["SNAP"]);
+  });
+
+  test("a failed switch on a live session restores before the caller is rejected", async () => {
+    const primary = new Error("timed out");
+    const { spec, restored } = io({ apply: () => Promise.reject(primary) });
+    const seen: number[] = [];
+    await runCodexModelSwitch({ ...spec, waitForCliExit: () => undefined }).catch(() =>
+      seen.push(restored.length),
+    );
+    expect(seen).toEqual([1]);
+  });
 });

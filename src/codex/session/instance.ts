@@ -11,6 +11,7 @@ import { emitSessionWarnings } from "../../core/warnings/session.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import { AgentSessionBase } from "../../runtime/session/base.ts";
+import { notRunningError } from "../../runtime/session/not-running.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
@@ -22,6 +23,7 @@ import { codexModelPicker } from "../model-picker.ts";
 import type { CodexTranscriptWatcher } from "../transcript/index.ts";
 import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";
+import { CliExitBarrier } from "./cli-exit.ts";
 import type { CodexEventHandler, CodexEventMap, CodexEventName, CodexSessionApi } from "./types.ts";
 import {
   clipboardRestoreFailedWarning,
@@ -35,6 +37,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   private readonly emitter: TypedEmitter<CodexEventMap>;
   private readonly transcriptWatcher: CodexTranscriptWatcher | undefined;
   private onInitialReady: (() => void) | undefined;
+  private readonly cliExit: CliExitBarrier;
 
   constructor(
     record: SessionRecord,
@@ -62,6 +65,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     this.bridge = bridge;
     this.emitter = emitter;
     this.transcriptWatcher = transcriptWatcher;
+    this.cliExit = new CliExitBarrier(pty);
   }
 
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>) {
@@ -82,13 +86,30 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   // config.toml — otherwise a late `waitForScreen` timeout would leave the
   // user's global default changed (C-CODEX-14).
   override setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
-    return runCodexModelSwitch({
-      snapshot: snapshotCodexConfig,
-      apply: () => super.setModel(id, options),
-      restore: (snapshot) => this.restoreCodexDefault(snapshot),
-      onRestoreError: (error) =>
-        this.emitWarnings([codexRestoreFailedWarning(this.elwoodSessionId, error)]),
-    });
+    // The queue slot is claimed FIRST (by `super.setModel`), and the config transaction
+    // runs inside it via `around`. Reversing that let a following `sendMessage` dispatch
+    // while this call was still waiting for another session's lock, sending under the old
+    // model — a FIFO violation the slot exists to prevent.
+    return super.setModel(id, options, (flow) =>
+      runCodexModelSwitch({
+        snapshot: snapshotCodexConfig,
+        apply: flow,
+        waitForCliExit: () => this.waitForCliExit(),
+        // Still QUEUED behind another session's switch when this one closes: reject now
+        // rather than wait out that transaction and its exit bound. Once this switch holds
+        // the lock it owns config.toml, so cancellation no longer applies.
+        cancel: { signal: this.closing.signal, error: () => notRunningError("codex") },
+        restore: (snapshot) => this.restoreCodexDefault(snapshot),
+        onRestoreError: (error) =>
+          this.emitWarnings([codexRestoreFailedWarning(this.elwoodSessionId, error)]),
+      }),
+    );
+  }
+  // A closing session rejects the picker at once, while the dying CLI can still persist
+  // the selection it had confirmed, so the restore waits on the PTY's own exit.
+  private waitForCliExit(): Promise<unknown> | undefined {
+    if (!this.closing.signal.aborted) return undefined;
+    return this.cliExit.wait();
   }
   private restoreCodexDefault(snapshot: string | undefined): void {
     const outcome = restoreCodexConfig(snapshot);

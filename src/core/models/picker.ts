@@ -6,7 +6,12 @@
 import { delay } from "../delay.ts";
 import { elwoodError } from "../errors.ts";
 import { sendPickerInput } from "./input.ts";
-import type { AgentModelOption, ParsedModelPicker } from "./rows.ts";
+import type {
+  AgentModelOption,
+  ModelDialogAuthority,
+  ModelDialogStage,
+  ParsedModelPicker,
+} from "./rows.ts";
 import {
   defaultModelTimeoutMs,
   openCommandScreen,
@@ -21,15 +26,52 @@ export function pickerTimeout(options?: { readonly timeoutMs?: number }): number
 export type ModelPickerIo = {
   readonly terminal: ScreenTerminal;
   readonly blocked?: () => boolean;
+  readonly signal?: AbortSignal;
   readonly submit: (command: string, signal: AbortSignal) => Promise<void>;
 };
 
 export type ModelPickerSpec = {
   readonly agent: string;
   readonly isOpen: (text: string) => boolean;
+  /**
+   * The live, bottom-most model dialog: the only one Elwood may cancel or hold input on.
+   * `authority` is REQUIRED and carries proof Elwood opened this dialog (see
+   * `ModelDialogAuthority`); without it every frame is `undefined`, whatever it renders.
+   * The parameter is not optional so a caller cannot reach recognition without first
+   * saying, in the type system, on whose authority it is reading the screen.
+   */
+  readonly activeDialog: (
+    text: string,
+    authority: ModelDialogAuthority,
+  ) => ModelDialogStage | undefined;
   readonly parse: (text: string) => ParsedModelPicker;
   readonly apply: (io: ModelPickerIo, timeoutMs: number) => Promise<void>;
 };
+
+/**
+ * Elwood is inside the transaction that wrote `/model`, so these reads carry its authority.
+ * Every wait and write below is gated on `ours(spec)` rather than the raw `isOpen` header:
+ * a header match alone is untrusted candidate evidence — a transcript or the agent's own
+ * output can print `Select model` — so navigating or Escaping on it could send keys into a
+ * running turn, the real composer, or another prompt (C-API-24).
+ */
+const opened: ModelDialogAuthority = { opened: true };
+
+/** True only while THIS operation's own dialog is the bottom-most region of the screen. */
+const ours = (spec: ModelPickerSpec) => (text: string) =>
+  spec.activeDialog(text, opened) !== undefined;
+
+/**
+ * The guard for a CANCELLING Escape, which is deliberately weaker than `ours`.
+ *
+ * Navigation and selection must land on a fully recognized dialog, because an arrow or
+ * Enter on the wrong screen changes something. Escape only closes, and this operation
+ * opened the screen that is up: a picker whose rows never parsed is still OUR picker, and
+ * abandoning it because the grammar cannot describe it would leave it open for the next
+ * queued write. So the header is enough here, and only here.
+ */
+const oursOrOpen = (spec: ModelPickerSpec) => (text: string) =>
+  ours(spec)(text) || spec.isOpen(text);
 
 const escapeKey = "\u001b";
 const arrowDown = "\u001b[B";
@@ -42,12 +84,13 @@ export async function listPickerModels(
   timeoutMs: number,
 ): Promise<readonly AgentModelOption[]> {
   const parsed = await openAndParse(io, spec, timeoutMs);
-  await sendPickerInput(io, escapeKey, spec.isOpen);
+  await sendPickerInput(io, escapeKey, oursOrOpen(spec));
   await waitForScreen(
     io.terminal,
-    (text) => !spec.isOpen(text),
+    (text) => !oursOrOpen(spec)(text),
     timeoutMs,
     `${spec.agent} model picker to close`,
+    io.signal,
   );
   return parsed.options;
 }
@@ -64,7 +107,7 @@ export async function setPickerModel(
   // alone covers a caller that passes the display label in any case.
   const target = parsed.options.findIndex((option) => option.id === wanted);
   if (target === -1 || parsed.cursorIndex === -1) {
-    await sendPickerInput(io, escapeKey, spec.isOpen);
+    await sendPickerInput(io, escapeKey, oursOrOpen(spec));
     const reason =
       target === -1 ? `Unknown model id "${id}".` : "Could not locate the picker cursor.";
     throw elwoodError("model_automation_failed", reason, {
@@ -74,7 +117,7 @@ export async function setPickerModel(
   const delta = target - parsed.cursorIndex;
   const key = delta > 0 ? arrowDown : arrowUp;
   for (let step = 0; step < Math.abs(delta); step += 1) {
-    await sendPickerInput(io, key, spec.isOpen);
+    await sendPickerInput(io, key, ours(spec));
     await delay(arrowStepMs);
   }
   await waitForScreen(
@@ -82,6 +125,7 @@ export async function setPickerModel(
     (text) => spec.parse(text).cursorIndex === target,
     timeoutMs,
     `${spec.agent} picker cursor on "${id}"`,
+    io.signal,
   );
   await spec.apply(io, timeoutMs);
 }
@@ -93,6 +137,7 @@ async function openAndParse(
 ): Promise<ParsedModelPicker> {
   const text = await openCommandScreen({
     terminal: io.terminal,
+    ...(io.signal === undefined ? {} : { signal: io.signal }),
     submit: (signal) => io.submit("/model", signal),
     isOpen: spec.isOpen,
     timeoutMs,
@@ -100,7 +145,7 @@ async function openAndParse(
   });
   const parsed = spec.parse(text);
   if (parsed.options.length === 0) {
-    await sendPickerInput(io, escapeKey, spec.isOpen);
+    await sendPickerInput(io, escapeKey, oursOrOpen(spec));
     throw elwoodError("model_automation_failed", "Could not parse any model picker rows.");
   }
   return parsed;

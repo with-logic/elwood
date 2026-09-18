@@ -20,6 +20,31 @@ export type ClaudeSwitchConfirmation = {
 };
 
 const optionPattern = /^\s*([❯›])?\s*(?:\d+[.)]\s*)?(Yes,\s*switch to\b.*|No,\s*go back)\s*$/i;
+
+/**
+ * The rows of the dialog's own action block: the LAST run of consecutive action rows.
+ * Claude renders `Yes, switch to …` and `No, go back` adjacent, so a staged composer line
+ * that reads like an action is separated from the quoted pair by the warning's prose and
+ * forms its own run. Taking the final run means a draft BELOW a quoted warning yields one
+ * option, which is not a Yes/No set, so the caller declines to drive it.
+ *
+ * Blank rows do not end a run: the terminal pads the screen below the real options, and
+ * treating that padding as a boundary would discard the dialog's own block entirely.
+ */
+function actionBlock(region: readonly string[]): readonly string[] {
+  let block: string[] = [];
+  let current: string[] = [];
+  for (const line of region) {
+    if (optionPattern.test(line)) {
+      current.push(line);
+      continue;
+    }
+    if (line.trim() === "") continue;
+    if (current.length > 0) block = current;
+    current = [];
+  }
+  return current.length > 0 ? current : block;
+}
 const cacheLead = "Your next response will be slower and use more tokens";
 const cacheTail = "means the full history gets re-read on your next message.";
 const hookLead = "A PreModelSwitch hook asked you to confirm";
@@ -44,9 +69,52 @@ export function isClaudeSwitchConfirmation(text: string): boolean {
   return parseClaudeSwitchConfirmation(text) !== undefined;
 }
 
+/**
+ * A switch title opening the bottom-most region, even before its copy and options
+ * paint. Claude 2.1.274 renders one such frame between the picker and the warning.
+ * It cannot yet be told from a hook confirmation, so it is held on and never answered.
+ */
+export function isClaudeSwitchShell(text: string): boolean {
+  const lines = text.split("\n");
+  const title = lines.findLastIndex((line) => switchShellTitle.test(line));
+  if (title < 0 || quotesTheTitle(lines, title)) return false;
+  const below = lines.slice(title + 1);
+  // The shell is NOT a picker: no numbered rows of its own and no closing hint row yet, so
+  // the picker grammar cannot judge it. Two things must hold instead.
+  //
+  // Nothing foreign below: a reply row, or a caret row that is neither one of the shell's
+  // own action rows nor a leftover PICKER row, means this title is transcript rather than
+  // the dialog that replaced the composer. Claude paints the warning OVER the picker, so
+  // the stale rows it has not yet cleared are still part of the frame.
+  const foreign = (line: string): boolean =>
+    replyRow.test(line) ||
+    (caretRow.test(line) && !optionPattern.test(line) && !pickerRow.test(line));
+  if (below.some(foreign)) return false;
+  // A hook's confirmation wears the same shell, but once its reason has painted the dialog
+  // is identifiable and belongs to the human: never hold it as a stage of our own switch.
+  if (below.join(" ").includes(hookLead)) return false;
+  // And the shell must actually be a SHELL: its own copy has begun to paint. A bare title
+  // with nothing under it is a transcript fragment merely quoting the question.
+  return below.some((line) => line.trim() !== "" && !pickerRow.test(line));
+}
+
+const switchShellTitle = /^\s*(?:Switch model|Change effort level)\?\s*$/;
+const caretRow = /^\s*[❯›]/;
+/** A leftover picker row (description column) the warning has painted over but not cleared. */
+const pickerRow = /^\s*[❯›]?\s*\d+\.\s+.+?\s{2,}\S/;
+
 /** The idle Claude composer, excluding dialog action rows with a caret. */
 export function isClaudeIdleComposer(text: string): boolean {
   return /^\s*[❯›]\s*$/m.test(text);
+}
+
+/** An agent reply bullet; the row a quoted dialog hangs directly beneath. */
+const replyRow = /^\s*[●•⏺]/;
+
+/** True when the row immediately above the title is an agent reply rather than a separator. */
+function quotesTheTitle(lines: readonly string[], titleIndex: number): boolean {
+  const above = lines[titleIndex - 1];
+  return above !== undefined && replyRow.test(above);
 }
 
 function switchDialogRegion(text: string): SwitchDialogRegion | undefined {
@@ -60,6 +128,11 @@ function switchDialogRegion(text: string): SwitchDialogRegion | undefined {
     if (title === "Change effort level?") latest = { index, subject: "effort level" };
   }
   if (latest === undefined) return undefined;
+  // A live dialog replaces the composer, so the transcript above it always ends in the
+  // separator Claude draws (a rule, or the blank line before it). A title sitting DIRECTLY
+  // under an agent reply row is prose the reply is quoting, and the "options" below it are
+  // that quote plus whatever the user has since staged.
+  if (quotesTheTitle(lines, latest.index)) return undefined;
   const region = lines.slice(latest.index);
   const lastOption = region.findLastIndex((line) => optionPattern.test(line));
   // A later dialog can lack a switch title. Its question/options must not inherit
@@ -73,10 +146,11 @@ function switchDialogRegion(text: string): SwitchDialogRegion | undefined {
 }
 
 function switchOptions(text: string): readonly SwitchOption[] {
-  const options = text.split("\n").flatMap((line) => {
-    const match = optionPattern.exec(line);
-    if (match === null) return [];
-    return [{ affirmative: /^Yes,/i.test(match[2] as string), selected: match[1] !== undefined }];
+  // Only the dialog's own CONTIGUOUS action block counts, so a staged composer row that
+  // reads like an action cannot pair up with an option quoted elsewhere in the viewport.
+  const options = actionBlock(text.split("\n")).map((line) => {
+    const match = optionPattern.exec(line) as RegExpExecArray;
+    return { affirmative: /^Yes,/i.test(match[2] as string), selected: match[1] !== undefined };
   });
   return options.slice(-2);
 }

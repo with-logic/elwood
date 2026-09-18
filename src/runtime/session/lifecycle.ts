@@ -46,7 +46,7 @@ export abstract class SessionLifecycle {
   private readonly cleanupLatch = new CleanupLatch(() => this.stopRuntime());
   private readonly shutdown: SessionShutdownBinding;
   private readonly statusEngine: SessionStatusEngine;
-  private readonly pasteGuard: PasteGuard = {
+  protected readonly pasteGuard: PasteGuard = {
     snapshot: () => this.terminal.snapshot().text,
     staged: (screen, prompt) => this.stagedPaste(screen, prompt),
     blocked: () => this.isInputBlocked(),

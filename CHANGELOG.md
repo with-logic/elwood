@@ -12,6 +12,22 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Serialize `listModels`/`setModel` through the session input queue: a model
+  operation owns the queue until its picker flow settles, so overlapping model
+  calls, queued commands, and messages can no longer be typed into a picker while
+  the operation that opened it is running. `compact`'s delayed recovery Enter is
+  cancelled once a later operation takes the composer, rather than queued behind it.
+- A Codex `setModel` interrupted by session termination waits for the CLI process
+  to exit before restoring `config.toml`, bounded at five seconds so a process that
+  never reports an exit cannot hold the shared config lock. Session status alone
+  (`stopped`, `killed`, `torn_down`) no longer releases the restore, since teardown
+  records those even when its signal did not take. The wait now applies whether the
+  switch succeeded or failed: the question is whether the dying CLI can still write
+  `config.toml`, not whether Elwood's automation worked.
+- A Codex `setModel` still waiting for the process-wide `config.toml` lock rejects
+  with `session_not_running` as soon as its own session closes, instead of staying
+  pending until the session ahead of it finishes its transaction and exit wait. A
+  cancelled call never runs its switch when the lock frees.
 - Stop non-trust startup automation from writing into a trust gate that arrived while
   the previous screen was still rendering. The Codex update skip (including its retries)
   and the Claude browser-tools decline now observe all received PTY output and re-check
@@ -36,6 +52,19 @@ back each entry are listed in `prd/14-conformance.md`.
   session was still `starting`. Such a session already became `blocked`, but
   without the human-decision event, so a headless `elwood` run never reported
   `blocked_prompt`.
+- A failed `listModels`/`setModel` now cancels the model dialog it left open
+  before releasing queued input, and holds queued messages, commands, and `/login`
+  while a dialog it could not cancel stays visible. Picker text quoted in a reply
+  is never cancelled, so cleanup cannot interrupt a running turn.
+- `setModel` no longer resolves on the partially painted frame that precedes
+  Claude's cache warning (it reported success without confirming the switch), and
+  queued input stays held while a Claude switch dialog is still painting.
+- Model-picker cleanup also covers a dialog that paints up to a second after the
+  failure (a late picker, Codex's reasoning level, Claude's cache warning). A model
+  operation now rejects without writing when model picker text is already visible.
+- `compact`'s recovery Enter can no longer be typed into a model picker opened by
+  a concurrent `listModels`/`setModel` (where Enter saves the highlighted model as
+  the default): it now waits for the picker operation to release the input queue.
 - Snapshot image bytes and relative paths when facade methods are called, including
   turns queued behind another response or waiting for session startup. Facade copies
   count against the same 200 MiB per-session ceiling as sends on the raw `session`.
