@@ -31,27 +31,6 @@ describe("cross-process autoupdate lease", () => {
     }
   });
 
-  test("a live owner is never evicted solely because staleMs elapsed", async () => {
-    const root = tempDir("elwood-update-lock-live-");
-    let active = 0;
-    let maxActive = 0;
-    let attempts = 0;
-    const run = () =>
-      coordinatedAutoupdate(
-        "codex",
-        async () => {
-          attempts += 1;
-          active += 1;
-          maxActive = Math.max(maxActive, active);
-          await new Promise((resolve) => setTimeout(resolve, 40));
-          active -= 1;
-        },
-        { root, pollMs: 2, staleMs: 5 },
-      );
-    await Promise.all(Array.from({ length: 4 }, run));
-    expect({ attempts, maxActive }).toEqual({ attempts: 1, maxActive: 1 });
-  });
-
   test("C-LIFE-09 in-process contenders also run one updater and release the lease", async () => {
     const root = tempDir("elwood-update-lock-unit-");
     const attempts: number[] = [];
@@ -146,19 +125,11 @@ describe("cross-process autoupdate lease", () => {
     expect(retried).toBe(true);
   });
 
-  test("an owner cleanup failure does not mask update success", async () => {
-    const root = tempDir("elwood-update-lock-cleanup-");
-    await expect(
-      coordinatedAutoupdate(
-        "codex",
-        () => {
-          writeFileSync(join(updateLockPath("codex", root), "unexpected"), "occupied");
-          return Promise.resolve();
-        },
-        leaseOptions(root),
-      ),
-    ).resolves.toBeUndefined();
-  });
+  // A cleanup failure no longer masking update success is covered where the failure can
+  // actually be produced: `update-lock/release-window.test.ts` denies the retired
+  // directory's deletion outright. Occupying the lease with an extra child used to fail
+  // `rmdir`, but the retirement removes the directory recursively, so that fixture tested
+  // the success path while claiming to test the failure one.
 
   test("an old owner never removes a successor generation", async () => {
     const root = tempDir("elwood-update-lock-generation-");

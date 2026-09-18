@@ -80,7 +80,12 @@ a second update. This mutual exclusion also applies across separate Elwood paren
 processes for the same macOS user and adapter: an atomic lease names the adapter in
 a stable per-account cache independent of `TMPDIR`; contenders wait without
 blocking the event loop, then invalidate their local caches and continue without
-running a duplicate update. The lease records the owner's process id and a unique
+running a duplicate update. Contender waiting is bounded to 60 seconds; an owner
+that has not finished by then causes the contender to skip its update and warn,
+without deleting the owner's lease. This warning uses `errorCode: "update_active"`
+and a canonical message explaining that the update was skipped because another
+updater is still active; no local update command ran, so it carries no exit status
+or stderr. The lease records the owner's process id and a unique
 generation. Cleanup removes only the generation it owns, a live owner is never
 evicted solely because the stale bound elapsed, and recovery of a dead owner's
 lease is itself serialized before removal, so neither cleanup nor concurrent stale
@@ -89,8 +94,16 @@ its owner record inside a private staging directory and renames that directory i
 place, so a lease either does not exist or holds a complete owner record: no
 ownerless or partially written lease is ever published. A claimant interrupted
 before the rename leaves only its staging directory; one interrupted after it leaves
-a complete lease naming a dead owner, which ordinary stale recovery removes. Each
-lease holder removes a bounded number of leftover staging directories. A lease directory that already exists, even one without an
+a complete lease naming a dead owner, which ordinary stale recovery removes. Release is
+atomic in the same way: the owner renames its lease away and then deletes it, so a
+contender polling during release sees a whole lease or none, never an ownerless one
+it would recover as stale and follow with a duplicate update. A release that cannot rename
+at all still removes the lease where it stands rather than leaving it: its owner is alive,
+so a lease left behind would make every later updater on that host wait forever on a process
+that has already finished updating. Each lease holder removes
+a bounded number of that adapter's leftovers, of both kinds — staging left by an
+interrupted claimant and retired directories left by a release that renamed but did not
+delete — under one shared budget, so later holders finish whatever one holder leaves. A lease directory that already exists, even one without an
 owner record, is a wait condition: it is recovered as stale rather than claimed
 over. An unreadable owner record still fails safe: it may belong
 to a live updater writing a record format this version cannot read, so it is never

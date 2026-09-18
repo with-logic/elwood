@@ -8,11 +8,13 @@ import { randomUUID } from "node:crypto";
 import { chmod, mkdir, opendir, rename, rm, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { elwoodError } from "../../core/errors.ts";
 import {
   type LeaseOwner,
   ownerFile,
   readOptionalText,
   releaseLease,
+  retiredLeaseInfix,
   serializeOwner,
 } from "./owner.ts";
 import { pathExists, recoveryPath, waitForOwner } from "./waiting.ts";
@@ -23,12 +25,14 @@ export type UpdateLeaseOptions = {
   readonly root?: string;
   readonly pollMs?: number;
   readonly staleMs?: number;
+  readonly waitMs?: number;
 };
 
 const defaultPollMs = 50;
 const defaultStaleMs = 30_000;
-const maxSweptStaging = 8;
+const maxSweptLeftovers = 8;
 const maxInspectedEntries = 64;
+const defaultWaitMs = 60_000;
 
 function defaultLeaseRoot(): string {
   const user = userInfo();
@@ -43,6 +47,8 @@ export function updateLockPath(adapter: UpdateAdapter, root = defaultLeaseRoot()
  * Runs `update` only for the lease owner. A contender waits until that owner
  * settles and then returns without a duplicate update; callers re-read version
  * state after this resolves. Waiting uses timers, never a blocking filesystem loop.
+ * After 60 seconds by default, a still-active owner rejects with the adapter's
+ * update_failed error and updateReason active_owner; preflight warns and continues.
  */
 export async function coordinatedAutoupdate(
   adapter: UpdateAdapter,
@@ -53,6 +59,9 @@ export async function coordinatedAutoupdate(
   const path = updateLockPath(adapter, root);
   const pollMs = options.pollMs ?? defaultPollMs;
   const staleMs = options.staleMs ?? defaultStaleMs;
+  // Monotonic: the wait is a promised bound, so a backward system-clock adjustment must
+  // not extend it. `mtime` staleness below stays on the wall clock, which is what it is.
+  const waitUntilMs = performance.now() + (options.waitMs ?? defaultWaitMs);
   await mkdir(root, { recursive: true, mode: 0o700 });
   await chmod(root, 0o700);
   const owner = { pid: process.pid, token: randomUUID() } satisfies LeaseOwner;
@@ -67,8 +76,13 @@ export async function coordinatedAutoupdate(
     // would then treat its own later claim as the first attempt and run a duplicate
     // update (PRD §9.2: a contender skips its duplicate attempt).
     observedActive = true;
-    const waited = await waitForOwner(path, pollMs, staleMs);
+    const waited = await waitForOwner(path, pollMs, staleMs, waitUntilMs);
     if (waited === "released") return;
+    if (waited === "wait_expired") {
+      throw elwoodError(`${adapter}_update_failed`, "Another updater has not finished.", {
+        updateReason: "active_owner",
+      });
+    }
     recoveredStale = true;
   }
   if (
@@ -111,31 +125,38 @@ async function claimLease(path: string, owner: LeaseOwner): Promise<boolean> {
     await releaseLease(path, owner);
     return false;
   }
-  await sweepStaging(path);
+  await sweepLeaseLeftovers(path);
   return true;
 }
 
 /**
- * Removes staging directories left by claimants killed before their rename. Only the lease
- * holder sweeps: a live contender's staging can no longer win, and losing it merely turns
- * that contender's failed rename into a missing source. Each holder removes a bounded
- * number, so a pile of leftovers delays no single update; later holders finish the job.
+ * Removes this adapter's lease leftovers, of which there are two kinds: `.claim.` staging
+ * left by claimants killed before their publishing rename, and `.released.` directories left
+ * by an owner whose retirement was renamed away but not deleted. Only the lease holder
+ * sweeps: a live contender's staging can no longer win, and losing it merely turns that
+ * contender's failed rename into a missing source. Both kinds share one budget — at most
+ * `maxSweptLeftovers` removals from at most `maxInspectedEntries` entries read — so a pile of
+ * debris delays no single update; later holders finish the job.
  */
-async function sweepStaging(path: string): Promise<void> {
+async function sweepLeaseLeftovers(path: string): Promise<void> {
   const root = dirname(path);
-  const leftover = `${basename(path)}.claim.`;
+  // Claim staging AND leases already retired by their owner: both are this adapter's debris.
+  const leftovers = [".claim.", retiredLeaseInfix].map((infix) => `${basename(path)}${infix}`);
   let swept = 0;
   let inspected = 0;
   try {
     // Streamed and bounded in both deletions and entries read: the root is shared with the
     // other adapter, whose own lease holders sweep its leftovers.
     for await (const entry of await opendir(root)) {
+      if (leftovers.some((prefix) => entry.name.startsWith(prefix))) {
+        await rm(join(root, entry.name), { recursive: true, force: true }).catch(() => undefined);
+        swept += 1;
+        if (swept === maxSweptLeftovers) break;
+      }
+      // Counted after the entry is handled, so `maxInspectedEntries` is an upper bound that
+      // is never overshot; a short root or the deletion budget above can stop the scan sooner.
       inspected += 1;
-      if (inspected > maxInspectedEntries) break;
-      if (!entry.name.startsWith(leftover)) continue;
-      await rm(join(root, entry.name), { recursive: true, force: true }).catch(() => undefined);
-      swept += 1;
-      if (swept === maxSweptStaging) break;
+      if (inspected === maxInspectedEntries) break;
     }
   } catch {
     // Sweeping is housekeeping: an unreadable root must not stop the lease holder's update.
