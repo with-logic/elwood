@@ -1,7 +1,6 @@
 /** Builds a live ClaudeSessionApi from a record + runtime. Implements PRD §5, §6, §8, §9. */
 import { defaultTerminalSize } from "../../core/defaults.ts";
 import { causeDetails, elwoodError } from "../../core/errors.ts";
-import { guardedNonTrustAutomationWrite } from "../../core/startup/barrier.ts";
 import { createStartupWarningGate, deliverFrameWarnings } from "../../core/startup/frame.ts";
 import { emitSettledStartupOutcomes } from "../../core/startup/write.ts";
 import { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
@@ -18,7 +17,7 @@ import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, writeSessionRecord } from "../../state/store.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
 import { type ClaudePreflightWarning, preflightEvent } from "../preflight.ts";
-import { ClaudeStartupPromptResponder } from "../startup-prompts.ts";
+import { ClaudeStartupPromptResponder, guardedClaudeAutomationWrite } from "../startup-prompts.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
 import { currentClaudeHookBridgeFactory } from "./bridge.ts";
 import { buildClaudeHookErrorHandler, buildClaudeHookHandler } from "./hook-handler.ts";
@@ -137,7 +136,7 @@ export async function buildClaudeSession(
     // the write fulfills, and a rejected write stays retryable + warns (C-CLAUDE-16).
     const send = (input: string) => renderedTerminal.sendInput(input);
     const read = () => latestRenderedText;
-    const guarded = guardedNonTrustAutomationWrite(renderedTerminal, send, read, "claude");
+    const guarded = guardedClaudeAutomationWrite(renderedTerminal, send, read);
     const autos = promptResponder.handle(frame.text, send, read, guarded);
     // Warning delivery is CONTAINED on the frame path: a throwing `warning`/`activity`
     // listener must never skip readiness, login detection, or terminal:data (§5.7).

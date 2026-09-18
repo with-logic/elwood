@@ -124,3 +124,23 @@ test("C-CODEX-12 the Codex factory binds revalidation into the barrier", async (
   expect(await guarded("2")).toBe("withheld");
   expect(writes).toEqual(["2"]);
 });
+
+test("C-CODEX-12 the generation predicate vetoes a replacement dialog reusing the number", async () => {
+  const skipScreen = "Update available! 0.148.0 -> 0.149.1\n\u203a 1. Update now\n  2. Skip";
+  const writes: string[] = [];
+  let sameAppearance = true;
+  const guarded = guardedCodexAutomationWrite(
+    { sendInput: () => undefined, settled: () => Promise.resolve(), renderFailed: false },
+    (input: string) => void writes.push(input),
+    () => skipScreen,
+    { currentSkipPredicate: () => () => sameAppearance },
+  );
+  expect(await guarded("2")).toBe("written");
+  // A replacement dialog reuses "2" for something else: the generation predicate says no,
+  // even though the option label still looks safe.
+  sameAppearance = false;
+  expect(await guarded("2")).toBe("withheld");
+  // Non-option keys are not update automation, so the update predicate does not gate them.
+  expect(await guarded("\u001b")).toBe("written");
+  expect(writes).toEqual(["2", "\u001b"]);
+});

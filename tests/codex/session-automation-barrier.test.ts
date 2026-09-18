@@ -40,9 +40,10 @@ test("C-API-56 an update skip is withheld when a trust gate arrives mid-write", 
     pty.emitData(cleared(updateScreen));
     await vi.waitFor(() => expect(session.terminal.snapshot().text).toContain("No, quit"));
     await vi.waitFor(() => expect(session.status).toBe("blocked"), { timeout: 5_000 });
-    // Outlast BOTH bounds a late write could hide behind: the 1 s observation budget
-    // and the 5 s update-skip retry window, so a delayed key cannot pass as absent.
-    await new Promise((resolve) => setTimeout(resolve, 6_000));
+    // Real time, deliberately: the barrier's own settle/veto runs on real promises, and
+    // fake timers let this pass WITHOUT the fix (verified), so they would not be a
+    // regression test at all. 6 s outlasts the 1 s observation budget and the 5 s update-skip retry window.
+    await new Promise((resolve) => setTimeout(resolve, 6000));
     expect(pty.writes).toEqual([]); // no "2" reached the gate, then or later
     // A key nobody sent must not be reported as an answered prompt.
     expect(startupPrompts).toEqual([]);

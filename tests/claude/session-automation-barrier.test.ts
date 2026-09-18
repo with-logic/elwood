@@ -37,8 +37,10 @@ test("C-API-56 a browser-tools decline is withheld when a trust gate arrives mid
     pty.emitData(cleared(browserPrompt));
     await vi.waitFor(() => expect(session.terminal.snapshot().text).toContain("No, exit"));
     await vi.waitFor(() => expect(session.status).toBe("blocked"), { timeout: 5_000 });
-    // Outlast the 1 s observation budget so a delayed Escape cannot pass as absent.
-    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    // Real time, deliberately: the barrier's own settle/veto runs on real promises, and
+    // fake timers let this pass WITHOUT the fix (verified), so they would not be a
+    // regression test at all. 2 s outlasts the 1 s observation budget.
+    await new Promise((resolve) => setTimeout(resolve, 2000));
     expect(pty.writes).toEqual([]); // no Escape reached the gate, then or later
     // A key nobody sent must not be reported as an answered prompt.
     expect(startupPrompts).toEqual([]);

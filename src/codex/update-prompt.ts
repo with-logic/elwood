@@ -82,8 +82,22 @@ export function guardedCodexAutomationWrite(
   terminal: InputTerminal,
   write: NonTrustAutomationWriter,
   readFrame: () => string,
+  /**
+   * The generation-aware update predicate for the attempt in flight, read at write time
+   * so the CURRENT attempt's predicate is used. A replacement dialog can reuse the same
+   * option number for an unrelated human decision, so the option label alone is not
+   * enough: this is what knows the settled frame is still the same update appearance.
+   */
+  skipSource: { currentSkipPredicate(): ((frameText: string) => boolean) | undefined } = {
+    currentSkipPredicate: () => undefined,
+  },
 ): (input: string) => Promise<AutomationWriteResult> {
-  return guardedNonTrustAutomationWrite(terminal, write, readFrame, "codex", codexOptionStillSafe);
+  return guardedNonTrustAutomationWrite(terminal, write, readFrame, "codex", (frameText, input) => {
+    if (!codexOptionStillSafe(frameText, input)) return false;
+    // Non-option keys are not update automation, so the update predicate does not apply.
+    if (!/^\d+$/.test(input)) return true;
+    return skipSource.currentSkipPredicate()?.(frameText) ?? true;
+  });
 }
 
 /**
@@ -116,8 +130,9 @@ export async function writeCodexUpdateSkip(
   currentUpdateFrame: (frameText: string) => boolean = codexUpdatePromptVisible,
 ): Promise<CodexUpdateSkipCompletion> {
   if (readFrame === undefined) {
-    await write(option);
-    return "answered";
+    // A guarded writer can still withhold (its own settled-frame checks apply), and a
+    // key nobody sent is not an answer even with no reader to retry from.
+    return (await write(option)) === "withheld" ? "cancelled" : "answered";
   }
   const deadline = Date.now() + retryTimeoutMs;
   let wrote = false;

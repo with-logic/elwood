@@ -123,12 +123,11 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     (data, renderedTerminal) => {
       startupOutput.push(data);
       terminalReplay.push(data);
-      // One snapshot per render: reused for prompt automation, readiness, detection.
+      // One snapshot per render: reused for automation, readiness, detection.
       const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
-      // Automation owns completion; failures report through the contained warning gate.
-      const send = callerInput.automation;
+      const send = callerInput.automation; // automation owns completion; warnings gated
       const read = () => renderedTerminal.snapshot().text;
-      const guarded = guardedCodexAutomationWrite(renderedTerminal, send, read);
+      const guarded = guardedCodexAutomationWrite(renderedTerminal, send, read, promptResponder);
       const result = promptResponder.handle(frame.text, send, read, guarded);
       warnGate.emitWarnings(result.warnings);
       emitSettledStartupOutcomes(emitter, "codex", record.elwoodSessionId, result.outcomes, {
