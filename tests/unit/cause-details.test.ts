@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { causeDetails, errnoCode } from "../../src/core/errors.ts";
+import { causeDetails, errnoCode, probeFailureDetails } from "../../src/core/errors.ts";
 
 describe("causeDetails", () => {
   test("C-ERR-08 stringifies non-Error failures", () => {
@@ -44,5 +44,45 @@ describe("errnoCode", () => {
     expect(errnoCode(42)).toBeUndefined();
     expect(errnoCode({ code: 500 })).toBeUndefined(); // non-string code
     expect(errnoCode({})).toBeUndefined();
+  });
+});
+
+describe("probeFailureDetails", () => {
+  const failed = (error: Record<string, unknown>) =>
+    probeFailureDetails({ stderr: "boom", error: error as never });
+
+  test("C-PERF-03 omits cleanup fields when the probe reported no cleanup", () => {
+    expect(failed({ message: "spawn failed", code: "ENOENT" })).toEqual({
+      stderr: "boom",
+      cause: "spawn failed",
+      errno: "ENOENT",
+    });
+  });
+
+  // An unconfirmed cleanup carries BOTH: the code says why it is unconfirmed, and the
+  // group id says which group is still unaccounted for. The id is diagnostic only — it
+  // may already name an unrelated group, so nothing may signal it (PRD §9.2).
+  test("C-PERF-03 surfaces the cleanup code and the unresolved process group", () => {
+    expect(
+      failed({ message: "aborted", cleanupErrorCode: "ETIMEDOUT", cleanupProcessGroupId: 4321 }),
+    ).toEqual({
+      stderr: "boom",
+      cause: "aborted",
+      cleanupErrorCode: "ETIMEDOUT",
+      cleanupProcessGroupId: 4321,
+    });
+  });
+
+  test("C-PERF-03 carries each cleanup field independently", () => {
+    expect(failed({ message: "aborted", cleanupErrorCode: "EPERM" })).toEqual({
+      stderr: "boom",
+      cause: "aborted",
+      cleanupErrorCode: "EPERM",
+    });
+    expect(failed({ message: "aborted", cleanupProcessGroupId: 99 })).toEqual({
+      stderr: "boom",
+      cause: "aborted",
+      cleanupProcessGroupId: 99,
+    });
   });
 });
