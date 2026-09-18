@@ -15,9 +15,13 @@ test("C-PERF-04 an update that throws synchronously releases the lease", async (
   // Throws on the call itself rather than rejecting, which is what distinguishes this from
   // the ordinary failure path: a rejection handler attached after the call never sees it.
   await expect(
-    coordinatedAutoupdate("claude", () => {
-      throw failure;
-    }, { root }),
+    coordinatedAutoupdate(
+      "claude",
+      () => {
+        throw failure;
+      },
+      { root },
+    ),
   ).rejects.toBe(failure);
   // The lease must not outlive an updater that never started; otherwise every later update
   // on this host waits out a 30s stale bound for work that never happened.
