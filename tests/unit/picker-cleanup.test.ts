@@ -4,6 +4,7 @@ import { claudeModelPicker } from "../../src/claude/model-picker.ts";
 import { codexModelPicker } from "../../src/codex/model-picker.ts";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { type ModelPickerSpec, setPickerModel } from "../../src/core/models/picker.ts";
+import type { ModelDialogAuthority } from "../../src/core/models/rows.ts";
 import { PickerTransactions } from "../../src/runtime/session/picker.ts";
 import {
   claudeHookSwitchConfirmation,
@@ -31,10 +32,12 @@ function setup(spec: ModelPickerSpec, react: (input: string, screen: Screen) => 
       return react(String(input), screen);
     },
   };
+  /** The harness stands in for a transaction Elwood opened. */
+  const opened: ModelDialogAuthority = { opened: true };
   const leaked: string[] = [];
   const queue = new ControlQueue(
     (input) => {
-      if (spec.activeDialog(screen.text) !== undefined) leaked.push(String(input));
+      if (spec.activeDialog(screen.text, opened) !== undefined) leaked.push(String(input));
       return Promise.resolve();
     },
     () => new Error("closed"),

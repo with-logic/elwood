@@ -156,9 +156,37 @@ legacy string/`agent_message` support. C-CODEX-16.
   between its rows and footer. A closed Claude picker leaves only `❯ /model` /
   `⎿ Kept model as …` behind, no header. Two more things are never a dialog: the
   phrase on a reply or composer row itself (`❯ Select model` is staged input), and
-  a quoted picker above another dialog. Picker rows carry a description column, so
-  a caret row without one (`❯ 1. Yes`, a numbered composer line) marks the region
-  below the quote as someone else's.
+  a quoted picker above another dialog. Below its header a native dialog holds
+  exactly one contiguous block of picker rows (description column, numbered from 1,
+  at most one cursor); any other caret or numbered row (`❯ 1. Yes`, `  1. Yes`, a
+  staged `❯ 1. fix this  then that`) restarts the numbering, follows the blank or
+  rule that separates the composer, or lacks the column, and marks the region as
+  someone else's. The block must also be COMPLETE before Elwood treats it as live:
+  every captured picker and reasoning screen carries at least two numbered rows and
+  a closing hint row (`Esc to cancel`, `esc to go back`). A header with neither —
+  a transcript quoting `Select model` above a trust or hook prompt, or above a
+  reply's own numbered list — is a fragment, and Escaping it would dismiss the live
+  prompt underneath. The CURSOR is deliberately not required: a complete picker
+  still painting its cursor is live and must keep holding input, and `setPickerModel`
+  rejects the missing cursor on its own.
+- **A live switch dialog is never hung directly off an agent reply row.** The warning
+  screen carries no closing hint row, so completeness cannot be judged the way the
+  picker's is. Indentation cannot judge it either — the title itself may sit at column
+  zero, so a column test passes a staged draft straight through. Nor can option ORDER:
+  `Yes` normally precedes `No`, but a real reordered layout exists where the cursor starts
+  on `No` above `Yes` (`claudeModelCacheConfirmationYesBelow`), so an affirmative-first
+  rule rejects a live dialog. What does hold is the separator: Claude replaces the composer
+  with the dialog, so a live one is preceded by its rule (or the blank line before it),
+  never by an agent reply bullet. `parseClaudeSwitchConfirmation` therefore rejects a title
+  sitting DIRECTLY under a reply row, and reads options only from the dialog's own
+  contiguous run of action rows, so a staged `❯ Yes, switch to Fable` below a quoted
+  warning cannot pair with a quoted `No, go back`. C-API-24, C-ATTN-04.
+- **A picker's closing hint row TERMINATES its region.** Only blank lines and rules may
+  follow it. Otherwise a transcript quoting a complete picker — footer and all — above a
+  live trust or hook prompt still reads as a live picker, and Escaping it would dismiss
+  the human's prompt instead. For the same reason the header must be prose: a numbered
+  composer draft (`❯ 1. Select model  draft` / `2. next  text` / `Esc to cancel`)
+  otherwise satisfies the row and footer grammar entirely on its own. C-API-24.
 - **Escape on a follow-up stage returns to the picker, not the composer.** On both
   Claude 2.1.274 (cache warning) and Codex 0.154.0 (reasoning level) one Escape
   reopens `Select model` / `Select Model and Effort`; a second closes it. Failure

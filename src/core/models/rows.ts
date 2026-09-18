@@ -1,6 +1,7 @@
 /**
- * Parses rendered adapter model picker rows into typed options.
- * Implements PRD §5.3 AgentModelOption and C-API-23.
+ * Parses rendered adapter model picker rows into typed options, and recognizes a
+ * model dialog only as the bottom-most native region of the viewport.
+ * Implements PRD §5.3 AgentModelOption, C-API-23, and C-API-24.
  */
 
 export type AgentModelOption = {
@@ -20,7 +21,7 @@ export type ParsedModelPicker = {
 export const claudeModelPickerHeader = /Select model/;
 export const codexModelPickerHeader = /Select Model and Effort/;
 
-const rowPattern = /^\s*(❯|›)?\s*\d+\.\s+(.+?)\s{2,}(\S.*?)\s*$/;
+export const rowPattern = /^\s*(❯|›)?\s*\d+\.\s+(.+?)\s{2,}(\S.*?)\s*$/;
 
 export function parseClaudeModelPicker(text: string): ParsedModelPicker {
   return parseRows(pickerRegion(text, claudeModelPickerHeader), (labelText) => {
@@ -67,39 +68,39 @@ function parseRows(region: string, decorate: (labelText: string) => RowFlags): P
   return { options, cursorIndex };
 }
 
+export { bottomDialogRow } from "./dialog-region.ts";
+
 /**
  * The picker itself, the stage an accepted row opens (reasoning level, cache warning),
  * or a dialog shell still `painting`: it holds input but is never sent a key.
  */
 export type ModelDialogStage = "picker" | "follow-up" | "painting";
 
-// An agent reply or the composer renders below any header the transcript merely quotes.
-const replyRow = /^\s*[●•⏺]/;
-const caretRow = /^\s*[❯›]/;
-
 /**
- * A row no native model dialog contains: a reply row, or a caret row that is not a
- * picker row. Picker rows carry a description column, which a permission or approval
- * option (`❯ 1. Yes`) and a numbered composer line lack, so neither can pass for one.
- * `ownRow` admits a dialog's own caret rows that are not picker rows (switch options).
+ * Proof that ELWOOD opened the dialog this text is being read for, and the thing that
+ * grants a rendered region authority over input.
+ *
+ * Recognition is a grammar over UNTRUSTED bytes: the agent can print anything, including a
+ * verbatim picker. No pattern can prove a region is native — each rule only rules out the
+ * spoof someone already thought of, which is why successive review rounds kept finding a
+ * new string (same-line conversation text, double-spaced staged input, unmarked numbered
+ * prompts, a column-zero warning, content after the footer, a numbered composer draft).
+ *
+ * Provenance inverts the burden. A region may be treated as a live dialog ONLY while a
+ * `listModels`/`setModel` transaction Elwood itself started is in flight — it wrote
+ * `/model` and is waiting on the result — or while cleanup is tracking a dialog that
+ * transaction left behind. Every other frame is out of scope by construction, whatever it
+ * renders. The grammar then only has to tell Elwood's OWN dialog apart from the rest of
+ * its own screen, which is a bounded problem, rather than adjudicate arbitrary text.
+ * Implements C-API-24.
  */
-function isForeignRow(line: string, ownRow?: RegExp): boolean {
-  if (replyRow.test(line)) return true;
-  return caretRow.test(line) && !rowPattern.test(line) && ownRow?.test(line) !== true;
-}
-
-/**
- * The row of the last `header` when it opens the bottom-most viewport region, else -1.
- * Both CLIs replace the composer with the dialog, so a header with a foreign row below
- * it is transcript content, and a header ON a foreign row is composer or reply text.
- * Elwood must neither cancel such text (Escape would interrupt a running turn or clear
- * staged input) nor hold input on it (C-API-24).
- */
-export function bottomDialogRow(text: string, header: RegExp, ownRow?: RegExp): number {
-  const lines = text.split("\n");
-  const start = lines.findLastIndex((line) => header.test(line));
-  return lines.slice(Math.max(start, 0)).some((line) => isForeignRow(line, ownRow)) ? -1 : start;
-}
+export type ModelDialogAuthority = {
+  /**
+   * True only inside a transaction Elwood opened, after its `/model` write. Callers cannot
+   * synthesize this from screen text: it comes from the transaction's own state.
+   */
+  readonly opened: boolean;
+};
 
 function pickerRegion(text: string, header: RegExp): string {
   const lines = text.split("\n");

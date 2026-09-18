@@ -4,7 +4,7 @@ import { delay } from "../../core/delay.ts";
 import { elwoodError } from "../../core/errors.ts";
 import { sendPickerInput } from "../../core/models/input.ts";
 import type { ModelPickerIo, ModelPickerSpec } from "../../core/models/picker.ts";
-import type { ModelDialogStage } from "../../core/models/rows.ts";
+import type { ModelDialogAuthority, ModelDialogStage } from "../../core/models/rows.ts";
 import type { ScreenTerminal } from "../../core/models/tui-screen.ts";
 
 type PickerDeps = {
@@ -26,6 +26,13 @@ type Progress = {
 const cleanupMs = 1_000;
 const pollMs = 100;
 const escapeKey = "\u001b";
+/**
+ * Every recognition call in this file is made from inside a transaction Elwood opened (or,
+ * for `blocksInput`, about a dialog that transaction left behind), so all of them carry
+ * authority. It is a named constant rather than an inline literal so that a future call
+ * site added OUTSIDE a transaction has to reach for it deliberately.
+ */
+const ours: ModelDialogAuthority = { opened: true };
 
 export class PickerTransactions {
   private readonly deps: PickerDeps;
@@ -36,7 +43,10 @@ export class PickerTransactions {
 
   /** Whether a dialog that outlived cleanup is still visible; forgets it once it clears. */
   blocksInput(): boolean {
-    if (this.survivor?.activeDialog(this.deps.terminal.snapshot().text) !== undefined) return true;
+    // `survivor` is only set by our OWN cleanup, so this dialog is one we opened: the
+    // authority that outlived the transaction is what still makes it ours to hold on.
+    if (this.survivor?.activeDialog(this.deps.terminal.snapshot().text, ours) !== undefined)
+      return true;
     this.survivor = undefined;
     return false;
   }
@@ -69,7 +79,10 @@ export class PickerTransactions {
           // Elwood cannot tell its own dialog from picker text that precedes its command: a
           // human's dialog, or a transcript quote the unanchored `isOpen` would drive.
           const before = this.deps.terminal.snapshot().text;
-          if (spec.isOpen(before) || spec.activeDialog(before) !== undefined)
+          // We have NOT written `/model` yet, so nothing here is ours. We still ask the
+          // grammar under a hypothetical authority: anything it would call a dialog is
+          // someone else's, which is precisely why the operation must refuse to start.
+          if (spec.isOpen(before) || spec.activeDialog(before, ours) !== undefined)
             throw elwoodError(
               "model_automation_failed",
               "Model picker text was already visible before the operation began.",
@@ -101,11 +114,11 @@ export class PickerTransactions {
     const terminal: ScreenTerminal = {
       snapshot: () => {
         const snapshot = live.snapshot();
-        progress.dialogSeen ||= spec.activeDialog(snapshot.text) !== undefined;
+        progress.dialogSeen ||= spec.activeDialog(snapshot.text, ours) !== undefined;
         return snapshot;
       },
       sendInput: (input) => {
-        const stage = spec.activeDialog(live.snapshot().text);
+        const stage = spec.activeDialog(live.snapshot().text, ours);
         const sent = live.sendInput(input);
         if (input === escapeKey) progress.escapeSentTo = stage;
         else progress.keyWritten = true;
@@ -141,13 +154,13 @@ export class PickerTransactions {
     closed: AbortSignal,
   ): Promise<void> {
     const terminal = abortable(this.deps.terminal, closed);
-    const isActive = (text: string) => spec.activeDialog(text) !== undefined;
+    const isActive = (text: string) => spec.activeDialog(text, ours) !== undefined;
     let escaped = progress.escapeSentTo;
     let lateDialogPossible =
       progress.keyWritten || (progress.commandSubmitted && !progress.dialogSeen);
     try {
       for (const bound = Date.now() + cleanupMs; Date.now() < bound; await delay(pollMs)) {
-        const stage = spec.activeDialog(terminal.snapshot().text);
+        const stage = spec.activeDialog(terminal.snapshot().text, ours);
         if (stage === undefined) {
           if (!lateDialogPossible) return;
           // Whatever paints after a clear frame is a new dialog, owed its own Escape.
