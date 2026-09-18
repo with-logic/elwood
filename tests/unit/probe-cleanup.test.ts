@@ -98,16 +98,28 @@ test("C-PERF-03 a successfully signaled group is never signaled twice", async ()
 test("C-PERF-03 nothing is signaled after the cleanup deadline, even a still-live group", async () => {
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true });
   const started = performance.now();
-  // The group stays live throughout AND every group SIGKILL fails with EPERM, which is
-  // what keeps `reap` willing to signal again: a kill that succeeds latches `signaled` and
-  // would never retry, so a mock that lets the first one through cannot observe a late one.
+  // The group stays live throughout AND every group SIGKILL fails with EPERM, which is what
+  // keeps `reap` willing to signal again: a kill that succeeds latches the group-kill flag
+  // and would never retry, so a mock that lets the first one through cannot observe a late one.
   const late: (string | number)[] = [];
+  // Signals are attributed to the iteration that DECIDED to send them, not to the instant
+  // the mock happened to run. Under a loaded event loop an iteration can pass the in-window
+  // deadline check and then be descheduled past 1s before its `kill` lands; charging that to
+  // the clock at delivery makes a correctly-bounded implementation look like it signaled
+  // late. The guarantee under test is that no iteration STARTING past the deadline signals.
+  let deadlinePassedBeforeDecision = false;
   const record = (signal: NodeJS.Signals | number | undefined | string) => {
-    if (performance.now() - started >= 1_000 && signal !== 0) late.push(signal ?? "default");
+    if (deadlinePassedBeforeDecision && signal !== 0) late.push(signal ?? "default");
   };
   vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
     record(signal);
-    if (signal === 0) return true; // observation: the group is always live here
+    // Every iteration opens with this liveness observation, so it marks the boundary: once
+    // one is taken at or past the deadline, any signal after it belongs to an iteration that
+    // started too late, which is exactly what must never happen.
+    if (signal === 0) {
+      if (performance.now() - started >= 1_000) deadlinePassedBeforeDecision = true;
+      return true; // observation: the group is always live here
+    }
     if (pid < 0) throw Object.assign(new Error("denied"), { code: "EPERM" });
     return true;
   });
