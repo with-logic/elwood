@@ -2,7 +2,7 @@
  * Reads Codex's own evidence that it REJECTED a turn (PRD §12A.5, C-API-57).
  *
  * Codex reports a rejected turn only in its rollout transcript: an `event_msg` whose payload is
- * `task_complete` carrying an `error` object (and a null `last_agent_message`). It fires NO
+ * `task_complete` carrying an `error` of ANY shape (and a null `last_agent_message`). It fires NO
  * turn-boundary `Stop` hook on that path — verified against codex-cli 0.155.0, where a bogus
  * `--model` turn delivers `SessionStart` and `UserPromptSubmit` and nothing else — so this
  * evidence can only reach the runner through activity, never through `readBoundarySignal`.
@@ -58,7 +58,9 @@ function reason(value: unknown): string {
   if (typeof value === "number" || typeof value === "boolean") {
     return `Codex rejected the turn: ${String(value)}`;
   }
-  if (typeof value !== "string" || value.length === 0) return "Codex rejected the turn.";
+  // Blank includes WHITESPACE-ONLY: a reason of spaces is as useless to a consumer as an
+  // empty one, so it falls back rather than surfacing an effectively blank diagnostic.
+  if (typeof value !== "string" || value.trim().length === 0) return "Codex rejected the turn.";
   // A provider rejection can carry a multi-megabyte payload. Only attempt the nested JSON
   // unwrap while the raw string is within the cap; above it, truncate without parsing rather
   // than spending the work on a value that is about to be cut down anyway.
@@ -69,7 +71,7 @@ function reason(value: unknown): string {
 function unwrapJsonMessage(value: string): string | undefined {
   try {
     const inner = asRecord(asRecord(JSON.parse(value))?.["error"])?.["message"];
-    return typeof inner === "string" && inner.length > 0 ? inner : undefined;
+    return typeof inner === "string" && inner.trim().length > 0 ? inner : undefined;
   } catch {
     return undefined;
   }

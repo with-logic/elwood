@@ -156,6 +156,17 @@ a general property of the CLI. Claude is the opposite shape — its `StopFailure
   `turn_failed: Claude rejected the turn: model_not_found`. Verified against the
   installed CLI — this is the empirical confirmation that Claude's rejection
   really does ride a hook, where Codex's does not.
+- **Claude's bogus-model rejection is not fully deterministic.** Across repeated
+  real-CLI runs the same invocation usually emits `StopFailure`, but occasionally
+  settles the turn as an empty success with no `StopFailure` at all — nothing for
+  Elwood to classify. The e2e therefore skips loudly on an empty reply rather than
+  failing, while still failing hard if the bogus model is actually ANSWERED (which
+  would invalidate the trigger). Codex has not shown this variance.
+- **Ingress validation is part of the rejection path.** `isClaudeHookInput` once
+  required `StopFailure.error` to be a string, so a drifted payload became a
+  `hookError` and the rejection was lost BEFORE any reader saw it. Shape-independence
+  has to hold from ingress through classification — a tolerant reader behind a strict
+  validator is tolerant in name only. C-API-57.
 - **The rejection is TAGGED but the turn has no content.** The real capture for a
   rejected turn is three items: the user `message`, an `item_completed`, and the
   `task_complete` — the latter two carrying `payload.turn_id`, which

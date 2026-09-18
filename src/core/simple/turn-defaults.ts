@@ -2,6 +2,12 @@
  * The ergonomic turn's timing defaults, and the gate built from them (PRD §5.8, C-API-48).
  * Separated from the `runTurn` runner (turn.ts) and the gate itself (turn-gate.ts) so all
  * three stay under the file-size cap and the defaults have ONE home.
+ *
+ * A turn may run for HOURS (a test suite, a PR poll), so there is NO whole-turn timeout by
+ * default; callers may pass an opt-in `timeoutMs`, armed only AFTER submission (a turn begins on
+ * submission — the timer must never reject a caller for a prompt still queued behind readiness
+ * that then submits anyway). The tight cap is `catchUpMs`, armed only ONCE `ready` fires: the
+ * flush should be near-instant, so a longer stall rejects with `wait_timeout`.
  */
 
 import { elwoodError } from "../errors.ts";

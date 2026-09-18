@@ -47,8 +47,10 @@ export function boundaryExpectation(signal: BoundarySignal | undefined): string 
  * "no failure evidence here", which is every ordinary event.
  *
  * This is the transcript-side twin of `BoundarySignalReader`, and it carries the same rule:
- * only the adapter's OWN error payload may produce a `TurnFailure`. Silence, an empty reply,
- * or a missing message is NOT evidence of failure (PRD §12A.3).
+ * only the adapter's OWN error payload may produce a `TurnFailure`. Silence and an empty reply
+ * are NOT evidence of failure (PRD §12A.3). Only an ABSENT or null error means "no evidence" —
+ * a present error of any shape IS a rejection, and one whose message is missing or blank simply
+ * uses the bounded generic reason rather than ceasing to be a failure.
  */
 export type FailureEvidenceReader = (event: TurnFailureSource) => TurnFailure | undefined;
 

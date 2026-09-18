@@ -43,7 +43,8 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
    * Normalizes this adapter's raw `hook` event into the turn completeness signal (the expected
    * final assistant text, or `undefined` when it is not a turn boundary). Abstract so a new adapter
    * MUST supply one — keeping the runner decoupled from adapter hook fields. Adapters assign
-   * `defaultBoundarySignal` unless they differ. (Signal-only; never displayed — C-CLAUDE-15.)
+   * `defaultBoundarySignal` unless they differ. The expected TEXT is signal-only and never
+   * displayed (C-CLAUDE-15); a `TurnFailure` it also carries IS surfaced as `turn_failed`.
    */
   protected abstract readonly readBoundarySignal: TurnReaders["readBoundarySignal"];
 

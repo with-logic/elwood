@@ -11,19 +11,18 @@
  * an empty/`null` `last_assistant_message`) it ends after a bounded quiet window.
  *
  * Completeness is separate from FAILURE: a turn the agent REJECTED fails with `turn_failed` on
- * the adapter's own evidence (C-API-57), never the absence of text (§12A.3). The runner is
- * decoupled from its consumer. `completion` always resolves when the consumer
- * settles; its error travels through `events`. The serializer instead holds `boundary`, which
- * resolves on a successful oracle/quiet settle or terminal status. After consumer failure it
- * waits for real `ready`/terminal evidence plus transcript drain, so abandoned streams cannot
- * release their slot while the agent is still producing.
+ * the adapter's own evidence (C-API-57), never the absence of text (§12A.3).
  *
- * Timeouts: a turn may run for HOURS (a test suite, a PR poll), so there is NO whole-turn
- * timeout by default; callers may pass an opt-in `timeoutMs`, armed only AFTER submission (a
- * turn begins on submission — the timer must never reject a caller for a prompt still queued
- * behind readiness that then submits anyway). The tight cap is `catchUpMs` (default 10s),
- * armed only ONCE `ready` fires — the flush should be near-instant, so a longer stall rejects
- * with `wait_timeout`. A terminal status ends the turn at once.
+ * The runner is decoupled from its consumer: `completion` resolves when the consumer settles and
+ * its error travels through `events`. The serializer instead holds `boundary`, which resolves on
+ * a successful oracle/quiet settle or terminal status. After consumer failure it waits for real
+ * `ready`/terminal evidence plus transcript drain, so abandoned streams cannot release their slot
+ * while the agent is still producing — except an AGENT REJECTION, which ended the turn by
+ * refusing it and so reaches the boundary AT ONCE (C-API-57).
+ *
+ * Timeouts and their rationale live with the constants in `turn-defaults.ts`. In short: no
+ * whole-turn timeout by default, an opt-in `timeoutMs` armed only after submission, and a
+ * `catchUpMs` cap armed once `ready` fires. A terminal status ends the turn at once.
  */
 
 import { toError } from "../errors.ts";
@@ -134,7 +133,8 @@ export function runTurn(
     // The adapter NORMALIZES its raw hook into the completeness signal (`undefined` for any
     // non-boundary hook, which the gate ignores so a late `Notification` cannot wipe an
     // installed oracle). The core reads only that — never raw hook fields — and uses it as a
-    // completeness ORACLE only, never displayed (C-CLAUDE-15).
+    // completeness ORACLE only, never displayed (C-CLAUDE-15) — but failure evidence on the
+    // same signal IS surfaced, as the `turn_failed` reason (C-API-57).
     if (defaultAcceptanceSignal(event, prompt)) acceptance.accept();
     const signal = readBoundarySignal(event);
     // A rejection that DOES reach a boundary hook (Claude's `StopFailure`) rides the signal.

@@ -79,6 +79,24 @@ describe("C-CLI-28 a rejected turn exits nonzero at the process boundary", () =>
     expect(last.error.code).toBe("turn_failed");
   });
 
+  test("--stream exits 1 and PRESERVES the partial output already streamed", async () => {
+    // The streaming renderer is a separate output path from text/json/jsonl. A turn that emits
+    // some text and is THEN rejected must keep what it already streamed (§12A.3 requires
+    // `--stream` to preserve partial output on failure) while still failing the run.
+    const session = new FakeCliSession();
+    session.events = [{ type: "text", text: "partial answer" }];
+    session.streamWork = () =>
+      Promise.reject(elwoodError("turn_failed", "You've hit your usage limit.", {}));
+    const streams = io();
+    expect(
+      await executeRun(request({ stream: true }), session, streams.value, {
+        signals: new FakeSignals(),
+      }),
+    ).toBe(1);
+    expect(streams.stdout.value).toContain("partial answer");
+    expect(streams.stderr.value).toBe("elwood: You've hit your usage limit.\n");
+  });
+
   test("§12A.3 a legitimately EMPTY successful turn still exits 0", async () => {
     // The guard against the obvious wrong fix: no assistant text and no adapter failure
     // evidence is a successful empty response, so the CLI must still exit 0.

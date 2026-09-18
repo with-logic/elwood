@@ -10,9 +10,9 @@
 import { describe, expect, test } from "vitest";
 import { ClaudeSession } from "../../src/claude/simple.ts";
 import { HeadlessCliSession } from "../../src/cli/session/index.ts";
-import type { EffectiveRunRequest } from "../../src/cli/types.ts";
 import { CodexSession } from "../../src/codex/simple.ts";
 import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
+import { effectiveRequest } from "../cli/main-fakes.ts";
 import { activity, FakeUnderlying } from "./simple-fakes.ts";
 
 /** The real Codex rejection shape: a transcript `task_complete` carrying an `error`. */
@@ -112,11 +112,25 @@ describe("C-API-57 the shipped session classes fail a rejected turn", () => {
     // This is the exact shape #19 reported: `elwood --agent=codex` exiting 0 with empty output.
     const underlying = new FakeUnderlying();
     codexRejectedTurn(underlying);
-    const request = { agent: "codex", cwd: "/fake", stateDir: "/fake/.state" };
-    const session = new HeadlessCliSession(request as EffectiveRunRequest, "s1", () =>
+    // A COMPLETE typed request from the shared factory — no cast. An incomplete object asserted
+    // as complete would keep passing while the real request contract drifted around it.
+    const request = effectiveRequest({ agent: "codex" });
+    const session = new HeadlessCliSession(request, "s1", () => Promise.resolve(underlying));
+    await expect(session.send("go")).rejects.toMatchObject({ code: "turn_failed" });
+  });
+
+  test("C-CLI-28 the headless CLI facade fails a rejected CLAUDE turn", async () => {
+    // The facade selects readers per adapter, so Claude's selection needs its own proof: a
+    // Codex-only test would still pass if the Claude branch regressed to the default reader.
+    const underlying = new FakeUnderlying();
+    claudeRejectedTurn(underlying);
+    const session = new HeadlessCliSession(effectiveRequest({ agent: "claude" }), "s1", () =>
       Promise.resolve(underlying),
     );
-    await expect(session.send("go")).rejects.toMatchObject({ code: "turn_failed" });
+    await expect(session.send("go")).rejects.toMatchObject({
+      code: "turn_failed",
+      message: "You have exceeded your rate limit.",
+    });
   });
 
   test("§12A.3 a legitimately EMPTY turn still succeeds through the shipped classes", async () => {
