@@ -14,7 +14,7 @@ export function fixture() {
     draft: false,
     user: { login: "maintainer", type: "User" },
     head: { sha: "head", repo: { full_name: "with-logic/elwood" } },
-    base: { ref: "main", sha: "base" },
+    base: { ref: "main", sha: "base", repo: { full_name: "with-logic/elwood" } },
   };
   const state = { permission: "write", reviews: [] };
   const github = {

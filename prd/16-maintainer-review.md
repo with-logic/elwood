@@ -1,8 +1,11 @@
 # §16 Maintainer review automation
 
 Elwood does not accept public pull requests. Review automation accepts only
-open, ready, same-repository PRs into `main` authored by current writers or
-GitHub's Dependabot bot.
+open, ready, same-repository PRs authored by current writers or GitHub's
+Dependabot bot. A PR is eligible whether it targets `main` or another branch in
+the same repository, so that a stacked PR — one based on a not-yet-merged parent
+branch — is reviewed rather than silently skipped. The base must be a branch in
+the same repository; eligibility never depends on the base being `main`.
 
 A PR receives one automatic review when opened ready, or when first marked
 ready. Once an automated report exists, later PR events do not repeat it.
