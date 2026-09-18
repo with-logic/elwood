@@ -118,6 +118,32 @@ describe("C-API-57 the runner fails a rejected turn instead of reporting empty s
     ).rejects.toMatchObject({ code: "turn_failed", message: "nope" });
   });
 
+  test("a BOUND turn discards a DIFFERENTLY tagged rejection — stale-replay protection", async () => {
+    // The complement of the test above, and the property most at risk of being traded away by
+    // it: once content has BOUND this turn to `T1`, a `task_complete` tagged `T2` is a PRIOR
+    // turn's (Codex replays them on resume) and must NOT fail this healthy turn. Simplifying the
+    // guard to "always accept the first tagged failure" would make this test fail.
+    const s = drive((s) => {
+      s.emit("status", { status: "running" });
+      s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "HELLO" });
+      s.emit("activity", activity({ text: "HELLO", turnId: "T1" })); // binds this turn to T1
+      s.emit(
+        "activity",
+        activity({
+          agent: "codex",
+          kind: "other",
+          label: "task_complete",
+          turnId: "T2", // a DIFFERENT turn's rejection, replayed into this one
+          raw: taskComplete({ message: "stale failure" }),
+        }),
+      );
+      s.emit("status", { status: "ready" });
+    });
+    expect(await runFakeTimed(s, { readFailureEvidence: codexFailureEvidence })).toEqual([
+      { type: "text", text: "HELLO" },
+    ]);
+  });
+
   test("a rejected turn is never re-submitted to the agent", async () => {
     // The acceptance watchdog replays a prompt it believes was never accepted. A turn the agent
     // REJECTED was accepted and refused, so replaying it would re-run a refused turn.
