@@ -8,7 +8,7 @@
 import { spawn } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { processGroupGone } from "../../src/runtime/probe-cleanup.ts";
 import {
   leaseIsAlive,
@@ -21,19 +21,19 @@ import {
 import { tempDir } from "../helpers/tmp.ts";
 
 /**
- * A real process group that outlives this call, plus the means to end it. `stop` waits for
- * the group to actually stop being observable rather than for the child's `close` event:
- * reaping is not instantaneous, and a transient `EPERM` counts as live by design, so
- * polling is what production does and what this must do to avoid a macOS-only race.
+ * A real process group that outlives this call, plus the means to end it. `killGroup` waits
+ * for the group to stop being observable rather than for the child's `close` event: reaping
+ * is not instantaneous, and a transient `EPERM` counts as live by design, so polling the
+ * same predicate production uses is what avoids a macOS-only race.
  */
-function spawnGroup(): { id: number; stop: () => Promise<void> } {
+function spawnGroup(): { id: number; killGroup: () => Promise<void> } {
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
     detached: true,
     stdio: "ignore",
   });
   child.unref();
   const id = child.pid as number;
-  const stop = async (): Promise<void> => {
+  const killGroup = async (): Promise<void> => {
     if (processGroupGone(id)) return;
     process.kill(-id, "SIGKILL");
     const deadline = Date.now() + 5_000;
@@ -41,7 +41,7 @@ function spawnGroup(): { id: number; stop: () => Promise<void> } {
       await new Promise((resolve) => setTimeout(resolve, 5));
     if (!processGroupGone(id)) throw new Error(`fixture process group ${id} outlived SIGKILL`);
   };
-  return { id, stop };
+  return { id, killGroup };
 }
 
 function writeRecord(path: string, contents: string): void {
@@ -88,14 +88,14 @@ test("C-PERF-04 a record naming groups is alive while any group is, not while it
     };
     expect(processGroupGone(group.id)).toBe(false);
     expect(leaseIsAlive(held)).toBe(true);
-    await group.stop();
+    await group.killGroup();
     // This process is still very much alive, so a record that ended with its groups
     // proves liveness follows the groups rather than the writer.
     expect(processGroupGone(group.id)).toBe(true);
     expect(leaseIsAlive(held)).toBe(false);
     expect(leaseIsAlive({ pid: held.pid, token: held.token })).toBe(true);
   } finally {
-    await group.stop();
+    await group.killGroup();
   }
 });
 
@@ -141,4 +141,17 @@ test("C-PERF-04 a retained write that cannot be staged reports the failure", asy
   const path = join(tempDir("elwood-owner-unwritable-"), "codex.lock");
   const owner = { pid: process.pid, token: "11111111-2222-3333-4444-555555555555" };
   await expect(retainProbeOwner(path, owner, [4242])).rejects.toThrow();
+});
+
+test("C-PERF-04 a group this user may not signal counts as live, not gone", () => {
+  // Only ESRCH proves absence. Treating a group we merely cannot inspect as gone would
+  // release the lease under a live updater and let a second installer run against it.
+  const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+    throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+  });
+  try {
+    expect(processGroupGone(4242)).toBe(false);
+  } finally {
+    kill.mockRestore();
+  }
 });

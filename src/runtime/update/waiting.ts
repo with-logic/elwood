@@ -2,7 +2,7 @@
  * Update contention and generation-safe recovery of a dead owner's lease.
  * Implements PRD §9.2 / C-PERF-04; time alone never evicts a live updater.
  */
-import { readdir, rename, rmdir, stat, unlink } from "node:fs/promises";
+import { opendir, rename, rmdir, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { leaseIsAlive, ownerFile, pendingOwnerPrefix, readOwner } from "./owner.ts";
@@ -46,8 +46,10 @@ async function recoverStaleLease(path: string): Promise<"removed" | "alive" | "u
     if (moved !== undefined) await unlink(join(recovery, ownerFile));
     // A record being written when its owner died is named uniquely and commits by rename,
     // so any left here belongs to this dead generation and would otherwise block `rmdir`.
-    for (const entry of await readdir(recovery))
-      if (entry.startsWith(pendingOwnerPrefix)) await unlink(join(recovery, entry));
+    // Streamed rather than materialized: a lease that collected many interrupted writes
+    // must not make recovery's memory grow with them.
+    for await (const entry of await opendir(recovery))
+      if (entry.name.startsWith(pendingOwnerPrefix)) await unlink(join(recovery, entry.name));
     await rmdir(recovery);
     return "removed";
   } catch {

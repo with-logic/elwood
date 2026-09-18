@@ -30,7 +30,7 @@ export async function readOptionalText(path: string): Promise<string | undefined
   }
 }
 
-const isProcessId = (value: number): boolean => Number.isSafeInteger(value) && value > 0;
+const isSignalTarget = (value: number): boolean => Number.isSafeInteger(value) && value > 0;
 /**
  * Stricter than a pid: a group is only ever read back as `process.kill(-id, 0)`, and `-1`
  * is the broadcast target — every process this user may signal. A record naming group 1
@@ -38,7 +38,7 @@ const isProcessId = (value: number): boolean => Number.isSafeInteger(value) && v
  * lease forever. Group 1 is init's group and never an updater's, so rejecting it costs
  * nothing real.
  */
-const isProcessGroupId = (value: number): boolean => isProcessId(value) && value > 1;
+const isProcessGroupId = (value: number): boolean => isSignalTarget(value) && value > 1;
 
 export async function readOwner(path: string): Promise<LeaseOwner | undefined> {
   const match = ownerPattern.exec((await readOptionalText(join(path, ownerFile))) ?? "");
@@ -47,7 +47,8 @@ export async function readOwner(path: string): Promise<LeaseOwner | undefined> {
   const ownedProcessGroupIds = match[3]?.split(",").map(Number);
   // An identity no signal probe can safely evaluate is malformed, not live; like any
   // unreadable record it fails safe rather than reaching process.kill.
-  if (!(isProcessId(pid) && (ownedProcessGroupIds ?? []).every(isProcessGroupId))) return undefined;
+  if (!(isSignalTarget(pid) && (ownedProcessGroupIds ?? []).every(isProcessGroupId)))
+    return undefined;
   return {
     pid,
     token: match[2] as string,
