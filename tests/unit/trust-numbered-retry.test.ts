@@ -1,6 +1,8 @@
 /** Native numbered trust retries remain bounded and generation-safe (C-TRUST-01). */
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
+import { codexTrustClearance } from "../../src/codex/screen-table.ts";
 import { emitSettledStartupOutcomes } from "../../src/core/startup/write.ts";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
 import { claudeComposer, claudeTrust } from "../fixtures/trust-composer.ts";
@@ -39,7 +41,11 @@ test("C-TRUST-01 swallowed first numbered write retries and reports success only
     if (write.mock.calls.length === 2) frame = claudeComposer;
   });
   const observed = observe(
-    new TrustPromptResponder("claude", true).handle(trust, write, () => frame),
+    new TrustPromptResponder("claude", claudeTrustClearance, true).handle(
+      trust,
+      write,
+      () => frame,
+    ),
   );
   await vi.advanceTimersByTimeAsync(249);
   expect(write).toHaveBeenCalledExactlyOnceWith("1\r");
@@ -69,7 +75,11 @@ test.each([
     frame = replacement;
   });
   const observed = observe(
-    new TrustPromptResponder("claude", true).handle(trust, write, () => frame),
+    new TrustPromptResponder("claude", claudeTrustClearance, true).handle(
+      trust,
+      write,
+      () => frame,
+    ),
   );
   await vi.runAllTimersAsync();
   await expect(observed.settled).resolves.toBe("cancelled");
@@ -79,7 +89,7 @@ test.each([
 });
 
 test("C-TRUST-01 a clear-and-reappear generation between polls cancels the old attempt", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   let frame = trust;
   const write = vi.fn();
   const first = settled(responder.handle(frame, write, () => frame));
@@ -100,7 +110,7 @@ test("C-TRUST-01 a clear-and-reappear generation between polls cancels the old a
 });
 
 test("C-TRUST-01 numbered expiry is bounded, quiet, and retryable", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const write = vi.fn();
   const observed = observe(responder.handle(trust, write, () => trust));
   await vi.runAllTimersAsync();
@@ -124,7 +134,7 @@ test("C-CODEX-17 a native directory-to-hook successor confirms clearance without
     new URL("../fixtures/codex-0.154.0/hooks.txt", import.meta.url),
     "utf8",
   );
-  const responder = new TrustPromptResponder("codex", true);
+  const responder = new TrustPromptResponder("codex", codexTrustClearance, true);
   let frame = directory;
   const write = vi.fn(() => {
     frame = hooks;
@@ -140,7 +150,11 @@ test("C-CLAUDE-16 live numbered PTY rejection warns instead of retrying", async 
   const failure = new Error("private PTY failure");
   const write = vi.fn(() => Promise.reject(failure));
   const observed = observe(
-    new TrustPromptResponder("claude", true).handle(trust, write, () => trust),
+    new TrustPromptResponder("claude", claudeTrustClearance, true).handle(
+      trust,
+      write,
+      () => trust,
+    ),
   );
   await expect(observed.settled).rejects.toBe(failure);
   await vi.runAllTimersAsync();
@@ -152,7 +166,7 @@ test("C-CLAUDE-16 live numbered PTY rejection warns instead of retrying", async 
 });
 
 test("C-TRUST-01 later native decline rows preserve the active numbered retry", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   let frame = `${claudeTrust}\n1. Yes`;
   const write = vi.fn(() => {
     if (write.mock.calls.length === 2) frame = claudeComposer;
@@ -173,7 +187,7 @@ test("C-TRUST-01 a choice lost between frames is attempted again when it returns
     // The CLI swallows the first key and repaints without its affirmative row.
     frame = write.mock.calls.length === 1 ? `${claudeTrust}\n2. No` : claudeComposer;
   });
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const first = settled(responder.handle(trust, write, () => frame));
   await vi.advanceTimersByTimeAsync(300);
   await expect(first).resolves.toBe("cancelled");

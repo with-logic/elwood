@@ -273,6 +273,18 @@ select a destructive-rider affirmative, and never answer a specific-affirmative
 prompt (e.g. hook trust) with a generic "Yes". `src/core/trust/responder.ts`,
 `src/core/trust/prompts.ts`, verified by `tests/e2e/trust-prompt-claude.e2e.ts`.
 
+### Where the clearance grammar lives
+
+"This frame is the CLI's own idle composer, so the gate cleared" is a per-CLI layout
+fact, and both CLIs change their chrome independently. It therefore lives with each
+adapter's other verified screen facts — `claudeTrustClearance` in
+`src/claude/screen-table.ts`, `codexTrustClearance` in `src/codex/screen-table.ts` —
+and is injected into the shared coordinator (`TrustPromptResponder`/`trustView`).
+When a CLI's banner, status row, or composer placeholder changes, update that adapter's
+predicate and nothing else. Only the agent-neutral rule stays in
+`src/core/trust/clearance.ts`: a numbered option row, or a caret row that is not the
+composer row, means a dialog is up and the frame is never clearance.
+
 ### Native regions and live confirmation
 
 Claude 2.1.252 places `Accessing workspace:` and the workspace path **before**

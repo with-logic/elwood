@@ -1,5 +1,6 @@
 /** Safe trust cancellation has no false success or PTY-failure telemetry (C-TRUST-01). */
 import { afterEach, expect, test, vi } from "vitest";
+import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import { emitSettledStartupOutcomes } from "../../src/core/startup/write.ts";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
 import { claudeTrust } from "../fixtures/trust-composer.ts";
@@ -29,7 +30,7 @@ test.each([
   cursor,
 ])("C-TRUST-01 cancellation before input emits nothing: %s", async (frame) => {
   const write = vi.fn();
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const observed = observe(responder.handle(frame, write, () => replacement));
   await expect(observed.settled).resolves.toBe("cancelled");
   expect(write).not.toHaveBeenCalled();
@@ -48,7 +49,11 @@ test("C-TRUST-01 a replacement after cursor movement cancels without a false war
     frame = replacement;
   });
   const observed = observe(
-    new TrustPromptResponder("claude", true).handle(cursor, write, () => frame),
+    new TrustPromptResponder("claude", claudeTrustClearance, true).handle(
+      cursor,
+      write,
+      () => frame,
+    ),
   );
   await vi.runAllTimersAsync();
   await expect(observed.settled).resolves.toBe("cancelled");
@@ -59,7 +64,7 @@ test("C-TRUST-01 a replacement after cursor movement cancels without a false war
 
 test("C-TRUST-01 bounded navigation expiry cancels quietly and remains retryable", async () => {
   vi.useFakeTimers();
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const observed = observe(responder.handle(cursor, vi.fn(), () => cursor));
   await vi.runAllTimersAsync();
   await expect(observed.settled).resolves.toBe("cancelled");
@@ -72,7 +77,7 @@ test("C-TRUST-01 bounded navigation expiry cancels quietly and remains retryable
 });
 
 test("C-CLAUDE-16 an actual PTY rejection still warns and allows retry", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const failure = new Error("secret raw PTY failure");
   const observed = observe(responder.handle(numbered, () => Promise.reject(failure)));
   await expect(observed.settled).rejects.toBe(failure);
