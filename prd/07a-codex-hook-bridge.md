@@ -46,6 +46,10 @@ unions.
 - Observe-only or unsupported response states must be rejected by the type system
   and runtime validation. Parent handlers must return `undefined` for no
   decision; an empty object is invalid and must fail open with `hookError`.
+- Tool-keyed lookup, for both the exact tool name and the `unknown` fallback, MUST
+  consider only OWN properties of the handler map. A tool name that merely matches an
+  inherited member resolves to no handler, so a CLI-supplied name cannot reach a
+  function the caller never registered for it.
 
 Decision note: Codex `PreToolUse` and `PermissionRequest` both produce
 event-specific JSON under `hookSpecificOutput`, but they do not use the same
