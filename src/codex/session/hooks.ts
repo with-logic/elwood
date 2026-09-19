@@ -44,8 +44,15 @@ function hookHandler(name: string, handler: unknown): CodexEventHandler<CodexEve
     // The `unknown` handler is typed for `mcp__*` / `unknown:*` tools only, so a known
     // command tool with no per-tool handler resolves to no decision rather than being
     // routed into a handler whose parameter type it does not satisfy (§7A.2).
+    // Both lookups are OWN-property only, matching Claude routing: a tool named for an
+    // inherited member (`toString`, `constructor`, anything on Object.prototype, or a
+    // key a caller put on the handler object's prototype) must not reach a handler the
+    // caller never registered for it (C-HOOK-19).
     const toolHandler =
-      handler[toolName] ?? (isKnownCommandTool(toolName) ? undefined : handler["unknown"]);
+      (Object.hasOwn(handler, toolName) ? handler[toolName] : undefined) ??
+      (isKnownCommandTool(toolName) || !Object.hasOwn(handler, "unknown")
+        ? undefined
+        : handler["unknown"]);
     return typeof toolHandler === "function" ? toolHandler(event) : undefined;
   }) as CodexEventHandler<CodexEventName>;
 }
