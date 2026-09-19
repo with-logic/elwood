@@ -21,6 +21,7 @@ const declineKey = "\u001b";
 export class ClaudeStartupPromptResponder {
   private readonly trust: TrustPromptResponder<"claude">;
   private browserDeclined = false;
+  private disposed = false;
 
   constructor(autotrust: boolean, onStateChange?: () => void) {
     this.trust = new TrustPromptResponder("claude", autotrust, onStateChange);
@@ -30,7 +31,15 @@ export class ClaudeStartupPromptResponder {
     return this.trust.blockedPrompt;
   }
 
+  /**
+   * Session closing owns cancellation for NON-TRUST automation too, not just for trust
+   * attempts. After `dispose()` no new decline is attempted, and a decline already in
+   * flight settles `cancelled`, so nothing writes to a dead PTY and neither
+   * `startup_prompt` nor `startup_prompt_write_failed` is emitted after stop/kill/exit
+   * (C-CLAUDE-22).
+   */
   dispose(): void {
+    this.disposed = true;
     this.trust.dispose();
   }
 
@@ -53,6 +62,7 @@ export class ClaudeStartupPromptResponder {
     writeAutomation: (input: string) => TrustWriteResult | Promise<AutomationWriteResult> = write,
   ): readonly SettledStartupOutcome<"claude">[] {
     const settled: SettledStartupOutcome<"claude">[] = [];
+    if (this.disposed) return settled;
     const trust = this.trust.handle(screenText, write, readFrame);
     if (trust?.kind === "attempted") {
       settled.push({ outcome: { kind: "attempted", ...trust.automation }, settled: trust.settled });
@@ -74,11 +84,15 @@ export class ClaudeStartupPromptResponder {
       // which emits no `startup_prompt` activity and leaves a later frame to retry.
       const writeSettled = Promise.resolve(writeAutomation(declineKey))
         .then((result): StartupWriteCompletion => {
+          // Disposal DURING the write wins: the session is gone, so report neither a
+          // success activity nor a write-failure warning for it (C-CLAUDE-22).
+          if (this.disposed) return "cancelled";
           if (result !== "withheld") return "answered";
           this.browserDeclined = false;
           return "cancelled";
         })
-        .catch((error: unknown) => {
+        .catch((error: unknown): StartupWriteCompletion => {
+          if (this.disposed) return "cancelled";
           this.browserDeclined = false;
           throw error;
         });
