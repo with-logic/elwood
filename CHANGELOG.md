@@ -19,6 +19,12 @@ back each entry are listed in `prd/14-conformance.md`.
   generic, future) enforce it structurally over the whole value, nested records and
   arrays included. Such a rewrite is now an invalid result: the bridge fails open with
   no decision and emits `hookError`.
+- Route Codex tool-keyed hooks from own properties only. A `PreToolUse` map is a
+  plain object, so a tool name matching an inherited member (anything on
+  `Object.prototype`, or a key on a caller-supplied prototype) used to resolve to a
+  function the caller never registered for that tool and run it against the hook
+  event. Both the exact-name and `unknown` lookups now require an own property,
+  matching Claude routing.
 - Hold the cross-process update lease for an aborted updater's surviving process
   group. An update probe that was aborted without confirming its process group had
   exited used to release the lease anyway, so another Elwood host could start a
