@@ -3,12 +3,12 @@
  * Implements PRD §6.4; generic and future tools deliberately retain record inputs.
  */
 
-import { isRecord, isString } from "../../core/predicates.ts";
+import { isFiniteNumber, isFiniteThroughout, isRecord, isString } from "../../core/predicates.ts";
 import type { ClaudeToolInputByName, KnownClaudeToolName } from "../hooks/tool-types.ts";
 import {
   type FieldChecks,
   optionalBoolean,
-  optionalNumber,
+  optionalFiniteNumber,
   optionalString,
   optionalStringArray,
 } from "./shapes.ts";
@@ -30,7 +30,7 @@ type ToolSchemas = { readonly [Name in ConcreteToolName]: FieldChecks<InputFor<N
 const shell = {
   command: isString,
   description: optionalString,
-  timeout: optionalNumber,
+  timeout: optionalFiniteNumber,
   run_in_background: optionalBoolean,
 };
 const id = { id: isString };
@@ -51,7 +51,7 @@ export const claudeToolSchemas = {
   TaskOutput: {
     task_id: isString,
     block: (value) => typeof value === "boolean",
-    timeout: (value) => typeof value === "number",
+    timeout: isFiniteNumber,
   },
   TaskStop: { task_id: optionalString, shell_id: optionalString },
   SendMessage: prompt,
@@ -77,7 +77,7 @@ export const claudeToolSchemas = {
     "-i": optionalBoolean,
     multiline: optionalBoolean,
   },
-  Read: { file_path: isString, offset: optionalNumber, limit: optionalNumber },
+  Read: { file_path: isString, offset: optionalFiniteNumber, limit: optionalFiniteNumber },
   WebFetch: { url: isString, prompt: isString },
   WebSearch: {
     query: isString,
@@ -97,6 +97,10 @@ export function toolSchema(
 
 export function isClaudeToolInput(toolName: string, value: unknown): boolean {
   if (!isRecord(value)) return false;
+  // Applies to EVERY tool, schema-less ones included: a non-finite number has no JSON
+  // encoding, so it must never reach the wire regardless of whether Elwood types the
+  // tool concretely (C-HOOK-18).
+  if (!isFiniteThroughout(value)) return false;
   const checks = toolSchema(toolName);
   // Future input fields are retained, but every declared field must match its type.
   return checks === undefined || Object.entries(checks).every(([key, check]) => check(value[key]));

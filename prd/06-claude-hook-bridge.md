@@ -118,6 +118,12 @@ unions.
 - Unknown future tools and MCP tools may use `Record<string, unknown>` or
   `unknown` with a safe raw tool name.
 - Hook bridge JSON must be runtime-validated before it reaches handlers.
+- A numeric field MUST be a finite number. `NaN` and `±Infinity` are rejected at
+  ingress and in `updatedInput` rewrites, because JSON has no encoding for them
+  and `JSON.stringify` would put a `null` on the wire where the CLI's schema
+  requires a number. This applies to EVERY tool: schema-less inputs (MCP, generic,
+  and future tools) have no field table, so the rule is enforced structurally over
+  the whole value, including nested records and arrays.
 
 Task and plan inputs follow Claude's documented native field names: `TaskGet`
 uses `taskId`; `TaskOutput` uses `task_id`, `block`, and `timeout`; `TaskStop`

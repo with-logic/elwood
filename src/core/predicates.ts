@@ -21,8 +21,31 @@ export function optionalString(value: unknown): boolean {
   return value === undefined || typeof value === "string";
 }
 
-export function optionalNumber(value: unknown): boolean {
-  return value === undefined || typeof value === "number";
+/**
+ * A JSON-representable number. `NaN` and `±Infinity` are `typeof "number"` but
+ * `JSON.stringify` emits them as `null`, so accepting them here would let a hook
+ * rewrite send a null where the CLI's schema requires a number (PRD §6.4).
+ */
+export function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/** Absent, or a finite number. Named for the contract: a non-finite number FAILS. */
+export function optionalFiniteNumber(value: unknown): boolean {
+  return value === undefined || isFiniteNumber(value);
+}
+
+/**
+ * True when NO number anywhere in `value` is non-finite. Schema-less tool inputs (MCP,
+ * generic, and future tools) have no field table to check, so the finite rule is applied
+ * structurally instead: it must hold for every tool, not only the ones Elwood types
+ * concretely, or a rewrite still puts a `null` on the wire (PRD §6.4, C-HOOK-18).
+ */
+export function isFiniteThroughout(value: unknown): boolean {
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(isFiniteThroughout);
+  if (isRecord(value)) return Object.values(value).every(isFiniteThroughout);
+  return true;
 }
 
 export function optionalBoolean(value: unknown): boolean {
