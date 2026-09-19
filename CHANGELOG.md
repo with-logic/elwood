@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Reject `NaN` and `±Infinity` in numeric hook fields, for every tool. Because
+  `JSON.stringify` encodes them as `null`, a hook handler that returned one in an
+  `updatedInput` rewrite used to send the CLI a `null` where its schema requires a
+  number. Concrete tool schemas enforce this per field; schema-less tools (MCP,
+  generic, future) enforce it structurally over the whole value, nested records and
+  arrays included. Such a rewrite is now an invalid result: the bridge fails open with
+  no decision and emits `hookError`.
 - Hold the cross-process update lease for an aborted updater's surviving process
   group. An update probe that was aborted without confirming its process group had
   exited used to release the lease anyway, so another Elwood host could start a
