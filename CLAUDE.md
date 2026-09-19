@@ -69,13 +69,18 @@ Prefer real behavior over broad mocks. Use real filesystems, parsers, and local
 process boundaries unless a test seam exists for an expensive or platform-bound
 dependency.
 
-For a local gate you can trust, run `npx vitest run --no-file-parallelism`. The
-parallel suite has cross-file interference: on an idle machine the serial run is
-fully green while parallel runs fail with a single rotating victim, a different
-one each time. A failure in a serial run is real; a parallel-only failure
-usually is not yours. Check `git merge-base --is-ancestor origin/main
-origin/<branch>` before diagnosing any failure — a branch behind `main`
-reproduces bugs that `main` has already fixed.
+The full parallel suite is green and stays green. **Treat every failure as
+real** — there is no known-flaky set to discount, and a habit of discounting
+failures is how a genuine regression gets shipped. Before diagnosing one, check
+two cheap things: that nothing else is loading the machine (these suites spawn
+PTYs and processes, so a dozen concurrent runs will time each other out), and
+that the branch is current, with `git merge-base --is-ancestor origin/main
+origin/<branch>` — a branch behind `main` reproduces bugs `main` has already
+fixed, and the symptom is identical to a new failure.
+
+A gate that reports no test counts has not reported success. Exit 0 with no
+summary means the run did not complete; concurrent runs sharing a coverage
+directory do this. Read the numbers, not the exit code.
 
 A bogus `--model` triggers a real rejection on both CLIs and is refused before
 any model quota is consumed, which makes it a cheap, quota-independent way to
