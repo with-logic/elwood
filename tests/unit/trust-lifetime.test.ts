@@ -1,5 +1,6 @@
 /** Pending PTY writes never outlive their trust generation or session (C-TRUST-01). */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
 import { claudeComposer, claudeTrust } from "../fixtures/trust-composer.ts";
 
@@ -16,7 +17,7 @@ test.each([
   numbered,
   cursor,
 ])("C-TRUST-01 disposal aborts a hung write and suppresses late rejection: %s", async (frame) => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const pending = Promise.withResolvers<void>();
   const write = vi.fn(() => pending.promise);
   const attempt = settled(responder.handle(frame, write, () => frame));
@@ -36,7 +37,7 @@ test.each([
   numbered,
   cursor,
 ])("C-TRUST-01 disposal cancels polling without another key: %s", async (frame) => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const write = vi.fn();
   const attempt = settled(responder.handle(frame, write, () => frame));
   await vi.advanceTimersByTimeAsync(1);
@@ -52,7 +53,7 @@ test.each([
   "reject",
 ])("C-TRUST-01 a reappeared generation starts before the old write can %s", async (completion) => {
   const changed = vi.fn();
-  const responder = new TrustPromptResponder("claude", true, changed);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true, changed);
   const pending = Promise.withResolvers<void>();
   const oldWrite = vi.fn(() => pending.promise);
   const first = settled(responder.handle(numbered, oldWrite, () => numbered));
@@ -79,7 +80,7 @@ test.each([
   numbered,
   cursor,
 ])("C-TRUST-01 a hung write expires locally without waiting for PTY completion: %s", async (frame) => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const pending = Promise.withResolvers<void>();
   const write = vi.fn(() => pending.promise);
   const attempt = settled(responder.handle(frame, write, () => frame));
@@ -94,7 +95,7 @@ test.each([
 });
 
 test("C-TRUST-01 synchronous write callbacks cannot bypass disposal", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const write = vi.fn(() => responder.dispose());
   await expect(settled(responder.handle(numbered, write, () => numbered))).resolves.toBe(
     "cancelled",
@@ -103,7 +104,7 @@ test("C-TRUST-01 synchronous write callbacks cannot bypass disposal", async () =
 });
 
 test("C-TRUST-01 disposal during a live read prevents even the first key", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const write = vi.fn();
   const result = responder.handle(numbered, write, () => {
     responder.dispose();
@@ -114,7 +115,7 @@ test("C-TRUST-01 disposal during a live read prevents even the first key", async
 });
 
 test("C-TRUST-01 a synchronous failure from the current write retains its diagnostic", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const failure = new Error("live PTY failure");
   const write = vi.fn(() => {
     throw failure;
@@ -125,7 +126,7 @@ test("C-TRUST-01 a synchronous failure from the current write retains its diagno
 });
 
 test("C-TRUST-01 a synchronous writer that disposes before throwing is quiet", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   await expect(
     settled(
       responder.handle(
@@ -141,7 +142,7 @@ test("C-TRUST-01 a synchronous writer that disposes before throwing is quiet", a
 });
 
 test("C-TRUST-01 atomic no-reader callers still cancel immediately on disposal", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const pending = Promise.withResolvers<void>();
   const attempt = settled(responder.handle(numbered, () => pending.promise));
   responder.dispose();
@@ -150,7 +151,7 @@ test("C-TRUST-01 atomic no-reader callers still cancel immediately on disposal",
 });
 
 test("C-TRUST-01 disposal in the write-fulfillment microtask cannot install another wait", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const pending = Promise.withResolvers<void>();
   const attempt = settled(
     responder.handle(
@@ -167,7 +168,7 @@ test("C-TRUST-01 disposal in the write-fulfillment microtask cannot install anot
 });
 
 test("C-TRUST-01 wall-clock expiry prevents another key even before the timer fires", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const write = vi.fn(() => {
     vi.setSystemTime(Date.now() + 5_000);
   });

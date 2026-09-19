@@ -1,6 +1,11 @@
-/** Classifies native candidates separately from safe trust writes (PRD §5.4, C-TRUST-01). */
+/**
+ * Classifies native candidates separately from safe trust writes (PRD §5.4, C-TRUST-01).
+ * The CLI-specific "this frame is the idle native composer" grammar is NOT here: each
+ * adapter owns its own and injects it as `clearance`, so a layout change lands once.
+ */
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { SelectableOption } from "../terminal-options.ts";
+import type { TrustClearance } from "./clearance.ts";
 import { parseTrustCandidates, parseTrustDialog, type TrustDialog } from "./dialog.ts";
 import { activeTrustDialogVisible, type TrustPromptSpec, trustPromptAllowlist } from "./prompts.ts";
 
@@ -22,7 +27,11 @@ export function trustPromptVisible(text: string, agent: ElwoodAgentKind): boolea
   );
 }
 
-export function trustView(frame: string, agent: ElwoodAgentKind): TrustView {
+export function trustView(
+  frame: string,
+  agent: ElwoodAgentKind,
+  clearance: TrustClearance,
+): TrustView {
   const regions = parseTrustCandidates(frame);
   for (const region of regions) {
     for (const spec of trustPromptAllowlist) {
@@ -44,7 +53,7 @@ export function trustView(frame: string, agent: ElwoodAgentKind): TrustView {
     }
   }
   if (regions.length > 0) return { kind: "unknown" };
-  return { kind: nativeComposer(frame, agent) ? "clear" : "unknown" };
+  return { kind: clearance(frame) ? "clear" : "unknown" };
 }
 
 /** Option identity excludes cursor position and later-painted native decline/footer rows. */
@@ -57,32 +66,4 @@ export function choiceIdentity(view: TrustCandidate): string | undefined {
     option.label,
     option.style === "numbered" ? option.number : "",
   ]);
-}
-
-function nativeComposer(frame: string, agent: ElwoodAgentKind): boolean {
-  const composerRow =
-    agent === "codex"
-      ? /^\s*›(?:\s*|\s+Ask Codex to do anything)\s*$/m
-      : /^\s*❯(?:[ \t\u00a0]*|[ \t\u00a0]+Try "[^"\n]+")\s*$/m;
-  if (
-    /^\s*[❯›>]?\s*\d+[.)]\s+\S/m.test(frame) ||
-    frame.split("\n").some((line) => /^\s*[❯›]/.test(line) && !composerRow.test(line))
-  )
-    return false;
-  if (agent === "codex") {
-    return (
-      ((/^\s*│\s*>_ OpenAI Codex \(v[\d.]+\)/m.test(frame) && /^\s*╰─+╯\s*$/m.test(frame)) ||
-        /^\s*gpt-[\w.-]+ (?:minimal|low|medium|high|xhigh|default) · (?:\/|[A-Z]:[\\/])[^\n]*$/m.test(
-          frame,
-        )) &&
-      composerRow.test(frame)
-    );
-  }
-  return (
-    (/Claude Code v[\d.]+/.test(frame) ||
-      /^\s*-- INSERT -- ⏵⏵ don['’]t ask on \(shift\+tab to cycle\) · ← for agents\s*$/m.test(
-        frame,
-      )) &&
-    /(?:^|\n)[─━]{3,}\s*\n❯(?:[ \t\u00a0]*|[ \t\u00a0]+Try "[^"\n]+")\s*\n[─━]{3,}/.test(frame)
-  );
 }

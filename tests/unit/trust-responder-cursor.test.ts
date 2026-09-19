@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import {
   optionInput,
   optionKeystrokes,
@@ -25,9 +26,12 @@ describe("cursor-style trust prompts", () => {
       "Enter to confirm · Esc to cancel",
     ].join("\n");
     const writes: string[] = [];
-    const result = new TrustPromptResponder("claude", true).handle(frame, (input) => {
-      writes.push(input);
-    });
+    const result = new TrustPromptResponder("claude", claudeTrustClearance, true).handle(
+      frame,
+      (input) => {
+        writes.push(input);
+      },
+    );
     expect(result).toMatchObject({
       kind: "attempted",
       automation: { prompt: "workspace_trust", input: "1" },
@@ -82,7 +86,7 @@ describe("cursor-style trust prompts", () => {
     ].join("\n");
     const writes: string[] = [];
     let rendered = frame;
-    const result = new TrustPromptResponder("claude", true).handle(
+    const result = new TrustPromptResponder("claude", claudeTrustClearance, true).handle(
       frame,
       (input) => {
         writes.push(input);
@@ -105,7 +109,7 @@ describe("cursor-style trust prompts", () => {
     const frame = `${claudeTrust}\n  Yes, I trust this folder\n❯ No`;
     const writes: string[] = [];
     let rendered = frame;
-    const result = new TrustPromptResponder("claude", true).handle(
+    const result = new TrustPromptResponder("claude", claudeTrustClearance, true).handle(
       frame,
       (input) => {
         writes.push(input);

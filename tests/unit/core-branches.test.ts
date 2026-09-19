@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import {
   activityFromCodexHook,
   activityFromCodexTranscript,
@@ -87,7 +88,7 @@ describe("core activity branches", () => {
 
   test("C-CLAUDE-10 flags a recognized workspace-trust prompt with no rendered affirmative option as option_pending", () => {
     const writes: string[] = [];
-    const responder = new TrustPromptResponder("claude", true);
+    const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
     const result = responder.handle(`${claudeTrust}\n1. No, exit`, (input) => {
       writes.push(input);
     });
