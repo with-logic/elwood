@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import { blockingTrustSpecs } from "../../src/core/trust/prompts.ts";
 import { TrustPromptResponder, trustPromptVisible } from "../../src/core/trust/responder.ts";
 
@@ -39,7 +40,7 @@ const runningFooter =
 describe("bypass-permissions acceptance dialog", () => {
   test("C-CLAUDE-21 answers the numbered layout with its own affirmative, never the decline", () => {
     const writes: string[] = [];
-    const responder = new TrustPromptResponder<"claude">("claude", true);
+    const responder = new TrustPromptResponder<"claude">("claude", claudeTrustClearance, true);
     expect(
       responder.handle(numberedDialog, (input) => {
         writes.push(input);
@@ -56,7 +57,7 @@ describe("bypass-permissions acceptance dialog", () => {
   test("C-CLAUDE-21 navigates the cursor layout down to the affirmative and confirms", async () => {
     const writes: string[] = [];
     let rendered = cursorDialog;
-    const responder = new TrustPromptResponder<"claude">("claude", true);
+    const responder = new TrustPromptResponder<"claude">("claude", claudeTrustClearance, true);
     const result = responder.handle(
       cursorDialog,
       (input) => {
@@ -80,7 +81,7 @@ describe("bypass-permissions acceptance dialog", () => {
 
   test("C-CLAUDE-21 a decline-only partial frame is pending, not answered", () => {
     const writes: string[] = [];
-    const responder = new TrustPromptResponder<"claude">("claude", true);
+    const responder = new TrustPromptResponder<"claude">("claude", claudeTrustClearance, true);
     expect(
       responder.handle([...header, " ❯ 1. No, exit"].join("\n"), (input) => {
         writes.push(input);
@@ -93,13 +94,13 @@ describe("bypass-permissions acceptance dialog", () => {
     expect(trustPromptVisible(runningFooter, "claude")).toBe(false);
     const spoof = "Unrelated confirmation\n1. Yes, I accept running in Bypass Permissions mode";
     expect(trustPromptVisible(spoof, "claude")).toBe(false);
-    const responder = new TrustPromptResponder<"claude">("claude", true);
+    const responder = new TrustPromptResponder<"claude">("claude", claudeTrustClearance, true);
     expect(responder.handle(runningFooter, () => undefined)).toBeUndefined();
     expect(responder.handle(spoof, () => undefined)).toBeUndefined();
   });
 
   test("C-CLAUDE-21 without autotrust the dialog is left to the human and blocks", () => {
-    const responder = new TrustPromptResponder<"claude">("claude", false);
+    const responder = new TrustPromptResponder<"claude">("claude", claudeTrustClearance, false);
     expect(responder.handle(numberedDialog, () => undefined)).toBeUndefined();
     expect(trustPromptVisible(numberedDialog, "claude")).toBe(true);
     const blocking = blockingTrustSpecs("claude", false).map((spec) => spec.id);

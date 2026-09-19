@@ -1,11 +1,13 @@
 /** Native candidate provenance and positive clear evidence (C-TRUST-01/C-ATTN-03). */
 import { expect, test } from "vitest";
+import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import { withTrustBlockingRules } from "../../src/core/trust/blocking.ts";
 import { trustView } from "../../src/core/trust/view.ts";
 import {
   claudeBody,
   claudeComposer,
   claudeTrust,
+  clearanceFor,
   codexComposer,
   codexHooks,
   codexSmallComposer,
@@ -17,14 +19,16 @@ test.each([
   ["codex", codexComposer],
   ["codex", codexSmallComposer],
 ] as const)("C-TRUST-01 the captured %s composer positively confirms clearance", (agent, frame) => {
-  expect(trustView(frame, agent)).toEqual({ kind: "clear" });
+  expect(trustView(frame, agent, clearanceFor(agent))).toEqual({ kind: "clear" });
 });
 
 test("C-TRUST-01 synthetic crop keeps Claude's captured border and native footer evidence", () => {
   // This is a cropped existing capture, not a separately observed native layout.
   const cropped = claudeComposer.slice(claudeComposer.indexOf("───"));
-  expect(trustView(cropped, "claude")).toEqual({ kind: "clear" });
-  expect(trustView(cropped.replace(/-- INSERT --.*/, "unknown footer"), "claude")).toEqual({
+  expect(trustView(cropped, "claude", claudeTrustClearance)).toEqual({ kind: "clear" });
+  expect(
+    trustView(cropped.replace(/-- INSERT --.*/, "unknown footer"), "claude", claudeTrustClearance),
+  ).toEqual({
     kind: "unknown",
   });
 });
@@ -44,7 +48,7 @@ test.each([
   ["codex", codexSmallComposer.replace("/tmp/elwood-composer-CAPTURE/p…", "unknown text")],
   ["claude", "WARNING: unrelated operation\n1. Yes"],
 ] as const)("C-TRUST-01 unknown or selectable %s screens do not prove clearance: %s", (agent, frame) => {
-  expect(trustView(frame, agent)).toEqual({ kind: "unknown" });
+  expect(trustView(frame, agent, clearanceFor(agent))).toEqual({ kind: "unknown" });
 });
 
 test.each([
@@ -88,7 +92,10 @@ test("C-ATTN-03 static human rules omit automation-owned trust candidates", () =
 
 test("C-TRUST-01 header-like text below a known gate holds input and authorizes no key", () => {
   const frame = `${claudeTrust}\n1. Yes\n2. No\n\nDo you like this?`;
-  expect(trustView(frame, "claude")).toMatchObject({ kind: "candidate", valid: false });
+  expect(trustView(frame, "claude", claudeTrustClearance)).toMatchObject({
+    kind: "candidate",
+    valid: false,
+  });
 });
 
 const bypass =
@@ -107,14 +114,14 @@ test.each([
     `${header}\nSecurity guide`,
     `${header}\n1 hook is new or changed.`,
   ]) {
-    const held = trustView(`${partial}\n${options}`, agent);
+    const held = trustView(`${partial}\n${options}`, agent, clearanceFor(agent));
     expect(held).toMatchObject({ kind: "candidate", valid: false, option: undefined });
   }
   // Every truncation of the native copy is a half-painted body: only whole sentences answer.
   const whole = /(?:folder first|files here|dangerous commands|to load|trust them)\.$|guide$/;
   for (let end = (header as string).length; end < region.length; end++) {
     const partial = region.slice(0, end).trimEnd();
-    const view = trustView(`${partial}\n${options}`, agent);
+    const view = trustView(`${partial}\n${options}`, agent, clearanceFor(agent));
     expect([partial, view.kind, "valid" in view && view.valid]).toEqual([
       partial,
       "candidate",
@@ -122,12 +129,16 @@ test.each([
     ]);
     if (!whole.test(partial)) expect(view).toMatchObject({ option: undefined });
   }
-  const complete = trustView(`${region}\n${options}`, agent);
+  const complete = trustView(`${region}\n${options}`, agent, clearanceFor(agent));
   expect(complete).toMatchObject({ kind: "candidate", valid: true });
   expect(complete.kind === "candidate" && complete.option?.label).toMatch(/Yes|Trust all/);
 });
 
 test("C-CLAUDE-14 gates with no captured native body stay answerable from their header", () => {
-  const view = trustView("Load this skill?\n1. Yes, load this skill\n2. No", "claude");
+  const view = trustView(
+    "Load this skill?\n1. Yes, load this skill\n2. No",
+    "claude",
+    claudeTrustClearance,
+  );
   expect(view).toMatchObject({ kind: "candidate", valid: true, option: { number: "1" } });
 });

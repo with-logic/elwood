@@ -4,7 +4,7 @@ import { claudeScreenFactTableForTrustPolicy } from "../../src/claude/screen-tab
 import { codexScreenFactTableForTrustPolicy } from "../../src/codex/screen-table.ts";
 import { readScreenFacts } from "../../src/core/screen-facts.ts";
 import { trustView } from "../../src/core/trust/view.ts";
-import { claudeComposer, codexComposer } from "../fixtures/trust-composer.ts";
+import { claudeComposer, clearanceFor, codexComposer } from "../fixtures/trust-composer.ts";
 import { rewordedGate } from "../helpers/unknown-gate.ts";
 
 const tables = {
@@ -30,7 +30,7 @@ describe.each(matrix)("%s unknown gate (autotrust %s)", (agent, autotrust) => {
       `Accessing workspace:\n/tmp/p\n${newCursorGate}`,
     ])
       expect(blockingRuleIds(agent, autotrust, gate)).toEqual([`${agent}-unknown_gate-prompt`]);
-    expect(trustView(rewordedGate, agent)).toEqual({ kind: "unknown" });
+    expect(trustView(rewordedGate, agent, clearanceFor(agent))).toEqual({ kind: "unknown" });
   });
 
   test("C-TRUST-01 conversation content, the native composer, and incomplete shapes never hold", () => {
@@ -51,7 +51,7 @@ describe.each(matrix)("%s unknown gate (autotrust %s)", (agent, autotrust) => {
     ])
       expect(blockingRuleIds(agent, autotrust, frame)).toEqual([]);
     const composer = agent === "claude" ? claudeComposer : codexComposer;
-    expect(trustView(composer, agent)).toEqual({ kind: "clear" });
+    expect(trustView(composer, agent, clearanceFor(agent))).toEqual({ kind: "clear" });
   });
 
   test("C-TRUST-01 a header-like CURSOR option label cannot hide the gate above it", () => {

@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, test, vi } from "vitest";
+import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import type { StartupWriteCompletion } from "../../src/core/startup/write.ts";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
 import { claudeComposer, claudeTrust } from "../fixtures/trust-composer.ts";
@@ -17,7 +18,7 @@ function settlementOf(result: TrustPromptResult<"claude">): Promise<StartupWrite
 describe("trust-prompt automation security", () => {
   test("C-CLAUDE-14 a partial frame with a NON-affirmative option can still answer later", () => {
     const writes: string[] = [];
-    const responder = new TrustPromptResponder("claude", true);
+    const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
     // Frame 1: header + a non-affirmative option ("No, cancel") only — the real
     // "Yes" hasn't rendered. It surfaces option_pending ONCE but must NOT settle.
     expect(
@@ -42,7 +43,7 @@ describe("trust-prompt automation security", () => {
 
   test("C-CLAUDE-14 an OPTION-ONLY trust phrase never identifies a prompt", () => {
     const writes: string[] = [];
-    const responder = new TrustPromptResponder("claude", true);
+    const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
     // A hostile dialog whose HEADER is unrelated but whose OPTION embeds a trust
     // phrase plus a destructive rider. Recognition anchors on a HEADER line, so
     // the phrase in an option can never identify the prompt: nothing is written
@@ -59,7 +60,7 @@ describe("trust-prompt automation security", () => {
 
   test("C-CLAUDE-14 a WRAPPED option continuation cannot spoof a trust header", () => {
     const writes: string[] = [];
-    const responder = new TrustPromptResponder("claude", true);
+    const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
     // A hostile dialog whose numbered option WRAPS onto a second physical row
     // carrying an allowlisted trust header phrase. That continuation row does not
     // itself start with "N.", but it is part of the option region (after the
@@ -80,7 +81,7 @@ describe("trust-prompt automation security", () => {
     const writes: string[] = [];
     const frame = "Unrecognized migration\n  Do you trust this folder?\n❯ No, cancel";
     expect(
-      new TrustPromptResponder("claude", true).handle(frame, (input) => {
+      new TrustPromptResponder("claude", claudeTrustClearance, true).handle(frame, (input) => {
         writes.push(input);
       }),
     ).toBeUndefined();
@@ -89,14 +90,17 @@ describe("trust-prompt automation security", () => {
 
   test("C-CLAUDE-14 cursor navigation fails closed without live screen reads", async () => {
     const frame = `${claudeTrust}\n❯ No\n  Yes, I trust this folder`;
-    const result = new TrustPromptResponder("claude", true).handle(frame, () => undefined);
+    const result = new TrustPromptResponder("claude", claudeTrustClearance, true).handle(
+      frame,
+      () => undefined,
+    );
     await expect(settlementOf(result)).resolves.toBe("cancelled");
   });
 
   test("C-CLAUDE-14 cursor navigation never continues into a replacement screen", async () => {
     const initial = `${claudeTrust}\n❯ No\n  Yes, I trust this folder`;
     let frame = initial;
-    const result = new TrustPromptResponder("claude", true).handle(
+    const result = new TrustPromptResponder("claude", claudeTrustClearance, true).handle(
       initial,
       () => {
         frame = "Different prompt\n❯ Yes, proceed";
@@ -105,7 +109,7 @@ describe("trust-prompt automation security", () => {
     );
     await expect(settlementOf(result)).resolves.toBe("cancelled");
 
-    const replaced = new TrustPromptResponder("claude", true).handle(
+    const replaced = new TrustPromptResponder("claude", claudeTrustClearance, true).handle(
       initial,
       () => undefined,
       () => "Different prompt\n❯ Yes, proceed",
@@ -118,7 +122,7 @@ describe("trust-prompt automation security", () => {
     try {
       const initial = `${claudeTrust}\n❯ No\n  Yes, I trust this folder`;
       const started = Date.now();
-      const responder = new TrustPromptResponder("claude", true);
+      const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
       const result = responder.handle(
         initial,
         () => undefined,
@@ -148,7 +152,7 @@ describe("trust-prompt automation security", () => {
 
   test("C-CLAUDE-14 only an allowlisted non-option header identifies a trust prompt", () => {
     const writes: string[] = [];
-    const responder = new TrustPromptResponder("claude", true);
+    const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
     // A native active dialog is answered from its own affirmative. Off-allowlist
     // dialogs and trust phrases appearing only inside options do not identify it.
     expect(
@@ -172,7 +176,7 @@ describe("trust-prompt automation security", () => {
 
   test("C-CLAUDE-14 a recognized trust dialog is answered even across a blank line", () => {
     const writes: string[] = [];
-    const responder = new TrustPromptResponder("claude", true);
+    const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
     // A single trust dialog whose header and options are separated by a blank +
     // descriptive line — the real rendered shape. Elwood recognizes the header and
     // answers the affirmative so the agent never waits on the trust gate. There is
