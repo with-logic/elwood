@@ -58,7 +58,7 @@ function frameClearsDialog(frameText: string): boolean {
  * - `observe`: may Elwood WRITE the skip digit? Scoped to the CURRENT appearance. A
  *   contradicted frame answers NO immediately, because the digit was chosen for a
  *   different dialog, and the appearance ENDS there.
- * - `dialogVisible`: must queued caller/persona input keep being HELD? This OUTLIVES the
+ * - `observeAndHoldInput`: must queued caller/persona input keep being HELD? This OUTLIVES the
  *   appearance. The same contradicted frame answers YES, because a prompt is still on
  *   screen — one Elwood may not answer, but a human still owns. Releasing there would
  *   paste and press Enter into it: the same "advanced without consent" outcome the digit
@@ -99,11 +99,14 @@ export class CodexUpdatePromptTracker {
   }
 
   /**
-   * Whether a recognized dialog is still on screen, so queued input must stay held.
-   * Supplied to the session's `blocking_prompt_visible` fact INSTEAD of `observe`: a
-   * frame Elwood must not automate is still a frame a human owns (C-API-56, C-CODEX-22).
+   * OBSERVES `frameText` (advancing the appearance lifecycle, exactly as `observe` does)
+   * and returns whether queued input must stay HELD afterwards. Not a pure predicate and
+   * not "is a dialog on this frame": the answer includes a hold RETAINED from an earlier
+   * frame, which is the whole point. Supplied to the session's `blocking_prompt_visible`
+   * fact instead of `observe`, because a frame Elwood must not automate is still a frame a
+   * human owns (C-API-56, C-CODEX-22). Call it once per frame.
    */
-  dialogVisible(frameText: string): boolean {
+  observeAndHoldInput(frameText: string): boolean {
     this.observe(frameText);
     return this.holdingInput;
   }

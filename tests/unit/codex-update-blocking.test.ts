@@ -7,6 +7,7 @@
 import { describe, expect, test } from "vitest";
 import { codexScreenFactTableForTrustPolicy } from "../../src/codex/screen-table.ts";
 import {
+  appearanceBindingsHold,
   emptyUpdateEvidence,
   evidenceAllowsContinuation,
   withUpdateFrameEvidence,
@@ -20,44 +21,46 @@ const allSkipPrompt = "  1. Skip backup\n  2. Skip";
 describe("C-CODEX-22 input blocking is separate from automation eligibility", () => {
   test("C-CODEX-22 a contradicted appearance stops automation but keeps holding input", () => {
     const tracker = new CodexUpdatePromptTracker();
-    expect(tracker.dialogVisible(bannerFrame)).toBe(true);
+    expect(tracker.observeAndHoldInput(bannerFrame)).toBe(true);
     // Automation must fail CLOSED: the digit was chosen for a different dialog.
     expect(tracker.observe(allSkipPrompt)).toBe(false);
     // The hold must ALSO fail closed: a prompt we may not answer is still a prompt.
-    expect(tracker.dialogVisible(allSkipPrompt)).toBe(true);
+    expect(tracker.observeAndHoldInput(allSkipPrompt)).toBe(true);
   });
 
   test("C-CODEX-22 only a frame with no dialog releases the hold", () => {
     const tracker = new CodexUpdatePromptTracker();
-    tracker.dialogVisible(bannerFrame);
-    expect(tracker.dialogVisible(allSkipPrompt)).toBe(true);
+    tracker.observeAndHoldInput(bannerFrame);
+    expect(tracker.observeAndHoldInput(allSkipPrompt)).toBe(true);
     // A positive clearance — the composer, no options at all — drops it.
-    expect(tracker.dialogVisible("› ")).toBe(false);
+    expect(tracker.observeAndHoldInput("› ")).toBe(false);
   });
 
   test("C-CODEX-22 a hold is never STARTED for a dialog Elwood did not recognize", () => {
     const tracker = new CodexUpdatePromptTracker();
     // No update appearance was ever recognized, so an unrelated prompt does not block.
-    expect(tracker.dialogVisible(allSkipPrompt)).toBe(false);
+    expect(tracker.observeAndHoldInput(allSkipPrompt)).toBe(false);
   });
 
   test("C-CODEX-22 a CURSOR-style human prompt keeps holding queued input", () => {
     const tracker = new CodexUpdatePromptTracker();
-    tracker.dialogVisible(bannerFrame);
+    tracker.observeAndHoldInput(bannerFrame);
     // A cursor-style dialog renders no numbered rows at all. Releasing here would paste
     // and press Enter into it, activating its highlighted action.
-    expect(tracker.dialogVisible("Proceed?\n❯ Yes, go ahead\n  No, cancel")).toBe(true);
+    expect(tracker.observeAndHoldInput("Proceed?\n❯ Yes, go ahead\n  No, cancel")).toBe(true);
   });
 
   test("C-CODEX-22 numbered TRANSCRIPT prose above a composer releases the hold", () => {
     const tracker = new CodexUpdatePromptTracker();
-    tracker.dialogVisible(bannerFrame);
-    expect(tracker.dialogVisible(allSkipPrompt)).toBe(true);
+    tracker.observeAndHoldInput(bannerFrame);
+    expect(tracker.observeAndHoldInput(allSkipPrompt)).toBe(true);
     // Ordinary agent prose can contain a numbered list. What distinguishes it from a
     // dialog is POSITION: a live composer below the rows means nothing awaits an answer,
     // since both CLIs replace the composer with a dialog. Holding here would pin queued
     // input open for the rest of the session.
-    expect(tracker.dialogVisible("● Plan:\n  1. First step\n  2. Second step\n\n› ")).toBe(false);
+    expect(tracker.observeAndHoldInput("● Plan:\n  1. First step\n  2. Second step\n\n› ")).toBe(
+      false,
+    );
   });
 });
 
@@ -74,6 +77,59 @@ describe("C-CODEX-22 a retained hold is classified separately from the update pr
     const ids = blocked.matched.map((rule) => rule.id);
     expect(ids).not.toContain("codex-update-prompt");
     expect(ids).toContain("codex-unidentified-dialog");
+  });
+
+  test("C-ATTN-03 a retained hold never masks a specific trust rule id", () => {
+    const table = codexScreenFactTableForTrustPolicy(false);
+    const read = (text: string) => readScreenFacts(table, { text, title: "" });
+    read(bannerFrame);
+    // A recognized trust gate painted while a hold is retained must still surface its OWN
+    // stable id; the generic fallback only reports when nothing more specific matched.
+    const gate = read(
+      "> You are in /tmp/project\nDo you trust the contents of this directory?\n› 1. Yes, continue\n  2. No, quit\n\n  Press enter to continue",
+    );
+    const ids = gate.matched.map((rule) => rule.id);
+    expect(ids).toContain("codex-workspace_trust-prompt");
+    expect(ids).not.toContain("codex-unidentified-dialog");
+  });
+});
+
+describe("C-CODEX-22 appearance evidence is bounded", () => {
+  test("C-CODEX-22 a long-lived appearance retains a bounded number of bindings", () => {
+    let evidence = emptyUpdateEvidence();
+    // One appearance can span many frames of a long-lived session. Without a bound the
+    // retained map grows with every new option number the session ever renders.
+    for (let row = 1; row <= 5_000; row += 1) {
+      evidence = withUpdateFrameEvidence(
+        evidence,
+        `Update available! 0.1.0 -> 0.2.0\n  ${row}. Option ${row}`,
+        true,
+      );
+    }
+    expect(evidence.options.size).toBeLessThanOrEqual(32);
+    expect(evidence.overflowed).toBe(true);
+  });
+
+  test("C-CODEX-22 an oversized label is dropped rather than retained", () => {
+    const evidence = withUpdateFrameEvidence(
+      emptyUpdateEvidence(),
+      `Update available! 0.1.0 -> 0.2.0\n  1. ${"x".repeat(5_000)}`,
+      true,
+    );
+    expect(evidence.options.has("1")).toBe(false);
+    expect(evidence.overflowed).toBe(true);
+  });
+
+  test("C-CODEX-22 an overflowed appearance authorizes nothing", () => {
+    let evidence = emptyUpdateEvidence();
+    for (let row = 1; row <= 100; row += 1) {
+      evidence = withUpdateFrameEvidence(evidence, `  ${row}. Option ${row}`, true);
+    }
+    // Bindings were dropped, so a relabeled option could no longer be detected. Incomplete
+    // evidence must therefore vouch for nothing rather than vouch on what it happens to
+    // still remember.
+    expect(appearanceBindingsHold(evidence, "  1. Skip")).toBe(false);
+    expect(evidenceAllowsContinuation(evidence, "  1. Skip")).toBe(false);
   });
 });
 

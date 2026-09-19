@@ -21,14 +21,18 @@ const verifiedAgainst = "codex-cli 0.142.5";
  * from reading as an idle composer. The OSC window title carries a
  * braille-spinner glyph (U+2800–U+28FF) while a turn runs and the plain
  * directory name when idle. The update-prompt rule takes its matcher as a
- * parameter: production injects a per-session `CodexUpdatePromptTracker` (a split
- * prompt stays blocking until a frame with no update evidence clears it), so the
+ * parameter: production injects a per-session `CodexUpdatePromptTracker`, so the
  * rules that ship are built here, once, rather than rewritten after the fact.
+ *
+ * That tracker drives TWO lifecycles, which end at different times (C-CODEX-22).
+ * Automation eligibility ends as soon as a frame contradicts the appearance, but
+ * the INPUT HOLD outlives it: a contradictory replacement is a prompt Elwood may
+ * not answer yet a human still owns, so queued input keeps being held until a
+ * positively identified composer frame clears it. Do not collapse the two — this
+ * rule reports the update prompt, and `withRetainedHoldFallback` reports a hold
+ * that outlived its appearance.
  */
-function codexScreenFactRules(
-  updatePromptVisible: (frame: string) => boolean,
-  retainedHold?: (frame: string) => boolean,
-): ScreenFactRule[] {
+function codexScreenFactRules(updatePromptVisible: (frame: string) => boolean): ScreenFactRule[] {
   return [
     { id: "codex-composer-marker", fact: "composer_visible", all: [/^\s*›/m] },
     { id: "codex-working-spinner", fact: "working_visible", all: [/esc to interrupt/i] },
@@ -49,20 +53,44 @@ function codexScreenFactRules(
       all: [/Would you like to|Allow command\?/i, /Press enter to confirm or esc to cancel/i],
     },
     { id: "codex-update-prompt", fact: "blocking_prompt_visible", match: updatePromptVisible },
-    // A hold RETAINED after its appearance ended is still blocking, but it is no longer an
-    // update prompt — reporting it under `codex-update-prompt` would give consumers update
-    // grace and a misleading `blocked_prompt` label for a dialog a human owns. Its own rule
-    // id keeps the diagnostic honest while the input hold stays fail-closed (#59 round 3).
-    ...(retainedHold === undefined
-      ? []
-      : [
-          {
-            id: "codex-unidentified-dialog",
-            fact: "blocking_prompt_visible",
-            match: retainedHold,
-          } satisfies ScreenFactRule,
-        ]),
   ];
+}
+
+/**
+ * A hold RETAINED after its appearance ended is still blocking, but it is no longer an
+ * update prompt — reporting it under `codex-update-prompt` would give consumers update
+ * grace and a misleading `blocked_prompt` label for a dialog a human owns (#59 round 3).
+ *
+ * It is appended LAST, after the trust rules, and is a genuine FALLBACK: it only reports
+ * when no more specific rule already identified the frame. A retained hold sitting over a
+ * recognized trust gate must surface that gate's own stable id, which `C-ATTN-03`
+ * consumers depend on, rather than this generic one.
+ */
+function withRetainedHoldFallback(
+  table: ScreenFactTable,
+  retainedHold: () => boolean,
+): ScreenFactTable {
+  return {
+    ...table,
+    rules: [
+      ...table.rules,
+      {
+        id: "codex-unidentified-dialog",
+        fact: "blocking_prompt_visible",
+        match: (frame) =>
+          retainedHold() &&
+          !table.rules.some(
+            (rule) => rule.fact === "blocking_prompt_visible" && ruleMatchesFrame(rule, frame),
+          ),
+      },
+    ],
+  };
+}
+
+/** Whether one rule would fire for `frame`, used to keep the fallback a true last resort. */
+function ruleMatchesFrame(rule: ScreenFactRule, frame: string): boolean {
+  if (rule.match !== undefined) return rule.match(frame);
+  return rule.all?.every((pattern) => pattern.test(frame)) ?? false;
 }
 
 /** The stateless table (single-frame update matcher) for frame-level fact tests. */
@@ -84,7 +112,7 @@ export function codexScreenFactTableForTrustPolicy(autotrust: boolean): ScreenFa
     agent: "codex",
     verifiedAgainst,
     // Two rules from one tracker, so blocking and classification stay honest.
-    // `dialogVisible` decides whether queued caller/persona input keeps being HELD, and
+    // `observeAndHoldInput` decides whether queued caller/persona input keeps being HELD, and
     // fails safe in the OPPOSITE direction to automation eligibility: a frame Elwood must
     // not write into is still a frame a human owns, so it keeps blocking rather than
     // releasing a paste and Enter into it (C-API-56, C-CODEX-22; #59 round 2). It is
@@ -93,9 +121,13 @@ export function codexScreenFactTableForTrustPolicy(autotrust: boolean): ScreenFa
     // anything still held after that appearance ended reports as an unidentified dialog
     // rather than borrowing the update label (#59 round 3).
     rules: codexScreenFactRules(
-      (frame) => updatePrompt.dialogVisible(frame) && updatePrompt.appearanceLive,
-      () => updatePrompt.holdWithoutAppearance,
+      (frame) => updatePrompt.observeAndHoldInput(frame) && updatePrompt.appearanceLive,
     ),
   };
-  return withTrustBlockingRules(tracked, "codex", autotrust);
+  // The retained-hold fallback is appended AFTER the trust rules so a specific trust id
+  // always wins over the generic one (C-ATTN-03).
+  return withRetainedHoldFallback(
+    withTrustBlockingRules(tracked, "codex", autotrust),
+    () => updatePrompt.holdWithoutAppearance,
+  );
 }

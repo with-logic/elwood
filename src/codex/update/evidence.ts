@@ -45,11 +45,27 @@ export type CodexUpdateAppearanceEvidence = {
    * field fences same-text replacements only when the banner is the versioned form.
    */
   readonly banner: string;
+  /**
+   * True once this appearance rendered more option rows than a real update screen ever
+   * has, so its evidence is INCOMPLETE — some bindings were dropped rather than retained.
+   * A guard cannot rely on incomplete bindings (an option it forgot cannot be detected as
+   * relabeled), so an overflowed appearance fails closed: it authorizes nothing.
+   */
+  readonly overflowed: boolean;
 };
+
+/**
+ * Bounds on one appearance's retained evidence. A real Codex update screen renders three
+ * options (`Update now` / `Skip` / `Skip until next version`); these caps sit far above
+ * that while keeping a long-lived session's memory flat, since the tracker holds one
+ * appearance per session and every first-party frame folds into it.
+ */
+const maxRetainedOptions = 32;
+const maxRetainedLabelLength = 200;
 
 /** A fresh appearance, before any frame has been folded into it. */
 export function emptyUpdateEvidence(): CodexUpdateAppearanceEvidence {
-  return { options: new Map(), firstParty: false, banner: "" };
+  return { options: new Map(), firstParty: false, banner: "", overflowed: false };
 }
 
 /**
@@ -78,13 +94,25 @@ export function withUpdateFrameEvidence(
   firstParty: boolean,
 ): CodexUpdateAppearanceEvidence {
   const options = new Map(evidence.options);
+  let overflowed = evidence.overflowed;
   for (const option of numberedOptions(frameText)) {
-    if (!options.has(option.number)) options.set(option.number, option.label);
+    if (options.has(option.number)) continue;
+    // BOUNDED, and the overflow is remembered rather than silently ignored. One appearance
+    // can span many frames of a long-lived session, so retaining every number it ever
+    // rendered would grow without limit. Dropping bindings quietly would be worse than the
+    // leak: a forgotten number cannot be detected as relabeled later, which is exactly the
+    // authorization the guard exists to withhold. So an overflowed appearance stops
+    // vouching for anything (see `evidenceAllowsContinuation`).
+    if (options.size >= maxRetainedOptions || option.label.length > maxRetainedLabelLength) {
+      overflowed = true;
+      continue;
+    }
+    options.set(option.number, option.label);
   }
   // The FIRST banner an appearance shows identifies it, for the same reason as the option
   // labels: a later frame must not be able to rewrite the identity it is checked against.
   const banner = evidence.banner || (updateScreenBanner.exec(frameText)?.[0]?.trim() ?? "");
-  return { options, firstParty: evidence.firstParty || firstParty, banner };
+  return { options, firstParty: evidence.firstParty || firstParty, banner, overflowed };
 }
 
 /**
@@ -103,6 +131,9 @@ export function appearanceBindingsHold(
   evidence: CodexUpdateAppearanceEvidence,
   frameText: string,
 ): boolean {
+  // Incomplete evidence cannot establish agreement: a binding this appearance dropped
+  // cannot be checked for relabeling, so an overflowed appearance agrees with nothing.
+  if (evidence.overflowed) return false;
   return numberedOptions(frameText).every((option) => {
     const known = evidence.options.get(option.number);
     return known === undefined || known === option.label;
