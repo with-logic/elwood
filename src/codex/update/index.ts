@@ -1,80 +1,37 @@
 /**
- * Recognizes first-party Codex in-TUI update screens and their safe options.
- * Implements PRD §5.5 and C-CODEX-12 for both prompt automation and input blocking.
+ * The Codex update-skip WRITE path: the guarded automation writer, the settled-frame
+ * option revalidation, and the bounded retry loop. Implements PRD §5.5 and C-CODEX-12.
+ *
+ * Frame recognition lives in `recognition.ts` and the cross-frame appearance lifecycle in
+ * `tracker.ts`; both are re-exported here so this file remains the single import site
+ * for the update prompt.
  */
 
-import type { InputTerminal } from "../core/input/abort.ts";
+import type { InputTerminal } from "../../core/input/abort.ts";
 import {
   type AutomationWriteResult,
   guardedNonTrustAutomationWrite,
   type NonTrustAutomationWriter,
-} from "../core/startup/barrier.ts";
-import type { StartupWriteCompletion } from "../core/startup/write.ts";
-import { nonOptionText, numberedOptions } from "../core/terminal-options.ts";
-import type { TrustWriteResult } from "../core/trust/responder.ts";
-import { codexUpdateChoiceIdentity, settledFrameKeepsChoice } from "./update-identity.ts";
+} from "../../core/startup/barrier.ts";
+import type { StartupWriteCompletion } from "../../core/startup/write.ts";
+import { numberedOptions } from "../../core/terminal-options.ts";
+import type { TrustWriteResult } from "../../core/trust/responder.ts";
+import { codexUpdateChoiceIdentity, settledFrameKeepsChoice } from "./identity.ts";
+import {
+  codexUpdateOptionPattern,
+  codexUpdatePromptVisible,
+  hasContinuationShape,
+  safeUpdateOption,
+} from "./recognition.ts";
 
-export const codexUpdateOptionPattern = /continue\s*without\s*updat|skip|not\s*now|later/i;
-/** The first-party banner; its version pair distinguishes one appearance from the next. */
-export const updateScreenBanner =
-  /^[^\S\r\n]*(?:Update available!\s+\d+\.\d+\.\d+\s*(?:->|→)\s*\d+\.\d+\.\d+|A new version of Codex is available[.!]?)[^\S\r\n]*$/im;
-
-/**
- * A captured first-party banner alone counts so a partial layout fails safe
- * before its options paint. Generic "update available" prose does not count;
- * an option-only frame must carry both the update and safe choices.
- */
-export function codexUpdatePromptVisible(frameText: string): boolean {
-  if (updateScreenBanner.test(frameText)) return true;
-  const options = numberedOptions(frameText);
-  return (
-    options.some((option) => /update\s+now/i.test(option.label)) &&
-    options.some((option) => codexUpdateOptionPattern.test(option.label))
-  );
-}
-
-/** Keeps a split prompt blocking until a frame with no update evidence clears it. */
-export class CodexUpdatePromptTracker {
-  private active = false;
-  private generation = 0;
-
-  /** Identifies the current appearance; it changes whenever the update screen clears or appears. */
-  get currentGeneration(): number {
-    return this.generation;
-  }
-
-  /** True once a LATER appearance replaced `generation`; its own clear is only `generation + 1`. */
-  hasLaterAppearance(generation: number): boolean {
-    return this.generation > generation + 1;
-  }
-
-  observe(frameText: string): boolean {
-    if (codexUpdatePromptVisible(frameText)) {
-      if (!this.active) this.generation += 1;
-      this.active = true;
-    } else if (!(this.active && isSafeUpdateContinuation(frameText))) {
-      if (this.active) this.generation += 1;
-      this.active = false;
-    }
-    return this.active;
-  }
-
-  /** Captures the current prompt generation so an async retry cannot enter a later dialog. */
-  currentFramePredicate(): (frameText: string) => boolean {
-    const generation = this.generation;
-    return (frameText) =>
-      this.active &&
-      this.generation === generation &&
-      (codexUpdatePromptVisible(frameText) || isSafeUpdateContinuation(frameText));
-  }
-}
-
-function isSafeUpdateContinuation(frameText: string): boolean {
-  if (nonOptionText(frameText).trim() !== "") return false;
-  return numberedOptions(frameText).some((option) =>
-    /continue\s*without\s*updat|skip/i.test(option.label),
-  );
-}
+/** Recognition and lifecycle, re-exported so this stays the update entry point. */
+export {
+  codexUpdateOptionPattern,
+  codexUpdatePromptVisible,
+  safeUpdateOption,
+  updateScreenBanner,
+} from "./recognition.ts";
+export { CodexUpdatePromptTracker } from "./tracker.ts";
 
 const retryIntervalMs = 250;
 const retryTimeoutMs = 5_000;
@@ -91,10 +48,14 @@ export function guardedCodexAutomationWrite(
 }
 
 /**
- * Revalidates an update-skip key against the SETTLED frame. The option number was read
- * from a pre-settle frame, so a replacement or renumbered update screen can move the safe
- * choice; sending the old number would select whatever now sits at that position. Keys
- * that are not update-screen option numbers (other automation) are left alone.
+ * Revalidates an update-skip key's SHAPE against the settled frame. The option number was
+ * read from a pre-settle frame, so a replacement or renumbered update screen can move the
+ * safe choice; sending the old number would select whatever now sits at that position.
+ * Keys that are not update-screen option numbers (other automation) are left alone.
+ *
+ * This is HALF the guard, not the whole one: it proves the settled frame still offers this
+ * number as a safe option on an update-shaped screen, never that the screen is the one the
+ * attempt started on. Always pair it with the caller's captured tracker predicate.
  */
 export function codexOptionStillSafe(frameText: string, input: string): boolean {
   if (!/^\d+$/.test(input)) return true;
@@ -104,11 +65,14 @@ export function codexOptionStillSafe(frameText: string, input: string): boolean 
   // on the settled frame, does this number still name a safe option? If the frame shows
   // no numbered options at all it has moved on entirely, and the key is stale.
   if (options.length === 0) return false;
-  // The number must name a safe option AND the frame must still be update-shaped: either
-  // the first-party screen, or the safe-choice-only repaint Codex draws mid-flow. An
-  // unrelated human prompt that merely happens to carry a "Skip"/"Later" option is NOT
-  // this dialog, and must stay for the human (#42 round 3, C-CODEX-12).
-  if (!(codexUpdatePromptVisible(frameText) || isSafeUpdateContinuation(frameText))) return false;
+  // The number must name a safe option AND the frame must still be update-SHAPED: either
+  // the first-party screen, or the safe-choice-only repaint Codex draws mid-flow.
+  //
+  // Shape is ALL this checks. It does not establish that the frame belongs to the
+  // appearance the key was chosen for — an unrelated prompt offering a "Skip" has the
+  // same shape. Appearance identity comes from the tracker predicate the caller passes
+  // as `perWrite`, and BOTH must hold before a key goes out (C-CODEX-22).
+  if (!(codexUpdatePromptVisible(frameText) || hasContinuationShape(frameText))) return false;
   return options.some(
     (option) => option.number === input && codexUpdateOptionPattern.test(option.label),
   );
@@ -148,9 +112,7 @@ export async function writeCodexUpdateSkip(
       const cleared = wrote && !invalidated(frame);
       return cleared ? "answered" : "cancelled";
     }
-    const safeOption = numberedOptions(frame).find((candidate) =>
-      codexUpdateOptionPattern.test(candidate.label),
-    );
+    const safeOption = safeUpdateOption(frame);
     if (safeOption === undefined) return "cancelled";
     // A guarded writer settles rendering before the key goes out, so it may report the
     // key WITHHELD (a trust gate, or this option number no longer the safe one on the

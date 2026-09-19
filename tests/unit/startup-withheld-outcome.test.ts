@@ -12,7 +12,7 @@ import {
   codexOptionStillSafe,
   guardedCodexAutomationWrite,
   writeCodexUpdateSkip,
-} from "../../src/codex/update-prompt.ts";
+} from "../../src/codex/update/index.ts";
 import { guardedNonTrustAutomationWrite } from "../../src/core/startup/barrier.ts";
 
 const browserPrompt =

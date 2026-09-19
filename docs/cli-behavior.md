@@ -467,6 +467,81 @@ Two version-coupled wrinkles this cost us:
   same blocking prompt. A definite non-update frame clears it. Matching the
   accumulated buffer alone lets benign later prose re-fire against a **stale
   buffered option** — a real bug we hit while building this. C-CODEX-12.
+- The split is not symmetric, and that asymmetry is what makes the continuation
+  safely identifiable. Measured on the real split, the banner frame carries
+  **only** `1. Update now` — `bannerFrameOptions: ["0:1", "0:1", "1:Update now"],
+  hasOption2: false` — and the safe option arrives on a LATER frame from the
+  accumulated buffer, renumbered relative to nothing: the continuation renders
+  `2. Skip` / `3. Skip until next version`, i.e. the numbers **continue past** the
+  banner frame's `1` rather than restarting at it. Codex drops rows that scrolled
+  off and reveals rows that had not painted, but across one appearance it never
+  **reassigns** a number to a different label. That is the only cross-frame
+  invariant available here, and it is the one the guard now uses: the appearance
+  remembers `1 -> "Update now"`, so `2. Skip` is a continuation while
+  `1. Skip backup` is proof of a different dialog. No single-frame predicate can
+  make this call — an option-only frame whose every option is skip-shaped IS the
+  update screen's own signature — which is why three separate attempts to tighten
+  the predicate each fixed a synthetic case and broke a real one (a blanket
+  trust-gate veto broke `TrustPromptResponder`; requiring a full update screen
+  post-settlement broke the banner-less repaint; requiring the captured option set
+  to be preserved broke `3. Skip until next version`, whose numbers the banner
+  frame never showed). C-CODEX-22, issue #50.
+  Measured through a real PTY and the real emulator
+  (`tests/e2e/update-skip-evidence.e2e.ts`), the unguarded retry loop wrote the
+  digit **twelve times** into the unrelated prompt over a four-second window — the
+  key is not sent once and dropped, it is hammered for the whole retry budget, so
+  an unrelated prompt would have been driven through several of its own options.
+- Option ORDER is load-bearing, and we relied on it without saying so. Every real
+  update screen captured between 0.132 and 0.155 — banner-split or whole — lists
+  `1. Update now` FIRST, with the safe choices after it. `Update now` does not
+  match the safe-option pattern, so "first label matching the safe pattern"
+  happened to select the real skip on every real layout. A dialog that puts a
+  skip-shaped row BEFORE the update action (`1. Skip backup` / `2. Update now`)
+  breaks that unstated assumption, and the selection pressed `1` — again twelve
+  times over the retry budget. The selection now takes a safe option only from
+  the rows AFTER the update action when the frame shows one, and never selects
+  the update action itself; a frame with no update action (the banner-less
+  continuation) is unconstrained, which is what keeps `2. Skip` /
+  `3. Skip until next version` working. Found in review round 1 of PR #59.
+- One tracker boolean cannot serve both automation and input blocking, because
+  they fail safe in OPPOSITE directions. "This frame contradicts the captured
+  appearance" must mean *do not write the digit* AND *keep holding queued input*
+  at the same time — the prompt is one Elwood may not answer, not one that has
+  gone away. Wiring the automation flag into `blocking_prompt_visible` (which is
+  what `codexScreenFactTableForTrustPolicy` did) meant that hardening the
+  automation guard silently RELEASED the queued persona paste and its Enter into
+  the very dialog the guard had just refused to touch — the same outcome, reached
+  by the other path. Measured: the persona paste
+  `\e[200~…\e[201~` landed on the replacement prompt. The tracker now exposes
+  `dialogVisible` for blocking and `observe` for automation; the hold persists
+  across any frame still showing options and is dropped only by a frame with none.
+  Found in review round 2 of PR #59.
+- Releasing that hold must key on POSITION, not row shape. "No numbered rows"
+  releases queued input into a **cursor-style** human prompt (`❯ Yes, go ahead`),
+  pressing its highlighted action; "any numbered row holds" pins the hold open
+  forever on ordinary agent prose containing `1. First step`. Both were measured.
+  What separates them: both CLIs REPLACE the composer with a live dialog, so a
+  rendered composer as the frame's last meaningful row proves nothing below it
+  awaits an answer — options above it are transcript. Found in round 3 of #59.
+- **The unclosable half, and why.** This guard detects CONTRADICTION, not
+  PROVENANCE. It proves a frame is a different dialog when that frame reassigns a
+  number the appearance already showed. It cannot prove a DISJOINT-numbered frame
+  belongs to the appearance: after a banner frame carrying only `1. Update now`,
+  an unrelated `2. Skip backup` / `3. Skip` collides with nothing. No predicate
+  can fix this, and the reason is the frame-splitting recorded above — a genuine
+  continuation frame has had its banner, version pair and `Update now` row split
+  away, leaving `2. Skip` / `3. Skip until next version` and nothing else, which
+  is byte-identical to an unrelated prompt printing those rows. The only thing
+  marking it as the update screen is that it FOLLOWED one. Four attempts (three
+  before #50 was filed, three review rounds on #59) failed against this same wall;
+  it is now understood rather than suspected. Closing it needs update state from
+  OUTSIDE the frame — a Codex hook or transcript signal that does not exist today
+  — or an explicit fail-closed decision. Fail-closed is not free: measured across
+  the four real layouts, the writing frame carries first-party markings in only
+  two, so the skip would stop firing on the split-banner and banner-less-repaint
+  layouts and re-open the restart-loop trap above for unattended sessions. The
+  numbered dialog is NOT legacy — codex-cli 0.155.1 still ships `Update now (runs`,
+  `Skip until next version`, and a live `tui/src/update_prompt.rs`. Tracked on #50.
 - Option labels drift by version. Older codex (0.132/0.133) rendered a numbered
   dialog ("1. Update now / 2. Skip / 3. Skip until next version"). In the installed
   0.149.1 binary, the upgrade notice strings extracted from the native binary read
@@ -474,14 +549,14 @@ Two version-coupled wrinkles this cost us:
   `https://github.com/openai/codex for installation options.`) rather than a
   numbered dialog — so the interactive dialog is not guaranteed on every version.
   The skip is written ONLY when a numbered skip option is actually present
-  (`findNumberedOption` → null ⇒ no write), so a passive banner is a harmless no-op.
+  (`safeUpdateOption` → undefined ⇒ no write), so a passive banner is a harmless no-op.
   Every retry revalidates that the frame still belongs to the captured first-party
   update-prompt generation and uses the safe option's current number. This preserves
   the known safe-option-only continuation layout without letting a cleared/reappeared
   prompt or replacement dialog inherit a stale digit. A prompt that remains blocking
   but cannot be safely answered becomes `blocked_prompt` after the bounded
   responder/grace window, including runs without a whole-invocation timeout.
-  The match set (`src/codex/update-prompt.ts`) is unit-tested against captured
+  The match set (`src/codex/update/recognition.ts`) is unit-tested against captured
   layouts, NOT against a live update event (which requires an actually-stale binary
   to trigger). If Codex changes the dialog wording, this is the first thing to
   re-capture.

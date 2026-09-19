@@ -6,7 +6,7 @@
 
 import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
-import { CodexUpdatePromptTracker, codexUpdatePromptVisible } from "./update-prompt.ts";
+import { CodexUpdatePromptTracker, codexUpdatePromptVisible } from "./update/index.ts";
 
 const verifiedAgainst = "codex-cli 0.142.5";
 
@@ -21,9 +21,16 @@ const verifiedAgainst = "codex-cli 0.142.5";
  * from reading as an idle composer. The OSC window title carries a
  * braille-spinner glyph (U+2800–U+28FF) while a turn runs and the plain
  * directory name when idle. The update-prompt rule takes its matcher as a
- * parameter: production injects a per-session `CodexUpdatePromptTracker` (a split
- * prompt stays blocking until a frame with no update evidence clears it), so the
+ * parameter: production injects a per-session `CodexUpdatePromptTracker`, so the
  * rules that ship are built here, once, rather than rewritten after the fact.
+ *
+ * That tracker drives TWO lifecycles, which end at different times (C-CODEX-22).
+ * Automation eligibility ends as soon as a frame contradicts the appearance, but
+ * the INPUT HOLD outlives it: a contradictory replacement is a prompt Elwood may
+ * not answer yet a human still owns, so queued input keeps being held until a
+ * positively identified composer frame clears it. Do not collapse the two — this
+ * rule reports the update prompt, and `withRetainedHoldFallback` reports a hold
+ * that outlived its appearance.
  */
 function codexScreenFactRules(updatePromptVisible: (frame: string) => boolean): ScreenFactRule[] {
   return [
@@ -49,6 +56,36 @@ function codexScreenFactRules(updatePromptVisible: (frame: string) => boolean): 
   ];
 }
 
+/**
+ * A hold RETAINED after its appearance ended is still blocking, but it is no longer an
+ * update prompt — reporting it under `codex-update-prompt` would give consumers update
+ * grace and a misleading `blocked_prompt` label for a dialog a human owns (#59 round 3).
+ *
+ * It is appended LAST, after the trust rules, and is a genuine FALLBACK: it only reports
+ * when no more specific rule already identified the frame. A retained hold sitting over a
+ * recognized trust gate must surface that gate's own stable id, which `C-ATTN-03`
+ * consumers depend on, rather than this generic one.
+ */
+function withRetainedHoldFallback(
+  table: ScreenFactTable,
+  retainedHold: () => boolean,
+): ScreenFactTable {
+  return {
+    ...table,
+    rules: [
+      ...table.rules,
+      // `fallback` is the table evaluator's own "only if nothing else set this fact"
+      // marker, so ordering LAST plus this flag is all the last-resort semantics needs.
+      {
+        id: "codex-unidentified-dialog",
+        fact: "blocking_prompt_visible",
+        fallback: true,
+        match: () => retainedHold(),
+      },
+    ],
+  };
+}
+
 /** The stateless table (single-frame update matcher) for frame-level fact tests. */
 export const codexScreenFactTable: ScreenFactTable = {
   agent: "codex",
@@ -67,7 +104,23 @@ export function codexScreenFactTableForTrustPolicy(autotrust: boolean): ScreenFa
   const tracked: ScreenFactTable = {
     agent: "codex",
     verifiedAgainst,
-    rules: codexScreenFactRules(updatePrompt.observe.bind(updatePrompt)),
+    // Two rules from one tracker, so blocking and classification stay honest.
+    // `observeAndHoldInput` decides whether queued caller/persona input keeps being HELD, and
+    // fails safe in the OPPOSITE direction to automation eligibility: a frame Elwood must
+    // not write into is still a frame a human owns, so it keeps blocking rather than
+    // releasing a paste and Enter into it (C-API-56, C-CODEX-22; #59 round 2). It is
+    // called first so the tracker observes each frame exactly once per reading; the
+    // update-prompt rule then reports the cached liveness of the CURRENT appearance, and
+    // anything still held after that appearance ended reports as an unidentified dialog
+    // rather than borrowing the update label (#59 round 3).
+    rules: codexScreenFactRules(
+      (frame) => updatePrompt.observeAndHoldInput(frame) && updatePrompt.appearanceLive,
+    ),
   };
-  return withTrustBlockingRules(tracked, "codex", autotrust);
+  // The retained-hold fallback is appended AFTER the trust rules so a specific trust id
+  // always wins over the generic one (C-ATTN-03).
+  return withRetainedHoldFallback(
+    withTrustBlockingRules(tracked, "codex", autotrust),
+    () => updatePrompt.holdWithoutAppearance,
+  );
 }
