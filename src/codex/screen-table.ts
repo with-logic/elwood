@@ -25,7 +25,10 @@ const verifiedAgainst = "codex-cli 0.142.5";
  * prompt stays blocking until a frame with no update evidence clears it), so the
  * rules that ship are built here, once, rather than rewritten after the fact.
  */
-function codexScreenFactRules(updatePromptVisible: (frame: string) => boolean): ScreenFactRule[] {
+function codexScreenFactRules(
+  updatePromptVisible: (frame: string) => boolean,
+  retainedHold?: (frame: string) => boolean,
+): ScreenFactRule[] {
   return [
     { id: "codex-composer-marker", fact: "composer_visible", all: [/^\s*›/m] },
     { id: "codex-working-spinner", fact: "working_visible", all: [/esc to interrupt/i] },
@@ -46,6 +49,19 @@ function codexScreenFactRules(updatePromptVisible: (frame: string) => boolean): 
       all: [/Would you like to|Allow command\?/i, /Press enter to confirm or esc to cancel/i],
     },
     { id: "codex-update-prompt", fact: "blocking_prompt_visible", match: updatePromptVisible },
+    // A hold RETAINED after its appearance ended is still blocking, but it is no longer an
+    // update prompt — reporting it under `codex-update-prompt` would give consumers update
+    // grace and a misleading `blocked_prompt` label for a dialog a human owns. Its own rule
+    // id keeps the diagnostic honest while the input hold stays fail-closed (#59 round 3).
+    ...(retainedHold === undefined
+      ? []
+      : [
+          {
+            id: "codex-unidentified-dialog",
+            fact: "blocking_prompt_visible",
+            match: retainedHold,
+          } satisfies ScreenFactRule,
+        ]),
   ];
 }
 
@@ -67,12 +83,19 @@ export function codexScreenFactTableForTrustPolicy(autotrust: boolean): ScreenFa
   const tracked: ScreenFactTable = {
     agent: "codex",
     verifiedAgainst,
-    // `dialogVisible`, NOT `observe`: this fact decides whether queued caller/persona
-    // input keeps being HELD, and that fails safe in the opposite direction to automation
-    // eligibility. A frame Elwood must not write into (a replacement dialog contradicting
-    // the captured appearance) is still a frame a human owns, so it must keep blocking
-    // rather than release a paste and Enter into it (C-API-56, C-CODEX-22; round 2 of #59).
-    rules: codexScreenFactRules(updatePrompt.dialogVisible.bind(updatePrompt)),
+    // Two rules from one tracker, so blocking and classification stay honest.
+    // `dialogVisible` decides whether queued caller/persona input keeps being HELD, and
+    // fails safe in the OPPOSITE direction to automation eligibility: a frame Elwood must
+    // not write into is still a frame a human owns, so it keeps blocking rather than
+    // releasing a paste and Enter into it (C-API-56, C-CODEX-22; #59 round 2). It is
+    // called first so the tracker observes each frame exactly once per reading; the
+    // update-prompt rule then reports the cached liveness of the CURRENT appearance, and
+    // anything still held after that appearance ended reports as an unidentified dialog
+    // rather than borrowing the update label (#59 round 3).
+    rules: codexScreenFactRules(
+      (frame) => updatePrompt.dialogVisible(frame) && updatePrompt.appearanceLive,
+      () => updatePrompt.holdWithoutAppearance,
+    ),
   };
   return withTrustBlockingRules(tracked, "codex", autotrust);
 }

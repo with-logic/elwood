@@ -516,6 +516,32 @@ Two version-coupled wrinkles this cost us:
   `dialogVisible` for blocking and `observe` for automation; the hold persists
   across any frame still showing options and is dropped only by a frame with none.
   Found in review round 2 of PR #59.
+- Releasing that hold must key on POSITION, not row shape. "No numbered rows"
+  releases queued input into a **cursor-style** human prompt (`❯ Yes, go ahead`),
+  pressing its highlighted action; "any numbered row holds" pins the hold open
+  forever on ordinary agent prose containing `1. First step`. Both were measured.
+  What separates them: both CLIs REPLACE the composer with a live dialog, so a
+  rendered composer as the frame's last meaningful row proves nothing below it
+  awaits an answer — options above it are transcript. Found in round 3 of #59.
+- **The unclosable half, and why.** This guard detects CONTRADICTION, not
+  PROVENANCE. It proves a frame is a different dialog when that frame reassigns a
+  number the appearance already showed. It cannot prove a DISJOINT-numbered frame
+  belongs to the appearance: after a banner frame carrying only `1. Update now`,
+  an unrelated `2. Skip backup` / `3. Skip` collides with nothing. No predicate
+  can fix this, and the reason is the frame-splitting recorded above — a genuine
+  continuation frame has had its banner, version pair and `Update now` row split
+  away, leaving `2. Skip` / `3. Skip until next version` and nothing else, which
+  is byte-identical to an unrelated prompt printing those rows. The only thing
+  marking it as the update screen is that it FOLLOWED one. Four attempts (three
+  before #50 was filed, three review rounds on #59) failed against this same wall;
+  it is now understood rather than suspected. Closing it needs update state from
+  OUTSIDE the frame — a Codex hook or transcript signal that does not exist today
+  — or an explicit fail-closed decision. Fail-closed is not free: measured across
+  the four real layouts, the writing frame carries first-party markings in only
+  two, so the skip would stop firing on the split-banner and banner-less-repaint
+  layouts and re-open the restart-loop trap above for unattended sessions. The
+  numbered dialog is NOT legacy — codex-cli 0.155.1 still ships `Update now (runs`,
+  `Skip until next version`, and a live `tui/src/update_prompt.rs`. Tracked on #50.
 - Option labels drift by version. Older codex (0.132/0.133) rendered a numbered
   dialog ("1. Update now / 2. Skip / 3. Skip until next version"). In the installed
   0.149.1 binary, the upgrade notice strings extracted from the native binary read

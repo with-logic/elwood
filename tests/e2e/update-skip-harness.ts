@@ -39,7 +39,12 @@ async function waitForRendered(
 /**
  * Paints the banner frame, then a replacement, and reports every automated key the real
  * responder tried to send. The replacement always reassigns `1` — the contradiction the
- * guard detects — so no digit may go out whatever the replacement's overall shape is.
+ * guard detects — so the digit bound by the CAPTURED appearance must never go out.
+ *
+ * Note this reports ALL writes, not only offending ones: a replacement that is itself a
+ * valid first-party update screen legitimately opens its own appearance and may answer
+ * with its OWN safe option. Each test therefore asserts on the specific stale digit rather
+ * than on an empty write list.
  */
 export async function automatedWritesAfterReplacement(
   replacement: string,

@@ -7,7 +7,6 @@
  * LIFECYCLE built on top of it, and `index.ts` owns the write path.
  */
 
-import { numberedOptions } from "../../core/terminal-options.ts";
 import {
   appearanceBindingsHold,
   bannerContradictsAppearance,
@@ -18,35 +17,55 @@ import {
 } from "./evidence.ts";
 import { codexUpdatePromptVisible, hasContinuationShape } from "./recognition.ts";
 
+/** Codex's idle composer marker: a bare `›` row, the frame's own input line. */
+const composerRow = /^\s*›\s*$/;
+/** Any row that could be part of a live dialog, by either option style. */
+const optionRow = /(?:^|[\s›>❯])\d+[.)]\s*\S|^\s*[❯›]\s+(?!\d+[.)]\s)\S/;
+
 /**
- * Whether a frame still presents an answerable dialog — any numbered option block. Used
- * only to decide whether an EXISTING hold may be released, never to start one: a frame
- * that has moved on to the composer or ordinary output carries no options and positively
- * clears the hold.
+ * Whether a frame POSITIVELY shows that no dialog is up any more, which is the only thing
+ * that releases a retained input hold.
+ *
+ * Both naive tests are wrong, in opposite directions (round 3 of #59). "No numbered rows"
+ * lets a CURSOR-style human prompt (`❯ Yes, go ahead` / `  No, cancel`) release queued
+ * input straight into it, pressing its highlighted action. "Any numbered row blocks" pins
+ * the hold open forever on ordinary agent prose that happens to contain `1. First step`.
+ *
+ * What separates them is POSITION, not shape. Both CLIs replace the composer with a live
+ * dialog, so a rendered composer row is proof that nothing below it is awaiting an answer:
+ * options ABOVE a live composer are transcript the agent printed, while a dialog owning
+ * the screen has no composer under it. So the hold clears exactly when the frame's last
+ * meaningful row is the composer — which admits the prose case and still holds for a
+ * cursor-only dialog, a numbered dialog, and a half-painted one.
  */
-function frameShowsDialog(frameText: string): boolean {
-  return numberedOptions(frameText).length > 0;
+function frameClearsDialog(frameText: string): boolean {
+  const rows = frameText.split("\n").filter((row) => row.trim() !== "");
+  const last = rows.at(-1);
+  if (last === undefined || !composerRow.test(last)) return false;
+  // Nothing selectable may sit BELOW the composer; rows above it are transcript.
+  return !optionRow.test(last);
 }
 
 /**
- * Keeps a split prompt blocking until a frame with no update evidence clears it, and
- * carries each appearance's accumulated first-party evidence so a banner-less
- * continuation frame is checked against what THIS appearance actually showed rather
- * than against its own shape alone (C-CODEX-22; see `evidence.ts`).
+ * Tracks one appearance of the update screen across the frames it is split over, carrying
+ * the first-party evidence it has accumulated so a banner-less continuation frame is
+ * checked against what THIS appearance actually showed rather than its own shape alone
+ * (C-CODEX-22; see `evidence.ts`).
  *
- * The tracker answers TWO different questions, and they fail safe in OPPOSITE
- * directions — which is why they cannot share one boolean (round 2 of #59):
+ * The tracker answers TWO different questions with two different lifetimes, and they fail
+ * safe in OPPOSITE directions — which is why they cannot share one boolean (#59 round 2):
  *
- * - `observe` / `automationEligible`: may Elwood WRITE the skip digit? A contradicted
- *   appearance must answer NO, because the digit was chosen for a different dialog.
- * - `dialogVisible`: must queued caller/persona input keep being HELD? The very same
- *   contradicted frame must answer YES, because a prompt is still on screen — it is
- *   simply one Elwood may not answer. Releasing there would paste and press Enter into
- *   an unrelated human prompt, which is the same "advanced without consent" outcome the
- *   digit would have caused, reached by another path.
+ * - `observe`: may Elwood WRITE the skip digit? Scoped to the CURRENT appearance. A
+ *   contradicted frame answers NO immediately, because the digit was chosen for a
+ *   different dialog, and the appearance ENDS there.
+ * - `dialogVisible`: must queued caller/persona input keep being HELD? This OUTLIVES the
+ *   appearance. The same contradicted frame answers YES, because a prompt is still on
+ *   screen — one Elwood may not answer, but a human still owns. Releasing there would
+ *   paste and press Enter into it: the same "advanced without consent" outcome the digit
+ *   would have caused, reached by another path.
  *
- * So the hold is only ever released by something POSITIVE: a frame with no dialog on it
- * at all. It is never released as a side effect of ending an appearance.
+ * So ending an appearance never releases the hold. Only a POSITIVELY identified clear
+ * frame does — see `frameClearsDialog`, which keys on position rather than row shape.
  */
 export class CodexUpdatePromptTracker {
   private active = false;
@@ -63,6 +82,20 @@ export class CodexUpdatePromptTracker {
   /** True once a LATER appearance replaced `generation`; its own clear is only `generation + 1`. */
   hasLaterAppearance(generation: number): boolean {
     return this.generation > generation + 1;
+  }
+
+  /** Whether the update screen itself is currently live, as of the last observed frame. */
+  get appearanceLive(): boolean {
+    return this.active;
+  }
+
+  /**
+   * Whether input is held for a dialog that is NOT the update screen — a hold retained
+   * after its appearance ended. Blocking is still correct; calling it an update prompt
+   * would not be, so this is reported under its own screen-fact rule.
+   */
+  get holdWithoutAppearance(): boolean {
+    return this.holdingInput && !this.active;
   }
 
   /**
@@ -110,12 +143,12 @@ export class CodexUpdatePromptTracker {
       this.evidence = emptyUpdateEvidence();
     }
     // The hold is INDEPENDENT of automation eligibility. An active appearance always
-    // holds. Once held, the hold PERSISTS across any frame that still presents a dialog —
-    // including the contradicted replacement, a prompt we may not answer but a human
-    // still owns — and is released only by a frame that positively shows none. Elwood
-    // never STARTS a hold for a dialog it did not recognize; it only refuses to drop one
-    // it is already carrying while a prompt is still up (round 2 of #59).
-    this.holdingInput = this.active || (this.holdingInput && frameShowsDialog(frameText));
+    // holds. Once held, the hold PERSISTS until a frame POSITIVELY clears it (a bare
+    // composer offering nothing selectable) — so the contradicted replacement, a prompt
+    // we may not answer but a human still owns, keeps queued input held. Elwood never
+    // STARTS a hold for a dialog it did not recognize; it only refuses to drop one it is
+    // already carrying while anything answerable is still up (rounds 2 and 3 of #59).
+    this.holdingInput = this.active || (this.holdingInput && !frameClearsDialog(frameText));
     return this.active;
   }
 

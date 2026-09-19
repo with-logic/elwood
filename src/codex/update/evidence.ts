@@ -37,10 +37,12 @@ export type CodexUpdateAppearanceEvidence = {
   /** True once a frame carried the first-party banner or the `Update now` option. */
   readonly firstParty: boolean;
   /**
-   * The banner line this appearance was first identified by, or `""` when it has only
-   * ever been seen through its options. It carries the version pair, which is what
-   * distinguishes one appearance of the update screen from the NEXT — two appearances can
-   * otherwise render identical option sets and would wrongly look like one.
+   * The banner line this appearance was first identified by, or `""` when it has only ever
+   * been seen through its options. The `Update available! X -> Y` form carries a version
+   * pair, so a CHANGED version proves a new appearance where identical option sets would
+   * otherwise look like one. The generic `A new version of Codex is available` form carries
+   * no version and is identical across appearances, so it can never prove a change — this
+   * field fences same-text replacements only when the banner is the versioned form.
    */
   readonly banner: string;
 };

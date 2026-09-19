@@ -10,7 +10,7 @@ import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/respo
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { type CodexBannerWarning, codexWarningsFromText } from "./startup-warnings.ts";
 import { CodexUpdatePromptTracker, safeUpdateOption } from "./update/index.ts";
-import { codexUpdateSkipEligible, startCodexUpdateSkip } from "./update/skip-attempt.ts";
+import { codexUpdateSkipAllowedByTrust, startCodexUpdateSkip } from "./update/skip-attempt.ts";
 
 export { codexWarningsFromText } from "./startup-warnings.ts";
 
@@ -109,7 +109,7 @@ export class CodexStartupPromptResponder {
     if (
       onUpdateScreen &&
       this.skipGeneration !== generation &&
-      codexUpdateSkipEligible(screenText)
+      codexUpdateSkipAllowedByTrust(screenText)
     ) {
       // The safe option is located with the same layout rule the retry loop uses, so the
       // digit this attempt reports is the one it would actually press: never the update

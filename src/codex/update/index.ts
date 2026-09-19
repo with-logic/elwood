@@ -48,10 +48,14 @@ export function guardedCodexAutomationWrite(
 }
 
 /**
- * Revalidates an update-skip key against the SETTLED frame. The option number was read
- * from a pre-settle frame, so a replacement or renumbered update screen can move the safe
- * choice; sending the old number would select whatever now sits at that position. Keys
- * that are not update-screen option numbers (other automation) are left alone.
+ * Revalidates an update-skip key's SHAPE against the settled frame. The option number was
+ * read from a pre-settle frame, so a replacement or renumbered update screen can move the
+ * safe choice; sending the old number would select whatever now sits at that position.
+ * Keys that are not update-screen option numbers (other automation) are left alone.
+ *
+ * This is HALF the guard, not the whole one: it proves the settled frame still offers this
+ * number as a safe option on an update-shaped screen, never that the screen is the one the
+ * attempt started on. Always pair it with the caller's captured tracker predicate.
  */
 export function codexOptionStillSafe(frameText: string, input: string): boolean {
   if (!/^\d+$/.test(input)) return true;
@@ -61,10 +65,13 @@ export function codexOptionStillSafe(frameText: string, input: string): boolean 
   // on the settled frame, does this number still name a safe option? If the frame shows
   // no numbered options at all it has moved on entirely, and the key is stale.
   if (options.length === 0) return false;
-  // The number must name a safe option AND the frame must still be update-shaped: either
-  // the first-party screen, or the safe-choice-only repaint Codex draws mid-flow. An
-  // unrelated human prompt that merely happens to carry a "Skip"/"Later" option is NOT
-  // this dialog, and must stay for the human (#42 round 3, C-CODEX-12).
+  // The number must name a safe option AND the frame must still be update-SHAPED: either
+  // the first-party screen, or the safe-choice-only repaint Codex draws mid-flow.
+  //
+  // Shape is ALL this checks. It does not establish that the frame belongs to the
+  // appearance the key was chosen for — an unrelated prompt offering a "Skip" has the
+  // same shape. Appearance identity comes from the tracker predicate the caller passes
+  // as `perWrite`, and BOTH must hold before a key goes out (C-CODEX-22).
   if (!(codexUpdatePromptVisible(frameText) || hasContinuationShape(frameText))) return false;
   return options.some(
     (option) => option.number === input && codexUpdateOptionPattern.test(option.label),

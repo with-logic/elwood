@@ -69,7 +69,12 @@ export function startCodexUpdateSkip(
   );
 }
 
-/** A trust gate is never ELIGIBLE for update-skip automation, whatever its rows say. */
-export function codexUpdateSkipEligible(screenText: string): boolean {
+/**
+ * Whether the TRUST policy permits update-skip automation on this frame — i.e. no trust
+ * gate is visible, whatever its rows say. This is only the trust precondition: it says
+ * nothing about whether an update appearance is active or a safe option exists, so it is
+ * never a sufficient write guard on its own (#59 round 3).
+ */
+export function codexUpdateSkipAllowedByTrust(screenText: string): boolean {
   return !trustGateVisible(screenText, "codex");
 }

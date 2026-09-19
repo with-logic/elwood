@@ -22,7 +22,13 @@ import {
 export const codexUpdateOptionPattern = /continue\s*without\s*updat|skip|not\s*now|later/i;
 /** The option that PERFORMS the update; never a safe choice, whatever else its label says. */
 export const codexUpdateActionPattern = /update\s+now/i;
-/** The first-party banner; its version pair distinguishes one appearance from the next. */
+/**
+ * The first-party banner. Two forms, and only ONE of them identifies an appearance: the
+ * `Update available! X -> Y` form carries a version pair, while `A new version of Codex is
+ * available` is generic and renders identically for every appearance. So a stored generic
+ * banner cannot distinguish one appearance from the next — see `bannerContradictsAppearance`,
+ * which is a contradiction test rather than a uniqueness claim.
+ */
 export const updateScreenBanner =
   /^[^\S\r\n]*(?:Update available!\s+\d+\.\d+\.\d+\s*(?:->|→)\s*\d+\.\d+\.\d+|A new version of Codex is available[.!]?)[^\S\r\n]*$/im;
 
@@ -73,14 +79,23 @@ export function safeUpdateOption(frameText: string): NumberedOption | undefined 
 }
 
 /**
+ * A continuation row is recognized on a NARROWER vocabulary than `codexUpdateOptionPattern`:
+ * only `Skip` and `Continue without updating`, not `Not now` or `Later`. Those two are
+ * accepted as safe options on a frame we have already identified as the update screen, but
+ * they are common enough in unrelated prompts that they are not allowed to CLASSIFY a
+ * banner-less frame as this dialog's continuation.
+ */
+const continuationOptionPattern = /continue\s*without\s*updat|skip/i;
+
+/**
  * Whether THIS FRAME has the shape of a banner-less continuation: options only, at least
- * one of them safe. Necessary for a continuation but NOT sufficient — issue #50 showed an
- * unrelated option-only prompt whose every option is skip-shaped has exactly this shape.
- * The appearance's own evidence is what separates the two.
+ * one of them matching the narrow continuation vocabulary above. Necessary for a
+ * continuation but NOT sufficient — issue #50 showed an unrelated option-only prompt whose
+ * every option is skip-shaped has exactly this shape. The appearance's own evidence is what
+ * separates the two, and even that cannot separate a disjoint-numbered unrelated prompt
+ * (the documented residual on C-CODEX-22).
  */
 export function hasContinuationShape(frameText: string): boolean {
   if (nonOptionText(frameText).trim() !== "") return false;
-  return numberedOptions(frameText).some((option) =>
-    /continue\s*without\s*updat|skip/i.test(option.label),
-  );
+  return numberedOptions(frameText).some((option) => continuationOptionPattern.test(option.label));
 }

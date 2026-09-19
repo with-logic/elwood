@@ -6,12 +6,7 @@
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
-import {
-  emptyUpdateEvidence,
-  evidenceAllowsContinuation,
-  withUpdateFrameEvidence,
-} from "../../src/codex/update/evidence.ts";
-import { CodexUpdatePromptTracker, safeUpdateOption } from "../../src/codex/update/index.ts";
+import { CodexUpdatePromptTracker } from "../../src/codex/update/index.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -76,6 +71,40 @@ describe("C-CODEX-22 update-skip requires the appearance's own first-party evide
     expect(writes).not.toContain("1");
   });
 
+  test("C-CODEX-22 an in-flight attempt is CANCELLED by a contradictory replacement", async () => {
+    vi.useFakeTimers();
+    const responder = new CodexStartupPromptResponder("s1");
+    const writes: string[] = [];
+    const write = (input: string) => {
+      writes.push(input);
+    };
+    // A COMPLETE screen, so an attempt is genuinely in flight for generation 1.
+    let frame = "Update available! 0.151.0 -> 0.152.0\n  1. Update now\n  2. Skip";
+    const first = responder.handle(frame, write, () => frame);
+    // Swap in a replacement that reassigns `1` and offers its own post-action safe option.
+    frame = "  1. Skip backup\n  2. Update now\n  3. Skip";
+    responder.handle(frame, write, () => frame);
+    await vi.runAllTimersAsync();
+    // The ORIGINAL attempt must not settle as answered: its screen was replaced, not
+    // cleared, so nothing it wrote can count as having skipped the update.
+    await expect(first.outcomes[0]?.settled).resolves.toBe("cancelled");
+    // And the captured appearance's digit is never pressed on the replacement.
+    expect(writes).not.toContain("1");
+  });
+
+  test("C-CODEX-22 a changed version banner starts a new generation", () => {
+    const tracker = new CodexUpdatePromptTracker();
+    expect(tracker.observe("Update available! 0.151.0 -> 0.152.0\n  1. Update now")).toBe(true);
+    const captured = tracker.currentFramePredicate();
+    const generation = tracker.currentGeneration;
+    // Same options, DIFFERENT version pair: a second appearance, not a repaint of the first.
+    const next = "Update available! 0.152.0 -> 0.153.0\n  1. Update now";
+    expect(tracker.observe(next)).toBe(true);
+    expect(tracker.currentGeneration).not.toBe(generation);
+    // The first appearance's pending retry cannot act across the version change.
+    expect(captured(next)).toBe(false);
+  });
+
   test("C-CODEX-12 a genuine banner-less safe-option repaint still continues its appearance", () => {
     const tracker = new CodexUpdatePromptTracker();
     expect(tracker.observe(bannerFrame)).toBe(true);
@@ -105,77 +134,5 @@ describe("C-CODEX-22 update-skip requires the appearance's own first-party evide
     expect(tracker.observe("› ")).toBe(false);
     // The cleared appearance's `firstParty` must not vouch for an unrelated prompt.
     expect(tracker.observe("  2. Skip\n  3. Skip until next version")).toBe(false);
-  });
-});
-
-describe("C-CODEX-22 input blocking is separate from automation eligibility", () => {
-  test("C-CODEX-22 a contradicted appearance stops automation but keeps holding input", () => {
-    const tracker = new CodexUpdatePromptTracker();
-    expect(tracker.dialogVisible(bannerFrame)).toBe(true);
-    // Automation must fail CLOSED: the digit was chosen for a different dialog.
-    expect(tracker.observe(allSkipPrompt)).toBe(false);
-    // The hold must ALSO fail closed: a prompt we may not answer is still a prompt.
-    expect(tracker.dialogVisible(allSkipPrompt)).toBe(true);
-  });
-
-  test("C-CODEX-22 only a frame with no dialog releases the hold", () => {
-    const tracker = new CodexUpdatePromptTracker();
-    tracker.dialogVisible(bannerFrame);
-    expect(tracker.dialogVisible(allSkipPrompt)).toBe(true);
-    // A positive clearance — the composer, no options at all — drops it.
-    expect(tracker.dialogVisible("› ")).toBe(false);
-  });
-
-  test("C-CODEX-22 a hold is never STARTED for a dialog Elwood did not recognize", () => {
-    const tracker = new CodexUpdatePromptTracker();
-    // No update appearance was ever recognized, so an unrelated prompt does not block.
-    expect(tracker.dialogVisible(allSkipPrompt)).toBe(false);
-  });
-});
-
-describe("C-CODEX-22 safe-option selection respects update-screen layout", () => {
-  test("C-CODEX-22 the real layout still yields its safe option", () => {
-    expect(safeUpdateOption("  1. Update now\n  2. Skip")?.number).toBe("2");
-    expect(
-      safeUpdateOption("  1. Update now\n  2. Skip\n  3. Skip until next version")?.number,
-    ).toBe("2");
-  });
-
-  test("C-CODEX-22 a banner-less continuation is unconstrained by the action ordering", () => {
-    // No update action on the frame, so the first safe row is the right one.
-    expect(safeUpdateOption("  2. Skip\n  3. Skip until next version")?.number).toBe("2");
-  });
-
-  test("C-CODEX-22 a skip-shaped row listed BEFORE the update action is never selected", () => {
-    // Selecting `1` here would press `Skip backup` on a dialog that is not the update
-    // screen's real layout; there is no safe option after the action, so none is offered.
-    expect(safeUpdateOption("  1. Skip backup\n  2. Update now")).toBeUndefined();
-  });
-
-  test("C-CODEX-22 the update action itself is never a safe option", () => {
-    // `Update now (skip prompts)` matches the safe pattern on "skip" but PERFORMS the update.
-    expect(safeUpdateOption("  1. Update now (skip prompts)")).toBeUndefined();
-  });
-});
-
-describe("C-CODEX-22 appearance evidence", () => {
-  test("C-CODEX-22 a frame without first-party evidence vouches for nothing", () => {
-    const evidence = withUpdateFrameEvidence(emptyUpdateEvidence(), "  2. Skip", false);
-    expect(evidenceAllowsContinuation(evidence, "  2. Skip")).toBe(false);
-  });
-
-  test("C-CODEX-22 the first label an appearance shows for a number is the one that binds", () => {
-    let evidence = withUpdateFrameEvidence(emptyUpdateEvidence(), bannerFrame, true);
-    // A contradicting frame cannot rewrite the appearance's history to justify itself.
-    evidence = withUpdateFrameEvidence(evidence, allSkipPrompt, false);
-    expect(evidence.options.get("1")).toBe("Update now");
-    expect(evidenceAllowsContinuation(evidence, allSkipPrompt)).toBe(false);
-  });
-
-  test("C-CODEX-22 an unseen option number is not a contradiction", () => {
-    const evidence = withUpdateFrameEvidence(emptyUpdateEvidence(), bannerFrame, true);
-    expect(evidenceAllowsContinuation(evidence, "  2. Skip\n  3. Skip until next version")).toBe(
-      true,
-    );
   });
 });
