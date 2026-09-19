@@ -52,8 +52,13 @@ test("C-PERF-04 a retry that succeeds records the groups and stops retrying", as
   try {
     await retainLease(path, lease, [group.id], 5);
     await expect.poll(() => retain.mock.calls.length, { timeout: 5_000 }).toBeGreaterThan(1);
-    await expect.poll(() => existsSync(path)).toBe(true);
-    expect(await owner.readOwner(path)).toMatchObject({ ownedProcessGroupIds: [group.id] });
+    // Poll the OWNER RECORD, not the retry counter or the lease path. The counter rises when
+    // the retry is ENTERED and `existsSync` is already true from the claim, so both settle
+    // before the retained write lands — reading the record once raced that write and saw the
+    // pre-retry owner. The record is the only signal that the retry actually COMPLETED.
+    await expect
+      .poll(() => owner.readOwner(path), { timeout: 5_000 })
+      .toMatchObject({ ownedProcessGroupIds: [group.id] });
   } finally {
     retain.mockRestore();
     await group.killGroup();

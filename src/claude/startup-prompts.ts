@@ -14,6 +14,7 @@ import {
 import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/startup/write.ts";
 import { trustGateVisible } from "../core/trust/blocking.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
+import { claudeTrustClearance } from "./screen-table.ts";
 
 // The prompt's documented decline keystroke (ESC).
 const declineKey = "\u001b";
@@ -24,7 +25,7 @@ export class ClaudeStartupPromptResponder {
   private disposed = false;
 
   constructor(autotrust: boolean, onStateChange?: () => void) {
-    this.trust = new TrustPromptResponder("claude", autotrust, onStateChange);
+    this.trust = new TrustPromptResponder("claude", claudeTrustClearance, autotrust, onStateChange);
   }
 
   get blockedPrompt() {

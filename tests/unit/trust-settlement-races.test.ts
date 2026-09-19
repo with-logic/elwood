@@ -1,5 +1,6 @@
 /** Rejected writes lose publication authority with their reservation (C-TRUST-01). */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
 import { claudeComposer, claudeTrust } from "../fixtures/trust-composer.ts";
 
@@ -16,7 +17,7 @@ test.each([
   "replace",
   "dispose",
 ])("C-TRUST-01 %s between write rejection and coordinator settlement suppresses stale diagnostics", async (change) => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const pending = Promise.withResolvers<void>();
   const first = settled(
     responder.handle(
