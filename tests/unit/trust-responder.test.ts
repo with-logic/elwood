@@ -4,13 +4,14 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import { TrustPromptResponder, trustPromptVisible } from "../../src/core/trust/responder.ts";
 import { claudeTrust, codexHooks, codexTrust } from "../fixtures/trust-composer.ts";
 
 describe("allowlisted trust prompt automation", () => {
   test("C-API-18 stays disabled unless callers opt in", () => {
     const writes: string[] = [];
-    const responder = new TrustPromptResponder("claude");
+    const responder = new TrustPromptResponder("claude", claudeTrustClearance);
     const result = responder.handle("Quick safety check: trust this folder?", (input) => {
       writes.push(input);
     });
@@ -20,7 +21,7 @@ describe("allowlisted trust prompt automation", () => {
 
   test("C-CLAUDE-10 answers Claude workspace trust prompts once", () => {
     const writes: string[] = [];
-    const responder = new TrustPromptResponder("claude", true);
+    const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
     expect(
       responder.handle(`${claudeTrust}\n1. Yes`, (input) => {
         writes.push(input);
@@ -47,7 +48,7 @@ describe("allowlisted trust prompt automation", () => {
       ],
     ] as const) {
       const writes: string[] = [];
-      const responder = new TrustPromptResponder("claude", true);
+      const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
       expect(
         responder.handle(screen, (input) => {
           writes.push(input);
@@ -62,7 +63,7 @@ describe("allowlisted trust prompt automation", () => {
 
   test("C-CLAUDE-14 does not answer an off-allowlist first-run prompt", () => {
     const writes: string[] = [];
-    const responder = new TrustPromptResponder("claude", true);
+    const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
     // A generic confirmation that is NOT an allowlisted trust prompt: ignored,
     // so a future CLI security gate is never blanket-bypassed.
     expect(
@@ -82,7 +83,7 @@ describe("allowlisted trust prompt automation", () => {
 
   test("C-CLAUDE-14 recognized prompt with option not yet rendered is option_pending, not silently skipped", () => {
     const writes: string[] = [];
-    const responder = new TrustPromptResponder("claude", true);
+    const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
     // The prompt is recognized but its affirmative option is absent, so the
     // responder writes nothing AND surfaces `option_pending` (a transient
     // render-delay signal), once. A wrong "No, cancel" option is never selected.
@@ -102,7 +103,7 @@ describe("allowlisted trust prompt automation", () => {
 
   test("C-TRUST-01 only the bottom-most trust header owns the active affirmative", () => {
     const writes: string[] = [];
-    const responder = new TrustPromptResponder("claude", true);
+    const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
     // The earlier folder-trust question does not own the skill dialog's answer.
     const frame = "Do you trust this folder?\nLoad this skill?\n1. Yes, trust it";
     expect(
@@ -118,7 +119,7 @@ describe("allowlisted trust prompt automation", () => {
 
   test("C-CLAUDE-14 a trust dialog is answered across blank/descriptive lines to its options", () => {
     const writes: string[] = [];
-    const responder = new TrustPromptResponder("claude", true);
+    const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
     // A real trust dialog renders header → blank/descriptive lines → options as
     // ONE dialog (claude 2.1.206, C-E2E-09). The header match joins all non-option
     // lines and the affirmative is found among all numbered options, so blanks
@@ -139,7 +140,7 @@ describe("allowlisted trust prompt automation", () => {
 
   test("C-CLAUDE-14 a mid-render header without options is retried, not wedged", () => {
     const writes: string[] = [];
-    const responder = new TrustPromptResponder("claude", true);
+    const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
     // Frame 1: header drawn, options not yet rendered — surfaced as option_pending
     // ONCE (a transient render-delay signal) but NOT settled, so the next frame
     // can still answer.

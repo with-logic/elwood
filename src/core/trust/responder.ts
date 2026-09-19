@@ -1,8 +1,14 @@
 /** Owns trust episodes, bounded attempts, and recoverable blocking (PRD §5.4/C-TRUST-01). */
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { optionInput } from "../terminal-options.ts";
+import type { TrustClearance } from "./clearance.ts";
 import type { TrustPromptIdFor } from "./prompts.ts";
-import type { Episode, TrustPromptResult, TrustWriteResult } from "./types.ts";
+import {
+  type Episode,
+  newEpisode,
+  type TrustPromptResult,
+  type TrustWriteResult,
+} from "./types.ts";
 import { choiceIdentity, type TrustView, trustView } from "./view.ts";
 import { TrustAttempt } from "./write.ts";
 
@@ -18,8 +24,11 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
   private readonly agent: A;
   private readonly autotrust: boolean;
   private readonly onStateChange: (() => void) | undefined;
-  constructor(agent: A, autotrust = false, onStateChange?: () => void) {
+  /** The ADAPTER's clearance grammar; the coordinator never encodes a CLI's layout. */
+  private readonly clearance: TrustClearance;
+  constructor(agent: A, clearance: TrustClearance, autotrust = false, onStateChange?: () => void) {
     this.agent = agent;
+    this.clearance = clearance;
     this.autotrust = autotrust;
     this.onStateChange = onStateChange;
   }
@@ -40,7 +49,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
   ): TrustPromptResult<A> {
     if (this.disposed) return undefined;
     const priorIdentity = this.episode?.lastIdentity;
-    const view = trustView(frame, this.agent);
+    const view = trustView(frame, this.agent, this.clearance);
     this.observe(view);
     const episode = this.episode;
     if (view.kind !== "candidate" || episode === undefined || view.key !== episode.candidate.key)
@@ -73,7 +82,10 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       episode.attemptedIdentity === identity
     )
       return undefined;
-    const read = readFrame === undefined ? undefined : () => trustView(readFrame(), this.agent);
+    const read =
+      readFrame === undefined
+        ? undefined
+        : () => trustView(readFrame(), this.agent, this.clearance);
     const attempt = new TrustAttempt(view, identity);
     episode.attempt = attempt;
     episode.attemptedIdentity = identity;
@@ -152,18 +164,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     for (const attempt of this.attempts) {
       if (attempt.candidate.spec.id === view.spec.id) attempt.cancel();
     }
-    const episode: Episode = {
-      candidate: view,
-      deadlineAtMs: 0,
-      blocked,
-      expired: false,
-      expiredIdentity: undefined,
-      lastIdentity: choiceIdentity(view),
-      attemptedIdentity: undefined,
-      reportedPending: false,
-      legacyAnswered: false,
-      attempt: undefined,
-    };
+    const episode = newEpisode(view, blocked);
     this.episode = episode;
     this.arm(episode);
   }

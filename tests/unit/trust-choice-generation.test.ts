@@ -1,5 +1,7 @@
 /** Both navigation styles retain exact choices and generation ownership (C-TRUST-01). */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
+import { codexTrustClearance } from "../../src/codex/screen-table.ts";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
 import {
   claudeComposer,
@@ -27,7 +29,7 @@ test.each([
   "Unknown permission\n❯ Yes",
 ])("C-TRUST-01 a cursor confirmation cannot succeed on replacement: %s", async (replacement) => {
   let frame = cursor;
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const write = vi.fn(() => {
     frame = replacement;
   });
@@ -44,7 +46,7 @@ test("C-TRUST-01 arrows alone cannot report trust answered when the composer app
   const write = vi.fn(() => {
     frame = claudeComposer;
   });
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const attempt = settled(responder.handle(frame, write, () => frame));
   await vi.runAllTimersAsync();
   await expect(attempt).resolves.toBe("cancelled");
@@ -58,7 +60,11 @@ test("C-TRUST-01 swallowed cursor confirmation retries its exact choice", async 
     if (write.mock.calls.length === 2) frame = claudeComposer;
   });
   const attempt = settled(
-    new TrustPromptResponder("claude", true).handle(frame, write, () => frame),
+    new TrustPromptResponder("claude", claudeTrustClearance, true).handle(
+      frame,
+      write,
+      () => frame,
+    ),
   );
   await vi.runAllTimersAsync();
   await expect(attempt).resolves.toBe("answered");
@@ -67,7 +73,7 @@ test("C-TRUST-01 swallowed cursor confirmation retries its exact choice", async 
 
 test("C-TRUST-01 later native cursor rows do not replace the active choice", async () => {
   let frame = `${claudeTrust}\n❯ Yes`;
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const write = vi.fn(() => {
     if (write.mock.calls.length === 2) frame = claudeComposer;
   });
@@ -80,7 +86,7 @@ test("C-TRUST-01 later native cursor rows do not replace the active choice", asy
 });
 
 test("C-TRUST-01 changed valid choices acquire a new reservation while an old write is pending", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const pending = Promise.withResolvers<void>();
   let frame = numbered;
   const first = settled(
@@ -102,7 +108,7 @@ test("C-TRUST-01 changed valid choices acquire a new reservation while an old wr
 });
 
 test("C-TRUST-01 pre-write positive clearance does not report a write that never happened", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const write = vi.fn();
   await expect(settled(responder.handle(numbered, write, () => claudeComposer))).resolves.toBe(
     "cancelled",
@@ -112,7 +118,7 @@ test("C-TRUST-01 pre-write positive clearance does not report a write that never
 });
 
 test("C-TRUST-01 hook completion can hand ownership to an unauthorized native directory gate", async () => {
-  const responder = new TrustPromptResponder("codex");
+  const responder = new TrustPromptResponder("codex", codexTrustClearance);
   let frame = `${codexHooks}\n1. Trust all and continue\n2. Review hooks`;
   const write = vi.fn(() => {
     frame = `${codexTrust}\n1. Yes, continue`;
@@ -127,7 +133,7 @@ test("C-TRUST-01 hook completion can hand ownership to an unauthorized native di
 });
 
 test("C-TRUST-01 poll-observed clearance ends the generation even if it reappears before settlement", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const read = vi
     .fn()
     .mockReturnValueOnce(numbered)

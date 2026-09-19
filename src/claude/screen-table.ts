@@ -6,7 +6,27 @@
 
 import type { ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
+import { nativeComposerClearance, type TrustClearance } from "../core/trust/clearance.ts";
 import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
+
+/** The idle Claude composer row; also the caret that is NOT a dialog caret. */
+const claudeComposerRow = /^\s*❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*$/m;
+
+/**
+ * Claude's trust-clearance grammar, owned HERE beside the rest of Claude's verified
+ * screen facts (C-TRUST-01). Clearance needs Claude's own chrome — the version banner or
+ * the permission-mode footer — plus the composer fenced between rule lines, so a frame
+ * that merely contains a `❯` is not mistaken for an answered gate.
+ */
+export const claudeTrustClearance: TrustClearance = nativeComposerClearance(
+  claudeComposerRow,
+  (frame) =>
+    (/Claude Code v[\d.]+/.test(frame) ||
+      /^\s*-- INSERT -- ⏵⏵ don['’]t ask on \(shift\+tab to cycle\) · ← for agents\s*$/m.test(
+        frame,
+      )) &&
+    /(?:^|\n)[─━]{3,}\s*\n❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*\n[─━]{3,}/.test(frame),
+);
 
 /**
  * Verified through claude 2.1.258 (see `verifiedAgainst`). The footer renders

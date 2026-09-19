@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
 import { claudeScreenFactTableForTrustPolicy } from "../../src/claude/screen-table.ts";
+import { codexTrustClearance } from "../../src/codex/screen-table.ts";
 import { readScreenFacts } from "../../src/core/screen-facts.ts";
 import * as dialog from "../../src/core/trust/dialog.ts";
 import { TrustPromptResponder, trustPromptVisible } from "../../src/core/trust/responder.ts";
@@ -20,9 +21,12 @@ test.each([
   [hooks, false, "hook_trust", "2\r"],
 ] as const)("C-TRUST-01 preserves native Codex trust explanation: %s", (frame, trust, label, key) => {
   const writes: string[] = [];
-  const result = new TrustPromptResponder("codex", trust).handle(frame, (input) => {
-    writes.push(input);
-  });
+  const result = new TrustPromptResponder("codex", codexTrustClearance, trust).handle(
+    frame,
+    (input) => {
+      writes.push(input);
+    },
+  );
   expect(result).toMatchObject({ kind: "attempted", automation: { prompt: label } });
   expect(writes).toEqual([key]);
   expect(trustPromptVisible(frame, "codex")).toBe(true);
@@ -36,7 +40,9 @@ test.each([
   `${codexHooks}\n  Enable elevated execution\n❯ Trust all and continue`,
 ])("C-TRUST-01 foreign prose cannot borrow native trust authority: %s", (frame) => {
   const write = vi.fn();
-  expect(new TrustPromptResponder("codex", true).handle(frame, write)).toBeUndefined();
+  expect(
+    new TrustPromptResponder("codex", codexTrustClearance, true).handle(frame, write),
+  ).toBeUndefined();
   expect(trustPromptVisible(frame, "codex")).toBe(false);
   expect(write).not.toHaveBeenCalled();
 });
@@ -68,7 +74,9 @@ test("C-TRUST-01 visibility and recognition parse once before comparing eligible
   expect(trustPromptVisible(frame, "codex")).toBe(true);
   expect(parse).toHaveBeenCalledTimes(1);
   const parseCandidate = vi.spyOn(dialog, "parseTrustCandidates");
-  expect(new TrustPromptResponder("codex").handle(frame, vi.fn())).toMatchObject({
+  expect(
+    new TrustPromptResponder("codex", codexTrustClearance).handle(frame, vi.fn()),
+  ).toMatchObject({
     kind: "option_pending",
   });
   expect(parseCandidate).toHaveBeenCalledTimes(1);

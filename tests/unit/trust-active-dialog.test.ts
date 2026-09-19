@@ -1,5 +1,6 @@
 /** Active trust-dialog isolation and live-write validation (PRD §5.4, C-TRUST-01). */
 import { expect, test } from "vitest";
+import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import { TrustPromptResponder, trustPromptVisible } from "../../src/core/trust/responder.ts";
 import { claudeComposer, claudeTrust } from "../fixtures/trust-composer.ts";
 
@@ -29,7 +30,7 @@ test.each([
 ])("C-TRUST-01 never borrows a header or options from earlier viewport content: %s", (frame) => {
   const writes: string[] = [];
   expect(
-    new TrustPromptResponder("claude", true).handle(frame, (key) => {
+    new TrustPromptResponder("claude", claudeTrustClearance, true).handle(frame, (key) => {
       writes.push(key);
     }),
   ).toBeUndefined();
@@ -43,9 +44,12 @@ test.each([
 ])("C-TRUST-01 selects the bottom-most trust dialog and its own option (%s)", async (separator) => {
   const frame = `Unrelated prompt\n1. Yes${separator}Load this skill?\n1. No\n2. Yes, load this skill`;
   const writes: string[] = [];
-  const result = new TrustPromptResponder("claude", true).handle(frame, (key) => {
-    writes.push(key);
-  });
+  const result = new TrustPromptResponder("claude", claudeTrustClearance, true).handle(
+    frame,
+    (key) => {
+      writes.push(key);
+    },
+  );
   expect(result).toMatchObject({
     kind: "attempted",
     automation: { prompt: "skill_trust", input: "2" },
@@ -57,7 +61,7 @@ test.each([
 
 test("C-TRUST-01 revalidates a numbered dialog before writing and leaves it retryable", async () => {
   const writes: string[] = [];
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const result = responder.handle(
     trust,
     (key) => {
@@ -86,7 +90,7 @@ test("C-TRUST-01 cursor navigation does not confirm a replacement dialog under a
   const initial = `${claudeTrust}\n❯ No\n  Yes`;
   let frame = initial;
   const writes: string[] = [];
-  const result = new TrustPromptResponder("claude", true).handle(
+  const result = new TrustPromptResponder("claude", claudeTrustClearance, true).handle(
     initial,
     (key) => {
       writes.push(key);
