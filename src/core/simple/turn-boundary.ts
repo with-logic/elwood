@@ -10,6 +10,10 @@
  * then waits for a real `ready` (a busy agent is `running`, not ready) or terminal, followed by
  * a short transcript-drain settle. A hung agent holds the slot until `close()`/`kill()` forces a
  * terminal status — honest backpressure, never a silent early release.
+ *
+ * AGENT REJECTION is a third path, distinct from both: the agent ended the turn by refusing it,
+ * so `reach()` is called at once and the slot releases immediately — no readiness wait, no drain
+ * window. See `rejectTurn` (C-API-57).
  */
 
 /** Short transcript-drain settle (ms) after a post-failure `ready` — trailing events flush. */

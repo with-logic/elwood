@@ -5,7 +5,7 @@
 
 import type { ClaudeHookEvent } from "../../claude/hooks/index.ts";
 import type { CodexHookEvent } from "../../codex/hooks/index.ts";
-import { type CodexTranscriptEvent, toolOutputText } from "../../codex/transcript/index.ts";
+import type { CodexTranscriptEvent } from "../../codex/transcript/index.ts";
 import { stringify } from "../serialize.ts";
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "./index.ts";
 
@@ -52,8 +52,10 @@ function transcriptToolIo(
     return optional("toolInput", command);
   }
   if (event.summary.kind === "tool_result") {
-    const output = payload["output"];
-    return optional("toolOutput", toolOutputText(output) ?? stringify(output));
+    // Reuse the text the summarizer already extracted (as `tool_call` above does) instead of
+    // re-running `toolOutputText` over the same structured payload; fall back to a generic
+    // serialization only when the summary carried none (C-CODEX-19).
+    return optional("toolOutput", event.summary.text ?? stringify(payload["output"]));
   }
   return {};
 }

@@ -1,0 +1,86 @@
+/**
+ * Reads Codex's own evidence that it REJECTED a turn (PRD §12A.5, C-API-57).
+ *
+ * Codex reports a rejected turn only in its rollout transcript: an `event_msg` whose payload is
+ * `task_complete` carrying an `error` of ANY shape (and a null `last_agent_message`). It fires NO
+ * turn-boundary `Stop` hook on that path — verified against codex-cli 0.155.0, where a bogus
+ * `--model` turn delivers `SessionStart` and `UserPromptSubmit` and nothing else — so this
+ * evidence can only reach the runner through activity, never through `readBoundarySignal`.
+ *
+ * The PRESENCE of the `error` payload is the signal. Neither an empty response nor a null
+ * `last_agent_message` is evidence of failure (PRD §12A.3 allows a legitimately empty successful
+ * reply), and `codex_error_info` is DIAGNOSTIC only: the same rejection path reports `"other"`
+ * for an unsupported model and `"usage_limit_exceeded"` for quota, so keying on its value would
+ * miss most real failures.
+ */
+
+import { isRecord } from "../core/predicates.ts";
+import type { FailureEvidenceReader, TurnFailure } from "../core/simple/turn-types.ts";
+
+/** Cap on the reason text carried out of the transcript, so a huge payload stays bounded. */
+const maxMessageLength = 2_000;
+
+export const codexFailureEvidence: FailureEvidenceReader = (event) => {
+  const payload = asRecord(asRecord(event.raw)?.["payload"]);
+  if (payload?.["type"] !== "task_complete") return undefined;
+  // PRESENCE of the error payload is the whole test — never its SHAPE. A `task_complete`
+  // WITHOUT one is an ordinary successful turn (including one whose `last_agent_message` is
+  // null); one WITH any non-nullish `error` is a rejection, even if the CLI represents it as a
+  // bare string or a version change alters the shape. Narrowing to an object first would make a
+  // malformed or drifted payload settle as an empty SUCCESS, which is the #19 bug.
+  const raw = payload["error"];
+  if (raw === undefined || raw === null) return undefined;
+  return failure(asRecord(raw) ?? {}, raw);
+};
+
+/**
+ * Build the failure from an error payload. `raw` is the ORIGINAL value, so a non-object error
+ * (a bare string, or whatever a version change introduces) still yields a truthful reason
+ * instead of a shapeless one. `info` is bounded like the message: it reaches consumers through
+ * public `ElwoodError.details`, so an oversized classification must not be retained unbounded.
+ */
+function failure(error: Readonly<Record<string, unknown>>, raw: unknown): TurnFailure {
+  const info = error["codex_error_info"];
+  return {
+    message: reason(error["message"] ?? raw),
+    ...(typeof info === "string" ? { info: bounded(info) } : {}),
+  };
+}
+
+/**
+ * The human-readable reason. Codex wraps a server rejection as a JSON envelope
+ * (`{"type":"error","status":400,"error":{"message":"…"}}`), so unwrap the innermost
+ * `error.message` when one parses; otherwise keep the raw string. A non-string scalar (a
+ * status code, say) is rendered rather than dropped, and an absent/empty one still yields a
+ * truthful generic reason — a rejection never surfaces an empty message.
+ */
+function reason(value: unknown): string {
+  if (typeof value === "number" || typeof value === "boolean") {
+    return `Codex rejected the turn: ${String(value)}`;
+  }
+  // Blank includes WHITESPACE-ONLY: a reason of spaces is as useless to a consumer as an
+  // empty one, so it falls back rather than surfacing an effectively blank diagnostic.
+  if (typeof value !== "string" || value.trim().length === 0) return "Codex rejected the turn.";
+  // A provider rejection can carry a multi-megabyte payload. Only attempt the nested JSON
+  // unwrap while the raw string is within the cap; above it, truncate without parsing rather
+  // than spending the work on a value that is about to be cut down anyway.
+  if (value.length > maxMessageLength) return bounded(value);
+  return bounded(unwrapJsonMessage(value) ?? value);
+}
+
+function unwrapJsonMessage(value: string): string | undefined {
+  try {
+    const inner = asRecord(asRecord(JSON.parse(value))?.["error"])?.["message"];
+    return typeof inner === "string" && inner.trim().length > 0 ? inner : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function bounded(message: string): string {
+  return message.length <= maxMessageLength ? message : `${message.slice(0, maxMessageLength)}…`;
+}
+
+function asRecord(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  return isRecord(value) ? value : undefined;
+}

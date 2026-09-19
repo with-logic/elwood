@@ -3,6 +3,9 @@
  * Implements PRD §5.
  */
 
+// Narrowing helpers for `StopFailure`, whose failure fields are typed `unknown` so a drifted
+// rejection still reaches the reader rather than becoming a `hookError` (C-API-57).
+export { stopFailureDetails, stopFailureError } from "./claude/hooks/events.ts";
 export type {
   AgentInput,
   AskUserQuestionInput,

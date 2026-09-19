@@ -219,7 +219,11 @@ the adapter's underlying startup conflict in v1.
 
 Exit status is 0 for success or consumer closure, 1 for agent or cleanup
 failure, 2 for usage or configuration failure, 124 for timeout, and 130 for
-interruption. A primary nonzero status survives cleanup failure. Text errors are
+interruption. A turn the AGENT rejected is an agent failure: when the adapter
+supplies its own failure evidence the run MUST exit 1 and report `turn_failed`
+in the selected protocol, never exit 0 with an empty response. An empty
+response on its own remains a success (§12A.3); only adapter evidence makes it
+a failure. A primary nonzero status survives cleanup failure. Text errors are
 concise and go to stderr while structured protocols retain stable error codes.
 Unknown long options identify the token and suggest the nearest documented
 option when the match is unambiguous. Validation messages identify relevant

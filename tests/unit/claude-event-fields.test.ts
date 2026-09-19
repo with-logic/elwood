@@ -9,8 +9,14 @@ test.each(eventFieldCases)("C-HOOK-07 validates %s optional fields", (name, requ
   expect(isClaudeHookInput(base(name, { ...required, ...optional }))).toBe(true);
   expect(isClaudeHookInput(base(name, required))).toBe(true);
   for (const key of Object.keys(optional)) {
+    // `StopFailure` is the ONE deliberate exception to strict optional-field typing: it is
+    // Claude REJECTING the turn, so a drifted payload must still reach the failure reader rather
+    // than becoming a `hookError` and settling as an empty success (C-API-57, #19). Its own
+    // admit-and-classify contract is pinned in `turn-failure-ingress.test.ts`; every other event
+    // still rejects a malformed optional field here.
+    const expected = name === "StopFailure" ? true : false;
     expect(isClaudeHookInput(base(name, { ...required, ...optional, [key]: null })), key).toBe(
-      false,
+      expected,
     );
   }
 });

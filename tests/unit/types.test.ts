@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { stopFailureError } from "../../src/claude/hooks/events-extra.ts";
 import type {
   ClaudeBackgroundTask,
   ClaudeHookEvent,
@@ -112,8 +113,10 @@ describe("public hook types", () => {
         return message === transcript ? { decision: "block", reason: "unexpected" } : undefined;
       },
       StopFailure: (event) => {
-        const message: string | undefined = event.last_assistant_message;
-        const error: string = event.error;
+        // Failure fields are intentionally loose so a DRIFTED rejection still reaches the
+        // reader (C-API-57); the handler sees `unknown`, not a promised string.
+        const message: unknown = event.last_assistant_message;
+        const error: string | undefined = stopFailureError(event);
         return message === error ? undefined : undefined;
       },
       Notification: (event) => {

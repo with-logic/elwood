@@ -1,4 +1,3 @@
-import type { BoundarySignal } from "./boundary-signal.ts";
 /**
  * Types and conformance probes for one ergonomic turn (PRD §5.8, C-API-48/53). Separated from
  * the `runTurn` runner (turn.ts) so both stay under the file-size cap. Defines the loose
@@ -8,6 +7,7 @@ import type { BoundarySignal } from "./boundary-signal.ts";
 
 import type { ElwoodAgentSession, ElwoodCommonEventMap } from "../agent-session.ts";
 import type { ImageInput } from "../images/types.ts";
+import type { BoundarySignal, FailureEvidenceReader } from "./boundary-signal.ts";
 import type { TurnEvent } from "./events.ts";
 
 /**
@@ -18,8 +18,21 @@ import type { TurnEvent } from "./events.ts";
  */
 export type TurnBoundaryHook = {
   readonly hook_event_name?: string;
-  readonly last_assistant_message?: string | null;
+  // Loose on purpose: a DRIFTED payload must still reach the reader, and the default reader
+  // coerces a non-string to the empty completeness signal rather than rejecting it.
+  readonly last_assistant_message?: unknown;
   readonly prompt?: string;
+  /**
+   * Optional DIAGNOSTICS accompanying a rejection, read ONLY by an adapter's own reader. Loose
+   * like the rest of this shape, because core must not depend on adapter hook types.
+   *
+   * For Claude the failure signal is the hook's IDENTITY (`StopFailure`), not the presence of
+   * these fields: a `StopFailure` whose `error` is missing or drifted is still a rejection, and
+   * these only shape the reason text. (Codex differs — its evidence is the presence of a
+   * transcript `task_complete.error` — which is why each adapter reads its own.)
+   */
+  readonly error?: unknown;
+  readonly error_details?: unknown;
 };
 
 /**
@@ -38,17 +51,39 @@ export type TurnBoundaryContract = {
  * are DISTINCT: `undefined` means "not a turn boundary" (the runner ignores the event — an
  * installed oracle stays installed), while a `BoundarySignal` means "a turn boundary whose
  * expected final assistant text is this" — an EMPTY string is a boundary that carries no text
- * (`null`/absent `last_assistant_message`, e.g. `StopFailure`) and clears the oracle →
- * quiet-window settle.
+ * (`null`/absent `last_assistant_message`) and clears the oracle → quiet-window settle. The
+ * object form additionally reports that the agent REJECTED the turn (C-API-57).
  * This is the ONE seam where adapter hook shape meets the adapter-neutral runner: `runTurn`
  * consumes only this normalized signal, never raw `hook_event_name`/`last_assistant_message`, so
  * the core is not coupled to adapter hook fields. Each `SessionBase` subclass supplies its own
  * reader (a compile-time REQUIREMENT), so a new adapter cannot wire up turns without one.
  */
-export type { BoundarySignal, TurnFailure } from "./boundary-signal.ts";
+export type {
+  BoundarySignal,
+  FailureEvidenceReader,
+  TurnFailure,
+  TurnFailureSource,
+} from "./boundary-signal.ts";
 export { boundaryFailure, boundaryText } from "./boundary-signal.ts";
 
 export type BoundarySignalReader = (hookEvent: TurnBoundaryHook) => BoundarySignal | undefined;
+
+/**
+ * The default failure-evidence reader: no adapter activity carries failure evidence. Adapters
+ * whose rejection arrives on a turn-boundary HOOK (Claude's `StopFailure`) keep this, because
+ * their evidence reaches the runner through `readBoundarySignal` instead.
+ */
+export const noFailureEvidence: FailureEvidenceReader = () => undefined;
+
+/**
+ * An adapter's pair of turn readers: how it reports a turn BOUNDARY, and how it reports that
+ * the agent REJECTED the turn. Kept together because every turn needs both, and the two
+ * rejection mechanisms are adapter-specific (Claude's boundary hook vs Codex's transcript).
+ */
+export type TurnReaders = {
+  readonly readBoundarySignal: BoundarySignalReader;
+  readonly readFailureEvidence: FailureEvidenceReader;
+};
 
 /** Normalizes shared hook evidence into positive acceptance for one exact prompt. */
 export type AcceptanceSignalReader = (hookEvent: TurnBoundaryHook, prompt: string) => boolean;
@@ -57,8 +92,12 @@ export type AcceptanceSignalReader = (hookEvent: TurnBoundaryHook, prompt: strin
  * The default reader: a `Stop` hook is the turn boundary and its `last_assistant_message` the
  * completeness signal (`""` when null/absent → no oracle); any other hook is not a boundary.
  */
-export const defaultBoundarySignal: BoundarySignalReader = (event) =>
-  event.hook_event_name === "Stop" ? (event.last_assistant_message ?? "") : undefined;
+export const defaultBoundarySignal: BoundarySignalReader = (event) => {
+  if (event.hook_event_name !== "Stop") return undefined;
+  // A non-string (absent, null, or drifted) carries NO completeness text, so it becomes the
+  // empty signal — a boundary with no oracle — rather than disqualifying the boundary itself.
+  return typeof event.last_assistant_message === "string" ? event.last_assistant_message : "";
+};
 
 /** Shared Claude/Codex acceptance: the matching submit hook or any Stop boundary. */
 export const defaultAcceptanceSignal: AcceptanceSignalReader = (event, prompt) =>
@@ -129,6 +168,13 @@ export type StreamTurnOptions = {
    * pass their own so the runner never reads raw adapter hook fields.
    */
   readonly readBoundarySignal?: BoundarySignalReader;
+  /**
+   * Normalizes an adapter ACTIVITY event into failure evidence (default: `noFailureEvidence`).
+   * Supplied by adapters whose rejection never reaches a boundary hook — Codex writes
+   * `task_complete` with an `error` to its transcript and fires no `Stop` — so the runner
+   * still learns the agent refused the turn.
+   */
+  readonly readFailureEvidence?: FailureEvidenceReader;
 };
 
 /** A running turn: `events`/`completion` are the consumer view; `boundary` gates the serializer. */

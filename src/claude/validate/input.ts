@@ -48,7 +48,18 @@ const eventChecks: { readonly [E in Exclude<ClaudeHookEventName, ToolEvent>]: Ev
   TaskCreated: strings("task_id", "task_subject"),
   TaskCompleted: strings("task_id", "task_subject"),
   Stop: () => true,
-  StopFailure: strings("error"),
+  // A `StopFailure` is Claude REJECTING the turn, so the event must reach the failure reader
+  // even when its payload drifts: requiring a string `error` here turned a missing or
+  // restructured field into a `hookError`, and the rejection then settled as an empty SUCCESS
+  // (C-API-57, #19). The hook's IDENTITY is the evidence; the reader bounds whatever fields it
+  // finds and falls back to a generic reason, so loose validation cannot surface junk.
+  //
+  // The general rule this enforces: shape-independence must hold along the WHOLE path from
+  // ingress to classification. A tolerant reader sitting behind a strict validator is tolerant
+  // in name only — the strict gate decides the outcome first. Only the REJECTION event is
+  // loosened; every other entry stays strict, because this table is the validation boundary for
+  // untrusted hook input.
+  StopFailure: () => true,
   TeammateIdle: strings("teammate_name", "team_name"),
   ConfigChange: strings("source"),
   CwdChanged: strings("old_cwd", "new_cwd"),

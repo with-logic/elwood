@@ -1,0 +1,176 @@
+/**
+ * Coverage that the SHIPPED session classes actually wire their turn-failure readers
+ * (PRD §5.8/§12A.5, C-API-57, C-CLI-28). `turn-failure.test.ts` proves each reader and the
+ * runner in isolation — by passing the readers explicitly — so it would still pass if a class
+ * forgot to install one. These tests drive `CodexSession`, `ClaudeSession`, and the headless
+ * CLI facade themselves, with only the underlying launch faked, so the wiring is what is under
+ * test: a rejected turn must fail rather than resolve as an empty success.
+ */
+
+import { describe, expect, test } from "vitest";
+import { ClaudeSession } from "../../src/claude/simple.ts";
+import { HeadlessCliSession } from "../../src/cli/session/index.ts";
+import { CodexSession } from "../../src/codex/simple.ts";
+import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
+import type { TurnBoundaryHook } from "../../src/core/simple/turn-types.ts";
+import { effectiveRequest } from "../cli/main-fakes.ts";
+import { activity, type Emitter, FakeUnderlying } from "./simple-fakes.ts";
+
+/** The real Codex rejection shape: a transcript `task_complete` carrying an `error`. */
+const codexRejection = {
+  type: "event_msg",
+  payload: {
+    type: "task_complete",
+    last_agent_message: null,
+    error: { message: "You've hit your usage limit.", codex_error_info: "usage_limit_exceeded" },
+  },
+};
+
+/** A turn the agent REJECTS the Codex way: transcript evidence, and NO `Stop` hook at all. */
+function codexRejectedTurn(underlying: FakeUnderlying): void {
+  underlying.script = (emitter) => {
+    emitter.emit("status", { elwoodSessionId: "s1", status: "running" });
+    emitter.emit(
+      "activity",
+      activity({ agent: "codex", kind: "other", label: "task_complete", raw: codexRejection }),
+    );
+    emitter.emit("status", { elwoodSessionId: "s1", status: "ready" });
+  };
+}
+
+/** A turn the agent REJECTS the Claude way: a `StopFailure` boundary hook. */
+function claudeRejectedTurn(underlying: FakeUnderlying): void {
+  underlying.script = (emitter) => {
+    emitter.emit("status", { elwoodSessionId: "s1", status: "running" });
+    // `hook` is an adapter event rather than a common one; the session forwards it verbatim.
+    emitHook(emitter, {
+      hook_event_name: "StopFailure",
+      error: "rate_limit",
+      error_details: "You have exceeded your rate limit.",
+    });
+    emitter.emit("status", { elwoodSessionId: "s1", status: "ready" });
+  };
+}
+
+/**
+ * Emit a `hook` event on the fake's emitter. `FakeUnderlying` is typed to the COMMON event map,
+ * which has no `hook` member, so this narrow helper holds the one widening in a single place and
+ * type-checks the PAYLOAD against the adapter's real boundary shape instead of `unknown`.
+ */
+function emitHook(emitter: Emitter, hook: TurnBoundaryHook): void {
+  (emitter as unknown as { emit: (event: "hook", payload: TurnBoundaryHook) => void }).emit(
+    "hook",
+    hook,
+  );
+}
+
+/** Replace a session's lazy launch with a fake underlying session. */
+function stubLaunch(session: object, underlying: FakeUnderlying): void {
+  (session as { launch: () => Promise<ElwoodAgentSession> }).launch = () =>
+    Promise.resolve(underlying);
+}
+
+describe("C-API-57 the shipped session classes fail a rejected turn", () => {
+  test("CodexSession.send rejects with turn_failed on transcript evidence", async () => {
+    const underlying = new FakeUnderlying();
+    codexRejectedTurn(underlying);
+    const session = new CodexSession({ cwd: "/fake" });
+    stubLaunch(session, underlying);
+    await expect(session.send("go")).rejects.toMatchObject({
+      code: "turn_failed",
+      message: "You've hit your usage limit.",
+    });
+  });
+
+  test("a rejected turn RELEASES its serialized slot, so the next send still runs", async () => {
+    // A rejected turn must reach the serializer's boundary, not hold its slot: otherwise every
+    // later `send`/`stream` queues behind it forever and the session wedges. Proving the
+    // rejection alone would still pass if `boundary.reach()` stopped being called.
+    const underlying = new FakeUnderlying();
+    underlying.script = (emitter, turnId) => {
+      emitter.emit("status", { elwoodSessionId: "s1", status: "running" });
+      if (turnId === "t1") {
+        emitter.emit(
+          "activity",
+          activity({ agent: "codex", kind: "other", label: "task_complete", raw: codexRejection }),
+        );
+      } else {
+        emitter.emit("activity", activity({ text: "second turn ran", turnId }));
+        emitHook(emitter, {
+          hook_event_name: "Stop",
+          last_assistant_message: "second turn ran",
+        });
+      }
+      emitter.emit("status", { elwoodSessionId: "s1", status: "ready" });
+    };
+    const session = new CodexSession({ cwd: "/fake" });
+    stubLaunch(session, underlying);
+    await expect(session.send("first")).rejects.toMatchObject({ code: "turn_failed" });
+    // The slot was released, so this resolves instead of hanging behind the rejected turn.
+    expect(await session.send("second")).toBe("second turn ran");
+  });
+
+  test("ClaudeSession.send rejects with turn_failed on a StopFailure hook", async () => {
+    const underlying = new FakeUnderlying();
+    claudeRejectedTurn(underlying);
+    const session = new ClaudeSession({ cwd: "/fake" });
+    stubLaunch(session, underlying);
+    await expect(session.send("go")).rejects.toMatchObject({
+      code: "turn_failed",
+      message: "You have exceeded your rate limit.",
+    });
+  });
+
+  test("C-CLI-28 the headless CLI facade fails a rejected Codex turn", async () => {
+    // This is the exact shape #19 reported: `elwood --agent=codex` exiting 0 with empty output.
+    const underlying = new FakeUnderlying();
+    codexRejectedTurn(underlying);
+    // A COMPLETE typed request from the shared factory — no cast. An incomplete object asserted
+    // as complete would keep passing while the real request contract drifted around it.
+    const request = effectiveRequest({ agent: "codex" });
+    const session = new HeadlessCliSession(request, "s1", () => Promise.resolve(underlying));
+    await expect(session.send("go")).rejects.toMatchObject({ code: "turn_failed" });
+  });
+
+  test("C-CLI-28 the headless CLI facade fails a rejected CLAUDE turn", async () => {
+    // The facade selects readers per adapter, so Claude's selection needs its own proof: a
+    // Codex-only test would still pass if the Claude branch regressed to the default reader.
+    const underlying = new FakeUnderlying();
+    claudeRejectedTurn(underlying);
+    const session = new HeadlessCliSession(effectiveRequest({ agent: "claude" }), "s1", () =>
+      Promise.resolve(underlying),
+    );
+    await expect(session.send("go")).rejects.toMatchObject({
+      code: "turn_failed",
+      message: "You have exceeded your rate limit.",
+    });
+  });
+
+  test("§12A.3 a legitimately EMPTY turn still succeeds through the shipped classes", async () => {
+    // The guard against the obvious wrong fix: no assistant text, a null `last_agent_message`,
+    // and a `task_complete` WITHOUT an error is a successful empty response, not a failure.
+    const underlying = new FakeUnderlying();
+    underlying.script = (emitter) => {
+      emitter.emit("status", { elwoodSessionId: "s1", status: "running" });
+      emitter.emit(
+        "activity",
+        activity({
+          agent: "codex",
+          kind: "other",
+          label: "task_complete",
+          raw: { type: "event_msg", payload: { type: "task_complete", last_agent_message: null } },
+        }),
+      );
+      // A real empty turn still reaches its `Stop` boundary (that is what makes it a SUCCESS
+      // with no text, rather than the hook-less rejection above).
+      emitHook(emitter, {
+        hook_event_name: "Stop",
+        last_assistant_message: null,
+      });
+      emitter.emit("status", { elwoodSessionId: "s1", status: "ready" });
+    };
+    const session = new CodexSession({ cwd: "/fake" });
+    stubLaunch(session, underlying);
+    expect(await session.send("go")).toBe("");
+  });
+});

@@ -60,6 +60,9 @@ const task = {
   teammate_name: optionalString,
   team_name: optionalString,
 };
+/** Accepts ANY value: used only where a drifted payload must still be admitted. */
+const anyValue: FieldCheck = () => true;
+
 const schemas = {
   SessionStart: { model: optionalString, agent_type: optionalString },
   Setup: {},
@@ -88,7 +91,11 @@ const schemas = {
   TaskCreated: task,
   TaskCompleted: task,
   Stop: stop,
-  StopFailure: { error_details: optionalString, last_assistant_message: optionalString },
+  // Loose for the same reason `input.ts` is: a drifted REJECTION payload must still reach the
+  // failure reader rather than becoming a `hookError` (C-API-57). Shape-independence has to
+  // hold at EVERY gate on the path, not just the first one. The keys stay listed so the
+  // compile-time coupling to `StopFailureEvent` still catches a renamed or dropped field.
+  StopFailure: { error: anyValue, error_details: anyValue, last_assistant_message: anyValue },
   TeammateIdle: {},
   ConfigChange: { file_path: optionalString },
   CwdChanged: {},

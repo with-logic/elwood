@@ -49,8 +49,21 @@ export function createCodexTranscriptWatcher(
   const watcher = new CodexTranscriptWatcher(
     elwoodSessionId,
     (event) => {
-      emitter.emit("codex:transcript", event);
+      // The INTERNAL activity projection must be delivered even if a PUBLIC `codex:transcript`
+      // consumer throws. Turn-failure detection rides `activity` (C-API-57), so letting a
+      // consumer's bug abort this sequence would silently restore the #19 empty-success bug for
+      // a rejected turn. The listener error is still surfaced — it is rethrown after delivery,
+      // never swallowed.
+      let thrown: unknown;
+      let failed = false;
+      try {
+        emitter.emit("codex:transcript", event);
+      } catch (error) {
+        thrown = error;
+        failed = true;
+      }
       emitter.emit("activity", activity.activityFromCodexTranscript(event));
+      if (failed) throw thrown;
     },
     {
       onDrop: (notice) => route(codexDropWarning(notice)),

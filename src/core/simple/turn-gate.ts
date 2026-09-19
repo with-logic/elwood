@@ -15,17 +15,7 @@ import { elwoodError } from "../errors.ts";
 import { CompletenessOracle } from "./completeness-oracle.ts";
 import { type TurnEvent, turnEventBytes } from "./events.ts";
 
-// Cap on UNCONSUMED events buffered for a slow/paused consumer; past it the turn fails with a
-// typed `wait_timeout` rather than growing without limit (a turn has no default whole-turn
-// timeout). Large enough that a normally draining consumer never hits it.
-const MAX_PENDING_EVENTS = 100_000;
-// Compact the consumed prefix only past this many consumed events (so a small stream never
-// churns splice on tiny arrays); the `head >= length/2` gate then keeps it amortised O(1).
-const HEAD_COMPACT_MIN = 32;
-// Cap on UNCONSUMED UTF-8 bytes for a slow consumer. The count cap alone cannot bound memory —
-// a single event may carry an arbitrarily large agent-controlled string — so this byte
-// high-water is the real exhaustion guard. 64 MiB: far above any legitimate backlog.
-const MAX_PENDING_BYTES = 64 * 1024 * 1024;
+import { HEAD_COMPACT_MIN, MAX_PENDING_BYTES, MAX_PENDING_EVENTS } from "./turn-bounds.ts";
 
 /** A queued event with its precomputed UTF-8 byte size, so drain never re-encodes it. */
 type Queued = { readonly event: TurnEvent; readonly bytes: number };
@@ -118,6 +108,15 @@ export class TurnGate {
     if (this.readyObserved) this.armQuiet(); // new content after ready: re-arm the fallback window
     this.wake?.();
   }
+  /**
+   * A non-content transcript event bearing turn-completion meaning (Codex's `task_complete`).
+   * It never reaches `push()`, so without this the quiet window would not re-arm and a turn
+   * could settle as an empty success just before its rejection lands (C-API-57).
+   */
+  observeTurnSignal(): void {
+    if (this.readyObserved) this.armQuiet();
+  }
+
   /** `ready` observed — begin completion checks and arm the post-ready catch-up cap. */
   observeReady(): void {
     if (this.ended || this.readyObserved) return;
@@ -160,7 +159,7 @@ export class TurnGate {
       if (this.oracle.matched) this.end(); // caught up — deterministic
       return; // still waiting for the transcript to reach the expected text (catch-up cap guards)
     }
-    this.armQuiet(); // no oracle (pure-tool / empty / StopFailure): bounded quiet settle
+    this.armQuiet(); // no oracle (pure-tool / empty boundary): bounded quiet settle
   }
   private armQuiet(): void {
     if (this.ended || this.oracle.hasExpected) return;

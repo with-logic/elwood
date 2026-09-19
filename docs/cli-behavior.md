@@ -122,6 +122,61 @@ misattributed to a CLI regression.)
   after done — do not treat spinner presence as a reliable per-frame liveness bit
   at tiny sizes.
 
+## Rejected turns (the agent refuses the turn)
+
+**A rejected Codex turn fires NO `Stop` hook at all.** Verified against
+codex-cli 0.155.0 by launching with a bogus `--model`: the only hooks delivered
+for the whole turn are `SessionStart` and `UserPromptSubmit`. The refusal is
+reported *solely* in the rollout transcript, as an `event_msg` whose payload is
+`task_complete` with `last_agent_message: null` and an `error` object:
+
+```
+{"type":"event_msg","payload":{"type":"task_complete","last_agent_message":null,
+  "error":{"message":"{\"type\":\"error\",\"status\":400,\"error\":{…\"message\":\"The 'x' model is not supported…\"}}",
+  "codex_error_info":"other"}}}
+```
+
+This is why turn-failure evidence could NOT be carried on the boundary-hook seam
+alone: for Codex there is no boundary hook to carry it. The same run with a valid
+model *does* deliver `Stop`, so the hook's absence is specific to rejection, not
+a general property of the CLI. Claude is the opposite shape — its `StopFailure`
+**is** a hook, so its evidence rides the boundary signal. C-API-57, C-E2E-17.
+
+- `error.message` is often a JSON envelope rather than prose; unwrap the
+  innermost `error.message` for something human-readable.
+- **`codex_error_info` is not a reliable discriminator.** The same rejection path
+  reports `other` for an unsupported model and `usage_limit_exceeded` for quota,
+  so keying on its value misses most real failures — the *presence* of `error` is
+  the signal. It is kept for diagnosis only.
+- A bogus `--model` is a quota-independent way to provoke this in e2e: the
+  service rejects the model name (HTTP 400) before consuming any model quota.
+  **The same trigger works on Claude**, which makes the two adapters testable the
+  same way: a bogus `--model` makes the real Claude CLI fire a genuine
+  `StopFailure` whose `error` is `model_not_found`, and Elwood surfaces
+  `turn_failed: Claude rejected the turn: model_not_found`. Verified against the
+  installed CLI — this is the empirical confirmation that Claude's rejection
+  really does ride a hook, where Codex's does not.
+- **Claude's bogus-model rejection is not fully deterministic.** Across repeated
+  real-CLI runs the same invocation usually emits `StopFailure`, but occasionally
+  settles the turn as an empty success with no `StopFailure` at all — nothing for
+  Elwood to classify. The e2e therefore skips loudly on an empty reply rather than
+  failing, while still failing hard if the bogus model is actually ANSWERED (which
+  would invalidate the trigger). Codex has not shown this variance.
+- **Ingress validation is part of the rejection path.** `isClaudeHookInput` once
+  required `StopFailure.error` to be a string, so a drifted payload became a
+  `hookError` and the rejection was lost BEFORE any reader saw it. Shape-independence
+  has to hold from ingress through classification — a tolerant reader behind a strict
+  validator is tolerant in name only. C-API-57.
+- **The rejection is TAGGED but the turn has no content.** The real capture for a
+  rejected turn is three items: the user `message`, an `item_completed`, and the
+  `task_complete` — the latter two carrying `payload.turn_id`, which
+  `transcriptActivityMeta` surfaces as `activity.turnId`. No assistant content
+  event ever arrives, so anything that binds a turn id from CONTENT first will
+  still be unbound when the rejection lands. A turn-id filter that requires a
+  prior binding therefore discards the very evidence this feature exists to
+  catch; the binding rule must accept the first tagged failure while still
+  rejecting differently-tagged events once bound (C-API-57).
+
 ## Codex transcript replies
 
 **Codex 0.149.1 writes committed replies as phased `message` response items, not
