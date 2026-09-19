@@ -74,23 +74,16 @@ function withRetainedHoldFallback(
     ...table,
     rules: [
       ...table.rules,
+      // `fallback` is the table evaluator's own "only if nothing else set this fact"
+      // marker, so ordering LAST plus this flag is all the last-resort semantics needs.
       {
         id: "codex-unidentified-dialog",
         fact: "blocking_prompt_visible",
-        match: (frame) =>
-          retainedHold() &&
-          !table.rules.some(
-            (rule) => rule.fact === "blocking_prompt_visible" && ruleMatchesFrame(rule, frame),
-          ),
+        fallback: true,
+        match: () => retainedHold(),
       },
     ],
   };
-}
-
-/** Whether one rule would fire for `frame`, used to keep the fallback a true last resort. */
-function ruleMatchesFrame(rule: ScreenFactRule, frame: string): boolean {
-  if (rule.match !== undefined) return rule.match(frame);
-  return rule.all?.every((pattern) => pattern.test(frame)) ?? false;
 }
 
 /** The stateless table (single-frame update matcher) for frame-level fact tests. */
