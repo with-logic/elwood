@@ -8,10 +8,10 @@
 
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createConnection } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TerminalSize } from "../../src/index.ts";
 import type { PtyExit, PtyProcess, PtySpawnOptions } from "../../src/pty/types.ts";
+import { realTmpRoot } from "./real-tmp.ts";
 
 export type BridgeReply = { exitCode: number; stdout: string; stderr: string };
 
@@ -134,13 +134,16 @@ export type ScratchRegistry = {
  * `elwood-` socket-home prefix (`src/state/socket-home.ts`): socket-leak checks and
  * the long-stateDir e2e enumerate `elwood-<16hex>` homes under tmpdir, and a scratch
  * dir sharing that prefix would read as a leaked home.
+ *
+ * Rooted at `realTmpRoot`, never a live `os.tmpdir()`: a sibling file redirecting
+ * `TMPDIR` in the shared fork would otherwise capture these dirs and delete them.
  */
 export function createScratchRegistry(prefix: string): ScratchRegistry {
   if (prefix.startsWith("elwood-")) throw new Error("scratch prefix collides with socket homes");
   const made: string[] = [];
   return {
     make: () => {
-      const path = mkdtempSync(join(tmpdir(), prefix));
+      const path = mkdtempSync(join(realTmpRoot, prefix));
       made.push(path);
       return path;
     },
