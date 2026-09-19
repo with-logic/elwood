@@ -12,8 +12,12 @@ export function summarizeHookEvent(event: AgentHookEvent): string {
   if (event.hook_event_name === "SubagentStop" && event.last_assistant_message) {
     return `hook SubagentStop ${event.agent_type}: ${truncate(event.last_assistant_message)}`;
   }
-  if (event.hook_event_name === "StopFailure" && event.last_assistant_message) {
-    return `hook StopFailure ${event.error}: ${truncate(event.last_assistant_message)}`;
+  if (event.hook_event_name === "StopFailure") {
+    // Failure fields are deliberately loose (a drifted rejection must still be delivered), so
+    // render defensively rather than assuming strings.
+    const detail =
+      typeof event.last_assistant_message === "string" ? event.last_assistant_message : "";
+    return `hook StopFailure ${String(event.error ?? "unknown")}: ${truncate(detail)}`;
   }
   if (event.hook_event_name === "Notification") {
     return `hook Notification ${event.notification_type}: ${truncate(event.message)}`;

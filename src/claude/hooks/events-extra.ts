@@ -15,11 +15,18 @@ export type TaskCompletedEvent = ClaudeCommonHookFields &
 export type StopEvent = ClaudeCommonHookFields &
   ClaudeStopFields & { readonly hook_event_name: "Stop" };
 
+/**
+ * Claude REJECTING a turn. The failure fields are deliberately loose: a `StopFailure` must reach
+ * the failure reader even when its payload drifts, because the hook's IDENTITY is the evidence
+ * (C-API-57, #19). Ingress therefore admits missing/restructured values, and this type says so
+ * rather than promising a shape handlers could not rely on — a type that over-promises is how a
+ * typed handler receives an "impossible" value and throws.
+ */
 export type StopFailureEvent = ClaudeCommonHookFields & {
   readonly hook_event_name: "StopFailure";
-  readonly error: ClaudeStopFailureError | string;
-  readonly error_details?: string;
-  readonly last_assistant_message?: string;
+  readonly error?: ClaudeStopFailureError | string | undefined;
+  readonly error_details?: unknown;
+  readonly last_assistant_message?: unknown;
 };
 
 export type TeammateIdleEvent = ClaudeCommonHookFields & {

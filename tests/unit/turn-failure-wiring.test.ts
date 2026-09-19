@@ -12,8 +12,9 @@ import { ClaudeSession } from "../../src/claude/simple.ts";
 import { HeadlessCliSession } from "../../src/cli/session/index.ts";
 import { CodexSession } from "../../src/codex/simple.ts";
 import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
+import type { TurnBoundaryHook } from "../../src/core/simple/turn-types.ts";
 import { effectiveRequest } from "../cli/main-fakes.ts";
-import { activity, FakeUnderlying } from "./simple-fakes.ts";
+import { activity, type Emitter, FakeUnderlying } from "./simple-fakes.ts";
 
 /** The real Codex rejection shape: a transcript `task_complete` carrying an `error`. */
 const codexRejection = {
@@ -42,13 +43,25 @@ function claudeRejectedTurn(underlying: FakeUnderlying): void {
   underlying.script = (emitter) => {
     emitter.emit("status", { elwoodSessionId: "s1", status: "running" });
     // `hook` is an adapter event rather than a common one; the session forwards it verbatim.
-    (emitter as unknown as { emit: (e: string, p: unknown) => void }).emit("hook", {
+    emitHook(emitter, {
       hook_event_name: "StopFailure",
       error: "rate_limit",
       error_details: "You have exceeded your rate limit.",
     });
     emitter.emit("status", { elwoodSessionId: "s1", status: "ready" });
   };
+}
+
+/**
+ * Emit a `hook` event on the fake's emitter. `FakeUnderlying` is typed to the COMMON event map,
+ * which has no `hook` member, so this narrow helper holds the one widening in a single place and
+ * type-checks the PAYLOAD against the adapter's real boundary shape instead of `unknown`.
+ */
+function emitHook(emitter: Emitter, hook: TurnBoundaryHook): void {
+  (emitter as unknown as { emit: (event: "hook", payload: TurnBoundaryHook) => void }).emit(
+    "hook",
+    hook,
+  );
 }
 
 /** Replace a session's lazy launch with a fake underlying session. */
@@ -83,7 +96,7 @@ describe("C-API-57 the shipped session classes fail a rejected turn", () => {
         );
       } else {
         emitter.emit("activity", activity({ text: "second turn ran", turnId }));
-        (emitter as unknown as { emit: (e: string, p: unknown) => void }).emit("hook", {
+        emitHook(emitter, {
           hook_event_name: "Stop",
           last_assistant_message: "second turn ran",
         });
@@ -150,7 +163,7 @@ describe("C-API-57 the shipped session classes fail a rejected turn", () => {
       );
       // A real empty turn still reaches its `Stop` boundary (that is what makes it a SUCCESS
       // with no text, rather than the hook-less rejection above).
-      (emitter as unknown as { emit: (e: string, p: unknown) => void }).emit("hook", {
+      emitHook(emitter, {
         hook_event_name: "Stop",
         last_assistant_message: null,
       });

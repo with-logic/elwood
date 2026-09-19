@@ -32,6 +32,11 @@ describe("C-API-57 a drifted StopFailure survives INGRESS and still fails the tu
     ["a missing error", {}],
     ["a non-string error", { error: { code: "rate_limit" } }],
     ["a null error", { error: null }],
+    // BOTH validation gates must be loose, not just the first: `event-fields.ts` used to
+    // reject a drifted `error_details`/`last_assistant_message` after `input.ts` admitted the
+    // event, which put the rejection back on the `hookError` path.
+    ["a non-string error_details", { error_details: { text: "nope" } }],
+    ["a non-string last_assistant_message", { last_assistant_message: 7 }],
   ])("%s is admitted and classified as turn_failed", (_label, extra) => {
     const event = { hook_event_name: "StopFailure", session_id: "s1", cwd: "/tmp", ...extra };
     // 1. INGRESS must admit it — otherwise it never reaches the reader at all.

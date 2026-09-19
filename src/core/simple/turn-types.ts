@@ -18,15 +18,20 @@ import type { TurnEvent } from "./events.ts";
  */
 export type TurnBoundaryHook = {
   readonly hook_event_name?: string;
-  readonly last_assistant_message?: string | null;
+  // Loose on purpose: a DRIFTED payload must still reach the reader, and the default reader
+  // coerces a non-string to the empty completeness signal rather than rejecting it.
+  readonly last_assistant_message?: unknown;
   readonly prompt?: string;
   /**
-   * The adapter's own evidence that it REJECTED the turn (Claude's `StopFailure`). Loose like
-   * the rest of this shape — core must not depend on adapter hook types — and read ONLY by an
-   * adapter's own reader. Its PRESENCE is the failure signal; absence is not success evidence.
+   * Optional DIAGNOSTICS accompanying a rejection, read ONLY by an adapter's own reader. Loose
+   * like the rest of this shape, because core must not depend on adapter hook types.
+   *
+   * For Claude the failure signal is the hook's IDENTITY (`StopFailure`), not the presence of
+   * these fields: a `StopFailure` whose `error` is missing or drifted is still a rejection, and
+   * these only shape the reason text. (Codex differs — its evidence is the presence of a
+   * transcript `task_complete.error` — which is why each adapter reads its own.)
    */
   readonly error?: unknown;
-  /** Human-readable detail accompanying `error`, when the adapter supplies one. */
   readonly error_details?: unknown;
 };
 
@@ -87,8 +92,12 @@ export type AcceptanceSignalReader = (hookEvent: TurnBoundaryHook, prompt: strin
  * The default reader: a `Stop` hook is the turn boundary and its `last_assistant_message` the
  * completeness signal (`""` when null/absent → no oracle); any other hook is not a boundary.
  */
-export const defaultBoundarySignal: BoundarySignalReader = (event) =>
-  event.hook_event_name === "Stop" ? (event.last_assistant_message ?? "") : undefined;
+export const defaultBoundarySignal: BoundarySignalReader = (event) => {
+  if (event.hook_event_name !== "Stop") return undefined;
+  // A non-string (absent, null, or drifted) carries NO completeness text, so it becomes the
+  // empty signal — a boundary with no oracle — rather than disqualifying the boundary itself.
+  return typeof event.last_assistant_message === "string" ? event.last_assistant_message : "";
+};
 
 /** Shared Claude/Codex acceptance: the matching submit hook or any Stop boundary. */
 export const defaultAcceptanceSignal: AcceptanceSignalReader = (event, prompt) =>

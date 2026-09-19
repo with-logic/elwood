@@ -102,7 +102,24 @@ test("C-E2E-17 a REJECTED Claude turn fails with turn_failed instead of an empty
       (thrown: unknown) => thrown as { code?: string; message?: string },
     );
     if (error === undefined) {
-      return skipNow(t, "the CLI returned an empty success instead of rejecting the model");
+      // An empty success IS the historical regression, so this must not be an ordinary skip.
+      // But it is also genuinely observed from the real service (no `StopFailure` is emitted at
+      // all — see docs/cli-behavior.md), so distinguish the two: RETRY once, and only treat a
+      // repeat as a missing precondition. A real regression reproduces; service variance does
+      // not. Under `ELWOOD_E2E_REQUIRE=1` even the retry path fails rather than skipping.
+      const retry = await session.send("Say OK and nothing else.").then(
+        () => undefined,
+        (thrown: unknown) => thrown as { code?: string; message?: string },
+      );
+      if (retry === undefined) {
+        return skipNow(
+          t,
+          "the CLI twice returned an empty success with no StopFailure — rejection precondition unmet",
+        );
+      }
+      assert.equal(retry.code, "turn_failed", `expected turn_failed, got ${retry.code}`);
+      assert.match(String(retry.message), /model_not_found/);
+      return;
     }
     assert.equal(error.code, "turn_failed", `expected turn_failed, got ${error.code}`);
     // The reason names the CLI's OWN `ClaudeStopFailureError`, not a generic fallback — which
