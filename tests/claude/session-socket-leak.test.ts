@@ -15,34 +15,41 @@
  */
 
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { setHookBridgeFactoryForTests } from "../../src/claude/session/index.ts";
 import { resumeClaude, startClaude } from "../../src/index.ts";
 import { setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import {
+  resetSocketHomeRootForTests,
+  setSocketHomeRootForTests,
+} from "../../src/state/socket-home.ts";
 import { boundSocketPathLength, socketFilesIn, socketHomesIn } from "../helpers/socket-leak.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
-const realTmp = tmpdir();
 let privateTmp: string | undefined;
 
 afterEach(() => {
   resetFakes();
-  process.env["TMPDIR"] = realTmp; // restore before removing the private tmp
+  resetSocketHomeRootForTests(); // restore before removing the private tmp
   if (privateTmp) rmSync(privateTmp, { recursive: true, force: true });
   privateTmp = undefined;
 });
 
 /**
- * Point os.tmpdir() at a fresh private dir so socket homes are isolated per test. Rooted
- * at a SHORT `/tmp` (not the long macOS `os.tmpdir()`): production adds
+ * Point the SOCKET-HOME ROOT at a fresh private dir so socket homes are isolated per
+ * test. Rooted at a SHORT `/tmp` (not the long macOS `os.tmpdir()`): production adds
  * `elwood-<16hex>/<8>.sock`, and nesting under the already-long default tmp overflows
  * macOS's ~104-byte Unix-socket path cap, so the bridge would fail to `listen` here.
+ *
+ * Scoped to the socket-home module, NOT `process.env.TMPDIR`: the env is per-process
+ * and Vitest's `forks` pool reuses one process across files, so redirecting `TMPDIR`
+ * also moved concurrently-running files' `os.tmpdir()` here — and the `rm -rf` below
+ * then deleted their scratch dirs mid-test.
  */
 function isolateTmp(): string {
   privateTmp = mkdtempSync("/tmp/elwood-sockhome-");
-  process.env["TMPDIR"] = privateTmp;
+  setSocketHomeRootForTests(privateTmp);
   return privateTmp;
 }
 
