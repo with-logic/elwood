@@ -1,11 +1,18 @@
 /**
  * Acceptance recovery coverage for ergonomic turns that outlive a swallowed
- * cold-start paste. Implements PRD §5.3/§5.8 and C-API-48.
+ * cold-start paste. Implements PRD §5.3/§5.8 and C-API-48/57.
  */
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { TurnAcceptance } from "../../src/core/simple/turn-acceptance.ts";
-import { activity, collect, drive, runTurnFake } from "./simple-turn-fakes.ts";
+import {
+  activity,
+  collect,
+  deferred,
+  drive,
+  FakeTurnSession,
+  runTurnFake,
+} from "./simple-turn-fakes.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -80,6 +87,28 @@ describe("C-API-48 positive turn acceptance", () => {
     await vi.advanceTimersByTimeAsync(31);
     expect(s.submissions).toBe(3);
     await rejected;
+  });
+
+  test("C-API-57 a settled turn disarms replay so a failed prompt is never re-submitted", async () => {
+    vi.useFakeTimers();
+    const s = new FakeTurnSession();
+    const submission = deferred();
+    s.sendResult = submission.promise;
+    // Readiness arrives BEFORE the submission rejects, so the acceptance watchdog is armed
+    // while the turn is still live — the exact ordering that lets a replay outlive the turn.
+    s.script = () => {
+      if (s.submissions !== 1) return;
+      s.emit("status", { status: "running" });
+      s.emit("status", { status: "ready" });
+    };
+    const events = collect(runTurnFake(s, { fallbackQuietMs: 10, drainMs: 1 }).events);
+    const rejected = expect(events).rejects.toThrow("submission rejected");
+    submission.reject(new Error("submission rejected"));
+    await rejected;
+    // Past two full quiet windows: a surviving watchdog would have replayed by now, putting
+    // the failed prompt back on a session whose slot the serializer has already released.
+    await vi.advanceTimersByTimeAsync(40);
+    expect(s.submissions).toBe(1);
   });
 
   test("a synthetic running transition cannot cancel replay recovery", async () => {

@@ -105,12 +105,14 @@ export function runTurn(
     offStatus();
   };
   const boundary = new TurnBoundary(maybeCleanup, options.drainMs);
-  // The gate's SUCCESSFUL settle means the transcript drained — the real boundary. Its rejection
-  // (a consumer failure) does NOT reach it here; a post-failure `ready`/terminal does.
-  gate.done().then(
-    () => boundary.reach(),
-    () => undefined,
-  );
+  // EITHER settle disarms acceptance recovery (C-API-57): the gate alone knows the turn is over
+  // however it ended, and a surviving replay would RE-SUBMIT the prompt into whatever runs next.
+  // Only a SUCCESS settle is the real boundary; after a failure a later `ready`/terminal reaches it.
+  const disarm = () => acceptance.dispose();
+  gate.done().then(() => {
+    disarm();
+    boundary.reach();
+  }, disarm);
 
   const offActivity = session.on("activity", (event) => {
     const simple = toTurnEvent(event);
@@ -143,8 +145,7 @@ export function runTurn(
       acceptance.running();
     }
     if (terminalStatuses.has(status)) {
-      acceptance.dispose();
-      gate.end();
+      gate.end(); // the gate-settle handler disarms acceptance (C-API-57)
       return boundary.reach(); // agent is gone — the real boundary, regardless of consumer state
     }
     if (status === "ready" && started) {
@@ -163,10 +164,10 @@ export function runTurn(
       // `sendMessage` resolves — never rejecting a prompt still queued behind readiness.
       await send(); // listeners attached — no early event lost
     } catch (error) {
-      // The SUBMISSION failed → no agent turn is in flight and no status transition is coming:
-      // fail the consumer with the typed error AND reach the boundary at once (else the
-      // serializer waits forever). A terminal-status race is a benign idempotent no-op; otherwise
-      // a submit-on-a-dead-session `session_not_running` propagates to the consumer (C-API-25).
+      // The SUBMISSION failed → no agent turn is in flight: fail the consumer with the typed
+      // error AND reach the boundary at once (else the serializer waits forever); a dead-session
+      // `session_not_running` propagates to the consumer (C-API-25). This `gate.fail` is also
+      // what disarms a watchdog armed by a transition that landed BEFORE the rejection.
       gate.fail(toError(error));
       boundary.reach();
       consumerSettled = true;
@@ -189,8 +190,7 @@ export function runTurn(
       boundary.markConsumerFailed();
       if (sawReady) boundary.armDrain();
     } finally {
-      if (timer) clearTimeout(timer);
-      acceptance.dispose();
+      if (timer) clearTimeout(timer); // acceptance was disarmed by the gate-settle handler
       consumerSettled = true;
       maybeCleanup();
     }
