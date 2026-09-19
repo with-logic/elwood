@@ -35,7 +35,7 @@ export async function gate({ github, context, core, number }) {
   const repository = `${context.repo.owner}/${context.repo.repo}`;
   if (!eligible(pr, repository, permission)) {
     core.notice(
-      "Review skipped: only ready maintainer PRs from this repository into main qualify.",
+      "Review skipped: only ready maintainer PRs whose head and base are both in this repository qualify.",
     );
     return;
   }

@@ -116,7 +116,8 @@ test("C-REVIEW-03 dispatch authorization fails closed and preserves PR eligibili
     number: "10",
     head: "head",
     base: "base",
-    notice: "Review skipped: only ready maintainer PRs from this repository into main qualify.",
+    notice:
+      "Review skipped: only ready maintainer PRs whose head and base are both in this repository qualify.",
   });
   f.github.rest.repos.getCollaboratorPermissionLevel = () => {
     throw new Error("unavailable");

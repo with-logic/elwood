@@ -17,8 +17,10 @@ without a round limit, including after approval. Dispatch normally uses `main`;
 maintainers may select their same-repository workflow branch for validation.
 
 1. Check the live PR and its author's repository permission. Only ready PRs
-   from this repository into `main` qualify. GitHub's Dependabot is also allowed
-   on same-repository branches. Public associations such as MEMBER do not grant
+   whose head and base are both in this repository qualify; the base may be any
+   branch, so a stacked PR targeting a not-yet-merged parent is reviewed rather
+   than silently skipped. GitHub's Dependabot is also allowed on
+   same-repository branches. Public associations such as MEMBER do not grant
    eligibility. Forks are excluded.
 2. Run all eleven vendored `review-*` skills as independent OpenCode processes,
    then synthesize their findings into `REVIEW.md`. OpenCode emits structured

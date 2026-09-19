@@ -8,7 +8,7 @@ const pr = {
   state: "open",
   draft: false,
   head: { repo: { full_name: "with-logic/elwood" } },
-  base: { ref: "main" },
+  base: { ref: "main", repo: { full_name: "with-logic/elwood" } },
 };
 
 test("only open, ready maintainer PRs from the same repository are eligible", () => {
@@ -21,9 +21,25 @@ test("only open, ready maintainer PRs from the same repository are eligible", ()
     { draft: true },
     { head: { repo: { full_name: "stranger/elwood" } } },
     { head: { repo: null } },
-    { base: { ref: "other" } },
+    { base: { ref: "main", repo: { full_name: "stranger/elwood" } } },
+    { base: { ref: "main", repo: null } },
   ]) {
     assert.equal(eligible({ ...pr, ...patch }, "with-logic/elwood", "admin"), false);
+  }
+});
+
+test("C-REVIEW-05 a stacked PR based on a not-yet-merged branch is eligible", () => {
+  // Regression: requiring `base.ref === "main"` made every stacked PR silently
+  // ineligible — CI ran and no review was ever posted, with no error to notice.
+  for (const ref of ["steve-log-1234", "fix/parent-branch", "release/2.0"]) {
+    const stacked = { ...pr, base: { ref, repo: { full_name: "with-logic/elwood" } } };
+    assert.equal(eligible(stacked, "with-logic/elwood", "write"), true);
+  }
+  // The boundary that replaced the branch-name check: the base must still be in THIS
+  // repository. `main` never validated `base.repo` at all, so this also closes a gap.
+  for (const repo of [{ full_name: "stranger/elwood" }, null, undefined]) {
+    const foreign = { ...pr, base: { ref: "main", repo } };
+    assert.equal(eligible(foreign, "with-logic/elwood", "admin"), false);
   }
 });
 

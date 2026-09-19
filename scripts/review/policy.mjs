@@ -5,7 +5,12 @@ export function eligible(pr, repository, permission) {
   return (
     pr.state === "open" &&
     !pr.draft &&
-    pr.base.ref === "main" &&
+    // Any base branch IN THIS REPOSITORY, not just `main`, so a stacked PR based on a
+    // not-yet-merged parent is reviewed instead of silently skipped (§16). Requiring
+    // `main` made stacked PRs ineligible with no error: CI ran, no review ever appeared.
+    // The security boundary is same-repository head AND base plus maintainer permission,
+    // none of which the base branch name contributes to.
+    pr.base.repo?.full_name === repository &&
     pr.head.repo?.full_name === repository &&
     ["write", "maintain", "admin"].includes(permission)
   );

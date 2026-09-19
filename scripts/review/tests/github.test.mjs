@@ -58,7 +58,10 @@ test("publication dismisses its own stale verdict after a concurrent push", asyn
       f.pr.state = "closed";
     },
     (f) => {
-      f.pr.base.ref = "other";
+      // A cross-repository base, not merely a non-`main` one: since §16 now admits any
+      // same-repository base so stacked PRs are reviewed, `base.ref` alone no longer
+      // makes a PR ineligible, but a base in another repository still does.
+      f.pr.base.repo.full_name = "other/elwood";
     },
     (f) => {
       f.pr.head.repo.full_name = "other/elwood";
