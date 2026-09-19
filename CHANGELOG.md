@@ -12,6 +12,13 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Never re-submit a prompt whose ergonomic turn already ended. Acceptance recovery
+  is now disarmed the moment the turn settles — including a submission that rejected
+  after the session had already gone `running`/`ready`, which released the serializer
+  slot but left the replay watchdog armed. A surviving watchdog re-sent the prompt
+  roughly a quiet window later, so a failed turn could overlap the next one with a
+  duplicate message (and replay images whose per-session reservation had been
+  released at the boundary).
 - Hold the cross-process update lease for an aborted updater's surviving process
   group. An update probe that was aborted without confirming its process group had
   exited used to release the lease anyway, so another Elwood host could start a
