@@ -45,6 +45,11 @@ function stopFailure(event: {
   readonly error_details?: unknown;
 }): TurnFailure | undefined {
   if (event.hook_event_name !== "StopFailure") return undefined;
+  // Narrowed inline rather than via the public `stopFailureError`/`stopFailureDetails` helpers:
+  // this reader takes the core's STRUCTURAL `TurnBoundaryHook`, not the adapter event type, so
+  // importing them would couple core's turn path to Claude's hook types. `nonBlank` applies the
+  // same rule (a blank value is no value), and the helpers exist for CONSUMERS.
+  //
   // BOUND BEFORE USE: a provider payload can be multi-megabyte, so each diagnostic is truncated
   // before it is stored or interpolated, never after.
   const error = bounded(nonBlank(event.error));

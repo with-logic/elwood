@@ -20,6 +20,9 @@ import type {
   WorktreeCreateEvent,
   WorktreeRemoveEvent,
 } from "./events-extra.ts";
+
+export { stopFailureDetails, stopFailureError } from "./events-extra.ts";
+
 import type { ClaudeCommonHookFields, ClaudeHookEventName } from "./names.ts";
 import type { ClaudeToolEvent, ClaudeToolInputByName } from "./tool-types.ts";
 

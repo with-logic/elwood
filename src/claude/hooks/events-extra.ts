@@ -3,7 +3,7 @@
  * Implements PRD §6.
  */
 
-import type { ClaudeStopFailureError, ClaudeStopFields, ClaudeTaskFields } from "./events.ts";
+import type { ClaudeStopFields, ClaudeTaskFields } from "./events.ts";
 import type { ClaudeCommonHookFields } from "./names.ts";
 
 export type TaskCreatedEvent = ClaudeCommonHookFields &
@@ -24,10 +24,35 @@ export type StopEvent = ClaudeCommonHookFields &
  */
 export type StopFailureEvent = ClaudeCommonHookFields & {
   readonly hook_event_name: "StopFailure";
-  readonly error?: ClaudeStopFailureError | string | undefined;
+  /**
+   * The CLI's reported cause. Typed `unknown` because that is what ingress actually admits:
+   * a drifted `StopFailure` must reach the failure reader rather than becoming a `hookError`
+   * (C-API-57), so the validator accepts any shape — including `null` and objects. A narrower
+   * type here would be a promise the validator does not keep, and consumers would narrow
+   * nothing while still receiving drifted values. Use `stopFailureError` to read it safely.
+   */
+  readonly error?: unknown;
   readonly error_details?: unknown;
   readonly last_assistant_message?: unknown;
 };
+
+/**
+ * The `StopFailure` cause as a string, or `undefined` when the CLI sent a drifted/absent value.
+ * The event's own `error` is `unknown` (ingress admits any shape so a rejection is never lost),
+ * so consumers narrow through here instead of asserting a type the validator does not enforce.
+ */
+export function stopFailureError(event: StopFailureEvent): string | undefined {
+  return typeof event.error === "string" ? event.error : undefined;
+}
+
+/**
+ * The `StopFailure` human-readable detail, or `undefined` when absent, blank, or drifted.
+ * Blank counts as absent: a whitespace-only detail is as useless to a consumer as none.
+ */
+export function stopFailureDetails(event: StopFailureEvent): string | undefined {
+  const details = event.error_details;
+  return typeof details === "string" && details.trim().length > 0 ? details : undefined;
+}
 
 export type TeammateIdleEvent = ClaudeCommonHookFields & {
   readonly hook_event_name: "TeammateIdle";

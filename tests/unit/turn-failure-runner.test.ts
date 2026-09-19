@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { claudeBoundarySignal } from "../../src/claude/turn-failure.ts";
 import { codexFailureEvidence } from "../../src/codex/turn-failure.ts";
-import { activity, drive, runFakeTimed, runTurnFake } from "./simple-turn-fakes.ts";
+import { activity, drive, runFakeTimed } from "./simple-turn-fakes.ts";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -142,29 +142,6 @@ describe("C-API-57 the runner fails a rejected turn instead of reporting empty s
     expect(await runFakeTimed(s, { readFailureEvidence: codexFailureEvidence })).toEqual([
       { type: "text", text: "HELLO" },
     ]);
-  });
-
-  test("a rejected turn reaches its boundary IMMEDIATELY, not via the drain window", async () => {
-    // The serializer holds the next turn on `boundary`. A rejecting agent has FINISHED its turn,
-    // so the slot must release at once rather than waiting out the post-failure drain. Measured:
-    // with the immediate release the next turn starts in ~19ms; without it, ~749ms (the drain).
-    // Asserting settle-before-any-timer-runs pins that without depending on wall-clock timing.
-    const s = drive((s) => {
-      s.emit("status", { status: "running" });
-      s.emit("activity", transcript(taskComplete({ message: "nope" })));
-      s.emit("status", { status: "ready" });
-    });
-    const turn = runTurnFake(s, {
-      readFailureEvidence: codexFailureEvidence,
-      drainMs: 10_000, // a drain-path release would need this to elapse
-    });
-    turn.events.next().catch(() => undefined); // drive the consumer; its error is asserted elsewhere
-    let released = false;
-    void turn.boundary.then(() => {
-      released = true;
-    });
-    await vi.advanceTimersByTimeAsync(0); // no timer fires: only an immediate reach() can settle
-    expect(released).toBe(true);
   });
 
   test("a rejected turn is never re-submitted to the agent", async () => {

@@ -3,12 +3,10 @@
  * feeding a gate the consumer reads (PRD §5.8, C-API-48/49/50).
  *
  * The turn boundary is a COMPLETENESS ORACLE, not a timer. A turn's assistant text is
- * transcript-sourced (C-CLAUDE-15) and the transcript is written ASYNCHRONOUSLY, arriving
- * shortly AFTER the `ready` status. The turn-boundary `Stop` hook carries
- * `last_assistant_message` — the final assistant text of the just-completed turn — used ONLY
- * as a completeness signal (never displayed — it can be ghost text): the turn ends once the
- * transcript-collected assistant text CONTAINS it. With no such signal (a pure-tool turn, or
- * an empty/`null` `last_assistant_message`) it ends after a bounded quiet window.
+ * transcript-sourced (C-CLAUDE-15) and written ASYNCHRONOUSLY, arriving shortly AFTER `ready`.
+ * The `Stop` hook's `last_assistant_message` is used ONLY as a completeness signal (never
+ * displayed — it can be ghost text): the turn ends once the collected text CONTAINS it. With no
+ * such signal (a pure-tool turn, or an empty/`null` value) it ends after a bounded quiet window.
  *
  * Completeness is separate from FAILURE: a turn the agent REJECTED fails with `turn_failed` on
  * the adapter's own evidence (C-API-57), never the absence of text (§12A.3).
@@ -126,6 +124,8 @@ export function runTurn(
       gate.push(simple);
       if (simple.type === "text") gate.observeText(simple.text);
     }
+    // Non-content transcript events hold the quiet window open too (C-API-57).
+    if (event.source === "transcript" && !simple) gate.observeTurnSignal();
     if (boundary.draining) boundary.armDrain(); // trailing post-failure flush re-arms the drain
   });
   const readBoundarySignal = options.readBoundarySignal ?? defaultBoundarySignal;

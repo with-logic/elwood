@@ -3,6 +3,7 @@
  * Implements PRD §6 and §11.
  */
 
+import { stopFailureDetails, stopFailureError } from "../../src/claude/hooks/events.ts";
 import type { AgentHookEvent } from "../agent-runtime.ts";
 
 export function summarizeHookEvent(event: AgentHookEvent): string {
@@ -13,11 +14,19 @@ export function summarizeHookEvent(event: AgentHookEvent): string {
     return `hook SubagentStop ${event.agent_type}: ${truncate(event.last_assistant_message)}`;
   }
   if (event.hook_event_name === "StopFailure") {
-    // Failure fields are deliberately loose (a drifted rejection must still be delivered), so
-    // render defensively rather than assuming strings.
+    // Mirror the failure reader's precedence: a non-blank `error_details` is the reason, else
+    // the named error, else a generic fallback. Rendering `last_assistant_message` instead
+    // showed a blank line for rejections that DID carry a usable detail. Fields are loose by
+    // design, so narrow through the shared helpers rather than assuming strings.
+    // The label is the named error (or a generic fallback when it drifted); the body prefers a
+    // non-blank `error_details` — the reader's own reason — and falls back to the final
+    // assistant text. Showing only `last_assistant_message` left a blank body for rejections
+    // that DID carry a usable detail.
+    const label = stopFailureError(event) ?? "unknown";
     const detail =
-      typeof event.last_assistant_message === "string" ? event.last_assistant_message : "";
-    return `hook StopFailure ${String(event.error ?? "unknown")}: ${truncate(detail)}`;
+      stopFailureDetails(event) ??
+      (typeof event.last_assistant_message === "string" ? event.last_assistant_message : "");
+    return `hook StopFailure ${label}: ${truncate(detail)}`;
   }
   if (event.hook_event_name === "Notification") {
     return `hook Notification ${event.notification_type}: ${truncate(event.message)}`;
