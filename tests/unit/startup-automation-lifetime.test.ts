@@ -11,6 +11,7 @@ import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import type { AutomationWriteResult } from "../../src/core/startup/barrier.ts";
 import { emitSettledStartupOutcomes } from "../../src/core/startup/write.ts";
 import type { ElwoodWarningEvent } from "../../src/core/warnings/index.ts";
+import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 
 /** The prompt's documented decline keystroke, as an ESCAPED literal (never a raw byte). */
 const esc = "\u001b";
@@ -124,15 +125,18 @@ test("C-CLAUDE-22 a write parked on render settlement never reaches a closed PTY
   const settling = new Promise<void>((resolve) => {
     releaseSettle = resolve;
   });
-  const terminal = {
-    sendInput: (input: string) => void writes.push(input),
+  const terminal = createHeadlessTerminal({ cols: 100, rows: 20 }, (input) => {
+    writes.push(String(input));
+  });
+  const observation = {
+    sendInput: (input: string) => terminal.sendInput(input),
     settled: () => settling,
     renderFailed: false,
   };
   const responder = new ClaudeStartupPromptResponder(true);
   const guarded = guardedClaudeAutomationWrite(
-    terminal,
-    (input: string) => void terminal.sendInput(input),
+    observation,
+    (input: string) => terminal.sendInput(input),
     () => browserPrompt,
     () => responder.closing,
   );
@@ -142,10 +146,36 @@ test("C-CLAUDE-22 a write parked on render settlement never reaches a closed PTY
     () => browserPrompt,
     guarded,
   );
-  expect(writes).toEqual([]); // still parked on settlement
-  responder.dispose(); // stop()/kill()/PTY exit lands mid-render
-  releaseSettle?.();
-  await expect(outcomes[0]?.settled).resolves.toBe("cancelled");
-  // The decisive assertion: nothing was ever handed to the PTY.
+  try {
+    expect(writes).toEqual([]); // still parked on settlement
+    responder.dispose(); // stop()/kill()/PTY exit lands mid-render
+    releaseSettle?.();
+    await expect(outcomes[0]?.settled).resolves.toBe("cancelled");
+    // Keep the real terminal writable: only the automation lifetime can veto the key.
+    expect(writes).toEqual([]);
+  } finally {
+    terminal.dispose();
+  }
+});
+
+test("C-CLAUDE-22 a guarded write started after close skips render settlement", async () => {
+  const writes: string[] = [];
+  let observations = 0;
+  const responder = new ClaudeStartupPromptResponder(true);
+  const guarded = guardedClaudeAutomationWrite(
+    {
+      sendInput: (input: string) => void writes.push(input),
+      settled: () => {
+        observations += 1;
+        return Promise.resolve();
+      },
+    },
+    (input: string) => void writes.push(input),
+    () => browserPrompt,
+    () => responder.closing,
+  );
+  responder.dispose();
+  await expect(guarded(esc)).resolves.toBe("withheld");
+  expect(observations).toBe(0);
   expect(writes).toEqual([]);
 });

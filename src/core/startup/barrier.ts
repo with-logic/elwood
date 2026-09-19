@@ -49,7 +49,7 @@ export function guardedNonTrustAutomationWrite(
     // The settle await below SUSPENDS this write, so the session can close while it is
     // parked. Check before and after: the physical `sendInput` must never run for a
     // session that is already closing, or an Escape lands on a dead/reused PTY
-    // (C-CLAUDE-22, C-CODEX-17).
+    // (C-CLAUDE-22).
     if (cancelled()) return "withheld";
     // `writeUnsafe` awaits `terminal.settled()`, so the frame read next reflects every
     // byte received before this write was requested. It fails closed when observation
