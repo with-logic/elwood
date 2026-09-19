@@ -1,5 +1,9 @@
 /** Sanitized native Claude 2.1.274 / Codex 0.154.0 post-trust captures (C-TRUST-01).
  * Source: existing real PTY probes; blank rows and trailing padding removed. */
+import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
+import { codexTrustClearance } from "../../src/codex/screen-table.ts";
+import type { ElwoodAgentKind } from "../../src/core/activity/index.ts";
+import type { TrustClearance } from "../../src/core/trust/clearance.ts";
 
 export const claudeComposer =
   ' ▐▛███▛█   Claude Code v2.1.274\n▝▜██████▀  Fable 5.1 with high effort · Claude Max\n  ▝▝ ▝▝    /tmp/elwood-native-CAPTURE/project\n                                                                                                                                                                           ● high · /effort\n─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ Try "fix typecheck errors"\n─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  -- INSERT -- ⏵⏵ don\'t ask on (shift+tab to cycle) · ← for agents';
@@ -22,3 +26,10 @@ export const codexHooks =
   "Hooks need review\n1 hook is new or changed.\nHooks can run outside the sandbox after you trust them.";
 /** PTY writes need carriage returns; frames handed straight to a parser do not. */
 export const tty = (frame: string): string => frame.replaceAll("\n", "\r\n");
+
+/**
+ * Each adapter's own clearance grammar, as production injects it (C-TRUST-01). Tests
+ * that sweep both agents resolve it here so no test re-encodes a CLI's layout.
+ */
+export const clearanceFor = (agent: ElwoodAgentKind): TrustClearance =>
+  agent === "codex" ? codexTrustClearance : claudeTrustClearance;

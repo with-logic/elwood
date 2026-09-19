@@ -15,6 +15,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
+import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import { optionKeystrokes, selectableOptions } from "../../src/core/terminal-options.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
@@ -29,7 +30,7 @@ import { completeFolderTrustScreenVisible, folderTrustScreenVisible } from "./tr
  * received, proving the responder both recognizes the frame AND emits input.
  */
 async function trustInputFor(frame: string): Promise<string | undefined> {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const written: string[] = [];
   let rendered = frame;
   const result = responder.handle(

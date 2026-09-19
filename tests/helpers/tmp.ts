@@ -5,13 +5,17 @@
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { onTestFinished } from "vitest";
+import { realTmpRoot } from "./real-tmp.ts";
 
-/** A fresh directory under the OS temp dir, removed (recursively) after the test. */
+/**
+ * A fresh directory under the OS temp dir, removed (recursively) after the test.
+ * Rooted at the temp dir as it was before any test redirected `TMPDIR`, so a
+ * sibling file's private-tmp window can never capture — and then delete — it.
+ */
 export function tempDir(prefix = "elwood-"): string {
-  const path = mkdtempSync(join(tmpdir(), prefix));
+  const path = mkdtempSync(join(realTmpRoot, prefix));
   onTestFinished(() => rmSync(path, { recursive: true, force: true }));
   return path;
 }

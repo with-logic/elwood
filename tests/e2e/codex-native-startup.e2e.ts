@@ -1,6 +1,7 @@
 /** Native trust and MCP warning layouts, with real writes and no model turn (C-E2E-09/C-CODEX-15). */
 import assert from "node:assert/strict";
 import test from "node:test";
+import { codexTrustClearance } from "../../src/codex/screen-table.ts";
 import { codexWarningsFromText } from "../../src/codex/startup-prompts.ts";
 import { TrustPromptResponder } from "../../src/core/trust/responder.ts";
 import { nativeCodex, unauthenticatedMcp } from "./codex-native-startup-harness.ts";
@@ -12,7 +13,7 @@ test("C-E2E-09 real Codex trust gates clear and native MCP login warnings retain
 }, async (t) => {
   const mcp = await unauthenticatedMcp();
   let native: ReturnType<typeof nativeCodex> | undefined;
-  const responder = new TrustPromptResponder("codex", true);
+  const responder = new TrustPromptResponder("codex", codexTrustClearance, true);
   try {
     native = nativeCodex(mcp.url);
     const active = native;

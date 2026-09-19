@@ -1,5 +1,6 @@
 /** Candidate holds, bounded recovery, and verified clearance (C-TRUST-01). */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
 import { TrustPromptResponder, type TrustPromptResult } from "../../src/core/trust/responder.ts";
 import { claudeComposer, claudeTrust } from "../fixtures/trust-composer.ts";
 
@@ -18,7 +19,7 @@ test.each([
   `${claudeTrust}\n1. Yes\nUnknown footer`,
 ])("C-TRUST-01 unsupported native candidates hold input and expire without new output: %s", async (frame) => {
   const changed = vi.fn();
-  const responder = new TrustPromptResponder("claude", true, changed);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true, changed);
   const write = vi.fn();
   expect(responder.handle(frame, write)).toBeUndefined();
   expect(responder.inputBlocking).toBe(true);
@@ -38,7 +39,7 @@ test.each([
 });
 
 test("C-TRUST-01 partial first paint owns the deadline even when choices arrive late", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const write = vi.fn();
   expect(responder.handle(claudeTrust, write)?.kind).toBe("option_pending");
   await vi.advanceTimersByTimeAsync(4_900);
@@ -50,7 +51,7 @@ test("C-TRUST-01 partial first paint owns the deadline even when choices arrive 
 });
 
 test("C-TRUST-01 newly valid recovery rearms once while blocked status remains latched", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const write = vi.fn();
   const first = settled(responder.handle(trust, write, () => trust));
   await vi.advanceTimersByTimeAsync(5_000);
@@ -73,7 +74,7 @@ test("C-TRUST-01 newly valid recovery rearms once while blocked status remains l
 });
 
 test("C-TRUST-01 unknown replacements remain blocked until positively cleared", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   let frame = trust;
   const write = vi.fn(() => {
     frame = "Enable elevated access?\n❯ Yes";
@@ -92,7 +93,7 @@ test("C-TRUST-01 unknown replacements remain blocked until positively cleared", 
 });
 
 test("C-TRUST-01 new generations can answer the same class again after confirmed clearance", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   let frame = trust;
   const write = vi.fn(() => {
     frame = claudeComposer;
@@ -108,7 +109,7 @@ test("C-TRUST-01 new generations can answer the same class again after confirmed
 });
 
 test("C-TRUST-01 timer observers cannot prevent recovery by throwing", async () => {
-  const responder = new TrustPromptResponder("claude", true, () => {
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true, () => {
     throw new Error("observer");
   });
   responder.handle(unsupported, vi.fn());
@@ -119,7 +120,7 @@ test("C-TRUST-01 timer observers cannot prevent recovery by throwing", async () 
 });
 
 test("C-TRUST-01 non-owned native gates never acquire automation blocking", () => {
-  const responder = new TrustPromptResponder("claude");
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance);
   expect(responder.handle(trust, vi.fn())).toBeUndefined();
   expect(responder.inputBlocking).toBe(false);
   expect(responder.handle(unsupported, vi.fn())).toBeUndefined();
@@ -127,7 +128,7 @@ test("C-TRUST-01 non-owned native gates never acquire automation blocking", () =
 });
 
 test("C-TRUST-01 a native successor retains expired blocking until the successor clears", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   responder.handle(unsupported, vi.fn());
   await vi.runAllTimersAsync();
   const plugin = "Do you trust the plugin?\n1. Yes, trust it\n2. No";
@@ -148,7 +149,7 @@ test("C-TRUST-01 a native successor retains expired blocking until the successor
 });
 
 test("C-TRUST-01 a header without its native body receives no key until the body paints", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const write = vi.fn();
   let frame = "Do you trust this folder?\n1. Yes\n2. No";
   expect(responder.handle(frame, write, () => frame)).toBeUndefined();
@@ -165,7 +166,7 @@ test("C-TRUST-01 a header without its native body receives no key until the body
 });
 
 test("C-TRUST-01 a body painting under a held header keeps the generation and its deadline", async () => {
-  const responder = new TrustPromptResponder("claude", true);
+  const responder = new TrustPromptResponder("claude", claudeTrustClearance, true);
   const write = vi.fn();
   expect(responder.handle("Do you trust this folder?", write)).toBeUndefined();
   await vi.advanceTimersByTimeAsync(4_900);

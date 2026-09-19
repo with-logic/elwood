@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
+import { codexTrustClearance } from "../../src/codex/screen-table.ts";
 import { trustView } from "../../src/core/trust/view.ts";
 import {
   type ClaudeSessionApi,
@@ -128,7 +129,7 @@ test("C-E2E-16 real Codex started with highTrust reaches ready with danger-full-
       "native composer after welcome scrolls offscreen",
       10_000,
     );
-    assert.equal(trustView(compact, "codex").kind, "clear");
+    assert.equal(trustView(compact, "codex", codexTrustClearance).kind, "clear");
   } finally {
     await cleanup(session);
   }

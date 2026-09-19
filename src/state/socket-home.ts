@@ -28,6 +28,25 @@ import { elwoodError } from "../core/errors.ts";
 /** The ONE prefix every Elwood socket home carries (shared by creation + cleanup). */
 export const SOCKET_HOME_PREFIX = "elwood-";
 
+/**
+ * The directory socket homes are minted under. Production always resolves the live
+ * `os.tmpdir()`. Socket-leak tests need homes under a private root so their
+ * enumeration is exact, and they used to get that by assigning `process.env.TMPDIR`
+ * — but `process.env` is per-PROCESS and Vitest's `forks` pool reuses one child
+ * process across test files, so the redirect also moved every CONCURRENT file's
+ * `os.tmpdir()` into the private dir, which the leak test then deleted. This seam
+ * scopes the override to the module that needs it, leaving `os.tmpdir()` untouched.
+ */
+let socketHomeRoot: string | undefined;
+
+export function setSocketHomeRootForTests(root: string): void {
+  socketHomeRoot = root;
+}
+
+export function resetSocketHomeRootForTests(): void {
+  socketHomeRoot = undefined;
+}
+
 /** The full identity a socket home is stable across — mirrors the session-dir key. */
 export type SocketHomeIdentity = {
   readonly stateDir: string;
@@ -49,7 +68,7 @@ export function sessionSocketHome(identity: SocketHomeIdentity): string {
   const stateDir = resolve(identity.stateDir);
   const key = `${stateDir}\0${identity.adapter}\0${identity.elwoodSessionId}`;
   const fingerprint = createHash("sha256").update(key).digest("hex").slice(0, 16);
-  return join(tmpdir(), `${SOCKET_HOME_PREFIX}${fingerprint}`);
+  return join(socketHomeRoot ?? tmpdir(), `${SOCKET_HOME_PREFIX}${fingerprint}`);
 }
 
 /** Whether `home` is a directory this naming scheme minted (owned cleanup). */

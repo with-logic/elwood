@@ -9,6 +9,7 @@ import { numberedOptions } from "../core/terminal-options.ts";
 import { trustGateVisible } from "../core/trust/blocking.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
+import { codexTrustClearance } from "./screen-table.ts";
 import { type CodexBannerWarning, codexWarningsFromText } from "./startup-warnings.ts";
 
 import {
@@ -50,7 +51,7 @@ export class CodexStartupPromptResponder {
     this.buffer = "";
     // Owns the whole allowlisted trust family (directory + hook trust), not just
     // one prompt; extended by adding entries to trustPromptAllowlist.
-    this.trust = new TrustPromptResponder("codex", autotrust, onStateChange);
+    this.trust = new TrustPromptResponder("codex", codexTrustClearance, autotrust, onStateChange);
   }
 
   get blockedPrompt() {
