@@ -281,9 +281,11 @@ adapter's other verified screen facts — `claudeTrustClearance` in
 `src/claude/screen-table.ts`, `codexTrustClearance` in `src/codex/screen-table.ts` —
 and is injected into the shared coordinator (`TrustPromptResponder`/`trustView`).
 When a CLI's banner, status row, or composer placeholder changes, update that adapter's
-predicate and nothing else. Only the agent-neutral rule stays in
-`src/core/trust/clearance.ts`: a numbered option row, or a caret row that is not the
-composer row, means a dialog is up and the frame is never clearance.
+predicate. Codex's predicate delegates to `src/codex/screen/clearance.ts`: numbered
+rows above the last native composer can be transcript content, while rows below
+it must be native footer chrome. A later bare caret cannot borrow an earlier
+composer's footer to prove clearance. The Claude predicate uses
+`src/core/trust/clearance.ts` to reject numbered options and non-composer caret rows.
 
 ### Native regions and live confirmation
 
