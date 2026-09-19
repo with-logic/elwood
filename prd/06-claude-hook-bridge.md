@@ -123,9 +123,12 @@ unions.
   and `JSON.stringify` would put a `null` on the wire where the CLI's schema
   requires a number. This applies to EVERY tool: schema-less inputs (MCP, generic,
   and future tools) have no field table, so the rule is enforced structurally over
-  the whole value, including nested records and arrays. That traversal is bounded and
-  cycle-safe: a cyclic or excessively deep value is REJECTED as invalid input rather
-  than throwing, so a hostile shape cannot turn a policy decision into a dispatch error.
+  the whole value, including nested records and arrays. Traversal allows at most
+  128 edges from the input root and 100,000 value visits, counting the root,
+  primitives, and every occurrence of a shared child. Ancestor cycles are invalid;
+  repeated children on separate paths are valid within these limits. Cyclic or
+  over-limit shapes fail validation without throwing. Invalid rewrites produce the
+  existing `invalid_response` hook error and a bridge response with no decision.
 
 Task and plan inputs follow Claude's documented native field names: `TaskGet`
 uses `taskId`; `TaskOutput` uses `task_id`, `block`, and `timeout`; `TaskStop`

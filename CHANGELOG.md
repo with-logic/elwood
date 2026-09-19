@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Reject cyclic and excessively deep or wide schema-less hook inputs
+  and rewrites without throwing. Validation allows at most 128 edges of depth
+  and 100,000 value visits, counting repeated children on each path. Invalid rewrites
+  now report `invalid_response` and return no decision instead of reaching the JSON
+  serializer with an unserializable graph.
 - Reject `NaN` and `±Infinity` in numeric hook fields, for every tool. Because
   `JSON.stringify` encodes them as `null`, a hook handler that returned one in an
   `updatedInput` rewrite used to send the CLI a `null` where its schema requires a
