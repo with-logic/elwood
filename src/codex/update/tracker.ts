@@ -7,6 +7,7 @@
  * LIFECYCLE built on top of it, and `index.ts` owns the write path.
  */
 
+import { frameClearsDialog } from "./clearance.ts";
 import {
   appearanceBindingsHold,
   bannerContradictsAppearance,
@@ -16,35 +17,6 @@ import {
   withUpdateFrameEvidence,
 } from "./evidence.ts";
 import { codexUpdatePromptVisible, hasContinuationShape } from "./recognition.ts";
-
-/** Codex's idle composer marker: a bare `›` row, the frame's own input line. */
-const composerRow = /^\s*›\s*$/;
-/** Any row that could be part of a live dialog, by either option style. */
-const optionRow = /(?:^|[\s›>❯])\d+[.)]\s*\S|^\s*[❯›]\s+(?!\d+[.)]\s)\S/;
-
-/**
- * Whether a frame POSITIVELY shows that no dialog is up any more, which is the only thing
- * that releases a retained input hold.
- *
- * Both naive tests are wrong, in opposite directions (round 3 of #59). "No numbered rows"
- * lets a CURSOR-style human prompt (`❯ Yes, go ahead` / `  No, cancel`) release queued
- * input straight into it, pressing its highlighted action. "Any numbered row blocks" pins
- * the hold open forever on ordinary agent prose that happens to contain `1. First step`.
- *
- * What separates them is POSITION, not shape. Both CLIs replace the composer with a live
- * dialog, so a rendered composer row is proof that nothing below it is awaiting an answer:
- * options ABOVE a live composer are transcript the agent printed, while a dialog owning
- * the screen has no composer under it. So the hold clears exactly when the frame's last
- * meaningful row is the composer — which admits the prose case and still holds for a
- * cursor-only dialog, a numbered dialog, and a half-painted one.
- */
-function frameClearsDialog(frameText: string): boolean {
-  const rows = frameText.split("\n").filter((row) => row.trim() !== "");
-  const last = rows.at(-1);
-  if (last === undefined || !composerRow.test(last)) return false;
-  // Nothing selectable may sit BELOW the composer; rows above it are transcript.
-  return !optionRow.test(last);
-}
 
 /**
  * Tracks one appearance of the update screen across the frames it is split over, carrying

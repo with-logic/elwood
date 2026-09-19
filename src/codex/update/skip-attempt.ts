@@ -44,7 +44,13 @@ export function startCodexUpdateSkip(
   const noTrustGate = (frame: string) => !trustGateVisible(frame, "codex");
   const sameUpdate = tracker.currentFramePredicate();
   const current = (frame: string) => sameUpdate(frame) && noTrustGate(frame);
-  const invalidated = (frame: string) => trustGateVisible(frame, "codex");
+  // A frame that merely stops being THIS update screen is not clearance. Clearance means
+  // the screen went away; a trust gate painted over it, or a replacement dialog that ended
+  // the appearance, means it never did. Reporting `answered` there is a FALSE SUCCESS: it
+  // cancels the CLI's bounded update grace while the retained input hold keeps the session
+  // blocked, so a headless run stalls without ever emitting `blocked_prompt` (#59 round 4).
+  const invalidated = (frame: string) =>
+    trustGateVisible(frame, "codex") || tracker.holdWithoutAppearance;
   return writeCodexUpdateSkip(
     request.option,
     request.writeAutomation,
