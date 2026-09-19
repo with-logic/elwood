@@ -9,8 +9,13 @@ import { TypedEmitter } from "../../src/events/emitter.ts";
 
 const rewrite = { permissionDecision: "allow", updatedInput: { command: "after" } } as const;
 
-function dispatch(tool_name: string, handlers: Readonly<Record<string, unknown>>) {
+function dispatch(
+  tool_name: string,
+  handlers: Readonly<Record<string, unknown>>,
+  errors?: string[],
+) {
   const emitter = new TypedEmitter<CodexEventMap>();
+  if (errors) emitter.on("hookError", (event) => errors.push(event.category));
   registerInitialHooks(emitter, { PreToolUse: handlers } as never);
   const event = {
     hook_event_name: "PreToolUse",
@@ -46,19 +51,21 @@ test.each([
 
 /**
  * `Object.prototype` is on EVERY handler-map literal, so a bare property lookup turns
- * its members into a routing table the caller never wrote. `valueOf` is a function, so
- * a crafted tool name reached it — it ran against the hook event and its return value
- * was validated as a decision, all from a handler nobody registered.
+ * its members into a routing table the caller never wrote: a crafted tool name SELECTED
+ * an inherited method and dispatch then tried to invoke it. These are detached calls, so
+ * they throw before result validation and the dispatcher reports `handler_error` —
+ * `failedOpen: true` for a tool the caller never registered anything for. Own-property
+ * lookup makes the map simply not match, which is the correct no-decision outcome.
  */
 test.each([
   "valueOf",
   "toLocaleString",
 ])("C-HOOK-19 the Object.prototype member %s is not a handler", async (name) => {
-  // No `unknown` fallback is registered, so the map answers for NO tool. A bare lookup
-  // still found `Object.prototype[name]`, called it with the hook event, and handed the
-  // return value to result validation; here the map must simply not match.
-  const outcome = await dispatch(name, { Bash: () => rewrite });
+  // No `unknown` fallback is registered, so this map answers for NO tool but `Bash`.
+  const errors: string[] = [];
+  const outcome = await dispatch(name, { Bash: () => rewrite }, errors);
   expect(outcome).toEqual({ result: undefined, failedOpen: false });
+  expect(errors).toEqual([]);
 });
 
 test("C-HOOK-19 preserves own exact and unknown routing", async () => {
