@@ -47,6 +47,11 @@ export class ClaudeStartupPromptResponder {
     return this.trust.inputBlocking;
   }
 
+  /** Lets the guarded writer abandon a write that is still parked on render settlement. */
+  get closing(): boolean {
+    return this.disposed;
+  }
+
   /**
    * `write` answers TRUST prompts and belongs to `TrustPromptResponder` alone.
    * `writeAutomation` carries every NON-trust automated key (here, the browser-tools
@@ -114,9 +119,15 @@ export function guardedClaudeAutomationWrite(
   terminal: InputTerminal,
   write: NonTrustAutomationWriter,
   readFrame: () => string,
+  cancelled: () => boolean = () => false,
 ): (input: string) => Promise<AutomationWriteResult> {
-  return guardedNonTrustAutomationWrite(terminal, write, readFrame, "claude", (frameText) =>
-    browserToolsPromptVisible(frameText),
+  return guardedNonTrustAutomationWrite(
+    terminal,
+    write,
+    readFrame,
+    "claude",
+    (frameText) => browserToolsPromptVisible(frameText),
+    cancelled,
   );
 }
 

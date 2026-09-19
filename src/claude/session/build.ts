@@ -136,7 +136,8 @@ export async function buildClaudeSession(
     // the write fulfills, and a rejected write stays retryable + warns (C-CLAUDE-16).
     const send = (input: string) => renderedTerminal.sendInput(input);
     const read = () => latestRenderedText;
-    const guarded = guardedClaudeAutomationWrite(renderedTerminal, send, read);
+    const closing = () => promptResponder.closing;
+    const guarded = guardedClaudeAutomationWrite(renderedTerminal, send, read, closing);
     const autos = promptResponder.handle(frame.text, send, read, guarded);
     // Warning delivery is CONTAINED on the frame path: a throwing `warning`/`activity`
     // listener must never skip readiness, login detection, or terminal:data (§5.7).

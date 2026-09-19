@@ -14,9 +14,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Bind the Claude browser-tools decline to session disposal. After `stop()`,
   `kill()`, or PTY exit the decline is no longer attempted, and one already in flight
-  settles as a cancellation, so a closed session no longer writes to a dead PTY or
-  emits a late `startup_prompt` / `startup_prompt_write_failed`. Trust automation
-  already had this lifetime.
+  settles as a cancellation, so a closed session no longer emits a late
+  `startup_prompt` / `startup_prompt_write_failed`. The keystroke itself is bound too:
+  the non-trust automation barrier waits for render settlement, and a write parked there
+  now abandons `sendInput` when it resumes into a closing session instead of delivering
+  a stale Escape to a dead PTY. Trust automation already had this lifetime.
 - Hold the cross-process update lease for an aborted updater's surviving process
   group. An update probe that was aborted without confirming its process group had
   exited used to release the lease anyway, so another Elwood host could start a
