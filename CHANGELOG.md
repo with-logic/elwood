@@ -18,7 +18,9 @@ back each entry are listed in `prd/14-conformance.md`.
   slot but left the replay watchdog armed. A surviving watchdog re-sent the prompt
   roughly a quiet window later, so a failed turn could overlap the next one with a
   duplicate message (and replay images whose per-session reservation had been
-  released at the boundary).
+  released at the boundary). Queued and in-flight recovery submissions are now
+  cancelled, including behind a held dialog. The serializer slot and captured
+  images remain reserved until cancellation finishes settling.
 - Route Codex tool-keyed hooks from own properties only. A `PreToolUse` map is a
   plain object, so a tool name matching an inherited member (anything on
   `Object.prototype`, or a key on a caller-supplied prototype) used to resolve to a

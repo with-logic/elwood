@@ -5,27 +5,27 @@
  * The turn boundary is a COMPLETENESS ORACLE, not a timer. A turn's assistant text is
  * transcript-sourced (C-CLAUDE-15) and the transcript is written ASYNCHRONOUSLY, arriving
  * shortly AFTER the `ready` status. The turn-boundary `Stop` hook carries
- * `last_assistant_message` — the final assistant text of the just-completed turn — used
- * ONLY as a completeness signal (never displayed — it can be ghost text): the turn ends
- * once the transcript-collected assistant text CONTAINS it. With no such signal (a
- * pure-tool turn, or an empty/`null` `last_assistant_message`) the turn ends after a
- * bounded quiet window with no new content.
+ * `last_assistant_message` — the just-completed turn's final assistant text — used ONLY as a
+ * completeness signal (never displayed — it can be ghost text): the turn ends once the
+ * transcript-collected assistant text CONTAINS it. With no such signal (a pure-tool turn, or
+ * an empty/`null` one) the turn ends after a bounded quiet window with no new content.
  *
  * The runner is decoupled from its consumer. `completion` always resolves when the consumer
  * settles; its error travels through `events`. The serializer instead holds `boundary`, which
- * resolves on a successful oracle/quiet settle or terminal status. After consumer failure it
- * waits for real `ready`/terminal evidence plus transcript drain, so abandoned streams cannot
- * release their slot while the agent is still producing.
+ * resolves on a successful oracle/quiet settle or terminal status; after a consumer failure it
+ * waits for real `ready`/terminal evidence plus transcript drain, so an abandoned stream cannot
+ * release its slot while the agent is still producing.
  *
  * Timeouts: a turn may run for HOURS (a test suite, a PR poll), so there is NO whole-turn
  * timeout by default; callers may pass an opt-in `timeoutMs`, armed only AFTER submission (a
  * turn begins on submission — the timer must never reject a caller for a prompt still queued
- * behind readiness that then submits anyway). The tight cap is `catchUpMs` (default 10s),
- * armed only ONCE `ready` fires — the flush should be near-instant, so a longer stall rejects
- * with `wait_timeout`. A terminal status ends the turn at once.
+ * behind readiness that then submits anyway). The tight cap is `catchUpMs` (default 10s), armed
+ * only ONCE `ready` fires — a longer stall rejects with `wait_timeout`. A terminal status ends
+ * the turn at once.
  */
 
 import { elwoodError, toError } from "../errors.ts";
+import { cancellableSubmission } from "../input/submission-cancel.ts";
 import { terminalStatuses } from "../status-categories.ts";
 import { boundaryExpectation } from "./boundary-signal.ts";
 import { toTurnEvent } from "./events.ts";
@@ -78,7 +78,7 @@ export function runTurn(
   const sendOptions = options.images === undefined ? undefined : { images: options.images };
   const send = () => session.sendMessage(prompt, sendOptions);
   const acceptance = new TurnAcceptance(options.fallbackQuietMs ?? FALLBACK_QUIET_MS, {
-    replay: send,
+    replay: (signal) => session.sendMessage(prompt, cancellableSubmission(sendOptions, signal)),
     acceptReady: () => gate.observeReady(),
     fail: (error) => gate.fail(toError(error)),
   });
@@ -105,14 +105,10 @@ export function runTurn(
     offStatus();
   };
   const boundary = new TurnBoundary(maybeCleanup, options.drainMs);
-  // EITHER settle disarms acceptance recovery (C-API-57): the gate alone knows the turn is over
-  // however it ended, and a surviving replay would RE-SUBMIT the prompt into whatever runs next.
-  // Only a SUCCESS settle is the real boundary; after a failure a later `ready`/terminal reaches it.
-  const disarm = () => acceptance.dispose();
-  gate.done().then(() => {
-    disarm();
-    boundary.reach();
-  }, disarm);
+  // The gate's settle disarms acceptance recovery either way (C-API-57). Only a SUCCESS settle
+  // is the real boundary (the transcript drained); after a consumer failure a later
+  // `ready`/terminal reaches it instead.
+  acceptance.disarmOnSettle(gate.done(), () => boundary.reach());
 
   const offActivity = session.on("activity", (event) => {
     const simple = toTurnEvent(event);
@@ -196,5 +192,7 @@ export function runTurn(
     }
   })();
 
-  return { events: gate.drain(), completion, boundary: boundary.promise };
+  // Keep the slot and images until cancellation finishes every outstanding recovery write.
+  const released = boundary.promise.then(() => acceptance.quiesce());
+  return { events: gate.drain(), completion, boundary: released };
 }

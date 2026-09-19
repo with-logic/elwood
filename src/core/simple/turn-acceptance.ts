@@ -8,7 +8,7 @@ import { elwoodError } from "../errors.ts";
 const maxReplayAttempts = 2;
 
 export type TurnAcceptanceIo = {
-  readonly replay: () => Promise<void>;
+  readonly replay: (signal: AbortSignal) => Promise<void>;
   readonly acceptReady: () => void;
   readonly fail: (error: unknown) => void;
 };
@@ -20,10 +20,32 @@ export class TurnAcceptance {
   private pendingReady = false;
   private replayAttempts = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
+  private readonly cancellation = new AbortController();
+  private readonly inFlight = new Set<Promise<void>>();
 
   constructor(quietMs: number, io: TurnAcceptanceIo) {
     this.quietMs = quietMs;
     this.io = io;
+  }
+
+  /**
+   * Disarm as soon as `settled` settles EITHER way, then run `onSuccess` for a successful
+   * settle only. Recovery must not outlive its turn (C-API-57): once the turn is over there
+   * is nothing to recover, and a surviving replay would re-submit the prompt into whatever
+   * runs next. Hanging this off the turn's own settle signal — rather than off each failure
+   * path — is what makes an early-returning path (a rejected submission) disarm too.
+   */
+  disarmOnSettle(settled: Promise<void>, onSuccess: () => void): void {
+    const disarm = () => this.dispose();
+    settled.then(() => {
+      disarm();
+      onSuccess();
+    }, disarm);
+  }
+
+  /** Hold the serializer slot and images until every cancelled replay finishes cleanup. */
+  async quiesce(): Promise<void> {
+    await Promise.all(this.inFlight);
   }
 
   accept(): void {
@@ -48,6 +70,7 @@ export class TurnAcceptance {
   dispose(): void {
     this.accepted = true;
     this.cancelTimer();
+    this.cancellation.abort();
   }
 
   private recover(): void {
@@ -58,13 +81,15 @@ export class TurnAcceptance {
     }
     this.pendingReady = false;
     this.replayAttempts += 1;
-    void this.io.replay().then(
+    const write = this.io.replay(this.cancellation.signal).then(
       () => this.ensureWatchdog(),
       (error) => {
         this.cancelTimer();
-        this.io.fail(error);
+        if (!this.cancellation.signal.aborted) this.io.fail(error);
       },
     );
+    this.inFlight.add(write);
+    void write.then(() => this.inFlight.delete(write));
   }
 
   private armWatchdog(): void {
