@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Keep Codex transcript polling and activity delivery running after a public listener
+  throws, so later records (including turn failure evidence) still reach subscribers.
+  The content-free `transcript_listener_error` warning identifies the failed delivery
+  channel; `transcript_poll_stopped` remains reserved for actual reader failures.
+
 - Route Codex tool-keyed hooks from own properties only. A `PreToolUse` map is a
   plain object, so a tool name matching an inherited member (anything on
   `Object.prototype`, or a key on a caller-supplied prototype) used to resolve to a

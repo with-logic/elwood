@@ -19,8 +19,10 @@ import type {
   ReapErrorCode,
   ResizeErrorCode,
 } from "./reasons.ts";
+import type { TranscriptListenerErrorWarning } from "./transcript.ts";
 
 export type ElwoodWarningEvent =
+  | TranscriptListenerErrorWarning
   | {
       readonly elwoodSessionId: string;
       readonly agent: ElwoodAgentKind;

@@ -7,7 +7,7 @@
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { createCodexTranscriptWatcher } from "../../src/codex/session/transcript.ts";
 import type { CodexEventMap } from "../../src/codex/session/types.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
@@ -45,8 +45,8 @@ describe("createCodexTranscriptWatcher finishSafely (C-LIFE-10)", () => {
   test("a THROWING final flush still runs afterFlush + routes a final_flush diagnostic", () => {
     const recorded: ElwoodWarningEvent[] = [];
     const sink: Sink = { emitWarnings: (w) => recorded.push(...w) };
-    const { finishSafely, emitter, path } = wired(() => sink);
-    emitter.on("codex:transcript", () => {
+    const { finishSafely, watcher, path } = wired(() => sink);
+    vi.spyOn(watcher, "flush").mockImplementation(() => {
       throw new Error("final boom");
     });
     writeFileSync(path, `${record}\n`); // drained (and thrown on) by finish()
