@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, test } from "vitest";
+import { stopFailureDetails, stopFailureError } from "../../src/claude/hooks/events.ts";
 import { claudeBoundarySignal } from "../../src/claude/turn-failure.ts";
 import { boundaryFailure, boundaryText } from "../../src/core/simple/turn-types.ts";
 
@@ -85,5 +86,30 @@ describe("C-API-57 Claude reports a rejected turn on its StopFailure boundary", 
     );
     // A non-boundary hook is still not a boundary.
     expect(claudeBoundarySignal({ hook_event_name: "Notification" })).toBeUndefined();
+  });
+});
+
+describe("C-API-57 the public StopFailure narrowing helpers", () => {
+  const event = (extra: Readonly<Record<string, unknown>>) =>
+    ({ hook_event_name: "StopFailure", session_id: "s1", cwd: "/tmp", ...extra }) as Parameters<
+      typeof stopFailureError
+    >[0];
+
+  test("stopFailureError returns a string cause and nothing else", () => {
+    expect(stopFailureError(event({ error: "rate_limit" }))).toBe("rate_limit");
+    // `error` is `unknown` because ingress admits any shape, so every non-string narrows away.
+    expect(stopFailureError(event({ error: { code: "rate_limit" } }))).toBeUndefined();
+    expect(stopFailureError(event({ error: null }))).toBeUndefined();
+    expect(stopFailureError(event({}))).toBeUndefined();
+  });
+
+  test("stopFailureDetails treats blank as absent", () => {
+    expect(stopFailureDetails(event({ error_details: "quota exhausted" }))).toBe("quota exhausted");
+    // A whitespace-only detail is as useless to a consumer as none at all.
+    for (const blank of ["", "   ", "\n\t "]) {
+      expect(stopFailureDetails(event({ error_details: blank }))).toBeUndefined();
+    }
+    expect(stopFailureDetails(event({ error_details: { text: "nope" } }))).toBeUndefined();
+    expect(stopFailureDetails(event({}))).toBeUndefined();
   });
 });
