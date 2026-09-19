@@ -9,7 +9,11 @@ import { serializeHookResult } from "../../src/claude/serialize.ts";
 import { registerInitialHooks } from "../../src/claude/session/runtime.ts";
 import { isClaudeHookInput } from "../../src/claude/validate/input.ts";
 import { isClaudeHookResult } from "../../src/claude/validate/result.ts";
-import { isFiniteNumber, optionalFiniteNumber } from "../../src/core/predicates.ts";
+import {
+  isFiniteNumber,
+  isFiniteThroughout,
+  optionalFiniteNumber,
+} from "../../src/core/predicates.ts";
 import type { ClaudeEventMap, HookErrorEvent } from "../../src/core/types.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 import { tool } from "./claude-validate-input-helpers.ts";
@@ -148,3 +152,43 @@ async function rewriteThroughBridge(limit: number, errors: HookErrorEvent[]) {
   const outcome = await requestHook(emitter, event as never, 1_000, "sess-1");
   return { outcome, response: serializeHookResult("PreToolUse", outcome.result) };
 }
+
+/**
+ * The structural check runs on values that crossed a trust boundary, so a hostile SHAPE
+ * must fail validation rather than throw. A `RangeError` escaping here would surface as
+ * a dispatch `handler_error`, and under a permissive CLI baseline the tool could then run
+ * without the policy decision its handler was registered to make (C-HOOK-18, round 2).
+ */
+describe("hostile shapes fail validation instead of throwing", () => {
+  test("C-HOOK-18 a cyclic schema-less input is rejected, not a stack overflow", () => {
+    const cyclic: Record<string, unknown> = { ok: 1 };
+    cyclic["self"] = cyclic;
+    expect(() => isFiniteThroughout(cyclic)).not.toThrow();
+    // The cycle itself carries no bad number, so it is VALID — it simply terminates.
+    expect(isFiniteThroughout(cyclic)).toBe(true);
+    const cyclicBad: Record<string, unknown> = { bad: Number.NaN };
+    cyclicBad["self"] = cyclicBad;
+    expect(isFiniteThroughout(cyclicBad)).toBe(false);
+    // And it reaches the real validators as an ordinary accept/reject.
+    const mcp = tool("mcp__server__tool", { anything: 1 });
+    expect(
+      isClaudeHookResult(mcp as never, { permissionDecision: "allow", updatedInput: cyclicBad }),
+    ).toBe(false);
+  });
+
+  test("C-HOOK-18 a deeply nested input is rejected, not a stack overflow", () => {
+    let deep: Record<string, unknown> = { v: 1 };
+    for (let i = 0; i < 200_000; i += 1) deep = { n: deep };
+    expect(() => isFiniteThroughout(deep)).not.toThrow();
+    // Past the traversal bound the shape is unverifiable, so it fails CLOSED.
+    expect(isFiniteThroughout(deep)).toBe(false);
+  });
+
+  test("C-HOOK-18 a repeated (non-cyclic) child is still fully checked", () => {
+    // Identity-based visiting must not mistake sharing for a cycle and skip the value.
+    const shared = { bad: Number.POSITIVE_INFINITY };
+    expect(isFiniteThroughout({ a: shared, b: shared })).toBe(false);
+    const fine = { good: 1 };
+    expect(isFiniteThroughout({ a: fine, b: fine })).toBe(true);
+  });
+});

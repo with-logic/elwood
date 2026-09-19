@@ -35,16 +35,40 @@ export function optionalFiniteNumber(value: unknown): boolean {
   return value === undefined || isFiniteNumber(value);
 }
 
+/** Hook payloads are already capped at 8 MiB (C-HOOK-16); this bounds SHAPE, not size. */
+const maxTraversalNodes = 100_000;
+
 /**
  * True when NO number anywhere in `value` is non-finite. Schema-less tool inputs (MCP,
  * generic, and future tools) have no field table to check, so the finite rule is applied
  * structurally instead: it must hold for every tool, not only the ones Elwood types
  * concretely, or a rewrite still puts a `null` on the wire (PRD §6.4, C-HOOK-18).
+ *
+ * Deliberately ITERATIVE and bounded. This validator runs on values that crossed a trust
+ * boundary, so a deeply nested or CYCLIC input must fail validation — a plain rejection
+ * the caller sees as "invalid" — rather than overflow the stack. A `RangeError` here
+ * would escape as a dispatch `handler_error`, and under a permissive CLI baseline the
+ * tool could then run without the policy decision its handler was registered to make.
  */
 export function isFiniteThroughout(value: unknown): boolean {
-  if (typeof value === "number") return Number.isFinite(value);
-  if (Array.isArray(value)) return value.every(isFiniteThroughout);
-  if (isRecord(value)) return Object.values(value).every(isFiniteThroughout);
+  const stack: unknown[] = [value];
+  // Identity-based, so a value legitimately REPEATED (a shared child object) is visited
+  // once rather than mistaken for a cycle; a true cycle terminates for the same reason.
+  const seen = new WeakSet<object>();
+  let visited = 0;
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (typeof current === "number") {
+      if (!Number.isFinite(current)) return false;
+      continue;
+    }
+    if (typeof current !== "object" || current === null) continue;
+    if (seen.has(current)) continue;
+    if (++visited > maxTraversalNodes) return false; // unbounded shape: reject, never throw
+    seen.add(current);
+    if (Array.isArray(current)) stack.push(...current);
+    else if (isRecord(current)) stack.push(...Object.values(current));
+  }
   return true;
 }
 
