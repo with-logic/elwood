@@ -1,4 +1,4 @@
-/** Deferred draft cleanup owns a safe queue boundary, never human edits (PRD §5.3, C-API-56). */
+/** Deferred draft cleanup owns a safe queue boundary, never caller-owned edits (PRD §5.3, C-API-56). */
 import { elwoodError } from "../errors.ts";
 import {
   clearStagedComposer,
@@ -9,7 +9,7 @@ import {
 } from "./abort.ts";
 
 const owners = new WeakMap<InputTerminal, ComposerCleanup>();
-type Draft = { readonly human: AbortSignal; pending: boolean };
+type Draft = { readonly rawInputSignal: AbortSignal; pending: boolean };
 
 export function stageComposer(terminal: InputTerminal): void {
   owners.get(terminal)?.stage();
@@ -31,20 +31,23 @@ export async function requestComposerCleanup(
 
 export class ComposerCleanup {
   private draft: Draft | undefined;
+  private baseline: AbortSignal;
+  private stagedGeneration: AbortSignal | undefined;
   private readonly terminal: InputTerminal;
   private readonly blocked: () => boolean;
   private readonly closing: AbortSignal;
-  private readonly human: () => AbortSignal;
+  private readonly rawInputSignal: () => AbortSignal;
   constructor(
     terminal: InputTerminal,
     blocked: () => boolean,
     closing: AbortSignal,
-    human: () => AbortSignal,
+    rawInputSignal: () => AbortSignal,
   ) {
     this.terminal = terminal;
     this.blocked = blocked;
     this.closing = closing;
-    this.human = human;
+    this.rawInputSignal = rawInputSignal;
+    this.baseline = rawInputSignal();
     owners.set(terminal, this);
     closing.addEventListener(
       "abort",
@@ -56,9 +59,14 @@ export class ComposerCleanup {
   }
 
   stage(): void {
-    this.draft ??= { human: this.human(), pending: false };
+    this.stagedGeneration = this.rawInputSignal();
+    if (this.stagedGeneration === this.baseline)
+      this.draft ??= { rawInputSignal: this.stagedGeneration, pending: false };
   }
   submitted(): void {
+    // Only an uninterrupted submission establishes a fresh composer after raw edits.
+    if (this.stagedGeneration === this.rawInputSignal()) this.baseline = this.stagedGeneration;
+    this.stagedGeneration = undefined;
     this.draft = undefined;
   }
   defer(): void {
@@ -88,13 +96,13 @@ export class ComposerCleanup {
   }
 
   private owned(): boolean {
-    if (this.closing.aborted || this.draft?.human.aborted) this.draft = undefined;
+    if (this.closing.aborted || this.draft?.rawInputSignal.aborted) this.draft = undefined;
     return this.draft !== undefined;
   }
 
   private async flush(signal: AbortSignal): Promise<void> {
     while (this.owned() && this.draft!.pending) {
-      const observe = AbortSignal.any([signal, this.closing, this.draft!.human]);
+      const observe = AbortSignal.any([signal, this.closing, this.draft!.rawInputSignal]);
       try {
         if (!(await writeUnsafe(this.terminal, { blocked: this.blocked }, observe))) {
           await this.clear();
@@ -115,7 +123,7 @@ export class ComposerCleanup {
     try {
       await this.terminal.sendInput("\u0015\u000b");
     } catch {
-      throw elwoodError("wait_timeout", "Could not clear the cancelled composer draft.");
+      throw elwoodError("wait_timeout", "Could not clear the staged composer draft.");
     }
     if (this.draft === draft) this.draft = undefined;
   }

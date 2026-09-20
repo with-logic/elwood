@@ -29,7 +29,7 @@ type AttentionListener = (event: ElwoodActivityEvent) => unknown;
 export abstract class SessionLifecycle {
   protected record: SessionRecord;
   readonly terminal: ElwoodTerminal;
-  protected readonly inputTerminal: ElwoodTerminal;
+  protected readonly automatedTerminal: ElwoodTerminal;
   protected readonly pty: PtyProcess;
   protected readonly loops: SessionLoops;
   protected readonly controlQueue: ControlQueue;
@@ -55,7 +55,7 @@ export abstract class SessionLifecycle {
     stateDir: string,
     runtime: SessionRuntime,
     pty: PtyProcess,
-    input: PickerInputOwnership,
+    ownership: PickerInputOwnership,
     statusEvents: SessionStatusEmitter,
     terminalReplay: TerminalReplayBuffer,
     loopDefinitions: readonly PersistedLoopDefinition[],
@@ -67,12 +67,12 @@ export abstract class SessionLifecycle {
       this.record = next; // Expose metadata only after durable persistence succeeds.
     };
     this.pty = pty;
-    this.terminal = input.caller;
-    this.inputTerminal = input.automated;
+    this.terminal = ownership.caller;
+    this.automatedTerminal = ownership.automated;
     this.terminalReplay = terminalReplay;
     this.reapPolicy = new SessionReapPolicy(agent, record.elwoodSessionId, pty.pid);
     this.controlQueue = new ControlQueue(
-      queuedInputSubmitter(this.inputTerminal, this.pasteGuard),
+      queuedInputSubmitter(this.automatedTerminal, this.pasteGuard),
       () => notRunningError(agent),
       (origin) => {
         this.loops.turnStarted(origin);
@@ -80,7 +80,7 @@ export abstract class SessionLifecycle {
       },
       () => this.status === "running",
       () => void (this.status === "ready" && this.submitEvidence("caller_submitted")),
-      input.composerCleanup(() => this.queuedInputBlocked(), this.closing.signal),
+      ownership.composerCleanup(() => this.queuedInputBlocked(), this.closing.signal),
     );
     this.loops = new SessionLoops({
       stateDir,

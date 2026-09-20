@@ -116,10 +116,15 @@ export class ControlQueue extends ControlQueueState {
     let dispatched: Promise<void>;
     try {
       const signal = this.armAbort();
-      if (!operation.attach) this.beginSubmission(operation, traits);
-      const work = () =>
-        operation.run ? operation.run(signal) : this.submitWithAttach(operation, traits, signal);
-      dispatched = this.aroundOperation ? this.aroundOperation(work, signal) : work();
+      const work = () => {
+        if (!operation.attach) this.beginSubmission(operation, traits);
+        return operation.run
+          ? operation.run(signal)
+          : this.submitWithAttach(operation, traits, signal);
+      };
+      dispatched = this.aroundOperation
+        ? this.aroundOperation(work, this.prepareSignal(signal))
+        : work();
     } catch (error) {
       this.rollback(operation, priorReady, epoch, toError(error));
       return;

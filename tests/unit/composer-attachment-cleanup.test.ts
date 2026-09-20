@@ -31,6 +31,7 @@ test.each([
   const writes: string[] = [];
   const abort = new AbortController();
   const closing = new AbortController();
+  const rawInput = new AbortController();
   let blocked = false;
   let screen = "❯ ";
   const terminal = {
@@ -52,7 +53,7 @@ test.each([
     terminal,
     () => blocked,
     closing.signal,
-    () => new AbortController().signal,
+    () => rawInput.signal,
   );
   const queue = new ControlQueue(
     queuedInputSubmitter(terminal, {
