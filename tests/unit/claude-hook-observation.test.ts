@@ -15,6 +15,10 @@ test.each([
   const emitter = new TypedEmitter<ClaudeEventMap>();
   if (failure === "transcript_observation")
     emitter.on("hook:Stop", () => ({ decision: "block", reason: "retained decision" }));
+  // InstructionsLoaded accepts no response; Stop scans only without a block.
+  // These continuation paths can therefore preserve only a no-decision reply.
+  const hookError = vi.fn();
+  emitter.on("hookError", hookError);
   const warnings: unknown[] = [];
   emitter.on("warning", (event) => warnings.push(event));
   const turn = new TurnStateWatcher();
@@ -59,6 +63,7 @@ test.each([
     expect(scan).not.toHaveBeenCalled();
     expect(arm).not.toHaveBeenCalled();
   }
+  expect(hookError).not.toHaveBeenCalled();
   expect(warnings).toEqual([
     expect.objectContaining({
       code: "hook_observer_failed",

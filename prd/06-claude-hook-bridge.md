@@ -125,8 +125,16 @@ Hook, activity, hook-error, transcript, and lifecycle notifications are isolated
 the hook boundary. Each invocation emits at most one content-free
 `hook_observer_failed` warning (§5.7), identifying the first failed phase; warning
 observer failures are contained without recursive diagnostics (C-HOOK-22).
-Returned observer Promises are observed without awaiting them; their rejections
-are contained even after the hook reply completes. The first observed failure
+Returned native observer Promises are observed through the captured intrinsic
+`Promise.prototype.then`, without awaiting them or reading an instance's own `then`.
+Their rejections are contained even after the hook reply completes when their
+constructor and `Symbol.species` support normal ECMAScript reaction attachment.
+Listeners run in the host process, not a sandbox: nonreturning synchronous listener
+code or Promise metadata can block the host. A constructor/species that prevents
+native attachment leaves its rejection handling with the caller. An attachment
+throw is reported as a notification failure, without caching an unattached Promise;
+a subsequent notification retries attachment. Elwood neither mutates caller Promise
+metadata nor opens a debugger session to bypass it. The first observed failure
 selects the diagnostic phase, and late failures do not emit additional warnings.
 Diagnostic retention is limited to the newest 1,024 pending observer registrations
 per session emitter. When this cap is exceeded, the oldest registration is detached

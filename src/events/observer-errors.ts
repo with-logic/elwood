@@ -42,8 +42,10 @@ export class ObserverErrors {
     let pending = this.promises.get(promise);
     if (!pending || pending.settled) {
       pending = { settled: false, entries: new Set() };
-      this.promises.set(promise, pending);
+      // Native attachment may throw while evaluating caller constructor/species.
+      // Cache only after success so a later notification can retry.
       attach(promise, pending);
+      this.promises.set(promise, pending);
     }
     const registrations = this.registrations;
     const entry: Registration = {

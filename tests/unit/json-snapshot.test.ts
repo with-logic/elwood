@@ -123,3 +123,17 @@ test.each([
   expect(snapshotJsonData(value)).toEqual({ valid: false });
   expect(calls).toBe(0);
 });
+
+test.each([
+  "holes",
+  "undefined",
+] as const)("C-HOOK-21 counts every %s array slot at the exact visit boundary", (kind) => {
+  const within: undefined[] = new Array(99_999);
+  const beyond: undefined[] = new Array(100_000);
+  if (kind === "undefined") {
+    within.fill(undefined);
+    beyond.fill(undefined);
+  }
+  expect(snapshotJsonData(within).valid).toBe(true);
+  expect(snapshotJsonData(beyond).valid).toBe(false);
+});

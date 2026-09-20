@@ -1,4 +1,5 @@
 /** Late observer failures retain the notification scope that invoked them (C-HOOK-22). */
+import { createHook } from "node:async_hooks";
 import { expect, test, vi } from "vitest";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 
@@ -43,21 +44,33 @@ test.each([
 ] as const)("C-HOOK-22 pending %s promises retain only the newest 1024 diagnostic registrations", async (mode) => {
   const emitter = new TypedEmitter<{ event: number }>();
   const shared = Promise.withResolvers<void>();
-  const sharedThen = vi.spyOn(shared.promise, "then");
   const pending = Array.from({ length: 1025 }, () =>
     mode === "shared" ? shared : Promise.withResolvers<void>(),
   );
   const errors: number[] = [];
   emitter.on("event", (index) => pending[index]!.promise);
-  for (let index = 0; index < pending.length; index += 1) {
-    emitter.observeErrors(
-      () => {
-        errors.push(index);
-      },
-      () => emitter.emit("event", index),
-    );
+  let reactions = 0;
+  const hook = createHook({
+    init(_id, type) {
+      if (type === "PROMISE") reactions += 1;
+    },
+  });
+  hook.enable();
+  try {
+    for (let index = 0; index < pending.length; index += 1) {
+      emitter.observeErrors(
+        () => {
+          errors.push(index);
+        },
+        () => emitter.emit("event", index),
+      );
+    }
+  } finally {
+    hook.disable();
   }
-  expect(sharedThen).not.toHaveBeenCalled();
+  // Each native .then attachment allocates one child Promise, even when an
+  // instance's own then property is bypassed by the captured intrinsic.
+  expect(reactions).toBe(mode === "shared" ? 1 : 1025);
   for (const item of pending) item.reject("observer failed");
   await new Promise<void>((resolve) => setImmediate(resolve));
   expect(errors).toEqual(Array.from({ length: 1024 }, (_, index) => index + 1));

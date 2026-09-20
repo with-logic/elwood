@@ -9,12 +9,15 @@ import { TypedEmitter } from "../../src/events/emitter.ts";
 import { tempDir } from "../helpers/tmp.ts";
 import { sendBridge } from "./helpers.ts";
 
-test("C-HOOK-21 successful socket replies never assimilate inherited then", async () => {
+test.each([
+  true,
+  false,
+])("C-HOOK-21 socket reply with decision=%s never assimilates inherited then", async (decision) => {
   const socket = join(tempDir("elwood-prototype-"), "hook.sock");
   const emitter = new TypedEmitter<ClaudeEventMap>();
   const event = { hook_event_name: "Stop", session_id: "s1", cwd: "/tmp" } as const;
   let reads = 0;
-  emitter.on("hook:Stop", () => {
+  const pollute = () => {
     // biome-ignore lint/suspicious/noThenProperty: inherited then is the regression input.
     Object.defineProperty(Object.prototype, "then", {
       configurable: true,
@@ -24,12 +27,17 @@ test("C-HOOK-21 successful socket replies never assimilate inherited then", asyn
         return undefined;
       },
     });
-    return { decision: "block", reason: "wait" };
-  });
+  };
+  if (decision)
+    emitter.on("hook:Stop", () => {
+      pollute();
+      return { decision: "block", reason: "wait" };
+    });
   const server = new HookBridgeServer(
     socket,
     "t",
     async () => {
+      if (!decision) pollute();
       const outcome = await requestHook(emitter, event, 1000, "e1");
       return serializeHookResult("Stop", outcome.result);
     },
@@ -47,7 +55,7 @@ test("C-HOOK-21 successful socket replies never assimilate inherited then", asyn
   expect(reads).toBe(0);
   expect(JSON.parse(response)).toEqual({
     exitCode: 0,
-    stdout: '{"decision":"block","reason":"wait"}\n',
+    stdout: decision ? '{"decision":"block","reason":"wait"}\n' : "",
     stderr: "",
   });
 });
