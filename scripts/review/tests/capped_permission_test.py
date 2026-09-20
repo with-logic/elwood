@@ -55,3 +55,16 @@ class PermissionTest(unittest.TestCase):
                 capped.run(1, ['fixture'])
         self.assertEqual(raised.exception.code, 143)
         child.kill.assert_called_once_with()
+
+    def test_broken_diagnostic_sink_cannot_replace_timeout_or_skip_cleanup(self):
+        for error in (BrokenPipeError(), ValueError('closed stream')):
+            with self.subTest(error=type(error).__name__):
+                child = Mock(pid=123)
+                timeout = subprocess.TimeoutExpired('fixture', 1)
+                child.wait.side_effect = [timeout, timeout, -9]
+                with patch.object(capped.subprocess, 'Popen', return_value=child), \
+                        patch.object(capped.os, 'killpg', side_effect=PermissionError()), \
+                        patch.object(capped.sys, 'stderr', Mock(write=Mock(side_effect=error))):
+                    self.assertEqual(capped.run(1, ['fixture']), 124)
+                child.kill.assert_called_once_with()
+                self.assertEqual(child.wait.call_count, 3)

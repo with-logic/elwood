@@ -1,9 +1,20 @@
 #!/usr/bin/env python3
-"""Bound one review process and its descendants; implements PRD §16; see .github/PIPELINE.md."""
+"""Bound a review process with best-effort descendant cleanup (PRD §16; .github/PIPELINE.md)."""
 import os
 import signal
 import subprocess
 import sys
+
+
+CLEANUP_WAIT_SECONDS = 1
+
+
+def diagnose(message):
+    try:
+        print(message, file=sys.stderr)
+    except (OSError, ValueError):
+        # A broken/closed log sink must not replace the outcome or skip cleanup.
+        pass
 
 
 def stop_group(pid, sig):
@@ -12,7 +23,7 @@ def stop_group(pid, sig):
     except ProcessLookupError:
         pass
     except PermissionError:
-        print(f'review: cleanup scope=group signal={sig.name} reason=permission_denied', file=sys.stderr)
+        diagnose(f'review: cleanup scope=group signal={sig.name} reason=permission_denied')
         return False
     return True
 
@@ -29,7 +40,7 @@ def run(seconds, command):
         # The leader can exit before its children; clean the group in either case.
         stop_group(child.pid, signal.SIGTERM)
         try:
-            child.wait(timeout=1)
+            child.wait(timeout=CLEANUP_WAIT_SECONDS)
         except subprocess.TimeoutExpired:
             pass
         finally:
@@ -41,11 +52,11 @@ def run(seconds, command):
                 except ProcessLookupError:
                     pass
                 except PermissionError:
-                    print('review: cleanup scope=child signal=SIGKILL reason=permission_denied', file=sys.stderr)
+                    diagnose('review: cleanup scope=child signal=SIGKILL reason=permission_denied')
             try:
-                child.wait(timeout=1)
+                child.wait(timeout=CLEANUP_WAIT_SECONDS)
             except subprocess.TimeoutExpired:
-                print('review: cleanup scope=child reason=reap_timeout', file=sys.stderr)
+                diagnose('review: cleanup scope=child reason=reap_timeout')
 
 
 def interrupted(signum, _frame):

@@ -11,6 +11,7 @@ run_lens() {
     # the status directly — it is the only thing that says why a lens died.
     code=0
     run_lens_once "$lens" || code=$?
+    report_cleanup_failures "$tmp/$lens.err"
     elapsed=$(( $(date +%s) - started ))
     # Success is a report, not an exit code: a lens that exits 0 having written
     # nothing produced no review, and the coverage check downstream would count

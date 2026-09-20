@@ -70,3 +70,15 @@ cleanup() {
 on_signal() { cleanup; exit 130; }
 trap cleanup EXIT
 trap on_signal TERM INT
+
+# Forward only this fixed vocabulary; model stderr remains private even on success.
+report_cleanup_failures() {
+  local diagnostic
+  for diagnostic in \
+    'review: cleanup scope=group signal=SIGTERM reason=permission_denied' \
+    'review: cleanup scope=group signal=SIGKILL reason=permission_denied' \
+    'review: cleanup scope=child signal=SIGKILL reason=permission_denied' \
+    'review: cleanup scope=child reason=reap_timeout'; do
+    if grep -Fxq -- "$diagnostic" "$1"; then printf '%s\n' "$diagnostic" >&2; fi
+  done
+}

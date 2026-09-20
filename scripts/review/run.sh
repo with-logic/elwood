@@ -132,6 +132,7 @@ run_capped opencode run --format json --agent elwood-review --dir "$root" --mode
 synth_pid=$!
 tracked_pids=("$synth_pid")
 wait "$synth_pid" || synth_code=$?
+report_cleanup_failures "$tmp/synth.err"
 tracked_pids=()
 if [ "$synth_code" -ne 0 ]; then
   synth_category=process

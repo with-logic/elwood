@@ -40,6 +40,26 @@ class PermissionIntegrationTest(unittest.TestCase):
             self.assertEqual(result.stderr,
                              'review: cleanup scope=group signal=SIGKILL reason=permission_denied\n')
 
+    def test_successful_fanout_reports_denied_cleanup_without_leaking_model_stderr(self):
+        fixture = runner_test.RunnerTest()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        inject_denial(fixture.root / 'scripts/review/capped.py', after_kill=True)
+        stub = fixture.bin / 'opencode'
+        source = stub.read_text().replace("mode = os.environ", "print('PRIVATE_MODEL_STDERR', file=sys.stderr)\nmode = os.environ", 1)
+        self.assertIn("print('PRIVATE_MODEL_STDERR'", source)
+        source = source.replace("print('PRIVATE_MODEL_STDERR', file=sys.stderr)",
+                                "print('PRIVATE_MODEL_STDERR', file=sys.stderr)\n"
+                                "print('review: cleanup scope=group signal=SIGKILL reason=permission_denied\\n' * 50, file=sys.stderr)")
+        stub.write_text(source)
+        result = fixture.run_review()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        warning = 'review: cleanup scope=group signal=SIGKILL reason=permission_denied'
+        self.assertEqual(result.stderr.count(warning), 12, result.stderr)
+        self.assertNotIn('PRIVATE_MODEL_STDERR', result.stderr)
+        self.assertNotIn('PRIVATE_CANARY', result.stderr)
+        self.assertIn('Verdict: clean, no notes', (fixture.root / 'REVIEW.md').read_text())
+
     def test_timed_out_lens_with_denied_final_cleanup_is_not_retried(self):
         fixture = runner_test.RunnerTest()
         fixture.setUp()

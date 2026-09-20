@@ -43,7 +43,11 @@ content-free diagnostics; a denied group signal does not claim descendant
 cleanup succeeded. Cleanup still attempts TERM, a one-second grace wait, and
 KILL. If group KILL is denied, it also attempts to kill its directly owned
 child. The final reap wait is bounded to one second and reports an unreaped
-child explicitly if that deadline expires.
+child explicitly if that deadline expires. The outer runner forwards only these
+fixed cleanup diagnostics from each lens attempt and synthesis, including
+successful reports; arbitrary model stderr remains private. Duplicate cleanup
+diagnostics are coalesced per attempt (at most four fixed lines). A broken or
+closed supervisor stderr sink does not replace the outcome or stop cleanup.
 
 The harness fetches the PR title, description, review bodies, and top-level and
 inline comments. A bounded snapshot containing only current maintainers and

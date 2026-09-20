@@ -130,5 +130,8 @@ and uses provider quota. Optional `ELWOOD_REVIEW_MODEL`,
 `ELWOOD_REVIEW_PROCESS_TIMEOUT_SECONDS` (each lens or synthesis process),
 `ELWOOD_REVIEW_DEADLINE_SECONDS` (whole run), and `ELWOOD_REVIEW_LENS_ATTEMPTS`
 (attempts per lens) configure that local run. Python 3 enforces each process cap
-on a separate process group, including its descendants. Invalid numeric settings
+on a separate process group with best-effort descendant cleanup. If the OS denies
+a group signal, the directly owned child still gets a kill attempt, but descendants
+may remain alive. Fixed cleanup diagnostics reach the workflow log without exposing
+model stderr; a broken diagnostic sink cannot replace the process outcome. Invalid numeric settings
 use their defaults; leading zeroes are interpreted as decimal.
