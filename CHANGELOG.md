@@ -12,7 +12,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Bind turn collection to the accepted hook’s turn ID before content arrives, so replayed content from an older turn cannot claim the new turn.
+- Bind turn collection to the matching submit hook’s turn ID before content arrives, so replayed content from an older turn cannot claim the new turn.
 - Keep queued input suspended when a human dialog clears while the agent is still working,
   including deferred startup readiness. A caller prompt held by the dialog reasserts running
   when it submits, before a queued follow-up can dispatch. Blank or caret-only repaints

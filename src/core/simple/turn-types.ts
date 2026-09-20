@@ -20,8 +20,6 @@ export type TurnBoundaryHook = {
   readonly hook_event_name?: string;
   readonly last_assistant_message?: string | null;
   readonly prompt?: string;
-  /** Optional adapter turn identity; malformed hook values must not bind collection. */
-  readonly turn_id?: unknown;
 };
 
 /**
@@ -42,7 +40,7 @@ export type TurnBoundaryContract = {
  * expected final assistant text is this" — an EMPTY string is a boundary that carries no text
  * (`null`/absent `last_assistant_message`, e.g. `StopFailure`) and clears the oracle →
  * quiet-window settle.
- * This is the ONE seam where adapter hook shape meets the adapter-neutral runner: `runTurn`
+ * This boundary seam normalizes adapter hook shape for the runner: `runTurn`
  * consumes only this normalized signal, never raw `hook_event_name`/`last_assistant_message`, so
  * the core is not coupled to adapter hook fields. Each `SessionBase` subclass supplies its own
  * reader (a compile-time REQUIREMENT), so a new adapter cannot wire up turns without one.
@@ -51,6 +49,12 @@ export type { BoundarySignal, TurnFailure } from "./boundary-signal.ts";
 export { boundaryFailure, boundaryText } from "./boundary-signal.ts";
 
 export type BoundarySignalReader = (hookEvent: TurnBoundaryHook) => BoundarySignal | undefined;
+
+/** Optional adapter reader for a prompt-correlated accepted turn identity. */
+export type AcceptedTurnIdReader = (
+  hookEvent: TurnBoundaryHook,
+  prompt: string,
+) => string | undefined;
 
 /** Normalizes shared hook evidence into positive acceptance for one exact prompt. */
 export type AcceptanceSignalReader = (hookEvent: TurnBoundaryHook, prompt: string) => boolean;
@@ -131,6 +135,8 @@ export type StreamTurnOptions = {
    * pass their own so the runner never reads raw adapter hook fields.
    */
   readonly readBoundarySignal?: BoundarySignalReader;
+  /** Adapter-normalized identity; a boundary alone cannot correlate a submitted prompt. */
+  readonly readAcceptedTurnId?: AcceptedTurnIdReader | undefined;
 };
 
 /** A running turn: `events`/`completion` are the consumer view; `boundary` gates the serializer. */

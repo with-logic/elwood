@@ -1,24 +1,22 @@
 /** Accepted hook identity fences replayed content before a turn produces text (C-API-48). */
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { readCodexAcceptedTurnId } from "../../src/codex/accepted-turn.ts";
 import { activity, drive, runFakeTimed } from "./simple-turn-fakes.ts";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
-test.each([
-  "UserPromptSubmit",
-  "Stop",
-])("C-API-48 an accepted %s binds before stale content arrives", async (hook_event_name) => {
+test("C-API-48 an accepted submit binds before stale content arrives", async () => {
   const session = drive((s) => {
     s.emit("status", { status: "running" });
-    s.emit("hook", { hook_event_name, prompt: "go", turn_id: "current" });
+    s.emit("hook", { hook_event_name: "UserPromptSubmit", prompt: "go", turn_id: "current" });
     s.emit("activity", activity({ text: "STALE", turnId: "previous" }));
     s.emit("activity", activity({ kind: "reasoning", text: "thinking" }));
     s.emit("activity", activity({ text: "MINE", turnId: "current" }));
     s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "MINE" });
     s.emit("status", { status: "ready" });
   });
-  expect(await runFakeTimed(session)).toEqual([
+  expect(await runFakeTimed(session, { readAcceptedTurnId: readCodexAcceptedTurnId })).toEqual([
     { type: "thinking", text: "thinking" },
     { type: "text", text: "MINE" },
   ]);
@@ -38,7 +36,9 @@ test.each([
     s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "MINE" });
     s.emit("status", { status: "ready" });
   });
-  expect(await runFakeTimed(session)).toEqual([{ type: "text", text: "MINE" }]);
+  expect(await runFakeTimed(session, { readAcceptedTurnId: readCodexAcceptedTurnId })).toEqual([
+    { type: "text", text: "MINE" },
+  ]);
 });
 
 test("C-API-48 unrelated hooks cannot bind and later accepted hooks cannot rebind", async () => {
@@ -53,7 +53,9 @@ test("C-API-48 unrelated hooks cannot bind and later accepted hooks cannot rebin
     s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "MINE" });
     s.emit("status", { status: "ready" });
   });
-  expect(await runFakeTimed(session)).toEqual([{ type: "text", text: "MINE" }]);
+  expect(await runFakeTimed(session, { readAcceptedTurnId: readCodexAcceptedTurnId })).toEqual([
+    { type: "text", text: "MINE" },
+  ]);
 });
 
 test("C-API-48 a late accepted hook does not replace the first content binding", async () => {
@@ -65,5 +67,34 @@ test("C-API-48 a late accepted hook does not replace the first content binding",
     s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "MINE" });
     s.emit("status", { status: "ready" });
   });
-  expect(await runFakeTimed(session)).toEqual([{ type: "text", text: "MINE" }]);
+  expect(await runFakeTimed(session, { readAcceptedTurnId: readCodexAcceptedTurnId })).toEqual([
+    { type: "text", text: "MINE" },
+  ]);
+});
+
+test("C-API-48 a delayed prior Stop cannot claim the next submitted turn", async () => {
+  const session = drive((s) => {
+    s.emit("status", { status: "running" });
+    s.emit("hook", { hook_event_name: "Stop", turn_id: "previous" });
+    s.emit("hook", { hook_event_name: "UserPromptSubmit", prompt: "go", turn_id: "current" });
+    s.emit("activity", activity({ text: "MINE", turnId: "current" }));
+    s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "MINE" });
+    s.emit("status", { status: "ready" });
+  });
+  expect(await runFakeTimed(session, { readAcceptedTurnId: readCodexAcceptedTurnId })).toEqual([
+    { type: "text", text: "MINE" },
+  ]);
+});
+
+test("C-API-48 an absent adapter ID preserves content binding", async () => {
+  const session = drive((s) => {
+    s.emit("status", { status: "running" });
+    s.emit("hook", { hook_event_name: "UserPromptSubmit", prompt: "go" });
+    s.emit("activity", activity({ text: "MINE", turnId: "current" }));
+    s.emit("hook", { hook_event_name: "Stop", last_assistant_message: "MINE" });
+    s.emit("status", { status: "ready" });
+  });
+  expect(await runFakeTimed(session, { readAcceptedTurnId: readCodexAcceptedTurnId })).toEqual([
+    { type: "text", text: "MINE" },
+  ]);
 });

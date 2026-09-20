@@ -7,7 +7,7 @@ import { type ElwoodSessionStatus, terminalStatuses } from "../status-categories
 import type { TurnEvent } from "./events.ts";
 import { runTurn } from "./turn.ts";
 import type { TurnQueue } from "./turn-queue.ts";
-import type { BoundarySignalReader, TurnOptions } from "./turn-types.ts";
+import type { AcceptedTurnIdReader, BoundarySignalReader, TurnOptions } from "./turn-types.ts";
 
 type Facade = { readonly status: ElwoodSessionStatus; start(): Promise<ElwoodAgentSession> };
 
@@ -28,6 +28,7 @@ export function capturedTurn(
   readBoundarySignal: BoundarySignalReader,
   prompt: string,
   options?: TurnOptions,
+  readAcceptedTurnId?: AcceptedTurnIdReader,
 ): AsyncGenerator<TurnEvent> {
   let captured: { readonly options: TurnOptions | undefined; readonly release: () => void };
   try {
@@ -46,7 +47,11 @@ export function capturedTurn(
   return queue.enqueue(async () => {
     try {
       const session = await starting;
-      const turn = runTurn(session, prompt, { ...captured.options, readBoundarySignal });
+      const turn = runTurn(session, prompt, {
+        ...captured.options,
+        readBoundarySignal,
+        readAcceptedTurnId,
+      });
       void turn.boundary.then(captured.release);
       return turn;
     } catch (error) {
