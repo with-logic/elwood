@@ -27,12 +27,16 @@ type Harness = {
   readonly native: string;
   readonly cursor: string;
   readonly clear: string;
+  readonly renderClear?: (frame: string) => string;
   /** The guard the adapter handed its mocked image driver, once an attach ran. */
   readonly attachGuard: () => (() => boolean) | undefined;
 };
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const repaint = (pty: FakePty, frame: string) =>
-  pty.emitData(`\u001b[2J\u001b[H${frame.replaceAll("\n", "\r\n")}`);
+const repaint = (
+  pty: FakePty,
+  frame: string,
+  render = (text: string) => text.replaceAll("\n", "\r\n"),
+) => pty.emitData(`\u001b[2J\u001b[H${render(frame)}`);
 
 /** Teardown cannot depend on assertions passing; a leaked session contaminates later tests. */
 async function withSession(
@@ -53,7 +57,7 @@ export function trustRecoveryTests(harness: Harness): void {
     await withSession(harness, async ({ session, pty }) => {
       const image = join(tempDir("elwood-trust-"), "shot.png");
       writeFileSync(image, PNG);
-      repaint(pty, harness.clear);
+      repaint(pty, harness.clear, harness.renderClear);
       await session.sendMessage("look", { images: [{ path: image }] });
       const guard = harness.attachGuard();
       expect(guard?.()).toBe(false);
@@ -96,13 +100,13 @@ export function trustRecoveryTests(harness: Harness): void {
         const write = pty.write.bind(pty);
         vi.spyOn(pty, "write").mockImplementation((input) => {
           write(input);
-          if (input === "1\r") repaint(pty, harness.clear);
+          if (input === "1\r") repaint(pty, harness.clear, harness.renderClear);
         });
         repaint(pty, harness.native);
       } else {
         await session.sendKeys("manual recovery");
         expect(pty.writes).toEqual(["manual recovery"]);
-        repaint(pty, harness.clear);
+        repaint(pty, harness.clear, harness.renderClear);
       }
       await vi.advanceTimersByTimeAsync(600);
       expect(session.status).not.toBe("blocked");

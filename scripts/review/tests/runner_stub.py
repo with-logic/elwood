@@ -1,6 +1,6 @@
-"""Deterministic OpenCode substitute for real runner-process tests."""
+"""Provide a deterministic OpenCode substitute for PRD §16 review-runner tests."""
 STUB = r'''#!/usr/bin/env python3
-import atexit, io, json, os, pathlib, re, subprocess, sys, time
+import atexit, io, json, os, pathlib, re, signal, subprocess, sys, time
 original_stdout = sys.stdout
 sys.stdout = io.StringIO()
 def emit_events():
@@ -46,10 +46,19 @@ if match:
     if mode == 'large-input':
         assert 'DIFF_LAST_CANARY' in evidence and 'CONTEXT_LAST_CANARY' in evidence
     assert 'static review only' in prompt
+    if mode == 'killed' and name == 'review-architecture-conventions':
+        os.kill(os.getpid(), signal.SIGKILL)
     if mode == 'all-failed' or (mode == 'missing' and name == 'review-architecture-conventions'):
         print('PRIVATE-REVIEW-TEXT', file=sys.stderr)
         sys.exit(1)
-    if mode == 'timeout' and name == 'review-architecture-conventions':
+    if mode == 'first-error-timeout' and name == 'review-architecture-conventions' and count == 1:
+        diagnostic_message = 'FIRST_ATTEMPT_CANARY' + 'x' * 5000 + 'TRUNCATED_TAIL_CANARY'
+        raise RuntimeError(diagnostic_message)
+    if mode == 'first-parser-timeout' and name == 'review-architecture-conventions' and count == 1:
+        atexit.unregister(emit_events)
+        print('not-json', file=original_stdout, flush=True)
+        sys.exit(0)
+    if mode in ['timeout', 'first-error-timeout', 'first-parser-timeout'] and name == 'review-architecture-conventions':
         subprocess.Popen([sys.executable, '-c',
             'import pathlib,time; time.sleep(6); pathlib.Path(' + repr(str(root / 'orphan')) + ').touch()'])
         time.sleep(20)
@@ -65,6 +74,14 @@ if match:
         print('No findings.')
     (root / ('done-' + name)).touch()
 else:
+    if mode == 'synth-timeout':
+        time.sleep(20)
+    if mode == 'synth-killed':
+        os.kill(os.getpid(), signal.SIGKILL)
+    if mode == 'synth-parser':
+        atexit.unregister(emit_events)
+        print('not-json', file=original_stdout, flush=True)
+        sys.exit(0)
     if mode == 'synth-failed':
         print('PRIVATE-SYNTHESIS-TEXT', file=sys.stderr)
         sys.exit(2)

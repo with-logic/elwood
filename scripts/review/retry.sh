@@ -17,20 +17,22 @@ run_lens() {
     # it as failed anyway. Treat it here, where we can still retry it.
     [ "$code" -eq 0 ] && [ -s "$tmp/$lens.md" ] && return 0
 
-    # A lens the cap killed is never retried: 124 is the process-group wall-clock cap, 137 is SIGKILL. That lens did not hiccup, it ran out of clock, and a retry buys
-    # another full cap for the same ending — three attempts would spend 45
-    # minutes of a 40-minute deadline and starve synthesis. This is also the
+    # Never retry a capped (124) or SIGKILLed (137) lens. Another full-cap attempt
+    # could exhaust the shared deadline and starve synthesis. This is also the
     # bound that keeps a bad-credentials or provider-outage run cheap: those
     # fail in milliseconds, so three attempts cost three instants.
-    case "$code" in 124|137) failure_kind=timeout ;; esac
+    case "$code" in 124) failure_kind=timeout ;; 137) failure_kind=killed ;; esac
     echo "review: phase=lens lens=$lens category=$failure_kind exit=$code elapsed_seconds=$elapsed attempt=$attempt" >&2
     case "$code" in
-      124|137)
+      124)
         # Report the elapsed time, not process_timeout_seconds: the effective cap
         # is the smaller of that and the remaining deadline, so naming the
         # configured value would point at the wrong number when the deadline
         # was what actually ran out.
         echo "review: $lens was killed at its wall-clock cap after ${elapsed}s (exit $code); not retrying" >&2
+        return "$code" ;;
+      137)
+        echo "review: $lens was killed by SIGKILL after ${elapsed}s (exit $code); not retrying" >&2
         return "$code" ;;
     esac
 

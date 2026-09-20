@@ -40,6 +40,45 @@ describe("createStartupBuffer (§9.1, §9.4)", () => {
     buffer.push("more");
     expect(buffer.read()).toBe("12345678");
   });
+
+  test("§9.1 retains UTF-8 bytes rather than UTF-16 code units", () => {
+    const buffer = createStartupBuffer(7);
+    buffer.push("aé🙂z");
+    expect(buffer.read()).toBe("aé🙂");
+    expect(Buffer.byteLength(buffer.read(), "utf8")).toBe(7);
+  });
+
+  test.each([
+    0, 1, 2, 3, 4,
+  ])("§9.1 an astral code point requires all four bytes with %i available", (available) => {
+    const buffer = createStartupBuffer(2 + available);
+    buffer.push("ab");
+    buffer.push("🙂");
+    expect(buffer.read()).toBe(available === 4 ? "ab🙂" : "ab");
+    buffer.push("c");
+    expect(buffer.read()).toBe(available === 4 ? "ab🙂" : "ab");
+  });
+
+  test("§9.1 later chunks cannot fill space after an unfit code point", () => {
+    const buffer = createStartupBuffer(5);
+    buffer.push("é");
+    buffer.push("éé");
+    expect(buffer.read()).toBe("éé");
+    buffer.push("x");
+    expect(buffer.read()).toBe("éé");
+    buffer.release();
+    buffer.push("later");
+    expect(buffer.read()).toBe("");
+  });
+
+  test("§9.1 an oversized chunk retains only the first 64 KiB prefix", () => {
+    const buffer = createStartupBuffer();
+    buffer.push("🙂".repeat(1_000_000));
+    expect(buffer.read()).toBe("🙂".repeat(16_384));
+    expect(Buffer.byteLength(buffer.read(), "utf8")).toBe(65_536);
+    buffer.push("later");
+    expect(buffer.read()).toBe("🙂".repeat(16_384));
+  });
 });
 
 describe("assertStartupThenRelease (§9.1, §9.4)", () => {

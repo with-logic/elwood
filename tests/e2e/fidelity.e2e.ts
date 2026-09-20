@@ -76,10 +76,7 @@ test("C-E2E-06 project settings hooks and CLAUDE.md load alongside the Elwood br
     assert.ok(readFileSync(claudeMd, "utf8").includes("planted by the fidelity e2e test"));
     const settingsRaw = readFileSync(join(project.cwd, ".claude", "settings.json"), "utf8");
     assert.ok(settingsRaw.includes("user-hook-fired"));
-    assert.ok(
-      !settingsRaw.includes("hook-bridge.mjs"),
-      "bridge hooks stay out of project settings",
-    );
+    assert.ok(!settingsRaw.includes("hook-bridge-"), "bridge hooks stay out of project settings");
     observed.dispose();
   } finally {
     await cleanup(session);
@@ -130,7 +127,7 @@ test("C-E2E-06 user Codex config.toml hooks fire alongside the Elwood bridge", {
     // Elwood must not rewrite the user-owned config it merged with.
     const configRaw = readFileSync(sandbox.configPath, "utf8");
     assert.ok(configRaw.includes("user-hook-fired"));
-    assert.ok(!configRaw.includes("hook-bridge.mjs"), "bridge hooks stay out of user config");
+    assert.ok(!configRaw.includes("hook-bridge-"), "bridge hooks stay out of user config");
     observed.dispose();
   } finally {
     await cleanup(session);

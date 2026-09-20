@@ -6,27 +6,12 @@
 
 import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
-import { nativeComposerClearance, type TrustClearance } from "../core/trust/clearance.ts";
+import { codexWorkingScreen, codexWorkingTitle } from "./screen/working.ts";
 import { CodexUpdatePromptTracker, codexUpdatePromptVisible } from "./update-prompt.ts";
 
+export { codexComposerClearance as codexTrustClearance } from "./screen/clearance.ts";
+
 const verifiedAgainst = "codex-cli 0.142.5";
-
-/** The idle Codex composer row; also the caret that is NOT a dialog caret. */
-const codexComposerRow = /^\s*›(?:\s*|\s+Ask Codex to do anything)\s*$/m;
-
-/**
- * Codex's trust-clearance grammar, owned HERE beside the rest of Codex's verified screen
- * facts (C-TRUST-01). Clearance needs Codex's own chrome — the boxed startup banner or
- * the model/effort/cwd status row — so a bare `›` never reads as an answered gate.
- */
-export const codexTrustClearance: TrustClearance = nativeComposerClearance(
-  codexComposerRow,
-  (frame) =>
-    (/^\s*│\s*>_ OpenAI Codex \(v[\d.]+\)/m.test(frame) && /^\s*╰─+╯\s*$/m.test(frame)) ||
-    /^\s*gpt-[\w.-]+ (?:minimal|low|medium|high|xhigh|default) · (?:\/|[A-Z]:[\\/])[^\n]*$/m.test(
-      frame,
-    ),
-);
 
 /**
  * Verified against codex-cli 0.142.5. The working spinner renders
@@ -46,12 +31,12 @@ export const codexTrustClearance: TrustClearance = nativeComposerClearance(
 function codexScreenFactRules(updatePromptVisible: (frame: string) => boolean): ScreenFactRule[] {
   return [
     { id: "codex-composer-marker", fact: "composer_visible", all: [/^\s*›/m] },
-    { id: "codex-working-spinner", fact: "working_visible", all: [/esc to interrupt/i] },
+    { id: "codex-working-spinner", fact: "working_visible", all: [codexWorkingScreen] },
     {
       id: "codex-working-title",
       fact: "working_visible",
       region: "title",
-      all: [/^[⠀-⣿]\s/],
+      all: [codexWorkingTitle],
     },
     {
       id: "codex-interrupt-banner",

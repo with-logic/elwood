@@ -4,8 +4,8 @@
  */
 
 import { spawn } from "node:child_process";
-import { join } from "node:path";
 import type { HookErrorEvent } from "../../src/index.ts";
+import { onlyLaunchArtifact } from "../helpers/launch-artifacts.ts";
 import type { E2eProject } from "./scratch.ts";
 
 export type JsonObject = Readonly<Record<string, unknown>>;
@@ -15,7 +15,7 @@ export async function invokeHookBridge(
   elwoodSessionId: string,
   input: Readonly<Record<string, unknown>>,
 ): Promise<{ readonly status: number | null; readonly stdout: string; readonly stderr: string }> {
-  const bridgePath = join(project.sessionDir(elwoodSessionId), "hook-bridge.mjs");
+  const bridgePath = onlyLaunchArtifact(project.sessionDir(elwoodSessionId), "hook-bridge");
   return await new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [bridgePath], {
       env: { ...process.env, ELWOOD_SESSION_ID: elwoodSessionId },

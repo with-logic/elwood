@@ -25,9 +25,11 @@ import type { CodexEventMap } from "./types.ts";
 /** A watcher plus the hook to flush any diagnostics buffered before the sink existed. */
 type WiredCodexTranscriptWatcher = {
   readonly watcher: CodexTranscriptWatcher;
+  /** Include deferred startup-warning fan-out in the exit-order barrier. */
+  readonly duringDelivery: (work: () => void) => void;
   readonly flushPendingWarnings: () => void;
   /** Drive `watcher.finish()` behind an error boundary, then run `afterFlush` in a
-   * `finally` so a throwing final-flush listener never skips terminal:exit (C-LIFE-10). */
+   * `finally` so an internal final-flush error never skips terminal:exit (C-LIFE-10). */
   readonly finishSafely: (afterFlush?: () => void) => void;
 };
 
@@ -45,13 +47,51 @@ export function createCodexTranscriptWatcher(
   // The shared router buffers diagnostics observed BEFORE the sink exists (the watcher
   // is built first) and delivers each exactly once with clear-before-delivery + throw
   // containment (see core/transcript/warning-router).
-  const { route, flushPendingWarnings } = createTranscriptWarningRouter(getSink);
+  const warnings = createTranscriptWarningRouter(getSink);
+  let deliveryDepth = 0;
+  function duringDelivery(work: () => void): void {
+    deliveryDepth += 1;
+    try {
+      work();
+    } finally {
+      deliveryDepth -= 1;
+    }
+  }
+  const route = (warning: Parameters<typeof warnings.route>[0]) =>
+    duringDelivery(() => warnings.route(warning));
+  const flushPendingWarnings = () => duringDelivery(warnings.flushPendingWarnings);
+  const reported = new Set<"codex:transcript" | "activity">();
+  // TypedEmitter fans out to all listeners before rethrowing. Contain each channel
+  // separately so one consumer cannot suppress the projection or stop later polls.
+  function deliver<K extends "codex:transcript" | "activity">(channel: K, event: CodexEventMap[K]) {
+    try {
+      emitter.emit(channel, event);
+    } catch {
+      if (reported.has(channel)) return;
+      reported.add(channel);
+      // Run warning callbacks after the current scan/flush. A callback may stop
+      // the session synchronously, so it must not interrupt paired record delivery.
+      queueMicrotask(() =>
+        route({
+          elwoodSessionId,
+          agent: "codex",
+          source: "terminal",
+          code: "transcript_listener_error",
+          severity: "warning",
+          message: "Codex transcript listener failed; remaining transcript delivery continues.",
+          channel,
+          raw: `transcript_listener_error channel=${channel}`,
+        }),
+      );
+    }
+  }
   const watcher = new CodexTranscriptWatcher(
     elwoodSessionId,
-    (event) => {
-      emitter.emit("codex:transcript", event);
-      emitter.emit("activity", activity.activityFromCodexTranscript(event));
-    },
+    (event) =>
+      duringDelivery(() => {
+        deliver("codex:transcript", event);
+        deliver("activity", activity.activityFromCodexTranscript(event));
+      }),
     {
       onDrop: (notice) => route(codexDropWarning(notice)),
       onReadError: (notice) => route(codexReadErrorWarning(notice)),
@@ -59,11 +99,17 @@ export function createCodexTranscriptWatcher(
     },
   );
   // C-LIFE-10: drive the FINAL flush behind an error boundary, then run `afterFlush`
-  // (terminal:exit emission, status, reap) in a `finally` so a throwing final-flush
-  // listener can NEVER skip terminal:exit. A flush failure is contained and surfaced as
+  // (terminal:exit emission, status, reap) in a `finally` so an internal drain
+  // error cannot skip terminal:exit. A flush failure is contained and surfaced as
   // a bounded `transcript_poll_stopped` diagnostic phase-labelled `final_flush` (so lost
   // trailing shutdown activity is distinguishable from a live poll failure). Mirrors Claude.
   const finishSafely = (afterFlush: () => void = () => undefined) => {
+    if (deliveryDepth > 0) {
+      // A listener can synchronously stop the PTY. Let the bounded scan deliver
+      // every record it already read before finalizing the watcher and session.
+      queueMicrotask(() => finishSafely(afterFlush));
+      return;
+    }
     try {
       watcher.finish();
     } catch (error) {
@@ -74,5 +120,5 @@ export function createCodexTranscriptWatcher(
       afterFlush();
     }
   };
-  return { watcher, flushPendingWarnings, finishSafely };
+  return { watcher, duringDelivery, flushPendingWarnings, finishSafely };
 }

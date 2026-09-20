@@ -8,7 +8,13 @@
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { startClaude } from "../../src/index.ts";
-import { claudeBody, claudeComposer, claudeTrust, tty } from "../fixtures/trust-composer.ts";
+import {
+  claudeBody,
+  claudeComposer,
+  claudeTrust,
+  claudeTty,
+  tty,
+} from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -28,7 +34,7 @@ describe("ClaudeSessionApi trust-prompt render delay", () => {
       `\u001b[2J\u001b[HQuick safety check: Is this a project you created or one you trust?\r\n${tty(claudeBody)}\r\n\r\n  No, exit\r\n❯ Yes, I trust this folder`,
     );
     await vi.waitFor(() => expect(ptys[0]!.writes).toEqual(["\u001b[B", "\r"]));
-    ptys[0]!.emitData(`\u001b[2J\u001b[H${claudeComposer.replaceAll("\n", "\r\n")}`);
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
     await vi.waitFor(() => expect(activity).toContain("startup_prompt:workspace_trust"));
   });
 
@@ -117,7 +123,7 @@ describe("ClaudeSessionApi trust-prompt render delay", () => {
     expect(attention).toEqual([]); // held silently: no transient attention without the body
     ptys[0]!.emitData(`\u001b[2J\u001b[H${tty(claudeTrust)}\r\n1. Yes, I trust this folder\r\n`);
     await expect.poll(() => ptys[0]!.writes).toEqual(["1\r"]);
-    ptys[0]!.emitData(`\u001b[2J\u001b[H${tty(claudeComposer)}`);
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
     await queued;
     expect(ptys[0]!.writes).toContain("\u001b[200~held\u001b[201~");
   });

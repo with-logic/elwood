@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
+import { onlyLaunchArtifact } from "../helpers/launch-artifacts.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -15,7 +16,10 @@ afterEach(resetFakes);
 /** The per-launch socket path is minted fresh and written into the bridge script,
  * NOT onto the persisted record (near-stateless). Read it back from the script. */
 function socketPathFromBridge(stateDir: string, id: string): string {
-  const script = readFileSync(join(stateDir, "sessions", id, "hook-bridge.mjs"), "utf8");
+  const script = readFileSync(
+    onlyLaunchArtifact(join(stateDir, "sessions", id), "hook-bridge"),
+    "utf8",
+  );
   return /const socketPath = "([^"]+)"/.exec(script)![1]!;
 }
 

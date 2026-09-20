@@ -22,7 +22,6 @@ import type { PtyExit, PtyProcess } from "../../pty/types.ts";
 import { currentPtyFactory } from "../../runtime/seams.ts";
 import { finishSessionExit } from "../../runtime/session/exit.ts";
 import { userShell } from "../../runtime/shell.ts";
-import { writePrivateFileAtomic } from "../../state/files.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { buildClaudeShellCommand, shellLaunch } from "../command.ts";
@@ -46,7 +45,7 @@ export function buildClaudeObservers(
 }
 
 export function writeRuntimeFiles(runtime: SessionRuntime, options: StartClaudeOptions): void {
-  writePrivateFileAtomic(
+  runtime.stateOwnership.publishFile(
     runtime.bridgeScriptPath,
     bridgeScriptSource(runtime.socketPath, runtime.bridgeToken),
   );
@@ -55,7 +54,10 @@ export function writeRuntimeFiles(runtime: SessionRuntime, options: StartClaudeO
     options,
     timeoutSeconds: cliHookTimeoutSeconds(options.hookTimeoutMs ?? 25_000),
   });
-  writePrivateFileAtomic(runtime.settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+  runtime.stateOwnership.publishFile(
+    runtime.settingsPath,
+    `${JSON.stringify(settings, null, 2)}\n`,
+  );
 }
 
 /**

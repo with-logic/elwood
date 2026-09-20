@@ -27,6 +27,13 @@
    session env.
 9. Return a `CodexSessionApi` object once the process and bridge are ready.
 
+Both adapters inspect received PTY output during the bounded startup health check,
+independently of terminal rendering. The collector retains at most the first
+64 KiB of UTF-8 output, ending on a complete code point. If a chunk exceeds the
+remaining budget, its remainder and all subsequent chunks are discarded; later
+output cannot fill a gap in that prefix. The collector releases its retained
+output after the check succeeds or fails.
+
 ### 9.2 Compatibility checks
 
 Elwood MUST check the installed Claude Code version during startup. The minimum
@@ -245,6 +252,10 @@ updates the live session status. It keeps the persisted session record and
 generated files, including loop definitions, unless kill or teardown is
 requested. Any unsubmitted due state is discarded. (Session status is live-only and is
 not written to the record, §8.2.)
+
+A resume started by an exit listener supersedes the old launch's shared-state
+ownership (§8.1). Deferred or repeated teardown of that old object still cleans its
+own resources, but cannot clear the successor's loops or remove its files/socket.
 
 Runtime cleanup first allows received terminal output to render, then disposes
 the renderer (C-LIFE-12). The drain covers output that arrives while it is in

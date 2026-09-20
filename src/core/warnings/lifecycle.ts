@@ -1,5 +1,5 @@
 /**
- * Lifecycle preflight warning shapes split out of the main warning union (§9.2, C-LIFE-11) to
+ * Lifecycle warning shapes split out of the main warning union (§6.4, §9.2) to
  * keep `index.ts` under the file-size cap. These are ordinary `ElwoodWarningEvent` members.
  */
 
@@ -21,5 +21,17 @@ export type AgentUpdateFailedWarning = {
   readonly message: string;
   readonly installedVersion: string;
   readonly errorCode: string;
+  readonly raw: string;
+};
+
+/** One bounded diagnostic for contained notification failures in a Claude hook (C-HOOK-22). */
+export type HookObserverFailedWarning = {
+  readonly elwoodSessionId: string;
+  readonly agent: "claude";
+  readonly source: "lifecycle";
+  readonly code: "hook_observer_failed";
+  readonly severity: "warning";
+  readonly message: string;
+  readonly phase: "hook" | "activity" | "hook_error" | "transcript" | "lifecycle";
   readonly raw: string;
 };

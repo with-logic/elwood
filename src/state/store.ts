@@ -73,8 +73,12 @@ export function prepareStateDir(
 }
 
 /** Persist the record into its derived session directory (not stored on the record). */
-export function writeSessionRecord(record: SessionRecord, sessionDir: string): void {
-  writePrivateFileAtomic(recordPath(sessionDir), `${JSON.stringify(record, null, 2)}\n`);
+export function writeSessionRecord(
+  record: SessionRecord,
+  sessionDir: string,
+  write: (path: string, text: string) => void = writePrivateFileAtomic,
+): void {
+  write(recordPath(sessionDir), `${JSON.stringify(record, null, 2)}\n`);
 }
 
 /**

@@ -7,10 +7,11 @@
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { createCodexTranscriptWatcher } from "../../src/codex/session/transcript.ts";
 import type { CodexEventMap } from "../../src/codex/session/types.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
+import { emitSessionWarnings } from "../../src/core/warnings/session.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
@@ -45,8 +46,8 @@ describe("createCodexTranscriptWatcher finishSafely (C-LIFE-10)", () => {
   test("a THROWING final flush still runs afterFlush + routes a final_flush diagnostic", () => {
     const recorded: ElwoodWarningEvent[] = [];
     const sink: Sink = { emitWarnings: (w) => recorded.push(...w) };
-    const { finishSafely, emitter, path } = wired(() => sink);
-    emitter.on("codex:transcript", () => {
+    const { finishSafely, watcher, path } = wired(() => sink);
+    vi.spyOn(watcher, "flush").mockImplementation(() => {
       throw new Error("final boom");
     });
     writeFileSync(path, `${record}\n`); // drained (and thrown on) by finish()
@@ -56,6 +57,41 @@ describe("createCodexTranscriptWatcher finishSafely (C-LIFE-10)", () => {
     });
     expect(afterRan).toBe(true); // terminal:exit emission is NOT skipped
     expect(recorded).toMatchObject([{ code: "transcript_poll_stopped", phase: "final_flush" }]);
+  });
+
+  test("C-CODEX-20 first listener failures in the final flush report after record delivery", async () => {
+    const order: string[] = [];
+    const sink: Sink = {
+      emitWarnings: (warnings) =>
+        emitSessionWarnings(warnings, {
+          warning: (event) => emitter.emit("warning", event),
+          activity: (event) => emitter.emit("activity", event),
+        }),
+    };
+    const { finishSafely, emitter, path } = wired(() => sink);
+    emitter.on("codex:transcript", () => {
+      throw new Error("raw listener");
+    });
+    emitter.on("activity", () => {
+      throw new Error("activity listener");
+    });
+    emitter.on("activity", (event) => {
+      if (event.source === "transcript") order.push("record");
+    });
+    emitter.on("warning", () => {
+      throw new Error("warning listener");
+    });
+    emitter.on("warning", (event) => order.push(event.code));
+    writeFileSync(path, `${record}\n`);
+    finishSafely(() => order.push("exit"));
+    expect(order).toEqual(["record", "exit"]);
+    await Promise.resolve();
+    expect(order).toEqual([
+      "record",
+      "exit",
+      "transcript_listener_error",
+      "transcript_listener_error",
+    ]);
   });
 
   test("with no afterFlush it is a no-op default", () => {

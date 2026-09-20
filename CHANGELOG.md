@@ -25,6 +25,87 @@ back each entry are listed in `prd/14-conformance.md`.
   released at the boundary). Queued and in-flight recovery submissions are now
   cancelled, including behind a held dialog. The serializer slot and captured
   images remain reserved until cancellation finishes settling.
+- Preserve live-loop cancellation notifications through delayed or retried kill and teardown cleanup. Previously, pausing the scheduler before clearing definitions could suppress these events.
+
+- Keep each live launch’s hook policy bound to its own bridge artifacts during resume. Pending resumes reconcile durable loops at activation; destructive predecessor shutdown joins the reservation outcome, and rollback attempts all files before reporting restoration failures.
+
+- Claude and Codex transcript and diagnostic listeners can stop a session without
+  moving pending activity past terminal exit, duplicating finalization, or signaling
+  an already-exited PTY while its final transcript records are being delivered.
+  An exit immediately after startup waits for already-scheduled warning delivery,
+  preserving both subscriber visibility and diagnostic-before-exit ordering.
+  A session resumed from an exit listener retains its files, socket, and loops when
+  the old launch finishes a deferred or repeated teardown, including through supported
+  state-path aliases. Failed launches restore their own published files, CLI cleanup
+  preserves newer owners, and superseded loop mutations reject instead of silently
+  reporting success.
+
+- Keep human-owned trust gates blocked through partial and unknown replacement
+  frames. Queued caller input resumes only after positive native clearance. Both
+  adapters withhold trust retries and human clearance while received output is
+  still rendering or the terminal has reported a render failure. Claude also waits
+  for its visible native input cursor after the final composer paint and retains
+  the hold while its native working title remains active.
+
+- Recognize Codex's native composer beneath numbered transcript output and with
+  its older model footer. A newly painted bare caret cannot borrow an earlier
+  composer's footer to release input held for a human dialog. Live clearance now
+  requires its visible input cursor after all received batches render; native approval
+  headers still override a stale visible cursor. Partial dialogs stay held while
+  ordinary transcript prose and numbered user prompts remain valid. Exact-shaped
+  native working rows remain conservatively held. Active work and incomplete
+  welcome-box fragments cannot release input.
+
+- Keep Codex transcript polling and activity delivery running after a public listener
+  throws, so later records (including turn failure evidence) still reach subscribers.
+  The content-free `transcript_listener_error` warning identifies the failed delivery
+  channel at most once per watcher, after synchronous transcript delivery;
+  `transcript_poll_stopped` remains reserved for actual reader failures.
+
+- Detect startup authentication errors from PTY bytes as soon as they arrive.
+  Slow or stalled terminal rendering no longer lets an already-received error
+  escape the bounded startup check in either adapter. Startup capture retains only
+  a complete UTF-8 prefix within 64 KiB, including for oversized raw chunks.
+
+- Reject hook rewrites with unsafe JSON values or accessors before serialization, and stop wide-value inspection at the validation budget.
+
+- Reject cyclic and excessively deep or wide schema-less hook inputs
+  and rewrites without throwing. Validation allows at most 128 edges of depth
+  and 100,000 value visits, counting repeated children on each path. Invalid rewrites
+  now report `invalid_response` and return no decision instead of reaching the JSON
+  serializer with an unserializable graph.
+- Reject `NaN` and `±Infinity` in numeric Claude hook fields, for every tool. Because
+  `JSON.stringify` encodes them as `null`, a hook handler that returned one in an
+  `updatedInput` rewrite used to send the CLI a `null` where its schema requires a
+  number. Concrete tool schemas enforce this per field; schema-less tools (MCP,
+  generic, future) enforce it structurally over the whole value, nested records and
+  arrays included. Such a rewrite is now an invalid result: the bridge fails open with
+  no decision and emits `hookError`.
+
+- Bind the Claude browser-tools decline to session disposal. After `stop()`,
+  `kill()`, or PTY exit the decline is no longer attempted, and one already in flight
+  settles as a cancellation, so a closed session no longer emits a late
+  `startup_prompt` / `startup_prompt_write_failed`. The keystroke itself is bound too:
+  the non-trust automation barrier waits for render settlement, and a write parked there
+  is interrupted immediately on disposal, releases its observation timer, and never
+  delivers a stale Escape to a dead PTY. Trust automation already had this lifetime.
+
+- Preserve Claude hook decisions and lifecycle progress when observational listeners
+  throw or return rejecting Promises, with one bounded `hook_observer_failed` warning
+  per affected invocation. Pending observers do not delay hook replies; diagnostic
+  retention is capped at 1,024 registrations per emitter. Promise constructor/species
+  metadata must permit native reaction attachment; attachment throws are reported
+  and remain retryable. Warning payloads are
+  frozen before delivery. Incoming
+  Claude hook events are deeply frozen before observation, and throwing observers
+  no longer truncate subsequent hook-scoped status or transcript notifications.
+
+- Snapshot Claude hook responses before validation so later mutations or custom accessors cannot replace validated rewrites on the wire. Capture wire output and blocking decisions before activity listeners run.
+
+- Preserve Claude `StopFailure` hooks with missing or changed diagnostic fields. Those
+  fields are now typed as optional `unknown`, matching ingress. Browser logs show a
+  bounded rejection reason instead of unrelated assistant text or a blank summary.
+
 - Route Codex tool-keyed hooks from own properties only. A `PreToolUse` map is a
   plain object, so a tool name matching an inherited member (anything on
   `Object.prototype`, or a key on a caller-supplied prototype) used to resolve to a

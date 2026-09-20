@@ -11,6 +11,7 @@ import { createConnection } from "node:net";
 import { join } from "node:path";
 import type { TerminalSize } from "../../src/index.ts";
 import type { PtyExit, PtyProcess, PtySpawnOptions } from "../../src/pty/types.ts";
+import { launchArtifactPaths } from "./launch-artifacts.ts";
 import { realTmpRoot } from "./real-tmp.ts";
 
 export type BridgeReply = { exitCode: number; stdout: string; stderr: string };
@@ -94,7 +95,7 @@ export class FakePty implements PtyProcess {
 
   private readBridge(elwoodSessionId: string, stateDir?: string) {
     const dir = join(stateDir ?? join(this.options.cwd, ".elwood"), "sessions", elwoodSessionId);
-    return readBridgeScript(join(dir, "hook-bridge.mjs"));
+    return readBridgeScript(launchArtifactPaths(this.options, dir).bridge);
   }
 }
 

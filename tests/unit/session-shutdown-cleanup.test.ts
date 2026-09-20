@@ -31,14 +31,12 @@ function host(
 ): ShutdownHost {
   return {
     pty: untouchedPty,
-    stateDir: "/tmp/state",
-    elwoodSessionId: "s1",
-    socketHome: "/tmp/elwood-x",
+    removeFiles: () => undefined,
     reapPolicy: { orThrow: () => undefined, reaper: { reap: () => undefined } },
     status: () => "exited",
     claimShutdown: () => undefined,
     pauseLoops: () => undefined,
-    clearLoops: () => Promise.resolve(),
+    clearOrPauseLoops: () => Promise.resolve(),
     cleanupRuntime,
     submitEvidence: () => undefined,
     ...overrides,

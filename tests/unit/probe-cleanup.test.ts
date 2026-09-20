@@ -53,15 +53,23 @@ test("C-PERF-03 a group disappearing between liveness and signal needs no retry"
 
 test("C-PERF-03 a group that exits during the final wait is confirmed, not reported unresolved", async () => {
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true });
-  const started = performance.now();
-  // Signals are swallowed; the group reads as gone only once the cleanup window has elapsed.
-  vi.spyOn(process, "kill").mockImplementation((_pid, signal) => {
-    if (signal === 0 && performance.now() - started >= 1_000)
-      throw Object.assign(new Error("gone"), { code: "ESRCH" });
+  let clockNowMs = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => clockNowMs);
+  // Share the cleanup clock: the first group SIGKILL advances it to the final observation.
+  const observationTimesMs: number[] = [];
+  vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+    if (pid !== -child.pid!) return kill(pid, signal);
+    if (signal === 0) {
+      observationTimesMs.push(clockNowMs);
+      if (clockNowMs === 1_000) throw Object.assign(new Error("gone"), { code: "ESRCH" });
+    } else {
+      clockNowMs = 1_000;
+    }
     return true;
   });
   try {
     expect(await abortProbe(child)).toEqual({});
+    expect(observationTimesMs).toEqual([0, 1_000]);
   } finally {
     kill(-child.pid!, "SIGKILL");
   }
@@ -97,53 +105,38 @@ test("C-PERF-03 a successfully signaled group is never signaled twice", async ()
 
 test("C-PERF-03 nothing is signaled after the cleanup deadline, even a still-live group", async () => {
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true });
-  const started = performance.now();
-  // The group stays live throughout AND every group SIGKILL fails with EPERM, which is what
-  // keeps `reap` willing to signal again: a kill that succeeds latches the group-kill flag
-  // and would never retry, so a mock that lets the first one through cannot observe a late one.
+  let clockNowMs = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => clockNowMs);
   const late: (string | number)[] = [];
-  // Signals are attributed to the iteration that DECIDED to send them, not to the instant
-  // the mock happened to run. Under a loaded event loop an iteration can pass the in-window
-  // deadline check and then be descheduled past 1s before its `kill` lands; charging that to
-  // the clock at delivery makes a correctly-bounded implementation look like it signaled
-  // late. The guarantee under test is that no iteration STARTING past the deadline signals.
-  let deadlinePassedBeforeDecision = false;
   const record = (signal: NodeJS.Signals | number | undefined | string) => {
-    if (deadlinePassedBeforeDecision && signal !== 0) late.push(signal ?? "default");
+    if (clockNowMs >= 1_000 && signal !== 0) late.push(signal ?? "default");
   };
   vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+    if (pid !== -child.pid!) return kill(pid, signal);
+    if (signal === 0) return true;
     record(signal);
-    // Every iteration opens with this liveness observation, so it marks the boundary: once
-    // one is taken at or past the deadline, any signal after it belongs to an iteration that
-    // started too late, which is exactly what must never happen.
-    if (signal === 0) {
-      if (performance.now() - started >= 1_000) deadlinePassedBeforeDecision = true;
-      return true; // observation: the group is always live here
-    }
-    if (pid < 0) throw Object.assign(new Error("denied"), { code: "EPERM" });
-    return true;
+    // A forbidden late retry ends the deliberately broken loop, while retaining
+    // its signal above so the assertion reports the deadline violation directly.
+    if (clockNowMs >= 1_000) throw Object.assign(new Error("gone"), { code: "ESRCH" });
+    // The failed first group kill advances the SAME clock abortProbe reads to its
+    // deadline. An earlier independent test clock would falsely charge valid retries.
+    clockNowMs = 1_000;
+    throw Object.assign(new Error("denied"), { code: "EPERM" });
   });
-  // The direct-child fallback goes through the handle, not `process.kill`, so it has to be
-  // recorded separately or a late child signal would not be seen at all.
   vi.spyOn(child, "kill").mockImplementation((signal) => {
     record(signal);
     return true;
   });
   try {
-    // Unresolved by construction, because the group never reads as gone; EPERM rather
-    // than ETIMEDOUT because the denied group kill is the reason cleanup could not finish.
-    expect(await abortProbe(child)).toMatchObject({
+    const outcome = await abortProbe(child);
+    expect(late).toEqual([]);
+    expect(outcome).toMatchObject({
       cleanupErrorCode: "EPERM",
       cleanupProcessGroupId: child.pid,
     });
-    expect(late).toEqual([]);
   } finally {
     vi.restoreAllMocks();
-    // The real child-fallback SIGKILL above is allowed through, so the group may already
-    // be gone; a failed assertion must not be masked by this cleanup finding that.
-    try {
-      kill(-child.pid!, "SIGKILL");
-    } catch {}
+    kill(-child.pid!, "SIGKILL");
   }
 });
 

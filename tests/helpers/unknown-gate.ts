@@ -1,7 +1,8 @@
 /** Adapter-boundary matrix: off-allowlist native gates hold input, hold-only (C-TRUST-01). */
 import { expect, test, vi } from "vitest";
 import type { ElwoodActivityEvent, ElwoodSessionStatus } from "../../src/index.ts";
-import { FakePty } from "./fake-pty.ts";
+import type { FakePty } from "./fake-pty.ts";
+import { paintWhileStarting } from "./startup-frame.ts";
 
 type Session = {
   readonly elwoodSessionId: string;
@@ -21,6 +22,7 @@ type Harness = {
   /** Fires the adapter's pre-input readiness hook, as the real CLI does behind a gate. */
   readonly ready: (session: Session, pty: FakePty) => Promise<unknown>;
   readonly clear: string;
+  readonly renderClear?: (frame: string) => string;
   /** A complete allowlisted gate, human-owned while `autotrust` is off. */
   readonly known: string;
 };
@@ -30,9 +32,15 @@ export const rewordedGate =
   "Do you trust this workspace?\n\n> 1. Yes, continue\n  2. No, quit\n\nPress enter to continue";
 const paste = (text: string) => `\u001b[200~${text}\u001b[201~`;
 /** Repaint, then wait for the render: readiness racing an unpainted gate is not under test. */
-const cleared = (frame: string) => `\u001b[2J\u001b[H${frame.replaceAll("\n", "\r\n")}`;
-async function repaint(session: Session, pty: FakePty, frame: string): Promise<void> {
-  pty.emitData(cleared(frame));
+const cleared = (frame: string, render = (text: string) => text.replaceAll("\n", "\r\n")) =>
+  `\u001b[2J\u001b[H${render(frame)}`;
+async function repaint(
+  session: Session,
+  pty: FakePty,
+  frame: string,
+  render?: (frame: string) => string,
+): Promise<void> {
+  pty.emitData(cleared(frame, render));
   const lastRow = frame.split("\n").at(-1)!.trim();
   await vi.waitFor(() => {
     if (!session.terminal.snapshot().text.includes(lastRow)) throw new Error("frame not rendered");
@@ -74,7 +82,7 @@ export function unknownGateTests(harness: Harness): void {
       expect(attention).toEqual([`${harness.agent}-unknown_gate-prompt`]);
       await session.sendKeys("2");
       vi.useRealTimers();
-      await repaint(session, pty, harness.clear);
+      await repaint(session, pty, harness.clear, harness.renderClear);
       await queued;
       expect(pty.writes).toEqual(["2", paste("hello"), "\r"]);
       expect(session.status).not.toBe("blocked");
@@ -86,15 +94,7 @@ export function unknownGateTests(harness: Harness): void {
     ["allowlisted", harness.known, false, `${harness.agent}-workspace_trust-prompt`],
     ["off-allowlist", rewordedGate, true, `${harness.agent}-unknown_gate-prompt`],
   ] as const)("C-ATTN-03 an %s gate painted while starting still announces its label once live", async (_name, gate, autotrust, label) => {
-    // Paint the gate on the first PTY subscription: before the session is live.
-    const subscribe = FakePty.prototype.onData;
-    let painted = false;
-    vi.spyOn(FakePty.prototype, "onData").mockImplementation(function (this: FakePty, handler) {
-      const off = subscribe.call(this, handler);
-      if (!painted) queueMicrotask(() => this.emitData(gate.replaceAll("\n", "\r\n")));
-      painted = true;
-      return off;
-    });
+    paintWhileStarting(gate);
     try {
       await run(harness, autotrust, async (session, pty, attention) => {
         await vi.waitFor(() => expect(session.status).toBe("blocked"));
@@ -109,7 +109,7 @@ export function unknownGateTests(harness: Harness): void {
 
   test("C-API-56 an off-allowlist gate received but not yet rendered still holds the queued paste", async () => {
     await run(harness, true, async (session, pty, attention) => {
-      await repaint(session, pty, harness.clear);
+      await repaint(session, pty, harness.clear, harness.renderClear);
       await harness.ready(session, pty);
       await vi.waitFor(() => expect(session.status).toBe("ready"));
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -119,7 +119,7 @@ export function unknownGateTests(harness: Harness): void {
       await vi.advanceTimersByTimeAsync(2_000);
       expect(pty.writes).toEqual([]);
       expect(attention).toEqual([`${harness.agent}-unknown_gate-prompt`]);
-      pty.emitData(cleared(harness.clear));
+      pty.emitData(cleared(harness.clear, harness.renderClear));
       await vi.advanceTimersByTimeAsync(500);
       await queued;
       expect(pty.writes).toEqual([paste("held"), "\r"]);

@@ -4,6 +4,7 @@
  */
 
 import type { BridgeProcessResult } from "../bridge/types.ts";
+import { inertRecord } from "../core/inert-record.ts";
 import type {
   ClaudeHookEventName,
   ClaudeHookResult,
@@ -14,24 +15,38 @@ export function serializeHookResult(
   eventName: ClaudeHookEventName,
   result: ClaudeHookResult,
 ): BridgeProcessResult {
-  if (result === undefined) return { exitCode: 0, stdout: "", stderr: "" };
+  if (result === undefined) return inertRecord({ exitCode: 0, stdout: "", stderr: "" });
   if ("behavior" in result) return jsonOutput(permissionRequest(eventName, result));
   if ("retry" in result)
-    return jsonOutput({ hookSpecificOutput: { hookEventName: eventName, retry: true } });
+    return jsonOutput({
+      hookSpecificOutput: { __proto__: null, hookEventName: eventName, retry: true },
+    });
   if ("worktreePath" in result) return worktree(result.worktreePath);
   if ("decision" in result) return jsonOutput(topLevel(eventName, result));
   if ("continue" in result) return jsonOutput(result);
   // PreToolUse decisions, elicitation actions, and context/output fields all
   // travel as hook-specific output keyed by the event name.
-  return jsonOutput({ hookSpecificOutput: { hookEventName: eventName, ...result } });
+  return jsonOutput({
+    hookSpecificOutput: { __proto__: null, hookEventName: eventName, ...result },
+  });
 }
 
-function jsonOutput(value: unknown): BridgeProcessResult {
-  return { exitCode: 0, stdout: `${JSON.stringify(value)}\n`, stderr: "" };
+function jsonOutput(value: object): BridgeProcessResult {
+  return inertRecord({
+    exitCode: 0,
+    stdout: `${JSON.stringify(Object.assign(Object.create(null), value))}\n`,
+    stderr: "",
+  });
 }
 
-function permissionRequest(eventName: string, result: PermissionRequestResult): unknown {
-  return { hookSpecificOutput: { hookEventName: eventName, decision: result } };
+function permissionRequest(eventName: string, result: PermissionRequestResult): object {
+  return {
+    hookSpecificOutput: {
+      __proto__: null,
+      hookEventName: eventName,
+      decision: { __proto__: null, ...result },
+    },
+  };
 }
 
 function topLevel(
@@ -41,7 +56,7 @@ function topLevel(
     readonly reason: string;
     readonly additionalContext?: string;
   },
-): unknown {
+): object {
   return {
     decision: result.decision,
     reason: result.reason,
@@ -49,6 +64,7 @@ function topLevel(
       ? {}
       : {
           hookSpecificOutput: {
+            __proto__: null,
             hookEventName: eventName,
             additionalContext: result.additionalContext,
           },
@@ -57,5 +73,5 @@ function topLevel(
 }
 
 function worktree(path: string): BridgeProcessResult {
-  return { exitCode: 0, stdout: `${path}\n`, stderr: "" };
+  return inertRecord({ exitCode: 0, stdout: `${path}\n`, stderr: "" });
 }
