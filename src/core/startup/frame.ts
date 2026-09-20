@@ -62,7 +62,7 @@ export function createStartupWarningGate(sink: FrameWarningSink): {
       buffered.push(...warnings);
     },
     afterDelivery: (finalize) => {
-      if (!opening) return finalize();
+      if (!opening || buffered.length === 0) return finalize();
       // Exit now owns this wait: keep its scheduled flush alive until finalization.
       opening.timer.ref();
       void opening.done.then(finalize);

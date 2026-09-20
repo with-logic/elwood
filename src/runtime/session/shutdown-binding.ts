@@ -54,7 +54,11 @@ export class SessionShutdownBinding {
         await input.runtime.stateOwnership.waitForCleanup();
         if (input.runtime.stateOwnership.current()) input.loops.clear(reason);
       },
-      cleanupRuntime: input.cleanupRuntime,
+      cleanupRuntime: async () => {
+        await input.cleanupRuntime();
+        // A signal may have opened the barrier after this shutdown call began.
+        await this.exitFinalization;
+      },
       submitEvidence: input.submitEvidence,
     }));
   }

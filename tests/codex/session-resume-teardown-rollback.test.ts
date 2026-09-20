@@ -10,7 +10,7 @@ import { becomeReady, installFakes, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-test("C-API-20 teardown retries shared cleanup after a pending resume fails", async () => {
+test("C-API-20 teardown joins pending resume and completes shared cleanup on rollback", async () => {
   installFakes();
   const cwd = tempDir();
   const session = await startCodex({ cwd });
@@ -25,14 +25,14 @@ test("C-API-20 teardown retries shared cleanup after a pending resume fails", as
   const stateDir = join(cwd, ".elwood");
   const dir = join(stateDir, "sessions", session.elwoodSessionId);
   try {
-    await session.teardown();
+    const tearingDown = session.teardown();
     expect(existsSync(join(dir, "session.json"))).toBe(true);
     expect(readLoopDefinitions(stateDir, session.elwoodSessionId)).toContainEqual(
       expect.objectContaining({ id: loop.id }),
     );
     probe.resolve({ status: 0, stdout: "codex-cli 0.1.0\n", stderr: "" });
     expect(await resuming).toMatchObject({ code: "codex_version_unsupported" });
-    await session.teardown();
+    await tearingDown;
     expect(existsSync(dir)).toBe(false);
   } finally {
     probe.resolve({ status: 0, stdout: "codex-cli 0.1.0\n", stderr: "" });
