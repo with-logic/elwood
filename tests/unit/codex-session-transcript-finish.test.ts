@@ -58,6 +58,29 @@ describe("createCodexTranscriptWatcher finishSafely (C-LIFE-10)", () => {
     expect(recorded).toMatchObject([{ code: "transcript_poll_stopped", phase: "final_flush" }]);
   });
 
+  test("C-CODEX-20 first listener failures in the final flush report after record delivery", async () => {
+    const order: string[] = [];
+    const sink: Sink = { emitWarnings: (warnings) => order.push(...warnings.map((w) => w.code)) };
+    const { finishSafely, emitter, path } = wired(() => sink);
+    emitter.on("codex:transcript", () => {
+      throw new Error("raw listener");
+    });
+    emitter.on("activity", () => {
+      throw new Error("activity listener");
+    });
+    emitter.on("activity", () => order.push("record"));
+    writeFileSync(path, `${record}\n`);
+    finishSafely(() => order.push("exit"));
+    expect(order).toEqual(["record", "exit"]);
+    await Promise.resolve();
+    expect(order).toEqual([
+      "record",
+      "exit",
+      "transcript_listener_error",
+      "transcript_listener_error",
+    ]);
+  });
+
   test("with no afterFlush it is a no-op default", () => {
     const { finishSafely } = wired(() => undefined);
     expect(() => finishSafely()).not.toThrow();

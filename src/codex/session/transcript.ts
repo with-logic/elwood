@@ -46,22 +46,29 @@ export function createCodexTranscriptWatcher(
   // is built first) and delivers each exactly once with clear-before-delivery + throw
   // containment (see core/transcript/warning-router).
   const { route, flushPendingWarnings } = createTranscriptWarningRouter(getSink);
+  const reported = new Set<"codex:transcript" | "activity">();
   // TypedEmitter fans out to all listeners before rethrowing. Contain each channel
   // separately so one consumer cannot suppress the projection or stop later polls.
   function deliver<K extends "codex:transcript" | "activity">(channel: K, event: CodexEventMap[K]) {
     try {
       emitter.emit(channel, event);
     } catch {
-      route({
-        elwoodSessionId,
-        agent: "codex",
-        source: "terminal",
-        code: "transcript_listener_error",
-        severity: "warning",
-        message: "Codex transcript listener failed; remaining transcript delivery continues.",
-        channel,
-        raw: `transcript_listener_error channel=${channel}`,
-      });
+      if (reported.has(channel)) return;
+      reported.add(channel);
+      // Run warning callbacks after the current scan/flush. A callback may stop
+      // the session synchronously, so it must not interrupt paired record delivery.
+      queueMicrotask(() =>
+        route({
+          elwoodSessionId,
+          agent: "codex",
+          source: "terminal",
+          code: "transcript_listener_error",
+          severity: "warning",
+          message: "Codex transcript listener failed; remaining transcript delivery continues.",
+          channel,
+          raw: `transcript_listener_error channel=${channel}`,
+        }),
+      );
     }
   }
   const watcher = new CodexTranscriptWatcher(

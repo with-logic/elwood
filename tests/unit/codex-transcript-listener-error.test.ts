@@ -12,10 +12,16 @@ import { tempDirForUnit } from "./helpers.ts";
 
 afterEach(() => vi.useRealTimers());
 
-const reasoning = { type: "response_item", payload: { type: "reasoning" } };
+const first = { type: "response_item", payload: { type: "reasoning", turn_id: "first" } };
+const second = { type: "response_item", payload: { type: "reasoning", turn_id: "second" } };
 const rejected = {
   type: "event_msg",
   payload: { type: "task_complete", turn_id: "turn-2", error: { message: "provider rejected" } },
+};
+
+const final = {
+  type: "event_msg",
+  payload: { type: "task_complete", turn_id: "final", error: "last" },
 };
 
 const cases = [
@@ -25,7 +31,9 @@ const cases = [
   { channel: "activity", warningThrows: true },
 ] as const;
 
-test.each(cases)("C-CODEX-20 continues after $channel throws (warning throws: $warningThrows)", ({
+test.each(
+  cases,
+)("C-CODEX-20 continues after $channel throws (warning throws: $warningThrows)", async ({
   channel,
   warningThrows,
 }) => {
@@ -56,13 +64,13 @@ test.each(cases)("C-CODEX-20 continues after $channel throws (warning throws: $w
   writeFileSync(path, "");
   watcher.observe(path);
   try {
-    appendFileSync(path, `${JSON.stringify(reasoning)}\n${JSON.stringify(reasoning)}\n`);
-    expect(() => vi.advanceTimersByTime(250)).not.toThrow();
-    expect.soft(raw).toEqual([reasoning, reasoning]);
+    appendFileSync(path, `${JSON.stringify(first)}\n${JSON.stringify(second)}\n`);
+    await vi.advanceTimersByTimeAsync(250);
+    expect.soft(raw).toEqual([first, second]);
     expect.soft(activities.filter((event) => event.source === "transcript")).toHaveLength(2);
     appendFileSync(path, `${JSON.stringify(rejected)}\n`);
-    expect(() => vi.advanceTimersByTime(250)).not.toThrow();
-    expect(raw).toEqual([reasoning, reasoning, rejected]);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(raw).toEqual([first, second, rejected]);
     expect(activities.filter((event) => event.source === "transcript").at(-1)).toMatchObject({
       agent: "codex",
       source: "transcript",
@@ -70,9 +78,9 @@ test.each(cases)("C-CODEX-20 continues after $channel throws (warning throws: $w
       label: "task_complete",
       raw: rejected,
     });
-    expect(warnings).toHaveLength(3);
+    expect(warnings).toHaveLength(1);
     expect(warnings).toEqual(
-      Array.from({ length: 3 }, () =>
+      Array.from({ length: 1 }, () =>
         expect.objectContaining({
           code: "transcript_listener_error",
           agent: "codex",
@@ -81,14 +89,14 @@ test.each(cases)("C-CODEX-20 continues after $channel throws (warning throws: $w
       ),
     );
     expect(JSON.stringify(warnings)).not.toMatch(/private|provider rejected|turn-2/);
-    expect(activities.filter((event) => event.kind === "warning")).toHaveLength(3);
-    appendFileSync(path, `${JSON.stringify(rejected)}\n`);
+    expect(activities.filter((event) => event.kind === "warning")).toHaveLength(1);
+    appendFileSync(path, `${JSON.stringify(final)}\n`);
     expect(() => watcher.finish()).not.toThrow();
-    expect(raw).toHaveLength(4);
-    expect(activities.filter((event) => event.source === "transcript")).toHaveLength(4);
-    expect(warnings.map((event) => event.code)).toEqual(
-      Array.from({ length: 4 }, () => "transcript_listener_error"),
-    );
+    expect(raw).toEqual([first, second, rejected, final]);
+    expect(
+      activities.filter((event) => event.source === "transcript").map((event) => event.raw),
+    ).toEqual([first, second, rejected, final]);
+    expect(warnings.map((event) => event.code)).toEqual(["transcript_listener_error"]);
   } finally {
     watcher.finish();
   }
