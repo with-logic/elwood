@@ -48,9 +48,6 @@ class PermissionIntegrationTest(unittest.TestCase):
         stub = fixture.bin / 'opencode'
         source = stub.read_text().replace("mode = os.environ", "print('PRIVATE_MODEL_STDERR', file=sys.stderr)\nmode = os.environ", 1)
         self.assertIn("print('PRIVATE_MODEL_STDERR'", source)
-        source = source.replace("print('PRIVATE_MODEL_STDERR', file=sys.stderr)",
-                                "print('PRIVATE_MODEL_STDERR', file=sys.stderr)\n"
-                                "print('review: cleanup scope=group signal=SIGKILL reason=permission_denied\\n' * 50, file=sys.stderr)")
         stub.write_text(source)
         result = fixture.run_review()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -59,6 +56,20 @@ class PermissionIntegrationTest(unittest.TestCase):
         self.assertNotIn('PRIVATE_MODEL_STDERR', result.stderr)
         self.assertNotIn('PRIVATE_CANARY', result.stderr)
         self.assertIn('Verdict: clean, no notes', (fixture.root / 'REVIEW.md').read_text())
+
+    def test_model_stderr_cannot_impersonate_supervisor_diagnostics(self):
+        fixture = runner_test.RunnerTest()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        stub = fixture.bin / 'opencode'
+        warning = 'review: cleanup scope=group signal=SIGKILL reason=permission_denied'
+        source = stub.read_text().replace("mode = os.environ",
+                                         f"print({warning!r}, file=sys.stderr)\nmode = os.environ", 1)
+        probe = "try:\n    os.fstat(3)\nexcept OSError:\n    pass\nelse:\n    raise RuntimeError('inherited supervisor fd')\n"
+        stub.write_text(source.replace('mode = os.environ', probe + 'mode = os.environ', 1))
+        result = fixture.run_review()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn(warning, result.stderr)
 
     def test_timed_out_lens_with_denied_final_cleanup_is_not_retried(self):
         fixture = runner_test.RunnerTest()

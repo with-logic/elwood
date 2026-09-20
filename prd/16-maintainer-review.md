@@ -38,16 +38,17 @@ as the shell exit status `128 + signal` when the supervisor reports it.
 Diagnostics distinguish a wall-clock `timeout` (124) from a process `killed`
 by `SIGKILL` (137), for both reviewer lenses and synthesis.
 The supervisor preserves that original outcome if the OS denies a cleanup
-signal. Its stderr reports each denied group/child signal using fixed,
-content-free diagnostics; a denied group signal does not claim descendant
+signal. It reports each denied group/child signal using fixed, content-free
+diagnostics; a denied group signal does not claim descendant
 cleanup succeeded. Cleanup still attempts TERM, a one-second grace wait, and
 KILL. If group KILL is denied, it also attempts to kill its directly owned
 child. The final reap wait is bounded to one second and reports an unreaped
-child explicitly if that deadline expires. The outer runner forwards only these
-fixed cleanup diagnostics from each lens attempt and synthesis, including
-successful reports; arbitrary model stderr remains private. Duplicate cleanup
-diagnostics are coalesced per attempt (at most four fixed lines). A broken or
-closed supervisor stderr sink does not replace the outcome or stop cleanup.
+child explicitly if that deadline expires. The runner gives the supervisor a dedicated diagnostic channel for each lens
+attempt and synthesis, including successful reports. Model subprocesses do not
+inherit that channel, and arbitrary model stderr remains private. At most four
+fixed cleanup lines are emitted per attempt. Direct supervisor invocations use
+stderr by default. A broken or closed diagnostic sink does not replace the
+outcome or stop cleanup.
 
 The harness fetches the PR title, description, review bodies, and top-level and
 inline comments. A bounded snapshot containing only current maintainers and

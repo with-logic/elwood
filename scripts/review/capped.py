@@ -7,11 +7,12 @@ import sys
 
 
 CLEANUP_WAIT_SECONDS = 1
+diagnostic_stream = None
 
 
 def diagnose(message):
     try:
-        print(message, file=sys.stderr)
+        print(message, file=diagnostic_stream if diagnostic_stream is not None else sys.stderr)
     except (OSError, ValueError):
         # A broken/closed log sink must not replace the outcome or skip cleanup.
         pass
@@ -66,4 +67,9 @@ def interrupted(signum, _frame):
 if __name__ == '__main__':
     signal.signal(signal.SIGTERM, interrupted)
     signal.signal(signal.SIGINT, interrupted)
-    sys.exit(run(int(sys.argv[1]), sys.argv[2:]))
+    arguments = sys.argv[1:]
+    if arguments[0] == '--diagnostics-fd=3':
+        diagnostic_stream = os.fdopen(3, 'w', buffering=1, closefd=False)
+        arguments = arguments[1:]
+    # Popen's default close_fds keeps this supervisor channel out of model children.
+    sys.exit(run(int(arguments[0]), arguments[1:]))

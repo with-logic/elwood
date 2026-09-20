@@ -132,6 +132,6 @@ and uses provider quota. Optional `ELWOOD_REVIEW_MODEL`,
 (attempts per lens) configure that local run. Python 3 enforces each process cap
 on a separate process group with best-effort descendant cleanup. If the OS denies
 a group signal, the directly owned child still gets a kill attempt, but descendants
-may remain alive. Fixed cleanup diagnostics reach the workflow log without exposing
-model stderr; a broken diagnostic sink cannot replace the process outcome. Invalid numeric settings
+may remain alive. Fixed cleanup diagnostics reach the workflow log through a supervisor-only
+channel that model subprocesses do not inherit; model stderr stays private; a broken diagnostic sink cannot replace the process outcome. Invalid numeric settings
 use their defaults; leading zeroes are interpreted as decimal.
