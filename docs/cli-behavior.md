@@ -861,3 +861,13 @@ input. Ownership now tracks `xterm.input` invocations; parser-generated replies
 preserve authority, while caller keys still revoke it. Startup trust writers also
 use that automation scope: both actual-session trust fixtures showed that writing
 outside it revoked cleanup before the first caller submission.
+
+The actual-session image queue also exposed a consumption race: writing the clear
+keys did not establish that Claude had removed the staged image before successor
+attachment. Cleanup therefore waits for a fresh completed empty native frame. A
+bounded Claude probe then found a cleared frame with a visible input cursor at
+column two, enclosing rules, and a version banner: existing whole-frame live
+clearance accepted it, while the post-model-picker suffix predicate rejected it.
+Cleanup accepts either existing positive Claude clearance path, preserving the
+same completed-render and cursor checks. The suffix path remains useful when
+earlier conversation carets prevent whole-frame clearance.
