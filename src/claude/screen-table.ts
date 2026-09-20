@@ -26,14 +26,17 @@ export const claudeTrustClearance: TrustClearance = nativeComposerClearance(
   claudeComposerRow,
   (frame) =>
     (/Claude Code v[\d.]+/.test(frame) ||
-      /^\s*-- INSERT -- ⏵⏵ don['’]t ask on \(shift\+tab to cycle\) · ← for agents\s*$/m.test(
+      /^\s*-- INSERT -- ⏵⏵ (?:don['’]t ask|auto mode) on \(shift\+tab to cycle\) · ← for agents\s*$/m.test(
         frame,
       )) &&
     /(?:^|\n)[─━]{3,}\s*\n❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*\n[─━]{3,}/.test(frame),
 );
 
 /** A per-batch composer cannot release trust until every received byte has rendered. */
-export function liveClaudeClearance(readTerminal: () => ElwoodTerminal): TrustClearance {
+export function liveClaudeClearance(
+  readTerminal: () => ElwoodTerminal,
+  textClearance: TrustClearance = claudeTrustClearance,
+): TrustClearance {
   return (text) => {
     const terminal = readTerminal();
     const frame = currentRenderedFrame(terminal);
@@ -48,9 +51,7 @@ export function liveClaudeClearance(readTerminal: () => ElwoodTerminal): TrustCl
     // cursorY is relative to baseY; snapshot row zero starts at viewportY.
     const viewportCursorRow = frame.cursorY + buffer.baseY - buffer.viewportY;
     const composer = frame.lines[viewportCursorRow] ?? "";
-    return (
-      composer.startsWith("❯") && claudeComposerRow.test(composer) && claudeTrustClearance(text)
-    );
+    return composer.startsWith("❯") && claudeComposerRow.test(composer) && textClearance(text);
   };
 }
 

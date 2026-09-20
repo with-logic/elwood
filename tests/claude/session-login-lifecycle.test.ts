@@ -1,14 +1,13 @@
 /**
- * Lifecycle & concurrency conformance for ClaudeSessionApi.login (PRD §5.3,
- * C-API-43). Login runs as an EXCLUSIVE control-queue task: a concurrent
+ * Login lifecycle & concurrency (PRD §5.3, C-API-43): an EXCLUSIVE queue task. A concurrent
  * sendMessage cannot interleave its keystrokes with the secret code or picker
  * keys, a session that terminates mid-flow rejects the flow PROMPTLY (close()
  * aborts the in-flight signal) rather than polling out the deadline, and a
  * provideCode callback that hangs is raced against the timeout.
  */
-
 import { afterEach, describe, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
+import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { asScreen } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import { driveFreshReady, ready, succeedAndRecover } from "./login-helpers.ts";
@@ -146,9 +145,10 @@ describe("ClaudeSessionApi.login lifecycle (C-API-43)", () => {
     // The whole submission is HELD: `/login` is not written while blocked.
     await new Promise((r) => setTimeout(r, 200));
     expect(ptys[0]!.writes).toEqual([]);
-    // The dialog clears; `/login` (and the flow) proceeds and completes.
-    ptys[0]!.emitData(asScreen("Select login method:\n Claude account with subscription"));
+    // Positive idle clearance releases /login; its picker can only appear afterward.
+    ptys[0]!.emitData(asScreen(claudeTty(claudeComposer)));
     await expect.poll(() => ptys[0]!.writes.includes("/login")).toBe(true);
+    ptys[0]!.emitData(asScreen("Select login method:\n Claude account with subscription"));
     await succeedAndRecover(cwd, session);
     await expect(done).resolves.toBeUndefined();
   }, 20_000);

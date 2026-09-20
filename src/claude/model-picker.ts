@@ -6,12 +6,14 @@
 import { sendPickerInput } from "../core/models/input.ts";
 import type { ModelPickerSpec } from "../core/models/picker.ts";
 import {
+  bottomDialogCandidate,
   bottomDialogRow,
   claudeModelPickerHeader,
   ownOperation,
   parseClaudeModelPicker,
 } from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
+import { claudeModelComposerClearance } from "./model-composer.ts";
 import {
   isClaudeIdleComposer,
   isClaudeSwitchConfirmation,
@@ -25,6 +27,9 @@ const arrowUp = "\u001b[A";
 
 export const claudeModelPicker: ModelPickerSpec = {
   agent: "claude",
+  isClear: claudeModelComposerClearance,
+  isCandidate: (text) =>
+    bottomDialogCandidate(text, claudeModelPickerHeader) || isClaudeSwitchShell(text),
   isOpen: (text) => claudeModelPickerHeader.test(text),
   // A PreModelSwitch hook confirmation shares the warning's shell but is the caller's.
   activeDialog: (text, authority) => {

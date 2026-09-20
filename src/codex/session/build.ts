@@ -110,6 +110,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     () => session,
     () => promptResponder,
     readiness,
+    liveCodexClearance(() => terminal),
   );
   const promptResponder = new CodexStartupPromptResponder(
     record.elwoodSessionId,
@@ -155,7 +156,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   );
   const id = record.elwoodSessionId;
   const activeSession = session;
-  bindStartupLifetime(activeSession, promptResponder, ready);
+  bindStartupLifetime(activeSession, promptResponder, readiness);
   frameObserver.refresh();
   const beforeCleanup = () => activeSession.pauseLoopsForStartupCleanup(ready.cancel);
   await guardStartupRegion(
@@ -188,8 +189,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   terminalReplay.releaseStartupAttentionAfterReturn();
   return session;
 }
-// `CodexPreflightWarning` is a DISTRIBUTED union (see DistributiveOmit / the Claude twin), so
-// re-attaching `elwoodSessionId` reconstructs each union member arm-by-arm.
+// Distribute the session id across warning variants (see DistributiveOmit and Claude).
 type WithSessionId<W> = W extends unknown ? W & { readonly elwoodSessionId: string } : never;
 
 function preflightEvent(

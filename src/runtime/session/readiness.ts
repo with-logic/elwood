@@ -4,7 +4,8 @@
  * `observeReadinessFrame` combines human and automation-owned input gates so readiness never
  * drains the queue INTO a dialog (even one shown during `starting`, which never
  * latched `blocked`) and is never starved BY it — it reconciles once the dialog
- * clears — and marks resume-composer readiness. Implements PRD §5.3 (C-API-28).
+ * clears to a positive idle composer — and marks resume-composer readiness.
+ * Implements PRD §5.3 (C-API-28).
  */
 
 import type { ComposerReadyFacts } from "../readiness/initial-ready.ts";
@@ -16,23 +17,32 @@ import {
 
 export type ReadinessGate = {
   readonly ready: InitialReady;
+  readonly isHeld: () => boolean;
+  readonly observeFrameHold: (facts: ComposerReadyFacts, trustInputBlocking?: boolean) => void;
   /** Per rendered frame: update the blocking gate, reconcile a deferred mark, and
    * (on resume) mark readiness on the first quiet, non-blocking composer. */
   readonly observeReadinessFrame: (facts: ComposerReadyFacts, trustInputBlocking?: boolean) => void;
 };
 
 export function createReadinessGate(onReady: () => void, resumed: boolean): ReadinessGate {
-  let blockingVisible = false;
-  const ready = initialReady(onReady, undefined, () => blockingVisible);
+  let readinessHeld = false;
+  const observeFrameHold = (facts: ComposerReadyFacts, trustInputBlocking = false) => {
+    // A dialog's deferred mark waits for idle; ordinary cold-start work still
+    // retains the existing hook/deadline path instead of waiting on itself.
+    readinessHeld =
+      facts.blocking_prompt_visible ||
+      trustInputBlocking ||
+      (readinessHeld && (facts.working_visible === true || !facts.composer_visible));
+  };
+  const ready = initialReady(onReady, undefined, () => readinessHeld);
   return {
     ready,
+    isHeld: () => readinessHeld,
+    observeFrameHold,
     observeReadinessFrame: (facts, trustInputBlocking = false) => {
-      blockingVisible = facts.blocking_prompt_visible || trustInputBlocking;
-      markReadyOnResumeComposer(ready, resumed, {
-        ...facts,
-        blocking_prompt_visible: blockingVisible,
-      });
-      ready.retryWhenUnblocked(blockingVisible); // fire a block-deferred readiness once clear
+      observeFrameHold(facts, trustInputBlocking);
+      markReadyOnResumeComposer(ready, resumed, facts, readinessHeld);
+      ready.retryWhenReleased(readinessHeld); // reconcile only after an idle clearance frame
     },
   };
 }

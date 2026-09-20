@@ -6,6 +6,7 @@
 import { sendPickerInput } from "../core/models/input.ts";
 import type { ModelPickerSpec } from "../core/models/picker.ts";
 import {
+  bottomDialogCandidate,
   bottomDialogRow,
   codexModelPickerHeader,
   ownOperation,
@@ -13,11 +14,17 @@ import {
 } from "../core/models/rows.ts";
 import { waitForScreen } from "../core/models/tui-screen.ts";
 
+import { codexComposerClearance } from "./screen/clearance.ts";
+
 const reasoningHeader = /Select Reasoning Level/;
 const changeConfirmed = /Model changed to/;
 
 export const codexModelPicker: ModelPickerSpec = {
   agent: "codex",
+  isClear: codexComposerClearance,
+  isCandidate: (text) =>
+    bottomDialogCandidate(text, codexModelPickerHeader) ||
+    bottomDialogCandidate(text, reasoningHeader),
   isOpen: (text) => codexModelPickerHeader.test(text),
   activeDialog: (text, authority) => {
     // Nothing on screen is our dialog unless we opened one; the grammar below only has to

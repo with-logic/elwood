@@ -20,6 +20,15 @@ When a fact drives an implementation decision, the code and the matching PRD
 conformance criterion are cited. If you change behavior here, update `prd/`
 first (see `CLAUDE.md` / `AGENTS.md`), then this file.
 
+## Approval policy compatibility
+
+Codex 0.155.1 rejects `--ask-for-approval untrusted`; its accepted values are
+`on-request` and `never`. Real approval-flow tests on this version use `on-request`
+with a read-only sandbox and a tool that needs to write, then approve the native
+escalation dialog. An `untrusted` fixture exits before readiness and cannot test
+working-dialog clearance. Verified from the installed CLI's argument error on
+2026-09-19 while exercising C-ATTN-02.
+
 ## Readiness
 
 **Codex fires its `SessionStart` hook lazily — on the first turn, not at boot.**
@@ -584,7 +593,9 @@ Version-coupled behavior learned here:
   responder/grace window, including runs without a whole-invocation timeout.
   The match set (`src/codex/update-prompt.ts`) is unit-tested against captured
   layouts, NOT against a live update event (which requires an actually-stale binary
-  to trigger). If Codex changes the dialog wording, this is the first thing to
+  to trigger). `codex-update-selection.e2e.ts` also replays the documented option
+  layout and an adversarial reordered variant through a real PTY and emulator;
+  its child acknowledges the physical skip digit it received. If Codex changes the dialog wording, this is the first thing to
   re-capture.
 
 **Concurrent-start failure (verified against codex-cli 0.152.1, 2026-09):** the
@@ -804,6 +815,25 @@ side-effect-free signal. C-CLI-21 through C-CLI-24.
 - Per the testing pyramid in `CLAUDE.md`: anything that interfaces with the real
   CLI SHOULD have a real-CLI e2e. Every fact in this file is one a unit test could
   not have caught.
+
+### Model-picker dispatch and post-cancel composer (2026-09-19)
+
+A serial native PTY probe on Codex 0.155.1 and Claude Code 2.1.278 typed
+`/model`, waited 300 ms, then sent Enter. Neither CLI displayed its model picker
+before Enter; both displayed it afterward. Model test drivers must therefore wait
+for the command's submitting Enter before painting the picker. No model prompt was
+submitted in this probe.
+
+Codex returned to its known `Ask Codex to do anything` composer and model/effort
+footer after Escape; automated `listModels` then returned five rows. Claude kept
+`❯ /model` and `Kept model as …` in the transcript above its final fenced composer.
+Its idle footer read `-- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle) · ← for
+agents`. A whole-screen clearance predicate that rejects every earlier caret
+therefore rejects this genuine post-picker idle frame. Model clearance must use
+the last composer, its enclosing rules, and its native footer; a bare caret or a
+partial model dialog is insufficient. The sanitized Claude frame is retained in
+`tests/fixtures/claude-2.1.278/model-cancelled.txt`. With this recognition fix,
+Claude also completed automated `listModels` and returned five rows (C-API-55).
 
 
 ### Cursor provenance for Codex trust clearance
