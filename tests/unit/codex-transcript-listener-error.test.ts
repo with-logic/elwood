@@ -102,6 +102,7 @@ test.each(
     expect(JSON.stringify({ warnings, warningActivities })).not.toContain(secret);
     appendFileSync(path, `${JSON.stringify(final)}\n`);
     expect(() => watcher.finish()).not.toThrow();
+    await Promise.resolve(); // Include deferred final-flush diagnostics in the count.
     expect(raw).toEqual([first, second, rejected, final]);
     expect(
       activities.filter((event) => event.source === "transcript").map((event) => event.raw),

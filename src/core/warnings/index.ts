@@ -1,6 +1,5 @@
 /**
- * The typed non-fatal warning contract shared across adapters.
- * Implements PRD §5.7 and §8.2: every warning is a named variant carrying only
+ * Non-fatal adapter warnings (PRD §5.7, §8.2): named variants carrying only
  * diagnostics (cause/phase labels, error codes, recovery hints) — no counts or
  * byte magnitudes — and never raw prompts, transcripts, or conversation content.
  * Most error-code fields are allowlisted tokens (`reasons.ts`); the one
