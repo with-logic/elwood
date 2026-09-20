@@ -35,6 +35,8 @@ test.each([
   let blocked = false;
   let screen = "❯ ";
   const terminal = {
+    settled: async () => undefined,
+    renderFailed: false,
     snapshot: () => ({ text: screen }),
     sendInput(data: string | Uint8Array) {
       const text = String(data);

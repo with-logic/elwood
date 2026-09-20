@@ -64,6 +64,9 @@ for (const agent of ["claude", "codex"] as const) {
       const terminal = {
         snapshot: () => session.terminal.snapshot(),
         settled: () => session.terminal.settled(),
+        get renderFailed() {
+          return session.terminal.renderFailed;
+        },
         async sendInput(data: string | Uint8Array) {
           const text = String(data);
           assert.notEqual(text, "\r", "this native proof must never submit a model turn");

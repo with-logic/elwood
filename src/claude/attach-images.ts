@@ -7,7 +7,6 @@
  */
 
 import { elwoodError } from "../core/errors.ts";
-import { requestComposerCleanup } from "../core/input/composer-cleanup.ts";
 import {
   type AttachTerminal,
   type BlockedGuard,
@@ -15,6 +14,7 @@ import {
   sendObservedImage,
   waitForImageChip,
 } from "../core/images/chip-wait.ts";
+import { requestComposerCleanup } from "../core/input/composer-cleanup.ts";
 import { sanitizePasteText } from "../core/input/index.ts";
 
 const PASTE_START = "\u001b[200~";
