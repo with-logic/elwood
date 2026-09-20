@@ -60,6 +60,13 @@ function hasApprovalEvidence(rows: readonly string[]): boolean {
   }
 }
 
+/** Locate native placeholder text without treating a stale cursor as current provenance. */
+export function codexComposerRow(rows: readonly string[]): number {
+  return rows.findLastIndex(
+    (row) => /^›(?:\s|$)/.test(row) && placeholders.has(row.slice(1).trim()),
+  );
+}
+
 /**
  * The last composer needs its own model footer or the verified welcome box above
  * it. A stale footer cannot vouch for a bare caret, which is also how a dialog
