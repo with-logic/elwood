@@ -45,6 +45,7 @@ export function guardedNonTrustAutomationWrite(
   agent: ElwoodAgentKind,
   stillValid: (frameText: string, input: string) => boolean = () => true,
   cancelled: () => boolean = () => false,
+  signal?: AbortSignal,
 ): (input: string, perWrite?: (frameText: string) => boolean) => Promise<AutomationWriteResult> {
   return async (input, perWrite) => {
     // The settle await below SUSPENDS this write, so the session can close while it is
@@ -55,7 +56,7 @@ export function guardedNonTrustAutomationWrite(
     // `writeUnsafe` awaits `terminal.settled()`, so the frame read next reflects every
     // byte received before this write was requested. It fails closed when observation
     // exceeds its budget or a render has failed (C-API-56).
-    if (await writeUnsafe(terminal)) return "withheld";
+    if (await writeUnsafe(terminal, undefined, signal)) return "withheld";
     if (cancelled()) return "withheld";
     const frame = readFrame();
     if (trustGateVisible(frame, agent)) return "withheld";

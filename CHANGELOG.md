@@ -17,8 +17,8 @@ back each entry are listed in `prd/14-conformance.md`.
   settles as a cancellation, so a closed session no longer emits a late
   `startup_prompt` / `startup_prompt_write_failed`. The keystroke itself is bound too:
   the non-trust automation barrier waits for render settlement, and a write parked there
-  now abandons `sendInput` when it resumes into a closing session instead of delivering
-  a stale Escape to a dead PTY. Trust automation already had this lifetime.
+  is interrupted immediately on disposal, releases its observation timer, and never
+  delivers a stale Escape to a dead PTY. Trust automation already had this lifetime.
 
 - Preserve Claude `StopFailure` hooks with missing or changed diagnostic fields. Those
   fields are now typed as optional `unknown`, matching ingress. Browser logs show a

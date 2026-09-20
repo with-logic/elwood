@@ -22,7 +22,7 @@ const declineKey = "\u001b";
 export class ClaudeStartupPromptResponder {
   private readonly trust: TrustPromptResponder<"claude">;
   private browserDeclined = false;
-  private disposed = false;
+  private readonly lifetime = new AbortController();
 
   constructor(autotrust: boolean, onStateChange?: () => void) {
     this.trust = new TrustPromptResponder("claude", claudeTrustClearance, autotrust, onStateChange);
@@ -40,7 +40,7 @@ export class ClaudeStartupPromptResponder {
    * (C-CLAUDE-22).
    */
   dispose(): void {
-    this.disposed = true;
+    this.lifetime.abort();
     this.trust.dispose();
   }
 
@@ -50,7 +50,12 @@ export class ClaudeStartupPromptResponder {
 
   /** Lets the guarded writer abandon a write that is still parked on render settlement. */
   get closing(): boolean {
-    return this.disposed;
+    return this.lifetime.signal.aborted;
+  }
+
+  /** Interrupt the observation budget as soon as session disposal begins. */
+  get closingSignal(): AbortSignal {
+    return this.lifetime.signal;
   }
 
   /**
@@ -68,7 +73,7 @@ export class ClaudeStartupPromptResponder {
     writeAutomation: (input: string) => TrustWriteResult | Promise<AutomationWriteResult> = write,
   ): readonly SettledStartupOutcome<"claude">[] {
     const settled: SettledStartupOutcome<"claude">[] = [];
-    if (this.disposed) return settled;
+    if (this.closing) return settled;
     const trust = this.trust.handle(screenText, write, readFrame);
     if (trust?.kind === "attempted") {
       settled.push({ outcome: { kind: "attempted", ...trust.automation }, settled: trust.settled });
@@ -92,13 +97,13 @@ export class ClaudeStartupPromptResponder {
         .then((result): StartupWriteCompletion => {
           // Disposal DURING the write wins: the session is gone, so report neither a
           // success activity nor a write-failure warning for it (C-CLAUDE-22).
-          if (this.disposed) return "cancelled";
+          if (this.closing) return "cancelled";
           if (result !== "withheld") return "answered";
           this.browserDeclined = false;
           return "cancelled";
         })
         .catch((error: unknown): StartupWriteCompletion => {
-          if (this.disposed) return "cancelled";
+          if (this.closing) return "cancelled";
           this.browserDeclined = false;
           throw error;
         });
@@ -121,6 +126,7 @@ export function guardedClaudeAutomationWrite(
   write: NonTrustAutomationWriter,
   readFrame: () => string,
   cancelled: () => boolean = () => false,
+  signal?: AbortSignal,
 ): (input: string) => Promise<AutomationWriteResult> {
   return guardedNonTrustAutomationWrite(
     terminal,
@@ -129,6 +135,7 @@ export function guardedClaudeAutomationWrite(
     "claude",
     (frameText) => browserToolsPromptVisible(frameText),
     cancelled,
+    signal,
   );
 }
 
