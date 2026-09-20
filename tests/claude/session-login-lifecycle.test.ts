@@ -146,9 +146,10 @@ describe("ClaudeSessionApi.login lifecycle (C-API-43)", () => {
     // The whole submission is HELD: `/login` is not written while blocked.
     await new Promise((r) => setTimeout(r, 200));
     expect(ptys[0]!.writes).toEqual([]);
-    // The dialog clears; `/login` (and the flow) proceeds and completes.
-    ptys[0]!.emitData(asScreen("Select login method:\n Claude account with subscription"));
+    // Positive idle clearance releases /login; its picker can only appear afterward.
+    ptys[0]!.emitData(asScreen("❯ "));
     await expect.poll(() => ptys[0]!.writes.includes("/login")).toBe(true);
+    ptys[0]!.emitData(asScreen("Select login method:\n Claude account with subscription"));
     await succeedAndRecover(cwd, session);
     await expect(done).resolves.toBeUndefined();
   }, 20_000);
