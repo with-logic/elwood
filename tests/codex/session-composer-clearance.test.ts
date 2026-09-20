@@ -1,8 +1,15 @@
 /** Native composer clearance releases real queued session input (PRD §5.4, C-TRUST-01). */
+
 import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
 import { startCodex } from "../../src/index.ts";
-import { codexComposer, codexSmallComposer, codexTrust, tty } from "../fixtures/trust-composer.ts";
+import {
+  codexComposer,
+  codexSmallComposer,
+  codexTrust,
+  codexTty,
+  tty,
+} from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(() => {
@@ -31,7 +38,7 @@ test.each([
     const callerText = "\u001b[200~after trust\u001b[201~";
     expect(ptys[0]!.writes).not.toContain(callerText);
     const render = async (frame: string) => {
-      ptys[0]!.emitData(`\u001b[2J\u001b[H${tty(frame)}`);
+      ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(frame)}`);
       await vi.advanceTimersByTimeAsync(500);
     };
     await render(`${codexSmallComposer}\n› `);

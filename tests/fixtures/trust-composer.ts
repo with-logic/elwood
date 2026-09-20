@@ -33,3 +33,9 @@ export const tty = (frame: string): string => frame.replaceAll("\n", "\r\n");
  */
 export const clearanceFor = (agent: ElwoodAgentKind): TrustClearance =>
   agent === "codex" ? codexTrustClearance : claudeTrustClearance;
+
+/** Native Codex idle captures show its input cursor at column two (C-TRUST-01). */
+export function codexTty(frame: string, visible = true): string {
+  const row = frame.split("\n").findLastIndex((line) => line.startsWith("›"));
+  return `${tty(frame)}\u001b[${row + 1};3H\u001b[?25${visible ? "h" : "l"}`;
+}

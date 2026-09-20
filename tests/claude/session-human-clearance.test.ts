@@ -35,6 +35,11 @@ test("C-TRUST-01 Claude human trust holds caller input through a partial replace
     pty.emitData(`\u001b[2J\u001b[H${tty(claudeComposer)}`);
     await vi.advanceTimersByTimeAsync(500);
     await queued;
+    expect(
+      session
+        .statusDecisions()
+        .filter((decision) => decision.evidence === "blocking_prompt_cleared"),
+    ).toHaveLength(1);
     expect(pty.writes.filter((input) => input === callerText)).toHaveLength(1);
   } finally {
     vi.useRealTimers();

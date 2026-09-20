@@ -116,7 +116,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     record.elwoodSessionId,
     autotrust,
     frameObserver.refresh,
-    liveCodexClearance(() => terminal.title),
+    liveCodexClearance(() => terminal),
   );
   const terminal = attachPtyTerminal(
     options.initialSize ?? defaultTerminalSize,

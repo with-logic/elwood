@@ -281,26 +281,17 @@ adapter's other verified screen facts — `claudeTrustClearance` in
 `src/claude/screen-table.ts`, `codexTrustClearance` in `src/codex/screen-table.ts` —
 and is injected into the shared coordinator (`TrustPromptResponder`/`trustView`).
 When a CLI's banner, status row, or composer placeholder changes, update that adapter's
-predicate. Codex's predicate delegates to `src/codex/screen/clearance.ts`: numbered
-rows above the last native composer can be transcript content, while rows below
-it must be native footer chrome. Keep leading whitespace: the composer begins at
-column zero and the model footer at column two; trimming both loses the distinction
-from indented transcript continuations. Active `esc to interrupt` work cannot
-prove idle clearance. Session clearance also reads the live OSC title through the
-same working-title predicate as the Codex screen-fact table, including during
-trust-attempt polling. A bare
-caret cannot prove clearance even with a model footer left by an earlier frame.
-Without a model footer, a non-bare native placeholder also
-proves clearance when anchored by a contiguous boxed Codex welcome header at the
-start of the frame, followed only by native startup tip and warning rows. Its
-header, bordered spacer, model, directory, and bottom border must occupy their
-verified consecutive rows; erased or missing interior rows cannot prove clearance.
-Blank spacing outside the box remains valid. The welcome box alone cannot authorize a bare caret. A later bare
-caret cannot borrow an earlier composer's footer to prove clearance. Native approval
-questions, selected numbered or Yes/No options, and cursor option blocks above the
-composer also veto clearance during partial repaints; ordinary numbered transcript
-steps do not. The Claude predicate uses
-`src/core/trust/clearance.ts` to reject numbered options and non-composer caret rows.
+predicate. Codex's text grammar lives in `src/codex/screen/clearance.ts` and checks
+known placeholders plus a native model footer or complete welcome box. Text-only
+callers conservatively reject approval-like rows; the live session additionally
+uses the actual visible input cursor to identify the composer, so transcript
+caret/numbered rows above that input remain legitimate history. Dialogs hide the
+cursor or leave it outside the composer. A bare caret never proves clearance.
+Native working rows and the live OSC working title retain the hold; prose that
+merely quotes `esc to interrupt` is not a native working row. The title, cursor,
+and text are read synchronously from the same completed render, including during
+trust-attempt polling. Raw PTY receipt invalidates the proof before batching.
+The Claude predicate uses `src/core/trust/clearance.ts` for its separate grammar.
 
 A startup-only real PTY probe of Codex 0.142.5 on 2026-09-19 confirmed the
 model-only `gpt-5.5 high` footer with `tui.status_line = ["model-with-reasoning"]`.
@@ -740,3 +731,16 @@ side-effect-free signal. C-CLI-21 through C-CLI-24.
 - Per the testing pyramid in `CLAUDE.md`: anything that interfaces with the real
   CLI SHOULD have a real-CLI e2e. Every fact in this file is one a unit test could
   not have caught.
+
+
+### Cursor provenance for Codex trust clearance
+
+Startup-only probes on 2026-09-19 checked Codex 0.142.5 and 0.155.1 at 100×30,
+without submitting a model prompt. Both hide the cursor with DEC private mode 25
+on the directory-trust and `/model` dialogs, leaving its coordinates on a footer.
+Both show the cursor at column 2 on the native placeholder row after trust and
+after dismissing the picker. Codex 0.155.1 retains this evidence at 100×6.
+The 0.142.5 narrow resize leaves malformed chrome, so that frame is not used as a
+positive fixture. Inspect cursor mode and coordinates together with the same
+completed rendered text and title: an old composer or footer can remain during a
+dialog repaint, and a transcript can contain identical caret/option text.

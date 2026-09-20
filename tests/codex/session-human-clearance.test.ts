@@ -1,7 +1,8 @@
 /** Partial and working frames retain trust-owned queued input (C-TRUST-01). */
+
 import { afterEach, expect, test, vi } from "vitest";
 import { resumeCodex, startCodex } from "../../src/index.ts";
-import { codexComposer, codexTrust, tty } from "../fixtures/trust-composer.ts";
+import { codexComposer, codexTrust, codexTty, tty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(() => {
@@ -12,7 +13,7 @@ afterEach(() => {
 test.each([
   ["resumed human gate partial replacement", true, tty("Unrecognized permission\n› Continue")],
   ["human gate partial replacement", false, tty("Unrecognized permission\n› Continue")],
-  ["human gate title-only work", false, `\u001b]0;⠋ project\u0007${tty(codexComposer)}`],
+  ["human gate title-only work", false, `\u001b]0;⠋ project\u0007${codexTty(codexComposer)}`],
   ["human gate bare caret", false, tty("› \n  gpt-5.5 high")],
   [
     "human gate partial approval over old composer",
@@ -70,9 +71,14 @@ test.each([
     await session.sendKeys("\u001b");
     expect(pty.writes).toContain("\u001b");
     expect(pty.writes).not.toContain(callerText);
-    pty.emitData(`\u001b]0;project\u0007\u001b[2J\u001b[H${tty(codexComposer)}`);
+    pty.emitData(`\u001b]0;project\u0007\u001b[2J\u001b[H${codexTty(codexComposer)}`);
     await vi.advanceTimersByTimeAsync(500);
     await queued;
+    expect(
+      session
+        .statusDecisions()
+        .filter((decision) => decision.evidence === "blocking_prompt_cleared"),
+    ).toHaveLength(1);
     expect(pty.writes.filter((input) => input === callerText)).toHaveLength(1);
   } finally {
     vi.useRealTimers();

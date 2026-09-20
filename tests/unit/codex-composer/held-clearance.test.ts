@@ -4,7 +4,8 @@ import { liveCodexClearance } from "../../../src/codex/screen/live-clearance.ts"
 import { codexTrustClearance } from "../../../src/codex/screen-table.ts";
 import { CodexStartupPromptResponder } from "../../../src/codex/startup-prompts.ts";
 import { TrustPromptResponder } from "../../../src/core/trust/responder.ts";
-import { codexComposer, codexTrust } from "../../fixtures/trust-composer.ts";
+import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
+import { codexComposer, codexTrust, codexTty, tty } from "../../fixtures/trust-composer.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -31,29 +32,34 @@ test.each([
 
 test("C-TRUST-01 live trust revalidation includes title-only working evidence", async () => {
   vi.useFakeTimers();
-  let title = "⠋ project";
-  let frame = `${codexTrust}\n› 1. Yes, continue\n  2. No, quit`;
+  const terminal = createHeadlessTerminal({ cols: 200, rows: 30 }, () => undefined);
+  const frame = `${codexTrust}\n› 1. Yes, continue\n  2. No, quit`;
   const responder = new CodexStartupPromptResponder(
     "s",
     true,
     undefined,
-    liveCodexClearance(() => title),
+    liveCodexClearance(() => terminal),
   );
   try {
+    const initial = terminal.writeOutput(tty(frame));
+    await vi.advanceTimersByTimeAsync(5);
+    await initial;
     const { outcomes } = responder.handle(
-      frame,
-      () => {
-        frame = codexComposer;
-      },
-      () => frame,
+      terminal.snapshot().text,
+      () =>
+        terminal.writeOutput(`\u001b]0;⠋ project\u0007\u001b[2J\u001b[H${codexTty(codexComposer)}`),
+      () => terminal.snapshot().text,
     );
     await vi.advanceTimersByTimeAsync(250);
     await expect(outcomes[0]?.settled).resolves.toBe("cancelled");
     expect(responder.inputBlocking).toBe(true);
-    title = "project";
-    responder.handle(frame, vi.fn());
+    const idle = terminal.writeOutput("\u001b]0;project\u0007");
+    await vi.advanceTimersByTimeAsync(5);
+    await idle;
+    responder.handle(terminal.snapshot().text, vi.fn());
     expect(responder.inputBlocking).toBe(false);
   } finally {
     responder.dispose();
+    terminal.dispose();
   }
 });

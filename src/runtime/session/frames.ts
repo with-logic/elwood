@@ -45,7 +45,7 @@ export function createSessionFrameObserver(
       // A human gate that handed off to an automation-owned one had its clear edge
       // ignored while automation held input. Only that edge may leave `blocked`, so
       // replay it once automation releases with nothing blocking left on screen.
-      if (released && !reading.facts.blocking_prompt_visible)
+      if (released && !reading.facts.blocking_prompt_visible && active.status === "blocked")
         active.submitEvidence("blocking_prompt_cleared");
     } finally {
       readiness.observeReadinessFrame(reading.facts, active.automationBlocking);
