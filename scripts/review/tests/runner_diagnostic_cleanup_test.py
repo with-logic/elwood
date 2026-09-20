@@ -11,6 +11,39 @@ import runner_test
 
 
 class DiagnosticCleanupTest(unittest.TestCase):
+    def test_closed_stderr_setup_continues_and_preserves_exit_cleanup(self):
+        for exit_code in (0, 7):
+            with self.subTest(exit_code=exit_code):
+                fixture = runner_test.RunnerTest()
+                fixture.setUp()
+                self.addCleanup(fixture.doCleanups)
+                script = r'''
+set -euo pipefail
+root="$1"
+mktemp() {
+  local created
+  created=$(command mktemp "$@")
+  printf '%s' "$created" > "$root/owned-temp"
+  printf '%s\n' "$created"
+}
+exec 2>&-
+. "$root/scripts/review/runtime.sh" HEAD
+printf continued > "$root/setup-continued"
+echo validation > "$tmp/synth.validation.err"
+exit "$2"
+'''
+                try:
+                    result = subprocess.run(['bash', '-c', script, 'fixture', str(fixture.root), str(exit_code)],
+                                            cwd=fixture.root, capture_output=True, text=True, timeout=5)
+                    self.assertEqual((result.returncode,
+                                      (fixture.root / 'setup-continued').exists(),
+                                      Path((fixture.root / 'owned-temp').read_text()).exists()),
+                                     (exit_code, True, False))
+                finally:
+                    marker = fixture.root / 'owned-temp'
+                    if marker.exists():
+                        shutil.rmtree(marker.read_text(), ignore_errors=True)
+
     def test_failed_diagnostics_preserve_exit_and_cleanup_owned_processes(self):
         for failure in ('sink', 'storage'):
             with self.subTest(failure=failure):

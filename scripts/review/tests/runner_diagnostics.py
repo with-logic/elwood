@@ -12,7 +12,6 @@ def install_attempt_diagnostics(root):
     runtime = root / 'scripts/review/runtime.sh'
     source = runtime.read_text().replace('cleanup() {', 'cleanup_without_capture() {', 1)
     runtime.write_text(source + r'''
-exec 4>&2
 cleanup() {
   local code=$? failure
   if [ -f "$tmp/synth.validation.err" ]; then head -c ATTEMPT_STDERR_BYTES "$tmp/synth.validation.err" >&4 || true; fi
@@ -23,6 +22,8 @@ cleanup() {
   fi
   cleanup_without_capture
 }
+# The original EXIT trap is already armed: install its handler before touching fds.
+exec 4>&2 || exec 4>/dev/null
 '''.replace('ATTEMPT_STDERR_BYTES', str(MAX_ATTEMPT_STDERR_BYTES)))
     runner = root / 'scripts/review/run.sh'
     source = runner.read_text().replace('run_lens_once() {', 'run_lens_without_capture() {', 1)
