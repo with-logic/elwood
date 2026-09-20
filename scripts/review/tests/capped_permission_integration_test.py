@@ -9,12 +9,12 @@ import runner_test
 SOURCE = Path(__file__).resolve().parents[1] / 'capped.py'
 
 
-def inject_denial(path, after_kill=False):
+def inject_denial(path, after_kill=False, scope=None):
     source = path.read_text()
     denial = """
 _original_killpg = os.killpg
 def denied_killpg(pid, sig):
-    if sig == signal.SIGKILL:
+    if sig == signal.SIGKILL and (SCOPE is None or SCOPE in ' '.join(sys.argv)):
         if AFTER_KILL:
             try:
                 _original_killpg(pid, sig)
@@ -23,7 +23,7 @@ def denied_killpg(pid, sig):
         raise PermissionError('PRIVATE_CANARY')
     return _original_killpg(pid, sig)
 os.killpg = denied_killpg
-""".replace('AFTER_KILL', repr(after_kill))
+""".replace('AFTER_KILL', repr(after_kill)).replace('SCOPE', repr(scope))
     path.write_text(source.replace("if __name__ == '__main__':", denial + "\nif __name__ == '__main__':"))
 
 
@@ -75,9 +75,13 @@ class PermissionIntegrationTest(unittest.TestCase):
         fixture = runner_test.RunnerTest()
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
-        inject_denial(fixture.root / 'scripts/review/capped.py', after_kill=True)
+        inject_denial(fixture.root / 'scripts/review/capped.py', after_kill=True,
+                      scope='using the /review-architecture-conventions skill')
         result = fixture.run_review('timeout')
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertEqual((fixture.root / 'call-review-architecture-conventions').read_text(), '1', result.stderr)
         self.assertIn('category=timeout exit=124', result.stderr)
+        warning = 'review: cleanup scope=group signal=SIGKILL reason=permission_denied'
+        self.assertEqual(result.stderr.count(warning), 1, result.stderr)
+        self.assertNotIn('PRIVATE_CANARY', result.stderr)
         self.assertIn('incomplete review coverage (blocker)', (fixture.root / 'REVIEW.md').read_text())
