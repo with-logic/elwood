@@ -12,6 +12,14 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class RuntimeTest(unittest.TestCase):
+    def test_child_signal_status_uses_shell_encoding(self):
+        for signum in (signal.SIGTERM, signal.SIGKILL):
+            with self.subTest(signal=signum):
+                child = f'import os; os.kill(os.getpid(), {int(signum)})'
+                result = subprocess.run([sys.executable, str(ROOT / 'scripts/review/capped.py'),
+                                         '10', sys.executable, '-c', child])
+                self.assertEqual(result.returncode, 128 + signum)
+
     def test_zero_padded_positive_settings_are_decimal_and_zero_defaults(self):
         script = 'root="$PWD"; . scripts/review/runtime.sh HEAD; echo "$process_timeout_seconds $deadline_seconds $lens_attempts"'
         for value, expected in [('08', '8 8 8'), ('040', '40 40 40'), ('000', '900 2400 3')]:
