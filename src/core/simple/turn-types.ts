@@ -148,7 +148,8 @@ export type RunningTurn = {
    * SUCCESS path that is the gate's real end (the transcript drained); on a consumer FAILURE it is
    * a real `ready` (a busy agent is `running`, not ready) or a terminal status, then a short drain.
    * It does NOT resolve on the consumer failure itself, so the next turn never binds this turn's
-   * still-arriving activity.
+   * still-arriving activity. Both paths also wait for cancelled replay writes, recovery
+   * Enters, and attachment cleanup before releasing the slot and captured-image reservation.
    */
   readonly boundary: Promise<void>;
 };

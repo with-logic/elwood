@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Keep cancelled turn replays pending through delayed Enter writes and clipboard
+  restoration, cancel clipboard lock waiters promptly, and preserve readiness when
+  a held replay is cancelled before it submits.
+
 - Never re-submit a prompt whose ergonomic turn already ended. Acceptance recovery
   is now disarmed the moment the turn settles — including a submission that rejected
   after the session had already gone `running`/`ready`, which released the serializer

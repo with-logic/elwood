@@ -11,6 +11,7 @@ export function cancellableSubmission(
 ): SendOptions {
   const replayOptions = { ...options };
   cancellations.set(replayOptions, {
+    origin: { kind: "caller", recovery: true },
     cancel: { signal, error: () => new Error("Turn recovery cancelled.") },
   });
   return replayOptions;

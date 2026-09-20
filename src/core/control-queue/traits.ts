@@ -8,7 +8,7 @@ import type { Cancel, QueuedOperation } from "./types.ts";
 
 export type ControlQueueError = () => Error;
 /** How an operation's text is written to the terminal (not a domain name). */
-export type ControlSubmitMode = "pasted_input" | "command";
+export type ControlSubmitMode = "pasted_input" | "recovery_input" | "command";
 export type ControlOperationKind =
   | "message"
   | "guidance"

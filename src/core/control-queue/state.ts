@@ -39,12 +39,17 @@ export abstract class ControlQueueState {
     const error = this.stoppedError();
     this.submitAbort?.abort(error);
     const settling = this.inFlight;
-    this.inFlight = undefined;
-    this.bypassable = 0;
-    if (settling) {
-      this.cancellation.remove(settling);
-      settling.reject(error);
+    const retainsCleanup = settling?.origin.kind === "caller" && settling.origin.recovery;
+    // Recovery owns captured images and the serializer slot through physical cleanup.
+    // Closing aborts its work, but only that work's settlement releases its caller.
+    if (!retainsCleanup) {
+      this.inFlight = undefined;
+      if (settling) {
+        this.cancellation.remove(settling);
+        settling.reject(error);
+      }
     }
+    this.bypassable = 0;
     this.cancellation.clear();
     for (const operation of this.queue.splice(0)) {
       this.cancellation.remove(operation);

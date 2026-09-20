@@ -134,12 +134,27 @@ export class ControlQueue extends ControlQueueState {
       if (signal.aborted) throw this.abortError(signal);
       this.beginSubmission(operation, traits);
     }
-    await this.submit(operation.input, traits.submitMode, signal);
+    const mode =
+      operation.origin.kind === "caller" && operation.origin.recovery
+        ? "recovery_input"
+        : traits.submitMode;
+    await this.submit(
+      operation.input,
+      mode,
+      signal,
+      mode === "recovery_input"
+        ? () => runContained(() => this.onTurnStarted(operation.origin))
+        : undefined,
+    );
   }
 
   private beginSubmission(operation: QueuedOperation, traits: ControlOperationTraits): void {
     if (traits.consumesReadiness) this.ready = false;
-    if (traits.reportsCallerSubmission && operation.origin.kind === "caller") {
+    if (
+      traits.reportsCallerSubmission &&
+      operation.origin.kind === "caller" &&
+      !operation.origin.recovery
+    ) {
       runContained(() => this.onTurnStarted(operation.origin));
     }
   }

@@ -10,7 +10,10 @@ import { collect, deferred } from "./simple-turn-fakes.ts";
 
 afterEach(() => vi.useRealTimers());
 
-test("C-API-58 holds the next turn and image reservation until cancelled replay cleanup finishes", async () => {
+test.each([
+  "timeout",
+  "success",
+])("C-API-58 %s holds the next turn and images until replay cleanup finishes", async (outcome) => {
   vi.useFakeTimers();
   const session = new FakeUnderlying();
   const captures = new ImageCaptures(1);
@@ -43,13 +46,18 @@ test("C-API-58 holds the next turn and image reservation until cancelled replay 
   const first = collect(
     capturedTurn(captures, queue, facade, defaultBoundarySignal, "first", {
       ...options,
-      timeoutMs: 2_010,
+      ...(outcome === "timeout" ? { timeoutMs: 2_010 } : {}),
     }),
   );
-  const rejected = expect(first).rejects.toMatchObject({ code: "wait_timeout" });
+  const settled =
+    outcome === "timeout"
+      ? expect(first).rejects.toMatchObject({ code: "wait_timeout" })
+      : expect(first).resolves.toHaveLength(1);
   const second = collect(capturedTurn(captures, queue, facade, defaultBoundarySignal, "second"));
-  await vi.advanceTimersByTimeAsync(3_000);
-  await rejected;
+  await vi.advanceTimersByTimeAsync(2_000);
+  if (outcome === "success") defaultScript(session.emitter, "first");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await settled;
   expect(cancelled).toBe(true);
   expect(order).toEqual(["first", "first"]);
   expect(() => captures.capture(options)).toThrow("Too many queued image bytes");

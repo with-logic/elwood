@@ -14,7 +14,8 @@
  * settles; its error travels through `events`. The serializer instead holds `boundary`, which
  * resolves on a successful oracle/quiet settle or terminal status; after a consumer failure it
  * waits for real `ready`/terminal evidence plus transcript drain, so an abandoned stream cannot
- * release its slot while the agent is still producing.
+ * release its slot while the agent is still producing. Both paths also await cancelled
+ * replay writes and their cleanup before releasing the slot and captured images.
  *
  * Timeouts: a turn may run for HOURS (a test suite, a PR poll), so there is NO whole-turn
  * timeout by default; callers may pass an opt-in `timeoutMs`, armed only AFTER submission (a

@@ -13,6 +13,7 @@ export type ControlSubmitter = (
   input: string,
   mode: ControlSubmitMode,
   signal: AbortSignal,
+  onSubmitted?: () => void,
 ) => Promise<void>;
 
 /** An abortable task run while its queue op holds the queue; aborts on close. */
@@ -23,7 +24,7 @@ export type Cancel = { readonly signal: AbortSignal; readonly error: () => Error
 
 /** Internal provenance for activity and recurring-loop scheduling decisions. */
 export type ControlSubmissionOrigin =
-  | { readonly kind: "caller" }
+  | { readonly kind: "caller"; readonly recovery?: true }
   | { readonly kind: "loop"; readonly loopId: string };
 
 /** Optional internal controls for an attributed, cancellable text submission. */
