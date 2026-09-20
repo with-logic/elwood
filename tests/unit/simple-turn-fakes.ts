@@ -22,7 +22,7 @@ export { activity };
 type FakeEventMap = {
   activity: ElwoodActivityEvent;
   status: { readonly elwoodSessionId?: string; readonly status: ElwoodSessionStatus };
-  hook: TurnBoundaryHook;
+  hook: TurnBoundaryHook & { readonly turn_id?: unknown };
 };
 
 /**

@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Bind turn collection to the matching submit hook’s turn ID before content arrives, so replayed content from an older turn cannot claim the new turn.
+
 - Keep an acquired Codex config or clipboard lock operation pending until its task
   finishes cleanup when cancellation arrives; cancellable config-lock waiters still
   cancel immediately. Codex model-switch deadlines also

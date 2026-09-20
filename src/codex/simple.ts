@@ -11,6 +11,7 @@ import { resolveSessionPaths } from "../core/simple/resolve-paths.ts";
 import { SessionBase } from "../core/simple/session.ts";
 import { type AssertStopBoundary, defaultBoundarySignal } from "../core/simple/turn.ts";
 import type { Unsubscribe } from "../core/types.ts";
+import { readCodexAcceptedTurnId } from "./accepted-turn.ts";
 import type { CodexHookEventFor } from "./hooks/index.ts";
 import { startCodex } from "./session/index.ts";
 import type {
@@ -51,6 +52,7 @@ export class CodexSession extends SessionBase<CodexSessionApi> {
 
   /** Codex's `Stop` hook carries `last_assistant_message` — the standard completeness signal. */
   protected readBoundarySignal = defaultBoundarySignal;
+  protected override readAcceptedTurnId = readCodexAcceptedTurnId;
 
   /** Typed event subscription over the Codex event map (buffered before start). */
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): Unsubscribe {
