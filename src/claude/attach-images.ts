@@ -48,7 +48,7 @@ export async function attachClaudeImages(
   } catch (error) {
     // A mid-attach failure clears any staged chips/paths so the rejected images
     // cannot leak into a later caller's turn (C-API-44).
-    if (staged) await clearComposer(terminal);
+    if (staged) await clearComposer(terminal, blocked);
     throw error;
   }
 }

@@ -25,6 +25,16 @@ back each entry are listed in `prd/14-conformance.md`.
   released at the boundary). Queued and in-flight recovery submissions are now
   cancelled, including behind a held dialog. The serializer slot and captured
   images remain reserved until cancellation finishes settling.
+- Clear cancelled staged text and images before successor input, deferring cleanup
+  through dialogs. Failed cleanup holds the draft; raw human input revokes cleanup
+  authority, and shutdown drops deferred cleanup without waiting.
+- Release cancelled config-lock and clipboard-lock waiters immediately, including
+  captured session state, while active holders retain ownership through cleanup.
+
+- Select Codex update-skip choices after the action when an update action is visible;
+  action-less continuation frames may still select a safe option. Selection uses the
+  current frame’s numbering and never selects an update action whose label also
+  contains a skip phrase.
 
 - Keep an acquired Codex config or clipboard lock operation pending until its task
   finishes cleanup when cancellation arrives; cancellable config-lock waiters still

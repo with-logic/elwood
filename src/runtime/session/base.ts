@@ -57,7 +57,7 @@ export abstract class AgentSessionBase extends SessionLifecycle {
       stateDir,
       runtime,
       pty,
-      ownership.caller,
+      ownership,
       statusEvents,
       terminalReplay,
       loopDefinitions,

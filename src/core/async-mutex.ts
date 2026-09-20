@@ -1,10 +1,7 @@
 /**
- * A minimal process-local async mutex: a promise chain that serializes tasks so
- * each caller waits for the prior holder to settle before starting. The internal
- * tail swallows rejections so one caller's failure never rejects the NEXT caller's
- * acquire; the real result/rejection is returned to THIS caller. Shared by the
- * clipboard and Codex config locks (PRD §5.3, C-API-46 / C-CODEX-14); extracted
- * so the one correct chaining shape lives in one place.
+ * Process-local FIFO mutex shared by clipboard and Codex config locks.
+ * Cancelled waiters detach immediately; acquired tasks retain ownership through
+ * cleanup. Implements PRD §5.3, C-API-46 and C-CODEX-14.
  */
 
 /**
@@ -20,30 +17,49 @@ export type MutexCancel = {
 /** Runs `task` while holding the mutex; released when `task` settles (ok or error). */
 export type AsyncMutex = <T>(task: () => Promise<T>, cancel?: MutexCancel) => Promise<T>;
 
-/** Creates an independent async mutex with its own serialization chain. */
+/** Creates an independent mutex with removable FIFO waiters. */
 export function createAsyncMutex(): AsyncMutex {
-  let tail: Promise<void> = Promise.resolve();
+  const waiting = new Set<() => void>();
+  let running = false;
+  const advance = () => {
+    const next = waiting.values().next().value;
+    if (next === undefined) {
+      running = false;
+      return;
+    }
+    waiting.delete(next);
+    next();
+  };
   return <T>(task: () => Promise<T>, cancel?: MutexCancel): Promise<T> =>
     new Promise<T>((resolve, reject) => {
+      if (cancel?.signal.aborted) return reject(cancel.error());
       let stopWaiting: () => void = () => undefined;
+      const run = async () => {
+        // Acquisition ends waiter cancellation. The task owns the mutex until its
+        // own abort handling and cleanup finish, even when its signal aborts.
+        stopWaiting();
+        try {
+          resolve(await task());
+        } catch (error) {
+          reject(error);
+        } finally {
+          queueMicrotask(advance);
+        }
+      };
       if (cancel) {
-        // Reject waiting callers immediately. Their queued run stays in the tail,
-        // preserving ordering. Already-aborted signals never replay an abort event.
-        if (cancel.signal.aborted) return reject(cancel.error());
-        const abort = () => reject(cancel.error());
+        const abort = () => {
+          // Delete the closure itself so a stalled holder cannot retain this task.
+          waiting.delete(run);
+          stopWaiting();
+          reject(cancel.error());
+        };
         cancel.signal.addEventListener("abort", abort, { once: true });
         stopWaiting = () => cancel.signal.removeEventListener("abort", abort);
       }
-      const run = tail.then(() => {
-        // Acquisition ends waiter cancellation. An active task must retain ownership
-        // until its own abort handling and cleanup settle, even if its signal aborts.
-        stopWaiting();
-        if (cancel?.signal.aborted) throw cancel.error();
-        return task();
-      });
-      tail = run.then(
-        (value) => resolve(value),
-        (error: unknown) => reject(error),
-      );
+      waiting.add(run);
+      if (!running) {
+        running = true;
+        queueMicrotask(advance);
+      }
     });
 }

@@ -555,15 +555,20 @@ update screen returns — an infinite loop stuck on the update screen. The fix i
 screen leaves the frame, so a reappearance after the restart is skipped again
 rather than sitting latched forever. Edge-detection mirrors the login watcher.
 
-Two version-coupled wrinkles this cost us:
+Version-coupled behavior learned here:
 
-- The skip-attempt is gated by a per-session prompt tracker, even though the
-  option is located in the accumulated buffer. Codex can split the distinctive
+- The skip-attempt is gated by a per-session prompt tracker, while the option is
+  selected only from the current frame. Codex can split the distinctive
   versioned banner and its options across consecutive screen replacements; once
   the banner activates the tracker, a safe-option-only continuation remains the
   same blocking prompt. A definite non-update frame clears it. Matching the
-  accumulated buffer alone lets benign later prose re-fire against a **stale
-  buffered option** — a real bug we hit while building this. C-CODEX-12.
+  accumulated buffer lets a cleared/reappeared prompt inherit an old option number
+  and lets benign later prose re-fire against a stale option. C-CODEX-12.
+- Captured Codex update menus from 0.132 through 0.155 list `Update now` before
+  the safe choices. Initial selection and retries use that ordering: a skip-shaped
+  row before the update action is not selected, and the update action itself is
+  excluded even if its label also contains a skip phrase. A banner-less continuation
+  without the action has no ordering constraint; its generation guard still applies.
 - Option labels drift by version. Older codex (0.132/0.133) rendered a numbered
   dialog ("1. Update now / 2. Skip / 3. Skip until next version"). In the installed
   0.149.1 binary, the upgrade notice strings extracted from the native binary read
@@ -571,7 +576,9 @@ Two version-coupled wrinkles this cost us:
   `https://github.com/openai/codex for installation options.`) rather than a
   numbered dialog — so the interactive dialog is not guaranteed on every version.
   The skip is written ONLY when a numbered skip option is actually present
-  (`findNumberedOption` → null ⇒ no write), so a passive banner is a harmless no-op.
+  (`safeUpdateOption` → `undefined` ⇒ no write), so a passive banner is a harmless no-op.
+  If the only skip-shaped choice precedes the update action, the helper also returns
+  `undefined` and no key is written.
   Every retry revalidates that the frame still belongs to the captured first-party
   update-prompt generation and uses the safe option's current number. This preserves
   the known safe-option-only continuation layout without letting a cleared/reappeared
@@ -580,7 +587,9 @@ Two version-coupled wrinkles this cost us:
   responder/grace window, including runs without a whole-invocation timeout.
   The match set (`src/codex/update-prompt.ts`) is unit-tested against captured
   layouts, NOT against a live update event (which requires an actually-stale binary
-  to trigger). If Codex changes the dialog wording, this is the first thing to
+  to trigger). `codex-update-selection.e2e.ts` also replays the documented option
+  layout and an adversarial reordered variant through a real PTY and emulator;
+  its child acknowledges the physical skip digit it received. If Codex changes the dialog wording, this is the first thing to
   re-capture.
 
 **Concurrent-start failure (verified against codex-cli 0.152.1, 2026-09):** the

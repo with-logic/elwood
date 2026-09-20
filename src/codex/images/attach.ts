@@ -74,7 +74,7 @@ async function attachUnderLock(
       await waitForImageChip(terminal, before, signal, chipWait);
     }
   } catch (error) {
-    if (staged) await clearComposer(terminal); // discard staged chips on failure (C-API-44)
+    if (staged) await clearComposer(terminal, blocked); // discard staged chips on failure (C-API-44)
     throw error;
   } finally {
     // Best-effort and fully isolated: neither the restore nor its warning callback
