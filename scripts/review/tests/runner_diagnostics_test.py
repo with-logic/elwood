@@ -2,6 +2,7 @@
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 import runner_test
 from runner_diagnostics import assert_architecture_lens_one_attempt, attempt_diagnostics
 
@@ -34,6 +35,7 @@ class AttemptDiagnosticsTest(unittest.TestCase):
         result = fixture.run_review('first-parser-timeout')
         self.assertIn('category=transport exit=1', result.stderr)
         self.assertIn('category=timeout exit=124', result.stderr)
+        self.assertNotIn('lens=synthesis', attempt_diagnostics(fixture.root))
         diagnostic = attempt_diagnostics(fixture.root)
         self.assertIn('lens=review-architecture-conventions attempt=1 exit=1', diagnostic)
         self.assertIn('review: invalid or incomplete model event stream', diagnostic)
@@ -66,10 +68,26 @@ class AttemptDiagnosticsTest(unittest.TestCase):
             for index in range(3):
                 (root / f'capped-attempt.{index}.failure').write_text(f'attempt={index}\n' + 'x' * 2048)
             (root / 'capped-attempt.3.failure').write_text('AGGREGATE_TAIL_CANARY')
-            diagnostic = attempt_diagnostics(root)
+            original_open = Path.open
+            opened = []
+            def tracked_open(path, *args, **kwargs):
+                opened.append(path.name)
+                return original_open(path, *args, **kwargs)
+            with patch.object(Path, 'open', tracked_open):
+                diagnostic = attempt_diagnostics(root)
+            self.assertEqual(opened, ['capped-attempt.0.failure', 'capped-attempt.1.failure'])
             self.assertIn('attempt=0', diagnostic)
             self.assertNotIn('AGGREGATE_TAIL_CANARY', diagnostic)
             self.assertEqual(len(diagnostic), len('\nFixture attempt diagnostics (bounded):\n') + 4096)
+
+    def test_successful_attempts_do_not_launch_the_capture_helper(self):
+        fixture = runner_test.RunnerTest()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        (fixture.root / 'retain-attempt.py').write_text("raise RuntimeError('UNNECESSARY_CAPTURE')\n")
+        result = fixture.run_review()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('UNNECESSARY_CAPTURE', result.stderr)
 
     def test_synthesis_failure_has_its_own_scope(self):
         fixture = runner_test.RunnerTest()
