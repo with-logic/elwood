@@ -56,7 +56,7 @@ export async function buildClaudeSession(
   // before startClaude resolves and flushes it on a deferred macrotask after return,
   // so every source stays observable without late-subscriber replay (C-API-14).
   const warnGate = createStartupWarningGate({
-    emitWarnings: (w) => deliverFrameWarnings(session, w),
+    emitWarnings: (w) => wired.duringDelivery(() => deliverFrameWarnings(session, w)),
   });
   const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => warnGate);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
@@ -115,7 +115,7 @@ export async function buildClaudeSession(
     throw error;
   }
   const startupOutput = createStartupBuffer();
-  let startupExit: PtyExit | undefined;
+  let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
   const frameObserver = createSessionFrameObserver(
@@ -174,14 +174,16 @@ export async function buildClaudeSession(
       // (evidence is `session?.`-guarded); replay it now the session can consume it.
       ready.replay();
       pty.onExit((exit) => {
-        startupExit = exit;
+        if (observedExit) return;
+        observedExit = exit;
+        active.beginExitFinalization();
         active.closing.abort();
         handleClaudeExit(emitter, record.elwoodSessionId, exit, finishSafely, () =>
           active.submitExit(),
         );
       });
       // Release the startup buffer once the check settles (§9.4).
-      await assertStartupThenRelease("claude", startupOutput, () => startupExit);
+      await assertStartupThenRelease("claude", startupOutput, () => observedExit);
       active.submitEvidence("startup_usable");
       frameObserver.blockOnceLive(active);
     },

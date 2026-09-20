@@ -1,0 +1,63 @@
+/** Natural transcript finalization must join reentrant shutdown (PRD §5.3, C-API-20). */
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, expect, test } from "vitest";
+import { startClaude } from "../../src/index.ts";
+import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
+
+afterEach(resetFakes);
+
+for (const statusThrows of [false, true]) {
+  test.each([
+    "stop",
+    "kill",
+    "teardown",
+  ] as const)(`C-API-20 %s joins non-replayed Claude natural exit (status throws: ${statusThrows})`, async (verb) => {
+    installFakes();
+    const cwd = tempDir();
+    const path = join(cwd, "transcript.jsonl");
+    writeFileSync(path, "");
+    const session = await startClaude({ cwd });
+    const pty = ptys[0]!;
+    const nativeExitHandlers = [...pty.exitHandlers];
+    let shutdown: Promise<void> | undefined;
+    const finalized: string[] = [];
+    session.on("terminal:exit", () => finalized.push("exit"));
+    session.on("status", (event) => {
+      if (["exited", "stopped", "killed"].includes(event.status)) {
+        finalized.push("status");
+        if (statusThrows) throw new Error("status listener failed");
+      }
+    });
+    session.on("activity", (event) => {
+      if (event.kind === "assistant_message") {
+        shutdown ??= session[verb]();
+        for (const handler of nativeExitHandlers) handler({ exitCode: 7 });
+      }
+    });
+    try {
+      await pty.dispatchHook(session.elwoodSessionId, {
+        hook_event_name: "Stop",
+        session_id: "claude-1",
+        cwd,
+        transcript_path: path,
+      });
+      pty.kill = (signal = "SIGTERM") => pty.killSignals.push(signal);
+      writeFileSync(
+        path,
+        `${JSON.stringify({
+          type: "assistant",
+          message: { content: [{ type: "text", text: "committed reply" }] },
+        })}\n`,
+      );
+      for (const handler of nativeExitHandlers) handler({ exitCode: 0 });
+      expect(shutdown).toBeDefined();
+      await expect(shutdown).resolves.toBeUndefined();
+      expect(pty.killSignals).toEqual([]);
+      expect(finalized).toEqual(["exit", "status"]);
+      expect(reapedGroups).toEqual([pty.pid]);
+    } finally {
+      await session.stop().catch(() => undefined);
+    }
+  }, 15_000);
+}

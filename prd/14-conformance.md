@@ -37,7 +37,7 @@ Each criterion has:
 | C-API-17 | §5.4 | Hook dispatch emits adapter-neutral hook-result activity, and hook failures also appear in the activity stream. |
 | C-API-18 | §5.1 | Claude and Codex start/resume options expose `autotrust` for opt-in workspace trust prompt automation. |
 | C-API-19 | §5.3 | Calling `sendMessage` while the session is alive but not ready queues the message until the next ready transition and rejects only if the session terminates first. |
-| C-API-20 | §5.7 | Codex transcript activity is flushed before terminal exit and terminal lifecycle status are emitted. |
+| C-API-20 | §5.3 §5.7 | Claude and Codex transcript activity is flushed before terminal exit and terminal lifecycle status are emitted; reentrant shutdown joins observed natural-exit finalization. |
 | C-API-21 | §5.1 §5.5 | A caller-provided `persona` is submitted as the session's first user message on the first ready transition, ahead of caller-queued messages; it is not persisted and not re-sent on resume. |
 | C-API-22 | §5.3 §5.7 | `compact()` submits the adapter's `/compact` command through the readiness queue, resolves on the adapter's `PostCompact` hook, rejects with `compact_failed` on timeout, and rejects with `session_not_running` if the session terminates first. The one recovery Enter for a swallowed submission is a queued write: it waits behind a model operation that owns the input queue, is dropped once compaction settles, and is withheld from blocking dialogs and from any visible model dialog. |
 | C-API-23 | §5.3 §5.7 | `listModels()` parses the adapter's rendered model picker into typed options with current/default markers, cancels with Escape, and leaves the session model unchanged. |

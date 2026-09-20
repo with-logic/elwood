@@ -12,9 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Codex transcript listeners can stop a session without moving pending transcript
-  activity past terminal exit, duplicating exit, or re-signaling an already-exited
-  PTY during the final flush. Transcript diagnostics preserve the same ordering.
+- Claude and Codex transcript and diagnostic listeners can stop a session without
+  moving pending activity past terminal exit, duplicating finalization, or signaling
+  an already-exited PTY while its final transcript records are being delivered.
+
 - Preserve Claude `StopFailure` hooks with missing or changed diagnostic fields. Those
   fields are now typed as optional `unknown`, matching ingress. Browser logs show a
   bounded rejection reason instead of unrelated assistant text or a blank summary.
