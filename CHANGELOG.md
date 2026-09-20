@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Detect startup authentication errors from PTY bytes as soon as they arrive.
+  Slow or stalled terminal rendering no longer lets an already-received error
+  escape the bounded startup check in either adapter.
+
 - Bind the Claude browser-tools decline to session disposal. After `stop()`,
   `kill()`, or PTY exit the decline is no longer attempted, and one already in flight
   settles as a cancellation, so a closed session no longer emits a late

@@ -59,9 +59,7 @@ export async function buildClaudeSession(
   );
   const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => warnGate);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
-  // Initial readiness is hook-backed (`InstructionsLoaded` fires `mark`); the first
-  // frame arms a starvation deadline so a missing/failed hook cannot starve the queue,
-  // and on resume the first composer frame also marks ready (PRD §5.3, C-API-28).
+  // Hooks establish readiness; the first frame arms its deadline (PRD §5.3, C-API-28).
   const autotrust = options.autotrust ?? false;
   // Build observers before the readiness callback captures them.
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
@@ -124,34 +122,36 @@ export async function buildClaudeSession(
   );
   const promptResponder = new ClaudeStartupPromptResponder(autotrust, frameObserver.refresh);
   let latestRenderedText = "";
-  const terminal = attachPtyTerminal(startupSize, pty, (data, renderedTerminal) => {
-    startupOutput.push(data);
-    terminalReplay.push(data);
-    latestRenderedText = renderedTerminal.snapshot().text;
-    const frame = { text: latestRenderedText, title: renderedTerminal.title };
-    // The write RETURNS its `sendInput` completion (no longer swallowed): the
-    // responder settles the prompt and its `startup_prompt` activity only after
-    // a live write fulfills. Live rejections warn/retry; disposal cancels (C-CLAUDE-16/22).
-    const send = (input: string) => renderedTerminal.sendInput(input);
-    const read = () => latestRenderedText;
-    const guarded = guardedClaudeAutomationWrite(
-      renderedTerminal,
-      send,
-      read,
-      () => promptResponder.closing,
-      promptResponder.closingSignal,
-    );
-    const autos = promptResponder.handle(frame.text, send, read, guarded);
-    // Warning delivery is CONTAINED on the frame path: a throwing `warning`/`activity`
-    // listener must never skip readiness, login detection, or terminal:data (§5.7).
-    emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
-      emitWarnings: (warnings) => warnGate.emitWarnings(warnings),
-    });
-    frameObserver.observe(frame);
-    // Surface a mid-session login-expiry banner once (C-CLAUDE-18); no-op pre-readiness.
-    session?.noteLoginExpiry(frame.text);
-    emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
-  });
+  const terminal = attachPtyTerminal(
+    startupSize,
+    pty,
+    (data, renderedTerminal) => {
+      terminalReplay.push(data);
+      latestRenderedText = renderedTerminal.snapshot().text;
+      const frame = { text: latestRenderedText, title: renderedTerminal.title };
+      // Settle after live writes fulfill; disposal cancels (C-CLAUDE-16/22).
+      const send = (input: string) => renderedTerminal.sendInput(input);
+      const read = () => latestRenderedText;
+      const guarded = guardedClaudeAutomationWrite(
+        renderedTerminal,
+        send,
+        read,
+        () => promptResponder.closing,
+        promptResponder.closingSignal,
+      );
+      const autos = promptResponder.handle(frame.text, send, read, guarded);
+      // Warning delivery is CONTAINED on the frame path: a throwing `warning`/`activity`
+      // listener must never skip readiness, login detection, or terminal:data (§5.7).
+      emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
+        emitWarnings: (warnings) => warnGate.emitWarnings(warnings),
+      });
+      frameObserver.observe(frame);
+      // Surface a mid-session login-expiry banner once (C-CLAUDE-18); no-op pre-readiness.
+      session?.noteLoginExpiry(frame.text);
+      emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
+    },
+    startupOutput.push,
+  );
   session = new ClaudeSessionImpl(
     record,
     stateDir,

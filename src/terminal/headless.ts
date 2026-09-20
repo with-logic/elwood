@@ -1,8 +1,4 @@
-/**
- * Headless xterm.js terminal model for PTY rendering and input control.
- * Implements PRD §4.1, §5.3, and §9.
- */
-
+/** Headless PTY rendering and input control (PRD §4.1, §5.3, §9). */
 import xtermHeadless from "@xterm/headless";
 import type { TerminalSize } from "../core/types.ts";
 import type { PtyProcess } from "../pty/types.ts";
@@ -50,6 +46,7 @@ export function attachPtyTerminal(
   size: TerminalSize,
   pty: PtyProcess,
   onRendered: (data: string, terminal: ElwoodTerminal) => void,
+  onReceived?: (data: string) => void,
 ): ElwoodTerminal {
   const terminal = new HeadlessTerminal(size, (input) => pty.write(input));
   const output = new PtyOutput(
@@ -61,7 +58,10 @@ export function attachPtyTerminal(
   // destroys the socket shortly after exit. Releasing the pause here means a
   // backlog still draining at exit cannot strand unread tail output behind it.
   const off = [
-    pty.onData((data) => output.push(data)),
+    pty.onData((data) => {
+      onReceived?.(data);
+      output.push(data);
+    }),
     pty.onExit(() => output.releaseFlowControl()),
   ];
   terminal.onDispose(() => {
