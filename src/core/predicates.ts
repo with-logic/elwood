@@ -21,9 +21,21 @@ export function optionalString(value: unknown): boolean {
   return value === undefined || typeof value === "string";
 }
 
-export function optionalNumber(value: unknown): boolean {
-  return value === undefined || typeof value === "number";
+/**
+ * A JSON-representable number. `NaN` and `±Infinity` are `typeof "number"` but
+ * `JSON.stringify` emits them as `null`, so accepting them here would let a hook
+ * rewrite send a null where the CLI's schema requires a number (PRD §6.4).
+ */
+export function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
 }
+
+/** Absent, or a finite number. Named for the contract: a non-finite number FAILS. */
+export function optionalFiniteNumber(value: unknown): boolean {
+  return value === undefined || isFiniteNumber(value);
+}
+
+export { isBoundedJsonShape } from "./json-shape.ts";
 
 export function optionalBoolean(value: unknown): boolean {
   return value === undefined || typeof value === "boolean";
