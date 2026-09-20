@@ -58,6 +58,8 @@ function fakeTerminal(chipsPerPaste = 1) {
   let chips = 0;
   return {
     writes,
+    settled: () => Promise.resolve(),
+    renderFailed: false,
     sendInput(data: string): void {
       writes.push(data);
       chips += chipsPerPaste;
@@ -119,7 +121,7 @@ describe("attachCodexImages (C-API-46)", () => {
   test("C-API-46 an abort during the first image rejects before the Ctrl+V", async () => {
     const term = fakeTerminal();
     const controller = new AbortController();
-    // Abort DURING the first image's clipboard set: sendWhenUnblocked's post-loop
+    // Abort DURING the first image's clipboard set: sendObservedImage's post-loop
     // recheck then rejects before the Ctrl+V reaches the PTY.
     state.onSet = () => controller.abort();
     const done = attachCodexImages(term, ["/a.png", "/b.png"], controller.signal);

@@ -1,16 +1,20 @@
 /**
  * Shared `[Image #N]` chip confirmation used by both adapter attach paths. An
  * attach is CONFIRMED only when the composer's image-chip count increases; an
- * unconfirmed image (timeout), or an abort (session closing), REJECTS with
- * `image_attach_failed` so no text is ever submitted for an unconfirmed image.
- * Implements PRD §5.3 (C-API-44/45/46).
+ * unconfirmed image (timeout) or abort (session closing) REJECTS with
+ * `image_attach_failed`. A detected permanent render failure rejects immediately
+ * with that error, without waiting for confirmation timeout. No text is submitted
+ * for an unconfirmed image.
+ * Implements PRD §5.3 (C-API-44/45/46/56).
  */
 
 import { elwoodError } from "../errors.ts";
-import { composerClearKeys, unsafeWriteRetryMs } from "../input/constants.ts";
+import { type InputTerminal, writeUnsafe } from "../input/abort.ts";
+import { stageComposer } from "../input/composer-cleanup.ts";
+import { unsafeWriteRetryMs } from "../input/constants.ts";
 
 /** The terminal surface an attach needs: send bytes and read the rendered screen. */
-export type AttachTerminal = {
+export type AttachTerminal = Required<Pick<InputTerminal, "settled" | "renderFailed">> & {
   sendInput(data: string): void | Promise<void>;
   snapshot(): { readonly text: string };
 };
@@ -19,38 +23,38 @@ export type AttachTerminal = {
 export type BlockedGuard = () => boolean;
 
 /**
- * Best-effort discard of any staged composer content (image chips, pasted paths)
- * after a mid-attach failure, so the rejected submission's images cannot leak
- * into a later caller's turn. Never throws (C-API-44).
+ * Observe received output and wait for dialogs before an image key. Capture the
+ * chip baseline in the same turn as that key, so the observation cannot confirm
+ * this image using an older chip. Cancellation or permanent render failure rejects
+ * with `image_attach_failed`; a failed Codex session must release its clipboard lease.
  */
-export async function clearComposer(terminal: AttachTerminal): Promise<void> {
-  try {
-    await terminal.sendInput(composerClearKeys);
-  } catch {
-    // Best-effort: a clear failure must not replace the primary attach error.
-  }
-}
-
-/**
- * Sends `data` to the terminal only once no blocking dialog is on screen — a
- * paste path or Ctrl+V must never reach a permission/trust dialog and alter a
- * human decision. Rejects with `image_attach_failed` if the signal aborts while
- * held (the session closed) (C-API-37/44).
- */
-export async function sendWhenUnblocked(
+export async function sendObservedImage(
   terminal: AttachTerminal,
   data: string,
   blocked: BlockedGuard | undefined,
   signal: AbortSignal,
-): Promise<void> {
-  while (blocked?.()) {
-    if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
+): Promise<number> {
+  const guard = blocked === undefined ? undefined : { blocked };
+  for (;;) {
+    assertAttachNotAbortedOrRenderFailed(terminal, signal);
+    const unsafe = await writeUnsafe(terminal, guard, signal);
+    assertAttachNotAbortedOrRenderFailed(terminal, signal);
+    if (!unsafe) break;
     await delay(unsafeWriteRetryMs);
   }
-  // Re-check AFTER the loop: an abort that lands as the dialog clears in the same
-  // poll must not let a paste/Ctrl+V reach the PTY on a closing session.
-  if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
+  const before = imageChipCount(terminal.snapshot().text);
+  stageComposer(terminal);
   await terminal.sendInput(data);
+  return before;
+}
+
+function assertAttachNotAbortedOrRenderFailed(terminal: AttachTerminal, signal: AbortSignal): void {
+  if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
+  if (terminal.renderFailed)
+    throw elwoodError(
+      "image_attach_failed",
+      "Image attach cannot observe a failed terminal render.",
+    );
 }
 
 export type ChipWaitOptions = {
@@ -77,7 +81,8 @@ export function imageChipCount(text: string): number {
 /**
  * Resolves once the chip count rises above `before`; rejects with
  * `image_attach_failed` on the confirmation timeout or an aborted signal, so an
- * unconfirmed attach never silently degrades to a text-only turn.
+ * unconfirmed attach never silently degrades to a text-only turn. A detected permanent
+ * render failure rejects immediately with that error rather than awaiting the timeout.
  */
 export async function waitForImageChip(
   terminal: AttachTerminal,
@@ -88,7 +93,7 @@ export async function waitForImageChip(
   await delay(options.settleMs);
   const attempts = Math.max(1, Math.ceil(options.timeoutMs / options.pollMs));
   for (let i = 0; i < attempts; i++) {
-    if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
+    assertAttachNotAbortedOrRenderFailed(terminal, signal);
     if (imageChipCount(terminal.snapshot().text) > before) return;
     await delay(options.pollMs);
   }

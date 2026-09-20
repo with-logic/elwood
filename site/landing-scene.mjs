@@ -115,12 +115,11 @@ export class LandingScene {
     }
   }
   prepare(name) {
-    const clip = this.bank.clips.get(name);
-    if (clip && this.bank.pages.has(`${name}/${clip.frames[0].page}`)) return true;
+    if (this.bank.animationReady(name)) return true;
     if (!this.pending.has(name)) {
       this.pending.add(name);
       this.bank
-        .prepare(name)
+        .prepareAnimation(name)
         .catch((error) => this.onError?.(error))
         .finally(() => this.pending.delete(name));
     }
@@ -223,7 +222,8 @@ export class LandingScene {
     const version = this.requestVersion;
     const name = input.gesture ?? (input.face ? `idle-${input.face}` : null);
     try {
-      if (name) await this.bank.prepare(name);
+      if (name)
+        await Promise.all([this.bank.prepareAnimation(name), this.bank.preload("rotation")]);
       if (version === this.requestVersion) this.pressed = { ...this.pressed, ...input };
     } catch (error) {
       this.onError?.(error);

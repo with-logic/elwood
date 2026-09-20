@@ -1,3 +1,4 @@
+import { resolveObjectURL } from "node:buffer";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -46,7 +47,9 @@ globalThis.fetch = async (input) => {
 globalThis.Image = class {
   async decode() {
     requests.push(String(this.src));
-    const bytes = await readFile(fileURLToPath(this.src));
+    const bytes = this.src.startsWith("blob:")
+      ? Buffer.from(await resolveObjectURL(this.src).arrayBuffer())
+      : await readFile(fileURLToPath(this.src));
     assert.equal(bytes.subarray(0, 4).toString(), "RIFF");
     assert.equal(bytes.subarray(8, 12).toString(), "WEBP");
   }
@@ -108,6 +111,34 @@ test("a gesture load completing after movement cannot steal manual control", asy
   await advance(0.8);
   assert.notEqual(scene.world.player.gesture, "wave");
   scene.clearInput();
+});
+
+test("a requested gesture keeps animating idle until every sprite sheet is downloaded", async () => {
+  const own = new LandingScene(canvas());
+  await own.boot();
+  const fetch = globalThis.fetch;
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("wave/page-001.webp")) await gate;
+    return fetch(url);
+  };
+  let started = false;
+  const request = own.request({ gesture: "wave" }).then(() => { started = true; });
+  try {
+    await advance(0.5);
+    assert.equal(started, false, "a later sheet must be ready before gesture playback");
+    assert.equal(own.world.player.animation, "idle");
+    assert.ok(own.world.player.animationTime > 0, "the current animation keeps moving");
+    release();
+    await request;
+    assert.equal(own.pressed.gesture, "wave");
+  } finally {
+    release();
+    await request;
+    own.pause("test", true);
+    globalThis.fetch = fetch;
+  }
 });
 
 test("hidden, offscreen and help pauses stop scheduling without overriding one another", async () => {

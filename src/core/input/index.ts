@@ -6,13 +6,13 @@
 import type { ControlSubmitMode } from "../control-queue/index.ts";
 import type { ControlSubmitter } from "../control-queue/types.ts";
 import {
-  clearStagedComposer,
   holdWhileUnsafe,
   type InputTerminal,
   throwIfInputAborted,
   waitForInput,
   writeUnsafe,
 } from "./abort.ts";
+import { requestComposerCleanup, stageComposer, submittedComposer } from "./composer-cleanup.ts";
 
 /** Adapter view of "the paste is still staged in the composer". */
 export type PasteGuard = {
@@ -98,6 +98,7 @@ async function writePastedPrompt(
   throwIfInputAborted(signal);
   // Sanitize: caller/model text is data, so an embedded end sentinel or control
   // byte must not escape paste mode into live keystrokes (§5.3).
+  stageComposer(terminal);
   await terminal.sendInput(`\u001b[200~${sanitizePasteText(prompt)}\u001b[201~`);
   const schedule = (work: () => void, ms: number) => {
     const timer = setTimeout(work, ms);
@@ -135,10 +136,10 @@ async function writePastedPrompt(
     throwIfInputAborted(signal);
     await terminal.sendInput("\r");
   } catch (error) {
-    if (signal?.aborted && !(await writeUnsafe(terminal, guard)))
-      await clearStagedComposer(terminal);
+    if (signal?.aborted) await requestComposerCleanup(terminal, guard?.blocked);
     throw error;
   }
+  submittedComposer(terminal);
   onSubmitted?.();
   schedule(nudge, nudgeDelayMs);
 }
@@ -168,15 +169,16 @@ export async function writeQueuedInput(
     command: async () => {
       if (terminal.settled || guard?.blocked?.()) await holdWhileUnsafe(terminal, guard, signal);
       throwIfInputAborted(signal);
+      stageComposer(terminal);
       await terminal.sendInput(input);
       try {
         await waitForInput(enterDelayMs, signal);
         await holdWhileUnsafe(terminal, guard, signal);
         throwIfInputAborted(signal);
         await terminal.sendInput("\r");
+        submittedComposer(terminal);
       } catch (error) {
-        if (signal?.aborted && !(await writeUnsafe(terminal, guard)))
-          await clearStagedComposer(terminal);
+        if (signal?.aborted) await requestComposerCleanup(terminal, guard?.blocked);
         throw error;
       }
     },
