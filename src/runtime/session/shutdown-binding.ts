@@ -25,6 +25,7 @@ export class SessionShutdownBinding {
   private pending: ShutdownEvidence | undefined;
   private readonly managed: ReturnType<typeof managedShutdown>;
   private exitFinalization: Promise<void> | undefined;
+  private readonly waitingShutdowns = new Map<() => Promise<void>, Promise<void>>();
   private resolveExitFinalization: (() => void) | undefined;
 
   constructor(input: ShutdownBindingInput) {
@@ -70,7 +71,15 @@ export class SessionShutdownBinding {
   }
 
   private afterExitFinalization(work: () => Promise<void>): Promise<void> {
-    return this.exitFinalization ? this.exitFinalization.then(work) : work();
+    if (!this.exitFinalization) return work();
+    const waiting = this.waitingShutdowns.get(work);
+    if (waiting) return waiting;
+    // At most one continuation per verb; distinct verbs retain coordinator escalation.
+    const pending = this.exitFinalization
+      .then(work)
+      .finally(() => this.waitingShutdowns.delete(work));
+    this.waitingShutdowns.set(work, pending);
+    return pending;
   }
 
   exitEvidence(): ShutdownEvidence | "terminal_exited" {

@@ -21,6 +21,7 @@ for (const statusThrows of [false, true]) {
     const pty = ptys[0]!;
     const nativeExitHandlers = [...pty.exitHandlers];
     let shutdown: Promise<void> | undefined;
+    const repeated: Promise<void>[] = [];
     const finalized: string[] = [];
     session.on("terminal:exit", () => finalized.push("exit"));
     session.on("status", (event) => {
@@ -32,6 +33,7 @@ for (const statusThrows of [false, true]) {
     session.on("activity", (event) => {
       if (event.kind === "assistant_message") {
         shutdown ??= session[verb]();
+        for (let call = 0; call < 10; call += 1) repeated.push(session[verb]());
         for (const handler of nativeExitHandlers) handler({ exitCode: 7 });
       }
     });
@@ -52,6 +54,7 @@ for (const statusThrows of [false, true]) {
       );
       for (const handler of nativeExitHandlers) handler({ exitCode: 0 });
       expect(shutdown).toBeDefined();
+      expect(new Set([shutdown, ...repeated]).size).toBe(1);
       await expect(shutdown).resolves.toBeUndefined();
       expect(pty.killSignals).toEqual([]);
       expect(finalized).toEqual(["exit", "status"]);
