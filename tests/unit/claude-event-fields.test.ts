@@ -1,16 +1,18 @@
-/** Typed optional event fields cannot carry invalid values through the bridge (C-HOOK-07). */
+/** Optional fields remain strict except drift-tolerant StopFailure diagnostics (C-HOOK-07/20). */
 
 import { expect, test } from "vitest";
 import { isClaudeHookInput } from "../../src/claude/validate/input.ts";
 import { cronFields, eventFieldCases, taskFields } from "./claude-event-field-fixtures.ts";
 import { base, batchToolCall } from "./claude-validate-input-helpers.ts";
 
-test.each(eventFieldCases)("C-HOOK-07 validates %s optional fields", (name, required, optional) => {
+test.each(
+  eventFieldCases,
+)("C-HOOK-07/20 validates %s optional fields with the StopFailure exception", (name, required, optional) => {
   expect(isClaudeHookInput(base(name, { ...required, ...optional }))).toBe(true);
   expect(isClaudeHookInput(base(name, required))).toBe(true);
   for (const key of Object.keys(optional)) {
     expect(isClaudeHookInput(base(name, { ...required, ...optional, [key]: null })), key).toBe(
-      false,
+      name === "StopFailure",
     );
   }
 });
