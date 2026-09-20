@@ -111,10 +111,10 @@ describe("CodexSessionApi message submission", () => {
     const queued = session.sendMessage("hello");
     expect(ptys[0]!.writes).toEqual([]);
     await becomeReady(session.elwoodSessionId, cwd);
-    await expect.poll(() => ptys[0]!.writes.length).toBe(1);
-    expect(ptys[0]!.writes.filter((w) => w !== "\r")[0]).toBe(
-      "\u001b[200~You are a terse reviewer.\u001b[201~",
-    );
+    // A persona turn cannot finish before its submitting Enter reaches the CLI.
+    await expect
+      .poll(() => ptys[0]!.writes)
+      .toEqual(["\u001b[200~You are a terse reviewer.\u001b[201~", "\r"]);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, stopEvent(cwd));
     await queued;
     expect(ptys[0]!.writes.filter((w) => w !== "\r")[1]).toBe("\u001b[200~hello\u001b[201~");
