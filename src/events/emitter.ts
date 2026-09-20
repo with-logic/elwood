@@ -3,7 +3,10 @@
  * Implements PRD §5.4 and §6.4/§7A.2 tool-keyed response provenance.
  */
 
+import { types } from "node:util";
+import { inertRecord } from "../core/inert-record.ts";
 import type { Unsubscribe } from "../core/types.ts";
+import { ObserverErrors } from "./observer-errors.ts";
 
 type Handler = (event: unknown) => unknown;
 export type HandlerProvenance = "event" | "tool-keyed";
@@ -24,6 +27,8 @@ type Listeners = { list: readonly Registration[]; readonly live: Set<Handler> };
 
 export class TypedEmitter<M extends Record<string, unknown>> {
   private readonly handlers: Map<EventKey<M>, Listeners>;
+  private readonly observerErrors = new ObserverErrors();
+  private observerError: ((error: unknown) => void) | undefined;
 
   constructor() {
     this.handlers = new Map();
@@ -69,16 +74,18 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     // listener must not abort iteration and wedge an internal lifecycle
     // subscriber (e.g. interrupt/compact settling on a status transition, or
     // the transcript watcher's flush). The first error is rethrown after the
-    // full fan-out so an enclosing error boundary can still observe it. The
+    // full fan-out, or captured by the active notification scope. The
     // `list` snapshot is immutable, so a listener added mid-emit does not fire
     // this round; `live` is consulted so one a prior handler removed is skipped.
     const snapshot = entry.list;
+    const onError = this.observerError;
     let firstError: unknown;
     let failed = false;
     for (const { handler } of snapshot) {
       if (!entry.live.has(handler)) continue;
       try {
-        handler(payload);
+        const returned = handler(payload);
+        if (onError && types.isPromise(returned)) this.observerErrors.observe(returned, onError);
       } catch (error) {
         if (!failed) {
           failed = true;
@@ -86,7 +93,22 @@ export class TypedEmitter<M extends Record<string, unknown>> {
         }
       }
     }
-    if (failed) throw firstError;
+    if (failed) {
+      if (onError) onError(firstError);
+      else throw firstError;
+    }
+  }
+
+  /** Capture synchronous throws and late Promise failures in this notification scope.
+   * Pending Promises retain bounded diagnostic sinks after nested scopes unwind. */
+  observeErrors<T>(onError: (error: unknown) => void, operation: () => T): T {
+    const previous = this.observerError;
+    this.observerError = onError;
+    try {
+      return operation();
+    } finally {
+      this.observerError = previous;
+    }
   }
 
   hasListeners<E extends EventKey<M>>(event: E): boolean {
@@ -106,8 +128,10 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     if (!entry) return undefined;
     for (const { handler, provenance } of entry.list) {
       if (!entry.live.has(handler)) continue;
-      const value = await handler(payload);
-      if (value !== undefined) return { value, provenance };
+      const returned = handler(payload);
+      // Direct data must reach validation without Promise thenable assimilation.
+      const value = types.isPromise(returned) ? await returned : returned;
+      if (value !== undefined) return inertRecord({ value, provenance });
     }
     return undefined;
   }

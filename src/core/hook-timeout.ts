@@ -4,6 +4,8 @@
  * Implements PRD §6.3 (timeout category and timeoutMs telemetry).
  */
 
+import { inertRecord } from "./inert-record.ts";
+
 /**
  * Result of racing a hook handler against its timeout. A genuine timeout is a
  * distinct variant so it can never be confused with a handler that itself throws
@@ -26,11 +28,11 @@ export async function raceHookTimeout<T>(
 ): Promise<HookTimeoutResult<T>> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<HookTimeoutResult<T>>((resolve) => {
-    timeout = setTimeout(() => resolve({ timedOut: true }), timeoutMs);
+    timeout = setTimeout(() => resolve(inertRecord({ timedOut: true })), timeoutMs);
   });
   try {
     return await Promise.race([
-      promise.then((value): HookTimeoutResult<T> => ({ timedOut: false, value })),
+      promise.then((value): HookTimeoutResult<T> => inertRecord({ timedOut: false, value })),
       timeoutPromise,
     ]);
   } finally {

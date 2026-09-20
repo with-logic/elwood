@@ -11,7 +11,7 @@
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { StartupPromptLabelFor } from "../startup/automation.ts";
-import type { AgentUpdateFailedWarning } from "./lifecycle.ts";
+import type * as lifecycle from "./lifecycle.ts";
 import type {
   DropCause,
   PollErrorReason,
@@ -30,7 +30,8 @@ export type ElwoodWarningEvent =
       readonly message: string;
       readonly raw: string;
     }
-  | AgentUpdateFailedWarning
+  | lifecycle.AgentUpdateFailedWarning
+  | lifecycle.HookObserverFailedWarning
   | {
       readonly elwoodSessionId: string;
       readonly agent: "codex";
