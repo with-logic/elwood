@@ -60,6 +60,7 @@ test("C-CLAUDE-22 disposal drops a write-failure warning buffered before start r
     const gate = createGate(sink);
     flush = gate.openAfterReturn;
     return {
+      ...gate,
       emitWarnings: (warnings) => {
         buffered.push(...warnings.map((warning) => warning.code));
         gate.emitWarnings(warnings);

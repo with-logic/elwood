@@ -9,6 +9,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { startClaude } from "../../src/index.ts";
 import { setCommandRunnerForTests } from "../../src/runtime/seams.ts";
 import { claudeBody, tty } from "../fixtures/trust-composer.ts";
+import { onlyLaunchArtifact } from "../helpers/launch-artifacts.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -26,8 +27,8 @@ describe("ClaudeSessionApi startup and terminal control", () => {
     expect(session.terminal.size).toEqual({ cols: 189, rows: 48 });
     const sessionDir = join(cwd, ".elwood", "sessions", session.elwoodSessionId);
     expect(existsSync(join(cwd, ".elwood", ".gitignore"))).toBe(true);
-    expect(readFileSync(join(sessionDir, "claude-settings.json"), "utf8")).toContain(
-      "hook-bridge.mjs",
+    expect(readFileSync(onlyLaunchArtifact(sessionDir, "claude-settings"), "utf8")).toContain(
+      "hook-bridge-",
     );
     expect(ptys[0]!.options.args.join(" ")).toContain("--disallowedTools 'AskUserQuestion'");
     expect(ptys[0]!.options.args).toContain("-l");

@@ -3,6 +3,7 @@
 import type { ElwoodSessionStatus } from "../../core/types.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
+import { removeSessionFiles } from "../../state/store.ts";
 import { ShutdownCoordinator } from "../shutdown/coordinator.ts";
 import type { StatusEvidenceKind } from "../status-evidence.ts";
 import type { SessionLoops } from "./loops.ts";
@@ -23,36 +24,83 @@ type ShutdownBindingInput = {
 
 export class SessionShutdownBinding {
   private pending: ShutdownEvidence | undefined;
+  private readonly prepareClear: () => void;
   private readonly managed: ReturnType<typeof managedShutdown>;
+  private exitFinalization: Promise<void> | undefined;
+  private readonly waitingShutdowns = new Map<() => Promise<void>, Promise<void>>();
+  private resolveExitFinalization: (() => void) | undefined;
 
   constructor(input: ShutdownBindingInput) {
+    this.prepareClear = () => input.loops.prepareClear();
     this.managed = managedShutdown(new ShutdownCoordinator(), () => ({
       pty: input.pty,
-      stateDir: input.stateDir,
-      elwoodSessionId: input.elwoodSessionId(),
-      socketHome: input.runtime.socketHome,
+      removeFiles: async () => {
+        await input.runtime.stateOwnership.waitForCleanup();
+        // Check after every awaited cleanup, directly around the synchronous removals.
+        if (!input.runtime.stateOwnership.current()) return;
+        removeSessionFiles({
+          stateDir: input.stateDir,
+          elwoodSessionId: input.elwoodSessionId(),
+          socketHome: input.runtime.socketHome,
+        });
+        input.runtime.stateOwnership.release();
+      },
       reapPolicy: input.reapPolicy,
       status: input.status,
       claimShutdown: (evidence) => {
         this.pending ??= evidence;
       },
       pauseLoops: () => input.loops.pause(),
-      clearLoops: async (reason) => input.loops.clear(reason),
-      cleanupRuntime: input.cleanupRuntime,
+      clearOrPauseLoops: async (reason) => {
+        input.loops.pause();
+        await input.runtime.stateOwnership.waitForCleanup();
+        if (input.runtime.stateOwnership.current()) input.loops.clear(reason);
+      },
+      cleanupRuntime: async () => {
+        await input.cleanupRuntime();
+        // A signal may have opened the barrier after this shutdown call began.
+        await this.exitFinalization;
+      },
       submitEvidence: input.submitEvidence,
     }));
   }
 
   stop(): Promise<void> {
-    return this.managed.stop();
+    return this.afterExitFinalization(this.managed.stop);
   }
 
   kill(): Promise<void> {
-    return this.managed.kill();
+    this.prepareClear();
+    return this.afterExitFinalization(this.managed.kill);
   }
 
   teardown(): Promise<void> {
-    return this.managed.teardown();
+    this.prepareClear();
+    return this.afterExitFinalization(this.managed.teardown);
+  }
+
+  /** Open the finalization barrier; shutdown methods wait on it before signaling or cleanup. */
+  beginExitFinalization(): void {
+    this.exitFinalization = new Promise((resolve) => {
+      this.resolveExitFinalization = resolve;
+    });
+  }
+
+  /** Release from submitExit finally, even when terminal-status delivery throws. */
+  completeExitFinalization(): void {
+    this.resolveExitFinalization?.();
+  }
+
+  private afterExitFinalization(work: () => Promise<void>): Promise<void> {
+    if (!this.exitFinalization) return work();
+    const waiting = this.waitingShutdowns.get(work);
+    if (waiting) return waiting;
+    // At most one continuation per verb; distinct verbs retain coordinator escalation.
+    const pending = this.exitFinalization
+      .then(work)
+      .finally(() => this.waitingShutdowns.delete(work));
+    this.waitingShutdowns.set(work, pending);
+    return pending;
   }
 
   exitEvidence(): ShutdownEvidence | "terminal_exited" {
