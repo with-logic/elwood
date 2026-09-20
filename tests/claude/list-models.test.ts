@@ -43,7 +43,7 @@ async function driveProbe(cwd: string, parent: string): Promise<void> {
   // Reach readiness so the probe leaves `waitForStatus(ready)`.
   await pty.dispatchHook(id, instructionsLoaded(cwd), stateDir);
   // listModels opens the picker; feed the rendered rows, then the closed screen.
-  await until(() => pty.writes.includes("/model"));
+  await until(() => pty.writes.includes("/model") && pty.writes.includes("\r"));
   pty.emitData(asScreen(claudePicker));
   await until(() => pty.writes.includes("\u001b"));
   pty.emitData(asScreen("❯ "));

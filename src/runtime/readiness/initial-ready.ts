@@ -9,8 +9,8 @@
  * placeholder before input is accepted, so releasing the first queued message on it
  * would swallow the message. On RESUME the input loop is live when the composer paints,
  * so `markReadyOnResumeComposer` releases readiness on the first composer marker
- * (verified accepted, not swallowed) — UNLESS a blocking dialog is on screen, whose
- * option caret is byte-identical to the composer marker. The hooks differ on resume:
+ * (verified accepted, not swallowed), subject to `createReadinessGate`'s composite
+ * hold: human/automation gates and their working or partial clearance frames. The hooks differ on resume:
  * Codex does NOT re-fire `SessionStart` (so the composer is the fast signal), while
  * Claude's `InstructionsLoaded` DOES re-fire — so a resumed Claude is a hook/composer
  * race, whichever arrives first (readiness is idempotent). `armDeadline` is the ultimate
@@ -26,17 +26,17 @@ export type InitialReady = {
   /** Fire readiness now (one-shot) — the pre-input readiness hook path. */
   readonly mark: () => void;
   /**
-   * Re-attempt a readiness mark that a hook/deadline requested while a blocking
-   * dialog was on screen. Call per rendered frame with the frame's blocking fact:
-   * once the dialog clears, the deferred readiness fires so the queue is never
-   * drained INTO the dialog and is never permanently starved BY it (C-API-28).
+   * Re-attempt a deferred hook/deadline mark once the composite readiness hold
+   * releases: a dialog must clear to a nonblocking idle composer (C-API-28).
    */
-  readonly retryWhenUnblocked: (blockingVisible: boolean) => void;
+  readonly retryWhenReleased: (readinessHeld: boolean) => void;
 };
 
 /** The rendered-frame facts the resume-composer readiness path inspects. */
 export type ComposerReadyFacts = {
   readonly composer_visible: boolean;
+  /** Present on rendered readings; work must not release deferred initial readiness. */
+  readonly working_visible?: boolean;
   readonly blocking_prompt_visible: boolean;
 };
 
@@ -45,37 +45,40 @@ export type ComposerReadyFacts = {
  * visible AND no blocking dialog is on screen. The dialog's option caret (`›`/`❯`) is
  * byte-identical to the composer marker, so a dialog frame must NOT latch readiness —
  * otherwise a draining queued message's Enter could approve the dialog; readiness waits
- * for the dialog to clear. Cold start (`resumed: false`) never fires here, so the
+ * for the composite hold owned by `createReadinessGate` to release on verified idle.
+ * Cold start (`resumed: false`) never fires here, so the
  * composer stays an unsafe signal there (C-API-28).
  */
 export function markReadyOnResumeComposer(
   ready: Pick<InitialReady, "mark">,
   resumed: boolean,
   facts: ComposerReadyFacts,
+  readinessHeld = false,
 ): void {
-  if (resumed && facts.composer_visible && !facts.blocking_prompt_visible) ready.mark();
+  if (resumed && facts.composer_visible && !facts.blocking_prompt_visible && !readinessHeld)
+    ready.mark();
 }
 
 export function initialReady(
   callback: () => void,
   maxWaitMs = 10_000,
-  isBlocked: () => boolean = () => false,
+  isReadinessHeld: () => boolean = () => false,
 ): InitialReady {
   let ready = false;
   let cancelled = false;
-  let deferredByBlock = false;
+  let deferredByHold = false;
   let deadline: ReturnType<typeof setTimeout> | undefined;
   const mark = () => {
     if (ready || cancelled) return;
-    // A blocking dialog is on screen (it may have rendered while still `starting`,
-    // so it never latched `blocked`): do NOT release the queue into it. Remember the
-    // request and re-fire it from `retryWhenUnblocked` once the dialog clears — never
+    // createReadinessGate owns the composite hold: human/automation gates and
+    // their working or partial clearance frames, including startup. Remember the
+    // request and re-fire it from retryWhenReleased once that hold releases — never
     // latch here, so readiness is neither drained into the dialog nor starved by it.
-    if (isBlocked()) {
-      deferredByBlock = true;
+    if (isReadinessHeld()) {
+      deferredByHold = true;
       return;
     }
-    deferredByBlock = false;
+    deferredByHold = false;
     // Latch AFTER the callback returns, so if it throws (a throwing status/activity
     // listener) readiness is NOT consumed and a later hook/deadline/frame retries —
     // a failed transition must never permanently starve the queue (C-API-28).
@@ -88,8 +91,8 @@ export function initialReady(
       if (deadline) clearTimeout(deadline);
     },
     mark,
-    retryWhenUnblocked: (blockingVisible) => {
-      if (!ready && deferredByBlock && !blockingVisible) mark();
+    retryWhenReleased: (readinessHeld) => {
+      if (!ready && deferredByHold && !readinessHeld) mark();
     },
     replay: () => void (!cancelled && ready && callback()),
     // Arms on the first frame regardless of hook arrival, so a missing or failed

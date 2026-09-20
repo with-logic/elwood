@@ -10,6 +10,7 @@ import { sessionImageBudget } from "../../core/images/queued-budget.ts";
 import type { SendOptions } from "../../core/images/types.ts";
 import { writeQueuedInput } from "../../core/input/index.ts";
 import type { ElwoodLoopRequest, ElwoodLoopSnapshot } from "../../core/loops/types.ts";
+import { isPickerIntervention } from "../../core/models/intervention.ts";
 import type { ModelPickerSpec } from "../../core/models/picker.ts";
 import type { AgentModelOption } from "../../core/models/rows.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
@@ -27,6 +28,7 @@ import {
   type SubmitKind,
 } from "./image-attach.ts";
 import { SessionLifecycle } from "./lifecycle.ts";
+import { PickerInputOwnership } from "./picker-input.ts";
 import { applyResize, restoreHeldResize } from "./resize.ts";
 import type { SessionStatusEmitter } from "./status-wiring.ts";
 
@@ -47,13 +49,14 @@ export abstract class AgentSessionBase extends SessionLifecycle {
     terminalReplay: TerminalReplayBuffer,
     loopDefinitions: readonly PersistedLoopDefinition[],
   ) {
+    const ownership = new PickerInputOwnership(terminal);
     super(
       agent,
       record,
       stateDir,
       runtime,
       pty,
-      terminal,
+      ownership.caller,
       statusEvents,
       terminalReplay,
       loopDefinitions,
@@ -61,7 +64,11 @@ export abstract class AgentSessionBase extends SessionLifecycle {
     // `picker` is a subclass field initializer that runs AFTER this constructor, so the
     // surface resolves it per call rather than capturing it here.
     this.commands = new CommandSurface({
-      terminal,
+      terminal: ownership.automated,
+      inputSignal: () => ownership.signal(),
+      observeRendered: (listener) => {
+        terminal.xterm.onWriteParsed(listener);
+      },
       statusEvents,
       status: () => this.status,
       everReady: () => this.everReady,
@@ -69,7 +76,16 @@ export abstract class AgentSessionBase extends SessionLifecycle {
       picker: () => this.picker,
       controlQueue: this.controlQueue,
       submitDirect: (command, signal) =>
-        writeQueuedInput(terminal, command, "command", this.pasteGuard, signal),
+        writeQueuedInput(
+          ownership.automated,
+          command,
+          "command",
+          {
+            ...this.pasteGuard,
+            blocked: () => isPickerIntervention(signal.reason) || this.queuedInputBlocked(),
+          },
+          signal,
+        ),
     });
   }
 
@@ -86,6 +102,11 @@ export abstract class AgentSessionBase extends SessionLifecycle {
    */
   protected foreignDialogBlocksWrite(): boolean {
     return this.commands.foreignDialogVisible();
+  }
+
+  /** Ordinary queued text and attachments cannot drive a model dialog that they did not open. */
+  protected queuedInputBlocked(): boolean {
+    return this.isInputBlocked() || this.foreignDialogBlocksWrite();
   }
 
   sendPrompt(prompt: string, options?: SendOptions): Promise<void> {
@@ -118,7 +139,7 @@ export abstract class AgentSessionBase extends SessionLifecycle {
   setModel(
     id: string,
     options?: Timeout,
-    around?: (flow: () => Promise<void>) => Promise<void>,
+    around?: (flow: () => Promise<void>, signal: AbortSignal) => Promise<void>,
   ): Promise<void> {
     return this.inSession(() => this.commands.setModel(id, options, around));
   }

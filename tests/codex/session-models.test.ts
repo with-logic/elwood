@@ -28,7 +28,7 @@ describe("CodexSessionApi model picker", () => {
     await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
     const listing = session.listModels({ timeoutMs: 30_000 });
-    await expect.poll(() => ptys[0]!.writes.includes("/model")).toBe(true);
+    await expect.poll(() => ptys[0]!.writes.join("").includes("/model\r")).toBe(true);
     ptys[0]!.emitData(asScreen(codexPickerCurrentIsDefault));
     await expect.poll(() => ptys[0]!.writes.includes("\u001b")).toBe(true);
     ptys[0]!.emitData(asScreen("\u203a "));
@@ -51,7 +51,7 @@ describe("CodexSessionApi model picker", () => {
     ptys[0]!.emitData("\u2022 Working (2s \u2022 esc to interrupt)\r\n\u203a ");
     expect(session.status).toBe("running");
     const listing = session.listModels({ timeoutMs: 30_000 });
-    await expect.poll(() => ptys[0]!.writes.includes("/model")).toBe(true);
+    await expect.poll(() => ptys[0]!.writes.join("").includes("/model\r")).toBe(true);
     ptys[0]!.emitData(asScreen(codexPickerCurrentIsDefault));
     await expect.poll(() => ptys[0]!.writes.includes("\u001b")).toBe(true);
     ptys[0]!.emitData(asScreen("\u203a "));
@@ -70,7 +70,7 @@ describe("CodexSessionApi model picker", () => {
 
     // First: listModels opens and closes the picker.
     const listing = session.listModels({ timeoutMs: 30_000 });
-    await until(() => ptys[0]!.writes.filter((w) => w === "/model").length === 1);
+    await until(() => ptys[0]!.writes.join("").includes("/model\r"));
     ptys[0]!.emitData(asScreen(codexPickerCurrentIsDefault));
     await until(() => ptys[0]!.writes.includes("\u001b"));
     ptys[0]!.emitData(asScreen("\u203a "));

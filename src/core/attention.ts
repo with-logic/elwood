@@ -1,5 +1,5 @@
 /**
- * Rendered-screen attention watching: raises and clears the blocked state
+ * Rendered-screen attention watching: raises, updates, and clears human attention
  * for dialogs that need a human decision.
  * Implements PRD §5.3 blocked status (C-ATTN-01 through C-ATTN-03).
  */
@@ -8,20 +8,38 @@ import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity/index.ts";
 import type { ScreenFactReading } from "./screen-facts.ts";
 
 export type AttentionEdge = {
-  readonly edge: "raised" | "cleared";
+  /** Updates identify changed rules while a blocking prompt remains visible. */
+  readonly edge: "raised" | "updated" | "cleared";
   /** Ids of the blocking rules that matched, for explain traces. */
   readonly ruleIds: readonly string[];
 };
 
 export class AttentionWatcher {
   private blocked = false;
+  private ruleIds: readonly string[] = [];
 
   /** Consumes a reading already classified from the frame (see observeRenderedFrame). */
   observe(reading: ScreenFactReading): AttentionEdge | undefined {
-    if (reading.facts.blocking_prompt_visible === this.blocked) return undefined;
-    this.blocked = !this.blocked;
-    if (!this.blocked) return { edge: "cleared", ruleIds: [] };
-    return { edge: "raised", ruleIds: blockingRuleIds(reading) };
+    const blocked = reading.facts.blocking_prompt_visible;
+    // A blank/partial repaint cannot prove the dialog has resolved.
+    if (
+      this.blocked &&
+      !blocked &&
+      !reading.facts.working_visible &&
+      !reading.facts.composer_visible
+    )
+      return undefined;
+    const ruleIds = blocked ? [...new Set(blockingRuleIds(reading))] : [];
+    if (
+      blocked === this.blocked &&
+      ruleIds.length === this.ruleIds.length &&
+      ruleIds.every((id) => this.ruleIds.includes(id))
+    )
+      return undefined;
+    const edge = blocked ? (this.blocked ? "updated" : "raised") : "cleared";
+    this.blocked = blocked;
+    this.ruleIds = ruleIds;
+    return { edge, ruleIds };
   }
 }
 

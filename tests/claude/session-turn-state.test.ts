@@ -5,6 +5,7 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 import { resumeClaude, startClaude } from "../../src/index.ts";
+import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -41,7 +42,7 @@ describe("ClaudeSessionApi turn boundaries", () => {
     );
     await resumed.terminal.settled();
     expect(resumed.status).not.toBe("ready");
-    ptys[1]!.emitData(`\u001b[2J\u001b[H${idleFooter}`);
+    ptys[1]!.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
     await expect.poll(() => resumed.status).toBe("ready");
   });
 
