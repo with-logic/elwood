@@ -1,4 +1,4 @@
-"""Deterministic OpenCode substitute for real runner-process tests."""
+"""Provide a deterministic OpenCode substitute for PRD §16 review-runner tests."""
 STUB = r'''#!/usr/bin/env python3
 import atexit, io, json, os, pathlib, re, signal, subprocess, sys, time
 original_stdout = sys.stdout

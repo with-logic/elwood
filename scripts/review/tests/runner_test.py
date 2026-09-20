@@ -1,4 +1,4 @@
-"""Exercise the real fan-out against Git fixtures and a deterministic CLI boundary."""
+"""Exercise PRD §16 review fan-out with Git fixtures and a deterministic CLI boundary."""
 import os
 from pathlib import Path
 import shutil
