@@ -135,7 +135,7 @@ wait "$synth_pid" || synth_code=$?
 tracked_pids=()
 if [ "$synth_code" -ne 0 ]; then
   synth_category=process
-  case "$synth_code" in 124|137) synth_category=timeout ;; esac
+  case "$synth_code" in 124) synth_category=timeout ;; 137) synth_category=killed ;; esac
   echo "review: phase=synthesis category=$synth_category exit=$synth_code elapsed_seconds=$(( $(date +%s) - synth_started ))" >&2
   exit 1
 fi
