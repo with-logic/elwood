@@ -18,7 +18,7 @@ export type ReadinessGate = {
   readonly ready: InitialReady;
   /** Per rendered frame: update the blocking gate, reconcile a deferred mark, and
    * (on resume) mark readiness on the first quiet, non-blocking composer. */
-  readonly observeReadinessFrame: (facts: ComposerReadyFacts, automationBlocking?: boolean) => void;
+  readonly observeReadinessFrame: (facts: ComposerReadyFacts, trustInputBlocking?: boolean) => void;
 };
 
 export function createReadinessGate(onReady: () => void, resumed: boolean): ReadinessGate {
@@ -26,8 +26,8 @@ export function createReadinessGate(onReady: () => void, resumed: boolean): Read
   const ready = initialReady(onReady, undefined, () => blockingVisible);
   return {
     ready,
-    observeReadinessFrame: (facts, automationBlocking = false) => {
-      blockingVisible = facts.blocking_prompt_visible || automationBlocking;
+    observeReadinessFrame: (facts, trustInputBlocking = false) => {
+      blockingVisible = facts.blocking_prompt_visible || trustInputBlocking;
       markReadyOnResumeComposer(ready, resumed, {
         ...facts,
         blocking_prompt_visible: blockingVisible,

@@ -35,7 +35,7 @@ export abstract class SessionLifecycle {
   protected readonly controlQueue: ControlQueue;
   protected everReady = false;
   inputBlocking = false;
-  automationBlocking = false;
+  trustInputBlocking = false;
   readonly closing = closingController(() => this.controlQueue.close());
   private readonly agent: ElwoodAgentKind;
   protected readonly persist: (record: SessionRecord) => void;
@@ -145,12 +145,12 @@ export abstract class SessionLifecycle {
     return (
       this.closing.signal.aborted ||
       this.inputBlocking ||
-      this.automationBlocking ||
+      this.trustInputBlocking ||
       this.status === "blocked"
     );
   }
   submitEvidence(kind: StatusEvidenceKind): StatusDecision {
-    return this.statusEngine.submit(kind, this.automationBlocking || this.closing.signal.aborted);
+    return this.statusEngine.submit(kind, this.trustInputBlocking || this.closing.signal.aborted);
   }
   submitExit(): StatusDecision {
     this.closing.abort();

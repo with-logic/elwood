@@ -19,6 +19,16 @@ export type TrustCandidate = {
 };
 export type TrustView = TrustCandidate | { readonly kind: "clear" } | { readonly kind: "unknown" };
 
+/** A present reader with unavailable output must never become the permissive no-reader mode. */
+export function readTrustView(
+  readFrame: () => string | undefined,
+  agent: ElwoodAgentKind,
+  clearance: TrustClearance,
+): TrustView | undefined {
+  const frame = readFrame();
+  return frame === undefined ? undefined : trustView(frame, agent, clearance);
+}
+
 /** Strict visibility remains distinct from the weaker candidate input guard. */
 export function trustPromptVisible(text: string, agent: ElwoodAgentKind): boolean {
   const dialog = parseTrustDialog(text);
