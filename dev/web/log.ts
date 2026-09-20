@@ -3,6 +3,7 @@
  * Implements PRD §6 and §11.
  */
 
+import { stopFailureDiagnostic } from "../../src/claude/hooks/stop-failure.ts";
 import type { AgentHookEvent } from "../agent-runtime.ts";
 
 export function summarizeHookEvent(event: AgentHookEvent): string {
@@ -12,8 +13,8 @@ export function summarizeHookEvent(event: AgentHookEvent): string {
   if (event.hook_event_name === "SubagentStop" && event.last_assistant_message) {
     return `hook SubagentStop ${event.agent_type}: ${truncate(event.last_assistant_message)}`;
   }
-  if (event.hook_event_name === "StopFailure" && event.last_assistant_message) {
-    return `hook StopFailure ${event.error}: ${truncate(event.last_assistant_message)}`;
+  if (event.hook_event_name === "StopFailure") {
+    return `hook StopFailure: ${truncate(stopFailureDiagnostic(event).message)}`;
   }
   if (event.hook_event_name === "Notification") {
     return `hook Notification ${event.notification_type}: ${truncate(event.message)}`;
