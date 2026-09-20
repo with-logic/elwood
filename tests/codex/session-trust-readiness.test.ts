@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
 import { startCodex } from "../../src/index.ts";
 import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
+import { asScreen } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 const codexDirectoryTrustFrame = readFileSync(
@@ -23,7 +24,7 @@ afterEach(() => {
 test.each([
   [true, codexDirectoryTrustFrame, "1\r"],
   [false, codexHooksTrustFrame, "2\r"],
-] as const)("C-TRUST-01 Codex native trust holds readiness after ignored numbered writes (%s)", async (autotrust, frame, answer) => {
+] as const)("C-TRUST-01 Codex native trust replacing an update holds readiness after ignored numbered writes (%s)", async (autotrust, frame, answer) => {
   installFakes({ supportsHookTrustBypass: false });
   const session = await startCodex({ cwd: tempDir(), autotrust });
   const attention: string[] = [];
@@ -36,8 +37,17 @@ test.each([
   });
   const queued = session.sendMessage("hello");
   vi.useFakeTimers();
-  ptys[0]!.emitData(frame.replaceAll("\n", "\r\n"));
-  await vi.advanceTimersByTimeAsync(11_000);
+  ptys[0]!.emitData(asScreen("Update available! 0.151.0 -> 0.152.0"));
+  await vi.advanceTimersByTimeAsync(50);
+  expect(session.status).toBe("blocked");
+  attention.length = 0;
+  ptys[0]!.emitData(asScreen(frame));
+  await vi.advanceTimersByTimeAsync(500);
+  // The prior update owns the existing block until native clearance; trust
+  // automation must not create a new human-attention episode meanwhile.
+  expect(attention).toEqual([]);
+  expect(ptys[0]!.writes.every((input) => input === answer)).toBe(true);
+  await vi.advanceTimersByTimeAsync(10_500);
   expect(ptys[0]!.writes.length).toBeGreaterThan(1);
   expect(ptys[0]!.writes.every((input) => input === answer)).toBe(true);
   expect(answered).toEqual([]);

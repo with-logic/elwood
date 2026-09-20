@@ -5,7 +5,7 @@
  */
 
 import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
-import { withTrustBlockingRules } from "../core/trust/blocking.ts";
+import { trustGateVisible, withTrustBlockingRules } from "../core/trust/blocking.ts";
 import type { TrustClearance } from "../core/trust/clearance.ts";
 import { codexWorkingScreen, codexWorkingTitle } from "./screen/working.ts";
 import { CodexUpdatePromptTracker, codexUpdatePromptVisible } from "./update-prompt.ts";
@@ -86,7 +86,7 @@ export function codexScreenFactTableForTrustPolicy(
         id: "codex-unidentified-dialog",
         fact: "blocking_prompt_visible",
         fallback: true,
-        match: () => updatePrompt.holdWithoutAppearance,
+        match: (frame) => updatePrompt.holdWithoutAppearance && !trustGateVisible(frame, "codex"),
       },
     ],
   };
