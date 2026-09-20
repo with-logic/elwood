@@ -68,6 +68,7 @@ test("C-CODEX-12 disposal cancels a physical key parked on real terminal settlem
     { sendInput: terminal.sendInput, settled: () => settling.promise },
     (input) => terminal.sendInput(input),
     () => prompt,
+    responder.closingSignal,
   );
   const result = responder.handle(
     prompt,
@@ -75,13 +76,21 @@ test("C-CODEX-12 disposal cancels a physical key parked on real terminal settlem
     () => prompt,
     guarded,
   );
+  let completed = false;
+  const settled = result.outcomes[0]!.settled!.then((completion) => {
+    completed = true;
+    return completion;
+  });
   try {
     expect(writes).toEqual([]);
     responder.dispose();
-    settling.resolve();
-    await expect(result.outcomes[0]?.settled).resolves.toBe("cancelled");
+    await setImmediate();
+    expect(completed).toBe(true);
+    await expect(settled).resolves.toBe("cancelled");
     expect(writes).toEqual([]);
   } finally {
+    settling.resolve();
+    await settled;
     responder.dispose();
     terminal.dispose();
   }
