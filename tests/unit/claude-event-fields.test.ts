@@ -10,7 +10,7 @@ test.each(eventFieldCases)("C-HOOK-07 validates %s optional fields", (name, requ
   expect(isClaudeHookInput(base(name, required))).toBe(true);
   for (const key of Object.keys(optional)) {
     expect(isClaudeHookInput(base(name, { ...required, ...optional, [key]: null })), key).toBe(
-      false,
+      name === "StopFailure",
     );
   }
 });

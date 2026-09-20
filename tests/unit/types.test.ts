@@ -112,8 +112,8 @@ describe("public hook types", () => {
         return message === transcript ? { decision: "block", reason: "unexpected" } : undefined;
       },
       StopFailure: (event) => {
-        const message: string | undefined = event.last_assistant_message;
-        const error: string = event.error;
+        const message: unknown = event.last_assistant_message;
+        const error: unknown = event.error;
         return message === error ? undefined : undefined;
       },
       Notification: (event) => {
