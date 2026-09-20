@@ -83,10 +83,14 @@ describe("decideStatus", () => {
     expect(decideStatus("blocked", "blocking_prompt_shown").to).toBeUndefined();
   });
 
-  test("C-API-37 initial_ready must not reopen a blocked startup session", () => {
+  test.each([
+    "initial_ready",
+    "hook_turn_ended",
+    "rendered_turn_ended",
+  ] as const)("C-API-37 %s must not reopen a blocked session", (evidence) => {
     // A startup dialog can be on screen when readiness fires; applying `ready`
     // would drain queued input into it. Only `blocking_prompt_cleared` unblocks.
-    const decision = decideStatus("blocked", "initial_ready");
+    const decision = decideStatus("blocked", evidence);
     expect(decision.to).toBeUndefined();
     expect(decision.reason).toContain("reopen a blocked session");
     expect(decideStatus("blocked", "blocking_prompt_cleared").to).toBe("ready");

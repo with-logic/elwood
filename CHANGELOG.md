@@ -14,8 +14,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Refresh attention diagnostics when a blocked session switches to a differently
   classified prompt, so consumers see the current human decision instead of a
-  stale update-prompt label. A replacement also restores blocking after a late
-  turn-ended hook moved the session to ready. Repainting the same blocking rules stays quiet.
+  stale update-prompt label. Repainting the same blocking rules stays quiet.
+- Keep a visible human prompt blocked when a late Stop hook or rendered turn-end
+  arrives. Readiness resumes only after the blocking prompt clears.
 
 - Route Codex tool-keyed hooks from own properties only. A `PreToolUse` map is a
   plain object, so a tool name matching an inherited member (anything on

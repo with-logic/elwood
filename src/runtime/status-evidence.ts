@@ -70,12 +70,10 @@ export function decideStatus(
   if (evidence === "blocking_prompt_shown" && !(from === "running" || from === "ready")) {
     return ignored(`ignored: cannot block from ${from}`);
   }
-  // Initial readiness must not reopen a session that is currently blocked: a
-  // startup dialog (e.g. a trust prompt) can be on screen when the readiness
-  // hook or its deadline fires, and applying `ready` here would drain queued
-  // input into the dialog. Only `blocking_prompt_cleared` may leave `blocked`.
-  if (evidence === "initial_ready" && from === "blocked") {
-    return ignored("ignored: initial_ready must not reopen a blocked session");
+  // Readiness and late turn-ending evidence cannot clear a visible human prompt.
+  // Only an observed blocking_prompt_cleared may make a blocked session ready.
+  if (from === "blocked" && target === "ready" && evidence !== "blocking_prompt_cleared") {
+    return ignored(`ignored: ${evidence} must not reopen a blocked session`);
   }
   // A cleared blocking prompt only settles a session that was actually
   // blocked; otherwise the clear is stale (the composer resumed on its own).
