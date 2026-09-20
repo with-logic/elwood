@@ -11,12 +11,8 @@ import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/respo
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { codexTrustClearance } from "./screen-table.ts";
 import { type CodexBannerWarning, codexWarningsFromText } from "./startup-warnings.ts";
-
-import {
-  CodexUpdatePromptTracker,
-  codexUpdateOptionPattern,
-  writeCodexUpdateSkip,
-} from "./update-prompt.ts";
+import { safeUpdateOption } from "./update/selection.ts";
+import { CodexUpdatePromptTracker, writeCodexUpdateSkip } from "./update-prompt.ts";
 
 export { codexWarningsFromText } from "./startup-warnings.ts";
 
@@ -114,7 +110,7 @@ export class CodexStartupPromptResponder {
     // update appearance, so generation latching and re-arming are unaffected.
     const noTrustGate = (frame: string) => !trustGateVisible(frame, "codex");
     if (onUpdateScreen && this.skipGeneration !== generation && noTrustGate(screenText)) {
-      const option = findNumberedOption(this.buffer, codexUpdateOptionPattern);
+      const option = safeUpdateOption(this.buffer)?.number ?? null;
       if (option) {
         // Settle OPTIMISTICALLY but keep the skip retryable if the write is
         // rejected, so a later frame re-attempts it rather than falsely reporting

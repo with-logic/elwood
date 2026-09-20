@@ -470,7 +470,7 @@ update screen returns — an infinite loop stuck on the update screen. The fix i
 screen leaves the frame, so a reappearance after the restart is skipped again
 rather than sitting latched forever. Edge-detection mirrors the login watcher.
 
-Two version-coupled wrinkles this cost us:
+Version-coupled behavior learned here:
 
 - The skip-attempt is gated by a per-session prompt tracker, even though the
   option is located in the accumulated buffer. Codex can split the distinctive
@@ -479,6 +479,11 @@ Two version-coupled wrinkles this cost us:
   same blocking prompt. A definite non-update frame clears it. Matching the
   accumulated buffer alone lets benign later prose re-fire against a **stale
   buffered option** — a real bug we hit while building this. C-CODEX-12.
+- Captured Codex update menus from 0.132 through 0.155 list `Update now` before
+  the safe choices. Initial selection and retries use that ordering: a skip-shaped
+  row before the update action is not selected, and the update action itself is
+  excluded even if its label also contains a skip phrase. A banner-less continuation
+  without the action has no ordering constraint; its generation guard still applies.
 - Option labels drift by version. Older codex (0.132/0.133) rendered a numbered
   dialog ("1. Update now / 2. Skip / 3. Skip until next version"). In the installed
   0.149.1 binary, the upgrade notice strings extracted from the native binary read

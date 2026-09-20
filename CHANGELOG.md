@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Select Codex update-skip choices only after the visible update action, and never
+  select an update action whose label also contains a skip phrase.
+
 - Keep Codex transcript polling and activity delivery running after a public listener
   throws, so later records (including turn failure evidence) still reach subscribers.
   The content-free `transcript_listener_error` warning identifies the failed delivery
