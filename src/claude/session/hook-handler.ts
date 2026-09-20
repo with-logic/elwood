@@ -17,6 +17,8 @@ import { isBlock, requestHook } from "../hooks/dispatch.ts";
 import type { ClaudeHookEvent } from "../hooks/index.ts";
 import { normalizeClaudeHookEvent } from "../normalize.ts";
 import { serializeHookResult } from "../serialize.ts";
+import { freezeHookEvent } from "./freeze-hook-event.ts";
+import { hookObservationBoundary } from "./hook-observation.ts";
 import type { ClaudeSessionImpl } from "./instance.ts";
 
 /** The live pieces the Claude hook handler drives; `session`/`turnWatcher` are read
@@ -38,35 +40,51 @@ export function buildClaudeHookHandler(
 ): (input: unknown) => Promise<BridgeProcessResult> {
   const { record, options, emitter, transcriptWatcher, ready } = deps;
   return async (input: unknown): Promise<BridgeProcessResult> => {
-    const event = normalizeClaudeHookEvent(input);
+    const event = freezeHookEvent(normalizeClaudeHookEvent(input));
+    const observation = hookObservationBoundary(emitter, record.elwoodSessionId);
     if (event.hook_event_name === "SessionStart")
       deps.getSession()?.rememberClaudeSessionId(event.session_id);
-    deps.observeHookTranscript(event);
-    emitter.emit("hook", event);
-    emitter.emit("activity", activity.activityFromClaudeHook(record.elwoodSessionId, event));
+    observation.run("transcript", () => deps.observeHookTranscript(event));
+    observation.run("hook", () => emitter.emit("hook", event));
+    observation.run("activity", () =>
+      emitter.emit("activity", activity.activityFromClaudeHook(record.elwoodSessionId, event)),
+    );
     const outcome = await requestHook(
-      emitter,
+      {
+        hasListeners: (name) => emitter.hasListeners(name),
+        requestWithProvenance: (name, payload) => emitter.requestWithProvenance(name, payload),
+        emit: (name, payload) =>
+          observation.run(name === "hookError" ? "hook_error" : "activity", () =>
+            emitter.emit(name, payload),
+          ),
+      },
       event,
       options.hookTimeoutMs ?? 25_000,
       record.elwoodSessionId,
     );
-    emitter.emit(
-      "activity",
-      activity.activityFromHookResult(
-        "claude",
-        record.elwoodSessionId,
-        event.hook_event_name,
-        outcome.result,
-        outcome.failedOpen,
+    const serialized = serializeHookResult(event.hook_event_name, outcome.result);
+    const blocked = isBlock(outcome.result);
+    observation.run("activity", () =>
+      emitter.emit(
+        "activity",
+        activity.activityFromHookResult(
+          "claude",
+          record.elwoodSessionId,
+          event.hook_event_name,
+          outcome.result,
+          outcome.failedOpen,
+        ),
       ),
     );
-    if (event.hook_event_name === "InstructionsLoaded") ready.mark();
-    if (event.hook_event_name === "Stop" && !isBlock(outcome.result)) {
-      transcriptWatcher.scan(); // Committed turn is on disk; read it now (C-CLAUDE-15).
+    if (event.hook_event_name === "InstructionsLoaded")
+      observation.run("lifecycle", () => ready.mark());
+    if (event.hook_event_name === "Stop" && !blocked) {
+      observation.run("transcript", () => transcriptWatcher.scan());
       deps.getTurnWatcher().arm();
-      deps.getSession()?.submitEvidence("hook_turn_ended");
+      observation.run("lifecycle", () => deps.getSession()?.submitEvidence("hook_turn_ended"));
     }
-    return serializeHookResult(event.hook_event_name, outcome.result);
+    observation.report();
+    return serialized;
   };
 }
 
@@ -77,7 +95,11 @@ export function buildClaudeHookErrorHandler(
 ): (event: Omit<HookErrorEvent, "elwoodSessionId">) => void {
   return (event) => {
     const hookError = { elwoodSessionId: record.elwoodSessionId, ...event };
-    emitter.emit("hookError", hookError);
-    emitter.emit("activity", activity.activityFromHookError("claude", hookError));
+    const observation = hookObservationBoundary(emitter, record.elwoodSessionId);
+    observation.run("hook_error", () => emitter.emit("hookError", hookError));
+    observation.run("activity", () =>
+      emitter.emit("activity", activity.activityFromHookError("claude", hookError)),
+    );
+    observation.report();
   };
 }

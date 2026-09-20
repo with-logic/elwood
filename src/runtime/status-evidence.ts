@@ -94,7 +94,7 @@ export const maxStatusDecisions = 50;
 export type StatusEngineIo = {
   /** Note that the session reached `ready` at least once (idempotent, live-only). */
   readonly onReady: () => void;
-  /** Deliver status/activity events to listeners (a listener throw propagates). */
+  /** Deliver status/activity events; throws propagate outside Claude hook notification scopes. */
   readonly emitStatus: (status: ElwoodSessionStatus) => void;
   readonly queueRunning: () => void;
   readonly queueReady: () => void;

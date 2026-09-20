@@ -1,0 +1,153 @@
+/** Late observer failures retain the notification scope that invoked them (C-HOOK-22). */
+import { createHook } from "node:async_hooks";
+import { expect, test, vi } from "vitest";
+import { TypedEmitter } from "../../src/events/emitter.ts";
+
+test("C-HOOK-22 nested notification scopes retain distinct rejection sinks", async () => {
+  const emitter = new TypedEmitter<{ event: number }>();
+  const first = Promise.withResolvers<void>();
+  const second = Promise.withResolvers<void>();
+  const unscoped = Promise.withResolvers<void>();
+  void unscoped.promise.catch(() => {});
+  emitter.on("event", (number) => {
+    if (number === 1) return first.promise;
+    if (number === 2) return second.promise;
+    return unscoped.promise;
+  });
+  const inner: unknown[] = [];
+  const outer: unknown[] = [];
+  expect(() =>
+    emitter.observeErrors(
+      (error) => outer.push(error),
+      () => {
+        emitter.observeErrors(
+          (error) => inner.push(error),
+          () => emitter.emit("event", 1),
+        );
+        emitter.emit("event", 2);
+        throw new Error("scope unwinds");
+      },
+    ),
+  ).toThrow("scope unwinds");
+  emitter.emit("event", 3);
+  first.reject("inner failure");
+  second.reject("outer failure");
+  unscoped.reject("outside scope");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(inner).toEqual(["inner failure"]);
+  expect(outer).toEqual(["outer failure"]);
+});
+
+test.each([
+  "shared",
+  "distinct",
+] as const)("C-HOOK-22 pending %s promises retain only the newest 1024 diagnostic registrations", async (mode) => {
+  const emitter = new TypedEmitter<{ event: number }>();
+  const shared = Promise.withResolvers<void>();
+  const pending = Array.from({ length: 1025 }, () =>
+    mode === "shared" ? shared : Promise.withResolvers<void>(),
+  );
+  const errors: number[] = [];
+  emitter.on("event", (index) => pending[index]!.promise);
+  let reactions = 0;
+  const hook = createHook({
+    init(_id, type) {
+      if (type === "PROMISE") reactions += 1;
+    },
+  });
+  hook.enable();
+  try {
+    for (let index = 0; index < pending.length; index += 1) {
+      emitter.observeErrors(
+        () => {
+          errors.push(index);
+        },
+        () => emitter.emit("event", index),
+      );
+    }
+  } finally {
+    hook.disable();
+  }
+  // Each native .then attachment allocates one child Promise, even when an
+  // instance's own then property is bypassed by the captured intrinsic.
+  expect(reactions).toBe(mode === "shared" ? 1 : 1025);
+  for (const item of pending) item.reject("observer failed");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(errors).toEqual(Array.from({ length: 1024 }, (_, index) => index + 1));
+});
+
+test("C-HOOK-22 a settled reused promise receives a fresh diagnostic registration", async () => {
+  const emitter = new TypedEmitter<{ event: number }>();
+  const promise = Promise.reject("failure");
+  emitter.on("event", () => promise);
+  const errors: unknown[] = [];
+  for (let index = 0; index < 2; index += 1) {
+    emitter.observeErrors(
+      (error) => errors.push(error),
+      () => emitter.emit("event", index),
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  expect(errors).toEqual(["failure", "failure"]);
+});
+
+test("C-HOOK-22 settled registrations release capacity for a still-pending observer", async () => {
+  const emitter = new TypedEmitter<{ event: number }>();
+  const pending = Promise.withResolvers<void>();
+  const errors: unknown[] = [];
+  emitter.on("event", (index) => (index === 0 ? pending.promise : Promise.resolve()));
+  for (let index = 0; index <= 1024; index += 1) {
+    emitter.observeErrors(
+      (error) => errors.push(error),
+      () => emitter.emit("event", index),
+    );
+    await Promise.resolve();
+  }
+  pending.reject("still observed");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(errors).toEqual(["still observed"]);
+});
+
+test.each([
+  "throws",
+  "ignores",
+] as const)("C-HOOK-22 observer Promise own then that %s cannot intercept rejection tracking", async (mode) => {
+  const emitter = new TypedEmitter<{ event: number }>();
+  const promise = Promise.reject("actual observer rejection");
+  void Promise.prototype.then.call(promise, undefined, () => {});
+  const overridden = vi.fn(() => {
+    if (mode === "throws") throw new Error("own then");
+    return () => undefined;
+  });
+  // biome-ignore lint/suspicious/noThenProperty: a genuine Promise can override its then property.
+  Object.defineProperty(promise, "then", { get: overridden });
+  emitter.on("event", () => promise);
+  const errors: unknown[] = [];
+  emitter.observeErrors(
+    (error) => errors.push(error),
+    () => emitter.emit("event", 1),
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(overridden).not.toHaveBeenCalled();
+  expect(errors).toEqual(["actual observer rejection"]);
+});
+
+test("C-HOOK-22 a throwing rejection sink cannot skip another retained scope", async () => {
+  const emitter = new TypedEmitter<{ event: number }>();
+  const pending = Promise.withResolvers<void>();
+  emitter.on("event", () => pending.promise);
+  const errors: unknown[] = [];
+  emitter.observeErrors(
+    () => {
+      throw new Error("diagnostic failed");
+    },
+    () => emitter.emit("event", 1),
+  );
+  emitter.observeErrors(
+    (error) => errors.push(error),
+    () => emitter.emit("event", 2),
+  );
+  pending.reject("observer failed");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(errors).toEqual(["observer failed"]);
+});
