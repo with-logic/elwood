@@ -851,3 +851,23 @@ Enter and observes no `UserPromptSubmit` hook, so no model turn runs. Disabling
 only the production clear write made both tests retain the image and text and fail.
 This verifies an automation-owned idle composer, not cleanup across caller edits
 or blocking dialogs. Codex clipboard text is restored after attachment.
+
+
+Native startup protocol replies also emit xterm `onData`. The actual-session
+image-cancellation proof exposed this on both adapters: treating those replies as
+caller edits revoked cleanup before its first staged image. A real terminal's
+cursor-position query (`CSI 6 n`) reproduces the revocation without any caller
+input. Ownership now tracks `xterm.input` invocations; parser-generated replies
+preserve authority, while caller keys still revoke it. Startup trust writers also
+use that automation scope: both actual-session trust fixtures showed that writing
+outside it revoked cleanup before the first caller submission.
+
+The actual-session image queue also exposed a consumption race: writing the clear
+keys did not establish that Claude had removed the staged image before successor
+attachment. Cleanup therefore waits for a fresh completed empty native frame. A
+bounded Claude probe then found a cleared frame with a visible input cursor at
+column two, enclosing rules, and a version banner: existing whole-frame live
+clearance accepted it, while the post-model-picker suffix predicate rejected it.
+Cleanup accepts either existing positive Claude clearance path, preserving the
+same completed-render and cursor checks. The suffix path remains useful when
+earlier conversation carets prevent whole-frame clearance.

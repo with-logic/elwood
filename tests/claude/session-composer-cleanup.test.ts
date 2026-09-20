@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { startClaude } from "../../src/index.ts";
 import { AgentSessionBase } from "../../src/runtime/session/base.ts";
+import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 const clear = "\u0015\u000b";
@@ -17,6 +18,12 @@ async function staged() {
   const session = await startClaude({ cwd: tempDir() });
   if (!(session instanceof AgentSessionBase)) throw new Error("session expected");
   const abort = new AbortController();
+  const pty = ptys[0]!;
+  const write = pty.write.bind(pty);
+  vi.spyOn(pty, "write").mockImplementation((data) => {
+    write(data);
+    if (String(data) === clear) pty.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
+  });
   const send = ControlQueue.prototype.send;
   vi.spyOn(ControlQueue.prototype, "send").mockImplementation(function (
     this: ControlQueue,

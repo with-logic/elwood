@@ -34,6 +34,7 @@ test.each([
   const rawInput = new AbortController();
   let blocked = false;
   let screen = "❯ ";
+  let frame = {};
   const terminal = {
     settled: async () => undefined,
     renderFailed: false,
@@ -48,7 +49,10 @@ test.each([
           abort.abort();
         }
       }
-      if (text === clear) screen = "❯ ";
+      if (text === clear) {
+        screen = "❯ ";
+        frame = {};
+      }
     },
   };
   const cleanup = new ComposerCleanup(
@@ -56,6 +60,7 @@ test.each([
     () => blocked,
     closing.signal,
     () => rawInput.signal,
+    () => (screen === "❯ " ? frame : undefined),
   );
   const queue = new ControlQueue(
     queuedInputSubmitter(terminal, {
