@@ -141,7 +141,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
       this.terminal,
       paths,
       signal,
-      () => this.isInputBlocked(),
+      () => this.callerInputBlocked(),
       () => this.emitWarnings([clipboardRestoreFailedWarning(this.elwoodSessionId)]),
     );
   rememberCodexSessionId(sessionId: string): void {

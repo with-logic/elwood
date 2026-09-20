@@ -69,7 +69,16 @@ export abstract class AgentSessionBase extends SessionLifecycle {
       picker: () => this.picker,
       controlQueue: this.controlQueue,
       submitDirect: (command, signal) =>
-        writeQueuedInput(terminal, command, "command", this.pasteGuard, signal),
+        writeQueuedInput(
+          terminal,
+          command,
+          "command",
+          {
+            ...this.pasteGuard,
+            blocked: () => this.isInputBlocked(),
+          },
+          signal,
+        ),
     });
   }
 
@@ -86,6 +95,11 @@ export abstract class AgentSessionBase extends SessionLifecycle {
    */
   protected foreignDialogBlocksWrite(): boolean {
     return this.commands.foreignDialogVisible();
+  }
+
+  /** Caller text and attachments cannot drive a model dialog that they did not open. */
+  protected callerInputBlocked(): boolean {
+    return this.isInputBlocked() || this.foreignDialogBlocksWrite();
   }
 
   sendPrompt(prompt: string, options?: SendOptions): Promise<void> {

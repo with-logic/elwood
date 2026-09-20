@@ -106,10 +106,19 @@ test("C-API-55 a config-lock timeout never cancels a picker opened by someone el
     expect(await setting).toMatchObject({ code: "model_automation_failed" });
     expect(ptys[0]!.writes).toEqual([]);
     expect(readFileSync(configPath, "utf8")).toBe(userConfig);
+    const queued = session.sendMessage("after foreign picker");
+    void queued.catch(() => undefined);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(ptys[0]!.writes).toEqual([]);
+    ptys[0]!.emitData(asScreen("› "));
+    await session.terminal.settled();
+    await queued;
+    expect(ptys[0]!.writes).toEqual(["\u001b[200~after foreign picker\u001b[201~", "\r"]);
+    const beforeRelease = [...ptys[0]!.writes];
     held.resolve();
     await holder;
     await new Promise<void>((resolve) => setImmediate(resolve));
-    expect(ptys[0]!.writes).toEqual([]);
+    expect(ptys[0]!.writes).toEqual(beforeRelease);
   } finally {
     held.resolve();
     await holder;

@@ -16,7 +16,8 @@ back each entry are listed in `prd/14-conformance.md`.
   finishes cleanup when cancellation arrives; waiting callers still cancel immediately. Codex model-switch deadlines also
   cancel config-lock waits and release the waiting session input slot. A timeout
   before successful `/model` dispatch never cancels a picker opened by someone else,
-  and the initial picker-screen wait honors the same operation deadline.
+  and the initial picker-screen wait honors the same operation deadline. Ordinary
+  queued text and images remain held while a foreign model picker is visible.
 - Preserve Claude `StopFailure` hooks with missing or changed diagnostic fields. Those
   fields are now typed as optional `unknown`, matching ingress. Browser logs show a
   bounded rejection reason instead of unrelated assistant text or a blank summary.

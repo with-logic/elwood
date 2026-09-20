@@ -1,5 +1,4 @@
 /** Session lifetime, input blocking, persistence and cleanup (PRD §5/§8/§9). */
-
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../core/activity/index.ts";
 import { ControlQueue } from "../../core/control-queue/index.ts";
 import { toError } from "../../core/errors.ts";
@@ -49,7 +48,7 @@ export abstract class SessionLifecycle {
   protected readonly pasteGuard: PasteGuard = {
     snapshot: () => this.terminal.snapshot().text,
     staged: (screen, prompt) => this.stagedPaste(screen, prompt),
-    blocked: () => this.isInputBlocked(),
+    blocked: () => this.callerInputBlocked(),
   };
   protected constructor(
     agent: ElwoodAgentKind,
@@ -164,6 +163,7 @@ export abstract class SessionLifecycle {
     return this.statusEngine.decisions();
   }
   protected abstract stagedPaste(screen: string, prompt: string): boolean;
+  protected abstract callerInputBlocked(): boolean;
   protected abstract stopRuntime(): Promise<void>;
   protected abstract emitWarnings(warnings: readonly ElwoodWarningEvent[]): void;
   protected replayFor(event: string, handler: SessionListener): void {
