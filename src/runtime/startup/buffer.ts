@@ -9,7 +9,7 @@
  *
  * This collector appends only while the startup gate is open and caps the buffer
  * so a chatty CLI cannot balloon it; once `release()` is called (right after the
- * usability check reads it) further chunks are dropped and the retained string is
+ * usability check reads it) further chunks are dropped and the retained bytes are
  * cleared, so no per-session transcript lingers. Implements PRD §9.1 startup
  * usability and §9.4 resource cleanup.
  */
@@ -31,20 +31,27 @@ export type StartupBuffer = {
 };
 
 export function createStartupBuffer(cap: number = STARTUP_BUFFER_CAP): StartupBuffer {
-  let buffer = "";
+  let buffer = Buffer.alloc(cap);
+  let length = 0;
   let open = true;
   return {
     push(data: string): void {
-      if (!open || buffer.length >= cap) return;
-      buffer += data;
-      if (buffer.length > cap) buffer = buffer.slice(0, cap);
+      if (!open || length >= cap) return;
+      const remaining = cap - length;
+      // UTF-8 needs at least as many bytes as UTF-16 units. Only measure chunks
+      // already bounded by the remaining capacity; never scan a huge receipt.
+      open = data.length <= remaining && Buffer.byteLength(data, "utf8") <= remaining;
+      // The bounded write stops before an incomplete code point and copies the
+      // prefix into owned storage, without retaining the original chunk string.
+      length += buffer.write(data.slice(0, remaining), length, remaining, "utf8");
     },
     read(): string {
-      return buffer;
+      return buffer.toString("utf8", 0, length);
     },
     release(): void {
       open = false;
-      buffer = "";
+      buffer = Buffer.alloc(0);
+      length = 0;
     },
   };
 }
