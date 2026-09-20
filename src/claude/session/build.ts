@@ -1,7 +1,6 @@
 /** Builds a live ClaudeSessionApi from a record + runtime. Implements PRD §5, §6, §8, §9. */
 import { defaultTerminalSize } from "../../core/defaults.ts";
 import { causeDetails, elwoodError } from "../../core/errors.ts";
-import { createStartupWarningGate, deliverFrameWarnings } from "../../core/startup/frame.ts";
 import { emitSettledStartupOutcomes } from "../../core/startup/write.ts";
 import { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ClaudeEventMap, StartClaudeOptions } from "../../core/types.ts";
@@ -31,6 +30,7 @@ import {
   spawnClaudePty,
   writeRuntimeFiles,
 } from "./runtime.ts";
+import { createClaudeStartupWarningGate } from "./startup-warnings.ts";
 import { createTranscriptWatcher, observeTranscript } from "./transcript.ts";
 
 export type BuildClaudeSessionInput = {
@@ -53,24 +53,21 @@ export async function buildClaudeSession(
   const emitter = new TypedEmitter<ClaudeEventMap>();
   registerInitialHooks(emitter, options.hooks);
   let session: ClaudeSessionImpl | undefined;
-  // Buffer every startup warning until subscribers can observe it (C-API-14).
-  const warnGate = createStartupWarningGate({
-    emitWarnings: (w) => deliverFrameWarnings(session, w),
-  });
+  // Buffer diagnostics until callers can subscribe; browser decline warnings track disposal.
+  const warnGate = createClaudeStartupWarningGate(
+    () => session,
+    () => promptResponder.closing,
+  );
   const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => warnGate);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
-  // Initial readiness is hook-backed (`InstructionsLoaded` fires `mark`); the first
-  // frame arms a starvation deadline so a missing/failed hook cannot starve the queue,
-  // and on resume the first composer frame also marks ready (PRD §5.3, C-API-28).
+  // Hooks establish readiness; the first frame arms its deadline (PRD §5.3, C-API-28).
   const autotrust = options.autotrust ?? false;
-  // Observers are built BEFORE the readiness gate so its callback never closes
-  // over a binding declared later in this function.
+  // Build observers before the readiness callback captures them.
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
   const turnWatcher = observers.turn;
   const readiness = createReadinessGate(() => {
     turnWatcher.arm(resumed); // resume arms in settling mode (no phantom replay turn)
-    // completeInitialReady advances readiness in a finally, isolating restore/warning
-    // failures internally, so its promise never rejects (not awaited).
+    // completeInitialReady contains restore/warning failures and always advances readiness.
     void session?.completeInitialReady();
   }, resumed);
   const { ready } = readiness;
@@ -134,10 +131,16 @@ export async function buildClaudeSession(
     terminalReplay.push(data);
     latestRenderedText = renderedSnapshot(renderedTerminal).text;
     const frame = { text: latestRenderedText, title: renderedTerminal.title };
-    // Trust automation settles only after sendInput completes (C-CLAUDE-16).
+    // Settle only after live writes fulfill; disposal cancels (C-CLAUDE-16/22).
     const send = (input: string) => renderedTerminal.sendInput(input);
     const read = () => latestRenderedText;
-    const guarded = guardedClaudeAutomationWrite(renderedTerminal, send, read);
+    const guarded = guardedClaudeAutomationWrite(
+      renderedTerminal,
+      send,
+      read,
+      () => promptResponder.closing,
+      promptResponder.closingSignal,
+    );
     const trustRead = () => currentRenderedFrame(renderedTerminal)?.text;
     const autos = promptResponder.handle(frame.text, send, read, guarded, trustRead);
     // Warning delivery is CONTAINED on the frame path: a throwing `warning`/`activity`
@@ -172,8 +175,7 @@ export async function buildClaudeSession(
     async () => {
       active.startLoops();
       flushPendingWarnings(); // sink now exists: flush any early-buffered diagnostic (§5.7)
-      // A hook or deadline that fired before the session existed submitted nothing
-      // (evidence is `session?.`-guarded); replay it now the session can consume it.
+      // Replay readiness evidence received before the session existed.
       ready.replay();
       pty.onExit((exit) => {
         startupExit = exit;
@@ -182,7 +184,6 @@ export async function buildClaudeSession(
           active.submitExit(),
         );
       });
-      // Release the startup buffer once the check settles (§9.4).
       await assertStartupThenRelease("claude", startupOutput, () => startupExit);
       active.submitEvidence("startup_usable");
       frameObserver.blockOnceLive(active);

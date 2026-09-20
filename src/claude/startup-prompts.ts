@@ -22,7 +22,8 @@ const declineKey = "\u001b";
 
 export class ClaudeStartupPromptResponder {
   private readonly trust: TrustPromptResponder<"claude">;
-  private browserDeclined = false;
+  private browserDeclineLatched = false;
+  private readonly lifetime = new AbortController();
 
   constructor(
     autotrust: boolean,
@@ -36,12 +37,30 @@ export class ClaudeStartupPromptResponder {
     return this.trust.blockedPrompt;
   }
 
+  /**
+   * Session closing owns cancellation for NON-TRUST automation too, not just for trust
+   * attempts. After `dispose()` no new decline is attempted, and a decline already in
+   * flight settles `cancelled`, so nothing writes to a dead PTY and neither
+   * `startup_prompt` nor `startup_prompt_write_failed` is emitted after stop/kill/exit
+   * (C-CLAUDE-22).
+   */
   dispose(): void {
+    this.lifetime.abort();
     this.trust.dispose();
   }
 
   get inputBlocking(): boolean {
     return this.trust.inputBlocking;
+  }
+
+  /** Lets the guarded writer abandon a write that is still parked on render settlement. */
+  get closing(): boolean {
+    return this.lifetime.signal.aborted;
+  }
+
+  /** Interrupt the observation budget as soon as session disposal begins. */
+  get closingSignal(): AbortSignal {
+    return this.lifetime.signal;
   }
 
   /**
@@ -60,6 +79,7 @@ export class ClaudeStartupPromptResponder {
     readTrustFrame?: () => string | undefined,
   ): readonly SettledStartupOutcome<"claude">[] {
     const settled: SettledStartupOutcome<"claude">[] = [];
+    if (this.closing) return settled;
     const trust = this.trust.handle(screenText, write, readTrustFrame ?? readFrame);
     if (trust?.kind === "attempted") {
       settled.push({ outcome: { kind: "attempted", ...trust.automation }, settled: trust.settled });
@@ -67,26 +87,30 @@ export class ClaudeStartupPromptResponder {
       settled.push({ outcome: { kind: "option_pending", prompt: trust.prompt } });
     }
     if (
-      !this.browserDeclined &&
+      !this.browserDeclineLatched &&
       browserToolsPromptVisible(screenText) &&
       !trustGateVisible(screenText, "claude") // a trust gate is never declined blind (C-TRUST-01)
     ) {
       // Escape is the prompt's documented decline path and needs no option
-      // number, so it stays correct if the option ordering changes. Settle
-      // OPTIMISTICALLY, but keep the decline retryable if the write is rejected
-      // so a later frame re-attempts it rather than reporting a false "answered".
-      this.browserDeclined = true;
+      // number, so it stays correct if the option ordering changes. Latch the
+      // attempt before writing; a rejected live-session write stays retryable on a
+      // later frame. Disposal permanently cancels retries and diagnostics.
+      this.browserDeclineLatched = true;
       // A WITHHELD write never reached the PTY (a trust gate was on the settled frame),
       // so the decline must not claim success: un-latch it and settle as `cancelled`,
-      // which emits no `startup_prompt` activity and leaves a later frame to retry.
+      // which emits no activity; a later frame retries only while still live.
       const writeSettled = Promise.resolve(writeAutomation(declineKey))
         .then((result): StartupWriteCompletion => {
+          // Disposal DURING the write wins: the session is gone, so report neither a
+          // success activity nor a write-failure warning for it (C-CLAUDE-22).
+          if (this.closing) return "cancelled";
           if (result !== "withheld") return "answered";
-          this.browserDeclined = false;
+          this.browserDeclineLatched = false;
           return "cancelled";
         })
-        .catch((error: unknown) => {
-          this.browserDeclined = false;
+        .catch((error: unknown): StartupWriteCompletion => {
+          if (this.closing) return "cancelled";
+          this.browserDeclineLatched = false;
           throw error;
         });
       settled.push({
@@ -107,9 +131,17 @@ export function guardedClaudeAutomationWrite(
   terminal: InputTerminal,
   write: NonTrustAutomationWriter,
   readFrame: () => string,
+  cancelled: () => boolean = () => false,
+  signal?: AbortSignal,
 ): (input: string) => Promise<AutomationWriteResult> {
-  return guardedNonTrustAutomationWrite(terminal, write, readFrame, "claude", (frameText) =>
-    browserToolsPromptVisible(frameText),
+  return guardedNonTrustAutomationWrite(
+    terminal,
+    write,
+    readFrame,
+    "claude",
+    (frameText) => browserToolsPromptVisible(frameText),
+    cancelled,
+    signal,
   );
 }
 
