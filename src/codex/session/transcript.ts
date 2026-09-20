@@ -46,11 +46,17 @@ export function createCodexTranscriptWatcher(
   // is built first) and delivers each exactly once with clear-before-delivery + throw
   // containment (see core/transcript/warning-router).
   const { route, flushPendingWarnings } = createTranscriptWarningRouter(getSink);
+  let delivering = false;
   const watcher = new CodexTranscriptWatcher(
     elwoodSessionId,
     (event) => {
-      emitter.emit("codex:transcript", event);
-      emitter.emit("activity", activity.activityFromCodexTranscript(event));
+      delivering = true;
+      try {
+        emitter.emit("codex:transcript", event);
+        emitter.emit("activity", activity.activityFromCodexTranscript(event));
+      } finally {
+        delivering = false;
+      }
     },
     {
       onDrop: (notice) => route(codexDropWarning(notice)),
@@ -64,6 +70,12 @@ export function createCodexTranscriptWatcher(
   // a bounded `transcript_poll_stopped` diagnostic phase-labelled `final_flush` (so lost
   // trailing shutdown activity is distinguishable from a live poll failure). Mirrors Claude.
   const finishSafely = (afterFlush: () => void = () => undefined) => {
+    if (delivering) {
+      // A listener can synchronously stop the PTY. Let the bounded scan deliver
+      // every record it already read before finalizing the watcher and session.
+      queueMicrotask(() => finishSafely(afterFlush));
+      return;
+    }
     try {
       watcher.finish();
     } catch (error) {

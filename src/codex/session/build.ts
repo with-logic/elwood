@@ -164,16 +164,14 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       ready.replay();
       // C-LIFE-10: a failed final flush cannot skip exit or reaping.
       pty.onExit((exit) => {
+        if (startupExit) return;
         startupExit = exit;
         activeSession.closing.abort();
         const emitExit = () => {
           emitter.emit("terminal:exit", { elwoodSessionId: id, ...exit });
           emitter.emit("activity", activity.activityFromTerminalExit("codex", id, exit.exitCode));
         };
-        finishSessionExit(
-          () => finishSafely(emitExit),
-          () => activeSession.submitExit(),
-        );
+        finishSafely(() => finishSessionExit(emitExit, () => activeSession.submitExit()));
       });
       await assertStartupThenRelease("codex", startupOutput, () => startupExit);
       activeSession.submitEvidence("startup_usable");
