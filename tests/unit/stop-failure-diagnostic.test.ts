@@ -14,6 +14,7 @@ test.each([
   { error: { code: "rate_limit" } },
   { error_details: { text: "nope" } },
   { last_assistant_message: 7 },
+  { last_assistant_message: "unrelated" },
 ])("C-HOOK-20 preserves a StopFailure with drifted fields: %j", (fields) => {
   const event = { ...common, ...fields } satisfies ClaudeHookEventFor<"StopFailure">;
   expect(isClaudeHookInput(event)).toBe(true);
