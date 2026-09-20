@@ -107,14 +107,14 @@ describe("createCodexTranscriptWatcher (§5.4/§5.7)", () => {
   test("§9.4 a scan that throws on the timer routes a poll-stopped diagnostic to the sink", () => {
     vi.useFakeTimers();
     const recorded: ElwoodWarningEvent[] = [];
-    const { emitter, path } = wired(() => recordingSink(recorded));
-    emitter.on("codex:transcript", () => {
-      throw new Error("consumer boom");
+    const { watcher, path } = wired(() => recordingSink(recorded));
+    vi.spyOn(watcher, "scan").mockImplementation(() => {
+      throw new Error("internal scan boom");
     });
     writeFileSync(path, `${record}\n`);
     expect(() => vi.advanceTimersByTime(250)).not.toThrow(); // one poll tick, contained
     expect(recorded).toMatchObject([{ code: "transcript_poll_stopped", phase: "poll" }]);
-    expect(JSON.stringify(recorded)).not.toContain("consumer boom");
+    expect(JSON.stringify(recorded)).not.toContain("internal scan boom");
   });
 
   test("§5.7 buffers a notice seen before the sink exists, then flushes it with the next", () => {
