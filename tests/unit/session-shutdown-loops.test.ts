@@ -21,6 +21,7 @@ import {
 import {
   createSessionRecord,
   prepareStateDir,
+  removeSessionFiles,
   sessionDir,
   writeSessionRecord,
 } from "../../src/state/store.ts";
@@ -55,9 +56,7 @@ function host(
 ): ShutdownHost {
   return {
     pty: untouchedPty,
-    stateDir: "/tmp/state",
-    elwoodSessionId: "s1",
-    socketHome: "/tmp/elwood-x",
+    removeFiles: () => undefined,
     reapPolicy: { orThrow: () => undefined, reaper: { reap: () => undefined } },
     status: () => "exited",
     claimShutdown: () => undefined,
@@ -153,8 +152,8 @@ describe("permanent loop clearing (C-LOOP-14/C-LOOP-19)", () => {
     writeSessionRecord(createSessionRecord({ cwd: root, id }), dir);
     const calls: string[] = [];
     const shutdownHost = host(async () => void calls.push("cleanup"), {
-      stateDir: root,
-      elwoodSessionId: id,
+      removeFiles: () =>
+        removeSessionFiles({ stateDir: root, elwoodSessionId: id, socketHome: "/tmp/elwood-x" }),
       clearLoops: (reason) => {
         calls.push(`clear:${reason}`);
         return Promise.reject(

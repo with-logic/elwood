@@ -246,6 +246,10 @@ generated files, including loop definitions, unless kill or teardown is
 requested. Any unsubmitted due state is discarded. (Session status is live-only and is
 not written to the record, §8.2.)
 
+A resume started by an exit listener supersedes the old launch's shared-state
+ownership (§8.1). Deferred or repeated teardown of that old object still cleans its
+own resources, but cannot clear the successor's loops or remove its files/socket.
+
 Runtime cleanup first allows received terminal output to render, then disposes
 the renderer (C-LIFE-12). The drain covers output that arrives while it is in
 progress: it ends only when a whole settle pass completes with nothing new

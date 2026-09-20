@@ -3,6 +3,7 @@ import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
+import { setGroupKillerForTests } from "../../src/runtime/shutdown/reap-tree.ts";
 import { becomeReady, installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -58,3 +59,48 @@ for (const statusThrows of [false, true]) {
     }
   }, 15_000);
 }
+
+test.each([
+  "stop",
+  "kill",
+  "teardown",
+] as const)("C-API-20 failed gated %s retries after finalization without re-signaling", async (verb) => {
+  installFakes();
+  const cwd = tempDir();
+  const path = join(cwd, "rollout.jsonl");
+  writeFileSync(path, "");
+  let fail = true;
+  let attempts = 0;
+  setGroupKillerForTests({
+    killGroup: () => {
+      attempts += 1;
+      if (fail) throw new Error("reap refused");
+    },
+  });
+  const session = await startCodex({ cwd });
+  const pty = ptys[0]!;
+  const nativeExitHandlers = [...pty.exitHandlers];
+  let shutdown: Promise<void> | undefined;
+
+  session.on("codex:transcript", () => {
+    shutdown ??= session[verb]();
+    void shutdown.catch(() => undefined);
+  });
+  await becomeReady(session.elwoodSessionId, cwd, { transcript_path: path });
+  writeFileSync(
+    path,
+    `${JSON.stringify({ type: "response_item", payload: { type: "reasoning" } })}\n`,
+  );
+  for (const handler of nativeExitHandlers) handler({ exitCode: 0 });
+  expect(shutdown).toBeDefined();
+  await expect(shutdown).rejects.toMatchObject({
+    code: verb === "teardown" ? "teardown_failed" : "termination_failed",
+  });
+  const failedAttempts = attempts;
+  fail = false;
+  const retried = session[verb]();
+  expect(retried).not.toBe(shutdown);
+  await expect(retried).resolves.toBeUndefined();
+  expect(attempts).toBeGreaterThan(failedAttempts);
+  expect(pty.killSignals).toEqual([]);
+});

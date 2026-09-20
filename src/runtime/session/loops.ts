@@ -20,6 +20,7 @@ export type LoopEventEmitter = {
 type SessionLoopsInput = {
   readonly stateDir: string;
   readonly elwoodSessionId: string;
+  readonly ownsState: () => boolean;
   readonly definitions: readonly PersistedLoopDefinition[];
   readonly queue: ControlQueue;
   readonly emitter: LoopEventEmitter;
@@ -35,8 +36,10 @@ export class SessionLoops {
       now: Date.now,
       schedule: scheduleLoopTimer,
       createId: randomUUID,
-      persist: (definitions) =>
-        writeLoopDefinitions(input.stateDir, input.elwoodSessionId, definitions),
+      persist: (definitions) => {
+        if (input.ownsState())
+          writeLoopDefinitions(input.stateDir, input.elwoodSessionId, definitions);
+      },
       submit: (message, loopId, signal) =>
         input.queue.send(message, "message", undefined, {
           origin: { kind: "loop", loopId },

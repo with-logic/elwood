@@ -52,6 +52,16 @@ live session at a time; a failed START (not a teardown) removes only its own
 socket file, so an overlapping failed launch never disturbs a live one. `stateDir`
 length MUST NOT constrain whether a session can start.
 
+Within one Elwood process, a validated resume attempt revokes the prior launch's
+shared-state ownership before asynchronous preflight. A superseded launch may
+finish its own runtime cleanup, but cannot overwrite loop definitions or remove
+the shared session directory or socket home. Each loop persistence write and
+destructive path removal checks the current launch generation at the mutation itself,
+including after awaited shutdown work and on repeated shutdown calls. A failed
+resume does not restore the old launch's destructive authority. This is an
+in-process successor guarantee, not cross-process launch serialization; concurrent
+live launches of one identity remain unsupported.
+
 ### 8.2 Session record
 
 The schema-version-1 core session record persists only the minimum needed to

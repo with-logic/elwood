@@ -6,12 +6,13 @@
 import { resolve } from "node:path";
 import { elwoodError } from "../../core/errors.ts";
 import { applyCodexHighTrust } from "../../core/high-trust.ts";
+import { revokeLaunchOwnership } from "../../state/launch-ownership.ts";
 import {
   codexLaunchPosture,
   effectivePosture,
   withCodexLaunch,
 } from "../../state/launch-posture.ts";
-import { defaultStateDir, readSessionRecord } from "../../state/store.ts";
+import { defaultStateDir, readSessionRecord, sessionDir } from "../../state/store.ts";
 import * as preflight from "../preflight.ts";
 import { startCodexFromRecord } from "./index.ts";
 import type { CodexSessionApi, ResumeCodexOptions } from "./types.ts";
@@ -28,6 +29,7 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
     throw elwoodError("adapter_mismatch", "Cannot resume a non-Codex session as Codex.");
   if (!record.codex.resumeId)
     throw elwoodError("resume_unavailable", "Cannot resume Codex without a Codex session id.");
+  revokeLaunchOwnership(sessionDir(stateDir, record.elwoodSessionId));
   const warning = await preflight.preflightCodex(
     options.strictVersionCheck ?? false,
     options.autoupdate ?? false,

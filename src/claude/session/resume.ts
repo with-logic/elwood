@@ -7,12 +7,13 @@ import { resolve } from "node:path";
 import { elwoodError } from "../../core/errors.ts";
 import { applyClaudeHighTrust } from "../../core/high-trust.ts";
 import type { ResumeClaudeOptions } from "../../core/types.ts";
+import { revokeLaunchOwnership } from "../../state/launch-ownership.ts";
 import {
   claudeLaunchPosture,
   effectivePosture,
   withClaudeLaunch,
 } from "../../state/launch-posture.ts";
-import { defaultStateDir, readSessionRecord } from "../../state/store.ts";
+import { defaultStateDir, readSessionRecord, sessionDir } from "../../state/store.ts";
 import { preflightClaude } from "../preflight.ts";
 import { startClaudeFromRecord } from "./index.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
@@ -32,6 +33,7 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
   if (!record.claude.resumeId) {
     throw elwoodError("resume_unavailable", "Cannot resume Claude without a Claude session id.");
   }
+  revokeLaunchOwnership(sessionDir(stateDir, record.elwoodSessionId));
   const warning = await preflightClaude(
     options.strictVersionCheck ?? false,
     options.autoupdate ?? false,

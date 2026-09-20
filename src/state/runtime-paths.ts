@@ -13,11 +13,13 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { newBridgeToken, safeSessionDir } from "./files.ts";
+import { claimLaunchOwnership, type LaunchOwnership } from "./launch-ownership.ts";
 import { ensureSocketHome, sessionSocketHome } from "./socket-home.ts";
 
 /** The in-memory runtime a session binds to for one launch (never persisted). */
 export type SessionRuntime = {
   readonly sessionDir: string;
+  readonly stateOwnership: LaunchOwnership;
   readonly settingsPath: string;
   readonly bridgeScriptPath: string;
   /** The session's STABLE private socket home; teardown removes it whole (§8.1). */
@@ -51,6 +53,7 @@ export function sessionRuntime(input: SessionRuntimeInput): SessionRuntime {
   ensureSocketHome(socketHome); // restores 0700 on a reused home; rejects a planted non-dir (§8.1)
   return {
     sessionDir: dir,
+    stateOwnership: claimLaunchOwnership(dir),
     settingsPath: join(dir, `${adapter}-settings.json`),
     bridgeScriptPath: join(dir, "hook-bridge.mjs"),
     socketHome,

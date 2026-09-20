@@ -3,6 +3,7 @@
 import type { ElwoodSessionStatus } from "../../core/types.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
+import { removeSessionFiles } from "../../state/store.ts";
 import { ShutdownCoordinator } from "../shutdown/coordinator.ts";
 import type { StatusEvidenceKind } from "../status-evidence.ts";
 import type { SessionLoops } from "./loops.ts";
@@ -31,9 +32,16 @@ export class SessionShutdownBinding {
   constructor(input: ShutdownBindingInput) {
     this.managed = managedShutdown(new ShutdownCoordinator(), () => ({
       pty: input.pty,
-      stateDir: input.stateDir,
-      elwoodSessionId: input.elwoodSessionId(),
-      socketHome: input.runtime.socketHome,
+      removeFiles: () => {
+        // Check after every awaited cleanup, directly around the synchronous removals.
+        if (!input.runtime.stateOwnership.current()) return;
+        removeSessionFiles({
+          stateDir: input.stateDir,
+          elwoodSessionId: input.elwoodSessionId(),
+          socketHome: input.runtime.socketHome,
+        });
+        input.runtime.stateOwnership.release();
+      },
       reapPolicy: input.reapPolicy,
       status: input.status,
       claimShutdown: (evidence) => {

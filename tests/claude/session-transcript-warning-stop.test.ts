@@ -8,7 +8,10 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
-test("C-API-20 a transcript warning finishes delivery before listener-initiated shutdown", async () => {
+test.each([
+  "warning",
+  "activity",
+])("C-API-20 a transcript warning finishes delivery before %s-initiated shutdown", async (channel) => {
   installFakes();
   const cwd = tempDir();
   const path = join(cwd, "rollout.jsonl");
@@ -19,13 +22,18 @@ test("C-API-20 a transcript warning finishes delivery before listener-initiated 
   session.on("warning", (event) => {
     if (event.code !== "transcript_records_dropped") return;
     order.push("warning:first");
-    stopped ??= session.stop();
+    if (channel === "warning") stopped ??= session.stop();
   });
   session.on("warning", (event) => {
     if (event.code === "transcript_records_dropped") order.push("warning:second");
   });
   session.on("activity", (event) => {
-    if (event.kind === "warning") order.push("warning:activity");
+    if (event.kind !== "warning") return;
+    order.push("warning:activity:first");
+    if (channel === "activity") stopped ??= session.stop();
+  });
+  session.on("activity", (event) => {
+    if (event.kind === "warning") order.push("warning:activity:second");
   });
   session.on("terminal:exit", () => order.push("exit"));
   session.on("status", (event) => {
@@ -45,7 +53,8 @@ test("C-API-20 a transcript warning finishes delivery before listener-initiated 
     expect(order).toEqual([
       "warning:first",
       "warning:second",
-      "warning:activity",
+      "warning:activity:first",
+      "warning:activity:second",
       "exit",
       "status",
     ]);

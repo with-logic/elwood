@@ -97,6 +97,7 @@ function createLoops(
   stateDir = tempDir(),
 ): SessionLoops {
   return new SessionLoops({
+    ownsState: () => true,
     stateDir,
     elwoodSessionId: "session-loops",
     definitions,

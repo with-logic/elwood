@@ -15,6 +15,8 @@ back each entry are listed in `prd/14-conformance.md`.
 - Claude and Codex transcript and diagnostic listeners can stop a session without
   moving pending activity past terminal exit, duplicating finalization, or signaling
   an already-exited PTY while its final transcript records are being delivered.
+  A session resumed from an exit listener retains its files, socket, and loops when
+  the old launch finishes a deferred or repeated teardown.
 
 - Preserve Claude `StopFailure` hooks with missing or changed diagnostic fields. Those
   fields are now typed as optional `unknown`, matching ingress. Browser logs show a

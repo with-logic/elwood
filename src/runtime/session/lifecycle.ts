@@ -38,7 +38,7 @@ export abstract class SessionLifecycle {
   automationBlocking = false;
   readonly closing = closingController(() => this.controlQueue.close());
   private readonly agent: ElwoodAgentKind;
-  private readonly runtime: SessionRuntime;
+  protected readonly persist: (record: SessionRecord) => void;
   private readonly reapPolicy: SessionReapPolicy;
   private readonly terminalReplay: TerminalReplayBuffer;
   private readonly cleanupLatch = new CleanupLatch(() => this.stopRuntime());
@@ -63,7 +63,10 @@ export abstract class SessionLifecycle {
     registerPrivateOutputSecrets(this, [runtime.bridgeToken]);
     this.agent = agent;
     this.record = record;
-    this.runtime = runtime;
+    this.persist = (next) => {
+      writeSessionRecord(next, runtime.sessionDir);
+      this.record = next;
+    };
     this.pty = pty;
     this.terminal = terminal;
     this.terminalReplay = terminalReplay;
@@ -82,6 +85,7 @@ export abstract class SessionLifecycle {
       stateDir,
       elwoodSessionId: record.elwoodSessionId,
       definitions: loopDefinitions,
+      ownsState: runtime.stateOwnership.current,
       queue: this.controlQueue,
       emitter: statusEvents,
     });
@@ -179,10 +183,6 @@ export abstract class SessionLifecycle {
     } catch (error) {
       return Promise.reject(toError(error));
     }
-  }
-  protected persist(record: SessionRecord): void {
-    writeSessionRecord(record, this.runtime.sessionDir); // atomic record write FIRST, commit in-memory on success (§8.2)
-    this.record = record;
   }
   protected cleanupRuntime(): Promise<void> {
     this.closing.abort();
