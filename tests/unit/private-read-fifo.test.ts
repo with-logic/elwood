@@ -22,7 +22,7 @@ describe("private file FIFO rejection", () => {
       } catch (error) { console.log(error.message); }
     `;
     const result = await runReader(code, path);
-    expect(result.deadline).toBeUndefined();
+    expect(result.timeoutPhase).toBeUndefined();
     expect(result.status).toBe(0);
     expect(result.stdout).toMatch(/regular file/);
   });
@@ -33,7 +33,7 @@ function runReader(code: string, path: string) {
   return new Promise<{
     readonly status: number | null;
     readonly stdout: string;
-    readonly deadline: string | undefined;
+    readonly timeoutPhase: string | undefined;
   }>((resolve, reject) => {
     const child = spawn(
       process.execPath,
@@ -41,12 +41,12 @@ function runReader(code: string, path: string) {
       { stdio: ["ignore", "pipe", "inherit", "ipc"] },
     );
     let stdout = "";
-    let deadline: string | undefined;
+    let timeoutPhase: string | undefined;
     const expire = (phase: string) => {
-      deadline = phase;
+      timeoutPhase = phase;
       child.kill("SIGKILL");
     };
-    // Under parallel load, launch/import alone exceeded 1s; the FIFO read took <5ms.
+    // Under parallel load, launch/import alone exceeded 1s; the FIFO-rejection path took <5ms.
     let timer = setTimeout(() => expire("reader startup"), 5_000);
     child.once("message", () => {
       clearTimeout(timer);
@@ -61,7 +61,7 @@ function runReader(code: string, path: string) {
     });
     child.once("close", (status) => {
       clearTimeout(timer);
-      resolve({ status, stdout, deadline });
+      resolve({ status, stdout, timeoutPhase });
     });
   });
 }
