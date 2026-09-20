@@ -103,7 +103,7 @@ export function cleanupHarness(
   /** An operation that fails with `dialog` still on screen. */
   const failWith = (dialog: string) =>
     picker.run("set_model", spec, 5000, async (io) => {
-      await io.submit("/model", new AbortController().signal).catch(() => undefined);
+      await io.submit("/model", new AbortController().signal);
       screen.text = dialog;
       io.terminal.snapshot();
       throw failure;

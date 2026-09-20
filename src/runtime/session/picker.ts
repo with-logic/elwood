@@ -150,10 +150,10 @@ export class PickerTransactions {
       signal,
       blocked: this.deps.blocked,
       // The slot already owns the queue, so the command is written directly.
-      submit: (command, pending) => {
+      submit: async (command, pending) => {
         signal.throwIfAborted();
+        await this.deps.submitDirect(command, AbortSignal.any([signal, pending]));
         progress.commandSubmitted = true;
-        return this.deps.submitDirect(command, AbortSignal.any([signal, pending]));
       },
     };
   }

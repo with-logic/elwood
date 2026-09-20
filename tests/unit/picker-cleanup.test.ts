@@ -57,7 +57,11 @@ test.each([
 
 test.each([
   ["ignores Escape", () => {}],
-  ["rejects the write", () => Promise.reject(new Error("write failed"))],
+  [
+    "rejects the write",
+    (input: string) =>
+      input === escapeKey ? Promise.reject(new Error("write failed")) : undefined,
+  ],
 ] as const)("C-API-55 a dialog that survives cleanup holds input until it clears (the CLI %s)", async (_name, react) => {
   const { screen, writes, queue, picker, failWith } = setup(claudeModelPicker, react);
   const failed = expect(failWith(claudePicker)).rejects.toBe(failure);

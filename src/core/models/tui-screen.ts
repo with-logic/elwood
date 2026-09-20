@@ -112,7 +112,7 @@ async function openWithRetries(
   signal.addEventListener("abort", stop, { once: true });
   try {
     return await Promise.race([
-      waitForScreen(input.terminal, input.isOpen, input.timeoutMs, input.label),
+      waitForScreen(input.terminal, input.isOpen, input.timeoutMs, input.label, signal),
       submitFailed,
     ]);
   } finally {
