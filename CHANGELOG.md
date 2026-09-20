@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Keep human-owned trust gates blocked through partial and unknown replacement
+  frames. Queued caller input resumes only after positive native clearance.
+
 - Recognize Codex's native composer beneath numbered transcript output and with
   its older model footer. A newly painted bare caret cannot borrow an earlier
   composer's footer to release input held for a human dialog. Active work, indented

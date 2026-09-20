@@ -2,7 +2,7 @@
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { optionInput } from "../terminal-options.ts";
 import type { TrustClearance } from "./clearance.ts";
-import type { TrustPromptIdFor } from "./prompts.ts";
+import type { TrustPromptId, TrustPromptIdFor } from "./prompts.ts";
 import {
   type Episode,
   newEpisode,
@@ -18,6 +18,7 @@ export { trustPromptVisible } from "./view.ts";
 const episodeTimeoutMs = 5_000;
 export class TrustPromptResponder<A extends ElwoodAgentKind> {
   private episode: Episode | undefined;
+  private humanPrompt: TrustPromptId | undefined;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private readonly attempts = new Set<TrustAttempt>();
   private disposed = false;
@@ -32,16 +33,14 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     this.autotrust = autotrust;
     this.onStateChange = onStateChange;
   }
-
   get inputBlocking(): boolean {
-    return this.episode !== undefined;
+    return this.humanPrompt !== undefined || this.episode !== undefined;
   }
   get blockedPrompt(): TrustPromptIdFor<A> | undefined {
     const id = this.episode?.blocked ? this.episode.candidate.spec.id : undefined;
-    return id as TrustPromptIdFor<A> | undefined;
+    return (this.humanPrompt ?? id) as TrustPromptIdFor<A> | undefined;
   }
 
-  /** The current frame owns recognition; no accumulated transcript grants trust. */
   handle(
     frame: string,
     write: (input: string) => TrustWriteResult,
@@ -134,6 +133,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     clearTimeout(this.timer);
     for (const attempt of this.attempts) attempt.cancel();
     this.episode = undefined;
+    this.humanPrompt = undefined;
   }
 
   private observe(view: TrustView): void {
@@ -151,14 +151,15 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       return;
     }
     if (!(this.autotrust || view.spec.answerPolicy === "always")) {
-      if (view.valid) this.release(true);
+      this.release(view.valid);
+      this.humanPrompt = view.spec.id;
       return;
     }
     if (this.episode?.candidate.key === view.key) {
       this.episode.lastIdentity = choiceIdentity(view);
       return;
     }
-    const blocked = this.episode?.blocked ?? false;
+    const blocked = this.blockedPrompt !== undefined;
     this.release(view.valid);
     // A cleared-and-reappeared class cannot inherit an old pending success.
     for (const attempt of this.attempts) {
@@ -187,6 +188,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     clearTimeout(this.timer);
     this.episode?.attempt?.cancel(cleared);
     this.episode = undefined;
+    this.humanPrompt = undefined;
   }
   private notify(): void {
     try {
