@@ -4,6 +4,7 @@
  */
 
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
+import { isPickerIntervention } from "../../core/models/intervention.ts";
 import { sessionWaitForActivity, sessionWaitForStatus } from "../../core/session-wait.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent } from "../../core/types.ts";
@@ -11,7 +12,6 @@ import { emitSessionWarnings } from "../../core/warnings/session.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import { AgentSessionBase } from "../../runtime/session/base.ts";
-import { notRunningError } from "../../runtime/session/not-running.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
@@ -20,6 +20,7 @@ import { restoreCodexConfig, snapshotCodexConfig } from "../config/restore.ts";
 import { runCodexModelSwitch } from "../config/transaction.ts";
 import { attachCodexImages } from "../images/attach.ts";
 import { codexModelPicker } from "../model-picker.ts";
+import { liveCodexClearance } from "../screen/live-clearance.ts";
 import type { CodexTranscriptWatcher } from "../transcript/index.ts";
 import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";
@@ -32,7 +33,10 @@ import {
 } from "./warnings.ts";
 
 export class CodexSessionImpl extends AgentSessionBase implements CodexSessionApi {
-  protected readonly picker = codexModelPicker;
+  protected readonly picker = {
+    ...codexModelPicker,
+    isClear: liveCodexClearance(() => this.terminal),
+  };
   private readonly bridge: CodexHookBridge;
   private readonly emitter: TypedEmitter<CodexEventMap>;
   private readonly transcriptWatcher: CodexTranscriptWatcher | undefined;
@@ -90,16 +94,15 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     // runs inside it via `around`. Reversing that let a following `sendMessage` dispatch
     // while this call was still waiting for another session's lock, sending under the old
     // model — a FIFO violation the slot exists to prevent.
-    return super.setModel(id, options, (flow) =>
+    return super.setModel(id, options, (flow, signal) =>
       runCodexModelSwitch({
         snapshot: snapshotCodexConfig,
         apply: flow,
         waitForCliExit: () => this.waitForCliExit(),
-        // Still QUEUED behind another session's switch when this one closes: reject now
-        // rather than wait out that transaction and its exit bound. Once this switch holds
-        // the lock it owns config.toml, so cancellation no longer applies.
-        cancel: { signal: this.closing.signal, error: () => notRunningError("codex") },
-        restore: (snapshot) => this.restoreCodexDefault(snapshot),
+        // The picker deadline includes this lock wait. Once acquired, the transaction
+        // owns config.toml until its abort handling and restore finish.
+        cancel: { signal, error: () => signal.reason },
+        restore: (snapshot) => this.restoreCodexDefault(snapshot, signal.reason),
         onRestoreError: (error) =>
           this.emitWarnings([codexRestoreFailedWarning(this.elwoodSessionId, error)]),
       }),
@@ -111,8 +114,12 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     if (!this.closing.signal.aborted) return undefined;
     return this.cliExit.wait();
   }
-  private restoreCodexDefault(snapshot: string | undefined): void {
-    const outcome = restoreCodexConfig(snapshot);
+  private restoreCodexDefault(snapshot: string | undefined, reason: unknown): void {
+    const outcome = isPickerIntervention(reason)
+      ? snapshotCodexConfig() === snapshot
+        ? "unchanged"
+        : "interrupted"
+      : restoreCodexConfig(snapshot);
     if (outcome === "restored" || outcome === "unchanged") return;
     this.emitWarnings([codexRestoreSkippedWarning(this.elwoodSessionId, outcome)]);
   }
@@ -143,7 +150,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
       this.terminal,
       paths,
       signal,
-      () => this.isInputBlocked(),
+      () => this.queuedInputBlocked(),
       () => this.emitWarnings([clipboardRestoreFailedWarning(this.elwoodSessionId)]),
     );
   rememberCodexSessionId(sessionId: string): void {

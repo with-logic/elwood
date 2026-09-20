@@ -31,7 +31,7 @@ test("C-API-55 a failed operation's picker is cancelled before queued input is r
   const message = queue.send("hello", "message");
   await vi.advanceTimersByTimeAsync(300);
   await Promise.all([failed, message]);
-  expect(writes).toEqual([escapeKey]);
+  expect(writes).toEqual(["/model", escapeKey]);
   expect(leaked).toEqual([]);
   expect(picker.blocksInput()).toBe(false);
   queue.close();
@@ -49,7 +49,7 @@ test.each([
   const message = queue.send("hello", "message");
   await vi.advanceTimersByTimeAsync(300);
   await Promise.all([failed, message]);
-  expect(writes).toEqual([escapeKey, escapeKey]);
+  expect(writes).toEqual(["/model", escapeKey, escapeKey]);
   expect(leaked).toEqual([]);
   expect(picker.blocksInput()).toBe(false);
   queue.close();
@@ -57,13 +57,17 @@ test.each([
 
 test.each([
   ["ignores Escape", () => {}],
-  ["rejects the write", () => Promise.reject(new Error("write failed"))],
+  [
+    "rejects the write",
+    (input: string) =>
+      input === escapeKey ? Promise.reject(new Error("write failed")) : undefined,
+  ],
 ] as const)("C-API-55 a dialog that survives cleanup holds input until it clears (the CLI %s)", async (_name, react) => {
   const { screen, writes, queue, picker, failWith } = setup(claudeModelPicker, react);
   const failed = expect(failWith(claudePicker)).rejects.toBe(failure);
   await vi.advanceTimersByTimeAsync(1100);
   await failed;
-  expect(writes).toEqual([escapeKey]);
+  expect(writes).toEqual(["/model", escapeKey]);
   expect(picker.blocksInput()).toBe(true);
   screen.text = "❯ ";
   // ONE clear frame is not proof: a picker repainting between stages is briefly
@@ -106,14 +110,16 @@ test("C-API-55 terminating during cleanup stops it before any further write", as
   await vi.advanceTimersByTimeAsync(1100);
   await failed;
   // The reopened picker never receives its Escape, and a closed session holds nothing.
-  expect(writes).toEqual([escapeKey]);
+  expect(writes).toEqual(["/model", escapeKey]);
   expect(picker.blocksInput()).toBe(false);
 });
 
 test("C-API-55 an unrelated dialog is left open on failure", async () => {
   const { writes, queue, picker, failWith } = setup(claudeModelPicker);
-  await expect(failWith(claudeHookSwitchConfirmation)).rejects.toBe(failure);
-  expect(writes).toEqual([]);
+  const failed = expect(failWith(claudeHookSwitchConfirmation)).rejects.toBe(failure);
+  await vi.advanceTimersByTimeAsync(1100);
+  await failed;
+  expect(writes).toEqual(["/model"]);
   expect(picker.blocksInput()).toBe(false);
   queue.close();
 });

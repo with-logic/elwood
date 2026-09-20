@@ -4,6 +4,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import * as startupFrame from "../../src/core/startup/frame.ts";
 import { startClaude } from "../../src/index.ts";
 import { setCommandRunnerForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
+import * as terminal from "../../src/terminal/headless.ts";
 import { FakePty, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 const prompt =
@@ -19,13 +20,19 @@ test.each([
   "exit",
 ] as const)("C-CLAUDE-22 %s cancels a real session write suspended on render settlement", async (method) => {
   installFakes();
+  const attach = terminal.attachPtyTerminal;
+  let startupTerminal!: terminal.ElwoodTerminal;
+  vi.spyOn(terminal, "attachPtyTerminal").mockImplementation((...args) => {
+    startupTerminal = attach(...args);
+    return startupTerminal;
+  });
   const session = await startClaude({ cwd: tempDir() });
   let release = () => {};
   const pending = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const settle = vi.spyOn(session.terminal, "settled").mockReturnValue(pending);
-  const send = vi.spyOn(session.terminal, "sendInput");
+  const settle = vi.spyOn(startupTerminal, "settled").mockReturnValue(pending);
+  const send = vi.spyOn(startupTerminal, "sendInput");
   const events: string[] = [];
   session.on("warning", (event) => events.push(event.code));
   session.on("activity", (event) => events.push(event.kind));

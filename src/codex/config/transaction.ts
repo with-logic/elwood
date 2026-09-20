@@ -40,7 +40,7 @@ type CodexModelSwitch = {
   readonly waitForCliExit?: () => Promise<unknown> | undefined;
   /**
    * Cancels this switch while it is still WAITING for the process-wide config lock, so a
-   * session that closes behind another session's transaction rejects at once instead of
+   * deadline or session close behind another transaction rejects at once instead of
    * waiting out that transaction (including its exit bound). Once this switch holds the
    * lock it owns config.toml and must finish its snapshot/restore.
    */

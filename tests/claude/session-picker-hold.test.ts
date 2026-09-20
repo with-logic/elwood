@@ -5,6 +5,7 @@
 
 import { afterEach, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
+import { claudeTty } from "../fixtures/trust-composer.ts";
 import { asScreen, claudePicker } from "../helpers/model-pickers.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import { ready, succeedAndRecover } from "./login-helpers.ts";
@@ -29,7 +30,11 @@ test("C-API-55 login and a queued message hold while a model dialog survives cle
   // Enter on the residual picker would persist the highlighted model as the user default.
   expect(pty.writes.slice(written)).toEqual([]);
   // A human dismisses the picker; the held login then runs, and the message after it.
-  pty.emitData(asScreen("❯ "));
+  pty.emitData(
+    `\u001b[2J\u001b[H${claudeTty(
+      "────────\n❯ \n────────\n  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents",
+    )}`,
+  );
   await expect.poll(() => pty.writes.includes("/login")).toBe(true);
   pty.emitData(asScreen("Select login method:\n Claude account with subscription"));
   await succeedAndRecover(cwd, session);

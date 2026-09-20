@@ -91,7 +91,9 @@ test("C-API-55 a human's model picker withholds non-picker writes but not readin
   // But a non-picker write must still stand off it.
   expect(picker.foreignDialogVisible()).toBe(true);
   // Once the human closes it, writes resume.
-  screen.text = "❯ ";
+  screen.text =
+    "Claude Code v2.1.278\n────────\n❯ \n────────\n  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents";
+  for (let read = 0; read < 4; read += 1) expect(picker.foreignDialogVisible()).toBe(true);
   expect(picker.foreignDialogVisible()).toBe(false);
   queue.close();
 });
@@ -125,7 +127,8 @@ test("C-API-55 a survivor is not also reported as a foreign dialog", async () =>
   queue.markReady();
   const failure = new Error("navigation failed");
   await expect(
-    picker.run("set_model", claudeModelPicker, 5_000, () => {
+    picker.run("set_model", claudeModelPicker, 5_000, async (io) => {
+      await io.submit("/model", new AbortController().signal);
       screen.text = claudePicker;
       return Promise.reject(failure);
     }),
