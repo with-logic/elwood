@@ -89,10 +89,19 @@ export function guardedCodexAutomationWrite(
   terminal: InputTerminal,
   write: NonTrustAutomationWriter,
   readFrame: () => string,
+  signal?: AbortSignal,
 ): (input: string, perWrite?: (frameText: string) => boolean) => Promise<AutomationWriteResult> {
   // The generation-aware predicate is supplied PER WRITE by `writeCodexUpdateSkip`, so an
   // older attempt can never validate against a newer appearance's state (#42 round 3).
-  return guardedNonTrustAutomationWrite(terminal, write, readFrame, "codex", codexOptionStillSafe);
+  return guardedNonTrustAutomationWrite(
+    terminal,
+    write,
+    readFrame,
+    "codex",
+    codexOptionStillSafe,
+    () => signal?.aborted ?? false,
+    signal,
+  );
 }
 
 /**

@@ -31,11 +31,7 @@ export class CodexStartupPromptResponder {
   // The update-screen generation that owns the skip latch (0 = none). Only that
   // generation's own completion may release it; a stale completion is a no-op.
   private skipGeneration = 0;
-  // The banner identities that fired a warning on the PREVIOUS frame. A warning fires
-  // only on the EDGE a banner first appears; a banner still present next frame is NOT
-  // re-emitted (that would replay the same live incident indefinitely, C-API-14). A
-  // banner that clears (drops out of this set) and reappears fires again — a genuinely
-  // new occurrence, matching "once when observed" rather than "replay while on screen".
+  // Emit only newly appearing warning banners; clearing re-arms a later occurrence.
   private warnedBanners = new Set<string>();
   private conversationStarted = false;
 
@@ -47,6 +43,10 @@ export class CodexStartupPromptResponder {
   ) {
     this.elwoodSessionId = elwoodSessionId;
     this.trust = new TrustPromptResponder("codex", clearance, autotrust, onStateChange);
+  }
+
+  get closingSignal(): AbortSignal {
+    return this.lifetime.signal;
   }
 
   get blockedPrompt() {
