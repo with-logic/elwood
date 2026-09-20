@@ -27,6 +27,12 @@ back each entry are listed in `prd/14-conformance.md`.
   preserves newer owners, and superseded loop mutations reject instead of silently
   reporting success.
 
+- Keep Codex transcript polling and activity delivery running after a public listener
+  throws, so later records (including turn failure evidence) still reach subscribers.
+  The content-free `transcript_listener_error` warning identifies the failed delivery
+  channel at most once per watcher, after synchronous transcript delivery;
+  `transcript_poll_stopped` remains reserved for actual reader failures.
+
 - Detect startup authentication errors from PTY bytes as soon as they arrive.
   Slow or stalled terminal rendering no longer lets an already-received error
   escape the bounded startup check in either adapter. Startup capture retains only
