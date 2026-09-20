@@ -3,6 +3,7 @@
  * Implements PRD §6.2 and §6.3.
  */
 
+import { inertRecord } from "../core/inert-record.ts";
 import type { HookErrorEvent } from "../core/types.ts";
 import type { BridgeProcessResult } from "./types.ts";
 
@@ -59,5 +60,5 @@ export function hookEventNameFrom(input: unknown): HookErrorEvent["hookEventName
 }
 
 export function noDecision(): BridgeProcessResult {
-  return { exitCode: 0, stdout: "", stderr: "" };
+  return inertRecord({ exitCode: 0, stdout: "", stderr: "" });
 }
