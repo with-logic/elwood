@@ -17,6 +17,7 @@ import { isBlock, requestHook } from "../hooks/dispatch.ts";
 import type { ClaudeHookEvent } from "../hooks/index.ts";
 import { normalizeClaudeHookEvent } from "../normalize.ts";
 import { serializeHookResult } from "../serialize.ts";
+import { freezeHookEvent } from "./freeze-hook-event.ts";
 import { hookObservationBoundary } from "./hook-observation.ts";
 import type { ClaudeSessionImpl } from "./instance.ts";
 
@@ -39,7 +40,7 @@ export function buildClaudeHookHandler(
 ): (input: unknown) => Promise<BridgeProcessResult> {
   const { record, options, emitter, transcriptWatcher, ready } = deps;
   return async (input: unknown): Promise<BridgeProcessResult> => {
-    const event = normalizeClaudeHookEvent(input);
+    const event = freezeHookEvent(normalizeClaudeHookEvent(input));
     const observation = hookObservationBoundary(emitter, record.elwoodSessionId);
     if (event.hook_event_name === "SessionStart")
       deps.getSession()?.rememberClaudeSessionId(event.session_id);

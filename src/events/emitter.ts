@@ -26,7 +26,7 @@ type Listeners = { list: readonly Registration[]; readonly live: Set<Handler> };
 
 export class TypedEmitter<M extends Record<string, unknown>> {
   private readonly handlers: Map<EventKey<M>, Listeners>;
-  private asyncObserverError: ((error: unknown) => void) | undefined;
+  private observerError: ((error: unknown) => void) | undefined;
 
   constructor() {
     this.handlers = new Map();
@@ -72,18 +72,18 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     // listener must not abort iteration and wedge an internal lifecycle
     // subscriber (e.g. interrupt/compact settling on a status transition, or
     // the transcript watcher's flush). The first error is rethrown after the
-    // full fan-out so an enclosing error boundary can still observe it. The
+    // full fan-out, or captured by the active notification scope. The
     // `list` snapshot is immutable, so a listener added mid-emit does not fire
     // this round; `live` is consulted so one a prior handler removed is skipped.
     const snapshot = entry.list;
+    const onError = this.observerError;
     let firstError: unknown;
     let failed = false;
     for (const { handler } of snapshot) {
       if (!entry.live.has(handler)) continue;
       try {
         const returned = handler(payload);
-        if (this.asyncObserverError && types.isPromise(returned))
-          void returned.then(undefined, this.asyncObserverError);
+        if (onError && types.isPromise(returned)) void returned.then(undefined, onError);
       } catch (error) {
         if (!failed) {
           failed = true;
@@ -91,18 +91,21 @@ export class TypedEmitter<M extends Record<string, unknown>> {
         }
       }
     }
-    if (failed) throw firstError;
+    if (failed) {
+      if (onError) onError(firstError);
+      else throw firstError;
+    }
   }
 
-  /** Capture late Promise failures from this synchronous notification scope.
+  /** Capture synchronous throws and late Promise failures in this notification scope.
    * Each returned Promise retains its own sink after nested scopes unwind. */
-  observeAsyncErrors<T>(onError: (error: unknown) => void, operation: () => T): T {
-    const previous = this.asyncObserverError;
-    this.asyncObserverError = onError;
+  observeErrors<T>(onError: (error: unknown) => void, operation: () => T): T {
+    const previous = this.observerError;
+    this.observerError = onError;
     try {
       return operation();
     } finally {
-      this.asyncObserverError = previous;
+      this.observerError = previous;
     }
   }
 

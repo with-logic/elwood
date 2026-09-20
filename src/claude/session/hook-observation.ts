@@ -20,7 +20,7 @@ export function hookObservationBoundary(
   const boundary = {
     run(phase: Phase, operation: () => void): void {
       try {
-        emitter.observeAsyncErrors(() => fail(phase), operation);
+        emitter.observeErrors(() => fail(phase), operation);
       } catch {
         fail(phase);
       }
@@ -39,26 +39,15 @@ export function hookObservationBoundary(
         phase: failedPhase,
         raw: `hook_observer_failed phase=${failedPhase}`,
       };
-      try {
-        emitter.observeAsyncErrors(
-          () => {
-            /* Diagnostic rejections must not recursively warn. */
-          },
-          () => emitter.emit("warning", warning),
-        );
-      } catch {
-        // Diagnostic listeners must not control the hook response.
-      }
-      try {
-        emitter.observeAsyncErrors(
-          () => {
-            /* Diagnostic rejections must not recursively warn. */
-          },
-          () => emitter.emit("activity", activityFromWarning(warning)),
-        );
-      } catch {
-        // Do not recurse when the failing observer also receives warnings.
-      }
+      emitter.observeErrors(
+        () => {
+          /* Diagnostic throws and rejections must not recursively warn. */
+        },
+        () => {
+          emitter.emit("warning", warning);
+          emitter.emit("activity", activityFromWarning(warning));
+        },
+      );
     },
   };
   return boundary;

@@ -1,10 +1,5 @@
-/**
- * Conformance for the fallback initial-ready transition (PRD §5.3, §5.7, C-API-42):
- * when recording Claude's one-shot initial-ready transition throws (a lifecycle
- * listener), the control queue is still released so queued input is never starved,
- * and a bounded, content-free `initial_ready_fallback` warning surfaces the risk that
- * emitted lifecycle events may be stale. The warning is live-only (never persisted).
- */
+/** Hook-scoped initial readiness preserves queue release and telemetry (C-HOOK-22).
+ * Unscoped fallback remains covered by unit/initial-ready-advance.test.ts. */
 
 import { afterEach, describe, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
@@ -26,15 +21,14 @@ async function reachReady(cwd: string, id: string): Promise<void> {
   });
 }
 
-describe("ClaudeSessionApi initial-ready fallback (C-API-42)", () => {
-  test("C-API-42 a throwing ready-status listener still releases the queue and warns", async () => {
+describe("Claude hook-scoped initial readiness (C-HOOK-22)", () => {
+  test("C-HOOK-22 a throwing ready-status listener still releases the queue and warns", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
     const queued = session.sendMessage("hello");
-    // A rogue listener throws on the `ready` transition: recording initial-ready fails
-    // at the EMIT stage, so the queue must still be released directly and a content-free
-    // `initial_ready_fallback` warning must surface (live-only, never persisted).
+    // Scoped capture lets the ready transition complete, including queue release
+    // and derived activity. The hook boundary reports one content-free failure.
     const warnings: { code: string; raw: string }[] = [];
     session.on("warning", (w) => warnings.push(w));
     session.on("status", (event) => {
@@ -44,18 +38,18 @@ describe("ClaudeSessionApi initial-ready fallback (C-API-42)", () => {
     await queued;
     // Anti-starvation: the queued message was released despite the throw.
     expect(ptys[0]!.writes[0]).toBe(PASTE);
-    const warning = warnings.find((w) => w.code === "initial_ready_fallback");
+    const warning = warnings.find((w) => w.code === "hook_observer_failed");
     expect(warning).toMatchObject({
-      code: "initial_ready_fallback",
+      code: "hook_observer_failed",
       agent: "claude",
       source: "lifecycle",
     });
-    expect(warning?.raw).toBe("initial_ready_fallback");
+    expect(warning?.raw).toBe("hook_observer_failed phase=lifecycle");
     // The reason field was removed: there is no persist step, only a listener throw.
     expect(warning).not.toHaveProperty("reason");
   });
 
-  test("C-API-42 a throwing WARNING sink during fallback delivery cannot re-starve the queue", async () => {
+  test("C-HOOK-22 a throwing WARNING sink during hook diagnostic delivery cannot re-starve the queue", async () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
@@ -63,7 +57,7 @@ describe("ClaudeSessionApi initial-ready fallback (C-API-42)", () => {
     session.on("status", (event) => {
       if (event.status === "ready") throw new Error("rogue status listener");
     });
-    // A second rogue listener throws while DELIVERING the fallback warning; the
+    // A second rogue listener throws while DELIVERING the hook warning; the
     // queue release already happened first, so the message is never starved.
     session.on("warning", () => {
       throw new Error("rogue warning sink");

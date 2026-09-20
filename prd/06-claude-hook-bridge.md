@@ -128,6 +128,13 @@ observer failures are contained without recursive diagnostics (C-HOOK-22).
 Returned observer Promises are observed without awaiting them; their rejections
 are contained even after the hook reply completes. The first observed failure
 selects the diagnostic phase, and late failures do not emit additional warnings.
+Within a hook notification scope, synchronous listener failures are captured at
+each emission, so later derived status activity and committed transcript records
+are still delivered. Outside this scope, ordinary synchronous emission retains
+its existing throw-after-fan-out behavior. A hook-scoped ready-status listener
+failure reports `hook_observer_failed`; because the ready transition completes, it
+does not also report `initial_ready_fallback`. C-API-42 still applies to a transition
+that actually throws outside the notification boundary.
 
 Elwood MUST model Claude hook inputs and outputs as discriminated TypeScript
 unions.
@@ -139,6 +146,11 @@ unions.
 - Unknown future tools and MCP tools may use `Record<string, unknown>` or
   `unknown` with a safe raw tool name.
 - Hook bridge JSON must be runtime-validated before it reaches handlers.
+  The normalized, bridge-owned JSON event is deeply frozen before any observation
+  or handler dispatch. Hook observers and activity raw payloads cannot mutate
+  routing, tool inputs, response validation, or readiness/Stop bookkeeping.
+  Freezing introduces no additional input depth or size limit beyond the bridge
+  request contract.
 - Before result validation, Claude handler responses are copied into detached data.
   Validation and wire serialization use that same snapshot, so later handler mutation
   cannot replace a validated rewrite. Wire output and blocking decisions are captured

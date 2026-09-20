@@ -16,10 +16,10 @@ test("C-HOOK-22 nested notification scopes retain distinct rejection sinks", asy
   const inner: unknown[] = [];
   const outer: unknown[] = [];
   expect(() =>
-    emitter.observeAsyncErrors(
+    emitter.observeErrors(
       (error) => outer.push(error),
       () => {
-        emitter.observeAsyncErrors(
+        emitter.observeErrors(
           (error) => inner.push(error),
           () => emitter.emit("event", 1),
         );
