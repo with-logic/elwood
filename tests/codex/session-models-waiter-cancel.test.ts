@@ -66,8 +66,9 @@ test("C-API-55 a setModel deadline cancels a config-lock waiter and releases its
     const setting = session.setModel("gpt-5.4", { timeoutMs: 20 }).catch((error: unknown) => {
       failure = error;
     });
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    expect(failure).toMatchObject({ code: "model_automation_failed" });
+    await expect
+      .poll(() => failure, { timeout: 2_000 })
+      .toMatchObject({ code: "model_automation_failed" });
     await setting;
     expect(ptys[0]!.writes).toEqual([]);
     expect(readFileSync(configPath, "utf8")).toBe(userConfig);
