@@ -45,7 +45,7 @@ class RunnerTest(unittest.TestCase):
         env = {**os.environ, 'PATH': f'{self.bin}:{os.environ["PATH"]}',
                'OPENAI_API_KEY': api_key, 'REVIEW_TEST_ROOT': str(self.root),
                'REVIEW_TEST_MODE': mode, 'ELWOOD_REVIEW_LENS_ATTEMPTS': '2',
-               'ELWOOD_REVIEW_PROCESS_TIMEOUT_SECONDS': '3' if mode == 'timeout' else '10', 'ELWOOD_REVIEW_DEADLINE_SECONDS': '30'}
+               'ELWOOD_REVIEW_PROCESS_TIMEOUT_SECONDS': '3' if mode.endswith('timeout') else '10', 'ELWOOD_REVIEW_DEADLINE_SECONDS': '30'}
         return subprocess.run(['bash', str(self.root / 'scripts/review/run.sh'), base or self.base],
                               env=env, capture_output=True, text=True, timeout=40)
 
@@ -123,6 +123,8 @@ class RunnerTest(unittest.TestCase):
     def test_timed_out_lens_is_not_retried_and_cannot_approve(self):
         started = time.monotonic()
         result = self.run_review('timeout')
+        self.assertIn('category=timeout exit=124', result.stderr)
+        self.assertIn('was killed at its wall-clock cap', result.stderr)
         self.assertLess(time.monotonic() - started, 12)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual((self.root / 'call-review-architecture-conventions').read_text(), '1', result.stderr)
@@ -188,12 +190,11 @@ class RunnerTest(unittest.TestCase):
         self.assertFalse(list(self.root.glob('call-*')))
 
     def test_synthesis_failure_has_bounded_phase_category_and_timing(self):
-        for mode, category in [('synth-failed', 'process exit=2'), ('synth-killed', 'killed exit=137')]:
+        for mode, category in [('synth-failed', 'process exit=2'), ('synth-killed', 'killed exit=137'), ('synth-timeout', 'timeout exit=124')]:
             result = self.run_review(mode)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn(f'phase=synthesis category={category} elapsed_seconds=', result.stderr)
             self.assertNotIn('PRIVATE-SYNTHESIS-TEXT', result.stderr)
-
 
 if __name__ == '__main__':
     unittest.main()

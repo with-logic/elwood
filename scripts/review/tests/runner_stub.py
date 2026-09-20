@@ -67,6 +67,8 @@ if match:
         print('No findings.')
     (root / ('done-' + name)).touch()
 else:
+    if mode == 'synth-timeout':
+        time.sleep(20)
     if mode == 'synth-killed':
         os.kill(os.getpid(), signal.SIGKILL)
     if mode == 'synth-failed':
