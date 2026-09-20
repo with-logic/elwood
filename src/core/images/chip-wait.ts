@@ -7,6 +7,7 @@
  */
 
 import { elwoodError } from "../errors.ts";
+import { composerClearKeys, unsafeWriteRetryMs } from "../input/constants.ts";
 
 /** The terminal surface an attach needs: send bytes and read the rendered screen. */
 export type AttachTerminal = {
@@ -17,11 +18,6 @@ export type AttachTerminal = {
 /** True while a blocking human-decision dialog is on screen (C-API-37 safety). */
 export type BlockedGuard = () => boolean;
 
-const blockedPollMs = 50;
-// Ctrl+U (kill to line start) + Ctrl+K (kill to line end) discard the composer
-// draft on both TUIs, clearing any staged image chips/paths.
-const clearComposerKeys = "\u0015\u000b";
-
 /**
  * Best-effort discard of any staged composer content (image chips, pasted paths)
  * after a mid-attach failure, so the rejected submission's images cannot leak
@@ -29,7 +25,7 @@ const clearComposerKeys = "\u0015\u000b";
  */
 export async function clearComposer(terminal: AttachTerminal): Promise<void> {
   try {
-    await terminal.sendInput(clearComposerKeys);
+    await terminal.sendInput(composerClearKeys);
   } catch {
     // Best-effort: a clear failure must not replace the primary attach error.
   }
@@ -49,7 +45,7 @@ export async function sendWhenUnblocked(
 ): Promise<void> {
   while (blocked?.()) {
     if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
-    await delay(blockedPollMs);
+    await delay(unsafeWriteRetryMs);
   }
   // Re-check AFTER the loop: an abort that lands as the dialog clears in the same
   // poll must not let a paste/Ctrl+V reach the PTY on a closing session.
