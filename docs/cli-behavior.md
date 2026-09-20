@@ -296,7 +296,10 @@ start of the frame, followed only by native startup tip and warning rows. Its
 header, bordered spacer, model, directory, and bottom border must occupy their
 verified consecutive rows; erased or missing interior rows cannot prove clearance.
 Blank spacing outside the box remains valid. The welcome box alone cannot authorize a bare caret. A later bare
-caret cannot borrow an earlier composer's footer to prove clearance. The Claude predicate uses
+caret cannot borrow an earlier composer's footer to prove clearance. Native approval
+questions, selected numbered or Yes/No options, and cursor option blocks above the
+composer also veto clearance during partial repaints; ordinary numbered transcript
+steps do not. The Claude predicate uses
 `src/core/trust/clearance.ts` to reject numbered options and non-composer caret rows.
 
 A startup-only real PTY probe of Codex 0.142.5 on 2026-09-19 confirmed the

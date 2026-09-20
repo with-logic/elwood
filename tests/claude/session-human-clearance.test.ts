@@ -13,6 +13,10 @@ test("C-TRUST-01 Claude human trust holds caller input through a partial replace
   installFakes();
   const session = await startClaude({ cwd: tempDir(), autotrust: false });
   const pty = ptys[0]!;
+  const startup: string[] = [];
+  session.on("activity", (event) => {
+    if (event.kind === "startup_prompt") startup.push(event.kind);
+  });
   try {
     vi.useFakeTimers();
     const queued = session.sendMessage("after trust");
@@ -24,6 +28,8 @@ test("C-TRUST-01 Claude human trust holds caller input through a partial replace
     await vi.advanceTimersByTimeAsync(500);
     expect(pty.writes).not.toContain(callerText);
     expect(session.status).toBe("blocked");
+    expect(pty.writes).toEqual([]);
+    expect(startup).toEqual([]);
     await session.sendKeys("\u001b");
     expect(pty.writes).toContain("\u001b");
     pty.emitData(`\u001b[2J\u001b[H${tty(claudeComposer)}`);

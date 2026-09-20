@@ -15,6 +15,13 @@ test.each([
   ["human gate title-only work", false, `\u001b]0;⠋ project\u0007${tty(codexComposer)}`],
   ["human gate bare caret", false, tty("› \n  gpt-5.5 high")],
   [
+    "human gate partial approval over old composer",
+    false,
+    tty(
+      `Would you like to run the following command?\n› 1. Yes, proceed\n  2. No\n${codexComposer}`,
+    ),
+  ],
+  [
     "human gate erased welcome body",
     false,
     tty(
@@ -43,6 +50,10 @@ test.each([
     });
   }
   const pty = ptys.at(-1)!;
+  const startup: string[] = [];
+  session.on("activity", (event) => {
+    if (event.kind === "startup_prompt") startup.push(event.kind);
+  });
   try {
     vi.useFakeTimers();
     const queued = session.sendMessage("after trust");
@@ -54,6 +65,8 @@ test.each([
     await vi.advanceTimersByTimeAsync(500);
     expect(pty.writes).not.toContain(callerText);
     expect(session.status).toBe("blocked");
+    expect(pty.writes).toEqual([]);
+    expect(startup).toEqual([]);
     await session.sendKeys("\u001b");
     expect(pty.writes).toContain("\u001b");
     expect(pty.writes).not.toContain(callerText);

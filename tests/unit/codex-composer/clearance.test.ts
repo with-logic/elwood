@@ -87,3 +87,22 @@ test.each([
   const rows = composerWithoutModelFooter.split("\n").slice(0, count);
   expect(codexTrustClearance(`${rows.join("\n")}\n› Ask Codex to do anything`)).toBe(false);
 });
+
+test.each([
+  "Would you like to run the following command?\n  1. Yes, proceed",
+  "Allow command?\n  1. Yes",
+  "› 1. Yes, proceed\n  2. No",
+  "  1. Yes, proceed\n  2. No",
+  "› Enable admin access\n  Keep current permissions",
+  "› Earlier user prompt\n\n• Prior reply\n› Enable admin access\n  Keep current permissions",
+  "› Yes, proceed",
+])("C-TRUST-01 partial approval above stale native composer stays held: %s", (dialog) => {
+  expect(codexTrustClearance(`${dialog}\n${codexSmallComposer}`)).toBe(false);
+});
+
+test.each([
+  "• The assistant explains the next steps.\n1. First step\n2. Second step",
+  "› Explain the codebase\n\n• Here is the explanation.",
+])("C-TRUST-01 ordinary transcript above native composer remains valid: %s", (transcript) => {
+  expect(codexTrustClearance(`${transcript}\n${codexSmallComposer}`)).toBe(true);
+});

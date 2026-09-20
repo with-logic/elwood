@@ -6,7 +6,7 @@
 
 import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
-import { codexWorkingTitle } from "./screen/working.ts";
+import { codexWorkingScreen, codexWorkingTitle } from "./screen/working.ts";
 import { CodexUpdatePromptTracker, codexUpdatePromptVisible } from "./update-prompt.ts";
 
 export { codexComposerClearance as codexTrustClearance } from "./screen/clearance.ts";
@@ -31,7 +31,7 @@ const verifiedAgainst = "codex-cli 0.142.5";
 function codexScreenFactRules(updatePromptVisible: (frame: string) => boolean): ScreenFactRule[] {
   return [
     { id: "codex-composer-marker", fact: "composer_visible", all: [/^\s*›/m] },
-    { id: "codex-working-spinner", fact: "working_visible", all: [/esc to interrupt/i] },
+    { id: "codex-working-spinner", fact: "working_visible", all: [codexWorkingScreen] },
     {
       id: "codex-working-title",
       fact: "working_visible",
