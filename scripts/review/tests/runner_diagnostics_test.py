@@ -179,6 +179,7 @@ class AttemptDiagnosticsTest(unittest.TestCase):
         reports = list(fixture.root.glob('capped-attempt.*.failure'))
         self.assertEqual(len(reports), 1)
         self.assertTrue(reports[0].read_text().startswith('lens=synthesis attempt=1 exit=2\n'))
+        self.assertIn('PRIVATE-SYNTHESIS-TEXT', attempt_diagnostics(fixture.root))
 
 
 if __name__ == '__main__':
