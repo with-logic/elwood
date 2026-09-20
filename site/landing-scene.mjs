@@ -219,7 +219,8 @@ export class LandingScene {
   interact() {
     this.director.interact();
     this.requestVersion++;
-    this.bank.cancelPreparation();
+    // Boot owns the initial idle preparation until it marks the scene ready.
+    if (this.ready) this.bank.cancelPreparation();
     this.pauses.delete("reduced");
     this.start();
   }
@@ -249,7 +250,7 @@ export class LandingScene {
     this.sprint = false;
     this.pressed = NO_INPUT;
     this.requestVersion++;
-    this.bank.cancelPreparation();
+    if (this.ready) this.bank.cancelPreparation();
   }
   get dragging() {
     return this.drag !== null;
@@ -335,7 +336,8 @@ export class LandingScene {
     p.y += y - this.drag.socket.y;
     this.drag.point = point;
     this.drag.socket = { x, y };
-    if (userInput) this.interact();
+    // Pointer movement belongs to this drag; it must not cancel its pickup sheets.
+    if (userInput) this.director.interact();
   }
   nudgeDrag(dx, dy) {
     if (this.drag) this.moveDrag({ x: this.drag.point.x + dx, y: this.drag.point.y + dy });

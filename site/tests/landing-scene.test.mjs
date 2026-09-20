@@ -533,3 +533,74 @@ for (const cancelled of [false, true]) {
     }
   });
 }
+
+test("pre-ready interaction and blur preserve boot's complete idle preparation", async () => {
+  const ready = [];
+  const own = new LandingScene(canvas(), { onReady: () => ready.push(own.bank.animationReady("idle")) });
+  const fetch = globalThis.fetch;
+  const gate = Promise.withResolvers();
+  const entered = Promise.withResolvers();
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("idle/page-001.webp")) { entered.resolve(); await gate.promise; }
+    return fetch(url);
+  };
+  const boot = own.boot();
+  try {
+    await entered.promise;
+    own.interact();
+    own.clearInput();
+    own.pause("hidden", true);
+    own.pause("hidden", false);
+    assert.equal(own.ready, false);
+    assert.deepEqual(ready, []);
+    gate.resolve();
+    await boot;
+    assert.deepEqual(ready, [true], "onReady requires both idle sheets even after pre-ready input");
+    assert.equal(own.bank.activePages.size, 2);
+    assert.ok(own.lastPose);
+  } finally {
+    gate.resolve();
+    await boot;
+    own.pause("test", true);
+    globalThis.fetch = fetch;
+  }
+});
+
+test("first pickup preparation survives immediate and repeated drag movement", async () => {
+  const own = new LandingScene(canvas());
+  await own.boot();
+  const fetch = globalThis.fetch;
+  const gate = Promise.withResolvers();
+  const entered = Promise.withResolvers();
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("pickup-wriggle/page-005.webp")) { entered.resolve(); await gate.promise; }
+    return fetch(url);
+  };
+  assert.equal(own.beginDrag({ x: 400, y: 500 }), true);
+  const preparation = own.bank.preparationTail;
+  try {
+    await Promise.race([
+      entered.promise,
+      preparation.then(() => assert.fail("pickup preparation ended before requesting its final sheet")),
+    ]);
+    for (let i = 0; i < 30; i++) own.moveDrag({ x: 410 + i, y: 450 - i });
+    assert.equal(own.bank.animationReady("pickup-wriggle"), false);
+    gate.resolve();
+    await preparation;
+    assert.equal(own.bank.animationReady("pickup-wriggle"), true);
+    own.paint(0);
+    assert.equal(own.bank.activeName, "pickup-wriggle");
+    for (let i = 0; i < 30; i++) own.moveDrag({ x: 460 + i, y: 430 + i });
+    const clip = own.bank.clips.get("pickup-wriggle");
+    for (let i = 0; i < clip.frames.length; i++) assert.ok(own.bank.frame("pickup-wriggle", i));
+    const version = own.requestVersion;
+    own.endDrag();
+    assert.ok(own.requestVersion > version, "ending the drag invalidates its preparation lifetime");
+    assert.equal(own.dragging, false);
+  } finally {
+    gate.resolve();
+    await preparation;
+    own.pause("test", true);
+    globalThis.fetch = fetch;
+  }
+});
