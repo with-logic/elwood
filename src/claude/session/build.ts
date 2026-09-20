@@ -51,12 +51,16 @@ export async function buildClaudeSession(
   const emitter = new TypedEmitter<ClaudeEventMap>();
   registerInitialHooks(emitter, options.hooks);
   let session: ClaudeSessionImpl | undefined;
-  // ALL startup-region warnings — startup-prompt (frame path) AND transcript
-  // drop/read-error diagnostics — route through ONE gate that buffers anything emitted
-  // before startClaude resolves and flushes it on a deferred macrotask after return,
-  // so every source stays observable without late-subscriber replay (C-API-14).
+  // Buffer startup diagnostics until callers can subscribe; disposal cancels write warnings.
   const warnGate = createStartupWarningGate({
-    emitWarnings: (w) => deliverFrameWarnings(session, w),
+    emitWarnings: (w) =>
+      deliverFrameWarnings(
+        session,
+        w.filter(
+          (warning) =>
+            warning.code !== "startup_prompt_write_failed" || !session?.closing.signal.aborted,
+        ),
+      ),
   });
   const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => warnGate);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
@@ -64,8 +68,7 @@ export async function buildClaudeSession(
   // frame arms a starvation deadline so a missing/failed hook cannot starve the queue,
   // and on resume the first composer frame also marks ready (PRD §5.3, C-API-28).
   const autotrust = options.autotrust ?? false;
-  // Observers are built BEFORE the readiness gate so its callback never closes
-  // over a binding declared later in this function.
+  // Build observers before the readiness callback captures them.
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
   const turnWatcher = observers.turn;
   const readiness = createReadinessGate(() => {
@@ -181,8 +184,7 @@ export async function buildClaudeSession(
           active.submitExit(),
         );
       });
-      // Release the startup buffer once the check settles (§9.4).
-      await assertStartupThenRelease("claude", startupOutput, () => startupExit);
+          await assertStartupThenRelease("claude", startupOutput, () => startupExit);
       active.submitEvidence("startup_usable");
       frameObserver.blockOnceLive(active);
     },
