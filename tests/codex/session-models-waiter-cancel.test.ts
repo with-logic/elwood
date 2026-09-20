@@ -110,7 +110,7 @@ test("C-API-55 a config-lock timeout never cancels a picker opened by someone el
     void queued.catch(() => undefined);
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(ptys[0]!.writes).toEqual([]);
-    ptys[0]!.emitData(asScreen("› "));
+    ptys[0]!.emitData(asScreen("› Ask Codex to do anything\n  gpt-5.5 high"));
     await session.terminal.settled();
     await queued;
     expect(ptys[0]!.writes).toEqual(["\u001b[200~after foreign picker\u001b[201~", "\r"]);

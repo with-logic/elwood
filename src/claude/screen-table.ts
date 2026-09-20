@@ -22,7 +22,7 @@ export const claudeTrustClearance: TrustClearance = nativeComposerClearance(
   claudeComposerRow,
   (frame) =>
     (/Claude Code v[\d.]+/.test(frame) ||
-      /^\s*-- INSERT -- ⏵⏵ don['’]t ask on \(shift\+tab to cycle\) · ← for agents\s*$/m.test(
+      /^\s*-- INSERT -- ⏵⏵ (?:don['’]t ask|auto mode) on \(shift\+tab to cycle\) · ← for agents\s*$/m.test(
         frame,
       )) &&
     /(?:^|\n)[─━]{3,}\s*\n❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*\n[─━]{3,}/.test(frame),

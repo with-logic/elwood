@@ -4,6 +4,7 @@
  */
 
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
+import { isPickerIntervention } from "../../core/models/intervention.ts";
 import { sessionWaitForActivity, sessionWaitForStatus } from "../../core/session-wait.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent } from "../../core/types.ts";
@@ -97,7 +98,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
         // The picker deadline includes this lock wait. Once acquired, the transaction
         // owns config.toml until its abort handling and restore finish.
         cancel: { signal, error: () => signal.reason },
-        restore: (snapshot) => this.restoreCodexDefault(snapshot),
+        restore: (snapshot) => this.restoreCodexDefault(snapshot, signal.reason),
         onRestoreError: (error) =>
           this.emitWarnings([codexRestoreFailedWarning(this.elwoodSessionId, error)]),
       }),
@@ -109,8 +110,12 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     if (!this.closing.signal.aborted) return undefined;
     return this.cliExit.wait();
   }
-  private restoreCodexDefault(snapshot: string | undefined): void {
-    const outcome = restoreCodexConfig(snapshot);
+  private restoreCodexDefault(snapshot: string | undefined, reason: unknown): void {
+    const outcome = isPickerIntervention(reason)
+      ? snapshotCodexConfig() === snapshot
+        ? "unchanged"
+        : "interrupted"
+      : restoreCodexConfig(snapshot);
     if (outcome === "restored" || outcome === "unchanged") return;
     this.emitWarnings([codexRestoreSkippedWarning(this.elwoodSessionId, outcome)]);
   }
@@ -141,7 +146,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
       this.terminal,
       paths,
       signal,
-      () => this.callerInputBlocked(),
+      () => this.queuedInputBlocked(),
       () => this.emitWarnings([clipboardRestoreFailedWarning(this.elwoodSessionId)]),
     );
   rememberCodexSessionId(sessionId: string): void {

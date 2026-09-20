@@ -4,6 +4,7 @@ import { elwoodError } from "../../core/errors.ts";
 import type { InputTerminal } from "../../core/input/abort.ts";
 import type { ModelPickerIo, ModelPickerSpec } from "../../core/models/picker.ts";
 import type { ScreenTerminal } from "../../core/models/tui-screen.ts";
+import { ForeignPickerHold } from "./foreign-picker.ts";
 import {
   abortable,
   cleanUpDialog,
@@ -15,6 +16,8 @@ import {
 
 type PickerDeps = {
   readonly controlQueue: ControlQueue;
+  readonly observeRendered?: (listener: () => void) => void;
+  readonly inputSignal?: () => AbortSignal;
   readonly submitDirect: (command: string, signal: AbortSignal) => Promise<void>;
   /** Also carries the optional observation barrier (`settled`/`renderFailed`) when real. */
   readonly terminal: ScreenTerminal & InputTerminal;
@@ -25,11 +28,14 @@ type PickerDeps = {
 
 export class PickerTransactions {
   private readonly deps: PickerDeps;
+  private readonly foreign = new ForeignPickerHold();
+  private active: { signal: AbortSignal; progress: Progress } | undefined;
   private survivor: ModelPickerSpec | undefined;
   /** Consecutive frames without the survivor; it is forgotten only after a stable run. */
   private clearStreak = 0;
   constructor(deps: PickerDeps) {
     this.deps = deps;
+    deps.observeRendered?.(() => this.foreignDialogVisible());
   }
 
   /**
@@ -67,7 +73,8 @@ export class PickerTransactions {
    */
   foreignDialogVisible(): boolean {
     if (this.survivor !== undefined) return false;
-    return this.deps.picker().activeDialog(this.deps.terminal.snapshot().text, ours) !== undefined;
+    if (this.active?.progress.commandSubmitted && !this.active.signal.aborted) return false;
+    return this.foreign.observe(this.deps.terminal.snapshot().text, this.deps.picker());
   }
 
   /**
@@ -97,6 +104,7 @@ export class PickerTransactions {
         async (closed) => {
           // Elwood cannot tell its own dialog from picker text that precedes its command: a
           // human's dialog, or a transcript quote the unanchored `isOpen` would drive.
+          const human = this.deps.inputSignal?.();
           const before = this.deps.terminal.snapshot().text;
           // We have NOT written `/model` yet, so nothing here is ours. We still ask the
           // grammar under a hypothetical authority: anything it would call a dialog is
@@ -112,13 +120,20 @@ export class PickerTransactions {
             dialogSeen: false,
             keyWritten: false,
           };
-          const signal = AbortSignal.any([closed, deadline.signal]);
+          const ownership = AbortSignal.any(human === undefined ? [closed] : [closed, human]);
+          const signal = AbortSignal.any([ownership, deadline.signal]);
+          this.active = { signal: ownership, progress };
+          const revoked = () => this.foreign.observe(this.deps.terminal.snapshot().text, spec);
+          human?.addEventListener("abort", revoked, { once: true });
           try {
             result = await work(this.io(signal, spec, progress), signal);
           } catch (error) {
-            if (!closed.aborted && progress.commandSubmitted)
-              await this.cleanUp(spec, progress, closed);
+            if (!ownership.aborted && progress.commandSubmitted)
+              await this.cleanUp(spec, progress, ownership);
             throw error;
+          } finally {
+            human?.removeEventListener("abort", revoked);
+            this.active = undefined;
           }
         },
         { signal: deadline.signal, error: () => deadline.signal.reason },

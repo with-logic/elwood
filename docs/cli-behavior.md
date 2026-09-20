@@ -714,3 +714,22 @@ side-effect-free signal. C-CLI-21 through C-CLI-24.
 - Per the testing pyramid in `CLAUDE.md`: anything that interfaces with the real
   CLI SHOULD have a real-CLI e2e. Every fact in this file is one a unit test could
   not have caught.
+
+### Model-picker dispatch and post-cancel composer (2026-09-19)
+
+A serial native PTY probe on Codex 0.155.1 and Claude Code 2.1.278 typed
+`/model`, waited 300 ms, then sent Enter. Neither CLI displayed its model picker
+before Enter; both displayed it afterward. Model test drivers must therefore wait
+for the command's submitting Enter before painting the picker. No model prompt was
+submitted in this probe.
+
+Codex returned to its known `Ask Codex to do anything` composer and model/effort
+footer after Escape; automated `listModels` then returned five rows. Claude kept
+`❯ /model` and `Kept model as …` in the transcript above its final fenced composer.
+Its idle footer read `-- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle) · ← for
+agents`. A whole-screen clearance predicate that rejects every earlier caret
+therefore rejects this genuine post-picker idle frame. Model clearance must use
+the last composer, its enclosing rules, and its native footer; a bare caret or a
+partial model dialog is insufficient. The sanitized Claude frame is retained in
+`tests/fixtures/claude-2.1.278/model-cancelled.txt`. With this recognition fix,
+Claude also completed automated `listModels` and returned five rows (C-API-55).
