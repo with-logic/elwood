@@ -105,7 +105,7 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   }
   // Claude reads a pasted absolute path; the paste is held while a dialog shows (C-API-45/37).
   protected attachImages = (paths: readonly string[], signal: AbortSignal): Promise<void> =>
-    attachClaudeImages(this.terminal, paths, signal, () => this.queuedInputBlocked());
+    attachClaudeImages(this.inputTerminal, paths, signal, () => this.queuedInputBlocked());
   // A narrow session holds the PHYSICAL resize until readiness; it just records the
   // requested geometry now and restores it at the initial-ready transition. A wide
   // session (100+ cols) never deferred; it resizes now.
@@ -184,7 +184,8 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     // Login writes `/login` and an Enter outside any picker transaction, so it must also
     // stand off a model dialog a human opened: Enter there applies the highlighted row.
     const blocked = () => this.isInputBlocked() || this.foreignDialogBlocksWrite();
-    const deps = { controlQueue: this.controlQueue, terminal: this.terminal, blocked, onReady };
+    const terminal = this.inputTerminal;
+    const deps = { controlQueue: this.controlQueue, terminal, blocked, onReady };
     return this.inSession(() => runSessionLogin(deps, options));
   }
   protected stopRuntime(): Promise<void> {

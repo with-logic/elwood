@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Clear cancelled staged text and images before successor input, deferring cleanup
+  through dialogs. Failed cleanup holds the draft; raw human input revokes cleanup
+  authority, and shutdown drops deferred cleanup without waiting.
+
 - Select Codex update-skip choices after the action when an update action is visible;
   action-less continuation frames may still select a safe option. Selection uses the
   current frame’s numbering and never selects an update action whose label also
