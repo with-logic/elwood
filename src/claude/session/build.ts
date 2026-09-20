@@ -57,8 +57,7 @@ export async function buildClaudeSession(
       deliverFrameWarnings(
         session,
         w.filter(
-          (warning) =>
-            warning.code !== "startup_prompt_write_failed" || !session?.closing.signal.aborted,
+          (warning) => warning.code !== "startup_prompt_write_failed" || !promptResponder.closing,
         ),
       ),
   });
