@@ -16,7 +16,9 @@ def stop_group(pid, sig):
 def run(seconds, command):
     child = subprocess.Popen(command, start_new_session=True)
     try:
-        return child.wait(timeout=seconds)
+        code = child.wait(timeout=seconds)
+        # Popen encodes signals as negatives; the shell retry policy expects 128+signal.
+        return 128 - code if code < 0 else code
     except subprocess.TimeoutExpired:
         return 124
     finally:
