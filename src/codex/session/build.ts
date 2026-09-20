@@ -96,11 +96,11 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
   }, resumed);
   const { ready } = readiness;
-  const autotrust = options.autotrust ?? false;
+  const clearance = liveCodexClearance(() => terminal);
   const observers = {
     turn: new TurnStateWatcher(),
     attention: new AttentionWatcher(),
-    table: codexScreenFactTableForTrustPolicy(autotrust),
+    table: codexScreenFactTableForTrustPolicy(options.autotrust ?? false, clearance),
     agent: "codex" as const,
     elwoodSessionId: record.elwoodSessionId,
     emitActivity: (event: activity.ElwoodActivityEvent) => emitter.emit("activity", event),
@@ -113,9 +113,9 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   );
   const promptResponder = new CodexStartupPromptResponder(
     record.elwoodSessionId,
-    autotrust,
+    options.autotrust ?? false,
     frameObserver.refresh,
-    liveCodexClearance(() => terminal),
+    clearance,
   );
   const terminal = attachPtyTerminal(
     options.initialSize ?? defaultTerminalSize,

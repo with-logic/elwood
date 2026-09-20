@@ -10,76 +10,15 @@ import {
   type NonTrustAutomationWriter,
 } from "../core/startup/barrier.ts";
 import type { StartupWriteCompletion } from "../core/startup/write.ts";
-import { nonOptionText, numberedOptions } from "../core/terminal-options.ts";
+import { numberedOptions } from "../core/terminal-options.ts";
 import type { TrustWriteResult } from "../core/trust/responder.ts";
-import {
-  codexUpdateActionPattern,
-  codexUpdateOptionPattern,
-  safeUpdateOption,
-} from "./update/selection.ts";
+import { codexUpdatePromptVisible, isSafeUpdateContinuation } from "./update/recognition.ts";
+import { codexUpdateOptionPattern, safeUpdateOption } from "./update/selection.ts";
 import { codexUpdateChoiceIdentity, settledFrameKeepsChoice } from "./update-identity.ts";
 
+export { codexUpdatePromptVisible, updateScreenBanner } from "./update/recognition.ts";
 export { codexUpdateOptionPattern } from "./update/selection.ts";
-/** The first-party banner; its version pair distinguishes one appearance from the next. */
-export const updateScreenBanner =
-  /^[^\S\r\n]*(?:Update available!\s+\d+\.\d+\.\d+\s*(?:->|→)\s*\d+\.\d+\.\d+|A new version of Codex is available[.!]?)[^\S\r\n]*$/im;
-
-/**
- * A captured first-party banner alone counts so a partial layout fails safe
- * before its options paint. Generic "update available" prose does not count;
- * an option-only frame must carry both the update and safe choices.
- */
-export function codexUpdatePromptVisible(frameText: string): boolean {
-  if (updateScreenBanner.test(frameText)) return true;
-  const options = numberedOptions(frameText);
-  return (
-    options.some((option) => codexUpdateActionPattern.test(option.label)) &&
-    options.some((option) => codexUpdateOptionPattern.test(option.label))
-  );
-}
-
-/** Keeps a split prompt blocking until a frame with no update evidence clears it. */
-export class CodexUpdatePromptTracker {
-  private active = false;
-  private generation = 0;
-
-  /** Identifies the current appearance; it changes whenever the update screen clears or appears. */
-  get currentGeneration(): number {
-    return this.generation;
-  }
-
-  /** True once a LATER appearance replaced `generation`; its own clear is only `generation + 1`. */
-  hasLaterAppearance(generation: number): boolean {
-    return this.generation > generation + 1;
-  }
-
-  observe(frameText: string): boolean {
-    if (codexUpdatePromptVisible(frameText)) {
-      if (!this.active) this.generation += 1;
-      this.active = true;
-    } else if (!(this.active && isSafeUpdateContinuation(frameText))) {
-      if (this.active) this.generation += 1;
-      this.active = false;
-    }
-    return this.active;
-  }
-
-  /** Captures the current prompt generation so an async retry cannot enter a later dialog. */
-  currentFramePredicate(): (frameText: string) => boolean {
-    const generation = this.generation;
-    return (frameText) =>
-      this.active &&
-      this.generation === generation &&
-      (codexUpdatePromptVisible(frameText) || isSafeUpdateContinuation(frameText));
-  }
-}
-
-function isSafeUpdateContinuation(frameText: string): boolean {
-  if (nonOptionText(frameText).trim() !== "") return false;
-  return numberedOptions(frameText).some((option) =>
-    /continue\s*without\s*updat|skip/i.test(option.label),
-  );
-}
+export { CodexUpdatePromptTracker } from "./update/tracker.ts";
 
 const retryIntervalMs = 250;
 const retryTimeoutMs = 5_000;

@@ -119,7 +119,8 @@ describe("screen fact tables", () => {
       readScreenFacts(tracked, screen("2. Skip\n3. Skip until next version")).facts
         .blocking_prompt_visible,
     ).toBe(true);
-    expect(readScreenFacts(tracked, screen("› ")).facts.blocking_prompt_visible).toBe(false);
+    expect(readScreenFacts(tracked, screen("› ")).facts.blocking_prompt_visible).toBe(true);
+    expect(readScreenFacts(tracked, screen(codexIdle)).facts.blocking_prompt_visible).toBe(false);
   });
 
   test("C-ATTN-04 Claude model and effort confirmations are blocking prompts", () => {

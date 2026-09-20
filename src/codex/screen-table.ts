@@ -6,6 +6,7 @@
 
 import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
+import type { TrustClearance } from "../core/trust/clearance.ts";
 import { codexWorkingScreen, codexWorkingTitle } from "./screen/working.ts";
 import { CodexUpdatePromptTracker, codexUpdatePromptVisible } from "./update-prompt.ts";
 
@@ -25,7 +26,7 @@ const verifiedAgainst = "codex-cli 0.142.5";
  * braille-spinner glyph (U+2800–U+28FF) while a turn runs and the plain
  * directory name when idle. The update-prompt rule takes its matcher as a
  * parameter: production injects a per-session `CodexUpdatePromptTracker` (a split
- * prompt stays blocking until a frame with no update evidence clears it), so the
+ * prompt retains its input hold until positive native composer clearance), so the
  * rules that ship are built here, once, rather than rewritten after the fact.
  */
 function codexScreenFactRules(updatePromptVisible: (frame: string) => boolean): ScreenFactRule[] {
@@ -65,12 +66,28 @@ export const codexScreenFactTable: ScreenFactTable = {
  * prompt (hook trust) is auto-handled and never blocks, so `blockingTrustSpecs`
  * already excludes it even when autotrust is off.
  */
-export function codexScreenFactTableForTrustPolicy(autotrust: boolean): ScreenFactTable {
-  const updatePrompt = new CodexUpdatePromptTracker();
+export function codexScreenFactTableForTrustPolicy(
+  autotrust: boolean,
+  clearsInput?: TrustClearance,
+): ScreenFactTable {
+  const updatePrompt = new CodexUpdatePromptTracker(clearsInput);
   const tracked: ScreenFactTable = {
     agent: "codex",
     verifiedAgainst,
     rules: codexScreenFactRules(updatePrompt.observe.bind(updatePrompt)),
   };
-  return withTrustBlockingRules(tracked, "codex", autotrust);
+  const table = withTrustBlockingRules(tracked, "codex", autotrust);
+  return {
+    ...table,
+    rules: [
+      ...table.rules,
+      // Specific approval/trust rules keep their diagnostic identity.
+      {
+        id: "codex-unidentified-dialog",
+        fact: "blocking_prompt_visible",
+        fallback: true,
+        match: () => updatePrompt.holdWithoutAppearance,
+      },
+    ],
+  };
 }
