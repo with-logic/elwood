@@ -15,6 +15,11 @@ back each entry are listed in `prd/14-conformance.md`.
 - Clear cancelled staged text and images before successor input, deferring cleanup
   through dialogs. Failed cleanup holds the draft; raw human input revokes cleanup
   authority, and shutdown drops deferred cleanup without waiting.
+- Hold image paste keys until received terminal output has rendered and blocking
+  dialogs have cleared, then capture the chip count immediately before pasting.
+  Permanent render failures reject the attachment and release its clipboard lock;
+  session cancellation also prevents pending image input.
+
 - Cancel Codex update retry timers and pending automated keys when the session closes,
   suppressing late startup success and write-failure warnings after disposal.
 

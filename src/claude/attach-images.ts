@@ -7,13 +7,12 @@
  */
 
 import { elwoodError } from "../core/errors.ts";
+import { requestComposerCleanup } from "../core/input/composer-cleanup.ts";
 import {
   type AttachTerminal,
   type BlockedGuard,
   type ChipWaitOptions,
-  clearComposer,
-  imageChipCount,
-  sendWhenUnblocked,
+  sendObservedImage,
   waitForImageChip,
 } from "../core/images/chip-wait.ts";
 import { sanitizePasteText } from "../core/input/index.ts";
@@ -27,7 +26,9 @@ const chipWait: ChipWaitOptions = { settleMs: 150, timeoutMs: 10_000, pollMs: 10
  * confirm before the next paste. A path is sanitized before framing so it cannot
  * escape paste mode, and each paste is held while a blocking dialog is on screen
  * so it never reaches a permission/trust dialog (C-API-37/45). An unconfirmed
- * chip or an abort rejects with `image_attach_failed`; the caller submits no text.
+ * chip or an abort rejects with `image_attach_failed`; a detected permanent render
+ * failure rejects with that error immediately, without awaiting the confirmation
+ * timeout. The caller submits no text.
  */
 export async function attachClaudeImages(
   terminal: AttachTerminal,
@@ -39,16 +40,15 @@ export async function attachClaudeImages(
   try {
     for (const path of paths) {
       if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
-      const before = imageChipCount(terminal.snapshot().text);
       const paste = `${PASTE_START}${sanitizePasteText(path)}${PASTE_END}`;
-      await sendWhenUnblocked(terminal, paste, blocked, signal);
+      const before = await sendObservedImage(terminal, paste, blocked, signal);
       staged = true;
       await waitForImageChip(terminal, before, signal, chipWait);
     }
   } catch (error) {
-    // A mid-attach failure clears any staged chips/paths so the rejected images
-    // cannot leak into a later caller's turn (C-API-44).
-    if (staged) await clearComposer(terminal, blocked);
+    // The session owner defers cleanup until clipboard finalizers settle and input is safe.
+    // Direct unregistered callers make an observed, unblocked best-effort request (C-API-44).
+    if (staged) await requestComposerCleanup(terminal, blocked);
     throw error;
   }
 }
