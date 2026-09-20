@@ -29,12 +29,15 @@ test.each([
   const events: string[] = [];
   session.on("warning", (event) => events.push(event.code));
   session.on("activity", (event) => events.push(event.kind));
+  let shutdown: Promise<void> | undefined;
   try {
     ptys[0]!.emitData(prompt);
     await vi.waitFor(() => expect(settle).toHaveBeenCalled());
     if (method === "exit") ptys[0]!.emitExit({ exitCode: 0 });
-    else await session[method]();
+    else shutdown = session[method]();
+    await vi.waitFor(() => expect(["stopped", "killed", "exited"]).toContain(session.status));
     release();
+    await shutdown;
     await setImmediate();
     expect(send).not.toHaveBeenCalled();
     expect(ptys[0]!.writes).toEqual([]);
@@ -42,6 +45,7 @@ test.each([
     expect(events).not.toContain("startup_prompt_write_failed");
   } finally {
     release();
+    await shutdown;
     await session.teardown();
   }
 });
