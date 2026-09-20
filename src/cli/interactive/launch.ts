@@ -15,8 +15,8 @@ import {
 } from "../../state/launch-posture.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { optional } from "../request/values.ts";
-import { claudeEffort, codexEffort } from "../session/launch.ts";
 import type { EffectiveRunRequest } from "../types.ts";
+import { claudeEffort, codexEffort } from "./effort.ts";
 import type { InteractiveLaunch } from "./spawn.ts";
 
 /**
