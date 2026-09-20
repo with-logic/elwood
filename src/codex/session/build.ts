@@ -11,6 +11,7 @@ import type { PtyExit, PtyProcess } from "../../pty/types.ts";
 import { loadRuntimeLoopDefinitions as loadLoops } from "../../runtime/loop-restore.ts";
 import { finishSessionExit } from "../../runtime/session/exit.ts";
 import { bindStartupLifetime, createSessionFrameObserver } from "../../runtime/session/frames.ts";
+import { withAutomatedInput } from "../../runtime/session/picker-input.ts";
 import { createReadinessGate } from "../../runtime/session/readiness.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../../runtime/startup/buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../../runtime/startup/cleanup.ts";
@@ -129,7 +130,8 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
         text: renderedSnapshot(renderedTerminal).text,
         title: renderedTerminal.title,
       };
-      const send = callerInput.automation; // automation owns completion; warnings gated
+      const send = (input: string) =>
+        withAutomatedInput(renderedTerminal, () => callerInput.automation(input));
       const read = () => renderedSnapshot(renderedTerminal).text;
       const guarded = guardedCodexAutomationWrite(
         renderedTerminal,

@@ -10,7 +10,8 @@
 
 import { elwoodError } from "../errors.ts";
 import { type InputTerminal, writeUnsafe } from "../input/abort.ts";
-import { composerClearKeys, unsafeWriteRetryMs } from "../input/constants.ts";
+import { stageComposer } from "../input/composer-cleanup.ts";
+import { unsafeWriteRetryMs } from "../input/constants.ts";
 
 /** The terminal surface an attach needs: send bytes and read the rendered screen. */
 export type AttachTerminal = Required<Pick<InputTerminal, "settled" | "renderFailed">> & {
@@ -20,19 +21,6 @@ export type AttachTerminal = Required<Pick<InputTerminal, "settled" | "renderFai
 
 /** True while a blocking human-decision dialog is on screen (C-API-37 safety). */
 export type BlockedGuard = () => boolean;
-
-/**
- * Best-effort discard of any staged composer content (image chips, pasted paths)
- * after a mid-attach failure, so the rejected submission's images cannot leak
- * into a later caller's turn. Never throws (C-API-44).
- */
-export async function clearComposer(terminal: AttachTerminal): Promise<void> {
-  try {
-    await terminal.sendInput(composerClearKeys);
-  } catch {
-    // Best-effort: a clear failure must not replace the primary attach error.
-  }
-}
 
 /**
  * Observe received output and wait for dialogs before an image key. Capture the
@@ -55,6 +43,7 @@ export async function sendObservedImage(
     await delay(unsafeWriteRetryMs);
   }
   const before = imageChipCount(terminal.snapshot().text);
+  stageComposer(terminal);
   await terminal.sendInput(data);
   return before;
 }

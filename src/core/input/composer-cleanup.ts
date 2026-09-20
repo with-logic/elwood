@@ -8,7 +8,8 @@ import {
   writeUnsafe,
 } from "./abort.ts";
 
-import { composerClearKeys, unsafeWriteRetryMs } from "./constants.ts";
+import { clearAndObserveComposer, type EmptyComposerObserver } from "./clear-ack.ts";
+import { unsafeWriteRetryMs } from "./constants.ts";
 
 const owners = new WeakMap<InputTerminal, ComposerCleanup>();
 type Draft = { readonly rawInputSignal: AbortSignal; pending: boolean };
@@ -45,17 +46,20 @@ export class ComposerCleanup {
   private readonly blocked: () => boolean;
   private readonly closing: AbortSignal;
   private readonly rawInputSignal: () => AbortSignal;
+  private readonly observeEmpty: EmptyComposerObserver;
   /** Register this owner before any stage/submit hooks or queued operation. */
   constructor(
     terminal: InputTerminal,
     blocked: () => boolean,
     closing: AbortSignal,
     rawInputSignal: () => AbortSignal,
+    observeEmpty: EmptyComposerObserver,
   ) {
     this.terminal = terminal;
     this.blocked = blocked;
     this.closing = closing;
     this.rawInputSignal = rawInputSignal;
+    this.observeEmpty = observeEmpty;
     this.baseline = rawInputSignal();
     owners.set(terminal, this);
     closing.addEventListener(
@@ -115,7 +119,7 @@ export class ComposerCleanup {
       const observe = AbortSignal.any([signal, this.closing, this.draft!.rawInputSignal]);
       try {
         if (!(await writeUnsafe(this.terminal, { blocked: this.blocked }, observe))) {
-          await this.clear();
+          await this.clear(observe);
           break;
         }
         await waitForInput(unsafeWriteRetryMs, observe);
@@ -127,12 +131,14 @@ export class ComposerCleanup {
     throwIfInputAborted(this.closing);
   }
 
-  private async clear(): Promise<void> {
+  private async clear(preparationSignal = this.closing): Promise<void> {
     if (!this.reconcileDraftOwnership()) return;
-    const draft = this.draft;
+    const draft = this.draft!;
+    const signal = AbortSignal.any([preparationSignal, this.closing, draft.rawInputSignal]);
     try {
-      await this.terminal.sendInput(composerClearKeys);
+      await clearAndObserveComposer(this.terminal, this.blocked, this.observeEmpty, signal);
     } catch {
+      throwIfInputAborted(signal);
       throw elwoodError("wait_timeout", "Could not clear the staged composer draft.");
     }
     if (this.draft === draft) this.draft = undefined;
