@@ -1,6 +1,6 @@
 """Deterministic OpenCode substitute for real runner-process tests."""
 STUB = r'''#!/usr/bin/env python3
-import atexit, io, json, os, pathlib, re, subprocess, sys, time
+import atexit, io, json, os, pathlib, re, signal, subprocess, sys, time
 original_stdout = sys.stdout
 sys.stdout = io.StringIO()
 def emit_events():
@@ -47,7 +47,7 @@ if match:
         assert 'DIFF_LAST_CANARY' in evidence and 'CONTEXT_LAST_CANARY' in evidence
     assert 'static review only' in prompt
     if mode == 'killed' and name == 'review-architecture-conventions':
-        os.kill(os.getpid(), 9)
+        os.kill(os.getpid(), signal.SIGKILL)
     if mode == 'all-failed' or (mode == 'missing' and name == 'review-architecture-conventions'):
         print('PRIVATE-REVIEW-TEXT', file=sys.stderr)
         sys.exit(1)
@@ -67,6 +67,8 @@ if match:
         print('No findings.')
     (root / ('done-' + name)).touch()
 else:
+    if mode == 'synth-killed':
+        os.kill(os.getpid(), signal.SIGKILL)
     if mode == 'synth-failed':
         print('PRIVATE-SYNTHESIS-TEXT', file=sys.stderr)
         sys.exit(2)

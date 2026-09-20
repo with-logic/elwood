@@ -136,7 +136,7 @@ class RunnerTest(unittest.TestCase):
         result = self.run_review('killed')
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual((self.root / 'call-review-architecture-conventions').read_text(), '1', result.stderr)
-        self.assertIn('category=timeout exit=137', result.stderr)
+        self.assertIn('category=killed exit=137', result.stderr)
         self.assertIn('incomplete review coverage (blocker)', (self.root / 'REVIEW.md').read_text())
         self.assertNotIn('Verdict: clean', (self.root / 'REVIEW.md').read_text())
 
@@ -188,10 +188,11 @@ class RunnerTest(unittest.TestCase):
         self.assertFalse(list(self.root.glob('call-*')))
 
     def test_synthesis_failure_has_bounded_phase_category_and_timing(self):
-        result = self.run_review('synth-failed')
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('phase=synthesis category=process exit=2 elapsed_seconds=', result.stderr)
-        self.assertNotIn('PRIVATE-SYNTHESIS-TEXT', result.stderr)
+        for mode, category in [('synth-failed', 'process exit=2'), ('synth-killed', 'killed exit=137')]:
+            result = self.run_review(mode)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(f'phase=synthesis category={category} elapsed_seconds=', result.stderr)
+            self.assertNotIn('PRIVATE-SYNTHESIS-TEXT', result.stderr)
 
 
 if __name__ == '__main__':
