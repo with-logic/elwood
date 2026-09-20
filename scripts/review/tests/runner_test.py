@@ -1,4 +1,4 @@
-"""Exercise the real fan-out against Git fixtures and a deterministic CLI boundary."""
+"""Exercise PRD §16 review fan-out with Git fixtures and a deterministic CLI boundary."""
 import os
 from pathlib import Path
 import shutil
@@ -6,11 +6,10 @@ import subprocess
 import tempfile
 import time
 import unittest
-
 SOURCE = Path(__file__).resolve().parents[1]
 LENSES = sorted(p.name for p in (SOURCE.parents[1] / '.claude/skills').glob('review-*'))
-
 from runner_stub import STUB
+from runner_diagnostics import assert_architecture_lens_one_attempt, install_attempt_diagnostics
 
 class RunnerTest(unittest.TestCase):
     def setUp(self):
@@ -18,6 +17,7 @@ class RunnerTest(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         shutil.copytree(SOURCE, self.root / 'scripts/review', ignore=shutil.ignore_patterns('tests'))
+        install_attempt_diagnostics(self.root)
         shutil.copy(SOURCE.parents[1] / 'opencode.json', self.root / 'opencode.json')
         for name in LENSES:
             skill = self.root / '.claude/skills' / name
@@ -127,7 +127,7 @@ class RunnerTest(unittest.TestCase):
         self.assertIn('was killed at its wall-clock cap', result.stderr)
         self.assertLess(time.monotonic() - started, 12)
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual((self.root / 'call-review-architecture-conventions').read_text(), '1', result.stderr)
+        assert_architecture_lens_one_attempt(self, self.root, result)
         report = (self.root / 'REVIEW.md').read_text()
         self.assertIn('incomplete review coverage (blocker)', report)
         self.assertNotIn('Verdict: clean', report)
@@ -137,7 +137,7 @@ class RunnerTest(unittest.TestCase):
     def test_sigkill_lens_is_not_retried_and_cannot_approve(self):
         result = self.run_review('killed')
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual((self.root / 'call-review-architecture-conventions').read_text(), '1', result.stderr)
+        assert_architecture_lens_one_attempt(self, self.root, result)
         self.assertIn('category=killed exit=137', result.stderr)
         self.assertIn('incomplete review coverage (blocker)', (self.root / 'REVIEW.md').read_text())
         self.assertNotIn('Verdict: clean', (self.root / 'REVIEW.md').read_text())

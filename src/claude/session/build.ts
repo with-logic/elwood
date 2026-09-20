@@ -30,7 +30,6 @@ import {
 } from "./runtime.ts";
 import { createClaudeStartupWarningGate } from "./startup-warnings.ts";
 import { createTranscriptWatcher, observeTranscript } from "./transcript.ts";
-
 export type BuildClaudeSessionInput = {
   readonly record: SessionRecord;
   readonly stateDir: string;
@@ -40,7 +39,6 @@ export type BuildClaudeSessionInput = {
   readonly activate: () => void;
   readonly preflightWarning: ClaudePreflightWarning | undefined;
 };
-
 export async function buildClaudeSession(
   input: BuildClaudeSessionInput,
 ): Promise<ClaudeSessionImpl> {
@@ -60,9 +58,8 @@ export async function buildClaudeSession(
   );
   const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => warnGate);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
-  // Hook-backed readiness has a starvation deadline and a resume composer fallback (C-API-28).
+  // Readiness: cold-start hooks, resumed composer, or bounded deadline (C-API-28).
   const autotrust = options.autotrust ?? false;
-  // Build observers before the readiness callback captures them.
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
   const turnWatcher = observers.turn;
   const readiness = createReadinessGate(() => {
@@ -121,31 +118,35 @@ export async function buildClaudeSession(
   );
   const promptResponder = new ClaudeStartupPromptResponder(autotrust, frameObserver.refresh);
   let latestRenderedText = "";
-  const terminal = attachPtyTerminal(startupSize, pty, (data, renderedTerminal) => {
-    startupOutput.push(data);
-    terminalReplay.push(data);
-    latestRenderedText = renderedTerminal.snapshot().text;
-    const frame = { text: latestRenderedText, title: renderedTerminal.title };
-    // Await live write completion; rejections warn/retry and disposal cancels (C-CLAUDE-16/22).
-    const send = (input: string) => renderedTerminal.sendInput(input);
-    const read = () => latestRenderedText;
-    const guarded = guardedClaudeAutomationWrite(
-      renderedTerminal,
-      send,
-      read,
-      () => promptResponder.closing,
-      promptResponder.closingSignal,
-    );
-    const autos = promptResponder.handle(frame.text, send, read, guarded);
-    // Contain warning listeners so readiness, login detection and terminal:data continue (§5.7).
-    emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
-      emitWarnings: (warnings) => warnGate.emitWarnings(warnings),
-    });
-    frameObserver.observe(frame);
-    // Surface a mid-session login-expiry banner once (C-CLAUDE-18); no-op pre-readiness.
-    session?.noteLoginExpiry(frame.text);
-    emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
-  });
+  const terminal = attachPtyTerminal(
+    startupSize,
+    pty,
+    (data, renderedTerminal) => {
+      terminalReplay.push(data);
+      latestRenderedText = renderedTerminal.snapshot().text;
+      const frame = { text: latestRenderedText, title: renderedTerminal.title };
+      // Settle after live writes fulfill; disposal cancels (C-CLAUDE-16/22).
+      const send = (input: string) => renderedTerminal.sendInput(input);
+      const read = () => latestRenderedText;
+      const guarded = guardedClaudeAutomationWrite(
+        renderedTerminal,
+        send,
+        read,
+        () => promptResponder.closing,
+        promptResponder.closingSignal,
+      );
+      const autos = promptResponder.handle(frame.text, send, read, guarded);
+      // Contain warning listeners so readiness, login detection and terminal:data continue (§5.7).
+      emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
+        emitWarnings: (warnings) => warnGate.emitWarnings(warnings),
+      });
+      frameObserver.observe(frame);
+      // Surface a mid-session login-expiry banner once (C-CLAUDE-18); no-op pre-readiness.
+      session?.noteLoginExpiry(frame.text);
+      emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
+    },
+    startupOutput.push,
+  );
   session = new ClaudeSessionImpl(
     record,
     stateDir,
@@ -167,8 +168,7 @@ export async function buildClaudeSession(
     async () => {
       active.startLoops();
       flushPendingWarnings(); // sink now exists: flush any early-buffered diagnostic (§5.7)
-      // A hook or deadline that fired before the session existed submitted nothing
-      // (evidence is `session?.`-guarded); replay it now the session can consume it.
+      // Replay hook/deadline evidence deferred until the session existed.
       ready.replay();
       pty.onExit((exit) => {
         if (observedExit) return;

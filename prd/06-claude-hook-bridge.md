@@ -166,6 +166,25 @@ unions.
   routing, tool inputs, response validation, or readiness/Stop bookkeeping.
   Freezing introduces no additional input depth or size limit beyond the bridge
   request contract.
+- A numeric field MUST be a finite number. `NaN` and `±Infinity` are rejected at
+  ingress and in `updatedInput` rewrites, because JSON has no encoding for them
+  and `JSON.stringify` would put a `null` on the wire where the CLI's schema
+  requires a number. This applies to EVERY tool: schema-less inputs (MCP, generic,
+  and future tools) have no field table, so the rule is enforced structurally over
+  the whole value, including nested records and arrays. Traversal allows at most
+  128 edges from the input root and 100,000 value visits, counting the root,
+  primitives, and every occurrence of a shared child. Ancestor cycles are invalid;
+  repeated children on separate paths are valid within these limits. Cyclic or
+  over-limit shapes fail validation without throwing. Invalid rewrites produce the
+  existing `invalid_response` hook error and a bridge response with no decision.
+  Structural values must consist of null, strings, booleans, finite numbers,
+  arrays, and plain records (including null-prototype records). Undefined values
+  retain JavaScript JSON omission/null semantics. Bigints, functions, symbols,
+  boxed primitives, proxies, custom prototypes, callable `toJSON` hooks, and
+  enumerable accessor properties are invalid. Other non-enumerable fields are
+  ignored; validation does not invoke getters or custom serializers. Each
+  child's budget is checked before reading its property descriptor. The complete
+  response envelope independently obeys the snapshot limits below.
 - Before result validation, Claude handler responses are copied into detached data.
   Validation and wire serialization use that same snapshot, so later handler mutation
   cannot replace a validated rewrite. Wire output and blocking decisions are captured
