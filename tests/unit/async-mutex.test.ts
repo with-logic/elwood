@@ -90,3 +90,55 @@ test("an already-aborted waiter leaves no listener behind an active holder", asy
     await holder;
   }
 });
+
+test("cancelled waiters detach immediately while the holder stays pending", async () => {
+  const lock = createAsyncMutex();
+  const held = Promise.withResolvers<void>();
+  const holder = lock(() => held.promise);
+  await Promise.resolve();
+  const order: string[] = [];
+  const before = lock(() => Promise.resolve(order.push("before")));
+  const cancelled = Array.from({ length: 32 }, () => {
+    const abort = new AbortController();
+    const remove = vi.spyOn(abort.signal, "removeEventListener");
+    const error = vi.fn(() => new Error("cancelled"));
+    const task = vi.fn(async () => undefined);
+    const result = lock(task, { signal: abort.signal, error });
+    const rejected = expect(result).rejects.toThrow("cancelled");
+    abort.abort();
+    return { abort, remove, error, task, rejected };
+  });
+  const after = lock(() => Promise.resolve(order.push("after")));
+  try {
+    await Promise.all(cancelled.map(({ rejected }) => rejected));
+    for (const { abort, remove, error, task } of cancelled) {
+      expect(remove).toHaveBeenCalledOnce();
+      expect(getEventListeners(abort.signal, "abort")).toHaveLength(0);
+      expect(error).toHaveBeenCalledOnce();
+      expect(task).not.toHaveBeenCalled();
+    }
+    expect(order).toEqual([]);
+  } finally {
+    held.resolve();
+    await Promise.all([holder, before, after]);
+  }
+  expect(order).toEqual(["before", "after"]);
+  // Draining the queue must never revisit cancelled waiters or their captured state.
+  for (const { remove, error, task } of cancelled) {
+    expect(task).not.toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledOnce();
+    expect(error).toHaveBeenCalledOnce();
+  }
+});
+
+test("cancellation before acquisition leaves the mutex reusable", async () => {
+  const lock = createAsyncMutex();
+  const abort = new AbortController();
+  const task = vi.fn(async () => undefined);
+  const first = lock(task, { signal: abort.signal, error: () => new Error("cancelled") });
+  const rejected = expect(first).rejects.toThrow("cancelled");
+  abort.abort();
+  await rejected;
+  expect(task).not.toHaveBeenCalled();
+  await expect(lock(async () => "reused")).resolves.toBe("reused");
+});
