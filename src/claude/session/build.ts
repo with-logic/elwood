@@ -184,7 +184,7 @@ export async function buildClaudeSession(
           active.submitExit(),
         );
       });
-          await assertStartupThenRelease("claude", startupOutput, () => startupExit);
+      await assertStartupThenRelease("claude", startupOutput, () => startupExit);
       active.submitEvidence("startup_usable");
       frameObserver.blockOnceLive(active);
     },
