@@ -287,7 +287,8 @@ it must be native footer chrome. Keep leading whitespace: the composer begins at
 column zero and the model footer at column two; trimming both loses the distinction
 from indented transcript continuations. Active `esc to interrupt` work cannot
 prove idle clearance. Session clearance also reads the live OSC title through the
-existing Codex screen-fact table, including during trust-attempt polling. A bare
+same working-title predicate as the Codex screen-fact table, including during
+trust-attempt polling. A bare
 caret cannot prove clearance even with a model footer left by an earlier frame.
 Without a model footer, a non-bare native placeholder also
 proves clearance when anchored by a contiguous boxed Codex welcome header at the

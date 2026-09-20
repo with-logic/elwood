@@ -6,6 +6,7 @@
 
 import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
+import { codexWorkingTitle } from "./screen/working.ts";
 import { CodexUpdatePromptTracker, codexUpdatePromptVisible } from "./update-prompt.ts";
 
 export { codexComposerClearance as codexTrustClearance } from "./screen/clearance.ts";
@@ -35,7 +36,7 @@ function codexScreenFactRules(updatePromptVisible: (frame: string) => boolean): 
       id: "codex-working-title",
       fact: "working_visible",
       region: "title",
-      all: [/^[⠀-⣿]\s/],
+      all: [codexWorkingTitle],
     },
     {
       id: "codex-interrupt-banner",
