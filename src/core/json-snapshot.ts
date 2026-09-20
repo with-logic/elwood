@@ -32,7 +32,10 @@ class Snapshot {
     )
       return invalid;
     const serializer = Object.getOwnPropertyDescriptor(value, "toJSON");
-    if (serializer && (!("value" in serializer) || typeof serializer.value === "function"))
+    if (
+      serializer &&
+      (!Object.hasOwn(serializer, "value") || typeof serializer.value === "function")
+    )
       return invalid;
     if (this.ancestors.has(value)) return invalid;
     this.ancestors.add(value);
@@ -49,7 +52,8 @@ class Snapshot {
         if (child === invalid) return invalid;
         result.push(child);
       }
-      return result;
+      // Preserve Array methods used by validators while shadowing inherited serializers.
+      return Object.defineProperty(result, "toJSON", { value: undefined });
     }
     const result: Record<string, unknown> = Object.create(null);
     for (const key in value) {
@@ -66,6 +70,6 @@ class Snapshot {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     // Missing array indices become undefined, which JSON encodes as null.
     if (descriptor === undefined) return this.visit(undefined, depth + 1);
-    return "value" in descriptor ? this.visit(descriptor.value, depth + 1) : invalid;
+    return Object.hasOwn(descriptor, "value") ? this.visit(descriptor.value, depth + 1) : invalid;
   }
 }

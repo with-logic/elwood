@@ -50,6 +50,8 @@ export function buildClaudeHookHandler(
       options.hookTimeoutMs ?? 25_000,
       record.elwoodSessionId,
     );
+    const serialized = serializeHookResult(event.hook_event_name, outcome.result);
+    const blocked = isBlock(outcome.result);
     emitter.emit(
       "activity",
       activity.activityFromHookResult(
@@ -61,12 +63,12 @@ export function buildClaudeHookHandler(
       ),
     );
     if (event.hook_event_name === "InstructionsLoaded") ready.mark();
-    if (event.hook_event_name === "Stop" && !isBlock(outcome.result)) {
+    if (event.hook_event_name === "Stop" && !blocked) {
       transcriptWatcher.scan(); // Committed turn is on disk; read it now (C-CLAUDE-15).
       deps.getTurnWatcher().arm();
       deps.getSession()?.submitEvidence("hook_turn_ended");
     }
-    return serializeHookResult(event.hook_event_name, outcome.result);
+    return serialized;
   };
 }
 

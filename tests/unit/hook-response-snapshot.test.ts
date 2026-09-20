@@ -73,3 +73,34 @@ test("C-HOOK-21 a proxy cannot replace the value between validation and serializ
   expect(errors.map((error) => error.category)).toEqual(["invalid_response"]);
   expect(outcome.failedOpen).toBe(true);
 });
+
+test.each([
+  "accessor",
+  "function",
+])("C-HOOK-21 direct %s thenables fail without assimilation", async (kind) => {
+  let calls = 0;
+  const result = { permissionDecision: "allow" };
+  Object.defineProperty(
+    result,
+    // biome-ignore lint/suspicious/noThenProperty: malformed thenable is the regression input.
+    "then",
+    kind === "accessor"
+      ? {
+          enumerable: true,
+          get() {
+            calls += 1;
+            throw new Error("never call");
+          },
+        }
+      : {
+          enumerable: true,
+          value() {
+            calls += 1;
+          },
+        },
+  );
+  const { outcome, errors } = await dispatch(result);
+  expect(calls).toBe(0);
+  expect(outcome.failedOpen).toBe(true);
+  expect(errors.map((error) => error.category)).toEqual(["invalid_response"]);
+});

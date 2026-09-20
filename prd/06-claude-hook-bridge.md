@@ -120,7 +120,9 @@ unions.
 - Hook bridge JSON must be runtime-validated before it reaches handlers.
 - Before result validation, Claude handler responses are copied into detached data.
   Validation and wire serialization use that same snapshot, so later handler mutation
-  cannot replace a validated rewrite. Snapshotting reads only own enumerable data
+  cannot replace a validated rewrite. Wire output and blocking decisions are captured
+  before result activity observers run. Only genuine Promises are awaited; direct
+  response-shaped thenables are validated as data without invoking `then`. Snapshotting reads only own enumerable data
   properties, never invokes accessors or serializers, and rejects proxies, boxed
   primitives, non-finite numbers, bigints, functions, symbols, custom prototypes,
   and cycles. Null-prototype records are valid. Non-callable `toJSON` data fields

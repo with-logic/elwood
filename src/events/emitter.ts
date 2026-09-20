@@ -3,6 +3,7 @@
  * Implements PRD §5.4 and §6.4/§7A.2 tool-keyed response provenance.
  */
 
+import { types } from "node:util";
 import type { Unsubscribe } from "../core/types.ts";
 
 type Handler = (event: unknown) => unknown;
@@ -106,7 +107,9 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     if (!entry) return undefined;
     for (const { handler, provenance } of entry.list) {
       if (!entry.live.has(handler)) continue;
-      const value = await handler(payload);
+      const returned = handler(payload);
+      // Direct data must reach validation without Promise thenable assimilation.
+      const value = types.isPromise(returned) ? await returned : returned;
       if (value !== undefined) return { value, provenance };
     }
     return undefined;
