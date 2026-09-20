@@ -35,6 +35,8 @@ test("C-PERF-04 separate Node processes mutate the installer target exactly once
     await mkdir(ready, { recursive: true });
     const announce = () => mkdir(ready + "/" + process.pid, { recursive: true });
     const leasePath = updateLockPath("codex", process.env.ELWOOD_TEST_LOCK_ROOT);
+    // Announce only successful observations of the real lease. Production imports
+    // stat by name, so syncBuiltinESMExports must publish this wrapper to that binding.
     const stat = fs.stat;
     let observed = false;
     fs.stat = async (...args) => {
@@ -69,7 +71,10 @@ test("C-PERF-04 separate Node processes mutate the installer target exactly once
       runChild(child, root, attempts, ready, index),
     ),
   );
-  expect(exits).toEqual(Array.from({ length: barrierSize }, () => 0));
+  expect(
+    exits.map((result) => result.status),
+    exits.map((result) => result.stderr).join("\n"),
+  ).toEqual(Array.from({ length: barrierSize }, () => 0));
   expect(readFileSync(attempts, "utf8").trim().split("\n")).toHaveLength(1);
 });
 
@@ -79,7 +84,7 @@ function runChild(
   attempts: string,
   ready: string,
   index: number,
-): Promise<number | null> {
+): Promise<{ readonly status: number | null; readonly stderr: string }> {
   return new Promise((resolve) => {
     const childProcess = spawn(
       process.execPath,
@@ -92,9 +97,13 @@ function runChild(
           ELWOOD_TEST_READY: ready,
           TMPDIR: join(root, `independent-tmp-${index}`),
         },
-        stdio: "ignore",
+        stdio: ["ignore", "ignore", "pipe"],
       },
     );
-    childProcess.on("close", resolve);
+    let stderr = "";
+    childProcess.stderr.on("data", (data: Buffer) => {
+      stderr = (stderr + data.toString()).slice(0, 4_096);
+    });
+    childProcess.on("close", (status) => resolve({ status, stderr }));
   });
 }
