@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { claudeScreenFactTableForTrustPolicy } from "../../src/claude/screen-table.ts";
 import { AttentionWatcher } from "../../src/core/attention.ts";
 import { TurnStateWatcher } from "../../src/core/turn-state.ts";
+import type { ElwoodStatusEvidence } from "../../src/core/types.ts";
 import {
   bindStartupLifetime,
   createSessionFrameObserver,
@@ -27,7 +28,7 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
   const active = {
     closing: new AbortController(),
     inputBlocking: false,
-    automationBlocking: false,
+    trustInputBlocking: false,
     get status() {
       return engine.status;
     },
@@ -41,7 +42,7 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
   };
   const activity = vi.fn(() => {
     expect(active.inputBlocking).toBe(true);
-    expect(active.automationBlocking).toBe(true);
+    expect(active.trustInputBlocking).toBe(true);
   });
   const readiness = createReadinessGate(vi.fn(), false);
   const observe = createSessionFrameObserver(
@@ -62,7 +63,7 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
   observe.refresh();
   expect(vi.getTimerCount()).toBe(0);
   observe.observe({ text: "Do you trust this folder?", title: "" });
-  expect(active.automationBlocking).toBe(true);
+  expect(active.trustInputBlocking).toBe(true);
   expect(engine.status).toBe("running");
   trust.blockedPrompt = "workspace_trust";
   observe.refresh();
@@ -78,4 +79,70 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
   observe.refresh();
   expect(trust.dispose).toHaveBeenCalledTimes(1);
   expect(vi.getTimerCount()).toBe(0);
+});
+
+test("C-TRUST-01 replays a consumed human clear edge when automation finally releases", () => {
+  vi.useFakeTimers();
+  const queueReady = vi.fn();
+  const engine = new SessionStatusEngine({
+    onReady() {},
+    emitStatus() {},
+    queueRunning() {},
+    queueReady,
+    queueBlocked() {},
+    queueClose() {},
+    cleanup() {},
+  });
+  const active = {
+    closing: new AbortController(),
+    inputBlocking: false,
+    trustInputBlocking: false,
+    get status() {
+      return engine.status;
+    },
+    submitEvidence(kind: ElwoodStatusEvidence) {
+      return engine.submit(kind, active.trustInputBlocking);
+    },
+  };
+  const trust = {
+    inputBlocking: true,
+    blockedPrompt: "workspace_trust" as string | undefined,
+    dispose() {},
+  };
+  const readiness = createReadinessGate(vi.fn(), false);
+  const observer = createSessionFrameObserver(
+    {
+      turn: new TurnStateWatcher(),
+      attention: new AttentionWatcher(),
+      table: claudeScreenFactTableForTrustPolicy(true),
+      agent: "claude",
+      elwoodSessionId: "handoff",
+      emitActivity() {},
+    },
+    () => active,
+    () => trust,
+    readiness,
+  );
+  observer.observe({ text: "Do you trust this folder?", title: "" });
+  expect(engine.status).toBe("starting");
+  engine.submit("startup_usable");
+  observer.blockOnceLive(active);
+  expect(engine.status).toBe("blocked");
+  // The human gate disappears, but automation still owns input: its clear is ignored.
+  trust.blockedPrompt = undefined;
+  observer.observe({ text: "", title: "" });
+  expect(engine.status).toBe("blocked");
+  expect(queueReady).not.toHaveBeenCalled();
+  expect(engine.decisions().at(-1)).toMatchObject({
+    evidence: "blocking_prompt_cleared",
+    to: undefined,
+  });
+  trust.inputBlocking = false;
+  observer.refresh();
+  expect(engine.status).toBe("ready");
+  expect(queueReady).toHaveBeenCalledTimes(1);
+  const decisions = engine.decisions().length;
+  observer.refresh();
+  expect(engine.decisions()).toHaveLength(decisions);
+  readiness.ready.cancel();
 });

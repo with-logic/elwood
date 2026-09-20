@@ -2,14 +2,10 @@
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import { optionInput } from "../terminal-options.ts";
 import type { TrustClearance } from "./clearance.ts";
-import type { TrustPromptIdFor } from "./prompts.ts";
-import {
-  type Episode,
-  newEpisode,
-  type TrustPromptResult,
-  type TrustWriteResult,
-} from "./types.ts";
-import { choiceIdentity, type TrustView, trustView } from "./view.ts";
+import type { TrustPromptId, TrustPromptIdFor } from "./prompts.ts";
+import type { Episode, TrustPromptResult, TrustWriteResult } from "./types.ts";
+import { newEpisode } from "./types.ts";
+import { choiceIdentity, readTrustView, type TrustView, trustView } from "./view.ts";
 import { TrustAttempt } from "./write.ts";
 
 export type { TrustPromptAutomation, TrustPromptResult, TrustWriteResult } from "./types.ts";
@@ -18,6 +14,7 @@ export { trustPromptVisible } from "./view.ts";
 const episodeTimeoutMs = 5_000;
 export class TrustPromptResponder<A extends ElwoodAgentKind> {
   private episode: Episode | undefined;
+  private humanPrompt: TrustPromptId | undefined;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private readonly attempts = new Set<TrustAttempt>();
   private disposed = false;
@@ -32,20 +29,19 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     this.autotrust = autotrust;
     this.onStateChange = onStateChange;
   }
-
   get inputBlocking(): boolean {
-    return this.episode !== undefined;
+    return this.humanPrompt !== undefined || this.episode !== undefined;
   }
   get blockedPrompt(): TrustPromptIdFor<A> | undefined {
     const id = this.episode?.blocked ? this.episode.candidate.spec.id : undefined;
-    return id as TrustPromptIdFor<A> | undefined;
+    return (this.humanPrompt ?? id) as TrustPromptIdFor<A> | undefined;
   }
-
-  /** The current frame owns recognition; no accumulated transcript grants trust. */
+  /** Read the latest settled frame; undefined during pending/synchronized/failed rendering
+   * holds input until the deadline. Omit the reader only for static/legacy numbered writes. */
   handle(
     frame: string,
     write: (input: string) => TrustWriteResult,
-    readFrame?: () => string,
+    readFrame?: () => string | undefined,
   ): TrustPromptResult<A> {
     if (this.disposed) return undefined;
     const priorIdentity = this.episode?.lastIdentity;
@@ -85,7 +81,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     const read =
       readFrame === undefined
         ? undefined
-        : () => trustView(readFrame(), this.agent, this.clearance);
+        : () => readTrustView(readFrame, this.agent, this.clearance);
     const attempt = new TrustAttempt(view, identity);
     episode.attempt = attempt;
     episode.attemptedIdentity = identity;
@@ -100,14 +96,18 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
         if (read === undefined && completion === "answered") {
           episode.legacyAnswered = true;
           clearTimeout(this.timer);
-        } else if (read !== undefined) {
-          const latest = read();
-          if (attempt.cleared) this.release(true);
-          this.observe(latest);
-          this.notify();
-          if (attempt.cleared && latest.kind === "candidate" && latest.spec.id === view.spec.id)
-            return "cancelled" as const;
         }
+        if (read === undefined) return completion;
+        const latest = read();
+        if (latest === undefined) {
+          episode.attemptedIdentity = undefined;
+          return "cancelled" as const;
+        }
+        if (attempt.cleared) this.release(true);
+        this.observe(latest);
+        this.notify();
+        if (attempt.cleared && latest.kind === "candidate" && latest.spec.id === view.spec.id)
+          return "cancelled" as const;
         return completion;
       },
       (error: unknown) => {
@@ -127,21 +127,21 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       settled,
     };
   }
-
   /** Session closing owns all cancellation, including writes whose promises settle late. */
   dispose(): void {
     this.disposed = true;
     clearTimeout(this.timer);
     for (const attempt of this.attempts) attempt.cancel();
     this.episode = undefined;
+    this.humanPrompt = undefined;
   }
-
   private observe(view: TrustView): void {
     if (view.kind === "clear") {
       this.release(true);
       return;
     }
     if (view.kind === "unknown") {
+      // Unknown/partial replacements retain human ownership until verified clearance.
       if (this.episode) {
         this.episode.attempt?.cancel();
         this.episode.attempt = undefined;
@@ -151,14 +151,16 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       return;
     }
     if (!(this.autotrust || view.spec.answerPolicy === "always")) {
-      if (view.valid) this.release(true);
+      // Retire the old episode, then synchronously transfer human ownership to this gate.
+      this.release(view.valid);
+      this.humanPrompt = view.spec.id;
       return;
     }
     if (this.episode?.candidate.key === view.key) {
       this.episode.lastIdentity = choiceIdentity(view);
       return;
     }
-    const blocked = this.episode?.blocked ?? false;
+    const blocked = this.blockedPrompt !== undefined;
     this.release(view.valid);
     // A cleared-and-reappeared class cannot inherit an old pending success.
     for (const attempt of this.attempts) {
@@ -168,7 +170,6 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     this.episode = episode;
     this.arm(episode);
   }
-
   private arm(episode: Episode): void {
     clearTimeout(this.timer);
     episode.expired = false;
@@ -187,6 +188,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     clearTimeout(this.timer);
     this.episode?.attempt?.cancel(cleared);
     this.episode = undefined;
+    this.humanPrompt = undefined;
   }
   private notify(): void {
     try {

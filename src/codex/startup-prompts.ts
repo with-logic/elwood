@@ -1,12 +1,11 @@
-/**
- * Handles known Codex startup prompts that block interactive sessions.
- * Implements PRD §4.4, §5.5, and §5.7.
- */
+/** Handles known Codex startup prompts that block interactive sessions.
+ * Implements PRD §4.4, §5.5, and §5.7. */
 
 import type { AutomationWriteResult } from "../core/startup/barrier.ts";
 import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/startup/write.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
 import { trustGateVisible } from "../core/trust/blocking.ts";
+import type { TrustClearance } from "../core/trust/clearance.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { codexTrustClearance } from "./screen-table.ts";
@@ -46,12 +45,15 @@ export class CodexStartupPromptResponder {
   private warnedBanners = new Set<string>();
   private conversationStarted = false;
 
-  constructor(elwoodSessionId = "", autotrust = false, onStateChange?: () => void) {
+  constructor(
+    elwoodSessionId = "",
+    autotrust = false,
+    onStateChange?: () => void,
+    clearance: TrustClearance = codexTrustClearance,
+  ) {
     this.elwoodSessionId = elwoodSessionId;
     this.buffer = "";
-    // Owns the whole allowlisted trust family (directory + hook trust), not just
-    // one prompt; extended by adding entries to trustPromptAllowlist.
-    this.trust = new TrustPromptResponder("codex", codexTrustClearance, autotrust, onStateChange);
+    this.trust = new TrustPromptResponder("codex", clearance, autotrust, onStateChange);
   }
 
   get blockedPrompt() {
@@ -67,24 +69,25 @@ export class CodexStartupPromptResponder {
   }
 
   /**
-   * `write` answers TRUST prompts and belongs to `TrustPromptResponder` alone.
-   * `writeAutomation` carries every NON-trust automated key (here, the update skip and
-   * its retries). They are separate parameters so the two classes of write can be
-   * guarded differently — only non-trust automation may be withheld when a trust gate
-   * is on screen, since answering such a gate is the trust responder's own job (#42).
-   * Defaults to `write`, so a caller that passes one writer keeps today's behavior.
+   * `write` answers trust; `writeAutomation` (default `write`) handles other prompts,
+   * where a trust gate must withhold unrelated automated keys.
+   * Live adapters must supply `readTrustFrame` from `currentRenderedFrame`, returning
+   * undefined for pending rendering, synchronized output, or render failure.
+   * The fallback to `readFrame` preserves static/direct callers; a snapshot-only
+   * reader must not replace the settlement-aware reader in a live session.
    */
   handle(
     screenText: string,
     write: (input: string) => TrustWriteResult,
     readFrame?: () => string,
     writeAutomation: (input: string) => TrustWriteResult | Promise<AutomationWriteResult> = write,
+    readTrustFrame?: () => string | undefined,
   ): CodexStartupPromptResult {
     const outcomes: SettledCodexStartupOutcome[] = [];
     this.buffer = `${this.buffer}\n${screenText}`.slice(-maxBufferLength);
     // Trust prompts are matched against the CURRENT frame only: a stale phrase in
     // the accumulated buffer must never pair with a different dialog's answer.
-    const trust = this.trust.handle(screenText, write, readFrame);
+    const trust = this.trust.handle(screenText, write, readTrustFrame ?? readFrame);
     if (trust?.kind === "attempted") {
       outcomes.push({
         outcome: { kind: "attempted", ...trust.automation },
@@ -93,7 +96,6 @@ export class CodexStartupPromptResponder {
     } else if (trust?.kind === "option_pending") {
       outcomes.push({ outcome: { kind: "option_pending", prompt: trust.prompt } });
     }
-    // Skipping an available update is not a trust decision, so it stays here.
     // The skip is EDGE-triggered and scoped to the CURRENT frame's update screen:
     // `skipGeneration` latches one bounded attempt per appearance so a persistent screen is
     // not re-answered every frame, but it RE-ARMS the moment the update screen leaves
