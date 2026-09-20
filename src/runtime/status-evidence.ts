@@ -51,10 +51,12 @@ export function decideStatus(
   from: ElwoodSessionStatus,
   evidence: StatusEvidenceKind,
   inputBlocked = false,
-  working = false,
+  workingVisible = false,
 ): StatusDecision {
   const target =
-    evidence === "blocking_prompt_cleared" && working ? "running" : evidenceTargets[evidence];
+    evidence === "blocking_prompt_cleared" && workingVisible
+      ? "running"
+      : evidenceTargets[evidence];
   const ignored = (reason: string): StatusDecision => ({ evidence, from, to: undefined, reason });
   if (inputBlocked && target === "ready")
     return ignored("ignored: a trust gate or closing session holds input");
@@ -121,8 +123,8 @@ export class SessionStatusEngine {
     return this.log;
   }
 
-  submit(kind: StatusEvidenceKind, inputBlocked = false, working = false): StatusDecision {
-    const decision = decideStatus(this.current, kind, inputBlocked, working);
+  submit(kind: StatusEvidenceKind, inputBlocked = false, workingVisible = false): StatusDecision {
+    const decision = decideStatus(this.current, kind, inputBlocked, workingVisible);
     this.log.push(decision);
     if (this.log.length > maxStatusDecisions) this.log.shift();
     if (decision.to !== undefined) this.apply(decision.to);

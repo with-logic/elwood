@@ -12,7 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Keep queued input suspended when a human dialog clears while the agent is still working, without briefly reporting ready.
+- Keep queued input suspended when a human dialog clears while the agent is still working,
+  including deferred startup readiness. A caller prompt held by the dialog reasserts running
+  when it submits, before a queued follow-up can dispatch.
 
 - Refresh attention diagnostics when a blocked session switches to a differently
   classified prompt, so consumers see the current human decision instead of a

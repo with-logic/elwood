@@ -2,7 +2,7 @@
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../core/activity/index.ts";
 import { ControlQueue } from "../../core/control-queue/index.ts";
 import { toError } from "../../core/errors.ts";
-import { type PasteGuard, writeQueuedInput } from "../../core/input/index.ts";
+import { type PasteGuard, queuedInputSubmitter } from "../../core/input/index.ts";
 import { registerPrivateOutputSecrets } from "../../core/private-output-secrets.ts";
 import { terminalStatuses } from "../../core/status-categories.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
@@ -70,14 +70,14 @@ export abstract class SessionLifecycle {
     this.terminalReplay = terminalReplay;
     this.reapPolicy = new SessionReapPolicy(agent, record.elwoodSessionId, pty.pid);
     this.controlQueue = new ControlQueue(
-      (input, mode, signal) =>
-        writeQueuedInput(this.terminal, input, mode, this.pasteGuard, signal),
+      queuedInputSubmitter(this.terminal, this.pasteGuard),
       () => notRunningError(agent),
       (origin) => {
         this.loops.turnStarted(origin);
         this.submitEvidence("caller_submitted");
       },
       () => this.status === "running",
+      () => void this.submitEvidence("caller_submitted"),
     );
     this.loops = new SessionLoops({
       stateDir,
@@ -146,9 +146,9 @@ export abstract class SessionLifecycle {
       this.status === "blocked"
     );
   }
-  submitEvidence(kind: StatusEvidenceKind, working = false): StatusDecision {
+  submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
     const held = this.automationBlocking || this.closing.signal.aborted;
-    return this.statusEngine.submit(kind, held, working);
+    return this.statusEngine.submit(kind, held, workingVisible);
   }
   submitExit(): StatusDecision {
     this.closing.abort();

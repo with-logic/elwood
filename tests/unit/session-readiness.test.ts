@@ -77,3 +77,11 @@ describe("C-API-28 createReadinessGate per-frame", () => {
     expect(ready).toBe(1);
   });
 });
+
+test("C-API-28 work without a prior blocking dialog keeps cold-start hook readiness", () => {
+  let ready = 0;
+  const gate = createReadinessGate(() => ready++, false);
+  gate.observeReadinessFrame({ ...facts(true), working_visible: true });
+  gate.ready.mark();
+  expect(ready).toBe(1);
+});

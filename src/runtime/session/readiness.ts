@@ -22,17 +22,22 @@ export type ReadinessGate = {
 };
 
 export function createReadinessGate(onReady: () => void, resumed: boolean): ReadinessGate {
-  let blockingVisible = false;
-  const ready = initialReady(onReady, undefined, () => blockingVisible);
+  let readinessHeld = false;
+  const ready = initialReady(onReady, undefined, () => readinessHeld);
   return {
     ready,
     observeReadinessFrame: (facts, automationBlocking = false) => {
-      blockingVisible = facts.blocking_prompt_visible || automationBlocking;
+      // A dialog's deferred mark waits for idle; ordinary cold-start work still
+      // retains the existing hook/deadline path instead of waiting on itself.
+      readinessHeld =
+        facts.blocking_prompt_visible ||
+        automationBlocking ||
+        (readinessHeld && facts.working_visible === true);
       markReadyOnResumeComposer(ready, resumed, {
         ...facts,
-        blocking_prompt_visible: blockingVisible,
+        blocking_prompt_visible: readinessHeld,
       });
-      ready.retryWhenUnblocked(blockingVisible); // fire a block-deferred readiness once clear
+      ready.retryWhenUnblocked(readinessHeld); // reconcile only after an idle clearance frame
     },
   };
 }

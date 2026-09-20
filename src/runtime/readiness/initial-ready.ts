@@ -37,6 +37,8 @@ export type InitialReady = {
 /** The rendered-frame facts the resume-composer readiness path inspects. */
 export type ComposerReadyFacts = {
   readonly composer_visible: boolean;
+  /** Present on rendered readings; work must not release deferred initial readiness. */
+  readonly working_visible?: boolean;
   readonly blocking_prompt_visible: boolean;
 };
 
