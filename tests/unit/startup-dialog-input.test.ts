@@ -38,13 +38,11 @@ test.each([
     ? startClaude({ cwd: tempDir(), autotrust: false })
     : startCodex({ cwd: tempDir(), autotrust: false }));
   try {
-    // Invoke immediately; classification may still be awaiting asynchronous rendering.
-    const rejected = expect(session.listModels({ timeoutMs: 100 })).rejects.toMatchObject({
+    await session.terminal.settled();
+    expect(session.status).toBe("blocked");
+    await expect(session.listModels({ timeoutMs: 100 })).rejects.toMatchObject({
       code: "model_automation_failed",
     });
-    await session.terminal.settled();
-    await rejected;
-    expect(session.status).toBe("blocked");
     expect(ptys[0]!.writes).toEqual([]);
   } finally {
     await session.stop();

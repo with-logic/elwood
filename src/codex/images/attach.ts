@@ -13,10 +13,10 @@ import {
   type AttachTerminal,
   type BlockedGuard,
   type ChipWaitOptions,
-  clearComposer,
   sendObservedImage,
   waitForImageChip,
 } from "../../core/images/chip-wait.ts";
+import { requestComposerCleanup } from "../../core/input/composer-cleanup.ts";
 import {
   clipboardImageSupported,
   restoreClipboardText,
@@ -74,7 +74,8 @@ async function attachUnderLock(
       await waitForImageChip(terminal, before, signal, chipWait);
     }
   } catch (error) {
-    if (staged) await clearComposer(terminal); // discard staged chips on failure (C-API-44)
+    // Request now; the session owner clears only after this clipboard finalizer and safe input.
+    if (staged) await requestComposerCleanup(terminal, blocked);
     throw error;
   } finally {
     // Best-effort and fully isolated: neither the restore nor its warning callback
