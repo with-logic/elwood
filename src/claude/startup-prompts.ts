@@ -21,7 +21,7 @@ const declineKey = "\u001b";
 
 export class ClaudeStartupPromptResponder {
   private readonly trust: TrustPromptResponder<"claude">;
-  private browserDeclined = false;
+  private browserDeclineLatched = false;
   private readonly lifetime = new AbortController();
 
   constructor(autotrust: boolean, onStateChange?: () => void) {
@@ -81,15 +81,15 @@ export class ClaudeStartupPromptResponder {
       settled.push({ outcome: { kind: "option_pending", prompt: trust.prompt } });
     }
     if (
-      !this.browserDeclined &&
+      !this.browserDeclineLatched &&
       browserToolsPromptVisible(screenText) &&
       !trustGateVisible(screenText, "claude") // a trust gate is never declined blind (C-TRUST-01)
     ) {
       // Escape is the prompt's documented decline path and needs no option
-      // number, so it stays correct if the option ordering changes. Settle
-      // OPTIMISTICALLY, but a rejected live-session write stays retryable on a
+      // number, so it stays correct if the option ordering changes. Latch the
+      // attempt before writing; a rejected live-session write stays retryable on a
       // later frame. Disposal permanently cancels retries and diagnostics.
-      this.browserDeclined = true;
+      this.browserDeclineLatched = true;
       // A WITHHELD write never reached the PTY (a trust gate was on the settled frame),
       // so the decline must not claim success: un-latch it and settle as `cancelled`,
       // which emits no activity; a later frame retries only while still live.
@@ -99,12 +99,12 @@ export class ClaudeStartupPromptResponder {
           // success activity nor a write-failure warning for it (C-CLAUDE-22).
           if (this.closing) return "cancelled";
           if (result !== "withheld") return "answered";
-          this.browserDeclined = false;
+          this.browserDeclineLatched = false;
           return "cancelled";
         })
         .catch((error: unknown): StartupWriteCompletion => {
           if (this.closing) return "cancelled";
-          this.browserDeclined = false;
+          this.browserDeclineLatched = false;
           throw error;
         });
       settled.push({
