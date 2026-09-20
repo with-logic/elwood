@@ -48,7 +48,8 @@ const eventChecks: { readonly [E in Exclude<ClaudeHookEventName, ToolEvent>]: Ev
   TaskCreated: strings("task_id", "task_subject"),
   TaskCompleted: strings("task_id", "task_subject"),
   Stop: () => true,
-  StopFailure: strings("error"),
+  // Rejection identity must survive diagnostic schema drift (PRD §6.1).
+  StopFailure: () => true,
   TeammateIdle: strings("teammate_name", "team_name"),
   ConfigChange: strings("source"),
   CwdChanged: strings("old_cwd", "new_cwd"),
