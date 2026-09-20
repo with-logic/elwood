@@ -160,8 +160,10 @@ async function advance(frames = 1) {
 }
 
 async function advanceUntilImage(pattern, message) {
-  // Simulated frames do not bound real filesystem/image decoding time.
-  const deadline = performance.now() + 5_000;
+  // Allow slow CI asset reads/decodes several seconds of real time; simulated
+  // frames can advance before decoding completes. Keep missing input bounded.
+  const assetDecodeBudgetMs = 5_000;
+  const deadline = performance.now() + assetDecodeBudgetMs;
   while (!pattern.test(drawnImage) && performance.now() < deadline) await advance();
   assert.match(drawnImage, pattern, message);
 }
