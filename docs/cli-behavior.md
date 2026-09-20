@@ -304,7 +304,25 @@ batch alone is not a complete render. The native working row includes elapsed
 time before the interrupt hint (seconds, minutes/seconds, or hours/minutes/seconds),
 as rendered by [Codex 0.142.5's status widget](https://github.com/openai/codex/blob/rust-v0.142.5/codex-rs/tui/src/status_indicator_widget.rs).
 Parenthesized transcript prose without that native status grammar is not work.
+An exact-shaped quotation such as `• Thinking (3s • esc to interrupt)` is ambiguous
+and retains the hold. A real Codex 0.155.1 rejected-model probe showed a visible
+column-two input cursor throughout native working frames; typing remains possible
+while a turn runs. The title spinner is configurable, and status location varies
+with preview rows, so neither missing title animation nor editable input disproves
+that exact native status. We do not promise to distinguish identical transcript
+and status rows from text/cursor evidence alone.
+Real 0.142.5 and 0.155.1 trust/model dialog captures start DEC2026 before painting,
+then hide the cursor with DEC25l before ending DEC2026. Those native partial frames
+cannot combine settled rendering with a stale visible composer cursor. Captured
+protocol regressions preserve this guard without blacklisting transcript text.
 The Claude predicate uses `src/core/trust/clearance.ts` for its separate grammar.
+A real Claude 2.1.278 classic-renderer capture hides the cursor during trust and
+restores it at column two on the composer only at the end of its idle paint.
+Unlike the captured Codex renderer, that Claude paint has no DEC2026 envelope.
+Splitting its bytes immediately before the final DEC25h leaves complete-looking
+composer chrome while native cursor restoration is still pending. Live Claude
+clearance therefore also verifies the visible native cursor on its composer row;
+receipt settlement alone cannot identify that native paint boundary.
 
 `tests/e2e/codex-live-clearance.e2e.ts` also exercises production `startCodex`
 with a fresh isolated configuration: queued input stays held at the human-owned

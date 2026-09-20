@@ -7,7 +7,7 @@
 import type { ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
 import { nativeComposerClearance, type TrustClearance } from "../core/trust/clearance.ts";
-import { currentRenderedFrame } from "../terminal/cursor.ts";
+import { currentRenderedFrame, settledCursorVisible } from "../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
 
@@ -32,8 +32,18 @@ export const claudeTrustClearance: TrustClearance = nativeComposerClearance(
 
 /** A per-batch composer cannot release trust until every received byte has rendered. */
 export function liveClaudeClearance(readTerminal: () => ElwoodTerminal): TrustClearance {
-  return (text) =>
-    currentRenderedFrame(readTerminal())?.text === text && claudeTrustClearance(text);
+  return (text) => {
+    const terminal = readTerminal();
+    const frame = currentRenderedFrame(terminal);
+    if (frame?.text !== text || !settledCursorVisible(terminal.xterm) || frame.cursorX !== 2)
+      return false;
+    const buffer = terminal.xterm.buffer.active;
+    const row = frame.cursorY + buffer.baseY - buffer.viewportY;
+    const composer = frame.lines[row] ?? "";
+    return (
+      composer.startsWith("❯") && claudeComposerRow.test(composer) && claudeTrustClearance(text)
+    );
+  };
 }
 
 /**

@@ -43,6 +43,12 @@ test("C-TRUST-01 production Codex holds queued input through human trust and nat
     },
   });
   const active = session;
+  const inputs: string[] = [];
+  const inputSubscription = active.terminal.xterm.onData((input) => {
+    inputs.push(input);
+    if (input.includes("ELWOOD_NATIVE_CURSOR_QUEUE_PROBE")) order.push("caller-input");
+  });
+  t.after(() => inputSubscription.dispose());
   // Independent native observation: raw DEC25 mode plus the actual input row.
   active.on("terminal:data", ({ data }) => {
     for (const part of data.split("\u001b")) {
@@ -86,6 +92,11 @@ test("C-TRUST-01 production Codex holds queued input through human trust and nat
     25_000,
   );
   await active.terminal.settled();
+  assert.equal(active.status, "blocked");
+  assert.equal(
+    inputs.some((input) => input.includes("ELWOOD_NATIVE_CURSOR_QUEUE_PROBE")),
+    false,
+  );
   assert.equal(cursorVisible, false);
   assert.equal(sent, false);
   assert.equal(submitted, 0);
@@ -98,8 +109,13 @@ test("C-TRUST-01 production Codex holds queued input through human trust and nat
   );
   await pending;
   assert.equal(order[0], "native-clear");
-  assert.ok(order.indexOf("native-clear") < order.indexOf("submit"));
+  assert.ok(order.indexOf("native-clear") < order.indexOf("caller-input"));
+  assert.ok(order.indexOf("caller-input") < order.indexOf("submit"));
   assert.equal(submitted, 1);
+  assert.equal(
+    inputs.filter((input) => input.includes("ELWOOD_NATIVE_CURSOR_QUEUE_PROBE")).length,
+    1,
+  );
   t.diagnostic(
     "Real startCodex, isolated config, human directory trust, native cursor, one benign queued submission.",
   );

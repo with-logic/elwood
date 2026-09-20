@@ -15,14 +15,16 @@ back each entry are listed in `prd/14-conformance.md`.
 - Keep human-owned trust gates blocked through partial and unknown replacement
   frames. Queued caller input resumes only after positive native clearance. Both
   adapters withhold trust retries and human clearance while received output is
-  still rendering or the terminal has reported a render failure.
+  still rendering or the terminal has reported a render failure. Claude also waits
+  for its visible native input cursor after the final composer paint.
 
 - Recognize Codex's native composer beneath numbered transcript output and with
   its older model footer. A newly painted bare caret cannot borrow an earlier
   composer's footer to release input held for a human dialog. Live clearance now
   requires its visible input cursor after all received batches render; native approval
   headers still override a stale visible cursor. Partial dialogs stay held while
-  transcript quotes and numbered user prompts remain valid. Active work and incomplete
+  ordinary transcript prose and numbered user prompts remain valid. Exact-shaped
+  native working rows remain conservatively held. Active work and incomplete
   welcome-box fragments cannot release input.
 - Preserve Claude `StopFailure` hooks with missing or changed diagnostic fields. Those
   fields are now typed as optional `unknown`, matching ingress. Browser logs show a

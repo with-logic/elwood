@@ -1,7 +1,7 @@
 /** Claude human trust replacement holds queued input until native clearance (C-TRUST-01). */
 import { afterEach, expect, test, vi } from "vitest";
 import { startClaude } from "../../src/index.ts";
-import { claudeComposer, claudeTrust, tty } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTrust, claudeTty, tty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(() => {
@@ -32,7 +32,7 @@ test("C-TRUST-01 Claude human trust holds caller input through a partial replace
     expect(startup).toEqual([]);
     await session.sendKeys("\u001b");
     expect(pty.writes).toContain("\u001b");
-    pty.emitData(`\u001b[2J\u001b[H${tty(claudeComposer)}`);
+    pty.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
     await vi.advanceTimersByTimeAsync(500);
     await queued;
     expect(
@@ -59,7 +59,7 @@ test("C-TRUST-01 Claude cannot clear human trust from the prefix of one oversize
     await vi.advanceTimersByTimeAsync(11_000);
     expect(session.status).toBe("blocked");
     const before = session.statusDecisions().length;
-    const prefix = `\u001b[2J\u001b[H${tty(claudeComposer)}`;
+    const prefix = `\u001b[2J\u001b[H${claudeTty(claudeComposer)}`;
     pty.emitData(
       `${prefix}${"\0".repeat(65_536)}\u001b[2J\u001b[HUnknown permission\r\n❯ Continue`,
     );
@@ -74,7 +74,7 @@ test("C-TRUST-01 Claude cannot clear human trust from the prefix of one oversize
     await vi.advanceTimersByTimeAsync(500);
     expect(session.status).toBe("blocked");
     expect(pty.writes).toEqual([]);
-    pty.emitData(`\u001b[2J\u001b[H${tty(claudeComposer)}`);
+    pty.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
     await vi.advanceTimersByTimeAsync(500);
     await queued;
     expect(pty.writes).toEqual(["\u001b[200~after complete render\u001b[201~", "\r"]);
@@ -99,7 +99,7 @@ test("C-TRUST-01 Claude retains human trust after a render failure even if a lat
     });
     pty.emitData("replacement");
     await vi.advanceTimersByTimeAsync(10);
-    pty.emitData(`\u001b[2J\u001b[H${tty(claudeComposer)}`);
+    pty.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
     await vi.advanceTimersByTimeAsync(500);
     expect(session.terminal.renderFailed).toBe(true);
     expect(session.status).toBe("blocked");

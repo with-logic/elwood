@@ -1,12 +1,13 @@
 /** Partial and working frames retain trust-owned queued input (C-TRUST-01). */
 
 import { afterEach, expect, test, vi } from "vitest";
-import { resumeCodex, startCodex } from "../../src/index.ts";
+import { type CodexSessionApi, resumeCodex, startCodex } from "../../src/index.ts";
 import { codexComposer, codexTrust, codexTty, tty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   resetFakes();
 });
 
@@ -34,28 +35,31 @@ test.each([
 ] as const)("C-TRUST-01 %s keeps caller input held", async (_name, resume, repaint) => {
   installFakes();
   const cwd = tempDir();
-  let session = await startCodex({ cwd, autotrust: false });
-  if (resume) {
-    await ptys[0]!.dispatchHook(session.elwoodSessionId, {
-      hook_event_name: "SessionStart",
-      session_id: "resume-human",
-      cwd,
-      transcript_path: "/tmp/missing-human-transcript",
-      source: "startup",
-    });
-    await session.stop();
-    session = await resumeCodex({
-      cwd,
-      elwoodSessionId: session.elwoodSessionId,
-      autotrust: false,
-    });
-  }
-  const pty = ptys.at(-1)!;
-  const startup: string[] = [];
-  session.on("activity", (event) => {
-    if (event.kind === "startup_prompt") startup.push(event.kind);
-  });
+  const sessions: CodexSessionApi[] = [];
   try {
+    let session = await startCodex({ cwd, autotrust: false });
+    sessions.push(session);
+    if (resume) {
+      await ptys[0]!.dispatchHook(session.elwoodSessionId, {
+        hook_event_name: "SessionStart",
+        session_id: "resume-human",
+        cwd,
+        transcript_path: "/tmp/missing-human-transcript",
+        source: "startup",
+      });
+      await session.stop();
+      session = await resumeCodex({
+        cwd,
+        elwoodSessionId: session.elwoodSessionId,
+        autotrust: false,
+      });
+      sessions.push(session);
+    }
+    const pty = ptys.at(-1)!;
+    const startup: string[] = [];
+    session.on("activity", (event) => {
+      if (event.kind === "startup_prompt") startup.push(event.kind);
+    });
     vi.useFakeTimers();
     const queued = session.sendMessage("after trust");
     pty.emitData(tty(`${codexTrust}\n› 1. Yes, continue\n  2. No, quit`));
@@ -80,6 +84,35 @@ test.each([
         .filter((decision) => decision.evidence === "blocking_prompt_cleared"),
     ).toHaveLength(1);
     expect(pty.writes.filter((input) => input === callerText)).toHaveLength(1);
+  } finally {
+    vi.useRealTimers();
+    await Promise.all(sessions.map((session) => session.teardown()));
+  }
+});
+
+test("C-TRUST-01 failed rendering keeps human trust input held after a later composer", async () => {
+  installFakes();
+  const session = await startCodex({ cwd: tempDir(), autotrust: false });
+  try {
+    vi.useFakeTimers();
+    const queued = session.sendMessage("after failed render");
+    const settled = vi.fn();
+    void queued.then(settled, settled);
+    ptys[0]!.emitData(tty(`${codexTrust}\n› 1. Yes, continue\n  2. No, quit`));
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(session.status).toBe("blocked");
+    vi.spyOn(session.terminal.xterm, "write").mockImplementationOnce(() => {
+      throw new Error("render failed");
+    });
+    ptys[0]!.emitData("\u001b[2J\u001b[HReplacement dialog");
+    await vi.advanceTimersByTimeAsync(500);
+    expect(session.terminal.renderFailed).toBe(true);
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(session.terminal.snapshot().text).toContain("› Ask Codex to do anything");
+    expect(session.status).toBe("blocked");
+    expect(ptys[0]!.writes).toEqual([]);
+    expect(settled).not.toHaveBeenCalled();
   } finally {
     vi.useRealTimers();
     await session.teardown();

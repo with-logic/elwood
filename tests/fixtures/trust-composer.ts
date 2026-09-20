@@ -39,3 +39,9 @@ export function codexTty(frame: string, visible = true): string {
   const row = frame.split("\n").findLastIndex((line) => line.startsWith("›"));
   return `${tty(frame)}\u001b[${row + 1};3H\u001b[?25${visible ? "h" : "l"}`;
 }
+
+/** Claude classic renderer restores its native input cursor after the complete paint. */
+export function claudeTty(frame: string, visible = true): string {
+  const row = frame.split("\n").findLastIndex((line) => line.startsWith("❯"));
+  return `${tty(frame)}\u001b[${row + 1};3H\u001b[?25${visible ? "h" : "l"}`;
+}
