@@ -52,6 +52,14 @@ export class TurnStateWatcher {
     this.quietStreak = 0;
   }
 
+  /** Adopt verified working clearance without consuming a second edge from its frame. */
+  adoptWorkingClearance(facts: ScreenFacts): void {
+    if (!this.armed) return;
+    this.replaySettling = false;
+    this.running = true;
+    this.bannerSeen = facts.interrupt_complete_visible;
+  }
+
   /** Consumes facts already classified from the frame (see observeRenderedFrame).
    * `evidenceRunning` — the session is running from EVIDENCE (a caller
    * submission or hook), not from rendered detection — also releases

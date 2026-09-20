@@ -4,6 +4,7 @@
  */
 
 import type { ControlSubmitMode } from "../control-queue/index.ts";
+import type { ControlSubmitter } from "../control-queue/types.ts";
 import {
   clearStagedComposer,
   holdWhileUnsafe,
@@ -86,6 +87,7 @@ async function writePastedPrompt(
   signal?: AbortSignal,
   settleDelayMs = pasteSettleDelayMs,
   nudgeDelayMs = pasteNudgeDelayMs,
+  onSubmitted?: () => void,
 ): Promise<void> {
   // Hold the WHOLE submission — paste included — while a blocking dialog is on
   // screen. A dialog can appear before an overtaking guidance's paste dispatches;
@@ -137,6 +139,7 @@ async function writePastedPrompt(
       await clearStagedComposer(terminal);
     throw error;
   }
+  onSubmitted?.();
   schedule(nudge, nudgeDelayMs);
 }
 
@@ -147,6 +150,7 @@ export async function writeQueuedInput(
   guard?: PasteGuard,
   signal?: AbortSignal,
   enterDelayMs = commandEnterDelayMs,
+  onSubmitted?: () => void,
 ): Promise<void> {
   // Dispatch through a Record keyed by ControlSubmitMode: a new mode must add an
   // entry here or the object fails to type-check, so it can never silently reuse
@@ -155,7 +159,8 @@ export async function writeQueuedInput(
   const submitters: Readonly<Record<ControlSubmitMode, () => Promise<void>>> = {
     // Resolve only after the input's submitting Enter has dispatched, so the next
     // queued operation cannot write into the composer first (FIFO).
-    pasted_input: () => writePastedPrompt(terminal, input, guard, signal),
+    pasted_input: () =>
+      writePastedPrompt(terminal, input, guard, signal, undefined, undefined, onSubmitted),
     // Slash-command popups (Codex) swallow an Enter that arrives in the same PTY
     // chunk as the command text, so Enter follows as a separate keystroke. The
     // returned promise resolves only after that Enter is dispatched, so a queued
@@ -177,4 +182,10 @@ export async function writeQueuedInput(
     },
   };
   await submitters[mode]();
+}
+
+/** Bind the session terminal while preserving physical-submission evidence (C-ATTN-02). */
+export function queuedInputSubmitter(terminal: InputTerminal, guard: PasteGuard): ControlSubmitter {
+  return (input, mode, signal, onSubmitted) =>
+    writeQueuedInput(terminal, input, mode, guard, signal, commandEnterDelayMs, onSubmitted);
 }
