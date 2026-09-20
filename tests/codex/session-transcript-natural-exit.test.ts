@@ -3,7 +3,7 @@ import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
-import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { becomeReady, installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -18,8 +18,14 @@ test.each([
   writeFileSync(path, "");
   const session = await startCodex({ cwd });
   let shutdown: Promise<void> | undefined;
+  const finalized: string[] = [];
+  session.on("terminal:exit", () => finalized.push("exit"));
+  session.on("status", (event) => {
+    if (["exited", "stopped", "killed"].includes(event.status)) finalized.push("status");
+  });
   session.on("codex:transcript", () => {
     shutdown ??= session[verb]();
+    for (const handler of [...ptys[0]!.exitHandlers]) handler({ exitCode: 7 });
   });
   const pty = ptys[0]!;
   try {
@@ -31,7 +37,10 @@ test.each([
       `${JSON.stringify({ type: "response_item", payload: { type: "reasoning" } })}\n`,
     );
     for (const handler of [...pty.exitHandlers]) handler({ exitCode: 0 });
+    expect(shutdown).toBeDefined();
     await expect(shutdown).resolves.toBeUndefined();
+    expect(finalized).toEqual(["exit", "status"]);
+    expect(reapedGroups).toEqual([pty.pid]);
     expect(pty.killSignals).toEqual([]);
   } finally {
     await session.stop().catch(() => undefined);

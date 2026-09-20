@@ -25,6 +25,8 @@ import type { CodexEventMap } from "./types.ts";
 /** A watcher plus the hook to flush any diagnostics buffered before the sink existed. */
 type WiredCodexTranscriptWatcher = {
   readonly watcher: CodexTranscriptWatcher;
+  /** Include deferred startup-warning fan-out in the exit-order barrier. */
+  readonly duringDelivery: (work: () => void) => void;
   readonly flushPendingWarnings: () => void;
   /** Drive `watcher.finish()` behind an error boundary, then run `afterFlush` in a
    * `finally` so a throwing final-flush listener never skips terminal:exit (C-LIFE-10). */
@@ -93,5 +95,5 @@ export function createCodexTranscriptWatcher(
       afterFlush();
     }
   };
-  return { watcher, flushPendingWarnings, finishSafely };
+  return { watcher, duringDelivery, flushPendingWarnings, finishSafely };
 }

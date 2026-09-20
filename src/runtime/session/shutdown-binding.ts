@@ -24,8 +24,8 @@ type ShutdownBindingInput = {
 export class SessionShutdownBinding {
   private pending: ShutdownEvidence | undefined;
   private readonly managed: ReturnType<typeof managedShutdown>;
-  private observedExit: Promise<void> | undefined;
-  private finishExit: (() => void) | undefined;
+  private exitFinalization: Promise<void> | undefined;
+  private resolveExitFinalization: (() => void) | undefined;
 
   constructor(input: ShutdownBindingInput) {
     this.managed = managedShutdown(new ShutdownCoordinator(), () => ({
@@ -46,30 +46,31 @@ export class SessionShutdownBinding {
   }
 
   stop(): Promise<void> {
-    return this.afterObservedExit(this.managed.stop);
+    return this.afterExitFinalization(this.managed.stop);
   }
 
   kill(): Promise<void> {
-    return this.afterObservedExit(this.managed.kill);
+    return this.afterExitFinalization(this.managed.kill);
   }
 
   teardown(): Promise<void> {
-    return this.afterObservedExit(this.managed.teardown);
+    return this.afterExitFinalization(this.managed.teardown);
   }
 
   /** Join natural-exit finalization before any reentrant shutdown can signal or clean up. */
-  observeExit(): void {
-    this.observedExit = new Promise((resolve) => {
-      this.finishExit = resolve;
+  beginExitFinalization(): void {
+    this.exitFinalization = new Promise((resolve) => {
+      this.resolveExitFinalization = resolve;
     });
   }
 
-  completeExit(): void {
-    this.finishExit?.();
+  /** Release from submitExit finally, even when terminal-status delivery throws. */
+  completeExitFinalization(): void {
+    this.resolveExitFinalization?.();
   }
 
-  private afterObservedExit(work: () => Promise<void>): Promise<void> {
-    return this.observedExit ? this.observedExit.then(work) : work();
+  private afterExitFinalization(work: () => Promise<void>): Promise<void> {
+    return this.exitFinalization ? this.exitFinalization.then(work) : work();
   }
 
   exitEvidence(): ShutdownEvidence | "terminal_exited" {

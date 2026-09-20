@@ -52,7 +52,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   let session: CodexSessionImpl | undefined;
   // One deferred gate keeps pre-return diagnostics observable to late subscribers.
   const warnGate = createStartupWarningGate({
-    emitWarnings: (w) => deliverFrameWarnings(session, w),
+    emitWarnings: (w) => wired.duringDelivery(() => deliverFrameWarnings(session, w)),
   });
   const wired = sessionTranscript.createCodexTranscriptWatcher(
     record.elwoodSessionId,
@@ -166,7 +166,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       pty.onExit((exit) => {
         if (observedExit) return;
         observedExit = exit;
-        activeSession.observeExit();
+        activeSession.beginExitFinalization();
         activeSession.closing.abort();
         const emitExit = () => {
           emitter.emit("terminal:exit", { elwoodSessionId: id, ...exit });

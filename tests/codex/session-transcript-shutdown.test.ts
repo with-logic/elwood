@@ -40,7 +40,8 @@ for (const channel of ["codex:transcript", "activity"] as const) {
       for (const record of records) appendFileSync(path, `${JSON.stringify(record)}\n`);
       if (finalFlush) ptys[0]!.emitExit({ exitCode: 0 });
       await expect.poll(() => order.includes("exit")).toBe(true);
-      await stopped;
+      expect(stopped).toBeDefined();
+      await expect(stopped).resolves.toBeUndefined();
       expect(order).toEqual([
         { raw: records[0] },
         { activity: records[0] },

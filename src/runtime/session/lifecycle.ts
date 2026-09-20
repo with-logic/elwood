@@ -154,12 +154,12 @@ export abstract class SessionLifecycle {
     try {
       return this.statusEngine.submit(evidence);
     } finally {
-      this.shutdown.completeExit();
+      this.shutdown.completeExitFinalization();
       const warning = evidence === "terminal_exited" ? this.reapPolicy.bestEffort() : undefined;
       if (warning) this.emitWarnings([warning]);
     }
   }
-  readonly observeExit = () => this.shutdown.observeExit();
+  readonly beginExitFinalization = () => this.shutdown.beginExitFinalization();
   statusDecisions(): readonly StatusDecision[] {
     return this.statusEngine.decisions();
   }
