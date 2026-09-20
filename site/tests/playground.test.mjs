@@ -159,9 +159,13 @@ async function advance(frames = 1) {
   }
 }
 
-async function advanceUntilImage(pattern) {
-  for (let frame = 0; frame < 300 && !pattern.test(drawnImage); frame++) await advance();
-  assert.match(drawnImage, pattern);
+async function advanceUntilImage(pattern, message) {
+  // Allow slow CI asset reads/decodes several seconds of real time; simulated
+  // frames can advance before decoding completes. Keep missing input bounded.
+  const assetDecodeBudgetMs = 5_000;
+  const deadline = performance.now() + assetDecodeBudgetMs;
+  while (!pattern.test(drawnImage) && performance.now() < deadline) await advance();
+  assert.match(drawnImage, pattern, message);
 }
 
 await import("../playground.mjs");
@@ -247,8 +251,7 @@ test("page boot, real asset loads, keyboard directions, pause and reset work tog
     element("#reset").onclick();
     await advance(10);
     key("keydown", code);
-    await advance(90);
-    assert.ok(drawnImage.includes(`/${name}/`), `${code} must load and play ${name}`);
+    await advanceUntilImage(new RegExp(`/${name}/`), `${code} must load and play ${name}`);
   }
   assert.equal(
     new Set(buttons.map((button) => button.dataset.code)).size,
@@ -260,9 +263,8 @@ test("page boot, real asset loads, keyboard directions, pause and reset work tog
     await advance(10);
     assert.equal(button.disabled, false, `${button.dataset.gesture} must be available`);
     key("keydown", button.dataset.code);
-    await advance(90);
-    assert.ok(
-      drawnImage.includes(`/${button.dataset.gesture}/`),
+    await advanceUntilImage(
+      new RegExp(`/${button.dataset.gesture}/`),
       `${button.dataset.code} must play the corresponding gesture`,
     );
   }
