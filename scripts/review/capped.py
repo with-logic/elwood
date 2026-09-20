@@ -11,6 +11,10 @@ def stop_group(pid, sig):
         os.killpg(pid, sig)
     except ProcessLookupError:
         pass
+    except PermissionError:
+        print(f'review: cleanup scope=group signal={sig.name} reason=permission_denied', file=sys.stderr)
+        return False
+    return True
 
 
 def run(seconds, command):
@@ -30,8 +34,18 @@ def run(seconds, command):
             pass
         finally:
             # A signal during the grace-period wait must not skip the final kill/reap.
-            stop_group(child.pid, signal.SIGKILL)
-            child.wait()
+            if not stop_group(child.pid, signal.SIGKILL):
+                # We still own the direct child even when the group cannot be signalled.
+                try:
+                    child.kill()
+                except ProcessLookupError:
+                    pass
+                except PermissionError:
+                    print('review: cleanup scope=child signal=SIGKILL reason=permission_denied', file=sys.stderr)
+            try:
+                child.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                print('review: cleanup scope=child reason=reap_timeout', file=sys.stderr)
 
 
 def interrupted(signum, _frame):

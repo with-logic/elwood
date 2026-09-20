@@ -37,6 +37,13 @@ their missing report prevents approval. Child signal termination is preserved
 as the shell exit status `128 + signal` when the supervisor reports it.
 Diagnostics distinguish a wall-clock `timeout` (124) from a process `killed`
 by `SIGKILL` (137), for both reviewer lenses and synthesis.
+The supervisor preserves that original outcome if the OS denies a cleanup
+signal. Its stderr reports each denied group/child signal using fixed,
+content-free diagnostics; a denied group signal does not claim descendant
+cleanup succeeded. Cleanup still attempts TERM, a one-second grace wait, and
+KILL. If group KILL is denied, it also attempts to kill its directly owned
+child. The final reap wait is bounded to one second and reports an unreaped
+child explicitly if that deadline expires.
 
 The harness fetches the PR title, description, review bodies, and top-level and
 inline comments. A bounded snapshot containing only current maintainers and
