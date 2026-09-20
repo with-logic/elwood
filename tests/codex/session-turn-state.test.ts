@@ -5,6 +5,7 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
+import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -40,7 +41,7 @@ describe("CodexSessionApi turn boundaries", () => {
     );
     await expect.poll(() => session.status).toBe("blocked");
     expect(attention).toEqual(["codex-approval-dialog"]);
-    ptys[0]!.emitData("[2J[H› ");
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`);
     await expect.poll(() => session.status).toBe("ready");
   });
 

@@ -60,7 +60,6 @@ export async function buildClaudeSession(
   );
   const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => warnGate);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
-  // Readiness: cold-start hooks, resumed composer, or bounded deadline (C-API-28).
   const autotrust = options.autotrust ?? false;
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
   const turnWatcher = observers.turn;
@@ -115,6 +114,7 @@ export async function buildClaudeSession(
     () => session,
     () => promptResponder,
     readiness,
+    liveClaudeClearance(() => terminal),
   );
   const promptResponder = new ClaudeStartupPromptResponder(
     autotrust,
@@ -162,7 +162,7 @@ export async function buildClaudeSession(
     loopDefinitions,
   );
   const active = session;
-  bindStartupLifetime(active, promptResponder, ready);
+  bindStartupLifetime(active, promptResponder, readiness);
   frameObserver.refresh();
   const beforeCleanup = () => active.pauseLoopsForStartupCleanup(ready.cancel);
   // Activation shares the live-resource cleanup boundary (PRD §9.1, §9.4).

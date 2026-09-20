@@ -13,6 +13,17 @@ back each entry are listed in `prd/14-conformance.md`.
 ## [Unreleased]
 
 - Bind turn collection to the accepted hook’s turn ID before content arrives, so replayed content from an older turn cannot claim the new turn.
+- Keep queued input suspended when a human dialog clears while the agent is still working,
+  including deferred startup readiness. A caller prompt held by the dialog reasserts running
+  when it submits, before a queued follow-up can dispatch. Blank or caret-only repaints
+  retain the hold until a verified idle composer, and resumed working clearance preserves
+  the next idle transition.
+
+- Refresh attention diagnostics when a blocked session switches to a differently
+  classified prompt, so consumers see the current human decision instead of a
+  stale update-prompt label. Repainting the same blocking rules stays quiet.
+- Keep a visible human prompt blocked through caller submissions and rendered turn
+  starts or endings, including late Stop hooks. Readiness resumes only after clearance.
 
 - Preserve live-loop cancellation notifications through delayed or retried kill and teardown cleanup. Previously, pausing the scheduler before clearing definitions could suppress these events.
 

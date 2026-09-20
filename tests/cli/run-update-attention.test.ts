@@ -52,6 +52,30 @@ describe("executeRun Codex update attention", () => {
     expect(session.teardowns).toBe(1);
   });
 
+  test("C-ATTN-03 a replacement human label ends update grace immediately", async () => {
+    const session = new FakeCliSession();
+    session.setupWork = async (current) => {
+      await current.start();
+      current.underlying.status = "blocked";
+      current.emitActivity({ label: "codex-update-prompt" });
+      current.emitActivity({ label: "codex-unidentified-dialog" });
+      await new Promise(() => {});
+    };
+    const clock = new FakeClock();
+    const streams = io();
+    await expect(
+      executeRun(request(), session, streams.value, {
+        signals: new FakeSignals(),
+        clock,
+      }),
+    ).resolves.toBe(1);
+    expect(JSON.parse(streams.stdout.value).error.message).toBe(
+      "Blocked prompt: codex-unidentified-dialog.",
+    );
+    expect(clock.delays).toEqual([codexUpdateAttentionGraceMs]);
+    expect(clock.handler).toBeUndefined();
+  });
+
   test("C-CLI-05 successful update automation cancels the grace period", async () => {
     const session = new FakeCliSession();
     session.setupWork = async (current) => {

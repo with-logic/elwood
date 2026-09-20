@@ -1,10 +1,8 @@
 /** Session lifetime, input blocking, persistence and cleanup (PRD §5/§8/§9). */
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../core/activity/index.ts";
 import { ControlQueue } from "../../core/control-queue/index.ts";
-import { toError } from "../../core/errors.ts";
-import { type PasteGuard, writeQueuedInput } from "../../core/input/index.ts";
+import { type PasteGuard, queuedInputSubmitter } from "../../core/input/index.ts";
 import { registerPrivateOutputSecrets } from "../../core/private-output-secrets.ts";
-import { terminalStatuses } from "../../core/status-categories.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent } from "../../core/types.ts";
 import type { PtyProcess } from "../../pty/types.ts";
@@ -20,7 +18,7 @@ import type {
   StatusEvidenceKind,
 } from "../status-evidence.ts";
 import { SessionLoops } from "./loops.ts";
-import { closingController, notRunningError } from "./not-running.ts";
+import { closingController, notRunningError, runSessionOperation } from "./not-running.ts";
 import { SessionReapPolicy } from "./reap.ts";
 import { SessionShutdownBinding } from "./shutdown-binding.ts";
 import { createSessionStatusEngine, type SessionStatusEmitter } from "./status-wiring.ts";
@@ -34,6 +32,7 @@ export abstract class SessionLifecycle {
   protected readonly loops: SessionLoops;
   protected readonly controlQueue: ControlQueue;
   protected everReady = false;
+  private initialReadinessHeld: (() => boolean) | undefined;
   inputBlocking = false;
   trustInputBlocking = false;
   readonly closing = closingController(() => this.controlQueue.close());
@@ -72,14 +71,14 @@ export abstract class SessionLifecycle {
     this.terminalReplay = terminalReplay;
     this.reapPolicy = new SessionReapPolicy(agent, record.elwoodSessionId, pty.pid);
     this.controlQueue = new ControlQueue(
-      (input, mode, signal) =>
-        writeQueuedInput(this.terminal, input, mode, this.pasteGuard, signal),
+      queuedInputSubmitter(this.terminal, this.pasteGuard),
       () => notRunningError(agent),
       (origin) => {
         this.loops.turnStarted(origin);
         this.submitEvidence("caller_submitted");
       },
       () => this.status === "running",
+      () => void (this.status === "ready" && this.submitEvidence("caller_submitted")),
     );
     this.loops = new SessionLoops({
       stateDir,
@@ -149,8 +148,15 @@ export abstract class SessionLifecycle {
       this.status === "blocked"
     );
   }
-  submitEvidence(kind: StatusEvidenceKind): StatusDecision {
-    return this.statusEngine.submit(kind, this.trustInputBlocking || this.closing.signal.aborted);
+  bindInitialReadinessHold(isHeld: () => boolean): void {
+    this.initialReadinessHeld = isHeld;
+  }
+  submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
+    const held =
+      this.trustInputBlocking ||
+      this.closing.signal.aborted ||
+      (!this.everReady && this.initialReadinessHeld?.() === true);
+    return this.statusEngine.submit(kind, { inputBlocked: held, workingVisible });
   }
   submitExit(): StatusDecision {
     this.closing.abort();
@@ -175,14 +181,7 @@ export abstract class SessionLifecycle {
     if (event === "activity") this.terminalReplay.replayAttention(handler as AttentionListener);
   }
   protected inSession<T>(work: () => Promise<T> | T, allowTerminal = false): Promise<T> {
-    if (!allowTerminal && terminalStatuses.has(this.status)) {
-      return Promise.reject(notRunningError(this.agent));
-    }
-    try {
-      return Promise.resolve(work());
-    } catch (error) {
-      return Promise.reject(toError(error));
-    }
+    return runSessionOperation(this.agent, this.status, work, allowTerminal);
   }
   protected cleanupRuntime(): Promise<void> {
     this.closing.abort();
