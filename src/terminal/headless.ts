@@ -54,11 +54,10 @@ export function attachPtyTerminal(
     pty.flowControl,
   );
   terminal.attachOutput(output);
-  // Once the child is gone there is no producer left to throttle, and node-pty
-  // destroys the socket shortly after exit. Releasing the pause here means a
-  // backlog still draining at exit cannot strand unread tail output behind it.
+  // Resume at child exit so unread tail output is not stranded behind backpressure.
   const off = [
     pty.onData((data) => {
+      // Startup health checks need raw bytes before asynchronous batching/rendering.
       onReceived?.(data);
       output.push(data);
     }),

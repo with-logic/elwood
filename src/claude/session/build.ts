@@ -59,7 +59,7 @@ export async function buildClaudeSession(
   );
   const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => warnGate);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
-  // Hooks establish readiness; the first frame arms its deadline (PRD §5.3, C-API-28).
+  // Readiness: cold-start hooks, resumed composer, or bounded deadline (C-API-28).
   const autotrust = options.autotrust ?? false;
   // Build observers before the readiness callback captures them.
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
