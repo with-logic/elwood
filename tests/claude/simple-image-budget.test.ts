@@ -23,18 +23,6 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const inline = { data: PNG, format: "png" as const };
 const imagePastes = () => ptys[0]!.writes.filter((w) => w.endsWith(".png[201~")).length;
 
-/** Settles promptly with the rejection code, or reports a submission still held in a queue. */
-function outcome(sent: Promise<unknown>): Promise<string> {
-  const queued = new Promise<string>((resolve) => setTimeout(resolve, 250, "queued"));
-  return Promise.race([
-    sent.then(
-      () => "sent",
-      (e: { code: string }) => e.code,
-    ),
-    queued,
-  ]);
-}
-
 test("C-API-44 the facade and its raw session share one queued-image ceiling", async () => {
   limits.maxQueuedBytes = 12; // one 8-byte PNG fits; a second, from EITHER surface, does not
   installFakes();
@@ -43,8 +31,10 @@ test("C-API-44 the facade and its raw session share one queued-image ceiling", a
   const live = await facade.start();
   // Not ready yet: the facade submission waits in the control queue holding its clone.
   const held = facade.sendMessage("a", { images: [{ path: join(cwd, "gone.png") }, inline] });
-  const heldCode = outcome(held);
-  expect(await outcome(live.sendMessage("b", { images: [inline] }))).toBe("invalid_image");
+  const heldFailure = expect(held).rejects.toMatchObject({ code: "invalid_image" });
+  await expect(live.sendMessage("b", { images: [inline] })).rejects.toMatchObject({
+    code: "invalid_image",
+  });
 
   // Release on REJECTION: at dispatch the missing path rejects the facade submission.
   await ptys[0]!.dispatchHook(live.elwoodSessionId, {
@@ -55,11 +45,13 @@ test("C-API-44 the facade and its raw session share one queued-image ceiling", a
     memory_type: "Project",
     load_reason: "session_start",
   });
-  expect(await heldCode).toBe("invalid_image");
+  await heldFailure;
   const raw = live.sendMessage("c", { images: [inline] });
   await vi.waitFor(() => expect(imagePastes()).toBe(1)); // accepted, now mid-attach
   // The reverse direction: a raw reservation bounds both facade entry points.
-  expect(await outcome(facade.sendMessage("d", { images: [inline] }))).toBe("invalid_image");
+  await expect(facade.sendMessage("d", { images: [inline] })).rejects.toMatchObject({
+    code: "invalid_image",
+  });
   await expect(facade.send("e", { images: [inline] })).rejects.toMatchObject({
     code: "invalid_image",
   });
