@@ -70,7 +70,7 @@ for (const [agent, attach, input] of [
           await expect(outcome).resolves.toBeUndefined();
           expect(writes).toEqual([input]);
         } else {
-          abort.abort();
+          if (mode === "abort") abort.abort();
           await expect(outcome).resolves.toMatchObject({ code: "image_attach_failed" });
           expect(writes).toEqual([]);
         }

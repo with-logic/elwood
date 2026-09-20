@@ -19,6 +19,8 @@ function fakeTerminal(chipsPerPaste = 1) {
   let chips = 0;
   return {
     writes,
+    settled: () => Promise.resolve(),
+    renderFailed: false,
     sendInput(data: string): void {
       writes.push(data);
       chips += chipsPerPaste;

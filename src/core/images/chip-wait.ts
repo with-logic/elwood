@@ -7,10 +7,10 @@
  */
 
 import { elwoodError } from "../errors.ts";
-import { holdWhileUnsafe, type InputTerminal } from "../input/abort.ts";
+import { type InputTerminal, writeUnsafe } from "../input/abort.ts";
 
 /** The terminal surface an attach needs: send bytes and read the rendered screen. */
-export type AttachTerminal = Pick<InputTerminal, "settled" | "renderFailed"> & {
+export type AttachTerminal = Required<Pick<InputTerminal, "settled" | "renderFailed">> & {
   sendInput(data: string): void | Promise<void>;
   snapshot(): { readonly text: string };
 };
@@ -36,21 +36,37 @@ export async function clearComposer(terminal: AttachTerminal): Promise<void> {
 }
 
 /**
- * Observes received output, then sends only once no blocking dialog is on screen — a
- * paste path or Ctrl+V must never reach a permission/trust dialog and alter a
- * human decision. Rejects with `image_attach_failed` if the signal aborts while
- * held (the session closed). Unobserved or failed renders remain held (C-API-56).
+ * Observe received output and wait for dialogs before an image key. Capture the
+ * chip baseline in the same turn as that key, so the observation cannot confirm
+ * this image using an older chip. Cancellation or permanent render failure rejects
+ * with `image_attach_failed`; a failed Codex session must release its clipboard lease.
  */
-export async function sendWhenUnblocked(
+export async function sendObservedImage(
   terminal: AttachTerminal,
   data: string,
   blocked: BlockedGuard | undefined,
   signal: AbortSignal,
-): Promise<void> {
-  await holdWhileUnsafe(terminal, blocked === undefined ? undefined : { blocked }, signal);
-  // Cancellation can arrive as the observation or dialog hold clears.
-  if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
+): Promise<number> {
+  const guard = blocked === undefined ? undefined : { blocked };
+  for (;;) {
+    assertAttachWritable(terminal, signal);
+    const unsafe = await writeUnsafe(terminal, guard, signal);
+    assertAttachWritable(terminal, signal);
+    if (!unsafe) break;
+    await delay(50);
+  }
+  const before = imageChipCount(terminal.snapshot().text);
   await terminal.sendInput(data);
+  return before;
+}
+
+function assertAttachWritable(terminal: AttachTerminal, signal: AbortSignal): void {
+  if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
+  if (terminal.renderFailed)
+    throw elwoodError(
+      "image_attach_failed",
+      "Image attach cannot observe a failed terminal render.",
+    );
 }
 
 export type ChipWaitOptions = {
@@ -88,7 +104,7 @@ export async function waitForImageChip(
   await delay(options.settleMs);
   const attempts = Math.max(1, Math.ceil(options.timeoutMs / options.pollMs));
   for (let i = 0; i < attempts; i++) {
-    if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
+    assertAttachWritable(terminal, signal);
     if (imageChipCount(terminal.snapshot().text) > before) return;
     await delay(options.pollMs);
   }

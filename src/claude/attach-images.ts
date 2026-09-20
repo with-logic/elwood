@@ -12,8 +12,7 @@ import {
   type BlockedGuard,
   type ChipWaitOptions,
   clearComposer,
-  imageChipCount,
-  sendWhenUnblocked,
+  sendObservedImage,
   waitForImageChip,
 } from "../core/images/chip-wait.ts";
 import { sanitizePasteText } from "../core/input/index.ts";
@@ -39,9 +38,8 @@ export async function attachClaudeImages(
   try {
     for (const path of paths) {
       if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
-      const before = imageChipCount(terminal.snapshot().text);
       const paste = `${PASTE_START}${sanitizePasteText(path)}${PASTE_END}`;
-      await sendWhenUnblocked(terminal, paste, blocked, signal);
+      const before = await sendObservedImage(terminal, paste, blocked, signal);
       staged = true;
       await waitForImageChip(terminal, before, signal, chipWait);
     }

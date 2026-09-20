@@ -14,8 +14,7 @@ import {
   type BlockedGuard,
   type ChipWaitOptions,
   clearComposer,
-  imageChipCount,
-  sendWhenUnblocked,
+  sendObservedImage,
   waitForImageChip,
 } from "../../core/images/chip-wait.ts";
 import {
@@ -65,11 +64,10 @@ async function attachUnderLock(
   let staged = false;
   try {
     for (const path of paths) {
-      const before = imageChipCount(terminal.snapshot().text);
       await setClipboardImage(path);
-      // sendWhenUnblocked rejects if the signal is already aborted, so a mid-attach
+      // sendObservedImage rejects if the signal is already aborted, so a mid-attach
       // close is caught here before the Ctrl+V reaches the PTY (C-API-46).
-      await sendWhenUnblocked(terminal, CTRL_V, blocked, signal);
+      const before = await sendObservedImage(terminal, CTRL_V, blocked, signal);
       staged = true;
       await waitForImageChip(terminal, before, signal, chipWait);
     }
