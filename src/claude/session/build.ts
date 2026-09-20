@@ -32,41 +32,39 @@ import {
 } from "./runtime.ts";
 import { createClaudeStartupWarningGate } from "./startup-warnings.ts";
 import { createTranscriptWatcher, observeTranscript } from "./transcript.ts";
-
 export type BuildClaudeSessionInput = {
   readonly record: SessionRecord;
   readonly stateDir: string;
   readonly runtime: SessionRuntime;
   readonly options: StartClaudeOptions;
   readonly resumed: boolean;
+  readonly activate: () => void;
   readonly preflightWarning: ClaudePreflightWarning | undefined;
 };
-
 export async function buildClaudeSession(
   input: BuildClaudeSessionInput,
 ): Promise<ClaudeSessionImpl> {
   const { record, stateDir, runtime, options, resumed, preflightWarning } = input;
   secureMkdir(runtime.sessionDir);
-  writeSessionRecord(record, runtime.sessionDir);
+  writeSessionRecord(record, runtime.sessionDir, runtime.stateOwnership.publishFile);
   const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId) : [];
   writeRuntimeFiles(runtime, options);
   const emitter = new TypedEmitter<ClaudeEventMap>();
   registerInitialHooks(emitter, options.hooks);
   let session: ClaudeSessionImpl | undefined;
-  // Buffer diagnostics until callers can subscribe; browser decline warnings track disposal.
+  // Lifetime filtering and transcript delivery depth apply to the same warning batch.
   const warnGate = createClaudeStartupWarningGate(
     () => session,
     () => promptResponder.closing,
+    (deliver) => wired.duringDelivery(deliver),
   );
   const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => warnGate);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
-  // Readiness: cold-start hooks, resumed composer, or bounded deadline (C-API-28).
   const autotrust = options.autotrust ?? false;
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
   const turnWatcher = observers.turn;
   const readiness = createReadinessGate(() => {
     turnWatcher.arm(resumed); // resume arms in settling mode (no phantom replay turn)
-    // completeInitialReady contains restore/warning failures and always advances readiness.
     void session?.completeInitialReady();
   }, resumed);
   const { ready } = readiness;
@@ -89,7 +87,6 @@ export async function buildClaudeSession(
   try {
     await bridge.start();
   } catch (error) {
-    // Contain partial bridge cleanup failure so the original startup error survives.
     await bridge.stop().catch(() => undefined);
     throw elwoodError("hook_bridge_failed", "Could not start Elwood hook bridge.", {
       ...causeDetails(error),
@@ -109,7 +106,7 @@ export async function buildClaudeSession(
     throw error;
   }
   const startupOutput = createStartupBuffer();
-  let startupExit: PtyExit | undefined;
+  let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
   const frameObserver = createSessionFrameObserver(
@@ -132,7 +129,6 @@ export async function buildClaudeSession(
       terminalReplay.push(data);
       latestRenderedText = renderedSnapshot(renderedTerminal).text;
       const frame = { text: latestRenderedText, title: renderedTerminal.title };
-      // Settle after live writes fulfill; disposal cancels (C-CLAUDE-16/22).
       const send = (input: string) => renderedTerminal.sendInput(input);
       const read = () => latestRenderedText;
       const guarded = guardedClaudeAutomationWrite(
@@ -144,12 +140,10 @@ export async function buildClaudeSession(
       );
       const trustRead = () => currentRenderedFrame(renderedTerminal)?.text;
       const autos = promptResponder.handle(frame.text, send, read, guarded, trustRead);
-      // Contain warning observers so readiness, login checks, and terminal:data run (§5.7).
       emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
         emitWarnings: (warnings) => warnGate.emitWarnings(warnings),
       });
       frameObserver.observe(frame);
-      // Surface a mid-session login-expiry banner once (C-CLAUDE-18); no-op pre-readiness.
       session?.noteLoginExpiry(frame.text);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
@@ -171,26 +165,32 @@ export async function buildClaudeSession(
   bindStartupLifetime(active, promptResponder, readiness);
   frameObserver.refresh();
   const beforeCleanup = () => active.pauseLoopsForStartupCleanup(ready.cancel);
-  // Any post-construction failure tears down PTY, bridge, terminal, watcher (§9.1/§9.4).
+  // Activation shares the live-resource cleanup boundary (PRD §9.1, §9.4).
   await guardStartupRegion(
     async () => {
       active.startLoops();
       flushPendingWarnings(); // sink now exists: flush any early-buffered diagnostic (§5.7)
       ready.replay();
       pty.onExit((exit) => {
-        startupExit = exit;
+        if (observedExit) return;
+        observedExit = exit;
+        active.beginExitFinalization();
         active.closing.abort();
-        handleClaudeExit(emitter, record.elwoodSessionId, exit, finishSafely, () =>
-          active.submitExit(),
+        handleClaudeExit(
+          emitter,
+          record.elwoodSessionId,
+          exit,
+          (afterFlush) => finishSafely(() => warnGate.afterDelivery(afterFlush)),
+          () => active.submitExit(),
         );
       });
-      await assertStartupThenRelease("claude", startupOutput, () => startupExit);
+      await assertStartupThenRelease("claude", startupOutput, () => observedExit);
       active.submitEvidence("startup_usable");
       frameObserver.blockOnceLive(active);
+      input.activate();
     },
     { before: beforeCleanup, pty, bridge, terminal, after: () => transcriptWatcher.stop() },
   );
-  // Open buffered startup warnings after return so synchronous subscribers see them (C-API-14).
   if (preflightWarning !== undefined) {
     warnGate.emitWarnings([preflightEvent(record.elwoodSessionId, preflightWarning)]);
   }

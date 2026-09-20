@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
+import { onlyLaunchArtifact } from "../helpers/launch-artifacts.ts";
 import { installFakes, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -18,12 +19,9 @@ describe("ClaudeSessionApi hook timeout", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd, hookTimeoutMs: 2_500 });
-    const settingsPath = join(
-      cwd,
-      ".elwood",
-      "sessions",
-      session.elwoodSessionId,
-      "claude-settings.json",
+    const settingsPath = onlyLaunchArtifact(
+      join(cwd, ".elwood", "sessions", session.elwoodSessionId),
+      "claude-settings",
     );
     const hooks = JSON.parse(readFileSync(settingsPath, "utf8")).hooks;
     expect(hooks.Stop[0].hooks[0].timeout).toBe(8); // ceil(2.5 s) + 5 s margin
