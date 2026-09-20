@@ -130,9 +130,18 @@ an entry in a list.
 
 ## Pull Request Reviews
 
-Automated review blocks approval on blockers and majors. That gate is what stops
-broken code reaching a public repo and a published package, so it is never
-routed around.
+A review with zero blockers and zero majors is approval. After approval, address
+that review's remaining minors and nits once, then merge when the required checks
+pass. Do not request another review after that final cleanup.
+
+Honor an earlier approval of substantially the same change. Dependency integration
+and final cleanup do not erase it. Never dismiss an approval or restart review
+because a later iteration is available.
+
+Allow at most four review attempts for a scope that has not been approved. If it
+still needs work after four attempts, stop that review loop and split or
+substantially rescope the change before seeking further review. These limits do
+not change the required technical checks.
 
 **A finding may be declined only when it is wrong.** The single test is: is it
 true?
@@ -141,8 +150,8 @@ true?
   handles the case, assumed a caller that does not exist, or described an
   unreachable path. Decline it and post the code or measurement that proves it.
   A demonstrated rebuttal is a good outcome.
-- **True** — fix it. However many rounds it has taken, however large the PR,
-  however inconvenient the timing.
+- **True** — fix it in the appropriate scoped change, within the approval and
+  review-attempt rules above.
 
 "True, but not closable by the approach I chose" is not a decline. It means the
 approach has to change.
@@ -153,17 +162,19 @@ fixes and will make a good regression test look powerless.
 
 ### Size, and the split-then-rebase loop
 
-A PR that will not get approved is almost always too large. Under ~200 changed
-lines is easy to review; past ~500 the review cannot be thorough, so each round
-surfaces new surface faster than the last round's fixes land.
+Prefer changes under roughly 200 lines. Treat 500 changed lines as a strong soft
+cap, not an absolute limit: keep a coherent fix together when splitting would
+make its behavior incomplete. Split unrelated concerns before adding review
+rounds.
 
 Size never decides *whether* a true finding gets fixed — only *where*:
 
 1. Fix it in its own small PR against `origin/main`.
 2. Get that PR approved and merged.
 3. Rebase the original onto the new `origin/main`.
-4. Re-request review. The finding is now resolved by the base and drops out of
-   the diff instead of needing an answer.
+4. For work without an approval, request review only within the four-attempt
+   limit. For approved work, finish the last minors/nits once and merge after
+   required checks; do not request another review.
 
 Each pass leaves the original PR **smaller**. Absorbing fix after fix in place
 does the opposite, and is how a change becomes unapprovable: one PR reached
