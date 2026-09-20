@@ -133,12 +133,12 @@ describe("Codex startup prompt responder", () => {
     expect(writes).toEqual(["2"]);
   });
 
-  test("C-CODEX-12 skips current Codex release update prompts", () => {
+  test("C-CODEX-22 leaves unseen split update choices for a human", () => {
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder();
     responder.handle("Update available! 0.132.0 -> 0.133.0\n\n› 1. Update now", writer(writes));
     responder.handle("\n  2. Skip\n  3. Skip until next version", writer(writes));
-    expect(writes).toEqual(["2"]);
+    expect(writes).toEqual([]);
   });
 
   test("C-PTY-07 C-CODEX-12 skips cursor-addressed xterm-rendered update prompts", async () => {

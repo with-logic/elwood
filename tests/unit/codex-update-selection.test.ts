@@ -29,18 +29,6 @@ test.each([
   responder.dispose();
 });
 
-test("C-CODEX-12 a banner-less continuation still selects its safe option", async () => {
-  const responder = new CodexStartupPromptResponder("selection");
-  responder.handle(banner, () => {});
-  const writes: string[] = [];
-  const result = responder.handle("2. Skip\n3. Skip until next version", (key) => {
-    writes.push(key);
-  });
-  await Promise.all(result.outcomes.map((outcome) => outcome.settled));
-  expect(writes).toEqual(["2"]);
-  responder.dispose();
-});
-
 test.each([
   ["1. Skip backup\n2. Update now", ["2"]],
   ["1. Skip backup\n2. Update now\n3. Later", ["2", "3"]],

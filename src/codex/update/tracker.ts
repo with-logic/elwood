@@ -1,10 +1,19 @@
 /** Separate update automation generations from retained input holds (PRD §5.5). */
 import type { TrustClearance } from "../../core/trust/clearance.ts";
 import { codexComposerClearance } from "../screen/clearance.ts";
+import {
+  appearanceBindingsHold,
+  bannerContradictsAppearance,
+  type CodexUpdateAppearanceEvidence,
+  emptyUpdateEvidence,
+  evidenceAllowsContinuation,
+  withUpdateFrameEvidence,
+} from "./evidence.ts";
 import { codexUpdatePromptVisible, isSafeUpdateContinuation } from "./recognition.ts";
 
 /** Tracks update eligibility while retaining input until positive composer clearance. */
 export class CodexUpdatePromptTracker {
+  private evidence: CodexUpdateAppearanceEvidence = emptyUpdateEvidence();
   private active = false;
   private generation = 0;
   private holdingInput = false;
@@ -30,12 +39,30 @@ export class CodexUpdatePromptTracker {
   }
 
   observe(frameText: string): boolean {
-    if (codexUpdatePromptVisible(frameText)) {
-      if (!this.active) this.generation += 1;
-      this.active = true;
-    } else if (!(this.active && isSafeUpdateContinuation(frameText))) {
-      if (this.active) this.generation += 1;
+    const firstParty = codexUpdatePromptVisible(frameText);
+    // Contradiction must be checked before first-party shape can authorize a replacement.
+    if (
+      this.active &&
+      (bannerContradictsAppearance(this.evidence, frameText) ||
+        !(this.evidence.overflowed || appearanceBindingsHold(this.evidence, frameText)))
+    ) {
+      this.generation += 1;
       this.active = false;
+      this.evidence = emptyUpdateEvidence();
+    }
+    if (firstParty) {
+      if (!this.active) {
+        this.generation += 1;
+        this.evidence = emptyUpdateEvidence();
+      }
+      this.active = true;
+      this.evidence = withUpdateFrameEvidence(this.evidence, frameText, true);
+    } else if (this.active && this.continuesCurrentAppearance(frameText)) {
+      this.evidence = withUpdateFrameEvidence(this.evidence, frameText, false);
+    } else if (this.active) {
+      this.generation += 1;
+      this.active = false;
+      this.evidence = emptyUpdateEvidence();
     }
     this.holdingInput = this.active || (this.holdingInput && !this.clearsInput(frameText));
     return this.active;
@@ -47,6 +74,19 @@ export class CodexUpdatePromptTracker {
     return (frameText) =>
       this.active &&
       this.generation === generation &&
-      (codexUpdatePromptVisible(frameText) || isSafeUpdateContinuation(frameText));
+      this.frameAgreesWithAppearance(frameText) &&
+      (codexUpdatePromptVisible(frameText) || this.continuesCurrentAppearance(frameText));
+  }
+  private frameAgreesWithAppearance(frameText: string): boolean {
+    return (
+      appearanceBindingsHold(this.evidence, frameText) &&
+      !bannerContradictsAppearance(this.evidence, frameText)
+    );
+  }
+
+  private continuesCurrentAppearance(frameText: string): boolean {
+    return (
+      isSafeUpdateContinuation(frameText) && evidenceAllowsContinuation(this.evidence, frameText)
+    );
   }
 }

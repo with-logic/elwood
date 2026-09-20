@@ -821,3 +821,13 @@ The 0.142.5 narrow resize leaves malformed chrome, so that frame is not used as 
 positive fixture. Inspect cursor mode and coordinates together with the same
 completed rendered text and title: an old composer or footer can remain during a
 dialog repaint, and a transcript can contain identical caret/option text.
+
+### Update continuation evidence
+
+The measured split can show only `1. Update now` with the banner, followed by
+previously unseen safe options. That ordering is indistinguishable from a foreign
+option-only dialog, so it now stays held for a human. Banner-less repaints remain
+automatable only for option numbers and labels already seen with first-party
+evidence. Changed version banners and relabeled choices fence prior retries.
+This is the fail-closed policy for the previously captured layout, not a new live
+Codex update observation.

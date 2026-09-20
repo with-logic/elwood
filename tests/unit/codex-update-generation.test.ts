@@ -18,21 +18,20 @@ describe("Codex update prompt generations", () => {
 
   test("C-CODEX-12 accepts a safe option-only continuation of the current prompt", async () => {
     const responder = new CodexStartupPromptResponder("s1");
-    let frame = "Update available! 0.153.3 -> 0.153.4\n  1. Update now";
-    responder.handle(frame, () => {});
-    frame = "  2. Skip\n  3. Skip until next version";
+    let frame = `${update}\n  3. Skip until next version`;
     const writes: string[] = [];
     const handled = responder.handle(
       frame,
       (input) => {
         writes.push(input);
-        frame = codexSmallComposer;
+        frame =
+          writes.length === 1 ? "  2. Skip\n  3. Skip until next version" : codexSmallComposer;
       },
       () => frame,
     );
     await vi.runAllTimersAsync();
     await handled.outcomes[0]?.settled;
-    expect(writes).toEqual(["2"]);
+    expect(writes).toEqual(["2", "2"]);
   });
 
   test("C-CODEX-12 an old retry cannot cross a clear-and-reappear generation", async () => {

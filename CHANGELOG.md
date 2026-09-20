@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Bind Codex update retries to the current appearance’s first-party option evidence;
+  unrelated, relabeled, unseen, or overflowed continuation choices stay held for a human.
+
 - Report an automated Codex update skip as answered only after verified native
   composer clearance; completed writes without a reader or into replaced dialogs
   settle quietly without false startup success.
