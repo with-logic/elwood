@@ -4,7 +4,7 @@ import { AttentionWatcher } from "../../src/core/attention.ts";
 import { readScreenFacts } from "../../src/core/screen-facts.ts";
 
 function reading(ids: readonly string[]) {
-  return readScreenFacts(
+  const result = readScreenFacts(
     {
       agent: "codex",
       verifiedAgainst: "test",
@@ -12,6 +12,7 @@ function reading(ids: readonly string[]) {
     },
     { text: "dialog", title: "" },
   );
+  return { ...result, facts: { ...result.facts, composer_visible: ids.length === 0 } };
 }
 
 test("C-ATTN-03 updates the label when an update is replaced by a human-owned prompt", () => {

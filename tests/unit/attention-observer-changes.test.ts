@@ -28,9 +28,9 @@ function harness(table: ScreenFactTable = { agent: "codex", verifiedAgainst: "te
     get status() {
       return engine.status;
     },
-    submitEvidence: (kind: ElwoodStatusEvidence, working = false) => {
+    submitEvidence: (kind: ElwoodStatusEvidence, workingVisible = false) => {
       submitted.push(kind);
-      return engine.submit(kind, false, working);
+      return engine.submit(kind, { workingVisible });
     },
   };
   const observers = {
@@ -53,7 +53,11 @@ function harness(table: ScreenFactTable = { agent: "codex", verifiedAgainst: "te
       },
       { text: "dialog", title: "" },
     );
-    observeRenderedReading(observers, reading, session);
+    observeRenderedReading(
+      observers,
+      { ...reading, facts: { ...reading.facts, composer_visible: ids.length === 0 } },
+      session,
+    );
   };
   const frame = (text: string) => observeRenderedFrame(observers, { text, title: "" }, session);
   return { engine, observe, frame, activities, statuses, submitted, observers, queueEvents };

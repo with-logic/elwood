@@ -77,7 +77,7 @@ export abstract class SessionLifecycle {
         this.submitEvidence("caller_submitted");
       },
       () => this.status === "running",
-      () => void this.submitEvidence("caller_submitted"),
+      () => void (this.status === "ready" && this.submitEvidence("caller_submitted")),
     );
     this.loops = new SessionLoops({
       stateDir,
@@ -148,7 +148,7 @@ export abstract class SessionLifecycle {
   }
   submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
     const held = this.automationBlocking || this.closing.signal.aborted;
-    return this.statusEngine.submit(kind, held, workingVisible);
+    return this.statusEngine.submit(kind, { inputBlocked: held, workingVisible });
   }
   submitExit(): StatusDecision {
     this.closing.abort();

@@ -26,7 +26,12 @@ test.each([
       load_reason: "session_start",
     });
     await expect.poll(() => session.status).toBe("ready");
-    if (start === "caller") await session.sendMessage("first turn");
+    if (start === "caller") {
+      await session.sendMessage("first turn");
+      expect(
+        session.statusDecisions().filter((event) => event.evidence === "caller_submitted"),
+      ).toHaveLength(1);
+    }
     ptys[0]!.emitData(frame(approval));
     await session.terminal.settled();
     expect(session.status).toBe("blocked");

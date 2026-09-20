@@ -1,7 +1,7 @@
 /**
  * The readiness blocking gate (PRD §5.3, C-API-28): a blocking dialog on screen defers
  * EVERY readiness source — including the starvation DEADLINE — so the queue is never
- * released into the dialog, and readiness fires the moment the dialog clears. Covers
+ * released into the dialog, and readiness fires on a verified idle composer after the dialog clears. Covers
  * the "hold a dialog beyond the deadline" case the resume-readiness review required.
  *
  * Uses `initialReady` directly so the deadline can be short; `createReadinessGate`
@@ -26,13 +26,13 @@ describe("C-API-28 readiness blocking gate + deadline", () => {
     // The deadline fires while the dialog is STILL up: it must NOT drain into the dialog.
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(ready).toBe(0);
-    r.retryWhenUnblocked(true); // a redraw, still blocked
+    r.retryWhenReleased(true); // a redraw, still blocked
     expect(ready).toBe(0);
     // The dialog clears: the deferred deadline-readiness fires now.
     blocked = false;
-    r.retryWhenUnblocked(false);
+    r.retryWhenReleased(false);
     expect(ready).toBe(1);
-    r.retryWhenUnblocked(false); // idempotent
+    r.retryWhenReleased(false); // idempotent
     expect(ready).toBe(1);
   });
 
@@ -83,5 +83,20 @@ test("C-API-28 work without a prior blocking dialog keeps cold-start hook readin
   const gate = createReadinessGate(() => ready++, false);
   gate.observeReadinessFrame({ ...facts(true), working_visible: true });
   gate.ready.mark();
+  expect(ready).toBe(1);
+});
+
+test("C-API-28 a deferred hook stays held through blank and working frames until idle", () => {
+  let ready = 0;
+  const gate = createReadinessGate(() => ready++, false);
+  gate.observeReadinessFrame(facts(true, true));
+  gate.ready.mark();
+  gate.observeReadinessFrame(facts(false));
+  expect(ready).toBe(0);
+  gate.observeReadinessFrame({ ...facts(true), working_visible: true });
+  expect(ready).toBe(0);
+  gate.observeReadinessFrame(facts(false));
+  expect(ready).toBe(0);
+  gate.observeReadinessFrame(facts(true));
   expect(ready).toBe(1);
 });

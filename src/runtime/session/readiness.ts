@@ -4,7 +4,8 @@
  * `observeReadinessFrame` combines human and automation-owned input gates so readiness never
  * drains the queue INTO a dialog (even one shown during `starting`, which never
  * latched `blocked`) and is never starved BY it — it reconciles once the dialog
- * clears — and marks resume-composer readiness. Implements PRD §5.3 (C-API-28).
+ * clears to a positive idle composer — and marks resume-composer readiness.
+ * Implements PRD §5.3 (C-API-28).
  */
 
 import type { ComposerReadyFacts } from "../readiness/initial-ready.ts";
@@ -32,12 +33,9 @@ export function createReadinessGate(onReady: () => void, resumed: boolean): Read
       readinessHeld =
         facts.blocking_prompt_visible ||
         automationBlocking ||
-        (readinessHeld && facts.working_visible === true);
-      markReadyOnResumeComposer(ready, resumed, {
-        ...facts,
-        blocking_prompt_visible: readinessHeld,
-      });
-      ready.retryWhenUnblocked(readinessHeld); // reconcile only after an idle clearance frame
+        (readinessHeld && (facts.working_visible === true || !facts.composer_visible));
+      markReadyOnResumeComposer(ready, resumed, facts, readinessHeld);
+      ready.retryWhenReleased(readinessHeld); // reconcile only after an idle clearance frame
     },
   };
 }

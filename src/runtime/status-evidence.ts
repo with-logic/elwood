@@ -47,11 +47,15 @@ const requiresLiveSession = new Set<StatusEvidenceKind>([
   "blocking_prompt_cleared",
 ]);
 
+export type StatusEvidenceContext = {
+  readonly inputBlocked?: boolean;
+  readonly workingVisible?: boolean;
+};
+
 export function decideStatus(
   from: ElwoodSessionStatus,
   evidence: StatusEvidenceKind,
-  inputBlocked = false,
-  workingVisible = false,
+  { inputBlocked = false, workingVisible = false }: StatusEvidenceContext = {},
 ): StatusDecision {
   const target =
     evidence === "blocking_prompt_cleared" && workingVisible
@@ -123,8 +127,8 @@ export class SessionStatusEngine {
     return this.log;
   }
 
-  submit(kind: StatusEvidenceKind, inputBlocked = false, workingVisible = false): StatusDecision {
-    const decision = decideStatus(this.current, kind, inputBlocked, workingVisible);
+  submit(kind: StatusEvidenceKind, context: StatusEvidenceContext = {}): StatusDecision {
+    const decision = decideStatus(this.current, kind, context);
     this.log.push(decision);
     if (this.log.length > maxStatusDecisions) this.log.shift();
     if (decision.to !== undefined) this.apply(decision.to);

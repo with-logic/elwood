@@ -37,7 +37,9 @@ export function createSessionFrameObserver(
     const reading = readRenderedFrame(observers, frame, state.blockedPrompt);
     const released = active.automationBlocking && !state.inputBlocking;
     active.automationBlocking = state.inputBlocking;
-    active.inputBlocking = reading.facts.blocking_prompt_visible;
+    active.inputBlocking =
+      reading.facts.blocking_prompt_visible ||
+      (active.inputBlocking && !reading.facts.working_visible && !reading.facts.composer_visible);
     ruleIds = blockingRuleIds(reading);
     readiness.ready.armDeadline();
     try {

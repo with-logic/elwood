@@ -31,7 +31,8 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
     get status() {
       return engine.status;
     },
-    submitEvidence: engine.submit.bind(engine),
+    submitEvidence: (kind: Parameters<typeof engine.submit>[0], workingVisible = false) =>
+      engine.submit(kind, { workingVisible }),
   };
   let attached = false;
   const trust = {

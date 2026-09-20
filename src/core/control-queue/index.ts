@@ -42,20 +42,20 @@ export class ControlQueue extends ControlQueueState {
   private readonly submit: ControlSubmitter;
   private readonly onTurnStarted: (origin: ControlSubmissionOrigin) => void;
   private readonly guidanceMayBypass: () => boolean;
-  private readonly onTurnDispatched: (() => void) | undefined;
+  private readonly onCallerInputSubmitted: (() => void) | undefined;
 
   constructor(
     submit: ControlSubmitter,
     stoppedError: ControlQueueError,
     onTurnStarted: (origin: ControlSubmissionOrigin) => void,
     guidanceMayBypass: () => boolean = () => false,
-    onTurnDispatched?: () => void,
+    onCallerInputSubmitted?: () => void,
   ) {
     super(stoppedError);
     this.submit = submit;
     this.onTurnStarted = onTurnStarted;
     this.guidanceMayBypass = guidanceMayBypass;
-    this.onTurnDispatched = onTurnDispatched;
+    this.onCallerInputSubmitted = onCallerInputSubmitted;
   }
 
   send(
@@ -137,7 +137,7 @@ export class ControlQueue extends ControlQueueState {
       if (signal.aborted) throw this.abortError(signal);
       this.beginSubmission(operation, traits);
     }
-    const dispatched = this.onTurnDispatched;
+    const dispatched = this.onCallerInputSubmitted;
     const onSubmitted =
       dispatched && traits.reportsCallerSubmission && operation.origin.kind === "caller"
         ? () => runContained(dispatched)

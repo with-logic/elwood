@@ -21,6 +21,14 @@ export class AttentionWatcher {
   /** Consumes a reading already classified from the frame (see observeRenderedFrame). */
   observe(reading: ScreenFactReading): AttentionEdge | undefined {
     const blocked = reading.facts.blocking_prompt_visible;
+    // A blank/partial repaint cannot prove the dialog has resolved.
+    if (
+      this.blocked &&
+      !blocked &&
+      !reading.facts.working_visible &&
+      !reading.facts.composer_visible
+    )
+      return undefined;
     const ruleIds = blocked ? [...new Set(blockingRuleIds(reading))] : [];
     if (
       blocked === this.blocked &&

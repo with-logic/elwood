@@ -120,6 +120,6 @@ test.each([
   "rendered_turn_ended",
   "blocking_prompt_cleared",
 ] as const)("C-TRUST-01 %s cannot release a trust-held input gate", (evidence) => {
-  expect(decideStatus("blocked", evidence, true).to).toBeUndefined();
-  expect(decideStatus("running", evidence, true).to).toBeUndefined();
+  expect(decideStatus("blocked", evidence, { inputBlocked: true }).to).toBeUndefined();
+  expect(decideStatus("running", evidence, { inputBlocked: true }).to).toBeUndefined();
 });

@@ -73,6 +73,11 @@ test("C-ATTN-02 deferred initial readiness waits through working clearance", asy
       source: "startup",
     });
     session.on("status", (event) => statuses.push(event.status));
+    ptys[0]!.emitData(frame(""));
+    await session.terminal.settled();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(session.status).toBe("blocked");
+    expect(ptys[0]!.writes).toEqual([]);
     ptys[0]!.emitData(frame(working));
     await session.terminal.settled();
     await new Promise<void>((resolve) => setImmediate(resolve));

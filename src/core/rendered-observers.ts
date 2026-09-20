@@ -93,6 +93,10 @@ export function observeRenderedReading(
     }
   }
   if (attention?.edge === "cleared") {
+    // Establish this real turn before public status listeners can observe running.
+    // Resume replay settling must not swallow its next idle end edge.
+    if (reading.facts.working_visible && session?.status === "blocked")
+      observers.turn.observe(reading.facts, true);
     session?.submitEvidence("blocking_prompt_cleared", reading.facts.working_visible);
   }
 }
