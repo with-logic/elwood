@@ -1,4 +1,4 @@
-/** Bounded staged-paste recovery; cancellation owns every Enter (PRD §5.3/§5.8, C-API-58). */
+/** Bounded staged-paste recovery; cancellation owns every Enter (PRD §5.3/§5.8). */
 import { type InputTerminal, throwIfInputAborted, waitForInput, writeUnsafe } from "./abort.ts";
 import type { PasteGuard } from "./index.ts";
 

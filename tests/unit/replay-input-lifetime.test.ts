@@ -1,4 +1,4 @@
-/** Physical replay writes stay owned until cancellation settles (PRD §5.8, C-API-58). */
+/** Physical replay writes stay owned until cancellation settles (PRD §5.8). */
 import { afterEach, expect, test, vi } from "vitest";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { writeQueuedInput } from "../../src/core/input/index.ts";
@@ -42,7 +42,7 @@ function setup(blocked: () => boolean = () => false) {
   return { writes, started, queue, abort, send };
 }
 
-test("C-API-58 turn cancellation after first Enter stops every delayed replay Enter", async () => {
+test("Private recovery: turn cancellation after first Enter stops every delayed replay Enter", async () => {
   vi.useFakeTimers();
   const h = setup();
   const replay = h.send().catch(() => undefined);
@@ -56,7 +56,7 @@ test("C-API-58 turn cancellation after first Enter stops every delayed replay En
   h.queue.close();
 });
 
-test("C-API-58 a replay cancelled behind a dialog preserves readiness for the next message", async () => {
+test("Private recovery: a replay cancelled behind a dialog preserves readiness for the next message", async () => {
   vi.useFakeTimers();
   let blocked = true;
   const h = setup(() => blocked);
@@ -75,7 +75,7 @@ test("C-API-58 a replay cancelled behind a dialog preserves readiness for the ne
   h.queue.close();
 });
 
-test("C-API-58 an in-flight recovery Enter retains its queue slot until the write settles", async () => {
+test("Private recovery: an in-flight recovery Enter retains its queue slot until the write settles", async () => {
   vi.useFakeTimers();
   const pendingWrite = Promise.withResolvers<void>();
   const writes: string[] = [];
@@ -133,7 +133,7 @@ test("C-API-58 an in-flight recovery Enter retains its queue slot until the writ
   queue.close();
 });
 
-test("C-API-58 closing the session waits for an active replay write to settle", async () => {
+test("Private recovery: closing the session waits for an active replay write to settle", async () => {
   const writing = Promise.withResolvers<void>();
   const queue = new ControlQueue(
     () => writing.promise,

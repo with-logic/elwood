@@ -15,6 +15,7 @@ export abstract class ControlQueueState {
   protected bypassable = 0;
   protected inFlight: QueuedOperation | undefined;
   protected submitAbort: AbortController | undefined;
+  private preparationAbort: AbortController | undefined;
   protected readonly cancellation = new ControlCancellation();
   protected readonly stoppedError: ControlQueueError;
 
@@ -40,7 +41,7 @@ export abstract class ControlQueueState {
     this.submitAbort?.abort(error);
     const settling = this.inFlight;
     const retainsCleanup = settling?.origin.kind === "caller" && settling.origin.recovery;
-    // Recovery owns captured images and the serializer slot through physical cleanup.
+    // A recovery caller retains ownership until physical cleanup settles.
     // Closing aborts its work, but only that work's settlement releases its caller.
     if (!retainsCleanup) {
       this.inFlight = undefined;
@@ -82,6 +83,12 @@ export abstract class ControlQueueState {
     return this.submitAbort.signal;
   }
 
+  /** Deadlines cancel pre-operation cleanup without revoking an active dialog owner. */
+  protected prepareSignal(closed: AbortSignal): AbortSignal {
+    this.preparationAbort = new AbortController();
+    return AbortSignal.any([closed, this.preparationAbort.signal]);
+  }
+
   protected abortError(signal: AbortSignal): Error {
     return toError(signal.reason);
   }
@@ -99,7 +106,9 @@ export abstract class ControlQueueState {
       if (overtakesReadiness(operation)) this.bypassable -= 1;
       this.cancellation.remove(operation);
       operation.reject(error);
-    } else if (this.inFlight === operation && !operation.run) {
+    } else if (operation.run) this.preparationAbort?.abort(error);
+    else {
+      // Settled operations have no listener; an operation absent from the queue is active.
       this.cancellation.mark(operation, error);
       this.submitAbort?.abort(error);
     }

@@ -12,22 +12,17 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Keep cancelled turn replays pending through delayed Enter writes and clipboard
-  restoration, cancel clipboard lock waiters promptly, and preserve readiness when
-  a held replay is cancelled before it submits.
-
-- Never re-submit a prompt whose ergonomic turn already ended. Acceptance recovery
-  is now disarmed the moment the turn settles — including a submission that rejected
-  after the session had already gone `running`/`ready`, which released the serializer
-  slot but left the replay watchdog armed. A surviving watchdog re-sent the prompt
-  roughly a quiet window later, so a failed turn could overlap the next one with a
-  duplicate message (and replay images whose per-session reservation had been
-  released at the boundary). Queued and in-flight recovery submissions are now
-  cancelled, including behind a held dialog. The serializer slot and captured
-  images remain reserved until cancellation finishes settling.
+- Stop acceptance-recovery replays when their turn settles, including rejected
+  submissions. Cancel queued and active replay work, holding the serialized turn
+  slot and captured images until its writes and cleanup settle.
 - Clear cancelled staged text and images before successor input, deferring cleanup
   through dialogs. Failed cleanup holds the draft; raw human input revokes cleanup
   authority, and shutdown drops deferred cleanup without waiting.
+- Hold image paste keys until received terminal output has rendered and blocking
+  dialogs have cleared, then capture the chip count immediately before pasting.
+  Permanent render failures reject the attachment and release its clipboard lock;
+  session cancellation also prevents pending image input.
+
 - Cancel Codex update retry timers and pending automated keys when the session closes,
   suppressing late startup success and write-failure warnings after disposal.
 

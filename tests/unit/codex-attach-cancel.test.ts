@@ -18,7 +18,12 @@ vi.mock("../../src/codex/images/clipboard.ts", () => ({
 }));
 const { attachCodexImages } = await import("../../src/codex/images/attach.ts");
 
-const terminal = { sendInput: vi.fn(), snapshot: () => ({ text: "› " }) };
+const terminal = {
+  settled: () => Promise.resolve(),
+  renderFailed: false,
+  sendInput: vi.fn(),
+  snapshot: () => ({ text: "› " }),
+};
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 test("C-API-46 cancelled clipboard waiter settles before another session releases its lease", async () => {

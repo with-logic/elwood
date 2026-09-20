@@ -1,4 +1,4 @@
-/** Private turn replay uses physical submission evidence (PRD §5.8, C-API-58). */
+/** Private turn replay uses physical submission evidence (PRD §5.8). */
 import { afterEach, expect, test } from "vitest";
 import { cancellableSubmission } from "../../src/core/input/submission-cancel.ts";
 import { startCodex } from "../../src/index.ts";
@@ -6,7 +6,7 @@ import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.
 
 afterEach(resetFakes);
 
-test("C-API-58 cancelling a queued replay leaves the real session ready for another message", async () => {
+test("Private recovery: cancelling a queued replay leaves the real session ready for another message", async () => {
   installFakes();
   const cwd = tempDir();
   const session = await startCodex({ cwd });
@@ -28,7 +28,7 @@ test("C-API-58 cancelling a queued replay leaves the real session ready for anot
   }
 });
 
-test("C-API-58 a replay reports running when its first Enter dispatches", async () => {
+test("Private recovery: a replay reports running when its first Enter dispatches", async () => {
   installFakes();
   const cwd = tempDir();
   const session = await startCodex({ cwd });

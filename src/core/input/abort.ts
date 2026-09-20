@@ -1,5 +1,7 @@
 /** Abort-aware timing, dialog holds, and composer cleanup for queued input (PRD §5.3/§5.9, C-API-56). */
 
+import { composerClearKeys, unsafeWriteRetryMs } from "./constants.ts";
+
 /**
  * The narrow terminal surface the queued-input helpers drive. `settled` resolves once
  * every PTY byte received so far has been rendered and observed, and `renderFailed`
@@ -39,8 +41,6 @@ function delayUnref(ms: number): Promise<void> {
   });
 }
 
-/** How often a held write re-checks every unsafe state: dialog, unobserved output, failed render. */
-const unsafeRetryMs = 50;
 /** One bounded attempt to observe received output: sustained output or a render backlog can exceed it. */
 export const observeBudgetMs = 1_000;
 
@@ -55,7 +55,7 @@ export async function holdWhileUnsafe(
   signal?: AbortSignal,
 ): Promise<void> {
   while (!signal?.aborted && (await writeUnsafe(terminal, guard, signal))) {
-    await delayUnref(unsafeRetryMs);
+    await delayUnref(unsafeWriteRetryMs);
   }
 }
 
@@ -102,7 +102,7 @@ export function inputAbortError(signal: AbortSignal): Error {
 
 export async function clearStagedComposer(terminal: InputTerminal): Promise<void> {
   try {
-    await terminal.sendInput("\u0015\u000b");
+    await terminal.sendInput(composerClearKeys);
   } catch {
     // Best-effort: preserve the cancellation as the primary outcome.
   }

@@ -62,7 +62,14 @@ test.each([
     if (mode === "human") await session.sendKeys("human edit");
     if (mode === "terminal") await session.terminal.sendInput("human edit");
     if (mode === "xterm") session.terminal.xterm.input("human edit");
-    if (mode === "failure") ptys[0]!.failOnWrite = clear;
+    const statuses: string[] = [];
+    if (mode === "failure") {
+      session.submitEvidence("hook_turn_ended");
+      session.inputBlocking = false;
+      expect(session.status).toBe("ready");
+      session.on("status", ({ status }) => statuses.push(status));
+      ptys[0]!.failOnWrite = clear;
+    }
     const next = session.sendPrompt("next");
     const result = next.catch((error: unknown) => error);
     await vi.advanceTimersByTimeAsync(100);
@@ -80,8 +87,10 @@ test.each([
     if (mode === "failure") {
       expect(await result).toMatchObject({ code: "wait_timeout" });
       expect(ptys[0]!.writes.some((write) => write.includes("next"))).toBe(false);
+      expect(session.status).toBe("ready");
+      expect(statuses).toEqual([]);
       ptys[0]!.failOnWrite = undefined;
-      const retry = session.sendPrompt("retry");
+      const retry = session.sendMessage("retry");
       await vi.advanceTimersByTimeAsync(250);
       await retry;
       expect(ptys[0]!.writes.slice(-3)).toEqual([clear, "\u001b[200~retry\u001b[201~", "\r"]);

@@ -158,7 +158,7 @@ export async function writeQueuedInput(
   await submitters[mode]();
 }
 
-/** Session queue binding preserves physical submission evidence (C-API-58, C-ATTN-02). */
+/** Session queue binding preserves physical submission evidence (C-ATTN-02). */
 export function queuedInputSubmitter(terminal: InputTerminal, guard: PasteGuard): ControlSubmitter {
   return (input, mode, signal, onSubmitted) =>
     writeQueuedInput(terminal, input, mode, guard, signal, commandEnterDelayMs, onSubmitted);

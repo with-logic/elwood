@@ -12,7 +12,7 @@ afterEach(() => vi.useRealTimers());
 test.each([
   false,
   true,
-])("C-API-58 C-ATTN-02 recovery=%s publishes once after its first awaited Enter", async (recovery) => {
+])("C-ATTN-02 recovery=%s publishes once after its first awaited Enter", async (recovery) => {
   vi.useFakeTimers();
   const firstEnter = Promise.withResolvers<void>();
   const writes: string[] = [];

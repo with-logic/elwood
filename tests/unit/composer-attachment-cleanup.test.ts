@@ -31,9 +31,12 @@ test.each([
   const writes: string[] = [];
   const abort = new AbortController();
   const closing = new AbortController();
+  const rawInput = new AbortController();
   let blocked = false;
   let screen = "❯ ";
   const terminal = {
+    settled: async () => undefined,
+    renderFailed: false,
     snapshot: () => ({ text: screen }),
     sendInput(data: string | Uint8Array) {
       const text = String(data);
@@ -52,7 +55,7 @@ test.each([
     terminal,
     () => blocked,
     closing.signal,
-    () => new AbortController().signal,
+    () => rawInput.signal,
   );
   const queue = new ControlQueue(
     queuedInputSubmitter(terminal, {

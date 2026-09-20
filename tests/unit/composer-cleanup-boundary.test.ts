@@ -4,6 +4,7 @@ import {
   ComposerCleanup,
   requestComposerCleanup,
   stageComposer,
+  submittedComposer,
 } from "../../src/core/input/composer-cleanup.ts";
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
@@ -103,5 +104,44 @@ test("C-API-56 an unstaged failure and a held direct attach never clear unrelate
       throw new Error("before staging");
     }, signal),
   ).rejects.toThrow("before staging");
+  expect(terminal.sendInput).not.toHaveBeenCalled();
+});
+
+test("C-API-56 registration defers cleanup while unregistered terminals use best-effort clearing", async () => {
+  const terminal = { sendInput: vi.fn() };
+  stageComposer(terminal);
+  submittedComposer(terminal);
+  await requestComposerCleanup(terminal);
+  expect(terminal.sendInput).toHaveBeenCalledExactlyOnceWith(clear);
+  terminal.sendInput.mockClear();
+  const signal = new AbortController().signal;
+  const owner = new ComposerCleanup(
+    terminal,
+    () => false,
+    signal,
+    () => signal,
+  );
+  stageComposer(terminal);
+  await requestComposerCleanup(terminal);
+  expect(terminal.sendInput).not.toHaveBeenCalled();
+  await owner.run(() => Promise.resolve(), signal);
+  expect(terminal.sendInput).toHaveBeenCalledExactlyOnceWith(clear);
+});
+
+test("C-API-56 preparation cancelled after flush resolves never starts work", async () => {
+  const preparation = new AbortController();
+  const closing = new AbortController();
+  const terminal = { sendInput: vi.fn() };
+  const owner = new ComposerCleanup(
+    terminal,
+    () => false,
+    closing.signal,
+    () => closing.signal,
+  );
+  const work = vi.fn(async () => undefined);
+  // flush checks synchronously; this queued abort runs before run resumes its await.
+  queueMicrotask(() => preparation.abort(new Error("preparation expired")));
+  await expect(owner.run(work, preparation.signal)).rejects.toThrow("preparation expired");
+  expect(work).not.toHaveBeenCalled();
   expect(terminal.sendInput).not.toHaveBeenCalled();
 });

@@ -1,4 +1,4 @@
-/** Private cancellation for turn recovery submissions (PRD §5.3/§5.8, C-API-58). */
+/** Private cancellation for turn recovery submissions (PRD §5.3/§5.8). */
 import type { ControlSendOptions } from "../control-queue/index.ts";
 import type { SendOptions } from "../images/types.ts";
 
