@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Detect startup authentication errors from PTY bytes as soon as they arrive.
+  Slow or stalled terminal rendering no longer lets an already-received error
+  escape the bounded startup check in either adapter. Startup capture retains only
+  a complete UTF-8 prefix within 64 KiB, including for oversized raw chunks.
+
 - Reject hook rewrites with unsafe JSON values or accessors before serialization, and stop wide-value inspection at the validation budget.
 
 - Reject cyclic and excessively deep or wide schema-less hook inputs
