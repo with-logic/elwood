@@ -312,9 +312,16 @@ with preview rows, so neither missing title animation nor editable input disprov
 that exact native status. We do not promise to distinguish identical transcript
 and status rows from text/cursor evidence alone.
 Real 0.142.5 and 0.155.1 trust/model dialog captures start DEC2026 before painting,
-then hide the cursor with DEC25l before ending DEC2026. Those native partial frames
-cannot combine settled rendering with a stale visible composer cursor. Captured
-protocol regressions preserve this guard without blacklisting transcript text.
+then hide the cursor with DEC25l before ending DEC2026. A 0.155.1 command approval
+under `read-only`/`on-request` uses the same ordering: its selected Yes row ends
+with the cursor hidden, not left visible on an old composer. Replaying all 1,078
+character prefixes of that actual approval paint retains the hold; Escape restores
+the visible composer afterward. The raw capture is preserved in
+`tests/fixtures/codex-command-approval-render.ts`. These observations apply to the
+captured versions and dialog types; a new CLI renderer needs new verification.
+Those native partial frames cannot combine settled rendering with a stale visible
+composer cursor. Captured protocol regressions preserve this guard without
+blacklisting transcript text.
 The Claude predicate uses `src/core/trust/clearance.ts` for its separate grammar.
 A real Claude 2.1.278 classic-renderer capture hides the cursor during trust and
 restores it at column two on the composer only at the end of its idle paint.
@@ -323,6 +330,13 @@ Splitting its bytes immediately before the final DEC25h leaves complete-looking
 composer chrome while native cursor restoration is still pending. Live Claude
 clearance therefore also verifies the visible native cursor on its composer row;
 receipt settlement alone cannot identify that native paint boundary.
+
+Claude 2.1.278 can paint the complete folder-trust dialog before accepting keyboard
+navigation. In the real human-trust test, immediate Down/Enter writes left the
+selection on "No, exit". Waiting for the selected "Yes, I trust this folder" repaint
+before Enter cleared the dialog. The test records physical PTY writes and confirms
+that queued caller input follows native cursor clearance; it does not require a
+model response or available turn quota.
 
 `tests/e2e/codex-live-clearance.e2e.ts` also exercises production `startCodex`
 with a fresh isolated configuration: queued input stays held at the human-owned

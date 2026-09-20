@@ -12,7 +12,7 @@ import type { ReadinessGate } from "./readiness.ts";
 
 type FrameSession = Pick<
   SessionLifecycle,
-  "closing" | "inputBlocking" | "automationBlocking" | "submitEvidence" | "status"
+  "closing" | "inputBlocking" | "trustInputBlocking" | "submitEvidence" | "status"
 >;
 
 type TrustState = {
@@ -36,8 +36,8 @@ export function createSessionFrameObserver(
     const state = trust();
     const reading = readRenderedFrame(observers, frame, state.blockedPrompt);
     // This shared write gate includes retained human trust and automatic attempts.
-    const released = active.automationBlocking && !state.inputBlocking;
-    active.automationBlocking = state.inputBlocking;
+    const released = active.trustInputBlocking && !state.inputBlocking;
+    active.trustInputBlocking = state.inputBlocking;
     active.inputBlocking = reading.facts.blocking_prompt_visible;
     ruleIds = blockingRuleIds(reading);
     readiness.ready.armDeadline();
@@ -48,7 +48,7 @@ export function createSessionFrameObserver(
       if (released && !reading.facts.blocking_prompt_visible && active.status === "blocked")
         active.submitEvidence("blocking_prompt_cleared");
     } finally {
-      readiness.observeReadinessFrame(reading.facts, active.automationBlocking);
+      readiness.observeReadinessFrame(reading.facts, active.trustInputBlocking);
     }
   };
   return {
