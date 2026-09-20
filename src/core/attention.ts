@@ -1,5 +1,5 @@
 /**
- * Rendered-screen attention watching: raises and clears the blocked state
+ * Rendered-screen attention watching: raises, updates, and clears human attention
  * for dialogs that need a human decision.
  * Implements PRD §5.3 blocked status (C-ATTN-01 through C-ATTN-03).
  */
@@ -8,7 +8,8 @@ import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity/index.ts";
 import type { ScreenFactReading } from "./screen-facts.ts";
 
 export type AttentionEdge = {
-  readonly edge: "raised" | "cleared";
+  /** Updates change the diagnostic label without another blocked transition. */
+  readonly edge: "raised" | "updated" | "cleared";
   /** Ids of the blocking rules that matched, for explain traces. */
   readonly ruleIds: readonly string[];
 };
@@ -27,9 +28,10 @@ export class AttentionWatcher {
       ruleIds.every((id) => this.ruleIds.includes(id))
     )
       return undefined;
+    const edge = blocked ? (this.blocked ? "updated" : "raised") : "cleared";
     this.blocked = blocked;
     this.ruleIds = ruleIds;
-    return { edge: blocked ? "raised" : "cleared", ruleIds };
+    return { edge, ruleIds };
   }
 }
 

@@ -21,7 +21,7 @@ test("C-ATTN-03 updates the label when an update is replaced by a human-owned pr
     ruleIds: ["codex-update-prompt"],
   });
   expect(watcher.observe(reading(["codex-retained-prompt"]))).toEqual({
-    edge: "raised",
+    edge: "updated",
     ruleIds: ["codex-retained-prompt"],
   });
   expect(watcher.observe(reading(["codex-retained-prompt"]))).toBeUndefined();
@@ -34,6 +34,6 @@ test("C-ATTN-03 deduplicates reordered ids but reports added or removed rules", 
   watcher.observe(reading(["a", "b"]));
   expect(watcher.observe(reading(["b", "a"]))).toBeUndefined();
   expect(watcher.observe(reading(["b", "a", "a"]))).toBeUndefined();
-  expect(watcher.observe(reading(["a"]))).toEqual({ edge: "raised", ruleIds: ["a"] });
-  expect(watcher.observe(reading(["a", "b"]))).toEqual({ edge: "raised", ruleIds: ["a", "b"] });
+  expect(watcher.observe(reading(["a"]))).toEqual({ edge: "updated", ruleIds: ["a"] });
+  expect(watcher.observe(reading(["a", "b"]))).toEqual({ edge: "updated", ruleIds: ["a", "b"] });
 });

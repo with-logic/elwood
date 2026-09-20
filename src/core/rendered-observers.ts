@@ -78,8 +78,9 @@ export function observeRenderedReading(
   if (turnEdge === "started") session?.submitEvidence("rendered_turn_started");
   if (turnEdge === "ended") session?.submitEvidence("rendered_turn_ended");
   const attention = observers.attention.observe(reading);
-  if (attention?.edge === "raised") {
-    const decision = session?.submitEvidence("blocking_prompt_shown");
+  if (attention?.edge === "raised" || attention?.edge === "updated") {
+    const decision =
+      attention.edge === "raised" ? session?.submitEvidence("blocking_prompt_shown") : undefined;
     if (session === undefined || decision?.to === "blocked" || session.status === "blocked") {
       const { agent, elwoodSessionId } = observers;
       observers.emitActivity(activityFromAttention(agent, elwoodSessionId, attention.ruleIds));
