@@ -9,8 +9,8 @@
  * placeholder before input is accepted, so releasing the first queued message on it
  * would swallow the message. On RESUME the input loop is live when the composer paints,
  * so `markReadyOnResumeComposer` releases readiness on the first composer marker
- * (verified accepted, not swallowed) — UNLESS a blocking dialog is on screen, whose
- * option caret is byte-identical to the composer marker. The hooks differ on resume:
+ * (verified accepted, not swallowed), subject to `createReadinessGate`'s composite
+ * hold: human/automation gates and their working or partial clearance frames. The hooks differ on resume:
  * Codex does NOT re-fire `SessionStart` (so the composer is the fast signal), while
  * Claude's `InstructionsLoaded` DOES re-fire — so a resumed Claude is a hook/composer
  * race, whichever arrives first (readiness is idempotent). `armDeadline` is the ultimate
@@ -45,7 +45,8 @@ export type ComposerReadyFacts = {
  * visible AND no blocking dialog is on screen. The dialog's option caret (`›`/`❯`) is
  * byte-identical to the composer marker, so a dialog frame must NOT latch readiness —
  * otherwise a draining queued message's Enter could approve the dialog; readiness waits
- * for the dialog to clear. Cold start (`resumed: false`) never fires here, so the
+ * for the composite hold owned by `createReadinessGate` to release on verified idle.
+ * Cold start (`resumed: false`) never fires here, so the
  * composer stays an unsafe signal there (C-API-28).
  */
 export function markReadyOnResumeComposer(
@@ -69,9 +70,9 @@ export function initialReady(
   let deadline: ReturnType<typeof setTimeout> | undefined;
   const mark = () => {
     if (ready || cancelled) return;
-    // A blocking dialog is on screen (it may have rendered while still `starting`,
-    // so it never latched `blocked`): do NOT release the queue into it. Remember the
-    // request and re-fire it from `retryWhenReleased` once the composite hold releases — never
+    // createReadinessGate owns the composite hold: human/automation gates and
+    // their working or partial clearance frames, including startup. Remember the
+    // request and re-fire it from retryWhenReleased once that hold releases — never
     // latch here, so readiness is neither drained into the dialog nor starved by it.
     if (isReadinessHeld()) {
       deferredByHold = true;

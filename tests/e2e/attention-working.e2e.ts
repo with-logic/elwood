@@ -61,11 +61,12 @@ const timer = setInterval(() => {
         },
         () => undefined,
       );
+      const statuses: string[] = [];
+      events.on("status", (event) => statuses.push(event.status));
       await session.sendKeys(new Uint8Array([0x0d]));
       await waitFor(() => existsSync(entered) || undefined, "approved tool entered", 30_000);
       await waitFor(() => session.status === "running" || undefined, "working clearance", 10_000);
-      const statuses: string[] = [];
-      events.on("status", (event) => statuses.push(event.status));
+      assert.deepEqual(statuses, ["running"], "approval clears directly into work");
       assert.equal(submitted, false, "follow-up remains queued when the approved tool starts");
       await new Promise((resolve) => setTimeout(resolve, 500));
       assert.equal(existsSync(release), false, "tool is still held by the fixture");

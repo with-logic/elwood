@@ -6,7 +6,10 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 afterEach(resetFakes);
 const frame = (text: string) => `\u001b[2J\u001b[H${text}`;
 
-test("C-ATTN-02 resumed dialog clearance ends at idle and releases the queued follow-up", async () => {
+test.each([
+  false,
+  true,
+])("C-ATTN-02 resumed clearance ends at idle with stale interrupt=%s", async (staleInterrupt) => {
   installFakes();
   const cwd = tempDir();
   const original = await startCodex({ cwd });
@@ -32,7 +35,12 @@ test("C-ATTN-02 resumed dialog clearance ends at idle and releases the queued fo
     expect(session.status).toBe("blocked");
     const queued = session.sendMessage("after resumed work");
     void queued.catch(() => undefined);
-    ptys[1]!.emitData(frame("• Working (3s • esc to interrupt)\r\n› "));
+    ptys[1]!.emitData(
+      frame(
+        "• Working (3s • esc to interrupt)\r\n› " +
+          (staleInterrupt ? "\r\nConversation interrupted" : ""),
+      ),
+    );
     await session.terminal.settled();
     expect(session.status).toBe("running");
     expect(ptys[1]!.writes).toEqual([]);

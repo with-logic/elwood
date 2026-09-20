@@ -161,7 +161,7 @@ export async function buildClaudeSession(
     loopDefinitions,
   );
   const active = session;
-  bindStartupLifetime(active, promptResponder, ready);
+  bindStartupLifetime(active, promptResponder, readiness);
   frameObserver.refresh();
   const beforeCleanup = () => active.pauseLoopsForStartupCleanup(ready.cancel);
   // Guard every live-resource step after session creation: a failure in any of them

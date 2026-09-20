@@ -152,7 +152,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   );
   const id = record.elwoodSessionId;
   const activeSession = session;
-  bindStartupLifetime(activeSession, promptResponder, ready);
+  bindStartupLifetime(activeSession, promptResponder, readiness);
   frameObserver.refresh();
   const beforeCleanup = () => activeSession.pauseLoopsForStartupCleanup(ready.cancel);
   // Every post-construction failure tears down all live resources (§9.1/§9.4).

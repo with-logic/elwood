@@ -5,8 +5,7 @@ import {
   type RenderedObservers,
   readRenderedFrame,
 } from "../../core/rendered-observers.ts";
-import type { RenderedFrame } from "../../core/screen-facts.ts";
-import type { InitialReady } from "../readiness/initial-ready.ts";
+import type { RenderedFrame, ScreenFacts } from "../../core/screen-facts.ts";
 import type { SessionLifecycle } from "./lifecycle.ts";
 import type { ReadinessGate } from "./readiness.ts";
 
@@ -30,6 +29,20 @@ export function createSessionFrameObserver(
 ) {
   let frame: RenderedFrame | undefined;
   let ruleIds: readonly string[] = [];
+  let pendingAutomationClearance = false;
+  const replayAutomationClearance = (active: FrameSession, facts: ScreenFacts) => {
+    if (
+      pendingAutomationClearance &&
+      active.status === "blocked" &&
+      !active.automationBlocking &&
+      !active.inputBlocking &&
+      (facts.working_visible || facts.composer_visible)
+    ) {
+      if (facts.working_visible) observers.turn.adoptWorkingClearance(facts);
+      active.submitEvidence("blocking_prompt_cleared", facts.working_visible);
+    }
+    if (active.status !== "blocked") pendingAutomationClearance = false;
+  };
   const refresh = () => {
     const active = session();
     if (active === undefined || active.closing.signal.aborted || frame === undefined) return;
@@ -40,15 +53,15 @@ export function createSessionFrameObserver(
     active.inputBlocking =
       reading.facts.blocking_prompt_visible ||
       (active.inputBlocking && !reading.facts.working_visible && !reading.facts.composer_visible);
-    ruleIds = blockingRuleIds(reading);
+    const currentRuleIds = blockingRuleIds(reading);
+    if (currentRuleIds.length > 0 || !active.inputBlocking) ruleIds = currentRuleIds;
+    if (released && active.status === "blocked") pendingAutomationClearance = true;
     readiness.ready.armDeadline();
     try {
       observeRenderedReading(observers, reading, active);
-      // A human gate that handed off to an automation-owned one had its clear edge
-      // ignored while automation held input. Only that edge may leave `blocked`, so
-      // replay it once automation releases with nothing blocking left on screen.
-      if (released && !reading.facts.blocking_prompt_visible)
-        active.submitEvidence("blocking_prompt_cleared");
+      // Automation can consume the human clear edge. Retain its replay until a
+      // positive frame shows either resumed work or an idle composer.
+      replayAutomationClearance(active, reading.facts);
     } finally {
       readiness.observeReadinessFrame(reading.facts, active.automationBlocking);
     }
@@ -75,15 +88,16 @@ export function createSessionFrameObserver(
 
 /** Cancel automation synchronously before signaling or disposing its PTY. */
 export function bindStartupLifetime(
-  session: Pick<SessionLifecycle, "closing">,
+  session: Pick<SessionLifecycle, "closing" | "bindInitialReadinessHold">,
   trust: TrustState,
-  ready: InitialReady,
+  readiness: ReadinessGate,
 ): void {
+  session.bindInitialReadinessHold(readiness.isHeld);
   session.closing.signal.addEventListener(
     "abort",
     () => {
       trust.dispose();
-      ready.cancel();
+      readiness.ready.cancel();
     },
     { once: true },
   );

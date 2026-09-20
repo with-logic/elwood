@@ -96,7 +96,7 @@ export function observeRenderedReading(
     // Establish this real turn before public status listeners can observe running.
     // Resume replay settling must not swallow its next idle end edge.
     if (reading.facts.working_visible && session?.status === "blocked")
-      observers.turn.observe(reading.facts, true);
+      observers.turn.adoptWorkingClearance(reading.facts);
     session?.submitEvidence("blocking_prompt_cleared", reading.facts.working_visible);
   }
 }

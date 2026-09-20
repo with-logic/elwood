@@ -1,10 +1,8 @@
 /** Session lifetime, input blocking, persistence and cleanup (PRD §5/§8/§9). */
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../core/activity/index.ts";
 import { ControlQueue } from "../../core/control-queue/index.ts";
-import { toError } from "../../core/errors.ts";
 import { type PasteGuard, queuedInputSubmitter } from "../../core/input/index.ts";
 import { registerPrivateOutputSecrets } from "../../core/private-output-secrets.ts";
-import { terminalStatuses } from "../../core/status-categories.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent } from "../../core/types.ts";
 import type { PtyProcess } from "../../pty/types.ts";
@@ -20,7 +18,7 @@ import type {
   StatusEvidenceKind,
 } from "../status-evidence.ts";
 import { SessionLoops } from "./loops.ts";
-import { closingController, notRunningError } from "./not-running.ts";
+import { closingController, notRunningError, runSessionOperation } from "./not-running.ts";
 import { SessionReapPolicy } from "./reap.ts";
 import { SessionShutdownBinding } from "./shutdown-binding.ts";
 import { createSessionStatusEngine, type SessionStatusEmitter } from "./status-wiring.ts";
@@ -35,6 +33,7 @@ export abstract class SessionLifecycle {
   protected readonly loops: SessionLoops;
   protected readonly controlQueue: ControlQueue;
   protected everReady = false;
+  private initialReadinessHeld: (() => boolean) | undefined;
   inputBlocking = false;
   automationBlocking = false;
   readonly closing = closingController(() => this.controlQueue.close());
@@ -146,8 +145,14 @@ export abstract class SessionLifecycle {
       this.status === "blocked"
     );
   }
+  bindInitialReadinessHold(isHeld: () => boolean): void {
+    this.initialReadinessHeld = isHeld;
+  }
   submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
-    const held = this.automationBlocking || this.closing.signal.aborted;
+    const held =
+      this.automationBlocking ||
+      this.closing.signal.aborted ||
+      (!this.everReady && this.initialReadinessHeld?.() === true);
     return this.statusEngine.submit(kind, { inputBlocked: held, workingVisible });
   }
   submitExit(): StatusDecision {
@@ -171,14 +176,7 @@ export abstract class SessionLifecycle {
     if (event === "activity") this.terminalReplay.replayAttention(handler as AttentionListener);
   }
   protected inSession<T>(work: () => Promise<T> | T, allowTerminal = false): Promise<T> {
-    if (!allowTerminal && terminalStatuses.has(this.status)) {
-      return Promise.reject(notRunningError(this.agent));
-    }
-    try {
-      return Promise.resolve(work());
-    } catch (error) {
-      return Promise.reject(toError(error));
-    }
+    return runSessionOperation(this.agent, this.status, work, allowTerminal);
   }
   protected persist(record: SessionRecord): void {
     writeSessionRecord(record, this.runtime.sessionDir); // atomic record write FIRST, commit in-memory on success (§8.2)
