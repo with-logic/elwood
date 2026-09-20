@@ -24,6 +24,7 @@ import {
 
 const fixture = join(import.meta.dirname, "..", "fixtures", "sample.png");
 const chip = /\[Image #\d+\]/;
+const marker = "ELWOOD_CANCELLED_DRAFT";
 for (const agent of ["claude", "codex"] as const) {
   test(`C-API-44/56 ${agent} cancels a native image/text draft without a turn`, {
     skip: skipIf(
@@ -50,8 +51,19 @@ for (const agent of ["claude", "codex"] as const) {
     const observed = observeSession(session);
     const closing = new AbortController();
     let queue: ControlQueue | undefined;
+    const diagnose = (phase: "staged" | "failure") => {
+      const screen = session.terminal.snapshot().text;
+      t.diagnostic(
+        JSON.stringify({
+          agent,
+          phase,
+          status: session.status,
+          markerPresent: screen.includes(marker),
+          chipPresent: chip.test(screen),
+        }),
+      );
+    };
     try {
-      t.diagnostic(`${agent}: ${execFileSync(agent, ["--version"], { encoding: "utf8" }).trim()}`);
       await prepareInteractivePrompt(session, observed, agent);
       await waitFor(
         () => (session.status === "ready" ? true : undefined),
@@ -60,7 +72,6 @@ for (const agent of ["claude", "codex"] as const) {
       );
       const abort = new AbortController();
       const cancelled = new Error("cancel native staged draft");
-      const marker = "ELWOOD_CANCELLED_DRAFT";
       const terminal = {
         snapshot: () => session.terminal.snapshot(),
         settled: () => session.terminal.settled(),
@@ -70,13 +81,7 @@ for (const agent of ["claude", "codex"] as const) {
         async sendInput(data: string | Uint8Array) {
           const text = String(data);
           assert.notEqual(text, "\r", "this native proof must never submit a model turn");
-          if (text === "\u0015\u000b")
-            t.diagnostic(
-              `staged: ${session.terminal
-                .snapshot()
-                .text.split("\n")
-                .find((line) => line.includes(marker))}`,
-            );
+          if (text === "\u0015\u000b") diagnose("staged");
           await session.terminal.sendInput(data);
           if (text.includes(marker)) {
             await waitFor(
@@ -130,7 +135,7 @@ for (const agent of ["claude", "codex"] as const) {
       );
       if (clipboard) assert.deepEqual(execFileSync("/usr/bin/pbpaste"), clipboard);
     } catch (error) {
-      t.diagnostic(session.terminal.snapshot().text);
+      diagnose("failure");
       throw error;
     } finally {
       closing.abort();
