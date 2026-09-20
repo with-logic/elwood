@@ -15,7 +15,6 @@ test("C-LOOP-17 superseded cancellation cannot succeed while the successor retai
   try {
     await becomeReady(prior.elwoodSessionId, cwd);
     const loop = await prior.createLoop({ mode: "fixed", intervalMs: 60_000, message: "retained" });
-    await prior.stop();
     current = await resumeCodex({ cwd, elwoodSessionId: prior.elwoodSessionId });
     await expect(prior.cancelLoop(loop.id)).rejects.toMatchObject({ code: "session_not_running" });
     await expect(

@@ -95,9 +95,6 @@ test.each([
     const definitions = readLoopDefinitions(join(cwd, ".elwood"), session.elwoodSessionId);
     expect(definitions).toContainEqual(expect.objectContaining({ id: nextLoop.id }));
     expect(existsSync(bridge.socketPath)).toBe(true);
-    await expect(
-      session.createLoop({ mode: "fixed", intervalMs: 60_000, message: "stale" }),
-    ).rejects.toMatchObject({ code: "session_not_running" });
     await session.teardown();
     expect(readFileSync(join(dir, "session.json"), "utf8")).toBe(record);
     expect(readBridgeScript(bridgePath)).toEqual(bridge);

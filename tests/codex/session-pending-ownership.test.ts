@@ -53,6 +53,10 @@ test("C-LOOP-17 pending successor activation preserves successful predecessor lo
     });
     held.release();
     current = await starting;
+    expect(["ready", "running"]).toContain(prior.status);
+    await expect(
+      prior.createLoop({ mode: "fixed", intervalMs: 60_000, message: "superseded" }),
+    ).rejects.toMatchObject({ code: "session_not_running" });
     expect(await current.listLoops()).toEqual([expect.objectContaining({ id: replacement.id })]);
   } finally {
     held?.release();
