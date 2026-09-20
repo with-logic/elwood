@@ -46,6 +46,8 @@ if match:
     if mode == 'large-input':
         assert 'DIFF_LAST_CANARY' in evidence and 'CONTEXT_LAST_CANARY' in evidence
     assert 'static review only' in prompt
+    if mode == 'killed' and name == 'review-architecture-conventions':
+        os.kill(os.getpid(), 9)
     if mode == 'all-failed' or (mode == 'missing' and name == 'review-architecture-conventions'):
         print('PRIVATE-REVIEW-TEXT', file=sys.stderr)
         sys.exit(1)

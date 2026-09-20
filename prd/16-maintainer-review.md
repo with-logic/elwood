@@ -32,6 +32,9 @@ that approval. Reports link to the workflow run and the rerun command. Failed
 or canceled authorized runs report their outcome on the still-current PR.
 The workflow allows 25 minutes per reviewer process within a 40-minute overall
 review deadline.
+Reviewer processes killed by the wall-clock cap or `SIGKILL` are not retried;
+their missing report prevents approval. Child signal termination is preserved
+as the shell exit status `128 + signal` when the supervisor reports it.
 
 The harness fetches the PR title, description, review bodies, and top-level and
 inline comments. A bounded snapshot containing only current maintainers and

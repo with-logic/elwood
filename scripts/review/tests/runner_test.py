@@ -12,8 +12,6 @@ LENSES = sorted(p.name for p in (SOURCE.parents[1] / '.claude/skills').glob('rev
 
 from runner_stub import STUB
 
-
-
 class RunnerTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -127,12 +125,20 @@ class RunnerTest(unittest.TestCase):
         result = self.run_review('timeout')
         self.assertLess(time.monotonic() - started, 12)
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual((self.root / 'call-review-architecture-conventions').read_text(), '1')
+        self.assertEqual((self.root / 'call-review-architecture-conventions').read_text(), '1', result.stderr)
         report = (self.root / 'REVIEW.md').read_text()
         self.assertIn('incomplete review coverage (blocker)', report)
         self.assertNotIn('Verdict: clean', report)
         time.sleep(4)
         self.assertFalse((self.root / 'orphan').exists())
+
+    def test_sigkill_lens_is_not_retried_and_cannot_approve(self):
+        result = self.run_review('killed')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((self.root / 'call-review-architecture-conventions').read_text(), '1', result.stderr)
+        self.assertIn('category=timeout exit=137', result.stderr)
+        self.assertIn('incomplete review coverage (blocker)', (self.root / 'REVIEW.md').read_text())
+        self.assertNotIn('Verdict: clean', (self.root / 'REVIEW.md').read_text())
 
     def test_findings_reach_synthesis_in_full(self):
         result = self.run_review('finding')
