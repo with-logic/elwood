@@ -82,12 +82,12 @@ export class ClaudeStartupPromptResponder {
     ) {
       // Escape is the prompt's documented decline path and needs no option
       // number, so it stays correct if the option ordering changes. Settle
-      // OPTIMISTICALLY, but keep the decline retryable if the write is rejected
-      // so a later frame re-attempts it rather than reporting a false "answered".
+      // OPTIMISTICALLY, but a rejected live-session write stays retryable on a
+      // later frame. Disposal permanently cancels retries and diagnostics.
       this.browserDeclined = true;
       // A WITHHELD write never reached the PTY (a trust gate was on the settled frame),
       // so the decline must not claim success: un-latch it and settle as `cancelled`,
-      // which emits no `startup_prompt` activity and leaves a later frame to retry.
+      // which emits no activity; a later frame retries only while still live.
       const writeSettled = Promise.resolve(writeAutomation(declineKey))
         .then((result): StartupWriteCompletion => {
           // Disposal DURING the write wins: the session is gone, so report neither a
