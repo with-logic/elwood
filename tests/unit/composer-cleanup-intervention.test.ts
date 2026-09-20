@@ -18,6 +18,7 @@ test.each([
     () => false,
     signal,
     () => raw.signal,
+    () => terminal.sendInput.mock.calls.at(-1),
   );
   const intervene = () => {
     raw.abort();
@@ -53,6 +54,7 @@ test("C-API-56 raw intervention releases a pending cleanup wait without clearing
     () => true,
     signal,
     () => raw.signal,
+    () => terminal.sendInput.mock.calls.at(-1),
   );
   stageComposer(terminal);
   owner.defer();

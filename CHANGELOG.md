@@ -12,9 +12,18 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Preserve picker and cancelled-draft cleanup authority across automatic terminal
+  protocol replies and startup automation; actual caller input still revokes it.
+
 - Clear cancelled staged text and images before successor input, deferring cleanup
-  through dialogs. Failed cleanup holds the draft; raw human input revokes cleanup
-  authority, and shutdown drops deferred cleanup without waiting.
+  through dialogs. Failed cleanup holds the draft; raw input through `sendKeys`,
+  `terminal.sendInput`, or `xterm.input` revokes cleanup authority, and shutdown drops
+  deferred cleanup without waiting. A physical clear must be confirmed by a fresh
+  native empty composer before successor input.
+
+- Keep landing-page gestures continuous by preparing every sprite sheet before
+  playback and retaining the active animation while another loads.
+
 - Hold image paste keys until received terminal output has rendered and blocking
   dialogs have cleared, then capture the chip count immediately before pasting.
   Permanent render failures reject the attachment and release its clipboard lock;

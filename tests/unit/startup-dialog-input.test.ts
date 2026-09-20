@@ -37,6 +37,7 @@ test.each([
   const session = await (agent === "claude"
     ? startClaude({ cwd: tempDir(), autotrust: false })
     : startCodex({ cwd: tempDir(), autotrust: false }));
+  await session.terminal.settled();
   expect(session.status).toBe("blocked");
   await expect(session.listModels({ timeoutMs: 100 })).rejects.toMatchObject({
     code: "model_automation_failed",

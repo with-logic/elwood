@@ -46,7 +46,7 @@ export async function attachClaudeImages(
       await waitForImageChip(terminal, before, signal, chipWait);
     }
   } catch (error) {
-    // The session owner defers cleanup until clipboard finalizers settle and input is safe.
+    // The session owner defers cleanup until attachment/temp-file finalizers settle and input is safe.
     // Direct unregistered callers make an observed, unblocked best-effort request (C-API-44).
     if (staged) await requestComposerCleanup(terminal, blocked);
     throw error;

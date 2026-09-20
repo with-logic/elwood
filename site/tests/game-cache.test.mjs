@@ -20,7 +20,7 @@ test("mutable game manifests and images escape old immutable URLs and revalidate
   };
   globalThis.Image = class {
     async decode() {
-      requested.push(new URL(this.src));
+      assert.ok(this.src.startsWith("blob:"));
     }
   };
   try {

@@ -20,6 +20,7 @@ import type { PtyProcess } from "../../pty/types.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import type { SessionRecord } from "../../state/store.ts";
+import { currentRenderedFrame } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { CommandSurface } from "./commands.ts";
 import {
@@ -154,6 +155,11 @@ export abstract class AgentSessionBase extends SessionLifecycle {
     return this.inSession(() => this.loops.cancel(loopId), true);
   }
 
+  /** A stable completed frame only when the native composer is positively empty (C-API-56). */
+  protected emptyComposerFrame(): object | undefined {
+    const frame = currentRenderedFrame(this.terminal);
+    return frame && this.picker.isClear(frame.text) ? frame : undefined;
+  }
   /** Attach `paths` to the composer before the queued text is submitted (C-API-44). */
   protected abstract attachImages(paths: readonly string[], signal: AbortSignal): Promise<void>;
   /** Re-apply a resize that was held during startup (a best-effort restore). */
