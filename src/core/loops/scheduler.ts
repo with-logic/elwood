@@ -125,9 +125,8 @@ export class LoopScheduler {
     this.emit({ kind: "cancelled", loopId, at: this.options.now(), reason });
     this.delivery.pump(this.live);
   }
-  clear(reason: "kill" | "teardown"): void {
+  clear(reason: "kill" | "teardown", wasLive = this.live): void {
     const definitions = this.state.definitions();
-    const wasLive = this.live;
     try {
       if (definitions.length > 0) this.persist([], loopIds(definitions));
     } catch (error) {

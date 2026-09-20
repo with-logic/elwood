@@ -4,11 +4,10 @@
  */
 
 import { bridgeScriptSource } from "../../bridge/script.ts";
-import { writePrivateFileAtomic } from "../../state/files.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 
 export function writeCodexRuntimeFiles(runtime: SessionRuntime): void {
-  writePrivateFileAtomic(
+  runtime.stateOwnership.publishFile(
     runtime.bridgeScriptPath,
     bridgeScriptSource(runtime.socketPath, runtime.bridgeToken),
   );
