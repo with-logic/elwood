@@ -8,7 +8,7 @@ import type { ElwoodActivityEvent, ElwoodAgentKind } from "./activity/index.ts";
 import type { ScreenFactReading } from "./screen-facts.ts";
 
 export type AttentionEdge = {
-  /** Updates change the diagnostic label without another blocked transition. */
+  /** Updates identify changed rules while a blocking prompt remains visible. */
   readonly edge: "raised" | "updated" | "cleared";
   /** Ids of the blocking rules that matched, for explain traces. */
   readonly ruleIds: readonly string[];

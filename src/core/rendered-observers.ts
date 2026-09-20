@@ -80,7 +80,9 @@ export function observeRenderedReading(
   const attention = observers.attention.observe(reading);
   if (attention?.edge === "raised" || attention?.edge === "updated") {
     const decision =
-      attention.edge === "raised" ? session?.submitEvidence("blocking_prompt_shown") : undefined;
+      attention.edge === "raised" || session?.status !== "blocked"
+        ? session?.submitEvidence("blocking_prompt_shown")
+        : undefined;
     if (session === undefined || decision?.to === "blocked" || session.status === "blocked") {
       const { agent, elwoodSessionId } = observers;
       observers.emitActivity(activityFromAttention(agent, elwoodSessionId, attention.ruleIds));

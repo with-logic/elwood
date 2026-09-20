@@ -120,3 +120,20 @@ test.each([
   expect(activities.map((event) => event.label)).toEqual(labels);
   expect(submitted).toEqual(["blocking_prompt_shown"]);
 });
+
+test("C-ATTN-03 a replacement restores blocking after a late Stop hook", () => {
+  const { engine, observe, activities, statuses, submitted } = harness();
+  engine.submit("startup_usable");
+  observe(["codex-update-prompt"]);
+  engine.submit("hook_turn_ended");
+  expect(engine.status).toBe("ready");
+  observe(["codex-unidentified-dialog"]);
+  observe(["codex-unidentified-dialog"]);
+  expect(engine.status).toBe("blocked");
+  expect(statuses).toEqual(["running", "blocked", "ready", "blocked"]);
+  expect(submitted).toEqual(["blocking_prompt_shown", "blocking_prompt_shown"]);
+  expect(activities.map((event) => event.label)).toEqual([
+    "codex-update-prompt",
+    "codex-unidentified-dialog",
+  ]);
+});
