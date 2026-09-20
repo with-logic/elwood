@@ -5,6 +5,7 @@ import {
   clearStagedComposer,
   inputAbortError,
   throwIfInputAborted,
+  writeUnsafe,
 } from "../../src/core/input/abort.ts";
 
 describe("session input abort helpers", () => {
@@ -20,4 +21,23 @@ describe("session input abort helpers", () => {
       clearStagedComposer({ sendInput: () => Promise.reject(new Error("closed")) }),
     ).resolves.toBeUndefined();
   });
+});
+
+test("C-API-56 already-cancelled observation holds input without waiting for rendering", async () => {
+  const abort = new AbortController();
+  abort.abort();
+  let observed = false;
+  const unsafe = await writeUnsafe(
+    {
+      sendInput: () => undefined,
+      settled: () => {
+        observed = true;
+        return new Promise<void>(() => {});
+      },
+    },
+    undefined,
+    abort.signal,
+  );
+  expect(unsafe).toBe(true);
+  expect(observed).toBe(false);
 });

@@ -136,7 +136,7 @@ export async function writeQueuedInput(
     // Resolve only after the input's submitting Enter has dispatched, so the next
     // queued operation cannot write into the composer first (FIFO).
     pasted_input: () =>
-      writePastedPrompt(terminal, input, guard, signal, pasteSettleDelayMs, false, onSubmitted),
+      writePastedPrompt(terminal, input, guard, signal, undefined, undefined, onSubmitted),
     recovery_input: () =>
       writePastedPrompt(terminal, input, guard, signal, pasteSettleDelayMs, true, onSubmitted),
     // Slash-command popups (Codex) swallow an Enter that arrives in the same PTY
