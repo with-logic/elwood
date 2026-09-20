@@ -38,10 +38,12 @@ describe("CodexSessionApi compact", () => {
     await becomeReady(session.elwoodSessionId, cwd);
     await expect.poll(() => session.status).toBe("ready");
     const compacted = session.compact({ timeoutMs: 1_000 });
+    // Observe the expected rejection before polling can yield beyond the deadline.
+    const rejected = expect(compacted).rejects.toMatchObject({ code: "compact_failed" });
     // Command text, deferred command Enter, and the popup-recovery nudge Enter.
     await expect.poll(() => ptys[0]!.writes.length, { timeout: 2_000 }).toBe(3);
     expect(ptys[0]!.writes).toEqual(["/compact", "\r", "\r"]);
-    await expect(compacted).rejects.toMatchObject({ code: "compact_failed" });
+    await rejected;
   });
 
   test("C-API-22 compact rejects with session_not_running when the session stops first", async () => {
@@ -49,7 +51,8 @@ describe("CodexSessionApi compact", () => {
     installFakes();
     const session = await startCodex({ cwd });
     const compacted = session.compact();
+    const rejected = expect(compacted).rejects.toMatchObject({ code: "session_not_running" });
     await session.stop();
-    await expect(compacted).rejects.toMatchObject({ code: "session_not_running" });
+    await rejected;
   });
 });
