@@ -1,6 +1,5 @@
 /**
- * Lifecycle & concurrency conformance for ClaudeSessionApi.login (PRD §5.3,
- * C-API-43). Login runs as an EXCLUSIVE control-queue task: a concurrent
+ * Login lifecycle & concurrency (PRD §5.3, C-API-43): an EXCLUSIVE queue task. A concurrent
  * sendMessage cannot interleave its keystrokes with the secret code or picker
  * keys, a session that terminates mid-flow rejects the flow PROMPTLY (close()
  * aborts the in-flight signal) rather than polling out the deadline, and a
