@@ -4,10 +4,13 @@
  */
 
 import { describe, expect, test } from "vitest";
-import { claudeScreenFactTable } from "../../src/claude/screen-table.ts";
+import {
+  claudeScreenFactTable,
+  claudeScreenFactTableForTrustPolicy,
+} from "../../src/claude/screen-table.ts";
 import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import { AttentionWatcher } from "../../src/core/attention.ts";
-import { observeRenderedFrame } from "../../src/core/rendered-observers.ts";
+import { observeRenderedFrame, readRenderedFrame } from "../../src/core/rendered-observers.ts";
 import type { RenderedFrame } from "../../src/core/screen-facts.ts";
 import { TurnStateWatcher } from "../../src/core/turn-state.ts";
 import type { ElwoodSessionStatus } from "../../src/core/types.ts";
@@ -76,4 +79,25 @@ describe("observeRenderedFrame", () => {
       expect.objectContaining({ kind: "attention", label: "claude-permission-dialog" }),
     ]);
   });
+});
+
+test("C-ATTN-03 a retained trust hold preserves one native rule match", () => {
+  const { observers } = harness(true);
+  observers.table = claudeScreenFactTableForTrustPolicy(false);
+  const frame = screen(
+    "Quick safety check: Is this a project you created or one you trust?\n1. Yes, I trust this folder",
+  );
+  const native = readRenderedFrame(observers, frame);
+  const held = readRenderedFrame(observers, frame, "workspace_trust");
+  expect(native.matched.map((match) => match.id)).toContain("claude-workspace_trust-prompt");
+  expect(held).toEqual(native);
+  const partial = readRenderedFrame(
+    observers,
+    screen("Loading the next screen"),
+    "workspace_trust",
+  );
+  expect(partial.facts.blocking_prompt_visible).toBe(true);
+  expect(partial.matched).toEqual([
+    { id: "claude-workspace_trust-prompt", fact: "blocking_prompt_visible", region: "screen" },
+  ]);
 });

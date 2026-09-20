@@ -6,7 +6,13 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
-import { codexComposer, codexHooks, codexTrust, tty } from "../fixtures/trust-composer.ts";
+import {
+  codexComposer,
+  codexHooks,
+  codexTrust,
+  codexTty,
+  tty,
+} from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -39,7 +45,7 @@ describe("CodexSessionApi trust prompts", () => {
     // so the only blocked-to-ready edge arrives while automation holds input.
     repaint(native("hooks"));
     await expect.poll(() => ptys[0]!.writes).toEqual(["2\r"]);
-    repaint(codexComposer);
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`);
     await queued;
     expect(ptys[0]!.writes).toContain("\u001b[200~hello\u001b[201~");
   });
@@ -52,7 +58,7 @@ describe("CodexSessionApi trust prompts", () => {
     ptys[0]!.emitData(`${tty(codexTrust)}\r\n› 1. Yes, continue`);
     await expect.poll(() => ptys[0]!.writes).toEqual(["1\r"]);
     expect(activity).not.toContain("startup_prompt:workspace_trust");
-    ptys[0]!.emitData(`\u001b[2J\u001b[H${codexComposer.replaceAll("\n", "\r\n")}`);
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`);
     await expect.poll(() => activity).toContain("startup_prompt:workspace_trust");
   });
 
@@ -138,7 +144,7 @@ describe("CodexSessionApi trust prompts", () => {
     expect(attention).toEqual([]); // held silently: no transient attention without the body
     ptys[0]!.emitData(`\u001b[2J\u001b[H${tty(codexTrust)}\r\n› 1. Yes, continue`);
     await expect.poll(() => ptys[0]!.writes).toEqual(["1\r"]);
-    ptys[0]!.emitData(`\u001b[2J\u001b[H${tty(codexComposer)}`);
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`);
     await queued;
     expect(ptys[0]!.writes).toContain("\u001b[200~held\u001b[201~");
   });
