@@ -3,7 +3,6 @@ import * as activity from "../../core/activity/index.ts";
 import { AttentionWatcher } from "../../core/attention.ts";
 import { defaultTerminalSize } from "../../core/defaults.ts";
 import { causeDetails, elwoodError } from "../../core/errors.ts";
-import { createStartupWarningGate, deliverFrameWarnings } from "../../core/startup/frame.ts";
 import { emitSettledStartupOutcomes } from "../../core/startup/write.ts";
 import { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import { TurnStateWatcher } from "../../core/turn-state.ts";
@@ -31,6 +30,7 @@ import { reportCallerInput } from "./caller-input.ts";
 import { dispatchHook, registerInitialHooks } from "./hooks.ts";
 import { CodexSessionImpl } from "./instance.ts";
 import { writeCodexRuntimeFiles } from "./runtime.ts";
+import { createCodexStartupWarningGate, preflightEvent } from "./startup-warnings.ts";
 import * as sessionTranscript from "./transcript.ts";
 import type { CodexEventMap, StartCodexOptions } from "./types.ts";
 export type BuildCodexSessionInput = {
@@ -51,9 +51,11 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const emitter = new TypedEmitter<CodexEventMap>();
   registerInitialHooks(emitter, options.hooks);
   let session: CodexSessionImpl | undefined;
-  const warnGate = createStartupWarningGate({
-    emitWarnings: (w) => wired.duringDelivery(() => deliverFrameWarnings(session, w)),
-  });
+  const warnGate = createCodexStartupWarningGate(
+    () => session,
+    () => promptResponder.closingSignal.aborted,
+    (deliver) => wired.duringDelivery(deliver),
+  );
   const wired = sessionTranscript.createCodexTranscriptWatcher(
     record.elwoodSessionId,
     emitter,
@@ -129,7 +131,12 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       };
       const send = callerInput.automation; // automation owns completion; warnings gated
       const read = () => renderedSnapshot(renderedTerminal).text;
-      const guarded = guardedCodexAutomationWrite(renderedTerminal, send, read);
+      const guarded = guardedCodexAutomationWrite(
+        renderedTerminal,
+        send,
+        read,
+        promptResponder.closingSignal,
+      );
       const trustRead = () => currentRenderedFrame(renderedTerminal)?.text;
       const result = promptResponder.handle(frame.text, send, read, guarded, trustRead);
       warnGate.emitWarnings(result.warnings);
@@ -188,13 +195,4 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   warnGate.openAfterReturn();
   terminalReplay.releaseStartupAttentionAfterReturn();
   return session;
-}
-// Distribute the session id across warning variants (see DistributiveOmit and Claude).
-type WithSessionId<W> = W extends unknown ? W & { readonly elwoodSessionId: string } : never;
-
-function preflightEvent(
-  elwoodSessionId: string,
-  warning: CodexPreflightWarning,
-): WithSessionId<CodexPreflightWarning> {
-  return { elwoodSessionId, ...warning };
 }
