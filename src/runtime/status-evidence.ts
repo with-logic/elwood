@@ -51,8 +51,10 @@ export function decideStatus(
   from: ElwoodSessionStatus,
   evidence: StatusEvidenceKind,
   inputBlocked = false,
+  working = false,
 ): StatusDecision {
-  const target = evidenceTargets[evidence];
+  const target =
+    evidence === "blocking_prompt_cleared" && working ? "running" : evidenceTargets[evidence];
   const ignored = (reason: string): StatusDecision => ({ evidence, from, to: undefined, reason });
   if (inputBlocked && target === "ready")
     return ignored("ignored: a trust gate or closing session holds input");
@@ -71,7 +73,7 @@ export function decideStatus(
     return ignored(`ignored: cannot block from ${from}`);
   }
   // Readiness, caller submissions, and turn edges cannot clear a visible human prompt.
-  // Only an observed blocking_prompt_cleared may make a blocked session ready.
+  // Only observed clearance may restore its running or ready state.
   if (from === "blocked" && liveStatuses.has(target) && evidence !== "blocking_prompt_cleared") {
     return ignored(`ignored: ${evidence} must not reopen a blocked session`);
   }
@@ -119,8 +121,8 @@ export class SessionStatusEngine {
     return this.log;
   }
 
-  submit(kind: StatusEvidenceKind, inputBlocked = false): StatusDecision {
-    const decision = decideStatus(this.current, kind, inputBlocked);
+  submit(kind: StatusEvidenceKind, inputBlocked = false, working = false): StatusDecision {
+    const decision = decideStatus(this.current, kind, inputBlocked, working);
     this.log.push(decision);
     if (this.log.length > maxStatusDecisions) this.log.shift();
     if (decision.to !== undefined) this.apply(decision.to);

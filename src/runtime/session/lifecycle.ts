@@ -1,5 +1,4 @@
 /** Session lifetime, input blocking, persistence and cleanup (PRD §5/§8/§9). */
-
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../core/activity/index.ts";
 import { ControlQueue } from "../../core/control-queue/index.ts";
 import { toError } from "../../core/errors.ts";
@@ -147,8 +146,9 @@ export abstract class SessionLifecycle {
       this.status === "blocked"
     );
   }
-  submitEvidence(kind: StatusEvidenceKind): StatusDecision {
-    return this.statusEngine.submit(kind, this.automationBlocking || this.closing.signal.aborted);
+  submitEvidence(kind: StatusEvidenceKind, working = false): StatusDecision {
+    const held = this.automationBlocking || this.closing.signal.aborted;
+    return this.statusEngine.submit(kind, held, working);
   }
   submitExit(): StatusDecision {
     this.closing.abort();

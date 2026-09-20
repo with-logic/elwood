@@ -14,12 +14,13 @@ function harness(table: ScreenFactTable = { agent: "codex", verifiedAgainst: "te
   const activities: ElwoodActivityEvent[] = [];
   const submitted: ElwoodStatusEvidence[] = [];
   const statuses: ElwoodSessionStatus[] = [];
+  const queueEvents: string[] = [];
   const engine = new SessionStatusEngine({
     onReady: () => {},
     emitStatus: (status) => statuses.push(status),
-    queueRunning: () => {},
-    queueReady: () => {},
-    queueBlocked: () => {},
+    queueRunning: () => queueEvents.push("running"),
+    queueReady: () => queueEvents.push("ready"),
+    queueBlocked: () => queueEvents.push("blocked"),
     queueClose: () => {},
     cleanup: () => {},
   });
@@ -27,9 +28,9 @@ function harness(table: ScreenFactTable = { agent: "codex", verifiedAgainst: "te
     get status() {
       return engine.status;
     },
-    submitEvidence: (kind: ElwoodStatusEvidence) => {
+    submitEvidence: (kind: ElwoodStatusEvidence, working = false) => {
       submitted.push(kind);
-      return engine.submit(kind);
+      return engine.submit(kind, false, working);
     },
   };
   const observers = {
@@ -55,7 +56,7 @@ function harness(table: ScreenFactTable = { agent: "codex", verifiedAgainst: "te
     observeRenderedReading(observers, reading, session);
   };
   const frame = (text: string) => observeRenderedFrame(observers, { text, title: "" }, session);
-  return { engine, observe, frame, activities, statuses, submitted, observers };
+  return { engine, observe, frame, activities, statuses, submitted, observers, queueEvents };
 }
 
 test("C-ATTN-03 emits a replacement label while the real session remains blocked", () => {
@@ -163,7 +164,7 @@ test.each([
   "caller_submitted",
   "rendered_turn_started",
 ] as const)("C-ATTN-02 %s followed by Stop cannot escape a visible prompt", (start) => {
-  const { engine, observe, statuses } = harness();
+  const { engine, observe, statuses, queueEvents } = harness();
   engine.submit("startup_usable");
   observe(["codex-unidentified-dialog"]);
   engine.submit(start);
@@ -171,6 +172,7 @@ test.each([
   observe(["codex-unidentified-dialog"]);
   expect(engine.status).toBe("blocked");
   expect(statuses).toEqual(["running", "blocked"]);
+  expect(queueEvents).toEqual(["running", "blocked"]);
   observe([]);
   expect(engine.status).toBe("ready");
 });

@@ -17,7 +17,7 @@ import type { TurnStateWatcher } from "./turn-state.ts";
 import type { ElwoodSessionStatus, ElwoodStatusDecision, ElwoodStatusEvidence } from "./types.ts";
 
 export type RenderedObserverTarget = {
-  submitEvidence(kind: ElwoodStatusEvidence): Pick<ElwoodStatusDecision, "to">;
+  submitEvidence(kind: ElwoodStatusEvidence, working?: boolean): Pick<ElwoodStatusDecision, "to">;
   /** The session's current lifecycle status — lets the turn watcher release resume
    * settling when a turn is already running from EVIDENCE (see
    * TurnStateWatcher.observe). Typed as the bounded status union so an invalid test
@@ -89,5 +89,7 @@ export function observeRenderedReading(
       observers.emitActivity(activityFromAttention(agent, elwoodSessionId, attention.ruleIds));
     }
   }
-  if (attention?.edge === "cleared") session?.submitEvidence("blocking_prompt_cleared");
+  if (attention?.edge === "cleared") {
+    session?.submitEvidence("blocking_prompt_cleared", reading.facts.working_visible);
+  }
 }
