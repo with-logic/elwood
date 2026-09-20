@@ -47,9 +47,11 @@ test("C-HOOK-20 prefers rejection details, then a named error, never assistant t
 test("C-HOOK-20 bounds each diagnostic before composing the result", () => {
   const long = "x".repeat(2_001);
   expect(stopFailureDiagnostic({ error: long }).info).toBe(`${long.slice(0, 2_000)}…`);
-  expect(stopFailureDiagnostic({ error: long }).message).toHaveLength(
-    "Claude rejected the turn: ".length + 2_001,
+  expect(stopFailureDiagnostic({ error: long }).message).toBe(
+    `Claude rejected the turn: ${long.slice(0, 2_000)}…`,
   );
-  expect(stopFailureDiagnostic({ error_details: long }).message).toHaveLength(2_001);
-  expect(stopFailureDiagnostic({ error_details: "x".repeat(2_000) }).message).toHaveLength(2_000);
+  expect(stopFailureDiagnostic({ error_details: long }).message).toBe(`${long.slice(0, 2_000)}…`);
+  expect(stopFailureDiagnostic({ error_details: "x".repeat(2_000) }).message).toBe(
+    "x".repeat(2_000),
+  );
 });

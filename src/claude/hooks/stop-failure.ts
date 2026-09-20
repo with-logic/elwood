@@ -1,5 +1,7 @@
 /** Bounded diagnostics for Claude rejection hooks, implementing PRD §6.1 / C-HOOK-20. */
 
+const maxDiagnosticLength = 2_000;
+
 /** Accepts the structural diagnostic fields so internal adapters share one selector. */
 export function stopFailureDiagnostic(event: {
   readonly error?: unknown;
@@ -17,5 +19,5 @@ export function stopFailureDiagnostic(event: {
 
 function diagnosticField(value: unknown): string | undefined {
   if (typeof value !== "string" || value.trim().length === 0) return undefined;
-  return value.length <= 2_000 ? value : `${value.slice(0, 2_000)}…`;
+  return value.length <= maxDiagnosticLength ? value : `${value.slice(0, maxDiagnosticLength)}…`;
 }
