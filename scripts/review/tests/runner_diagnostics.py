@@ -1,4 +1,4 @@
-"""Retain bounded attempt failures only in the copied, fake-CLI test runner."""
+"""Retain bounded attempt failures only in the copied, fake-CLI test runner (PRD §16)."""
 
 
 def install_attempt_diagnostics(root):

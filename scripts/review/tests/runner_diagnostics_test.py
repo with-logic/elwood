@@ -1,4 +1,4 @@
-"""A failed retry assertion retains the original fake process error, within bounds."""
+"""A failed retry assertion retains the original fake process error, within bounds (PRD §16)."""
 import unittest
 import runner_test
 from runner_diagnostics import assert_one_attempt, attempt_diagnostics
