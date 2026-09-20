@@ -1,5 +1,6 @@
 /** Detached data, serialization safety, and bounded traversal (PRD §6.4, C-HOOK-21). */
 import { expect, test } from "vitest";
+import { isBoundedJsonShape } from "../../src/core/json-shape.ts";
 import { type JsonSnapshot, snapshotJsonData } from "../../src/core/json-snapshot.ts";
 
 function nested(depth: number): object {
@@ -44,6 +45,7 @@ test.each([
   }),
 ])("C-HOOK-21 rejects unsafe data without executing it: %#", (value) => {
   expect(snapshotJsonData(value)).toEqual({ valid: false });
+  expect(isBoundedJsonShape(value)).toBe(false);
 });
 
 test("C-HOOK-21 snapshots supported data and preserves ordinary toJSON fields", () => {
@@ -54,12 +56,15 @@ test("C-HOOK-21 snapshots supported data and preserves ordinary toJSON fields", 
   const source = { a: shared, b: shared, array, toJSON: "data" };
   const result = snapshotJsonData(source);
   expect(result.valid).toBe(true);
+  expect(isBoundedJsonShape(source)).toBe(true);
   if (!result.valid) throw new Error("expected snapshot");
   expect(JSON.stringify(result.value)).toBe(JSON.stringify(source));
   shared.text = "changed";
   expect(JSON.stringify(result.value)).not.toContain("changed");
-  for (const toJSON of [undefined, 7, null])
+  for (const toJSON of [undefined, 7, null]) {
     expect(snapshotJsonData({ toJSON })).toEqual({ valid: true, value: { toJSON } });
+    expect(isBoundedJsonShape({ toJSON })).toBe(true);
+  }
 });
 
 test("C-HOOK-21 ignores non-enumerable fields and avoids prototype pollution", () => {
@@ -75,12 +80,16 @@ test("C-HOOK-21 ignores non-enumerable fields and avoids prototype pollution", (
     value: 1,
   });
   let result: JsonSnapshot;
+  let valid: boolean;
   try {
     result = snapshotJsonData(source);
+    valid = isBoundedJsonShape(source);
   } finally {
     Reflect.deleteProperty(Object.prototype, "inheritedFixture");
   }
   expect(result).toEqual({ valid: true, value: source });
+  expect(valid).toBe(true);
+  expect(isBoundedJsonShape(Object.assign(Object.create(null), { value: 1 }))).toBe(true);
   expect(snapshotJsonData(Object.assign(Object.create(null), { value: 1 }))).toEqual({
     valid: true,
     value: { value: 1 },
@@ -89,23 +98,31 @@ test("C-HOOK-21 ignores non-enumerable fields and avoids prototype pollution", (
 
 test("C-HOOK-21 enforces exact depth and visit boundaries for arrays and records", () => {
   expect(snapshotJsonData(nested(128)).valid).toBe(true);
+  expect(isBoundedJsonShape(nested(128))).toBe(true);
   expect(snapshotJsonData(Array.from({ length: 99_999 }, () => 1)).valid).toBe(true);
+  expect(isBoundedJsonShape(Array.from({ length: 99_999 }, () => 1))).toBe(true);
   expect(snapshotJsonData(Array.from({ length: 100_000 }, () => 1)).valid).toBe(false);
+  expect(isBoundedJsonShape(Array.from({ length: 100_000 }, () => 1))).toBe(false);
   const record = Object.fromEntries(Array.from({ length: 100_000 }, (_, i) => [i, 1]));
   expect(snapshotJsonData(record).valid).toBe(false);
+  expect(isBoundedJsonShape(record)).toBe(false);
   expect(snapshotJsonData([Symbol("not JSON")]).valid).toBe(false);
+  expect(isBoundedJsonShape([Symbol("not JSON")])).toBe(false);
 });
 
 test("C-HOOK-21 counts every occurrence of shared children toward the visit limit", () => {
   const shared = { value: 1 };
   const withinBudget = [...Array.from({ length: 49_999 }, () => shared), 0];
   expect(snapshotJsonData(withinBudget).valid).toBe(true);
+  expect(isBoundedJsonShape(withinBudget)).toBe(true);
   expect(snapshotJsonData([...withinBudget, shared]).valid).toBe(false);
+  expect(isBoundedJsonShape([...withinBudget, shared])).toBe(false);
 });
 
 test("C-HOOK-21 ignores a hidden non-callable toJSON data field", () => {
   const source = Object.defineProperty({ value: 1 }, "toJSON", { value: 7 });
   expect(snapshotJsonData(source)).toEqual({ valid: true, value: { value: 1 } });
+  expect(isBoundedJsonShape(source)).toBe(true);
 });
 
 test.each([
@@ -121,6 +138,7 @@ test.each([
     },
   });
   expect(snapshotJsonData(value)).toEqual({ valid: false });
+  expect(isBoundedJsonShape(value)).toBe(false);
   expect(calls).toBe(0);
 });
 
@@ -135,5 +153,7 @@ test.each([
     beyond.fill(undefined);
   }
   expect(snapshotJsonData(within).valid).toBe(true);
+  expect(isBoundedJsonShape(within)).toBe(true);
   expect(snapshotJsonData(beyond).valid).toBe(false);
+  expect(isBoundedJsonShape(beyond)).toBe(false);
 });

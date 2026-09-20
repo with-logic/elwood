@@ -1,4 +1,4 @@
-/** Detached, bounded JSON data for hook response validation and serialization (PRD §6.4, C-HOOK-21). */
+/** Shared bounded JSON validation and detached snapshots (PRD §6.4, C-HOOK-18/21). */
 import { types } from "node:util";
 
 const invalid = Symbol("invalid JSON data");
@@ -9,13 +9,23 @@ export type JsonSnapshot =
   | { readonly valid: false };
 
 export function snapshotJsonData(value: unknown): JsonSnapshot {
-  const snapshot = new Snapshot().visit(value, 0);
+  const snapshot = new JsonDataWalker(true).visit(value, 0);
   return snapshot === invalid ? { valid: false } : { valid: true, value: snapshot };
 }
 
-class Snapshot {
+/** Apply the same descriptors and budgets without constructing a detached graph. */
+export function validateJsonData(value: unknown): boolean {
+  return new JsonDataWalker(false).visit(value, 0) !== invalid;
+}
+
+class JsonDataWalker {
   private readonly ancestors = new WeakSet<object>();
+  private readonly copy: boolean;
   private visits = 0;
+
+  constructor(copy: boolean) {
+    this.copy = copy;
+  }
 
   visit(value: unknown, depth: number): unknown {
     this.visits += 1;
@@ -46,23 +56,25 @@ class Snapshot {
 
   private children(value: object, depth: number): unknown {
     if (Array.isArray(value)) {
-      const result: unknown[] = [];
+      const result: unknown[] | undefined = this.copy ? [] : undefined;
       for (let i = 0; i < value.length; i += 1) {
         const child = this.child(value, String(i), depth);
         if (child === invalid) return invalid;
-        result.push(child);
+        result?.push(child);
       }
       // Preserve Array methods used by validators while shadowing inherited serializers.
-      return Object.defineProperty(result, "toJSON", { value: undefined });
+      return result === undefined
+        ? value
+        : Object.defineProperty(result, "toJSON", { value: undefined });
     }
-    const result: Record<string, unknown> = Object.create(null);
+    const result: Record<string, unknown> | undefined = this.copy ? Object.create(null) : undefined;
     for (const key in value) {
       if (!Object.hasOwn(value, key)) continue;
       const child = this.child(value, key, depth);
       if (child === invalid) return invalid;
-      result[key] = child;
+      if (result !== undefined) result[key] = child;
     }
-    return result;
+    return result ?? value;
   }
 
   private child(value: object, key: string, depth: number): unknown {
