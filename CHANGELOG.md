@@ -15,6 +15,9 @@ back each entry are listed in `prd/14-conformance.md`.
 - Codex transcript listeners can stop a session without moving pending transcript
   activity past terminal exit, duplicating exit, or re-signaling an already-exited
   PTY during the final flush. Transcript diagnostics preserve the same ordering.
+- Preserve Claude `StopFailure` hooks with missing or changed diagnostic fields. Those
+  fields are now typed as optional `unknown`, matching ingress. Browser logs show a
+  bounded rejection reason instead of unrelated assistant text or a blank summary.
 
 - Route Codex tool-keyed hooks from own properties only. A `PreToolUse` map is a
   plain object, so a tool name matching an inherited member (anything on
