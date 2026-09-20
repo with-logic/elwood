@@ -1,6 +1,10 @@
 /** Private picker input views preserve terminal behavior and revoke only raw input (C-API-55). */
 import { expect, test } from "vitest";
-import { PickerInputOwnership } from "../../src/runtime/session/picker-input.ts";
+import { stageComposer } from "../../src/core/input/composer-cleanup.ts";
+import {
+  PickerInputOwnership,
+  withAutomatedInput,
+} from "../../src/runtime/session/picker-input.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 
 test("C-API-55 terminal observation and picker-owned writes preserve input authority", async () => {
@@ -8,6 +12,8 @@ test("C-API-55 terminal observation and picker-owned writes preserve input autho
   const inner = createHeadlessTerminal({ cols: 80, rows: 24 }, (input) =>
     writes.push(String(input)),
   );
+  await withAutomatedInput(inner, () => inner.sendInput("startup"));
+  writes.length = 0;
   const owner = new PickerInputOwnership(inner);
   const signal = owner.signal();
   const terminal = owner.caller;
@@ -29,5 +35,34 @@ test("C-API-55 terminal observation and picker-owned writes preserve input autho
     expect(next.aborted).toBe(true);
   } finally {
     terminal.dispose();
+  }
+});
+
+test("C-API-55/56 native protocol replies preserve picker and staged cleanup authority", async () => {
+  const writes: string[] = [];
+  const inner = createHeadlessTerminal({ cols: 80, rows: 24 }, (input) =>
+    writes.push(String(input)),
+  );
+  const owner = new PickerInputOwnership(inner);
+  const signal = owner.signal();
+  const closing = new AbortController();
+  const run = owner.composerCleanup(() => false, closing.signal);
+  try {
+    // The real parser generates cursor-position and device-attribute replies, not caller input.
+    await inner.writeOutput("\u001b[6n\u001b[c");
+    await inner.settled();
+    expect(writes).toHaveLength(2);
+    expect(signal.aborted).toBe(false);
+    await expect(
+      run(() => {
+        stageComposer(owner.automated);
+        throw new Error("cancelled draft");
+      }, closing.signal),
+    ).rejects.toThrow("cancelled draft");
+    expect(writes.at(-1)).toBe("\u0015\u000b");
+    expect(signal.aborted).toBe(false);
+  } finally {
+    closing.abort();
+    inner.dispose();
   }
 });

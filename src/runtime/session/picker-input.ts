@@ -3,6 +3,17 @@ import { ComposerCleanup } from "../../core/input/composer-cleanup.ts";
 import { pickerIntervention } from "../../core/models/intervention.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 
+type AutomatedWork = () => Promise<void>;
+const automationScopes = new WeakMap<
+  ElwoodTerminal["xterm"],
+  (work: AutomatedWork) => Promise<void>
+>();
+
+/** Preserve the same ownership scope for startup writers that retain their own input policy. */
+export function withAutomatedInput(terminal: ElwoodTerminal, work: AutomatedWork): Promise<void> {
+  return automationScopes.get(terminal.xterm)?.(work) ?? work();
+}
+
 export class PickerInputOwnership {
   readonly caller: ElwoodTerminal;
   readonly automated: ElwoodTerminal;
@@ -14,17 +25,24 @@ export class PickerInputOwnership {
       this.current.abort(pickerIntervention());
       this.current = new AbortController();
     };
-    inner.xterm.onData(() => {
+    // onData also carries parser-generated protocol replies; only input invocations
+    // represent caller keys. Native startup queries must not revoke draft ownership.
+    const input = inner.xterm.input.bind(inner.xterm);
+    inner.xterm.input = (data, wasUserInput) => {
       if (!automating) revoke();
-    });
-    const send = (input: string | Uint8Array) => {
+      input(data, wasUserInput);
+    };
+    const automate = (work: AutomatedWork) => {
+      const prior = automating;
       automating = true;
       try {
-        return inner.sendInput(input);
+        return work();
       } finally {
-        automating = false;
+        automating = prior;
       }
     };
+    automationScopes.set(inner.xterm, automate);
+    const send = (input: string | Uint8Array) => automate(() => inner.sendInput(input));
     this.automated = view(inner, send);
     this.caller = view(inner, (input) => {
       revoke();

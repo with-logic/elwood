@@ -8,6 +8,7 @@ import { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyExit } from "../../pty/types.ts";
 import { loadRuntimeLoopDefinitions as loadLoops } from "../../runtime/loop-restore.ts";
 import { bindStartupLifetime, createSessionFrameObserver } from "../../runtime/session/frames.ts";
+import { withAutomatedInput } from "../../runtime/session/picker-input.ts";
 import { createReadinessGate } from "../../runtime/session/readiness.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../../runtime/startup/buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../../runtime/startup/cleanup.ts";
@@ -129,7 +130,8 @@ export async function buildClaudeSession(
       terminalReplay.push(data);
       latestRenderedText = renderedSnapshot(renderedTerminal).text;
       const frame = { text: latestRenderedText, title: renderedTerminal.title };
-      const send = (input: string) => renderedTerminal.sendInput(input);
+      const send = (input: string) =>
+        withAutomatedInput(renderedTerminal, () => renderedTerminal.sendInput(input));
       const read = () => latestRenderedText;
       const guarded = guardedClaudeAutomationWrite(
         renderedTerminal,
