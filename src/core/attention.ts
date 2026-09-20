@@ -15,13 +15,21 @@ export type AttentionEdge = {
 
 export class AttentionWatcher {
   private blocked = false;
+  private ruleIds: readonly string[] = [];
 
   /** Consumes a reading already classified from the frame (see observeRenderedFrame). */
   observe(reading: ScreenFactReading): AttentionEdge | undefined {
-    if (reading.facts.blocking_prompt_visible === this.blocked) return undefined;
-    this.blocked = !this.blocked;
-    if (!this.blocked) return { edge: "cleared", ruleIds: [] };
-    return { edge: "raised", ruleIds: blockingRuleIds(reading) };
+    const blocked = reading.facts.blocking_prompt_visible;
+    const ruleIds = blocked ? [...new Set(blockingRuleIds(reading))] : [];
+    if (
+      blocked === this.blocked &&
+      ruleIds.length === this.ruleIds.length &&
+      ruleIds.every((id) => this.ruleIds.includes(id))
+    )
+      return undefined;
+    this.blocked = blocked;
+    this.ruleIds = ruleIds;
+    return { edge: blocked ? "raised" : "cleared", ruleIds };
   }
 }
 

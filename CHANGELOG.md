@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Refresh attention diagnostics when a blocked session switches to a differently
+  classified prompt, so consumers see the current human decision instead of a
+  stale update-prompt label. Repainting the same blocking rules stays quiet.
+
 - Route Codex tool-keyed hooks from own properties only. A `PreToolUse` map is a
   plain object, so a tool name matching an inherited member (anything on
   `Object.prototype`, or a key on a caller-supplied prototype) used to resolve to a
