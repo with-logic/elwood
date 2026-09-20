@@ -27,7 +27,8 @@ import { trustGateVisible } from "../trust/blocking.ts";
 /** What a non-trust automation write returns; void writers settle immediately. */
 export type NonTrustAutomationWriter = (input: string) => void | Promise<void>;
 
-/** `withheld`: nothing reached the PTY, and the prompt stays answerable on a later frame. */
+/** `withheld`: nothing reached the PTY. A live prompt may be retried on a later
+ * frame; lifecycle cancellation is permanent and callers must not retry it. */
 export type AutomationWriteResult = "written" | "withheld";
 
 /**

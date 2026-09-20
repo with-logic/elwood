@@ -129,3 +129,35 @@ test("C-CLAUDE-22 reentrant stop suppresses later browser failures but preserves
     await session.teardown();
   }
 });
+
+test("C-CLAUDE-16 live browser write failure delivers warning and projected activity", async () => {
+  installFakes();
+  const session = await startClaude({ cwd: tempDir() });
+  const warnings: unknown[] = [];
+  const activities: unknown[] = [];
+  session.on("warning", (event) => warnings.push(event));
+  session.on("activity", (event) => {
+    if (event.kind === "warning") activities.push(event);
+  });
+  ptys[0]!.failOnWrite = "\u001b";
+  try {
+    ptys[0]!.emitData(prompt);
+    await vi.waitFor(() =>
+      expect(warnings).toEqual([
+        expect.objectContaining({
+          code: "startup_prompt_write_failed",
+          label: "browser_tools",
+        }),
+      ]),
+    );
+    expect(activities).toEqual([
+      expect.objectContaining({
+        kind: "warning",
+        label: "startup_prompt_write_failed",
+        raw: warnings[0],
+      }),
+    ]);
+  } finally {
+    await session.teardown();
+  }
+});
