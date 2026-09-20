@@ -15,7 +15,7 @@ class AttemptDiagnosticsTest(unittest.TestCase):
         diagnostic = attempt_diagnostics(fixture.root)
         self.assertIn('category=process exit=1', result.stderr)
         self.assertIn('category=timeout exit=124', result.stderr)
-        self.assertIn('attempt=1 exit=1', diagnostic)
+        self.assertIn('lens=review-architecture-conventions attempt=1 exit=1', diagnostic)
         self.assertIn('FIRST_ATTEMPT_CANARY', diagnostic)
         self.assertNotIn('TRUNCATED_TAIL_CANARY', diagnostic)
         self.assertLessEqual(len(diagnostic), 4140)
@@ -26,6 +26,39 @@ class AttemptDiagnosticsTest(unittest.TestCase):
             self.assertNotIn(b'TRUNCATED_TAIL_CANARY', payload)
         with self.assertRaisesRegex(AssertionError, 'FIRST_ATTEMPT_CANARY'):
             assert_architecture_lens_one_attempt(self, fixture.root, result)
+
+    def test_parser_failure_survives_the_later_timeout(self):
+        fixture = runner_test.RunnerTest()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        result = fixture.run_review('first-parser-timeout')
+        self.assertIn('category=transport exit=1', result.stderr)
+        self.assertIn('category=timeout exit=124', result.stderr)
+        diagnostic = attempt_diagnostics(fixture.root)
+        self.assertIn('lens=review-architecture-conventions attempt=1 exit=1', diagnostic)
+        self.assertIn('review: invalid or incomplete model event stream', diagnostic)
+
+    def test_synthesis_parser_failure_is_retained(self):
+        fixture = runner_test.RunnerTest()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        result = fixture.run_review('synth-parser')
+        self.assertIn('phase=synthesis category=transport', result.stderr)
+        diagnostic = attempt_diagnostics(fixture.root)
+        self.assertIn('lens=synthesis attempt=1 exit=1', diagnostic)
+        self.assertIn('review: invalid or incomplete model event stream', diagnostic)
+
+    def test_synthesis_validation_failure_is_retained_and_still_reported(self):
+        fixture = runner_test.RunnerTest()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        (fixture.root / 'scripts/review/validate.sh').write_text('echo VALIDATION_CANARY >&2; exit 1\n')
+        result = fixture.run_review()
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr.count('VALIDATION_CANARY'), 1)
+        diagnostic = attempt_diagnostics(fixture.root)
+        self.assertIn('lens=synthesis attempt=1 exit=1', diagnostic)
+        self.assertIn('VALIDATION_CANARY', diagnostic)
 
     def test_many_bounded_reports_exercise_the_aggregate_cap(self):
         with tempfile.TemporaryDirectory() as directory:

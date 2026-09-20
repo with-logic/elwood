@@ -54,7 +54,11 @@ if match:
     if mode == 'first-error-timeout' and name == 'review-architecture-conventions' and count == 1:
         diagnostic_message = 'FIRST_ATTEMPT_CANARY' + 'x' * 5000 + 'TRUNCATED_TAIL_CANARY'
         raise RuntimeError(diagnostic_message)
-    if mode in ['timeout', 'first-error-timeout'] and name == 'review-architecture-conventions':
+    if mode == 'first-parser-timeout' and name == 'review-architecture-conventions' and count == 1:
+        atexit.unregister(emit_events)
+        print('not-json')
+        sys.exit(0)
+    if mode in ['timeout', 'first-error-timeout', 'first-parser-timeout'] and name == 'review-architecture-conventions':
         subprocess.Popen([sys.executable, '-c',
             'import pathlib,time; time.sleep(6); pathlib.Path(' + repr(str(root / 'orphan')) + ').touch()'])
         time.sleep(20)
@@ -74,6 +78,10 @@ else:
         time.sleep(20)
     if mode == 'synth-killed':
         os.kill(os.getpid(), signal.SIGKILL)
+    if mode == 'synth-parser':
+        atexit.unregister(emit_events)
+        print('not-json')
+        sys.exit(0)
     if mode == 'synth-failed':
         print('PRIVATE-SYNTHESIS-TEXT', file=sys.stderr)
         sys.exit(2)
