@@ -1,136 +1,133 @@
-/** Compressed sheets survive decoded-page eviction without unbounded memory or failed-load poisoning. */
+/** Decoded preparation ownership stays bounded and cannot evict live animation. */
+import { resolveObjectURL } from "node:buffer";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SpriteSources } from "../sprite-sources.mjs";
 import { SpriteBank } from "../sprite-bank.mjs";
 
-test("compressed sheets deduplicate downloads and evict least recently used bytes", async () => {
-  const fetch = globalThis.fetch;
-  const requests = [];
-  globalThis.fetch = async (url) => {
-    requests.push(String(url));
-    return new Response("1234");
-  };
-  try {
-    const sources = new SpriteSources(8);
-    const [first, duplicate] = await Promise.all([sources.load("a"), sources.load("a")]);
-    assert.equal(first, duplicate);
-    await sources.load("b");
-    assert.equal(await sources.load("a"), first);
-    await sources.load("c");
-    assert.deepEqual(requests, ["a", "b", "c"]);
-    assert.equal(sources.has("b"), false);
-    assert.equal(sources.bytes, 8);
-    const small = new SpriteSources(2);
-    await small.load("large");
-    assert.equal(small.bytes, 0);
-  } finally { globalThis.fetch = fetch; }
+const clip = (count) => ({
+  pages: Array.from({ length: count }, (_, i) => ({ file: `${i}.webp` })),
+  frames: Array.from({ length: count }, (_, page) => ({ page })),
 });
-
-test("failed sheet downloads can retry", async () => {
-  const fetch = globalThis.fetch;
-  let attempts = 0;
-  globalThis.fetch = async () => new Response("image", { status: ++attempts === 1 ? 503 : 200 });
-  try {
-    const sources = new SpriteSources();
-    await assert.rejects(sources.load("sheet"), /Couldn’t load/);
-    assert.equal(await (await sources.load("sheet")).text(), "image");
-  } finally { globalThis.fetch = fetch; }
-});
-
-test("decoding an evicted sheet reuses compressed bytes and always releases its object URL", async () => {
+function fixture(t, decode = async () => {}) {
   const fetch = globalThis.fetch;
   const Image = globalThis.Image;
   const urls = [];
-  let downloads = 0;
-  globalThis.fetch = async () => { downloads++; return new Response("image"); };
-  globalThis.Image = class { async decode() { urls.push(this.src); } };
-  try {
-    const bank = new SpriteBank(() => {});
-    bank.clips.set("test", { pages: [{ file: "0.webp" }], frames: [{ page: 0 }] });
-    assert.equal(bank.animationReady("test"), false);
-    await bank.prepare("test");
-    bank.pages.clear();
-    await bank.loadPage("test", 0);
-    assert.equal(downloads, 1);
-    assert.equal(urls.length, 2);
-    for (const url of urls) await assert.rejects(fetch(url));
-    bank.pages.clear();
-    globalThis.Image = class { async decode() { urls.push(this.src); throw new Error("decode"); } };
-    await assert.rejects(bank.loadPage("test", 0), /decode/);
-    await assert.rejects(fetch(urls.at(-1)));
-  } finally { globalThis.fetch = fetch; globalThis.Image = Image; }
-});
-
-test("a six-sheet animation stays drawable while its replacement is still loading", async () => {
-  const fetch = globalThis.fetch;
-  const Image = globalThis.Image;
-  let release;
-  let notify;
-  const pending = new Promise((resolve) => { notify = resolve; });
-  const gate = new Promise((resolve) => { release = resolve; });
-  globalThis.fetch = async (url) => {
-    if (String(url).includes("replacement")) { notify(); await gate; }
-    return new Response("image");
-  };
-  globalThis.Image = class { async decode() {} };
-  const bank = new SpriteBank(() => {});
-  const clip = {
-    pages: Array.from({ length: 6 }, (_, index) => ({ file: `${index}.webp` })),
-    frames: Array.from({ length: 6 }, (_, page) => ({ page })),
-  };
-  for (const name of ["long", "replacement", "newest"]) bank.clips.set(name, clip);
-  let replacement;
-  try {
-    await bank.prepareAnimation("long");
-    replacement = bank.prepareAnimation("replacement");
-    await pending;
-    for (let index = 0; index < 6; index++) assert.ok(bank.frame("long", index));
-    assert.ok(bank.pages.size <= 4);
-    await bank.prepareAnimation("newest");
-    release();
-    await replacement;
-    assert.equal(bank.animationReady("newest"), true, "a stale load cannot evict newer playback");
-    assert.equal(bank.playback.size, 6);
-    assert.ok(bank.pages.size <= 4);
-  } finally {
-    release();
-    await replacement;
-    globalThis.fetch = fetch;
-    globalThis.Image = Image;
-  }
-});
-
-test("animation preparation waits for the last sheet to decode", async () => {
-  const fetch = globalThis.fetch;
-  const Image = globalThis.Image;
-  let release;
-  let notify;
-  let decodes = 0;
-  const decoding = new Promise((resolve) => { notify = resolve; });
-  const gate = new Promise((resolve) => { release = resolve; });
-  globalThis.fetch = async () => new Response("image");
+  globalThis.fetch = async (url) => new Response(String(url));
   globalThis.Image = class {
     async decode() {
-      if (++decodes === 2) { notify("decoding"); await gate; }
+      urls.push(this.src);
+      await decode(await resolveObjectURL(this.src).text());
     }
   };
+  t.after(() => { globalThis.fetch = fetch; globalThis.Image = Image; });
   const bank = new SpriteBank(() => {});
-  bank.clips.set("two", {
-    pages: [{ file: "a.webp" }, { file: "b.webp" }],
-    frames: [{ page: 0 }, { page: 1 }],
+  bank.clips.set("idle", clip(2));
+  bank.clips.set("rotation", clip(3));
+  return { bank, urls };
+}
+function drawable(bank, name, count) {
+  for (let i = 0; i < count; i++) assert.ok(bank.frame(name, i), `${name}/${i} stays drawable`);
+}
+
+test("a six-page replacement cannot evict boot idle or activate itself; rotation and return idle stay resident", async (t) => {
+  const gate = Promise.withResolvers();
+  const entered = Promise.withResolvers();
+  const { bank } = fixture(t, async (url) => {
+    if (url.includes("large/5.webp")) { entered.resolve(); await gate.promise; }
   });
-  const ready = bank.prepareAnimation("two").then(() => "ready");
+  bank.clips.set("large", clip(6));
+  await bank.prepareAnimation("idle");
+  bank.activate("idle");
+  const preparation = bank.prepareAnimation("large");
   try {
-    assert.equal(await Promise.race([ready, decoding]), "decoding");
-    assert.equal(bank.animationReady("two"), false);
-    release();
-    await ready;
-    assert.ok(bank.frame("two", 1));
-  } finally {
-    release();
-    await ready;
-    globalThis.fetch = fetch;
-    globalThis.Image = Image;
-  }
+    await entered.promise;
+    drawable(bank, "idle", 2);
+    assert.equal(bank.activeName, "idle");
+    assert.equal(bank.animationReady("large"), false);
+    gate.resolve();
+    await preparation;
+    assert.equal(bank.activeName, "idle", "only display activation can replace the active owner");
+    bank.activate("large");
+    drawable(bank, "large", 6);
+    bank.clips.set("replacement", clip(6));
+    await bank.prepareAnimation("replacement");
+    assert.equal(bank.activeName, "large");
+    drawable(bank, "large", 6);
+    bank.activate("replacement");
+    drawable(bank, "replacement", 6);
+    bank.activate("rotation");
+    drawable(bank, "rotation", 3);
+    bank.activate("idle");
+    drawable(bank, "idle", 2);
+    assert.ok(bank.pages.size <= 4);
+  } finally { gate.resolve(); await preparation; }
+});
+
+test("rapid distinct preparations coalesce behind one decode and discard cancelled candidates", async (t) => {
+  const gate = Promise.withResolvers();
+  const entered = Promise.withResolvers();
+  const decoded = [];
+  let inFlight = 0;
+  let peak = 0;
+  const { bank } = fixture(t, async (url) => {
+    peak = Math.max(peak, ++inFlight);
+    decoded.push(url);
+    if (url.includes("old/0.webp")) { entered.resolve(); await gate.promise; }
+    inFlight--;
+  });
+  for (const name of ["old", "a", "b", "c", "latest"]) bank.clips.set(name, clip(6));
+  await bank.prepareAnimation("idle");
+  bank.activate("idle");
+  const old = bank.prepareAnimation("old");
+  await entered.promise;
+  const waiting = ["a", "b", "c", "latest"].map((name) => bank.prepareAnimation(name));
+  try {
+    drawable(bank, "idle", 2);
+    gate.resolve();
+    await Promise.all([old, ...waiting]);
+    assert.equal(peak, 1);
+    assert.equal(decoded.filter((url) => /\/(?:a|b|c)\//.test(url)).length, 0);
+    assert.equal(decoded.filter((url) => url.includes("/old/")).length, 1);
+    assert.equal(bank.prepared.name, "latest");
+    assert.equal(bank.activeName, "idle");
+    bank.cancelPreparation();
+    assert.equal(bank.prepared, null);
+    drawable(bank, "rotation", 3);
+    drawable(bank, "idle", 2);
+  } finally { gate.resolve(); await Promise.all([old, ...waiting]); }
+});
+
+test("failed decoding retries through source loading and revokes every object URL", async (t) => {
+  let fail = true;
+  const { bank, urls } = fixture(t, async () => { if (fail) throw new Error("decode"); });
+  await assert.rejects(bank.loadPage("idle", 0), /decode/);
+  fail = false;
+  await bank.loadPage("idle", 0);
+  assert.equal(urls.length, 2);
+  for (const url of urls) assert.equal(resolveObjectURL(url), undefined);
+});
+
+test("one preparation downloads its missing sheets in parallel before serial decoding", async (t) => {
+  const { bank, urls } = fixture(t);
+  await bank.prepareAnimation("idle");
+  bank.activate("idle");
+  bank.clips.set("large", clip(6));
+  const gate = Promise.withResolvers();
+  const entered = Promise.withResolvers();
+  const requested = [];
+  globalThis.fetch = async (url) => {
+    requested.push(String(url));
+    if (requested.length === 9) entered.resolve();
+    await gate.promise;
+    return new Response(String(url));
+  };
+  const preparation = bank.prepareAnimation("large");
+  try {
+    await entered.promise;
+    assert.equal(urls.length, 2, "downloads overlap without starting candidate decodes");
+    drawable(bank, "idle", 2);
+    gate.resolve();
+    await preparation;
+    assert.equal(bank.animationReady("large"), true);
+  } finally { gate.resolve(); await preparation; }
 });

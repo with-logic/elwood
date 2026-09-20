@@ -75,10 +75,10 @@ async function advance(seconds) {
   }
 }
 
-test("landing starts with only the idle sprite page and never fetches videos", async () => {
+test("landing starts with the complete idle animation and never fetches videos", async () => {
   await scene.boot();
   assert.equal(scene.ready, true);
-  assert.equal(scene.bank.pages.size, 1);
+  assert.equal(scene.bank.activePages.size, 2);
   assert.deepEqual([...scene.bank.clips.keys()], ["idle"]);
   assert.ok(requests.every((url) => !url.endsWith(".mp4")));
   assert.deepEqual(errors, []);
@@ -374,7 +374,7 @@ test("an unavailable initial pose or failed sprite request keeps the fallback", 
       failures.push(error.message);
     },
   });
-  loading.bank.prepare = async () => {
+  loading.bank.prepareAnimation = async () => {
     throw new Error("offline");
   };
   await loading.boot();
@@ -385,3 +385,107 @@ test("an unavailable initial pose or failed sprite request keeps the fallback", 
   loading.paint(0);
   assert.equal(paints, 0, "Ready state alone is not a successful canvas paint");
 });
+
+
+test("automatic moments wait for every sheet while the active idle keeps moving", async () => {
+  reduced = false;
+  const own = new LandingScene(canvas());
+  await own.boot();
+  const fetch = globalThis.fetch;
+  const gate = Promise.withResolvers();
+  const entered = Promise.withResolvers();
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("wave/page-001.webp")) { entered.resolve(); await gate.promise; }
+    return fetch(url);
+  };
+  const task = { kind: "moment", name: "wave", sent: false, seen: false, elapsed: 0, hold: 3, fits: true };
+  own.director.task = task;
+  try {
+    own.step(1 / 120);
+    await entered.promise;
+    await advance(0.4);
+    assert.equal(task.sent, false);
+    assert.equal(own.world.player.animation, "idle");
+    assert.ok(own.world.player.animationTime > 0);
+    assert.equal(own.bank.activeName, "idle");
+    gate.resolve();
+    await own.bank.preparationTail;
+    own.step(1 / 120);
+    assert.equal(task.sent, true, "the real Autonomy ready callback releases the complete moment");
+  } finally {
+    gate.resolve();
+    await own.bank.preparationTail;
+    own.pause("test", true);
+    globalThis.fetch = fetch;
+  }
+});
+
+test("a manual gesture waits for all rotation sheets before it can start", async () => {
+  const own = new LandingScene(canvas());
+  await own.boot();
+  const fetch = globalThis.fetch;
+  const gate = Promise.withResolvers();
+  const entered = Promise.withResolvers();
+  const rotation = [];
+  globalThis.fetch = async (url) => {
+    if (/rotation-(?:front|rear)\/page-\d+\.webp/.test(String(url))) rotation.push(String(url));
+    if (String(url).includes("rotation-rear/page-001.webp")) { entered.resolve(); await gate.promise; }
+    return fetch(url);
+  };
+  const request = own.request({ gesture: "wave" });
+  try {
+    await entered.promise;
+    assert.equal(own.pressed.gesture, undefined);
+    assert.equal(own.bank.activeName, "idle");
+    assert.deepEqual(rotation.map((url) => new URL(url).pathname.split("/game/")[1]).sort(), [
+      "rotation-front/page-000.webp", "rotation-rear/page-000.webp", "rotation-rear/page-001.webp",
+    ]);
+    gate.resolve();
+    await request;
+    assert.equal(own.pressed.gesture, "wave");
+    assert.equal(own.bank.animationReady("rotation"), true);
+    assert.equal(own.bank.activeName, "idle", "request completion does not activate the candidate");
+  } finally {
+    gate.resolve();
+    await request;
+    own.pause("test", true);
+    globalThis.fetch = fetch;
+  }
+});
+
+for (const cancelled of [true, false]) {
+  test(`${cancelled ? "clearing input during" : "failure of"} rotation preparation cannot publish a stale gesture`, async () => {
+    const failures = [];
+    const own = new LandingScene(canvas(), { onError: (error) => failures.push(error) });
+    await own.boot();
+    const fetch = globalThis.fetch;
+    const gate = Promise.withResolvers();
+    const entered = Promise.withResolvers();
+    globalThis.fetch = async (url) => {
+      if (String(url).includes("rotation-rear/page-001.webp")) {
+        entered.resolve();
+        await gate.promise;
+        if (!cancelled) return new Response("", { status: 503 });
+      }
+      return fetch(url);
+    };
+    const request = own.request({ gesture: "wave" });
+    try {
+      await entered.promise;
+      if (cancelled) own.clearInput();
+      gate.resolve();
+      await request;
+      assert.equal(own.pressed.gesture, undefined);
+      assert.equal(own.bank.prepared, null);
+      assert.equal(own.bank.activeName, "idle");
+      for (let i = 0; i < own.bank.clips.get("idle").frames.length; i++)
+        assert.ok(own.bank.frame("idle", i), "idle remains drawable after rejected preparation");
+      assert.equal(failures.length, cancelled ? 0 : 1);
+    } finally {
+      gate.resolve();
+      await request;
+      own.pause("test", true);
+      globalThis.fetch = fetch;
+    }
+  });
+}

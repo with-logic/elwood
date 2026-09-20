@@ -104,7 +104,8 @@ export class LandingScene {
         w.gestureDurations[name] = clip.frames / clip.fps;
       if (manifest.climb_exit)
         w.climbExit = { x: manifest.climb_exit.x * HEIGHT, y: manifest.climb_exit.y * HEIGHT };
-      await this.bank.prepare("idle");
+      await this.bank.prepareAnimation("idle");
+      this.bank.activate("idle");
       this.ready = true;
       this.configure(this.config, true);
       this.onReady?.();
@@ -118,8 +119,12 @@ export class LandingScene {
     if (this.bank.animationReady(name)) return true;
     if (!this.pending.has(name)) {
       this.pending.add(name);
+      const version = this.requestVersion;
+      const task = this.director.task;
+      const automatic = task?.name === name || `idle-${task?.direction}` === name;
       this.bank
-        .prepareAnimation(name)
+        .prepareAnimation(name, () => version === this.requestVersion
+          && (!automatic || task === this.director.task))
         .catch((error) => this.onError?.(error))
         .finally(() => this.pending.delete(name));
     }
@@ -213,6 +218,7 @@ export class LandingScene {
   interact() {
     this.director.interact();
     this.requestVersion++;
+    this.bank.cancelPreparation();
     this.pauses.delete("reduced");
     this.start();
   }
@@ -222,11 +228,13 @@ export class LandingScene {
     const version = this.requestVersion;
     const name = input.gesture ?? (input.face ? `idle-${input.face}` : null);
     try {
-      if (name)
-        await Promise.all([this.bank.prepareAnimation(name), this.bank.preload("rotation")]);
+      if (name) await this.bank.prepareAnimation(name, () => version === this.requestVersion);
       if (version === this.requestVersion) this.pressed = { ...this.pressed, ...input };
     } catch (error) {
-      this.onError?.(error);
+      if (version === this.requestVersion) {
+        this.bank.cancelPreparation();
+        this.onError?.(error);
+      }
     }
   }
   clearInput() {
@@ -235,6 +243,7 @@ export class LandingScene {
     this.sprint = false;
     this.pressed = NO_INPUT;
     this.requestVersion++;
+    this.bank.cancelPreparation();
   }
   get dragging() {
     return this.drag !== null;
@@ -276,7 +285,7 @@ export class LandingScene {
     });
     this.prepare(name);
     for (const clip of this.world.clips["hero-land"] ? ["hero-land", "pickup-fall"] : ["land"])
-      this.prepare(clip);
+      this.bank.prepare(clip).catch((error) => this.onError?.(error));
     this.world.animate(name, true);
     this.moveDrag(point);
     return true;
@@ -488,6 +497,7 @@ export class LandingScene {
           : null,
       );
     }
+    this.bank.activate(p.animation);
     const positioned = this.alignDrag(positionPose(pose, p));
     const seam =
       p.animation === "rotation" &&
@@ -495,8 +505,8 @@ export class LandingScene {
       (this.lastPose.frame.source_clip !== pose.frame.source_clip ||
         this.lastPose.mirrored !== positioned.mirrored);
     if (this.animationName !== p.animation || seam) {
-      if (p.animation === "jump") this.prepare("land");
-      if (p.animation === "land") this.prepare("land-rest");
+      if (p.animation === "jump") this.bank.prepare("land").catch((error) => this.onError?.(error));
+      if (p.animation === "land") this.bank.prepare("land-rest").catch((error) => this.onError?.(error));
       this.transition =
         this.lastPose &&
         !this.reduced &&
