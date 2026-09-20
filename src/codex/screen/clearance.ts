@@ -3,7 +3,6 @@
 const caretRow = /^\s*›/;
 /** Codex 0.142.5's PLACEHOLDERS plus the captured 0.154.0 default. */
 const placeholders = new Set([
-  "",
   "Ask Codex to do anything",
   "Explain this codebase",
   "Summarize recent commits",
@@ -59,5 +58,5 @@ export function codexComposerClearance(frame: string): boolean {
   if (below.some((row) => modelFooter.test(row))) return true;
   // A captured welcome box also anchors the known placeholder. A bare caret alone
   // remains ambiguous even when an old welcome box is still visible above it.
-  return composer !== "›" && welcomeBox(rows.slice(0, at));
+  return welcomeBox(rows.slice(0, at));
 }

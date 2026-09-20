@@ -17,8 +17,7 @@ test.each([
   codexSmallComposer,
   composerWithoutModelFooter,
   `1. First step\n2. Second step\n${codexSmallComposer}`,
-  "› Explain this codebase\n  gpt-5.5 high",
-  "› \n  gpt-5.5 high\n? for shortcuts",
+  "› Explain this codebase\n  gpt-5.5 high\n? for shortcuts",
 ])("C-TRUST-01 native composer proves clearance below transcript content: %s", (frame) => {
   expect(codexTrustClearance(frame)).toBe(true);
 });
@@ -27,6 +26,7 @@ test.each([
   "",
   "› ",
   "Continue?\n› ",
+  "› \n  gpt-5.5 high\n? for shortcuts",
   "› Enable admin access",
   "› Ask Codex to do anything",
   composerWithoutModelFooter.replace("Ask Codex to do anything", ""),

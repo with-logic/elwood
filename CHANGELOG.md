@@ -16,6 +16,7 @@ back each entry are listed in `prd/14-conformance.md`.
   its older model footer. A newly painted bare caret cannot borrow an earlier
   composer's footer to release input held for a human dialog. Active work, indented
   transcript quotes, and incomplete welcome-box fragments keep that input held.
+  Title-only working signals also retain the hold, and a bare caret never clears it.
 - Preserve Claude `StopFailure` hooks with missing or changed diagnostic fields. Those
   fields are now typed as optional `unknown`, matching ingress. Browser logs show a
   bounded rejection reason instead of unrelated assistant text or a blank summary.

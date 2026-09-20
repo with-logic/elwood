@@ -286,7 +286,10 @@ rows above the last native composer can be transcript content, while rows below
 it must be native footer chrome. Keep leading whitespace: the composer begins at
 column zero and the model footer at column two; trimming both loses the distinction
 from indented transcript continuations. Active `esc to interrupt` work cannot
-prove idle clearance. Without a model footer, a non-bare native placeholder also
+prove idle clearance. Session clearance also reads the live OSC title through the
+existing Codex screen-fact table, including during trust-attempt polling. A bare
+caret cannot prove clearance even with a model footer left by an earlier frame.
+Without a model footer, a non-bare native placeholder also
 proves clearance when anchored by a contiguous boxed Codex welcome header at the
 start of the frame, followed only by native startup tip and warning rows. The welcome box alone cannot authorize a bare caret. A later bare
 caret cannot borrow an earlier composer's footer to prove clearance. The Claude predicate uses

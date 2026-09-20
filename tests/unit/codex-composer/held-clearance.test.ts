@@ -1,8 +1,10 @@
 /** Native composer provenance keeps trust-owned input held (C-TRUST-01). */
 import { afterEach, expect, test, vi } from "vitest";
+import { liveCodexClearance } from "../../../src/codex/screen/live-clearance.ts";
 import { codexTrustClearance } from "../../../src/codex/screen-table.ts";
+import { CodexStartupPromptResponder } from "../../../src/codex/startup-prompts.ts";
 import { TrustPromptResponder } from "../../../src/core/trust/responder.ts";
-import { codexComposer } from "../../fixtures/trust-composer.ts";
+import { codexComposer, codexTrust } from "../../fixtures/trust-composer.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -22,6 +24,35 @@ test.each([
     responder.handle(codexComposer, write);
     expect(responder.inputBlocking).toBe(false);
     expect(write).not.toHaveBeenCalled();
+  } finally {
+    responder.dispose();
+  }
+});
+
+test("C-TRUST-01 live trust revalidation includes title-only working evidence", async () => {
+  vi.useFakeTimers();
+  let title = "⠋ project";
+  let frame = `${codexTrust}\n› 1. Yes, continue\n  2. No, quit`;
+  const responder = new CodexStartupPromptResponder(
+    "s",
+    true,
+    undefined,
+    liveCodexClearance(() => title),
+  );
+  try {
+    const { outcomes } = responder.handle(
+      frame,
+      () => {
+        frame = codexComposer;
+      },
+      () => frame,
+    );
+    await vi.advanceTimersByTimeAsync(250);
+    await expect(outcomes[0]?.settled).resolves.toBe("cancelled");
+    expect(responder.inputBlocking).toBe(true);
+    title = "project";
+    responder.handle(frame, vi.fn());
+    expect(responder.inputBlocking).toBe(false);
   } finally {
     responder.dispose();
   }

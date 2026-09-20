@@ -21,6 +21,7 @@ import { type SessionRecord, writeSessionRecord } from "../../state/store.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
 import type { CodexPreflightWarning } from "../preflight.ts";
 import { spawnCodexPty } from "../pty.ts";
+import { liveCodexClearance } from "../screen/live-clearance.ts";
 import { codexScreenFactTableForTrustPolicy } from "../screen-table.ts";
 import { CodexStartupPromptResponder } from "../startup-prompts.ts";
 import { guardedCodexAutomationWrite } from "../update-prompt.ts";
@@ -40,7 +41,6 @@ export type BuildCodexSessionInput = {
   readonly resumed: boolean;
   readonly preflightWarning: CodexPreflightWarning | undefined;
 };
-
 export async function buildCodexSession(input: BuildCodexSessionInput): Promise<CodexSessionImpl> {
   const { record, stateDir, runtime, options, resumed, preflightWarning } = input;
   secureMkdir(runtime.sessionDir);
@@ -116,6 +116,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     record.elwoodSessionId,
     autotrust,
     frameObserver.refresh,
+    liveCodexClearance(() => terminal.title),
   );
   const terminal = attachPtyTerminal(
     options.initialSize ?? defaultTerminalSize,
