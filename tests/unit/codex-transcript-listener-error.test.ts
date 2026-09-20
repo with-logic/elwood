@@ -12,7 +12,11 @@ import { tempDirForUnit } from "./helpers.ts";
 
 afterEach(() => vi.useRealTimers());
 
-const first = { type: "response_item", payload: { type: "reasoning", turn_id: "first" } };
+const secret = "private-transcript-secret-7e893f";
+const first = {
+  type: "response_item",
+  payload: { type: "reasoning", turn_id: "first", text: secret },
+};
 const second = { type: "response_item", payload: { type: "reasoning", turn_id: "second" } };
 const rejected = {
   type: "event_msg",
@@ -85,11 +89,17 @@ test.each(
           code: "transcript_listener_error",
           agent: "codex",
           channel,
+          message: "Codex transcript listener failed; remaining transcript delivery continues.",
+          raw: `transcript_listener_error channel=${channel}`,
         }),
       ),
     );
-    expect(JSON.stringify(warnings)).not.toMatch(/private|provider rejected|turn-2/);
-    expect(activities.filter((event) => event.kind === "warning")).toHaveLength(1);
+    const warningActivities = activities.filter((event) => event.kind === "warning");
+    expect(warningActivities).toHaveLength(1);
+    expect(JSON.stringify({ warnings, warningActivities })).not.toMatch(
+      /private|provider rejected|turn-2/,
+    );
+    expect(JSON.stringify({ warnings, warningActivities })).not.toContain(secret);
     appendFileSync(path, `${JSON.stringify(final)}\n`);
     expect(() => watcher.finish()).not.toThrow();
     expect(raw).toEqual([first, second, rejected, final]);

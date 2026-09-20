@@ -11,6 +11,7 @@ import { describe, expect, test, vi } from "vitest";
 import { createCodexTranscriptWatcher } from "../../src/codex/session/transcript.ts";
 import type { CodexEventMap } from "../../src/codex/session/types.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
+import { emitSessionWarnings } from "../../src/core/warnings/session.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 import { tempDirForUnit } from "./helpers.ts";
 
@@ -60,7 +61,13 @@ describe("createCodexTranscriptWatcher finishSafely (C-LIFE-10)", () => {
 
   test("C-CODEX-20 first listener failures in the final flush report after record delivery", async () => {
     const order: string[] = [];
-    const sink: Sink = { emitWarnings: (warnings) => order.push(...warnings.map((w) => w.code)) };
+    const sink: Sink = {
+      emitWarnings: (warnings) =>
+        emitSessionWarnings(warnings, {
+          warning: (event) => emitter.emit("warning", event),
+          activity: (event) => emitter.emit("activity", event),
+        }),
+    };
     const { finishSafely, emitter, path } = wired(() => sink);
     emitter.on("codex:transcript", () => {
       throw new Error("raw listener");
@@ -68,7 +75,13 @@ describe("createCodexTranscriptWatcher finishSafely (C-LIFE-10)", () => {
     emitter.on("activity", () => {
       throw new Error("activity listener");
     });
-    emitter.on("activity", () => order.push("record"));
+    emitter.on("activity", (event) => {
+      if (event.source === "transcript") order.push("record");
+    });
+    emitter.on("warning", () => {
+      throw new Error("warning listener");
+    });
+    emitter.on("warning", (event) => order.push(event.code));
     writeFileSync(path, `${record}\n`);
     finishSafely(() => order.push("exit"));
     expect(order).toEqual(["record", "exit"]);
