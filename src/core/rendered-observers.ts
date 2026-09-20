@@ -56,7 +56,17 @@ export function readRenderedFrame(
 ): ScreenFactReading {
   // Classify the frame once; turn and attention watchers share the reading, and the
   // reading is returned so the caller can drive resume-readiness off the same facts.
-  const reading = readScreenFacts(observers.table, frame);
+  // A retained specific gate outranks generic fallback labels during partial repaints.
+  const table =
+    trustBlock === undefined
+      ? observers.table
+      : {
+          ...observers.table,
+          rules: observers.table.rules.filter(
+            (rule) => rule.fact !== "blocking_prompt_visible" || !rule.fallback,
+          ),
+        };
+  const reading = readScreenFacts(table, frame);
   if (trustBlock === undefined) return reading;
   const id = `${observers.agent}-${trustBlock}-prompt`;
   if (reading.matched.some((match) => match.id === id)) return reading;

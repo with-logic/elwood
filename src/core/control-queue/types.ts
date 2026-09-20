@@ -19,7 +19,7 @@ export type ControlSubmitter = (
 /** An abortable task run while its queue op holds the queue; aborts on close. */
 export type AbortableQueueTask = (signal: AbortSignal) => Promise<void>;
 
-/** Drops a still-queued op when `signal` aborts, rejecting it with `error()`. */
+/** Cancels queue wait and pre-operation cleanup; active exclusive tasks own their deadline. */
 export type Cancel = { readonly signal: AbortSignal; readonly error: () => Error };
 
 /** Internal provenance for activity and recurring-loop scheduling decisions. */

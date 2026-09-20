@@ -1,6 +1,7 @@
 /** Separate update automation generations from retained input holds (PRD §5.5). */
 import type { TrustClearance } from "../../core/trust/clearance.ts";
 import { codexComposerClearance } from "../screen/clearance.ts";
+import { CodexRetainedComposerHold } from "../screen/retained-clearance.ts";
 import { codexUpdatePromptVisible, isSafeUpdateContinuation } from "./recognition.ts";
 
 /** Tracks update eligibility while retaining input until positive composer clearance. */
@@ -8,10 +9,10 @@ export class CodexUpdatePromptTracker {
   private active = false;
   private generation = 0;
   private holdingInput = false;
-  private readonly clearsInput: TrustClearance;
+  private readonly retained: CodexRetainedComposerHold;
 
   constructor(clearsInput: TrustClearance = codexComposerClearance) {
-    this.clearsInput = clearsInput;
+    this.retained = new CodexRetainedComposerHold(clearsInput);
   }
 
   /** A replacement can cease being an update while still requiring human input. */
@@ -37,7 +38,7 @@ export class CodexUpdatePromptTracker {
       if (this.active) this.generation += 1;
       this.active = false;
     }
-    this.holdingInput = this.active || (this.holdingInput && !this.clearsInput(frameText));
+    this.holdingInput = this.retained.observe(frameText, this.active);
     return this.active;
   }
 

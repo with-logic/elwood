@@ -1,7 +1,9 @@
 /** Native candidate provenance and positive clear evidence (C-TRUST-01/C-ATTN-03). */
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { claudeTrustClearance } from "../../src/claude/screen-table.ts";
+import { readScreenFacts } from "../../src/core/screen-facts.ts";
 import { withTrustBlockingRules } from "../../src/core/trust/blocking.ts";
+import * as trustDialog from "../../src/core/trust/dialog.ts";
 import { trustView } from "../../src/core/trust/view.ts";
 import {
   claudeBody,
@@ -88,6 +90,24 @@ test("C-ATTN-03 static human rules omit automation-owned trust candidates", () =
       rule.match?.("Do you trust the contents of this directory?\nUnknown copy"),
     ),
   ).toBe(true);
+});
+
+test("C-ATTN-03 adapter fallback shares the preceding trust rules' per-frame parse", () => {
+  const parse = vi.spyOn(trustDialog, "parseTrustCandidates");
+  try {
+    const table = withTrustBlockingRules(
+      { agent: "codex", verifiedAgainst: "test", rules: [] },
+      "codex",
+      false,
+    );
+    readScreenFacts(table, { text: codexTrust, title: "" });
+    expect(table.trustGateVisible(codexTrust)).toBe(true);
+    expect(parse).toHaveBeenCalledTimes(1);
+    expect(table.trustGateVisible("Repainting choices…")).toBe(false);
+    expect(parse).toHaveBeenCalledTimes(2);
+  } finally {
+    parse.mockRestore();
+  }
 });
 
 test("C-TRUST-01 header-like text below a known gate holds input and authorizes no key", () => {
