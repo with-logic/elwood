@@ -12,6 +12,7 @@
 
 import { elwoodError } from "../../errors.ts";
 import { TurnGate } from "../turn-gate.ts";
+import type { StreamTurnOptions } from "../turn-types.ts";
 
 /** Quiet window (ms) after `ready` for a no-oracle turn to settle once content stops. */
 export const FALLBACK_QUIET_MS = 2_000;
@@ -34,12 +35,12 @@ export function armTurnTimeout(
 }
 
 /** The gate for one turn, with the runner's documented defaults applied to its options. */
-export function gateForTurn(options: {
-  readonly fallbackQuietMs?: number;
-  readonly catchUpMs?: number;
-  readonly maxPendingEvents?: number;
-  readonly maxPendingBytes?: number;
-}): TurnGate {
+export function gateForTurn(
+  options: Pick<
+    StreamTurnOptions,
+    "fallbackQuietMs" | "catchUpMs" | "maxPendingEvents" | "maxPendingBytes"
+  >,
+): TurnGate {
   return new TurnGate(
     options.fallbackQuietMs ?? FALLBACK_QUIET_MS,
     options.catchUpMs ?? CATCH_UP_MS,
