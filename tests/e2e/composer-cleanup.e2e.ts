@@ -4,18 +4,15 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
-import { attachClaudeImages } from "../../src/claude/attach-images.ts";
-import { liveClaudeClearance } from "../../src/claude/screen-table.ts";
-import { attachCodexImages } from "../../src/codex/images/attach.ts";
-import { liveCodexClearance } from "../../src/codex/screen/live-clearance.ts";
-import { ControlQueue } from "../../src/core/control-queue/index.ts";
-import { ComposerCleanup } from "../../src/core/input/composer-cleanup.ts";
-import { queuedInputSubmitter } from "../../src/core/input/index.ts";
+import { imageChipCount } from "../../src/core/images/chip-wait.ts";
+import { cancellableSubmission } from "../../src/core/input/submission-cancel.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
-import { currentRenderedFrame } from "../../src/terminal/cursor.ts";
+import { nodePtyFactory } from "../../src/pty/node.ts";
+import { resetRuntimeSeamsForTests, setPtyFactoryForTests } from "../../src/runtime/seams.ts";
 import {
   cleanup,
   codexAuthMissing,
+  type E2eSession,
   makeProject,
   observeSession,
   prepareInteractivePrompt,
@@ -27,9 +24,10 @@ import {
 
 const fixture = join(import.meta.dirname, "..", "fixtures", "sample.png");
 const chip = /\[Image #\d+\]/;
-const marker = "ELWOOD_CANCELLED_DRAFT";
+const markers = ["ELWOOD_CANCELLED_DRAFT", "ELWOOD_SUCCESSOR_DRAFT"] as const;
+const clear = "\u0015\u000b";
 for (const agent of ["claude", "codex"] as const) {
-  test(`C-API-44/56 ${agent} cancels a native image/text draft without a turn`, {
+  test(`C-API-44/56 ${agent} cancels an actual session image draft before its queued successor attaches`, {
     skip: skipIf(
       skipReason(agent),
       agent === "codex" && process.platform !== "darwin" && "Codex images require macOS",
@@ -46,23 +44,85 @@ for (const agent of ["claude", "codex"] as const) {
       sandbox?.dispose();
       if (clipboard) execFileSync("/usr/bin/pbcopy", { input: clipboard });
     });
-    const session = await (agent === "claude" ? startClaude : startCodex)({
+    const aborts = [new AbortController(), new AbortController()];
+    const writes: string[] = [];
+    let session: E2eSession | undefined;
+    let armed = false;
+    let attachments = 0;
+    setPtyFactoryForTests((options) => {
+      const pty = nodePtyFactory(options);
+      return {
+        ...pty,
+        write(data) {
+          const text = String(data);
+          if (armed) {
+            if (text === "\r") {
+              assert.ok(writes.some((write) => write.includes(markers[1])));
+              aborts[1]!.abort();
+              throw new Error("Native proof withholds the successor Enter.");
+            }
+            if (text === "\u0016" || text.includes(image)) {
+              attachments += 1;
+              if (attachments === 2) {
+                const screen = session!.terminal.snapshot().text;
+                t.diagnostic(
+                  JSON.stringify({
+                    agent,
+                    phase: "successor-image",
+                    composerChips: imageChipCount(screen),
+                    cleanupSent: writes.includes(clear),
+                  }),
+                );
+                assert.ok(writes.includes(clear), "cleanup precedes the successor image write");
+              }
+            }
+            const draft = markers.findIndex((marker) => text.includes(marker));
+            if (draft >= 0) {
+              const screen = session!.terminal.snapshot().text;
+              t.diagnostic(
+                JSON.stringify({
+                  agent,
+                  phase: `draft-${draft}`,
+                  composerChips: imageChipCount(screen),
+                  viewportChips: [...screen.matchAll(/\[Image #\d+\]/g)].length,
+                }),
+              );
+              assert.equal(imageChipCount(screen), 1);
+              if (draft === 1)
+                assert.equal(
+                  screen.includes(markers[0]),
+                  false,
+                  "old draft is gone before successor text",
+                );
+            }
+            writes.push(text);
+            pty.write(data);
+            // The first cancellation races native paste consumption; the successor cancels
+            // at its guarded Enter boundary after exercising the real queued attachment.
+            if (draft === 0) aborts[0]!.abort();
+          } else pty.write(data);
+        },
+      };
+    });
+    t.after(resetRuntimeSeamsForTests);
+    session = await (agent === "claude" ? startClaude : startCodex)({
       cwd: project.cwd,
       stateDir: project.stateDir,
       autotrust: true,
     });
-    const observed = observeSession(session);
-    const closing = new AbortController();
-    let queue: ControlQueue | undefined;
-    const diagnose = (phase: "staged" | "failure") => {
-      const screen = session.terminal.snapshot().text;
+    const live = session;
+    const observed = observeSession(live);
+    const diagnose = (phase: "cancelled" | "failure") => {
+      const screen = live.terminal.snapshot().text;
       t.diagnostic(
         JSON.stringify({
           agent,
           phase,
-          status: session.status,
-          markerPresent: screen.includes(marker),
+          status: live.status,
+          markerPresent: markers.some((marker) => screen.includes(marker)),
           chipPresent: chip.test(screen),
+          attachments,
+          cleanupWrites: writes.filter((write) => write === clear).length,
         }),
       );
     };
@@ -73,68 +133,30 @@ for (const agent of ["claude", "codex"] as const) {
         `${agent} idle readiness`,
         30_000,
       );
-      const abort = new AbortController();
-      const cancelled = new Error("cancel native staged draft");
-      const terminal = {
-        snapshot: () => session.terminal.snapshot(),
-        settled: () => session.terminal.settled(),
-        get renderFailed() {
-          return session.terminal.renderFailed;
-        },
-        async sendInput(data: string | Uint8Array) {
-          const text = String(data);
-          assert.notEqual(text, "\r", "this native proof must never submit a model turn");
-          if (text === "\u0015\u000b") diagnose("staged");
-          await session.terminal.sendInput(data);
-          if (text.includes(marker)) {
-            await waitFor(
-              () => {
-                const screen = session.terminal.snapshot().text;
-                return screen.includes(marker) && chip.test(screen) ? true : undefined;
-              },
-              `${agent} rendered image and text draft`,
-              10_000,
-            );
-            abort.abort(cancelled);
-          }
-        },
-      };
-      const isEmpty = (agent === "claude" ? liveClaudeClearance : liveCodexClearance)(
-        () => session.terminal,
+      armed = true;
+      // Both calls use the session's real image queue, cleanup owner and private cancellation seam.
+      const submissions = markers.map((marker, index) =>
+        assert.rejects(
+          live.sendMessage(
+            marker,
+            cancellableSubmission({ images: [{ path: image }] }, aborts[index]!.signal),
+          ),
+          /Turn recovery cancelled/,
+        ),
       );
-      const owner = new ComposerCleanup(
-        terminal,
-        () => false,
-        closing.signal,
-        () => closing.signal,
-        () => {
-          const frame = currentRenderedFrame(session.terminal);
-          return frame && isEmpty(frame.text) ? frame : undefined;
-        },
-      );
-      queue = new ControlQueue(
-        queuedInputSubmitter(terminal, {
-          snapshot: () => terminal.snapshot().text,
-          staged: () => false,
-        }),
-        () => new Error("closed"),
-        () => undefined,
-        () => false,
-        undefined,
-        (work, signal) => owner.run(work, signal),
-      );
-      queue.markReady();
-      const attach = agent === "claude" ? attachClaudeImages : attachCodexImages;
-      await assert.rejects(
-        queue.send(marker, "prompt", (signal) => attach(terminal, [image], signal), {
-          cancel: { signal: abort.signal, error: () => cancelled },
-        }),
-        (error) => error === cancelled,
+      await Promise.all(submissions);
+      assert.equal(attachments, 2);
+      const clears = writes.filter((write) => write === clear).length;
+      assert.ok(
+        clears === 2 || clears === 3,
+        "a retained first clear may retry before the successor",
       );
       await waitFor(
         () => {
-          const screen = session.terminal.snapshot().text;
-          return screen.includes(marker) || chip.test(screen) ? undefined : true;
+          const screen = live.terminal.snapshot().text;
+          return markers.some((marker) => screen.includes(marker)) || chip.test(screen)
+            ? undefined
+            : true;
         },
         `${agent} cancelled draft and image removed`,
         5_000,
@@ -143,13 +165,13 @@ for (const agent of ["claude", "codex"] as const) {
         observed.hooks.some((event) => event.hook_event_name === "UserPromptSubmit"),
         false,
       );
+      diagnose("cancelled");
       if (clipboard) assert.deepEqual(execFileSync("/usr/bin/pbpaste"), clipboard);
     } catch (error) {
       diagnose("failure");
       throw error;
     } finally {
-      closing.abort();
-      queue?.close();
+      for (const abort of aborts) abort.abort();
       observed.dispose();
       await cleanup(session);
     }

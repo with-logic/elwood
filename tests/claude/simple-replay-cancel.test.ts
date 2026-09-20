@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { runTurn } from "../../src/core/simple/turn.ts";
 import { ClaudeSession } from "../../src/index.ts";
 import { AgentSessionBase } from "../../src/runtime/session/base.ts";
+import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { collect, FakeTurnSession } from "../unit/simple-turn-fakes.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -76,6 +77,12 @@ test.each([
     raw.inputBlocking = false;
     raw.submitEvidence("hook_turn_ended");
     await vi.advanceTimersByTimeAsync(500);
+    if (mode === "staged") {
+      expect(ptys[0]!.writes).toContain("\u0015\u000b");
+      expect(ptys[0]!.writes.some((write) => write.includes("next prompt"))).toBe(false);
+      ptys[0]!.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
+      await vi.advanceTimersByTimeAsync(500);
+    }
     await successor;
     expect(ptys[0]!.writes.filter((w) => w.includes("old prompt"))).toHaveLength(
       mode === "staged" ? 2 : 1,
