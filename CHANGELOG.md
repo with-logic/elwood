@@ -16,6 +16,21 @@ back each entry are listed in `prd/14-conformance.md`.
   Slow or stalled terminal rendering no longer lets an already-received error
   escape the bounded startup check in either adapter.
 
+- Reject hook rewrites with unsafe JSON values or accessors before serialization, and stop wide-value inspection at the validation budget.
+
+- Reject cyclic and excessively deep or wide schema-less hook inputs
+  and rewrites without throwing. Validation allows at most 128 edges of depth
+  and 100,000 value visits, counting repeated children on each path. Invalid rewrites
+  now report `invalid_response` and return no decision instead of reaching the JSON
+  serializer with an unserializable graph.
+- Reject `NaN` and `±Infinity` in numeric Claude hook fields, for every tool. Because
+  `JSON.stringify` encodes them as `null`, a hook handler that returned one in an
+  `updatedInput` rewrite used to send the CLI a `null` where its schema requires a
+  number. Concrete tool schemas enforce this per field; schema-less tools (MCP,
+  generic, future) enforce it structurally over the whole value, nested records and
+  arrays included. Such a rewrite is now an invalid result: the bridge fails open with
+  no decision and emits `hookError`.
+
 - Bind the Claude browser-tools decline to session disposal. After `stop()`,
   `kill()`, or PTY exit the decline is no longer attempted, and one already in flight
   settles as a cancellation, so a closed session no longer emits a late
