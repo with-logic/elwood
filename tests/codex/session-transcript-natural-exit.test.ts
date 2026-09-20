@@ -35,6 +35,9 @@ for (const statusThrows of [false, true]) {
       for (let call = 0; call < 10; call += 1) repeated.push(session[verb]());
       for (const handler of nativeExitHandlers) handler({ exitCode: 7 });
     });
+    session.on("activity", (event) => {
+      if (event.source === "transcript") finalized.push("transcript");
+    });
     try {
       await becomeReady(session.elwoodSessionId, cwd, { transcript_path: path });
       // A real node-pty exit is not replayed when an already-exited PTY is signaled.
@@ -47,7 +50,7 @@ for (const statusThrows of [false, true]) {
       expect(shutdown).toBeDefined();
       expect(new Set([shutdown, ...repeated]).size).toBe(1);
       await expect(shutdown).resolves.toBeUndefined();
-      expect(finalized).toEqual(["exit", "status"]);
+      expect(finalized).toEqual(["transcript", "exit", "status"]);
       expect(reapedGroups).toEqual([pty.pid]);
       expect(pty.killSignals).toEqual([]);
     } finally {

@@ -37,6 +37,9 @@ for (const statusThrows of [false, true]) {
         for (const handler of nativeExitHandlers) handler({ exitCode: 7 });
       }
     });
+    session.on("activity", (event) => {
+      if (event.source === "transcript") finalized.push("transcript");
+    });
     try {
       await pty.dispatchHook(session.elwoodSessionId, {
         hook_event_name: "Stop",
@@ -57,7 +60,7 @@ for (const statusThrows of [false, true]) {
       expect(new Set([shutdown, ...repeated]).size).toBe(1);
       await expect(shutdown).resolves.toBeUndefined();
       expect(pty.killSignals).toEqual([]);
-      expect(finalized).toEqual(["exit", "status"]);
+      expect(finalized).toEqual(["transcript", "exit", "status"]);
       expect(reapedGroups).toEqual([pty.pid]);
     } finally {
       await session.stop().catch(() => undefined);

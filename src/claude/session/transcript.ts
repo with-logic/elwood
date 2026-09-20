@@ -95,6 +95,8 @@ export function createTranscriptWatcher(
   const noop = () => undefined;
   const finishSafely = (afterFlush: () => void = noop) => {
     if (deliveryDepth > 0) {
+      // A listener can synchronously stop the PTY; finish transcript and diagnostic
+      // fan-out before terminal finalization closes the consumer's activity stream.
       queueMicrotask(() => finishSafely(afterFlush));
       return;
     }
