@@ -22,13 +22,16 @@ describe("CodexSessionApi message submission", () => {
     ptys[0]!.emitData("\u001b[2J\u001b[H  2. Skip\r\n  3. Skip until next version");
     await session.terminal.settled();
     await becomeReady(session.elwoodSessionId, cwd);
-    await new Promise((resolve) => setImmediate(resolve));
-    // The safe option is written, but no persona paste/Enter reaches the rendered dialog.
-    expect(ptys[0]!.writes).toEqual(["2"]);
+    await expect.poll(() => ptys[0]!.writes.length).toBeGreaterThan(1);
+    // Retries may repeat Skip; no persona paste/Enter may reach the rendered dialog.
+    expect(new Set(ptys[0]!.writes)).toEqual(new Set(["2"]));
+    const beforeClear = ptys[0]!.writes.length;
     ptys[0]!.emitData("\u001b[2J\u001b[H› ");
     await session.terminal.settled();
-    await expect.poll(() => ptys[0]!.writes.length).toBeGreaterThan(1);
-    expect(ptys[0]!.writes).toContain("\u001b[200~Never update from the live TUI.\u001b[201~");
+    await expect
+      .poll(() => ptys[0]!.writes)
+      .toContain("\u001b[200~Never update from the live TUI.\u001b[201~");
+    expect(ptys[0]!.writes.slice(beforeClear)).not.toContain("2");
   });
 
   test("C-API-19 first sendMessage waits for the SessionStart readiness hook", async () => {
