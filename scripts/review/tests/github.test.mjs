@@ -3,6 +3,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { post } from "../post.mjs";
 import { fixture, report } from "./github-fixture.mjs";
+import { findingFixture, reportFixture } from "./report-fixture.mjs";
+
+const changes = reportFixture(
+  { "review-security": findingFixture("major") },
+  "Verdict: not ready - 0 blocker(s), 1 major(s), 0 minor(s), 0 nit(s)",
+);
 
 test("posting rechecks permissions, state, and both commits", async (t) => {
   const reportPath = await report(t);
@@ -40,7 +46,7 @@ test("only completed clean reviews approve, attached to the reviewed commit", as
   assert.equal(f.posted[1].event, "COMMENT");
 });
 
-test("publication dismisses its own stale verdict after a concurrent push", async (t) => {
+test("publication dismisses its own stale request for changes after a concurrent push", async (t) => {
   for (const alter of [
     (f) => {
       f.pr.head.sha = "new";
@@ -68,7 +74,7 @@ test("publication dismisses its own stale verdict after a concurrent push", asyn
     },
   ]) {
     const f = fixture();
-    const reportPath = await report(t);
+    const reportPath = await report(t, changes);
     const dismissed = [];
     f.github.rest.pulls.createReview = (review) => {
       f.posted.push(review);
@@ -77,6 +83,7 @@ test("publication dismisses its own stale verdict after a concurrent push", asyn
     };
     f.github.rest.pulls.dismissReview = (request) => dismissed.push(request);
     await post({ ...f, reportPath });
+    assert.equal(f.posted[0].event, "REQUEST_CHANGES");
     assert.equal(dismissed[0].review_id, 123);
     assert.match(f.outputs.notice, /superseded/);
   }
@@ -84,7 +91,7 @@ test("publication dismisses its own stale verdict after a concurrent push", asyn
 
 test("dismissal failure surfaces rather than claiming a stale verdict was neutralized", async (t) => {
   const f = fixture();
-  const reportPath = await report(t);
+  const reportPath = await report(t, changes);
   f.github.rest.pulls.createReview = () => {
     f.pr.head.sha = "new-head";
     return { data: { id: 123 } };
