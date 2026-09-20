@@ -15,6 +15,9 @@ back each entry are listed in `prd/14-conformance.md`.
 - Clear cancelled staged text and images before successor input, deferring cleanup
   through dialogs. Failed cleanup holds the draft; raw human input revokes cleanup
   authority, and shutdown drops deferred cleanup without waiting.
+- Cancel Codex update retry timers and pending automated keys when the session closes,
+  suppressing late startup success and write-failure warnings after disposal.
+
 - Release cancelled config-lock and clipboard-lock waiters immediately, including
   captured session state, while active holders retain ownership through cleanup.
 
