@@ -87,9 +87,11 @@ describe("decideStatus", () => {
     "initial_ready",
     "hook_turn_ended",
     "rendered_turn_ended",
-  ] as const)("C-API-37 %s must not reopen a blocked session", (evidence) => {
-    // A startup dialog can be on screen when readiness fires; applying `ready`
-    // would drain queued input into it. Only `blocking_prompt_cleared` unblocks.
+    "caller_submitted",
+    "rendered_turn_started",
+  ] as const)("C-ATTN-02 %s must not reopen a blocked session", (evidence) => {
+    // Late readiness and turn evidence must preserve a visible blocking prompt.
+    // Only `blocking_prompt_cleared` can return the session to ready.
     const decision = decideStatus("blocked", evidence);
     expect(decision.to).toBeUndefined();
     expect(decision.reason).toContain("reopen a blocked session");

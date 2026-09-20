@@ -70,9 +70,9 @@ export function decideStatus(
   if (evidence === "blocking_prompt_shown" && !(from === "running" || from === "ready")) {
     return ignored(`ignored: cannot block from ${from}`);
   }
-  // Readiness and late turn-ending evidence cannot clear a visible human prompt.
+  // Readiness, caller submissions, and turn edges cannot clear a visible human prompt.
   // Only an observed blocking_prompt_cleared may make a blocked session ready.
-  if (from === "blocked" && target === "ready" && evidence !== "blocking_prompt_cleared") {
+  if (from === "blocked" && liveStatuses.has(target) && evidence !== "blocking_prompt_cleared") {
     return ignored(`ignored: ${evidence} must not reopen a blocked session`);
   }
   // A cleared blocking prompt only settles a session that was actually

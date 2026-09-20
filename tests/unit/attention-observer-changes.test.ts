@@ -55,7 +55,7 @@ function harness(table: ScreenFactTable = { agent: "codex", verifiedAgainst: "te
     observeRenderedReading(observers, reading, session);
   };
   const frame = (text: string) => observeRenderedFrame(observers, { text, title: "" }, session);
-  return { engine, observe, frame, activities, statuses, submitted };
+  return { engine, observe, frame, activities, statuses, submitted, observers };
 }
 
 test("C-ATTN-03 emits a replacement label while the real session remains blocked", () => {
@@ -157,4 +157,38 @@ test.each([
     "codex-update-prompt",
     "codex-unidentified-dialog",
   ]);
+});
+
+test.each([
+  "caller_submitted",
+  "rendered_turn_started",
+] as const)("C-ATTN-02 %s followed by Stop cannot escape a visible prompt", (start) => {
+  const { engine, observe, statuses } = harness();
+  engine.submit("startup_usable");
+  observe(["codex-unidentified-dialog"]);
+  engine.submit(start);
+  engine.submit("hook_turn_ended");
+  observe(["codex-unidentified-dialog"]);
+  expect(engine.status).toBe("blocked");
+  expect(statuses).toEqual(["running", "blocked"]);
+  observe([]);
+  expect(engine.status).toBe("ready");
+});
+
+test("C-ATTN-02 rendered turn end precedes verified blocking clearance without reopening early", () => {
+  const { engine, frame, observers, submitted } = harness(
+    claudeScreenFactTableForTrustPolicy(false),
+  );
+  engine.submit("initial_ready");
+  observers.turn.arm();
+  frame("❯ \n  ⏵⏵ bypass permissions on · esc to interrupt · ← for agents");
+  frame("Do you want to create elwood.txt?\n❯ 1. Yes\n  3. No\nEsc to cancel");
+  expect(engine.status).toBe("blocked");
+  frame("❯ \n  ⏵⏵ bypass permissions on (shift+tab to cycle)");
+  expect(submitted.slice(-2)).toEqual(["rendered_turn_ended", "blocking_prompt_cleared"]);
+  expect(engine.decisions().slice(-2)).toEqual([
+    expect.objectContaining({ evidence: "rendered_turn_ended", from: "blocked", to: undefined }),
+    expect.objectContaining({ evidence: "blocking_prompt_cleared", from: "blocked", to: "ready" }),
+  ]);
+  expect(engine.status).toBe("ready");
 });

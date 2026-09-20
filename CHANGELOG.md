@@ -15,8 +15,8 @@ back each entry are listed in `prd/14-conformance.md`.
 - Refresh attention diagnostics when a blocked session switches to a differently
   classified prompt, so consumers see the current human decision instead of a
   stale update-prompt label. Repainting the same blocking rules stays quiet.
-- Keep a visible human prompt blocked when a late Stop hook or rendered turn-end
-  arrives. Readiness resumes only after the blocking prompt clears.
+- Keep a visible human prompt blocked through caller submissions and rendered turn
+  starts or endings, including late Stop hooks. Readiness resumes only after clearance.
 - Preserve Claude `StopFailure` hooks with missing or changed diagnostic fields. Those
   fields are now typed as optional `unknown`, matching ingress. Browser logs show a
   bounded rejection reason instead of unrelated assistant text or a blank summary.
