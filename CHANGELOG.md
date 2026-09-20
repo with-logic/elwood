@@ -15,6 +15,8 @@ back each entry are listed in `prd/14-conformance.md`.
 - Clear cancelled staged text and images before successor input, deferring cleanup
   through dialogs. Failed cleanup holds the draft; raw human input revokes cleanup
   authority, and shutdown drops deferred cleanup without waiting.
+- Release cancelled config-lock and clipboard-lock waiters immediately, including
+  captured session state, while active holders retain ownership through cleanup.
 
 - Select Codex update-skip choices after the action when an update action is visible;
   action-less continuation frames may still select a safe option. Selection uses the
