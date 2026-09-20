@@ -154,17 +154,29 @@ export class ControlQueue extends ControlQueueState {
       if (signal.aborted) throw this.abortError(signal);
       this.beginSubmission(operation, traits);
     }
-    const dispatched = this.onCallerInputSubmitted;
+    const mode =
+      operation.origin.kind === "caller" && operation.origin.recovery
+        ? "recovery_input"
+        : traits.submitMode;
+    // Recovery publishes its delayed turn start at the same physical boundary.
+    const dispatched =
+      mode === "recovery_input"
+        ? () => this.onTurnStarted(operation.origin)
+        : this.onCallerInputSubmitted;
     const onSubmitted =
       dispatched && traits.reportsCallerSubmission && operation.origin.kind === "caller"
         ? () => runContained(dispatched)
         : undefined;
-    await this.submit(operation.input, traits.submitMode, signal, onSubmitted);
+    await this.submit(operation.input, mode, signal, onSubmitted);
   }
 
   private beginSubmission(operation: QueuedOperation, traits: ControlOperationTraits): void {
     if (traits.consumesReadiness) this.ready = false;
-    if (traits.reportsCallerSubmission && operation.origin.kind === "caller") {
+    if (
+      traits.reportsCallerSubmission &&
+      operation.origin.kind === "caller" &&
+      !operation.origin.recovery
+    ) {
       runContained(() => this.onTurnStarted(operation.origin));
     }
   }
