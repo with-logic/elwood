@@ -21,6 +21,7 @@ import {
 import {
   createSessionRecord,
   prepareStateDir,
+  removeSessionFiles,
   sessionDir,
   writeSessionRecord,
 } from "../../src/state/store.ts";
@@ -55,14 +56,12 @@ function host(
 ): ShutdownHost {
   return {
     pty: untouchedPty,
-    stateDir: "/tmp/state",
-    elwoodSessionId: "s1",
-    socketHome: "/tmp/elwood-x",
+    removeFiles: () => undefined,
     reapPolicy: { orThrow: () => undefined, reaper: { reap: () => undefined } },
     status: () => "exited",
     claimShutdown: () => undefined,
     pauseLoops: () => undefined,
-    clearLoops: () => Promise.resolve(),
+    clearOrPauseLoops: () => Promise.resolve(),
     cleanupRuntime,
     submitEvidence: () => undefined,
     ...overrides,
@@ -76,7 +75,7 @@ describe("permanent loop clearing (C-LOOP-14/C-LOOP-19)", () => {
     const calls: string[] = [];
     const shutdownHost = host(async () => void calls.push("cleanup"), {
       pauseLoops: () => void calls.push("pause"),
-      clearLoops: async (reason) => void calls.push(`clear:${reason}`),
+      clearOrPauseLoops: async (reason) => void calls.push(`clear:${reason}`),
       reapPolicy: recordingReap(calls),
     });
     const shutdown = managedShutdown(new ShutdownCoordinator(), () => shutdownHost);
@@ -100,7 +99,7 @@ describe("permanent loop clearing (C-LOOP-14/C-LOOP-19)", () => {
       },
       {
         pauseLoops: () => void calls.push("pause"),
-        clearLoops: async () => void calls.push("clear"),
+        clearOrPauseLoops: async () => void calls.push("clear"),
         reapPolicy: recordingReap(calls),
       },
     );
@@ -115,7 +114,7 @@ describe("permanent loop clearing (C-LOOP-14/C-LOOP-19)", () => {
     const calls: string[] = [];
     const shutdownHost = host(async () => void calls.push("cleanup"), {
       pauseLoops: () => void calls.push("pause"),
-      clearLoops: () => {
+      clearOrPauseLoops: () => {
         calls.push("clear");
         return Promise.reject(
           elwoodError("loop_persistence_failed", "Could not clear loop state."),
@@ -153,9 +152,9 @@ describe("permanent loop clearing (C-LOOP-14/C-LOOP-19)", () => {
     writeSessionRecord(createSessionRecord({ cwd: root, id }), dir);
     const calls: string[] = [];
     const shutdownHost = host(async () => void calls.push("cleanup"), {
-      stateDir: root,
-      elwoodSessionId: id,
-      clearLoops: (reason) => {
+      removeFiles: () =>
+        removeSessionFiles({ stateDir: root, elwoodSessionId: id, socketHome: "/tmp/elwood-x" }),
+      clearOrPauseLoops: (reason) => {
         calls.push(`clear:${reason}`);
         return Promise.reject(
           elwoodError("loop_persistence_failed", "Could not clear loop state."),

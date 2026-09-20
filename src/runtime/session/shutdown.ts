@@ -10,7 +10,6 @@ import { elwoodError } from "../../core/errors.ts";
 import { terminalStatuses } from "../../core/status-categories.ts";
 import type { ElwoodSessionStatus } from "../../core/types.ts";
 import type { PtyProcess } from "../../pty/types.ts";
-import { removeSessionFiles } from "../../state/store.ts";
 import type { ShutdownContext, ShutdownCoordinator } from "../shutdown/coordinator.ts";
 import { runTeardownSteps } from "../shutdown/teardown.ts";
 import { terminatePty } from "../shutdown/terminate.ts";
@@ -28,15 +27,12 @@ export type ShutdownReapPolicy = Pick<SessionReapPolicy, "orThrow"> & {
 /** The session surface the shutdown/teardown orchestration drives. */
 export type ShutdownHost = {
   readonly pty: PtyProcess;
-  readonly stateDir: string;
-  readonly elwoodSessionId: string;
-  /** The session's stable socket home; teardown removes it whole (§8.1). */
-  readonly socketHome: string;
+  readonly removeFiles: () => Promise<void> | void;
   readonly reapPolicy: ShutdownReapPolicy;
   readonly status: () => ElwoodSessionStatus;
   readonly claimShutdown: (evidence: ShutdownEvidence) => void;
   readonly pauseLoops: () => void;
-  readonly clearLoops: (reason: "kill" | "teardown") => Promise<void>;
+  readonly clearOrPauseLoops: (reason: "kill" | "teardown") => Promise<void>;
   readonly cleanupRuntime: () => Promise<void>;
   readonly submitEvidence: (kind: StatusEvidenceKind) => void;
 };
@@ -148,6 +144,7 @@ async function cleanupOrThrowTermination(host: ShutdownHost): Promise<void> {
  */
 export async function runTeardown(host: ShutdownHost, ctx: ShutdownContext): Promise<void> {
   host.claimShutdown("teardown_completed");
+  host.pauseLoops();
   const shouldSignal = () => !mustNotSignal(host, ctx);
   await runPermanentShutdown(host, "teardown", () =>
     runTeardownSteps([
@@ -159,12 +156,7 @@ export async function runTeardown(host: ShutdownHost, ctx: ShutdownContext): Pro
       () => host.reapPolicy.reaper.reap(), // No-op once latched; retries a failed reap.
       () => host.cleanupRuntime(),
       () => host.submitEvidence("teardown_completed"),
-      () =>
-        removeSessionFiles({
-          stateDir: host.stateDir,
-          elwoodSessionId: host.elwoodSessionId,
-          socketHome: host.socketHome,
-        }),
+      host.removeFiles,
     ]),
   );
 }
@@ -177,16 +169,19 @@ async function runPermanentShutdown(
 ): Promise<void> {
   let loopFailure: unknown;
   let cleanupFailure: unknown;
-  try {
-    await host.clearLoops(reason);
-  } catch (error) {
-    loopFailure = error;
-  }
+  const clearing = (async () => {
+    try {
+      await host.clearOrPauseLoops(reason);
+    } catch (error) {
+      loopFailure = error;
+    }
+  })();
   try {
     await cleanup();
   } catch (error) {
     cleanupFailure = error;
   }
+  await clearing;
   if (loopFailure !== undefined) throw loopFailure;
   if (cleanupFailure !== undefined) throw cleanupFailure;
 }
@@ -195,5 +190,5 @@ async function runPermanentShutdown(
 async function runKillShutdown(host: ShutdownHost, cleanup: () => Promise<void>): Promise<void> {
   host.pauseLoops();
   await cleanup();
-  await host.clearLoops("kill");
+  await host.clearOrPauseLoops("kill");
 }

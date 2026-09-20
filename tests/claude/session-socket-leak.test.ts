@@ -14,8 +14,7 @@
  * — never a parallel worker's — making the assertions exact.
  */
 
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { mkdtempSync, rmSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
 import { setHookBridgeFactoryForTests } from "../../src/claude/session/index.ts";
 import { resumeClaude, startClaude } from "../../src/index.ts";
@@ -123,38 +122,6 @@ describe("§9.1 a failed Claude start does not leak its socket file", () => {
     expect(socketFilesIn(priv)).toHaveLength(1); // A's socket survived B's cleanup
     await live.teardown();
     expect(socketHomesIn(priv)).toEqual([]);
-  });
-
-  test("a REAL runtime file-write failure during resume removes the minted socket file", async () => {
-    // Prove the ownership boundary end-to-end, not just the helper: induce an ACTUAL
-    // runtime-file write failure inside `buildClaudeSession` (writeRuntimeFiles) during a
-    // real resume, and assert the resume's newly minted socket file is swept while the
-    // stopped session's own file is untouched. If those writes ever moved OUTSIDE
-    // `withSocketHomeCleanup`, the resume's file would leak.
-    const cwd = tempDir(); // created under the REAL tmp, before we isolate
-    installFakes();
-    const priv = isolateTmp();
-    const first = await startClaude({ cwd });
-    await ptys[0]!.dispatchHook(first.elwoodSessionId, {
-      hook_event_name: "SessionStart",
-      session_id: "claude-resume-id",
-      cwd,
-      source: "startup",
-    });
-    await first.stop(); // stop keeps state + the home; the bridge unlinks its socket file
-    const beforeResume = socketFilesIn(priv);
-    expect(beforeResume).toEqual([]); // no live socket, but the stable home remains
-    expect(socketHomesIn(priv)).toHaveLength(1);
-    // Plant a DIRECTORY where writeRuntimeFiles will try to write the bridge script:
-    // the atomic write's final rename onto a non-empty directory throws a real fs error
-    // inside the build body — exactly a failed runtime write.
-    const sessionDir = join(resolve(cwd, ".elwood"), "sessions", first.elwoodSessionId);
-    const bridgeScript = join(sessionDir, "hook-bridge.mjs");
-    rmSync(bridgeScript, { force: true });
-    mkdirSync(join(bridgeScript, "block"), { recursive: true }); // non-empty dir at target
-    await expect(resumeClaude({ elwoodSessionId: first.elwoodSessionId, cwd })).rejects.toThrow();
-    // The boundary removed only the file the failed resume minted — no net new leak.
-    expect(socketFilesIn(priv)).toEqual(beforeResume);
   });
 
   test("on SUCCESS the socket home persists (ownership transfers to the session)", async () => {

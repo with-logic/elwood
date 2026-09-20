@@ -39,19 +39,20 @@ export type BuildCodexSessionInput = {
   readonly runtime: SessionRuntime;
   readonly options: StartCodexOptions;
   readonly resumed: boolean;
+  readonly activate: () => void;
   readonly preflightWarning: CodexPreflightWarning | undefined;
 };
 export async function buildCodexSession(input: BuildCodexSessionInput): Promise<CodexSessionImpl> {
   const { record, stateDir, runtime, options, resumed, preflightWarning } = input;
   secureMkdir(runtime.sessionDir);
-  writeSessionRecord(record, runtime.sessionDir);
+  writeSessionRecord(record, runtime.sessionDir, runtime.stateOwnership.publishFile);
   const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId) : [];
   writeCodexRuntimeFiles(runtime);
   const emitter = new TypedEmitter<CodexEventMap>();
   registerInitialHooks(emitter, options.hooks);
   let session: CodexSessionImpl | undefined;
   const warnGate = createStartupWarningGate({
-    emitWarnings: (w) => deliverFrameWarnings(session, w),
+    emitWarnings: (w) => wired.duringDelivery(() => deliverFrameWarnings(session, w)),
   });
   const wired = sessionTranscript.createCodexTranscriptWatcher(
     record.elwoodSessionId,
@@ -87,7 +88,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     },
   );
   const startupOutput = createStartupBuffer();
-  let startupExit: PtyExit | undefined;
+  let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
   const readiness = createReadinessGate(() => {
@@ -157,29 +158,28 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   bindStartupLifetime(activeSession, promptResponder, ready);
   frameObserver.refresh();
   const beforeCleanup = () => activeSession.pauseLoopsForStartupCleanup(ready.cancel);
-  // Every post-construction failure tears down all live resources (§9.1/§9.4).
   await guardStartupRegion(
     async () => {
       activeSession.startLoops();
       flushPendingWarnings(); // inside the guard: a throwing sink tears down, not leaks (§5.4/§9.4)
       activeSession.setInitialReadyHook(() => ready.mark());
       ready.replay();
-      // C-LIFE-10: a failed final flush cannot skip exit or reaping.
       pty.onExit((exit) => {
-        startupExit = exit;
+        if (observedExit) return;
+        observedExit = exit;
+        activeSession.beginExitFinalization();
         activeSession.closing.abort();
         const emitExit = () => {
           emitter.emit("terminal:exit", { elwoodSessionId: id, ...exit });
           emitter.emit("activity", activity.activityFromTerminalExit("codex", id, exit.exitCode));
         };
-        finishSessionExit(
-          () => finishSafely(emitExit),
-          () => activeSession.submitExit(),
-        );
+        const finalize = () => finishSessionExit(emitExit, () => activeSession.submitExit());
+        finishSafely(() => warnGate.afterDelivery(finalize));
       });
-      await assertStartupThenRelease("codex", startupOutput, () => startupExit);
+      await assertStartupThenRelease("codex", startupOutput, () => observedExit);
       activeSession.submitEvidence("startup_usable");
       frameObserver.blockOnceLive(activeSession);
+      input.activate();
     },
     { before: beforeCleanup, pty, bridge, terminal, after: () => transcriptWatcher.stop() },
   );

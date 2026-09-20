@@ -16,6 +16,7 @@ import { join, resolve } from "node:path";
 import { ElwoodError, elwoodError, errnoCode } from "../core/errors.ts";
 import { assertStatePath } from "./directories.ts";
 import { assertSessionId, safeSessionDir } from "./files.ts";
+import { hasLaunchOwner } from "./launch-ownership.ts";
 import type { FileOwner } from "./private-read.ts";
 import { sessionSocketHome } from "./socket-home.ts";
 import { readSessionRecord, removeSessionFiles, type SessionRecord } from "./store.ts";
@@ -80,7 +81,7 @@ export function readPrivateSessionRecord(
   }
 }
 
-/** Remove record and stable socket home when no live session object owns teardown. */
+/** Remove record and socket home only when no live launch or pending reservation owns them. */
 export function removeSessionIdentity(
   stateDir: string,
   id: string,
@@ -89,6 +90,7 @@ export function removeSessionIdentity(
   const root = resolve(stateDir);
   assertPrivateDirectoryIfPresent(root);
   assertPrivateDirectoryIfPresent(join(root, "sessions"));
+  if (hasLaunchOwner(safeSessionDir(root, id))) return;
   const socketHome = sessionSocketHome({ stateDir: root, elwoodSessionId: id, adapter });
   removeSessionFiles({ stateDir, elwoodSessionId: id, socketHome });
 }
