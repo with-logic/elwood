@@ -98,11 +98,22 @@ test("rapid distinct preparations coalesce behind one decode and discard cancell
 });
 
 test("failed decoding retries through source loading and revokes every object URL", async (t) => {
-  let fail = true;
-  const { bank, urls } = fixture(t, async () => { if (fail) throw new Error("decode"); });
-  await assert.rejects(bank.loadPage("idle", 0), /decode/);
-  fail = false;
+  const decoded = [];
+  const cause = new Error("browser decoder: private details");
+  const { bank, urls } = fixture(t, async (bytes) => {
+    decoded.push(bytes);
+    if (bytes === "corrupt") throw cause;
+  });
+  let requests = 0;
+  globalThis.fetch = async () => new Response(++requests === 1 ? "corrupt" : "fresh");
+  await assert.rejects(bank.loadPage("idle", 0), (error) => {
+    assert.equal(error.message, "Couldn’t decode animation sheet idle/0.webp. Try again.");
+    assert.equal(error.cause, cause);
+    return true;
+  });
   await bank.loadPage("idle", 0);
+  assert.equal(requests, 2);
+  assert.deepEqual(decoded, ["corrupt", "fresh"]);
   assert.equal(urls.length, 2);
   for (const url of urls) assert.equal(resolveObjectURL(url), undefined);
 });
@@ -129,5 +140,22 @@ test("one preparation downloads its missing sheets in parallel before serial dec
     gate.resolve();
     await preparation;
     assert.equal(bank.animationReady("large"), true);
+    assert.equal(requested.length, 9);
   } finally { gate.resolve(); await preparation; }
+});
+
+
+test("decode context is bounded and excludes query text and unsafe path characters", async (t) => {
+  const cause = new Error("private browser details");
+  const { bank } = fixture(t, async () => { throw cause; });
+  for (const file of ["bad<>.webp?token=hidden", `${"x".repeat(300)}.webp`]) {
+    bank.clips.set("wave", { pages: [{ file }], frames: [{ page: 0 }] });
+    await assert.rejects(bank.loadPage("wave", 0), (error) => {
+      assert.match(error.message, /^Couldn’t decode animation sheet wave\//);
+      assert.ok(error.message.length <= 220);
+      assert.doesNotMatch(error.message, /hidden|[<>]|private browser/);
+      assert.equal(error.cause, cause);
+      return true;
+    });
+  }
 });

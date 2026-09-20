@@ -1,6 +1,6 @@
 /** Active and prepared sprite ownership for continuous motion (docs/design/landing.md). */
 import { gameAssetUrl } from "./game-assets.mjs";
-import { SpriteSources } from "./sprite-sources.mjs";
+import { SpriteSources, shareSpriteRequest, spriteSheetContext } from "./sprite-sources.mjs";
 
 export class SpriteBank {
   #onError;
@@ -11,35 +11,25 @@ export class SpriteBank {
     this.supportPages = new Map(); // idle and rotation remain available across gesture transitions
     this.prepared = null;
     this.preparationGeneration = 0;
+    this.preparationAbort = null;
     this.preparationTail = Promise.resolve();
     this.decodeTail = Promise.resolve();
     this.clips = new Map();
-    this.clipPromises = new Map();
     this.pages = new Map();
     this.pendingPages = new Map();
     this.#onError = onError;
   }
 
-  async load(name) {
+  async load(name, signal) {
     if (this.clips.has(name)) return this.clips.get(name);
-    if (this.clipPromises.has(name)) return this.clipPromises.get(name);
-    const promise = (async () => {
-      const response = await fetch(gameAssetUrl(`${name}/clip.json`));
-      if (!response.ok)
-        throw new Error(`Couldn’t load ${name}. Check the local server and try again.`);
-      const clip = await response.json();
-      this.clips.set(name, clip);
-      return clip;
-    })();
-    this.clipPromises.set(name, promise);
-    try {
-      return await promise;
-    } finally {
-      this.clipPromises.delete(name);
-    }
+    const blob = await this.sources.load(gameAssetUrl(`${name}/clip.json`), signal);
+    const clip = JSON.parse(await blob.text());
+    signal?.throwIfAborted();
+    this.clips.set(name, clip);
+    return clip;
   }
 
-  async loadPage(name, index, downloaded) {
+  async loadPage(name, index, downloaded, signal) {
     const key = `${name}/${index}`;
     const retained = this.retainedPage(key);
     if (retained) return retained;
@@ -49,32 +39,40 @@ export class SpriteBank {
       this.pages.set(key, page);
       return page;
     }
-    if (this.pendingPages.has(key)) return this.pendingPages.get(key);
-    const promise = this.decodeTail.catch(() => {}).then(async () => {
-      const clip = await this.load(name);
-      const image = new Image();
-      const blob = downloaded ?? await this.sources.load(gameAssetUrl(`${name}/${clip.pages[index].file}`));
-      const url = URL.createObjectURL(blob);
-      try {
-        image.src = url;
-        await image.decode();
-      } finally {
-        URL.revokeObjectURL(url);
-      }
-      if (this.activeName === name) this.activePages.set(key, image);
-      if (name === "idle" || name === "rotation") this.supportPages.set(key, image);
-      this.pages.set(key, image);
-      // Four opportunistic sheets supplement the active clip, transitions and candidate.
-      while (this.pages.size > 4) this.pages.delete(this.pages.keys().next().value);
-      return image;
-    });
-    this.decodeTail = promise;
-    this.pendingPages.set(key, promise);
-    try {
-      return await promise;
-    } finally {
-      this.pendingPages.delete(key);
-    }
+    // Network work overlaps across pages; only browser decodes take the serial slot.
+    return shareSpriteRequest(this.pendingPages, key, async (owned) => {
+      const clip = await this.load(name, owned);
+      const sheet = gameAssetUrl(`${name}/${clip.pages[index].file}`);
+      let blob = downloaded ?? await this.sources.load(sheet, owned);
+      downloaded = undefined;
+      owned.throwIfAborted();
+      const release = () => { blob = undefined; };
+      owned.addEventListener("abort", release, { once: true });
+      const decode = this.decodeTail.catch(() => {}).then(async () => {
+        owned.removeEventListener("abort", release);
+        owned.throwIfAborted();
+        const image = new Image();
+        const url = URL.createObjectURL(blob);
+        release();
+        try {
+          image.src = url;
+          await image.decode();
+        } catch (cause) {
+          throw new Error(`Couldn’t decode animation sheet ${spriteSheetContext(sheet)}. Try again.`, { cause });
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+        owned.throwIfAborted();
+        if (this.activeName === name) this.activePages.set(key, image);
+        if (name === "idle" || name === "rotation") this.supportPages.set(key, image);
+        this.pages.set(key, image);
+        // Four opportunistic sheets supplement the active clip, transitions and candidate.
+        while (this.pages.size > 4) this.pages.delete(this.pages.keys().next().value);
+        return image;
+      });
+      this.decodeTail = decode;
+      return decode;
+    }, signal);
   }
 
   retainedPage(key) {
@@ -84,6 +82,7 @@ export class SpriteBank {
 
   cancelPreparation() {
     this.preparationGeneration++;
+    this.preparationAbort?.abort();
     this.prepared = null;
   }
 
@@ -95,13 +94,15 @@ export class SpriteBank {
   prepareAnimation(name, isCurrent = () => true) {
     this.cancelPreparation();
     const generation = this.preparationGeneration;
+    const controller = new AbortController();
+    this.preparationAbort = controller;
     const current = () => generation === this.preparationGeneration && isCurrent();
-    // One preparation owns decoded candidates. Superseded queued work does no I/O;
-    // an in-flight decode may finish, but cannot retain or publish its candidate.
-    const promise = this.preparationTail.catch(() => {}).then(async () => {
+    // Coalesce same-turn requests without waiting for stale downloads. Cancellation
+    // releases source consumers; a browser decode may finish under the shared decode gate.
+    const promise = Promise.resolve().then(async () => {
       if (!current()) return;
       const names = [...new Set(name === "idle" ? [name] : ["idle", "rotation", name])];
-      const clips = await Promise.all(names.map((clipName) => this.load(clipName)));
+      const clips = await Promise.all(names.map((clipName) => this.load(clipName, controller.signal)));
       if (!current()) return;
       const downloads = [];
       for (const [position, clipName] of names.entries()) {
@@ -110,24 +111,27 @@ export class SpriteBank {
           const key = `${clipName}/${index}`;
           const page = this.retainedPage(key) ?? this.pages.get(key);
           const source = page ? Promise.resolve(null)
-            : this.sources.load(gameAssetUrl(`${clipName}/${clip.pages[index].file}`));
+            : this.sources.load(gameAssetUrl(`${clipName}/${clip.pages[index].file}`), controller.signal);
           downloads.push(source.then((blob) => ({ key, clipName, index, page, blob })));
         }
       }
-      // Download one candidate in parallel; settle every source before another
-      // preparation takes over, including after a failure. Decode only live work.
+      // Keep downloads parallel and consume every rejection, including cancellation.
+      // Only the current preparation may advance to the serial decode stage.
       const results = await Promise.allSettled(downloads);
       if (!current()) return;
       const pages = new Map();
       for (const result of results) {
         if (result.status === "rejected") throw result.reason;
         const { key, clipName, index, page, blob } = result.value;
-        const image = page ?? await this.loadPage(clipName, index, blob);
+        const image = page ?? await this.loadPage(clipName, index, blob, controller.signal);
         if (!current()) return;
         pages.set(key, image);
       }
       this.prepared = { name, pages, current };
       return this.clips.get(name);
+    }).catch((error) => {
+      controller.abort();
+      if (current()) throw error;
     });
     this.preparationTail = promise;
     return promise;

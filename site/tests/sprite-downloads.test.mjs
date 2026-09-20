@@ -60,3 +60,55 @@ test("network and response-body failures retain their cause and can retry", asyn
     }
   } finally { globalThis.fetch = fetch; }
 });
+
+test("cancelling one source consumer preserves another current consumer", async (t) => {
+  const original = globalThis.fetch;
+  const gate = Promise.withResolvers();
+  let signal;
+  let requests = 0;
+  globalThis.fetch = async (_url, options) => {
+    requests++;
+    signal = options.signal;
+    await gate.promise;
+    return new Response("shared bytes");
+  };
+  t.after(() => { gate.resolve(); globalThis.fetch = original; });
+  const sources = new SpriteSources();
+  const cancelled = new AbortController();
+  const stale = sources.load("wave/0.webp", cancelled.signal);
+  const rejected = assert.rejects(stale, { name: "AbortError" });
+  const current = sources.load("wave/0.webp");
+  cancelled.abort();
+  await rejected;
+  assert.equal(signal.aborted, false);
+  gate.resolve();
+  assert.equal(await (await current).text(), "shared bytes");
+  assert.equal(requests, 1);
+});
+
+test("last consumer cancellation releases stalled work and ignores its late completion", async (t) => {
+  const original = globalThis.fetch;
+  const gates = [Promise.withResolvers(), Promise.withResolvers()];
+  const signals = [];
+  globalThis.fetch = async (_url, { signal }) => {
+    const index = signals.push(signal) - 1;
+    await gates[index].promise; // deliberately ignore abort to exercise late completion
+    return new Response(`revision-${index}`);
+  };
+  t.after(() => { for (const gate of gates) gate.resolve(); globalThis.fetch = original; });
+  const sources = new SpriteSources();
+  const cancelled = new AbortController();
+  const stale = sources.load("wave/0.webp", cancelled.signal);
+  const rejected = assert.rejects(stale, { name: "AbortError" });
+  cancelled.abort();
+  await rejected;
+  assert.equal(signals[0].aborted, true);
+  assert.equal(sources.pending.size, 0);
+  const current = sources.load("wave/0.webp");
+  gates[0].resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sources.pending.size, 1, "stale completion cannot delete the new request");
+  gates[1].resolve();
+  assert.equal(await (await current).text(), "revision-1");
+  assert.equal(signals.length, 2);
+});
