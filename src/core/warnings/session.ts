@@ -1,8 +1,9 @@
 /**
  * Shared live-only warning emission for all adapter sessions.
  * Implements PRD §5.7: a warning is emitted ONCE when observed, as a `warning`
- * event plus its `activity`, and is never persisted, replayed, deduplicated, or
- * counted. This mirrors the human experience — a banner flashes live, then it's gone.
+ * event plus its `activity`, and is never persisted, replayed, or counted here.
+ * Producers may deduplicate before emission, such as one transcript listener-error
+ * warning per channel per watcher. This emitter delivers every supplied warning.
  */
 
 import { activityFromWarning, type ElwoodActivityEvent } from "../activity/index.ts";
