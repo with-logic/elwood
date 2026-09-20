@@ -60,6 +60,9 @@ const task = {
   teammate_name: optionalString,
   team_name: optionalString,
 };
+/** StopFailure identity survives diagnostic schema drift (PRD §6.1). */
+const anyValue: FieldCheck = () => true;
+
 const schemas = {
   SessionStart: { model: optionalString, agent_type: optionalString },
   Setup: {},
@@ -88,7 +91,7 @@ const schemas = {
   TaskCreated: task,
   TaskCompleted: task,
   Stop: stop,
-  StopFailure: { error_details: optionalString, last_assistant_message: optionalString },
+  StopFailure: { error: anyValue, error_details: anyValue, last_assistant_message: anyValue },
   TeammateIdle: {},
   ConfigChange: { file_path: optionalString },
   CwdChanged: {},

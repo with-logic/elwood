@@ -112,9 +112,15 @@ describe("public hook types", () => {
         return message === transcript ? { decision: "block", reason: "unexpected" } : undefined;
       },
       StopFailure: (event) => {
-        const message: string | undefined = event.last_assistant_message;
+        // @ts-expect-error Diagnostic fields require narrowing before use as strings.
+        const message: string = event.last_assistant_message;
+        // @ts-expect-error Upstream error shapes are not guaranteed strings.
         const error: string = event.error;
-        return message === error ? undefined : undefined;
+        // @ts-expect-error Details are diagnostic data with an unknown upstream shape.
+        const details: string = event.error_details;
+        const narrowed: string | undefined =
+          typeof event.error === "string" ? event.error : undefined;
+        return message === error || details === narrowed ? undefined : undefined;
       },
       Notification: (event) => {
         const message: string = event.message;
