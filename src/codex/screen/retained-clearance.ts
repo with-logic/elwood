@@ -32,14 +32,14 @@ export class CodexRetainedComposerHold {
       .slice(0, composer)
       .map((row) => row.trimEnd())
       .filter(Boolean);
-    if (this.holding && !this.samePrelude(prelude)) return true;
+    if (this.holding && !this.isCompatibleWithFrozenPrelude(prelude)) return true;
     this.holding = false;
     this.frozenPrelude = undefined;
     this.priorPrelude = prelude;
     return false;
   }
 
-  private samePrelude(prelude: readonly string[]): boolean {
+  private isCompatibleWithFrozenPrelude(prelude: readonly string[]): boolean {
     const frozen = this.frozenPrelude;
     if (frozen === undefined) return true;
     if (frozen === null || prelude.length > frozen.length) return false;
