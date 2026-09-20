@@ -34,6 +34,7 @@ export class SessionLoops {
   private scheduler: LoopScheduler;
   private active = false;
   private readyWanted = false;
+  private clearWasLive = false;
 
   constructor(input: SessionLoopsInput) {
     this.mayPersistLoops = input.ownership.canPersist;
@@ -93,8 +94,15 @@ export class SessionLoops {
       throw elwoodError("session_not_running", "Session was superseded by a later launch.");
   }
 
+  /** Capture notification eligibility before shutdown pauses timers or waits for ownership. */
+  prepareClear(): void {
+    this.clearWasLive ||= this.active;
+    this.pause();
+  }
+
   clear(reason: "kill" | "teardown"): void {
-    this.scheduler.clear(reason);
+    this.scheduler.clear(reason, this.clearWasLive);
+    this.clearWasLive = false;
   }
 
   callerActivity(): void {

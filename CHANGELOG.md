@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Preserve live-loop cancellation notifications through delayed or retried kill and teardown cleanup. Previously, pausing the scheduler before clearing definitions could suppress these events.
+
 - Keep each live launch’s hook policy bound to its own bridge artifacts during resume. Pending resumes reconcile durable loops at activation; destructive predecessor shutdown joins the reservation outcome, and rollback attempts all files before reporting restoration failures.
 
 - Claude and Codex transcript and diagnostic listeners can stop a session without

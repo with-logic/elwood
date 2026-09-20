@@ -24,12 +24,14 @@ type ShutdownBindingInput = {
 
 export class SessionShutdownBinding {
   private pending: ShutdownEvidence | undefined;
+  private readonly prepareClear: () => void;
   private readonly managed: ReturnType<typeof managedShutdown>;
   private exitFinalization: Promise<void> | undefined;
   private readonly waitingShutdowns = new Map<() => Promise<void>, Promise<void>>();
   private resolveExitFinalization: (() => void) | undefined;
 
   constructor(input: ShutdownBindingInput) {
+    this.prepareClear = () => input.loops.prepareClear();
     this.managed = managedShutdown(new ShutdownCoordinator(), () => ({
       pty: input.pty,
       removeFiles: async () => {
@@ -68,10 +70,12 @@ export class SessionShutdownBinding {
   }
 
   kill(): Promise<void> {
+    this.prepareClear();
     return this.afterExitFinalization(this.managed.kill);
   }
 
   teardown(): Promise<void> {
+    this.prepareClear();
     return this.afterExitFinalization(this.managed.teardown);
   }
 
