@@ -1,6 +1,6 @@
 /**
- * Recognizes first-party Codex in-TUI update screens and their safe options.
- * Implements PRD §5.5 and C-CODEX-12 for both prompt automation and input blocking.
+ * Orchestrates guarded Codex update-skip writes and bounded retries (PRD §5.5, C-CODEX-12).
+ * Native screen recognition lives in update/recognition.ts.
  */
 
 import { type InputTerminal, waitForInput } from "../core/input/abort.ts";

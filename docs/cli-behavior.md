@@ -593,7 +593,7 @@ Version-coupled behavior learned here:
   prompt or replacement dialog inherit a stale digit. A prompt that remains blocking
   but cannot be safely answered becomes `blocked_prompt` after the bounded
   responder/grace window, including runs without a whole-invocation timeout.
-  The match set (`src/codex/update-prompt.ts`) is unit-tested against captured
+  The match set (`src/codex/update/recognition.ts`) is unit-tested against captured
   layouts, NOT against a live update event (which requires an actually-stale binary
   to trigger). `codex-update-selection.e2e.ts` also replays the documented option
   layout and an adversarial reordered variant through a real PTY and emulator;
