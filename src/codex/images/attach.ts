@@ -33,7 +33,9 @@ const chipWait: ChipWaitOptions = { settleMs: 200, timeoutMs: 10_000, pollMs: 10
  * the user's clipboard text afterward (best-effort). Rejects with
  * `unsupported_platform` on non-macOS BEFORE touching the clipboard, and with
  * `image_attach_failed`/`invalid_image` on a snapshot/set/confirm failure; the
- * caller then submits no text. The Ctrl+V is held while a blocking dialog is on
+ * caller then submits no text. A detected permanent render failure rejects with
+ * `image_attach_failed` immediately, without awaiting the confirmation timeout.
+ * The Ctrl+V is held while a blocking dialog is on
  * screen so it never confirms a dialog (C-API-37/46).
  */
 export async function attachCodexImages(

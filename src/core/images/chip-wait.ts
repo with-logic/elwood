@@ -1,8 +1,10 @@
 /**
  * Shared `[Image #N]` chip confirmation used by both adapter attach paths. An
  * attach is CONFIRMED only when the composer's image-chip count increases; an
- * unconfirmed image (timeout), or an abort (session closing), REJECTS with
- * `image_attach_failed` so no text is ever submitted for an unconfirmed image.
+ * unconfirmed image (timeout) or abort (session closing) REJECTS with
+ * `image_attach_failed`. A detected permanent render failure rejects immediately
+ * with that error, without waiting for confirmation timeout. No text is submitted
+ * for an unconfirmed image.
  * Implements PRD §5.3 (C-API-44/45/46/56).
  */
 
@@ -49,9 +51,9 @@ export async function sendObservedImage(
 ): Promise<number> {
   const guard = blocked === undefined ? undefined : { blocked };
   for (;;) {
-    assertAttachWritable(terminal, signal);
+    assertAttachNotAbortedOrRenderFailed(terminal, signal);
     const unsafe = await writeUnsafe(terminal, guard, signal);
-    assertAttachWritable(terminal, signal);
+    assertAttachNotAbortedOrRenderFailed(terminal, signal);
     if (!unsafe) break;
     await delay(50);
   }
@@ -60,7 +62,7 @@ export async function sendObservedImage(
   return before;
 }
 
-function assertAttachWritable(terminal: AttachTerminal, signal: AbortSignal): void {
+function assertAttachNotAbortedOrRenderFailed(terminal: AttachTerminal, signal: AbortSignal): void {
   if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
   if (terminal.renderFailed)
     throw elwoodError(
@@ -93,7 +95,8 @@ export function imageChipCount(text: string): number {
 /**
  * Resolves once the chip count rises above `before`; rejects with
  * `image_attach_failed` on the confirmation timeout or an aborted signal, so an
- * unconfirmed attach never silently degrades to a text-only turn.
+ * unconfirmed attach never silently degrades to a text-only turn. A detected permanent
+ * render failure rejects immediately with that error rather than awaiting the timeout.
  */
 export async function waitForImageChip(
   terminal: AttachTerminal,
@@ -104,7 +107,7 @@ export async function waitForImageChip(
   await delay(options.settleMs);
   const attempts = Math.max(1, Math.ceil(options.timeoutMs / options.pollMs));
   for (let i = 0; i < attempts; i++) {
-    assertAttachWritable(terminal, signal);
+    assertAttachNotAbortedOrRenderFailed(terminal, signal);
     if (imageChipCount(terminal.snapshot().text) > before) return;
     await delay(options.pollMs);
   }

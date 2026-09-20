@@ -26,7 +26,9 @@ const chipWait: ChipWaitOptions = { settleMs: 150, timeoutMs: 10_000, pollMs: 10
  * confirm before the next paste. A path is sanitized before framing so it cannot
  * escape paste mode, and each paste is held while a blocking dialog is on screen
  * so it never reaches a permission/trust dialog (C-API-37/45). An unconfirmed
- * chip or an abort rejects with `image_attach_failed`; the caller submits no text.
+ * chip or an abort rejects with `image_attach_failed`; a detected permanent render
+ * failure rejects with that error immediately, without awaiting the confirmation
+ * timeout. The caller submits no text.
  */
 export async function attachClaudeImages(
   terminal: AttachTerminal,
