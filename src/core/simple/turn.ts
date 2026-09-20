@@ -71,7 +71,7 @@ export function runTurn(
     acceptReady: () => gate.observeReady(),
     fail: (error) => gate.fail(toError(error)),
   });
-  // Bound to the first content event that CARRIES a `turnId` (Codex tags; Claude never does);
+  // Bind from an accepted hook's ID or the first tagged content (Codex tags; Claude does not);
   // untagged events always belong to this turn, a differently tagged one is a prior turn's.
   let turnId: string | undefined;
   // The turn only ENDS on a settle once it has demonstrably STARTED — a `running` status or
@@ -123,7 +123,10 @@ export function runTurn(
     // non-boundary hook, which the gate ignores so a late `Notification` cannot wipe an
     // installed oracle). The core reads only that — never raw hook fields — and uses it as a
     // completeness ORACLE only, never displayed (C-CLAUDE-15).
-    if (defaultAcceptanceSignal(event, prompt)) acceptance.accept();
+    if (defaultAcceptanceSignal(event, prompt)) {
+      acceptance.accept();
+      if (typeof event.turn_id === "string" && event.turn_id.length > 0) turnId ??= event.turn_id;
+    }
     gate.expectText(boundaryExpectation(readBoundarySignal(event)));
   });
   const offStatus = session.on("status", ({ status }) => {

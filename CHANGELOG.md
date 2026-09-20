@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Bind turn collection to the accepted hook’s turn ID before content arrives, so replayed content from an older turn cannot claim the new turn.
+
 - Keep human-owned trust gates blocked through partial and unknown replacement
   frames. Queued caller input resumes only after positive native clearance. Both
   adapters withhold trust retries and human clearance while received output is
