@@ -1,7 +1,7 @@
 """A failed retry assertion retains the original fake process error, within bounds (PRD §16)."""
 import unittest
 import runner_test
-from runner_diagnostics import assert_one_attempt, attempt_diagnostics
+from runner_diagnostics import assert_architecture_lens_one_attempt, attempt_diagnostics
 
 
 class AttemptDiagnosticsTest(unittest.TestCase):
@@ -18,8 +18,21 @@ class AttemptDiagnosticsTest(unittest.TestCase):
         self.assertNotIn('TRUNCATED_TAIL_CANARY', diagnostic)
         self.assertLessEqual(len(diagnostic), 4140)
         self.assertNotIn('FIRST_ATTEMPT_CANARY', result.stderr)
+        for report in fixture.root.glob('capped-attempt.*.failure'):
+            payload = report.read_bytes().split(b'\n', 1)[1]
+            self.assertLessEqual(len(payload), 2048)
+            self.assertNotIn(b'TRUNCATED_TAIL_CANARY', payload)
         with self.assertRaisesRegex(AssertionError, 'FIRST_ATTEMPT_CANARY'):
-            assert_one_attempt(self, fixture.root, result)
+            assert_architecture_lens_one_attempt(self, fixture.root, result)
+
+    def test_synthesis_failure_has_its_own_scope(self):
+        fixture = runner_test.RunnerTest()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        fixture.run_review('synth-failed')
+        reports = list(fixture.root.glob('capped-attempt.*.failure'))
+        self.assertEqual(len(reports), 1)
+        self.assertTrue(reports[0].read_text().startswith('lens=synthesis attempt=1 exit=2\n'))
 
 
 if __name__ == '__main__':
