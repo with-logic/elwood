@@ -12,9 +12,14 @@ import {
 import type { StartupWriteCompletion } from "../core/startup/write.ts";
 import { nonOptionText, numberedOptions } from "../core/terminal-options.ts";
 import type { TrustWriteResult } from "../core/trust/responder.ts";
+import {
+  codexUpdateActionPattern,
+  codexUpdateOptionPattern,
+  safeUpdateOption,
+} from "./update/selection.ts";
 import { codexUpdateChoiceIdentity, settledFrameKeepsChoice } from "./update-identity.ts";
 
-export const codexUpdateOptionPattern = /continue\s*without\s*updat|skip|not\s*now|later/i;
+export { codexUpdateOptionPattern } from "./update/selection.ts";
 /** The first-party banner; its version pair distinguishes one appearance from the next. */
 export const updateScreenBanner =
   /^[^\S\r\n]*(?:Update available!\s+\d+\.\d+\.\d+\s*(?:->|→)\s*\d+\.\d+\.\d+|A new version of Codex is available[.!]?)[^\S\r\n]*$/im;
@@ -28,7 +33,7 @@ export function codexUpdatePromptVisible(frameText: string): boolean {
   if (updateScreenBanner.test(frameText)) return true;
   const options = numberedOptions(frameText);
   return (
-    options.some((option) => /update\s+now/i.test(option.label)) &&
+    options.some((option) => codexUpdateActionPattern.test(option.label)) &&
     options.some((option) => codexUpdateOptionPattern.test(option.label))
   );
 }
@@ -148,9 +153,7 @@ export async function writeCodexUpdateSkip(
       const cleared = wrote && !invalidated(frame);
       return cleared ? "answered" : "cancelled";
     }
-    const safeOption = numberedOptions(frame).find((candidate) =>
-      codexUpdateOptionPattern.test(candidate.label),
-    );
+    const safeOption = safeUpdateOption(frame);
     if (safeOption === undefined) return "cancelled";
     // A guarded writer settles rendering before the key goes out, so it may report the
     // key WITHHELD (a trust gate, or this option number no longer the safe one on the

@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Select Codex update-skip choices after the action when an update action is visible;
+  action-less continuation frames may still select a safe option. Selection uses the
+  current frame’s numbering and never selects an update action whose label also
+  contains a skip phrase.
+
 - Keep an acquired Codex config or clipboard lock operation pending until its task
   finishes cleanup when cancellation arrives; cancellable config-lock waiters still
   cancel immediately. Codex model-switch deadlines also

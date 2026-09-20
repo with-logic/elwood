@@ -10,12 +10,8 @@ import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/respo
 import type { ElwoodWarningEvent } from "../core/types.ts";
 import { codexTrustClearance } from "./screen-table.ts";
 import { type CodexBannerWarning, codexWarningsFromText } from "./startup-warnings.ts";
-
-import {
-  CodexUpdatePromptTracker,
-  codexUpdateOptionPattern,
-  writeCodexUpdateSkip,
-} from "./update-prompt.ts";
+import { safeUpdateOption } from "./update/selection.ts";
+import { CodexUpdatePromptTracker, writeCodexUpdateSkip } from "./update-prompt.ts";
 
 export { codexWarningsFromText } from "./startup-warnings.ts";
 
@@ -27,10 +23,7 @@ type CodexStartupPromptResult = {
   readonly outcomes: readonly SettledCodexStartupOutcome[];
 };
 
-const maxBufferLength = 6_000;
-
 export class CodexStartupPromptResponder {
-  private buffer: string;
   private readonly elwoodSessionId: string;
   private readonly trust: TrustPromptResponder<"codex">;
   private readonly updatePrompt = new CodexUpdatePromptTracker();
@@ -52,7 +45,6 @@ export class CodexStartupPromptResponder {
     clearance: TrustClearance = codexTrustClearance,
   ) {
     this.elwoodSessionId = elwoodSessionId;
-    this.buffer = "";
     this.trust = new TrustPromptResponder("codex", clearance, autotrust, onStateChange);
   }
 
@@ -84,9 +76,8 @@ export class CodexStartupPromptResponder {
     readTrustFrame?: () => string | undefined,
   ): CodexStartupPromptResult {
     const outcomes: SettledCodexStartupOutcome[] = [];
-    this.buffer = `${this.buffer}\n${screenText}`.slice(-maxBufferLength);
     // Trust prompts are matched against the CURRENT frame only: a stale phrase in
-    // the accumulated buffer must never pair with a different dialog's answer.
+    // an earlier frame must never pair with a different dialog's answer.
     const trust = this.trust.handle(screenText, write, readTrustFrame ?? readFrame);
     if (trust?.kind === "attempted") {
       outcomes.push({
@@ -105,9 +96,8 @@ export class CodexStartupPromptResponder {
     // to skip the reappearance. Gating the attempt on the CURRENT frame (not just the
     // accumulated buffer) also means a re-armed benign frame that merely mentions
     // "update" never re-fires a skip against a stale buffered option — only a frame
-    // actually showing the update screen does. The buffer is still consulted to LOCATE
-    // the option, since Codex can split the banner and its numbered options across two
-    // consecutive frames.
+    // actually showing the update screen does. Select only from this frame; the tracker
+    // retains split-banner provenance without retaining obsolete option numbers.
     const onUpdateScreen = this.updatePrompt.observe(screenText);
     const generation = this.updatePrompt.currentGeneration;
     // A trust gate (held allowlisted candidate or off-allowlist) is never ELIGIBLE for
@@ -116,7 +106,7 @@ export class CodexStartupPromptResponder {
     // update appearance, so generation latching and re-arming are unaffected.
     const noTrustGate = (frame: string) => !trustGateVisible(frame, "codex");
     if (onUpdateScreen && this.skipGeneration !== generation && noTrustGate(screenText)) {
-      const option = findNumberedOption(this.buffer, codexUpdateOptionPattern);
+      const option = safeUpdateOption(screenText)?.number ?? null;
       if (option) {
         // Settle OPTIMISTICALLY but keep the skip retryable if the write is
         // rejected, so a later frame re-attempts it rather than falsely reporting
