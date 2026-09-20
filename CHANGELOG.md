@@ -13,7 +13,8 @@ back each entry are listed in `prd/14-conformance.md`.
 ## [Unreleased]
 
 - Codex transcript listeners can stop a session without moving pending transcript
-  activity past terminal exit or duplicating exit during the final flush.
+  activity past terminal exit, duplicating exit, or re-signaling an already-exited
+  PTY during the final flush. Transcript diagnostics preserve the same ordering.
 
 - Route Codex tool-keyed hooks from own properties only. A `PreToolUse` map is a
   plain object, so a tool name matching an inherited member (anything on

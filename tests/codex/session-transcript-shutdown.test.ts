@@ -1,4 +1,4 @@
-/** Reentrant transcript shutdown preserves delivery before exit (PRD §5.7, C-LIFE-10). */
+/** Reentrant transcript shutdown preserves delivery before exit (PRD §5.7, C-API-20). */
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
@@ -11,7 +11,7 @@ for (const channel of ["codex:transcript", "activity"] as const) {
   test.each([
     false,
     true,
-  ])(`C-LIFE-10 ${channel} stopping during transcript delivery preserves records (final flush: %s)`, async (finalFlush) => {
+  ])(`C-API-20 ${channel} stopping during transcript delivery preserves records (final flush: %s)`, async (finalFlush) => {
     installFakes();
     const cwd = tempDir();
     const path = join(cwd, "rollout.jsonl");
@@ -32,6 +32,9 @@ for (const channel of ["codex:transcript", "activity"] as const) {
       if (event.source === "transcript") order.push({ activity: event.raw });
     });
     session.on("terminal:exit", () => order.push("exit"));
+    session.on("status", (event) => {
+      if (["stopped", "exited"].includes(event.status)) order.push("status");
+    });
     try {
       await becomeReady(session.elwoodSessionId, cwd, { transcript_path: path });
       for (const record of records) appendFileSync(path, `${JSON.stringify(record)}\n`);
@@ -44,6 +47,7 @@ for (const channel of ["codex:transcript", "activity"] as const) {
         { raw: records[1] },
         { activity: records[1] },
         "exit",
+        "status",
       ]);
     } finally {
       await session.stop();

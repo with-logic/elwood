@@ -45,19 +45,26 @@ export function createCodexTranscriptWatcher(
   // The shared router buffers diagnostics observed BEFORE the sink exists (the watcher
   // is built first) and delivers each exactly once with clear-before-delivery + throw
   // containment (see core/transcript/warning-router).
-  const { route, flushPendingWarnings } = createTranscriptWarningRouter(getSink);
-  let delivering = false;
+  const warnings = createTranscriptWarningRouter(getSink);
+  let deliveryDepth = 0;
+  function duringDelivery(work: () => void): void {
+    deliveryDepth += 1;
+    try {
+      work();
+    } finally {
+      deliveryDepth -= 1;
+    }
+  }
+  const route = (warning: Parameters<typeof warnings.route>[0]) =>
+    duringDelivery(() => warnings.route(warning));
+  const flushPendingWarnings = () => duringDelivery(warnings.flushPendingWarnings);
   const watcher = new CodexTranscriptWatcher(
     elwoodSessionId,
-    (event) => {
-      delivering = true;
-      try {
+    (event) =>
+      duringDelivery(() => {
         emitter.emit("codex:transcript", event);
         emitter.emit("activity", activity.activityFromCodexTranscript(event));
-      } finally {
-        delivering = false;
-      }
-    },
+      }),
     {
       onDrop: (notice) => route(codexDropWarning(notice)),
       onReadError: (notice) => route(codexReadErrorWarning(notice)),
@@ -70,7 +77,7 @@ export function createCodexTranscriptWatcher(
   // a bounded `transcript_poll_stopped` diagnostic phase-labelled `final_flush` (so lost
   // trailing shutdown activity is distinguishable from a live poll failure). Mirrors Claude.
   const finishSafely = (afterFlush: () => void = () => undefined) => {
-    if (delivering) {
+    if (deliveryDepth > 0) {
       // A listener can synchronously stop the PTY. Let the bounded scan deliver
       // every record it already read before finalizing the watcher and session.
       queueMicrotask(() => finishSafely(afterFlush));

@@ -24,6 +24,8 @@ type ShutdownBindingInput = {
 export class SessionShutdownBinding {
   private pending: ShutdownEvidence | undefined;
   private readonly managed: ReturnType<typeof managedShutdown>;
+  private observedExit: Promise<void> | undefined;
+  private finishExit: (() => void) | undefined;
 
   constructor(input: ShutdownBindingInput) {
     this.managed = managedShutdown(new ShutdownCoordinator(), () => ({
@@ -44,15 +46,30 @@ export class SessionShutdownBinding {
   }
 
   stop(): Promise<void> {
-    return this.managed.stop();
+    return this.afterObservedExit(this.managed.stop);
   }
 
   kill(): Promise<void> {
-    return this.managed.kill();
+    return this.afterObservedExit(this.managed.kill);
   }
 
   teardown(): Promise<void> {
-    return this.managed.teardown();
+    return this.afterObservedExit(this.managed.teardown);
+  }
+
+  /** Join natural-exit finalization before any reentrant shutdown can signal or clean up. */
+  observeExit(): void {
+    this.observedExit = new Promise((resolve) => {
+      this.finishExit = resolve;
+    });
+  }
+
+  completeExit(): void {
+    this.finishExit?.();
+  }
+
+  private afterObservedExit(work: () => Promise<void>): Promise<void> {
+    return this.observedExit ? this.observedExit.then(work) : work();
   }
 
   exitEvidence(): ShutdownEvidence | "terminal_exited" {

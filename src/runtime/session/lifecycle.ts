@@ -1,5 +1,4 @@
 /** Session lifetime, input blocking, persistence and cleanup (PRD §5/§8/§9). */
-
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../core/activity/index.ts";
 import { ControlQueue } from "../../core/control-queue/index.ts";
 import { toError } from "../../core/errors.ts";
@@ -28,7 +27,6 @@ import { createSessionStatusEngine, type SessionStatusEmitter } from "./status-w
 
 type TerminalDataListener = Parameters<TerminalReplayBuffer["replay"]>[0];
 type AttentionListener = (event: ElwoodActivityEvent) => unknown;
-type SessionListener = (event: never) => unknown;
 export abstract class SessionLifecycle {
   protected record: SessionRecord;
   readonly terminal: ElwoodTerminal;
@@ -156,17 +154,19 @@ export abstract class SessionLifecycle {
     try {
       return this.statusEngine.submit(evidence);
     } finally {
+      this.shutdown.completeExit();
       const warning = evidence === "terminal_exited" ? this.reapPolicy.bestEffort() : undefined;
       if (warning) this.emitWarnings([warning]);
     }
   }
+  readonly observeExit = () => this.shutdown.observeExit();
   statusDecisions(): readonly StatusDecision[] {
     return this.statusEngine.decisions();
   }
   protected abstract stagedPaste(screen: string, prompt: string): boolean;
   protected abstract stopRuntime(): Promise<void>;
   protected abstract emitWarnings(warnings: readonly ElwoodWarningEvent[]): void;
-  protected replayFor(event: string, handler: SessionListener): void {
+  protected replayFor(event: string, handler: (event: never) => unknown): void {
     if (event === "terminal:data") this.terminalReplay.replay(handler as TerminalDataListener);
     if (event === "activity") this.terminalReplay.replayAttention(handler as AttentionListener);
   }

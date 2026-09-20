@@ -89,7 +89,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     },
   );
   const startupOutput = createStartupBuffer();
-  let startupExit: PtyExit | undefined;
+  let observedExit: PtyExit | undefined;
   const terminalReplay = new TerminalReplayBuffer(record.elwoodSessionId);
   terminalReplay.captureStartupAttention(emitter);
   const readiness = createReadinessGate(() => {
@@ -164,8 +164,9 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       ready.replay();
       // C-LIFE-10: a failed final flush cannot skip exit or reaping.
       pty.onExit((exit) => {
-        if (startupExit) return;
-        startupExit = exit;
+        if (observedExit) return;
+        observedExit = exit;
+        activeSession.observeExit();
         activeSession.closing.abort();
         const emitExit = () => {
           emitter.emit("terminal:exit", { elwoodSessionId: id, ...exit });
@@ -173,7 +174,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
         };
         finishSafely(() => finishSessionExit(emitExit, () => activeSession.submitExit()));
       });
-      await assertStartupThenRelease("codex", startupOutput, () => startupExit);
+      await assertStartupThenRelease("codex", startupOutput, () => observedExit);
       activeSession.submitEvidence("startup_usable");
       frameObserver.blockOnceLive(activeSession);
     },
