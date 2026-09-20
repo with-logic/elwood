@@ -32,7 +32,8 @@ test("C-API-20 a transcript warning finishes delivery before listener-initiated 
     await becomeReady(session.elwoodSessionId, cwd, { transcript_path: path });
     appendFileSync(path, "malformed\n");
     await expect.poll(() => order.includes("exit")).toBe(true);
-    await stopped;
+    expect(stopped).toBeDefined();
+    await expect(stopped).resolves.toBeUndefined();
     expect(order).toEqual(["warning:first", "warning:second", "warning:activity", "exit"]);
   } finally {
     await session.stop();
