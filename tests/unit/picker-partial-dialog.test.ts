@@ -17,7 +17,8 @@ test("C-API-55 a surviving cache warning stays held through a partial repaint", 
   const { screen, queue, picker } = pickerHarness(claudeClosedPickerViewport, () => {});
   const failure = new Error("navigation failed");
   const failed = expect(
-    picker.run("set_model", claudeModelPicker, 5000, () => {
+    picker.run("set_model", claudeModelPicker, 5000, async (io) => {
+      await io.submit("/model", new AbortController().signal);
       screen.text = claudeCacheWarningViewport;
       return Promise.reject(failure);
     }),
@@ -74,7 +75,8 @@ test("C-API-55 a painting switch dialog is not written to until it is complete",
   });
   const failure = new Error("navigation failed");
   const failed = expect(
-    picker.run("set_model", claudeModelPicker, 5000, () => {
+    picker.run("set_model", claudeModelPicker, 5000, async (io) => {
+      await io.submit("/model", new AbortController().signal);
       screen.text = claudeCacheWarningPartialViewport;
       return Promise.reject(failure);
     }),
@@ -84,8 +86,8 @@ test("C-API-55 a painting switch dialog is not written to until it is complete",
   }, 250);
   await vi.advanceTimersByTimeAsync(1200);
   await failed;
-  expect(writes).toEqual([escapeKey, escapeKey]);
-  expect(shownAtWrite).toEqual([claudeCacheWarningViewport, claudePickerViewport]);
+  expect(writes).toEqual(["/model", escapeKey, escapeKey]);
+  expect(shownAtWrite).toEqual(["❯ ", claudeCacheWarningViewport, claudePickerViewport]);
   // The picker reopened by the last Escape is gone, so nothing survived cleanup.
   expect(picker.blocksInput()).toBe(false);
   queue.close();

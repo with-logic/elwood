@@ -13,6 +13,18 @@ back each entry are listed in `prd/14-conformance.md`.
 ## [Unreleased]
 
 - Bind turn collection to the matching submit hook’s turn ID before content arrives, so replayed content from an older turn cannot claim the new turn.
+
+- Keep an acquired Codex config or clipboard lock operation pending until its task
+  finishes cleanup when cancellation arrives; cancellable config-lock waiters still
+  cancel immediately. Codex model-switch deadlines also
+  cancel config-lock waits and release the waiting session input slot. A timeout
+  before successful `/model` dispatch never cancels a picker opened by someone else,
+  and the initial picker-screen wait honors the same operation deadline. Ordinary
+  queued text and images remain held through foreign picker repaints. Raw user
+  input revokes active picker navigation and cleanup, including config restoration
+  that could overwrite a human choice; uncertain changed defaults emit the existing
+  persistence warning.
+
 - Keep queued input suspended when a human dialog clears while the agent is still working,
   including deferred startup readiness. A caller prompt held by the dialog reasserts running
   when it submits, before a queued follow-up can dispatch. Blank or caret-only repaints

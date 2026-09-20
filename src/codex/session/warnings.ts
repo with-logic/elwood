@@ -16,13 +16,15 @@ type RestoreWarning = Extract<
 >;
 
 const restoreSkippedMessages = {
+  interrupted:
+    "Raw input took over the model picker; Elwood left changed model defaults in place because it could no longer attribute the change to its own operation.",
   skipped:
     "Codex persisted the picker selection as the user's default model, and Elwood skipped the restore because config.toml changed in other ways during the switch.",
   no_snapshot:
     "Codex persisted the picker selection as the user's default model in a config.toml that did not exist before the switch; Elwood left the new file in place because there was no prior config to restore.",
 } as const;
 
-/** The restore was not applied: the file changed in other ways, or there was nothing to restore. */
+/** No restore: concurrent edits, raw takeover, or no prior snapshot left the default in place. */
 export function codexRestoreSkippedWarning(
   elwoodSessionId: string,
   outcome: keyof typeof restoreSkippedMessages,
