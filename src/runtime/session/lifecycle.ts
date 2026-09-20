@@ -85,7 +85,7 @@ export abstract class SessionLifecycle {
       stateDir,
       elwoodSessionId: record.elwoodSessionId,
       definitions: loopDefinitions,
-      ownsState: runtime.stateOwnership.current,
+      ownsState: runtime.stateOwnership.canPersist,
       queue: this.controlQueue,
       emitter: statusEvents,
     });

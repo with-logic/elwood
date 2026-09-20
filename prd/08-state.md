@@ -57,8 +57,12 @@ shared-state ownership before asynchronous preflight. A superseded launch may
 finish its own runtime cleanup, but cannot overwrite loop definitions or remove
 the shared session directory or socket home. Each loop persistence write and
 destructive path removal checks the current launch generation at the mutation itself,
-including after awaited shutdown work and on repeated shutdown calls. A failed
-resume does not restore the old launch's destructive authority. This is an
+including after awaited shutdown work and on repeated shutdown calls. Until resume
+succeeds, the prior launch may continue ordinary loop persistence, but its shutdown
+cannot clear shared loops or files. If resume fails, ownership returns to the prior
+viable launch only when no newer reservation or launch has replaced that attempt.
+A failed overlapping launch therefore preserves the original live launch's cleanup
+and persistence behavior. This is an
 in-process successor guarantee, not cross-process launch serialization; concurrent
 live launches of one identity remain unsupported.
 

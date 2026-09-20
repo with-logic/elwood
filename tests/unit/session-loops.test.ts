@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import type { ElwoodLoopEvent } from "../../src/core/loops/types.ts";
 import { SessionLoops } from "../../src/runtime/session/loops.ts";
-import type { PersistedLoopDefinition } from "../../src/state/loop-store.ts";
+import { type PersistedLoopDefinition, readLoopDefinitions } from "../../src/state/loop-store.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 afterEach(() => vi.useRealTimers());
@@ -66,6 +66,34 @@ describe("SessionLoops", () => {
     expect(loops.list()).toEqual([]);
   });
 
+  test("C-API-20 stale expiry pruning cannot overwrite a successor's loop sidecar", () => {
+    vi.useFakeTimers();
+    const start = 1_800_000_000_000;
+    vi.setSystemTime(start);
+    const queue = new ControlQueue(
+      () => Promise.resolve(),
+      () => new Error("closed"),
+      () => undefined,
+    );
+    const stateDir = tempDir();
+    let ownsState = true;
+    const old = createLoops(queue, [], stateDir, () => ownsState);
+    old.ready();
+    old.create({ mode: "fixed", intervalMs: 60_000, message: "old" });
+    old.pause();
+    ownsState = false;
+    vi.setSystemTime(start + 86_400_000);
+    const successor = createLoops(queue, [], stateDir);
+    successor.ready();
+    const fresh = successor.create({ mode: "fixed", intervalMs: 60_000, message: "new" });
+    successor.pause();
+    vi.setSystemTime(start + 604_800_001);
+    expect(old.list()).toEqual([]);
+    expect(readLoopDefinitions(stateDir, "session-loops")).toEqual([
+      expect.objectContaining({ id: fresh.id }),
+    ]);
+  });
+
   test("defers restore pruning until the guarded startup call", () => {
     const queue = new ControlQueue(
       () => Promise.resolve(),
@@ -95,9 +123,10 @@ function createLoops(
   queue: ControlQueue,
   definitions: readonly PersistedLoopDefinition[] = [],
   stateDir = tempDir(),
+  ownsState = () => true,
 ): SessionLoops {
   return new SessionLoops({
-    ownsState: () => true,
+    ownsState,
     stateDir,
     elwoodSessionId: "session-loops",
     definitions,

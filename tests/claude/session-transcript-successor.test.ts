@@ -8,7 +8,6 @@ import {
 } from "../../src/claude/session/bridge.ts";
 import { resumeClaude, startClaude } from "../../src/index.ts";
 import { readLoopDefinitions } from "../../src/state/loop-store.ts";
-import { removeSessionIdentity } from "../../src/state/private-session.ts";
 import { installFakes, ptys, readBridgeScript, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -109,7 +108,7 @@ test.each([
   }
 });
 
-test("C-API-20 a failed successor cannot restore stale teardown authority", async () => {
+test("C-API-20 a failed successor restores legitimate prior teardown authority", async () => {
   installFakes();
   const cwd = tempDir();
   const stateDir = join(cwd, "private-state");
@@ -125,7 +124,6 @@ test("C-API-20 a failed successor cannot restore stale teardown authority", asyn
     stateDir,
   );
   const loop = await session.createLoop({ mode: "fixed", intervalMs: 60_000, message: "retained" });
-  await session.stop();
   const options = {
     cwd,
     stateDir,
@@ -134,17 +132,25 @@ test("C-API-20 a failed successor cannot restore stale teardown authority", asyn
   };
   Reflect.set(options, "reasoningEffort", "invalid");
   try {
-    await expect(resumeClaude(options)).rejects.toMatchObject({
-      code: "claude_invalid_reasoning_effort",
+    const resuming = resumeClaude(options).catch((error: unknown) => error);
+    const during = await session.createLoop({
+      mode: "fixed",
+      intervalMs: 60_000,
+      message: "during resume",
     });
-    await session.teardown();
+    expect(readLoopDefinitions(stateDir, session.elwoodSessionId)).toContainEqual(
+      expect.objectContaining({ id: during.id }),
+    );
+    expect(await resuming).toMatchObject({ code: "claude_invalid_reasoning_effort" });
     expect(existsSync(join(stateDir, "sessions", session.elwoodSessionId, "session.json"))).toBe(
       true,
     );
     expect(readLoopDefinitions(stateDir, session.elwoodSessionId)).toContainEqual(
       expect.objectContaining({ id: loop.id }),
     );
+    await session.teardown();
+    expect(existsSync(join(stateDir, "sessions", session.elwoodSessionId))).toBe(false);
   } finally {
-    removeSessionIdentity(stateDir, session.elwoodSessionId, "claude");
+    await session.stop();
   }
 });

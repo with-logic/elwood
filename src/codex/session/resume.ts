@@ -6,7 +6,7 @@
 import { resolve } from "node:path";
 import { elwoodError } from "../../core/errors.ts";
 import { applyCodexHighTrust } from "../../core/high-trust.ts";
-import { revokeLaunchOwnership } from "../../state/launch-ownership.ts";
+import { reserveLaunchOwnership } from "../../state/launch-ownership.ts";
 import {
   codexLaunchPosture,
   effectivePosture,
@@ -29,36 +29,44 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
     throw elwoodError("adapter_mismatch", "Cannot resume a non-Codex session as Codex.");
   if (!record.codex.resumeId)
     throw elwoodError("resume_unavailable", "Cannot resume Codex without a Codex session id.");
-  revokeLaunchOwnership(sessionDir(stateDir, record.elwoodSessionId));
-  const warning = await preflight.preflightCodex(
-    options.strictVersionCheck ?? false,
-    options.autoupdate ?? false,
-  );
-  // Resume defaults to the posture this session launched with; explicit options
-  // override field by field, and the effective posture is re-persisted (C-API-32,
-  // C-STATE-13). Terminal size is not persisted: it falls back to options.initialSize.
-  const launch = effectivePosture(record.codex.launch, codexLaunchPosture(options));
-  const resumedRecord = withCodexLaunch(record, launch);
-  return await startCodexFromRecord(
-    resumedRecord,
-    stateDir,
-    {
-      cwd: options.cwd ?? record.cwd,
+  const ownership = reserveLaunchOwnership(sessionDir(stateDir, record.elwoodSessionId));
+  try {
+    const warning = await preflight.preflightCodex(
+      options.strictVersionCheck ?? false,
+      options.autoupdate ?? false,
+    );
+    // Resume defaults to the posture this session launched with; explicit options
+    // override field by field, and the effective posture is re-persisted (C-API-32,
+    // C-STATE-13). Terminal size is not persisted: it falls back to options.initialSize.
+    const launch = effectivePosture(record.codex.launch, codexLaunchPosture(options));
+    const resumedRecord = withCodexLaunch(record, launch);
+    const session = await startCodexFromRecord(
+      resumedRecord,
       stateDir,
-      ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
-      ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),
-      ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
-      ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
-      // Reasoning effort is NOT persisted posture — re-supply it per resume (C-CODEX-21).
-      ...(options.reasoningEffort === undefined
-        ? {}
-        : { reasoningEffort: options.reasoningEffort }),
-      ...launch,
-      ...(options.strictVersionCheck === undefined
-        ? {}
-        : { strictVersionCheck: options.strictVersionCheck }),
-    },
-    true, // resumed: mark ready on the first composer marker, not the 10s deadline
-    warning,
-  );
+      {
+        cwd: options.cwd ?? record.cwd,
+        stateDir,
+        ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
+        ...(options.initialSize === undefined ? {} : { initialSize: options.initialSize }),
+        ...(options.hookTimeoutMs === undefined ? {} : { hookTimeoutMs: options.hookTimeoutMs }),
+        ...(options.autotrust === undefined ? {} : { autotrust: options.autotrust }),
+        // Reasoning effort is NOT persisted posture — re-supply it per resume (C-CODEX-21).
+        ...(options.reasoningEffort === undefined
+          ? {}
+          : { reasoningEffort: options.reasoningEffort }),
+        ...launch,
+        ...(options.strictVersionCheck === undefined
+          ? {}
+          : { strictVersionCheck: options.strictVersionCheck }),
+      },
+      true, // resumed: mark ready on the first composer marker, not the 10s deadline
+      warning,
+      ownership,
+    );
+    ownership.commit();
+    return session;
+  } catch (error) {
+    ownership.rollback();
+    throw error;
+  }
 }

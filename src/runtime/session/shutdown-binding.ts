@@ -48,7 +48,11 @@ export class SessionShutdownBinding {
         this.pending ??= evidence;
       },
       pauseLoops: () => input.loops.pause(),
-      clearLoops: async (reason) => input.loops.clear(reason),
+      clearLoops: (reason) => {
+        if (input.runtime.stateOwnership.current()) input.loops.clear(reason);
+        else input.loops.pause();
+        return Promise.resolve();
+      },
       cleanupRuntime: input.cleanupRuntime,
       submitEvidence: input.submitEvidence,
     }));

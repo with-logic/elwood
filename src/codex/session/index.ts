@@ -6,6 +6,7 @@ import { applyCodexHighTrust } from "../../core/high-trust.ts";
 import { queuePersonaMessage } from "../../core/persona.ts";
 import { codexReasoningEfforts, validateReasoningEffort } from "../../core/reasoning-effort.ts";
 import { withSocketHomeCleanup } from "../../runtime/startup/cleanup.ts";
+import type { LaunchOwnership } from "../../state/launch-ownership.ts";
 import { codexLaunchPosture, withCodexLaunch } from "../../state/launch-posture.ts";
 import { sessionRuntime } from "../../state/runtime-paths.ts";
 import { removeOwnSocketFile } from "../../state/socket-home.ts";
@@ -69,6 +70,7 @@ export function startCodexFromRecord(
   options: StartCodexOptions,
   resumed: boolean,
   preflightWarning: preflight.CodexPreflightWarning | undefined,
+  ownership?: LaunchOwnership,
 ) {
   // Validate the effort enum before any spawn (C-CODEX-21): both start and resume funnel
   // through here. Codex validates server-side (a bad value fails at the first turn), so
@@ -84,11 +86,14 @@ export function startCodexFromRecord(
   // before the session takes ownership removes THIS launch's own socket file — never the
   // shared home, which a concurrent launch may own (§9.1). On success ownership transfers
   // to the returned session, whose teardown removes the whole home via removeSessionFiles.
-  const runtime = sessionRuntime({
-    stateDir,
-    elwoodSessionId: record.elwoodSessionId,
-    adapter: "codex",
-  });
+  const runtime = sessionRuntime(
+    {
+      stateDir,
+      elwoodSessionId: record.elwoodSessionId,
+      adapter: "codex",
+    },
+    ownership,
+  );
   return withSocketHomeCleanup(
     () => removeOwnSocketFile(runtime.socketPath),
     () => buildCodexSession({ record, stateDir, runtime, options, resumed, preflightWarning }),

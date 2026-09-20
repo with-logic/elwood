@@ -46,14 +46,17 @@ export type SessionRuntimeInput = {
  * a later resume; the bridge unlinks its own socket file on stop.) The bridge token is
  * minted anew so no stale token round-trips.
  */
-export function sessionRuntime(input: SessionRuntimeInput): SessionRuntime {
+export function sessionRuntime(
+  input: SessionRuntimeInput,
+  ownership?: LaunchOwnership,
+): SessionRuntime {
   const { stateDir, elwoodSessionId, adapter } = input;
   const dir = safeSessionDir(stateDir, elwoodSessionId);
   const socketHome = sessionSocketHome({ stateDir, elwoodSessionId, adapter });
   ensureSocketHome(socketHome); // restores 0700 on a reused home; rejects a planted non-dir (§8.1)
   return {
     sessionDir: dir,
-    stateOwnership: claimLaunchOwnership(dir),
+    stateOwnership: ownership ?? claimLaunchOwnership(dir),
     settingsPath: join(dir, `${adapter}-settings.json`),
     bridgeScriptPath: join(dir, "hook-bridge.mjs"),
     socketHome,
