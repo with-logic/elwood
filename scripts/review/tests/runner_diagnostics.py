@@ -26,6 +26,8 @@ cleanup() {
 '''.replace('ATTEMPT_STDERR_BYTES', str(MAX_ATTEMPT_STDERR_BYTES)))
     runner = root / 'scripts/review/run.sh'
     source = runner.read_text().replace('run_lens_once() {', 'run_lens_without_capture() {', 1)
+    source = source.replace('rm -f "$root/REVIEW.md"',
+                            'rm -f "$root/REVIEW.md" "$root"/capped-attempt.*.failure', 1)
     wrapper = r'''
 run_lens_once() {
   local code=0 diagnostic

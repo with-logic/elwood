@@ -54,6 +54,17 @@ class AttemptDiagnosticsTest(unittest.TestCase):
         self.assertIn('lens=review-security attempt=1 exit=1', diagnostic)
         self.assertIn('review: lens output does not match the finding schema', diagnostic)
 
+    def test_reused_fixture_reports_only_the_current_run(self):
+        fixture = runner_test.RunnerTest()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        fixture.run_review('synth-failed')
+        self.assertIn('lens=synthesis attempt=1 exit=2', attempt_diagnostics(fixture.root))
+        fixture.run_review('malformed')
+        diagnostic = attempt_diagnostics(fixture.root)
+        self.assertNotIn('lens=synthesis', diagnostic)
+        self.assertIn('lens=review-security attempt=1 exit=1', diagnostic)
+
     def test_synthesis_parser_failure_is_retained(self):
         fixture = runner_test.RunnerTest()
         fixture.setUp()
