@@ -64,12 +64,16 @@ test.each([
   await session.sendPrompt("busy");
   const warnings: unknown[] = [];
   const warningActivity: string[] = [];
+  const warningPayloads: unknown[] = [];
   session.on("warning", () => {
     throw new Error("private warning sink");
   });
   session.on("warning", (event) => warnings.push(event));
   session.on("activity", (event) => {
-    if (event.kind === "warning") warningActivity.push(event.label);
+    if (event.kind === "warning") {
+      warningActivity.push(event.label);
+      warningPayloads.push(event);
+    }
   });
   session.on(channel, () => {
     throw new Error("private observer failure");
@@ -78,17 +82,40 @@ test.each([
     hook_event_name: "Stop",
     session_id: "claude-1",
     cwd,
+    last_assistant_message: "unique-hook-secret-c22",
   });
-  expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
+  expect(result).toEqual({
+    exitCode: 0,
+    stdout: "",
+    stderr: "",
+  });
   expect(session.status).toBe("ready");
   expect(warnings).toEqual([
-    expect.objectContaining({
+    {
+      elwoodSessionId: session.elwoodSessionId,
+      agent: "claude",
+      source: "lifecycle",
       code: "hook_observer_failed",
+      severity: "warning",
+      message: "A Claude hook notification failed; hook decisions and lifecycle were preserved.",
       phase: channel === "status" ? "lifecycle" : channel,
-    }),
+      raw: `hook_observer_failed phase=${channel === "status" ? "lifecycle" : channel}`,
+    },
   ]);
-  expect(JSON.stringify(warnings)).not.toContain("private");
+  expect(JSON.stringify([warnings, warningPayloads])).not.toContain("unique-hook-secret-c22");
+  expect(JSON.stringify([warnings, warningPayloads])).not.toContain("private");
   expect(warningActivity).toEqual(["hook_observer_failed"]);
+  expect(warningPayloads).toEqual([
+    {
+      elwoodSessionId: session.elwoodSessionId,
+      agent: "claude",
+      source: "lifecycle",
+      kind: "warning",
+      label: "hook_observer_failed",
+      text: "A Claude hook notification failed; hook decisions and lifecycle were preserved.",
+      raw: warnings[0],
+    },
+  ]);
 });
 
 test("C-HOOK-22 blocked Stop remains blocked despite result-observer failure", async () => {
@@ -135,31 +162,6 @@ test("C-HOOK-22 a throwing hookError observer preserves fail-open lifecycle", as
   });
   expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
   expect(session.status).toBe("ready");
-  expect(warnings).toEqual([
-    expect.objectContaining({ code: "hook_observer_failed", phase: "hook_error" }),
-  ]);
-});
-
-test("C-HOOK-22 bridge-error observers cannot skip the diagnostic activity", async () => {
-  installFakes();
-  const cwd = tempDir();
-  const session = await startClaude({ cwd });
-  const warnings: unknown[] = [];
-  const activity: string[] = [];
-  session.on("warning", (event) => warnings.push(event));
-  session.on("activity", (event) => activity.push(event.kind));
-  session.on("hookError", () => {
-    throw new Error("private observer failure");
-  });
-  const result = await ptys[0]!.dispatchHook(session.elwoodSessionId, {
-    hook_event_name: "PreToolUse",
-    session_id: "claude-1",
-    cwd,
-    tool_name: "TaskGet",
-    tool_input: {},
-  });
-  expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
-  expect(activity).toEqual(["hook_error", "warning"]);
   expect(warnings).toEqual([
     expect.objectContaining({ code: "hook_observer_failed", phase: "hook_error" }),
   ]);

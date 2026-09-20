@@ -125,6 +125,9 @@ Hook, activity, hook-error, transcript, and lifecycle notifications are isolated
 the hook boundary. Each invocation emits at most one content-free
 `hook_observer_failed` warning (§5.7), identifying the first failed phase; warning
 observer failures are contained without recursive diagnostics (C-HOOK-22).
+Returned observer Promises are observed without awaiting them; their rejections
+are contained even after the hook reply completes. The first observed failure
+selects the diagnostic phase, and late failures do not emit additional warnings.
 
 Elwood MUST model Claude hook inputs and outputs as discriminated TypeScript
 unions.

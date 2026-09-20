@@ -52,7 +52,10 @@ export function buildClaudeHookHandler(
       {
         hasListeners: (name) => emitter.hasListeners(name),
         requestWithProvenance: (name, payload) => emitter.requestWithProvenance(name, payload),
-        emit: (name, payload) => observation.run("hook_error", () => emitter.emit(name, payload)),
+        emit: (name, payload) =>
+          observation.run(name === "hookError" ? "hook_error" : "activity", () =>
+            emitter.emit(name, payload),
+          ),
       },
       event,
       options.hookTimeoutMs ?? 25_000,

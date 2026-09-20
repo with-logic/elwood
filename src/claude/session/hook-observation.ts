@@ -11,16 +11,24 @@ export function hookObservationBoundary(
   elwoodSessionId: string,
 ) {
   let failedPhase: Phase | undefined;
-  return {
+  let finished = false;
+  let reported = false;
+  function fail(phase: Phase): void {
+    failedPhase ??= phase;
+    if (finished) boundary.report();
+  }
+  const boundary = {
     run(phase: Phase, operation: () => void): void {
       try {
-        operation();
+        emitter.observeAsyncErrors(() => fail(phase), operation);
       } catch {
-        failedPhase ??= phase;
+        fail(phase);
       }
     },
     report(): void {
-      if (failedPhase === undefined) return;
+      finished = true;
+      if (failedPhase === undefined || reported) return;
+      reported = true;
       const warning: HookObserverFailedWarning = {
         elwoodSessionId,
         agent: "claude",
@@ -32,15 +40,26 @@ export function hookObservationBoundary(
         raw: `hook_observer_failed phase=${failedPhase}`,
       };
       try {
-        emitter.emit("warning", warning);
+        emitter.observeAsyncErrors(
+          () => {
+            /* Diagnostic rejections must not recursively warn. */
+          },
+          () => emitter.emit("warning", warning),
+        );
       } catch {
         // Diagnostic listeners must not control the hook response.
       }
       try {
-        emitter.emit("activity", activityFromWarning(warning));
+        emitter.observeAsyncErrors(
+          () => {
+            /* Diagnostic rejections must not recursively warn. */
+          },
+          () => emitter.emit("activity", activityFromWarning(warning)),
+        );
       } catch {
         // Do not recurse when the failing observer also receives warnings.
       }
     },
   };
+  return boundary;
 }

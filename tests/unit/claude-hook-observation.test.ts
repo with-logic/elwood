@@ -13,6 +13,8 @@ test.each([
   "readiness",
 ] as const)("C-HOOK-22 %s failure cannot abort the captured response or later bookkeeping", async (failure) => {
   const emitter = new TypedEmitter<ClaudeEventMap>();
+  if (failure === "transcript_observation")
+    emitter.on("hook:Stop", () => ({ decision: "block", reason: "retained decision" }));
   const warnings: unknown[] = [];
   emitter.on("warning", (event) => warnings.push(event));
   const turn = new TurnStateWatcher();
@@ -42,10 +44,20 @@ test.each([
     file_path: "/tmp/CLAUDE.md",
     memory_type: "Project",
   });
-  expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
-  if (failure !== "readiness") {
+  expect(result).toEqual({
+    exitCode: 0,
+    stdout:
+      failure === "transcript_observation"
+        ? '{"decision":"block","reason":"retained decision"}\n'
+        : "",
+    stderr: "",
+  });
+  if (failure === "transcript_scan") {
     expect(scan).toHaveBeenCalledOnce();
     expect(arm).toHaveBeenCalledOnce();
+  } else {
+    expect(scan).not.toHaveBeenCalled();
+    expect(arm).not.toHaveBeenCalled();
   }
   expect(warnings).toEqual([
     expect.objectContaining({

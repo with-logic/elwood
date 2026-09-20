@@ -26,6 +26,7 @@ type Listeners = { list: readonly Registration[]; readonly live: Set<Handler> };
 
 export class TypedEmitter<M extends Record<string, unknown>> {
   private readonly handlers: Map<EventKey<M>, Listeners>;
+  private asyncObserverError: ((error: unknown) => void) | undefined;
 
   constructor() {
     this.handlers = new Map();
@@ -80,7 +81,9 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     for (const { handler } of snapshot) {
       if (!entry.live.has(handler)) continue;
       try {
-        handler(payload);
+        const returned = handler(payload);
+        if (this.asyncObserverError && types.isPromise(returned))
+          void returned.then(undefined, this.asyncObserverError);
       } catch (error) {
         if (!failed) {
           failed = true;
@@ -89,6 +92,18 @@ export class TypedEmitter<M extends Record<string, unknown>> {
       }
     }
     if (failed) throw firstError;
+  }
+
+  /** Capture late Promise failures from this synchronous notification scope.
+   * Each returned Promise retains its own sink after nested scopes unwind. */
+  observeAsyncErrors<T>(onError: (error: unknown) => void, operation: () => T): T {
+    const previous = this.asyncObserverError;
+    this.asyncObserverError = onError;
+    try {
+      return operation();
+    } finally {
+      this.asyncObserverError = previous;
+    }
   }
 
   hasListeners<E extends EventKey<M>>(event: E): boolean {
