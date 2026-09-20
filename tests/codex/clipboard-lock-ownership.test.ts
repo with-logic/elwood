@@ -65,6 +65,8 @@ afterEach(resetRuntimeSeamsForTests);
 function terminal(): AttachTerminal {
   let pasted = false;
   return {
+    settled: () => Promise.resolve(),
+    renderFailed: false,
     sendInput() {
       pasted = true;
     },
