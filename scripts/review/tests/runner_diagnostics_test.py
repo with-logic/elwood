@@ -1,10 +1,13 @@
 """A failed retry assertion retains the original fake process error, within bounds (PRD §16)."""
 from pathlib import Path
+import json
 import tempfile
 import unittest
 from unittest.mock import patch
 import runner_test
-from runner_diagnostics import assert_architecture_lens_one_attempt, attempt_diagnostics
+from runner_attempt_capture import MAX_ATTEMPT_STDERR_BYTES
+from runner_diagnostics import (DIAGNOSTIC_PREFIX, MAX_DIAGNOSTIC_CHARS,
+                                assert_architecture_lens_one_attempt, attempt_diagnostics)
 
 
 class AttemptDiagnosticsTest(unittest.TestCase):
@@ -19,11 +22,11 @@ class AttemptDiagnosticsTest(unittest.TestCase):
         self.assertIn('lens=review-architecture-conventions attempt=1 exit=1', diagnostic)
         self.assertIn('FIRST_ATTEMPT_CANARY', diagnostic)
         self.assertNotIn('TRUNCATED_TAIL_CANARY', diagnostic)
-        self.assertLessEqual(len(diagnostic), 4140)
+        self.assertLessEqual(len(diagnostic), len(DIAGNOSTIC_PREFIX) + MAX_DIAGNOSTIC_CHARS)
         self.assertNotIn('FIRST_ATTEMPT_CANARY', result.stderr)
         for report in fixture.root.glob('capped-attempt.*.failure'):
             payload = report.read_bytes().split(b'\n', 1)[1]
-            self.assertLessEqual(len(payload), 2048)
+            self.assertLessEqual(len(payload), MAX_ATTEMPT_STDERR_BYTES)
             self.assertNotIn(b'TRUNCATED_TAIL_CANARY', payload)
         with self.assertRaisesRegex(AssertionError, 'FIRST_ATTEMPT_CANARY'):
             assert_architecture_lens_one_attempt(self, fixture.root, result)
@@ -62,11 +65,24 @@ class AttemptDiagnosticsTest(unittest.TestCase):
         self.assertIn('lens=synthesis attempt=1 exit=1', diagnostic)
         self.assertIn('VALIDATION_CANARY', diagnostic)
 
+    def test_oversized_validation_stderr_is_bounded_when_replayed(self):
+        fixture = runner_test.RunnerTest()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        (fixture.root / 'scripts/review/validate.sh').write_text(
+            "python3 -c 'import sys; sys.stderr.write(" + json.dumps('V' * 5000 + 'VALIDATION_TAIL') + ")'\nexit 1\n")
+        result = fixture.run_review()
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr.count('V'), MAX_ATTEMPT_STDERR_BYTES)
+        self.assertNotIn('VALIDATION_TAIL', result.stderr + attempt_diagnostics(fixture.root))
+
     def test_many_bounded_reports_exercise_the_aggregate_cap(self):
+        self.assertEqual(MAX_ATTEMPT_STDERR_BYTES, 2048)
+        self.assertEqual(MAX_DIAGNOSTIC_CHARS, 4096)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for index in range(3):
-                (root / f'capped-attempt.{index}.failure').write_text(f'attempt={index}\n' + 'x' * 2048)
+                (root / f'capped-attempt.{index}.failure').write_text(f'attempt={index}\n' + 'x' * MAX_ATTEMPT_STDERR_BYTES)
             (root / 'capped-attempt.3.failure').write_text('AGGREGATE_TAIL_CANARY')
             original_open = Path.open
             opened = []
@@ -78,7 +94,7 @@ class AttemptDiagnosticsTest(unittest.TestCase):
             self.assertEqual(opened, ['capped-attempt.0.failure', 'capped-attempt.1.failure'])
             self.assertIn('attempt=0', diagnostic)
             self.assertNotIn('AGGREGATE_TAIL_CANARY', diagnostic)
-            self.assertEqual(len(diagnostic), len('\nFixture attempt diagnostics (bounded):\n') + 4096)
+            self.assertEqual(len(diagnostic), len(DIAGNOSTIC_PREFIX) + MAX_DIAGNOSTIC_CHARS)
 
     def test_successful_attempts_do_not_launch_the_capture_helper(self):
         fixture = runner_test.RunnerTest()

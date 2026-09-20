@@ -1,6 +1,10 @@
 """Retain bounded attempt failures only in the copied, fake-CLI test runner (PRD §16)."""
 from pathlib import Path
 import shutil
+from runner_attempt_capture import MAX_ATTEMPT_STDERR_BYTES
+
+MAX_DIAGNOSTIC_CHARS = 4096
+DIAGNOSTIC_PREFIX = "\nFixture attempt diagnostics (bounded):\n"
 
 
 def install_attempt_diagnostics(root):
@@ -11,7 +15,7 @@ def install_attempt_diagnostics(root):
 exec 4>&2
 cleanup() {
   local code=$? failure
-  if [ -f "$tmp/synth.validation.err" ]; then cat "$tmp/synth.validation.err" >&4; fi
+  if [ -f "$tmp/synth.validation.err" ]; then head -c ATTEMPT_STDERR_BYTES "$tmp/synth.validation.err" >&4; fi
   if [ "$code" -ne 0 ] && [ "${synthesis_active:-false}" = true ]; then
     failure=$code
     if [ "${synth_code:-0}" -ne 0 ]; then failure=$synth_code; fi
@@ -19,7 +23,7 @@ cleanup() {
   fi
   cleanup_without_capture
 }
-''')
+'''.replace('ATTEMPT_STDERR_BYTES', str(MAX_ATTEMPT_STDERR_BYTES)))
     runner = root / 'scripts/review/run.sh'
     source = runner.read_text().replace('run_lens_once() {', 'run_lens_without_capture() {', 1)
     wrapper = r'''
@@ -44,7 +48,7 @@ run_lens_once() {
 
 def attempt_diagnostics(root):
     chunks = []
-    remaining = 4096
+    remaining = MAX_DIAGNOSTIC_CHARS
     for path in sorted(root.glob('capped-attempt.*.failure')):
         if remaining == 0:
             break
@@ -54,7 +58,7 @@ def attempt_diagnostics(root):
             chunk = report.read(remaining)
         chunks.append(separator + chunk)
         remaining -= len(chunk)
-    return '\nFixture attempt diagnostics (bounded):\n' + ''.join(chunks)
+    return DIAGNOSTIC_PREFIX + ''.join(chunks)
 
 
 def assert_architecture_lens_one_attempt(test, root, result):
