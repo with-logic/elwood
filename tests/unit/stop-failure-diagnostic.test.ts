@@ -56,3 +56,13 @@ test("C-HOOK-20 bounds each diagnostic before composing the result", () => {
     "x".repeat(2_000),
   );
 });
+
+test.each([
+  undefined,
+  null,
+  { code: "rate_limit" },
+])("C-HOOK-20 valid details take precedence over drifted errors: %j", (error) => {
+  const event = { ...common, error, error_details: "Please wait." };
+  expect(stopFailureDiagnostic(event)).toEqual({ message: "Please wait." });
+  expect(summarizeHookEvent(event)).toBe("hook StopFailure: Please wait.");
+});
