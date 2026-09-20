@@ -76,7 +76,8 @@ describe("C-CLAUDE-15 Claude transcript drop wiring", () => {
     // The natural exit flushes the appended record; emitting it throws through the
     // listener, but the error boundary contains it so termination still completes.
     ptys.at(-1)!.emitExit({ exitCode: 0 });
-    expect(exits).toEqual([0]); // terminal:exit still emitted
+    // Buffered startup diagnostics can defer finalization until their scheduled delivery.
+    await expect.poll(() => exits).toEqual([0]); // terminal:exit still emitted
     expect(session.status).toBe("exited"); // terminal status still reached
     expect(reapedGroups).toContain(leaderPid); // group still reaped (no leak)
     await expect.poll(() => warnings).toContain("transcript_poll_stopped");

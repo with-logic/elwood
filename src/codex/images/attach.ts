@@ -46,7 +46,10 @@ export async function attachCodexImages(
 ): Promise<void> {
   if (!clipboardImageSupported())
     throw elwoodError("unsupported_platform", "Codex image attachment requires macOS.");
-  await withClipboardLock(() => attachUnderLock(terminal, paths, signal, blocked, onRestoreFailed));
+  await withClipboardLock(
+    () => attachUnderLock(terminal, paths, signal, blocked, onRestoreFailed),
+    { signal, error: () => elwoodError("image_attach_failed", "Image attach aborted.") },
+  );
 }
 
 async function attachUnderLock(
@@ -56,9 +59,6 @@ async function attachUnderLock(
   blocked: BlockedGuard | undefined,
   onRestoreFailed: (() => void) | undefined,
 ): Promise<void> {
-  // A waiter that acquired the lock only after its session closed must touch
-  // nothing — check abort FIRST, before snapshotting or mutating the clipboard.
-  if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
   // Snapshot BEFORE mutating; a snapshot failure rejects here so we never
   // overwrite then "restore" an empty string over the user's clipboard.
   const priorClipboard = await snapshotClipboardText();
