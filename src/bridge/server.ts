@@ -5,6 +5,7 @@
 
 import { existsSync, unlinkSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
+import { inertRecord } from "../core/inert-record.ts";
 import type { HookErrorEvent } from "../core/types.ts";
 import { MAX_HOOK_REQUEST_BYTES } from "./limits.ts";
 import { hookEventNameFrom, noDecision, parseBridgeMessage, parseHookInput } from "./parse.ts";
@@ -64,9 +65,9 @@ export class HookBridgeServer {
         // stops reading and releases the FD instead of lingering half-open — a
         // post-response client write can no longer reach a second dispatch.
         const data = Buffer.concat(chunks).toString("utf8"); // decode once, whole
-        socket.end(JSON.stringify(result ?? (await this.handleSafely(data))), () =>
-          socket.destroy(),
-        );
+        const { exitCode, stdout, stderr } = result ?? (await this.handleSafely(data));
+        const envelope = inertRecord({ exitCode, stdout, stderr });
+        socket.end(JSON.stringify(envelope), () => socket.destroy());
       };
       socket.on("data", (chunk: Buffer) => {
         // Count raw bytes and fail open the instant the request envelope crosses
