@@ -17,7 +17,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Clear cancelled staged text and images before successor input, deferring cleanup
   through dialogs. Failed cleanup holds the draft; raw input through `sendKeys`,
-  `terminal.sendInput`, or `xterm.input` revokes cleanup authority, and shutdown drops deferred cleanup without waiting.
+  `terminal.sendInput`, or `xterm.input` revokes cleanup authority, and shutdown drops
+  deferred cleanup without waiting. A physical clear must be confirmed by a fresh
+  native empty composer before successor input.
 
 - Keep landing-page gestures continuous by preparing every sprite sheet before
   playback and retaining the active animation while another loads.

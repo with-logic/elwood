@@ -1,4 +1,5 @@
 /** Raw terminal intervention revokes a picker operation's private authority (C-API-55). */
+import type { EmptyComposerObserver } from "../../core/input/clear-ack.ts";
 import { ComposerCleanup } from "../../core/input/composer-cleanup.ts";
 import { pickerIntervention } from "../../core/models/intervention.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
@@ -50,8 +51,18 @@ export class PickerInputOwnership {
     });
   }
 
-  composerCleanup(blocked: () => boolean, closing: AbortSignal): ComposerCleanup["run"] {
-    const cleanup = new ComposerCleanup(this.automated, blocked, closing, () => this.signal());
+  composerCleanup(
+    blocked: () => boolean,
+    closing: AbortSignal,
+    observeEmpty: EmptyComposerObserver,
+  ): ComposerCleanup["run"] {
+    const cleanup = new ComposerCleanup(
+      this.automated,
+      blocked,
+      closing,
+      () => this.signal(),
+      observeEmpty,
+    );
     return (work, signal) => cleanup.run(work, signal);
   }
 

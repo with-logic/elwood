@@ -71,6 +71,7 @@ export abstract class SessionLifecycle {
     this.automatedTerminal = ownership.automated;
     this.terminalReplay = terminalReplay;
     this.reapPolicy = new SessionReapPolicy(agent, record.elwoodSessionId, pty.pid);
+    const readEmpty = () => this.emptyComposerFrame();
     this.controlQueue = new ControlQueue(
       queuedInputSubmitter(this.automatedTerminal, this.pasteGuard),
       () => notRunningError(agent),
@@ -80,7 +81,7 @@ export abstract class SessionLifecycle {
       },
       () => this.status === "running",
       () => void (this.status === "ready" && this.submitEvidence("caller_submitted")),
-      ownership.composerCleanup(() => this.queuedInputBlocked(), this.closing.signal),
+      ownership.composerCleanup(() => this.queuedInputBlocked(), this.closing.signal, readEmpty),
     );
     this.loops = new SessionLoops({
       stateDir,
@@ -143,12 +144,8 @@ export abstract class SessionLifecycle {
     this.loops.pause();
   }
   protected isInputBlocked(): boolean {
-    return (
-      this.closing.signal.aborted ||
-      this.inputBlocking ||
-      this.trustInputBlocking ||
-      this.status === "blocked"
-    );
+    const held = this.inputBlocking || this.trustInputBlocking;
+    return this.closing.signal.aborted || held || this.status === "blocked";
   }
   bindInitialReadinessHold(isHeld: () => boolean): void {
     this.initialReadinessHeld = isHeld;
@@ -173,6 +170,7 @@ export abstract class SessionLifecycle {
   }
   readonly beginExitFinalization = () => this.shutdown.beginExitFinalization();
   readonly statusDecisions = (): readonly StatusDecision[] => this.statusEngine.decisions();
+  protected abstract emptyComposerFrame(): object | undefined;
   protected abstract stagedPaste(screen: string, prompt: string): boolean;
   protected abstract queuedInputBlocked(): boolean;
   protected abstract stopRuntime(): Promise<void>;

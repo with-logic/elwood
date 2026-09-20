@@ -5,11 +5,14 @@ import { copyFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { attachClaudeImages } from "../../src/claude/attach-images.ts";
+import { liveClaudeClearance } from "../../src/claude/screen-table.ts";
 import { attachCodexImages } from "../../src/codex/images/attach.ts";
+import { liveCodexClearance } from "../../src/codex/screen/live-clearance.ts";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { ComposerCleanup } from "../../src/core/input/composer-cleanup.ts";
 import { queuedInputSubmitter } from "../../src/core/input/index.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
+import { currentRenderedFrame } from "../../src/terminal/cursor.ts";
 import {
   cleanup,
   codexAuthMissing,
@@ -96,11 +99,18 @@ for (const agent of ["claude", "codex"] as const) {
           }
         },
       };
+      const isEmpty = (agent === "claude" ? liveClaudeClearance : liveCodexClearance)(
+        () => session.terminal,
+      );
       const owner = new ComposerCleanup(
         terminal,
         () => false,
         closing.signal,
         () => closing.signal,
+        () => {
+          const frame = currentRenderedFrame(session.terminal);
+          return frame && isEmpty(frame.text) ? frame : undefined;
+        },
       );
       queue = new ControlQueue(
         queuedInputSubmitter(terminal, {

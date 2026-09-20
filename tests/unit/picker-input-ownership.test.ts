@@ -46,7 +46,15 @@ test("C-API-55/56 native protocol replies preserve picker and staged cleanup aut
   const owner = new PickerInputOwnership(inner);
   const signal = owner.signal();
   const closing = new AbortController();
-  const run = owner.composerCleanup(() => false, closing.signal);
+  const acknowledgement = {};
+  const run = owner.composerCleanup(
+    () => false,
+    closing.signal,
+    () => {
+      if (writes.at(-1) !== "\u0015\u000b") return undefined;
+      return acknowledgement;
+    },
+  );
   try {
     // The real parser generates cursor-position and device-attribute replies, not caller input.
     await inner.writeOutput("\u001b[6n\u001b[c");
