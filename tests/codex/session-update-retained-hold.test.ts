@@ -22,8 +22,7 @@ test("C-CODEX-12 queued text stays held through a replacement until its native c
     await session.terminal.settled();
     ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexSmallComposer, false)}`);
     await session.terminal.settled();
-    // Let the input queue poll the native-looking frame with its cursor hidden.
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(session.status).toBe("blocked");
     expect(ptys[0]!.writes).toEqual([]);
     ptys[0]!.emitData("\u001b[?25h");
     await sent;

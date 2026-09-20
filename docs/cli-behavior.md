@@ -570,9 +570,11 @@ Version-coupled behavior learned here:
   excluded even if its label also contains a skip phrase. A banner-less continuation
   without the action has no ordering constraint; its generation guard still applies.
 - Update recognition and input blocking have different lifetimes. An unknown
-  replacement is no longer an update but can still accept a queued paste and Enter.
+  replacement is no longer an update. Without a prior recognized update it does
+  not create a retained update hold, so queued paste and Enter remain eligible.
   Once an update was recognized, the session retains its input hold until native
-  composer/cursor/title evidence from one completed render proves clearance. A
+  composer and visible cursor in one completed render prove clearance, with no
+  working-title signal. The title may be absent or an ordinary directory name. A
   partial repaint or bare caret cannot release it. Specific trust rules keep their
   own labels; otherwise the retained hold reports `codex-unidentified-dialog`.
 - Option labels drift by version. Older codex (0.132/0.133) rendered a numbered

@@ -4,7 +4,12 @@ import { liveCodexClearance } from "../../src/codex/screen/live-clearance.ts";
 import { codexScreenFactTableForTrustPolicy } from "../../src/codex/screen-table.ts";
 import { readScreenFacts } from "../../src/core/screen-facts.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
-import { codexSmallComposer, codexTrust, codexTty } from "../fixtures/trust-composer.ts";
+import {
+  codexHooks,
+  codexSmallComposer,
+  codexTrust,
+  codexTty,
+} from "../fixtures/trust-composer.ts";
 
 const update = "Update available! 0.151.0 -> 0.152.0\n1. Update now\n2. Skip";
 const unknown = "Confirm archive removal?\n❯ Proceed\n  Cancel";
@@ -71,5 +76,26 @@ test("C-CODEX-12 a retained hold requires the live native cursor and completed r
     expect(read()).toBe(false);
   } finally {
     terminal.dispose();
+  }
+});
+
+test.each([
+  false,
+  true,
+])("C-ATTN-03 retained update yields to trust policy (autotrust=%s)", (autotrust) => {
+  for (const [text, humanOwned] of [
+    [
+      `${codexHooks}\n1. Trust these hooks\n2. Trust hooks for this session\n3. Continue without hooks`,
+      false,
+    ],
+    [`${codexTrust}\n1. Yes, continue\n2. No, quit`, !autotrust],
+  ] as const) {
+    const table = codexScreenFactTableForTrustPolicy(autotrust);
+    readScreenFacts(table, frame(update));
+    const result = readScreenFacts(table, frame(text));
+    expect(result.facts.blocking_prompt_visible).toBe(humanOwned);
+    expect(result.matched.map(({ id }) => id)).not.toContain("codex-unidentified-dialog");
+    if (humanOwned)
+      expect(result.matched.map(({ id }) => id)).toContain("codex-workspace_trust-prompt");
   }
 });

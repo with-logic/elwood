@@ -112,7 +112,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     () => session,
     () => promptResponder,
     readiness,
-    liveCodexClearance(() => terminal),
+    clearance,
   );
   const promptResponder = new CodexStartupPromptResponder(
     record.elwoodSessionId,
