@@ -3,13 +3,14 @@
  * attach is CONFIRMED only when the composer's image-chip count increases; an
  * unconfirmed image (timeout), or an abort (session closing), REJECTS with
  * `image_attach_failed` so no text is ever submitted for an unconfirmed image.
- * Implements PRD §5.3 (C-API-44/45/46).
+ * Implements PRD §5.3 (C-API-44/45/46/56).
  */
 
 import { elwoodError } from "../errors.ts";
+import { holdWhileUnsafe, type InputTerminal } from "../input/abort.ts";
 
 /** The terminal surface an attach needs: send bytes and read the rendered screen. */
-export type AttachTerminal = {
+export type AttachTerminal = Pick<InputTerminal, "settled" | "renderFailed"> & {
   sendInput(data: string): void | Promise<void>;
   snapshot(): { readonly text: string };
 };
@@ -17,7 +18,6 @@ export type AttachTerminal = {
 /** True while a blocking human-decision dialog is on screen (C-API-37 safety). */
 export type BlockedGuard = () => boolean;
 
-const blockedPollMs = 50;
 // Ctrl+U (kill to line start) + Ctrl+K (kill to line end) discard the composer
 // draft on both TUIs, clearing any staged image chips/paths.
 const clearComposerKeys = "\u0015\u000b";
@@ -36,10 +36,10 @@ export async function clearComposer(terminal: AttachTerminal): Promise<void> {
 }
 
 /**
- * Sends `data` to the terminal only once no blocking dialog is on screen — a
+ * Observes received output, then sends only once no blocking dialog is on screen — a
  * paste path or Ctrl+V must never reach a permission/trust dialog and alter a
  * human decision. Rejects with `image_attach_failed` if the signal aborts while
- * held (the session closed) (C-API-37/44).
+ * held (the session closed). Unobserved or failed renders remain held (C-API-56).
  */
 export async function sendWhenUnblocked(
   terminal: AttachTerminal,
@@ -47,12 +47,8 @@ export async function sendWhenUnblocked(
   blocked: BlockedGuard | undefined,
   signal: AbortSignal,
 ): Promise<void> {
-  while (blocked?.()) {
-    if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
-    await delay(blockedPollMs);
-  }
-  // Re-check AFTER the loop: an abort that lands as the dialog clears in the same
-  // poll must not let a paste/Ctrl+V reach the PTY on a closing session.
+  await holdWhileUnsafe(terminal, blocked === undefined ? undefined : { blocked }, signal);
+  // Cancellation can arrive as the observation or dialog hold clears.
   if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
   await terminal.sendInput(data);
 }

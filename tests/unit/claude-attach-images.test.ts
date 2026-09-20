@@ -106,6 +106,7 @@ describe("attachClaudeImages (C-API-45)", () => {
     const controller = new AbortController();
     const done = attachClaudeImages(term, ["/abs/a.png"], controller.signal);
     const settled = expect(done).rejects.toMatchObject({ code: "image_attach_failed" });
+    await vi.advanceTimersByTimeAsync(0); // reach the chip wait after the observed paste
     controller.abort();
     await vi.runAllTimersAsync();
     await settled;
