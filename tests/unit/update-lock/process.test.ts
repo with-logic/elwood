@@ -2,13 +2,9 @@
  * Real-process coverage for the global update lease (PRD §9.2, C-PERF-04).
  * Same-user hosts must coordinate even when their TMPDIR environments differ.
  *
- * The guarantee under test is mutual exclusion among CONCURRENT contenders, so
- * every child must be inside `coordinatedAutoupdate` before any of them may
- * finish. Each child therefore announces itself and waits at a filesystem
- * barrier first; without it, a child that the OS scheduled late (this suite runs
- * under heavy parallel-suite load) starts after the lease has already been
- * released and legitimately runs its own update — a fresh invocation, not a
- * mutual-exclusion failure — which made this test flaky rather than wrong.
+ * The owner stays active until every contender has observed its live lease.
+ * A barrier before calling the coordinator would still let a delayed child
+ * arrive after the first update finishes and legitimately start another one.
  */
 
 import { spawn } from "node:child_process";
@@ -31,20 +27,27 @@ test("C-PERF-04 separate Node processes mutate the installer target exactly once
   ).href;
   const ready = join(root, "ready");
   const child = `
-    import { appendFile, mkdir, readdir } from "node:fs/promises";
-    import { coordinatedAutoupdate } from ${JSON.stringify(lockUrl)};
+    import fs, { appendFile, mkdir, readdir } from "node:fs/promises";
+    import { syncBuiltinESMExports } from "node:module";
+    import { coordinatedAutoupdate, updateLockPath } from ${JSON.stringify(lockUrl)};
     import { cachedAutoupdate, setUpdateCoordinatorForTests } from ${JSON.stringify(onceUrl)};
-    // Barrier: announce arrival, then wait until every sibling has arrived, so all
-    // six are genuinely concurrent when they contend for the lease.
     const ready = process.env.ELWOOD_TEST_READY;
     await mkdir(ready, { recursive: true });
-    await mkdir(ready + "/" + process.pid);
-    const deadline = Date.now() + 60_000;
-    for (;;) {
-      if ((await readdir(ready)).length >= ${barrierSize}) break;
-      if (Date.now() > deadline) throw new Error("barrier timed out");
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
+    const announce = () => mkdir(ready + "/" + process.pid, { recursive: true });
+    const leasePath = updateLockPath("codex", process.env.ELWOOD_TEST_LOCK_ROOT);
+    // Announce only successful observations of the real lease. Production imports
+    // stat by name, so syncBuiltinESMExports must publish this wrapper to that binding.
+    const stat = fs.stat;
+    let observed = false;
+    fs.stat = async (...args) => {
+      const result = await stat(...args);
+      if (!observed && args[0] === leasePath) {
+        observed = true;
+        await announce();
+      }
+      return result;
+    };
+    syncBuiltinESMExports();
     setUpdateCoordinatorForTests((adapter, update) =>
       coordinatedAutoupdate(adapter, update, {
         root: process.env.ELWOOD_TEST_LOCK_ROOT,
@@ -52,17 +55,26 @@ test("C-PERF-04 separate Node processes mutate the installer target exactly once
         staleMs: 30_000,
       }),
     );
-    await cachedAutoupdate("codex", async () => {
+    const outcome = await cachedAutoupdate("codex", async () => {
       await appendFile(process.env.ELWOOD_TEST_ATTEMPTS, process.pid + "\\n");
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await announce();
+      const deadline = Date.now() + 60_000;
+      while ((await readdir(ready)).length < ${barrierSize}) {
+        if (Date.now() > deadline) throw new Error("lease observation barrier timed out");
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
     });
+    if (!outcome.ok) throw outcome.error;
   `;
   const exits = await Promise.all(
     Array.from({ length: barrierSize }, (_, index) =>
       runChild(child, root, attempts, ready, index),
     ),
   );
-  expect(exits).toEqual(Array.from({ length: barrierSize }, () => 0));
+  expect(
+    exits.map((result) => result.status),
+    exits.map((result) => result.stderr).join("\n"),
+  ).toEqual(Array.from({ length: barrierSize }, () => 0));
   expect(readFileSync(attempts, "utf8").trim().split("\n")).toHaveLength(1);
 });
 
@@ -72,7 +84,7 @@ function runChild(
   attempts: string,
   ready: string,
   index: number,
-): Promise<number | null> {
+): Promise<{ readonly status: number | null; readonly stderr: string }> {
   return new Promise((resolve) => {
     const childProcess = spawn(
       process.execPath,
@@ -85,9 +97,13 @@ function runChild(
           ELWOOD_TEST_READY: ready,
           TMPDIR: join(root, `independent-tmp-${index}`),
         },
-        stdio: "ignore",
+        stdio: ["ignore", "ignore", "pipe"],
       },
     );
-    childProcess.on("close", resolve);
+    let stderr = "";
+    childProcess.stderr.on("data", (data: Buffer) => {
+      stderr = (stderr + data.toString()).slice(0, 4_096);
+    });
+    childProcess.on("close", (status) => resolve({ status, stderr }));
   });
 }
