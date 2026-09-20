@@ -49,6 +49,8 @@ test("C-API-46 an attach whose restore cannot spawn still warns and frees the cl
   setPlatformForTests("darwin");
   let pasted = false;
   const terminal: AttachTerminal = {
+    settled: () => Promise.resolve(),
+    renderFailed: false,
     sendInput() {
       pasted = true;
     },

@@ -23,7 +23,7 @@ export function withTrustBlockingRules(
   base: ScreenFactTable,
   agent: ElwoodAgentKind,
   autotrust: boolean,
-): ScreenFactTable {
+): ScreenFactTable & { readonly trustGateVisible: (frame: string) => boolean } {
   let cachedFrame: string | undefined;
   let cached: TrustRegions = [];
   const regionsFor = (text: string) => {
@@ -49,7 +49,11 @@ export function withTrustBlockingRules(
     fallback: true,
     match: (text) => unknownGateVisible(regionsFor(text), agent),
   });
-  return { ...base, rules: [...base.rules, ...rules] };
+  return {
+    ...base,
+    rules: [...base.rules, ...rules],
+    trustGateVisible: (text) => gateVisible(regionsFor(text), agent),
+  };
 }
 
 /**
@@ -83,7 +87,10 @@ function unknownGateVisible(regions: TrustRegions, agent: ElwoodAgentKind): bool
  * so this is a positive signal to withhold a write, never a proof that a frame is safe.
  */
 export function trustGateVisible(frame: string, agent: ElwoodAgentKind): boolean {
-  const regions = parseTrustCandidates(frame);
+  return gateVisible(parseTrustCandidates(frame), agent);
+}
+
+function gateVisible(regions: TrustRegions, agent: ElwoodAgentKind): boolean {
   return namesAllowlistedPrompt(regions, agent) || unknownGateVisible(regions, agent);
 }
 
