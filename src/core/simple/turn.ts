@@ -25,14 +25,14 @@
  * the turn at once.
  */
 
-import { elwoodError, toError } from "../errors.ts";
+import { toError } from "../errors.ts";
 import { cancellableSubmission } from "../input/submission-cancel.ts";
 import { terminalStatuses } from "../status-categories.ts";
 import { boundaryExpectation } from "./boundary-signal.ts";
 import { toTurnEvent } from "./events.ts";
+import { armTurnTimeout, FALLBACK_QUIET_MS, gateForTurn } from "./turn/defaults.ts";
 import { TurnAcceptance } from "./turn-acceptance.ts";
 import { TurnBoundary } from "./turn-boundary.ts";
-import { TurnGate } from "./turn-gate.ts";
 import {
   defaultAcceptanceSignal,
   defaultBoundarySignal,
@@ -53,11 +53,6 @@ export type {
 } from "./turn-types.ts";
 export { defaultAcceptanceSignal, defaultBoundarySignal } from "./turn-types.ts";
 
-/** Quiet window (ms) after `ready` for a no-oracle turn to settle once content stops. */
-const FALLBACK_QUIET_MS = 2_000;
-/** Cap (ms) on the POST-`ready` transcript catch-up: a stalled flush bails, not hangs. */
-const CATCH_UP_MS = 10_000;
-
 /**
  * Start a turn: attach listeners, submit the prompt, and drive the gate to the turn's real
  * boundary. Returns the consumer `events` generator, an always-resolving `completion` signal,
@@ -69,13 +64,7 @@ export function runTurn(
   prompt: string,
   options: StreamTurnOptions = {},
 ): RunningTurn {
-  const catchUpMs = options.catchUpMs ?? CATCH_UP_MS;
-  const gate = new TurnGate(
-    options.fallbackQuietMs ?? FALLBACK_QUIET_MS,
-    catchUpMs,
-    options.maxPendingEvents,
-    options.maxPendingBytes,
-  );
+  const gate = gateForTurn(options);
   const sendOptions = options.images === undefined ? undefined : { images: options.images };
   const send = () => session.sendMessage(prompt, sendOptions);
   const acceptance = new TurnAcceptance(options.fallbackQuietMs ?? FALLBACK_QUIET_MS, {
@@ -171,13 +160,7 @@ export function runTurn(
       maybeCleanup();
       return;
     }
-    if (options.timeoutMs !== undefined) {
-      timer = setTimeout(
-        () => gate.fail(elwoodError("wait_timeout", "turn timed out")),
-        options.timeoutMs,
-      );
-      timer.unref?.(); // a pending ceiling must not keep the host alive by itself
-    }
+    timer = armTurnTimeout(options.timeoutMs, (error) => gate.fail(error));
     try {
       await gate.done(); // resolves on genuine settle (→ boundary); rejects on consumer failure
     } catch {
