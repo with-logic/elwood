@@ -1,9 +1,7 @@
-/** Real production cursor/PTY trust recovery with queued input (C-E2E-09, C-TRUST-01). */
+/** Real production cursor/PTY trust recovery with queued input (C-TRUST-01). */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { liveCodexClearance } from "../../src/codex/screen/live-clearance.ts";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
-import { settledCursorVisible } from "../../src/terminal/cursor.ts";
 import {
   cleanup,
   codexAuthMissing,
@@ -11,11 +9,12 @@ import {
   sandboxedCodexHome,
   skipIf,
   skipReason,
+  skipTurns,
   waitFor,
 } from "./helpers.ts";
 
-test("C-E2E-09 production Codex holds queued input through human trust and native cursor clearance", {
-  skip: skipIf(skipReason("codex"), codexAuthMissing()),
+test("C-TRUST-01 production Codex holds queued input through human trust and native cursor clearance", {
+  skip: skipIf(skipReason("codex"), codexAuthMissing(), skipTurns),
   timeout: 90_000,
 }, async (t) => {
   const project = makeProject("codex");
@@ -26,7 +25,9 @@ test("C-E2E-09 production Codex holds queued input through human trust and nativ
     sandbox.dispose();
   });
   let submitted = 0;
-  let sawNativeClearance = false;
+  const order: string[] = [];
+  let cursorVisible = false;
+  let observedTrust = false;
   session = await startCodex({
     cwd: project.cwd,
     stateDir: project.stateDir,
@@ -37,13 +38,34 @@ test("C-E2E-09 production Codex holds queued input through human trust and nativ
     hooks: {
       UserPromptSubmit: () => {
         submitted++;
+        order.push("submit");
       },
     },
   });
   const active = session;
-  const clear = liveCodexClearance(() => active.terminal);
-  active.on("terminal:data", () => {
-    sawNativeClearance ||= clear(active.terminal.snapshot().text);
+  // Independent native observation: raw DEC25 mode plus the actual input row.
+  active.on("terminal:data", ({ data }) => {
+    for (const part of data.split("\u001b")) {
+      const mode = /^\[\?25([hl])/.exec(part);
+      if (mode) cursorVisible = mode[1] === "h";
+    }
+    const frame = active.terminal.snapshot();
+    if (/Do you trust the contents of this directory\?/.test(frame.text)) {
+      observedTrust = true;
+      order.length = 0;
+    }
+    const buffer = active.terminal.xterm.buffer.active;
+    const row = frame.cursorY + buffer.baseY - buffer.viewportY;
+    if (
+      observedTrust &&
+      cursorVisible &&
+      frame.cursorX === 2 &&
+      /^› (?:Ask|Write|Implement|Find|Summarize|Explain|Improve|Run|Use|Type|Describe|Review|What)/.test(
+        frame.lines[row] ?? "",
+      ) &&
+      !/Do you trust|Yes, continue/.test(frame.text)
+    )
+      order.push("native-clear");
   });
   let sent = false;
   const pending = active
@@ -64,10 +86,10 @@ test("C-E2E-09 production Codex holds queued input through human trust and nativ
     25_000,
   );
   await active.terminal.settled();
-  assert.equal(settledCursorVisible(active.terminal.xterm), false);
+  assert.equal(cursorVisible, false);
   assert.equal(sent, false);
   assert.equal(submitted, 0);
-  assert.equal(clear(active.terminal.snapshot().text), false);
+  assert.equal(order.length, 0);
   await active.sendKeys("1\r");
   await waitFor(
     () => (submitted === 1 ? true : undefined),
@@ -75,7 +97,8 @@ test("C-E2E-09 production Codex holds queued input through human trust and nativ
     45_000,
   );
   await pending;
-  assert.equal(sawNativeClearance, true);
+  assert.equal(order[0], "native-clear");
+  assert.ok(order.indexOf("native-clear") < order.indexOf("submit"));
   assert.equal(submitted, 1);
   t.diagnostic(
     "Real startCodex, isolated config, human directory trust, native cursor, one benign queued submission.",

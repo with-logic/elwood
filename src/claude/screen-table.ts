@@ -7,6 +7,8 @@
 import type { ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
 import { nativeComposerClearance, type TrustClearance } from "../core/trust/clearance.ts";
+import { currentRenderedFrame } from "../terminal/cursor.ts";
+import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
 
 /** The idle Claude composer row; also the caret that is NOT a dialog caret. */
@@ -27,6 +29,12 @@ export const claudeTrustClearance: TrustClearance = nativeComposerClearance(
       )) &&
     /(?:^|\n)[─━]{3,}\s*\n❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*\n[─━]{3,}/.test(frame),
 );
+
+/** A per-batch composer cannot release trust until every received byte has rendered. */
+export function liveClaudeClearance(readTerminal: () => ElwoodTerminal): TrustClearance {
+  return (text) =>
+    currentRenderedFrame(readTerminal())?.text === text && claudeTrustClearance(text);
+}
 
 /**
  * Verified through claude 2.1.258 (see `verifiedAgainst`). The footer renders

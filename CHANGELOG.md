@@ -13,7 +13,9 @@ back each entry are listed in `prd/14-conformance.md`.
 ## [Unreleased]
 
 - Keep human-owned trust gates blocked through partial and unknown replacement
-  frames. Queued caller input resumes only after positive native clearance.
+  frames. Queued caller input resumes only after positive native clearance. Both
+  adapters withhold trust retries and human clearance while received output is
+  still rendering or the terminal has reported a render failure.
 
 - Recognize Codex's native composer beneath numbered transcript output and with
   its older model footer. A newly painted bare caret cannot borrow an earlier

@@ -13,6 +13,7 @@ import {
 } from "../core/startup/barrier.ts";
 import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/startup/write.ts";
 import { trustGateVisible } from "../core/trust/blocking.ts";
+import type { TrustClearance } from "../core/trust/clearance.ts";
 import { TrustPromptResponder, type TrustWriteResult } from "../core/trust/responder.ts";
 import { claudeTrustClearance } from "./screen-table.ts";
 
@@ -23,8 +24,12 @@ export class ClaudeStartupPromptResponder {
   private readonly trust: TrustPromptResponder<"claude">;
   private browserDeclined = false;
 
-  constructor(autotrust: boolean, onStateChange?: () => void) {
-    this.trust = new TrustPromptResponder("claude", claudeTrustClearance, autotrust, onStateChange);
+  constructor(
+    autotrust: boolean,
+    onStateChange?: () => void,
+    clearance: TrustClearance = claudeTrustClearance,
+  ) {
+    this.trust = new TrustPromptResponder("claude", clearance, autotrust, onStateChange);
   }
 
   get blockedPrompt() {
@@ -52,9 +57,10 @@ export class ClaudeStartupPromptResponder {
     write: (input: string) => TrustWriteResult,
     readFrame?: () => string,
     writeAutomation: (input: string) => TrustWriteResult | Promise<AutomationWriteResult> = write,
+    readTrustFrame?: () => string | undefined,
   ): readonly SettledStartupOutcome<"claude">[] {
     const settled: SettledStartupOutcome<"claude">[] = [];
-    const trust = this.trust.handle(screenText, write, readFrame);
+    const trust = this.trust.handle(screenText, write, readTrustFrame ?? readFrame);
     if (trust?.kind === "attempted") {
       settled.push({ outcome: { kind: "attempted", ...trust.automation }, settled: trust.settled });
     } else if (trust?.kind === "option_pending") {

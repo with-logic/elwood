@@ -15,8 +15,10 @@ import { cleanupStartupResources, guardStartupRegion } from "../../runtime/start
 import { secureMkdir } from "../../state/files.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, writeSessionRecord } from "../../state/store.ts";
+import { currentRenderedFrame, renderedSnapshot } from "../../terminal/cursor.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
 import { type ClaudePreflightWarning, preflightEvent } from "../preflight.ts";
+import { liveClaudeClearance } from "../screen-table.ts";
 import { ClaudeStartupPromptResponder, guardedClaudeAutomationWrite } from "../startup-prompts.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
 import { currentClaudeHookBridgeFactory } from "./bridge.ts";
@@ -51,10 +53,7 @@ export async function buildClaudeSession(
   const emitter = new TypedEmitter<ClaudeEventMap>();
   registerInitialHooks(emitter, options.hooks);
   let session: ClaudeSessionImpl | undefined;
-  // ALL startup-region warnings — startup-prompt (frame path) AND transcript
-  // drop/read-error diagnostics — route through ONE gate that buffers anything emitted
-  // before startClaude resolves and flushes it on a deferred macrotask after return,
-  // so every source stays observable without late-subscriber replay (C-API-14).
+  // Buffer every startup warning until subscribers can observe it (C-API-14).
   const warnGate = createStartupWarningGate({
     emitWarnings: (w) => deliverFrameWarnings(session, w),
   });
@@ -124,20 +123,23 @@ export async function buildClaudeSession(
     () => promptResponder,
     readiness,
   );
-  const promptResponder = new ClaudeStartupPromptResponder(autotrust, frameObserver.refresh);
+  const promptResponder = new ClaudeStartupPromptResponder(
+    autotrust,
+    frameObserver.refresh,
+    liveClaudeClearance(() => terminal),
+  );
   let latestRenderedText = "";
   const terminal = attachPtyTerminal(startupSize, pty, (data, renderedTerminal) => {
     startupOutput.push(data);
     terminalReplay.push(data);
-    latestRenderedText = renderedTerminal.snapshot().text;
+    latestRenderedText = renderedSnapshot(renderedTerminal).text;
     const frame = { text: latestRenderedText, title: renderedTerminal.title };
-    // The write RETURNS its `sendInput` completion (no longer swallowed): the
-    // responder settles the prompt and its `startup_prompt` activity only after
-    // the write fulfills, and a rejected write stays retryable + warns (C-CLAUDE-16).
+    // Trust automation settles only after sendInput completes (C-CLAUDE-16).
     const send = (input: string) => renderedTerminal.sendInput(input);
     const read = () => latestRenderedText;
     const guarded = guardedClaudeAutomationWrite(renderedTerminal, send, read);
-    const autos = promptResponder.handle(frame.text, send, read, guarded);
+    const trustRead = () => currentRenderedFrame(renderedTerminal)?.text;
+    const autos = promptResponder.handle(frame.text, send, read, guarded, trustRead);
     // Warning delivery is CONTAINED on the frame path: a throwing `warning`/`activity`
     // listener must never skip readiness, login detection, or terminal:data (§5.7).
     emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {

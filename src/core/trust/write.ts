@@ -28,7 +28,7 @@ export class TrustAttempt {
 
   start(
     write: (input: string) => TrustWriteResult,
-    read: (() => TrustView) | undefined,
+    read: (() => TrustView | undefined) | undefined,
     deadlineAtMs: number,
   ): Promise<StartupWriteCompletion> {
     const operation = read === undefined ? this.atomic(write) : this.run(write, read, deadlineAtMs);
@@ -65,13 +65,21 @@ export class TrustAttempt {
 
   private async run(
     write: (input: string) => TrustWriteResult,
-    read: () => TrustView,
+    read: () => TrustView | undefined,
     deadlineAtMs: number,
   ): Promise<StartupWriteCompletion> {
     let retryAt = 0;
     let previousOffset: number | undefined;
     while (!this.controller.signal.aborted && Date.now() < deadlineAtMs) {
-      const option = this.readChoice(read());
+      const view = read();
+      if (view === undefined) {
+        // Received output has no current rendered frame yet. Keep the bounded
+        // attempt alive without treating unavailable evidence as a legacy reader.
+        if (!(await this.pause(Math.min(observationMs, deadlineAtMs - Date.now()))))
+          return this.completion();
+        continue;
+      }
+      const option = this.readChoice(view);
       if (typeof option === "string") return option;
       const step = trustStep(option);
       if (Date.now() >= retryAt || step.offset !== previousOffset) {

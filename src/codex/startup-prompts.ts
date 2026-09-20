@@ -82,12 +82,13 @@ export class CodexStartupPromptResponder {
     write: (input: string) => TrustWriteResult,
     readFrame?: () => string,
     writeAutomation: (input: string) => TrustWriteResult | Promise<AutomationWriteResult> = write,
+    readTrustFrame?: () => string | undefined,
   ): CodexStartupPromptResult {
     const outcomes: SettledCodexStartupOutcome[] = [];
     this.buffer = `${this.buffer}\n${screenText}`.slice(-maxBufferLength);
     // Trust prompts are matched against the CURRENT frame only: a stale phrase in
     // the accumulated buffer must never pair with a different dialog's answer.
-    const trust = this.trust.handle(screenText, write, readFrame);
+    const trust = this.trust.handle(screenText, write, readTrustFrame ?? readFrame);
     if (trust?.kind === "attempted") {
       outcomes.push({
         outcome: { kind: "attempted", ...trust.automation },
