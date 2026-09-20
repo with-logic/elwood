@@ -1,24 +1,24 @@
-/** Published approvals survive later races and API failures (PRD §16). */
+/** Published approvals do not trigger post-publication revalidation (PRD §16). */
 import assert from "node:assert/strict";
 import test from "node:test";
 import { post } from "../post.mjs";
 import { fixture, report } from "./github-fixture.mjs";
 
-for (const change of ["head", "base", "permission", "api failure"]) {
-  test(`C-REVIEW-04 published approval survives a subsequent ${change} change`, async (t) => {
+for (const scenario of ["head", "base", "permission", "failing reread"]) {
+  test(`C-REVIEW-04 published approval skips post-publication revalidation (${scenario})`, async (t) => {
     const f = fixture();
     const reportPath = await report(t);
     const dismissed = [];
     let reads = 0;
     f.github.rest.pulls.get = () => {
       reads += 1;
-      if (reads > 1 && change === "api failure") throw new Error("GitHub unavailable");
+      if (reads > 1 && scenario === "failing reread") throw new Error("GitHub unavailable");
       return { data: f.pr };
     };
     f.github.rest.pulls.createReview = (review) => {
       f.posted.push(review);
-      if (change === "head" || change === "base") f.pr[change].sha = "new";
-      if (change === "permission") f.state.permission = "read";
+      if (scenario === "head" || scenario === "base") f.pr[scenario].sha = "new";
+      if (scenario === "permission") f.state.permission = "read";
       return { data: { id: 123 } };
     };
     f.github.rest.pulls.dismissReview = (request) => dismissed.push(request);
