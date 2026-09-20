@@ -1,7 +1,7 @@
 /** Incomplete composer redraws cannot release an attention hold (C-ATTN-02, C-API-28). */
 import { afterEach, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
-import { claudeComposer, tty } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -40,7 +40,7 @@ test.each([
     expect(session.status).toBe(heldStatus);
     expect(statuses).not.toContain("ready");
     expect(ptys[0]!.writes).toEqual([]);
-    await paint(tty(claudeComposer));
+    await paint(claudeTty(claudeComposer));
     await queued;
     expect(ptys[0]!.writes).toEqual(["\u001b[200~after complete idle\u001b[201~", "\r"]);
   } finally {

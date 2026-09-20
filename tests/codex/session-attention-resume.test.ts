@@ -1,7 +1,7 @@
 /** Working attention clearance must preserve the resumed turn's end edge (C-ATTN-02). */
 import { afterEach, expect, test } from "vitest";
 import { resumeCodex, startCodex } from "../../src/index.ts";
-import { codexComposer, tty } from "../fixtures/trust-composer.ts";
+import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -45,7 +45,7 @@ test.each([
     await session.terminal.settled();
     expect(session.status).toBe("running");
     expect(ptys[1]!.writes).toEqual([]);
-    ptys[1]!.emitData(frame(tty(codexComposer)));
+    ptys[1]!.emitData(frame(codexTty(codexComposer)));
     await session.terminal.settled();
     await expect.poll(() => ptys[1]!.writes.join("")).toContain("after resumed work");
     await queued;

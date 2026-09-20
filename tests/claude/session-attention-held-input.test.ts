@@ -1,7 +1,7 @@
 /** Held submission and startup readiness never release a busy turn (C-ATTN-02, PRD §5.3). */
 import { afterEach, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
-import { claudeComposer, tty } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -33,7 +33,7 @@ test("C-ATTN-02 a prompt held by a dialog reports running when its Enter finally
     void followup.catch(() => undefined);
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(ptys[0]!.writes).toEqual([]);
-    ptys[0]!.emitData(frame(tty(claudeComposer)));
+    ptys[0]!.emitData(frame(claudeTty(claudeComposer)));
     await session.terminal.settled();
     await prompt;
     await new Promise<void>((resolve) => setImmediate(resolve));
@@ -41,7 +41,7 @@ test("C-ATTN-02 a prompt held by a dialog reports running when its Enter finally
     expect(ptys[0]!.writes).toEqual([paste("held first prompt"), "\r"]);
     ptys[0]!.emitData(frame(working));
     await session.terminal.settled();
-    ptys[0]!.emitData(frame(tty(claudeComposer)));
+    ptys[0]!.emitData(frame(claudeTty(claudeComposer)));
     await session.terminal.settled();
     await followup;
     expect(ptys[0]!.writes).toEqual([
@@ -86,7 +86,7 @@ test("C-ATTN-02 deferred initial readiness waits through working clearance", asy
     expect(session.status).toBe("running");
     expect(statuses).toEqual(["running"]);
     expect(ptys[0]!.writes).toEqual([]);
-    ptys[0]!.emitData(frame(tty(claudeComposer)));
+    ptys[0]!.emitData(frame(claudeTty(claudeComposer)));
     await session.terminal.settled();
     await followup;
     expect(ptys[0]!.writes).toEqual([paste("after active work"), "\r"]);

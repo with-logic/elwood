@@ -17,7 +17,7 @@ vi.mock("../../src/codex/images/attach.ts", () => ({
 }));
 const { startCodex } = await import("../../src/index.ts");
 
-import { codexComposer, codexTrust } from "../fixtures/trust-composer.ts";
+import { codexComposer, codexTrust, codexTty } from "../fixtures/trust-composer.ts";
 import { trustRecoveryTests } from "../helpers/trust-recovery.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -36,4 +36,5 @@ trustRecoveryTests({
   cursor: `${codexTrust}\n❯ No, quit\n  Yes, continue`,
   attachGuard: () => attachGuard,
   clear: codexComposer,
+  renderClear: codexTty,
 });

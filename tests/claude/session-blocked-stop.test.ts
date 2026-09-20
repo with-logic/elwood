@@ -1,7 +1,7 @@
 /** Claude Stop preserves a visible permission prompt until clearance (C-ATTN-01/02). */
 import { afterEach, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
-import { claudeComposer, tty } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -33,7 +33,7 @@ test("C-ATTN-02 Claude Stop and the same permission repaint stay blocked until c
     expect(session.status).toBe("blocked");
     expect(attention).toEqual(["claude-permission-dialog"]);
     expect(ptys[0]!.writes).toEqual(before);
-    ptys[0]!.emitData(`\u001b[2J\u001b[H${tty(claudeComposer)}`);
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
     await session.terminal.settled();
     expect(session.status).toBe("ready");
     expect(attention).toEqual(["claude-permission-dialog"]);

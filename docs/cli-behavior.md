@@ -290,9 +290,85 @@ adapter's other verified screen facts — `claudeTrustClearance` in
 `src/claude/screen-table.ts`, `codexTrustClearance` in `src/codex/screen-table.ts` —
 and is injected into the shared coordinator (`TrustPromptResponder`/`trustView`).
 When a CLI's banner, status row, or composer placeholder changes, update that adapter's
-predicate and nothing else. Only the agent-neutral rule stays in
-`src/core/trust/clearance.ts`: a numbered option row, or a caret row that is not the
-composer row, means a dialog is up and the frame is never clearance.
+predicate. Codex's text grammar lives in `src/codex/screen/clearance.ts` and checks
+known placeholders plus a native model footer or complete welcome box. Text-only
+callers conservatively reject approval-like rows; the live session additionally
+uses the actual visible input cursor to identify the composer, so transcript
+caret/numbered rows above that input remain legitimate history. Dialogs hide the
+cursor or leave it outside the composer. A bare caret never proves clearance.
+During partial painting, a native column-zero approval header still overrides a
+cursor left visible on an older composer. The live path keeps this native-header
+veto; indented quotations and caret-prefixed user prompts are transcript instead.
+Native working rows and the live OSC working title retain the hold; prose that
+merely quotes `esc to interrupt` is not a native working row. The title, cursor,
+and text are read synchronously from the same completed render, including during
+trust-attempt polling. Raw PTY receipt invalidates the proof before batching.
+Both adapters now apply the same received/rendered boundary to human trust
+clearance and every retry read. A render failure permanently invalidates that
+terminal view; an unavailable view withholds automation within its existing
+deadline. This guards bytes already received, not future output the CLI has yet
+to send. A completed snapshot is reused until its render or viewport changes.
+That includes an oversized receipt's staged tail: completion of its first 64-KiB
+batch alone is not a complete render. The native working row includes elapsed
+time before the interrupt hint (seconds, minutes/seconds, or hours/minutes/seconds),
+as rendered by [Codex 0.142.5's status widget](https://github.com/openai/codex/blob/rust-v0.142.5/codex-rs/tui/src/status_indicator_widget.rs).
+Parenthesized transcript prose without that native status grammar is not work.
+An exact-shaped quotation such as `• Thinking (3s • esc to interrupt)` is ambiguous
+and retains the hold. A real Codex 0.155.1 rejected-model probe showed a visible
+column-two input cursor throughout native working frames; typing remains possible
+while a turn runs. The title spinner is configurable, and status location varies
+with preview rows, so neither missing title animation nor editable input disproves
+that exact native status. We do not promise to distinguish identical transcript
+and status rows from text/cursor evidence alone.
+Real 0.142.5 and 0.155.1 trust/model dialog captures start DEC2026 before painting,
+then hide the cursor with DEC25l before ending DEC2026. A 0.155.1 command approval
+under `read-only`/`on-request` uses the same ordering: its selected Yes row ends
+with the cursor hidden, not left visible on an old composer. Replaying all 1,078
+character prefixes of that actual approval paint retains the hold; Escape restores
+the visible composer afterward. The raw capture is preserved in
+`tests/fixtures/codex-command-approval-render.ts`. These observations apply to the
+captured versions and dialog types; a new CLI renderer needs new verification.
+Those native partial frames cannot combine settled rendering with a stale visible
+composer cursor. Captured protocol regressions preserve this guard without
+blacklisting transcript text.
+The Claude predicate uses `src/core/trust/clearance.ts` for its separate grammar.
+A real Claude 2.1.278 classic-renderer capture hides the cursor during trust and
+restores it at column two on the composer only at the end of its idle paint.
+Unlike the captured Codex renderer, that Claude paint has no DEC2026 envelope.
+Splitting its bytes immediately before the final DEC25h leaves complete-looking
+composer chrome while native cursor restoration is still pending. Live Claude
+clearance therefore also verifies the visible native cursor on its composer row;
+receipt settlement alone cannot identify that native paint boundary.
+The same Claude 2.1.278 capture hides its cursor with DEC25l before repainting
+its model menu. After that complete control, all 1,241 remaining character prefixes
+retain the live hold, including prefixes where old composer chrome still passes the
+text-only grammar. `tests/fixtures/claude-model-dialog-render.ts` preserves that
+menu repaint without user paths or conversation content, and
+`tests/unit/claude-model-dialog-render.test.ts` replays every prefix. This evidence
+covers the captured model dialog; it does not establish behavior for arbitrary
+replacement prompts or future Claude renderers.
+
+Claude 2.1.278 can paint the complete folder-trust dialog before accepting keyboard
+navigation. In the real human-trust test, immediate Down/Enter writes left the
+selection on "No, exit". Waiting for the selected "Yes, I trust this folder" repaint
+before Enter cleared the dialog. The test records physical PTY writes and confirms
+that queued caller input follows native cursor clearance; it does not require a
+model response or available turn quota.
+
+`tests/e2e/codex-live-clearance.e2e.ts` also exercises production `startCodex`
+with a fresh isolated configuration: queued input stays held at the human-owned
+directory gate, then one benign prompt reaches `UserPromptSubmit` after manual
+trust and visible native cursor clearance. Verified against installed Codex
+0.155.1; the test cleans up the real session rather than waiting for model output.
+
+A startup-only real PTY probe of Codex 0.142.5 on 2026-09-19 confirmed the
+model-only `gpt-5.5 high` footer with `tui.status_line = ["model-with-reasoning"]`.
+Its placeholder is randomized: observed `Use /skills to list available skills`,
+`Find and fix a bug in @filename`, and `Implement {feature}` across launches.
+The predicate recognizes the eight fixed placeholders in the version-tagged upstream
+`chatwidget.rs` as well as the captured 0.154.0 default. It still requires native
+footer or welcome-box evidence. The sanitized 100×30 capture and provenance are
+in `tests/fixtures/codex-0.142.5/`; no model prompt was submitted.
 
 ### Native regions and live confirmation
 
@@ -723,3 +799,16 @@ side-effect-free signal. C-CLI-21 through C-CLI-24.
 - Per the testing pyramid in `CLAUDE.md`: anything that interfaces with the real
   CLI SHOULD have a real-CLI e2e. Every fact in this file is one a unit test could
   not have caught.
+
+
+### Cursor provenance for Codex trust clearance
+
+Startup-only probes on 2026-09-19 checked Codex 0.142.5 and 0.155.1 at 100×30,
+without submitting a model prompt. Both hide the cursor with DEC private mode 25
+on the directory-trust and `/model` dialogs, leaving its coordinates on a footer.
+Both show the cursor at column 2 on the native placeholder row after trust and
+after dismissing the picker. Codex 0.155.1 retains this evidence at 100×6.
+The 0.142.5 narrow resize leaves malformed chrome, so that frame is not used as a
+positive fixture. Inspect cursor mode and coordinates together with the same
+completed rendered text and title: an old composer or footer can remain during a
+dialog repaint, and a transcript can contain identical caret/option text.

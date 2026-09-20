@@ -1,7 +1,7 @@
 /** Every readiness source respects a deferred startup attention hold (C-API-28). */
 import { afterEach, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
-import { claudeComposer, tty } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -47,7 +47,7 @@ test.each([
     expect(session.status).toBe("running");
     expect(statuses).not.toContain("ready");
     expect(ptys[0]!.writes).toEqual([]);
-    await paint(tty(claudeComposer));
+    await paint(claudeTty(claudeComposer));
     await queued;
     expect(statuses.filter((status) => status === "ready")).toHaveLength(1);
     expect(ptys[0]!.writes).toEqual(["\u001b[200~after verified idle\u001b[201~", "\r"]);
@@ -76,7 +76,7 @@ test("C-API-28 a deferred initial dialog can clear directly to verified idle", a
       cwd,
     });
     expect(session.status).toBe("blocked");
-    ptys[0]!.emitData(frame(tty(claudeComposer)));
+    ptys[0]!.emitData(frame(claudeTty(claudeComposer)));
     await session.terminal.settled();
     expect(session.status).toBe("ready");
     await session.sendMessage("after direct idle");

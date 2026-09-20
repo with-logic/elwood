@@ -35,7 +35,7 @@ export abstract class SessionLifecycle {
   protected everReady = false;
   private initialReadinessHeld: (() => boolean) | undefined;
   inputBlocking = false;
-  automationBlocking = false;
+  trustInputBlocking = false;
   readonly closing = closingController(() => this.controlQueue.close());
   private readonly agent: ElwoodAgentKind;
   private readonly runtime: SessionRuntime;
@@ -141,7 +141,7 @@ export abstract class SessionLifecycle {
     return (
       this.closing.signal.aborted ||
       this.inputBlocking ||
-      this.automationBlocking ||
+      this.trustInputBlocking ||
       this.status === "blocked"
     );
   }
@@ -150,7 +150,7 @@ export abstract class SessionLifecycle {
   }
   submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
     const held =
-      this.automationBlocking ||
+      this.trustInputBlocking ||
       this.closing.signal.aborted ||
       (!this.everReady && this.initialReadinessHeld?.() === true);
     return this.statusEngine.submit(kind, { inputBlocked: held, workingVisible });

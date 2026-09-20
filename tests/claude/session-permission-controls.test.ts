@@ -4,7 +4,7 @@ import { claudeScreenFactTable } from "../../src/claude/screen-table.ts";
 import { readScreenFacts } from "../../src/core/screen-facts.ts";
 import { startClaude } from "../../src/index.ts";
 import { createReadinessGate } from "../../src/runtime/session/readiness.ts";
-import { claudeComposer, tty } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -42,7 +42,7 @@ test.each([
       : session.setModel("haiku", { timeoutMs: 100 });
   await expect(result).rejects.toMatchObject({ code: "model_automation_failed" });
   expect(pty.writes).toEqual([]);
-  pty.emitData(`\u001b[2J\u001b[H${tty(claudeComposer)}`);
+  pty.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
   await new Promise((resolve) => setTimeout(resolve, 200));
   expect(pty.writes).toEqual([]);
   await session.stop();

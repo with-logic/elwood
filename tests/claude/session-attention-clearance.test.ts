@@ -1,7 +1,7 @@
 /** Working dialog clearance keeps physical queued input suspended (C-ATTN-02). */
 import { afterEach, expect, test } from "vitest";
 import { startClaude } from "../../src/index.ts";
-import { claudeComposer, tty } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -55,7 +55,7 @@ test.each([
     expect(ptys[0]!.writes).toEqual(before);
     expect(session.status).toBe("running");
     expect(statuses).toEqual(["running"]);
-    ptys[0]!.emitData(frame(tty(claudeComposer)));
+    ptys[0]!.emitData(frame(claudeTty(claudeComposer)));
     await session.terminal.settled();
     await queued;
     expect(statuses).toEqual(["running", "ready", "running"]);

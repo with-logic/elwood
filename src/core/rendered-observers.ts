@@ -48,7 +48,7 @@ export function observeRenderedFrame(
   return reading;
 }
 
-/** Include an expired trust episode as an ordinary blocking fact (C-TRUST-01). */
+/** Include a retained trust hold as an ordinary blocking fact (C-TRUST-01). */
 export function readRenderedFrame(
   observers: RenderedObservers,
   frame: RenderedFrame,
@@ -57,19 +57,20 @@ export function readRenderedFrame(
   // Classify the frame once; turn and attention watchers share the reading, and the
   // reading is returned so the caller can drive resume-readiness off the same facts.
   const reading = readScreenFacts(observers.table, frame);
-  return trustBlock === undefined
-    ? reading
-    : {
-        facts: { ...reading.facts, blocking_prompt_visible: true },
-        matched: [
-          ...reading.matched,
-          {
-            id: `${observers.agent}-${trustBlock}-prompt`,
-            fact: "blocking_prompt_visible" as const,
-            region: "screen" as const,
-          },
-        ],
-      };
+  if (trustBlock === undefined) return reading;
+  const id = `${observers.agent}-${trustBlock}-prompt`;
+  if (reading.matched.some((match) => match.id === id)) return reading;
+  return {
+    facts: { ...reading.facts, blocking_prompt_visible: true },
+    matched: [
+      ...reading.matched,
+      {
+        id,
+        fact: "blocking_prompt_visible" as const,
+        region: "screen" as const,
+      },
+    ],
+  };
 }
 
 /** Apply one classified reading after the caller has latched its input guards. */

@@ -33,6 +33,11 @@ export class PtyOutput {
     this.flow = flow;
   }
 
+  /** Received bytes that have not yet been handed to the ordered render queue. */
+  get hasStagedOutput(): boolean {
+    return this.bufferedBytes > 0;
+  }
+
   push(data: string): void {
     if (this.disposed) return;
     for (let start = 0; start < data.length; ) {

@@ -7,7 +7,7 @@
 export {
   isRecord,
   optionalBoolean,
-  optionalNumber,
+  optionalFiniteNumber,
   optionalString,
   optionalStringArray,
 } from "../../core/predicates.ts";

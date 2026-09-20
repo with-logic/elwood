@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import type { ClaudeSessionImpl } from "../../src/claude/session/instance.ts";
 import { startClaude } from "../../src/index.ts";
-import { claudeComposer, tty } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -152,7 +152,7 @@ describe("ClaudeSessionApi terminal-state edges", () => {
     );
     await expect.poll(() => session.status).toBe("blocked");
     expect(attention).toEqual(["claude-permission-dialog"]);
-    ptys[0]!.emitData(`\u001b[2J\u001b[H${tty(claudeComposer)}`);
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
     await expect.poll(() => session.status).toBe("ready");
   });
 

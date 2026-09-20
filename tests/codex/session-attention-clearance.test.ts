@@ -1,7 +1,7 @@
 /** Working dialog clearance keeps physical queued input suspended (C-ATTN-02). */
 import { afterEach, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
-import { codexComposer, tty } from "../fixtures/trust-composer.ts";
+import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -52,7 +52,7 @@ test.each([
     expect(ptys[0]!.writes).toEqual(before);
     expect(session.status).toBe("running");
     expect(statuses).toEqual(["running"]);
-    ptys[0]!.emitData(frame(tty(codexComposer)));
+    ptys[0]!.emitData(frame(codexTty(codexComposer)));
     await session.terminal.settled();
     await queued;
     expect(statuses).toEqual(["running", "ready", "running"]);

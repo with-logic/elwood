@@ -13,7 +13,7 @@ import type { ReadinessGate } from "./readiness.ts";
 
 type FrameSession = Pick<
   SessionLifecycle,
-  "closing" | "inputBlocking" | "automationBlocking" | "submitEvidence" | "status"
+  "closing" | "inputBlocking" | "trustInputBlocking" | "submitEvidence" | "status"
 >;
 
 type TrustState = {
@@ -38,7 +38,7 @@ export function createSessionFrameObserver(
     if (
       pendingAutomationClearance &&
       active.status === "blocked" &&
-      !active.automationBlocking &&
+      !active.trustInputBlocking &&
       !active.inputBlocking &&
       (facts.working_visible || facts.composer_visible)
     ) {
@@ -56,8 +56,8 @@ export function createSessionFrameObserver(
       frame.text,
       state.inputBlocking,
     );
-    const released = active.automationBlocking && !state.inputBlocking;
-    active.automationBlocking = state.inputBlocking;
+    const released = active.trustInputBlocking && !state.inputBlocking;
+    active.trustInputBlocking = state.inputBlocking;
     active.inputBlocking =
       reading.facts.blocking_prompt_visible ||
       (active.inputBlocking && !reading.facts.working_visible && !reading.facts.composer_visible);
@@ -65,7 +65,7 @@ export function createSessionFrameObserver(
     if (currentRuleIds.length > 0 || !active.inputBlocking) ruleIds = currentRuleIds;
     if (released && active.status === "blocked") pendingAutomationClearance = true;
     // Publish this frame's hold before evidence listeners can submit readiness.
-    readiness.observeFrameHold(reading.facts, active.automationBlocking);
+    readiness.observeFrameHold(reading.facts, active.trustInputBlocking);
     readiness.ready.armDeadline();
     try {
       observeRenderedReading(observers, reading, active);
@@ -73,7 +73,7 @@ export function createSessionFrameObserver(
       // positive frame shows either resumed work or an idle composer.
       replayAutomationClearance(active, reading.facts);
     } finally {
-      readiness.observeReadinessFrame(reading.facts, active.automationBlocking);
+      readiness.observeReadinessFrame(reading.facts, active.trustInputBlocking);
     }
   };
   return {

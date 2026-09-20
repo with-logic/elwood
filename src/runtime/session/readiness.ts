@@ -18,20 +18,20 @@ import {
 export type ReadinessGate = {
   readonly ready: InitialReady;
   readonly isHeld: () => boolean;
-  readonly observeFrameHold: (facts: ComposerReadyFacts, automationBlocking?: boolean) => void;
+  readonly observeFrameHold: (facts: ComposerReadyFacts, trustInputBlocking?: boolean) => void;
   /** Per rendered frame: update the blocking gate, reconcile a deferred mark, and
    * (on resume) mark readiness on the first quiet, non-blocking composer. */
-  readonly observeReadinessFrame: (facts: ComposerReadyFacts, automationBlocking?: boolean) => void;
+  readonly observeReadinessFrame: (facts: ComposerReadyFacts, trustInputBlocking?: boolean) => void;
 };
 
 export function createReadinessGate(onReady: () => void, resumed: boolean): ReadinessGate {
   let readinessHeld = false;
-  const observeFrameHold = (facts: ComposerReadyFacts, automationBlocking = false) => {
+  const observeFrameHold = (facts: ComposerReadyFacts, trustInputBlocking = false) => {
     // A dialog's deferred mark waits for idle; ordinary cold-start work still
     // retains the existing hook/deadline path instead of waiting on itself.
     readinessHeld =
       facts.blocking_prompt_visible ||
-      automationBlocking ||
+      trustInputBlocking ||
       (readinessHeld && (facts.working_visible === true || !facts.composer_visible));
   };
   const ready = initialReady(onReady, undefined, () => readinessHeld);
@@ -39,8 +39,8 @@ export function createReadinessGate(onReady: () => void, resumed: boolean): Read
     ready,
     isHeld: () => readinessHeld,
     observeFrameHold,
-    observeReadinessFrame: (facts, automationBlocking = false) => {
-      observeFrameHold(facts, automationBlocking);
+    observeReadinessFrame: (facts, trustInputBlocking = false) => {
+      observeFrameHold(facts, trustInputBlocking);
       markReadyOnResumeComposer(ready, resumed, facts, readinessHeld);
       ready.retryWhenReleased(readinessHeld); // reconcile only after an idle clearance frame
     },

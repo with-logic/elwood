@@ -7,13 +7,13 @@ export function createAttentionClearance(isIdleComposer: TrustClearance) {
   return (
     reading: ScreenFactReading,
     text: string,
-    automationBlocking: boolean,
+    trustInputBlocking: boolean,
   ): ScreenFactReading => {
     const { facts } = reading;
-    if (facts.blocking_prompt_visible || automationBlocking) held = true;
+    if (facts.blocking_prompt_visible || trustInputBlocking) held = true;
     if (!(held && facts.composer_visible)) return reading;
     if (!(facts.blocking_prompt_visible || facts.working_visible) && isIdleComposer(text)) {
-      if (!automationBlocking) held = false;
+      if (!trustInputBlocking) held = false;
       return reading;
     }
     return {

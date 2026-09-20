@@ -119,12 +119,22 @@ test("C-TRUST-01 timer observers cannot prevent recovery by throwing", async () 
   expect(responder.inputBlocking).toBe(false);
 });
 
-test("C-TRUST-01 non-owned native gates never acquire automation blocking", () => {
+test("C-TRUST-01 human-owned candidates retain input without automated writes", () => {
   const responder = new TrustPromptResponder("claude", claudeTrustClearance);
-  expect(responder.handle(trust, vi.fn())).toBeUndefined();
+  const write = vi.fn();
+  for (const frame of [trust, unsupported, "Unknown replacement\n❯ Continue"]) {
+    expect(responder.handle(frame, write)).toBeUndefined();
+    expect(responder.inputBlocking).toBe(true);
+    expect(responder.blockedPrompt).toBe("workspace_trust");
+  }
+  expect(write).not.toHaveBeenCalled();
+  responder.handle(claudeComposer, write);
   expect(responder.inputBlocking).toBe(false);
-  expect(responder.handle(unsupported, vi.fn())).toBeUndefined();
+  expect(responder.blockedPrompt).toBeUndefined();
+  responder.handle(trust, write);
+  responder.dispose();
   expect(responder.inputBlocking).toBe(false);
+  expect(responder.blockedPrompt).toBeUndefined();
 });
 
 test("C-TRUST-01 a native successor retains expired blocking until the successor clears", async () => {
