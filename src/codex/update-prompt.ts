@@ -11,7 +11,9 @@ import {
 } from "../core/startup/barrier.ts";
 import type { StartupWriteCompletion } from "../core/startup/write.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
+import type { TrustClearance } from "../core/trust/clearance.ts";
 import type { TrustWriteResult } from "../core/trust/responder.ts";
+import { codexComposerClearance } from "./screen/clearance.ts";
 import { codexUpdatePromptVisible, isSafeUpdateContinuation } from "./update/recognition.ts";
 import { codexUpdateOptionPattern, safeUpdateOption } from "./update/selection.ts";
 import { codexUpdateChoiceIdentity, settledFrameKeepsChoice } from "./update-identity.ts";
@@ -79,18 +81,19 @@ export async function writeCodexUpdateSkip(
   currentUpdateFrame: (frameText: string) => boolean = codexUpdatePromptVisible,
   invalidated: (frameText: string) => boolean = () => false,
   signal?: AbortSignal,
+  clearance: TrustClearance = codexComposerClearance,
 ): Promise<CodexUpdateSkipCompletion> {
   if (readFrame === undefined) {
-    // A guarded writer can still withhold (its own settled-frame checks apply), and a
-    // key nobody sent is not an answer even with no reader to retry from.
-    return (await write(option, currentUpdateFrame)) === "withheld" ? "cancelled" : "answered";
+    // A fulfilled write alone cannot prove the dialog cleared.
+    await write(option, currentUpdateFrame);
+    return "cancelled";
   }
   const deadline = Date.now() + retryTimeoutMs;
   let wrote = false;
   while (Date.now() < deadline) {
     const frame = readFrame();
     if (!currentUpdateFrame(frame)) {
-      const cleared = wrote && !invalidated(frame);
+      const cleared = wrote && clearance(frame) && !invalidated(frame);
       return cleared ? "answered" : "cancelled";
     }
     const safeOption = safeUpdateOption(frame);

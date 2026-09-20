@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Report an automated Codex update skip as answered only after verified native
+  composer clearance; completed writes without a reader or into replaced dialogs
+  settle quietly without false startup success.
+
 - Keep queued Codex input held when an update screen becomes an unknown or partial
   dialog, until its live native composer returns. Specific trust rules retain their
   diagnostic labels; other retained holds report `codex-unidentified-dialog`.

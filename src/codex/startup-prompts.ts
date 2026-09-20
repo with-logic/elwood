@@ -2,7 +2,7 @@
  * Implements PRD §4.4, §5.5, and §5.7. */
 
 import type { AutomationWriteResult } from "../core/startup/barrier.ts";
-import type { SettledStartupOutcome, StartupWriteCompletion } from "../core/startup/write.ts";
+import type { SettledStartupOutcome } from "../core/startup/write.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
 import { trustGateVisible } from "../core/trust/blocking.ts";
 import type { TrustClearance } from "../core/trust/clearance.ts";
@@ -11,7 +11,8 @@ import type { ElwoodWarningEvent } from "../core/types.ts";
 import { codexTrustClearance } from "./screen-table.ts";
 import { type CodexBannerWarning, codexWarningsFromText } from "./startup-warnings.ts";
 import { safeUpdateOption } from "./update/selection.ts";
-import { CodexUpdatePromptTracker, writeCodexUpdateSkip } from "./update-prompt.ts";
+import { startCodexUpdateSkip } from "./update/skip-attempt.ts";
+import { CodexUpdatePromptTracker } from "./update-prompt.ts";
 
 export { codexWarningsFromText } from "./startup-warnings.ts";
 
@@ -26,7 +27,8 @@ type CodexStartupPromptResult = {
 export class CodexStartupPromptResponder {
   private readonly elwoodSessionId: string;
   private readonly trust: TrustPromptResponder<"codex">;
-  private readonly updatePrompt = new CodexUpdatePromptTracker();
+  private readonly clearance: TrustClearance;
+  private readonly updatePrompt: CodexUpdatePromptTracker;
   private readonly lifetime = new AbortController();
   // The update-screen generation that owns the skip latch (0 = none). Only that
   // generation's own completion may release it; a stale completion is a no-op.
@@ -46,6 +48,8 @@ export class CodexStartupPromptResponder {
     clearance: TrustClearance = codexTrustClearance,
   ) {
     this.elwoodSessionId = elwoodSessionId;
+    this.clearance = clearance;
+    this.updatePrompt = new CodexUpdatePromptTracker(clearance);
     this.trust = new TrustPromptResponder("codex", clearance, autotrust, onStateChange);
   }
 
@@ -115,42 +119,19 @@ export class CodexStartupPromptResponder {
         // rejected, so a later frame re-attempts it rather than falsely reporting
         // the update as skipped (C-CODEX-17).
         this.skipGeneration = generation;
-        // A later appearance owns the latch AND the settlement. A write rejected once the
-        // screen cleared is quiet too (nothing is left to retry or block on); a clear
-        // after our key is what success means (C-CODEX-12).
-        const sameUpdate = this.updatePrompt.currentFramePredicate();
-        const current = (frame: string) =>
-          !this.lifetime.signal.aborted && sameUpdate(frame) && noTrustGate(frame);
-        // A trust gate painted over the update screen INVALIDATES the skip: the update
-        // never cleared, so it must not settle as answered (C-CODEX-12, C-TRUST-01).
-        const invalidated = (frame: string) => trustGateVisible(frame, "codex");
-        // The skip is NON-TRUST automation, so it writes through `writeAutomation`, which
-        // settles rendering and revalidates the captured choice identity per write (#42).
-        const settled = writeCodexUpdateSkip(
+        const settled = startCodexUpdateSkip({
           option,
+          generation,
+          screenText,
+          tracker: this.updatePrompt,
           writeAutomation,
           readFrame,
-          current,
-          invalidated,
-          this.lifetime.signal,
-        ).then(
-          (completion) => {
-            const replaced = this.updatePrompt.hasLaterAppearance(generation);
-            if (this.lifetime.signal.aborted || completion === "exhausted" || replaced)
-              return "cancelled";
-            if (completion === "cancelled") this.skipGeneration = 0;
-            return completion;
+          signal: this.lifetime.signal,
+          clearance: this.clearance,
+          releaseLatch: () => {
+            this.skipGeneration = 0;
           },
-          (error: unknown): StartupWriteCompletion => {
-            if (this.lifetime.signal.aborted) return "cancelled";
-            const replaced = this.updatePrompt.hasLaterAppearance(generation);
-            if (!replaced) this.skipGeneration = 0; // retryable within its own appearance
-            // The LIVE frame can clear before handle() sees it; with no reader, the
-            // attempt's own frame reduces this to the generation check.
-            if (!current(readFrame?.() ?? screenText)) return "cancelled";
-            throw error;
-          },
-        );
+        });
         outcomes.push({ outcome: { kind: "attempted", prompt: "update", input: option }, settled });
       }
     }
