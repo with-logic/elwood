@@ -12,6 +12,14 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Bind the Claude browser-tools decline to session disposal. After `stop()`,
+  `kill()`, or PTY exit the decline is no longer attempted, and one already in flight
+  settles as a cancellation, so a closed session no longer emits a late
+  `startup_prompt` / `startup_prompt_write_failed`. The keystroke itself is bound too:
+  the non-trust automation barrier waits for render settlement, and a write parked there
+  is interrupted immediately on disposal, releases its observation timer, and never
+  delivers a stale Escape to a dead PTY. Trust automation already had this lifetime.
+
 - Preserve Claude hook decisions and lifecycle progress when observational listeners
   throw or return rejecting Promises, with one bounded `hook_observer_failed` warning
   per affected invocation. Pending observers do not delay hook replies; diagnostic

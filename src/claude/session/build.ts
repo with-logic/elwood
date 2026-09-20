@@ -1,7 +1,7 @@
 /** Builds a live ClaudeSessionApi from a record + runtime. Implements PRD §5, §6, §8, §9. */
+
 import { defaultTerminalSize } from "../../core/defaults.ts";
 import { causeDetails, elwoodError } from "../../core/errors.ts";
-import { createStartupWarningGate, deliverFrameWarnings } from "../../core/startup/frame.ts";
 import { emitSettledStartupOutcomes } from "../../core/startup/write.ts";
 import { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ClaudeEventMap, StartClaudeOptions } from "../../core/types.ts";
@@ -29,6 +29,7 @@ import {
   spawnClaudePty,
   writeRuntimeFiles,
 } from "./runtime.ts";
+import { createClaudeStartupWarningGate } from "./startup-warnings.ts";
 import { createTranscriptWatcher, observeTranscript } from "./transcript.ts";
 
 export type BuildClaudeSessionInput = {
@@ -51,21 +52,18 @@ export async function buildClaudeSession(
   const emitter = new TypedEmitter<ClaudeEventMap>();
   registerInitialHooks(emitter, options.hooks);
   let session: ClaudeSessionImpl | undefined;
-  // ALL startup-region warnings — startup-prompt (frame path) AND transcript
-  // drop/read-error diagnostics — route through ONE gate that buffers anything emitted
-  // before startClaude resolves and flushes it on a deferred macrotask after return,
-  // so every source stays observable without late-subscriber replay (C-API-14).
-  const warnGate = createStartupWarningGate({
-    emitWarnings: (w) => deliverFrameWarnings(session, w),
-  });
+  // Buffer diagnostics until callers can subscribe; browser decline warnings track disposal.
+  const warnGate = createClaudeStartupWarningGate(
+    () => session,
+    () => promptResponder.closing,
+  );
   const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => warnGate);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   // Initial readiness is hook-backed (`InstructionsLoaded` fires `mark`); the first
   // frame arms a starvation deadline so a missing/failed hook cannot starve the queue,
   // and on resume the first composer frame also marks ready (PRD §5.3, C-API-28).
   const autotrust = options.autotrust ?? false;
-  // Observers are built BEFORE the readiness gate so its callback never closes
-  // over a binding declared later in this function.
+  // Build observers before the readiness callback captures them.
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
   const turnWatcher = observers.turn;
   const readiness = createReadinessGate(() => {
@@ -133,10 +131,16 @@ export async function buildClaudeSession(
     const frame = { text: latestRenderedText, title: renderedTerminal.title };
     // The write RETURNS its `sendInput` completion (no longer swallowed): the
     // responder settles the prompt and its `startup_prompt` activity only after
-    // the write fulfills, and a rejected write stays retryable + warns (C-CLAUDE-16).
+    // a live write fulfills. Live rejections warn/retry; disposal cancels (C-CLAUDE-16/22).
     const send = (input: string) => renderedTerminal.sendInput(input);
     const read = () => latestRenderedText;
-    const guarded = guardedClaudeAutomationWrite(renderedTerminal, send, read);
+    const guarded = guardedClaudeAutomationWrite(
+      renderedTerminal,
+      send,
+      read,
+      () => promptResponder.closing,
+      promptResponder.closingSignal,
+    );
     const autos = promptResponder.handle(frame.text, send, read, guarded);
     // Warning delivery is CONTAINED on the frame path: a throwing `warning`/`activity`
     // listener must never skip readiness, login detection, or terminal:data (§5.7).
@@ -180,7 +184,6 @@ export async function buildClaudeSession(
           active.submitExit(),
         );
       });
-      // Release the startup buffer once the check settles (§9.4).
       await assertStartupThenRelease("claude", startupOutput, () => startupExit);
       active.submitEvidence("startup_usable");
       frameObserver.blockOnceLive(active);
