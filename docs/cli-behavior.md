@@ -840,3 +840,14 @@ The 0.142.5 narrow resize leaves malformed chrome, so that frame is not used as 
 positive fixture. Inspect cursor mode and coordinates together with the same
 completed rendered text and title: an old composer or footer can remain during a
 dialog repaint, and a transcript can contain identical caret/option text.
+
+### Cancelled native composer drafts (2026-09-20)
+
+Claude Code 2.1.278 and codex-cli 0.155.1 both cleared a staged `[Image #1]` chip
+and text draft when production cancellation cleanup sent Ctrl+U followed by Ctrl+K
+through the real PTY. `tests/e2e/composer-cleanup.e2e.ts` waits for idle readiness,
+observes the image and text, then cancels before Enter; it rejects any submitting
+Enter and observes no `UserPromptSubmit` hook, so no model turn runs. Disabling
+only the production clear write made both tests retain the image and text and fail.
+This verifies an automation-owned idle composer, not cleanup across caller edits
+or blocking dialogs. Codex clipboard text is restored after attachment.
