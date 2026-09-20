@@ -2,8 +2,10 @@
 import xtermHeadless from "@xterm/headless";
 import type { TerminalSize } from "../core/types.ts";
 import type { PtyProcess } from "../pty/types.ts";
+import { RenderCursor } from "./cursor.ts";
 import { PtyOutput } from "./pty-output.ts";
 import { RenderQueue } from "./render-queue.ts";
+import { terminalSnapshot } from "./snapshot.ts";
 
 export type XtermTerminal = import("@xterm/headless").Terminal;
 
@@ -57,6 +59,7 @@ export function attachPtyTerminal(
   // Resume at child exit so unread tail output is not stranded behind backpressure.
   const off = [
     pty.onData((data) => {
+      if (data.length > 0) terminal.cursor.received();
       // Startup health checks need raw bytes before asynchronous batching/rendering.
       onReceived?.(data);
       output.push(data);
@@ -71,6 +74,7 @@ export function attachPtyTerminal(
 
 class HeadlessTerminal implements ElwoodTerminal {
   readonly xterm: XtermTerminal;
+  readonly cursor: RenderCursor;
   private currentSize: TerminalSize;
   private readonly renders: RenderQueue;
   private ptyOutput: PtyOutput | undefined;
@@ -91,6 +95,8 @@ class HeadlessTerminal implements ElwoodTerminal {
       cols: size.cols,
       rows: size.rows,
     });
+    this.cursor = new RenderCursor(this.xterm, () => this.ptyOutput?.hasStagedOutput === true);
+    this.disposers.push(() => this.cursor.dispose());
     this.renders = new RenderQueue(
       (data, done) => this.xterm.write(data, done),
       () => this.ptyOutput?.flush(),
@@ -116,7 +122,11 @@ class HeadlessTerminal implements ElwoodTerminal {
   writeOutput(data: string | Uint8Array, onRendered?: () => void): Promise<void> {
     if (this.disposed) return Promise.resolve();
     this.ptyOutput?.flush(); // keep a direct write ordered after PTY output already received
-    return this.renders.enqueue(data, onRendered);
+    const revision = this.cursor.received();
+    return this.renders.enqueue(data, () => {
+      this.cursor.rendered(revision);
+      onRendered?.();
+    });
   }
 
   sendInput(input: string | Uint8Array): Promise<void> {
@@ -134,19 +144,7 @@ class HeadlessTerminal implements ElwoodTerminal {
   }
 
   snapshot(): TerminalSnapshot {
-    const buffer = this.xterm.buffer.active;
-    const lines = Array.from(
-      { length: this.currentSize.rows },
-      (_, index) => buffer.getLine(buffer.viewportY + index)?.translateToString(true) ?? "",
-    );
-    return {
-      cols: this.currentSize.cols,
-      rows: this.currentSize.rows,
-      cursorX: buffer.cursorX,
-      cursorY: buffer.cursorY,
-      lines,
-      text: lines.join("\n"),
-    };
+    return terminalSnapshot(this.xterm, this.currentSize);
   }
 
   settled(): Promise<void> {

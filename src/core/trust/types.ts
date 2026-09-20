@@ -2,8 +2,7 @@
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { StartupWriteCompletion } from "../startup/write.ts";
 import type { TrustPromptIdFor } from "./prompts.ts";
-import type { TrustCandidate } from "./view.ts";
-import { choiceIdentity } from "./view.ts";
+import { choiceIdentity, type TrustCandidate } from "./view.ts";
 import type { TrustAttempt } from "./write.ts";
 
 export type TrustPromptAutomation<A extends ElwoodAgentKind = ElwoodAgentKind> = {

@@ -4,9 +4,9 @@
  * (PRD §5.4, C-TRUST-01). Each adapter owns its grammar beside its screen-fact table, so
  * a CLI layout change lands in exactly one place per adapter.
  *
- * The part that is genuinely agent-neutral stays here: a frame carrying a numbered option
- * row, or a caret row that is not the composer row, is a DIALOG and never clearance —
- * that rule is about option grammar, not about either CLI's chrome.
+ * The helper below serves Claude's whole-frame option guard. Codex checks only the
+ * native region beneath its last composer: numbered transcript rows above it are
+ * valid conversation content, not a dialog (see codex/screen/clearance.ts).
  */
 
 /** True when the frame is the agent's own idle native composer and no dialog is up. */

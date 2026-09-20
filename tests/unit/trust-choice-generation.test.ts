@@ -126,9 +126,13 @@ test("C-TRUST-01 hook completion can hand ownership to an unauthorized native di
   const attempt = settled(responder.handle(frame, write, () => frame));
   await vi.runAllTimersAsync();
   await expect(attempt).resolves.toBe("answered");
-  expect(responder.inputBlocking).toBe(false);
+  expect(responder.inputBlocking).toBe(true);
+  expect(responder.blockedPrompt).toBe("workspace_trust");
   expect(responder.handle(frame, write, () => frame)).toBeUndefined();
+  responder.handle("Unknown replacement\n› Continue", write);
+  expect(responder.inputBlocking).toBe(true);
   responder.handle(codexComposer, write);
+  expect(responder.inputBlocking).toBe(false);
   expect(write).toHaveBeenCalledExactlyOnceWith("1\r");
 });
 

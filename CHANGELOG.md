@@ -15,6 +15,22 @@ back each entry are listed in `prd/14-conformance.md`.
 - Select Codex update-skip choices only after the visible update action, and never
   select an update action whose label also contains a skip phrase.
 
+- Keep human-owned trust gates blocked through partial and unknown replacement
+  frames. Queued caller input resumes only after positive native clearance. Both
+  adapters withhold trust retries and human clearance while received output is
+  still rendering or the terminal has reported a render failure. Claude also waits
+  for its visible native input cursor after the final composer paint and retains
+  the hold while its native working title remains active.
+
+- Recognize Codex's native composer beneath numbered transcript output and with
+  its older model footer. A newly painted bare caret cannot borrow an earlier
+  composer's footer to release input held for a human dialog. Live clearance now
+  requires its visible input cursor after all received batches render; native approval
+  headers still override a stale visible cursor. Partial dialogs stay held while
+  ordinary transcript prose and numbered user prompts remain valid. Exact-shaped
+  native working rows remain conservatively held. Active work and incomplete
+  welcome-box fragments cannot release input.
+
 - Keep Codex transcript polling and activity delivery running after a public listener
   throws, so later records (including turn failure evidence) still reach subscribers.
   The content-free `transcript_listener_error` warning identifies the failed delivery

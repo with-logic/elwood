@@ -1,5 +1,4 @@
 /** Builds a live ClaudeSessionApi from a record + runtime. Implements PRD §5, §6, §8, §9. */
-
 import { defaultTerminalSize } from "../../core/defaults.ts";
 import { causeDetails, elwoodError } from "../../core/errors.ts";
 import { emitSettledStartupOutcomes } from "../../core/startup/write.ts";
@@ -15,8 +14,10 @@ import { cleanupStartupResources, guardStartupRegion } from "../../runtime/start
 import { secureMkdir } from "../../state/files.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, writeSessionRecord } from "../../state/store.ts";
+import { currentRenderedFrame, renderedSnapshot } from "../../terminal/cursor.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
 import { type ClaudePreflightWarning, preflightEvent } from "../preflight.ts";
+import { liveClaudeClearance } from "../screen-table.ts";
 import { ClaudeStartupPromptResponder, guardedClaudeAutomationWrite } from "../startup-prompts.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
 import { currentClaudeHookBridgeFactory } from "./bridge.ts";
@@ -61,13 +62,11 @@ export async function buildClaudeSession(
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   // Readiness: cold-start hooks, resumed composer, or bounded deadline (C-API-28).
   const autotrust = options.autotrust ?? false;
-  // Build observers before the readiness callback captures them.
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
   const turnWatcher = observers.turn;
   const readiness = createReadinessGate(() => {
     turnWatcher.arm(resumed); // resume arms in settling mode (no phantom replay turn)
-    // completeInitialReady advances readiness in a finally, isolating restore/warning
-    // failures internally, so its promise never rejects (not awaited).
+    // completeInitialReady contains restore/warning failures and always advances readiness.
     void session?.completeInitialReady();
   }, resumed);
   const { ready } = readiness;
@@ -90,8 +89,7 @@ export async function buildClaudeSession(
   try {
     await bridge.start();
   } catch (error) {
-    // Best-effort shut down a partially-started bridge so its listener/socket is not
-    // leaked; contained so the original bridge-start error is the one that rejects.
+    // Contain partial bridge cleanup failure so the original startup error survives.
     await bridge.stop().catch(() => undefined);
     throw elwoodError("hook_bridge_failed", "Could not start Elwood hook bridge.", {
       ...causeDetails(error),
@@ -120,14 +118,18 @@ export async function buildClaudeSession(
     () => promptResponder,
     readiness,
   );
-  const promptResponder = new ClaudeStartupPromptResponder(autotrust, frameObserver.refresh);
+  const promptResponder = new ClaudeStartupPromptResponder(
+    autotrust,
+    frameObserver.refresh,
+    liveClaudeClearance(() => terminal),
+  );
   let latestRenderedText = "";
   const terminal = attachPtyTerminal(
     startupSize,
     pty,
     (data, renderedTerminal) => {
       terminalReplay.push(data);
-      latestRenderedText = renderedTerminal.snapshot().text;
+      latestRenderedText = renderedSnapshot(renderedTerminal).text;
       const frame = { text: latestRenderedText, title: renderedTerminal.title };
       // Settle after live writes fulfill; disposal cancels (C-CLAUDE-16/22).
       const send = (input: string) => renderedTerminal.sendInput(input);
@@ -139,9 +141,9 @@ export async function buildClaudeSession(
         () => promptResponder.closing,
         promptResponder.closingSignal,
       );
-      const autos = promptResponder.handle(frame.text, send, read, guarded);
-      // Warning delivery is CONTAINED on the frame path: a throwing `warning`/`activity`
-      // listener must never skip readiness, login detection, or terminal:data (§5.7).
+      const trustRead = () => currentRenderedFrame(renderedTerminal)?.text;
+      const autos = promptResponder.handle(frame.text, send, read, guarded, trustRead);
+      // Contain warning observers so readiness, login checks, and terminal:data run (§5.7).
       emitSettledStartupOutcomes(emitter, "claude", record.elwoodSessionId, autos, {
         emitWarnings: (warnings) => warnGate.emitWarnings(warnings),
       });
@@ -168,14 +170,12 @@ export async function buildClaudeSession(
   bindStartupLifetime(active, promptResponder, ready);
   frameObserver.refresh();
   const beforeCleanup = () => active.pauseLoopsForStartupCleanup(ready.cancel);
-  // Guard every live-resource step after session creation: a failure in any of them
-  // tears down the now-live PTY, bridge, terminal, and watcher first (PRD §9.1, §9.4).
+  // Any post-construction failure tears down PTY, bridge, terminal, watcher (§9.1/§9.4).
   await guardStartupRegion(
     async () => {
       active.startLoops();
       flushPendingWarnings(); // sink now exists: flush any early-buffered diagnostic (§5.7)
-      // A hook or deadline that fired before the session existed submitted nothing
-      // (evidence is `session?.`-guarded); replay it now the session can consume it.
+      // Replay readiness evidence received before the session existed.
       ready.replay();
       pty.onExit((exit) => {
         startupExit = exit;
