@@ -33,6 +33,7 @@ export class LandingScene {
     this.onBounds = onBounds;
     this.drag = null;
     this.pending = new Set();
+    this.pendingPreparations = new Map();
     this.pressed = NO_INPUT;
     this.axis = 0;
     this.climbHeld = false;
@@ -118,17 +119,18 @@ export class LandingScene {
   }
   prepare(name) {
     if (this.bank.animationReady(name)) return true;
-    if (!this.pending.has(name)) {
-      this.pending.add(name);
-      const version = this.requestVersion;
-      const task = this.director.task;
-      const automatic = task?.name === name || `idle-${task?.direction}` === name;
-      this.bank
-        .prepareAnimation(name, () => version === this.requestVersion
-          && (!automatic || task === this.director.task))
-        .catch((error) => this.onError?.(error))
-        .finally(() => this.pending.delete(name));
-    }
+    if (this.pendingPreparations.get(name)?.()) return false;
+    const version = this.requestVersion;
+    const task = this.director.task;
+    const automatic = task?.name === name || `idle-${task?.direction}` === name;
+    const current = () => version === this.requestVersion
+      && (!automatic || task === this.director.task);
+    this.pendingPreparations.set(name, current);
+    this.bank.prepareAnimation(name, current)
+      .catch((error) => this.onError?.(error))
+      .finally(() => {
+        if (this.pendingPreparations.get(name) === current) this.pendingPreparations.delete(name);
+      });
     return false;
   }
   performanceFits(name) {

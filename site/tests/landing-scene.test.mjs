@@ -604,3 +604,47 @@ test("first pickup preparation survives immediate and repeated drag movement", a
     globalThis.fetch = fetch;
   }
 });
+
+test("a new automatic task can replace stale same-name preparation without losing its pending ownership", async () => {
+  const own = new LandingScene(canvas());
+  await own.boot();
+  const fetch = globalThis.fetch;
+  const gates = [Promise.withResolvers(), Promise.withResolvers()];
+  const entered = [Promise.withResolvers(), Promise.withResolvers()];
+  let attempts = 0;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("wave/page-001.webp")) {
+      const attempt = attempts++;
+      entered[attempt]?.resolve();
+      await gates[attempt]?.promise;
+    }
+    return fetch(url);
+  };
+  const moment = () => ({ kind: "moment", name: "wave", sent: false, seen: false, elapsed: 0, hold: 3, fits: true });
+  own.director.task = moment();
+  own.step(1 / 120);
+  const first = own.bank.preparationTail;
+  let second;
+  try {
+    await entered[0].promise;
+    own.director.task = moment();
+    own.step(1 / 120);
+    second = own.bank.preparationTail;
+    assert.notEqual(second, first, "the expired task must not suppress a new owner of the same name");
+    await entered[1].promise;
+    await first;
+    await new Promise((resolve) => setImmediate(resolve));
+    own.step(1 / 120);
+    assert.equal(own.bank.preparationTail, second, "the old finalizer must not clear the newer pending owner");
+    gates[1].resolve();
+    await second;
+    own.step(1 / 120);
+    assert.equal(own.director.task.sent, true);
+    assert.equal(attempts, 2);
+  } finally {
+    for (const gate of gates) gate.resolve();
+    await Promise.all([first, second, own.bank.preparationTail]);
+    own.pause("test", true);
+    globalThis.fetch = fetch;
+  }
+});
