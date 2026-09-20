@@ -30,6 +30,7 @@ test.each([
     },
   ),
   { toJSON: () => null },
+  Object.defineProperty({}, "toJSON", { value: () => null }),
   cycle,
   nested(129),
   Object.defineProperty({}, "toJSON", {
@@ -102,4 +103,9 @@ test("C-HOOK-21 counts every occurrence of shared children toward the visit limi
   const withinBudget = [...Array.from({ length: 49_999 }, () => shared), 0];
   expect(snapshotJsonData(withinBudget).valid).toBe(true);
   expect(snapshotJsonData([...withinBudget, shared]).valid).toBe(false);
+});
+
+test("C-HOOK-21 ignores a hidden non-callable toJSON data field", () => {
+  const source = Object.defineProperty({ value: 1 }, "toJSON", { value: 7 });
+  expect(snapshotJsonData(source)).toEqual({ valid: true, value: { value: 1 } });
 });
