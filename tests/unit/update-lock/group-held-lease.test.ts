@@ -62,7 +62,7 @@ test("C-PERF-04 a stale lease is held by its live group alone, whatever its age"
       return Promise.resolve();
     };
     await expect(
-      coordinatedAutoupdate("codex", update, { root, pollMs: 2, staleMs: 5, waitMs: 100 }),
+      coordinatedAutoupdate("codex", update, { root, pollMs: 2, staleMs: 5 }),
     ).rejects.toMatchObject({ details: { updateReason: "cleanup_pending" } });
     expect(ran).toBe(false);
     expect(existsSync(path)).toBe(true);

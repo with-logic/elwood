@@ -19,6 +19,7 @@ import type {
 } from "../status-evidence.ts";
 import { SessionLoops } from "./loops.ts";
 import { closingController, notRunningError, runSessionOperation } from "./not-running.ts";
+import type { PickerInputOwnership } from "./picker-input.ts";
 import { SessionReapPolicy } from "./reap.ts";
 import { SessionShutdownBinding } from "./shutdown-binding.ts";
 import { createSessionStatusEngine, type SessionStatusEmitter } from "./status-wiring.ts";
@@ -28,6 +29,7 @@ type AttentionListener = (event: ElwoodActivityEvent) => unknown;
 export abstract class SessionLifecycle {
   protected record: SessionRecord;
   readonly terminal: ElwoodTerminal;
+  protected readonly automatedTerminal: ElwoodTerminal;
   protected readonly pty: PtyProcess;
   protected readonly loops: SessionLoops;
   protected readonly controlQueue: ControlQueue;
@@ -36,7 +38,6 @@ export abstract class SessionLifecycle {
   inputBlocking = false;
   trustInputBlocking = false;
   readonly closing = closingController(() => this.controlQueue.close());
-  private readonly agent: ElwoodAgentKind;
   protected readonly persist: (record: SessionRecord) => void;
   private readonly reapPolicy: SessionReapPolicy;
   private readonly terminalReplay: TerminalReplayBuffer;
@@ -54,24 +55,25 @@ export abstract class SessionLifecycle {
     stateDir: string,
     runtime: SessionRuntime,
     pty: PtyProcess,
-    terminal: ElwoodTerminal,
+    ownership: PickerInputOwnership,
     statusEvents: SessionStatusEmitter,
     terminalReplay: TerminalReplayBuffer,
     loopDefinitions: readonly PersistedLoopDefinition[],
   ) {
     registerPrivateOutputSecrets(this, [runtime.bridgeToken]);
-    this.agent = agent;
     this.record = record;
     this.persist = (next) => {
       writeSessionRecord(next, runtime.sessionDir, runtime.stateOwnership.persistFile);
       this.record = next; // Expose metadata only after durable persistence succeeds.
     };
     this.pty = pty;
-    this.terminal = terminal;
+    this.terminal = ownership.caller;
+    this.automatedTerminal = ownership.automated;
     this.terminalReplay = terminalReplay;
     this.reapPolicy = new SessionReapPolicy(agent, record.elwoodSessionId, pty.pid);
+    const readEmpty = () => this.emptyComposerFrame();
     this.controlQueue = new ControlQueue(
-      queuedInputSubmitter(this.terminal, this.pasteGuard),
+      queuedInputSubmitter(this.automatedTerminal, this.pasteGuard),
       () => notRunningError(agent),
       (origin) => {
         this.loops.turnStarted(origin);
@@ -79,6 +81,7 @@ export abstract class SessionLifecycle {
       },
       () => this.status === "running",
       () => void (this.status === "ready" && this.submitEvidence("caller_submitted")),
+      ownership.composerCleanup(() => this.queuedInputBlocked(), this.closing.signal, readEmpty),
     );
     this.loops = new SessionLoops({
       stateDir,
@@ -141,12 +144,8 @@ export abstract class SessionLifecycle {
     this.loops.pause();
   }
   protected isInputBlocked(): boolean {
-    return (
-      this.closing.signal.aborted ||
-      this.inputBlocking ||
-      this.trustInputBlocking ||
-      this.status === "blocked"
-    );
+    const held = this.inputBlocking || this.trustInputBlocking;
+    return this.closing.signal.aborted || held || this.status === "blocked";
   }
   bindInitialReadinessHold(isHeld: () => boolean): void {
     this.initialReadinessHeld = isHeld;
@@ -171,6 +170,7 @@ export abstract class SessionLifecycle {
   }
   readonly beginExitFinalization = () => this.shutdown.beginExitFinalization();
   readonly statusDecisions = (): readonly StatusDecision[] => this.statusEngine.decisions();
+  protected abstract emptyComposerFrame(): object | undefined;
   protected abstract stagedPaste(screen: string, prompt: string): boolean;
   protected abstract queuedInputBlocked(): boolean;
   protected abstract stopRuntime(): Promise<void>;
@@ -180,7 +180,7 @@ export abstract class SessionLifecycle {
     if (event === "activity") this.terminalReplay.replayAttention(handler as AttentionListener);
   }
   protected inSession<T>(work: () => Promise<T> | T, allowTerminal = false): Promise<T> {
-    return runSessionOperation(this.agent, this.status, work, allowTerminal);
+    return runSessionOperation(this.record.adapter, this.status, work, allowTerminal);
   }
   protected cleanupRuntime(): Promise<void> {
     this.closing.abort();
@@ -188,7 +188,7 @@ export abstract class SessionLifecycle {
   }
   protected advanceInitialReady(): void {
     advanceInitialReady({
-      agent: this.agent,
+      agent: this.record.adapter,
       elwoodSessionId: this.elwoodSessionId,
       submitInitialReady: () => this.submitEvidence("initial_ready"),
       markReady: () => this.controlQueue.markReady(),
