@@ -43,3 +43,25 @@ test.each([
   await expect(failed()).rejects.toThrow("staging failed");
   expect(terminal.sendInput.mock.calls).toEqual(duringEnter ? [] : [["\u0015\u000b"]]);
 });
+
+test("C-API-56 raw intervention releases a pending cleanup wait without clearing the draft", async () => {
+  let raw = new AbortController();
+  const signal = new AbortController().signal;
+  const terminal = { sendInput: vi.fn() };
+  const owner = new ComposerCleanup(
+    terminal,
+    () => true,
+    signal,
+    () => raw.signal,
+  );
+  stageComposer(terminal);
+  owner.defer();
+  const work = vi.fn(() => Promise.resolve());
+  const next = owner.run(work, signal);
+  await Promise.resolve();
+  raw.abort();
+  raw = new AbortController();
+  await next;
+  expect(work).toHaveBeenCalledOnce();
+  expect(terminal.sendInput).not.toHaveBeenCalled();
+});

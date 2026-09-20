@@ -8,17 +8,25 @@ import {
   writeUnsafe,
 } from "./abort.ts";
 
+import { composerClearKeys, unsafeWriteRetryMs } from "./constants.ts";
+
 const owners = new WeakMap<InputTerminal, ComposerCleanup>();
 type Draft = { readonly rawInputSignal: AbortSignal; pending: boolean };
 
+/** Register ComposerCleanup before staging; unregistered terminals deliberately record no ownership. */
 export function stageComposer(terminal: InputTerminal): void {
   owners.get(terminal)?.stage();
 }
+/** Mark submission after staging; this is also a no-op without prior registration. */
 export function submittedComposer(terminal: InputTerminal): void {
   owners.get(terminal)?.submitted();
 }
 
-/** Session cleanup is deferred beyond attachment finalizers, including clipboard restoration. */
+/**
+ * Registered session cleanup is deferred beyond attachment finalizers, including
+ * clipboard restoration. Unregistered direct callers instead attempt an immediate,
+ * observed, unblocked best-effort clear; they have no retained ownership token.
+ */
 export async function requestComposerCleanup(
   terminal: InputTerminal,
   blocked?: () => boolean,
@@ -37,6 +45,7 @@ export class ComposerCleanup {
   private readonly blocked: () => boolean;
   private readonly closing: AbortSignal;
   private readonly rawInputSignal: () => AbortSignal;
+  /** Register this owner before any stage/submit hooks or queued operation. */
   constructor(
     terminal: InputTerminal,
     blocked: () => boolean,
@@ -70,19 +79,20 @@ export class ComposerCleanup {
     this.draft = undefined;
   }
   defer(): void {
-    if (this.owned()) this.draft!.pending = true;
+    if (this.reconcileDraftOwnership()) this.draft!.pending = true;
   }
 
-  /** Every queued operation, including exclusive commands, crosses this boundary first. */
-  async run(work: () => Promise<void>, signal: AbortSignal): Promise<void> {
-    await this.flush(signal);
+  /** Preparation may cancel before work; once invoked exactly once, work owns its task lifetime. */
+  async run(work: () => Promise<void>, preparationSignal: AbortSignal): Promise<void> {
+    await this.flush(preparationSignal);
+    throwIfInputAborted(preparationSignal);
     try {
       await work();
     } catch (error) {
       this.defer();
       // Never wait for a dialog in a failed operation or retain the clipboard lock for it.
       if (
-        this.owned() &&
+        this.reconcileDraftOwnership() &&
         !(await writeUnsafe(this.terminal, { blocked: this.blocked }, this.closing))
       ) {
         try {
@@ -95,22 +105,22 @@ export class ComposerCleanup {
     }
   }
 
-  private owned(): boolean {
+  private reconcileDraftOwnership(): boolean {
     if (this.closing.aborted || this.draft?.rawInputSignal.aborted) this.draft = undefined;
     return this.draft !== undefined;
   }
 
   private async flush(signal: AbortSignal): Promise<void> {
-    while (this.owned() && this.draft!.pending) {
+    while (this.reconcileDraftOwnership() && this.draft!.pending) {
       const observe = AbortSignal.any([signal, this.closing, this.draft!.rawInputSignal]);
       try {
         if (!(await writeUnsafe(this.terminal, { blocked: this.blocked }, observe))) {
           await this.clear();
           break;
         }
-        await waitForInput(50, observe);
+        await waitForInput(unsafeWriteRetryMs, observe);
       } catch (error) {
-        if (this.owned()) throw error;
+        if (this.reconcileDraftOwnership()) throw error;
       }
     }
     throwIfInputAborted(signal);
@@ -118,10 +128,10 @@ export class ComposerCleanup {
   }
 
   private async clear(): Promise<void> {
-    if (!this.owned()) return;
+    if (!this.reconcileDraftOwnership()) return;
     const draft = this.draft;
     try {
-      await this.terminal.sendInput("\u0015\u000b");
+      await this.terminal.sendInput(composerClearKeys);
     } catch {
       throw elwoodError("wait_timeout", "Could not clear the staged composer draft.");
     }

@@ -7,6 +7,7 @@
  */
 
 import { elwoodError } from "../errors.ts";
+import { unsafeWriteRetryMs } from "../input/constants.ts";
 import { requestComposerCleanup, stageComposer } from "../input/composer-cleanup.ts";
 
 /** The terminal surface an attach needs: send bytes and read the rendered screen. */
@@ -18,7 +19,6 @@ export type AttachTerminal = {
 /** True while a blocking human-decision dialog is on screen (C-API-37 safety). */
 export type BlockedGuard = () => boolean;
 
-const blockedPollMs = 50;
 /** Failed attachment cleanup shares queued-draft ownership (C-API-44/56). */
 export const clearComposer = requestComposerCleanup;
 
@@ -36,7 +36,7 @@ export async function sendWhenUnblocked(
 ): Promise<void> {
   while (blocked?.()) {
     if (signal.aborted) throw elwoodError("image_attach_failed", "Image attach aborted.");
-    await delay(blockedPollMs);
+    await delay(unsafeWriteRetryMs);
   }
   // Re-check AFTER the loop: an abort that lands as the dialog clears in the same
   // poll must not let a paste/Ctrl+V reach the PTY on a closing session.
