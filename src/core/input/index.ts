@@ -135,7 +135,8 @@ export async function writeQueuedInput(
   const submitters: Readonly<Record<ControlSubmitMode, () => Promise<void>>> = {
     // Resolve only after the input's submitting Enter has dispatched, so the next
     // queued operation cannot write into the composer first (FIFO).
-    pasted_input: () => writePastedPrompt(terminal, input, guard, signal),
+    pasted_input: () =>
+      writePastedPrompt(terminal, input, guard, signal, pasteSettleDelayMs, false, onSubmitted),
     recovery_input: () =>
       writePastedPrompt(terminal, input, guard, signal, pasteSettleDelayMs, true, onSubmitted),
     // Slash-command popups (Codex) swallow an Enter that arrives in the same PTY
@@ -161,7 +162,7 @@ export async function writeQueuedInput(
   await submitters[mode]();
 }
 
-/** Session queue binding preserves the physical replay-commit callback (C-API-58). */
+/** Session queue binding preserves physical submission evidence (C-API-58, C-ATTN-02). */
 export function queuedInputSubmitter(terminal: InputTerminal, guard: PasteGuard): ControlSubmitter {
   return (input, mode, signal, onSubmitted) =>
     writeQueuedInput(terminal, input, mode, guard, signal, commandEnterDelayMs, onSubmitted);

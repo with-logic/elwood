@@ -42,17 +42,20 @@ export class ControlQueue extends ControlQueueState {
   private readonly submit: ControlSubmitter;
   private readonly onTurnStarted: (origin: ControlSubmissionOrigin) => void;
   private readonly guidanceMayBypass: () => boolean;
+  private readonly onCallerInputSubmitted: (() => void) | undefined;
 
   constructor(
     submit: ControlSubmitter,
     stoppedError: ControlQueueError,
     onTurnStarted: (origin: ControlSubmissionOrigin) => void,
     guidanceMayBypass: () => boolean = () => false,
+    onCallerInputSubmitted?: () => void,
   ) {
     super(stoppedError);
     this.submit = submit;
     this.onTurnStarted = onTurnStarted;
     this.guidanceMayBypass = guidanceMayBypass;
+    this.onCallerInputSubmitted = onCallerInputSubmitted;
   }
 
   send(
@@ -138,14 +141,16 @@ export class ControlQueue extends ControlQueueState {
       operation.origin.kind === "caller" && operation.origin.recovery
         ? "recovery_input"
         : traits.submitMode;
-    await this.submit(
-      operation.input,
-      mode,
-      signal,
+    // Recovery publishes its delayed turn start at the same physical boundary.
+    const dispatched =
       mode === "recovery_input"
-        ? () => runContained(() => this.onTurnStarted(operation.origin))
-        : undefined,
-    );
+        ? () => this.onTurnStarted(operation.origin)
+        : this.onCallerInputSubmitted;
+    const onSubmitted =
+      dispatched && traits.reportsCallerSubmission && operation.origin.kind === "caller"
+        ? () => runContained(dispatched)
+        : undefined;
+    await this.submit(operation.input, mode, signal, onSubmitted);
   }
 
   private beginSubmission(operation: QueuedOperation, traits: ControlOperationTraits): void {

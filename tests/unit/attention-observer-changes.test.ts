@@ -1,0 +1,200 @@
+/** Attention diagnostic updates traverse the real status engine (PRD §5.3, C-ATTN-03). */
+import { expect, test } from "vitest";
+import { claudeScreenFactTableForTrustPolicy } from "../../src/claude/screen-table.ts";
+import { codexScreenFactTableForTrustPolicy } from "../../src/codex/screen-table.ts";
+import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
+import { AttentionWatcher } from "../../src/core/attention.ts";
+import { observeRenderedFrame, observeRenderedReading } from "../../src/core/rendered-observers.ts";
+import { readScreenFacts, type ScreenFactTable } from "../../src/core/screen-facts.ts";
+import { TurnStateWatcher } from "../../src/core/turn-state.ts";
+import type { ElwoodSessionStatus, ElwoodStatusEvidence } from "../../src/core/types.ts";
+import { SessionStatusEngine } from "../../src/runtime/status-evidence.ts";
+
+function harness(table: ScreenFactTable = { agent: "codex", verifiedAgainst: "test", rules: [] }) {
+  const activities: ElwoodActivityEvent[] = [];
+  const submitted: ElwoodStatusEvidence[] = [];
+  const statuses: ElwoodSessionStatus[] = [];
+  const queueEvents: string[] = [];
+  const engine = new SessionStatusEngine({
+    onReady: () => {},
+    emitStatus: (status) => statuses.push(status),
+    queueRunning: () => queueEvents.push("running"),
+    queueReady: () => queueEvents.push("ready"),
+    queueBlocked: () => queueEvents.push("blocked"),
+    queueClose: () => {},
+    cleanup: () => {},
+  });
+  const session = {
+    get status() {
+      return engine.status;
+    },
+    submitEvidence: (kind: ElwoodStatusEvidence, workingVisible = false) => {
+      submitted.push(kind);
+      return engine.submit(kind, { workingVisible });
+    },
+  };
+  const observers = {
+    table,
+    agent: table.agent,
+    elwoodSessionId: "s1",
+    turn: new TurnStateWatcher(),
+    attention: new AttentionWatcher(),
+    emitActivity: (event: ElwoodActivityEvent) => activities.push(event),
+  };
+  const observe = (ids: readonly string[]) => {
+    const reading = readScreenFacts(
+      {
+        ...table,
+        rules: ids.map((id) => ({
+          id,
+          fact: "blocking_prompt_visible" as const,
+          all: [/dialog/],
+        })),
+      },
+      { text: "dialog", title: "" },
+    );
+    observeRenderedReading(
+      observers,
+      { ...reading, facts: { ...reading.facts, composer_visible: ids.length === 0 } },
+      session,
+    );
+  };
+  const frame = (text: string) => observeRenderedFrame(observers, { text, title: "" }, session);
+  return { engine, observe, frame, activities, statuses, submitted, observers, queueEvents };
+}
+
+test("C-ATTN-03 emits a replacement label while the real session remains blocked", () => {
+  const { engine, observe, activities, statuses, submitted } = harness();
+  engine.submit("startup_usable");
+  observe(["codex-update-prompt"]);
+  observe(["codex-unidentified-dialog"]);
+  observe(["codex-unidentified-dialog"]);
+  expect(engine.status).toBe("blocked");
+  expect(statuses).toEqual(["running", "blocked"]);
+  expect(submitted).toEqual(["blocking_prompt_shown"]);
+  expect(activities.map((event) => event.label)).toEqual([
+    "codex-update-prompt",
+    "codex-unidentified-dialog",
+  ]);
+  observe([]);
+  expect(engine.status).toBe("ready");
+  expect(activities).toHaveLength(2);
+});
+
+test.each([
+  "starting",
+  "exited",
+] as const)("C-ATTN-03 suppresses changed attention labels while %s", (status) => {
+  const { engine, observe, activities } = harness();
+  if (status === "exited") engine.submit("terminal_exited");
+  observe(["codex-update-prompt"]);
+  observe(["codex-unidentified-dialog"]);
+  expect(engine.status).toBe(status);
+  expect(activities).toEqual([]);
+});
+
+test.each([
+  {
+    agent: "codex",
+    table: codexScreenFactTableForTrustPolicy(false),
+    initial: "Update available! 0.153.3 -> 0.153.4\n› 1. Update now\n  2. Skip",
+    replacement:
+      "Would you like to run the following command?\n› 1. Yes\n  2. No\nPress enter to confirm or esc to cancel",
+    labels: ["codex-update-prompt", "codex-approval-dialog"],
+  },
+  {
+    agent: "claude",
+    table: claudeScreenFactTableForTrustPolicy(false),
+    initial: "Do you want to create elwood.txt?\n❯ 1. Yes\n  3. No\nEsc to cancel",
+    replacement: "Switch model?\n❯ Yes, switch to Sonnet\nNo, go back",
+    labels: ["claude-permission-dialog", "claude-model-switch-confirmation"],
+  },
+])("C-ATTN-03 $agent production facts report replacements without another status decision", ({
+  table,
+  initial,
+  replacement,
+  labels,
+}) => {
+  const { engine, frame, activities, submitted } = harness(table);
+  engine.submit("startup_usable");
+  frame(initial);
+  frame(initial);
+  frame(replacement);
+  frame(replacement);
+  expect(engine.status).toBe("blocked");
+  expect(activities.map((event) => event.label)).toEqual(labels);
+  expect(submitted).toEqual(["blocking_prompt_shown"]);
+});
+
+test("C-ATTN-03 a replacement restores blocking after an observed clearance", () => {
+  const { engine, observe, activities, statuses, submitted } = harness();
+  engine.submit("startup_usable");
+  observe(["codex-update-prompt"]);
+  engine.submit("blocking_prompt_cleared");
+  expect(engine.status).toBe("ready");
+  observe(["codex-unidentified-dialog"]);
+  observe(["codex-unidentified-dialog"]);
+  expect(engine.status).toBe("blocked");
+  expect(statuses).toEqual(["running", "blocked", "ready", "blocked"]);
+  expect(submitted).toEqual(["blocking_prompt_shown", "blocking_prompt_shown"]);
+  expect(activities.map((event) => event.label)).toEqual([
+    "codex-update-prompt",
+    "codex-unidentified-dialog",
+  ]);
+});
+
+test.each([
+  "before",
+  "after",
+])("C-ATTN-03 a Stop %s replacement cannot reopen a visible prompt", (order) => {
+  const { engine, observe, activities, statuses, submitted } = harness();
+  engine.submit("startup_usable");
+  observe(["codex-update-prompt"]);
+  if (order === "before") engine.submit("hook_turn_ended");
+  observe(["codex-unidentified-dialog"]);
+  if (order === "after") engine.submit("hook_turn_ended");
+  expect(engine.status).toBe("blocked");
+  observe(["codex-unidentified-dialog"]);
+  expect(engine.status).toBe("blocked");
+  expect(statuses).toEqual(["running", "blocked"]);
+  expect(submitted).toEqual(["blocking_prompt_shown"]);
+  expect(activities.map((event) => event.label)).toEqual([
+    "codex-update-prompt",
+    "codex-unidentified-dialog",
+  ]);
+});
+
+test.each([
+  "caller_submitted",
+  "rendered_turn_started",
+] as const)("C-ATTN-02 %s followed by Stop cannot escape a visible prompt", (start) => {
+  const { engine, observe, statuses, queueEvents } = harness();
+  engine.submit("startup_usable");
+  observe(["codex-unidentified-dialog"]);
+  engine.submit(start);
+  engine.submit("hook_turn_ended");
+  observe(["codex-unidentified-dialog"]);
+  expect(engine.status).toBe("blocked");
+  expect(statuses).toEqual(["running", "blocked"]);
+  expect(queueEvents).toEqual(["running", "blocked"]);
+  observe([]);
+  expect(engine.status).toBe("ready");
+});
+
+test("C-ATTN-02 rendered turn end precedes verified blocking clearance without reopening early", () => {
+  const { engine, frame, observers, submitted } = harness(
+    claudeScreenFactTableForTrustPolicy(false),
+  );
+  engine.submit("initial_ready");
+  observers.turn.arm();
+  frame("❯ \n  ⏵⏵ bypass permissions on · esc to interrupt · ← for agents");
+  frame("Do you want to create elwood.txt?\n❯ 1. Yes\n  3. No\nEsc to cancel");
+  expect(engine.status).toBe("blocked");
+  frame("❯ \n  ⏵⏵ bypass permissions on (shift+tab to cycle)");
+  expect(submitted.slice(-2)).toEqual(["rendered_turn_ended", "blocking_prompt_cleared"]);
+  expect(engine.decisions().slice(-2)).toEqual([
+    expect.objectContaining({ evidence: "rendered_turn_ended", from: "blocked", to: undefined }),
+    expect.objectContaining({ evidence: "blocking_prompt_cleared", from: "blocked", to: "ready" }),
+  ]);
+  expect(engine.status).toBe("ready");
+});

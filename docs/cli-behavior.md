@@ -20,6 +20,15 @@ When a fact drives an implementation decision, the code and the matching PRD
 conformance criterion are cited. If you change behavior here, update `prd/`
 first (see `CLAUDE.md` / `AGENTS.md`), then this file.
 
+## Approval policy compatibility
+
+Codex 0.155.1 rejects `--ask-for-approval untrusted`; its accepted values are
+`on-request` and `never`. Real approval-flow tests on this version use `on-request`
+with a read-only sandbox and a tool that needs to write, then approve the native
+escalation dialog. An `untrusted` fixture exits before readiness and cannot test
+working-dialog clearance. Verified from the installed CLI's argument error on
+2026-09-19 while exercising C-ATTN-02.
+
 ## Readiness
 
 **Codex fires its `SessionStart` hook lazily — on the first turn, not at boot.**

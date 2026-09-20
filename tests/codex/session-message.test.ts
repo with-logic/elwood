@@ -7,6 +7,7 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
+import { codexComposer, codexTty } from "../fixtures/trust-composer.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -26,7 +27,7 @@ describe("CodexSessionApi message submission", () => {
     // Retries may repeat Skip; no persona paste/Enter may reach the rendered dialog.
     expect(new Set(ptys[0]!.writes)).toEqual(new Set(["2"]));
     const beforeClear = ptys[0]!.writes.length;
-    ptys[0]!.emitData("\u001b[2J\u001b[H› ");
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`);
     await session.terminal.settled();
     await expect
       .poll(() => ptys[0]!.writes)
@@ -114,10 +115,10 @@ describe("CodexSessionApi message submission", () => {
     const queued = session.sendMessage("hello");
     expect(ptys[0]!.writes).toEqual([]);
     await becomeReady(session.elwoodSessionId, cwd);
-    await expect.poll(() => ptys[0]!.writes.length).toBe(1);
-    expect(ptys[0]!.writes.filter((w) => w !== "\r")[0]).toBe(
-      "\u001b[200~You are a terse reviewer.\u001b[201~",
-    );
+    // A persona turn cannot finish before its submitting Enter reaches the CLI.
+    await expect
+      .poll(() => ptys[0]!.writes)
+      .toEqual(["\u001b[200~You are a terse reviewer.\u001b[201~", "\r"]);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, stopEvent(cwd));
     await queued;
     expect(ptys[0]!.writes.filter((w) => w !== "\r")[1]).toBe("\u001b[200~hello\u001b[201~");

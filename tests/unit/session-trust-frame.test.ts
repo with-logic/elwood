@@ -1,6 +1,9 @@
 /** Trust fallback uses the ordinary attention/readiness owner (C-TRUST-01). */
 import { afterEach, expect, test, vi } from "vitest";
-import { claudeScreenFactTableForTrustPolicy } from "../../src/claude/screen-table.ts";
+import {
+  claudeScreenFactTableForTrustPolicy,
+  claudeTrustClearance,
+} from "../../src/claude/screen-table.ts";
 import { AttentionWatcher } from "../../src/core/attention.ts";
 import { TurnStateWatcher } from "../../src/core/turn-state.ts";
 import type { ElwoodStatusEvidence } from "../../src/core/types.ts";
@@ -10,6 +13,7 @@ import {
 } from "../../src/runtime/session/frames.ts";
 import { createReadinessGate } from "../../src/runtime/session/readiness.ts";
 import { SessionStatusEngine } from "../../src/runtime/status-evidence.ts";
+import { claudeComposer } from "../fixtures/trust-composer.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -27,12 +31,14 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
   engine.submit("startup_usable");
   const active = {
     closing: new AbortController(),
+    bindInitialReadinessHold: vi.fn(),
     inputBlocking: false,
     trustInputBlocking: false,
     get status() {
       return engine.status;
     },
-    submitEvidence: engine.submit.bind(engine),
+    submitEvidence: (kind: Parameters<typeof engine.submit>[0], workingVisible = false) =>
+      engine.submit(kind, { workingVisible }),
   };
   let attached = false;
   const trust = {
@@ -57,6 +63,7 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
     () => (attached ? active : undefined),
     () => trust,
     readiness,
+    claudeTrustClearance,
   );
   observe.refresh();
   attached = true;
@@ -73,7 +80,8 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
   );
   observe.blockOnceLive(active); // already blocked: the startup replay never duplicates attention
   expect(activity).toHaveBeenCalledTimes(1);
-  bindStartupLifetime(active, trust, readiness.ready);
+  bindStartupLifetime(active, trust, readiness);
+  expect(active.bindInitialReadinessHold).toHaveBeenCalledWith(readiness.isHeld);
   active.closing.abort();
   active.closing.abort();
   observe.refresh();
@@ -100,8 +108,8 @@ test("C-TRUST-01 replays a consumed human clear edge when automation finally rel
     get status() {
       return engine.status;
     },
-    submitEvidence(kind: ElwoodStatusEvidence) {
-      return engine.submit(kind, active.trustInputBlocking);
+    submitEvidence(kind: ElwoodStatusEvidence, workingVisible = false) {
+      return engine.submit(kind, { inputBlocked: active.trustInputBlocking, workingVisible });
     },
   };
   const trust = {
@@ -122,6 +130,7 @@ test("C-TRUST-01 replays a consumed human clear edge when automation finally rel
     () => active,
     () => trust,
     readiness,
+    claudeTrustClearance,
   );
   observer.observe({ text: "Do you trust this folder?", title: "" });
   expect(engine.status).toBe("starting");
@@ -130,7 +139,7 @@ test("C-TRUST-01 replays a consumed human clear edge when automation finally rel
   expect(engine.status).toBe("blocked");
   // The human gate disappears, but automation still owns input: its clear is ignored.
   trust.blockedPrompt = undefined;
-  observer.observe({ text: "", title: "" });
+  observer.observe({ text: claudeComposer, title: "" });
   expect(engine.status).toBe("blocked");
   expect(queueReady).not.toHaveBeenCalled();
   expect(engine.decisions().at(-1)).toMatchObject({
