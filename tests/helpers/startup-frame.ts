@@ -21,12 +21,12 @@ export function paintWhileStarting(frame: string): void {
     await settleInitialFrame();
   });
   const subscribe = FakePty.prototype.onData;
-  let painted = false;
+  let frameScheduled = false;
   vi.spyOn(FakePty.prototype, "onData").mockImplementation(function (this: FakePty, handler) {
     const off = subscribe.call(this, handler);
-    if (!painted)
+    if (!frameScheduled)
       queueMicrotask(() => this.emitData(`\u001b[2J\u001b[H${frame.replaceAll("\n", "\r\n")}`));
-    painted = true;
+    frameScheduled = true;
     return off;
   });
 }
