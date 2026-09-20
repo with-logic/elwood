@@ -1,7 +1,7 @@
 /** Builds a live ClaudeSessionApi from a record + runtime. Implements PRD §5, §6, §8, §9. */
+
 import { defaultTerminalSize } from "../../core/defaults.ts";
 import { causeDetails, elwoodError } from "../../core/errors.ts";
-import { createStartupWarningGate, deliverFrameWarnings } from "../../core/startup/frame.ts";
 import { emitSettledStartupOutcomes } from "../../core/startup/write.ts";
 import { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ClaudeEventMap, StartClaudeOptions } from "../../core/types.ts";
@@ -29,6 +29,7 @@ import {
   spawnClaudePty,
   writeRuntimeFiles,
 } from "./runtime.ts";
+import { createClaudeStartupWarningGate } from "./startup-warnings.ts";
 import { createTranscriptWatcher, observeTranscript } from "./transcript.ts";
 
 export type BuildClaudeSessionInput = {
@@ -51,16 +52,11 @@ export async function buildClaudeSession(
   const emitter = new TypedEmitter<ClaudeEventMap>();
   registerInitialHooks(emitter, options.hooks);
   let session: ClaudeSessionImpl | undefined;
-  // Buffer startup diagnostics until callers can subscribe; disposal cancels write warnings.
-  const warnGate = createStartupWarningGate({
-    emitWarnings: (w) =>
-      deliverFrameWarnings(
-        session,
-        w.filter(
-          (warning) => warning.code !== "startup_prompt_write_failed" || !promptResponder.closing,
-        ),
-      ),
-  });
+  // Buffer diagnostics until callers can subscribe; browser decline warnings track disposal.
+  const warnGate = createClaudeStartupWarningGate(
+    () => session,
+    () => promptResponder.closing,
+  );
   const wired = createTranscriptWatcher(record.elwoodSessionId, emitter, () => warnGate);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   // Initial readiness is hook-backed (`InstructionsLoaded` fires `mark`); the first
@@ -135,7 +131,7 @@ export async function buildClaudeSession(
     const frame = { text: latestRenderedText, title: renderedTerminal.title };
     // The write RETURNS its `sendInput` completion (no longer swallowed): the
     // responder settles the prompt and its `startup_prompt` activity only after
-    // the write fulfills, and a rejected write stays retryable + warns (C-CLAUDE-16).
+    // a live write fulfills. Live rejections warn/retry; disposal cancels (C-CLAUDE-16/22).
     const send = (input: string) => renderedTerminal.sendInput(input);
     const read = () => latestRenderedText;
     const closing = () => promptResponder.closing;

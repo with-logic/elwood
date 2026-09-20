@@ -83,3 +83,45 @@ test("C-CLAUDE-22 disposal drops a write-failure warning buffered before start r
     await session.teardown();
   }
 });
+
+test("C-CLAUDE-22 reentrant stop suppresses later browser failures but preserves trust diagnostics", async () => {
+  installFakes();
+  let deliver: startupFrame.FrameWarningSink["emitWarnings"] = () => {};
+  const createGate = startupFrame.createStartupWarningGate;
+  vi.spyOn(startupFrame, "createStartupWarningGate").mockImplementation((sink) => {
+    deliver = sink.emitWarnings;
+    return createGate(sink);
+  });
+  const session = await startClaude({ cwd: tempDir() });
+  const warnings: string[] = [];
+  const activities: string[] = [];
+  let stopping: Promise<void> | undefined;
+  session.on("warning", (event) => {
+    warnings.push(event.code === "startup_prompt_write_failed" ? event.label : event.code);
+    stopping ??= session.stop();
+  });
+  session.on("activity", (event) => {
+    if (event.kind === "warning") activities.push(event.label);
+  });
+  const failure = {
+    elwoodSessionId: session.elwoodSessionId,
+    agent: "claude",
+    source: "terminal",
+    code: "startup_prompt_write_failed",
+    severity: "warning",
+    message: "Write rejected",
+    raw: "write rejected",
+  } as const;
+  try {
+    deliver([
+      { ...failure, label: "workspace_trust" },
+      { ...failure, label: "browser_tools" },
+      { ...failure, label: "workspace_trust" },
+    ]);
+    await stopping;
+    expect(warnings).toEqual(["workspace_trust", "workspace_trust"]);
+    expect(activities).toHaveLength(2);
+  } finally {
+    await session.teardown();
+  }
+});
