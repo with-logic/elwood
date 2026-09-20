@@ -1,4 +1,3 @@
-import { resolveObjectURL } from "node:buffer";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -38,11 +37,10 @@ function canvasContext() {
       getTransform: () => ({ e: 0, f: 0 }),
       drawImage(image, ...numbers) {
         assert.ok(numbers.every(Number.isFinite), "Canvas coordinates must be finite");
-        const source = image.sourceURL ?? image.src;
-        if (source) {
-          drawnImage = source;
-          if (source.includes("/idle/"))
-            idleFrames.add(`${source}:${numbers[0]}:${numbers[1]}`);
+        if (image.src) {
+          drawnImage = image.src;
+          if (image.src.includes("/idle/"))
+            idleFrames.add(`${image.src}:${numbers[0]}:${numbers[1]}`);
         }
       },
     },
@@ -134,29 +132,16 @@ globalThis.cancelAnimationFrame = () => {
 };
 globalThis.fetch = async (input) => {
   try {
-    const response = new Response(await readFile(fileURLToPath(new URL(String(input), root))), {
+    return new Response(await readFile(fileURLToPath(new URL(String(input), root))), {
       status: 200,
     });
-    const blob = response.blob.bind(response);
-    response.blob = async () => Object.assign(await blob(), { sourceURL: String(input) });
-    return response;
   } catch {
     return new Response("", { status: 404 });
   }
 };
-const imageSources = new Map();
-const createObjectURL = URL.createObjectURL.bind(URL);
-URL.createObjectURL = (blob) => {
-  const url = createObjectURL(blob);
-  imageSources.set(url, blob.sourceURL);
-  return url;
-};
 globalThis.Image = class {
   async decode() {
-    this.sourceURL = imageSources.get(this.src) ?? this.src;
-    const bytes = this.src.startsWith("blob:")
-      ? Buffer.from(await resolveObjectURL(this.src).arrayBuffer())
-      : await readFile(fileURLToPath(this.src));
+    const bytes = await readFile(fileURLToPath(this.src));
     assert.equal(bytes.subarray(0, 4).toString(), "RIFF");
     assert.equal(bytes.subarray(8, 12).toString(), "WEBP");
   }

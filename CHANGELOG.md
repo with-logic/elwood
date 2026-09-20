@@ -22,9 +22,6 @@ back each entry are listed in `prd/14-conformance.md`.
   native empty composer before successor input; Claude recognizes both its native
   idle screen and its post-picker composer.
 
-- Keep landing-page gestures continuous by preparing every sprite sheet before
-  playback and retaining the active animation while another loads.
-
 - Hold image paste keys until received terminal output has rendered and blocking
   dialogs have cleared, then capture the chip count immediately before pasting.
   Permanent render failures reject the attachment and release its clipboard lock;
