@@ -43,6 +43,17 @@ class AttemptDiagnosticsTest(unittest.TestCase):
         self.assertIn('lens=review-architecture-conventions attempt=1 exit=1', diagnostic)
         self.assertIn('review: invalid or incomplete model event stream', diagnostic)
 
+    def test_nonempty_malformed_report_retains_post_transport_schema_diagnostics(self):
+        fixture = runner_test.RunnerTest()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        result = fixture.run_review('malformed')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('category=schema exit=1', result.stderr)
+        diagnostic = attempt_diagnostics(fixture.root)
+        self.assertIn('lens=review-security attempt=1 exit=1', diagnostic)
+        self.assertIn('review: lens output does not match the finding schema', diagnostic)
+
     def test_synthesis_parser_failure_is_retained(self):
         fixture = runner_test.RunnerTest()
         fixture.setUp()
