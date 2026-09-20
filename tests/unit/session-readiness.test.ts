@@ -100,3 +100,17 @@ test("C-API-28 a deferred hook stays held through blank and working frames until
   gate.observeReadinessFrame(facts(true));
   expect(ready).toBe(1);
 });
+
+test("C-API-28 the current frame hold updates before deferred readiness is reconciled", () => {
+  let ready = 0;
+  const gate = createReadinessGate(() => ready++, false);
+  gate.observeFrameHold(facts(true, true));
+  gate.ready.mark();
+  expect(gate.isHeld()).toBe(true);
+  expect(ready).toBe(0);
+  gate.observeFrameHold(facts(true));
+  expect(gate.isHeld()).toBe(false);
+  expect(ready).toBe(0);
+  gate.observeReadinessFrame(facts(true));
+  expect(ready).toBe(1);
+});

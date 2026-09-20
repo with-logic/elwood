@@ -5,6 +5,7 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
+import { codexComposer, tty } from "../fixtures/trust-composer.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -45,7 +46,7 @@ describe("CodexSessionApi guidance", () => {
     await expect.poll(() => session.status).toBe("blocked");
     const guidance = session.sendGuidance("after-human-decision");
     expect(ptys[0]!.writes).toEqual([]);
-    ptys[0]!.emitData("\u001b[2J\u001b[H› ");
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${tty(codexComposer)}`);
     await guidance;
     expect(ptys[0]!.writes).toEqual(["\u001b[200~after-human-decision\u001b[201~", "\r"]);
   });

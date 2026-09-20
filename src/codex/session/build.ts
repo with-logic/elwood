@@ -21,7 +21,7 @@ import { type SessionRecord, writeSessionRecord } from "../../state/store.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
 import type { CodexPreflightWarning } from "../preflight.ts";
 import { spawnCodexPty } from "../pty.ts";
-import { codexScreenFactTableForTrustPolicy } from "../screen-table.ts";
+import { codexScreenFactTableForTrustPolicy, codexTrustClearance } from "../screen-table.ts";
 import { CodexStartupPromptResponder } from "../startup-prompts.ts";
 import { guardedCodexAutomationWrite } from "../update-prompt.ts";
 import { currentCodexHookBridgeFactory } from "./bridge.ts";
@@ -111,6 +111,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     () => session,
     () => promptResponder,
     readiness,
+    codexTrustClearance,
   );
   const promptResponder = new CodexStartupPromptResponder(
     record.elwoodSessionId,

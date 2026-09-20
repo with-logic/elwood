@@ -6,6 +6,8 @@ import {
   readRenderedFrame,
 } from "../../core/rendered-observers.ts";
 import type { RenderedFrame, ScreenFacts } from "../../core/screen-facts.ts";
+import type { TrustClearance } from "../../core/trust/clearance.ts";
+import { createAttentionClearance } from "./attention-clearance.ts";
 import type { SessionLifecycle } from "./lifecycle.ts";
 import type { ReadinessGate } from "./readiness.ts";
 
@@ -26,7 +28,9 @@ export function createSessionFrameObserver(
   session: () => FrameSession | undefined,
   trust: () => TrustState,
   readiness: ReadinessGate,
+  isIdleComposer: TrustClearance,
 ) {
+  const attentionClearance = createAttentionClearance(isIdleComposer);
   let frame: RenderedFrame | undefined;
   let ruleIds: readonly string[] = [];
   let pendingAutomationClearance = false;
@@ -47,7 +51,11 @@ export function createSessionFrameObserver(
     const active = session();
     if (active === undefined || active.closing.signal.aborted || frame === undefined) return;
     const state = trust();
-    const reading = readRenderedFrame(observers, frame, state.blockedPrompt);
+    const reading = attentionClearance(
+      readRenderedFrame(observers, frame, state.blockedPrompt),
+      frame.text,
+      state.inputBlocking,
+    );
     const released = active.automationBlocking && !state.inputBlocking;
     active.automationBlocking = state.inputBlocking;
     active.inputBlocking =
@@ -56,6 +64,8 @@ export function createSessionFrameObserver(
     const currentRuleIds = blockingRuleIds(reading);
     if (currentRuleIds.length > 0 || !active.inputBlocking) ruleIds = currentRuleIds;
     if (released && active.status === "blocked") pendingAutomationClearance = true;
+    // Publish this frame's hold before evidence listeners can submit readiness.
+    readiness.observeFrameHold(reading.facts, active.automationBlocking);
     readiness.ready.armDeadline();
     try {
       observeRenderedReading(observers, reading, active);

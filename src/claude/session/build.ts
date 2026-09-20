@@ -17,6 +17,7 @@ import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, writeSessionRecord } from "../../state/store.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
 import { type ClaudePreflightWarning, preflightEvent } from "../preflight.ts";
+import { claudeTrustClearance } from "../screen-table.ts";
 import { ClaudeStartupPromptResponder, guardedClaudeAutomationWrite } from "../startup-prompts.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
 import { currentClaudeHookBridgeFactory } from "./bridge.ts";
@@ -123,6 +124,7 @@ export async function buildClaudeSession(
     () => session,
     () => promptResponder,
     readiness,
+    claudeTrustClearance,
   );
   const promptResponder = new ClaudeStartupPromptResponder(autotrust, frameObserver.refresh);
   let latestRenderedText = "";

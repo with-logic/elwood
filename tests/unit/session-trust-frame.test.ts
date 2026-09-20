@@ -1,6 +1,9 @@
 /** Trust fallback uses the ordinary attention/readiness owner (C-TRUST-01). */
 import { afterEach, expect, test, vi } from "vitest";
-import { claudeScreenFactTableForTrustPolicy } from "../../src/claude/screen-table.ts";
+import {
+  claudeScreenFactTableForTrustPolicy,
+  claudeTrustClearance,
+} from "../../src/claude/screen-table.ts";
 import { AttentionWatcher } from "../../src/core/attention.ts";
 import { TurnStateWatcher } from "../../src/core/turn-state.ts";
 import {
@@ -58,6 +61,7 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
     () => (attached ? active : undefined),
     () => trust,
     readiness,
+    claudeTrustClearance,
   );
   observe.refresh();
   attached = true;

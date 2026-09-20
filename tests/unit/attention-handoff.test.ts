@@ -1,11 +1,16 @@
 /** Human-to-automation attention handoff preserves work and labels (C-ATTN-02/03). */
 import { expect, test, vi } from "vitest";
-import { claudeScreenFactTableForTrustPolicy } from "../../src/claude/screen-table.ts";
+import {
+  claudeScreenFactTableForTrustPolicy,
+  claudeTrustClearance,
+} from "../../src/claude/screen-table.ts";
 import { AttentionWatcher } from "../../src/core/attention.ts";
 import { TurnStateWatcher } from "../../src/core/turn-state.ts";
 import { createSessionFrameObserver } from "../../src/runtime/session/frames.ts";
 import { createReadinessGate } from "../../src/runtime/session/readiness.ts";
 import { SessionStatusEngine } from "../../src/runtime/status-evidence.ts";
+
+import { claudeComposer } from "../fixtures/trust-composer.ts";
 
 const approval = "Do you want to create elwood.txt?\n❯ 1. Yes\n  3. No\nEsc to cancel";
 const working = "❯ \n  ⏵⏵ bypass permissions on · esc to interrupt";
@@ -49,6 +54,7 @@ function harness(started = true) {
     () => active,
     () => trust,
     createReadinessGate(() => undefined, false),
+    claudeTrustClearance,
   );
   const frame = (text: string) => observer.observe({ text, title: "" });
   return { engine, ready, activity, active, trust, observer, frame };
@@ -61,7 +67,7 @@ test.each([
   const { engine, ready, trust, frame } = harness();
   frame(approval);
   trust.inputBlocking = true;
-  frame("❯ ");
+  frame(claudeComposer);
   expect(engine.status).toBe("blocked");
   trust.inputBlocking = false;
   if (partial) {
@@ -71,7 +77,7 @@ test.each([
   frame(working);
   expect(engine.status).toBe("running");
   expect(ready).not.toHaveBeenCalled();
-  frame("❯ ");
+  frame(claudeComposer);
   expect(engine.status).toBe("ready");
   expect(ready).toHaveBeenCalledTimes(1);
 });
@@ -86,4 +92,18 @@ test("C-ATTN-03 startup blank repaint retains the deferred attention label", () 
   expect(activity).toHaveBeenCalledWith(
     expect.objectContaining({ label: "claude-permission-dialog" }),
   );
+});
+
+test("C-ATTN-02 automation release to verified idle replays the consumed human clearance once", () => {
+  const { engine, ready, trust, frame } = harness();
+  frame(approval);
+  trust.inputBlocking = true;
+  frame(claudeComposer);
+  expect(engine.status).toBe("blocked");
+  trust.inputBlocking = false;
+  frame(claudeComposer);
+  expect(engine.status).toBe("ready");
+  expect(ready).toHaveBeenCalledTimes(1);
+  frame(claudeComposer);
+  expect(ready).toHaveBeenCalledTimes(1);
 });

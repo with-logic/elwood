@@ -57,3 +57,31 @@ test.each([
     await session.stop();
   }
 });
+
+test("C-API-28 a deferred initial dialog can clear directly to verified idle", async () => {
+  installFakes();
+  const cwd = tempDir();
+  const session = await startClaude({ cwd });
+  try {
+    ptys[0]!.emitData(
+      frame("Do you want to create elwood.txt?\r\n❯ 1. Yes\r\n  3. No\r\nEsc to cancel"),
+    );
+    await session.terminal.settled();
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, {
+      hook_event_name: "InstructionsLoaded",
+      file_path: "/tmp/CLAUDE.md",
+      memory_type: "Project",
+      load_reason: "session_start",
+      session_id: "claude-idle-clear",
+      cwd,
+    });
+    expect(session.status).toBe("blocked");
+    ptys[0]!.emitData(frame(tty(claudeComposer)));
+    await session.terminal.settled();
+    expect(session.status).toBe("ready");
+    await session.sendMessage("after direct idle");
+    expect(ptys[0]!.writes).toEqual(["\u001b[200~after direct idle\u001b[201~", "\r"]);
+  } finally {
+    await session.stop();
+  }
+});

@@ -1,6 +1,7 @@
 /** Working attention clearance must preserve the resumed turn's end edge (C-ATTN-02). */
 import { afterEach, expect, test } from "vitest";
 import { resumeClaude, startClaude } from "../../src/index.ts";
+import { claudeComposer, tty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -42,7 +43,7 @@ test.each([
     await session.terminal.settled();
     expect(session.status).toBe("running");
     expect(ptys[1]!.writes).toEqual([]);
-    ptys[1]!.emitData(frame("❯ "));
+    ptys[1]!.emitData(frame(tty(claudeComposer)));
     await session.terminal.settled();
     await expect.poll(() => ptys[1]!.writes.join("")).toContain("after resumed work");
     await queued;

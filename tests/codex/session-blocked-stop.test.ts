@@ -1,6 +1,7 @@
 /** A late Stop cannot clear an unchanged human prompt (PRD §5.3, C-ATTN-01/02). */
 import { afterEach, expect, test } from "vitest";
 import { startCodex } from "../../src/index.ts";
+import { codexComposer, tty } from "../fixtures/trust-composer.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -35,7 +36,7 @@ test("C-ATTN-01 a late Stop preserves blocking until the unchanged prompt clears
     expect(session.status).toBe("blocked");
     expect(attention).toEqual(["codex-approval-dialog"]);
     expect(ptys[0]!.writes).toEqual([]);
-    ptys[0]!.emitData("\u001b[2J\u001b[H› ");
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${tty(codexComposer)}`);
     await session.terminal.settled();
     expect(session.status).toBe("ready");
     expect(attention).toEqual(["codex-approval-dialog"]);
