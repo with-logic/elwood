@@ -47,7 +47,7 @@ run_capped() {
   local cap="$process_timeout_seconds" remaining
   remaining=$(remaining_seconds)
   [ "$remaining" -lt "$cap" ] && cap="$remaining"
-  python3 "$root/scripts/review/capped.py" "$cap" "$@"
+  python3 "$root/scripts/review/capped.py" --diagnostics-fd=3 "$cap" "$@"
 }
 
 out="$root/REVIEW.md"
