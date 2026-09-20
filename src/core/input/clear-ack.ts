@@ -8,7 +8,11 @@ import {
 } from "./abort.ts";
 import { composerClearKeys, unsafeWriteRetryMs } from "./constants.ts";
 
-/** Stable identity of a completed, positively empty native composer; undefined is not clearance. */
+/**
+ * Positive empty-composer evidence: reuse one token for each completed frame and
+ * return a distinct token only for a later completed frame, never for each poll.
+ * Return undefined when there is no completed, positively empty native composer.
+ */
 export type EmptyComposerObserver = () => object | undefined;
 
 export async function clearAndObserveComposer(
