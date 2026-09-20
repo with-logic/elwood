@@ -56,7 +56,7 @@ if match:
         raise RuntimeError(diagnostic_message)
     if mode == 'first-parser-timeout' and name == 'review-architecture-conventions' and count == 1:
         atexit.unregister(emit_events)
-        print('not-json')
+        print('not-json', file=original_stdout, flush=True)
         sys.exit(0)
     if mode in ['timeout', 'first-error-timeout', 'first-parser-timeout'] and name == 'review-architecture-conventions':
         subprocess.Popen([sys.executable, '-c',
@@ -80,7 +80,7 @@ else:
         os.kill(os.getpid(), signal.SIGKILL)
     if mode == 'synth-parser':
         atexit.unregister(emit_events)
-        print('not-json')
+        print('not-json', file=original_stdout, flush=True)
         sys.exit(0)
     if mode == 'synth-failed':
         print('PRIVATE-SYNTHESIS-TEXT', file=sys.stderr)

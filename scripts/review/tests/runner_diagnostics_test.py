@@ -10,6 +10,20 @@ from runner_diagnostics import (DIAGNOSTIC_PREFIX, MAX_DIAGNOSTIC_CHARS,
                                 assert_architecture_lens_one_attempt, attempt_diagnostics)
 
 
+def capture_parser_input(fixture):
+    parser = fixture.root / 'scripts/review/output.mjs'
+    source = parser.read_text().replace('readFileSync, realpathSync', 'readFileSync, realpathSync, writeFileSync', 1)
+    source = source.replace('export function finalText(input) {',
+                            'export function finalText(input) {\n'
+                            '  writeFileSync(`${process.env.REVIEW_TEST_ROOT}/parser-input-${process.pid}`, input);', 1)
+    parser.write_text(source)
+
+
+def assert_malformed_parser_input(test, fixture):
+    inputs = [path.read_bytes() for path in fixture.root.glob('parser-input-*')]
+    test.assertEqual(inputs.count(b'not-json\n'), 1, 'Expected one nonempty malformed parser input')
+
+
 class AttemptDiagnosticsTest(unittest.TestCase):
     def test_first_attempt_error_survives_later_timeout_and_assertion_failure(self):
         fixture = runner_test.RunnerTest()
@@ -35,7 +49,9 @@ class AttemptDiagnosticsTest(unittest.TestCase):
         fixture = runner_test.RunnerTest()
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
+        capture_parser_input(fixture)
         result = fixture.run_review('first-parser-timeout')
+        assert_malformed_parser_input(self, fixture)
         self.assertIn('category=transport exit=1', result.stderr)
         self.assertIn('category=timeout exit=124', result.stderr)
         self.assertNotIn('lens=synthesis', attempt_diagnostics(fixture.root))
@@ -69,7 +85,9 @@ class AttemptDiagnosticsTest(unittest.TestCase):
         fixture = runner_test.RunnerTest()
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
+        capture_parser_input(fixture)
         result = fixture.run_review('synth-parser')
+        assert_malformed_parser_input(self, fixture)
         self.assertIn('phase=synthesis category=transport', result.stderr)
         diagnostic = attempt_diagnostics(fixture.root)
         self.assertIn('lens=synthesis attempt=1 exit=1', diagnostic)
