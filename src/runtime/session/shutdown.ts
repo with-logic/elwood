@@ -27,12 +27,12 @@ export type ShutdownReapPolicy = Pick<SessionReapPolicy, "orThrow"> & {
 /** The session surface the shutdown/teardown orchestration drives. */
 export type ShutdownHost = {
   readonly pty: PtyProcess;
-  readonly removeFiles: () => void;
+  readonly removeFiles: () => Promise<void> | void;
   readonly reapPolicy: ShutdownReapPolicy;
   readonly status: () => ElwoodSessionStatus;
   readonly claimShutdown: (evidence: ShutdownEvidence) => void;
   readonly pauseLoops: () => void;
-  readonly clearLoops: (reason: "kill" | "teardown") => Promise<void>;
+  readonly clearOrPauseLoops: (reason: "kill" | "teardown") => Promise<void>;
   readonly cleanupRuntime: () => Promise<void>;
   readonly submitEvidence: (kind: StatusEvidenceKind) => void;
 };
@@ -144,6 +144,7 @@ async function cleanupOrThrowTermination(host: ShutdownHost): Promise<void> {
  */
 export async function runTeardown(host: ShutdownHost, ctx: ShutdownContext): Promise<void> {
   host.claimShutdown("teardown_completed");
+  host.pauseLoops();
   const shouldSignal = () => !mustNotSignal(host, ctx);
   await runPermanentShutdown(host, "teardown", () =>
     runTeardownSteps([
@@ -168,16 +169,19 @@ async function runPermanentShutdown(
 ): Promise<void> {
   let loopFailure: unknown;
   let cleanupFailure: unknown;
-  try {
-    await host.clearLoops(reason);
-  } catch (error) {
-    loopFailure = error;
-  }
+  const clearing = (async () => {
+    try {
+      await host.clearOrPauseLoops(reason);
+    } catch (error) {
+      loopFailure = error;
+    }
+  })();
   try {
     await cleanup();
   } catch (error) {
     cleanupFailure = error;
   }
+  await clearing;
   if (loopFailure !== undefined) throw loopFailure;
   if (cleanupFailure !== undefined) throw cleanupFailure;
 }
@@ -186,5 +190,5 @@ async function runPermanentShutdown(
 async function runKillShutdown(host: ShutdownHost, cleanup: () => Promise<void>): Promise<void> {
   host.pauseLoops();
   await cleanup();
-  await host.clearLoops("kill");
+  await host.clearOrPauseLoops("kill");
 }

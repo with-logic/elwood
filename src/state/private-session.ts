@@ -81,7 +81,7 @@ export function readPrivateSessionRecord(
   }
 }
 
-/** Remove record and stable socket home when no live session object owns teardown. */
+/** Remove record and socket home only when no live launch or pending reservation owns them. */
 export function removeSessionIdentity(
   stateDir: string,
   id: string,

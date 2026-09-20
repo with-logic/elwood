@@ -37,6 +37,7 @@ export type BuildClaudeSessionInput = {
   readonly runtime: SessionRuntime;
   readonly options: StartClaudeOptions;
   readonly resumed: boolean;
+  readonly activate: () => void;
   readonly preflightWarning: ClaudePreflightWarning | undefined;
 };
 
@@ -161,8 +162,7 @@ export async function buildClaudeSession(
   bindStartupLifetime(active, promptResponder, ready);
   frameObserver.refresh();
   const beforeCleanup = () => active.pauseLoopsForStartupCleanup(ready.cancel);
-  // Guard every live-resource step after session creation: a failure in any of them
-  // tears down the now-live PTY, bridge, terminal, and watcher first (PRD §9.1, §9.4).
+  // Activation shares the live-resource cleanup boundary (PRD §9.1, §9.4).
   await guardStartupRegion(
     async () => {
       active.startLoops();
@@ -183,10 +183,10 @@ export async function buildClaudeSession(
           () => active.submitExit(),
         );
       });
-      // Release the startup buffer once the check settles (§9.4).
       await assertStartupThenRelease("claude", startupOutput, () => observedExit);
       active.submitEvidence("startup_usable");
       frameObserver.blockOnceLive(active);
+      input.activate();
     },
     { before: beforeCleanup, pty, bridge, terminal, after: () => transcriptWatcher.stop() },
   );

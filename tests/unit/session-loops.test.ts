@@ -79,12 +79,13 @@ describe("SessionLoops", () => {
     let mayPersistLoops = true;
     const old = createLoops(queue, [], stateDir, () => mayPersistLoops);
     old.ready();
-    old.create({ mode: "fixed", intervalMs: 60_000, message: "old" });
+    const oldLoop = old.create({ mode: "fixed", intervalMs: 60_000, message: "old" });
     old.pause();
     mayPersistLoops = false;
     vi.setSystemTime(start + 86_400_000);
     const successor = createLoops(queue, [], stateDir);
     successor.ready();
+    successor.cancel(oldLoop.id);
     const fresh = successor.create({ mode: "fixed", intervalMs: 60_000, message: "new" });
     successor.pause();
     vi.setSystemTime(start + 604_800_001);
@@ -94,7 +95,7 @@ describe("SessionLoops", () => {
     ]);
   });
 
-  test("defers restore pruning until the guarded startup call", () => {
+  test("rejects unreadable durable loop state during activation", () => {
     const queue = new ControlQueue(
       () => Promise.resolve(),
       () => new Error("closed"),
@@ -102,22 +103,11 @@ describe("SessionLoops", () => {
     );
     const stateDir = join(tempDir(), "not-a-directory");
     writeFileSync(stateDir, "block persistence");
-    const loops = createLoops(queue, [expiredDefinition], stateDir);
-    expect(() => loops.start()).toThrowError(
-      expect.objectContaining({ code: "loop_persistence_failed" }),
+    expect(() => createLoops(queue, [], stateDir)).toThrowError(
+      expect.objectContaining({ code: "state_corrupt" }),
     );
   });
 });
-
-const expiredDefinition: PersistedLoopDefinition = {
-  id: "expired",
-  mode: "fixed",
-  intervalMs: 60_000,
-  message: "expired",
-  jitterMs: 0,
-  createdAt: 0,
-  expiresAt: 604_800_000,
-};
 
 function createLoops(
   queue: ControlQueue,
@@ -126,7 +116,11 @@ function createLoops(
   mayPersistLoops = () => true,
 ): SessionLoops {
   return new SessionLoops({
-    mayPersistLoops,
+    ownership: {
+      canPersist: mayPersistLoops,
+      onCommit: (activate) => activate(),
+      onRevoked: () => undefined,
+    },
     stateDir,
     elwoodSessionId: "session-loops",
     definitions,

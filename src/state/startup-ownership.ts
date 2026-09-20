@@ -1,4 +1,4 @@
-/** Fresh startup owns the same publication/rollback transaction as resume (C-API-20). */
+/** Startup owns publication rollback; builders activate inside their cleanup guard (C-API-20). */
 import {
   type LaunchOwnership,
   type LaunchReservation,
@@ -8,13 +8,11 @@ import {
 export async function withLaunchOwnership<T>(
   sessionDir: string,
   reservation: LaunchReservation | undefined,
-  build: (ownership: LaunchOwnership) => Promise<T>,
+  build: (ownership: LaunchOwnership, activate: () => void) => Promise<T>,
 ): Promise<T> {
   const ownership = reservation ?? reserveLaunchOwnership(sessionDir);
   try {
-    const result = await build(ownership);
-    if (reservation === undefined) ownership.commit();
-    return result;
+    return await build(ownership, ownership.commit);
   } catch (error) {
     if (reservation === undefined) ownership.rollback();
     throw error;

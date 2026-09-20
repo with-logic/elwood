@@ -1,5 +1,5 @@
 /** Failed startup restores published predecessor files and hook delivery (C-API-20). */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { setCodexHookBridgeFactoryForTests } from "../../src/codex/session/bridge.ts";
@@ -32,7 +32,7 @@ test.each([
     source: "startup",
   });
   const dir = join(cwd, ".elwood", "sessions", id);
-  const files = ["session.json", "hook-bridge.mjs"];
+  const files = readdirSync(dir);
   const before = files.map((file) => readFileSync(join(dir, file), "utf8"));
   try {
     if (phase === "bridge")
@@ -49,6 +49,7 @@ test.each([
     ).rejects.toMatchObject({
       code: phase === "bridge" ? "hook_bridge_failed" : "pty_start_failed",
     });
+    expect(readdirSync(dir)).toEqual(files);
     expect(files.map((file) => readFileSync(join(dir, file), "utf8"))).toEqual(before);
     await expect(
       ptys[0]!.dispatchHook(id, {
@@ -91,7 +92,7 @@ test("C-API-20 failed pending startup rolls back its first hook record publicati
     await vi.advanceTimersByTimeAsync(1_000);
     expect(await starting).toMatchObject({ code: "codex_start_failed" });
     expect(existsSync(join(dir, "session.json"))).toBe(false);
-    expect(existsSync(join(dir, "hook-bridge.mjs"))).toBe(false);
+    expect(readdirSync(dir)).toEqual([]);
     expect(hasLaunchOwner(dir)).toBe(false);
   } finally {
     ptys[0]?.emitExit({ exitCode: 1 });

@@ -69,7 +69,6 @@ export async function resumeClaude(rawOptions: ResumeClaudeOptions): Promise<Cla
       warning,
       ownership,
     );
-    ownership.commit();
     return session;
   } catch (error) {
     ownership.rollback();

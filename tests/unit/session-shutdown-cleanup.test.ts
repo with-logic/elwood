@@ -36,7 +36,7 @@ function host(
     status: () => "exited",
     claimShutdown: () => undefined,
     pauseLoops: () => undefined,
-    clearLoops: () => Promise.resolve(),
+    clearOrPauseLoops: () => Promise.resolve(),
     cleanupRuntime,
     submitEvidence: () => undefined,
     ...overrides,

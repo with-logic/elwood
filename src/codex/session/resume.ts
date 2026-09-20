@@ -65,7 +65,6 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
       warning,
       ownership,
     );
-    ownership.commit();
     return session;
   } catch (error) {
     ownership.rollback();

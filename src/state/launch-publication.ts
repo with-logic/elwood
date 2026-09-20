@@ -1,8 +1,9 @@
 /** Restore only unchanged files published by one failed launch (PRD §8.1, C-API-20). */
 import { rmSync } from "node:fs";
+import { dirname } from "node:path";
 import { elwoodError } from "../core/errors.ts";
 import { assertStatePath } from "./directories.ts";
-import { writePrivateFileAtomic } from "./files.ts";
+import { fsyncDir, writePrivateFileAtomic } from "./files.ts";
 import { currentFileOwner, readPrivateFile } from "./private-read.ts";
 
 type PublishedFile = { before: string | undefined; written: readonly (string | undefined)[] };
@@ -27,16 +28,24 @@ export class LaunchPublication {
   }
 
   rollback(): void {
-    try {
-      for (const [path, entry] of this.files) {
-        if (!entry.written.includes(read(path))) continue;
-        if (entry.before === undefined) rmSync(path, { force: true });
-        else writePrivateFileAtomic(path, entry.before);
+    let failed = false;
+    for (const [path, entry] of this.files) {
+      try {
+        if (entry.written.includes(read(path))) {
+          // A restoration can itself fail after rename/unlink but before directory fsync.
+          entry.written = [...new Set([...entry.written, entry.before])];
+          if (entry.before === undefined) {
+            rmSync(path, { force: true });
+            fsyncDir(dirname(path));
+          } else writePrivateFileAtomic(path, entry.before);
+        }
+        this.files.delete(path);
+      } catch {
+        failed = true;
       }
-      this.clear();
-    } catch {
-      throw elwoodError("state_corrupt", "Could not restore state after failed session startup.");
     }
+    if (failed)
+      throw elwoodError("state_corrupt", "Could not restore state after failed session startup.");
   }
 }
 

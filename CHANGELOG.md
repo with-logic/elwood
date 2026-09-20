@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Keep each live launch’s hook policy bound to its own bridge artifacts during resume. Pending resumes reconcile durable loops at activation; destructive predecessor shutdown joins the reservation outcome, and rollback attempts all files before reporting restoration failures.
+
 - Claude and Codex transcript and diagnostic listeners can stop a session without
   moving pending activity past terminal exit, duplicating finalization, or signaling
   an already-exited PTY while its final transcript records are being delivered.

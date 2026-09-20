@@ -5,10 +5,11 @@
  */
 
 import { readdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { elwoodError, errnoCode, toError } from "../../core/errors.ts";
+import { canonicalStatePath } from "../../state/canonical-path.ts";
 import { readPrivateSessionRecord } from "../../state/private-session.ts";
-import { sessionSocketHome } from "../../state/socket-home.ts";
+import { canonicalSessionSocketHome } from "../../state/socket-home.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import type { CliAgent } from "../types.ts";
 
@@ -36,7 +37,7 @@ export function listCliSessions(
   stateDir: string,
   readRecord: ReadSessionRecord = readPrivateSessionRecord,
 ): SessionListResult {
-  const root = resolve(stateDir);
+  const root = canonicalStatePath(stateDir);
   const sessions: CliSessionListing[] = [];
   const skipped: SkippedSession[] = [];
   for (const id of sessionDirectoryNames(join(root, "sessions"))) {
@@ -83,8 +84,8 @@ function listing(root: string, id: string, record: SessionRecord): CliSessionLis
 /** Cheap, side-effect-free: a launch's bridge socket file exists in the stable home. */
 function socketPresent(stateDir: string, elwoodSessionId: string, adapter: CliAgent): boolean {
   try {
-    return readdirSync(sessionSocketHome({ stateDir, elwoodSessionId, adapter })).some((name) =>
-      name.endsWith(".sock"),
+    return readdirSync(canonicalSessionSocketHome({ stateDir, elwoodSessionId, adapter })).some(
+      (name) => name.endsWith(".sock"),
     );
   } catch {
     return false;

@@ -38,6 +38,7 @@ export type BuildCodexSessionInput = {
   readonly runtime: SessionRuntime;
   readonly options: StartCodexOptions;
   readonly resumed: boolean;
+  readonly activate: () => void;
   readonly preflightWarning: CodexPreflightWarning | undefined;
 };
 
@@ -155,7 +156,6 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   bindStartupLifetime(activeSession, promptResponder, ready);
   frameObserver.refresh();
   const beforeCleanup = () => activeSession.pauseLoopsForStartupCleanup(ready.cancel);
-  // Every post-construction failure tears down all live resources (§9.1/§9.4).
   await guardStartupRegion(
     async () => {
       activeSession.startLoops();
@@ -178,6 +178,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       await assertStartupThenRelease("codex", startupOutput, () => observedExit);
       activeSession.submitEvidence("startup_usable");
       frameObserver.blockOnceLive(activeSession);
+      input.activate();
     },
     { before: beforeCleanup, pty, bridge, terminal, after: () => transcriptWatcher.stop() },
   );

@@ -18,6 +18,9 @@ test("C-LOOP-17 superseded cancellation cannot succeed while the successor retai
     await prior.stop();
     current = await resumeCodex({ cwd, elwoodSessionId: prior.elwoodSessionId });
     await expect(prior.cancelLoop(loop.id)).rejects.toMatchObject({ code: "session_not_running" });
+    await expect(
+      prior.createLoop({ mode: "fixed", intervalMs: 60_000, message: "stale" }),
+    ).rejects.toMatchObject({ code: "session_not_running" });
     expect(await current.listLoops()).toContainEqual(expect.objectContaining({ id: loop.id }));
   } finally {
     await current?.teardown();

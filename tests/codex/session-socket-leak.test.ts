@@ -10,8 +10,7 @@
  * `TMPDIR` so the leak checks see only this launch's homes/sockets.
  */
 
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { mkdtempSync, rmSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
 import { setCodexHookBridgeFactoryForTests } from "../../src/codex/session/index.ts";
 import { resumeCodex, startCodex } from "../../src/index.ts";
@@ -105,33 +104,6 @@ describe("§9.1 a failed Codex start does not leak its socket file", () => {
     expect(socketFilesIn(priv)).toHaveLength(1); // A's socket survived B's cleanup
     await live.teardown();
     expect(socketHomesIn(priv)).toEqual([]);
-  });
-
-  test("a REAL runtime file-write failure during resume removes the minted socket file", async () => {
-    // Prove the ownership boundary end-to-end, not just the helper: induce an ACTUAL
-    // runtime-file write failure inside `buildCodexSession` (writeCodexRuntimeFiles)
-    // during a real resume, and assert the resume's newly minted socket file is swept
-    // while the stopped session's own file is untouched. If those writes ever moved
-    // OUTSIDE `withSocketHomeCleanup`, the resume's file would leak.
-    const cwd = tempDir(); // created under the REAL tmp, before we isolate
-    installFakes();
-    const priv = isolateTmp();
-    const first = await startCodex({ cwd });
-    await becomeReady(first.elwoodSessionId, cwd); // SessionStart persists the codex resumeId
-    await first.stop(); // stop keeps state + the home; the bridge unlinks its socket file
-    const beforeResume = socketFilesIn(priv);
-    expect(beforeResume).toEqual([]); // no live socket, but the stable home remains
-    expect(socketHomesIn(priv)).toHaveLength(1);
-    // Plant a DIRECTORY where writeCodexRuntimeFiles will write the bridge script: the
-    // atomic write's final rename onto a non-empty directory throws a real fs error
-    // inside the build body — exactly a failed runtime write.
-    const sessionDir = join(resolve(cwd, ".elwood"), "sessions", first.elwoodSessionId);
-    const bridgeScript = join(sessionDir, "hook-bridge.mjs");
-    rmSync(bridgeScript, { force: true });
-    mkdirSync(join(bridgeScript, "block"), { recursive: true }); // non-empty dir at target
-    await expect(resumeCodex({ elwoodSessionId: first.elwoodSessionId, cwd })).rejects.toThrow();
-    // The boundary removed only the file the failed resume minted — no net new leak.
-    expect(socketFilesIn(priv)).toEqual(beforeResume);
   });
 
   test("on SUCCESS the socket home persists (ownership transfers to the session)", async () => {

@@ -99,3 +99,19 @@ test("C-API-20 out-of-order failed publications restore the last viable launch's
   expect(prior.current()).toBe(true);
   prior.release();
 });
+
+test("C-API-20 superseded pending activation cannot reclaim authority", () => {
+  const path = tempDir();
+  const earlier = reserveLaunchOwnership(path);
+  const successor = reserveLaunchOwnership(path);
+  successor.commit();
+  try {
+    expect(() => earlier.commit()).toThrowError(
+      expect.objectContaining({ code: "session_not_running" }),
+    );
+    expect(successor.current()).toBe(true);
+  } finally {
+    earlier.rollback();
+    successor.release();
+  }
+});

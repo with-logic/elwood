@@ -91,31 +91,36 @@ test.each([
   const nativeExitHandlers = [...pty.exitHandlers];
   let shutdown: Promise<void> | undefined;
 
-  session.on("activity", (event) => {
-    if (event.kind !== "assistant_message") return;
-    shutdown ??= session[verb]();
-    void shutdown.catch(() => undefined);
-  });
-  await pty.dispatchHook(session.elwoodSessionId, {
-    hook_event_name: "Stop",
-    session_id: "claude-1",
-    cwd,
-    transcript_path: path,
-  });
-  writeFileSync(
-    path,
-    `${JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "final" }] } })}\n`,
-  );
-  for (const handler of nativeExitHandlers) handler({ exitCode: 0 });
-  expect(shutdown).toBeDefined();
-  await expect(shutdown).rejects.toMatchObject({
-    code: verb === "teardown" ? "teardown_failed" : "termination_failed",
-  });
-  const failedAttempts = attempts;
-  fail = false;
-  const retried = session[verb]();
-  expect(retried).not.toBe(shutdown);
-  await expect(retried).resolves.toBeUndefined();
-  expect(attempts).toBeGreaterThan(failedAttempts);
-  expect(pty.killSignals).toEqual([]);
+  try {
+    session.on("activity", (event) => {
+      if (event.kind !== "assistant_message") return;
+      shutdown ??= session[verb]();
+      void shutdown.catch(() => undefined);
+    });
+    await pty.dispatchHook(session.elwoodSessionId, {
+      hook_event_name: "Stop",
+      session_id: "claude-1",
+      cwd,
+      transcript_path: path,
+    });
+    writeFileSync(
+      path,
+      `${JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "final" }] } })}\n`,
+    );
+    for (const handler of nativeExitHandlers) handler({ exitCode: 0 });
+    expect(shutdown).toBeDefined();
+    await expect(shutdown).rejects.toMatchObject({
+      code: verb === "teardown" ? "teardown_failed" : "termination_failed",
+    });
+    const failedAttempts = attempts;
+    fail = false;
+    const retried = session[verb]();
+    expect(retried).not.toBe(shutdown);
+    await expect(retried).resolves.toBeUndefined();
+    expect(attempts).toBeGreaterThan(failedAttempts);
+    expect(pty.killSignals).toEqual([]);
+  } finally {
+    fail = false;
+    await session.teardown().catch(() => undefined);
+  }
 });

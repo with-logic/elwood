@@ -43,13 +43,12 @@ reused; the socket path is a per-launch runtime value, embedded only in the gene
 private bridge script and never in the session record, so a
 recorded socket path can never be trusted. `teardown` removes the whole socket
 home (every launch's socket) along with the session directory, so no per-launch
-socket can leak undiscoverably across restart/resume cycles. Because `teardown`
-removes the whole home, running two live sessions that share a full identity
-(`stateDir`, adapter, and session id) concurrently is UNSUPPORTED — they would
-also share the session directory, record file, and resume id, and one's teardown
-would remove the other's live socket. A given session identity has at most one
-live session at a time; a failed START (not a teardown) removes only its own
-socket file, so an overlapping failed launch never disturbs a live one. `stateDir`
+socket can leak undiscoverably across restart/resume cycles. Across separate Elwood
+processes, running two live sessions with the same full identity (`stateDir`,
+adapter, and session id) is unsupported: the processes share files and socket
+homes without a cross-process ownership protocol. Within one process, overlapping
+resume and cleanup follow the successor protocol below. A failed start removes
+only its own socket file, preserving any overlapping launch. `stateDir`
 length MUST NOT constrain whether a session can start.
 
 Within one Elwood process, a validated resume attempt revokes the prior launch's
@@ -59,22 +58,36 @@ the shared session directory or socket home. Each loop persistence write and
 destructive path removal checks the current launch generation at the mutation itself,
 including after awaited shutdown work and on repeated shutdown calls. Until resume
 succeeds, the prior launch may continue ordinary loop and record persistence, but its shutdown
-cannot clear shared loops or files. If resume fails, ownership returns to the prior
+cannot clear shared loops or files. Its `kill` or `teardown` still stops its own runtime,
+but waits for the pending reservation to settle before deciding shared cleanup: a
+committed successor keeps its state, while a failed successor permits the predecessor
+to finish the requested cleanup before its shutdown promise resolves. A pending
+successor does not activate loop timers. Successful activation rereads the latest
+durable loop definitions and revokes prior scheduling in the same synchronous commit,
+so a successful predecessor cancellation or creation is preserved. An activation
+read failure stops the built launch before ownership rolls back. If resume fails,
+ownership returns to the prior
 viable launch only when no newer reservation or launch has replaced that attempt.
 A failed overlapping launch therefore preserves the original live launch's cleanup
 and persistence behavior. This is an
-in-process successor guarantee, not cross-process launch serialization; concurrent
-live launches of one identity remain unsupported. Allowed root-owned filesystem
+in-process successor guarantee, not cross-process launch serialization. Allowed root-owned filesystem
 aliases use one canonical, validated state identity for launch ownership, runtime
 paths, and socket homes; no-follow validation precedes canonicalization. Startup
-publication of record, bridge, and settings files is generation-owned. A failed
+publication of session records is generation-owned. Bridge scripts and generated
+settings instead use fresh per-launch filenames permanently bound to that launch's
+PTY. Pending or committed successors never redirect a predecessor's hook policy. A failed
 attempt restores each prior file only while it still owns the reservation and the
 file still contains that attempt's exact published bytes. A newer predecessor
 record update or newer generation is preserved. If a predecessor updates a file
 between two pending-launch writes, that external version becomes the rollback
 baseline for the later write. Pending-launch hook record writes participate in the
-same transaction. Superseded or failed generations cannot publish metadata. A rollback failure is reported as
-`state_corrupt`, not as a successful restoration. Identity-only CLI cleanup removes
+same transaction. Superseded or failed generations cannot publish metadata.
+A rollback failure is reported as
+`state_corrupt`, not as a successful restoration. Rollback attempts every independent
+file restoration, settles the failed reservation and restores the prior viable owner
+even when one restoration fails. Failed entries remain eligible for an exact-byte
+retry only while no newer generation has replaced that restored owner. Rollback
+unlinks are fsync-backed like other state changes. Identity-only CLI cleanup removes
 state only when no same-process live launch or pending reservation owns it.
 
 ### 8.2 Session record
@@ -99,9 +112,10 @@ bridge scripts contain the fresh IPC token and socket path in owner-only files. 
 Nothing else is persisted in the core record. In particular it MUST NOT persist session status,
 timestamps, warnings, terminal size, the hook bridge
 authentication token, the socket path, or any Elwood-owned runtime file paths.
-Status and warnings are live-only (§5.7). Runtime file paths are pure functions of
-the state directory, session id, and adapter, so they are DERIVED on demand rather
-than stored. The socket HOME is a deterministic function of that same identity (a
+Status and warnings are live-only (§5.7). Runtime artifacts use fresh launch
+identifiers beneath the validated session directory and are never read from a stored record. Their filenames remain fixed for
+the owning PTY's lifetime, including while a later launch is pending. The socket
+HOME is a deterministic function of that same identity (a
 bounded fingerprint, §8.1), so every launch resolves the same one without storing
 it. The bridge authentication token and the socket FILE inside that home are minted
 FRESH on every start and resume and never trusted from disk — a recorded token or

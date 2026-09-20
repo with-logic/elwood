@@ -84,7 +84,7 @@ export function startClaudeFromRecord(
   return withLaunchOwnership(
     safeSessionDir(stateDir, record.elwoodSessionId),
     ownership,
-    (owner) => {
+    (owner, activate) => {
       const runtime = sessionRuntime(
         {
           stateDir,
@@ -95,7 +95,16 @@ export function startClaudeFromRecord(
       );
       return withSocketHomeCleanup(
         () => removeOwnSocketFile(runtime.socketPath),
-        () => buildClaudeSession({ record, stateDir, runtime, options, resumed, preflightWarning }),
+        () =>
+          buildClaudeSession({
+            record,
+            stateDir,
+            runtime,
+            options,
+            resumed,
+            preflightWarning,
+            activate,
+          }),
       );
     },
   );

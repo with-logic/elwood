@@ -1,4 +1,5 @@
 /** Reentrant teardown cannot erase a resumed successor's shared state (C-API-20). */
+
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
@@ -8,6 +9,7 @@ import {
 } from "../../src/codex/session/bridge.ts";
 import { resumeCodex, startCodex } from "../../src/index.ts";
 import { readLoopDefinitions } from "../../src/state/loop-store.ts";
+import { launchArtifactPaths } from "../helpers/launch-artifacts.ts";
 import {
   becomeReady,
   installFakes,
@@ -81,7 +83,7 @@ test.each([
     release.resolve();
     await shutdown;
     const dir = join(cwd, ".elwood", "sessions", session.elwoodSessionId);
-    const bridgePath = join(dir, "hook-bridge.mjs");
+    const bridgePath = launchArtifactPaths(ptys[1]!.options, dir).bridge;
     const bridge = readBridgeScript(bridgePath);
     const record = readFileSync(join(dir, "session.json"), "utf8");
     if (handoff === "exit")

@@ -32,7 +32,8 @@ export class SessionShutdownBinding {
   constructor(input: ShutdownBindingInput) {
     this.managed = managedShutdown(new ShutdownCoordinator(), () => ({
       pty: input.pty,
-      removeFiles: () => {
+      removeFiles: async () => {
+        await input.runtime.stateOwnership.waitForCleanup();
         // Check after every awaited cleanup, directly around the synchronous removals.
         if (!input.runtime.stateOwnership.current()) return;
         removeSessionFiles({
@@ -48,10 +49,10 @@ export class SessionShutdownBinding {
         this.pending ??= evidence;
       },
       pauseLoops: () => input.loops.pause(),
-      clearLoops: (reason) => {
+      clearOrPauseLoops: async (reason) => {
+        input.loops.pause();
+        await input.runtime.stateOwnership.waitForCleanup();
         if (input.runtime.stateOwnership.current()) input.loops.clear(reason);
-        else input.loops.pause();
-        return Promise.resolve();
       },
       cleanupRuntime: input.cleanupRuntime,
       submitEvidence: input.submitEvidence,

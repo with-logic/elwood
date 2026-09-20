@@ -15,8 +15,8 @@
  * restart/resume cycles. (`stop` keeps the home for a later resume — the bridge unlinks
  * its own socket file on stop; a failed START removes only its own socket file, so an
  * overlapping failed launch never disturbs a live one.) Because teardown removes the
- * WHOLE home, two live sessions sharing a full identity concurrently is unsupported
- * (PRD §8.1) — a given identity has at most one live session at a time.
+ * WHOLE home, same-process successor ownership gates shared cleanup (§8.1). Separate
+ * processes must not run concurrent live launches of one identity.
  */
 
 import { createHash } from "node:crypto";
@@ -66,7 +66,15 @@ export type SocketHomeIdentity = {
  * supported root-owned aliases of one directory share a home and launch owner (§8.1).
  */
 export function sessionSocketHome(identity: SocketHomeIdentity): string {
-  const stateDir = canonicalStatePath(identity.stateDir);
+  return canonicalSessionSocketHome({
+    ...identity,
+    stateDir: canonicalStatePath(identity.stateDir),
+  });
+}
+
+/** Resolve a home from a state root already validated and canonicalized by the caller. */
+export function canonicalSessionSocketHome(identity: SocketHomeIdentity): string {
+  const stateDir = identity.stateDir;
   const key = `${stateDir}\0${identity.adapter}\0${identity.elwoodSessionId}`;
   const fingerprint = createHash("sha256").update(key).digest("hex").slice(0, 16);
   return join(socketHomeRoot ?? tmpdir(), `${SOCKET_HOME_PREFIX}${fingerprint}`);

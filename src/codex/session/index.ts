@@ -92,7 +92,7 @@ export function startCodexFromRecord(
   return withLaunchOwnership(
     safeSessionDir(stateDir, record.elwoodSessionId),
     ownership,
-    (owner) => {
+    (owner, activate) => {
       const runtime = sessionRuntime(
         {
           stateDir,
@@ -103,7 +103,16 @@ export function startCodexFromRecord(
       );
       return withSocketHomeCleanup(
         () => removeOwnSocketFile(runtime.socketPath),
-        () => buildCodexSession({ record, stateDir, runtime, options, resumed, preflightWarning }),
+        () =>
+          buildCodexSession({
+            record,
+            stateDir,
+            runtime,
+            options,
+            resumed,
+            preflightWarning,
+            activate,
+          }),
       );
     },
   );
