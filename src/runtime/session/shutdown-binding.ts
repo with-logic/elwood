@@ -57,7 +57,7 @@ export class SessionShutdownBinding {
     return this.afterExitFinalization(this.managed.teardown);
   }
 
-  /** Join natural-exit finalization before any reentrant shutdown can signal or clean up. */
+  /** Open the finalization barrier; shutdown methods wait on it before signaling or cleanup. */
   beginExitFinalization(): void {
     this.exitFinalization = new Promise((resolve) => {
       this.resolveExitFinalization = resolve;

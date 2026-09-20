@@ -18,6 +18,8 @@ for (const statusThrows of [false, true]) {
     const path = join(cwd, "rollout.jsonl");
     writeFileSync(path, "");
     const session = await startCodex({ cwd });
+    const pty = ptys[0]!;
+    const nativeExitHandlers = [...pty.exitHandlers];
     let shutdown: Promise<void> | undefined;
     const finalized: string[] = [];
     session.on("terminal:exit", () => finalized.push("exit"));
@@ -29,9 +31,8 @@ for (const statusThrows of [false, true]) {
     });
     session.on("codex:transcript", () => {
       shutdown ??= session[verb]();
-      for (const handler of [...ptys[0]!.exitHandlers]) handler({ exitCode: 7 });
+      for (const handler of nativeExitHandlers) handler({ exitCode: 7 });
     });
-    const pty = ptys[0]!;
     try {
       await becomeReady(session.elwoodSessionId, cwd, { transcript_path: path });
       // A real node-pty exit is not replayed when an already-exited PTY is signaled.
@@ -40,7 +41,7 @@ for (const statusThrows of [false, true]) {
         path,
         `${JSON.stringify({ type: "response_item", payload: { type: "reasoning" } })}\n`,
       );
-      for (const handler of [...pty.exitHandlers]) handler({ exitCode: 0 });
+      for (const handler of nativeExitHandlers) handler({ exitCode: 0 });
       expect(shutdown).toBeDefined();
       await expect(shutdown).resolves.toBeUndefined();
       expect(finalized).toEqual(["exit", "status"]);
