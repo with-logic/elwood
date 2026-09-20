@@ -117,14 +117,15 @@ describe("ClaudeSessionApi guidance", () => {
     // dropped or reordered, and no stray byte reached the dialog beforehand.
     expect(ptys[0]!.writes).toEqual(["[200~intervene[201~", "\r"]);
   });
-  test("C-API-07 C-API-37 first-Enter failures reject public submissions", async () => {
+  test.each([
+    "sendPrompt",
+    "sendGuidance",
+  ] as const)("C-API-07 C-API-37 first-Enter failure rejects %s", async (method) => {
     const cwd = tempDir();
     installFakes();
     const session = await startClaude({ cwd });
     await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
     ptys[0]!.failOnWrite = "\r";
-    await expect(session.sendPrompt("prompt-fails")).rejects.toThrow("terminal disposed");
-    await ptys[0]!.dispatchHook(session.elwoodSessionId, stopHook(cwd));
-    await expect(session.sendGuidance("guidance-fails")).rejects.toThrow("terminal disposed");
+    await expect(session[method]("submission-fails")).rejects.toThrow("terminal disposed");
   });
 });

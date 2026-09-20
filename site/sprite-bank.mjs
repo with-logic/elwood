@@ -1,12 +1,8 @@
 import { gameAssetUrl } from "./game-assets.mjs";
-import { SpriteSources } from "./sprite-sources.mjs";
 
 export class SpriteBank {
   #onError;
   constructor(onError) {
-    this.sources = new SpriteSources();
-    this.playback = new Map();
-    this.playbackVersion = 0;
     this.clips = new Map();
     this.clipPromises = new Map();
     this.pages = new Map();
@@ -35,7 +31,6 @@ export class SpriteBank {
 
   async loadPage(name, index) {
     const key = `${name}/${index}`;
-    if (this.playback.has(key)) return this.playback.get(key);
     if (this.pages.has(key)) {
       const page = this.pages.get(key);
       this.pages.delete(key);
@@ -46,16 +41,11 @@ export class SpriteBank {
     const promise = (async () => {
       const clip = await this.load(name);
       const image = new Image();
-      const blob = await this.sources.load(gameAssetUrl(`${name}/${clip.pages[index].file}`));
-      const url = URL.createObjectURL(blob);
-      try {
-        image.src = url;
-        await image.decode();
-      } finally {
-        URL.revokeObjectURL(url);
-      }
+      image.src = gameAssetUrl(`${name}/${clip.pages[index].file}`).href;
+      await image.decode();
       this.pages.set(key, image);
-      // Keep only four decoded sheets; compressed sources have a separate byte budget.
+      // Only four decoded atlas pages remain resident. All other actions stay
+      // compressed in the normal HTTP cache until they are needed again.
       while (this.pages.size > 4) this.pages.delete(this.pages.keys().next().value);
       return image;
     })();
@@ -65,29 +55,6 @@ export class SpriteBank {
     } finally {
       this.pendingPages.delete(key);
     }
-  }
-
-  async preload(name) {
-    const clip = await this.load(name);
-    await Promise.all(
-      clip.pages.map((page) => this.sources.load(gameAssetUrl(`${name}/${page.file}`))),
-    );
-  }
-
-  animationReady(name) {
-    const clip = this.clips.get(name);
-    return !!clip && clip.pages.every((_page, index) => this.playback.has(`${name}/${index}`));
-  }
-
-  async prepareAnimation(name) {
-    const version = ++this.playbackVersion;
-    const clip = await this.load(name);
-    const pages = await Promise.all(clip.pages.map((_page, index) => this.loadPage(name, index)));
-    // Keep the current clip drawable while its replacement downloads and decodes.
-    // A slower, superseded request must not evict the newer playback's images.
-    if (version === this.playbackVersion)
-      this.playback = new Map(pages.map((page, index) => [`${name}/${index}`, page]));
-    return clip;
   }
 
   async prepare(name) {
@@ -104,19 +71,16 @@ export class SpriteBank {
     }
     const frame = clip.frames[Math.min(index, clip.frames.length - 1)];
     const key = `${name}/${frame.page}`;
-    const page = this.playback.get(key) ?? this.pages.get(key);
+    const page = this.pages.get(key);
     if (!page) {
       this.loadPage(name, frame.page).catch(this.#onError);
       return null;
     }
-    if (!this.playback.has(key)) {
-      this.pages.delete(key);
-      this.pages.set(key, page);
-    }
+    this.pages.delete(key);
+    this.pages.set(key, page);
     const nextPage = clip.frames[Math.min(index + 16, clip.frames.length - 1)].page;
     const nextKey = `${name}/${nextPage}`;
-    if (nextPage !== frame.page && !this.playback.has(nextKey)
-      && !this.pages.has(nextKey) && !this.pendingPages.has(nextKey))
+    if (nextPage !== frame.page && !this.pages.has(nextKey) && !this.pendingPages.has(nextKey))
       this.loadPage(name, nextPage).catch(this.#onError);
     return { clip, frame, page };
   }
