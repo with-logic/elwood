@@ -11,10 +11,10 @@ import {
   type AttachTerminal,
   type BlockedGuard,
   type ChipWaitOptions,
-  clearComposer,
   sendObservedImage,
   waitForImageChip,
 } from "../core/images/chip-wait.ts";
+import { requestComposerCleanup } from "../core/input/composer-cleanup.ts";
 import { sanitizePasteText } from "../core/input/index.ts";
 
 const PASTE_START = "\u001b[200~";
@@ -46,9 +46,9 @@ export async function attachClaudeImages(
       await waitForImageChip(terminal, before, signal, chipWait);
     }
   } catch (error) {
-    // A mid-attach failure clears any staged chips/paths so the rejected images
-    // cannot leak into a later caller's turn (C-API-44).
-    if (staged) await clearComposer(terminal);
+    // The session owner defers cleanup until attachment/temp-file finalizers settle and input is safe.
+    // Direct unregistered callers make an observed, unblocked best-effort request (C-API-44).
+    if (staged) await requestComposerCleanup(terminal, blocked);
     throw error;
   }
 }

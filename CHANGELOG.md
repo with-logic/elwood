@@ -20,6 +20,15 @@ back each entry are listed in `prd/14-conformance.md`.
   dialog, until its live native composer returns; a stale visible cursor cannot
   clear replacement text above the old composer. Specific trust rules retain their
   diagnostic labels; other retained holds report `codex-unidentified-dialog`.
+- Preserve picker and cancelled-draft cleanup authority across automatic terminal
+  protocol replies and startup automation; actual caller input still revokes it.
+
+- Clear cancelled staged text and images before successor input, deferring cleanup
+  through dialogs. Failed cleanup holds the draft; raw input through `sendKeys`,
+  `terminal.sendInput`, or `xterm.input` revokes cleanup authority, and shutdown drops
+  deferred cleanup without waiting. A physical clear must be confirmed by a fresh
+  native empty composer before successor input; Claude recognizes both its native
+  idle screen and its post-picker composer.
 
 - Hold image paste keys until received terminal output has rendered and blocking
   dialogs have cleared, then capture the chip count immediately before pasting.

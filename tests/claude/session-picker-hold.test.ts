@@ -30,11 +30,14 @@ test("C-API-55 login and a queued message hold while a model dialog survives cle
   // Enter on the residual picker would persist the highlighted model as the user default.
   expect(pty.writes.slice(written)).toEqual([]);
   // A human dismisses the picker; the held login then runs, and the message after it.
-  pty.emitData(
-    `\u001b[2J\u001b[H${claudeTty(
-      "────────\n❯ \n────────\n  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents",
-    )}`,
-  );
+  const composer = `\u001b[2J\u001b[H${claudeTty(
+    "────────\n❯ \n────────\n  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents",
+  )}`;
+  pty.emitData(composer);
+  await expect.poll(() => pty.writes.includes("\u0015\u000b")).toBe(true);
+  expect(pty.writes).not.toContain("/login");
+  // Consuming the clear keys produces a fresh empty frame before successor input.
+  pty.emitData(composer);
   await expect.poll(() => pty.writes.includes("/login")).toBe(true);
   pty.emitData(asScreen("Select login method:\n Claude account with subscription"));
   await succeedAndRecover(cwd, session);

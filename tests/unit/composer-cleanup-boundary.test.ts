@@ -22,6 +22,7 @@ test("C-API-56 failed cleanup retains the draft and original error until a succe
     () => false,
     signal,
     () => signal,
+    () => terminal.sendInput.mock.calls.at(-1),
   );
   await expect(
     owner.run(() => {
@@ -49,6 +50,7 @@ test("C-API-56 human input during failed-operation observation revokes cleanup",
     () => false,
     signal,
     () => human.signal,
+    () => terminal.sendInput.mock.calls.at(-1),
   );
   const failed = owner.run(() => {
     stageComposer(terminal);
@@ -73,6 +75,7 @@ test("C-API-56 close during an awaited clear drops its token and prevents later 
     () => false,
     closing.signal,
     () => signal,
+    () => terminal.sendInput.mock.calls.at(-1),
   );
   const failed = owner.run(() => {
     stageComposer(terminal);
@@ -98,6 +101,7 @@ test("C-API-56 an unstaged failure and a held direct attach never clear unrelate
     () => false,
     signal,
     () => signal,
+    () => terminal.sendInput.mock.calls.at(-1),
   );
   await expect(
     owner.run(() => {
@@ -120,6 +124,7 @@ test("C-API-56 registration defers cleanup while unregistered terminals use best
     () => false,
     signal,
     () => signal,
+    () => terminal.sendInput.mock.calls.at(-1),
   );
   stageComposer(terminal);
   await requestComposerCleanup(terminal);
@@ -137,6 +142,7 @@ test("C-API-56 preparation cancelled after flush resolves never starts work", as
     () => false,
     closing.signal,
     () => closing.signal,
+    () => terminal.sendInput.mock.calls.at(-1),
   );
   const work = vi.fn(async () => undefined);
   // flush checks synchronously; this queued abort runs before run resumes its await.

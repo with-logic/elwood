@@ -147,7 +147,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   // held while a dialog is on screen so it never confirms one (C-API-46/37).
   protected attachImages = (paths: readonly string[], signal: AbortSignal): Promise<void> =>
     attachCodexImages(
-      this.terminal,
+      this.automatedTerminal,
       paths,
       signal,
       () => this.queuedInputBlocked(),
