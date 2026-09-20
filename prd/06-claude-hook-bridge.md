@@ -180,9 +180,11 @@ unions.
   Structural values must consist of null, strings, booleans, finite numbers,
   arrays, and plain records (including null-prototype records). Undefined values
   retain JavaScript JSON omission/null semantics. Bigints, functions, symbols,
-  boxed primitives, custom prototypes or `toJSON` hooks, and accessor properties
-  are invalid; validation does not invoke getters or custom serializers. Each
-  child's budget is checked before reading its property descriptor.
+  boxed primitives, proxies, custom prototypes, callable `toJSON` hooks, and
+  enumerable accessor properties are invalid. Other non-enumerable fields are
+  ignored; validation does not invoke getters or custom serializers. Each
+  child's budget is checked before reading its property descriptor. The complete
+  response envelope independently obeys the snapshot limits below.
 - Before result validation, Claude handler responses are copied into detached data.
   Validation and wire serialization use that same snapshot, so later handler mutation
   cannot replace a validated rewrite. Wire output and blocking decisions are captured

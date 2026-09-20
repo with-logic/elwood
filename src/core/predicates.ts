@@ -35,7 +35,7 @@ export function optionalFiniteNumber(value: unknown): boolean {
   return value === undefined || isFiniteNumber(value);
 }
 
-export { isFiniteThroughout } from "./json-shape.ts";
+export { isBoundedJsonShape } from "./json-shape.ts";
 
 export function optionalBoolean(value: unknown): boolean {
   return value === undefined || typeof value === "boolean";

@@ -3,7 +3,7 @@
  * Implements PRD §6.4; generic and future tools deliberately retain record inputs.
  */
 
-import { isFiniteNumber, isFiniteThroughout, isRecord, isString } from "../../core/predicates.ts";
+import { isBoundedJsonShape, isFiniteNumber, isRecord, isString } from "../../core/predicates.ts";
 import type { ClaudeToolInputByName, KnownClaudeToolName } from "../hooks/tool-types.ts";
 import {
   type FieldChecks,
@@ -100,7 +100,7 @@ export function isClaudeToolInput(toolName: string, value: unknown): boolean {
   // Applies to EVERY tool, schema-less ones included: a non-finite number has no JSON
   // encoding, so it must never reach the wire regardless of whether Elwood types the
   // tool concretely (C-HOOK-18).
-  if (!isFiniteThroughout(value)) return false;
+  if (!isBoundedJsonShape(value)) return false;
   const checks = toolSchema(toolName);
   // Future input fields are retained, but every declared field must match its type.
   return checks === undefined || Object.entries(checks).every(([key, check]) => check(value[key]));

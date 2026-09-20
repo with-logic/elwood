@@ -5,7 +5,7 @@ import { serializeHookResult } from "../../src/claude/serialize.ts";
 import { registerInitialHooks } from "../../src/claude/session/runtime.ts";
 import { isClaudeHookInput } from "../../src/claude/validate/input.ts";
 import { isClaudeHookResult } from "../../src/claude/validate/result.ts";
-import { isFiniteThroughout } from "../../src/core/predicates.ts";
+import { isBoundedJsonShape } from "../../src/core/predicates.ts";
 import type { ClaudeEventMap, HookErrorEvent } from "../../src/core/types.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 import { tool } from "./claude-validate-input-helpers.ts";
@@ -32,15 +32,15 @@ const rejectedShapes = [
       return { array };
     },
   ],
-  ["deep", () => nested(10_000)],
-  ["wide array", () => ({ children: Array.from({ length: 200_000 }, () => 1) })],
-  ["wide record", () => Object.fromEntries(Array.from({ length: 200_000 }, (_, i) => [i, 1]))],
+  ["deep", () => nested(129)],
+  ["wide array", () => ({ children: Array.from({ length: 100_000 }, () => 1) })],
+  ["wide record", () => Object.fromEntries(Array.from({ length: 100_000 }, (_, i) => [i, 1]))],
 ] as const;
 
 describe("structural finite-number validation", () => {
   test.each(rejectedShapes)("C-HOOK-18 rejects %s without throwing", (_name, make) => {
     const updatedInput = make();
-    expect(isFiniteThroughout(updatedInput)).toBe(false);
+    expect(isBoundedJsonShape(updatedInput)).toBe(false);
     expect(isClaudeHookInput(tool("mcp__server__tool", updatedInput))).toBe(false);
     const event = tool("mcp__server__tool", {});
     expect(isClaudeHookResult(event as never, { permissionDecision: "allow", updatedInput })).toBe(
@@ -60,42 +60,44 @@ describe("structural finite-number validation", () => {
 
   test("C-HOOK-18 allows exactly 128 edges from the input root", async () => {
     const atLimit = nested(128);
-    expect(isFiniteThroughout(atLimit)).toBe(true);
-    expect(isFiniteThroughout(nested(129))).toBe(false);
-    expect(isFiniteThroughout({ child: nested(128) })).toBe(false);
-    const { outcome, response } = await rewrite(atLimit);
+    expect(isBoundedJsonShape(atLimit)).toBe(true);
+    expect(isBoundedJsonShape(nested(129))).toBe(false);
+    expect(isBoundedJsonShape({ child: nested(128) })).toBe(false);
+    // The response envelope has its own root-relative limit (C-HOOK-21).
+    const rewriteAtLimit = nested(127);
+    const { outcome, response } = await rewrite(rewriteAtLimit);
     expect(outcome.failedOpen).toBe(false);
-    expect(JSON.parse(response.stdout).hookSpecificOutput.updatedInput).toEqual(atLimit);
+    expect(JSON.parse(response.stdout).hookSpecificOutput.updatedInput).toEqual(rewriteAtLimit);
   });
 
   test("C-HOOK-18 counts the root and primitive visits toward the 100,000 limit", () => {
-    expect(isFiniteThroughout(Array.from({ length: 99_999 }, () => 1))).toBe(true);
-    expect(isFiniteThroughout(Array.from({ length: 100_000 }, () => 1))).toBe(false);
-    expect(isFiniteThroughout(1)).toBe(true);
-    expect(isFiniteThroughout(null)).toBe(true);
-    expect(isFiniteThroughout(undefined)).toBe(true);
-    expect(isFiniteThroughout({ text: "ok", enabled: true, absent: undefined })).toBe(true);
+    expect(isBoundedJsonShape(Array.from({ length: 99_999 }, () => 1))).toBe(true);
+    expect(isBoundedJsonShape(Array.from({ length: 100_000 }, () => 1))).toBe(false);
+    expect(isBoundedJsonShape(1)).toBe(true);
+    expect(isBoundedJsonShape(null)).toBe(true);
+    expect(isBoundedJsonShape(undefined)).toBe(true);
+    expect(isBoundedJsonShape({ text: "ok", enabled: true, absent: undefined })).toBe(true);
   });
 
   test("C-HOOK-18 rechecks shared children on each path and serializes finite sharing", async () => {
     const shared = { n: 1 };
     const updatedInput = { a: shared, b: shared };
-    expect(isFiniteThroughout(updatedInput)).toBe(true);
+    expect(isBoundedJsonShape(updatedInput)).toBe(true);
     expect(isClaudeHookInput(tool("mcp__server__tool", updatedInput))).toBe(true);
     const { outcome, errors, response } = await rewrite(updatedInput);
     expect(outcome.failedOpen).toBe(false);
     expect(errors).toEqual([]);
     expect(JSON.parse(response.stdout).hookSpecificOutput.updatedInput).toEqual(updatedInput);
     shared.n = Number.NaN;
-    expect(isFiniteThroughout(updatedInput)).toBe(false);
+    expect(isBoundedJsonShape(updatedInput)).toBe(false);
     const repeated = Array.from({ length: 50_000 }, () => ({}));
-    expect(isFiniteThroughout(repeated)).toBe(true);
+    expect(isBoundedJsonShape(repeated)).toBe(true);
     const repeatedWithValue = Array.from({ length: 50_000 }, () => ({ n: 1 }));
-    expect(isFiniteThroughout(repeatedWithValue)).toBe(false);
+    expect(isBoundedJsonShape(repeatedWithValue)).toBe(false);
     const sameChild = Array.from({ length: 50_000 }, () => shared);
     shared.n = 1;
-    expect(isFiniteThroughout(sameChild.slice(0, 49_999))).toBe(true);
-    expect(isFiniteThroughout(sameChild)).toBe(false);
+    expect(isBoundedJsonShape(sameChild.slice(0, 49_999))).toBe(true);
+    expect(isBoundedJsonShape(sameChild)).toBe(false);
   });
 });
 

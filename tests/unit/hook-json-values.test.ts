@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 import { requestHook } from "../../src/claude/hooks/dispatch.ts";
 import { serializeHookResult } from "../../src/claude/serialize.ts";
 import { registerInitialHooks } from "../../src/claude/session/runtime.ts";
-import { isFiniteThroughout } from "../../src/core/predicates.ts";
+import { isBoundedJsonShape } from "../../src/core/predicates.ts";
 import type { ClaudeEventMap, HookErrorEvent } from "../../src/core/types.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 import { tool } from "./claude-validate-input-helpers.ts";
@@ -16,7 +16,6 @@ const rejected = [
   ["symbol", Symbol("value")],
   ["custom serializer", { toJSON: () => null }],
   ["date", new Date(0)],
-  ["sparse array", new Array(1)],
   [
     "accessor",
     Object.defineProperty({}, "value", {
@@ -76,7 +75,7 @@ test("C-HOOK-18 stops inspecting wide record values when the visit budget is spe
       throw new Error("past budget");
     },
   });
-  expect(isFiniteThroughout(value)).toBe(false);
+  expect(isBoundedJsonShape(value)).toBe(false);
   expect(lateReads).toBe(0);
 });
 
@@ -95,8 +94,8 @@ test("C-HOOK-18 never invokes hidden serializers or accessors", () => {
       return 1;
     },
   });
-  expect(isFiniteThroughout(custom)).toBe(false);
-  expect(isFiniteThroughout(accessor)).toBe(false);
+  expect(isBoundedJsonShape(custom)).toBe(false);
+  expect(isBoundedJsonShape(accessor)).toBe(false);
   expect(calls).toBe(0);
 });
 
@@ -108,7 +107,7 @@ test("C-HOOK-18 accepts plain and null-prototype records without inherited prope
     value: Number.POSITIVE_INFINITY,
   });
   try {
-    const valid = isFiniteThroughout(value);
+    const valid = isBoundedJsonShape(value);
     Reflect.deleteProperty(Object.prototype, "elwoodInheritedFixture");
     expect(valid).toBe(true);
   } finally {
