@@ -1,4 +1,4 @@
-/** Real session queue/input cancellation of turn recovery (PRD §5.3/§5.8, C-API-57). */
+/** Real session queue/input cancellation of turn recovery (PRD §5.3/§5.8, C-API-58). */
 import { afterEach, expect, test, vi } from "vitest";
 import { runTurn } from "../../src/core/simple/turn.ts";
 import { ClaudeSession } from "../../src/index.ts";
@@ -16,7 +16,7 @@ test.each([
   ["held", "failed"],
   ["queued", "terminal"],
   ["held", "terminal"],
-] as const)("C-API-57 cancels a %s replay on %s settlement before releasing the boundary", async (mode, settlement) => {
+] as const)("C-API-58 cancels a %s replay on %s settlement before releasing the boundary", async (mode, settlement) => {
   installFakes();
   const facade = new ClaudeSession({ cwd: tempDir() });
   const raw = await facade.start();

@@ -30,7 +30,7 @@ export class TurnAcceptance {
 
   /**
    * Disarm as soon as `settled` settles EITHER way, then run `onSuccess` for a successful
-   * settle only. Recovery must not outlive its turn (C-API-57): once the turn is over there
+   * settle only. Recovery must not outlive its turn (C-API-58): once the turn is over there
    * is nothing to recover, and a surviving replay would re-submit the prompt into whatever
    * runs next. Hanging this off the turn's own settle signal — rather than off each failure
    * path — is what makes an early-returning path (a rejected submission) disarm too.

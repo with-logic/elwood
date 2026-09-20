@@ -1,5 +1,5 @@
 /**
- * Acceptance recovery must never outlive its turn (PRD §5.3/§5.8, C-API-57): once the
+ * Acceptance recovery must never outlive its turn (PRD §5.3/§5.8, C-API-58): once the
  * turn settles no further replay may fire, and the serializer slot is not released while
  * a replay WRITE is still outstanding. Driven through the real `runTurn` against a
  * scriptable `TurnSession`, because the bug lives in how the runner wires the two.
@@ -26,7 +26,7 @@ function armedSession(order: string[]): FakeTurnSession {
   return s;
 }
 
-describe("C-API-57 acceptance recovery is bounded by its turn", () => {
+describe("C-API-58 acceptance recovery is bounded by its turn", () => {
   test("a submission that rejects after readiness never replays the failed prompt", async () => {
     vi.useFakeTimers();
     const order: string[] = [];

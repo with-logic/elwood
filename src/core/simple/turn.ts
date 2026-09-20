@@ -105,7 +105,7 @@ export function runTurn(
     offStatus();
   };
   const boundary = new TurnBoundary(maybeCleanup, options.drainMs);
-  // The gate's settle disarms acceptance recovery either way (C-API-57). Only a SUCCESS settle
+  // The gate's settle disarms acceptance recovery either way (C-API-58). Only a SUCCESS settle
   // is the real boundary (the transcript drained); after a consumer failure a later
   // `ready`/terminal reaches it instead.
   acceptance.disarmOnSettle(gate.done(), () => boundary.reach());
@@ -141,7 +141,7 @@ export function runTurn(
       acceptance.running();
     }
     if (terminalStatuses.has(status)) {
-      gate.end(); // the gate-settle handler disarms acceptance (C-API-57)
+      gate.end(); // the gate-settle handler disarms acceptance (C-API-58)
       return boundary.reach(); // agent is gone — the real boundary, regardless of consumer state
     }
     if (status === "ready" && started) {

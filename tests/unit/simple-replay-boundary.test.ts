@@ -1,4 +1,4 @@
-/** Replay cancellation retains the turn slot and image budget (PRD §5.8, C-API-57). */
+/** Replay cancellation retains the turn slot and image budget (PRD §5.8, C-API-58). */
 import { afterEach, expect, test, vi } from "vitest";
 import { ImageCaptures } from "../../src/core/images/capture.ts";
 import { submissionControlOptions } from "../../src/core/input/submission-cancel.ts";
@@ -10,7 +10,7 @@ import { collect, deferred } from "./simple-turn-fakes.ts";
 
 afterEach(() => vi.useRealTimers());
 
-test("C-API-57 holds the next turn and image reservation until cancelled replay cleanup finishes", async () => {
+test("C-API-58 holds the next turn and image reservation until cancelled replay cleanup finishes", async () => {
   vi.useFakeTimers();
   const session = new FakeUnderlying();
   const captures = new ImageCaptures(1);
