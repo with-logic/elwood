@@ -27,7 +27,6 @@ import { createSessionStatusEngine, type SessionStatusEmitter } from "./status-w
 
 type TerminalDataListener = Parameters<TerminalReplayBuffer["replay"]>[0];
 type AttentionListener = (event: ElwoodActivityEvent) => unknown;
-type SessionListener = (event: never) => unknown;
 export abstract class SessionLifecycle {
   protected record: SessionRecord;
   readonly terminal: ElwoodTerminal;
@@ -39,7 +38,7 @@ export abstract class SessionLifecycle {
   trustInputBlocking = false;
   readonly closing = closingController(() => this.controlQueue.close());
   private readonly agent: ElwoodAgentKind;
-  private readonly runtime: SessionRuntime;
+  protected readonly persist: (record: SessionRecord) => void;
   private readonly reapPolicy: SessionReapPolicy;
   private readonly terminalReplay: TerminalReplayBuffer;
   private readonly cleanupLatch = new CleanupLatch(() => this.stopRuntime());
@@ -64,7 +63,10 @@ export abstract class SessionLifecycle {
     registerPrivateOutputSecrets(this, [runtime.bridgeToken]);
     this.agent = agent;
     this.record = record;
-    this.runtime = runtime;
+    this.persist = (next) => {
+      writeSessionRecord(next, runtime.sessionDir, runtime.stateOwnership.persistFile);
+      this.record = next; // Expose metadata only after durable persistence succeeds.
+    };
     this.pty = pty;
     this.terminal = terminal;
     this.terminalReplay = terminalReplay;
@@ -83,6 +85,7 @@ export abstract class SessionLifecycle {
       stateDir,
       elwoodSessionId: record.elwoodSessionId,
       definitions: loopDefinitions,
+      ownership: runtime.stateOwnership,
       queue: this.controlQueue,
       emitter: statusEvents,
     });
@@ -155,18 +158,18 @@ export abstract class SessionLifecycle {
     try {
       return this.statusEngine.submit(evidence);
     } finally {
+      this.shutdown.completeExitFinalization();
       const warning = evidence === "terminal_exited" ? this.reapPolicy.bestEffort() : undefined;
       if (warning) this.emitWarnings([warning]);
     }
   }
-  statusDecisions(): readonly StatusDecision[] {
-    return this.statusEngine.decisions();
-  }
+  readonly beginExitFinalization = () => this.shutdown.beginExitFinalization();
+  readonly statusDecisions = (): readonly StatusDecision[] => this.statusEngine.decisions();
   protected abstract stagedPaste(screen: string, prompt: string): boolean;
   protected abstract queuedInputBlocked(): boolean;
   protected abstract stopRuntime(): Promise<void>;
   protected abstract emitWarnings(warnings: readonly ElwoodWarningEvent[]): void;
-  protected replayFor(event: string, handler: SessionListener): void {
+  protected replayFor(event: string, handler: (event: never) => unknown): void {
     if (event === "terminal:data") this.terminalReplay.replay(handler as TerminalDataListener);
     if (event === "activity") this.terminalReplay.replayAttention(handler as AttentionListener);
   }
@@ -179,10 +182,6 @@ export abstract class SessionLifecycle {
     } catch (error) {
       return Promise.reject(toError(error));
     }
-  }
-  protected persist(record: SessionRecord): void {
-    writeSessionRecord(record, this.runtime.sessionDir); // atomic record write FIRST, commit in-memory on success (§8.2)
-    this.record = record;
   }
   protected cleanupRuntime(): Promise<void> {
     this.closing.abort();
