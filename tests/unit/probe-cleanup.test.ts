@@ -53,15 +53,23 @@ test("C-PERF-03 a group disappearing between liveness and signal needs no retry"
 
 test("C-PERF-03 a group that exits during the final wait is confirmed, not reported unresolved", async () => {
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true });
-  const started = performance.now();
-  // Signals are swallowed; the group reads as gone only once the cleanup window has elapsed.
-  vi.spyOn(process, "kill").mockImplementation((_pid, signal) => {
-    if (signal === 0 && performance.now() - started >= 1_000)
-      throw Object.assign(new Error("gone"), { code: "ESRCH" });
+  let now = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  // Share the cleanup clock: the first signal advances it to the final observation.
+  const observations: number[] = [];
+  vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+    if (pid !== -child.pid!) return kill(pid, signal);
+    if (signal === 0) {
+      observations.push(now);
+      if (now === 1_000) throw Object.assign(new Error("gone"), { code: "ESRCH" });
+    } else {
+      now = 1_000;
+    }
     return true;
   });
   try {
     expect(await abortProbe(child)).toEqual({});
+    expect(observations).toEqual([0, 1_000]);
   } finally {
     kill(-child.pid!, "SIGKILL");
   }
