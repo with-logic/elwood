@@ -25,8 +25,10 @@ import { attachClaudeImages } from "../attach-images.ts";
 import { runSessionLogin } from "../login/session-login.ts";
 import type { ClaudeLoginOptions } from "../login/types.ts";
 import { LoginExpiredWatcher, loginExpiredWarning } from "../login-expired.ts";
+import { claudeModelComposerClearance } from "../model-composer.ts";
 import { claudeModelPicker } from "../model-picker.ts";
 import { resizeRestoreFailedWarning } from "../resize-restore.ts";
+import { liveClaudeClearance } from "../screen-table.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
 import type { ClaudeSessionApi } from "./interface.ts";
 
@@ -36,7 +38,10 @@ export type HookBridge = {
 };
 
 export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSessionApi {
-  protected readonly picker = claudeModelPicker;
+  protected readonly picker = {
+    ...claudeModelPicker,
+    isClear: liveClaudeClearance(() => this.terminal, claudeModelComposerClearance),
+  };
   private readonly bridge: HookBridge;
   private readonly emitter: TypedEmitter<ClaudeEventMap>;
   private requestedSize: TerminalSize;

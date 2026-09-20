@@ -18,6 +18,8 @@ vi.mock("../../src/claude/attach-images.ts", async (original) => {
 const { startClaude } = await import("../../src/index.ts");
 const { installFakes, ptys, resetFakes, tempDir } = await import("./helpers.ts");
 
+import { claudeTty } from "../fixtures/trust-composer.ts";
+
 import { asScreen, claudePicker } from "../helpers/model-pickers.ts";
 
 afterEach(() => {
@@ -54,9 +56,9 @@ test("C-API-44 image and text writes wait for a foreign model picker to close", 
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(ptys[0]!.writes).toEqual([]);
     ptys[0]!.emitData(
-      asScreen(
+      `\u001b[2J\u001b[H${claudeTty(
         "Claude Code v2.1.278\n────────\n❯ \n────────\n  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents",
-      ),
+      )}`,
     );
     await session.terminal.settled();
     await expect.poll(() => ptys[0]!.writes).toEqual([paste(image)]);

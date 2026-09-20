@@ -1,6 +1,5 @@
 /**
- * The typed non-fatal warning contract shared across adapters.
- * Implements PRD §5.7 and §8.2: every warning is a named variant carrying only
+ * Non-fatal adapter warnings (PRD §5.7, §8.2): named variants carrying only
  * diagnostics (cause/phase labels, error codes, recovery hints) — no counts or
  * byte magnitudes — and never raw prompts, transcripts, or conversation content.
  * Most error-code fields are allowlisted tokens (`reasons.ts`); the one
@@ -11,7 +10,7 @@
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { StartupPromptLabelFor } from "../startup/automation.ts";
-import type { AgentUpdateFailedWarning } from "./lifecycle.ts";
+import type * as lifecycle from "./lifecycle.ts";
 import type {
   DropCause,
   PollErrorReason,
@@ -19,8 +18,10 @@ import type {
   ReapErrorCode,
   ResizeErrorCode,
 } from "./reasons.ts";
+import type { TranscriptListenerErrorWarning } from "./transcript.ts";
 
 export type ElwoodWarningEvent =
+  | TranscriptListenerErrorWarning
   | {
       readonly elwoodSessionId: string;
       readonly agent: ElwoodAgentKind;
@@ -30,7 +31,8 @@ export type ElwoodWarningEvent =
       readonly message: string;
       readonly raw: string;
     }
-  | AgentUpdateFailedWarning
+  | lifecycle.AgentUpdateFailedWarning
+  | lifecycle.HookObserverFailedWarning
   | {
       readonly elwoodSessionId: string;
       readonly agent: "codex";

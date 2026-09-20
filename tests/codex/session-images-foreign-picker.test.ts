@@ -30,6 +30,8 @@ vi.mock("../../src/codex/images/attach.ts", async (original) => {
 const { startCodex } = await import("../../src/index.ts");
 const { becomeReady, installFakes, ptys, resetFakes, tempDir } = await import("./helpers.ts");
 
+import { codexTty } from "../fixtures/trust-composer.ts";
+
 import { asScreen, codexPickerCurrentIsDefault } from "../helpers/model-pickers.ts";
 
 afterEach(() => {
@@ -59,7 +61,7 @@ test("C-API-44 image and text writes wait for a foreign model picker to close", 
     await expect.poll(() => clipboard.images).toEqual([image]);
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(ptys[0]!.writes).toEqual([]);
-    ptys[0]!.emitData(asScreen("› Ask Codex to do anything\n  gpt-5.5 high"));
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty("› Ask Codex to do anything\n  gpt-5.5 high")}`);
     await session.terminal.settled();
     await expect.poll(() => ptys[0]!.writes).toEqual(["\u0016"]);
     ptys[0]!.emitData("\u001b[999;1H\u001b[K› [Image #1]");

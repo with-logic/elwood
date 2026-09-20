@@ -27,6 +27,13 @@
    session env.
 9. Return a `CodexSessionApi` object once the process and bridge are ready.
 
+Both adapters inspect received PTY output during the bounded startup health check,
+independently of terminal rendering. The collector retains at most the first
+64 KiB of UTF-8 output, ending on a complete code point. If a chunk exceeds the
+remaining budget, its remainder and all subsequent chunks are discarded; later
+output cannot fill a gap in that prefix. The collector releases its retained
+output after the check succeeds or fails.
+
 ### 9.2 Compatibility checks
 
 Elwood MUST check the installed Claude Code version during startup. The minimum

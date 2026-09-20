@@ -17,7 +17,7 @@ vi.mock("../../src/claude/attach-images.ts", () => ({
 }));
 const { startClaude } = await import("../../src/index.ts");
 
-import { claudeComposer, claudeTrust } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTrust, claudeTty } from "../fixtures/trust-composer.ts";
 import { trustRecoveryTests } from "../helpers/trust-recovery.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
@@ -36,4 +36,5 @@ trustRecoveryTests({
   cursor: `${claudeTrust}\n❯ No, exit\n  Yes, I trust this folder`,
   attachGuard: () => attachGuard,
   clear: claudeComposer,
+  renderClear: claudeTty,
 });

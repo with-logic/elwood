@@ -6,13 +6,13 @@
 
 import { afterEach, expect, test, vi } from "vitest";
 import { type ClaudeSessionApi, startClaude } from "../../src/index.ts";
-import { claudeComposer, claudeTrust, tty } from "../fixtures/trust-composer.ts";
+import { claudeComposer, claudeTrust, claudeTty, tty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 const PASTE = "\u001b[200~held\u001b[201~";
 const clear = "\u001b[2J\u001b[H";
 const gate = `${clear}${tty(claudeTrust)}\r\n1. Yes\r\n2. No`;
-const composer = `${clear}${tty(claudeComposer)}`;
+const composer = `${clear}${claudeTty(claudeComposer)}`;
 
 const sessions: ClaudeSessionApi[] = [];
 

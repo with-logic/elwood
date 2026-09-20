@@ -119,6 +119,38 @@ a `hookError`, matching the token-mismatch fail-open.
 
 ### 6.4 Typed hook responses
 
+Observational listener failures must not prevent Claude hook dispatch, replace a
+validated wire response or blocking decision, or skip readiness and Stop bookkeeping.
+Hook, activity, hook-error, transcript, and lifecycle notifications are isolated at
+the hook boundary. Each invocation emits at most one content-free
+`hook_observer_failed` warning (§5.7), identifying the first failed phase; warning
+observer failures are contained without recursive diagnostics (C-HOOK-22).
+Returned native observer Promises are observed through the captured intrinsic
+`Promise.prototype.then`, without awaiting them or reading an instance's own `then`.
+Their rejections are contained even after the hook reply completes when their
+constructor and `Symbol.species` support normal ECMAScript reaction attachment.
+Listeners run in the host process, not a sandbox: nonreturning synchronous listener
+code or Promise metadata can block the host. A constructor/species that prevents
+native attachment leaves its rejection handling with the caller. An attachment
+throw is reported as a notification failure, without caching an unattached Promise;
+a subsequent notification retries attachment. Elwood neither mutates caller Promise
+metadata nor opens a debugger session to bypass it. The first observed failure
+selects the diagnostic phase, and late failures do not emit additional warnings.
+Diagnostic retention is limited to the newest 1,024 pending observer registrations
+per session emitter. When this cap is exceeded, the oldest registration is detached
+from its invocation boundary; its eventual rejection is still consumed but no
+longer produces a diagnostic. Repeated returns of the same pending Promise share
+one rejection handler. Settled registrations are released immediately. Diagnostic
+warnings are frozen before delivery, and their activity projection is captured
+before any warning listener runs.
+Within a hook notification scope, synchronous listener failures are captured at
+each emission, so later derived status activity and committed transcript records
+are still delivered. Outside this scope, ordinary synchronous emission retains
+its existing throw-after-fan-out behavior. A hook-scoped ready-status listener
+failure reports `hook_observer_failed`; because the ready transition completes, it
+does not also report `initial_ready_fallback`. C-API-42 still applies to a transition
+that actually throws outside the notification boundary.
+
 Elwood MUST model Claude hook inputs and outputs as discriminated TypeScript
 unions.
 
@@ -129,6 +161,46 @@ unions.
 - Unknown future tools and MCP tools may use `Record<string, unknown>` or
   `unknown` with a safe raw tool name.
 - Hook bridge JSON must be runtime-validated before it reaches handlers.
+  The normalized, bridge-owned JSON event is deeply frozen before any observation
+  or handler dispatch. Hook observers and activity raw payloads cannot mutate
+  routing, tool inputs, response validation, or readiness/Stop bookkeeping.
+  Freezing introduces no additional input depth or size limit beyond the bridge
+  request contract.
+- A numeric field MUST be a finite number. `NaN` and `±Infinity` are rejected at
+  ingress and in `updatedInput` rewrites, because JSON has no encoding for them
+  and `JSON.stringify` would put a `null` on the wire where the CLI's schema
+  requires a number. This applies to EVERY tool: schema-less inputs (MCP, generic,
+  and future tools) have no field table, so the rule is enforced structurally over
+  the whole value, including nested records and arrays. Traversal allows at most
+  128 edges from the input root and 100,000 value visits, counting the root,
+  primitives, and every occurrence of a shared child. Ancestor cycles are invalid;
+  repeated children on separate paths are valid within these limits. Cyclic or
+  over-limit shapes fail validation without throwing. Invalid rewrites produce the
+  existing `invalid_response` hook error and a bridge response with no decision.
+  Structural values must consist of null, strings, booleans, finite numbers,
+  arrays, and plain records (including null-prototype records). Undefined values
+  retain JavaScript JSON omission/null semantics. Bigints, functions, symbols,
+  boxed primitives, proxies, custom prototypes, callable `toJSON` hooks, and
+  enumerable accessor properties are invalid. Other non-enumerable fields are
+  ignored; validation does not invoke getters or custom serializers. Each
+  child's budget is checked before reading its property descriptor. The complete
+  response envelope independently obeys the snapshot limits below.
+- Before result validation, Claude handler responses are copied into detached data.
+  Validation and wire serialization use that same snapshot, so later handler mutation
+  cannot replace a validated rewrite. Wire output and blocking decisions are captured
+  before result activity observers run. Only genuine Promises are awaited; direct
+  response-shaped thenables are validated as data without invoking `then`. Snapshotting reads only own enumerable data
+  properties, never invokes accessors or serializers, and rejects proxies, boxed
+  primitives, non-finite numbers, bigints, functions, symbols, custom prototypes,
+  and cycles. Null-prototype records are valid. Non-callable `toJSON` data fields
+  are ordinary data; callable or accessor-backed serializers are invalid even when
+  non-enumerable. Other non-enumerable properties are ignored as they are by JSON.
+  Undefined values and array holes retain JSON omission/null semantics. Responses
+  are limited to 128 edges on each root-to-leaf path (the root is depth zero) and
+  100,000 value visits, counting the root, undefined values, array holes, and
+  repeated occurrences of shared children. Invalid snapshots yield `invalid_response`
+  and no bridge decision (C-HOOK-21). Claude response wrappers across async dispatch
+  and the socket reply envelope do not inherit `then` or `toJSON` behavior.
 
 Task and plan inputs follow Claude's documented native field names: `TaskGet`
 uses `taskId`; `TaskOutput` uses `task_id`, `block`, and `timeout`; `TaskStop`

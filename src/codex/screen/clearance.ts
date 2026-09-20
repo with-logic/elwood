@@ -4,6 +4,7 @@ import { cursorOptionRows } from "../../core/terminal-options.ts";
 import { codexWorkingScreen } from "./working.ts";
 
 const caretRow = /^\s*›/;
+const approvalHeader = /^(?:Would you like to|Allow command\?)/i;
 /** Codex 0.142.5's PLACEHOLDERS plus the captured 0.154.0 default. */
 const placeholders = new Set([
   "Ask Codex to do anything",
@@ -44,8 +45,8 @@ function welcomeBox(rows: readonly string[]): boolean {
 }
 
 /** Native approval evidence survives even when its footer has not painted. */
-function partialDialog(rows: readonly string[]): boolean {
-  if (rows.some((row) => /^\s*(?:Would you like to|Allow command\?)/i.test(row))) return true;
+function hasApprovalEvidence(rows: readonly string[]): boolean {
+  if (rows.some((row) => approvalHeader.test(row.trimStart()))) return true;
   if (
     rows.some((row) => /^\s*(?:[›❯>]\s*\d+[.)]\s*\S|(?:\d+[.)]\s*|[›❯]\s+)(?:Yes|No)\b)/i.test(row))
   )
@@ -60,19 +61,31 @@ function partialDialog(rows: readonly string[]): boolean {
 }
 
 /**
- * Only the last composer and the native rows below it can prove clearance. Earlier
- * numbered rows can be transcript content; an earlier footer cannot vouch for a
- * newly painted bare caret, which is also how a dialog's selected option starts.
+ * The last composer needs its own model footer or the verified welcome box above
+ * it. A stale footer cannot vouch for a bare caret, which is also how a dialog
+ * selection starts; ordinary numbered transcript content can precede the composer.
  */
-export function codexComposerClearance(frame: string): boolean {
-  if (codexWorkingScreen.test(frame)) return false;
-  const rows = frame.split("\n").map((row) => row.trimEnd());
-  const at = rows.findLastIndex((row) => caretRow.test(row));
+export function codexComposerClearance(frame: string, cursorRow?: number): boolean {
+  return codexComposerRowsClearance(frame.split("\n"), cursorRow);
+}
+
+/** Classify existing snapshot rows without splitting another viewport string. */
+export function codexComposerRowsClearance(
+  frameRows: readonly string[],
+  cursorRow?: number,
+): boolean {
+  if (frameRows.some((row) => codexWorkingScreen.test(row))) return false;
+  const rows = frameRows.map((row) => row.trimEnd());
+  const at = cursorRow ?? rows.findLastIndex((row) => caretRow.test(row));
   const composer = rows[at];
   // Native composer starts at column zero; transcript continuations are indented.
   if (composer === undefined || !/^›(?:\s|$)/.test(composer)) return false;
   if (!placeholders.has(composer.slice(1).trim())) return false;
-  if (partialDialog(rows.slice(0, at))) return false;
+  const above = rows.slice(0, at);
+  // A partially painted native approval overrides a cursor left on the old composer.
+  // Transcript continuations are indented; user prompts have their own caret prefix.
+  if (above.some((row) => approvalHeader.test(row))) return false;
+  if (cursorRow === undefined && hasApprovalEvidence(above)) return false;
   const below = rows.slice(at + 1).filter((row) => row !== "");
   if (!below.every((row) => modelFooter.test(row) || hintFooter.test(row))) return false;
   if (below.some((row) => modelFooter.test(row))) return true;

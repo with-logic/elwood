@@ -18,9 +18,11 @@ import { cleanupStartupResources, guardStartupRegion } from "../../runtime/start
 import { secureMkdir } from "../../state/files.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, writeSessionRecord } from "../../state/store.ts";
+import { currentRenderedFrame, renderedSnapshot } from "../../terminal/cursor.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
 import type { CodexPreflightWarning } from "../preflight.ts";
 import { spawnCodexPty } from "../pty.ts";
+import { liveCodexClearance } from "../screen/live-clearance.ts";
 import { codexScreenFactTableForTrustPolicy } from "../screen-table.ts";
 import { CodexStartupPromptResponder } from "../startup-prompts.ts";
 import { guardedCodexAutomationWrite } from "../update-prompt.ts";
@@ -31,7 +33,6 @@ import { CodexSessionImpl } from "./instance.ts";
 import { writeCodexRuntimeFiles } from "./runtime.ts";
 import * as sessionTranscript from "./transcript.ts";
 import type { CodexEventMap, StartCodexOptions } from "./types.ts";
-
 export type BuildCodexSessionInput = {
   readonly record: SessionRecord;
   readonly stateDir: string;
@@ -40,7 +41,6 @@ export type BuildCodexSessionInput = {
   readonly resumed: boolean;
   readonly preflightWarning: CodexPreflightWarning | undefined;
 };
-
 export async function buildCodexSession(input: BuildCodexSessionInput): Promise<CodexSessionImpl> {
   const { record, stateDir, runtime, options, resumed, preflightWarning } = input;
   secureMkdir(runtime.sessionDir);
@@ -50,7 +50,6 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const emitter = new TypedEmitter<CodexEventMap>();
   registerInitialHooks(emitter, options.hooks);
   let session: CodexSessionImpl | undefined;
-  // One deferred gate keeps pre-return diagnostics observable to late subscribers.
   const warnGate = createStartupWarningGate({
     emitWarnings: (w) => deliverFrameWarnings(session, w),
   });
@@ -74,8 +73,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   try {
     await bridge.start();
   } catch (error) {
-    // Best-effort shut down a partially-started bridge so its listener/socket is not
-    // leaked; contained so the original bridge-start error is the one that rejects.
+    // Preserve the startup error while cleaning up a partially started bridge.
     await bridge.stop().catch(() => undefined);
     throw elwoodError("hook_bridge_failed", "Could not start Elwood hook bridge.", {
       ...causeDetails(error),
@@ -116,19 +114,22 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     record.elwoodSessionId,
     autotrust,
     frameObserver.refresh,
+    liveCodexClearance(() => terminal),
   );
   const terminal = attachPtyTerminal(
     options.initialSize ?? defaultTerminalSize,
     pty,
     (data, renderedTerminal) => {
-      startupOutput.push(data);
       terminalReplay.push(data);
-      // One snapshot per render: reused for automation, readiness, detection.
-      const frame = { text: renderedTerminal.snapshot().text, title: renderedTerminal.title };
+      const frame = {
+        text: renderedSnapshot(renderedTerminal).text,
+        title: renderedTerminal.title,
+      };
       const send = callerInput.automation; // automation owns completion; warnings gated
-      const read = () => renderedTerminal.snapshot().text;
+      const read = () => renderedSnapshot(renderedTerminal).text;
       const guarded = guardedCodexAutomationWrite(renderedTerminal, send, read);
-      const result = promptResponder.handle(frame.text, send, read, guarded);
+      const trustRead = () => currentRenderedFrame(renderedTerminal)?.text;
+      const result = promptResponder.handle(frame.text, send, read, guarded, trustRead);
       warnGate.emitWarnings(result.warnings);
       emitSettledStartupOutcomes(emitter, "codex", record.elwoodSessionId, result.outcomes, {
         emitWarnings: (w) => warnGate.emitWarnings(w),
@@ -136,6 +137,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       frameObserver.observe(frame);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
+    startupOutput.push,
   );
   const callerInput = reportCallerInput(terminal, () => promptResponder.endStartup(), resumed);
   session = new CodexSessionImpl(
@@ -186,7 +188,6 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   terminalReplay.releaseStartupAttentionAfterReturn();
   return session;
 }
-
 // `CodexPreflightWarning` is a DISTRIBUTED union (see DistributiveOmit / the Claude twin), so
 // re-attaching `elwoodSessionId` reconstructs each union member arm-by-arm.
 type WithSessionId<W> = W extends unknown ? W & { readonly elwoodSessionId: string } : never;

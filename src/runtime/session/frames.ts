@@ -12,7 +12,7 @@ import type { ReadinessGate } from "./readiness.ts";
 
 type FrameSession = Pick<
   SessionLifecycle,
-  "closing" | "inputBlocking" | "automationBlocking" | "submitEvidence" | "status"
+  "closing" | "inputBlocking" | "trustInputBlocking" | "submitEvidence" | "status"
 >;
 
 type TrustState = {
@@ -35,20 +35,20 @@ export function createSessionFrameObserver(
     if (active === undefined || active.closing.signal.aborted || frame === undefined) return;
     const state = trust();
     const reading = readRenderedFrame(observers, frame, state.blockedPrompt);
-    const released = active.automationBlocking && !state.inputBlocking;
-    active.automationBlocking = state.inputBlocking;
+    // This shared write gate includes retained human trust and automatic attempts.
+    const released = active.trustInputBlocking && !state.inputBlocking;
+    active.trustInputBlocking = state.inputBlocking;
     active.inputBlocking = reading.facts.blocking_prompt_visible;
     ruleIds = blockingRuleIds(reading);
     readiness.ready.armDeadline();
     try {
       observeRenderedReading(observers, reading, active);
-      // A human gate that handed off to an automation-owned one had its clear edge
-      // ignored while automation held input. Only that edge may leave `blocked`, so
-      // replay it once automation releases with nothing blocking left on screen.
-      if (released && !reading.facts.blocking_prompt_visible)
+      // A human gate can retain its clear edge while either trust owner holds input.
+      // Replay that edge once the shared trust hold releases and the screen is clear.
+      if (released && !reading.facts.blocking_prompt_visible && active.status === "blocked")
         active.submitEvidence("blocking_prompt_cleared");
     } finally {
-      readiness.observeReadinessFrame(reading.facts, active.automationBlocking);
+      readiness.observeReadinessFrame(reading.facts, active.trustInputBlocking);
     }
   };
   return {

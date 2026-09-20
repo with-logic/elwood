@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, expect, test } from "vitest";
 import { withCodexConfigLock } from "../../src/codex/config/lock.ts";
 import { startCodex } from "../../src/index.ts";
+import { codexTty } from "../fixtures/trust-composer.ts";
 import { asScreen, codexPickerCurrentIsDefault } from "../helpers/model-pickers.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import { restoreCodexHome, sandboxCodexHome, userConfig } from "./session-models-helpers.ts";
@@ -110,7 +111,7 @@ test("C-API-55 a config-lock timeout never cancels a picker opened by someone el
     void queued.catch(() => undefined);
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(ptys[0]!.writes).toEqual([]);
-    ptys[0]!.emitData(asScreen("› Ask Codex to do anything\n  gpt-5.5 high"));
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty("› Ask Codex to do anything\n  gpt-5.5 high")}`);
     await session.terminal.settled();
     await queued;
     expect(ptys[0]!.writes).toEqual(["\u001b[200~after foreign picker\u001b[201~", "\r"]);

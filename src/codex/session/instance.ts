@@ -20,6 +20,7 @@ import { restoreCodexConfig, snapshotCodexConfig } from "../config/restore.ts";
 import { runCodexModelSwitch } from "../config/transaction.ts";
 import { attachCodexImages } from "../images/attach.ts";
 import { codexModelPicker } from "../model-picker.ts";
+import { liveCodexClearance } from "../screen/live-clearance.ts";
 import type { CodexTranscriptWatcher } from "../transcript/index.ts";
 import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";
@@ -32,7 +33,10 @@ import {
 } from "./warnings.ts";
 
 export class CodexSessionImpl extends AgentSessionBase implements CodexSessionApi {
-  protected readonly picker = codexModelPicker;
+  protected readonly picker = {
+    ...codexModelPicker,
+    isClear: liveCodexClearance(() => this.terminal),
+  };
   private readonly bridge: CodexHookBridge;
   private readonly emitter: TypedEmitter<CodexEventMap>;
   private readonly transcriptWatcher: CodexTranscriptWatcher | undefined;
