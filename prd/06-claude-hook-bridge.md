@@ -129,6 +129,12 @@ unions.
   repeated children on separate paths are valid within these limits. Cyclic or
   over-limit shapes fail validation without throwing. Invalid rewrites produce the
   existing `invalid_response` hook error and a bridge response with no decision.
+  Structural values must consist of null, strings, booleans, finite numbers,
+  arrays, and plain records (including null-prototype records). Undefined values
+  retain JavaScript JSON omission/null semantics. Bigints, functions, symbols,
+  boxed primitives, custom prototypes or `toJSON` hooks, and accessor properties
+  are invalid; validation does not invoke getters or custom serializers. Each
+  child's budget is checked before reading its property descriptor.
 
 Task and plan inputs follow Claude's documented native field names: `TaskGet`
 uses `taskId`; `TaskOutput` uses `task_id`, `block`, and `timeout`; `TaskStop`

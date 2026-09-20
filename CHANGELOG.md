@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Reject hook rewrites with unsafe JSON values or accessors before serialization, and stop wide-value inspection at the validation budget.
+
 - Reject cyclic and excessively deep or wide schema-less hook inputs
   and rewrites without throwing. Validation allows at most 128 edges of depth
   and 100,000 value visits, counting repeated children on each path. Invalid rewrites
