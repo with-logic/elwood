@@ -3,7 +3,7 @@
  * Implements PRD §5.5 and C-CODEX-12 for both prompt automation and input blocking.
  */
 
-import type { InputTerminal } from "../core/input/abort.ts";
+import { type InputTerminal, waitForInput } from "../core/input/abort.ts";
 import {
   type AutomationWriteResult,
   guardedNonTrustAutomationWrite,
@@ -89,10 +89,19 @@ export function guardedCodexAutomationWrite(
   terminal: InputTerminal,
   write: NonTrustAutomationWriter,
   readFrame: () => string,
+  signal?: AbortSignal,
 ): (input: string, perWrite?: (frameText: string) => boolean) => Promise<AutomationWriteResult> {
   // The generation-aware predicate is supplied PER WRITE by `writeCodexUpdateSkip`, so an
   // older attempt can never validate against a newer appearance's state (#42 round 3).
-  return guardedNonTrustAutomationWrite(terminal, write, readFrame, "codex", codexOptionStillSafe);
+  return guardedNonTrustAutomationWrite(
+    terminal,
+    write,
+    readFrame,
+    "codex",
+    codexOptionStillSafe,
+    () => signal?.aborted ?? false,
+    signal,
+  );
 }
 
 /**
@@ -139,6 +148,7 @@ export async function writeCodexUpdateSkip(
   readFrame?: () => string,
   currentUpdateFrame: (frameText: string) => boolean = codexUpdatePromptVisible,
   invalidated: (frameText: string) => boolean = () => false,
+  signal?: AbortSignal,
 ): Promise<CodexUpdateSkipCompletion> {
   if (readFrame === undefined) {
     // A guarded writer can still withhold (its own settled-frame checks apply), and a
@@ -168,14 +178,7 @@ export async function writeCodexUpdateSkip(
       settledFrameKeepsChoice(settledFrame, identity, safeOption.number, currentUpdateFrame);
     if ((await write(safeOption.number, stillThisChoice)) === "withheld") return "cancelled";
     wrote = true;
-    await wait(retryIntervalMs);
+    await waitForInput(retryIntervalMs, signal);
   }
   return "exhausted";
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    timer.unref();
-  });
 }

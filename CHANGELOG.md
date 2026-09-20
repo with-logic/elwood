@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Cancel Codex update retry timers and pending automated keys when the session closes,
+  suppressing late startup success and write-failure warnings after disposal.
+
 - Release cancelled config-lock and clipboard-lock waiters immediately, including
   captured session state, while active holders retain ownership through cleanup.
 
