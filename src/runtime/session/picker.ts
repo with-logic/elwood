@@ -116,7 +116,8 @@ export class PickerTransactions {
           try {
             result = await work(this.io(signal, spec, progress), signal);
           } catch (error) {
-            if (!closed.aborted) await this.cleanUp(spec, progress, closed);
+            if (!closed.aborted && progress.commandSubmitted)
+              await this.cleanUp(spec, progress, closed);
             throw error;
           }
         },

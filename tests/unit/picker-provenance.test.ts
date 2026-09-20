@@ -125,7 +125,8 @@ test("C-API-55 a survivor is not also reported as a foreign dialog", async () =>
   queue.markReady();
   const failure = new Error("navigation failed");
   await expect(
-    picker.run("set_model", claudeModelPicker, 5_000, () => {
+    picker.run("set_model", claudeModelPicker, 5_000, async (io) => {
+      await io.submit("/model", new AbortController().signal);
       screen.text = claudePicker;
       return Promise.reject(failure);
     }),

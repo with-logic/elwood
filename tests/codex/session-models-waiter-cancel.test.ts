@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, expect, test } from "vitest";
 import { withCodexConfigLock } from "../../src/codex/config/lock.ts";
 import { startCodex } from "../../src/index.ts";
+import { asScreen, codexPickerCurrentIsDefault } from "../helpers/model-pickers.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 import { restoreCodexHome, sandboxCodexHome, userConfig } from "./session-models-helpers.ts";
 
@@ -79,6 +80,36 @@ test("C-API-55 a setModel deadline cancels a config-lock waiter and releases its
     await new Promise((resolve) => setImmediate(resolve));
     expect(ptys[0]!.writes).not.toContain("/model");
     expect(readFileSync(configPath, "utf8")).toBe(userConfig);
+  } finally {
+    held.resolve();
+    await holder;
+    await session.stop();
+  }
+});
+
+test("C-API-55 a config-lock timeout never cancels a picker opened by someone else", async () => {
+  installFakes();
+  const cwd = tempDir();
+  const configPath = sandboxCodexHome(cwd);
+  const session = await startCodex({ cwd });
+  const held = Promise.withResolvers<void>();
+  const holder = withCodexConfigLock(() => held.promise);
+  try {
+    await becomeReady(session.elwoodSessionId, cwd);
+    await expect.poll(() => session.status).toBe("ready");
+    const setting = session
+      .setModel("gpt-5.4", { timeoutMs: 100 })
+      .catch((error: unknown) => error);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    ptys[0]!.emitData(asScreen(codexPickerCurrentIsDefault));
+    await session.terminal.settled();
+    expect(await setting).toMatchObject({ code: "model_automation_failed" });
+    expect(ptys[0]!.writes).toEqual([]);
+    expect(readFileSync(configPath, "utf8")).toBe(userConfig);
+    held.resolve();
+    await holder;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(ptys[0]!.writes).toEqual([]);
   } finally {
     held.resolve();
     await holder;
