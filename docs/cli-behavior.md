@@ -330,6 +330,14 @@ Splitting its bytes immediately before the final DEC25h leaves complete-looking
 composer chrome while native cursor restoration is still pending. Live Claude
 clearance therefore also verifies the visible native cursor on its composer row;
 receipt settlement alone cannot identify that native paint boundary.
+The same Claude 2.1.278 capture hides its cursor with DEC25l before repainting
+its model menu. After that complete control, all 1,241 remaining character prefixes
+retain the live hold, including prefixes where old composer chrome still passes the
+text-only grammar. `tests/fixtures/claude-model-dialog-render.ts` preserves that
+menu repaint without user paths or conversation content, and
+`tests/unit/claude-model-dialog-render.test.ts` replays every prefix. This evidence
+covers the captured model dialog; it does not establish behavior for arbitrary
+replacement prompts or future Claude renderers.
 
 Claude 2.1.278 can paint the complete folder-trust dialog before accepting keyboard
 navigation. In the real human-trust test, immediate Down/Enter writes left the

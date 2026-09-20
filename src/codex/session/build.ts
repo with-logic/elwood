@@ -120,7 +120,6 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     options.initialSize ?? defaultTerminalSize,
     pty,
     (data, renderedTerminal) => {
-      startupOutput.push(data);
       terminalReplay.push(data);
       const frame = {
         text: renderedSnapshot(renderedTerminal).text,
@@ -138,6 +137,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       frameObserver.observe(frame);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
+    startupOutput.push,
   );
   const callerInput = reportCallerInput(terminal, () => promptResponder.endStartup(), resumed);
   session = new CodexSessionImpl(
