@@ -29,6 +29,21 @@ const workingTitle = "⠹ Claude Code";
 const idleTitle = "✳ Claude Code";
 
 describe("screen fact tables", () => {
+  test.each([
+    "• Working (0s • esc to interrupt)",
+    "• Thinking (3m 05s • esc to interrupt)",
+    "• Running tests (1h 02m 03s • esc to interrupt) · background process",
+  ])("C-TURN-03 native elapsed-time status stays working: %s", (text) => {
+    expect(readScreenFacts(codexScreenFactTable, screen(text)).facts.working_visible).toBe(true);
+  });
+
+  test.each([
+    "• The spinner hint (esc to interrupt) is quoted here.",
+    "• The timer example (3s • esc to interrupt) is prose after the parentheses.",
+  ])("C-TURN-03 parenthesized transcript prose is not native work: %s", (text) => {
+    expect(readScreenFacts(codexScreenFactTable, screen(text)).facts.working_visible).toBe(false);
+  });
+
   test("C-TURN-03 the working rules match both captured footers", () => {
     expect(
       readScreenFacts(claudeScreenFactTable, screen(claudeWorking)).facts.working_visible,

@@ -18,9 +18,10 @@ back each entry are listed in `prd/14-conformance.md`.
 - Recognize Codex's native composer beneath numbered transcript output and with
   its older model footer. A newly painted bare caret cannot borrow an earlier
   composer's footer to release input held for a human dialog. Live clearance now
-  requires its visible input cursor in the same completed render, so partial dialogs
-  stay held while transcript quotes and numbered user prompts remain valid. Active
-  work and incomplete welcome-box fragments cannot release input.
+  requires its visible input cursor after all received batches render; native approval
+  headers still override a stale visible cursor. Partial dialogs stay held while
+  transcript quotes and numbered user prompts remain valid. Active work and incomplete
+  welcome-box fragments cannot release input.
 - Preserve Claude `StopFailure` hooks with missing or changed diagnostic fields. Those
   fields are now typed as optional `unknown`, matching ingress. Browser logs show a
   bounded rejection reason instead of unrelated assistant text or a blank summary.

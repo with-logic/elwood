@@ -91,6 +91,7 @@ test.each([
 test.each([
   "Would you like to run the following command?\n  1. Yes, proceed",
   "Allow command?\n  1. Yes",
+  "  Allow command?\n  1. Yes",
   "› 1. Yes, proceed\n  2. No",
   "  1. Yes, proceed\n  2. No",
   "› Enable admin access\n  Keep current permissions",

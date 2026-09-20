@@ -98,7 +98,7 @@ class HeadlessTerminal implements ElwoodTerminal {
       cols: size.cols,
       rows: size.rows,
     });
-    this.cursor = new RenderCursor(this.xterm);
+    this.cursor = new RenderCursor(this.xterm, () => this.ptyOutput?.hasStagedOutput === true);
     this.disposers.push(() => this.cursor.dispose());
     this.renders = new RenderQueue(
       (data, done) => this.xterm.write(data, done),

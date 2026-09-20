@@ -24,6 +24,12 @@ test.each([
   ],
   ["hidden cursor beside stale native composer", codexSmallComposer, nativeRow, false],
   ["transcript placeholder with cursor elsewhere", codexSmallComposer, 0, true],
+  [
+    "partial approval above a stale visible composer cursor",
+    `Would you like to run the following command?\n› 1. Yes\n  2. No\n${codexSmallComposer}`,
+    nativeRow + 3,
+    true,
+  ],
 ] as const)("C-TRUST-01 %s cannot release queued input", async (_name, frame, row, visible) => {
   installFakes();
   const session = await startCodex({ cwd: tempDir(), autotrust: false });
@@ -48,6 +54,8 @@ test.each([
 
 test.each([
   '• The spinner says "esc to interrupt" while work runs.',
+  "• The spinner hint (esc to interrupt) is quoted here.",
+  "• An approval example:\n  Would you like to run the following command?\n  › 1. Yes\n  2. No",
   "› 1. Show the first change\n\n• Here is the requested change.",
   "› Continue\n\n• Continuing the explanation.",
 ])("C-TRUST-01 transcript %s does not block the real native cursor", async (transcript) => {

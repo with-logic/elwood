@@ -287,11 +287,25 @@ callers conservatively reject approval-like rows; the live session additionally
 uses the actual visible input cursor to identify the composer, so transcript
 caret/numbered rows above that input remain legitimate history. Dialogs hide the
 cursor or leave it outside the composer. A bare caret never proves clearance.
+During partial painting, a native column-zero approval header still overrides a
+cursor left visible on an older composer. The live path keeps this native-header
+veto; indented quotations and caret-prefixed user prompts are transcript instead.
 Native working rows and the live OSC working title retain the hold; prose that
 merely quotes `esc to interrupt` is not a native working row. The title, cursor,
 and text are read synchronously from the same completed render, including during
 trust-attempt polling. Raw PTY receipt invalidates the proof before batching.
+That includes an oversized receipt's staged tail: completion of its first 64-KiB
+batch alone is not a complete render. The native working row includes elapsed
+time before the interrupt hint (seconds, minutes/seconds, or hours/minutes/seconds),
+as rendered by [Codex 0.142.5's status widget](https://github.com/openai/codex/blob/rust-v0.142.5/codex-rs/tui/src/status_indicator_widget.rs).
+Parenthesized transcript prose without that native status grammar is not work.
 The Claude predicate uses `src/core/trust/clearance.ts` for its separate grammar.
+
+`tests/e2e/codex-live-clearance.e2e.ts` also exercises production `startCodex`
+with a fresh isolated configuration: queued input stays held at the human-owned
+directory gate, then one benign prompt reaches `UserPromptSubmit` after manual
+trust and visible native cursor clearance. Verified against installed Codex
+0.155.1; the test cleans up the real session rather than waiting for model output.
 
 A startup-only real PTY probe of Codex 0.142.5 on 2026-09-19 confirmed the
 model-only `gpt-5.5 high` footer with `tui.status_line = ["model-with-reasoning"]`.

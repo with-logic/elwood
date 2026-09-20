@@ -1,5 +1,5 @@
 /** Cursor provenance waits for raw PTY receipt and completed renders (C-TRUST-01). */
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import type { PtyProcess } from "../../src/pty/types.ts";
 import { settledCursorVisible } from "../../src/terminal/cursor.ts";
 import { attachPtyTerminal, createHeadlessTerminal } from "../../src/terminal/headless.ts";
@@ -29,6 +29,37 @@ test("C-TRUST-01 visibility follows parsed cursor modes, resets, and disposal", 
     terminal.dispose();
   }
   expect(visible()).toBe(false);
+});
+
+test("C-TRUST-01 one oversized PTY receipt stays invalid until its staged tail renders", async () => {
+  vi.useFakeTimers();
+  let emit: (data: string) => void = () => undefined;
+  const pty: PtyProcess = {
+    pid: 1,
+    onData(handler) {
+      emit = handler;
+      return () => undefined;
+    },
+    onExit: () => () => undefined,
+    write() {},
+    resize: () => "resized",
+    kill() {},
+  };
+  const observations: boolean[] = [];
+  const terminal = attachPtyTerminal({ cols: 20, rows: 4 }, pty, (_, current) => {
+    observations.push(settledCursorVisible(current.xterm));
+  });
+  try {
+    emit(`${" ".repeat(65_536)}\u001b[?25l`);
+    // Parse the full batch at time zero, before PtyOutput's four-ms tail flush.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(observations).toEqual([false]);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(observations).toEqual([false, false]);
+  } finally {
+    terminal.dispose();
+    vi.useRealTimers();
+  }
 });
 
 test("C-TRUST-01 staged PTY bytes invalidate cursor proof before batch rendering", async () => {

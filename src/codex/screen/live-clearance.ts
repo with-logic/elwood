@@ -9,12 +9,19 @@ import { codexWorkingTitle } from "./working.ts";
 export function liveCodexClearance(readTerminal: () => ElwoodTerminal): TrustClearance {
   return (text) => {
     const terminal = readTerminal();
-    if (terminal.renderFailed || !settledCursorVisible(terminal.xterm)) return false;
-    const frame = terminal.snapshot();
-    if (frame.text !== text || frame.cursorX !== 2 || codexWorkingTitle.test(terminal.title))
+    if (
+      terminal.renderFailed ||
+      !settledCursorVisible(terminal.xterm) ||
+      codexWorkingTitle.test(terminal.title)
+    )
       return false;
+    const frame = terminal.snapshot();
+    // Native input follows the two-cell "› " prefix (zero-based column 2).
+    if (frame.text !== text || frame.cursorX !== 2) return false;
     const buffer = terminal.xterm.buffer.active;
-    const row = frame.cursorY + buffer.baseY - buffer.viewportY;
-    return codexComposerClearance(text, row);
+    // cursorY is relative to the active buffer base; snapshot rows start at viewportY.
+    // Example: cursorY=3, baseY=10, viewportY=8 identifies snapshot row 5.
+    const viewportCursorRow = frame.cursorY + buffer.baseY - buffer.viewportY;
+    return codexComposerClearance(text, viewportCursorRow);
   };
 }

@@ -14,9 +14,11 @@ export class RenderCursor {
   private readonly handlers: readonly { dispose(): void }[];
 
   private readonly terminal: Terminal;
+  private readonly hasStagedOutput: () => boolean;
 
-  constructor(terminal: Terminal) {
+  constructor(terminal: Terminal, hasStagedOutput: () => boolean) {
     this.terminal = terminal;
+    this.hasStagedOutput = hasStagedOutput;
     tracked.set(terminal, this);
     const reset = () => {
       this.visible = true;
@@ -41,7 +43,9 @@ export class RenderCursor {
     this.renderedRevision = revision;
   }
   get settledVisible(): boolean {
-    return this.visible && this.receivedRevision === this.renderedRevision;
+    return (
+      this.visible && this.receivedRevision === this.renderedRevision && !this.hasStagedOutput()
+    );
   }
   dispose(): void {
     tracked.delete(this.terminal);
