@@ -46,7 +46,7 @@ export abstract class SessionLifecycle {
   protected readonly pasteGuard: PasteGuard = {
     snapshot: () => this.terminal.snapshot().text,
     staged: (screen, prompt) => this.stagedPaste(screen, prompt),
-    blocked: () => this.isInputBlocked(),
+    blocked: () => this.queuedInputBlocked(),
   };
   protected constructor(
     agent: ElwoodAgentKind,
@@ -170,10 +170,9 @@ export abstract class SessionLifecycle {
     }
   }
   readonly beginExitFinalization = () => this.shutdown.beginExitFinalization();
-  statusDecisions(): readonly StatusDecision[] {
-    return this.statusEngine.decisions();
-  }
+  readonly statusDecisions = (): readonly StatusDecision[] => this.statusEngine.decisions();
   protected abstract stagedPaste(screen: string, prompt: string): boolean;
+  protected abstract queuedInputBlocked(): boolean;
   protected abstract stopRuntime(): Promise<void>;
   protected abstract emitWarnings(warnings: readonly ElwoodWarningEvent[]): void;
   protected replayFor(event: string, handler: (event: never) => unknown): void {

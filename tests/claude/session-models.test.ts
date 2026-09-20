@@ -38,7 +38,7 @@ describe("ClaudeSessionApi model picker", () => {
     const session = await startClaude({ cwd });
     await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
     const listing = session.listModels({ timeoutMs: 4_000 });
-    await expect.poll(() => ptys[0]!.writes.includes("/model")).toBe(true);
+    await expect.poll(() => ptys[0]!.writes.join("").includes("/model\r")).toBe(true);
     ptys[0]!.emitData(asScreen(claudePicker));
     await expect.poll(() => ptys[0]!.writes.includes("\u001b")).toBe(true);
     ptys[0]!.emitData(asScreen("❯ "));
@@ -59,7 +59,7 @@ describe("ClaudeSessionApi model picker", () => {
     const session = await startClaude({ cwd });
     await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
     const setting = session.setModel("haiku", { timeoutMs: 4_000 });
-    await expect.poll(() => ptys[0]!.writes.includes("/model")).toBe(true);
+    await expect.poll(() => ptys[0]!.writes.join("").includes("/model\r")).toBe(true);
     ptys[0]!.emitData(asScreen(claudePicker));
     await expect.poll(() => ptys[0]!.writes.filter((write) => write === "\u001b[B").length).toBe(2);
     ptys[0]!.emitData(asScreen(claudePickerCursorOnHaiku));
@@ -110,9 +110,12 @@ describe("ClaudeSessionApi model picker", () => {
     pty.emitData(asScreen(claudeHookSwitchConfirmation));
     expect(await isSettled(setting)).toBe(false);
     expect(pty.writes.at(-1)).toBe("s");
+    const revoked = expect(setting).rejects.toMatchObject({ code: "model_automation_failed" });
     await session.sendKeys("\r");
+    const humanWrites = [...pty.writes];
     pty.emitData(asScreen("❯ "));
-    await setting;
+    await revoked;
+    expect(pty.writes).toEqual(humanWrites);
   });
 
   test("C-API-24 ignores cache copy inside a PreModelSwitch hook reason", async () => {
@@ -120,9 +123,12 @@ describe("ClaudeSessionApi model picker", () => {
     pty.emitData(asScreen(claudeHookSwitchConfirmationWithCacheReason));
     expect(await isSettled(setting)).toBe(false);
     expect(enterWrites(pty)).toBe(enterCount);
+    const revoked = expect(setting).rejects.toMatchObject({ code: "model_automation_failed" });
     await session.sendKeys("\r");
+    const humanWrites = [...pty.writes];
     pty.emitData(asScreen("❯ "));
-    await setting;
+    await revoked;
+    expect(pty.writes).toEqual(humanWrites);
   });
 
   test("C-API-24 does not combine transcript cache copy with a live hook dialog", async () => {
@@ -130,9 +136,12 @@ describe("ClaudeSessionApi model picker", () => {
     pty.emitData(asScreen(`${claudeModelCacheConfirmationOnYes}\n${claudeHookSwitchConfirmation}`));
     expect(await isSettled(setting)).toBe(false);
     expect(enterWrites(pty)).toBe(enterCount);
+    const revoked = expect(setting).rejects.toMatchObject({ code: "model_automation_failed" });
     await session.sendKeys("\r");
+    const humanWrites = [...pty.writes];
     pty.emitData(asScreen("❯ "));
-    await setting;
+    await revoked;
+    expect(pty.writes).toEqual(humanWrites);
   });
 
   test("C-API-24 treats a quoted cache dialog above the composer as transcript", async () => {
@@ -149,7 +158,7 @@ async function driveSetModelToApply() {
   const session = await startClaude({ cwd });
   await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
   const setting = session.setModel("haiku", { timeoutMs: 4_000 });
-  await until(() => ptys[0]!.writes.includes("/model"));
+  await until(() => ptys[0]!.writes.join("").includes("/model\r"));
   ptys[0]!.emitData(asScreen(claudePicker));
   await until(() => ptys[0]!.writes.filter((write) => write === "\u001b[B").length === 2);
   ptys[0]!.emitData(asScreen(claudePickerCursorOnHaiku));
