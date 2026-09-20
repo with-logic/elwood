@@ -253,7 +253,10 @@ test("landing keyboard aliases, shortcut dialog and focus recovery work through 
   assert.equal(scene.ready, true);
   assert.equal(element(".hero").dataset.ready, "", "The first canvas paint replaces the fallback");
   key("keydown", "ArrowLeft");
-  await advance(50);
+  // Rotation pauses while real sprite pages decode; simulated frames are not an I/O deadline.
+  const movementDeadline = performance.now() + 5_000;
+  while (scene.world.player.animation !== "walk-left" && performance.now() < movementDeadline)
+    await advance(1);
   assert.equal(scene.world.player.animation, "walk-left");
   key("keydown", "KeyA");
   key("keyup", "ArrowLeft");
