@@ -1,6 +1,7 @@
 /**
  * Applies turn-state and attention watchers to a rendered frame and submits
- * the resulting evidence, emitting the attention activity on a real block.
+ * the resulting evidence. Attention activity marks new blocks and changed blocking
+ * rules; identical-rule repaints stay quiet.
  * Implements PRD §5.3 turn and blocked detection.
  */
 
