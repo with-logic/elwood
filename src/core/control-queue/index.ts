@@ -36,6 +36,14 @@ export type {
   ControlSubmitter,
 } from "./types.ts";
 
+/**
+ * Await preparation, then invoke and await work exactly once (zero calls if preparation
+ * fails). preparationSignal only controls that pre-work boundary; work captures its
+ * own task signal (the closing lifetime for exclusive work), so an exclusive deadline
+ * cannot revoke an already-owned dialog.
+ */
+type AroundOperation = (work: () => Promise<void>, preparationSignal: AbortSignal) => Promise<void>;
+
 const callerOrigin: ControlSubmissionOrigin = { kind: "caller" };
 
 export class ControlQueue extends ControlQueueState {
@@ -44,15 +52,19 @@ export class ControlQueue extends ControlQueueState {
   private readonly guidanceMayBypass: () => boolean;
   private readonly onCallerInputSubmitted: (() => void) | undefined;
 
+  private readonly aroundOperation: AroundOperation | undefined;
+
   constructor(
     submit: ControlSubmitter,
     stoppedError: ControlQueueError,
     onTurnStarted: (origin: ControlSubmissionOrigin) => void,
     guidanceMayBypass: () => boolean = () => false,
     onCallerInputSubmitted?: () => void,
+    aroundOperation?: AroundOperation,
   ) {
     super(stoppedError);
     this.submit = submit;
+    this.aroundOperation = aroundOperation;
     this.onTurnStarted = onTurnStarted;
     this.guidanceMayBypass = guidanceMayBypass;
     this.onCallerInputSubmitted = onCallerInputSubmitted;
@@ -109,11 +121,16 @@ export class ControlQueue extends ControlQueueState {
     const epoch = this.readinessEpoch;
     let dispatched: Promise<void>;
     try {
-      const signal = this.armAbort();
-      if (!operation.attach) this.beginSubmission(operation, traits);
-      dispatched = operation.run
-        ? operation.run(signal)
-        : this.submitWithAttach(operation, traits, signal);
+      const workSignal = this.armAbort();
+      const work = () => {
+        if (!operation.attach) this.beginSubmission(operation, traits);
+        return operation.run
+          ? operation.run(workSignal)
+          : this.submitWithAttach(operation, traits, workSignal);
+      };
+      dispatched = this.aroundOperation
+        ? this.aroundOperation(work, this.prepareSignal(workSignal))
+        : work();
     } catch (error) {
       this.rollback(operation, priorReady, epoch, toError(error));
       return;
