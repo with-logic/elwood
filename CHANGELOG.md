@@ -12,6 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Preserve Claude `StopFailure` hooks with missing or changed diagnostic fields. Those
+  fields are now typed as optional `unknown`, matching ingress. Browser logs show a
+  bounded rejection reason instead of unrelated assistant text or a blank summary.
+
 - Route Codex tool-keyed hooks from own properties only. A `PreToolUse` map is a
   plain object, so a tool name matching an inherited member (anything on
   `Object.prototype`, or a key on a caller-supplied prototype) used to resolve to a
