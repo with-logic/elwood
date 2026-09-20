@@ -21,10 +21,13 @@ const hintFooter = /^(?: {2})?\? for shortcuts$/;
 function welcomeBox(rows: readonly string[]): boolean {
   if (!/^╭─+╮$/.test(rows[0] ?? "")) return false;
   if (!/^│\s*>_ OpenAI Codex \(v[\d.]+\)\s*│$/.test(rows[1] ?? "")) return false;
-  const bottom = rows.findIndex((row) => /^╰─+╯$/.test(row));
-  if (bottom < 2 || !rows.slice(1, bottom).every((row) => /^│.*│$/.test(row))) return false;
+  if (!/^│\s*│$/.test(rows[2] ?? "")) return false;
+  if (!/^│ model:\s+\S.*\s+\/model to change\s*│$/.test(rows[3] ?? "")) return false;
+  if (!/^│ directory:\s+\S.*│$/.test(rows[4] ?? "")) return false;
+  if (!/^╰─+╯$/.test(rows[5] ?? "")) return false;
   let inTip = false;
-  return rows.slice(bottom + 1).every((row) => {
+  return rows.slice(6).every((row) => {
+    if (row === "") return true;
     if (/^ {2}Tip: /.test(row)) {
       inTip = true;
       return true;
@@ -44,16 +47,13 @@ function welcomeBox(rows: readonly string[]): boolean {
  */
 export function codexComposerClearance(frame: string): boolean {
   if (/esc to interrupt/i.test(frame)) return false;
-  const rows = frame
-    .split("\n")
-    .map((row) => row.trimEnd())
-    .filter((row) => row.trim().length > 0);
+  const rows = frame.split("\n").map((row) => row.trimEnd());
   const at = rows.findLastIndex((row) => caretRow.test(row));
   const composer = rows[at];
   // Native composer starts at column zero; transcript continuations are indented.
   if (composer === undefined || !/^›(?:\s|$)/.test(composer)) return false;
   if (!placeholders.has(composer.slice(1).trim())) return false;
-  const below = rows.slice(at + 1);
+  const below = rows.slice(at + 1).filter((row) => row !== "");
   if (!below.every((row) => modelFooter.test(row) || hintFooter.test(row))) return false;
   if (below.some((row) => modelFooter.test(row))) return true;
   // A captured welcome box also anchors the known placeholder. A bare caret alone

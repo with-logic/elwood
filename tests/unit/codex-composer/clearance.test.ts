@@ -68,3 +68,22 @@ test.each([
 ])("C-TRUST-01 active work and non-native composer evidence do not clear a gate: %s", (frame) => {
   expect(codexTrustClearance(frame)).toBe(false);
 });
+
+test.each([2, 3, 4])("C-TRUST-01 erased welcome row %i cannot prove clearance", (index) => {
+  const rows = composerWithoutModelFooter.split("\n");
+  rows[index] = "";
+  expect(codexTrustClearance(rows.join("\n"))).toBe(false);
+  rows.splice(index, 1);
+  expect(codexTrustClearance(rows.join("\n"))).toBe(false);
+});
+
+test("C-TRUST-01 captured welcome spacing remains valid without a model footer", () => {
+  expect(codexTrustClearance(capturedComposer.replace(/ {2}gpt-5\.5 high\s*$/, ""))).toBe(true);
+});
+
+test.each([
+  2, 3, 4, 5,
+])("C-TRUST-01 truncated welcome with %i rows cannot prove clearance", (count) => {
+  const rows = composerWithoutModelFooter.split("\n").slice(0, count);
+  expect(codexTrustClearance(`${rows.join("\n")}\n› Ask Codex to do anything`)).toBe(false);
+});

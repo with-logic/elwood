@@ -292,7 +292,10 @@ trust-attempt polling. A bare
 caret cannot prove clearance even with a model footer left by an earlier frame.
 Without a model footer, a non-bare native placeholder also
 proves clearance when anchored by a contiguous boxed Codex welcome header at the
-start of the frame, followed only by native startup tip and warning rows. The welcome box alone cannot authorize a bare caret. A later bare
+start of the frame, followed only by native startup tip and warning rows. Its
+header, bordered spacer, model, directory, and bottom border must occupy their
+verified consecutive rows; erased or missing interior rows cannot prove clearance.
+Blank spacing outside the box remains valid. The welcome box alone cannot authorize a bare caret. A later bare
 caret cannot borrow an earlier composer's footer to prove clearance. The Claude predicate uses
 `src/core/trust/clearance.ts` to reject numbered options and non-composer caret rows.
 
