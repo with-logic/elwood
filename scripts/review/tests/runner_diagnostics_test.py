@@ -1,4 +1,6 @@
 """A failed retry assertion retains the original fake process error, within bounds (PRD §16)."""
+from pathlib import Path
+import tempfile
 import unittest
 import runner_test
 from runner_diagnostics import assert_architecture_lens_one_attempt, attempt_diagnostics
@@ -24,6 +26,17 @@ class AttemptDiagnosticsTest(unittest.TestCase):
             self.assertNotIn(b'TRUNCATED_TAIL_CANARY', payload)
         with self.assertRaisesRegex(AssertionError, 'FIRST_ATTEMPT_CANARY'):
             assert_architecture_lens_one_attempt(self, fixture.root, result)
+
+    def test_many_bounded_reports_exercise_the_aggregate_cap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for index in range(3):
+                (root / f'capped-attempt.{index}.failure').write_text(f'attempt={index}\n' + 'x' * 2048)
+            (root / 'capped-attempt.3.failure').write_text('AGGREGATE_TAIL_CANARY')
+            diagnostic = attempt_diagnostics(root)
+            self.assertIn('attempt=0', diagnostic)
+            self.assertNotIn('AGGREGATE_TAIL_CANARY', diagnostic)
+            self.assertEqual(len(diagnostic), len('\nFixture attempt diagnostics (bounded):\n') + 4096)
 
     def test_synthesis_failure_has_its_own_scope(self):
         fixture = runner_test.RunnerTest()
