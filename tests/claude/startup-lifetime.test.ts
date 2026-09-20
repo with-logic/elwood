@@ -45,7 +45,7 @@ test.each([
     expect(events).not.toContain("startup_prompt_write_failed");
   } finally {
     release();
-    await shutdown;
+    await shutdown?.catch(() => undefined);
     await session.teardown();
   }
 });
