@@ -28,9 +28,11 @@ test("C-API-20 finalizers remove only the collected launch's registry entry", as
     },
   );
   vi.resetModules();
-  const { claimLaunchOwnership } = await import("../../src/state/launch-ownership.ts");
-  const first = claimLaunchOwnership("/collected");
-  const second = claimLaunchOwnership("/collected");
+  const { reserveLaunchOwnership } = await import("../../src/state/launch-ownership.ts");
+  const first = reserveLaunchOwnership("/collected");
+  first.commit();
+  const second = reserveLaunchOwnership("/collected");
+  second.commit();
   finalize(pending[0]);
   expect(first.current()).toBe(false);
   expect(second.current()).toBe(true);

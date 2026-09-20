@@ -14,7 +14,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { canonicalStatePath } from "./canonical-path.ts";
 import { newBridgeToken, safeSessionDir } from "./files.ts";
-import { claimLaunchOwnership, type LaunchOwnership } from "./launch-ownership.ts";
+import type { LaunchOwnership } from "./launch-ownership.ts";
 import { ensureSocketHome, sessionSocketHome } from "./socket-home.ts";
 
 /** The in-memory runtime a session binds to for one launch (never persisted). */
@@ -49,7 +49,7 @@ export type SessionRuntimeInput = {
  */
 export function sessionRuntime(
   input: SessionRuntimeInput,
-  ownership?: LaunchOwnership,
+  ownership: LaunchOwnership,
 ): SessionRuntime {
   const { stateDir, elwoodSessionId, adapter } = input;
   const dir = canonicalStatePath(safeSessionDir(stateDir, elwoodSessionId));
@@ -57,7 +57,7 @@ export function sessionRuntime(
   ensureSocketHome(socketHome); // restores 0700 on a reused home; rejects a planted non-dir (§8.1)
   return {
     sessionDir: dir,
-    stateOwnership: ownership ?? claimLaunchOwnership(dir),
+    stateOwnership: ownership,
     settingsPath: join(dir, `${adapter}-settings.json`),
     bridgeScriptPath: join(dir, "hook-bridge.mjs"),
     socketHome,

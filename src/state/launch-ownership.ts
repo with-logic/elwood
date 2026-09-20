@@ -14,11 +14,10 @@ const collected = new FinalizationRegistry<Entry>((entry) => {
 class Generation {
   readonly entry: Entry;
   readonly publication = new LaunchPublication();
-  phase: Phase;
+  phase: Phase = "pending";
   previous: Generation | undefined;
-  constructor(path: string, phase: Phase) {
+  constructor(path: string) {
     this.entry = { path, generation: new WeakRef(this) };
-    this.phase = phase;
     this.previous = generations.get(path)?.generation.deref();
   }
 }
@@ -37,9 +36,10 @@ export type LaunchReservation = LaunchOwnership & {
   readonly rollback: () => void;
 };
 
-function reserve(inputPath: string, phase: Phase): LaunchReservation {
+/** Reserve before startup yields; failure restores only the still-current predecessor. */
+export function reserveLaunchOwnership(inputPath: string): LaunchReservation {
   const path = canonicalStatePath(inputPath);
-  const token = new Generation(path, phase);
+  const token = new Generation(path);
   const publication = token.publication;
   generations.set(path, token.entry);
   collected.register(token, token.entry, token);
@@ -93,18 +93,6 @@ function reserve(inputPath: string, phase: Phase): LaunchReservation {
       collected.unregister(token);
     },
   };
-}
-
-/** Fresh starts own state immediately; a stopped object's authority stays weakly registered. */
-export function claimLaunchOwnership(sessionDir: string): LaunchOwnership {
-  const ownership = reserve(sessionDir, "active");
-  ownership.commit();
-  return ownership;
-}
-
-/** Reserve before resume yields; failure restores only the still-current predecessor. */
-export function reserveLaunchOwnership(sessionDir: string): LaunchReservation {
-  return reserve(sessionDir, "pending");
 }
 
 /** CLI identity cleanup cannot remove a live or pending same-process launch's state. */

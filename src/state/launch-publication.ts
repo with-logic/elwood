@@ -5,21 +5,21 @@ import { assertStatePath } from "./directories.ts";
 import { writePrivateFileAtomic } from "./files.ts";
 import { currentFileOwner, readPrivateFile } from "./private-read.ts";
 
-type PublishedFile = { before: string | undefined; written: string };
+type PublishedFile = { before: string | undefined; written: readonly (string | undefined)[] };
 
 export class LaunchPublication {
   private readonly files = new Map<string, PublishedFile>();
 
   write(path: string, text: string): void {
-    const entry = this.files.get(path);
     const current = read(path);
-    if (entry) {
-      // Preserve a predecessor's intervening record update across our next write.
-      if (current !== entry.written) entry.before = current;
-      entry.written = text;
-    } else this.files.set(path, { before: current, written: text });
-    // Record expected bytes before writing: rename may succeed before fsync fails.
+    const entry = this.files.get(path) ?? { before: current, written: [current] };
+    // Preserve a predecessor's intervening record update across our next write.
+    if (!entry.written.includes(current)) entry.before = current;
+    // A failed write can leave either version: rename precedes directory fsync.
+    entry.written = [current, text];
+    this.files.set(path, entry);
     writePrivateFileAtomic(path, text);
+    entry.written = [text];
   }
 
   clear(): void {
@@ -29,7 +29,7 @@ export class LaunchPublication {
   rollback(): void {
     try {
       for (const [path, entry] of this.files) {
-        if (read(path) !== entry.written) continue;
+        if (!entry.written.includes(read(path))) continue;
         if (entry.before === undefined) rmSync(path, { force: true });
         else writePrivateFileAtomic(path, entry.before);
       }

@@ -2,11 +2,12 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "vitest";
-import { claimLaunchOwnership, reserveLaunchOwnership } from "../../src/state/launch-ownership.ts";
+import { reserveLaunchOwnership } from "../../src/state/launch-ownership.ts";
 import { tempDir } from "../helpers/tmp.ts";
 
 test("C-API-20 pending resume reserves deletion but preserves prior ordinary loop writes", () => {
-  const first = claimLaunchOwnership("/session");
+  const first = reserveLaunchOwnership("/session");
+  first.commit();
   const pending = reserveLaunchOwnership("/session");
   expect(first.current()).toBe(false);
   expect(first.canPersist()).toBe(true);
@@ -19,7 +20,8 @@ test("C-API-20 pending resume reserves deletion but preserves prior ordinary loo
 });
 
 test("C-API-20 a committed successor permanently revokes old authority", () => {
-  const first = claimLaunchOwnership("/session");
+  const first = reserveLaunchOwnership("/session");
+  first.commit();
   const pending = reserveLaunchOwnership("/session");
   pending.commit();
   expect(first.canPersist()).toBe(false);
@@ -29,7 +31,8 @@ test("C-API-20 a committed successor permanently revokes old authority", () => {
 });
 
 test("C-API-20 rollback never replaces a newer claim and skips failed reservations", () => {
-  const first = claimLaunchOwnership("/session");
+  const first = reserveLaunchOwnership("/session");
+  first.commit();
   const older = reserveLaunchOwnership("/session");
   const newer = reserveLaunchOwnership("/session");
   older.rollback();
@@ -56,7 +59,8 @@ test("C-API-20 an earlier successful attempt can be restored after a newer failu
 test("C-API-20 owned record writes track pending publication and preserve intervening predecessor updates", () => {
   const path = tempDir();
   const file = join(path, "record");
-  const prior = claimLaunchOwnership(path);
+  const prior = reserveLaunchOwnership(path);
+  prior.commit();
   prior.publishFile(file, "original");
   const pending = reserveLaunchOwnership(path);
   expect(() => prior.publishFile(file, "stale")).toThrowError(
@@ -81,7 +85,8 @@ test("C-API-20 owned record writes track pending publication and preserve interv
 test("C-API-20 out-of-order failed publications restore the last viable launch's files", () => {
   const path = tempDir();
   const file = join(path, "bridge");
-  const prior = claimLaunchOwnership(path);
+  const prior = reserveLaunchOwnership(path);
+  prior.commit();
   prior.publishFile(file, "original");
   const older = reserveLaunchOwnership(path);
   older.publishFile(file, "older");
