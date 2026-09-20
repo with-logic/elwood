@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import runner_test
-from runner_attempt_capture import MAX_ATTEMPT_STDERR_BYTES
+from runner_attempt_capture import MAX_ATTEMPT_STDERR_BYTES, retain_failure
 from runner_diagnostics import (DIAGNOSTIC_PREFIX, MAX_DIAGNOSTIC_CHARS,
                                 assert_architecture_lens_one_attempt, attempt_diagnostics)
 
@@ -104,6 +104,27 @@ class AttemptDiagnosticsTest(unittest.TestCase):
         result = fixture.run_review()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('UNNECESSARY_CAPTURE', result.stderr)
+
+    def test_captured_reports_prioritize_the_architecture_lens_first_attempt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            payload = root / 'stderr'
+            original_file = tempfile.NamedTemporaryFile
+            sequence = iter(range(4))
+            def ordered_file(*args, prefix, **kwargs):
+                return original_file(*args, prefix=f'{prefix}{next(sequence):03d}.', **kwargs)
+            with patch('runner_attempt_capture.tempfile.NamedTemporaryFile', side_effect=ordered_file):
+                for scope, attempt in [('synthesis', '1'), ('review-testing', '1'),
+                                       ('review-architecture-conventions', '2'),
+                                       ('review-architecture-conventions', '1')]:
+                    payload.write_text(f'ORIGINAL_{scope}_{attempt}\n' + 'x' * MAX_ATTEMPT_STDERR_BYTES)
+                    retain_failure(root, scope, attempt, '1', [payload])
+            diagnostic = attempt_diagnostics(root)
+            self.assertTrue(diagnostic.startswith(DIAGNOSTIC_PREFIX +
+                            'lens=review-architecture-conventions attempt=1 exit=1\n'))
+            self.assertIn('ORIGINAL_review-architecture-conventions_1', diagnostic)
+            self.assertNotIn('lens=review-testing', diagnostic)
+            self.assertNotIn('lens=synthesis', diagnostic)
 
     def test_synthesis_failure_has_its_own_scope(self):
         fixture = runner_test.RunnerTest()

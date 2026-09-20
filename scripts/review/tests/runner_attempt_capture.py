@@ -10,7 +10,7 @@ MAX_ATTEMPT_STDERR_BYTES = 2048
 def retain_failure(root, scope, attempt, code, paths):
     if code == '0':
         return
-    with tempfile.NamedTemporaryFile(dir=root, prefix='capped-attempt.', suffix='.failure', delete=False) as report:
+    with tempfile.NamedTemporaryFile(dir=root, prefix=f'capped-attempt.{scope}.{int(attempt):03d}.', suffix='.failure', delete=False) as report:
         report.write(f'lens={scope} attempt={attempt} exit={code}\n'.encode())
         remaining = MAX_ATTEMPT_STDERR_BYTES
         for path in paths:

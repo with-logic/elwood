@@ -15,11 +15,11 @@ def install_attempt_diagnostics(root):
 exec 4>&2
 cleanup() {
   local code=$? failure
-  if [ -f "$tmp/synth.validation.err" ]; then head -c ATTEMPT_STDERR_BYTES "$tmp/synth.validation.err" >&4; fi
+  if [ -f "$tmp/synth.validation.err" ]; then head -c ATTEMPT_STDERR_BYTES "$tmp/synth.validation.err" >&4 || true; fi
   if [ "$code" -ne 0 ] && [ "${synthesis_active:-false}" = true ]; then
     failure=$code
     if [ "${synth_code:-0}" -ne 0 ]; then failure=$synth_code; fi
-    python3 "$root/retain-attempt.py" "$root" synthesis 1 "$failure" "$tmp/synth.err" "$tmp/synth.validation.err"
+    python3 "$root/retain-attempt.py" "$root" synthesis 1 "$failure" "$tmp/synth.err" "$tmp/synth.validation.err" || true
   fi
   cleanup_without_capture
 }
@@ -31,9 +31,9 @@ run_lens_once() {
   local code=0 diagnostic
   diagnostic=$(mktemp "$tmp/attempt.stderr.XXXXXX")
   run_lens_without_capture "$@" 2>"$diagnostic" || code=$?
-  cat "$diagnostic" >&2
+  cat "$diagnostic" >&2 || true
   if [ "$code" -ne 0 ]; then
-    python3 "$root/retain-attempt.py" "$root" "$1" "$attempt" "$code" "$tmp/$1.err" "$diagnostic"
+    python3 "$root/retain-attempt.py" "$root" "$1" "$attempt" "$code" "$tmp/$1.err" "$diagnostic" || true
   fi
   rm -f "$diagnostic"
   return "$code"
