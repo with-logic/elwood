@@ -119,6 +119,13 @@ a `hookError`, matching the token-mismatch fail-open.
 
 ### 6.4 Typed hook responses
 
+Observational listener failures must not prevent Claude hook dispatch, replace a
+validated wire response or blocking decision, or skip readiness and Stop bookkeeping.
+Hook, activity, hook-error, transcript, and lifecycle notifications are isolated at
+the hook boundary. Each invocation emits at most one content-free
+`hook_observer_failed` warning (§5.7), identifying the first failed phase; warning
+observer failures are contained without recursive diagnostics (C-HOOK-22).
+
 Elwood MUST model Claude hook inputs and outputs as discriminated TypeScript
 unions.
 

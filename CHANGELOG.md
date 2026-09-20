@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Preserve Claude hook decisions and lifecycle progress when observational listeners
+  throw, with one bounded `hook_observer_failed` warning per affected invocation.
+
 - Snapshot Claude hook responses before validation so later mutations or custom accessors cannot replace validated rewrites on the wire. Capture wire output and blocking decisions before activity listeners run.
 
 - Preserve Claude `StopFailure` hooks with missing or changed diagnostic fields. Those
