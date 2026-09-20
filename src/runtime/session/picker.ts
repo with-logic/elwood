@@ -80,7 +80,7 @@ export class PickerTransactions {
     kind: "list_models" | "set_model",
     spec: ModelPickerSpec,
     timeoutMs: number,
-    work: (io: ModelPickerIo) => Promise<T>,
+    work: (io: ModelPickerIo, signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
     const deadline = new AbortController();
     const timer = setTimeout(
@@ -114,7 +114,7 @@ export class PickerTransactions {
           };
           const signal = AbortSignal.any([closed, deadline.signal]);
           try {
-            result = await work(this.io(signal, spec, progress));
+            result = await work(this.io(signal, spec, progress), signal);
           } catch (error) {
             if (!closed.aborted) await this.cleanUp(spec, progress, closed);
             throw error;

@@ -13,7 +13,8 @@ back each entry are listed in `prd/14-conformance.md`.
 ## [Unreleased]
 
 - Keep an acquired Codex config or clipboard lock operation pending until its task
-  finishes cleanup when cancellation arrives; waiting callers still cancel immediately.
+  finishes cleanup when cancellation arrives; waiting callers still cancel immediately. Codex model-switch deadlines also
+  cancel config-lock waits and release the waiting session input slot.
 
 - Route Codex tool-keyed hooks from own properties only. A `PreToolUse` map is a
   plain object, so a tool name matching an inherited member (anything on

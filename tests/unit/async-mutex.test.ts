@@ -1,4 +1,5 @@
 /** Mutex cancellation preserves ownership through task cleanup (PRD §5.3, C-API-46). */
+import { getEventListeners } from "node:events";
 import { expect, test, vi } from "vitest";
 import { createAsyncMutex } from "../../src/core/async-mutex.ts";
 
@@ -68,4 +69,24 @@ test("already cancelled waiters do not enter and task failures preserve the queu
     ),
   ).rejects.toThrow("task failed");
   await expect(lock(async () => "next")).resolves.toBe("next");
+});
+
+test("an already-aborted waiter leaves no listener behind an active holder", async () => {
+  const lock = createAsyncMutex();
+  const held = Promise.withResolvers<void>();
+  const holder = lock(() => held.promise);
+  const abort = new AbortController();
+  abort.abort();
+  try {
+    await expect(
+      lock(async () => undefined, {
+        signal: abort.signal,
+        error: () => new Error("cancelled"),
+      }),
+    ).rejects.toThrow("cancelled");
+    expect(getEventListeners(abort.signal, "abort")).toHaveLength(0);
+  } finally {
+    held.resolve();
+    await holder;
+  }
 });

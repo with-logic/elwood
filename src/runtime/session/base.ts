@@ -118,7 +118,7 @@ export abstract class AgentSessionBase extends SessionLifecycle {
   setModel(
     id: string,
     options?: Timeout,
-    around?: (flow: () => Promise<void>) => Promise<void>,
+    around?: (flow: () => Promise<void>, signal: AbortSignal) => Promise<void>,
   ): Promise<void> {
     return this.inSession(() => this.commands.setModel(id, options, around));
   }

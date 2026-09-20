@@ -51,3 +51,36 @@ test("C-CODEX-14 closing a setModel waiter rejects before the config owner relea
     await session.stop();
   }
 });
+
+test("C-API-55 a setModel deadline cancels a config-lock waiter and releases its input slot", async () => {
+  installFakes();
+  const cwd = tempDir();
+  const configPath = sandboxCodexHome(cwd);
+  const session = await startCodex({ cwd });
+  const held = Promise.withResolvers<void>();
+  const holder = withCodexConfigLock(() => held.promise);
+  try {
+    await becomeReady(session.elwoodSessionId, cwd);
+    await expect.poll(() => session.status).toBe("ready");
+    let failure: unknown;
+    const setting = session.setModel("gpt-5.4", { timeoutMs: 20 }).catch((error: unknown) => {
+      failure = error;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(failure).toMatchObject({ code: "model_automation_failed" });
+    await setting;
+    expect(ptys[0]!.writes).toEqual([]);
+    expect(readFileSync(configPath, "utf8")).toBe(userConfig);
+    await session.sendMessage("after timeout");
+    expect(ptys[0]!.writes).toContain("\u001b[200~after timeout\u001b[201~");
+    held.resolve();
+    await holder;
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(ptys[0]!.writes).not.toContain("/model");
+    expect(readFileSync(configPath, "utf8")).toBe(userConfig);
+  } finally {
+    held.resolve();
+    await holder;
+    await session.stop();
+  }
+});

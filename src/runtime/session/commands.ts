@@ -131,17 +131,18 @@ export class CommandSurface {
    * process-wide `config.toml` lock) INSIDE the queue slot. Acquiring that lock before
    * the slot would let a following `sendMessage` dispatch first and send under the old
    * model — the slot is what preserves FIFO ordering, so it must be claimed first.
+   * The wrapper receives the same deadline/termination signal as the picker flow.
    */
   setModel(
     id: string,
     options?: Timeout,
-    around?: (flow: () => Promise<void>) => Promise<void>,
+    around?: (flow: () => Promise<void>, signal: AbortSignal) => Promise<void>,
   ): Promise<void> {
     const spec = this.deps.picker();
     const timeoutMs = pickerTimeout(options);
-    return this.picker.run("set_model", spec, timeoutMs, (io) => {
+    return this.picker.run("set_model", spec, timeoutMs, (io, signal) => {
       const flow = () => setPickerModel(io, spec, id, timeoutMs);
-      return around ? around(flow) : flow();
+      return around ? around(flow, signal) : flow();
     });
   }
 

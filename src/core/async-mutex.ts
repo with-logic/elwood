@@ -27,10 +27,12 @@ export function createAsyncMutex(): AsyncMutex {
     new Promise<T>((resolve, reject) => {
       let stopWaiting: () => void = () => undefined;
       if (cancel) {
+        // Reject waiting callers immediately. Their queued run stays in the tail,
+        // preserving ordering. Already-aborted signals never replay an abort event.
+        if (cancel.signal.aborted) return reject(cancel.error());
         const abort = () => reject(cancel.error());
         cancel.signal.addEventListener("abort", abort, { once: true });
         stopWaiting = () => cancel.signal.removeEventListener("abort", abort);
-        if (cancel.signal.aborted) abort();
       }
       const run = tail.then(() => {
         // Acquisition ends waiter cancellation. An active task must retain ownership

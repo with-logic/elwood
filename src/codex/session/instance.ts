@@ -11,7 +11,6 @@ import { emitSessionWarnings } from "../../core/warnings/session.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import { AgentSessionBase } from "../../runtime/session/base.ts";
-import { notRunningError } from "../../runtime/session/not-running.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
@@ -90,15 +89,14 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     // runs inside it via `around`. Reversing that let a following `sendMessage` dispatch
     // while this call was still waiting for another session's lock, sending under the old
     // model — a FIFO violation the slot exists to prevent.
-    return super.setModel(id, options, (flow) =>
+    return super.setModel(id, options, (flow, signal) =>
       runCodexModelSwitch({
         snapshot: snapshotCodexConfig,
         apply: flow,
         waitForCliExit: () => this.waitForCliExit(),
-        // Still QUEUED behind another session's switch when this one closes: reject now
-        // rather than wait out that transaction and its exit bound. Once this switch holds
-        // the lock it owns config.toml, so cancellation no longer applies.
-        cancel: { signal: this.closing.signal, error: () => notRunningError("codex") },
+        // The picker deadline includes this lock wait. Once acquired, the transaction
+        // owns config.toml until its abort handling and restore finish.
+        cancel: { signal, error: () => signal.reason },
         restore: (snapshot) => this.restoreCodexDefault(snapshot),
         onRestoreError: (error) =>
           this.emitWarnings([codexRestoreFailedWarning(this.elwoodSessionId, error)]),
