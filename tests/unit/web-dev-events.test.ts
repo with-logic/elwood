@@ -26,7 +26,7 @@ describe("browser dev app event helpers", () => {
       "hook SubagentStop reviewer: sub done",
     );
     expect(summarizeHookEvent(hooks.stopFailure("tool_use_rejected", "failed"))).toBe(
-      "hook StopFailure tool_use_rejected: failed",
+      "hook StopFailure: Claude rejected the turn: tool_use_rejected",
     );
     expect(summarizeHookEvent(hooks.notification("info", "heads up"))).toBe(
       "hook Notification info: heads up",

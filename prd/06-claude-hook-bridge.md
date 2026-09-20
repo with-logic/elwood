@@ -39,6 +39,17 @@ If a future Claude version adds events, the MVP may reject them as invalid hook
 input and fail open until first-class types are added. Elwood should add an
 unknown-but-safe event path before promising forward-compatible hook handling.
 
+`StopFailure` identifies a rejected Claude turn even when diagnostic fields drift.
+After validating the common hook envelope, ingress MUST admit missing or arbitrarily
+shaped `error`, `error_details`, and `last_assistant_message` fields. Their public
+TypeScript types are optional `unknown`; consumers must narrow them before use.
+Other event schemas retain their existing validation.
+
+Human-readable rejection diagnostics prefer a nonblank string `error_details`, then
+`Claude rejected the turn: <error>` for a nonblank string `error`, and otherwise
+`Claude rejected the turn.`. Each diagnostic field is bounded to 2,000 characters
+plus an ellipsis before interpolation. Assistant text is not a rejection reason.
+
 ### 6.2 Routing
 
 Each launched Claude process receives an Elwood session identifier in its
