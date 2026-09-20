@@ -13,6 +13,33 @@ function rejectedObserver() {
   return rejected;
 }
 
+function expectedDiagnostic(id: string, phase: string) {
+  const warning = {
+    elwoodSessionId: id,
+    agent: "claude",
+    source: "lifecycle",
+    code: "hook_observer_failed",
+    severity: "warning",
+    message: "A Claude hook notification failed; hook decisions and lifecycle were preserved.",
+    phase,
+    raw: `hook_observer_failed phase=${phase}`,
+  };
+  return {
+    warnings: [warning],
+    activities: [
+      {
+        elwoodSessionId: id,
+        agent: "claude",
+        source: "lifecycle",
+        kind: "warning",
+        label: "hook_observer_failed",
+        text: warning.message,
+        raw: warning,
+      },
+    ],
+  };
+}
+
 test.each([
   "hook",
   "activity",
@@ -23,6 +50,10 @@ test.each([
   const session = await startClaude({ cwd });
   await session.sendPrompt("busy");
   const warnings: unknown[] = [];
+  const activities: unknown[] = [];
+  session.on("activity", (event) => {
+    if (event.kind === "warning") activities.push(event);
+  });
   session.on("warning", rejectedObserver);
   session.on("warning", (event) => warnings.push(event));
   session.on(channel, rejectedObserver);
@@ -34,12 +65,10 @@ test.each([
   await new Promise<void>((resolve) => setImmediate(resolve));
   expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
   expect(session.status).toBe("ready");
-  expect(warnings).toEqual([
-    expect.objectContaining({
-      code: "hook_observer_failed",
-      phase: channel === "status" ? "lifecycle" : channel,
-    }),
-  ]);
+  expect({ warnings, activities }).toEqual(
+    expectedDiagnostic(session.elwoodSessionId, channel === "status" ? "lifecycle" : channel),
+  );
+  expect(JSON.stringify([warnings, activities])).not.toContain("private");
 });
 
 test("C-HOOK-22 a pending observer never delays the reply and late rejections warn once", async () => {
@@ -54,6 +83,10 @@ test("C-HOOK-22 a pending observer never delays the reply and late rejections wa
   void first.promise.catch(() => {});
   void second.promise.catch(() => {});
   const warnings: unknown[] = [];
+  const activities: unknown[] = [];
+  session.on("activity", (event) => {
+    if (event.kind === "warning") activities.push(event);
+  });
   session.on("warning", (event) => warnings.push(event));
   session.on("hook", () => first.promise);
   session.on("activity", () => second.promise);
@@ -64,13 +97,12 @@ test("C-HOOK-22 a pending observer never delays the reply and late rejections wa
   });
   expect(result.stdout).toBe('{"decision":"block","reason":"wait"}\n');
   expect(warnings).toEqual([]);
-  first.reject(new Error("first"));
+  first.reject(new Error("private first rejection"));
   await new Promise<void>((resolve) => setImmediate(resolve));
-  second.reject(new Error("second"));
+  second.reject(new Error("private second rejection"));
   await new Promise<void>((resolve) => setImmediate(resolve));
-  expect(warnings).toEqual([
-    expect.objectContaining({ code: "hook_observer_failed", phase: "hook" }),
-  ]);
+  expect({ warnings, activities }).toEqual(expectedDiagnostic(session.elwoodSessionId, "hook"));
+  expect(JSON.stringify([warnings, activities])).not.toContain("private");
 });
 
 test("C-HOOK-22 fulfilled notification promises do not warn", async () => {
@@ -78,6 +110,10 @@ test("C-HOOK-22 fulfilled notification promises do not warn", async () => {
   const cwd = tempDir();
   const session = await startClaude({ cwd });
   const warnings: unknown[] = [];
+  const activities: unknown[] = [];
+  session.on("activity", (event) => {
+    if (event.kind === "warning") activities.push(event);
+  });
   session.on("warning", (event) => warnings.push(event));
   session.on("hook", () => Promise.resolve());
   await ptys[0]!.dispatchHook(session.elwoodSessionId, {
@@ -87,4 +123,5 @@ test("C-HOOK-22 fulfilled notification promises do not warn", async () => {
   });
   await new Promise<void>((resolve) => setImmediate(resolve));
   expect(warnings).toEqual([]);
+  expect(activities).toEqual([]);
 });

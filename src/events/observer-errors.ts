@@ -7,6 +7,7 @@ type Registration = {
   readonly release: () => void;
 };
 const MAX_PENDING = 1_024;
+const promiseThen = Promise.prototype.then;
 
 // These callbacks capture only the Promise's record. Eviction empties its entry
 // set, so a retained never-settling Promise cannot retain an invocation or emitter.
@@ -16,9 +17,18 @@ function attach(promise: Promise<unknown>, pending: Pending): void {
     const entries = [...pending.entries];
     pending.entries.clear();
     for (const entry of entries) entry.release();
-    if (rejected) for (const entry of entries) entry.sink(error);
+    if (rejected) {
+      for (const entry of entries) {
+        try {
+          entry.sink(error);
+        } catch {
+          /* A diagnostic cannot create another rejection. */
+        }
+      }
+    }
   };
-  void promise.then(
+  void promiseThen.call(
+    promise,
     () => settle(false),
     (error: unknown) => settle(true, error),
   );

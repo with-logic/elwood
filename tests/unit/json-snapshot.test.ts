@@ -29,8 +29,6 @@ test.each([
       },
     },
   ),
-  { toJSON: () => null },
-  Object.defineProperty({}, "toJSON", { value: () => null }),
   cycle,
   nested(129),
   Object.defineProperty({}, "toJSON", {
@@ -108,4 +106,20 @@ test("C-HOOK-21 counts every occurrence of shared children toward the visit limi
 test("C-HOOK-21 ignores a hidden non-callable toJSON data field", () => {
   const source = Object.defineProperty({ value: 1 }, "toJSON", { value: 7 });
   expect(snapshotJsonData(source)).toEqual({ valid: true, value: { value: 1 } });
+});
+
+test.each([
+  true,
+  false,
+])("C-HOOK-21 callable serializer enumerable=%s is rejected without invocation", (enumerable) => {
+  let calls = 0;
+  const value = Object.defineProperty({}, "toJSON", {
+    enumerable,
+    value: () => {
+      calls += 1;
+      throw new Error("must not invoke");
+    },
+  });
+  expect(snapshotJsonData(value)).toEqual({ valid: false });
+  expect(calls).toBe(0);
 });

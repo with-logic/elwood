@@ -57,7 +57,7 @@ test.each([
       () => emitter.emit("event", index),
     );
   }
-  expect(sharedThen).toHaveBeenCalledTimes(mode === "shared" ? 1 : 0);
+  expect(sharedThen).not.toHaveBeenCalled();
   for (const item of pending) item.reject("observer failed");
   await new Promise<void>((resolve) => setImmediate(resolve));
   expect(errors).toEqual(Array.from({ length: 1024 }, (_, index) => index + 1));
@@ -93,4 +93,48 @@ test("C-HOOK-22 settled registrations release capacity for a still-pending obser
   pending.reject("still observed");
   await new Promise<void>((resolve) => setImmediate(resolve));
   expect(errors).toEqual(["still observed"]);
+});
+
+test.each([
+  "throws",
+  "ignores",
+] as const)("C-HOOK-22 observer Promise own then that %s cannot intercept rejection tracking", async (mode) => {
+  const emitter = new TypedEmitter<{ event: number }>();
+  const promise = Promise.reject("actual observer rejection");
+  void Promise.prototype.then.call(promise, undefined, () => {});
+  const overridden = vi.fn(() => {
+    if (mode === "throws") throw new Error("own then");
+    return () => undefined;
+  });
+  // biome-ignore lint/suspicious/noThenProperty: a genuine Promise can override its then property.
+  Object.defineProperty(promise, "then", { get: overridden });
+  emitter.on("event", () => promise);
+  const errors: unknown[] = [];
+  emitter.observeErrors(
+    (error) => errors.push(error),
+    () => emitter.emit("event", 1),
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(overridden).not.toHaveBeenCalled();
+  expect(errors).toEqual(["actual observer rejection"]);
+});
+
+test("C-HOOK-22 a throwing rejection sink cannot skip another retained scope", async () => {
+  const emitter = new TypedEmitter<{ event: number }>();
+  const pending = Promise.withResolvers<void>();
+  emitter.on("event", () => pending.promise);
+  const errors: unknown[] = [];
+  emitter.observeErrors(
+    () => {
+      throw new Error("diagnostic failed");
+    },
+    () => emitter.emit("event", 1),
+  );
+  emitter.observeErrors(
+    (error) => errors.push(error),
+    () => emitter.emit("event", 2),
+  );
+  pending.reject("observer failed");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(errors).toEqual(["observer failed"]);
 });
