@@ -53,7 +53,6 @@ export async function buildClaudeSession(
   const emitter = new TypedEmitter<ClaudeEventMap>();
   registerInitialHooks(emitter, options.hooks);
   let session: ClaudeSessionImpl | undefined;
-  // Lifetime filtering and transcript delivery depth apply to the same warning batch.
   const warnGate = createClaudeStartupWarningGate(
     () => session,
     () => promptResponder.closing,
@@ -167,7 +166,6 @@ export async function buildClaudeSession(
   bindStartupLifetime(active, promptResponder, readiness);
   frameObserver.refresh();
   const beforeCleanup = () => active.pauseLoopsForStartupCleanup(ready.cancel);
-  // Activation shares the live-resource cleanup boundary (PRD §9.1, §9.4).
   await guardStartupRegion(
     async () => {
       active.startLoops();
