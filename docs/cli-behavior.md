@@ -283,9 +283,12 @@ and is injected into the shared coordinator (`TrustPromptResponder`/`trustView`)
 When a CLI's banner, status row, or composer placeholder changes, update that adapter's
 predicate. Codex's predicate delegates to `src/codex/screen/clearance.ts`: numbered
 rows above the last native composer can be transcript content, while rows below
-it must be native footer chrome. Without a model footer, a non-bare native
-placeholder also proves clearance when anchored by a complete boxed Codex welcome
-header above it. The welcome box alone cannot authorize a bare caret. A later bare
+it must be native footer chrome. Keep leading whitespace: the composer begins at
+column zero and the model footer at column two; trimming both loses the distinction
+from indented transcript continuations. Active `esc to interrupt` work cannot
+prove idle clearance. Without a model footer, a non-bare native placeholder also
+proves clearance when anchored by a contiguous boxed Codex welcome header at the
+start of the frame, followed only by native startup tip and warning rows. The welcome box alone cannot authorize a bare caret. A later bare
 caret cannot borrow an earlier composer's footer to prove clearance. The Claude predicate uses
 `src/core/trust/clearance.ts` to reject numbered options and non-composer caret rows.
 

@@ -15,8 +15,28 @@ const placeholders = new Set([
   "Use /skills to list available skills",
 ]);
 const modelFooter =
-  /^gpt-[\w.-]+ (?:minimal|low|medium|high|xhigh|default)(?: · (?:\/|[A-Z]:[\\/])[^\n]*)?$/;
-const hintFooter = /^\? for shortcuts$/;
+  /^ {2}gpt-[\w.-]+ (?:minimal|low|medium|high|xhigh|default)(?: · (?:\/|[A-Z]:[\\/])[^\n]*)?$/;
+const hintFooter = /^(?: {2})?\? for shortcuts$/;
+
+/** A contiguous startup welcome box and its native tip/warning rows. */
+function welcomeBox(rows: readonly string[]): boolean {
+  if (!/^╭─+╮$/.test(rows[0] ?? "")) return false;
+  if (!/^│\s*>_ OpenAI Codex \(v[\d.]+\)\s*│$/.test(rows[1] ?? "")) return false;
+  const bottom = rows.findIndex((row) => /^╰─+╯$/.test(row));
+  if (bottom < 2 || !rows.slice(1, bottom).every((row) => /^│.*│$/.test(row))) return false;
+  let inTip = false;
+  return rows.slice(bottom + 1).every((row) => {
+    if (/^ {2}Tip: /.test(row)) {
+      inTip = true;
+      return true;
+    }
+    if (/^⚠ /.test(row)) {
+      inTip = false;
+      return true;
+    }
+    return inTip && /^ {2}\S/.test(row);
+  });
+}
 
 /**
  * Only the last composer and the native rows below it can prove clearance. Earlier
@@ -24,20 +44,20 @@ const hintFooter = /^\? for shortcuts$/;
  * newly painted bare caret, which is also how a dialog's selected option starts.
  */
 export function codexComposerClearance(frame: string): boolean {
+  if (/esc to interrupt/i.test(frame)) return false;
   const rows = frame
     .split("\n")
-    .map((row) => row.trim())
-    .filter(Boolean);
+    .map((row) => row.trimEnd())
+    .filter((row) => row.trim().length > 0);
   const at = rows.findLastIndex((row) => caretRow.test(row));
   const composer = rows[at];
-  if (composer === undefined || !placeholders.has(composer.slice(1).trim())) return false;
+  // Native composer starts at column zero; transcript continuations are indented.
+  if (composer === undefined || !/^›(?:\s|$)/.test(composer)) return false;
+  if (!placeholders.has(composer.slice(1).trim())) return false;
   const below = rows.slice(at + 1);
   if (!below.every((row) => modelFooter.test(row) || hintFooter.test(row))) return false;
   if (below.some((row) => modelFooter.test(row))) return true;
   // A captured welcome box also anchors the known placeholder. A bare caret alone
   // remains ambiguous even when an old welcome box is still visible above it.
-  const above = rows.slice(0, at).join("\n");
-  return (
-    composer !== "›" && /^│\s*>_ OpenAI Codex \(v[\d.]+\)/m.test(above) && /^╰─+╯$/m.test(above)
-  );
+  return composer !== "›" && welcomeBox(rows.slice(0, at));
 }

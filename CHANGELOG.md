@@ -14,7 +14,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Recognize Codex's native composer beneath numbered transcript output and with
   its older model footer. A newly painted bare caret cannot borrow an earlier
-  composer's footer to release input held for a human dialog.
+  composer's footer to release input held for a human dialog. Active work, indented
+  transcript quotes, and incomplete welcome-box fragments keep that input held.
 - Route Codex tool-keyed hooks from own properties only. A `PreToolUse` map is a
   plain object, so a tool name matching an inherited member (anything on
   `Object.prototype`, or a key on a caller-supplied prototype) used to resolve to a
