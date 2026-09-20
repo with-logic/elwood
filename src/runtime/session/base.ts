@@ -157,7 +157,10 @@ export abstract class AgentSessionBase extends SessionLifecycle {
   /** A stable completed frame only when the native composer is positively empty (C-API-56). */
   protected emptyComposerFrame(): object | undefined {
     const frame = currentRenderedFrame(this.terminal);
-    return frame && this.picker.isClear(frame.text) ? frame : undefined;
+    return frame && this.composerIsEmpty(frame.text) ? frame : undefined;
+  }
+  protected composerIsEmpty(text: string): boolean {
+    return this.picker.isClear(text);
   }
   /** Attach `paths` to the composer before the queued text is submitted (C-API-44). */
   protected abstract attachImages(paths: readonly string[], signal: AbortSignal): Promise<void>;

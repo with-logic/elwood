@@ -42,13 +42,15 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
     ...claudeModelPicker,
     isClear: liveClaudeClearance(() => this.terminal, claudeModelComposerClearance),
   };
+  protected override composerIsEmpty(text: string): boolean {
+    return liveClaudeClearance(() => this.terminal)(text) || super.composerIsEmpty(text);
+  }
   private readonly bridge: HookBridge;
   private readonly emitter: TypedEmitter<ClaudeEventMap>;
   private requestedSize: TerminalSize;
   // Only a session requested BELOW the 100-column startup floor bootstraps wide and
   // defers its restore to readiness (C-API-36); a 100+ session resizes immediately.
   private awaitingInitialReady: boolean;
-  // Whether the one-shot initial-ready transition has already run (idempotent).
   private initialReadyDone = false;
   // Edge-detects a mid-session login-expiry banner so it warns once per occurrence.
   private readonly loginExpiredWatcher = new LoginExpiredWatcher();
