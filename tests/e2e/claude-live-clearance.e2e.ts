@@ -111,13 +111,21 @@ test("C-TRUST-01 production Claude holds queued input through human trust and na
   try {
     await waitFor(() => (sent ? true : undefined), "queued Claude physical submission", 35_000);
   } catch (error) {
+    const frame = active.terminal.snapshot();
     t.diagnostic(
       JSON.stringify({
         status: active.status,
         cursorVisible,
-        order,
-        inputs,
-        frame: active.terminal.snapshot(),
+        observedTrust,
+        sent,
+        inputCount: inputs.length,
+        callerInputCount: order.filter((step) => step === "caller-input").length,
+        nativeClearCount: order.filter((step) => step === "native-clear").length,
+        cursorX: frame.cursorX,
+        cursorY: frame.cursorY,
+        cols: frame.cols,
+        rows: frame.rows,
+        renderFailed: active.terminal.renderFailed,
       }),
     );
     throw error;

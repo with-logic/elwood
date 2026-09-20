@@ -16,7 +16,8 @@ back each entry are listed in `prd/14-conformance.md`.
   frames. Queued caller input resumes only after positive native clearance. Both
   adapters withhold trust retries and human clearance while received output is
   still rendering or the terminal has reported a render failure. Claude also waits
-  for its visible native input cursor after the final composer paint.
+  for its visible native input cursor after the final composer paint and retains
+  the hold while its native working title remains active.
 
 - Recognize Codex's native composer beneath numbered transcript output and with
   its older model footer. A newly painted bare caret cannot borrow an earlier

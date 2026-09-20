@@ -36,10 +36,8 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     const id = this.episode?.blocked ? this.episode.candidate.spec.id : undefined;
     return (this.humanPrompt ?? id) as TrustPromptIdFor<A> | undefined;
   }
-  /** Live sessions must read the latest settled frame, returning undefined for
-   * pending rendering, synchronized output, or render failure. A supplied reader's
-   * undefined result holds input within the bounded attempt; it is not clearance.
-   * Omitting the reader retains static/legacy numbered-write behavior. */
+  /** Read the latest settled frame; undefined during pending/synchronized/failed rendering
+   * holds input until the deadline. Omit the reader only for static/legacy numbered writes. */
   handle(
     frame: string,
     write: (input: string) => TrustWriteResult,
@@ -143,6 +141,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       return;
     }
     if (view.kind === "unknown") {
+      // Unknown/partial replacements retain human ownership until verified clearance.
       if (this.episode) {
         this.episode.attempt?.cancel();
         this.episode.attempt = undefined;
@@ -152,6 +151,7 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
       return;
     }
     if (!(this.autotrust || view.spec.answerPolicy === "always")) {
+      // Retire the old episode, then synchronously transfer human ownership to this gate.
       this.release(view.valid);
       this.humanPrompt = view.spec.id;
       return;

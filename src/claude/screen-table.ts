@@ -11,6 +11,8 @@ import { currentRenderedFrame, settledCursorVisible } from "../terminal/cursor.t
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
 
+const claudeWorkingTitle = /^[⠀-⣿]\s/;
+const claudeComposerInputColumn = 2; // zero-based, after the two-cell "❯ " prefix
 /** The idle Claude composer row; also the caret that is NOT a dialog caret. */
 const claudeComposerRow = /^\s*❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*$/m;
 
@@ -35,11 +37,17 @@ export function liveClaudeClearance(readTerminal: () => ElwoodTerminal): TrustCl
   return (text) => {
     const terminal = readTerminal();
     const frame = currentRenderedFrame(terminal);
-    if (frame?.text !== text || !settledCursorVisible(terminal.xterm) || frame.cursorX !== 2)
+    if (
+      frame?.text !== text ||
+      !settledCursorVisible(terminal.xterm) ||
+      frame.cursorX !== claudeComposerInputColumn ||
+      claudeWorkingTitle.test(terminal.title)
+    )
       return false;
     const buffer = terminal.xterm.buffer.active;
-    const row = frame.cursorY + buffer.baseY - buffer.viewportY;
-    const composer = frame.lines[row] ?? "";
+    // cursorY is relative to baseY; snapshot row zero starts at viewportY.
+    const viewportCursorRow = frame.cursorY + buffer.baseY - buffer.viewportY;
+    const composer = frame.lines[viewportCursorRow] ?? "";
     return (
       composer.startsWith("❯") && claudeComposerRow.test(composer) && claudeTrustClearance(text)
     );
@@ -74,7 +82,7 @@ export const claudeScreenFactTable: ScreenFactTable = {
       id: "claude-working-title",
       fact: "working_visible",
       region: "title",
-      all: [/^[⠀-⣿]\s/],
+      all: [claudeWorkingTitle],
     },
     { id: "claude-interrupt-banner", fact: "interrupt_complete_visible", all: [/⎿\s*Interrupted/] },
     {
