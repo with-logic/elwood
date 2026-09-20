@@ -12,7 +12,7 @@ import { startClaude, startCodex } from "../../src/index.ts";
 import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
 import { claudeTrust, codexTrust, tty } from "../fixtures/trust-composer.ts";
-import { FakePty } from "../helpers/fake-pty.ts";
+import { paintWhileStarting } from "../helpers/startup-frame.ts";
 import { effectiveRequest } from "./main-fakes.ts";
 import { FakeClock, FakeSignals, MemoryWriter } from "./run-fakes.ts";
 
@@ -27,18 +27,6 @@ afterEach(() => {
   claude.resetFakes();
   codex.resetFakes();
 });
-
-/** Paint `frame` on the first PTY subscription: before the session is live. */
-function paintWhileStarting(frame: string): void {
-  const subscribe = FakePty.prototype.onData;
-  let painted = false;
-  vi.spyOn(FakePty.prototype, "onData").mockImplementation(function (this: FakePty, handler) {
-    const off = subscribe.call(this, handler);
-    if (!painted) queueMicrotask(() => this.emitData(tty(frame)));
-    painted = true;
-    return off;
-  });
-}
 
 test.each([
   "claude",
