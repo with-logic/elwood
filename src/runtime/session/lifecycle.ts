@@ -64,8 +64,8 @@ export abstract class SessionLifecycle {
     this.agent = agent;
     this.record = record;
     this.persist = (next) => {
-      writeSessionRecord(next, runtime.sessionDir);
-      this.record = next;
+      writeSessionRecord(next, runtime.sessionDir, runtime.stateOwnership.persistFile);
+      this.record = next; // Expose metadata only after durable persistence succeeds.
     };
     this.pty = pty;
     this.terminal = terminal;
@@ -85,7 +85,7 @@ export abstract class SessionLifecycle {
       stateDir,
       elwoodSessionId: record.elwoodSessionId,
       definitions: loopDefinitions,
-      ownsState: runtime.stateOwnership.canPersist,
+      mayPersistLoops: runtime.stateOwnership.canPersist,
       queue: this.controlQueue,
       emitter: statusEvents,
     });

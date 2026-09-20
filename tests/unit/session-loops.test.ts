@@ -76,12 +76,12 @@ describe("SessionLoops", () => {
       () => undefined,
     );
     const stateDir = tempDir();
-    let ownsState = true;
-    const old = createLoops(queue, [], stateDir, () => ownsState);
+    let mayPersistLoops = true;
+    const old = createLoops(queue, [], stateDir, () => mayPersistLoops);
     old.ready();
     old.create({ mode: "fixed", intervalMs: 60_000, message: "old" });
     old.pause();
-    ownsState = false;
+    mayPersistLoops = false;
     vi.setSystemTime(start + 86_400_000);
     const successor = createLoops(queue, [], stateDir);
     successor.ready();
@@ -123,10 +123,10 @@ function createLoops(
   queue: ControlQueue,
   definitions: readonly PersistedLoopDefinition[] = [],
   stateDir = tempDir(),
-  ownsState = () => true,
+  mayPersistLoops = () => true,
 ): SessionLoops {
   return new SessionLoops({
-    ownsState,
+    mayPersistLoops,
     stateDir,
     elwoodSessionId: "session-loops",
     definitions,

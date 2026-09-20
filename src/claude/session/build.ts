@@ -45,7 +45,7 @@ export async function buildClaudeSession(
 ): Promise<ClaudeSessionImpl> {
   const { record, stateDir, runtime, options, resumed, preflightWarning } = input;
   secureMkdir(runtime.sessionDir);
-  writeSessionRecord(record, runtime.sessionDir);
+  writeSessionRecord(record, runtime.sessionDir, runtime.stateOwnership.publishFile);
   const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId) : [];
   writeRuntimeFiles(runtime, options);
   const emitter = new TypedEmitter<ClaudeEventMap>();

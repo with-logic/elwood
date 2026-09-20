@@ -58,13 +58,24 @@ finish its own runtime cleanup, but cannot overwrite loop definitions or remove
 the shared session directory or socket home. Each loop persistence write and
 destructive path removal checks the current launch generation at the mutation itself,
 including after awaited shutdown work and on repeated shutdown calls. Until resume
-succeeds, the prior launch may continue ordinary loop persistence, but its shutdown
+succeeds, the prior launch may continue ordinary loop and record persistence, but its shutdown
 cannot clear shared loops or files. If resume fails, ownership returns to the prior
 viable launch only when no newer reservation or launch has replaced that attempt.
 A failed overlapping launch therefore preserves the original live launch's cleanup
 and persistence behavior. This is an
 in-process successor guarantee, not cross-process launch serialization; concurrent
-live launches of one identity remain unsupported.
+live launches of one identity remain unsupported. Allowed root-owned filesystem
+aliases use one canonical, validated state identity for launch ownership, runtime
+paths, and socket homes; no-follow validation precedes canonicalization. Startup
+publication of record, bridge, and settings files is generation-owned. A failed
+attempt restores each prior file only while it still owns the reservation and the
+file still contains that attempt's exact published bytes. A newer predecessor
+record update or newer generation is preserved. If a predecessor updates a file
+between two pending-launch writes, that external version becomes the rollback
+baseline for the later write. Pending-launch hook record writes participate in the
+same transaction. Superseded or failed generations cannot publish metadata. A rollback failure is reported as
+`state_corrupt`, not as a successful restoration. Identity-only CLI cleanup removes
+state only when no same-process live launch or pending reservation owns it.
 
 ### 8.2 Session record
 

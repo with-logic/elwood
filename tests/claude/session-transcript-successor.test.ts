@@ -37,41 +37,46 @@ test.each([
   const path = join(cwd, "transcript.jsonl");
   writeFileSync(path, "");
   const session = await startClaude({ cwd });
-  const loop = await session.createLoop({ mode: "fixed", intervalMs: 60_000, message: "retained" });
-  await ptys[0]!.dispatchHook(session.elwoodSessionId, {
-    hook_event_name: "SessionStart",
-    session_id: "claude-resume",
-    cwd,
-    source: "startup",
-  });
-  await ptys[0]!.dispatchHook(session.elwoodSessionId, {
-    hook_event_name: "Stop",
-    session_id: "claude-resume",
-    cwd,
-    transcript_path: path,
-  });
   let shutdown: Promise<void> | undefined;
-  let successor: ReturnType<typeof resumeClaude> | undefined;
-  session.on("activity", (event) => {
-    if (event.kind === "assistant_message") shutdown ??= session.teardown();
-  });
-  session.on("terminal:exit", () => {
-    if (handoff !== "exit") return;
-    successor = resumeClaude({ cwd, elwoodSessionId: session.elwoodSessionId });
-    void successor.catch(() => undefined);
-  });
-  writeFileSync(
-    path,
-    `${JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "final" }] } })}\n`,
-  );
-  ptys[0]!.emitExit({ exitCode: 0 });
-  expect(shutdown).toBeDefined();
-  await entered.promise;
-  if (handoff === "cleanup")
-    successor = resumeClaude({ cwd, elwoodSessionId: session.elwoodSessionId });
-  expect(successor).toBeDefined();
-  const resumed = await successor!;
+  let resumed: Awaited<ReturnType<typeof resumeClaude>> | undefined;
   try {
+    const loop = await session.createLoop({
+      mode: "fixed",
+      intervalMs: 60_000,
+      message: "retained",
+    });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, {
+      hook_event_name: "SessionStart",
+      session_id: "claude-resume",
+      cwd,
+      source: "startup",
+    });
+    await ptys[0]!.dispatchHook(session.elwoodSessionId, {
+      hook_event_name: "Stop",
+      session_id: "claude-resume",
+      cwd,
+      transcript_path: path,
+    });
+    let successor: ReturnType<typeof resumeClaude> | undefined;
+    session.on("activity", (event) => {
+      if (event.kind === "assistant_message") shutdown ??= session.teardown();
+    });
+    session.on("terminal:exit", () => {
+      if (handoff !== "exit") return;
+      successor = resumeClaude({ cwd, elwoodSessionId: session.elwoodSessionId });
+      void successor.catch(() => undefined);
+    });
+    writeFileSync(
+      path,
+      `${JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "final" }] } })}\n`,
+    );
+    ptys[0]!.emitExit({ exitCode: 0 });
+    expect(shutdown).toBeDefined();
+    await entered.promise;
+    if (handoff === "cleanup")
+      successor = resumeClaude({ cwd, elwoodSessionId: session.elwoodSessionId });
+    expect(successor).toBeDefined();
+    resumed = await successor!;
     const nextLoop = await resumed.createLoop({
       mode: "fixed",
       intervalMs: 60_000,
@@ -104,7 +109,9 @@ test.each([
     expect(ptys[0]!.killSignals).toEqual([]);
   } finally {
     release.resolve();
-    await resumed.teardown();
+    await shutdown?.catch(() => undefined);
+    await resumed?.teardown();
+    await session.teardown();
   }
 });
 

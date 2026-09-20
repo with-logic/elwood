@@ -1,6 +1,9 @@
 /** Shared-state reservations preserve failed launches without revoking successors (C-API-20). */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test } from "vitest";
 import { claimLaunchOwnership, reserveLaunchOwnership } from "../../src/state/launch-ownership.ts";
+import { tempDir } from "../helpers/tmp.ts";
 
 test("C-API-20 pending resume reserves deletion but preserves prior ordinary loop writes", () => {
   const first = claimLaunchOwnership("/session");
@@ -48,4 +51,46 @@ test("C-API-20 an earlier successful attempt can be restored after a newer failu
   newer.rollback();
   expect(first.current()).toBe(true);
   first.release();
+});
+
+test("C-API-20 owned record writes track pending publication and preserve intervening predecessor updates", () => {
+  const path = tempDir();
+  const file = join(path, "record");
+  const prior = claimLaunchOwnership(path);
+  prior.publishFile(file, "original");
+  const pending = reserveLaunchOwnership(path);
+  expect(() => prior.publishFile(file, "stale")).toThrowError(
+    expect.objectContaining({ code: "session_not_running" }),
+  );
+  pending.persistFile(file, "A");
+  prior.persistFile(file, "B");
+  pending.persistFile(file, "C");
+  pending.rollback();
+  expect(readFileSync(file, "utf8")).toBe("B");
+  expect(() => pending.persistFile(file, "failed")).toThrowError(
+    expect.objectContaining({ code: "session_not_running" }),
+  );
+  const successor = reserveLaunchOwnership(path);
+  successor.commit();
+  expect(() => prior.persistFile(file, "stale")).toThrowError(
+    expect.objectContaining({ code: "session_not_running" }),
+  );
+  successor.release();
+});
+
+test("C-API-20 out-of-order failed publications restore the last viable launch's files", () => {
+  const path = tempDir();
+  const file = join(path, "bridge");
+  const prior = claimLaunchOwnership(path);
+  prior.publishFile(file, "original");
+  const older = reserveLaunchOwnership(path);
+  older.publishFile(file, "older");
+  const newer = reserveLaunchOwnership(path);
+  newer.publishFile(file, "newer");
+  older.rollback();
+  expect(readFileSync(file, "utf8")).toBe("newer");
+  newer.rollback();
+  expect(readFileSync(file, "utf8")).toBe("original");
+  expect(prior.current()).toBe(true);
+  prior.release();
 });

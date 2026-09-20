@@ -3,9 +3,9 @@
  * Implements PRD §5.6, §9.3, and C-API-16.
  */
 
-import { resolve } from "node:path";
 import { elwoodError } from "../../core/errors.ts";
 import { applyCodexHighTrust } from "../../core/high-trust.ts";
+import { canonicalStatePath } from "../../state/canonical-path.ts";
 import { reserveLaunchOwnership } from "../../state/launch-ownership.ts";
 import {
   codexLaunchPosture,
@@ -23,7 +23,9 @@ export async function resumeCodex(rawOptions: ResumeCodexOptions): Promise<Codex
   const options = applyCodexHighTrust(rawOptions);
   // Resolve stateDir to ABSOLUTE ONCE, before any read/await, so a `process.chdir()`
   // between the record read and the runtime-file writes can't split them (§8.1).
-  const stateDir = resolve(options.stateDir ?? defaultStateDir(options.cwd ?? process.cwd()));
+  const stateDir = canonicalStatePath(
+    options.stateDir ?? defaultStateDir(options.cwd ?? process.cwd()),
+  );
   const record = readSessionRecord(stateDir, options.elwoodSessionId);
   if (record.adapter !== "codex")
     throw elwoodError("adapter_mismatch", "Cannot resume a non-Codex session as Codex.");

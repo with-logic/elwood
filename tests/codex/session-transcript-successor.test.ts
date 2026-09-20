@@ -44,30 +44,35 @@ test.each([
   const path = join(cwd, "transcript.jsonl");
   writeFileSync(path, "");
   const session = await startCodex({ cwd });
-  const loop = await session.createLoop({ mode: "fixed", intervalMs: 60_000, message: "retained" });
-  await becomeReady(session.elwoodSessionId, cwd, { transcript_path: path });
   let shutdown: Promise<void> | undefined;
-  let successor: ReturnType<typeof resumeCodex> | undefined;
-  session.on("codex:transcript", () => {
-    shutdown ??= session.teardown();
-  });
-  session.on("terminal:exit", () => {
-    if (handoff !== "exit") return;
-    successor = resumeCodex({ cwd, elwoodSessionId: session.elwoodSessionId });
-    void successor.catch(() => undefined);
-  });
-  writeFileSync(
-    path,
-    `${JSON.stringify({ type: "response_item", payload: { type: "reasoning" } })}\n`,
-  );
-  ptys[0]!.emitExit({ exitCode: 0 });
-  expect(shutdown).toBeDefined();
-  await entered.promise;
-  if (handoff === "cleanup")
-    successor = resumeCodex({ cwd, elwoodSessionId: session.elwoodSessionId });
-  expect(successor).toBeDefined();
-  const resumed = await successor!;
+  let resumed: Awaited<ReturnType<typeof resumeCodex>> | undefined;
   try {
+    const loop = await session.createLoop({
+      mode: "fixed",
+      intervalMs: 60_000,
+      message: "retained",
+    });
+    await becomeReady(session.elwoodSessionId, cwd, { transcript_path: path });
+    let successor: ReturnType<typeof resumeCodex> | undefined;
+    session.on("codex:transcript", () => {
+      shutdown ??= session.teardown();
+    });
+    session.on("terminal:exit", () => {
+      if (handoff !== "exit") return;
+      successor = resumeCodex({ cwd, elwoodSessionId: session.elwoodSessionId });
+      void successor.catch(() => undefined);
+    });
+    writeFileSync(
+      path,
+      `${JSON.stringify({ type: "response_item", payload: { type: "reasoning" } })}\n`,
+    );
+    ptys[0]!.emitExit({ exitCode: 0 });
+    expect(shutdown).toBeDefined();
+    await entered.promise;
+    if (handoff === "cleanup")
+      successor = resumeCodex({ cwd, elwoodSessionId: session.elwoodSessionId });
+    expect(successor).toBeDefined();
+    resumed = await successor!;
     const nextLoop = await resumed.createLoop({
       mode: "fixed",
       intervalMs: 60_000,
@@ -100,7 +105,9 @@ test.each([
     expect(ptys[0]!.killSignals).toEqual([]);
   } finally {
     release.resolve();
-    await resumed.teardown();
+    await shutdown?.catch(() => undefined);
+    await resumed?.teardown();
+    await session.teardown();
   }
 });
 

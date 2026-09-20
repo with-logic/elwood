@@ -22,8 +22,9 @@
 import { createHash } from "node:crypto";
 import { chmodSync, lstatSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { elwoodError } from "../core/errors.ts";
+import { canonicalStatePath } from "./canonical-path.ts";
 
 /** The ONE prefix every Elwood socket home carries (shared by creation + cleanup). */
 export const SOCKET_HOME_PREFIX = "elwood-";
@@ -61,11 +62,11 @@ export type SocketHomeIdentity = {
  * 104-byte cap, wide enough to make an accidental cross-session collision negligible.
  * Deterministic, so any launch of the session finds the same home; identity-scoped, so
  * a shared explicit id in a different state dir never aliases onto the same home. The
- * state dir is resolved first so equivalent spellings (relative, `..`, trailing slash)
- * of one directory map to one home, matching how session dirs are keyed (§8.1).
+ * state dir is validated and canonicalized first: relative spellings, `..`, and
+ * supported root-owned aliases of one directory share a home and launch owner (§8.1).
  */
 export function sessionSocketHome(identity: SocketHomeIdentity): string {
-  const stateDir = resolve(identity.stateDir);
+  const stateDir = canonicalStatePath(identity.stateDir);
   const key = `${stateDir}\0${identity.adapter}\0${identity.elwoodSessionId}`;
   const fingerprint = createHash("sha256").update(key).digest("hex").slice(0, 16);
   return join(socketHomeRoot ?? tmpdir(), `${SOCKET_HOME_PREFIX}${fingerprint}`);

@@ -7,10 +7,13 @@ import { queuePersonaMessage } from "../../core/persona.ts";
 import { claudeReasoningEfforts, validateReasoningEffort } from "../../core/reasoning-effort.ts";
 import type { StartClaudeOptions } from "../../core/types.ts";
 import { withSocketHomeCleanup } from "../../runtime/startup/cleanup.ts";
-import type { LaunchOwnership } from "../../state/launch-ownership.ts";
+import { canonicalStatePath } from "../../state/canonical-path.ts";
+import { safeSessionDir } from "../../state/files.ts";
+import type { LaunchReservation } from "../../state/launch-ownership.ts";
 import { claudeLaunchPosture, withClaudeLaunch } from "../../state/launch-posture.ts";
 import { sessionRuntime } from "../../state/runtime-paths.ts";
 import { removeOwnSocketFile } from "../../state/socket-home.ts";
+import { withLaunchOwnership } from "../../state/startup-ownership.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { createSessionRecord, defaultStateDir, prepareStateDir } from "../../state/store.ts";
 import type { ClaudePreflightWarning } from "../preflight.ts";
@@ -47,7 +50,7 @@ export async function startClaudeWithId(
   // conflicting explicit one) HERE, before preflight, so the persisted record and the
   // launch command both carry the expanded posture (C-API-54).
   const options = applyClaudeHighTrust({ ...rawOptions, cwd: resolve(rawOptions.cwd) });
-  const stateDir = resolve(options.stateDir ?? defaultStateDir(options.cwd));
+  const stateDir = canonicalStatePath(options.stateDir ?? defaultStateDir(options.cwd));
   const strict = options.strictVersionCheck ?? false;
   const warning = await preflightClaude(strict, options.autoupdate ?? false);
   prepareStateDir(stateDir, { gitignore: options.stateDir === undefined });
@@ -63,7 +66,7 @@ export function startClaudeFromRecord(
   options: StartClaudeOptions,
   resumed: boolean,
   preflightWarning: ClaudePreflightWarning | undefined,
-  ownership?: LaunchOwnership,
+  ownership?: LaunchReservation,
 ) {
   // Validate the effort enum before any spawn (C-CLAUDE-20): both start and resume
   // funnel through here, so a bad value fails fast at the single chokepoint.
@@ -78,16 +81,22 @@ export function startClaudeFromRecord(
   // before the session takes ownership removes THIS launch's own socket file — never the
   // shared home, which a concurrent launch may own (§9.1). On success ownership transfers
   // to the returned session, whose teardown removes the whole home via removeSessionFiles.
-  const runtime = sessionRuntime(
-    {
-      stateDir,
-      elwoodSessionId: record.elwoodSessionId,
-      adapter: "claude",
-    },
+  return withLaunchOwnership(
+    safeSessionDir(stateDir, record.elwoodSessionId),
     ownership,
-  );
-  return withSocketHomeCleanup(
-    () => removeOwnSocketFile(runtime.socketPath),
-    () => buildClaudeSession({ record, stateDir, runtime, options, resumed, preflightWarning }),
+    (owner) => {
+      const runtime = sessionRuntime(
+        {
+          stateDir,
+          elwoodSessionId: record.elwoodSessionId,
+          adapter: "claude",
+        },
+        owner,
+      );
+      return withSocketHomeCleanup(
+        () => removeOwnSocketFile(runtime.socketPath),
+        () => buildClaudeSession({ record, stateDir, runtime, options, resumed, preflightWarning }),
+      );
+    },
   );
 }

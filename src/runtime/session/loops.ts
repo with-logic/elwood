@@ -20,7 +20,7 @@ export type LoopEventEmitter = {
 type SessionLoopsInput = {
   readonly stateDir: string;
   readonly elwoodSessionId: string;
-  readonly ownsState: () => boolean;
+  readonly mayPersistLoops: () => boolean;
   readonly definitions: readonly PersistedLoopDefinition[];
   readonly queue: ControlQueue;
   readonly emitter: LoopEventEmitter;
@@ -28,16 +28,18 @@ type SessionLoopsInput = {
 
 /** Owns one adapter-neutral scheduler and binds it to session persistence/input. */
 export class SessionLoops {
+  private readonly mayPersistLoops: () => boolean;
   private readonly scheduler: LoopScheduler;
 
   constructor(input: SessionLoopsInput) {
+    this.mayPersistLoops = input.mayPersistLoops;
     this.scheduler = new LoopScheduler({
       definitions: input.definitions,
       now: Date.now,
       schedule: scheduleLoopTimer,
       createId: randomUUID,
       persist: (definitions) => {
-        if (input.ownsState())
+        if (input.mayPersistLoops())
           writeLoopDefinitions(input.stateDir, input.elwoodSessionId, definitions);
       },
       submit: (message, loopId, signal) =>
@@ -78,6 +80,7 @@ export class SessionLoops {
   }
 
   create(request: ElwoodLoopRequest): ElwoodLoopSnapshot {
+    this.assertMutable();
     return this.scheduler.create(request);
   }
 
@@ -86,7 +89,13 @@ export class SessionLoops {
   }
 
   cancel(loopId: string): void {
+    this.assertMutable();
     this.scheduler.cancel(loopId);
+  }
+
+  private assertMutable(): void {
+    if (!this.mayPersistLoops())
+      throw elwoodError("session_not_running", "Session was superseded by a later launch.");
   }
 
   clear(reason: "kill" | "teardown"): void {

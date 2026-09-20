@@ -12,6 +12,7 @@
 
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { canonicalStatePath } from "./canonical-path.ts";
 import { newBridgeToken, safeSessionDir } from "./files.ts";
 import { claimLaunchOwnership, type LaunchOwnership } from "./launch-ownership.ts";
 import { ensureSocketHome, sessionSocketHome } from "./socket-home.ts";
@@ -51,7 +52,7 @@ export function sessionRuntime(
   ownership?: LaunchOwnership,
 ): SessionRuntime {
   const { stateDir, elwoodSessionId, adapter } = input;
-  const dir = safeSessionDir(stateDir, elwoodSessionId);
+  const dir = canonicalStatePath(safeSessionDir(stateDir, elwoodSessionId));
   const socketHome = sessionSocketHome({ stateDir, elwoodSessionId, adapter });
   ensureSocketHome(socketHome); // restores 0700 on a reused home; rejects a planted non-dir (§8.1)
   return {

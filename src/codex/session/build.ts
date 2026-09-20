@@ -44,7 +44,7 @@ export type BuildCodexSessionInput = {
 export async function buildCodexSession(input: BuildCodexSessionInput): Promise<CodexSessionImpl> {
   const { record, stateDir, runtime, options, resumed, preflightWarning } = input;
   secureMkdir(runtime.sessionDir);
-  writeSessionRecord(record, runtime.sessionDir);
+  writeSessionRecord(record, runtime.sessionDir, runtime.stateOwnership.publishFile);
   const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId) : [];
   writeCodexRuntimeFiles(runtime);
   const emitter = new TypedEmitter<CodexEventMap>();
