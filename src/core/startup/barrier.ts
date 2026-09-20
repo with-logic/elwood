@@ -27,7 +27,8 @@ import { trustGateVisible } from "../trust/blocking.ts";
 /** What a non-trust automation write returns; void writers settle immediately. */
 export type NonTrustAutomationWriter = (input: string) => void | Promise<void>;
 
-/** `withheld`: nothing reached the PTY, and the prompt stays answerable on a later frame. */
+/** `withheld`: nothing reached the PTY. A live prompt may be retried on a later
+ * frame; lifecycle cancellation is permanent and callers must not retry it. */
 export type AutomationWriteResult = "written" | "withheld";
 
 /**
@@ -43,12 +44,20 @@ export function guardedNonTrustAutomationWrite(
   readFrame: () => string,
   agent: ElwoodAgentKind,
   stillValid: (frameText: string, input: string) => boolean = () => true,
+  cancelled: () => boolean = () => false,
+  signal?: AbortSignal,
 ): (input: string, perWrite?: (frameText: string) => boolean) => Promise<AutomationWriteResult> {
   return async (input, perWrite) => {
+    // The settle await below SUSPENDS this write, so the session can close while it is
+    // parked. Check before and after: the physical `sendInput` must never run for a
+    // session that is already closing, or an Escape lands on a dead/reused PTY
+    // (C-CLAUDE-22).
+    if (cancelled()) return "withheld";
     // `writeUnsafe` awaits `terminal.settled()`, so the frame read next reflects every
     // byte received before this write was requested. It fails closed when observation
     // exceeds its budget or a render has failed (C-API-56).
-    if (await writeUnsafe(terminal)) return "withheld";
+    if (await writeUnsafe(terminal, undefined, signal)) return "withheld";
+    if (cancelled()) return "withheld";
     const frame = readFrame();
     if (trustGateVisible(frame, agent)) return "withheld";
     if (!stillValid(frame, input)) return "withheld";

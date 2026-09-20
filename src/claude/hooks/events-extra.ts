@@ -3,7 +3,7 @@
  * Implements PRD §6.
  */
 
-import type { ClaudeStopFailureError, ClaudeStopFields, ClaudeTaskFields } from "./events.ts";
+import type { ClaudeStopFields, ClaudeTaskFields } from "./events.ts";
 import type { ClaudeCommonHookFields } from "./names.ts";
 
 export type TaskCreatedEvent = ClaudeCommonHookFields &
@@ -17,9 +17,10 @@ export type StopEvent = ClaudeCommonHookFields &
 
 export type StopFailureEvent = ClaudeCommonHookFields & {
   readonly hook_event_name: "StopFailure";
-  readonly error: ClaudeStopFailureError | string;
-  readonly error_details?: string;
-  readonly last_assistant_message?: string;
+  /** Diagnostic fields may drift between CLI versions; narrow before use (§6.1). */
+  readonly error?: unknown;
+  readonly error_details?: unknown;
+  readonly last_assistant_message?: unknown;
 };
 
 export type TeammateIdleEvent = ClaudeCommonHookFields & {

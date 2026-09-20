@@ -1,7 +1,8 @@
 /** Adapter-boundary matrix: off-allowlist native gates hold input, hold-only (C-TRUST-01). */
 import { expect, test, vi } from "vitest";
 import type { ElwoodActivityEvent, ElwoodSessionStatus } from "../../src/index.ts";
-import { FakePty } from "./fake-pty.ts";
+import type { FakePty } from "./fake-pty.ts";
+import { paintWhileStarting } from "./startup-frame.ts";
 
 type Session = {
   readonly elwoodSessionId: string;
@@ -86,15 +87,7 @@ export function unknownGateTests(harness: Harness): void {
     ["allowlisted", harness.known, false, `${harness.agent}-workspace_trust-prompt`],
     ["off-allowlist", rewordedGate, true, `${harness.agent}-unknown_gate-prompt`],
   ] as const)("C-ATTN-03 an %s gate painted while starting still announces its label once live", async (_name, gate, autotrust, label) => {
-    // Paint the gate on the first PTY subscription: before the session is live.
-    const subscribe = FakePty.prototype.onData;
-    let painted = false;
-    vi.spyOn(FakePty.prototype, "onData").mockImplementation(function (this: FakePty, handler) {
-      const off = subscribe.call(this, handler);
-      if (!painted) queueMicrotask(() => this.emitData(gate.replaceAll("\n", "\r\n")));
-      painted = true;
-      return off;
-    });
+    paintWhileStarting(gate);
     try {
       await run(harness, autotrust, async (session, pty, attention) => {
         await vi.waitFor(() => expect(session.status).toBe("blocked"));

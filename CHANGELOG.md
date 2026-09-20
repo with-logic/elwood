@@ -18,6 +18,45 @@ back each entry are listed in `prd/14-conformance.md`.
   channel at most once per watcher, after synchronous transcript delivery;
   `transcript_poll_stopped` remains reserved for actual reader failures.
 
+- Reject hook rewrites with unsafe JSON values or accessors before serialization, and stop wide-value inspection at the validation budget.
+
+- Reject cyclic and excessively deep or wide schema-less hook inputs
+  and rewrites without throwing. Validation allows at most 128 edges of depth
+  and 100,000 value visits, counting repeated children on each path. Invalid rewrites
+  now report `invalid_response` and return no decision instead of reaching the JSON
+  serializer with an unserializable graph.
+- Reject `NaN` and `±Infinity` in numeric Claude hook fields, for every tool. Because
+  `JSON.stringify` encodes them as `null`, a hook handler that returned one in an
+  `updatedInput` rewrite used to send the CLI a `null` where its schema requires a
+  number. Concrete tool schemas enforce this per field; schema-less tools (MCP,
+  generic, future) enforce it structurally over the whole value, nested records and
+  arrays included. Such a rewrite is now an invalid result: the bridge fails open with
+  no decision and emits `hookError`.
+
+- Bind the Claude browser-tools decline to session disposal. After `stop()`,
+  `kill()`, or PTY exit the decline is no longer attempted, and one already in flight
+  settles as a cancellation, so a closed session no longer emits a late
+  `startup_prompt` / `startup_prompt_write_failed`. The keystroke itself is bound too:
+  the non-trust automation barrier waits for render settlement, and a write parked there
+  is interrupted immediately on disposal, releases its observation timer, and never
+  delivers a stale Escape to a dead PTY. Trust automation already had this lifetime.
+
+- Preserve Claude hook decisions and lifecycle progress when observational listeners
+  throw or return rejecting Promises, with one bounded `hook_observer_failed` warning
+  per affected invocation. Pending observers do not delay hook replies; diagnostic
+  retention is capped at 1,024 registrations per emitter. Promise constructor/species
+  metadata must permit native reaction attachment; attachment throws are reported
+  and remain retryable. Warning payloads are
+  frozen before delivery. Incoming
+  Claude hook events are deeply frozen before observation, and throwing observers
+  no longer truncate subsequent hook-scoped status or transcript notifications.
+
+- Snapshot Claude hook responses before validation so later mutations or custom accessors cannot replace validated rewrites on the wire. Capture wire output and blocking decisions before activity listeners run.
+
+- Preserve Claude `StopFailure` hooks with missing or changed diagnostic fields. Those
+  fields are now typed as optional `unknown`, matching ingress. Browser logs show a
+  bounded rejection reason instead of unrelated assistant text or a blank summary.
+
 - Route Codex tool-keyed hooks from own properties only. A `PreToolUse` map is a
   plain object, so a tool name matching an inherited member (anything on
   `Object.prototype`, or a key on a caller-supplied prototype) used to resolve to a
