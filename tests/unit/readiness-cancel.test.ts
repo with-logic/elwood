@@ -30,7 +30,7 @@ test("C-LIFE-12 cancellation suppresses deferred readiness and already-ready rep
   const blocked = initialReady(onReady, 10_000, () => true);
   blocked.mark();
   blocked.cancel();
-  blocked.retryWhenUnblocked(false);
+  blocked.retryWhenReleased(false);
   expect(onReady).toHaveBeenCalledOnce();
   expect(vi.getTimerCount()).toBe(0);
 });

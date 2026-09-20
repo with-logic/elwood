@@ -68,7 +68,7 @@ function parseRows(region: string, decorate: (labelText: string) => RowFlags): P
   return { options, cursorIndex };
 }
 
-export { bottomDialogRow } from "./dialog-region.ts";
+export { bottomDialogCandidate, bottomDialogRow } from "./dialog-region.ts";
 
 /**
  * The picker itself, the stage an accepted row opens (reasoning level, cache warning),

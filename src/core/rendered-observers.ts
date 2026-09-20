@@ -1,6 +1,7 @@
 /**
  * Applies turn-state and attention watchers to a rendered frame and submits
- * the resulting evidence, emitting the attention activity on a real block.
+ * the resulting evidence. Attention activity marks new blocks and changed blocking
+ * rules; identical-rule repaints stay quiet.
  * Implements PRD §5.3 turn and blocked detection.
  */
 
@@ -16,7 +17,10 @@ import type { TurnStateWatcher } from "./turn-state.ts";
 import type { ElwoodSessionStatus, ElwoodStatusDecision, ElwoodStatusEvidence } from "./types.ts";
 
 export type RenderedObserverTarget = {
-  submitEvidence(kind: ElwoodStatusEvidence): Pick<ElwoodStatusDecision, "to">;
+  submitEvidence(
+    kind: ElwoodStatusEvidence,
+    workingVisible?: boolean,
+  ): Pick<ElwoodStatusDecision, "to">;
   /** The session's current lifecycle status — lets the turn watcher release resume
    * settling when a turn is already running from EVIDENCE (see
    * TurnStateWatcher.observe). Typed as the bounded status union so an invalid test
@@ -79,12 +83,21 @@ export function observeRenderedReading(
   if (turnEdge === "started") session?.submitEvidence("rendered_turn_started");
   if (turnEdge === "ended") session?.submitEvidence("rendered_turn_ended");
   const attention = observers.attention.observe(reading);
-  if (attention?.edge === "raised") {
-    const decision = session?.submitEvidence("blocking_prompt_shown");
-    if (session === undefined || decision?.to === "blocked") {
+  if (attention?.edge === "raised" || attention?.edge === "updated") {
+    const decision =
+      attention.edge === "raised" || session?.status !== "blocked"
+        ? session?.submitEvidence("blocking_prompt_shown")
+        : undefined;
+    if (session === undefined || decision?.to === "blocked" || session.status === "blocked") {
       const { agent, elwoodSessionId } = observers;
       observers.emitActivity(activityFromAttention(agent, elwoodSessionId, attention.ruleIds));
     }
   }
-  if (attention?.edge === "cleared") session?.submitEvidence("blocking_prompt_cleared");
+  if (attention?.edge === "cleared") {
+    // Establish this real turn before public status listeners can observe running.
+    // Resume replay settling must not swallow its next idle end edge.
+    if (reading.facts.working_visible && session?.status === "blocked")
+      observers.turn.adoptWorkingClearance(reading.facts);
+    session?.submitEvidence("blocking_prompt_cleared", reading.facts.working_visible);
+  }
 }

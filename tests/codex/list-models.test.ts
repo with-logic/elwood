@@ -42,7 +42,7 @@ async function driveProbe(cwd: string, parent: string): Promise<void> {
     },
     stateDir,
   );
-  await until(() => pty.writes.includes("/model"));
+  await until(() => pty.writes.includes("/model") && pty.writes.includes("\r"));
   pty.emitData(asScreen(codexPickerCurrentIsDefault));
   await until(() => pty.writes.includes("\u001b"));
   pty.emitData(asScreen("› "));
