@@ -127,3 +127,21 @@ test("C-API-56 registration defers cleanup while unregistered terminals use best
   await owner.run(() => Promise.resolve(), signal);
   expect(terminal.sendInput).toHaveBeenCalledExactlyOnceWith(clear);
 });
+
+test("C-API-56 preparation cancelled after flush resolves never starts work", async () => {
+  const preparation = new AbortController();
+  const closing = new AbortController();
+  const terminal = { sendInput: vi.fn() };
+  const owner = new ComposerCleanup(
+    terminal,
+    () => false,
+    closing.signal,
+    () => closing.signal,
+  );
+  const work = vi.fn(async () => undefined);
+  // flush checks synchronously; this queued abort runs before run resumes its await.
+  queueMicrotask(() => preparation.abort(new Error("preparation expired")));
+  await expect(owner.run(work, preparation.signal)).rejects.toThrow("preparation expired");
+  expect(work).not.toHaveBeenCalled();
+  expect(terminal.sendInput).not.toHaveBeenCalled();
+});
