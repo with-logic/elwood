@@ -17,6 +17,21 @@ back each entry are listed in `prd/14-conformance.md`.
   current frame’s numbering and never selects an update action whose label also
   contains a skip phrase.
 
+- Preserve live-loop cancellation notifications through delayed or retried kill and teardown cleanup. Previously, pausing the scheduler before clearing definitions could suppress these events.
+
+- Keep each live launch’s hook policy bound to its own bridge artifacts during resume. Pending resumes reconcile durable loops at activation; destructive predecessor shutdown joins the reservation outcome, and rollback attempts all files before reporting restoration failures.
+
+- Claude and Codex transcript and diagnostic listeners can stop a session without
+  moving pending activity past terminal exit, duplicating finalization, or signaling
+  an already-exited PTY while its final transcript records are being delivered.
+  An exit immediately after startup waits for already-scheduled warning delivery,
+  preserving both subscriber visibility and diagnostic-before-exit ordering.
+  A session resumed from an exit listener retains its files, socket, and loops when
+  the old launch finishes a deferred or repeated teardown, including through supported
+  state-path aliases. Failed launches restore their own published files, CLI cleanup
+  preserves newer owners, and superseded loop mutations reject instead of silently
+  reporting success.
+
 - Keep human-owned trust gates blocked through partial and unknown replacement
   frames. Queued caller input resumes only after positive native clearance. Both
   adapters withhold trust retries and human clearance while received output is
