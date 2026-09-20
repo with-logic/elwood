@@ -1,4 +1,4 @@
-/** Cancel clipboard waiters promptly while retaining active cleanup (PRD §5.3, C-API-46/58). */
+/** Cancel clipboard waiters promptly while retaining active cleanup (PRD §5.3, C-API-46). */
 import { expect, test, vi } from "vitest";
 import { withClipboardLock } from "../../src/codex/images/clipboard-lock.ts";
 
@@ -21,7 +21,7 @@ const { attachCodexImages } = await import("../../src/codex/images/attach.ts");
 const terminal = { sendInput: vi.fn(), snapshot: () => ({ text: "› " }) };
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
-test("C-API-58 cancelled clipboard waiter settles before another session releases its lease", async () => {
+test("C-API-46 cancelled clipboard waiter settles before another session releases its lease", async () => {
   const held = Promise.withResolvers<void>();
   const owner = withClipboardLock(() => held.promise);
   const abort = new AbortController();
