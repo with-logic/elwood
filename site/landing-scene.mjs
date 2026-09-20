@@ -46,6 +46,7 @@ export class LandingScene {
     this.transition = null;
     this.animationName = "";
     this.requestVersion = 0;
+    this.preparingRequestVersion = null;
     this.camera = 0;
     this.tether = new Tether();
     this.ready = false;
@@ -228,13 +229,18 @@ export class LandingScene {
     const version = this.requestVersion;
     const name = input.gesture ?? (input.face ? `idle-${input.face}` : null);
     try {
-      if (name) await this.bank.prepareAnimation(name, () => version === this.requestVersion);
+      if (name) {
+        this.preparingRequestVersion = version;
+        await this.bank.prepareAnimation(name, () => version === this.requestVersion);
+      }
       if (version === this.requestVersion) this.pressed = { ...this.pressed, ...input };
     } catch (error) {
       if (version === this.requestVersion) {
         this.bank.cancelPreparation();
         this.onError?.(error);
       }
+    } finally {
+      if (this.preparingRequestVersion === version) this.preparingRequestVersion = null;
     }
   }
   clearInput() {
@@ -423,7 +429,8 @@ export class LandingScene {
       this.world.player.animationTime += dt;
       return;
     }
-    const active = this.axis !== 0 || this.climbHeld || this.pressed !== NO_INPUT;
+    const active = this.axis !== 0 || this.climbHeld || this.pressed !== NO_INPUT
+      || this.preparingRequestVersion === this.requestVersion;
     const automatic = this.director.update(dt, this.world, this.visibleBounds, active);
     const wasAirborne = this.world.player.mode !== "ground";
     this.world.update(

@@ -489,3 +489,47 @@ for (const cancelled of [true, false]) {
     }
   });
 }
+
+for (const cancelled of [false, true]) {
+  test(`a slow manual gesture holds autonomy until ${cancelled ? "cancelled" : "delivered"}`, async () => {
+    const own = new LandingScene(canvas());
+    await own.boot();
+    own.director.random = () => 0.99;
+    const fetch = globalThis.fetch;
+    const gate = Promise.withResolvers();
+    const entered = Promise.withResolvers();
+    globalThis.fetch = async (url) => {
+      if (String(url).includes("wave/page-001.webp")) { entered.resolve(); await gate.promise; }
+      return fetch(url);
+    };
+    const request = own.request({ gesture: "wave" });
+    try {
+      await entered.promise;
+      const generation = own.bank.preparationGeneration;
+      for (let i = 0; i < 12 * 120; i++) own.step(1 / 120);
+      assert.equal(own.director.mode, "manual", "download time is still manual activity");
+      assert.equal(own.bank.preparationGeneration, generation, "autonomy cannot supersede the pending request");
+      assert.equal(own.world.player.animation, "idle");
+      assert.ok(own.world.player.animationTime > 0);
+      if (cancelled) {
+        own.clearInput();
+        for (let i = 0; i < 12 * 120; i++) own.step(1 / 120);
+        assert.equal(own.director.mode, "auto", "cancellation releases the pending manual activity");
+      }
+      gate.resolve();
+      await request;
+      assert.equal(own.pressed.gesture, cancelled ? undefined : "wave");
+      if (!cancelled) {
+        assert.equal(own.bank.animationReady("wave"), true, "published input still owns a complete candidate");
+        own.step(1 / 120);
+        assert.equal(own.director.quiet, 0, "delivery starts the normal inactivity interval");
+      }
+    } finally {
+      gate.resolve();
+      await request;
+      await own.bank.preparationTail;
+      own.pause("test", true);
+      globalThis.fetch = fetch;
+    }
+  });
+}
