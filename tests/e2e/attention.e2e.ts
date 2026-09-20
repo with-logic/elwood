@@ -19,7 +19,7 @@ async function attentionFlow(session: ElwoodAgentSession): Promise<readonly Elwo
   // A write to disk requires a permission/approval decision under the default
   // policy, so the agent renders a blocking dialog instead of proceeding.
   await session.sendMessage(
-    "Create a file named elwood.txt containing the word hello. Use your file-writing tool.",
+    "Create a file named elwood.txt containing the word hello. Use your shell tool. If the sandbox denies the write, request approval to run the command.",
   );
   await waitFor(() => (session.status === "blocked" ? true : undefined), "blocked on approval");
   // Decline through the dialog with a raw Escape byte (the string overload
@@ -62,7 +62,8 @@ test("C-ATTN-01 real Codex approval dialog blocks and emits attention", {
   const session = await startCodex({
     cwd: project.cwd,
     stateDir: project.stateDir,
-    approvalPolicy: "untrusted",
+    approvalPolicy: "on-request",
+    sandbox: "read-only",
     autotrust: true,
   });
   try {

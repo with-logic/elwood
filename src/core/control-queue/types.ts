@@ -13,6 +13,7 @@ export type ControlSubmitter = (
   input: string,
   mode: ControlSubmitMode,
   signal: AbortSignal,
+  onSubmitted?: () => void,
 ) => Promise<void>;
 
 /** An abortable task run while its queue op holds the queue; aborts on close. */

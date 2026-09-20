@@ -5,8 +5,9 @@ import {
   type RenderedObservers,
   readRenderedFrame,
 } from "../../core/rendered-observers.ts";
-import type { RenderedFrame } from "../../core/screen-facts.ts";
-import type { InitialReady } from "../readiness/initial-ready.ts";
+import type { RenderedFrame, ScreenFacts } from "../../core/screen-facts.ts";
+import type { TrustClearance } from "../../core/trust/clearance.ts";
+import { createAttentionClearance } from "./attention-clearance.ts";
 import type { SessionLifecycle } from "./lifecycle.ts";
 import type { ReadinessGate } from "./readiness.ts";
 
@@ -27,26 +28,50 @@ export function createSessionFrameObserver(
   session: () => FrameSession | undefined,
   trust: () => TrustState,
   readiness: ReadinessGate,
+  isIdleComposer: TrustClearance,
 ) {
+  const attentionClearance = createAttentionClearance(isIdleComposer);
   let frame: RenderedFrame | undefined;
   let ruleIds: readonly string[] = [];
+  let pendingAutomationClearance = false;
+  const replayAutomationClearance = (active: FrameSession, facts: ScreenFacts) => {
+    if (
+      pendingAutomationClearance &&
+      active.status === "blocked" &&
+      !active.trustInputBlocking &&
+      !active.inputBlocking &&
+      (facts.working_visible || facts.composer_visible)
+    ) {
+      if (facts.working_visible) observers.turn.adoptWorkingClearance(facts);
+      active.submitEvidence("blocking_prompt_cleared", facts.working_visible);
+    }
+    if (active.status !== "blocked") pendingAutomationClearance = false;
+  };
   const refresh = () => {
     const active = session();
     if (active === undefined || active.closing.signal.aborted || frame === undefined) return;
     const state = trust();
-    const reading = readRenderedFrame(observers, frame, state.blockedPrompt);
-    // This shared write gate includes retained human trust and automatic attempts.
+    const reading = attentionClearance(
+      readRenderedFrame(observers, frame, state.blockedPrompt),
+      frame.text,
+      state.inputBlocking,
+    );
     const released = active.trustInputBlocking && !state.inputBlocking;
     active.trustInputBlocking = state.inputBlocking;
-    active.inputBlocking = reading.facts.blocking_prompt_visible;
-    ruleIds = blockingRuleIds(reading);
+    active.inputBlocking =
+      reading.facts.blocking_prompt_visible ||
+      (active.inputBlocking && !reading.facts.working_visible && !reading.facts.composer_visible);
+    const currentRuleIds = blockingRuleIds(reading);
+    if (currentRuleIds.length > 0 || !active.inputBlocking) ruleIds = currentRuleIds;
+    if (released && active.status === "blocked") pendingAutomationClearance = true;
+    // Publish this frame's hold before evidence listeners can submit readiness.
+    readiness.observeFrameHold(reading.facts, active.trustInputBlocking);
     readiness.ready.armDeadline();
     try {
       observeRenderedReading(observers, reading, active);
-      // A human gate can retain its clear edge while either trust owner holds input.
-      // Replay that edge once the shared trust hold releases and the screen is clear.
-      if (released && !reading.facts.blocking_prompt_visible && active.status === "blocked")
-        active.submitEvidence("blocking_prompt_cleared");
+      // Automation can consume the human clear edge. Retain its replay until a
+      // positive frame shows either resumed work or an idle composer.
+      replayAutomationClearance(active, reading.facts);
     } finally {
       readiness.observeReadinessFrame(reading.facts, active.trustInputBlocking);
     }
@@ -73,15 +98,16 @@ export function createSessionFrameObserver(
 
 /** Cancel automation synchronously before signaling or disposing its PTY. */
 export function bindStartupLifetime(
-  session: Pick<SessionLifecycle, "closing">,
+  session: Pick<SessionLifecycle, "closing" | "bindInitialReadinessHold">,
   trust: TrustState,
-  ready: InitialReady,
+  readiness: ReadinessGate,
 ): void {
+  session.bindInitialReadinessHold(readiness.isHeld);
   session.closing.signal.addEventListener(
     "abort",
     () => {
       trust.dispose();
-      ready.cancel();
+      readiness.ready.cancel();
     },
     { once: true },
   );

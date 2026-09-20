@@ -47,12 +47,20 @@ const requiresLiveSession = new Set<StatusEvidenceKind>([
   "blocking_prompt_cleared",
 ]);
 
+export type StatusEvidenceContext = {
+  readonly inputBlocked?: boolean;
+  readonly workingVisible?: boolean;
+};
+
 export function decideStatus(
   from: ElwoodSessionStatus,
   evidence: StatusEvidenceKind,
-  inputBlocked = false,
+  { inputBlocked = false, workingVisible = false }: StatusEvidenceContext = {},
 ): StatusDecision {
-  const target = evidenceTargets[evidence];
+  const target =
+    evidence === "blocking_prompt_cleared" && workingVisible
+      ? "running"
+      : evidenceTargets[evidence];
   const ignored = (reason: string): StatusDecision => ({ evidence, from, to: undefined, reason });
   if (inputBlocked && target === "ready")
     return ignored("ignored: a trust gate or closing session holds input");
@@ -70,12 +78,10 @@ export function decideStatus(
   if (evidence === "blocking_prompt_shown" && !(from === "running" || from === "ready")) {
     return ignored(`ignored: cannot block from ${from}`);
   }
-  // Initial readiness must not reopen a session that is currently blocked: a
-  // startup dialog (e.g. a trust prompt) can be on screen when the readiness
-  // hook or its deadline fires, and applying `ready` here would drain queued
-  // input into the dialog. Only `blocking_prompt_cleared` may leave `blocked`.
-  if (evidence === "initial_ready" && from === "blocked") {
-    return ignored("ignored: initial_ready must not reopen a blocked session");
+  // Readiness, caller submissions, and turn edges cannot clear a visible human prompt.
+  // Only observed clearance may restore its running or ready state.
+  if (from === "blocked" && liveStatuses.has(target) && evidence !== "blocking_prompt_cleared") {
+    return ignored(`ignored: ${evidence} must not reopen a blocked session`);
   }
   // A cleared blocking prompt only settles a session that was actually
   // blocked; otherwise the clear is stale (the composer resumed on its own).
@@ -121,8 +127,8 @@ export class SessionStatusEngine {
     return this.log;
   }
 
-  submit(kind: StatusEvidenceKind, inputBlocked = false): StatusDecision {
-    const decision = decideStatus(this.current, kind, inputBlocked);
+  submit(kind: StatusEvidenceKind, context: StatusEvidenceContext = {}): StatusDecision {
+    const decision = decideStatus(this.current, kind, context);
     this.log.push(decision);
     if (this.log.length > maxStatusDecisions) this.log.shift();
     if (decision.to !== undefined) this.apply(decision.to);

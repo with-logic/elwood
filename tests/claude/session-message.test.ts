@@ -56,10 +56,10 @@ describe("ClaudeSessionApi message submission", () => {
       memory_type: "Project",
       load_reason: "session_start",
     });
-    await expect.poll(() => ptys[0]!.writes.length).toBe(1);
-    expect(ptys[0]!.writes.filter((w) => w !== "\r")[0]).toBe(
-      "\u001b[200~You are a terse reviewer.\u001b[201~",
-    );
+    // A persona turn cannot finish before its submitting Enter reaches the CLI.
+    await expect
+      .poll(() => ptys[0]!.writes)
+      .toEqual(["\u001b[200~You are a terse reviewer.\u001b[201~", "\r"]);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       hook_event_name: "Stop",
       session_id: "claude-1",
