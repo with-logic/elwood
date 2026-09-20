@@ -77,7 +77,7 @@ function mayAppearBesideRows(line: string, rowsStarted: boolean): boolean {
  *
  * `lines` always starts at the matched header row, so `header` is never absent.
  */
-function isNativeRegion(lines: readonly string[]): boolean {
+function isNativeRegion(lines: readonly string[], complete = true): boolean {
   const [header, ...body] = lines as [string, ...string[]];
   if (!opensRegion(header)) return false;
   let next = 1;
@@ -96,7 +96,8 @@ function isNativeRegion(lines: readonly string[]): boolean {
     // A row must be a full picker row (`1. Label  Description`) numbered in sequence.
     // Anything else — a renumbered second list, a row without the description column —
     // is not this dialog's, so the region is not one native block.
-    if (!rowPattern.test(line) || Number(numberedRow.exec(line)?.[1]) !== next) {
+    const candidateRow = !complete && numberedRow.test(line);
+    if (!(rowPattern.test(line) || candidateRow) || Number(numberedRow.exec(line)?.[1]) !== next) {
       if (!mayAppearBesideRows(line, next > 1)) return false;
       footer = isFooterRow(line);
       continue;
@@ -104,7 +105,7 @@ function isNativeRegion(lines: readonly string[]): boolean {
     next += 1;
     if (caretRow.test(line)) cursors += 1;
   }
-  return cursors <= 1 && footer && next > minimumRows;
+  return cursors <= 1 && (!complete || (footer && next > minimumRows));
 }
 
 /**
@@ -121,4 +122,11 @@ export function bottomDialogRow(text: string, header: RegExp): number {
   // happens to look native, which is a different and much weaker question.
   if (start < 0) return -1;
   return isNativeRegion(lines.slice(start)) ? start : -1;
+}
+
+/** A bottom-most native picker shell may hold input before its rows/footer finish. */
+export function bottomDialogCandidate(text: string, header: RegExp): boolean {
+  const lines = text.split("\n");
+  const start = lines.findLastIndex((line) => header.test(line));
+  return start >= 0 && isNativeRegion(lines.slice(start), false);
 }

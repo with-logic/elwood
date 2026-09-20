@@ -36,6 +36,16 @@ back each entry are listed in `prd/14-conformance.md`.
   stale update-prompt label. Repainting the same blocking rules stays quiet.
 - Keep a visible human prompt blocked through caller submissions and rendered turn
   starts or endings, including late Stop hooks. Readiness resumes only after clearance.
+- Keep an acquired Codex config or clipboard lock operation pending until its task
+  finishes cleanup when cancellation arrives; cancellable config-lock waiters still
+  cancel immediately. Codex model-switch deadlines also
+  cancel config-lock waits and release the waiting session input slot. A timeout
+  before successful `/model` dispatch never cancels a picker opened by someone else,
+  and the initial picker-screen wait honors the same operation deadline. Ordinary
+  queued text and images remain held through foreign picker repaints. Raw user
+  input revokes active picker navigation and cleanup, including config restoration
+  that could overwrite a human choice; uncertain changed defaults emit the existing
+  persistence warning.
 
 - Preserve live-loop cancellation notifications through delayed or retried kill and teardown cleanup. Previously, pausing the scheduler before clearing definitions could suppress these events.
 

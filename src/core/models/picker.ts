@@ -32,6 +32,10 @@ export type ModelPickerIo = {
 
 export type ModelPickerSpec = {
   readonly agent: string;
+  /** A native model-dialog shell can hold input before its rows finish. */
+  readonly isCandidate: (text: string) => boolean;
+  /** Positive native composer evidence for releasing a foreign-dialog hold. */
+  readonly isClear: (text: string) => boolean;
   readonly isOpen: (text: string) => boolean;
   /**
    * The live, bottom-most model dialog: the only one Elwood may cancel or hold input on.

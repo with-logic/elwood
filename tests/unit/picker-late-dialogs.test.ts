@@ -38,7 +38,8 @@ test.each([
     escapes(followUp, pickerText)(input, shown);
   });
   const failed = expect(
-    picker.run("set_model", spec, 50, (io) => {
+    picker.run("set_model", spec, 50, async (io) => {
+      await io.submit("/model", never);
       screen.text = pickerText;
       return spec.apply(io, 5000);
     }),
@@ -51,7 +52,7 @@ test.each([
   await vi.advanceTimersByTimeAsync(1000);
   await Promise.all([failed, message]);
   expect(leaked).toEqual([]);
-  expect(writes).toEqual([applyKey, escapeKey, escapeKey]);
+  expect(writes).toEqual(["/model", applyKey, escapeKey, escapeKey]);
   expect(picker.blocksInput()).toBe(false);
   queue.close();
 });
