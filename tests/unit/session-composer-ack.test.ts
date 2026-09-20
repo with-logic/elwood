@@ -17,6 +17,7 @@ for (const agent of ["claude", "codex"] as const) {
   test.each([
     "staged",
     "old-empty",
+    "synchronized",
   ] as const)(`C-API-56 ${agent} holds successor after clear on %s frame`, async (mode) => {
     const fake = agent === "claude" ? claude : codex;
     fake.installFakes();
@@ -51,8 +52,10 @@ for (const agent of ["claude", "codex"] as const) {
     const write = pty.write.bind(pty);
     vi.spyOn(pty, "write").mockImplementation((data) => {
       write(data);
+      if (String(data) === "\u0015\u000b" && mode === "synchronized")
+        pty.emitData(`\u001b[?2026h${paint(empty)}`);
       if (String(data).includes("old")) {
-        if (mode === "staged") pty.emitData(paint(draft));
+        if (mode !== "old-empty") pty.emitData(paint(draft));
         abort.abort();
       }
     });
@@ -67,7 +70,7 @@ for (const agent of ["claude", "codex"] as const) {
       expect(pty.writes).toContain("\u0015\u000b");
       if (mode === "staged") expect(session.terminal.snapshot().text).toContain("old");
       expect(pty.writes.some((data) => data.includes("next"))).toBe(false);
-      pty.emitData(paint(empty));
+      pty.emitData(`\u001b[?2026l${paint(empty)}`);
       await vi.advanceTimersByTimeAsync(500);
       expect(await first).toMatchObject({ message: "cancelled" });
       await successor;
