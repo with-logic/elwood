@@ -9,7 +9,7 @@ vi.mock("../../src/cli/session/launch.ts", () => {
   throw new Error("Interactive mode loaded headless session launch.");
 });
 
-test("C-CLI-25 interactive rejects non-TTY input without loading headless sessions", async () => {
+test("C-CLI-25 interactive rejects non-TTY stdout without loading headless sessions", async () => {
   const parsed = parseCliArgs(["interactive"]);
   if (parsed.command !== "interactive") throw new Error("expected interactive command");
   await expect(runDefaultInteractive(parsed, mainHarness().context)).rejects.toThrow(
