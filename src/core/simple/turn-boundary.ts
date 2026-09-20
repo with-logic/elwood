@@ -24,11 +24,18 @@ export class TurnBoundary {
   private drainTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly onReach: () => void;
   private readonly drainMs: number;
+  private readonly beforeRelease: () => Promise<void> | undefined;
 
   /** `onReach` runs once the boundary lands (e.g. to attempt listener cleanup). `drainMs` is the
-   *  post-failure `ready` drain window (default `DRAIN_MS`; overridable for tests). */
-  constructor(onReach: () => void, drainMs = DRAIN_MS) {
+   * post-failure `ready` drain window. `beforeRelease` cancels replay writes and returns
+   * their non-rejecting cleanup promise only when work remains. */
+  constructor(
+    onReach: () => void,
+    beforeRelease: () => Promise<void> | undefined,
+    drainMs = DRAIN_MS,
+  ) {
     this.onReach = onReach;
+    this.beforeRelease = beforeRelease;
     this.drainMs = drainMs;
     this.promise = new Promise<void>((resolve) => {
       this.resolve = resolve;
@@ -41,7 +48,10 @@ export class TurnBoundary {
     this.reached = true;
     if (this.drainTimer) clearTimeout(this.drainTimer);
     this.drainTimer = undefined; // so `draining` reports the truth once the boundary has landed
-    this.resolve();
+    // Ordinary boundaries resolve immediately; only outstanding replay cleanup delays them.
+    const pending = this.beforeRelease();
+    if (pending === undefined) this.resolve();
+    else void pending.then(this.resolve);
     this.onReach();
   }
 

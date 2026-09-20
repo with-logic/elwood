@@ -104,7 +104,7 @@ export function runTurn(
     offHook();
     offStatus();
   };
-  const boundary = new TurnBoundary(maybeCleanup, options.drainMs);
+  const boundary = new TurnBoundary(maybeCleanup, () => acceptance.quiesce(), options.drainMs);
   // The gate's settle disarms acceptance recovery either way (C-API-58). Only a SUCCESS settle
   // is the real boundary (the transcript drained); after a consumer failure a later
   // `ready`/terminal reaches it instead.
@@ -192,7 +192,5 @@ export function runTurn(
     }
   })();
 
-  // Keep the slot and images until cancellation finishes every outstanding recovery write.
-  const released = boundary.promise.then(() => acceptance.quiesce());
-  return { events: gate.drain(), completion, boundary: released };
+  return { events: gate.drain(), completion, boundary: boundary.promise };
 }

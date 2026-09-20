@@ -44,8 +44,10 @@ export class TurnAcceptance {
   }
 
   /** Hold the serializer slot and images until every cancelled replay finishes cleanup. */
-  async quiesce(): Promise<void> {
-    await Promise.all(this.inFlight);
+  quiesce(): Promise<void> | undefined {
+    this.dispose();
+    if (this.inFlight.size === 0) return undefined;
+    return Promise.all(this.inFlight).then(() => undefined);
   }
 
   accept(): void {
