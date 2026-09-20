@@ -58,7 +58,10 @@ test("C-HOOK-22 mixed observer failures preserve the first phase and validated b
   ]);
 });
 
-test("C-HOOK-22 bridge-error observers cannot skip the diagnostic activity", async () => {
+test.each([
+  "throw",
+  "reject",
+] as const)("C-HOOK-22 bridge-error observers that %s cannot skip diagnostic activity", async (mode) => {
   installFakes();
   const cwd = tempDir();
   const session = await startClaude({ cwd });
@@ -67,7 +70,9 @@ test("C-HOOK-22 bridge-error observers cannot skip the diagnostic activity", asy
   session.on("warning", (event) => warnings.push(event));
   session.on("activity", (event) => activity.push(event.kind));
   session.on("hookError", () => {
-    throw new Error("private observer failure");
+    const error = new Error("private observer failure");
+    if (mode === "throw") throw error;
+    return Promise.reject(error);
   });
   const result = await ptys[0]!.dispatchHook(session.elwoodSessionId, {
     hook_event_name: "PreToolUse",
@@ -77,6 +82,7 @@ test("C-HOOK-22 bridge-error observers cannot skip the diagnostic activity", asy
     tool_input: {},
   });
   expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
+  await new Promise<void>((resolve) => setImmediate(resolve));
   expect(activity).toEqual(["hook_error", "warning"]);
   expect(warnings).toEqual([
     expect.objectContaining({ code: "hook_observer_failed", phase: "hook_error" }),

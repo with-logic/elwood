@@ -29,7 +29,7 @@ export function hookObservationBoundary(
       finished = true;
       if (failedPhase === undefined || reported) return;
       reported = true;
-      const warning: HookObserverFailedWarning = {
+      const warning: HookObserverFailedWarning = Object.freeze({
         elwoodSessionId,
         agent: "claude",
         source: "lifecycle",
@@ -38,14 +38,15 @@ export function hookObservationBoundary(
         message: "A Claude hook notification failed; hook decisions and lifecycle were preserved.",
         phase: failedPhase,
         raw: `hook_observer_failed phase=${failedPhase}`,
-      };
+      });
+      const activity = activityFromWarning(warning);
       emitter.observeErrors(
         () => {
           /* Diagnostic throws and rejections must not recursively warn. */
         },
         () => {
           emitter.emit("warning", warning);
-          emitter.emit("activity", activityFromWarning(warning));
+          emitter.emit("activity", activity);
         },
       );
     },

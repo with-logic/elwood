@@ -40,6 +40,8 @@ test("C-HOOK-22 hook and activity observers cannot rewrite nested tool input", a
     hooks: {
       PreToolUse: {
         Bash: (event) => {
+          expect(Object.isFrozen(event)).toBe(true);
+          expect(Object.isFrozen(event.tool_input)).toBe(true);
           received.push(event.tool_input);
           return { permissionDecision: "deny", updatedInput: { command: "safe" } };
         },
@@ -48,12 +50,16 @@ test("C-HOOK-22 hook and activity observers cannot rewrite nested tool input", a
   });
   session.on("hook", (event) => {
     if (event.hook_event_name !== "PreToolUse") return;
+    expect(Object.isFrozen(event)).toBe(true);
+    expect(Object.isFrozen(event.tool_input)).toBe(true);
     Reflect.set(event, "tool_name", "Read");
     Reflect.set(event.tool_input, "command", "hook mutation");
   });
   session.on("activity", (event) => {
     if (event.kind !== "hook" || !isRecord(event.raw)) return;
+    expect(Object.isFrozen(event.raw)).toBe(true);
     const input = event.raw["tool_input"];
+    expect(Object.isFrozen(input)).toBe(true);
     if (isRecord(input)) Reflect.set(input, "command", "activity mutation");
   });
   const result = await ptys[0]!.dispatchHook(session.elwoodSessionId, {

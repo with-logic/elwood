@@ -14,7 +14,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Preserve Claude hook decisions and lifecycle progress when observational listeners
   throw or return rejecting Promises, with one bounded `hook_observer_failed` warning
-  per affected invocation. Pending observers do not delay hook replies. Incoming
+  per affected invocation. Pending observers do not delay hook replies; diagnostic
+  retention is capped at 1,024 registrations per emitter. Warning payloads are
+  frozen before delivery. Incoming
   Claude hook events are deeply frozen before observation, and throwing observers
   no longer truncate subsequent hook-scoped status or transcript notifications.
 

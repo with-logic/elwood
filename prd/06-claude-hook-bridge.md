@@ -128,6 +128,13 @@ observer failures are contained without recursive diagnostics (C-HOOK-22).
 Returned observer Promises are observed without awaiting them; their rejections
 are contained even after the hook reply completes. The first observed failure
 selects the diagnostic phase, and late failures do not emit additional warnings.
+Diagnostic retention is limited to the newest 1,024 pending observer registrations
+per session emitter. When this cap is exceeded, the oldest registration is detached
+from its invocation boundary; its eventual rejection is still consumed but no
+longer produces a diagnostic. Repeated returns of the same pending Promise share
+one rejection handler. Settled registrations are released immediately. Diagnostic
+warnings are frozen before delivery, and their activity projection is captured
+before any warning listener runs.
 Within a hook notification scope, synchronous listener failures are captured at
 each emission, so later derived status activity and committed transcript records
 are still delivered. Outside this scope, ordinary synchronous emission retains

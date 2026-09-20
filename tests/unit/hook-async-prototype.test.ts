@@ -69,3 +69,42 @@ test("C-HOOK-21 outer socket response cannot inherit a serializer after dispatch
   expect(calls).toBe(0);
   expect(JSON.parse(response)).toEqual({ exitCode: 0, stdout: "validated decision", stderr: "" });
 });
+
+test.each([
+  "malformed",
+  "unauthenticated",
+] as const)("C-HOOK-21 %s socket fail-open never reads inherited then", async (mode) => {
+  const socket = join(tempDir("elwood-prototype-"), "hook.sock");
+  const server = new HookBridgeServer(
+    socket,
+    "t",
+    () => {
+      throw new Error("must not dispatch");
+    },
+    () => {},
+    () => true,
+  );
+  await server.start();
+  let reads = 0;
+  // biome-ignore lint/suspicious/noThenProperty: inherited then is the regression input.
+  Object.defineProperty(Object.prototype, "then", {
+    configurable: true,
+    get() {
+      // Vitest also resolves unrelated objects while socket I/O is pending.
+      if (Object.hasOwn(this, "exitCode")) reads += 1;
+      return undefined;
+    },
+  });
+  let response: string;
+  try {
+    response = await sendBridge(
+      socket,
+      mode === "malformed" ? "{" : JSON.stringify({ token: "wrong", input: "{}" }),
+    );
+  } finally {
+    Reflect.deleteProperty(Object.prototype, "then");
+    await server.stop();
+  }
+  expect(reads).toBe(0);
+  expect(JSON.parse(response)).toEqual({ exitCode: 0, stdout: "", stderr: "" });
+});

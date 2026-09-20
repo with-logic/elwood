@@ -6,6 +6,7 @@
 import { types } from "node:util";
 import { inertRecord } from "../core/inert-record.ts";
 import type { Unsubscribe } from "../core/types.ts";
+import { ObserverErrors } from "./observer-errors.ts";
 
 type Handler = (event: unknown) => unknown;
 export type HandlerProvenance = "event" | "tool-keyed";
@@ -26,6 +27,7 @@ type Listeners = { list: readonly Registration[]; readonly live: Set<Handler> };
 
 export class TypedEmitter<M extends Record<string, unknown>> {
   private readonly handlers: Map<EventKey<M>, Listeners>;
+  private readonly observerErrors = new ObserverErrors();
   private observerError: ((error: unknown) => void) | undefined;
 
   constructor() {
@@ -83,7 +85,7 @@ export class TypedEmitter<M extends Record<string, unknown>> {
       if (!entry.live.has(handler)) continue;
       try {
         const returned = handler(payload);
-        if (onError && types.isPromise(returned)) void returned.then(undefined, onError);
+        if (onError && types.isPromise(returned)) this.observerErrors.observe(returned, onError);
       } catch (error) {
         if (!failed) {
           failed = true;
@@ -98,7 +100,7 @@ export class TypedEmitter<M extends Record<string, unknown>> {
   }
 
   /** Capture synchronous throws and late Promise failures in this notification scope.
-   * Each returned Promise retains its own sink after nested scopes unwind. */
+   * Pending Promises retain bounded diagnostic sinks after nested scopes unwind. */
   observeErrors<T>(onError: (error: unknown) => void, operation: () => T): T {
     const previous = this.observerError;
     this.observerError = onError;

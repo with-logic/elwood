@@ -38,7 +38,8 @@ describe("Claude hook-scoped initial readiness (C-HOOK-22)", () => {
     await queued;
     // Anti-starvation: the queued message was released despite the throw.
     expect(ptys[0]!.writes[0]).toBe(PASTE);
-    const warning = warnings.find((w) => w.code === "hook_observer_failed");
+    expect(warnings.map((warning) => warning.code)).toEqual(["hook_observer_failed"]);
+    const warning = warnings[0];
     expect(warning).toMatchObject({
       code: "hook_observer_failed",
       agent: "claude",
