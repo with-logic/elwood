@@ -118,6 +118,18 @@ unions.
 - Unknown future tools and MCP tools may use `Record<string, unknown>` or
   `unknown` with a safe raw tool name.
 - Hook bridge JSON must be runtime-validated before it reaches handlers.
+- Before result validation, Claude handler responses are copied into detached data.
+  Validation and wire serialization use that same snapshot, so later handler mutation
+  cannot replace a validated rewrite. Snapshotting reads only own enumerable data
+  properties, never invokes accessors or serializers, and rejects proxies, boxed
+  primitives, non-finite numbers, bigints, functions, symbols, custom prototypes,
+  and cycles. Null-prototype records are valid. Non-callable `toJSON` data fields
+  are ordinary data; callable or accessor-backed serializers are invalid even when
+  non-enumerable. Other non-enumerable properties are ignored as they are by JSON.
+  Undefined values and array holes retain JSON omission/null semantics. Responses
+  are limited to 128 edges and 100,000 value visits from the response root, including
+  repeated occurrences of shared children. Invalid snapshots yield `invalid_response`
+  and no bridge decision (C-HOOK-21).
 
 Task and plan inputs follow Claude's documented native field names: `TaskGet`
 uses `taskId`; `TaskOutput` uses `task_id`, `block`, and `timeout`; `TaskStop`

@@ -56,6 +56,7 @@ export type HookDispatcher<Event extends DispatchableHookEvent, Result> = (
 export function createHookDispatcher<Event extends DispatchableHookEvent, Result>(
   agent: ElwoodAgentKind,
   isValidResult: (event: Event, value: unknown) => value is Result,
+  prepareResult: (value: unknown) => unknown = (value) => value,
 ): HookDispatcher<Event, Result> {
   return async (emitter, event, timeoutMs, elwoodSessionId) => {
     const failOpen = (error: Omit<HookErrorEvent, "elwoodSessionId" | "hookEventName">) => {
@@ -80,7 +81,7 @@ export function createHookDispatcher<Event extends DispatchableHookEvent, Result
       }
       if (!hasListener) return { result: undefined, failedOpen: false };
       const response = outcome.value;
-      const result = response?.value;
+      const result = prepareResult(response?.value);
       const forbiddenRewrite =
         response?.provenance !== "tool-keyed" && isRecord(result) && "updatedInput" in result;
       if (forbiddenRewrite || !isValidResult(event, result)) {

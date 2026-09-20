@@ -206,6 +206,7 @@ Each criterion has:
 | C-HOOK-16 | §6.2 | Hook IPC waits for a complete framed request before dispatching and fails open on malformed complete requests. A single request is capped at exactly 8 MiB (8,388,608 bytes) measured on the ENCODED wire envelope (`{token, elwoodSessionId, input}` JSON plus its framing newline) — the identical byte count in the child bridge script (before it connects) and the parent server (as bytes arrive), so an escape-heavy input whose JSON encoding expands past the cap is rejected by both, never accepted by one and dropped by the other. An over-cap request fails open before auth/parse (child exits with no decision; server responds no-decision and closes) and does not emit a `hookError`. |
 | C-HOOK-17 | §6.4 | Claude hook IPC input validates event-specific payload fields and known tool input schemas before dispatch. |
 | C-HOOK-19 | §7A.2 | Codex tool-keyed hook routing resolves both the exact tool name and the `unknown` fallback from OWN properties only, so an inherited member is never dispatched as a handler. |
+| C-HOOK-21 | §6.4 | Claude result validation and serialization use one detached snapshot of own enumerable data, rejecting accessors, custom serializers, proxies, boxed primitives, non-JSON values, cycles, and shapes exceeding 128 edges or 100,000 visits from the response root. Invalid responses fail open with `invalid_response`; later handler mutation cannot alter the validated wire output. |
 
 #### C-HRESP: Hook Response Mapping (§6, §7)
 
