@@ -9,6 +9,8 @@ import { AsyncOutputSink } from "../../src/cli/stream.ts";
 import { codexUpdateAttentionGraceMs } from "../../src/cli/update-attention.ts";
 import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
+import * as startup from "../../src/runtime/startup/index.ts";
+import * as terminal from "../../src/terminal/headless.ts";
 import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
 import { claudeTrust, codexTrust, tty } from "../fixtures/trust-composer.ts";
@@ -30,6 +32,20 @@ afterEach(() => {
 
 /** Paint `frame` on the first PTY subscription: before the session is live. */
 function paintWhileStarting(frame: string): void {
+  const attach = terminal.attachPtyTerminal;
+  const assertUsable = startup.assertStartupUsable;
+  let settleInitialFrame = () => Promise.resolve();
+  vi.spyOn(terminal, "attachPtyTerminal").mockImplementation((...args) => {
+    const attached = attach(...args);
+    settleInitialFrame = () => attached.settled();
+    return attached;
+  });
+  // The fixture requires its first frame to be observed while starting. A 25ms
+  // startup delay cannot ensure that under load because xterm renders asynchronously.
+  vi.spyOn(startup, "assertStartupUsable").mockImplementation(async (input) => {
+    await assertUsable(input);
+    await settleInitialFrame();
+  });
   const subscribe = FakePty.prototype.onData;
   let painted = false;
   vi.spyOn(FakePty.prototype, "onData").mockImplementation(function (this: FakePty, handler) {
