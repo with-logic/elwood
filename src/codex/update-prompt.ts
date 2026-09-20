@@ -3,7 +3,7 @@
  * Implements PRD §5.5 and C-CODEX-12 for both prompt automation and input blocking.
  */
 
-import type { InputTerminal } from "../core/input/abort.ts";
+import { type InputTerminal, waitForInput } from "../core/input/abort.ts";
 import {
   type AutomationWriteResult,
   guardedNonTrustAutomationWrite,
@@ -139,6 +139,7 @@ export async function writeCodexUpdateSkip(
   readFrame?: () => string,
   currentUpdateFrame: (frameText: string) => boolean = codexUpdatePromptVisible,
   invalidated: (frameText: string) => boolean = () => false,
+  signal?: AbortSignal,
 ): Promise<CodexUpdateSkipCompletion> {
   if (readFrame === undefined) {
     // A guarded writer can still withhold (its own settled-frame checks apply), and a
@@ -168,14 +169,7 @@ export async function writeCodexUpdateSkip(
       settledFrameKeepsChoice(settledFrame, identity, safeOption.number, currentUpdateFrame);
     if ((await write(safeOption.number, stillThisChoice)) === "withheld") return "cancelled";
     wrote = true;
-    await wait(retryIntervalMs);
+    await waitForInput(retryIntervalMs, signal);
   }
   return "exhausted";
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    timer.unref();
-  });
 }

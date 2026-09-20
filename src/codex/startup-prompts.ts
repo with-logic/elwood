@@ -27,6 +27,7 @@ export class CodexStartupPromptResponder {
   private readonly elwoodSessionId: string;
   private readonly trust: TrustPromptResponder<"codex">;
   private readonly updatePrompt = new CodexUpdatePromptTracker();
+  private readonly lifetime = new AbortController();
   // The update-screen generation that owns the skip latch (0 = none). Only that
   // generation's own completion may release it; a stale completion is a no-op.
   private skipGeneration = 0;
@@ -53,6 +54,7 @@ export class CodexStartupPromptResponder {
   }
 
   dispose(): void {
+    this.lifetime.abort();
     this.trust.dispose();
   }
 
@@ -76,6 +78,7 @@ export class CodexStartupPromptResponder {
     readTrustFrame?: () => string | undefined,
   ): CodexStartupPromptResult {
     const outcomes: SettledCodexStartupOutcome[] = [];
+    if (this.lifetime.signal.aborted) return { warnings: [], outcomes };
     // Trust prompts are matched against the CURRENT frame only: a stale phrase in
     // an earlier frame must never pair with a different dialog's answer.
     const trust = this.trust.handle(screenText, write, readTrustFrame ?? readFrame);
@@ -116,7 +119,8 @@ export class CodexStartupPromptResponder {
         // screen cleared is quiet too (nothing is left to retry or block on); a clear
         // after our key is what success means (C-CODEX-12).
         const sameUpdate = this.updatePrompt.currentFramePredicate();
-        const current = (frame: string) => sameUpdate(frame) && noTrustGate(frame);
+        const current = (frame: string) =>
+          !this.lifetime.signal.aborted && sameUpdate(frame) && noTrustGate(frame);
         // A trust gate painted over the update screen INVALIDATES the skip: the update
         // never cleared, so it must not settle as answered (C-CODEX-12, C-TRUST-01).
         const invalidated = (frame: string) => trustGateVisible(frame, "codex");
@@ -128,14 +132,17 @@ export class CodexStartupPromptResponder {
           readFrame,
           current,
           invalidated,
+          this.lifetime.signal,
         ).then(
           (completion) => {
             const replaced = this.updatePrompt.hasLaterAppearance(generation);
-            if (completion === "exhausted" || replaced) return "cancelled";
+            if (this.lifetime.signal.aborted || completion === "exhausted" || replaced)
+              return "cancelled";
             if (completion === "cancelled") this.skipGeneration = 0;
             return completion;
           },
           (error: unknown): StartupWriteCompletion => {
+            if (this.lifetime.signal.aborted) return "cancelled";
             const replaced = this.updatePrompt.hasLaterAppearance(generation);
             if (!replaced) this.skipGeneration = 0; // retryable within its own appearance
             // The LIVE frame can clear before handle() sees it; with no reader, the
