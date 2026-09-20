@@ -1,8 +1,9 @@
 /**
  * Connects lifecycle status transitions to the control queue, loops, event
  * delivery, and cleanup (PRD §5.3/§5.9, C-API-42). Status and activity events are
- * emitted here; a throwing status listener PROPAGATES by design — the
- * `initial_ready` transition relies on it to trigger its release-and-warn fallback.
+ * emitted here; outside the Claude hook observation boundary, a throwing status
+ * listener propagates and `initial_ready` uses its release-and-warn fallback.
+ * Hook-scoped capture instead completes the transition and reports C-HOOK-22.
  * The engine commits its live `current` status BEFORE emitting, so a throw here can
  * never leave the emitted event disagreeing with that live status (§8.2).
  */
@@ -65,7 +66,7 @@ export function createSessionStatusEngine(input: StatusWiringInput): SessionStat
   });
 }
 
-/** Deliver the status event and its derived activity event (a listener throw propagates). */
+/** Deliver status and derived activity; throws propagate outside hook observation scopes. */
 export function emitStatusEvents(
   emitter: SessionStatusEmitter,
   agent: ElwoodAgentKind,

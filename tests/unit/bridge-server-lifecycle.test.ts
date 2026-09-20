@@ -1,6 +1,6 @@
 /**
- * Bridge server socket-lifecycle coverage: a responded socket is released (no
- * half-open FD leak) and a re-entrant respond is dropped by the `responded` guard.
+ * Bridge server socket-lifecycle coverage: framed data and client FIN cannot
+ * dispatch the same request twice while its first handler is pending.
  * Covers PRD §6.2/§6.3. The byte-cap fail-open cases live in a sibling file.
  */
 
@@ -14,15 +14,13 @@ const acceptHookInput = () => true;
 const input = JSON.stringify({ hook_event_name: "Stop", session_id: "s1", cwd: "/tmp" });
 
 describe("bridge server socket lifecycle", () => {
-  test("C-HOOK-16 a responded socket is released and a re-entrant respond is dropped", async () => {
-    // A half-open client must not keep the server-side socket (and its FD / input
-    // budget) alive after it has its answer, and a second respond must be dropped so
-    // one request never dispatches twice. `end(payload)` sends the framed request AND
-    // the client FIN together: the server's framed-`data` respond parks in dispatch
-    // while the client-FIN `end` fires respond a SECOND time, which the `responded`
-    // guard must drop. Dispatch is gated open so the FIN lands mid-await. Once
-    // released, the single response flushes and the socket is destroyed (client
-    // `close`), all without server.stop().
+  test("C-HOOK-16 framed data and FIN dispatch a pending request only once", async ({
+    onTestFinished,
+  }) => {
+    // Framed data starts a gated dispatch; the following client FIN must invoke
+    // respond again while that dispatch is still pending. The server's default
+    // half-close behavior returns a FIN, which is observable proof its end event
+    // ran. Waiting for that event avoids assuming the OS delivers FIN within 20ms.
     const socketPath = join(tempDir("elwood-unit-"), "half-open.sock");
     let dispatched = 0;
     let release!: () => void;
@@ -40,15 +38,21 @@ describe("bridge server socket lifecycle", () => {
       () => {},
       acceptHookInput,
     );
+    onTestFinished(() => server.stop());
     await server.start();
     const socket = createConnection({ path: socketPath, allowHalfOpen: true });
+    onTestFinished(() => {
+      release();
+      socket.destroy();
+    });
     await new Promise<void>((resolve) => socket.once("connect", resolve));
     // Consume the reply so Node can observe the remote FIN and emit close.
     socket.resume();
     const closed = new Promise<void>((resolve) => socket.once("close", resolve));
+    const ended = new Promise<void>((resolve) => socket.once("end", resolve));
     socket.end(`${JSON.stringify({ token: "token", input })}\n`); // framed data + FIN
-    await new Promise((resolve) => setTimeout(resolve, 20)); // let data + end both fire
-    release(); // dispatch resolves; the single response flushes and the socket is destroyed
+    await ended; // The server FIN proves it handled our FIN while dispatch is gated.
+    release(); // Complete the pending handler after observing both request boundaries.
     await closed;
     await server.stop();
     // The guard dropped respond #2: exactly one dispatch, never a second.
