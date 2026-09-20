@@ -29,16 +29,17 @@ test("C-PERF-04 separate Node processes mutate the installer target exactly once
   const child = `
     import fs, { appendFile, mkdir, readdir } from "node:fs/promises";
     import { syncBuiltinESMExports } from "node:module";
-    import { coordinatedAutoupdate } from ${JSON.stringify(lockUrl)};
+    import { coordinatedAutoupdate, updateLockPath } from ${JSON.stringify(lockUrl)};
     import { cachedAutoupdate, setUpdateCoordinatorForTests } from ${JSON.stringify(onceUrl)};
     const ready = process.env.ELWOOD_TEST_READY;
     await mkdir(ready, { recursive: true });
     const announce = () => mkdir(ready + "/" + process.pid, { recursive: true });
+    const leasePath = updateLockPath("codex", process.env.ELWOOD_TEST_LOCK_ROOT);
     const stat = fs.stat;
     let observed = false;
     fs.stat = async (...args) => {
       const result = await stat(...args);
-      if (!observed && args[0] === process.env.ELWOOD_TEST_LOCK_ROOT + "/codex.lock") {
+      if (!observed && args[0] === leasePath) {
         observed = true;
         await announce();
       }
@@ -52,7 +53,7 @@ test("C-PERF-04 separate Node processes mutate the installer target exactly once
         staleMs: 30_000,
       }),
     );
-    await cachedAutoupdate("codex", async () => {
+    const outcome = await cachedAutoupdate("codex", async () => {
       await appendFile(process.env.ELWOOD_TEST_ATTEMPTS, process.pid + "\\n");
       await announce();
       const deadline = Date.now() + 60_000;
@@ -61,6 +62,7 @@ test("C-PERF-04 separate Node processes mutate the installer target exactly once
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
     });
+    if (!outcome.ok) throw outcome.error;
   `;
   const exits = await Promise.all(
     Array.from({ length: barrierSize }, (_, index) =>
