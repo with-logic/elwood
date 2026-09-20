@@ -27,7 +27,7 @@ type WiredCodexTranscriptWatcher = {
   readonly watcher: CodexTranscriptWatcher;
   readonly flushPendingWarnings: () => void;
   /** Drive `watcher.finish()` behind an error boundary, then run `afterFlush` in a
-   * `finally` so a throwing final-flush listener never skips terminal:exit (C-LIFE-10). */
+   * `finally` so an internal final-flush error never skips terminal:exit (C-LIFE-10). */
   readonly finishSafely: (afterFlush?: () => void) => void;
 };
 
@@ -46,11 +46,36 @@ export function createCodexTranscriptWatcher(
   // is built first) and delivers each exactly once with clear-before-delivery + throw
   // containment (see core/transcript/warning-router).
   const { route, flushPendingWarnings } = createTranscriptWarningRouter(getSink);
+  const reported = new Set<"codex:transcript" | "activity">();
+  // TypedEmitter fans out to all listeners before rethrowing. Contain each channel
+  // separately so one consumer cannot suppress the projection or stop later polls.
+  function deliver<K extends "codex:transcript" | "activity">(channel: K, event: CodexEventMap[K]) {
+    try {
+      emitter.emit(channel, event);
+    } catch {
+      if (reported.has(channel)) return;
+      reported.add(channel);
+      // Run warning callbacks after the current scan/flush. A callback may stop
+      // the session synchronously, so it must not interrupt paired record delivery.
+      queueMicrotask(() =>
+        route({
+          elwoodSessionId,
+          agent: "codex",
+          source: "terminal",
+          code: "transcript_listener_error",
+          severity: "warning",
+          message: "Codex transcript listener failed; remaining transcript delivery continues.",
+          channel,
+          raw: `transcript_listener_error channel=${channel}`,
+        }),
+      );
+    }
+  }
   const watcher = new CodexTranscriptWatcher(
     elwoodSessionId,
     (event) => {
-      emitter.emit("codex:transcript", event);
-      emitter.emit("activity", activity.activityFromCodexTranscript(event));
+      deliver("codex:transcript", event);
+      deliver("activity", activity.activityFromCodexTranscript(event));
     },
     {
       onDrop: (notice) => route(codexDropWarning(notice)),
@@ -59,8 +84,8 @@ export function createCodexTranscriptWatcher(
     },
   );
   // C-LIFE-10: drive the FINAL flush behind an error boundary, then run `afterFlush`
-  // (terminal:exit emission, status, reap) in a `finally` so a throwing final-flush
-  // listener can NEVER skip terminal:exit. A flush failure is contained and surfaced as
+  // (terminal:exit emission, status, reap) in a `finally` so an internal drain
+  // error cannot skip terminal:exit. A flush failure is contained and surfaced as
   // a bounded `transcript_poll_stopped` diagnostic phase-labelled `final_flush` (so lost
   // trailing shutdown activity is distinguishable from a live poll failure). Mirrors Claude.
   const finishSafely = (afterFlush: () => void = () => undefined) => {
