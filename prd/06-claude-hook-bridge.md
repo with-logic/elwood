@@ -131,7 +131,8 @@ unions.
   Undefined values and array holes retain JSON omission/null semantics. Responses
   are limited to 128 edges and 100,000 value visits from the response root, including
   repeated occurrences of shared children. Invalid snapshots yield `invalid_response`
-  and no bridge decision (C-HOOK-21).
+  and no bridge decision (C-HOOK-21). Claude response wrappers across async dispatch
+  and the socket reply envelope do not inherit `then` or `toJSON` behavior.
 
 Task and plan inputs follow Claude's documented native field names: `TaskGet`
 uses `taskId`; `TaskOutput` uses `task_id`, `block`, and `timeout`; `TaskStop`

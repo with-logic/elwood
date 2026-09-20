@@ -13,6 +13,7 @@ import {
   type ElwoodAgentKind,
 } from "./activity/index.ts";
 import { raceHookTimeout } from "./hook-timeout.ts";
+import { inertRecord } from "./inert-record.ts";
 import { isRecord } from "./predicates.ts";
 import type { HookErrorEvent } from "./types.ts";
 
@@ -63,7 +64,7 @@ export function createHookDispatcher<Event extends DispatchableHookEvent, Result
       const hookError = { elwoodSessionId, hookEventName: event.hook_event_name, ...error };
       emitter.emit("hookError", hookError);
       emitter.emit("activity", activityFromHookError(agent, hookError));
-      return { result: undefined, failedOpen: true };
+      return inertRecord({ result: undefined, failedOpen: true });
     };
     try {
       const hookName = `hook:${event.hook_event_name}` as const;
@@ -79,7 +80,7 @@ export function createHookDispatcher<Event extends DispatchableHookEvent, Result
           timeoutMs,
         });
       }
-      if (!hasListener) return { result: undefined, failedOpen: false };
+      if (!hasListener) return inertRecord({ result: undefined, failedOpen: false });
       const response = outcome.value;
       const result = prepareResult(response?.value);
       const forbiddenRewrite =
@@ -90,7 +91,7 @@ export function createHookDispatcher<Event extends DispatchableHookEvent, Result
           message: "Hook handler returned an invalid response for this event.",
         });
       }
-      return { result, failedOpen: false };
+      return inertRecord({ result, failedOpen: false });
     } catch (error) {
       return failOpen({
         category: "handler_error",

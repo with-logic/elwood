@@ -4,6 +4,7 @@
  */
 
 import type { BridgeProcessResult } from "../bridge/types.ts";
+import { inertRecord } from "../core/inert-record.ts";
 import type {
   ClaudeHookEventName,
   ClaudeHookResult,
@@ -14,7 +15,7 @@ export function serializeHookResult(
   eventName: ClaudeHookEventName,
   result: ClaudeHookResult,
 ): BridgeProcessResult {
-  if (result === undefined) return { exitCode: 0, stdout: "", stderr: "" };
+  if (result === undefined) return inertRecord({ exitCode: 0, stdout: "", stderr: "" });
   if ("behavior" in result) return jsonOutput(permissionRequest(eventName, result));
   if ("retry" in result)
     return jsonOutput({
@@ -31,11 +32,11 @@ export function serializeHookResult(
 }
 
 function jsonOutput(value: object): BridgeProcessResult {
-  return {
+  return inertRecord({
     exitCode: 0,
     stdout: `${JSON.stringify(Object.assign(Object.create(null), value))}\n`,
     stderr: "",
-  };
+  });
 }
 
 function permissionRequest(eventName: string, result: PermissionRequestResult): object {
@@ -72,5 +73,5 @@ function topLevel(
 }
 
 function worktree(path: string): BridgeProcessResult {
-  return { exitCode: 0, stdout: `${path}\n`, stderr: "" };
+  return inertRecord({ exitCode: 0, stdout: `${path}\n`, stderr: "" });
 }

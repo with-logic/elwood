@@ -4,6 +4,7 @@
  */
 
 import { types } from "node:util";
+import { inertRecord } from "../core/inert-record.ts";
 import type { Unsubscribe } from "../core/types.ts";
 
 type Handler = (event: unknown) => unknown;
@@ -110,7 +111,7 @@ export class TypedEmitter<M extends Record<string, unknown>> {
       const returned = handler(payload);
       // Direct data must reach validation without Promise thenable assimilation.
       const value = types.isPromise(returned) ? await returned : returned;
-      if (value !== undefined) return { value, provenance };
+      if (value !== undefined) return inertRecord({ value, provenance });
     }
     return undefined;
   }

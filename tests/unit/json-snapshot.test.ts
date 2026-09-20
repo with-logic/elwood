@@ -96,3 +96,10 @@ test("C-HOOK-21 enforces exact depth and visit boundaries for arrays and records
   expect(snapshotJsonData(record).valid).toBe(false);
   expect(snapshotJsonData([Symbol("not JSON")]).valid).toBe(false);
 });
+
+test("C-HOOK-21 counts every occurrence of shared children toward the visit limit", () => {
+  const shared = { value: 1 };
+  const withinBudget = [...Array.from({ length: 49_999 }, () => shared), 0];
+  expect(snapshotJsonData(withinBudget).valid).toBe(true);
+  expect(snapshotJsonData([...withinBudget, shared]).valid).toBe(false);
+});
