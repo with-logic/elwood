@@ -19,6 +19,11 @@ back each entry are listed in `prd/14-conformance.md`.
   the non-trust automation barrier waits for render settlement, and a write parked there
   now abandons `sendInput` when it resumes into a closing session instead of delivering
   a stale Escape to a dead PTY. Trust automation already had this lifetime.
+
+- Preserve Claude `StopFailure` hooks with missing or changed diagnostic fields. Those
+  fields are now typed as optional `unknown`, matching ingress. Browser logs show a
+  bounded rejection reason instead of unrelated assistant text or a blank summary.
+
 - Route Codex tool-keyed hooks from own properties only. A `PreToolUse` map is a
   plain object, so a tool name matching an inherited member (anything on
   `Object.prototype`, or a key on a caller-supplied prototype) used to resolve to a
