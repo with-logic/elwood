@@ -51,7 +51,10 @@ if match:
     if mode == 'all-failed' or (mode == 'missing' and name == 'review-architecture-conventions'):
         print('PRIVATE-REVIEW-TEXT', file=sys.stderr)
         sys.exit(1)
-    if mode == 'timeout' and name == 'review-architecture-conventions':
+    if mode == 'first-error-timeout' and name == 'review-architecture-conventions' and count == 1:
+        diagnostic_message = 'FIRST_ATTEMPT_CANARY' + 'x' * 5000 + 'TRUNCATED_TAIL_CANARY'
+        raise RuntimeError(diagnostic_message)
+    if mode in ['timeout', 'first-error-timeout'] and name == 'review-architecture-conventions':
         subprocess.Popen([sys.executable, '-c',
             'import pathlib,time; time.sleep(6); pathlib.Path(' + repr(str(root / 'orphan')) + ').touch()'])
         time.sleep(20)
