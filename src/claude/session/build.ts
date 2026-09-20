@@ -51,10 +51,7 @@ export async function buildClaudeSession(
   const emitter = new TypedEmitter<ClaudeEventMap>();
   registerInitialHooks(emitter, options.hooks);
   let session: ClaudeSessionImpl | undefined;
-  // ALL startup-region warnings — startup-prompt (frame path) AND transcript
-  // drop/read-error diagnostics — route through ONE gate that buffers anything emitted
-  // before startClaude resolves and flushes it on a deferred macrotask after return,
-  // so every source stays observable without late-subscriber replay (C-API-14).
+  // Buffer every startup diagnostic until callers can subscribe after return (C-API-14).
   const warnGate = createStartupWarningGate({
     emitWarnings: (w) => wired.duringDelivery(() => deliverFrameWarnings(session, w)),
   });
@@ -178,8 +175,12 @@ export async function buildClaudeSession(
         observedExit = exit;
         active.beginExitFinalization();
         active.closing.abort();
-        handleClaudeExit(emitter, record.elwoodSessionId, exit, finishSafely, () =>
-          active.submitExit(),
+        handleClaudeExit(
+          emitter,
+          record.elwoodSessionId,
+          exit,
+          (afterFlush) => finishSafely(() => warnGate.afterDelivery(afterFlush)),
+          () => active.submitExit(),
         );
       });
       // Release the startup buffer once the check settles (§9.4).

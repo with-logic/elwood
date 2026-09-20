@@ -172,7 +172,8 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
           emitter.emit("terminal:exit", { elwoodSessionId: id, ...exit });
           emitter.emit("activity", activity.activityFromTerminalExit("codex", id, exit.exitCode));
         };
-        finishSafely(() => finishSessionExit(emitExit, () => activeSession.submitExit()));
+        const finalize = () => finishSessionExit(emitExit, () => activeSession.submitExit());
+        finishSafely(() => warnGate.afterDelivery(finalize));
       });
       await assertStartupThenRelease("codex", startupOutput, () => observedExit);
       activeSession.submitEvidence("startup_usable");

@@ -50,20 +50,33 @@ export function deliverFrameWarnings(
 export function createStartupWarningGate(sink: FrameWarningSink): {
   readonly emitWarnings: (warnings: readonly ElwoodWarningEvent[]) => void;
   readonly openAfterReturn: () => void;
+  /** Join a scheduled startup flush before contained terminal finalization. */
+  readonly afterDelivery: (finalize: () => void) => void;
 } {
   let open = false;
+  let opening: { readonly timer: NodeJS.Timeout; readonly done: Promise<void> } | undefined;
   const buffered: ElwoodWarningEvent[] = [];
   return {
     emitWarnings: (warnings) => {
       if (open) return deliverFrameWarnings(sink, warnings);
       buffered.push(...warnings);
     },
+    afterDelivery: (finalize) => {
+      if (!opening) return finalize();
+      // Exit now owns this wait: keep its scheduled flush alive until finalization.
+      opening.timer.ref();
+      void opening.done.then(finalize);
+    },
     openAfterReturn: () => {
+      const done = Promise.withResolvers<void>();
       const timer = setTimeout(() => {
         open = true; // subsequent startup-frame warnings deliver live from here on
         const batch = buffered.splice(0);
         if (batch.length > 0) deliverFrameWarnings(sink, batch);
+        opening = undefined;
+        done.resolve();
       }, 0);
+      opening = { timer, done: done.promise };
       timer.unref?.();
     },
   };

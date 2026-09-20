@@ -15,6 +15,8 @@ back each entry are listed in `prd/14-conformance.md`.
 - Claude and Codex transcript and diagnostic listeners can stop a session without
   moving pending activity past terminal exit, duplicating finalization, or signaling
   an already-exited PTY while its final transcript records are being delivered.
+  An exit immediately after startup waits for already-scheduled warning delivery,
+  preserving both subscriber visibility and diagnostic-before-exit ordering.
   A session resumed from an exit listener retains its files, socket, and loops when
   the old launch finishes a deferred or repeated teardown, including through supported
   state-path aliases. Failed launches restore their own published files, CLI cleanup
