@@ -66,8 +66,16 @@ function hasApprovalEvidence(rows: readonly string[]): boolean {
  * selection starts; ordinary numbered transcript content can precede the composer.
  */
 export function codexComposerClearance(frame: string, cursorRow?: number): boolean {
-  if (codexWorkingScreen.test(frame)) return false;
-  const rows = frame.split("\n").map((row) => row.trimEnd());
+  return codexComposerRowsClearance(frame.split("\n"), cursorRow);
+}
+
+/** Classify existing snapshot rows without splitting another viewport string. */
+export function codexComposerRowsClearance(
+  frameRows: readonly string[],
+  cursorRow?: number,
+): boolean {
+  if (frameRows.some((row) => codexWorkingScreen.test(row))) return false;
+  const rows = frameRows.map((row) => row.trimEnd());
   const at = cursorRow ?? rows.findLastIndex((row) => caretRow.test(row));
   const composer = rows[at];
   // Native composer starts at column zero; transcript continuations are indented.

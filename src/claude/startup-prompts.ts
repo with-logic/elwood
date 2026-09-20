@@ -45,12 +45,12 @@ export class ClaudeStartupPromptResponder {
   }
 
   /**
-   * `write` answers TRUST prompts and belongs to `TrustPromptResponder` alone.
-   * `writeAutomation` carries every NON-trust automated key (here, the browser-tools
-   * decline). They are separate parameters so the two classes of write can be guarded
-   * differently — only non-trust automation may be withheld when a trust gate is on
-   * screen, since answering such a gate is the trust responder's own job (#42).
-   * Defaults to `write`, so a caller that passes one writer keeps today's behavior.
+   * `write` answers trust; `writeAutomation` (default `write`) handles other prompts,
+   * where a trust gate must withhold unrelated automated keys.
+   * Live adapters must supply `readTrustFrame` from `currentRenderedFrame`, returning
+   * undefined for pending rendering, synchronized output, or render failure.
+   * The fallback to `readFrame` preserves static/direct callers; a snapshot-only
+   * reader must not replace the settlement-aware reader in a live session.
    */
   handle(
     screenText: string,

@@ -73,8 +73,9 @@ export class TrustAttempt {
     while (!this.controller.signal.aborted && Date.now() < deadlineAtMs) {
       const view = read();
       if (view === undefined) {
-        // Received output has no current rendered frame yet. Keep the bounded
-        // attempt alive without treating unavailable evidence as a legacy reader.
+        // Pending rendering, synchronized output, or permanent render failure leaves
+        // no usable frame. Hold the attempt's writes until evidence returns or its
+        // deadline; unavailable evidence never enables the legacy no-reader path.
         if (!(await this.pause(Math.min(observationMs, deadlineAtMs - Date.now()))))
           return this.completion();
         continue;

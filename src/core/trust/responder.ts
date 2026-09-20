@@ -3,12 +3,8 @@ import type { ElwoodAgentKind } from "../activity/index.ts";
 import { optionInput } from "../terminal-options.ts";
 import type { TrustClearance } from "./clearance.ts";
 import type { TrustPromptId, TrustPromptIdFor } from "./prompts.ts";
-import {
-  type Episode,
-  newEpisode,
-  type TrustPromptResult,
-  type TrustWriteResult,
-} from "./types.ts";
+import type { Episode, TrustPromptResult, TrustWriteResult } from "./types.ts";
+import { newEpisode } from "./types.ts";
 import { choiceIdentity, readTrustView, type TrustView, trustView } from "./view.ts";
 import { TrustAttempt } from "./write.ts";
 
@@ -40,6 +36,10 @@ export class TrustPromptResponder<A extends ElwoodAgentKind> {
     const id = this.episode?.blocked ? this.episode.candidate.spec.id : undefined;
     return (this.humanPrompt ?? id) as TrustPromptIdFor<A> | undefined;
   }
+  /** Live sessions must read the latest settled frame, returning undefined for
+   * pending rendering, synchronized output, or render failure. A supplied reader's
+   * undefined result holds input within the bounded attempt; it is not clearance.
+   * Omitting the reader retains static/legacy numbered-write behavior. */
   handle(
     frame: string,
     write: (input: string) => TrustWriteResult,
