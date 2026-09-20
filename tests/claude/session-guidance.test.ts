@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 import type { ClaudeHookEventFor } from "../../src/index.ts";
 import { startClaude } from "../../src/index.ts";
+import { claudeComposer, claudeTty } from "../fixtures/trust-composer.ts";
 import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
@@ -84,7 +85,7 @@ describe("ClaudeSessionApi guidance", () => {
       expect(session.status).toBe("blocked");
       expect(ptys[0]!.writes).toEqual([]);
     }
-    ptys[0]!.emitData("\u001b[2J\u001b[H❯ \r\n  ready again\r\n");
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
     await guidance;
     expect(ptys[0]!.writes).toEqual(["\u001b[200~after-human-decision\u001b[201~", "\r"]);
   });
@@ -110,7 +111,7 @@ describe("ClaudeSessionApi guidance", () => {
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(ptys[0]!.writes).toEqual([]);
     // The dialog clears; the held guidance now pastes AND submits, in that order.
-    ptys[0]!.emitData("[2J[H❯ \r\n  ready again\r\n");
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${claudeTty(claudeComposer)}`);
     await guidance;
     // Paste lands FIRST, then the submitting Enter - the held paste was not
     // dropped or reordered, and no stray byte reached the dialog beforehand.

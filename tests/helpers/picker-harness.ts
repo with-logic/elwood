@@ -102,9 +102,11 @@ export function cleanupHarness(
   queue.markReady();
   /** An operation that fails with `dialog` still on screen. */
   const failWith = (dialog: string) =>
-    picker.run("set_model", spec, 5000, () => {
+    picker.run("set_model", spec, 5000, async (io) => {
+      await io.submit("/model", new AbortController().signal);
       screen.text = dialog;
-      return Promise.reject(failure);
+      io.terminal.snapshot();
+      throw failure;
     });
   return { screen, writes, leaked, queue, picker, failWith };
 }

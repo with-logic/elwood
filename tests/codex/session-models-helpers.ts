@@ -47,7 +47,7 @@ export async function driveUntilConfigWritten(
   ptyIndex = 0,
 ): Promise<void> {
   const pty = ptys[ptyIndex]!;
-  await until(() => pty.writes.includes("/model"));
+  await until(() => pty.writes.join("").includes("/model\r"));
   pty.emitData(asScreen(codexPickerCurrentIsDefault));
   await until(() => pty.writes.filter((w) => w === "[B").length === 1);
   pty.emitData(asScreen(codexPickerSplitMarkers));
