@@ -283,9 +283,20 @@ and is injected into the shared coordinator (`TrustPromptResponder`/`trustView`)
 When a CLI's banner, status row, or composer placeholder changes, update that adapter's
 predicate. Codex's predicate delegates to `src/codex/screen/clearance.ts`: numbered
 rows above the last native composer can be transcript content, while rows below
-it must be native footer chrome. A later bare caret cannot borrow an earlier
-composer's footer to prove clearance. The Claude predicate uses
+it must be native footer chrome. Without a model footer, a non-bare native
+placeholder also proves clearance when anchored by a complete boxed Codex welcome
+header above it. The welcome box alone cannot authorize a bare caret. A later bare
+caret cannot borrow an earlier composer's footer to prove clearance. The Claude predicate uses
 `src/core/trust/clearance.ts` to reject numbered options and non-composer caret rows.
+
+A startup-only real PTY probe of Codex 0.142.5 on 2026-09-19 confirmed the
+model-only `gpt-5.5 high` footer with `tui.status_line = ["model-with-reasoning"]`.
+Its placeholder is randomized: observed `Use /skills to list available skills`,
+`Find and fix a bug in @filename`, and `Implement {feature}` across launches.
+The predicate recognizes the eight fixed placeholders in the version-tagged upstream
+`chatwidget.rs` as well as the captured 0.154.0 default. It still requires native
+footer or welcome-box evidence. The sanitized 100×30 capture and provenance are
+in `tests/fixtures/codex-0.142.5/`; no model prompt was submitted.
 
 ### Native regions and live confirmation
 

@@ -1,0 +1,13 @@
+╭──────────────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.142.5)                               │
+│                                                          │
+│ model:     gpt-5.5 high   /model to change               │
+│ directory: /tmp/elwood-composer-CAPTURE/project │
+╰──────────────────────────────────────────────────────────╯
+
+  Tip: New Use /fast to enable our fastest inference with increased plan usage.
+
+
+› Implement {feature}
+
+  gpt-5.5 high
