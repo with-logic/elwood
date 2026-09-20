@@ -8,6 +8,7 @@ import subprocess
 import time
 import unittest
 import runner_test
+from runner_attempt_capture import MAX_ATTEMPT_STDERR_BYTES
 
 
 class DiagnosticCleanupTest(unittest.TestCase):
@@ -81,7 +82,8 @@ exit 7
                     reports = list(fixture.root.glob('capped-attempt.*.failure'))
                     if failure == 'sink':
                         self.assertEqual((fixture.root / 'sink-called').read_text().splitlines(),
-                                         ['-c', '2048', (fixture.root / 'owned-temp').read_text() + '/synth.validation.err'])
+                                         ['-c', str(MAX_ATTEMPT_STDERR_BYTES),
+                                          (fixture.root / 'owned-temp').read_text() + '/synth.validation.err'])
                         self.assertEqual(len(reports), 1)
                         self.assertEqual(reports[0].read_text(), 'lens=synthesis attempt=1 exit=124\nvalidation\n')
                     else:

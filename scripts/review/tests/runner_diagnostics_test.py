@@ -38,7 +38,12 @@ class AttemptDiagnosticsTest(unittest.TestCase):
         self.assertNotIn('TRUNCATED_TAIL_CANARY', diagnostic)
         self.assertLessEqual(len(diagnostic), len(DIAGNOSTIC_PREFIX) + MAX_DIAGNOSTIC_CHARS)
         self.assertNotIn('FIRST_ATTEMPT_CANARY', result.stderr)
-        for report in fixture.root.glob('capped-attempt.*.failure'):
+        reports = sorted(fixture.root.glob('capped-attempt.*.failure'))
+        self.assertEqual(len(reports), 2)
+        self.assertEqual([report.read_text().splitlines()[0] for report in reports], [
+            'lens=review-architecture-conventions attempt=1 exit=1',
+            'lens=review-architecture-conventions attempt=2 exit=124'])
+        for report in reports:
             payload = report.read_bytes().split(b'\n', 1)[1]
             self.assertLessEqual(len(payload), MAX_ATTEMPT_STDERR_BYTES)
             self.assertNotIn(b'TRUNCATED_TAIL_CANARY', payload)
