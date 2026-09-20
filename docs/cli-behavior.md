@@ -548,13 +548,13 @@ rather than sitting latched forever. Edge-detection mirrors the login watcher.
 
 Version-coupled behavior learned here:
 
-- The skip-attempt is gated by a per-session prompt tracker, even though the
-  option is located in the accumulated buffer. Codex can split the distinctive
+- The skip-attempt is gated by a per-session prompt tracker, while the option is
+  selected only from the current frame. Codex can split the distinctive
   versioned banner and its options across consecutive screen replacements; once
   the banner activates the tracker, a safe-option-only continuation remains the
   same blocking prompt. A definite non-update frame clears it. Matching the
-  accumulated buffer alone lets benign later prose re-fire against a **stale
-  buffered option** — a real bug we hit while building this. C-CODEX-12.
+  accumulated buffer lets a cleared/reappeared prompt inherit an old option number
+  and lets benign later prose re-fire against a stale option. C-CODEX-12.
 - Captured Codex update menus from 0.132 through 0.155 list `Update now` before
   the safe choices. Initial selection and retries use that ordering: a skip-shaped
   row before the update action is not selected, and the update action itself is
@@ -567,7 +567,9 @@ Version-coupled behavior learned here:
   `https://github.com/openai/codex for installation options.`) rather than a
   numbered dialog — so the interactive dialog is not guaranteed on every version.
   The skip is written ONLY when a numbered skip option is actually present
-  (`findNumberedOption` → null ⇒ no write), so a passive banner is a harmless no-op.
+  (`safeUpdateOption` → `undefined` ⇒ no write), so a passive banner is a harmless no-op.
+  If the only skip-shaped choice precedes the update action, the helper also returns
+  `undefined` and no key is written.
   Every retry revalidates that the frame still belongs to the captured first-party
   update-prompt generation and uses the safe option's current number. This preserves
   the known safe-option-only continuation layout without letting a cleared/reappeared

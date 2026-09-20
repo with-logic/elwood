@@ -61,3 +61,27 @@ test.each([
   await completion;
   expect(writes).toEqual(expected);
 });
+
+test.each([
+  false,
+  true,
+])("C-CODEX-12 reappearing options use their current number (split: %s)", async (split) => {
+  const responder = new CodexStartupPromptResponder("selection");
+  const writes: string[] = [];
+  const write = (key: string) => {
+    writes.push(key);
+  };
+  try {
+    const first = responder.handle(`${banner}\n1. Update now\n2. Skip`, write);
+    await first.outcomes[0]?.settled;
+    responder.handle("› Ready", write);
+    if (split) expect(responder.handle(banner, write).outcomes).toEqual([]);
+    const rows = "2. Update now\n3. Skip";
+    const second = responder.handle(split ? rows : `${banner}\n${rows}`, write);
+    await second.outcomes[0]?.settled;
+    expect(writes).toEqual(["2", "3"]);
+    expect(second.outcomes[0]?.outcome).toMatchObject({ input: "3" });
+  } finally {
+    responder.dispose();
+  }
+});

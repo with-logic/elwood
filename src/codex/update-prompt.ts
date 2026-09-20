@@ -12,7 +12,11 @@ import {
 import type { StartupWriteCompletion } from "../core/startup/write.ts";
 import { nonOptionText, numberedOptions } from "../core/terminal-options.ts";
 import type { TrustWriteResult } from "../core/trust/responder.ts";
-import { codexUpdateOptionPattern, safeUpdateOption } from "./update/selection.ts";
+import {
+  codexUpdateActionPattern,
+  codexUpdateOptionPattern,
+  safeUpdateOption,
+} from "./update/selection.ts";
 import { codexUpdateChoiceIdentity, settledFrameKeepsChoice } from "./update-identity.ts";
 
 export { codexUpdateOptionPattern } from "./update/selection.ts";
@@ -29,7 +33,7 @@ export function codexUpdatePromptVisible(frameText: string): boolean {
   if (updateScreenBanner.test(frameText)) return true;
   const options = numberedOptions(frameText);
   return (
-    options.some((option) => /update\s+now/i.test(option.label)) &&
+    options.some((option) => codexUpdateActionPattern.test(option.label)) &&
     options.some((option) => codexUpdateOptionPattern.test(option.label))
   );
 }

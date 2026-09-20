@@ -12,8 +12,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Select Codex update-skip choices only after the visible update action, and never
-  select an update action whose label also contains a skip phrase.
+- Select Codex update-skip choices after the action when an update action is visible;
+  action-less continuation frames may still select a safe option. Selection uses the
+  current frame’s numbering and never selects an update action whose label also
+  contains a skip phrase.
 
 - Keep human-owned trust gates blocked through partial and unknown replacement
   frames. Queued caller input resumes only after positive native clearance. Both
