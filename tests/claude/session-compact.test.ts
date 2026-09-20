@@ -49,10 +49,12 @@ describe("ClaudeSessionApi compact", () => {
     const session = await startClaude({ cwd });
     await ptys[0]!.dispatchHook(session.elwoodSessionId, instructionsLoaded(cwd));
     const compacted = session.compact({ timeoutMs: 1_000 });
+    // Observe the expected rejection before polling can yield beyond the deadline.
+    const rejected = expect(compacted).rejects.toMatchObject({ code: "compact_failed" });
     // Command text, deferred command Enter, and the popup-recovery nudge Enter.
     await expect.poll(() => ptys[0]!.writes.length, { timeout: 2_000 }).toBe(3);
     expect(ptys[0]!.writes).toEqual(["/compact", "\r", "\r"]);
-    await expect(compacted).rejects.toMatchObject({ code: "compact_failed" });
+    await rejected;
   });
 
   test("C-API-22 timed-out compact is removed before readiness arrives", async () => {
@@ -73,7 +75,8 @@ describe("ClaudeSessionApi compact", () => {
     installFakes();
     const session = await startClaude({ cwd });
     const compacted = session.compact();
+    const rejected = expect(compacted).rejects.toMatchObject({ code: "session_not_running" });
     await session.stop();
-    await expect(compacted).rejects.toMatchObject({ code: "session_not_running" });
+    await rejected;
   });
 });

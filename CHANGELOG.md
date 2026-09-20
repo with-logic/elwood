@@ -26,6 +26,23 @@ back each entry are listed in `prd/14-conformance.md`.
   generic, future) enforce it structurally over the whole value, nested records and
   arrays included. Such a rewrite is now an invalid result: the bridge fails open with
   no decision and emits `hookError`.
+
+- Preserve Claude hook decisions and lifecycle progress when observational listeners
+  throw or return rejecting Promises, with one bounded `hook_observer_failed` warning
+  per affected invocation. Pending observers do not delay hook replies; diagnostic
+  retention is capped at 1,024 registrations per emitter. Promise constructor/species
+  metadata must permit native reaction attachment; attachment throws are reported
+  and remain retryable. Warning payloads are
+  frozen before delivery. Incoming
+  Claude hook events are deeply frozen before observation, and throwing observers
+  no longer truncate subsequent hook-scoped status or transcript notifications.
+
+- Snapshot Claude hook responses before validation so later mutations or custom accessors cannot replace validated rewrites on the wire. Capture wire output and blocking decisions before activity listeners run.
+
+- Preserve Claude `StopFailure` hooks with missing or changed diagnostic fields. Those
+  fields are now typed as optional `unknown`, matching ingress. Browser logs show a
+  bounded rejection reason instead of unrelated assistant text or a blank summary.
+
 - Route Codex tool-keyed hooks from own properties only. A `PreToolUse` map is a
   plain object, so a tool name matching an inherited member (anything on
   `Object.prototype`, or a key on a caller-supplied prototype) used to resolve to a
