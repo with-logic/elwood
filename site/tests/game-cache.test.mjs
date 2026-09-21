@@ -16,7 +16,10 @@ test("mutable game manifests and images escape old immutable URLs and revalidate
   const Image = globalThis.Image;
   globalThis.fetch = async (url) => {
     requested.push(new URL(url));
-    return new Response(JSON.stringify({ pages: [{ file: "page-000.webp" }] }));
+    return new Response(JSON.stringify({
+      pages: [{ file: "page-000.webp" }],
+      frames: [{ page: 0 }],
+    }));
   };
   globalThis.Image = class {
     async decode() {
