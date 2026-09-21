@@ -1,6 +1,10 @@
 /** Active and prepared sprite ownership for continuous motion (docs/design/landing.md). */
 import { gameAssetUrl } from "./game-assets.mjs";
+import { SpriteDecoder } from "./sprite-decoder.mjs";
 import { SpriteSources, parseSpriteClip, shareSpriteRequest, spriteSheetContext } from "./sprite-sources.mjs";
+
+const yieldToPaint = () => typeof Worker === "function" && typeof requestAnimationFrame === "function"
+  ? new Promise((resolve) => requestAnimationFrame(resolve)) : Promise.resolve();
 
 export class SpriteBank {
   #onError;
@@ -14,6 +18,7 @@ export class SpriteBank {
     this.preparationAbort = null;
     this.preparationTail = Promise.resolve();
     this.decodeTail = Promise.resolve();
+    this.decoder = new SpriteDecoder();
     this.clips = new Map();
     this.pages = new Map();
     this.pendingPages = new Map();
@@ -50,19 +55,18 @@ export class SpriteBank {
       const release = () => { blob = undefined; };
       owned.addEventListener("abort", release, { once: true });
       const decode = this.decodeTail.catch(() => {}).then(async () => {
+        await yieldToPaint();
         owned.removeEventListener("abort", release);
         owned.throwIfAborted();
-        const image = new Image();
-        const url = URL.createObjectURL(blob);
-        release();
+        let image;
         try {
-          image.src = url;
-          await image.decode();
+          image = await this.decoder.decode(blob);
         } catch (cause) {
           throw new Error(`Couldn’t decode animation sheet ${spriteSheetContext(sheet)}. Try again.`, { cause });
         } finally {
-          URL.revokeObjectURL(url);
+          release();
         }
+        if (owned.aborted) image.close?.();
         owned.throwIfAborted();
         if (this.activeName === name) this.activePages.set(key, image);
         if (name === "idle" || name === "rotation") this.supportPages.set(key, image);

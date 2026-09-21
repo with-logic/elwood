@@ -118,6 +118,45 @@ test("failed decoding retries through source loading and revokes every object UR
   for (const url of urls) assert.equal(resolveObjectURL(url), undefined);
 });
 
+test("browser bitmap decoding avoids the main-thread image fallback", async (t) => {
+  const createImageBitmap = globalThis.createImageBitmap;
+  const decoded = [];
+  globalThis.createImageBitmap = async (blob) => {
+    const image = { bytes: await blob.text() };
+    decoded.push(image);
+    return image;
+  };
+  t.after(() => { globalThis.createImageBitmap = createImageBitmap; });
+  const { bank, urls } = fixture(t, async () => assert.fail("Image.decode fallback ran"));
+  const image = await bank.loadPage("idle", 0);
+  assert.equal(image, decoded[0]);
+  assert.match(image.bytes, /idle\/0\.webp/);
+  assert.deepEqual(urls, []);
+});
+
+test("a browser worker returns decoded sheets without blocking the page decoder", async (t) => {
+  const Worker = globalThis.Worker;
+  const createImageBitmap = globalThis.createImageBitmap;
+  let mainThreadDecodes = 0;
+  globalThis.createImageBitmap = async () => { mainThreadDecodes++; };
+  globalThis.Worker = class {
+    addEventListener(type, listener) { if (type === "message") this.receive = listener; }
+    postMessage({ id, blob }) {
+      blob.text().then((bytes) => this.receive({ data: { id, image: { bytes } } }));
+    }
+    terminate() {}
+  };
+  t.after(() => {
+    globalThis.Worker = Worker;
+    globalThis.createImageBitmap = createImageBitmap;
+  });
+  const { bank, urls } = fixture(t, async () => assert.fail("Image.decode fallback ran"));
+  const image = await bank.loadPage("idle", 0);
+  assert.match(image.bytes, /idle\/0\.webp/);
+  assert.equal(mainThreadDecodes, 0);
+  assert.deepEqual(urls, []);
+});
+
 test("one preparation downloads its missing sheets in parallel before serial decoding", async (t) => {
   const { bank, urls } = fixture(t);
   await bank.prepareAnimation("idle");
