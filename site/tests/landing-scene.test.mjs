@@ -87,6 +87,9 @@ test("landing starts with the complete idle animation and never fetches videos",
 test("the actual scene gives manual movement priority and idles before resuming autonomy", async () => {
   scene.interact();
   scene.axis = 1;
+  // Asset I/O uses real time; start the motion clock only once its sheets are ready.
+  scene.prepare("walk-right");
+  await scene.bank.preparationTail;
   await advance(1.2);
   assert.equal(scene.director.mode, "manual");
   assert.equal(scene.world.player.animation, "walk-right");
