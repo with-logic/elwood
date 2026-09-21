@@ -112,3 +112,16 @@ test("last consumer cancellation releases stalled work and ignores its late comp
   assert.equal(await (await current).text(), "revision-1");
   assert.equal(signals.length, 2);
 });
+
+
+test("metadata HTTP failures identify their kind and preserve safe context", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => { globalThis.fetch = original; });
+  globalThis.fetch = async () => new Response("", { status: 404 });
+  const sources = new SpriteSources();
+  await assert.rejects(sources.load("https://user:secret@host/wave/clip.json?private=token", undefined, "metadata"), (error) => {
+    assert.equal(error.message, "Couldn’t load animation metadata wave/clip.json (HTTP 404). Try again.");
+    assert.equal(error.cause.message, "HTTP 404");
+    return true;
+  });
+});

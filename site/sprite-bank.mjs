@@ -1,6 +1,6 @@
 /** Active and prepared sprite ownership for continuous motion (docs/design/landing.md). */
 import { gameAssetUrl } from "./game-assets.mjs";
-import { SpriteSources, shareSpriteRequest, spriteSheetContext } from "./sprite-sources.mjs";
+import { SpriteSources, parseSpriteClip, shareSpriteRequest, spriteSheetContext } from "./sprite-sources.mjs";
 
 export class SpriteBank {
   #onError;
@@ -22,8 +22,9 @@ export class SpriteBank {
 
   async load(name, signal) {
     if (this.clips.has(name)) return this.clips.get(name);
-    const blob = await this.sources.load(gameAssetUrl(`${name}/clip.json`), signal);
-    const clip = JSON.parse(await blob.text());
+    const url = gameAssetUrl(`${name}/clip.json`);
+    const blob = await this.sources.load(url, signal, "metadata");
+    const clip = await parseSpriteClip(blob, url);
     signal?.throwIfAborted();
     this.clips.set(name, clip);
     return clip;
@@ -104,29 +105,19 @@ export class SpriteBank {
       const names = [...new Set(name === "idle" ? [name] : ["idle", "rotation", name])];
       const clips = await Promise.all(names.map((clipName) => this.load(clipName, controller.signal)));
       if (!current()) return;
-      const downloads = [];
+      const pages = new Map();
+      const decoding = [];
       for (const [position, clipName] of names.entries()) {
-        const clip = clips[position];
-        for (let index = 0; index < clip.pages.length; index++) {
+        for (let index = 0; index < clips[position].pages.length; index++) {
           const key = `${clipName}/${index}`;
-          const page = this.retainedPage(key) ?? this.pages.get(key);
-          const source = page ? Promise.resolve(null)
-            : this.sources.load(gameAssetUrl(`${clipName}/${clip.pages[index].file}`), controller.signal);
-          downloads.push(source.then((blob) => ({ key, clipName, index, page, blob })));
+          // Each transfer feeds the serial decoder directly: no result array keeps
+          // compressed bytes alive after decoding. Promise.all consumes late errors.
+          decoding.push(this.loadPage(clipName, index, undefined, controller.signal)
+            .then((image) => { if (current()) pages.set(key, image); }));
         }
       }
-      // Keep downloads parallel and consume every rejection, including cancellation.
-      // Only the current preparation may advance to the serial decode stage.
-      const results = await Promise.allSettled(downloads);
+      await Promise.all(decoding);
       if (!current()) return;
-      const pages = new Map();
-      for (const result of results) {
-        if (result.status === "rejected") throw result.reason;
-        const { key, clipName, index, page, blob } = result.value;
-        const image = page ?? await this.loadPage(clipName, index, blob, controller.signal);
-        if (!current()) return;
-        pages.set(key, image);
-      }
       this.prepared = { name, pages, current };
       return this.clips.get(name);
     }).catch((error) => {
@@ -165,7 +156,7 @@ export class SpriteBank {
     const key = `${name}/${frame.page}`;
     const page = this.retainedPage(key) ?? this.pages.get(key);
     if (!page) {
-      this.loadPage(name, frame.page).catch(this.#onError);
+      if (!this.pendingPages.has(key)) this.loadPage(name, frame.page).catch(this.#onError);
       return null;
     }
     if (!this.retainedPage(key)) {

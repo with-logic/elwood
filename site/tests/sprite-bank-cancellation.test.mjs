@@ -50,6 +50,10 @@ for (const phase of ["sheet", "metadata"]) {
       assert.equal(bank.activeName, "idle");
       assert.ok(bank.frame("idle", 0));
       assert.ok(bank.frame("rotation", 0));
+      gate.resolve();
+      await old;
+      await new Promise((resolve) => setImmediate(resolve));
+      if (phase === "metadata") assert.equal(bank.clips.has("old"), false);
     } finally {
       clearTimeout(deadline);
       gate.resolve();
@@ -124,7 +128,7 @@ test("async-spaced supersession releases candidates and skips their queued decod
     await Promise.all([old, b, c]);
     assert.equal(forced, false, "cancelled preparations settle before the active decode");
     await queued(bank, "latest");
-    assert.equal(bank.pendingPages.size, 1, "only the current candidate owns a pending page");
+    assert.equal(bank.pendingPages.size, 2, "only the current candidate owns pending pages");
     assert.ok(bank.frame("idle", 0));
     gate.resolve();
     await latest;

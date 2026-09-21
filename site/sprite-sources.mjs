@@ -4,7 +4,8 @@ export function spriteSheetContext(url) {
     .replace(/[^a-zA-Z0-9_./-]/g, "?").slice(0, 160);
 }
 
-/** A sprite fetch/decode survives cancellation only while a live consumer still owns it. */
+/** Abort network work when its last consumer leaves. Already-running Image.decode()
+ * cannot be aborted; its owner must discard the result after cancellation. */
 export function shareSpriteRequest(pending, key, start, signal) {
   signal?.throwIfAborted();
   let entry = pending.get(key);
@@ -39,11 +40,11 @@ export class SpriteSources {
     this.pending = new Map();
   }
 
-  async load(url, signal) {
-    return shareSpriteRequest(this.pending, String(url), (owned) => this.download(url, owned), signal);
+  async load(url, signal, kind = "sheet") {
+    return shareSpriteRequest(this.pending, String(url), (owned) => this.download(url, owned, kind), signal);
   }
 
-  async download(url, signal) {
+  async download(url, signal, kind) {
     let status;
     try {
       const response = await fetch(url, { cache: "no-cache", signal });
@@ -54,7 +55,24 @@ export class SpriteSources {
       return await response.blob();
     } catch (cause) {
       const reason = status === undefined ? "" : ` (HTTP ${status})`;
-      throw new Error(`Couldn’t load animation sheet ${spriteSheetContext(url)}${reason}. Try again.`, { cause });
+      throw new Error(`Couldn’t load animation ${kind} ${spriteSheetContext(url)}${reason}. Try again.`, { cause });
     }
+  }
+}
+
+
+/** Validate the page table before any preparation or frame lookup can consume it. */
+export async function parseSpriteClip(blob, url) {
+  try {
+    const clip = JSON.parse(await blob.text());
+    if (!clip || Array.isArray(clip) || !Array.isArray(clip.pages) || !clip.pages.length
+      || !clip.pages.every((page) => page && typeof page.file === "string" && page.file.trim())
+      || !Array.isArray(clip.frames) || !clip.frames.length
+      || !clip.frames.every((frame) => frame && Number.isInteger(frame.page)
+        && frame.page >= 0 && frame.page < clip.pages.length))
+      throw new TypeError("Invalid sprite page table or frame reference");
+    return clip;
+  } catch (cause) {
+    throw new Error(`Couldn’t read animation metadata ${spriteSheetContext(url)}. Try again.`, { cause });
   }
 }
