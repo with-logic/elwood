@@ -75,6 +75,16 @@ async function advance(seconds) {
   }
 }
 
+function assertGesturePaints(own, name) {
+  for (let i = 0; i < 360 && own.bank.activeName !== name; i++) {
+    own.step(1 / 120);
+    own.paint(1 / 120);
+  }
+  assert.equal(own.bank.activeName, name);
+  assert.equal(own.pose().clip.name, name);
+  assert.ok(own.pose().page, "the prepared candidate activates as drawable artwork");
+}
+
 test("landing starts with the complete idle animation and never fetches videos", async () => {
   await scene.boot();
   assert.equal(scene.ready, true);
@@ -415,6 +425,7 @@ test("automatic moments wait for every sheet while the active idle keeps moving"
     await own.bank.preparationTail;
     own.step(1 / 120);
     assert.equal(task.sent, true, "the real Autonomy ready callback releases the complete moment");
+    assertGesturePaints(own, "wave");
   } finally {
     gate.resolve();
     await own.bank.preparationTail;
@@ -448,6 +459,7 @@ test("a manual gesture waits for all rotation sheets before it can start", async
     assert.equal(own.pressed.gesture, "wave");
     assert.equal(own.bank.animationReady("rotation"), true);
     assert.equal(own.bank.activeName, "idle", "request completion does not activate the candidate");
+    assertGesturePaints(own, "wave");
   } finally {
     gate.resolve();
     await request;
@@ -526,6 +538,7 @@ for (const cancelled of [false, true]) {
         assert.equal(own.bank.animationReady("wave"), true, "published input still owns a complete candidate");
         own.step(1 / 120);
         assert.equal(own.director.quiet, 0, "delivery starts the normal inactivity interval");
+        assertGesturePaints(own, "wave");
       }
     } finally {
       gate.resolve();

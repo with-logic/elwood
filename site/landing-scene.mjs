@@ -23,7 +23,8 @@ export class LandingScene {
     this.bank = new SpriteBank((error) => onError?.(error));
     this.world.canRender = (name, index) => !!this.bank.frame(name, index);
     this.director = new Autonomy({
-      ready: (name) => this.prepare(name),
+      ready: (name, task) => this.prepare(name, task),
+      onTaskEnd: (task) => this.cancelTaskPreparation(task),
       fits: (name) => this.performanceFits(name),
     });
     this.onReady = onReady;
@@ -117,21 +118,26 @@ export class LandingScene {
       this.onError?.(error);
     }
   }
-  prepare(name) {
+  prepare(name, task = null) {
     if (this.bank.animationReady(name)) return true;
     if (this.pendingPreparations.get(name)?.()) return false;
     const version = this.requestVersion;
-    const task = this.director.task;
-    const automatic = task?.name === name || `idle-${task?.direction}` === name;
     const current = () => version === this.requestVersion
-      && (!automatic || task === this.director.task);
+      && (!task || task === this.director.task);
     this.pendingPreparations.set(name, current);
-    this.bank.prepareAnimation(name, current)
-      .catch((error) => this.onError?.(error))
+    const preparation = this.bank.prepareAnimation(name, current);
+    this.automaticPreparation = task ? { task, generation: this.bank.preparationGeneration } : null;
+    preparation.catch((error) => this.onError?.(error))
       .finally(() => {
         if (this.pendingPreparations.get(name) === current) this.pendingPreparations.delete(name);
       });
     return false;
+  }
+  cancelTaskPreparation(task) {
+    const owner = this.automaticPreparation;
+    if (owner?.task !== task) return;
+    this.automaticPreparation = null;
+    if (owner.generation === this.bank.preparationGeneration) this.bank.cancelPreparation();
   }
   performanceFits(name) {
     const clip = this.bank.clips.get(name);

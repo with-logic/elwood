@@ -1,3 +1,4 @@
+/** Automatic movement and task-owned preparation (docs/design/landing.md). */
 const MOMENTS = [
   "thinking",
   "shrug",
@@ -29,19 +30,28 @@ const MOMENTS = [
   "blow-kiss",
 ];
 
+const PREPARATION_SECONDS = 30; // Complete clips include idle, rotation and every gesture sheet.
+
 export const NO_INPUT = Object.freeze({});
 
 export class Autonomy {
-  constructor({ random = Math.random, ready = () => true, fits = () => true } = {}) {
+  constructor({ random = Math.random, ready = () => true, fits = () => true, onTaskEnd = () => {} } = {}) {
     this.random = random;
     this.ready = ready;
     this.fits = fits;
+    this.onTaskEnd = onTaskEnd;
     this.mode = "auto";
     this.quiet = 0;
     this.task = { kind: "rest", remaining: 5 };
     this.lastMoment = null;
     this.settling = false;
     this.restingFor = 0;
+  }
+  get task() { return this.currentTask; }
+  set task(task) {
+    const previous = this.currentTask;
+    this.currentTask = task;
+    if (previous && previous !== task) this.onTaskEnd(previous);
   }
   between(low, high) {
     return low + this.random() * (high - low);
@@ -153,6 +163,10 @@ export class Autonomy {
       return NO_INPUT;
     }
     task.elapsed += dt;
+    if (task.kind !== "walk" && !task.sent && task.elapsed > PREPARATION_SECONDS) {
+      this.rest();
+      return NO_INPUT;
+    }
     if (task.kind === "walk") {
       task.jumpIn = Math.max(0, task.jumpIn - dt);
       if (p.mode === "hang") return { climbPressed: true };
@@ -177,12 +191,12 @@ export class Autonomy {
       };
     }
     if (task.kind === "face") {
-      if (!task.sent && this.ready(`idle-${task.direction}`)) {
+      if (!task.sent && this.ready(`idle-${task.direction}`, task)) {
         task.sent = true;
+        task.elapsed = 0;
         return { face: task.direction };
       }
       if (task.sent && !p.turn && task.elapsed > 1.4) this.rest();
-      if (!task.sent && task.elapsed > 8) this.rest();
       return NO_INPUT;
     }
     if (!task.sent) {
@@ -194,12 +208,12 @@ export class Autonomy {
           this.rest();
           return NO_INPUT;
         }
-        if (task.fits && this.ready(task.name)) {
+        if (task.fits && this.ready(task.name, task)) {
           task.sent = true;
+          task.elapsed = 0;
           return { gesture: task.name };
         }
       }
-      if (task.elapsed > 8) this.rest();
       return NO_INPUT;
     }
     if (p.gesture === task.name) {
