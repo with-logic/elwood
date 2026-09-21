@@ -41,7 +41,7 @@ Arm inspection uses 133 frames: source 0–60, 12 extra copies of frame 60 for a
 
 The front rotation uses one continuous left-to-front source sweep and its reflection for the other half. It no longer joins the source take’s ending pose to its beginning. Rear views retain their separate reviewed quarter-turn. Source pose blends remain short and use premultiplied alpha, with the tether aligned to the same tracked socket in both images.
 
-Load an action’s metadata and entry page with `SpriteBank.prepare(name)` before requesting it. The page controller already does this and discards stale asynchronous requests. Static held poses need one current image page; the hover uses the same bounded four-page cache as other animation. Both use the reduced resting paint cadence. Full source clips, 4K videos, native PNGs and the archive sprite player remain independent of the game’s hold behavior.
+`SpriteBank.prepare(name)` loads metadata and the entry page for callers that only need a starting pose. Gesture callers must use `SpriteBank.prepareAnimation(name)` before requesting playback; it prepares every page in the clip so the animation cannot pause for asset loading. The page controller owns and cancels stale asynchronous requests. Static held poses need one current image page, while the hover keeps its complete clip available. Both use the reduced resting paint cadence. Full source clips, 4K videos, native PNGs and the archive sprite player remain independent of the game’s hold behavior.
 
 ## Keyboard
 
