@@ -136,3 +136,35 @@ test("entry-page preparation does not claim failures for other automatic sheets"
   assert.equal(errors.length, 1);
   assert.equal(errors[0].message, "later sheet failed");
 });
+
+for (const state of ["air", "hang", "climb", "landing", "settle"]) {
+  test(`ignored gesture during ${state} releases delivered ownership`, async (t) => {
+    const { bank, scene, images } = fixture(t);
+    scene.world = new World();
+    scene.world.canRender = (name, index) => !!bank.frame(name, index);
+    scene.director.update = () => ({});
+    if (["landing", "settle"].includes(state)) scene.world.player[state] = 1;
+    else Object.assign(scene.world.player, { mode: state, y: 200 });
+    await scene.request({ gesture: "wave" });
+    scene.step(1 / 120);
+    assert.equal(scene.world.player.queuedAction, null);
+    assert.equal(bank.animations.deliveredOwner, null);
+    assert.ok(images.filter((image) => image.path.startsWith("wave/")).every((image) => image.closed === 1));
+  });
+}
+
+for (const [input, name] of [[{ gesture: "wave" }, "wave"], [{ face: "back" }, "idle-back"]]) {
+  test(`queued ${name} preparation survives another gesture's recovery`, async (t) => {
+    const { bank, scene } = fixture(t);
+    scene.world = new World();
+    scene.world.clips.cartwheel = { finish_before_next: true };
+    Object.assign(scene.world.player, { gesture: "cartwheel", gestureStage: "enter", animation: "cartwheel" });
+    scene.director.update = () => ({});
+    await scene.request(input);
+    const page = bank.frame(name, 0).page;
+    scene.step(1 / 120);
+    assert.deepEqual(scene.world.player.queuedAction, input);
+    assert.equal(bank.animations.deliveredOwner.name, name);
+    assert.equal(page.closed, 0);
+  });
+}

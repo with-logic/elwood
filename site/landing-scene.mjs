@@ -450,9 +450,13 @@ export class LandingScene {
         ? { axis: this.axis, climbHeld: this.climbHeld, sprint: this.sprint, ...this.pressed }
         : automatic,
     );
+    const requested = this.pressed.gesture ?? (this.pressed.face ? `idle-${this.pressed.face}` : null);
     this.pressed = NO_INPUT;
     const p = this.world.player;
-    this.bank.activateAnimation(p.turn?.target ?? p.animation);
+    const playing = p.turn?.target ?? p.animation;
+    this.bank.activateAnimation(playing);
+    const queued = p.queuedAction?.gesture ?? (p.queuedAction?.face ? `idle-${p.queuedAction.face}` : null);
+    if (requested && requested !== playing && requested !== queued) this.bank.cancelPreparation();
     if (wasAirborne && p.mode === "ground") this.markGround();
     if (this.lastMode !== this.director.mode) {
       this.lastMode = this.director.mode;
