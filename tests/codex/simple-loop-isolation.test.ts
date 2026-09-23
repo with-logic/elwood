@@ -9,11 +9,15 @@ afterEach(() => {
   resetFakes();
 });
 
-test("C-API-48 a due identical loop waits for swallowed caller recovery and completion", async () => {
+test.each([
+  false,
+  true,
+])("C-API-48 due loops wait through caller recovery and queued successor=%s", async (queued) => {
   installFakes();
   const cwd = tempDir();
   const facade = new CodexSession({ cwd });
   let pending: Promise<unknown> | undefined;
+  let successor: Promise<unknown> | undefined;
   try {
     const live = await facade.start();
     await becomeReady(live.elwoodSessionId, cwd);
@@ -26,6 +30,7 @@ test("C-API-48 a due identical loop waits for swallowed caller recovery and comp
       if (event.kind === "fired") fired = true;
     });
     pending = facade.send("check").catch((error: unknown) => error);
+    if (queued) successor = facade.send("successor").catch((error: unknown) => error);
     await vi.advanceTimersByTimeAsync(70_000);
     expect(send).toHaveBeenCalledOnce();
     const paint = async (text: string) => {
@@ -53,11 +58,32 @@ test("C-API-48 a due identical loop waits for swallowed caller recovery and comp
     expect(fired).toBe(false);
     await vi.advanceTimersByTimeAsync(2100);
     await expect(pending).resolves.toBe("");
+    if (queued) {
+      await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(3));
+      expect(fired).toBe(false);
+      let submitted = false;
+      void send.mock.results[2]!.value.then(() => {
+        submitted = true;
+      });
+      await vi.waitFor(() => expect(submitted).toBe(true));
+      await ptys[0]!.dispatchHook(live.elwoodSessionId, {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "codex-1",
+        cwd,
+        prompt: "successor",
+        turn_id: "successor-turn",
+      });
+      await paint("• Working (3s • esc to interrupt)");
+      await paint("■ Conversation interrupted");
+      await vi.advanceTimersByTimeAsync(2100);
+      await expect(successor).resolves.toBe("");
+    }
     await vi.waitFor(() => expect(fired).toBe(true));
-    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenCalledTimes(queued ? 3 : 2);
   } finally {
     vi.useRealTimers();
     await facade.close();
     await pending;
+    await successor;
   }
 });

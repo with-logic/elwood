@@ -6,6 +6,7 @@ import type { SendOptions } from "../images/types.ts";
 import { personaBoundary } from "../persona.ts";
 import { type ElwoodSessionStatus, terminalStatuses } from "../status-categories.ts";
 import type { TurnEvent } from "./events.ts";
+import { holdTurnLoops } from "./loop-hold.ts";
 import { runTurn } from "./turn.ts";
 import type { TurnQueue } from "./turn-queue.ts";
 import type { BoundarySignalReader, TurnOptions } from "./turn-types.ts";
@@ -38,21 +39,31 @@ export function capturedTurn(
   }
   // Start and reserve the slot at the call, so close joins this same launch.
   let starting: Promise<ElwoodAgentSession>;
+  let releaseLoops: () => void = () => undefined;
   try {
-    starting = facade.start();
+    starting = facade.start().then((session) => {
+      releaseLoops = holdTurnLoops(session);
+      return session;
+    });
+    // Startup may reject while this reserved turn still awaits its predecessor.
+    void starting.catch(() => undefined);
   } catch (error) {
     captured.release();
     return failedTurn(error);
   }
+  const release = () => {
+    captured.release();
+    releaseLoops();
+  };
   return queue.enqueue(async () => {
     try {
       const session = await starting;
       await personaBoundary(session);
       const turn = runTurn(session, prompt, { ...captured.options, readBoundarySignal });
-      void turn.boundary.then(captured.release);
+      void turn.boundary.then(release);
       return turn;
     } catch (error) {
-      captured.release();
+      release();
       throw error;
     }
   });
