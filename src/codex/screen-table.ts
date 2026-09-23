@@ -7,7 +7,8 @@
 import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
 import { codexWorkingScreen, codexWorkingTitle } from "./screen/working.ts";
-import { CodexUpdatePromptTracker, codexUpdatePromptVisible } from "./update-prompt.ts";
+import { codexUpdatePromptVisible } from "./update/recognition.ts";
+import { CodexUpdatePromptTracker } from "./update/tracker.ts";
 
 export { codexComposerClearance as codexTrustClearance } from "./screen/clearance.ts";
 

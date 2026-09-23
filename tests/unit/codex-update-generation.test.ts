@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
-import { CodexUpdatePromptTracker } from "../../src/codex/update-prompt.ts";
+import { CodexUpdatePromptTracker } from "../../src/codex/update/tracker.ts";
 import { emitSettledStartupOutcomes } from "../../src/core/startup/write.ts";
 
 const update = "Update available! 0.153.3 -> 0.153.4\n› 1. Update now\n  2. Skip";
