@@ -1,4 +1,5 @@
 /** Owns cached and pose-retained sprite resources (PRD §13; docs/design/landing.md). */
+import { SpriteAnimations } from "./sprite-animations.mjs";
 import { gameAssetUrl } from "./game-assets.mjs";
 import { SpriteDecoder } from "./sprite-decoder/index.mjs";
 import { releaseSpriteImage } from "./sprite-decoder/release.mjs";
@@ -9,6 +10,7 @@ export class SpriteBank {
   #evicted = new Set();
   constructor(onError) {
     this.decoder = new SpriteDecoder();
+    this.animations = new SpriteAnimations(this);
     this.clips = new Map();
     this.clipPromises = new Map();
     this.pages = new Map();
@@ -67,7 +69,7 @@ export class SpriteBank {
         const oldest = this.pages.keys().next().value;
         const evicted = this.pages.get(oldest);
         this.pages.delete(oldest);
-        if (this.#retained.has(evicted)) this.#evicted.add(evicted);
+        if (this.#retained.has(evicted) || this.animations.owns(evicted)) this.#evicted.add(evicted);
         else releaseSpriteImage(evicted);
       }
       return image;
@@ -86,12 +88,30 @@ export class SpriteBank {
     return clip;
   }
 
+  prepareAnimation(name) {
+    if (this.disposed) return Promise.reject(new Error("Sprite bank is disposed."));
+    return this.animations.prepare(name);
+  }
+
+  publishAnimation(name) { this.animations.publish(name); }
+  activateAnimation(name) { this.animations.activate(name); }
+  cancelAnimation() { this.animations.cancel(); }
+
+  releaseAnimationPage(image) {
+    if (this.animations.owns(image) || [...this.pages.values()].includes(image)) return;
+    if (this.#retained.has(image)) this.#evicted.add(image);
+    else {
+      this.#evicted.delete(image);
+      releaseSpriteImage(image);
+    }
+  }
+
   /** Replace both pose owners atomically; rendering borrows their pages synchronously. */
   retainPoses(...poses) {
     if (this.disposed) return;
     this.#retained = new Set(poses.filter(Boolean).map((pose) => pose.page));
     for (const page of this.#evicted) {
-      if (this.#retained.has(page)) continue;
+      if (this.#retained.has(page) || this.animations.owns(page)) continue;
       this.#evicted.delete(page);
       releaseSpriteImage(page);
     }
@@ -100,6 +120,7 @@ export class SpriteBank {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.animations.dispose();
     for (const page of new Set([...this.pages.values(), ...this.#evicted])) releaseSpriteImage(page);
     this.pages.clear();
     this.#retained.clear();
@@ -119,16 +140,18 @@ export class SpriteBank {
     }
     const frame = clip.frames[Math.min(index, clip.frames.length - 1)];
     const key = `${name}/${frame.page}`;
-    const page = this.pages.get(key);
+    const page = this.animations.page(key) ?? this.pages.get(key);
     if (!page) {
       this.loadPage(name, frame.page).catch(this.#onError);
       return null;
     }
-    this.pages.delete(key);
-    this.pages.set(key, page);
+    if (this.pages.get(key) === page) {
+      this.pages.delete(key);
+      this.pages.set(key, page);
+    }
     const nextPage = clip.frames[Math.min(index + 16, clip.frames.length - 1)].page;
     const nextKey = `${name}/${nextPage}`;
-    if (nextPage !== frame.page && !this.pages.has(nextKey) && !this.pendingPages.has(nextKey))
+    if (nextPage !== frame.page && !this.animations.page(nextKey) && !this.pages.has(nextKey) && !this.pendingPages.has(nextKey))
       this.loadPage(name, nextPage).catch(this.#onError);
     return { clip, frame, page };
   }

@@ -227,6 +227,7 @@ export class LandingScene {
   }
   interact() {
     this.director.interact();
+    this.bank.cancelAnimation();
     this.requestVersion++;
     this.pauses.delete("reduced");
     this.start();
@@ -237,10 +238,16 @@ export class LandingScene {
     const version = this.requestVersion;
     const name = input.gesture ?? (input.face ? `idle-${input.face}` : null);
     try {
-      if (name) await this.bank.prepare(name);
-      if (version === this.requestVersion) this.pressed = { ...this.pressed, ...input };
+      this.preparingRequestVersion = version;
+      if (name && !await this.bank.prepareAnimation(name)) return;
+      if (version === this.requestVersion) {
+        if (name) this.bank.publishAnimation(name);
+        this.pressed = { ...this.pressed, ...input };
+      }
     } catch (error) {
-      this.onError?.(error);
+      if (version === this.requestVersion) this.onError?.(error);
+    } finally {
+      if (this.preparingRequestVersion === version) this.preparingRequestVersion = null;
     }
   }
   clearInput() {
@@ -248,6 +255,7 @@ export class LandingScene {
     this.climbHeld = false;
     this.sprint = false;
     this.pressed = NO_INPUT;
+    this.bank.cancelAnimation();
     this.requestVersion++;
   }
   get dragging() {
@@ -428,7 +436,8 @@ export class LandingScene {
       this.world.player.animationTime += dt;
       return;
     }
-    const active = this.axis !== 0 || this.climbHeld || this.pressed !== NO_INPUT;
+    const active = this.axis !== 0 || this.climbHeld || this.pressed !== NO_INPUT
+      || this.preparingRequestVersion === this.requestVersion;
     const automatic = this.director.update(dt, this.world, this.visibleBounds, active);
     const wasAirborne = this.world.player.mode !== "ground";
     this.world.update(
@@ -502,6 +511,7 @@ export class LandingScene {
           : null,
       );
     }
+    this.bank.activateAnimation(p.animation);
     const positioned = this.alignDrag(positionPose(pose, p));
     const seam =
       p.animation === "rotation" &&
