@@ -8,12 +8,12 @@
  * sites leaves that protection in place and this passes for the wrong reason.
  */
 import { expect, test } from "vitest";
+import { codexUpdatePromptVisible } from "../../src/codex/update/recognition.ts";
 import {
   codexUpdateChoiceIdentity,
   settledFrameKeepsChoice,
 } from "../../src/codex/update-identity.ts";
 import {
-  codexUpdatePromptVisible,
   guardedCodexAutomationWrite,
   writeCodexUpdateSkip,
 } from "../../src/codex/update-prompt.ts";

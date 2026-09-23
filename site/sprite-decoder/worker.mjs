@@ -7,16 +7,6 @@ async function decode({ id, blob }) {
   let image;
   try {
     image = await createImageBitmap(blob);
-    if (typeof OffscreenCanvas === "function") {
-      const canvas = new OffscreenCanvas(image.width, image.height);
-      const context = canvas.getContext("2d");
-      if (context && typeof canvas.transferToImageBitmap === "function") {
-        context.drawImage(image, 0, 0);
-        const raster = canvas.transferToImageBitmap();
-        image.close();
-        image = raster;
-      }
-    }
     globalThis.postMessage({ id, image }, [image]);
     image = undefined;
   } catch (cause) {
@@ -27,7 +17,7 @@ async function decode({ id, blob }) {
   }
 }
 
-// Only one full atlas owns decoded pixels and rasterization buffers at a time.
+// Bound full-atlas decoding to one request at a time.
 let tail = Promise.resolve();
 globalThis.addEventListener("message", ({ data }) => {
   const request = tail.then(() => decode(data));
