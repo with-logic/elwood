@@ -36,6 +36,7 @@ function canvasContext() {
       measureText: () => ({ width: 220, actualBoundingBoxAscent: 220 }),
       getTransform: () => ({ e: 0, f: 0 }),
       drawImage(image, ...numbers) {
+        assert.ok(!image.closed, "A rendered sprite must still be owned");
         assert.ok(numbers.every(Number.isFinite), "Canvas coordinates must be finite");
         if (image.src) {
           drawnImage = image.src;
@@ -139,11 +140,17 @@ globalThis.fetch = async (input) => {
     return new Response("", { status: 404 });
   }
 };
+const decodedImages = [];
 globalThis.Image = class {
+  closed = 0;
+  close() {
+    this.closed++;
+  }
   async decode() {
     const bytes = await readFile(fileURLToPath(this.src));
     assert.equal(bytes.subarray(0, 4).toString(), "RIFF");
     assert.equal(bytes.subarray(8, 12).toString(), "WEBP");
+    decodedImages.push(this);
   }
 };
 function key(type, code, tagName = "CANVAS", shiftKey = false) {
@@ -208,8 +215,7 @@ test("page boot, real asset loads, keyboard directions, pause and reset work tog
   await advance(25);
   assert.match(drawnImage, /\/idle-left\//);
   key("keydown", "KeyF");
-  await advance(36);
-  assert.match(drawnImage, /\/idle-front\//);
+  await advanceUntilImage(/\/idle-front\//);
   key("keydown", "KeyB");
   await advanceUntilImage(/\/idle-back\//);
   facingButtons[0].onclick();
@@ -516,4 +522,13 @@ test("the retired moonwalk has no gameplay shortcut or manifest entry", async ()
     buttons.some((button) => button.dataset.gesture === "moonwalk"),
     false,
   );
+});
+
+test("workshop keeps pages for bfcache and closes them on permanent departure", async () => {
+  listeners.get("pagehide")({ persisted: true });
+  assert.ok(decodedImages.some((image) => image.closed === 0));
+  listeners.get("pagehide")({ persisted: false });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(decodedImages.every((image) => image.closed === 1));
+  assert.equal(pendingFrame, null);
 });

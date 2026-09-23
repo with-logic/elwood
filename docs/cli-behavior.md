@@ -576,7 +576,9 @@ Version-coupled behavior learned here:
   composer and visible cursor in one completed render prove clearance, with no
   working-title signal. The title may be absent or an ordinary directory name. A
   partial repaint or bare caret cannot release it. Specific trust rules keep their
-  own labels; otherwise the retained hold reports `codex-unidentified-dialog`.
+  own labels; otherwise an unowned retained hold reports `codex-unidentified-dialog`.
+  Pending automated trust owns its partial repaints and suppresses that generic
+  label until its input hold ends.
 - Option labels drift by version. Older codex (0.132/0.133) rendered a numbered
   dialog ("1. Update now / 2. Skip / 3. Skip until next version"). In the installed
   0.149.1 binary, the upgrade notice strings extracted from the native binary read
