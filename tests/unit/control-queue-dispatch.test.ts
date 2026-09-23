@@ -22,6 +22,8 @@ test("C-ATTN-02 only caller turns report physical dispatch, independently of tur
   expect(dispatched).toHaveBeenCalledTimes(1);
   queue.markReady();
   await queue.send("loop", "message", undefined, { origin: { kind: "loop", loopId: "l1" } });
+  // The loop delivery consumes its commit before reentrant running observers.
+  await Promise.resolve();
   expect(intent).toHaveBeenLastCalledWith({ kind: "loop", loopId: "l1" });
   expect(intent).toHaveBeenCalledTimes(2);
   expect(dispatched).toHaveBeenCalledTimes(1);

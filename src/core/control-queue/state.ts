@@ -38,15 +38,20 @@ export abstract class ControlQueueState {
   close(): void {
     this.closed = true;
     const error = this.stoppedError();
-    this.submitAbort?.abort(error);
     const settling = this.inFlight;
-    this.inFlight = undefined;
-    this.bypassable = 0;
+    this.cancellation.clear();
     if (settling) {
       this.cancellation.remove(settling);
-      settling.reject(error);
+      // Retain inFlight until physical settlement. Close owns the stopped error
+      // whether that write later resolves or rejects, overriding prior cancellation.
+      if (settling.settleAfterWrite) this.cancellation.mark(settling, error);
+      else {
+        this.inFlight = undefined;
+        settling.reject(error);
+      }
     }
-    this.cancellation.clear();
+    this.submitAbort?.abort(error);
+    this.bypassable = 0;
     for (const operation of this.queue.splice(0)) {
       this.cancellation.remove(operation);
       operation.reject(error);
