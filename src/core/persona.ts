@@ -3,9 +3,16 @@
  * Implements PRD §5.1, §5.5, and C-API-21.
  */
 
-type MessageTarget = {
-  sendMessage(message: string): Promise<void>;
-};
+import type { ElwoodAgentSession } from "./agent-session.ts";
+import { terminalStatuses } from "./status-categories.ts";
+
+type MessageTarget = Pick<ElwoodAgentSession, "sendMessage" | "status" | "on">;
+const personas = new WeakMap<object, Promise<void>>();
+
+/** Ergonomic collection starts after startup persona input has finished or been discarded. */
+export function personaBoundary(session: object): Promise<void> | undefined {
+  return personas.get(session);
+}
 
 export function queuePersonaMessage<T extends MessageTarget>(
   session: T,
@@ -19,6 +26,27 @@ export function queuePersonaMessage<T extends MessageTarget>(
   // reporting channel here either and would otherwise surface as an unhandled
   // rejection that terminates the host, so it is contained the same way; the
   // failure remains observable through the session's own status/warning events.
-  if (persona !== undefined) void session.sendMessage(persona).catch(() => undefined);
+  if (persona !== undefined) {
+    // Wait for submission first: initial readiness releases the persona, not its caller.
+    const boundary = session
+      .sendMessage(persona)
+      .then(() => settledPersona(session))
+      .catch(() => undefined);
+    personas.set(session, boundary);
+    void boundary.then(() => personas.delete(session));
+  }
   return session;
+}
+
+function settledPersona(session: MessageTarget): Promise<void> {
+  const settled = () => session.status === "ready" || terminalStatuses.has(session.status);
+  if (settled()) return Promise.resolve();
+  // No turn deadline: persona work can take arbitrarily long. Shutdown releases the waiter.
+  return new Promise((resolve) => {
+    const off = session.on("status", () => {
+      if (!settled()) return;
+      off();
+      resolve();
+    });
+  });
 }

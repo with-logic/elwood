@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Keep startup persona responses out of ergonomic caller turns, including when
+  the persona and caller submit identical text.
+
 - Retry an ignored Codex prompt Enter when the staged paste contains stripped
   control characters, tabs, or carriage-return line breaks.
 
