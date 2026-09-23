@@ -49,3 +49,29 @@ test.each([
     await session.stop();
   }
 });
+
+test("C-CODEX-12 a clean native update answers once after its composer returns", async () => {
+  installFakes();
+  const cwd = tempDir();
+  const session = await startCodex({ cwd });
+  const answered: string[] = [];
+  session.on("activity", (event) => {
+    if (event.kind === "startup_prompt") answered.push(event.label);
+  });
+  try {
+    await becomeReady(session.elwoodSessionId, cwd);
+    vi.useFakeTimers();
+    ptys[0]!.emitData(
+      "\u001b[2J\u001b[HUpdate available! 0.155.1 -> 0.156.1\r\n1. Update now\r\n2. Skip",
+    );
+    await vi.advanceTimersByTimeAsync(50);
+    expect(ptys[0]!.writes).toEqual(["2"]);
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexSmallComposer)}`);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(answered).toEqual(["update"]);
+    expect(session.status).toBe("ready");
+  } finally {
+    vi.useRealTimers();
+    await session.stop();
+  }
+});

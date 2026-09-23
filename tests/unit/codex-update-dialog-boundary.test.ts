@@ -3,7 +3,10 @@ import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
 import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
 import { emptyUpdateEvidence, withUpdateFrameEvidence } from "../../src/codex/update/evidence.ts";
-import { codexUpdatePromptVisible } from "../../src/codex/update/recognition.ts";
+import {
+  codexUpdatePromptVisible,
+  isSafeUpdateContinuation,
+} from "../../src/codex/update/recognition.ts";
 import { safeUpdateOption } from "../../src/codex/update/selection.ts";
 import { CodexUpdatePromptTracker } from "../../src/codex/update/tracker.ts";
 import { codexOptionStillSafe } from "../../src/codex/update-prompt.ts";
@@ -101,4 +104,9 @@ test("C-CODEX-12 repeated identical banners preserve one contiguous choice block
 test("C-CODEX-22 an unindented replacement cannot continue a wrapped update command", () => {
   const frame = `${banner}\n1. Update now (runs \`install |\nConfirm archive removal?\n2. Skip`;
   expect(codexOptionStillSafe(frame, "2")).toBe(false);
+});
+
+test("C-CODEX-12 a banner is not an option-only continuation, and Later alone lacks provenance", () => {
+  expect(isSafeUpdateContinuation(`${banner}\n${options}`)).toBe(false);
+  expect(codexOptionStillSafe("  2. Later", "2")).toBe(false);
 });
