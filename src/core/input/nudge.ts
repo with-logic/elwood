@@ -24,7 +24,8 @@ export async function nudgePastedPrompt(
     await waitForInput(pasteNudgeDelayMs, signal);
     // Recheck settled native output: a newly received dialog may not yet be rendered.
     const unsafe = await writeUnsafe(terminal, guard, signal);
-    // Cancellation protects successor drafts: staged-chip markers are not prompt-specific.
+    // Queued submissions and raw caller input revoke recovery ownership.
+    // Staged-chip markers cannot distinguish their drafts from the original paste.
     throwIfInputAborted(signal);
     // A dialog holds recovery without consuming its bounded Enter attempts.
     if (unsafe) continue;

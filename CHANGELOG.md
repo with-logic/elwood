@@ -16,6 +16,14 @@ back each entry are listed in `prd/14-conformance.md`.
   the draft, including direct terminal and xterm input.
 - Preserve cancellation when a queued submission's pending physical write later
   succeeds, so the cancelled operation cannot report success.
+
+- Report an automated Codex update skip as answered only after verified native
+  composer clearance; completed writes without a reader or into replaced dialogs
+  settle quietly without false startup success.
+
+- Recognize Codex 0.156.1 capitalized model footers when confirming an empty
+  native composer, so cancelled draft cleanup can release queued successor input.
+
 - Recognize Codex 0.156.1 folder-access trust prompts, keeping queued input held
   and approving only the known choice when `autotrust` is enabled.
 

@@ -70,7 +70,8 @@ export function sanitizePasteText(text: string): string {
  * escape paste mode into live keystrokes (§5.3).
  *
  * Ordinary submissions resolve after the first awaited Enter; bounded nudges
- * continue in the background. Turn replays retain draft ownership until their
+ * continue in the background until a later queued submission or raw caller input
+ * revokes recovery ownership. Turn replays retain draft ownership until their
  * nudges settle and the guard observes that the original draft is no longer
  * staged. Exhausted or cancelled replays retain cleanup for the next operation.
  */
@@ -93,9 +94,9 @@ async function writePastedPrompt(
   // Sanitize: caller/model text is data, so an embedded end sentinel or control
   // byte must not escape paste mode into live keystrokes (§5.3).
   const payload = sanitizePasteText(prompt);
-  const rawInput = stageComposer(terminal);
+  const rawInputSignal = stageComposer(terminal);
   const nudgeSignal =
-    rawInput && signal ? AbortSignal.any([rawInput, signal]) : (rawInput ?? signal);
+    rawInputSignal && signal ? AbortSignal.any([rawInputSignal, signal]) : (rawInputSignal ?? signal);
   await terminal.sendInput(`\u001b[200~${payload}\u001b[201~`);
   try {
     await waitForInput(settleDelayMs, signal);
@@ -111,7 +112,7 @@ async function writePastedPrompt(
     const nudges = nudgePastedPrompt(terminal, payload, turnReplay, guard, nudgeSignal).catch(
       (error: unknown) => {
         // Raw edits revoke automation without borrowing the model picker's error.
-        if (rawInput?.aborted && !signal?.aborted) return false;
+        if (rawInputSignal?.aborted && !signal?.aborted) return false;
         throw error;
       },
     );
