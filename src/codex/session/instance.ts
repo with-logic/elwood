@@ -139,9 +139,9 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     return sessionWaitForActivity(this, match, timeoutMs);
   }
   // Codex has no staged chip; the composer still shows the paste's last line.
-  protected stagedPaste(screen: string, prompt: string): boolean {
+  protected stagedPaste(screen: string, payload: string): boolean {
     // Native pasted tabs render as one space; CR and LF each start a new row.
-    const lastLine = prompt
+    const lastLine = payload
       .replaceAll("\t", " ")
       .trim()
       .split(/[\r\n]/)
