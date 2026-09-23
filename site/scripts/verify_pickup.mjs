@@ -1,7 +1,8 @@
 // Optional CPU rendering check. Pass the path to @napi-rs/canvas; never loaded by the site.
 
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
+import { resolveObjectURL } from "node:buffer";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { LandingScene } from "../landing-scene.mjs";
 import { socketPosition } from "../sprite-pose.mjs";
@@ -22,7 +23,8 @@ globalThis.Image = class extends Image {
     this.location = value;
   }
   async decode() {
-    const bytes = await readFile(new URL(this.location, root));
+    const blob = resolveObjectURL(this.location);
+    const bytes = blob ? Buffer.from(await blob.arrayBuffer()) : await readFile(new URL(this.location, root));
     await new Promise((resolve, reject) => {
       this.onload = resolve;
       this.onerror = reject;
@@ -77,7 +79,7 @@ await scene.bank.prepare("pickup-wriggle");
 scene.beginDrag({ x: 150, y: 540 });
 scene.moveDrag({ x: 150, y: 460 });
 const clip = scene.bank.clips.get("pickup-wriggle");
-let _checked = 0;
+let checked = 0;
 for (const facing of [-1, 1]) {
   scene.world.player.facing = facing;
   for (let frame = 0; frame < clip.frames.length; frame++) {
@@ -90,7 +92,7 @@ for (const facing of [-1, 1]) {
     const socket = socketPosition(scene.pose(), unit);
     assert.ok(Math.hypot(socket.x - scene.drag.socket.x, socket.y - scene.drag.socket.y) < 1e-8);
     assert.ok(scene.bank.pages.size <= 4);
-    _checked++;
+    checked++;
   }
 }
 scene.world.player.facing = 1;
@@ -117,4 +119,6 @@ for (let i = 0; i < 480 && scene.world.player.gesture; i++) {
 }
 assert.equal(scene.world.player.gesture, null);
 await shot(8, "Recovered / retained orientation");
+await mkdir(new URL("docs/reviews/", root), { recursive: true });
 await writeFile(new URL("docs/reviews/new-motions.png", root), sheet.toBuffer("image/png"));
+console.log(`Verified ${checked} pickup poses and 9 CPU-rendered scenes; wrote docs/reviews/new-motions.png.`);
