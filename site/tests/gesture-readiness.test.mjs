@@ -26,8 +26,8 @@ function fixture(t) {
     });
     const name = path.split("/")[0];
     if (path.endsWith("clip.json")) return Response.json({
-      name, pages: Array.from({ length: name === "wave" ? 6 : 2 }, (_, i) => ({ file: `${i}.webp` })),
-      frames: Array.from({ length: name === "wave" ? 6 : 2 }, (_, i) => ({ page: i })),
+      name, fps: 24, pages: Array.from({ length: name === "wave" ? 6 : 2 }, (_, i) => ({ file: `${i}.webp` })),
+      frames: Array.from({ length: name === "wave" ? 6 : 2 }, (_, i) => ({ page: i, x: 0, y: 0, w: 1, h: 1, anchor: { x: 0, y: 0 }, socket: { x: 0, y: 0 } })),
     });
     return new Response(path);
   };

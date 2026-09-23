@@ -1,4 +1,5 @@
 /** Own complete explicit animations until playback switches (PRD §13; docs/design/landing.md). */
+import { validateSpriteClip } from "./sprite-metadata.mjs";
 import { gameAssetUrl } from "./game-assets.mjs";
 import { SpriteDecoder } from "./sprite-decoder/index.mjs";
 
@@ -74,6 +75,7 @@ export class SpriteAnimations {
         const clip = this.bank.clips.get(clipName)
           ?? await (await fetchAsset(`${clipName}/clip.json`)).json();
         signal.throwIfAborted();
+        validateSpriteClip(clip, clipName);
         owner.clips.set(clipName, clip);
         for (const [index, page] of clip.pages.entries()) {
           signal.throwIfAborted();
