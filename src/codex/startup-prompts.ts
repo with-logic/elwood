@@ -11,7 +11,8 @@ import type { ElwoodWarningEvent } from "../core/types.ts";
 import { codexTrustClearance } from "./screen-table.ts";
 import { type CodexBannerWarning, codexWarningsFromText } from "./startup-warnings.ts";
 import { safeUpdateOption } from "./update/selection.ts";
-import { CodexUpdatePromptTracker, writeCodexUpdateSkip } from "./update-prompt.ts";
+import { CodexUpdatePromptTracker } from "./update/tracker.ts";
+import { writeCodexUpdateSkip } from "./update-prompt.ts";
 
 export { codexWarningsFromText } from "./startup-warnings.ts";
 

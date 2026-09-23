@@ -53,13 +53,18 @@ export function readRenderedFrame(
   observers: RenderedObservers,
   frame: RenderedFrame,
   trustBlock?: string,
+  trustInputBlocking = false,
 ): ScreenFactReading {
   // Classify the frame once; turn and attention watchers share the reading, and the
   // reading is returned so the caller can drive resume-readiness off the same facts.
-  const reading = readScreenFacts(observers.table, frame);
-  if (trustBlock === undefined) return reading;
+  // Pending automation owns partial trust repaints, but current human gates still win.
+  const reading = readScreenFacts(
+    observers.table,
+    frame,
+    trustInputBlocking || trustBlock !== undefined ? observers.table.trustOwnedFallback : undefined,
+  );
+  if (trustBlock === undefined || reading.facts.blocking_prompt_visible) return reading;
   const id = `${observers.agent}-${trustBlock}-prompt`;
-  if (reading.matched.some((match) => match.id === id)) return reading;
   return {
     facts: { ...reading.facts, blocking_prompt_visible: true },
     matched: [
