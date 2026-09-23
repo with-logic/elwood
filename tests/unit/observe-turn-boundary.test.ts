@@ -40,7 +40,7 @@ test("C-API-48 initial ready is ignored, then a delayed Stop oracle gates transc
   expect(session.submissions).toBe(0);
 });
 
-test("C-API-48 tool content before submission resolves still re-arms the quiet fallback", async () => {
+test("C-API-48 tool content after ready re-arms the quiet fallback", async () => {
   const { session, observer, settled } = setup();
   session.emit("activity", activity({ kind: "tool_call" }));
   session.emit("status", { status: "ready" });
