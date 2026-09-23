@@ -1,7 +1,9 @@
 /** Render cadence must not multiply sprite-loading consumers, errors or retries (PRD §13). */
+import { resolveObjectURL } from "node:buffer";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { SpriteBank } from "../sprite-bank.mjs";
+import { fetchSpriteMetadata } from "./fixtures/sprite-fetch.mjs";
 
 const frame = { x: 0, y: 0, w: 1, h: 1, anchor: { x: 0, y: 0 }, socket: { x: 0, y: 0 } };
 const clip = { fps: 24, pages: [{ file: "0.webp" }, { file: "1.webp" }], frames: [{ ...frame, page: 0 }, { ...frame, page: 1 }] };
@@ -11,7 +13,7 @@ function fixture(t) {
   t.after(() => Object.assign(globalThis, original));
   const errors = [];
   const bank = new SpriteBank((error) => errors.push(error));
-  globalThis.fetch = async () => new Response(JSON.stringify(clip));
+  fetchSpriteMetadata(async () => new Response(JSON.stringify(clip)));
   globalThis.Image = class { async decode() {} };
   return { bank, errors };
 }
@@ -23,7 +25,7 @@ test("stalled metadata and entry sheet each retain one frame-driven consumer", a
   const { bank, errors } = fixture(t);
   const metadata = Promise.withResolvers();
   const sheet = Promise.withResolvers();
-  globalThis.fetch = () => metadata.promise;
+  fetchSpriteMetadata(() => metadata.promise);
   globalThis.Image = class { decode() { return sheet.promise; } };
   let metadataConsumers = 0;
   let pageConsumers = 0;
@@ -49,10 +51,10 @@ test("metadata failure reports once, stops paint retries, and explicit preparati
   const { bank, errors } = fixture(t);
   let requests = 0;
   let failed = true;
-  globalThis.fetch = async () => {
+  fetchSpriteMetadata(async () => {
     requests++;
     return failed ? new Response("", { status: 503 }) : new Response(JSON.stringify(clip));
-  };
+  });
   paints(bank);
   await settle();
   assert.equal(errors.length, 1);
@@ -79,7 +81,7 @@ for (const index of [0, 1]) {
     let failed = true;
     globalThis.Image = class {
       async decode() {
-        if (new URL(this.src).pathname.endsWith(`/${index}.webp`)) {
+        if (new URL(await resolveObjectURL(this.src).text()).pathname.endsWith(`/${index}.webp`)) {
           attempts++;
           if (failed) throw new Error("bad sheet");
         }
@@ -105,7 +107,7 @@ for (const index of [0, 1]) {
 test("explicit preparation resets only the requested animation's failed assets", async (t) => {
   const { bank, errors } = fixture(t);
   let requests = 0;
-  globalThis.fetch = async () => { requests++; return new Response("", { status: 503 }); };
+  fetchSpriteMetadata(async () => { requests++; return new Response("", { status: 503 }); });
   paints(bank, 0, "wave");
   paints(bank, 0, "bow");
   await settle();
@@ -120,7 +122,7 @@ test("explicit preparation resets only the requested animation's failed assets",
 test("automatic readiness checks share loading and stop after failure", async (t) => {
   const { bank, errors } = fixture(t);
   let requests = 0;
-  globalThis.fetch = async () => { requests++; return new Response("", { status: 503 }); };
+  fetchSpriteMetadata(async () => { requests++; return new Response("", { status: 503 }); });
   for (let i = 0; i < 1000; i++) assert.equal(bank.ensureEntryPage("wave"), false);
   await settle();
   assert.equal(requests, 1);
@@ -128,7 +130,7 @@ test("automatic readiness checks share loading and stop after failure", async (t
   for (let i = 0; i < 1000; i++) assert.equal(bank.ensureEntryPage("wave"), false);
   await settle();
   assert.equal(requests, 1);
-  globalThis.fetch = async () => new Response(JSON.stringify(clip));
+  fetchSpriteMetadata(async () => new Response(JSON.stringify(clip)));
   await bank.prepare("wave");
   assert.equal(bank.ensureEntryPage("wave"), true);
 });

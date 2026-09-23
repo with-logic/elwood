@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { SpriteBank } from "../sprite-bank.mjs";
+import { fetchSpriteMetadata } from "./fixtures/sprite-fetch.mjs";
 
 const frame = { page: 0, x: 0, y: 0, w: 1, h: 1, anchor: { x: 0, y: 0 }, socket: { x: 0, y: 0 } };
 const clip = { fps: 24, pages: [{ file: "0.webp" }], frames: [frame] };
@@ -20,7 +21,7 @@ for (const malformed of [
     t.after(() => Object.assign(globalThis, original));
     let calls = 0, failed = true;
     const errors = [];
-    globalThis.fetch = async () => { calls++; return Response.json(failed ? malformed : clip); };
+    fetchSpriteMetadata(async () => { calls++; return Response.json(failed ? malformed : clip); });
     globalThis.Image = class { async decode() {} };
     const bank = new SpriteBank((error) => errors.push(error));
     for (let batch = 0; batch < 3; batch++) {

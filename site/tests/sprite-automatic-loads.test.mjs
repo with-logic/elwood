@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { LandingScene } from "../landing-scene.mjs";
 import { SpriteBank } from "../sprite-bank.mjs";
+import { fetchSpriteMetadata } from "./fixtures/sprite-fetch.mjs";
 
 const clip = { fps: 24, pages: [{ file: "0.webp" }], frames: [{ page: 0, x: 0, y: 0, w: 1, h: 1, anchor: { x: 0, y: 0 }, socket: { x: 0, y: 0 } }] };
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -11,7 +12,7 @@ function fixture(t) {
   t.after(() => Object.assign(globalThis, original));
   const errors = [];
   const bank = new SpriteBank((error) => errors.push(error));
-  globalThis.fetch = async () => new Response(JSON.stringify(clip));
+  fetchSpriteMetadata(async () => new Response(JSON.stringify(clip)));
   globalThis.Image = class { async decode() {} };
   return { bank, errors };
 }
@@ -22,7 +23,7 @@ for (const stage of ["metadata", "page"]) {
       const { bank, errors } = fixture(t);
       const gate = Promise.withResolvers();
       let calls = 0;
-      if (stage === "metadata") globalThis.fetch = () => { calls++; return gate.promise; };
+      if (stage === "metadata") fetchSpriteMetadata(() => { calls++; return gate.promise; });
       else {
         bank.clips.set("wave", clip);
         globalThis.Image = class { decode() { calls++; return gate.promise; } };
@@ -57,7 +58,7 @@ test("automatic landing fit probes latch failed metadata and never decode entry 
   scene.world.clips.wave = {};
   let requests = 0;
   let decoded = 0;
-  globalThis.fetch = async () => { requests++; return new Response("", { status: 503 }); };
+  fetchSpriteMetadata(async () => { requests++; return new Response("", { status: 503 }); });
   globalThis.Image = class { async decode() { decoded++; } };
   for (let batch = 0; batch < 5; batch++) {
     for (let i = 0; i < 1000; i++) assert.equal(scene.performanceFits("wave"), null);
@@ -66,7 +67,7 @@ test("automatic landing fit probes latch failed metadata and never decode entry 
   assert.equal(requests, 1);
   assert.equal(errors.length, 1);
   assert.equal(decoded, 0);
-  globalThis.fetch = async () => { requests++; return new Response(JSON.stringify(clip)); };
+  fetchSpriteMetadata(async () => { requests++; return new Response(JSON.stringify(clip)); });
   await scene.bank.prepare("wave");
   assert.equal(typeof scene.performanceFits("wave"), "boolean");
   assert.equal(requests, 2);

@@ -1,11 +1,8 @@
 /** On-demand sprite ownership and retry control (site/docs/design/landing.md; PRD §13). */
 import { validateSpriteClip } from "./sprite-metadata.mjs";
+import { SpriteDecoder } from "./sprite-decoder/index.mjs";
+import { releaseSpriteImage } from "./sprite-decoder/release.mjs";
 import { gameAssetUrl } from "./game-assets.mjs";
-
-function releasePage(page) {
-  if (typeof page.close === "function") page.close();
-  else page.removeAttribute?.("src");
-}
 
 export class SpriteBank {
   #onError;
@@ -14,6 +11,7 @@ export class SpriteBank {
   #automaticLoads = new Map();
   #failed = new Set();
   constructor(onError) {
+    this.decoder = new SpriteDecoder();
     this.clips = new Map();
     this.clipPromises = new Map();
     this.pages = new Map();
@@ -61,25 +59,23 @@ export class SpriteBank {
     const promise = (async () => {
       const clip = await this.load(name);
       if (this.disposed) throw new Error("Sprite bank is disposed.");
-      const image = new Image();
-      let cached = false;
-      try {
-        image.src = gameAssetUrl(`${name}/${clip.pages[index].file}`).href;
-        await image.decode();
-        if (this.disposed) throw new Error("Sprite bank is disposed.");
-        this.#failed.delete(key);
-        this.pages.set(key, image);
-        cached = true;
-      } finally {
-        if (!cached) releasePage(image);
+      const response = await fetch(gameAssetUrl(`${name}/${clip.pages[index].file}`));
+      if (!response.ok)
+        throw new Error(`Couldn’t load ${name}. Check the local server and try again.`);
+      const image = await this.decoder.decode(await response.blob());
+      if (this.disposed) {
+        releaseSpriteImage(image);
+        throw new Error("Sprite bank is disposed.");
       }
+      this.#failed.delete(key);
+      this.pages.set(key, image);
       // Evicted pages may still belong to the current or outgoing pose.
       while (this.pages.size > 4) {
         const oldest = this.pages.keys().next().value;
         const evicted = this.pages.get(oldest);
         this.pages.delete(oldest);
         if (this.#retained.has(evicted)) this.#evicted.add(evicted);
-        else releasePage(evicted);
+        else releaseSpriteImage(evicted);
       }
       return image;
     })();
@@ -147,14 +143,14 @@ export class SpriteBank {
     for (const page of this.#evicted) {
       if (this.#retained.has(page)) continue;
       this.#evicted.delete(page);
-      releasePage(page);
+      releaseSpriteImage(page);
     }
   }
 
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
-    for (const page of new Set([...this.pages.values(), ...this.#evicted])) releasePage(page);
+    for (const page of new Set([...this.pages.values(), ...this.#evicted])) releaseSpriteImage(page);
     this.#automaticLoads.clear();
     this.#failed.clear();
     this.pages.clear();
