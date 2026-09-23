@@ -282,6 +282,20 @@ select a destructive-rider affirmative, and never answer a specific-affirmative
 prompt (e.g. hook trust) with a generic "Yes". `src/core/trust/responder.ts`,
 `src/core/trust/prompts.ts`, verified by `tests/e2e/trust-prompt-claude.e2e.ts`.
 
+**Codex 0.156.1 uses a new folder-access dialog.** A native PTY capture on
+2026-09-23 showed `Folder access`, the working directory, `Trust this folder?`,
+the explanation beginning `Codex can read, edit, and run files here`, numbered
+`Trust and continue` / `Quit` choices, and `enter continue · esc quit`. The question
+and explanation share a row and wrap together. The previous grammar missed both
+the question and footer, let startup report ready, and sent an image paste into
+the unanswered dialog. Keep this layout as a separate exact-copy allowlist entry:
+`autotrust` may select only `Trust and continue`; partial or changed copy must hold
+input without approving it. The sanitized capture is
+`tests/fixtures/codex-0.156.1/folder-access.txt`; parser and session regressions
+cover both `autotrust` settings. A native rerun with this grammar answered the gate
+and attached the first image; its later cancelled-draft cleanup failed separately,
+so this is trust/attachment evidence, not a passing successor-cleanup run. C-TRUST-01.
+
 ### Where the clearance grammar lives
 
 "This frame is the CLI's own idle composer, so the gate cleared" is a per-CLI layout

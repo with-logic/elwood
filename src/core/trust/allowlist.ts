@@ -8,6 +8,7 @@
 import {
   claudeBypassDescription,
   claudeWorkspaceDescription,
+  codexFolderAccessDescription,
   codexHooksDescription,
   codexWorkspaceDescription,
   noTrustDescription,
@@ -17,6 +18,7 @@ import {
   claudeExtensionOptions,
   claudeMcpOptions,
   claudeWorkspaceOptions,
+  codexFolderAccessOptions,
   codexHooksOptions,
   codexWorkspaceOptions,
 } from "./options.ts";
@@ -109,6 +111,16 @@ export const trustPromptAllowlist = [
     descriptionPattern: codexWorkspaceDescription,
     optionPattern: codexWorkspaceOptions,
     accept: yesOption,
+    answerPolicy: "autotrust",
+  },
+  {
+    // Codex 0.156.1's Folder access dialog keeps the existing workspace policy/label.
+    id: "workspace_trust",
+    agent: "codex",
+    headerPattern: /^Trust this folder\?(?:\s|$)/,
+    descriptionPattern: codexFolderAccessDescription,
+    optionPattern: codexFolderAccessOptions,
+    accept: /^Trust and continue$/,
     answerPolicy: "autotrust",
   },
   // Codex trusts every configured hook, including third-party hooks, because the
