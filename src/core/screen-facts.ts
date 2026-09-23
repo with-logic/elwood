@@ -43,6 +43,8 @@ export type ScreenFactTable = {
   /** CLI version these rules were last verified against by the e2e suites. */
   readonly verifiedAgainst: string;
   readonly rules: readonly ScreenFactRule[];
+  /** Adapter fallback hidden while trust owns a partial repaint. */
+  readonly trustOwnedFallback?: string;
 };
 
 export type ScreenFacts = Readonly<Record<ScreenFactKind, boolean>>;

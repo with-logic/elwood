@@ -99,10 +99,11 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
   }, resumed);
   const clearance = liveCodexClearance(() => terminal);
+  const snapshot = () => renderedSnapshot(terminal);
   const observers = {
     turn: new TurnStateWatcher(),
     attention: new AttentionWatcher(),
-    table: codexScreenFactTableForTrustPolicy(options.autotrust ?? false, clearance),
+    table: codexScreenFactTableForTrustPolicy(options.autotrust ?? false, clearance, snapshot),
     agent: "codex" as const,
     elwoodSessionId: record.elwoodSessionId,
     emitActivity: (event: activity.ElwoodActivityEvent) => emitter.emit("activity", event),
