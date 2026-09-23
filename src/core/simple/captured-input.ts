@@ -3,6 +3,7 @@ import type { ElwoodAgentSession } from "../agent-session.ts";
 import { elwoodError } from "../errors.ts";
 import type { ImageCaptures } from "../images/capture.ts";
 import type { SendOptions } from "../images/types.ts";
+import { personaBoundary } from "../persona.ts";
 import { type ElwoodSessionStatus, terminalStatuses } from "../status-categories.ts";
 import type { TurnEvent } from "./events.ts";
 import { runTurn } from "./turn.ts";
@@ -46,6 +47,7 @@ export function capturedTurn(
   return queue.enqueue(async () => {
     try {
       const session = await starting;
+      await personaBoundary(session);
       const turn = runTurn(session, prompt, { ...captured.options, readBoundarySignal });
       void turn.boundary.then(captured.release);
       return turn;
