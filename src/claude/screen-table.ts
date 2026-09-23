@@ -13,7 +13,7 @@ import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
 
 const claudeWorkingTitle = /^[⠀-⣿]\s/;
 const claudeComposerInputColumn = 2; // zero-based, after the two-cell "❯ " prefix
-/** The idle Claude composer row; also the caret that is NOT a dialog caret. */
+/** Native empty-composer row shape; callers own activity and dialog checks. */
 export const claudeComposerRow = /^\s*❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*$/m;
 
 /**

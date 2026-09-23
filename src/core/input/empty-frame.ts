@@ -8,8 +8,10 @@ export function emptyInputFrame(
   matches: (rows: readonly string[], cursorRow: number) => boolean,
 ): TerminalSnapshot | undefined {
   const frame = currentRenderedFrame(terminal);
+  // Both native inputs place the caret after the two-cell "❯ " / "› " prefix.
   if (!(frame && settledCursorVisible(terminal.xterm)) || frame.cursorX !== 2) return undefined;
   const buffer = terminal.xterm.buffer.active;
-  const row = frame.cursorY + buffer.baseY - buffer.viewportY;
-  return matches(frame.lines, row) ? frame : undefined;
+  // cursorY is relative to the live buffer base; snapshot lines start at viewportY.
+  const viewportCursorRow = frame.cursorY + buffer.baseY - buffer.viewportY;
+  return matches(frame.lines, viewportCursorRow) ? frame : undefined;
 }
