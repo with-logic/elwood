@@ -34,10 +34,12 @@ describe("ClaudeSessionApi.login correctness (C-API-43)", () => {
       timeoutMs: 5_000,
     });
 
-    await expect.poll(() => ptys[0]!.writes.includes("/login")).toBe(true);
+    // The CLI opens the picker only after the command's submitting Enter.
+    await expect.poll(() => ptys[0]!.writes.filter((write) => write === "\r").length).toBe(1);
     // claudeai is row 0 → NO arrow-down, just the picker Enter.
     ptys[0]!.emitData(asScreen("Select login method:\n Claude account with subscription"));
-    await expect.poll(() => ptys[0]!.writes.includes("\r")).toBe(true);
+    // Keep the picker visible until its own Enter; the command Enter cannot select it.
+    await expect.poll(() => ptys[0]!.writes.filter((write) => write === "\r").length).toBe(2);
     expect(ptys[0]!.writes).not.toContain(ARROW_DOWN);
 
     ptys[0]!.emitData(
