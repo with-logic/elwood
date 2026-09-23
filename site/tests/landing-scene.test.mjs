@@ -1,3 +1,4 @@
+import { resolveObjectURL } from "node:buffer";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -46,7 +47,9 @@ globalThis.fetch = async (input) => {
 globalThis.Image = class {
   async decode() {
     requests.push(String(this.src));
-    const bytes = await readFile(fileURLToPath(this.src));
+    const bytes = this.src.startsWith("blob:")
+      ? Buffer.from(await resolveObjectURL(this.src).arrayBuffer())
+      : await readFile(fileURLToPath(this.src));
     assert.equal(bytes.subarray(0, 4).toString(), "RIFF");
     assert.equal(bytes.subarray(8, 12).toString(), "WEBP");
   }
@@ -72,10 +75,20 @@ async function advance(seconds) {
   }
 }
 
-test("landing starts with only the idle sprite page and never fetches videos", async () => {
+function assertGesturePaints(own, name) {
+  for (let i = 0; i < 360 && own.bank.activeName !== name; i++) {
+    own.step(1 / 120);
+    own.paint(1 / 120);
+  }
+  assert.equal(own.bank.activeName, name);
+  assert.equal(own.pose().clip.name, name);
+  assert.ok(own.pose().page, "the prepared candidate activates as drawable artwork");
+}
+
+test("landing starts with the complete idle animation and never fetches videos", async () => {
   await scene.boot();
   assert.equal(scene.ready, true);
-  assert.equal(scene.bank.pages.size, 1);
+  assert.equal(scene.bank.activePages.size, 2);
   assert.deepEqual([...scene.bank.clips.keys()], ["idle"]);
   assert.ok(requests.every((url) => !url.endsWith(".mp4")));
   assert.deepEqual(errors, []);
@@ -84,6 +97,9 @@ test("landing starts with only the idle sprite page and never fetches videos", a
 test("the actual scene gives manual movement priority and idles before resuming autonomy", async () => {
   scene.interact();
   scene.axis = 1;
+  // Asset I/O uses real time; start the motion clock only once its sheets are ready.
+  scene.prepare("walk-right");
+  await scene.bank.preparationTail;
   await advance(1.2);
   assert.equal(scene.director.mode, "manual");
   assert.equal(scene.world.player.animation, "walk-right");
@@ -108,6 +124,34 @@ test("a gesture load completing after movement cannot steal manual control", asy
   await advance(0.8);
   assert.notEqual(scene.world.player.gesture, "wave");
   scene.clearInput();
+});
+
+test("a requested gesture keeps animating idle until every sprite sheet is downloaded", async () => {
+  const own = new LandingScene(canvas());
+  await own.boot();
+  const fetch = globalThis.fetch;
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("wave/page-001.webp")) await gate;
+    return fetch(url);
+  };
+  let started = false;
+  const request = own.request({ gesture: "wave" }).then(() => { started = true; });
+  try {
+    await advance(0.5);
+    assert.equal(started, false, "a later sheet must be ready before gesture playback");
+    assert.equal(own.world.player.animation, "idle");
+    assert.ok(own.world.player.animationTime > 0, "the current animation keeps moving");
+    release();
+    await request;
+    assert.equal(own.pressed.gesture, "wave");
+  } finally {
+    release();
+    await request;
+    own.pause("test", true);
+    globalThis.fetch = fetch;
+  }
 });
 
 test("hidden, offscreen and help pauses stop scheduling without overriding one another", async () => {
@@ -343,7 +387,7 @@ test("an unavailable initial pose or failed sprite request keeps the fallback", 
       failures.push(error.message);
     },
   });
-  loading.bank.prepare = async () => {
+  loading.bank.prepareAnimation = async () => {
     throw new Error("offline");
   };
   await loading.boot();
@@ -353,4 +397,270 @@ test("an unavailable initial pose or failed sprite request keeps the fallback", 
   loading.pose = () => null;
   loading.paint(0);
   assert.equal(paints, 0, "Ready state alone is not a successful canvas paint");
+});
+
+
+test("automatic moments wait for every sheet while the active idle keeps moving", async () => {
+  reduced = false;
+  const own = new LandingScene(canvas());
+  await own.boot();
+  const fetch = globalThis.fetch;
+  const gate = Promise.withResolvers();
+  const entered = Promise.withResolvers();
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("wave/page-001.webp")) { entered.resolve(); await gate.promise; }
+    return fetch(url);
+  };
+  const task = { kind: "moment", name: "wave", sent: false, seen: false, elapsed: 0, hold: 3, fits: true };
+  own.director.task = task;
+  try {
+    own.step(1 / 120);
+    await entered.promise;
+    await advance(0.4);
+    assert.equal(task.sent, false);
+    assert.equal(own.world.player.animation, "idle");
+    assert.ok(own.world.player.animationTime > 0);
+    assert.equal(own.bank.activeName, "idle");
+    gate.resolve();
+    await own.bank.preparationTail;
+    own.step(1 / 120);
+    assert.equal(task.sent, true, "the real Autonomy ready callback releases the complete moment");
+    assertGesturePaints(own, "wave");
+  } finally {
+    gate.resolve();
+    await own.bank.preparationTail;
+    own.pause("test", true);
+    globalThis.fetch = fetch;
+  }
+});
+
+test("a manual gesture waits for all rotation sheets before it can start", async () => {
+  const own = new LandingScene(canvas());
+  await own.boot();
+  const fetch = globalThis.fetch;
+  const gate = Promise.withResolvers();
+  const entered = Promise.withResolvers();
+  const rotation = [];
+  globalThis.fetch = async (url) => {
+    if (/rotation-(?:front|rear)\/page-\d+\.webp/.test(String(url))) rotation.push(String(url));
+    if (String(url).includes("rotation-rear/page-001.webp")) { entered.resolve(); await gate.promise; }
+    return fetch(url);
+  };
+  const request = own.request({ gesture: "wave" });
+  try {
+    await entered.promise;
+    assert.equal(own.pressed.gesture, undefined);
+    assert.equal(own.bank.activeName, "idle");
+    assert.deepEqual(rotation.map((url) => new URL(url).pathname.split("/game/")[1]).sort(), [
+      "rotation-front/page-000.webp", "rotation-rear/page-000.webp", "rotation-rear/page-001.webp",
+    ]);
+    gate.resolve();
+    await request;
+    assert.equal(own.pressed.gesture, "wave");
+    assert.equal(own.bank.animationReady("rotation"), true);
+    assert.equal(own.bank.activeName, "idle", "request completion does not activate the candidate");
+    assertGesturePaints(own, "wave");
+  } finally {
+    gate.resolve();
+    await request;
+    own.pause("test", true);
+    globalThis.fetch = fetch;
+  }
+});
+
+for (const cancelled of [true, false]) {
+  test(`${cancelled ? "clearing input during" : "failure of"} rotation preparation cannot publish a stale gesture`, async () => {
+    const failures = [];
+    const own = new LandingScene(canvas(), { onError: (error) => failures.push(error) });
+    await own.boot();
+    const fetch = globalThis.fetch;
+    const gate = Promise.withResolvers();
+    const entered = Promise.withResolvers();
+    globalThis.fetch = async (url) => {
+      if (String(url).includes("rotation-rear/page-001.webp")) {
+        entered.resolve();
+        await gate.promise;
+        if (!cancelled) return new Response("", { status: 503 });
+      }
+      return fetch(url);
+    };
+    const request = own.request({ gesture: "wave" });
+    try {
+      await entered.promise;
+      if (cancelled) own.clearInput();
+      gate.resolve();
+      await request;
+      assert.equal(own.pressed.gesture, undefined);
+      assert.equal(own.bank.prepared, null);
+      assert.equal(own.bank.activeName, "idle");
+      for (let i = 0; i < own.bank.clips.get("idle").frames.length; i++)
+        assert.ok(own.bank.frame("idle", i), "idle remains drawable after rejected preparation");
+      assert.equal(failures.length, cancelled ? 0 : 1);
+    } finally {
+      gate.resolve();
+      await request;
+      own.pause("test", true);
+      globalThis.fetch = fetch;
+    }
+  });
+}
+
+for (const cancelled of [false, true]) {
+  test(`a slow manual gesture holds autonomy until ${cancelled ? "cancelled" : "delivered"}`, async () => {
+    const own = new LandingScene(canvas());
+    await own.boot();
+    own.director.random = () => 0.99;
+    const fetch = globalThis.fetch;
+    const gate = Promise.withResolvers();
+    const entered = Promise.withResolvers();
+    globalThis.fetch = async (url) => {
+      if (String(url).includes("wave/page-001.webp")) { entered.resolve(); await gate.promise; }
+      return fetch(url);
+    };
+    const request = own.request({ gesture: "wave" });
+    try {
+      await entered.promise;
+      const generation = own.bank.preparationGeneration;
+      for (let i = 0; i < 12 * 120; i++) own.step(1 / 120);
+      assert.equal(own.director.mode, "manual", "download time is still manual activity");
+      assert.equal(own.bank.preparationGeneration, generation, "autonomy cannot supersede the pending request");
+      assert.equal(own.world.player.animation, "idle");
+      assert.ok(own.world.player.animationTime > 0);
+      if (cancelled) {
+        own.clearInput();
+        for (let i = 0; i < 12 * 120; i++) own.step(1 / 120);
+        assert.equal(own.director.mode, "auto", "cancellation releases the pending manual activity");
+      }
+      gate.resolve();
+      await request;
+      assert.equal(own.pressed.gesture, cancelled ? undefined : "wave");
+      if (!cancelled) {
+        assert.equal(own.bank.animationReady("wave"), true, "published input still owns a complete candidate");
+        own.step(1 / 120);
+        assert.equal(own.director.quiet, 0, "delivery starts the normal inactivity interval");
+        assertGesturePaints(own, "wave");
+      }
+    } finally {
+      gate.resolve();
+      await request;
+      await own.bank.preparationTail;
+      own.pause("test", true);
+      globalThis.fetch = fetch;
+    }
+  });
+}
+
+test("pre-ready interaction and blur preserve boot's complete idle preparation", async () => {
+  const ready = [];
+  const own = new LandingScene(canvas(), { onReady: () => ready.push(own.bank.animationReady("idle")) });
+  const fetch = globalThis.fetch;
+  const gate = Promise.withResolvers();
+  const entered = Promise.withResolvers();
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("idle/page-001.webp")) { entered.resolve(); await gate.promise; }
+    return fetch(url);
+  };
+  const boot = own.boot();
+  try {
+    await entered.promise;
+    own.interact();
+    own.clearInput();
+    own.pause("hidden", true);
+    own.pause("hidden", false);
+    assert.equal(own.ready, false);
+    assert.deepEqual(ready, []);
+    gate.resolve();
+    await boot;
+    assert.deepEqual(ready, [true], "onReady requires both idle sheets even after pre-ready input");
+    assert.equal(own.bank.activePages.size, 2);
+    assert.ok(own.lastPose);
+  } finally {
+    gate.resolve();
+    await boot;
+    own.pause("test", true);
+    globalThis.fetch = fetch;
+  }
+});
+
+test("first pickup preparation survives immediate and repeated drag movement", async () => {
+  const own = new LandingScene(canvas());
+  await own.boot();
+  const fetch = globalThis.fetch;
+  const gate = Promise.withResolvers();
+  const entered = Promise.withResolvers();
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("pickup-wriggle/page-005.webp")) { entered.resolve(); await gate.promise; }
+    return fetch(url);
+  };
+  assert.equal(own.beginDrag({ x: 400, y: 500 }), true);
+  const preparation = own.bank.preparationTail;
+  try {
+    await Promise.race([
+      entered.promise,
+      preparation.then(() => assert.fail("pickup preparation ended before requesting its final sheet")),
+    ]);
+    for (let i = 0; i < 30; i++) own.moveDrag({ x: 410 + i, y: 450 - i });
+    assert.equal(own.bank.animationReady("pickup-wriggle"), false);
+    gate.resolve();
+    await preparation;
+    assert.equal(own.bank.animationReady("pickup-wriggle"), true);
+    own.paint(0);
+    assert.equal(own.bank.activeName, "pickup-wriggle");
+    for (let i = 0; i < 30; i++) own.moveDrag({ x: 460 + i, y: 430 + i });
+    const clip = own.bank.clips.get("pickup-wriggle");
+    for (let i = 0; i < clip.frames.length; i++) assert.ok(own.bank.frame("pickup-wriggle", i));
+    const version = own.requestVersion;
+    own.endDrag();
+    assert.ok(own.requestVersion > version, "ending the drag invalidates its preparation lifetime");
+    assert.equal(own.dragging, false);
+  } finally {
+    gate.resolve();
+    await preparation;
+    own.pause("test", true);
+    globalThis.fetch = fetch;
+  }
+});
+
+test("a new automatic task can replace stale same-name preparation without losing its pending ownership", async () => {
+  const own = new LandingScene(canvas());
+  await own.boot();
+  const fetch = globalThis.fetch;
+  const gates = [Promise.withResolvers(), Promise.withResolvers()];
+  const entered = [Promise.withResolvers(), Promise.withResolvers()];
+  let attempts = 0;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("wave/page-001.webp")) {
+      const attempt = attempts++;
+      entered[attempt]?.resolve();
+      await gates[attempt]?.promise;
+    }
+    return fetch(url);
+  };
+  const moment = () => ({ kind: "moment", name: "wave", sent: false, seen: false, elapsed: 0, hold: 3, fits: true });
+  own.director.task = moment();
+  own.step(1 / 120);
+  const first = own.bank.preparationTail;
+  let second;
+  try {
+    await entered[0].promise;
+    own.director.task = moment();
+    own.step(1 / 120);
+    second = own.bank.preparationTail;
+    assert.notEqual(second, first, "the expired task must not suppress a new owner of the same name");
+    await entered[1].promise;
+    await first;
+    await new Promise((resolve) => setImmediate(resolve));
+    own.step(1 / 120);
+    assert.equal(own.bank.preparationTail, second, "the old finalizer must not clear the newer pending owner");
+    gates[1].resolve();
+    await second;
+    own.step(1 / 120);
+    assert.equal(own.director.task.sent, true);
+    assert.equal(attempts, 2);
+  } finally {
+    for (const gate of gates) gate.resolve();
+    await Promise.all([first, second, own.bank.preparationTail]);
+    own.pause("test", true);
+    globalThis.fetch = fetch;
+  }
 });
