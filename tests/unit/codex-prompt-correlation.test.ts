@@ -45,7 +45,7 @@ test.each([
   vi.useFakeTimers();
   const session = drive((s) => {
     s.emit("status", { status: "running" });
-    const wrong = submitted.replace("\t", " ");
+    const wrong = submitted.replaceAll("\t", " ");
     if (kind === "hook") s.emit("hook", { hook_event_name: "UserPromptSubmit", prompt: wrong });
     else s.emit("activity", activity({ kind: "user_message", text: wrong }));
     s.emit("status", { status: "ready" });

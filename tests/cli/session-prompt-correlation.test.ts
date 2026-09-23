@@ -1,4 +1,4 @@
-/** CLI facades preserve caller input while applying adapter prompt identity (C-CLI-04, C-API-48). */
+/** CLI facades preserve caller input while applying adapter prompt identity (C-API-48). */
 import { afterEach, expect, test, vi } from "vitest";
 import { HeadlessCliSession } from "../../src/cli/session/index.ts";
 import { activity, FakeUnderlying } from "../unit/simple-fakes.ts";

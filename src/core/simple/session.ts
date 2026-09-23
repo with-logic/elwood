@@ -39,7 +39,7 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
    */
   protected abstract launch(): Promise<S>;
 
-  /** Adapter-owned hook completeness signal; never displayed (C-CLAUDE-15). */
+  /** Normalize raw hooks; undefined means no boundary. Oracle only, never displayed (C-CLAUDE-15). */
   protected abstract readonly readBoundarySignal: BoundarySignalReader;
 
   /** Adapter-native comparison identity; raw submission remains unchanged. */
@@ -88,7 +88,7 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
       this.readBoundarySignal,
       prompt,
       options,
-      this.submittedPrompt(prompt),
+      this.submittedPrompt,
     );
   }
 
