@@ -8,12 +8,13 @@ export const pasteNudgeAttempts = 2;
 export async function nudgePastedPrompt(
   terminal: InputTerminal,
   prompt: string,
+  verifyAcceptance: boolean,
   guard?: PasteGuard,
   signal?: AbortSignal,
-): Promise<void> {
-  if (!guard) return;
+): Promise<boolean> {
+  if (!guard) return false;
   let nudges = 0;
-  while (nudges < pasteNudgeAttempts) {
+  while (nudges < pasteNudgeAttempts || verifyAcceptance) {
     await waitForInput(pasteNudgeDelayMs, signal);
     // Recheck settled native output: a newly received dialog may not yet be rendered.
     const unsafe = await writeUnsafe(terminal, guard, signal);
@@ -21,7 +22,9 @@ export async function nudgePastedPrompt(
     throwIfInputAborted(signal);
     // A dialog holds recovery without consuming its bounded Enter attempts.
     if (unsafe) continue;
-    if (!guard.staged(guard.snapshot(), prompt)) return;
+    if (!guard.staged(guard.snapshot(), prompt)) return true;
+    // Observe the final Enter too: writing it does not prove native acceptance.
+    if (nudges === pasteNudgeAttempts) return false;
     nudges += 1;
     try {
       await terminal.sendInput("\r");
@@ -29,4 +32,5 @@ export async function nudgePastedPrompt(
       // The first Enter landed; subsequent recovery writes remain best-effort.
     }
   }
+  return false;
 }

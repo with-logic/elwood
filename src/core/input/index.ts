@@ -4,6 +4,7 @@
  */
 
 import type { ControlSubmitMode, ControlSubmitter } from "../control-queue/index.ts";
+import { elwoodError } from "../errors.ts";
 import { holdWhileUnsafe, type InputTerminal, throwIfInputAborted, waitForInput } from "./abort.ts";
 import { requestComposerCleanup, stageComposer, submittedComposer } from "./composer-cleanup.ts";
 import { nudgePastedPrompt } from "./nudge.ts";
@@ -67,12 +68,10 @@ export function sanitizePasteText(text: string): string {
  * text is sanitized first so an embedded end sentinel or control byte cannot
  * escape paste mode into live keystrokes (§5.3).
  *
- * The returned promise resolves once the first submitting Enter has been
- * dispatched (after the settle delay), so the control queue does not drain the
- * next operation into the composer before this prompt has actually been
- * submitted. Bounded recovery re-Enters continue in the background afterwards
- * and are idempotent. Turn replays also retain draft ownership and await those
- * nudges so cancellation cannot release a staged draft to the next operation.
+ * Ordinary submissions resolve after the first awaited Enter; bounded nudges
+ * continue in the background. Turn replays retain draft ownership until their
+ * nudges settle and the guard observes that the original draft is no longer
+ * staged. Exhausted or cancelled replays retain cleanup for the next operation.
  */
 async function writePastedPrompt(
   terminal: InputTerminal,
@@ -105,15 +104,16 @@ async function writePastedPrompt(
     await terminal.sendInput("\r");
     if (!turnReplay) submittedComposer(terminal);
     onSubmitted?.();
-    const nudges = nudgePastedPrompt(terminal, prompt, guard, signal);
+    const nudges = nudgePastedPrompt(terminal, prompt, turnReplay, guard, signal);
     if (turnReplay) {
-      await nudges;
+      if (!(await nudges))
+        throw elwoodError("wait_timeout", "Turn replay remained staged after submission attempts.");
       // An abort during the final physical nudge still owns the staged draft.
       throwIfInputAborted(signal);
       submittedComposer(terminal);
-    } else ignoreInputFailure(nudges);
+    } else ignoreInputFailure(nudges.then(() => undefined));
   } catch (error) {
-    if (signal?.aborted) await requestComposerCleanup(terminal, guard?.blocked);
+    if (turnReplay || signal?.aborted) await requestComposerCleanup(terminal, guard?.blocked);
     throw error;
   }
 }
