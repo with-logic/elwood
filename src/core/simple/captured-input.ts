@@ -28,6 +28,7 @@ export function capturedTurn(
   readBoundarySignal: BoundarySignalReader,
   prompt: string,
   options?: TurnOptions,
+  submittedPrompt = prompt,
 ): AsyncGenerator<TurnEvent> {
   let captured: { readonly options: TurnOptions | undefined; readonly release: () => void };
   try {
@@ -46,7 +47,11 @@ export function capturedTurn(
   return queue.enqueue(async () => {
     try {
       const session = await starting;
-      const turn = runTurn(session, prompt, { ...captured.options, readBoundarySignal });
+      const turn = runTurn(session, prompt, {
+        ...captured.options,
+        readBoundarySignal,
+        submittedPrompt,
+      });
       void turn.boundary.then(captured.release);
       return turn;
     } catch (error) {

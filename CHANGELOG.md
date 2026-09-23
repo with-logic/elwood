@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Recognize Codex turn acceptance after paste sanitization and native newline or
+  outer-whitespace normalization, preventing duplicate recovery submissions.
+
 - Preserve picker and cancelled-draft cleanup authority across automatic terminal
   protocol replies and startup automation; actual caller input still revokes it.
 
