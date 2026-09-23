@@ -957,3 +957,17 @@ not an update execution or a genuine bannerless repaint. The banner remained
 visible in every captured resize. Adversarial replacement frames and shell-PTY
 proofs are separate constructed evidence; these fixtures alone do not prove
 queued-input suppression through a live Elwood session.
+
+
+The accompanying real-session proof (`tests/e2e/codex-native-update.e2e.ts`)
+passed on 2026-09-23: one test, one pass, no skips. It verified the pinned binary's
+version and login status, then started Elwood with normal automatic skip handling
+and a queued caller message. At 100×6 and 100×3, Elwood stayed `blocked` and emitted
+`codex-update-prompt` attention. Neither automation nor the queued message attempted
+an application write; the queue rejected on shutdown. The PTY interceptor recorded
+attempts before rejecting them, so it could not hide an incorrect selection. Only
+exact native terminal protocol replies were forwarded. `autoupdate: false`
+disabled installation, not startup-menu skipping. The temporary binary, config,
+version metadata, and credential copy were removed after teardown. This proves
+these narrow native layouts under controlled version metadata; it does not prove
+a bannerless continuation, run an updater, or submit a model turn.
