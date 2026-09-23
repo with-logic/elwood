@@ -4,7 +4,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { startCodex } from "../../src/index.ts";
 import {
   codexComposer,
@@ -13,7 +13,7 @@ import {
   codexTty,
   tty,
 } from "../fixtures/trust-composer.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
@@ -27,22 +27,28 @@ describe("CodexSessionApi trust prompts", () => {
       "utf8",
     );
     installFakes();
-    const session = await startCodex({ cwd: tempDir(), autotrust });
-    const queued = session.sendMessage("held until trust clears");
-    const settled = queued.catch(() => undefined);
+    const cwd = tempDir();
+    const session = await startCodex({ cwd, autotrust });
+    let settled: Promise<void> | undefined;
     try {
+      await becomeReady(session.elwoodSessionId, cwd);
+      expect(session.status).toBe("ready");
       ptys[0]!.emitData(tty(frame));
-      if (autotrust) {
-        await expect.poll(() => ptys[0]!.writes).toEqual(["1\r"]);
-        expect(session.status).not.toBe("ready");
-        ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`);
-        await queued;
-        expect(ptys[0]!.writes).toContain("\u001b[200~held until trust clears\u001b[201~");
-      } else {
-        await expect.poll(() => session.status).toBe("blocked");
-        expect(ptys[0]!.writes).toEqual([]);
-      }
+      await session.terminal.settled();
+      if (autotrust) await expect.poll(() => ptys[0]!.writes).toEqual(["1\r"]);
+      else expect(session.status).toBe("blocked");
+      vi.useFakeTimers();
+      const queued = session.sendMessage("held until trust clears");
+      settled = queued.catch(() => undefined);
+      // Give queued submission and input-guard retries time to run while the dialog remains.
+      await vi.advanceTimersByTimeAsync(500);
+      expect(ptys[0]!.writes).toEqual(autotrust ? ["1\r"] : []);
+      ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`);
+      await vi.advanceTimersByTimeAsync(500);
+      await queued;
+      expect(ptys[0]!.writes).toContain("\u001b[200~held until trust clears\u001b[201~");
     } finally {
+      vi.useRealTimers();
       await session.kill();
       await settled;
     }
