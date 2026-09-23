@@ -1,6 +1,11 @@
 /** Owns cached and pose-retained sprite resources (PRD §13; docs/design/landing.md). */
 import { gameAssetUrl } from "./game-assets.mjs";
 
+function releasePage(page) {
+  if (typeof page.close === "function") page.close();
+  else page.removeAttribute?.("src");
+}
+
 export class SpriteBank {
   #onError;
   #retained = new Set();
@@ -51,20 +56,23 @@ export class SpriteBank {
       const clip = await this.load(name);
       if (this.disposed) throw new Error("Sprite bank is disposed.");
       const image = new Image();
-      image.src = gameAssetUrl(`${name}/${clip.pages[index].file}`).href;
-      await image.decode();
-      if (this.disposed) {
-        image.close?.();
-        throw new Error("Sprite bank is disposed.");
+      let cached = false;
+      try {
+        image.src = gameAssetUrl(`${name}/${clip.pages[index].file}`).href;
+        await image.decode();
+        if (this.disposed) throw new Error("Sprite bank is disposed.");
+        this.pages.set(key, image);
+        cached = true;
+      } finally {
+        if (!cached) releasePage(image);
       }
-      this.pages.set(key, image);
       // Evicted pages may still belong to the current or outgoing pose.
       while (this.pages.size > 4) {
         const oldest = this.pages.keys().next().value;
         const evicted = this.pages.get(oldest);
         this.pages.delete(oldest);
         if (this.#retained.has(evicted)) this.#evicted.add(evicted);
-        else evicted.close?.();
+        else releasePage(evicted);
       }
       return image;
     })();
@@ -89,14 +97,14 @@ export class SpriteBank {
     for (const page of this.#evicted) {
       if (this.#retained.has(page)) continue;
       this.#evicted.delete(page);
-      page.close?.();
+      releasePage(page);
     }
   }
 
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
-    for (const page of new Set([...this.pages.values(), ...this.#evicted])) page.close?.();
+    for (const page of new Set([...this.pages.values(), ...this.#evicted])) releasePage(page);
     this.pages.clear();
     this.#retained.clear();
     this.#evicted.clear();
