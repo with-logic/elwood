@@ -1,6 +1,7 @@
-/** Execute the shipped worker module against browser API seams, including transfer ownership. */
+/** Execute the shipped worker module against browser API seams, including transfer ownership (PRD §13). */
 import assert from "node:assert/strict";
 import test from "node:test";
+import { SpriteDecoder } from "../sprite-decoder/index.mjs";
 
 let receive;
 // Node lacks worker globals. Capture the actual module's listener once, then stub
@@ -22,7 +23,7 @@ async function worker(t, globals = {}) {
   return { sent, run: (data) => receive({ data }) };
 }
 
-for (const rasterization of ["canvas", "no-canvas", "no-context"]) {
+for (const rasterization of ["canvas", "no-canvas", "no-context", "no-transfer"]) {
   test(`worker decodes and transfers ownership with ${rasterization}`, async (t) => {
     const blob = new Blob(["sheet"]);
     let closed = 0;
@@ -32,7 +33,10 @@ for (const rasterization of ["canvas", "no-canvas", "no-context"]) {
     const { run, sent } = await worker(t, {
       createImageBitmap: async (input) => { assert.equal(input, blob); return decoded; },
       OffscreenCanvas: rasterization === "no-canvas" ? undefined : class {
-        constructor(width, height) { assert.deepEqual([width, height], [20, 30]); }
+        constructor(width, height) {
+          assert.deepEqual([width, height], [20, 30]);
+          if (rasterization === "no-transfer") this.transferToImageBitmap = undefined;
+        }
         getContext(type) {
           assert.equal(type, "2d");
           return rasterization === "no-context" ? null : {
@@ -89,4 +93,71 @@ test("worker closes the image and reports failure when transfer throws", async (
   await run({ id: 6, blob: new Blob() });
   assert.deepEqual(sent, [[{ id: 6, error: "transfer failed" }]]);
   assert.equal(closed, 1);
+});
+
+
+test("worker serializes full-atlas decode and rasterization across requests", async (t) => {
+  const first = Promise.withResolvers();
+  const entered = [];
+  const { run, sent } = await worker(t, {
+    createImageBitmap: async (blob) => {
+      entered.push(await blob.text());
+      if (entered.length === 1) await first.promise;
+      return { close() {} };
+    },
+    OffscreenCanvas: undefined,
+  });
+  const a = run({ id: 1, blob: new Blob(["first"]) });
+  const b = run({ id: 2, blob: new Blob(["second"]) });
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(entered, ["first"]);
+  } finally {
+    first.resolve();
+    await Promise.all([a, b]);
+  }
+  assert.deepEqual(entered, ["first", "second"]);
+  assert.deepEqual(sent.map(([message]) => message.id), [1, 2]);
+});
+
+
+for (const stage of ["decode", "rasterization", "transfer"]) {
+  test(`real worker ${stage} failure completes through the page decoder`, async (t) => {
+    let listener;
+    let processing;
+    let decodes = 0;
+    const local = { bitmap: "local" };
+    const { run } = await worker(t, {
+      Worker: class {
+        addEventListener(type, callback) { if (type === "message") listener = callback; }
+        postMessage(data) { processing = run(data); }
+      },
+      createImageBitmap: async () => {
+        if (++decodes === 2) return local;
+        if (stage === "decode") throw new Error("worker decode failed");
+        return { width: 1, height: 1, close() {} };
+      },
+      OffscreenCanvas: stage === "rasterization" ? class {
+        getContext() { throw new Error("rasterization failed"); }
+      } : undefined,
+    });
+    globalThis.postMessage = (data, transfer) => {
+      if (stage === "transfer" && transfer) throw new Error("transfer failed");
+      listener({ data });
+    };
+    assert.equal(await new SpriteDecoder().decode(new Blob()), local);
+    await processing;
+    assert.equal(decodes, 2);
+  });
+}
+
+
+test("a failed response does not leave later worker requests behind a rejected queue", async (t) => {
+  const { run, sent } = await worker(t, { createImageBitmap: undefined });
+  const post = globalThis.postMessage;
+  globalThis.postMessage = () => { throw new Error("response failed"); };
+  await assert.rejects(run({ id: 1, blob: new Blob() }), /response failed/);
+  globalThis.postMessage = post;
+  await run({ id: 2, blob: new Blob() });
+  assert.deepEqual(sent, [[{ id: 2, unsupported: true }]]);
 });

@@ -1,4 +1,4 @@
-/** Browser fallback protocol, pending request settlement and URL lifetime. */
+/** Browser fallback protocol, pending request settlement and URL lifetime (PRD §13). */
 import assert from "node:assert/strict";
 import { resolveObjectURL } from "node:buffer";
 import test from "node:test";
@@ -51,25 +51,38 @@ for (const event of ["unsupported", "error", "messageerror"]) {
   });
 }
 
-test("worker replies correlate out of order and decode failures reject only their request", async (t) => {
+test("worker replies correlate out of order and failed processing falls back only its request", async (t) => {
   const { decoder, worker, local } = fixture(t);
-  const first = decoder.decode(new Blob(["one"]));
+  const blob = new Blob(["one"]);
+  const first = decoder.decode(blob);
   const second = decoder.decode(new Blob(["two"]));
   worker.emit("message", { id: 2, image: "decoded" });
   worker.emit("message", { id: 999, error: "irrelevant" });
   worker.emit("message", { id: 1, error: "bad sheet" });
   assert.equal(await second, "decoded");
-  await assert.rejects(first, /bad sheet/);
+  assert.equal(await first, blob);
   assert.equal(worker.terminated, false);
-  assert.deepEqual(local, []);
+  assert.deepEqual(local, [blob]);
 });
 
-test("an empty worker error rejects instead of resolving an undefined image", async (t) => {
-  const { decoder, worker } = fixture(t);
-  const pending = decoder.decode(new Blob(["bad sheet"]));
-  worker.emit("message", { id: 1, error: "" });
-  await assert.rejects(pending, { name: "Error", message: "" });
-});
+for (const cause of [new Error(""), ""]) {
+  test(`empty ${typeof cause} failures leave a visible SpriteBank diagnostic`, async (t) => {
+    const setup = fixture(t);
+    globalThis.createImageBitmap = async () => { throw cause; };
+    const messages = [];
+    const bank = new SpriteBank((error) => messages.push(error.message));
+    bank.clips.set("wave", { pages: [{ file: "0.webp" }], frames: [{ page: 0 }] });
+    const previous = globalThis.fetch;
+    globalThis.fetch = async () => new Response("sheet");
+    t.after(() => { globalThis.fetch = previous; });
+    bank.frame("wave", 0);
+    await new Promise((resolve) => setImmediate(resolve));
+    setup.worker.emit("message", { id: 1, error: "" });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(messages, ["Sprite sheet decoding failed. Try again."]);
+  });
+
+}
 
 for (const options of [{ constructorFails: true }, { sendFails: true }]) {
   test(`local bitmap fallback handles ${Object.keys(options)[0]}`, async (t) => {
@@ -131,4 +144,45 @@ test("a browser without Worker uses local bitmap decoding and propagates its fai
   globalThis.Worker = undefined;
   globalThis.createImageBitmap = async () => { throw new Error("invalid bitmap"); };
   await assert.rejects(new SpriteDecoder().decode(new Blob()), /invalid bitmap/);
+});
+
+
+test("disposal rejects pending and new work, terminates the worker, and closes late transfers", async (t) => {
+  const { decoder, worker } = fixture(t);
+  const pending = decoder.decode(new Blob());
+  decoder.dispose();
+  assert.equal(worker.terminated, true);
+  await assert.rejects(pending, /disposed/);
+  await assert.rejects(decoder.decode(new Blob()), /disposed/);
+  let closed = 0;
+  worker.emit("message", { id: 1, image: { close: () => closed++ } });
+  assert.equal(closed, 1);
+  decoder.dispose();
+});
+
+test("disposal rejects an in-flight local decode and releases its eventual bitmap", async (t) => {
+  const { decoder } = fixture(t, { constructorFails: true });
+  const gate = Promise.withResolvers();
+  globalThis.createImageBitmap = () => gate.promise;
+  const pending = decoder.decode(new Blob());
+  decoder.dispose();
+  await assert.rejects(pending, /disposed/);
+  let closed = 0;
+  gate.resolve({ close: () => closed++ });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(closed, 1);
+});
+
+
+test("repeated worker failures share an already running local fallback", async (t) => {
+  const { decoder, worker } = fixture(t);
+  const gate = Promise.withResolvers();
+  let calls = 0;
+  globalThis.createImageBitmap = () => { calls++; return gate.promise; };
+  const pending = decoder.decode(new Blob());
+  worker.emit("error");
+  worker.emit("messageerror");
+  assert.equal(calls, 1);
+  gate.resolve("bitmap");
+  assert.equal(await pending, "bitmap");
 });
