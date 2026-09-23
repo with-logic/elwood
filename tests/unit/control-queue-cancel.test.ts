@@ -81,6 +81,8 @@ describe("ControlQueue cancellation and attribution", () => {
     expect(events).toEqual([]);
     release();
     await pending;
+    // The delivery consumes the committed promise before running observers fire.
+    await Promise.resolve();
     expect(events).toEqual(["turn:loop"]);
   });
 

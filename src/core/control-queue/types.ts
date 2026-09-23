@@ -30,7 +30,7 @@ export type ControlSubmissionOrigin =
 /** Optional internal controls for an attributed, cancellable text submission. */
 export type ControlSendOptions = {
   readonly cancel?: Cancel;
-  /** Keep this promise owned until an active physical write settles after close. */
+  /** Retain the active queue slot through close; either write outcome rejects with stoppedError. */
   readonly settleAfterWrite?: true;
   readonly origin?: ControlSubmissionOrigin;
 };

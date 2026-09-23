@@ -96,7 +96,9 @@ async function writePastedPrompt(
   const payload = sanitizePasteText(prompt);
   const rawInputSignal = stageComposer(terminal);
   const nudgeSignal =
-    rawInputSignal && signal ? AbortSignal.any([rawInputSignal, signal]) : (rawInputSignal ?? signal);
+    rawInputSignal && signal
+      ? AbortSignal.any([rawInputSignal, signal])
+      : (rawInputSignal ?? signal);
   await terminal.sendInput(`\u001b[200~${payload}\u001b[201~`);
   try {
     await waitForInput(settleDelayMs, signal);
