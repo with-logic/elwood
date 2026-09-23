@@ -16,7 +16,8 @@ back each entry are listed in `prd/14-conformance.md`.
   outer-whitespace normalization, preventing duplicate recovery submissions.
 
 - Keep startup persona responses out of ergonomic caller turns, including when
-  the persona and caller submit identical text.
+  the persona and caller submit identical text or its transcript arrives after
+  readiness. Closing cancels waiting callers even if process shutdown fails.
 
 - Keep queued Codex input held when an update screen becomes an unknown or partial
   dialog, until its live native composer returns; a stale visible cursor cannot
