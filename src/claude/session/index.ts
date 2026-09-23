@@ -57,7 +57,7 @@ export async function startClaudeWithId(
   const createdRecord = createSessionRecord({ cwd: options.cwd, id: elwoodSessionId });
   const record = withClaudeLaunch(createdRecord, claudeLaunchPosture(options));
   const session = await startClaudeFromRecord(record, stateDir, options, false, warning);
-  return queuePersonaMessage(session, options.persona);
+  return queuePersonaMessage(session, options.persona, session.closing.signal);
 }
 
 export function startClaudeFromRecord(
