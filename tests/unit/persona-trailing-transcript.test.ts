@@ -95,8 +95,15 @@ test.each([
     await vi.advanceTimersByTimeAsync(3_000);
     expect(pty.writes.some((write) => write.includes("caller"))).toBe(false);
     append("PERSONA");
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(pty.writes.some((write) => write.includes("caller"))).toBe(true);
+    // Claude polling awaits a real filesystem stat even while the test advances fake time.
+    await vi.waitFor(
+      () => {
+        const callerPaste = pty.writes.findIndex((write) => write.includes("caller"));
+        expect(callerPaste).toBeGreaterThanOrEqual(0);
+        expect(pty.writes.slice(callerPaste + 1)).toContain("\r");
+      },
+      { timeout: 5_000 },
+    );
     append("CALLER");
     await hook({
       hook_event_name: "Stop",

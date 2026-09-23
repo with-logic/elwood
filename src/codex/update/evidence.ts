@@ -14,6 +14,7 @@ export type CodexUpdateAppearanceEvidence = {
   readonly overflowed: boolean;
 };
 
+const everyUpdateBanner = new RegExp(updateScreenBanner.source, "gim");
 const maxRetainedOptions = 32;
 const maxRetainedLabelLength = 200;
 
@@ -30,8 +31,12 @@ export function bannerContradictsAppearance(
   evidence: CodexUpdateAppearanceEvidence,
   frameText: string,
 ): boolean {
-  const banner = updateScreenBanner.exec(frameText)?.[0]?.trim() ?? "";
-  return evidence.observedBanner !== "" && banner !== "" && banner !== evidence.observedBanner;
+  return (
+    evidence.observedBanner !== "" &&
+    [...frameText.matchAll(everyUpdateBanner)].some(
+      (match) => match[0].trim() !== evidence.observedBanner,
+    )
+  );
 }
 
 export function withUpdateFrameEvidence(
@@ -87,5 +92,5 @@ export function continuationOptionsAreBound(
 
 /** Version fragments in the recognized banner are not selectable option rows. */
 function updateFrameOptions(frameText: string) {
-  return numberedOptions(frameText.replace(updateScreenBanner, ""));
+  return numberedOptions(frameText.replace(everyUpdateBanner, ""));
 }
