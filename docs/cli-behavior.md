@@ -954,3 +954,29 @@ The guard now requires that completed live frame and rejects working evidence;
 a retained submitted chip by itself cannot trigger recovery. Constructed session
 regressions cover a working frame with chip history and no newer empty composer.
 The native proof still intercepts submission and cancels the draft without a turn.
+
+### Empty input while a turn is active (2026-09-23)
+
+Native captures show that empty input and idle-turn clearance are different facts.
+Codex 0.156.1 kept its visible cursor at column 2 on `Ask Codex to do anything`
+while its working title and interrupt status were active. The bounded probe used
+an invalid model and reached rejection without model quota. Its model-only status
+line also carried a right-aligned `⚠ 3 warnings · f2 to view` badge.
+
+Claude Code 2.1.281 kept a visible column-2 cursor on its empty fenced input while
+`Wandering… (0s)` and the `◐ Claude Code` title were active. A single synthetic
+`Reply exactly OK. Do not use tools.` request in an isolated workspace supplied
+this capture; the request later reached a usage limit, so it proves active input
+geometry, not a successful answer. The native manual-mode footer included the
+token count and a login-expiry notice. No further valid-model requests were made.
+
+The sanitized `working-empty-input.json` fixtures retain these actual completed
+frames and cursor coordinates. Empty-input observers may use this geometry to
+confirm a consumed draft during work. They do not release trust, model-picker, or
+cleanup holds: those retain their stricter idle contract. Replay callers must
+also retain their existing dialog-blocking check and require a fresh frame after
+submission; an old empty frame does not prove acceptance.
+
+The Claude observer also preserves the existing version-banner/fenced-input
+alternative and the documented 2.1.268 non-Vim bypass-permissions footer.
+Those compatibility cases are constructed regressions, not new working captures.
