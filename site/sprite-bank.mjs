@@ -1,4 +1,5 @@
 /** On-demand sprite ownership and retry control (site/docs/design/landing.md; PRD §13). */
+import { SpritePages } from "./sprite-pages.mjs";
 import { SpriteLoads } from "./sprite-loads.mjs";
 import { validateSpriteClip } from "./sprite-metadata.mjs";
 import { SpriteDecoder } from "./sprite-decoder/index.mjs";
@@ -7,14 +8,12 @@ import { gameAssetUrl } from "./game-assets.mjs";
 import { withSpriteAssetErrorContext } from "./sprite-asset-error.mjs";
 
 export class SpriteBank {
-  #retained = new Set();
-  #evicted = new Set();
-  #leased = new Map();
   constructor(onError) {
     this.decoder = new SpriteDecoder();
     this.clips = new Map();
     this.clipPromises = new Map();
-    this.pages = new Map();
+    this.resources = new SpritePages();
+    this.pages = this.resources.cached;
     this.pendingPages = new Map();
     this.disposed = false;
     this.loads = new SpriteLoads(this, onError);
@@ -43,19 +42,8 @@ export class SpriteBank {
     options.signal?.throwIfAborted();
     if (this.disposed) throw new Error("Sprite bank is disposed.");
     const key = `${name}/${index}`;
-    if (this.pages.has(key)) {
-      const page = this.pages.get(key);
-      this.pages.delete(key);
-      this.pages.set(key, page);
-      if (options.signal) this.pinLoadPage(key, page, options.signal);
-      return page;
-    }
-    const retained = [...this.#leased.values()].map((owner) => owner.pages.get(key)).find(Boolean);
-    if (retained) {
-      if (options.signal) this.pinLoadPage(key, retained, options.signal);
-      this.#cachePage(key, retained);
-      return retained;
-    }
+    const cached = this.resources.get(key, options.signal);
+    if (cached) return cached;
     return this.loads.run(key, this.pendingPages, async (signal, pin) => {
       const clip = await this.load(name, { signal });
       signal.throwIfAborted();
@@ -70,22 +58,9 @@ export class SpriteBank {
         signal.throwIfAborted();
       }
       pin(image);
-      this.#cachePage(key, image);
+      this.resources.store(key, image);
       return image;
     }, options);
-  }
-
-  #cachePage(key, image) {
-    this.#evicted.delete(image);
-    this.pages.set(key, image);
-    // Evicted pages may still belong to the current or outgoing pose.
-    while (this.pages.size > 4) {
-      const oldest = this.pages.keys().next().value;
-      const evicted = this.pages.get(oldest);
-      this.pages.delete(oldest);
-      if (this.#retained.has(evicted) || this.#loadOwns(evicted)) this.#evicted.add(evicted);
-      else releaseSpriteImage(evicted);
-    }
   }
 
   async prepare(name, options = {}) {
@@ -100,20 +75,7 @@ export class SpriteBank {
     } finally { owner?.abort(); }
   }
 
-  pinLoadPage(key, image, signal) {
-    let owner = this.#leased.get(signal);
-    if (!owner) {
-      owner = { pages: new Map(), release: () => {
-        this.#leased.delete(signal);
-        this.#releaseEvicted();
-      } };
-      this.#leased.set(signal, owner);
-      signal.addEventListener("abort", owner.release, { once: true });
-    }
-    owner.pages.set(key, image);
-  }
-
-  #loadOwns(image) { return [...this.#leased.values()].some((owner) => [...owner.pages.values()].includes(image)); }
+  pinLoadPage(key, image, signal) { this.resources.pin(key, image, signal); }
 
   ensureMetadata(name) {
     if (!this.clips.has(name)) this.loads.request(name, (options) => this.load(name, options));
@@ -138,29 +100,14 @@ export class SpriteBank {
 
   /** Replace both pose owners atomically; rendering borrows their pages synchronously. */
   retainPoses(...poses) {
-    if (this.disposed) return;
-    this.#retained = new Set(poses.filter(Boolean).map((pose) => pose.page));
-    this.#releaseEvicted();
-  }
-
-  #releaseEvicted() {
-    for (const page of this.#evicted) {
-      if (this.#retained.has(page) || this.#loadOwns(page)) continue;
-      this.#evicted.delete(page);
-      releaseSpriteImage(page);
-    }
+    if (!this.disposed) this.resources.retainPoses(...poses);
   }
 
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
-    for (const page of new Set([...this.pages.values(), ...this.#evicted])) releaseSpriteImage(page);
+    this.resources.dispose();
     this.loads.dispose();
-    for (const [signal, owner] of this.#leased) signal.removeEventListener("abort", owner.release);
-    this.#leased.clear();
-    this.pages.clear();
-    this.#retained.clear();
-    this.#evicted.clear();
     this.clips.clear();
     this.clipPromises.clear();
     this.pendingPages.clear();
