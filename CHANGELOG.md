@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Stop acceptance-recovery replays when their turn settles, including rejected
+  submissions. Cancel queued and active replay work, holding the serialized turn
+  slot and captured images until its writes and cleanup settle.
 - Preserve picker and cancelled-draft cleanup authority across automatic terminal
   protocol replies and startup automation; actual caller input still revokes it.
 

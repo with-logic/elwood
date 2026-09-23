@@ -51,7 +51,6 @@ export class ControlQueue extends ControlQueueState {
   private readonly onTurnStarted: (origin: ControlSubmissionOrigin) => void;
   private readonly guidanceMayBypass: () => boolean;
   private readonly onCallerInputSubmitted: (() => void) | undefined;
-
   private readonly aroundOperation: AroundOperation | undefined;
 
   constructor(
@@ -154,17 +153,29 @@ export class ControlQueue extends ControlQueueState {
       if (signal.aborted) throw this.abortError(signal);
       this.beginSubmission(operation, traits);
     }
-    const dispatched = this.onCallerInputSubmitted;
+    const mode =
+      operation.origin.kind === "caller" && operation.origin.turnReplay
+        ? "turn_replay_input"
+        : traits.submitMode;
+    // Turn replay publishes its delayed turn start at the same physical boundary.
+    const dispatched =
+      mode === "turn_replay_input"
+        ? () => this.onTurnStarted(operation.origin)
+        : this.onCallerInputSubmitted;
     const onSubmitted =
       dispatched && traits.reportsCallerSubmission && operation.origin.kind === "caller"
         ? () => runContained(dispatched)
         : undefined;
-    await this.submit(operation.input, traits.submitMode, signal, onSubmitted);
+    await this.submit(operation.input, mode, signal, onSubmitted);
   }
 
   private beginSubmission(operation: QueuedOperation, traits: ControlOperationTraits): void {
     if (traits.consumesReadiness) this.ready = false;
-    if (traits.reportsCallerSubmission && operation.origin.kind === "caller") {
+    if (
+      traits.reportsCallerSubmission &&
+      operation.origin.kind === "caller" &&
+      !operation.origin.turnReplay
+    ) {
       runContained(() => this.onTurnStarted(operation.origin));
     }
   }
@@ -173,7 +184,8 @@ export class ControlQueue extends ControlQueueState {
     if (traits.reportsCallerSubmission && operation.origin.kind === "loop") {
       runContained(() => this.onTurnStarted(operation.origin));
     }
-    this.settle(operation, () => operation.resolve());
+    const error = this.cancellation.errorFor(operation);
+    this.settle(operation, () => (error ? operation.reject(error) : operation.resolve()));
   }
 
   private rollback(

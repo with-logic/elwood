@@ -1,0 +1,22 @@
+/** Private cancellation for turn replay submissions (PRD §5.3/§5.8). */
+import type { ControlSendOptions } from "../control-queue/index.ts";
+import type { SendOptions } from "../images/types.ts";
+
+// Keep cancellation off the public SendOptions contract: only the turn owner registers it.
+const cancellations = new WeakMap<SendOptions, ControlSendOptions>();
+
+export function cancellableSubmission(
+  options: SendOptions | undefined,
+  signal: AbortSignal,
+): SendOptions {
+  const replayOptions = { ...options };
+  cancellations.set(replayOptions, {
+    origin: { kind: "caller", turnReplay: true },
+    cancel: { signal, error: () => new Error("Turn replay cancelled.") },
+  });
+  return replayOptions;
+}
+
+export function submissionControlOptions(options?: SendOptions): ControlSendOptions {
+  return (options && cancellations.get(options)) ?? {};
+}

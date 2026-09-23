@@ -5,27 +5,28 @@
  * The turn boundary is a COMPLETENESS ORACLE, not a timer. A turn's assistant text is
  * transcript-sourced (C-CLAUDE-15) and the transcript is written ASYNCHRONOUSLY, arriving
  * shortly AFTER the `ready` status. The turn-boundary `Stop` hook carries
- * `last_assistant_message` — the final assistant text of the just-completed turn — used
- * ONLY as a completeness signal (never displayed — it can be ghost text): the turn ends
- * once the transcript-collected assistant text CONTAINS it. With no such signal (a
- * pure-tool turn, or an empty/`null` `last_assistant_message`) the turn ends after a
- * bounded quiet window with no new content.
+ * `last_assistant_message` — the just-completed turn's final assistant text — used ONLY as a
+ * completeness signal (never displayed — it can be ghost text): the turn ends once the
+ * transcript-collected assistant text CONTAINS it. With no such signal (a pure-tool turn, or
+ * an empty/`null` one) the turn ends after a bounded quiet window with no new content.
  *
  * The runner is decoupled from its consumer. `completion` always resolves when the consumer
  * settles; its error travels through `events`. The serializer instead holds `boundary`, which
- * resolves on a successful oracle/quiet settle or terminal status. After consumer failure it
- * waits for real `ready`/terminal evidence plus transcript drain, so abandoned streams cannot
- * release their slot while the agent is still producing.
+ * resolves on a successful oracle/quiet settle or terminal status; after a consumer failure it
+ * waits for real `ready`/terminal evidence plus transcript drain, so an abandoned stream cannot
+ * release its slot while the agent is still producing. Both paths also await cancelled
+ * replay writes and their cleanup before releasing the slot and captured images.
  *
  * Timeouts: a turn may run for HOURS (a test suite, a PR poll), so there is NO whole-turn
  * timeout by default; callers may pass an opt-in `timeoutMs`, armed only AFTER submission (a
  * turn begins on submission — the timer must never reject a caller for a prompt still queued
- * behind readiness that then submits anyway). The tight cap is `catchUpMs` (default 10s),
- * armed only ONCE `ready` fires — the flush should be near-instant, so a longer stall rejects
- * with `wait_timeout`. A terminal status ends the turn at once.
+ * behind readiness that then submits anyway). The tight cap is `catchUpMs` (default 10s), armed
+ * only ONCE `ready` fires — a longer stall rejects with `wait_timeout`. A terminal status ends
+ * the turn at once.
  */
 
 import { toError } from "../errors.ts";
+import { cancellableSubmission } from "../input/submission-cancel.ts";
 import { terminalStatuses } from "../status-categories.ts";
 import { boundaryExpectation } from "./boundary-signal.ts";
 import { toTurnEvent } from "./events.ts";
@@ -67,7 +68,7 @@ export function runTurn(
   const sendOptions = options.images === undefined ? undefined : { images: options.images };
   const send = () => session.sendMessage(prompt, sendOptions);
   const acceptance = new TurnAcceptance(options.fallbackQuietMs ?? FALLBACK_QUIET_MS, {
-    replay: send,
+    replay: (signal) => session.sendMessage(prompt, cancellableSubmission(sendOptions, signal)),
     acceptReady: () => gate.observeReady(),
     fail: (error) => gate.fail(toError(error)),
   });
@@ -93,13 +94,11 @@ export function runTurn(
     offHook();
     offStatus();
   };
-  const boundary = new TurnBoundary(maybeCleanup, options.drainMs);
-  // The gate's SUCCESSFUL settle means the transcript drained — the real boundary. Its rejection
-  // (a consumer failure) does NOT reach it here; a post-failure `ready`/terminal does.
-  gate.done().then(
-    () => boundary.reach(),
-    () => undefined,
-  );
+  const boundary = new TurnBoundary(maybeCleanup, () => acceptance.quiesce(), options.drainMs);
+  // The gate's settle disarms acceptance recovery either way (C-API-58). Only a SUCCESS settle
+  // is the real boundary (the transcript drained); after a consumer failure a later
+  // `ready`/terminal reaches it instead.
+  acceptance.disarmOnSettle(gate.done(), () => boundary.reach());
 
   const offActivity = session.on("activity", (event) => {
     const simple = toTurnEvent(event);
@@ -132,8 +131,7 @@ export function runTurn(
       acceptance.running();
     }
     if (terminalStatuses.has(status)) {
-      acceptance.dispose();
-      gate.end();
+      gate.end(); // the gate-settle handler disarms acceptance (C-API-58)
       return boundary.reach(); // agent is gone — the real boundary, regardless of consumer state
     }
     if (status === "ready" && started) {
@@ -152,10 +150,10 @@ export function runTurn(
       // `sendMessage` resolves — never rejecting a prompt still queued behind readiness.
       await send(); // listeners attached — no early event lost
     } catch (error) {
-      // The SUBMISSION failed → no agent turn is in flight and no status transition is coming:
-      // fail the consumer with the typed error AND reach the boundary at once (else the
-      // serializer waits forever). A terminal-status race is a benign idempotent no-op; otherwise
-      // a submit-on-a-dead-session `session_not_running` propagates to the consumer (C-API-25).
+      // The SUBMISSION failed → no agent turn is in flight: fail the consumer with the typed
+      // error AND reach the boundary at once (else the serializer waits forever); a dead-session
+      // `session_not_running` propagates to the consumer (C-API-25). This `gate.fail` is also
+      // what disarms a watchdog armed by a transition that landed BEFORE the rejection.
       gate.fail(toError(error));
       boundary.reach();
       consumerSettled = true;
@@ -172,8 +170,7 @@ export function runTurn(
       boundary.markConsumerFailed();
       if (sawReady) boundary.armDrain();
     } finally {
-      if (timer) clearTimeout(timer);
-      acceptance.dispose();
+      if (timer) clearTimeout(timer); // acceptance was disarmed by the gate-settle handler
       consumerSettled = true;
       maybeCleanup();
     }
