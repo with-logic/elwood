@@ -1,4 +1,4 @@
-/** Image-only staged drafts receive native recovery on both adapters (C-API-31/44). */
+/** Recovery from synthetic, already-staged image chips on both adapters (C-API-31/44). */
 import { afterEach, expect, test, vi } from "vitest";
 import { startClaude, startCodex } from "../../src/index.ts";
 import * as claude from "../claude/helpers.ts";
@@ -18,11 +18,13 @@ afterEach(() => {
 });
 
 test.each([
-  ["claude", ""],
-  ["claude", " \t\n"],
-  ["codex", ""],
-  ["codex", " \t\n"],
-] as const)("C-API-31/44 %s recovers a swallowed image submission with text %j", async (agent, text) => {
+  ["claude", "", false],
+  ["claude", " \t\n", false],
+  ["codex", "", false],
+  ["codex", " \t\n", false],
+  ["claude", "", true],
+  ["codex", "", true],
+] as const)("C-API-31/44 %s synthetic staged chip text=%j accepted=%s", async (agent, text, accepted) => {
   const helper = agent === "claude" ? claude : codex;
   helper.installFakes();
   const cwd = helper.tempDir();
@@ -56,13 +58,18 @@ test.each([
     void sent.catch(() => undefined);
     await vi.advanceTimersByTimeAsync(500);
     await sent;
+    if (accepted) {
+      // Constructed working frame: submitted image history, no newer composer.
+      paint(`${caret} [Image #1]\n• Working (1s · esc to interrupt)`);
+      pty.emitData("\u001b]0;⠋ Working\u0007\u001b[?25l");
+    }
     expect(session.terminal.snapshot().text).toContain(`${caret} [Image #1]`);
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(pty.writes.filter((value) => value === "\r")).toHaveLength(2);
+    expect(pty.writes.filter((value) => value === "\r")).toHaveLength(accepted ? 1 : 2);
     // A submitted image remains in history above a separately painted empty composer.
     paint(`${caret} [Image #1]\n${empty}`);
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(pty.writes.filter((value) => value === "\r")).toHaveLength(2);
+    expect(pty.writes.filter((value) => value === "\r")).toHaveLength(accepted ? 1 : 2);
   } finally {
     vi.useRealTimers();
     await session.teardown();

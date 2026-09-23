@@ -12,7 +12,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Recover swallowed Claude and Codex image-only submissions while their image chips remain staged, including messages containing only whitespace.
+- Recover swallowed Claude and Codex image-only submissions only while their chips remain on the live idle composer, including messages containing only whitespace.
 - Keep startup persona responses out of ergonomic caller turns, including when
   the persona and caller submit identical text or its transcript arrives after
   readiness. Closing cancels waiting callers even if process shutdown fails.

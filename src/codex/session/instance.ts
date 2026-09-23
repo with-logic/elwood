@@ -20,6 +20,7 @@ import { restoreCodexConfig, snapshotCodexConfig } from "../config/restore.ts";
 import { runCodexModelSwitch } from "../config/transaction.ts";
 import { attachCodexImages } from "../images/attach.ts";
 import { codexModelPicker } from "../model-picker.ts";
+import { codexImageStaged } from "../screen/image-staged.ts";
 import { liveCodexClearance } from "../screen/live-clearance.ts";
 import type { CodexTranscriptWatcher } from "../transcript/index.ts";
 import type { CodexHookBridge } from "./bridge.ts";
@@ -138,7 +139,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   waitForActivity(match: (event: ElwoodActivityEvent) => boolean, timeoutMs?: number) {
     return sessionWaitForActivity(this, match, timeoutMs);
   }
-  // Codex stages plain text; the shared guard separately checks image chips.
+  // Codex stages plain text and visible native image chips.
   protected stagedPaste(screen: string, payload: string): boolean {
     // Native pasted tabs render as one space; CR and LF each start a new row.
     const lastLine = payload
@@ -147,7 +148,10 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
       .split(/[\r\n]/)
       .at(-1)
       ?.trim();
-    return lastLine !== undefined && lastLine.length > 0 && screen.includes(lastLine);
+    return (
+      (lastLine !== undefined && lastLine.length > 0 && screen.includes(lastLine)) ||
+      codexImageStaged(this.terminal)
+    );
   }
   // Codex ingests an interactive image only from the OS clipboard; the Ctrl+V is
   // held while a dialog is on screen so it never confirms one (C-API-46/37).

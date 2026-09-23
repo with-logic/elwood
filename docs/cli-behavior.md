@@ -946,3 +946,11 @@ Both submitting Enter paths were intercepted; cancellation cleared the drafts
 without a model turn. The regression suite separately verifies recovery for
 image-only and whitespace messages and excludes image chips above a newer empty
 composer. This native run confirms chip placement, not model acceptance.
+
+The follow-up live-guard proof on the same versions also passed both adapters
+(two passes, zero skips): the rendered cursor was visible on the staged chip row,
+and the surrounding native chrome satisfied the adapter's idle-composer grammar.
+The guard now requires that completed live frame and rejects working evidence;
+a retained submitted chip by itself cannot trigger recovery. Constructed session
+regressions cover a working frame with chip history and no newer empty composer.
+The native proof still intercepts submission and cancels the draft without a turn.

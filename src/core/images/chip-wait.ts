@@ -70,12 +70,6 @@ export type ChipWaitOptions = {
 const promptLine = /^[^\S\r\n]*[›❯]/;
 const chip = /\[Image #\d+\]/g;
 
-/** Recovery follows only the last composer row, not submitted image rows in history. */
-export function stagedImageChipCount(text: string): number {
-  const composer = text.split("\n").findLast((line) => promptLine.test(line));
-  return imageChipCount(composer ?? "");
-}
-
 /** Counts `[Image #N]` chips on the composer prompt line(s) only. */
 export function imageChipCount(text: string): number {
   return text
