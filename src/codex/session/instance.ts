@@ -140,7 +140,13 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   }
   // Codex has no staged chip; the composer still shows the paste's last line.
   protected stagedPaste(screen: string, prompt: string): boolean {
-    const lastLine = prompt.trim().split("\n").at(-1)?.trim();
+    // Native pasted tabs render as one space; CR and LF each start a new row.
+    const lastLine = prompt
+      .replaceAll("\t", " ")
+      .trim()
+      .split(/[\r\n]/)
+      .at(-1)
+      ?.trim();
     return lastLine !== undefined && lastLine.length > 0 && screen.includes(lastLine);
   }
   // Codex ingests an interactive image only from the OS clipboard; the Ctrl+V is

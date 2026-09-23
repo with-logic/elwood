@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Retry an ignored Codex prompt Enter when the staged paste contains stripped
+  control characters, tabs, or carriage-return line breaks.
+
 - Preserve picker and cancelled-draft cleanup authority across automatic terminal
   protocol replies and startup automation; actual caller input still revokes it.
 
