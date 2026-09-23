@@ -11,7 +11,10 @@ export function updateDialogOptions(frame: string): readonly NumberedOption[] | 
   const bannerRow = rows.findIndex((row) => updateScreenBanner.test(row));
   const before = bannerRow < 0 ? [] : rows.slice(0, bannerRow);
   if (before.some((row) => numberedOptions(row).length > 0)) return undefined;
-  const body = rows.slice(bannerRow + 1);
+  return parseOptionBody(rows.slice(bannerRow + 1), bannerRow >= 0);
+}
+
+function parseOptionBody(body: readonly string[], hasBanner: boolean) {
   const optionRows: string[] = [];
   let footer = false;
   for (const row of body) {
@@ -33,7 +36,7 @@ export function updateDialogOptions(frame: string): readonly NumberedOption[] | 
       }
       return undefined;
     }
-    if (bannerRow < 0) return undefined;
+    if (!hasBanner) return undefined;
   }
   return numberedOptions(optionRows.join("\n"));
 }
