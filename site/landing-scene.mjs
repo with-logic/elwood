@@ -23,7 +23,7 @@ export class LandingScene {
     this.bank = new SpriteBank((error) => onError?.(error));
     this.world.canRender = (name, index) => !!this.bank.frame(name, index);
     this.director = new Autonomy({
-      ready: (name) => this.prepare(name),
+      ready: (name) => this.bank.ready(name),
       fits: (name) => this.performanceFits(name),
     });
     this.onReady = onReady;
@@ -477,9 +477,8 @@ export class LandingScene {
         );
       }
     }
-    const pose = clip && this.bank.frame(p.animation, index);
+    const pose = this.bank.frame(p.animation, index);
     if (!pose) {
-      if (!clip) this.prepare(p.animation);
       return this.alignDrag(
         this.lastPose
           ? this.lastPose.clip.registration === "ledge" && !p.ledge
