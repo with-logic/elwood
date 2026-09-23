@@ -18,7 +18,7 @@ const placeholders = new Set([
   "Use /skills to list available skills",
 ]);
 const modelFooter =
-  /^ {2}gpt-[\w.-]+ (?:minimal|low|medium|high|xhigh|default)(?: · (?:\/|[A-Z]:[\\/])[^\n]*)?$/;
+  /^ {2}(?:gpt|GPT)-[\w.-]+ (?:minimal|low|medium|high|xhigh|default)(?: · (?:\/|[A-Z]:[\\/])[^\n]*)?$/;
 const hintFooter = /^(?: {2})?\? for shortcuts$/;
 
 /** A contiguous startup welcome box and its native tip/warning rows. */
