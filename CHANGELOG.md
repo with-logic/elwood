@@ -15,6 +15,12 @@ back each entry are listed in `prd/14-conformance.md`.
 - Recognize Codex turn acceptance after paste sanitization and native newline or
   outer-whitespace normalization, preventing duplicate recovery submissions.
 
+- Keep startup persona responses out of ergonomic caller turns, including when
+  the persona and caller submit identical text.
+
+- Retry an ignored Codex prompt Enter when the staged paste contains stripped
+  control characters, tabs, or carriage-return line breaks.
+
 - Preserve picker and cancelled-draft cleanup authority across automatic terminal
   protocol replies and startup automation; actual caller input still revokes it.
 
