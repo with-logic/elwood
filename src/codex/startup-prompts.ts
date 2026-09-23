@@ -28,12 +28,13 @@ export class CodexStartupPromptResponder {
   private readonly elwoodSessionId: string;
   private readonly trust: TrustPromptResponder<"codex">;
   private readonly clearance: TrustClearance;
-  private readonly updateInputHeld: () => boolean;
+  private readonly sessionInputHeld: () => boolean;
   private readonly updatePrompt = new CodexUpdatePromptTracker();
   private readonly lifetime = new AbortController();
   // The update-screen generation that owns the skip latch (0 = none). Only that
   // generation's own completion may release it; a stale completion is a no-op.
   private skipGeneration = 0;
+  private updateAttempt: ReturnType<typeof startCodexUpdateSkip> | undefined;
   // Emit only newly appearing warning banners; clearing re-arms a later occurrence.
   private warnedBanners = new Set<string>();
   private conversationStarted = false;
@@ -43,12 +44,16 @@ export class CodexStartupPromptResponder {
     autotrust = false,
     onStateChange?: () => void,
     clearance: TrustClearance = codexTrustClearance,
-    updateInputHeld: () => boolean = () => false,
+    sessionInputHeld: () => boolean = () => false,
   ) {
     this.elwoodSessionId = elwoodSessionId;
     this.clearance = clearance;
-    this.updateInputHeld = updateInputHeld;
+    this.sessionInputHeld = sessionInputHeld;
     this.trust = new TrustPromptResponder("codex", clearance, autotrust, onStateChange);
+  }
+
+  observeClearance(frame: string): void {
+    this.updateAttempt?.observeClearance(frame);
   }
 
   get closingSignal(): AbortSignal {
@@ -120,7 +125,7 @@ export class CodexStartupPromptResponder {
         // Latch this appearance before writing; rejection can release the latch
         // for a later frame, while success requires observed clearance (C-CODEX-17).
         this.skipGeneration = generation;
-        const settled = startCodexUpdateSkip({
+        this.updateAttempt = startCodexUpdateSkip({
           option,
           generation,
           screenText,
@@ -129,12 +134,15 @@ export class CodexStartupPromptResponder {
           readFrame,
           signal: this.lifetime.signal,
           clearance: this.clearance,
-          inputHeld: this.updateInputHeld,
+          inputHeld: this.sessionInputHeld,
           releaseLatch: () => {
             this.skipGeneration = 0;
           },
         });
-        outcomes.push({ outcome: { kind: "attempted", prompt: "update", input: option }, settled });
+        outcomes.push({
+          outcome: { kind: "attempted", prompt: "update", input: option },
+          settled: this.updateAttempt.settled,
+        });
       }
     }
     return { warnings: this.newWarnings(screenText), outcomes };

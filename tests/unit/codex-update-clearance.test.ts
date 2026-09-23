@@ -13,7 +13,7 @@ afterEach(() => vi.useRealTimers());
 
 test("C-CODEX-12 a completed write without a reader is not an answered update", async () => {
   const write = vi.fn();
-  await expect(writeCodexUpdateSkip("2", write)).resolves.toBe("cancelled");
+  await expect(writeCodexUpdateSkip("2", write)).resolves.toBe("unobserved");
   expect(write).toHaveBeenCalledOnce();
 });
 
@@ -100,4 +100,25 @@ test("C-CODEX-12 a direct writer confirms positive composer clearance after its 
   await vi.runAllTimersAsync();
   await expect(settled).resolves.toBe("answered");
   expect(write).toHaveBeenCalledOnce();
+});
+
+test("C-CODEX-12 an unobserved fulfilled skip stays latched across persistent frames", async () => {
+  const responder = new CodexStartupPromptResponder();
+  const write = vi.fn();
+  try {
+    const first = responder.handle(update, write);
+    await expect(first.outcomes[0]?.settled).resolves.toBe("cancelled");
+    for (let i = 0; i < 20; i++) {
+      const result = responder.handle(update, write);
+      await Promise.all(result.outcomes.map((outcome) => outcome.settled));
+      expect(result.outcomes).toEqual([]);
+    }
+    expect(write).toHaveBeenCalledOnce();
+    responder.handle(codexSmallComposer, write);
+    const second = responder.handle(update, write);
+    await expect(second.outcomes[0]?.settled).resolves.toBe("cancelled");
+    expect(write).toHaveBeenCalledTimes(2);
+  } finally {
+    responder.dispose();
+  }
 });

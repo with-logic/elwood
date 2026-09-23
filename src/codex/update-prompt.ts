@@ -66,15 +66,15 @@ export function codexOptionStillSafe(frameText: string, input: string): boolean 
 }
 
 /** `exhausted`: the retry budget ended while the safe option was still visible. */
-export type CodexUpdateSkipCompletion = StartupWriteCompletion | "exhausted";
+export type CodexUpdateSkipCompletion = StartupWriteCompletion | "exhausted" | "unobserved";
 
 /**
  * Retries a possibly swallowed startup hotkey only while its safe option remains visible.
  *
- * `answered` means the update screen CLEARED after our key. A frame that merely stops
- * being the update screen is not clearance: when `invalidated` recognizes it (a trust
- * gate painted over the update screen), the skip is reported `cancelled` so no
- * `startup_prompt` success is emitted for an update that never took (C-CODEX-12).
+ * `answered` requires a fulfilled physical write and positive native composer
+ * clearance with no invalidating session input hold. Unknown replacements and
+ * missing readers cannot prove success; an unobserved fulfilled write remains
+ * latched so persistent frames cannot start another skip (C-CODEX-12/17).
  */
 export async function writeCodexUpdateSkip(
   option: string,
@@ -87,11 +87,11 @@ export async function writeCodexUpdateSkip(
   invalidated: (frameText: string) => boolean = () => false,
   signal?: AbortSignal,
   clearance: TrustClearance = codexComposerClearance,
+  onWritten?: () => void,
 ): Promise<CodexUpdateSkipCompletion> {
   if (readFrame === undefined) {
     // A fulfilled write alone cannot prove the dialog cleared.
-    await write(option, currentUpdateFrame);
-    return "cancelled";
+    return (await write(option, currentUpdateFrame)) === "withheld" ? "cancelled" : "unobserved";
   }
   const deadline = Date.now() + retryTimeoutMs;
   let wrote = false;
@@ -116,6 +116,7 @@ export async function writeCodexUpdateSkip(
       settledFrameKeepsChoice(settledFrame, identity, safeOption.number, currentUpdateFrame);
     if ((await write(safeOption.number, stillThisChoice)) === "withheld") return "cancelled";
     wrote = true;
+    onWritten?.();
     await waitForInput(retryIntervalMs, signal);
   }
   return "exhausted";
