@@ -5,6 +5,8 @@ import { SpriteBank } from "../sprite-bank.mjs";
 
 function fixture(t, decode = async () => {}) {
   const originalImage = globalThis.Image;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("sheet");
   const images = [];
   globalThis.Image = class {
     closed = 0;
@@ -26,6 +28,7 @@ function fixture(t, decode = async () => {}) {
   t.after(() => {
     bank.dispose?.();
     globalThis.Image = originalImage;
+    globalThis.fetch = originalFetch;
   });
   return { bank, images, page: (index) => bank.loadPage("clip", index) };
 }
@@ -59,8 +62,11 @@ test("current and outgoing poses survive eviction until their last owner release
 test("release leaves a cached page usable; teardown closes cached and retained pages once", async (t) => {
   const { bank, images, page } = fixture(t);
   let disposed = 0;
+  const decoder = bank.decoder;
   bank.decoder = {
+    decode: (blob) => decoder.decode(blob),
     dispose() {
+      decoder.dispose();
       disposed++;
     },
   };
@@ -82,16 +88,12 @@ test("release leaves a cached page usable; teardown closes cached and retained p
 });
 
 test("late metadata cannot repopulate a disposed bank", async (t) => {
-  const fetch = globalThis.fetch;
+  const { bank, images } = fixture(t);
   let finish;
   const metadata = new Promise((resolve) => {
     finish = resolve;
   });
   globalThis.fetch = async () => ({ ok: true, json: () => metadata });
-  t.after(() => {
-    globalThis.fetch = fetch;
-  });
-  const { bank, images } = fixture(t);
   const pending = bank.load("late");
   await Promise.resolve();
   bank.dispose();
@@ -109,11 +111,12 @@ test("a decode finishing after disposal closes without repopulating the bank", a
   });
   const { bank, images, page } = fixture(t, () => decoding);
   const pending = page(0);
-  await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(images.length, 1);
   bank.dispose();
   finish();
   await assert.rejects(pending, /disposed/i);
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(images[0].closed, 1);
   assert.equal(bank.pages.size, 0);
   assert.equal(bank.pendingPages.size, 0);
