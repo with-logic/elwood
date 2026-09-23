@@ -19,6 +19,10 @@ back each entry are listed in `prd/14-conformance.md`.
   the persona and caller submit identical text or its transcript arrives after
   readiness. Closing cancels waiting callers even if process shutdown fails.
 
+- Preserve cancellation when a queued submission's pending physical write later
+  succeeds, so the cancelled operation cannot report success. Commit successful
+  loop delivery before running observers can cancel it, preserving fired telemetry.
+
 - Stop delayed paste-recovery Enter keys after raw caller input takes ownership of
   the draft, including direct terminal and xterm input.
 
