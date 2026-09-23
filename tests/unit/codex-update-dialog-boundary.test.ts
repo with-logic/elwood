@@ -25,6 +25,7 @@ test.each([
   "  2. Skip\nConfirm archive removal?",
   "  2. Skip\n\nConfirm archive removal?\n  3. Later",
   `${banner}\n${options}\nConfirm archive removal?`,
+  `${banner}\nConfirm archive removal?\n${options}`,
 ])("C-CODEX-22 trailing replacement content withholds an active retry: %s", async (replacement) => {
   vi.useFakeTimers();
   const responder = new CodexStartupPromptResponder("s1");

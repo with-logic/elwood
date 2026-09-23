@@ -36,11 +36,18 @@ function parseOptionBody(body: readonly string[], hasBanner: boolean) {
       }
       return undefined;
     }
-    if (!hasBanner) return undefined;
+    if (!(hasBanner && updateHeaderRow(row))) return undefined;
   }
   return numberedOptions(optionRows.join("\n"));
 }
 
 function wrappedUpdateAction(previous: string, row: string): boolean {
   return /Update now \(runs `[^`]*$/i.test(previous) && /^ {4,}\S/.test(row);
+}
+
+function updateHeaderRow(row: string): boolean {
+  return (
+    updateScreenBanner.test(row) ||
+    /^\s*Release notes: https:\/\/github\.com\/openai\/codex\/releases\/latest\s*$/.test(row)
+  );
 }
