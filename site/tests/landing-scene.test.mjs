@@ -1,3 +1,4 @@
+import { resolveObjectURL } from "node:buffer";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -50,8 +51,7 @@ globalThis.Image = class {
     this.closed++;
   }
   async decode() {
-    requests.push(String(this.src));
-    const bytes = await readFile(fileURLToPath(this.src));
+    const bytes = Buffer.from(await resolveObjectURL(this.src).arrayBuffer());
     assert.equal(bytes.subarray(0, 4).toString(), "RIFF");
     assert.equal(bytes.subarray(8, 12).toString(), "WEBP");
   }
