@@ -16,6 +16,12 @@ back each entry are listed in `prd/14-conformance.md`.
   composer clearance; completed writes without a reader or into replaced dialogs
   settle quietly without false startup success.
 
+- Recognize Codex 0.156.1 capitalized model footers when confirming an empty
+  native composer, so cancelled draft cleanup can release queued successor input.
+
+- Recognize Codex 0.156.1 folder-access trust prompts, keeping queued input held
+  and approving only the known choice when `autotrust` is enabled.
+
 - Keep queued Codex input held when an update screen becomes an unknown or partial
   dialog, until its live native composer returns; a stale visible cursor cannot
   clear replacement text above the old composer. Specific trust rules retain their
