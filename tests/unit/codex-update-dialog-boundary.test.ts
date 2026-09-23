@@ -81,3 +81,11 @@ test.each([
 ])("C-CODEX-22 unknown rows cannot masquerade as a footer or wrapped safe label: %s", (frame) => {
   expect(codexOptionStillSafe(frame, "2")).toBe(false);
 });
+
+test("C-CODEX-22 mixed version banners cannot establish a continuation", () => {
+  const tracker = new CodexUpdatePromptTracker();
+  const frame = `${banner}\nUpdate available! 0.153.4 -> 0.154.0\n${options}`;
+  expect(tracker.observe(frame)).toBe(true);
+  expect(tracker.currentFramePredicate()(frame)).toBe(false);
+  expect(tracker.observe("  2. Skip")).toBe(false);
+});

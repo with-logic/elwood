@@ -9,6 +9,8 @@ export const updateScreenBanner =
 export function updateDialogOptions(frame: string): readonly NumberedOption[] | undefined {
   const rows = frame.split("\n");
   const bannerRow = rows.findIndex((row) => updateScreenBanner.test(row));
+  const banner = rows[bannerRow]?.trim();
+  if (rows.some((row) => updateScreenBanner.test(row) && row.trim() !== banner)) return undefined;
   const before = bannerRow < 0 ? [] : rows.slice(0, bannerRow);
   if (before.some((row) => numberedOptions(row).length > 0)) return undefined;
   return parseOptionBody(rows.slice(bannerRow + 1), bannerRow >= 0);
