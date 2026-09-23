@@ -28,7 +28,9 @@ test.each([
   expect(tracker.observe(replacement)).toBe(false);
   const table = codexScreenFactTableForTrustPolicy(false);
   readScreenFacts(table, { text: banner, title: "" });
-  expect(readScreenFacts(table, { text: replacement, title: "" }).facts.blocking_prompt_visible).toBe(true);
+  expect(
+    readScreenFacts(table, { text: replacement, title: "" }).facts.blocking_prompt_visible,
+  ).toBe(true);
 });
 
 test("C-CODEX-22 a known choice cannot vouch for another previously unseen choice", () => {
