@@ -1,3 +1,4 @@
+/** Manual animation workshop rendering and lifecycle (PRD §13; docs/design/landing.md). */
 import { gameAssetUrl } from "./game-assets.mjs";
 import { SpriteBank } from "./sprite-bank.mjs";
 import { blendAtSocket, positionPose, samePoseImage, transitionPose } from "./sprite-pose.mjs";

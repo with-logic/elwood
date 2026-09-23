@@ -1,13 +1,18 @@
 /** Off-main-thread sprite decoding with a browser-compatible fallback (PRD §13; site/docs/design/landing.md). */
+import { releaseSpriteImage } from "./release.mjs";
+
 async function decodeOnPage(blob) {
   if (typeof createImageBitmap === "function") return createImageBitmap(blob);
   const image = new Image();
   const url = URL.createObjectURL(blob);
+  let decoded = false;
   try {
     image.src = url;
     await image.decode();
+    decoded = true;
     return image;
   } finally {
+    if (!decoded) releaseSpriteImage(image);
     URL.revokeObjectURL(url);
   }
 }
@@ -58,7 +63,7 @@ export class SpriteDecoder {
   #receive({ id, image, error, unsupported }) {
     const pending = this.#pending.get(id);
     if (!pending) {
-      image?.close?.();
+      if (image) releaseSpriteImage(image);
       return;
     }
     if (unsupported) this.#fallbackAll();

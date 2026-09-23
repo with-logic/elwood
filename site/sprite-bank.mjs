@@ -1,6 +1,7 @@
 /** Owns cached and pose-retained sprite resources (PRD §13; docs/design/landing.md). */
 import { gameAssetUrl } from "./game-assets.mjs";
 import { SpriteDecoder } from "./sprite-decoder/index.mjs";
+import { releaseSpriteImage } from "./sprite-decoder/release.mjs";
 
 export class SpriteBank {
   #onError;
@@ -57,7 +58,7 @@ export class SpriteBank {
         throw new Error(`Couldn’t load ${name}. Check the local server and try again.`);
       const image = await this.decoder.decode(await response.blob());
       if (this.disposed) {
-        image.close?.();
+        releaseSpriteImage(image);
         throw new Error("Sprite bank is disposed.");
       }
       this.pages.set(key, image);
@@ -67,7 +68,7 @@ export class SpriteBank {
         const evicted = this.pages.get(oldest);
         this.pages.delete(oldest);
         if (this.#retained.has(evicted)) this.#evicted.add(evicted);
-        else evicted.close?.();
+        else releaseSpriteImage(evicted);
       }
       return image;
     })();
@@ -92,14 +93,14 @@ export class SpriteBank {
     for (const page of this.#evicted) {
       if (this.#retained.has(page)) continue;
       this.#evicted.delete(page);
-      page.close?.();
+      releaseSpriteImage(page);
     }
   }
 
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
-    for (const page of new Set([...this.pages.values(), ...this.#evicted])) page.close?.();
+    for (const page of new Set([...this.pages.values(), ...this.#evicted])) releaseSpriteImage(page);
     this.pages.clear();
     this.#retained.clear();
     this.#evicted.clear();
