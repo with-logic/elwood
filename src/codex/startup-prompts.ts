@@ -28,7 +28,8 @@ export class CodexStartupPromptResponder {
   private readonly elwoodSessionId: string;
   private readonly trust: TrustPromptResponder<"codex">;
   private readonly clearance: TrustClearance;
-  private readonly updatePrompt: CodexUpdatePromptTracker;
+  private readonly updateInputHeld: () => boolean;
+  private readonly updatePrompt = new CodexUpdatePromptTracker();
   private readonly lifetime = new AbortController();
   // The update-screen generation that owns the skip latch (0 = none). Only that
   // generation's own completion may release it; a stale completion is a no-op.
@@ -42,10 +43,11 @@ export class CodexStartupPromptResponder {
     autotrust = false,
     onStateChange?: () => void,
     clearance: TrustClearance = codexTrustClearance,
+    updateInputHeld: () => boolean = () => false,
   ) {
     this.elwoodSessionId = elwoodSessionId;
     this.clearance = clearance;
-    this.updatePrompt = new CodexUpdatePromptTracker(clearance);
+    this.updateInputHeld = updateInputHeld;
     this.trust = new TrustPromptResponder("codex", clearance, autotrust, onStateChange);
   }
 
@@ -128,6 +130,7 @@ export class CodexStartupPromptResponder {
           readFrame,
           signal: this.lifetime.signal,
           clearance: this.clearance,
+          inputHeld: this.updateInputHeld,
           releaseLatch: () => {
             this.skipGeneration = 0;
           },

@@ -1,4 +1,4 @@
-/** Single-frame Codex update recognition (PRD §5.5, C-CODEX-12). */
+/** Recognizes native update appearances and continuation rows (PRD §5.5, C-CODEX-12). */
 import { nonOptionText, numberedOptions } from "../../core/terminal-options.ts";
 import { codexUpdateActionPattern, codexUpdateOptionPattern } from "./selection.ts";
 
