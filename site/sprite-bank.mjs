@@ -3,6 +3,7 @@ import { validateSpriteClip } from "./sprite-metadata.mjs";
 import { SpriteDecoder } from "./sprite-decoder/index.mjs";
 import { releaseSpriteImage } from "./sprite-decoder/release.mjs";
 import { gameAssetUrl } from "./game-assets.mjs";
+import { withSpriteAssetErrorContext } from "./sprite-asset-error.mjs";
 
 export class SpriteBank {
   #onError;
@@ -25,12 +26,15 @@ export class SpriteBank {
     if (this.clips.has(name)) return this.clips.get(name);
     if (this.clipPromises.has(name)) return this.clipPromises.get(name);
     const promise = (async () => {
-      const response = await fetch(gameAssetUrl(`${name}/clip.json`));
-      if (!response.ok)
-        throw new Error(`Couldn’t load ${name}. Check the local server and try again.`);
-      const clip = await response.json();
+      const clip = await withSpriteAssetErrorContext(`${name}/clip.json`, async () => {
+        const response = await fetch(gameAssetUrl(`${name}/clip.json`));
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const value = await response.json();
+        if (this.disposed) throw new Error("Sprite bank is disposed.");
+        validateSpriteClip(value, name);
+        return value;
+      });
       if (this.disposed) throw new Error("Sprite bank is disposed.");
-      validateSpriteClip(clip, name);
       this.#failed.delete(name);
       this.clips.set(name, clip);
       return clip;
@@ -59,10 +63,12 @@ export class SpriteBank {
     const promise = (async () => {
       const clip = await this.load(name);
       if (this.disposed) throw new Error("Sprite bank is disposed.");
-      const response = await fetch(gameAssetUrl(`${name}/${clip.pages[index].file}`));
-      if (!response.ok)
-        throw new Error(`Couldn’t load ${name}. Check the local server and try again.`);
-      const image = await this.decoder.decode(await response.blob());
+      const path = `${name}/${clip.pages[index].file}`;
+      const image = await withSpriteAssetErrorContext(path, async () => {
+        const response = await fetch(gameAssetUrl(path));
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return this.decoder.decode(await response.blob());
+      });
       if (this.disposed) {
         releaseSpriteImage(image);
         throw new Error("Sprite bank is disposed.");
