@@ -101,7 +101,7 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   waitForActivity(match: (event: ElwoodActivityEvent) => boolean, timeoutMs?: number) {
     return sessionWaitForActivity(this, match, timeoutMs);
   }
-  // Captured staged chip: "❯ [Pasted text #1 +15 lines]" (claude 2.1.201).
+  // Captured text chip (2.1.201); the shared guard separately checks image chips.
   protected stagedPaste(screen: string): boolean {
     return /\[Pasted text/.test(screen);
   }

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   imageChipCount,
   sendObservedImage,
+  stagedImageChipCount,
   waitForImageChip,
 } from "../../src/core/images/chip-wait.ts";
 
@@ -17,6 +18,13 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe("waitForImageChip (C-API-44)", () => {
+  test("C-API-44 recovery excludes image chips outside the current composer", () => {
+    expect(stagedImageChipCount("")).toBe(0);
+    expect(stagedImageChipCount("assistant: [Image #1]")).toBe(0);
+    expect(stagedImageChipCount("❯ [Image #1]\n❯ ")).toBe(0);
+    expect(stagedImageChipCount("› [Image #1]\n› [Image #2] [Image #3]")).toBe(2);
+  });
+
   test("C-API-44 imageChipCount counts chips only on the composer prompt line", () => {
     expect(imageChipCount("")).toBe(0);
     // Chips on the composer prompt line (Codex `›`, Claude `❯`) count.

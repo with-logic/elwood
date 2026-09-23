@@ -138,7 +138,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   waitForActivity(match: (event: ElwoodActivityEvent) => boolean, timeoutMs?: number) {
     return sessionWaitForActivity(this, match, timeoutMs);
   }
-  // Codex has no staged chip; the composer still shows the paste's last line.
+  // Codex stages plain text; the shared guard separately checks image chips.
   protected stagedPaste(screen: string, payload: string): boolean {
     // Native pasted tabs render as one space; CR and LF each start a new row.
     const lastLine = payload

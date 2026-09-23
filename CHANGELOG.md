@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Recover swallowed Claude and Codex image-only submissions while their image chips remain staged, including messages containing only whitespace.
+
 - Preserve cancellation when a queued submission's pending physical write later
   succeeds, so the cancelled operation cannot report success. Commit successful
   loop delivery before running observers can cancel it, preserving fired telemetry.

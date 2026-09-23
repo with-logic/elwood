@@ -1,6 +1,7 @@
 /** Session lifetime, input blocking, persistence and cleanup (PRD §5/§8/§9). */
 import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../core/activity/index.ts";
 import { ControlQueue } from "../../core/control-queue/index.ts";
+import { stagedImageChipCount } from "../../core/images/chip-wait.ts";
 import { type PasteGuard, queuedInputSubmitter } from "../../core/input/index.ts";
 import { registerPrivateOutputSecrets } from "../../core/private-output-secrets.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
@@ -46,7 +47,8 @@ export abstract class SessionLifecycle {
   private readonly statusEngine: SessionStatusEngine;
   protected readonly pasteGuard: PasteGuard = {
     snapshot: () => this.terminal.snapshot().text,
-    staged: (screen, payload) => this.stagedPaste(screen, payload),
+    staged: (screen, payload) =>
+      this.stagedPaste(screen, payload) || stagedImageChipCount(screen) > 0,
     blocked: () => this.queuedInputBlocked(),
   };
   protected constructor(

@@ -9,6 +9,7 @@ import { liveClaudeClearance } from "../../src/claude/screen-table.ts";
 import { attachCodexImages } from "../../src/codex/images/attach.ts";
 import { liveCodexClearance } from "../../src/codex/screen/live-clearance.ts";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
+import { stagedImageChipCount } from "../../src/core/images/chip-wait.ts";
 import { ComposerCleanup } from "../../src/core/input/composer-cleanup.ts";
 import { queuedInputSubmitter } from "../../src/core/input/index.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
@@ -95,6 +96,7 @@ for (const agent of ["claude", "codex"] as const) {
               `${agent} rendered image and text draft`,
               10_000,
             );
+            assert.equal(stagedImageChipCount(session.terminal.snapshot().text), 1);
             abort.abort(cancelled);
           }
         },

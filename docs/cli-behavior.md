@@ -935,3 +935,14 @@ The captured nonempty rows are retained in
 `tests/fixtures/codex-0.156.1/cleared-composer.txt`; the regression replays them
 at their original viewport size, with temporary paths replaced by a stable `CAPTURE`
 placeholder. C-API-56, C-TRUST-01, PRD §5.4.
+
+### Image-only recovery chips (2026-09-23)
+
+Claude Code 2.1.281 and Codex 0.156.1 both kept a single `[Image #1]` on the
+last composer prompt row while a staged image/text draft awaited submission.
+The serial native composer cleanup proof passed both adapters (two passes, no
+skips) with an assertion that the recovery chip recognizer saw that exact image.
+Both submitting Enter paths were intercepted; cancellation cleared the drafts
+without a model turn. The regression suite separately verifies recovery for
+image-only and whitespace messages and excludes image chips above a newer empty
+composer. This native run confirms chip placement, not model acceptance.
