@@ -14,9 +14,17 @@ afterEach(() => vi.useRealTimers());
 test.each([
   "stalled",
   "failed nudges",
+  "control characters",
+  "controls and tabs",
   "accepted final nudge",
 ])("C-API-56 replay %s cannot pass its draft to successor input", async (scenario) => {
   vi.useFakeTimers();
+  const prompt =
+    scenario === "control characters"
+      ? "re\u0001play"
+      : scenario === "controls and tabs"
+        ? "re\u0001\tplay"
+        : "replay";
   const closing = new AbortController();
   const writes: string[] = [];
   let draft = "";
@@ -45,7 +53,10 @@ test.each([
     () => emptyFrame,
   );
   const queue = new ControlQueue(
-    queuedInputSubmitter(terminal, { snapshot: () => draft, staged: () => draft === "replay" }),
+    queuedInputSubmitter(terminal, {
+      snapshot: () => draft,
+      staged: (screen, payload) => screen === payload,
+    }),
     () => new Error("closed"),
     () => undefined,
     () => false,
@@ -55,7 +66,7 @@ test.each([
   try {
     queue.markReady();
     const replay = queue.send(
-      "replay",
+      prompt,
       "message",
       undefined,
       submissionControlOptions(cancellableSubmission(undefined, closing.signal)),

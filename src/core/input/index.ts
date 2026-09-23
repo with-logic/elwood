@@ -12,6 +12,7 @@ import { nudgePastedPrompt } from "./nudge.ts";
 /** Adapter view of "the paste is still staged in the composer". */
 export type PasteGuard = {
   readonly snapshot: () => string;
+  /** Receives the sanitized payload that was actually pasted. */
   readonly staged: (screen: string, prompt: string) => boolean;
   /**
    * True when a human or automation-owned dialog is on screen. A dialog can
@@ -91,8 +92,9 @@ async function writePastedPrompt(
   throwIfInputAborted(signal);
   // Sanitize: caller/model text is data, so an embedded end sentinel or control
   // byte must not escape paste mode into live keystrokes (§5.3).
+  const payload = sanitizePasteText(prompt);
   stageComposer(terminal);
-  await terminal.sendInput(`\u001b[200~${sanitizePasteText(prompt)}\u001b[201~`);
+  await terminal.sendInput(`\u001b[200~${payload}\u001b[201~`);
   try {
     await waitForInput(settleDelayMs, signal);
     // Hold the submitting Enter while a blocking dialog is on screen: firing it
@@ -104,7 +106,7 @@ async function writePastedPrompt(
     await terminal.sendInput("\r");
     if (!turnReplay) submittedComposer(terminal);
     onSubmitted?.();
-    const nudges = nudgePastedPrompt(terminal, prompt, turnReplay, guard, signal);
+    const nudges = nudgePastedPrompt(terminal, payload, turnReplay, guard, signal);
     if (turnReplay) {
       if (!(await nudges))
         throw elwoodError("wait_timeout", "Turn replay remained staged after submission attempts.");
