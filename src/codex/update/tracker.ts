@@ -1,9 +1,11 @@
 /** Tracks native update generations for bounded automation (PRD §5.5, C-CODEX-12). */
+import { updateDialogOptions } from "./layout.ts";
 import { codexUpdatePromptVisible, isSafeUpdateContinuation } from "./recognition.ts";
 
 /** Keeps a split prompt blocking until a frame with no update evidence clears it. */
 export class CodexUpdatePromptTracker {
   private active = false;
+  private continuationEligible = false;
   private generation = 0;
 
   /** Identifies the current appearance; it changes whenever the update screen clears or appears. */
@@ -20,7 +22,8 @@ export class CodexUpdatePromptTracker {
     if (codexUpdatePromptVisible(frameText)) {
       if (!this.active) this.generation += 1;
       this.active = true;
-    } else if (!(this.active && isSafeUpdateContinuation(frameText))) {
+      this.continuationEligible = updateDialogOptions(frameText) !== undefined;
+    } else if (!(this.active && this.continuationEligible && isSafeUpdateContinuation(frameText))) {
       if (this.active) this.generation += 1;
       this.active = false;
     }
@@ -32,6 +35,8 @@ export class CodexUpdatePromptTracker {
     const generation = this.generation;
     return (frameText) =>
       this.active &&
+      this.continuationEligible &&
+      updateDialogOptions(frameText) !== undefined &&
       this.generation === generation &&
       (codexUpdatePromptVisible(frameText) || isSafeUpdateContinuation(frameText));
   }

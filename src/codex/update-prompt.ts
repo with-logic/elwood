@@ -10,10 +10,10 @@ import {
   type NonTrustAutomationWriter,
 } from "../core/startup/barrier.ts";
 import type { StartupWriteCompletion } from "../core/startup/write.ts";
-import { numberedOptions } from "../core/terminal-options.ts";
 import type { TrustClearance } from "../core/trust/clearance.ts";
 import type { TrustWriteResult } from "../core/trust/responder.ts";
 import { codexComposerClearance } from "./screen/clearance.ts";
+import { updateDialogOptions } from "./update/layout.ts";
 import { codexUpdatePromptVisible, isSafeUpdateContinuation } from "./update/recognition.ts";
 import { codexUpdateOptionPattern, safeUpdateOption } from "./update/selection.ts";
 import { codexUpdateChoiceIdentity, settledFrameKeepsChoice } from "./update-identity.ts";
@@ -49,7 +49,7 @@ export function guardedCodexAutomationWrite(
  */
 export function codexOptionStillSafe(frameText: string, input: string): boolean {
   if (!/^\d+$/.test(input)) return true;
-  const options = numberedOptions(frameText);
+  const options = updateDialogOptions(frameText) ?? [];
   // Codex can repaint the safe choices WITHOUT the banner, so requiring a full update
   // screen here would withhold a correct key (C-CODEX-12). The question is narrower:
   // on the settled frame, does this number still name a safe option? If the frame shows

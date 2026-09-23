@@ -10,9 +10,9 @@ export { updateScreenBanner } from "./layout.ts";
  * an option-only frame must carry both the update and safe choices.
  */
 export function codexUpdatePromptVisible(frameText: string): boolean {
+  if (updateScreenBanner.test(frameText)) return true;
   const options = updateDialogOptions(frameText);
   if (options === undefined) return false;
-  if (updateScreenBanner.test(frameText)) return true;
   return (
     options.some((option) => codexUpdateActionPattern.test(option.label)) &&
     options.some((option) => codexUpdateOptionPattern.test(option.label))
