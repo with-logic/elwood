@@ -13,7 +13,7 @@ export const pasteNudgeAttempts = 2;
  */
 export async function nudgePastedPrompt(
   terminal: InputTerminal,
-  prompt: string,
+  payload: string,
   verifyAcceptance: boolean,
   guard?: PasteGuard,
   signal?: AbortSignal,
@@ -28,7 +28,7 @@ export async function nudgePastedPrompt(
     throwIfInputAborted(signal);
     // A dialog holds recovery without consuming its bounded Enter attempts.
     if (unsafe) continue;
-    if (!guard.staged(guard.snapshot(), prompt)) return true;
+    if (!guard.staged(guard.snapshot(), payload)) return true;
     // Observe the final Enter too: writing it does not prove native acceptance.
     if (nudges === pasteNudgeAttempts) return false;
     nudges += 1;
