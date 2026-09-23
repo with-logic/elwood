@@ -4,7 +4,7 @@
  */
 
 import { type NumberedOption, nonOptionText, numberedOptions } from "../core/terminal-options.ts";
-import { updateScreenBanner } from "./update-prompt.ts";
+import { updateScreenBanner } from "./update/recognition.ts";
 
 /**
  * The identity of the update choice an attempt captured: the dialog's own non-option
