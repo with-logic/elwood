@@ -43,9 +43,15 @@ test("C-TRUST-01 capitalized native footer still needs a live cursor on the comp
 });
 
 test.each([
-  captured.replace("› Ask Codex to do anything", "› staged caller draft"),
-  `${captured}\n  1. Yes\n  2. No`,
-  captured.replace("› Ask", "• Working (3s • esc to interrupt)\n› Ask"),
-])("C-TRUST-01 capitalized footer cannot clear a draft, dialog or active work: %s", (frame) => {
+  {
+    label: "staged draft",
+    frame: captured.replace("› Ask Codex to do anything", "› staged caller draft"),
+  },
+  { label: "dialog options", frame: `${captured}\n  1. Yes\n  2. No` },
+  {
+    label: "working indicator",
+    frame: captured.replace("› Ask", "• Working (3s • esc to interrupt)\n› Ask"),
+  },
+])("C-TRUST-01 capitalized footer cannot clear $label", ({ frame }) => {
   expect(codexComposerRowsClearance(frame.split("\n"))).toBe(false);
 });

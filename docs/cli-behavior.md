@@ -897,4 +897,5 @@ The model prefix now accepts the captured `GPT-` spelling alongside `gpt-`;
 placeholder, footer layout, live cursor and blocking-overlay checks remain required.
 The captured nonempty rows are retained in
 `tests/fixtures/codex-0.156.1/cleared-composer.txt`; the regression replays them
-at their original viewport size. C-API-56, C-TRUST-01, PRD §5.4.
+at their original viewport size, with temporary paths replaced by a stable `CAPTURE`
+placeholder. C-API-56, C-TRUST-01, PRD §5.4.
