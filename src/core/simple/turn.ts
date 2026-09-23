@@ -29,6 +29,7 @@ import { toError } from "../errors.ts";
 import { terminalStatuses } from "../status-categories.ts";
 import { boundaryExpectation } from "./boundary-signal.ts";
 import { toTurnEvent } from "./events.ts";
+import { holdTurnLoops } from "./loop-hold.ts";
 import { armTurnTimeout, FALLBACK_QUIET_MS, gateForTurn } from "./turn/defaults.ts";
 import { TurnAcceptance } from "./turn-acceptance.ts";
 import { TurnBoundary } from "./turn-boundary.ts";
@@ -94,6 +95,8 @@ export function runTurn(
     offStatus();
   };
   const boundary = new TurnBoundary(maybeCleanup, options.drainMs);
+  const releaseLoops = holdTurnLoops(session);
+  void boundary.promise.then(releaseLoops);
   // The gate's SUCCESSFUL settle means the transcript drained — the real boundary. Its rejection
   // (a consumer failure) does NOT reach it here; a post-failure `ready`/terminal does.
   gate.done().then(

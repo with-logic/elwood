@@ -3,6 +3,7 @@ import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../core/activity/i
 import { ControlQueue } from "../../core/control-queue/index.ts";
 import { type PasteGuard, queuedInputSubmitter } from "../../core/input/index.ts";
 import { registerPrivateOutputSecrets } from "../../core/private-output-secrets.ts";
+import { registerTurnLoopHold } from "../../core/simple/loop-hold.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent } from "../../core/types.ts";
 import type { PtyProcess } from "../../pty/types.ts";
@@ -83,6 +84,7 @@ export abstract class SessionLifecycle {
       () => void (this.status === "ready" && this.submitEvidence("caller_submitted")),
       ownership.composerCleanup(() => this.queuedInputBlocked(), this.closing.signal, readEmpty),
     );
+    registerTurnLoopHold(this, () => this.controlQueue.holdLoops());
     this.loops = new SessionLoops({
       stateDir,
       elwoodSessionId: record.elwoodSessionId,
