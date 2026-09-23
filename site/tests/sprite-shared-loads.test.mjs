@@ -1,6 +1,7 @@
 /** Shared asset leases release cancellation without losing another owner (PRD §13). */
 import assert from "node:assert/strict";
 import test from "node:test";
+import { getEventListeners } from "node:events";
 import { SpriteBank } from "../sprite-bank.mjs";
 
 const turn = () => new Promise((resolve) => setImmediate(resolve));
@@ -150,4 +151,19 @@ test("a retained page promoted back into cache outlives its released lease", asy
   assert.equal(images.length, 5);
   assert.equal(page.closed, 0);
   assert.equal(bank.frame("wave", 0).page, page);
+});
+
+
+test("disposal removes retained signal listeners and never restores released poses", async (t) => {
+  const { bank } = fixture(t);
+  bank.clips.set("wave", clip);
+  const owner = new AbortController();
+  const page = await bank.loadPage("wave", 0, { signal: owner.signal });
+  assert.equal(getEventListeners(owner.signal, "abort").length, 1);
+  bank.dispose();
+  assert.equal(getEventListeners(owner.signal, "abort").length, 0);
+  bank.retainPoses({ page });
+  owner.abort();
+  assert.equal(page.closed, 1);
+  assert.equal(bank.frame("wave", 0), null);
 });

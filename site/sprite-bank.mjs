@@ -33,7 +33,6 @@ export class SpriteBank {
         validateSpriteClip(value, name);
         return value;
       });
-      if (this.disposed) throw new Error("Sprite bank is disposed.");
       signal.throwIfAborted();
       this.clips.set(name, clip);
       return clip;
@@ -59,17 +58,16 @@ export class SpriteBank {
     }
     return this.loads.run(key, this.pendingPages, async (signal, pin) => {
       const clip = await this.load(name, { signal });
-      if (this.disposed) throw new Error("Sprite bank is disposed.");
+      signal.throwIfAborted();
       const path = `${name}/${clip.pages[index].file}`;
       const image = await withSpriteAssetErrorContext(path, async () => {
         const response = await fetch(gameAssetUrl(path), { signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return this.decoder.decode(await response.blob());
       });
-      if (this.disposed || signal.aborted) {
+      if (signal.aborted) {
         releaseSpriteImage(image);
         signal.throwIfAborted();
-        throw new Error("Sprite bank is disposed.");
       }
       pin(image);
       this.#cachePage(key, image);
