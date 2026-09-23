@@ -84,6 +84,7 @@ export class ControlQueue extends ControlQueueState {
       {
         input,
         kind,
+        settleAfterWrite: options.settleAfterWrite === true,
         mayBypassReadiness,
         origin: options.origin ?? callerOrigin,
         ...(attach ? { attach } : {}),
@@ -101,6 +102,7 @@ export class ControlQueue extends ControlQueueState {
       {
         input: "",
         kind,
+        settleAfterWrite: false,
         mayBypassReadiness: false,
         origin: callerOrigin,
         run,
@@ -173,7 +175,8 @@ export class ControlQueue extends ControlQueueState {
     if (traits.reportsCallerSubmission && operation.origin.kind === "loop") {
       runContained(() => this.onTurnStarted(operation.origin));
     }
-    this.settle(operation, () => operation.resolve());
+    const error = this.cancellation.errorFor(operation);
+    this.settle(operation, () => (error ? operation.reject(error) : operation.resolve()));
   }
 
   private rollback(
