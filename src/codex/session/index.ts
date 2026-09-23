@@ -64,7 +64,7 @@ export async function startCodexWithId(
   });
   const record = withCodexLaunch(createdRecord, codexLaunchPosture(options));
   const session = await startCodexFromRecord(record, stateDir, options, false, warning);
-  return queuePersonaMessage(session, options.persona);
+  return queuePersonaMessage(session, options.persona, session.closing.signal);
 }
 
 export function startCodexFromRecord(
