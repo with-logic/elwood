@@ -935,3 +935,25 @@ The captured nonempty rows are retained in
 `tests/fixtures/codex-0.156.1/cleared-composer.txt`; the regression replays them
 at their original viewport size, with temporary paths replaced by a stable `CAPTURE`
 placeholder. C-API-56, C-TRUST-01, PRD §5.4.
+
+### Native Codex updater layout (2026-09-23)
+
+An authenticated Codex 0.155.1 binary, copied into an isolated `CODEX_HOME`
+standalone-release layout with fresh cached update metadata naming 0.156.1,
+rendered the actual updater without selecting any menu item. Native PTY resize
+captured the full menu at 100×30, banner plus the clipped first action at 100×6,
+banner only at 100×3, and the first safe choice at 100×8. The fixtures in
+`tests/fixtures/codex-0.155.1/update-*.txt` preserve the rendered text.
+
+The banner begins with `✨` and a thin space. A release-notes link precedes the
+options. The `Update now` install command wraps onto an indented continuation
+row; `Press enter to continue` follows the option block. The parser accepts those
+observed rows while rejecting numbered scrollback before the banner and unknown
+text after the choices. Arbitrary indented replacement text is not a wrapped
+safe choice.
+
+These captures prove native renderer layout under controlled cached metadata,
+not an update execution or a genuine bannerless repaint. The banner remained
+visible in every captured resize. Adversarial replacement frames and shell-PTY
+proofs are separate constructed evidence; these fixtures alone do not prove
+queued-input suppression through a live Elwood session.
