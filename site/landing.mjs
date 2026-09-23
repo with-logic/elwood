@@ -256,6 +256,9 @@ window.addEventListener("blur", () => {
   scene.pause("blur", true);
 });
 window.addEventListener("focus", () => scene.pause("blur", false));
+window.addEventListener("pagehide", (event) => {
+  if (!event.persisted) scene.dispose();
+});
 document.addEventListener("visibilitychange", () => {
   codes.clear();
   clearHeld();
