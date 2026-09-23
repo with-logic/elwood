@@ -100,6 +100,9 @@ test("C-CODEX-17 the observer settles a written skip before released input hides
     });
     await vi.advanceTimersByTimeAsync(0);
     expect(completion).toBe("answered");
+    // Later native frames revisit the consumed attempt without releasing input again.
+    f.observe(codexSmallComposer);
+    expect(f.queuedInput).toHaveBeenCalledOnce();
     await vi.runAllTimersAsync();
     expect(write).toHaveBeenCalledOnce();
   } finally {

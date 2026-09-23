@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Bind Codex update retries to the current appearance’s first-party option evidence;
+  unrelated, relabeled, unseen, or overflowed continuation choices stay held for a human.
+
 - Preserve cancellation when a queued submission's pending physical write later
   succeeds, so the cancelled operation cannot report success. Commit successful
   loop delivery before running observers can cancel it, preserving fired telemetry.

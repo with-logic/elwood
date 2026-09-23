@@ -889,6 +889,16 @@ positive fixture. Inspect cursor mode and coordinates together with the same
 completed rendered text and title: an old composer or footer can remain during a
 dialog repaint, and a transcript can contain identical caret/option text.
 
+### Update continuation evidence
+
+The measured split can show only `1. Update now` with the banner, followed by
+previously unseen safe options. That ordering is indistinguishable from a foreign
+option-only dialog, so it now stays held for a human. Banner-less repaints remain
+automatable only for option numbers and labels already seen with first-party
+evidence. Changed version banners and relabeled choices fence prior retries.
+This is the fail-closed policy for the previously captured layout, not a new live
+Codex update observation.
+
 ### Cancelled native composer drafts (2026-09-20)
 
 Claude Code 2.1.278 and codex-cli 0.155.1 both cleared a staged `[Image #1]` chip
