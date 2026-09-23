@@ -95,8 +95,11 @@ test.each([
     await vi.advanceTimersByTimeAsync(3_000);
     expect(pty.writes.some((write) => write.includes("caller"))).toBe(false);
     append("PERSONA");
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(pty.writes.some((write) => write.includes("caller"))).toBe(true);
+    // Advancing fake time starts polls but cannot finish their asynchronous filesystem reads.
+    await vi.waitFor(
+      () => expect(pty.writes.some((write) => write.includes("caller"))).toBe(true),
+      { timeout: 5_000 },
+    );
     append("CALLER");
     await hook({
       hook_event_name: "Stop",
