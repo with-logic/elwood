@@ -79,7 +79,7 @@ export function sanitizePasteText(text: string): string {
  * dispatched (after the settle delay), so the control queue does not drain the
  * next operation into the composer before this prompt has actually been
  * submitted. Bounded recovery re-Enters continue in the background afterwards
- * and are idempotent.
+ * until a later queued submission or raw caller input revokes recovery ownership.
  */
 async function writePastedPrompt(
   terminal: InputTerminal,
@@ -100,7 +100,11 @@ async function writePastedPrompt(
   // Sanitize: caller/model text is data, so an embedded end sentinel or control
   // byte must not escape paste mode into live keystrokes (§5.3).
   const payload = sanitizePasteText(prompt);
-  stageComposer(terminal);
+  const rawInputSignal = stageComposer(terminal);
+  const nudgeSignal =
+    rawInputSignal && signal
+      ? AbortSignal.any([rawInputSignal, signal])
+      : (rawInputSignal ?? signal);
   await terminal.sendInput(`\u001b[200~${payload}\u001b[201~`);
   const schedule = (work: () => void, ms: number) => {
     const timer = setTimeout(work, ms);
@@ -109,10 +113,10 @@ async function writePastedPrompt(
   let nudges = 0;
   const nudge = async () => {
     // Decide on the current screen: a dialog may be received but not yet rendered.
-    const unsafe = await writeUnsafe(terminal, guard, signal);
-    // Stop once a LATER submission has begun: a stale nudge must never fire an
-    // Enter into a newer prompt's paste (the staged chip is not prompt-specific).
-    if (signal?.aborted || !guard || nudges >= pasteNudgeAttempts) return;
+    const unsafe = await writeUnsafe(terminal, guard, nudgeSignal);
+    // Later queued submissions and raw caller input revoke recovery ownership.
+    // Stale nudges must not submit their drafts; staged chips are not prompt-specific.
+    if (nudgeSignal?.aborted || !guard || nudges >= pasteNudgeAttempts) return;
     // A dialog that appears after the first Enter must not be confirmed by a
     // recovery Enter either; skip this attempt and re-check on the next tick.
     if (unsafe) {
