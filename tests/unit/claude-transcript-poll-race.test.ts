@@ -6,20 +6,24 @@
  */
 
 import { writeFileSync } from "node:fs";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { createTranscriptWatcher, type WarningSink } from "../../src/claude/session/transcript.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
 import { assistant, fakeEmitter, tmpFile } from "./claude-transcript-helpers.ts";
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("C-CLAUDE-15 transcript poll/finish race", () => {
   test("§5.4 a drop orphaned by a throwing finish-drain is DISCARDED by the resumed poll, not flushed past exit", async () => {
+    // Exercise the listener race, not the independent 50 ms terminal-drain deadline.
+    vi.spyOn(Date, "now").mockReturnValue(0);
     // The FULL compound race, made deterministic via the after-scan seam:
     //   1. A poll pass is in flight (cursor A scanned, no drop yet).
     //   2. The seam fires finish() before the loop advances to cursor B.
     //   3. finish()'s terminal drain records a drop for B (a malformed trailing record)
     //      AND emits B's clean line through an activity listener that THROWS — the throw
     //      escapes drainToBudget BEFORE its own flushPass(), so the drop stays PENDING.
-    //   4. The PTY-exit boundary (here the seam's try/catch) contains the throw, and
+    //   4. The seam asserts and contains the throw as the PTY-exit boundary would, and
     //      finish() still latches terminal:exit.
     //   5. The poll resumes, bails on `finished`, and its finally must DISCARD the orphaned
     //      pending drop. The pre-fix unconditional flush would emit it here, after exit.
@@ -46,11 +50,7 @@ describe("C-CLAUDE-15 transcript poll/finish race", () => {
     // drop in pending. The seam contains the throw as the real PTY-exit boundary would.
     watcher.setAfterScanForTests(() => {
       writeFileSync(b, `{ bad-b }\n${JSON.stringify(assistant("boom-b"))}\n`);
-      try {
-        watcher.finish();
-      } catch {
-        // The PTY-exit boundary contains this throw; terminal:exit is still latched.
-      }
+      expect(() => watcher.finish()).toThrow("listener boom");
     });
     await watcher.pollOnceForTests();
     // The orphaned drop must NOT surface after terminal:exit.

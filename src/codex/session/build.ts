@@ -1,5 +1,6 @@
 /** Builds a live CodexSessionApi from a record + runtime. Implements PRD §5.5, §5.6, §5.7, §7A, §8, §9. */
 import * as activity from "../../core/activity/index.ts";
+import { activityFromTerminalExit as terminalExitActivity } from "../../core/activity/index.ts";
 import { AttentionWatcher } from "../../core/attention.ts";
 import { defaultTerminalSize } from "../../core/defaults.ts";
 import { causeDetails, elwoodError } from "../../core/errors.ts";
@@ -32,7 +33,7 @@ import { dispatchHook, registerInitialHooks } from "./hooks.ts";
 import { CodexSessionImpl } from "./instance.ts";
 import { writeCodexRuntimeFiles } from "./runtime.ts";
 import { createCodexStartupWarningGate, preflightEvent } from "./startup-warnings.ts";
-import * as sessionTranscript from "./transcript.ts";
+import * as transcript from "./transcript.ts";
 import type { CodexEventMap, StartCodexOptions } from "./types.ts";
 export type BuildCodexSessionInput = {
   readonly record: SessionRecord;
@@ -45,6 +46,7 @@ export type BuildCodexSessionInput = {
 };
 export async function buildCodexSession(input: BuildCodexSessionInput): Promise<CodexSessionImpl> {
   const { record, stateDir, runtime, options, resumed, preflightWarning } = input;
+  const elwoodSessionId = record.elwoodSessionId;
   secureMkdir(runtime.sessionDir);
   writeSessionRecord(record, runtime.sessionDir, runtime.stateOwnership.publishFile);
   const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId) : [];
@@ -57,11 +59,8 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     () => promptResponder.closingSignal.aborted,
     (deliver) => wired.duringDelivery(deliver),
   );
-  const wired = sessionTranscript.createCodexTranscriptWatcher(
-    record.elwoodSessionId,
-    emitter,
-    () => warnGate, // transcript diagnostics flow through the same startup gate
-  );
+  // Transcript diagnostics flow through the same startup warning gate.
+  const wired = transcript.createCodexTranscriptWatcher(elwoodSessionId, emitter, () => warnGate);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   const bridge = currentCodexHookBridgeFactory()(
     runtime.socketPath,
@@ -120,6 +119,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     options.autotrust ?? false,
     frameObserver.refresh,
     clearance,
+    () => activeSession.inputBlocking || activeSession.trustInputBlocking,
   );
   const terminal = attachPtyTerminal(
     options.initialSize ?? defaultTerminalSize,
@@ -163,7 +163,6 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     transcriptWatcher,
     loopDefinitions,
   );
-  const id = record.elwoodSessionId;
   const activeSession = session;
   bindStartupLifetime(activeSession, promptResponder, readiness);
   frameObserver.refresh();
@@ -180,8 +179,8 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
         activeSession.beginExitFinalization();
         activeSession.closing.abort();
         const emitExit = () => {
-          emitter.emit("terminal:exit", { elwoodSessionId: id, ...exit });
-          emitter.emit("activity", activity.activityFromTerminalExit("codex", id, exit.exitCode));
+          emitter.emit("terminal:exit", { elwoodSessionId, ...exit });
+          emitter.emit("activity", terminalExitActivity("codex", elwoodSessionId, exit.exitCode));
         };
         const finalize = () => finishSessionExit(emitExit, () => activeSession.submitExit());
         finishSafely(() => warnGate.afterDelivery(finalize));
@@ -193,7 +192,8 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     },
     { before: beforeCleanup, pty, bridge, terminal, after: () => transcriptWatcher.stop() },
   );
-  if (preflightWarning !== undefined) warnGate.emitWarnings([preflightEvent(id, preflightWarning)]);
+  if (preflightWarning !== undefined)
+    warnGate.emitWarnings([preflightEvent(elwoodSessionId, preflightWarning)]);
   warnGate.openAfterReturn();
   terminalReplay.releaseStartupAttentionAfterReturn();
   return session;
