@@ -11,7 +11,9 @@ import {
 } from "../core/startup/barrier.ts";
 import type { StartupWriteCompletion } from "../core/startup/write.ts";
 import { numberedOptions } from "../core/terminal-options.ts";
+import type { TrustClearance } from "../core/trust/clearance.ts";
 import type { TrustWriteResult } from "../core/trust/responder.ts";
+import { codexComposerClearance } from "./screen/clearance.ts";
 import { codexUpdatePromptVisible, isSafeUpdateContinuation } from "./update/recognition.ts";
 import { codexUpdateOptionPattern, safeUpdateOption } from "./update/selection.ts";
 import { codexUpdateChoiceIdentity, settledFrameKeepsChoice } from "./update-identity.ts";
@@ -64,15 +66,15 @@ export function codexOptionStillSafe(frameText: string, input: string): boolean 
 }
 
 /** `exhausted`: the retry budget ended while the safe option was still visible. */
-export type CodexUpdateSkipCompletion = StartupWriteCompletion | "exhausted";
+export type CodexUpdateSkipCompletion = StartupWriteCompletion | "exhausted" | "unobserved";
 
 /**
  * Retries a possibly swallowed startup hotkey only while its safe option remains visible.
  *
- * `answered` means the update screen CLEARED after our key. A frame that merely stops
- * being the update screen is not clearance: when `invalidated` recognizes it (a trust
- * gate painted over the update screen), the skip is reported `cancelled` so no
- * `startup_prompt` success is emitted for an update that never took (C-CODEX-12).
+ * `answered` requires a fulfilled physical write and positive native composer
+ * clearance with no invalidating session input hold. Unknown replacements and
+ * missing readers cannot prove success; an unobserved fulfilled write remains
+ * latched so persistent frames cannot start another skip (C-CODEX-12/17).
  */
 export async function writeCodexUpdateSkip(
   option: string,
@@ -84,18 +86,19 @@ export async function writeCodexUpdateSkip(
   currentUpdateFrame: (frameText: string) => boolean = codexUpdatePromptVisible,
   invalidated: (frameText: string) => boolean = () => false,
   signal?: AbortSignal,
+  clearance: TrustClearance = codexComposerClearance,
+  onWritten?: () => void,
 ): Promise<CodexUpdateSkipCompletion> {
   if (readFrame === undefined) {
-    // A guarded writer can still withhold (its own settled-frame checks apply), and a
-    // key nobody sent is not an answer even with no reader to retry from.
-    return (await write(option, currentUpdateFrame)) === "withheld" ? "cancelled" : "answered";
+    // A fulfilled write alone cannot prove the dialog cleared.
+    return (await write(option, currentUpdateFrame)) === "withheld" ? "cancelled" : "unobserved";
   }
   const deadline = Date.now() + retryTimeoutMs;
   let wrote = false;
   while (Date.now() < deadline) {
     const frame = readFrame();
     if (!currentUpdateFrame(frame)) {
-      const cleared = wrote && !invalidated(frame);
+      const cleared = wrote && clearance(frame) && !invalidated(frame);
       return cleared ? "answered" : "cancelled";
     }
     const safeOption = safeUpdateOption(frame);
@@ -113,6 +116,7 @@ export async function writeCodexUpdateSkip(
       settledFrameKeepsChoice(settledFrame, identity, safeOption.number, currentUpdateFrame);
     if ((await write(safeOption.number, stillThisChoice)) === "withheld") return "cancelled";
     wrote = true;
+    onWritten?.();
     await waitForInput(retryIntervalMs, signal);
   }
   return "exhausted";

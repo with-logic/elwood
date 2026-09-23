@@ -8,6 +8,8 @@ import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts"
 import { CodexUpdatePromptTracker } from "../../src/codex/update/tracker.ts";
 import { emitSettledStartupOutcomes } from "../../src/core/startup/write.ts";
 
+import { codexSmallComposer } from "../fixtures/trust-composer.ts";
+
 const update = "Update available! 0.153.3 -> 0.153.4\n› 1. Update now\n  2. Skip";
 
 describe("Codex update prompt generations", () => {
@@ -24,7 +26,7 @@ describe("Codex update prompt generations", () => {
       frame,
       (input) => {
         writes.push(input);
-        frame = "› Ready";
+        frame = codexSmallComposer;
       },
       () => frame,
     );
@@ -39,10 +41,10 @@ describe("Codex update prompt generations", () => {
     const writes: string[] = [];
     const write = (input: string) => {
       writes.push(input);
-      if (input === "3") frame = "› Ready";
+      if (input === "3") frame = codexSmallComposer;
     };
     const first = responder.handle(frame, write, () => frame);
-    frame = "› Ready";
+    frame = codexSmallComposer;
     responder.handle(frame, write, () => frame);
     frame = update.replace("2. Skip", "3. Skip until next version");
     const second = responder.handle(frame, write, () => frame);
@@ -58,7 +60,7 @@ describe("Codex update prompt generations", () => {
     const write = (): void => {};
     const read = () => frame;
     const first = responder.handle(frame, write, read);
-    frame = "› Ready";
+    frame = codexSmallComposer;
     responder.handle(frame, write, read);
     frame = update;
     responder.handle(frame, write, read);
@@ -77,7 +79,7 @@ describe("Codex update prompt generations", () => {
     const first = responder.handle(update, pending, () => update);
     const writes: string[] = [];
     const write = (input: string) => void writes.push(input);
-    responder.handle("› Ready", write, () => update);
+    responder.handle(codexSmallComposer, write, () => update);
     const second = responder.handle(update, write, () => update);
     rejectFirst(new Error("pty closed"));
     await expect(first.outcomes[0]?.settled).resolves.toBe("cancelled");
@@ -102,7 +104,7 @@ describe("Codex update prompt generations", () => {
       new Promise<void>((resolves, rejects) => (settle = { resolves, rejects }));
     let frame = update;
     const first = responder.handle(frame, pending, clear === "unread" ? undefined : () => frame);
-    frame = "› Ready";
+    frame = codexSmallComposer;
     if (clear !== "unobserved") responder.handle(frame, pending);
     const emit = vi.fn();
     const emitWarnings = vi.fn();
@@ -128,8 +130,10 @@ describe("Codex update prompt generations", () => {
     await vi.runAllTimersAsync();
     expect(writes).toHaveLength(20);
     // The restart-loop re-arm survives: a cleared frame, then the same screen again.
-    responder.handle("› Ready", write, () => update);
-    const again = responder.handle(update, write, () => (writes.length > 20 ? "› Ready" : update));
+    responder.handle(codexSmallComposer, write, () => update);
+    const again = responder.handle(update, write, () =>
+      writes.length > 20 ? codexSmallComposer : update,
+    );
     await vi.runAllTimersAsync();
     await expect(again.outcomes[0]?.settled).resolves.toBe("answered");
     expect(writes).toHaveLength(21);
