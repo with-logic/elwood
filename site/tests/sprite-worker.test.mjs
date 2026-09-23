@@ -5,7 +5,7 @@ import { SpriteDecoder } from "../sprite-decoder/index.mjs";
 
 let receive;
 // Node lacks worker globals. Capture the actual module's listener once, then stub
-// only browser decoding/rasterization APIs for each protocol case.
+// only browser decoding APIs for each protocol case.
 globalThis.addEventListener = (type, callback) => {
   assert.equal(type, "message");
   receive = callback;
@@ -23,35 +23,31 @@ async function worker(t, globals = {}) {
   return { sent, run: (data) => receive({ data }) };
 }
 
-for (const rasterization of ["canvas", "no-canvas", "no-context", "no-transfer"]) {
-  test(`worker decodes and transfers ownership with ${rasterization}`, async (t) => {
-    const blob = new Blob(["sheet"]);
-    let closed = 0;
-    const decoded = { width: 20, height: 30, close: () => closed++ };
-    const raster = { close: () => assert.fail("transferred bitmap closed") };
-    let drawn = false;
-    const { run, sent } = await worker(t, {
-      createImageBitmap: async (input) => { assert.equal(input, blob); return decoded; },
-      OffscreenCanvas: rasterization === "no-canvas" ? undefined : class {
-        constructor(width, height) {
-          assert.deepEqual([width, height], [20, 30]);
-          if (rasterization === "no-transfer") this.transferToImageBitmap = undefined;
-        }
-        getContext(type) {
-          assert.equal(type, "2d");
-          return rasterization === "no-context" ? null : {
-            drawImage(...args) { assert.deepEqual(args, [decoded, 0, 0]); drawn = true; },
-          };
-        }
-        transferToImageBitmap() { assert.equal(drawn, true); return raster; }
-      },
-    });
-    await run({ id: 7, blob });
-    const expected = rasterization === "canvas" ? raster : decoded;
-    assert.deepEqual(sent, [[{ id: 7, image: expected }, [expected]]]);
-    assert.equal(closed, rasterization === "canvas" ? 1 : 0);
+test("transferred pixels remain available after the decoder terminates its worker", async (t) => {
+  let live = true;
+  let listener;
+  const decoded = { pixels: 46889, close() { this.pixels = 0; } };
+  const { run, sent } = await worker(t, {
+    createImageBitmap: async () => decoded,
+    // Chrome ties canvas-backed transferred pixels to the originating worker.
+    OffscreenCanvas: class {
+      getContext() { return { drawImage() {} }; }
+      transferToImageBitmap() { return { get pixels() { return live ? 46889 : 0; } }; }
+    },
+    Worker: class {
+      addEventListener(type, callback) { if (type === "message") listener = callback; }
+      postMessage(data) { run(data); }
+      terminate() { live = false; }
+    },
   });
-}
+  globalThis.postMessage = (data, transfer) => { sent.push([data, transfer]); listener({ data }); };
+  const decoder = new SpriteDecoder();
+  const image = await decoder.decode(new Blob());
+  assert.equal(image.pixels, 46889);
+  decoder.dispose();
+  assert.equal(image.pixels, 46889, "Worker termination must not erase delivered artwork");
+  assert.equal(sent[0][1][0], image);
+});
 
 test("worker reports unsupported bitmap decoding without a transfer", async (t) => {
   const { run, sent } = await worker(t, { createImageBitmap: undefined });
@@ -66,18 +62,6 @@ for (const cause of [new Error("bad sheet"), "bad sheet", new Error(""), ""]) {
     assert.deepEqual(sent, [[{ id: 9, error: cause instanceof Error ? cause.message : cause }]]);
   });
 }
-
-test("worker closes a decoded image when rasterization fails", async (t) => {
-  let closed = 0;
-  const { run, sent } = await worker(t, {
-    createImageBitmap: async () => ({ width: 1, height: 1, close: () => closed++ }),
-    OffscreenCanvas: class { getContext() { throw new Error("context failed"); } },
-  });
-  await run({ id: 5, blob: new Blob() });
-  assert.deepEqual(sent, [[{ id: 5, error: "context failed" }]]);
-  assert.equal(closed, 1);
-});
-
 
 test("worker closes the image and reports failure when transfer throws", async (t) => {
   let closed = 0;
@@ -96,7 +80,7 @@ test("worker closes the image and reports failure when transfer throws", async (
 });
 
 
-test("worker serializes full-atlas decode and rasterization across requests", async (t) => {
+test("worker serializes full-atlas decoding across requests", async (t) => {
   const first = Promise.withResolvers();
   const entered = [];
   const { run, sent } = await worker(t, {
@@ -121,7 +105,7 @@ test("worker serializes full-atlas decode and rasterization across requests", as
 });
 
 
-for (const stage of ["decode", "rasterization", "transfer"]) {
+for (const stage of ["decode", "transfer"]) {
   test(`real worker ${stage} failure completes through the page decoder`, async (t) => {
     let listener;
     let processing;
@@ -137,9 +121,7 @@ for (const stage of ["decode", "rasterization", "transfer"]) {
         if (stage === "decode") throw new Error("worker decode failed");
         return { width: 1, height: 1, close() {} };
       },
-      OffscreenCanvas: stage === "rasterization" ? class {
-        getContext() { throw new Error("rasterization failed"); }
-      } : undefined,
+      OffscreenCanvas: undefined,
     });
     globalThis.postMessage = (data, transfer) => {
       if (stage === "transfer" && transfer) throw new Error("transfer failed");
