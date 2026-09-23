@@ -47,36 +47,35 @@ function fixture(t) {
 
 test("explicit readiness waits for every sheet and retains them through playback and cache churn", async (t) => {
   const { bank, gates, requested, images } = fixture(t);
-  const background = Promise.withResolvers(), fetchAsset = globalThis.fetch;
-  let first = true;
-  globalThis.fetch = (url, options) => {
-    if (String(url).includes("wave/clip.json") && first) { first = false; return background.promise; }
-    return fetchAsset(url, options);
-  };
+  const metadata = Promise.withResolvers();
+  gates.set("wave/clip.json", metadata);
   const stalled = bank.load("wave");
   const gate = Promise.withResolvers();
   gates.set("wave/5.webp", gate);
   let settled = false;
   const pending = bank.prepareAnimation("wave").then((clip) => { settled = true; return clip; });
+  await waitFor(requested, "wave/clip.json");
+  assert.equal(requested.includes("wave/0.webp"), false);
+  metadata.resolve();
+  await stalled;
   await waitFor(requested, "wave/5.webp");
   assert.equal(settled, false);
   gate.resolve();
   assert.equal((await pending).name, "wave");
-  background.resolve(Response.json(bank.clips.get("wave")));
-  await stalled;
-  const duplicate = await bank.loadPage("wave", 5);
-  assert.notEqual(bank.frame("wave", 5).page, duplicate);
-  assert.equal(bank.pages.get("wave/5"), duplicate);
+  const shared = await bank.loadPage("wave", 5);
+  assert.equal(bank.frame("wave", 5).page, shared);
+  assert.equal(bank.pages.get("wave/5"), shared);
+  assert.equal(bank.ensureEntryPage("wave"), true);
   bank.publishAnimation("wave");
   bank.activateAnimation("wave");
   for (let page = 0; page < 6; page++) assert.equal(bank.frame("wave", page).page.closed, 0);
   for (const name of ["jump", "land", "walk"]) await bank.prepare(name);
   for (let page = 0; page < 6; page++) assert.equal(bank.frame("wave", page).page.closed, 0);
-  assert.equal(requested.filter((path) => path.startsWith("wave/") && path.endsWith("webp")).length, 7);
+  assert.equal(requested.filter((path) => path.startsWith("wave/") && path.endsWith("webp")).length, 6);
   assert.equal((await bank.prepareAnimation("wave")).name, "wave");
   bank.publishAnimation("missing");
   bank.activateAnimation("jump");
-  assert.ok(images.filter((image) => image !== duplicate && image.path.startsWith("wave/")).every((image) => image.closed === 1));
+  assert.ok(images.filter((image) => image !== shared && image.path.startsWith("wave/")).every((image) => image.closed === 1));
   bank.dispose();
   await assert.rejects(bank.prepareAnimation("wave"), /disposed/);
   assert.ok(images.every((image) => image.closed === 1));
@@ -116,8 +115,10 @@ test("failed preparation releases partial sheets and leaves the displayed animat
   gate.reject(new Error("broken sheet"));
   await assert.rejects(pending, /broken sheet/);
   assert.equal(bank.frame("wave", 5).page.closed, 0);
-  assert.equal(images.find((image) => image.path === "jump/0.webp").closed, 1);
-  assert.equal(bank.clips.has("jump"), false);
+  const cached = images.find((image) => image.path === "jump/0.webp");
+  assert.equal(cached.closed, [...bank.pages.values()].includes(cached) ? 0 : 1);
+  assert.equal(bank.animations.candidateOwner, null);
+  assert.equal(bank.animations.page("jump/0"), undefined);
 });
 
 function sceneFor(bank) {
@@ -146,7 +147,6 @@ test("lazy entry loading cannot supersede explicit readiness; movement cancels d
   assert.equal(scene.pressed.face, "back");
 });
 
-
 test("delivered input stays ready until activation and later loading preserves active pages", async (t) => {
   const { bank, gates, requested } = fixture(t);
   const scene = sceneFor(bank);
@@ -162,7 +162,6 @@ test("delivered input stays ready until activation and later loading preserves a
   assert.equal(bank.frame("wave", 5).page.closed, 0);
 });
 
-
 test("teardown aborts metadata and HTTP failures report instead of becoming readiness", async (t) => {
   const { bank, requested, aborted } = fixture(t);
   globalThis.fetch = async () => new Response("missing", { status: 404 });
@@ -173,13 +172,14 @@ test("teardown aborts metadata and HTTP failures report instead of becoming read
     signal.addEventListener("abort", () => { aborted.push("metadata"); reject(signal.reason); });
   });
   const pending = bank.prepareAnimation("wave");
+  for (let i = 0; i < 100 && !requested.length; i++) await turn();
+  assert.ok(requested.length, "metadata fetch must start before teardown");
   bank.dispose();
   assert.equal(await pending, null);
   assert.deepEqual(aborted, ["metadata"]);
 });
 
 test("cancellation between worker delivery and its continuation releases the transferred image", async (t) => {
-  const { bank } = fixture(t);
   const original = globalThis.Worker;
   let deliver;
   globalThis.Worker = class {
@@ -188,6 +188,7 @@ test("cancellation between worker delivery and its continuation releases the tra
     terminate() {}
   };
   t.after(() => { globalThis.Worker = original; });
+  const { bank } = fixture(t);
   const pending = bank.prepareAnimation("wave");
   for (let i = 0; i < 100 && !deliver; i++) await turn();
   assert.equal(typeof deliver, "function", "worker delivery must become available");

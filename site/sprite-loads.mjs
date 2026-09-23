@@ -1,58 +1,88 @@
-/** Coalesce automatic asset requests and latch failures until explicit retry (PRD §13). */
+/** Shared asset tasks retain live consumer/error ownership (PRD §13; docs/design/landing.md). */
 export class SpriteLoads {
   constructor(bank, onError) {
     this.bank = bank;
     this.onError = onError;
-    this.failed = new Set();
+    this.tasks = new Map();
     this.automatic = new Map();
-    this.inflight = new Map();
-  }
-  claim(key) {
-    const owner = this.automatic.get(key);
-    if (owner) owner.explicit = true;
+    this.failed = new Set();
   }
   retry(name) {
     for (const key of this.failed)
       if (key === name || key.startsWith(`${name}/`)) this.failed.delete(key);
-    this.claim(name);
-  }
-  claimClip(name) {
-    this.retry(name);
-    for (const key of this.automatic.keys())
-      if (key.startsWith(`${name}/`)) this.claim(key);
-  }
-  accept(key) {
-    this.failed.delete(key);
-    const attempt = this.inflight.get(key);
-    if (attempt) attempt.superseded = true;
-    this.claim(key);
-  }
-  track(key, promise, pending) {
-    const attempt = { superseded: false };
-    this.inflight.set(key, attempt);
-    const settled = promise.catch((error) => {
-      if (!this.bank.disposed && !attempt.superseded) this.failed.add(key);
-      throw error;
-    }).finally(() => {
-      pending.delete(key);
-      this.inflight.delete(key);
-    });
-    pending.set(key, settled);
-    return settled;
   }
   request(key, load) {
-    const bank = this.bank;
-    if (bank.disposed || this.automatic.has(key) || this.failed.has(key)
-      || bank.clipPromises.has(key) || bank.pendingPages.has(key)) return;
-    const owner = { explicit: bank.animations.prepares(key) };
-    this.automatic.set(key, owner);
-    load().catch((error) => {
-      if (!bank.disposed && !owner.explicit) this.onError(error);
-    }).finally(() => this.automatic.delete(key));
+    if (this.bank.disposed || this.automatic.has(key) || this.failed.has(key)) return;
+    const token = {};
+    this.automatic.set(key, token);
+    load({ automatic: true }).catch(() => {}).finally(() => {
+      if (this.automatic.get(key) === token) this.automatic.delete(key);
+    });
+  }
+  run(key, pending, load, { signal, automatic = false } = {}) {
+    signal?.throwIfAborted();
+    let task = this.tasks.get(key);
+    if (!task) {
+      task = { controller: new AbortController(), consumers: new Set(), pending };
+      this.tasks.set(key, task);
+      const current = task;
+      const pin = (image) => {
+        current.controller.signal.throwIfAborted();
+        for (const consumer of current.consumers)
+          if (consumer.signal) this.bank.pinLoadPage(key, image, consumer.signal);
+      };
+      task.promise = Promise.resolve().then(() => load(current.controller.signal, pin));
+      pending.set(key, task.promise);
+      task.promise.then(
+        (value) => this.finish(key, current, true, value),
+        (error) => this.finish(key, current, false, error),
+      );
+    }
+    return new Promise((resolve, reject) => {
+      const consumer = { signal, automatic, resolve, reject };
+      const release = () => {
+        signal?.removeEventListener("abort", consumer.cancel);
+        task.consumers.delete(consumer);
+      };
+      consumer.release = release;
+      consumer.cancel = () => {
+        release();
+        reject(signal.reason);
+        if (!task.consumers.size) {
+          task.controller.abort(signal.reason);
+          this.remove(key, task);
+        }
+      };
+      task.consumers.add(consumer);
+      signal?.addEventListener("abort", consumer.cancel, { once: true });
+    });
+  }
+  remove(key, task) {
+    if (this.tasks.get(key) !== task) return;
+    this.tasks.delete(key);
+    task.pending.delete(key);
+  }
+  finish(key, task, success, value) {
+    this.remove(key, task);
+    if (!success && !this.bank.disposed && !task.controller.signal.aborted) {
+      this.failed.add(key);
+      const consumers = [...task.consumers];
+      if (consumers.some((owner) => owner.automatic) && consumers.every((owner) => owner.automatic))
+        this.onError(value);
+    } else if (success && !task.controller.signal.aborted) this.failed.delete(key);
+    for (const consumer of task.consumers) {
+      consumer.release();
+      if (success) consumer.resolve(value);
+      else consumer.reject(value);
+    }
   }
   dispose() {
+    const error = new Error("Sprite bank is disposed.");
+    for (const [key, task] of this.tasks) {
+      task.controller.abort(error);
+      this.finish(key, task, false, error);
+    }
     this.failed.clear();
     this.automatic.clear();
-    this.inflight.clear();
   }
 }

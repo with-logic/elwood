@@ -38,40 +38,38 @@ function fixture(t) {
   return { bank, scene, requests, images, errors };
 }
 
-for (const first of ["automatic", "explicit"]) for (const stage of ["metadata", "page"]) for (const order of ["before", "after"]) {
-  test(`${first} starts first: automatic ${stage} failure ${order} explicit delivery cannot poison prepared rotation`, async (t) => {
-    const { bank, requests, errors } = fixture(t);
-    const automatic = Promise.withResolvers(), preparation = Promise.withResolvers();
-    const originalFetch = globalThis.fetch;
+for (const first of ["automatic", "explicit"]) for (const stage of ["metadata", "page"]) {
+  test(`${first} starts first: shared ${stage} failure reports once and explicit retry recovers`, async (t) => {
+    const { bank, errors } = fixture(t);
+    const gate = Promise.withResolvers(), fetchAsset = globalThis.fetch;
     const path = stage === "metadata" ? "rotation/clip.json" : "rotation/0.webp";
-    let stalled = false, automaticStarted = false;
+    let calls = 0;
     globalThis.fetch = (url, options) => {
-      if (automaticStarted && new URL(url).pathname.endsWith(path) && !stalled) { stalled = true; return automatic.promise; }
-      if (new URL(url).pathname.endsWith("wave/5.webp")) return preparation.promise;
-      return originalFetch(url, options);
+      if (new URL(url).pathname.endsWith(path)) { calls++; return gate.promise; }
+      return fetchAsset(url, options);
     };
-    const startAutomatic = async () => {
-      automaticStarted = true;
+    const automatic = () => {
       if (stage === "metadata") bank.ensureMetadata("rotation");
       else { bank.clips.set("rotation", clip("rotation")); bank.frame("rotation", 0); }
-      await waitFor(() => stalled);
     };
-    if (first === "automatic") await startAutomatic();
-    const pending = bank.prepareAnimation("wave");
-    await waitFor(() => requests.includes("wave/4.webp"));
-    if (first === "explicit") await startAutomatic();
-    if (order === "before") { automatic.reject(new Error("obsolete automatic failure")); await turn(); }
-    preparation.resolve(new Response("wave/5.webp"));
-    assert.equal((await pending).name, "wave");
+    if (first === "automatic") { automatic(); await waitFor(() => calls > 0); }
+    const pending = bank.prepareAnimation("wave").catch((error) => errors.push(error));
+    await waitFor(() => calls > 0);
+    if (first === "explicit") automatic();
+    await turn();
+    gate.reject(new Error("shared asset failed"));
+    await pending;
+    await turn();
+    assert.equal(calls, 1);
+    assert.equal(errors.length, 1);
+    assert.equal(bank.loads.failed.has(stage === "metadata" ? "rotation" : "rotation/0"), true);
+    globalThis.fetch = fetchAsset;
+    await bank.prepareAnimation("wave");
     bank.publishAnimation("wave");
     bank.activateAnimation("wave");
-    if (order === "after") { automatic.reject(new Error("obsolete automatic failure")); await turn(); }
-    assert.deepEqual(errors, []);
-    assert.equal(bank.loads.failed.has(stage === "metadata" ? "rotation" : "rotation/0"), false);
-    bank.activateAnimation("walk");
-    bank.frame("rotation", 0);
-    await waitFor(() => bank.pages.has("rotation/0"));
-    assert.ok(bank.frame("rotation", 0));
+    assert.equal(bank.loads.failed.size, 0);
+    assert.equal(bank.frame("rotation", 0).page.closed, 0);
+    assert.equal(errors.length, 1);
   });
 }
 
@@ -84,11 +82,11 @@ test("cleared delivery releases its sheets while active and outgoing poses remai
   const outgoing = bank.frame("jump", 0);
   bank.retainPoses(current, outgoing);
   scene.clearInput();
-  assert.ok(images.filter((image) => image.path.startsWith("jump/") && image !== outgoing.page).every((image) => image.closed === 1));
+  assert.ok(images.filter((image) => image.path.startsWith("jump/") && image !== outgoing.page).every((image) => image.closed === ([...bank.pages.values()].includes(image) ? 0 : 1)));
   assert.equal(current.page.closed, 0);
   assert.equal(outgoing.page.closed, 0);
   bank.retainPoses(current);
-  assert.equal(outgoing.page.closed, 1);
+  assert.equal(outgoing.page.closed, [...bank.pages.values()].includes(outgoing.page) ? 0 : 1);
   assert.equal(bank.frame("wave", 5).page.closed, 0);
 });
 
@@ -99,7 +97,7 @@ test("superseding delivered input invalidates queued recovery before releasing i
   const pending = scene.request({ gesture: "jump" });
   assert.equal(scene.pressed.gesture, undefined);
   assert.equal(scene.world.player.queuedAction, null);
-  assert.ok(images.filter((image) => image.path.startsWith("wave/")).every((image) => image.closed === 1));
+  assert.ok(images.filter((image) => image.path.startsWith("wave/")).every((image) => image.closed === ([...bank.pages.values()].includes(image) ? 0 : 1)));
   await pending;
   assert.equal(scene.pressed.gesture, "jump");
   bank.activateAnimation("jump");
@@ -134,7 +132,8 @@ test("entry-page preparation does not claim failures for other automatic sheets"
   automatic.reject(new Error("later sheet failed"));
   await turn();
   assert.equal(errors.length, 1);
-  assert.equal(errors[0].message, "later sheet failed");
+  assert.match(errors[0].message, /wave\/1.webp/);
+  assert.equal(errors[0].cause.message, "later sheet failed");
 });
 
 for (const state of ["air", "hang", "climb", "landing", "settle"]) {
@@ -149,7 +148,7 @@ for (const state of ["air", "hang", "climb", "landing", "settle"]) {
     scene.step(1 / 120);
     assert.equal(scene.world.player.queuedAction, null);
     assert.equal(bank.animations.deliveredOwner, null);
-    assert.ok(images.filter((image) => image.path.startsWith("wave/")).every((image) => image.closed === 1));
+    assert.ok(images.filter((image) => image.path.startsWith("wave/")).every((image) => image.closed === ([...bank.pages.values()].includes(image) ? 0 : 1)));
   });
 }
 
