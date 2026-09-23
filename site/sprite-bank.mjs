@@ -3,7 +3,7 @@ import { gameAssetUrl } from "./game-assets.mjs";
 
 export class SpriteBank {
   #onError;
-  #frameLoads = new Set();
+  #automaticLoads = new Map();
   #failed = new Set();
   constructor(onError) {
     this.clips = new Map();
@@ -71,26 +71,41 @@ export class SpriteBank {
   async prepare(name) {
     for (const key of this.#failed)
       if (key === name || key.startsWith(`${name}/`)) this.#failed.delete(key);
+    this.#claimAutomaticLoad(name);
     const clip = await this.load(name);
+    this.#claimAutomaticLoad(`${name}/${clip.frames[0].page}`);
     await this.loadPage(name, clip.frames[0].page);
     return clip;
   }
 
-  #requestFrame(key, load) {
-    if (this.#frameLoads.has(key) || this.#failed.has(key)) return;
-    this.#frameLoads.add(key);
-    load().catch(this.#onError).finally(() => this.#frameLoads.delete(key));
+  #claimAutomaticLoad(key) {
+    const owner = this.#automaticLoads.get(key);
+    if (owner) owner.explicit = true;
+  }
+
+  #requestAutomaticLoad(key, load) {
+    if (this.#automaticLoads.has(key) || this.#failed.has(key)
+      || this.clipPromises.has(key) || this.pendingPages.has(key)) return;
+    const owner = { explicit: false };
+    this.#automaticLoads.set(key, owner);
+    load().catch((error) => {
+      if (!owner.explicit) this.#onError(error);
+    }).finally(() => this.#automaticLoads.delete(key));
+  }
+
+  ensureMetadata(name) {
+    if (!this.clips.has(name)) this.#requestAutomaticLoad(name, () => this.load(name));
   }
 
   #requestPage(name, index) {
     const key = `${name}/${index}`;
-    if (!this.pages.has(key)) this.#requestFrame(key, () => this.loadPage(name, index));
+    if (!this.pages.has(key)) this.#requestAutomaticLoad(key, () => this.loadPage(name, index));
   }
 
-  ready(name) {
+  ensureEntryPage(name) {
     const clip = this.clips.get(name);
     if (!clip) {
-      this.#requestFrame(name, () => this.load(name).then((loaded) => {
+      this.#requestAutomaticLoad(name, () => this.load(name).then((loaded) => {
         this.#requestPage(name, loaded.frames[0].page);
       }));
       return false;
@@ -102,7 +117,7 @@ export class SpriteBank {
   frame(name, index) {
     const clip = this.clips.get(name);
     if (!clip) {
-      this.ready(name);
+      this.ensureEntryPage(name);
       return null;
     }
     const frame = clip.frames[Math.min(index, clip.frames.length - 1)];

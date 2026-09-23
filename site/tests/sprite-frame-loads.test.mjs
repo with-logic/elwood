@@ -1,4 +1,4 @@
-/** Render cadence must not multiply sprite-loading consumers, errors or retries. */
+/** Render cadence must not multiply sprite-loading consumers, errors or retries (PRD §13). */
 import assert from "node:assert/strict";
 import test from "node:test";
 import { SpriteBank } from "../sprite-bank.mjs";
@@ -120,14 +120,14 @@ test("automatic readiness checks share loading and stop after failure", async (t
   const { bank, errors } = fixture(t);
   let requests = 0;
   globalThis.fetch = async () => { requests++; return new Response("", { status: 503 }); };
-  for (let i = 0; i < 1000; i++) assert.equal(bank.ready("wave"), false);
+  for (let i = 0; i < 1000; i++) assert.equal(bank.ensureEntryPage("wave"), false);
   await settle();
   assert.equal(requests, 1);
   assert.equal(errors.length, 1);
-  for (let i = 0; i < 1000; i++) assert.equal(bank.ready("wave"), false);
+  for (let i = 0; i < 1000; i++) assert.equal(bank.ensureEntryPage("wave"), false);
   await settle();
   assert.equal(requests, 1);
   globalThis.fetch = async () => new Response(JSON.stringify(clip));
   await bank.prepare("wave");
-  assert.equal(bank.ready("wave"), true);
+  assert.equal(bank.ensureEntryPage("wave"), true);
 });
