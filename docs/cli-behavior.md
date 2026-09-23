@@ -115,6 +115,17 @@ misattributed to a CLI regression.)
 
 ## Turn boundaries (rendered TUI)
 
+- **Claude 2.1.281 can use `◐ Claude Code` as its OSC working title.** A native
+  173×35 capture on 2026-09-23 showed `✻ Wandering… (0s)` above a fenced empty
+  composer, with a visible cursor at column 2, row 15 (zero-based), and no
+  `esc to interrupt` footer. The preceding frame showed a running
+  `UserPromptSubmit` hook with the same title. The session later reached a usage
+  limit; this capture proves working-title geometry, not a successful answer.
+  `tests/fixtures/claude-2.1.281/working.txt` retains the nonempty captured rows
+  with the temporary directory normalized. The title matcher accepts the
+  observed `◐ ` prefix alongside the existing braille range; both screen facts
+  and live trust clearance share it. No other new spinner glyph is inferred.
+  C-TURN-05, C-TRUST-01.
 - Both CLIs render the literal `esc to interrupt` only while a turn is running
   (Claude footer, Codex "Working" spinner). Elwood's `TurnStateWatcher` keys off
   this, and **arms only after initial readiness** because the Codex MCP boot
