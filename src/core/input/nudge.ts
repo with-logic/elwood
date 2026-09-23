@@ -5,6 +5,12 @@ import type { PasteGuard } from "./index.ts";
 export const pasteNudgeDelayMs = 1_000;
 export const pasteNudgeAttempts = 2;
 
+/**
+ * True means the guard observed that this draft is no longer staged; false means
+ * acceptance was not observed (no guard or exhausted attempts). verifyAcceptance
+ * also observes the final Enter before returning, so replay cleanup stays owned.
+ * Ordinary background nudges stop after their bounded writes without that final wait.
+ */
 export async function nudgePastedPrompt(
   terminal: InputTerminal,
   prompt: string,

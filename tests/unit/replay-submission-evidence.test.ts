@@ -1,4 +1,4 @@
-/** Replay and ordinary submission share the first Enter boundary (PRD §5.3/§5.8). */
+/** Replay and ordinary submissions publish at their own intent boundaries (PRD §5.3/§5.8). */
 import { afterEach, expect, test, vi } from "vitest";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { composerClearKeys } from "../../src/core/input/constants.ts";
@@ -13,7 +13,7 @@ afterEach(() => vi.useRealTimers());
 test.each([
   false,
   true,
-])("C-ATTN-02 turnReplay=%s publishes once after its first awaited Enter", async (turnReplay) => {
+])("C-ATTN-02 turnReplay=%s publishes intent once at its mode-specific boundary", async (turnReplay) => {
   vi.useFakeTimers();
   const firstEnter = Promise.withResolvers<void>();
   const writes: string[] = [];
