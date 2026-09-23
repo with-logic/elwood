@@ -88,6 +88,7 @@ export class LandingScene {
     return canvas;
   }
   async boot() {
+    if (this.bank.disposed) return;
     try {
       const response = await fetch(gameAssetUrl("manifest.json"));
       if (!response.ok) throw new Error("The robot is taking a moment. Refresh to try again.");
@@ -105,6 +106,7 @@ export class LandingScene {
       if (manifest.climb_exit)
         w.climbExit = { x: manifest.climb_exit.x * HEIGHT, y: manifest.climb_exit.y * HEIGHT };
       await this.bank.prepare("idle");
+      if (this.bank.disposed) return;
       this.ready = true;
       this.configure(this.config, true);
       this.onReady?.();
@@ -113,6 +115,16 @@ export class LandingScene {
     } catch (error) {
       this.onError?.(error);
     }
+  }
+  dispose() {
+    this.ready = false;
+    cancelAnimationFrame(this.raf);
+    this.raf = 0;
+    this.requestVersion++;
+    this.lastPose = null;
+    this.transition = null;
+    this.bank.dispose();
+    this.onReady = this.onPaint = this.onError = this.onMode = this.onBounds = undefined;
   }
   prepare(name) {
     const clip = this.bank.clips.get(name);
@@ -184,6 +196,7 @@ export class LandingScene {
       this.markGround();
       this.lastPose = null;
       this.transition = null;
+      this.bank.retainPoses();
       this.animationName = "";
       this.tether.points = null;
     } else if (
@@ -201,6 +214,7 @@ export class LandingScene {
       this.markGround();
       this.lastPose = null;
       this.transition = null;
+      this.bank.retainPoses();
       this.tether.points = null;
     }
     if (this.ready) this.paint(0);
@@ -506,6 +520,7 @@ export class LandingScene {
       this.animationName = p.animation;
     }
     this.lastPose = positioned;
+    this.bank.retainPoses(this.lastPose, this.transition?.pose);
     return positioned;
   }
   paint(dt) {
@@ -537,7 +552,10 @@ export class LandingScene {
     this.tether.trace(c);
     c.stroke();
     for (const mark of this.groundMarks) c.drawImage(this.dirt, mark.x - 104, mark.y - 5, 208, 13);
-    if (!display.outgoing) this.transition = null;
+    if (!display.outgoing) {
+      this.transition = null;
+      this.bank.retainPoses(this.lastPose);
+    }
     this.renderer.draw(display.incoming, display.outgoing, blend, scale, ratio * zoom);
     // Remove the HTML fallback only once both live artwork and tether exist.
     this.onPaint?.();

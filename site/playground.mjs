@@ -236,6 +236,7 @@ function poseForPlayer() {
     animationName = p.animation;
   }
   lastPose = positioned;
+  bank.retainPoses(lastPose, transition?.pose);
   return positioned;
 }
 
@@ -279,7 +280,10 @@ function paint(dt) {
     context.ellipse(p.x + 2, ground + 1, 28 - Math.min(15, distance / 15), 4, 0, 0, Math.PI * 2);
     context.fill();
   }
-  if (!display?.outgoing) transition = null;
+  if (!display?.outgoing) {
+    transition = null;
+    bank.retainPoses(lastPose);
+  }
   spriteRenderer.draw(display?.incoming, display?.outgoing, blend, scale, ratio * zoom);
   const opacity = String(Math.max(0, 1 - camera / 180));
   if (sceneTitle.style.opacity !== opacity) sceneTitle.style.opacity = opacity;
@@ -420,6 +424,7 @@ function reset() {
   camera = 0;
   lastPose = null;
   transition = null;
+  bank.retainPoses();
   animationName = "";
   rope.forEach((p, i) => {
     Object.assign(p, { x: 203 + i * 2, y: FLOOR - 92, px: 203 + i * 2, py: FLOOR - 92 });
@@ -570,6 +575,7 @@ for (const button of document.querySelectorAll("[data-hold],[data-press]")) {
 }
 
 async function boot() {
+  if (bank.disposed) return;
   loading.hidden = false;
   document.querySelector("#retry").hidden = true;
   try {
@@ -610,16 +616,27 @@ async function boot() {
     await Promise.all(
       ["idle", "walk-right", "walk-left", "jump"].map((name) => bank.prepare(name)),
     );
+    if (bank.disposed) return;
     ready = true;
     loading.hidden = true;
     resize();
     startLoop();
   } catch (error) {
+    if (bank.disposed) return;
     loading.querySelector("p").textContent = error.message;
     document.querySelector("#retry").hidden = false;
   }
 }
 document.querySelector("#retry").onclick = boot;
+window.addEventListener("pagehide", (event) => {
+  if (event.persisted) return;
+  ready = false;
+  gestureRequest++;
+  cancelAnimationFrame(raf);
+  raf = 0;
+  lastPose = transition = null;
+  bank.dispose();
+});
 buildScenery();
 new ResizeObserver(resize).observe(canvas);
 boot();
