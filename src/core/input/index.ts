@@ -17,7 +17,8 @@ import { requestComposerCleanup, stageComposer, submittedComposer } from "./comp
 /** Adapter view of "the paste is still staged in the composer". */
 export type PasteGuard = {
   readonly snapshot: () => string;
-  readonly staged: (screen: string, prompt: string) => boolean;
+  /** Receives the sanitized payload that was actually pasted. */
+  readonly staged: (screen: string, payload: string) => boolean;
   /**
    * True when a human or automation-owned dialog is on screen. A dialog can
    * appear during the paste-settle window; sending the submitting Enter then
@@ -98,8 +99,9 @@ async function writePastedPrompt(
   throwIfInputAborted(signal);
   // Sanitize: caller/model text is data, so an embedded end sentinel or control
   // byte must not escape paste mode into live keystrokes (§5.3).
+  const payload = sanitizePasteText(prompt);
   stageComposer(terminal);
-  await terminal.sendInput(`\u001b[200~${sanitizePasteText(prompt)}\u001b[201~`);
+  await terminal.sendInput(`\u001b[200~${payload}\u001b[201~`);
   const schedule = (work: () => void, ms: number) => {
     const timer = setTimeout(work, ms);
     timer.unref?.();
@@ -118,7 +120,7 @@ async function writePastedPrompt(
       return;
     }
     nudges += 1;
-    if (!guard.staged(guard.snapshot(), prompt)) return;
+    if (!guard.staged(guard.snapshot(), payload)) return;
     try {
       await terminal.sendInput("\r");
     } catch {

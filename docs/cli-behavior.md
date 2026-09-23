@@ -672,6 +672,11 @@ new CLI version or native capture was verified.
   bracketed-paste markers (`ESC[200~`/`ESC[201~`) and C0/C1 controls except
   tab/nl/cr, so text can't escape bracketed paste and inject a dialog-confirming
   Enter. C-API-40.
+- Codex 0.156.1 renders each pasted tab as one space, regardless of column;
+  consecutive tabs remain consecutive spaces. Pasted CR and LF start new rows.
+  Verified in an isolated native PTY without submitting a model turn (2026-09-23).
+  Recovery checks must use the sanitized payload and its rendered final line,
+  otherwise removed controls or preserved tabs make a still-staged draft look absent.
 - A submission's paste, Enter, and recovery Enters are **held while a blocking
   dialog is visible** (`holdWhileUnsafe` / `writeUnsafe`, `src/core/input/abort.ts`),
   so a dialog appearing in the paste→Enter window can't be auto-confirmed. "Visible"
