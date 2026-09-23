@@ -954,6 +954,10 @@ The guard now requires that completed live frame and rejects working evidence;
 a retained submitted chip by itself cannot trigger recovery. Constructed session
 regressions cover a working frame with chip history and no newer empty composer.
 The native proof still intercepts submission and cancels the draft without a turn.
+The final guard shares the cursor-local empty-input geometry used by acceptance,
+so an earlier submitted prompt does not hide a new staged image. It applies its
+own working and blocking veto before testing that geometry. The history-prefix
+and unknown-overlay checks are constructed regressions, not extra native turns.
 
 ### Empty input while a turn is active (2026-09-23)
 

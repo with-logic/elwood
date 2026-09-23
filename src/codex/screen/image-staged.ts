@@ -2,13 +2,13 @@
 import { liveImageChipCount } from "../../core/images/live-chip.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { codexScreenFactTable } from "../screen-table.ts";
-import { codexComposerClearance } from "./clearance.ts";
+import { codexComposerRowsClearance } from "./clearance.ts";
 
 export function codexImageStaged(terminal: ElwoodTerminal): boolean {
   return (
     liveImageChipCount(
       terminal,
-      codexComposerClearance,
+      codexComposerRowsClearance,
       codexScreenFactTable,
       "› Ask Codex to do anything",
     ) > 0

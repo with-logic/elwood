@@ -23,6 +23,12 @@ for (const agent of ["claude", "codex"] as const) {
       expect(staged(terminal)).toBe(false);
       await paint(draft);
       expect(staged(terminal)).toBe(true);
+      const withHistory =
+        agent === "claude"
+          ? draft.replace(/^[─━]+$/m, `${caret} prior submitted prompt\n$&`)
+          : draft.replace(/^›/m, "› prior submitted prompt\n›");
+      await paint(withHistory);
+      expect(staged(terminal)).toBe(true);
       await terminal.writeOutput("\u001b]0;⠋ Working\u0007");
       expect(staged(terminal)).toBe(false); // title alone revokes otherwise unchanged input
       await terminal.writeOutput("\u001b]0;✳ Ready\u0007\u001b[?25l");
@@ -32,6 +38,14 @@ for (const agent of ["claude", "codex"] as const) {
       await terminal.writeOutput("\u001b[3G\u001b[?2026h");
       expect(staged(terminal)).toBe(false);
       await terminal.writeOutput("\u001b[?2026l\u001b[1;3H");
+      expect(staged(terminal)).toBe(false);
+      await paint(`${draft}\nUnknown replacement: continue?`);
+      expect(staged(terminal)).toBe(false);
+      const dialog =
+        agent === "claude"
+          ? "Do you want to run a command?\n1. Yes\nEsc to cancel"
+          : "Would you like to run this command?\n1. Yes\nPress enter to confirm or esc to cancel";
+      await paint(`${dialog}\n${draft}`);
       expect(staged(terminal)).toBe(false);
       await paint(empty);
       expect(staged(terminal)).toBe(false);

@@ -9,10 +9,10 @@ const mode =
 const expiry = /^\s*Your login expires in \d+ days? · run \/login to renew\s*$/;
 
 export function claudeEmptyInputFrame(terminal: ElwoodTerminal) {
-  return emptyInputFrame(terminal, emptyRows);
+  return emptyInputFrame(terminal, claudeEmptyInputRows);
 }
 
-function emptyRows(rows: readonly string[], cursorRow: number): boolean {
+export function claudeEmptyInputRows(rows: readonly string[], cursorRow: number): boolean {
   const composer = rows[cursorRow];
   if (!(composer?.startsWith("❯") && claudeComposerRow.test(composer))) return false;
   if (!(rule.test(rows[cursorRow - 1] ?? "") && rule.test(rows[cursorRow + 1] ?? ""))) return false;
