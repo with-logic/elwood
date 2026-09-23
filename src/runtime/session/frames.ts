@@ -20,6 +20,7 @@ type TrustState = {
   readonly inputBlocking: boolean;
   readonly blockedPrompt: string | undefined;
   dispose(): void;
+  observeClearance?(frame: string): void;
 };
 
 /** Timers and PTY frames use the same guards, facts, and attention edge owner. */
@@ -64,6 +65,8 @@ export function createSessionFrameObserver(
     const currentRuleIds = blockingRuleIds(reading);
     if (currentRuleIds.length > 0 || !active.inputBlocking) ruleIds = currentRuleIds;
     if (released && active.status === "blocked") pendingAutomationClearance = true;
+    // Settle automation against this frame before evidence/readiness releases input.
+    state.observeClearance?.(frame.text);
     // Publish this frame's hold before evidence listeners can submit readiness.
     readiness.observeFrameHold(reading.facts, active.trustInputBlocking);
     readiness.ready.armDeadline();
