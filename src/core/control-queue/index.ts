@@ -37,10 +37,8 @@ export type {
 } from "./types.ts";
 
 /**
- * Await preparation, then invoke and await work exactly once (zero calls if preparation
- * fails). preparationSignal only controls that pre-work boundary; work captures its
- * own task signal (the closing lifetime for exclusive work), so an exclusive deadline
- * cannot revoke an already-owned dialog.
+ * Await preparation before invoking work once. Its signal cannot revoke work already
+ * started: exclusive work owns its dialog until the separate closing lifetime ends.
  */
 type AroundOperation = (work: () => Promise<void>, preparationSignal: AbortSignal) => Promise<void>;
 
@@ -172,11 +170,20 @@ export class ControlQueue extends ControlQueueState {
   }
 
   private commit(operation: QueuedOperation, traits: ControlOperationTraits): void {
-    if (traits.reportsCallerSubmission && operation.origin.kind === "loop") {
-      runContained(() => this.onTurnStarted(operation.origin));
-    }
     const error = this.cancellation.errorFor(operation);
-    this.settle(operation, () => (error ? operation.reject(error) : operation.resolve()));
+    if (error || !traits.reportsCallerSubmission || operation.origin.kind !== "loop") {
+      this.settle(operation, () => (error ? operation.reject(error) : operation.resolve()));
+      return;
+    }
+    // Commit before observers can cancel. Let LoopDelivery report fired first,
+    // retaining the queue slot until the running notification has been delivered.
+    this.cancellation.remove(operation);
+    operation.resolve();
+    queueMicrotask(() =>
+      this.settle(operation, () => {
+        if (!this.closed) runContained(() => this.onTurnStarted(operation.origin));
+      }),
+    );
   }
 
   private rollback(

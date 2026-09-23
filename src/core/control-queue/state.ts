@@ -42,7 +42,8 @@ export abstract class ControlQueueState {
     this.cancellation.clear();
     if (settling) {
       this.cancellation.remove(settling);
-      // Close owns the error even when the physical writer rejects later.
+      // Retain inFlight until physical settlement. Close owns the stopped error
+      // whether that write later resolves or rejects, overriding prior cancellation.
       if (settling.settleAfterWrite) this.cancellation.mark(settling, error);
       else {
         this.inFlight = undefined;
