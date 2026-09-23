@@ -11,7 +11,7 @@ import { currentRenderedFrame, settledCursorVisible } from "../terminal/cursor.t
 import type { ElwoodTerminal } from "../terminal/headless.ts";
 import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
 
-const claudeWorkingTitle = /^[⠀-⣿]\s/;
+const claudeWorkingTitle = /^[⠀-⣿◐]\s/;
 const claudeComposerInputColumn = 2; // zero-based, after the two-cell "❯ " prefix
 /** The idle Claude composer row; also the caret that is NOT a dialog caret. */
 const claudeComposerRow = /^\s*❯(?:[ \t ]*|[ \t ]+Try "[^"\n]+")\s*$/m;
@@ -67,6 +67,7 @@ export function liveClaudeClearance(
  * matching the question plus the numbered-Yes line together avoids matching
  * model prose that merely quotes the phrase. The OSC window title carries a
  * braille-spinner glyph (U+2800–U+28FF) while a turn runs and "✳ " when idle
+ * on 2.1.258; 2.1.281 also emits the captured "◐ " working prefix
  * — a width-independent working signal that survives Claude's footer elision
  * on narrow screens. Model/effort switch dialogs use either `❯` or `›` and
  * can be numbered or unnumbered; their complete title/action shape blocks the
