@@ -1,6 +1,6 @@
 /**
- * First-party option bindings owned by one Codex update appearance (PRD §5.5,
- * C-CODEX-12/22). Banner-less frames may reuse known bindings but cannot introduce
+ * Bounded first-party option evidence for Codex updates (PRD §5.5, C-CODEX-12).
+ * Banner-less frames may reuse known bindings but cannot introduce
  * choices: disjoint numbering is absence of contradiction, not provenance.
  */
 
