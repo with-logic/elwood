@@ -15,6 +15,9 @@ back each entry are listed in `prd/14-conformance.md`.
 - Recognize Codex 0.156.1 capitalized model footers when confirming an empty
   native composer, so cancelled draft cleanup can release queued successor input.
 
+- Recognize Codex 0.156.1 folder-access trust prompts, keeping queued input held
+  and approving only the known choice when `autotrust` is enabled.
+
 - Preserve picker and cancelled-draft cleanup authority across automatic terminal
   protocol replies and startup automation; actual caller input still revokes it.
 
