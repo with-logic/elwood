@@ -75,9 +75,14 @@ function ruleMatches(rule: ScreenFactRule, target: string): boolean {
 /**
  * Evaluates the full table against a frame: sets every fact whose rules match
  * (a fact is true if any of its rules match) and returns the list of matched
- * rules — with their fact and region — for explain-trace diagnostics.
+ * rules — with their fact and region — for explain-trace diagnostics. A caller may
+ * suppress one fallback by id without copying the immutable table.
  */
-export function readScreenFacts(table: ScreenFactTable, frame: RenderedFrame): ScreenFactReading {
+export function readScreenFacts(
+  table: ScreenFactTable,
+  frame: RenderedFrame,
+  suppressedRule?: string,
+): ScreenFactReading {
   const facts: Record<ScreenFactKind, boolean> = {
     composer_visible: false,
     working_visible: false,
@@ -86,6 +91,7 @@ export function readScreenFacts(table: ScreenFactTable, frame: RenderedFrame): S
   };
   const matched: MatchedScreenRule[] = [];
   for (const rule of table.rules) {
+    if (rule.id === suppressedRule) continue;
     const region = rule.region ?? "screen";
     const target = region === "title" ? frame.title : frame.text;
     if ((rule.fallback && facts[rule.fact]) || !ruleMatches(rule, target)) continue;

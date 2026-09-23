@@ -26,7 +26,7 @@ type CodexStartupPromptResult = {
 export class CodexStartupPromptResponder {
   private readonly elwoodSessionId: string;
   private readonly trust: TrustPromptResponder<"codex">;
-  private readonly updatePrompt: CodexUpdatePromptTracker;
+  private readonly updatePrompt = new CodexUpdatePromptTracker();
   private readonly lifetime = new AbortController();
   // The update-screen generation that owns the skip latch (0 = none). Only that
   // generation's own completion may release it; a stale completion is a no-op.
@@ -42,7 +42,6 @@ export class CodexStartupPromptResponder {
     clearance: TrustClearance = codexTrustClearance,
   ) {
     this.elwoodSessionId = elwoodSessionId;
-    this.updatePrompt = new CodexUpdatePromptTracker(clearance);
     this.trust = new TrustPromptResponder("codex", clearance, autotrust, onStateChange);
   }
 

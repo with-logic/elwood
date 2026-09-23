@@ -48,6 +48,16 @@ test.each([
     // The prior update owns the existing block until native clearance; trust
     // automation must not create a new human-attention episode meanwhile.
     expect(attention).toEqual([]);
+    ptys[0]!.emitData(asScreen("Repainting choices…"));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(attention).toEqual([]);
+    expect(session.status).toBe("blocked");
+    ptys[0]!.emitData(
+      asScreen("Do you trust the newly requested capability?\n1. Yes\n2. No\nEnter to confirm"),
+    );
+    await vi.advanceTimersByTimeAsync(50);
+    expect(attention).toEqual(["codex-unknown_gate-prompt"]);
+    ptys[0]!.emitData(asScreen(frame));
     expect(ptys[0]!.writes.every((input) => input === answer)).toBe(true);
     await vi.advanceTimersByTimeAsync(10_500);
     expect(ptys[0]!.writes.length).toBeGreaterThan(1);

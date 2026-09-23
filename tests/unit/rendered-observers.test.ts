@@ -101,3 +101,18 @@ test("C-ATTN-03 a retained trust hold preserves one native rule match", () => {
     { id: "claude-workspace_trust-prompt", fact: "blocking_prompt_visible", region: "screen" },
   ]);
 });
+
+test.each([
+  undefined,
+  "workspace_trust",
+])("C-ATTN-03 current unknown gate outranks trust ownership (%s)", (trustBlock) => {
+  const { observers } = harness(true);
+  observers.table = claudeScreenFactTableForTrustPolicy(false);
+  const reading = readRenderedFrame(
+    observers,
+    screen("Do you trust the newly requested capability?\n1. Yes\n2. No\nEnter to confirm"),
+    trustBlock,
+    true,
+  );
+  expect(reading.matched.map(({ id }) => id)).toEqual(["claude-unknown_gate-prompt"]);
+});

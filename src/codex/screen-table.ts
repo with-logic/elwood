@@ -7,6 +7,8 @@
 import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
 import type { TrustClearance } from "../core/trust/clearance.ts";
+import { codexComposerClearance } from "./screen/clearance.ts";
+import { CodexRetainedComposerHold } from "./screen/retained-clearance.ts";
 import { codexWorkingScreen, codexWorkingTitle } from "./screen/working.ts";
 import { CodexUpdatePromptTracker, codexUpdatePromptVisible } from "./update-prompt.ts";
 
@@ -25,9 +27,9 @@ const verifiedAgainst = "codex-cli 0.142.5";
  * from reading as an idle composer. The OSC window title carries a
  * braille-spinner glyph (U+2800–U+28FF) while a turn runs and the plain
  * directory name when idle. The update-prompt rule takes its matcher as a
- * parameter: production injects a per-session `CodexUpdatePromptTracker` (a split
- * prompt retains its input hold until positive native composer clearance), so the
- * rules that ship are built here, once, rather than rewritten after the fact.
+ * parameter: production injects per-session update generation tracking and a
+ * retained input hold until positive native composer clearance. Both belong to
+ * this table; startup automation only needs update generation tracking.
  */
 function codexScreenFactRules(updatePromptVisible: (frame: string) => boolean): ScreenFactRule[] {
   return [
@@ -70,11 +72,18 @@ export function codexScreenFactTableForTrustPolicy(
   autotrust: boolean,
   clearsInput?: TrustClearance,
 ): ScreenFactTable {
-  const updatePrompt = new CodexUpdatePromptTracker(clearsInput);
+  const updatePrompt = new CodexUpdatePromptTracker();
+  const retained = new CodexRetainedComposerHold(clearsInput ?? codexComposerClearance);
+  let holdWithoutAppearance = false;
   const tracked: ScreenFactTable = {
     agent: "codex",
     verifiedAgainst,
-    rules: codexScreenFactRules(updatePrompt.observe.bind(updatePrompt)),
+    rules: codexScreenFactRules((frame) => {
+      const visible = updatePrompt.observe(frame);
+      const held = retained.observe(frame, visible);
+      holdWithoutAppearance = held && !visible;
+      return visible;
+    }),
   };
   const table = withTrustBlockingRules(tracked, "codex", autotrust);
   return {
@@ -86,7 +95,7 @@ export function codexScreenFactTableForTrustPolicy(
         id: "codex-unidentified-dialog",
         fact: "blocking_prompt_visible",
         fallback: true,
-        match: (frame) => updatePrompt.holdWithoutAppearance && !table.trustGateVisible(frame),
+        match: (frame) => holdWithoutAppearance && !table.trustGateVisible(frame),
       },
     ],
   };
