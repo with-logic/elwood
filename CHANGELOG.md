@@ -12,8 +12,6 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Check every visible Codex update banner for version contradictions so stale viewport text cannot hide a changed update appearance.
-
 - Keep startup persona responses out of ergonomic caller turns, including when
   the persona and caller submit identical text or its transcript arrives after
   readiness. Closing cancels waiting callers even if process shutdown fails.
