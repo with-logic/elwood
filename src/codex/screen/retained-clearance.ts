@@ -15,7 +15,8 @@ export class CodexRetainedComposerHold {
 
   observe(text: string, updateActive: boolean): boolean {
     const rows = text.split("\n");
-    const composer = codexComposerRow(rows);
+    const liveClear = this.isClear(text);
+    const composer = codexComposerRow(rows, liveClear);
     if (updateActive && !this.holding) {
       this.frozenPrelude = composer < 0 ? undefined : (this.priorPrelude ?? null);
       this.holding = true;
@@ -27,7 +28,7 @@ export class CodexRetainedComposerHold {
       this.frozenPrelude = undefined;
     }
     if (updateActive) return true;
-    if (composer < 0 || !this.isClear(text)) return this.holding;
+    if (composer < 0 || !liveClear) return this.holding;
     const prelude = rows
       .slice(0, composer)
       .map((row) => row.trimEnd())

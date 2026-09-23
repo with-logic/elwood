@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 import { liveCodexClearance } from "../../../src/codex/screen/live-clearance.ts";
 import { CodexRetainedComposerHold } from "../../../src/codex/screen/retained-clearance.ts";
 import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
-import { codexSmallComposer, codexTty } from "../../fixtures/trust-composer.ts";
+import { codexComposer, codexSmallComposer, codexTty } from "../../fixtures/trust-composer.ts";
 
 const update = "Update available! 0.151.0 -> 0.152.0";
 const history = "• Earlier menu example:\n  ❯ Proceed\n    Cancel\n\n1. First step\n2. Second step";
@@ -139,6 +139,40 @@ test("C-CODEX-12 equal-height replacement cannot reuse the old composer's prelud
     await f.paint(idle.replace("• Earlier menu example:", "Confirm archive removal?"));
     expect(f.read()).toBe(true);
     await f.paint(idle);
+    expect(f.read()).toBe(false);
+  } finally {
+    f.terminal.dispose();
+  }
+});
+
+test("C-CODEX-12 a cursor-hidden welcome transcript cannot preserve the old composer", async () => {
+  const f = fixture();
+  const welcomeTranscript = `${codexComposer.slice(0, codexComposer.lastIndexOf("\n›"))}\n› Explain this codebase`;
+  try {
+    await f.paint(idle);
+    expect(f.read()).toBe(false);
+    await f.overlay(update);
+    expect(f.read(true)).toBe(true);
+    await f.paint(welcomeTranscript);
+    await f.terminal.writeOutput("\u001b[?25l");
+    expect(f.read()).toBe(true);
+    await f.paint(`• Newly loaded resumed reply\n${history}\n${codexSmallComposer}`);
+    expect(f.read()).toBe(false);
+  } finally {
+    f.terminal.dispose();
+  }
+});
+
+test("C-CODEX-12 a live welcome-only composer releases the startup update hold", async () => {
+  const f = fixture();
+  const welcome = codexComposer.slice(0, codexComposer.lastIndexOf("\n"));
+  try {
+    await f.paint(update);
+    expect(f.read(true)).toBe(true);
+    await f.paint(welcome);
+    await f.terminal.writeOutput("\u001b[?25l");
+    expect(f.read()).toBe(true);
+    await f.terminal.writeOutput("\u001b[?25h");
     expect(f.read()).toBe(false);
   } finally {
     f.terminal.dispose();

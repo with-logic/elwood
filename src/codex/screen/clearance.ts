@@ -60,23 +60,25 @@ function hasApprovalEvidence(rows: readonly string[]): boolean {
   }
 }
 
-/** Locate a native composer region even when an overlay hides or moves its cursor. */
-export function codexComposerRow(frameRows: readonly string[]): number {
+/** Locate a composer by retained footer evidence or a live-verified welcome region. */
+export function codexComposerRow(frameRows: readonly string[], liveClear: boolean): number {
   const rows = frameRows.map((row) => row.trimEnd());
   const at = rows.findLastIndex(
     (row) => /^›(?:\s|$)/.test(row) && placeholders.has(row.slice(1).trim()),
   );
   // Submitted transcript prompts can exactly match a placeholder; native chrome
-  // must remain too before this can preserve the old composer's provenance.
-  return at >= 0 && nativeComposerRegion(rows, at) ? at : -1;
+  // must remain too. Welcome chrome also survives in transcripts, so it requires
+  // live cursor verification before it can preserve the composer's provenance.
+  return at >= 0 && nativeComposerRegion(rows, at, liveClear) ? at : -1;
 }
 
-/** The composer's own footer or welcome region, independent of overlaid dialog text. */
-function nativeComposerRegion(rows: readonly string[], at: number): boolean {
+/** Require the composer's own footer unless the caller permits welcome evidence. */
+function nativeComposerRegion(rows: readonly string[], at: number, allowWelcome: boolean): boolean {
   const below = rows.slice(at + 1).filter((row) => row !== "");
   if (!below.every((row) => modelFooter.test(row) || hintFooter.test(row))) return false;
-  if (below.some((row) => modelFooter.test(row))) return true;
-  return welcomeBox(rows.slice(0, at));
+  return (
+    below.some((row) => modelFooter.test(row)) || (allowWelcome && welcomeBox(rows.slice(0, at)))
+  );
 }
 
 /**
@@ -105,5 +107,5 @@ export function codexComposerRowsClearance(
   // Transcript continuations are indented; user prompts have their own caret prefix.
   if (above.some((row) => approvalHeader.test(row))) return false;
   if (cursorRow === undefined && hasApprovalEvidence(above)) return false;
-  return nativeComposerRegion(rows, at);
+  return nativeComposerRegion(rows, at, true);
 }
