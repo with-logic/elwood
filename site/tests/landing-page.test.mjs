@@ -372,3 +372,13 @@ test("pointer and keyboard pickup route through the real scene and release witho
   assert.equal(scene.dragging, false);
   scene.pause("test", true);
 });
+
+test("permanent departure disposes the scene while bfcache preserves it", () => {
+  listeners.get("pagehide")({ persisted: true });
+  assert.equal(scene.bank.disposed, false);
+  listeners.get("pagehide")({ persisted: false });
+  assert.equal(scene.bank.disposed, true);
+  assert.equal(scene.bank.pages.size, 0);
+  assert.equal(scene.lastPose, null);
+  assert.equal(scene.ready, false);
+});

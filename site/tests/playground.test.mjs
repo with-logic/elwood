@@ -36,6 +36,7 @@ function canvasContext() {
       measureText: () => ({ width: 220, actualBoundingBoxAscent: 220 }),
       getTransform: () => ({ e: 0, f: 0 }),
       drawImage(image, ...numbers) {
+        assert.ok(!image.closed, "A rendered sprite must still be owned");
         assert.ok(numbers.every(Number.isFinite), "Canvas coordinates must be finite");
         if (image.src) {
           drawnImage = image.src;
@@ -140,11 +141,14 @@ globalThis.fetch = async (input) => {
     return new Response("", { status: 404 });
   }
 };
+const decodedImages = [];
 globalThis.createImageBitmap = async (blob) => {
   const bytes = Buffer.from(await blob.arrayBuffer());
   assert.equal(bytes.subarray(0, 4).toString(), "RIFF");
   assert.equal(bytes.subarray(8, 12).toString(), "WEBP");
-  return { src: blob.sourceUrl };
+  const image = { src: blob.sourceUrl, closed: 0, close() { this.closed++; } };
+  decodedImages.push(image);
+  return image;
 };
 function key(type, code, tagName = "CANVAS", shiftKey = false) {
   listeners.get(type)({ code, target: { tagName }, preventDefault() {}, repeat: false, shiftKey });
@@ -516,4 +520,13 @@ test("the retired moonwalk has no gameplay shortcut or manifest entry", async ()
     buttons.some((button) => button.dataset.gesture === "moonwalk"),
     false,
   );
+});
+
+test("workshop keeps pages for bfcache and closes them on permanent departure", async () => {
+  listeners.get("pagehide")({ persisted: true });
+  assert.ok(decodedImages.some((image) => image.closed === 0));
+  listeners.get("pagehide")({ persisted: false });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(decodedImages.every((image) => image.closed === 1));
+  assert.equal(pendingFrame, null);
 });
