@@ -19,6 +19,9 @@ back each entry are listed in `prd/14-conformance.md`.
   the persona and caller submit identical text or its transcript arrives after
   readiness. Closing cancels waiting callers even if process shutdown fails.
 
+- Recognize Codex 0.156.1 folder-access trust prompts, keeping queued input held
+  and approving only the known choice when `autotrust` is enabled.
+
 - Keep queued Codex input held when an update screen becomes an unknown or partial
   dialog, until its live native composer returns; a stale visible cursor cannot
   clear replacement text above the old composer. Specific trust rules retain their
