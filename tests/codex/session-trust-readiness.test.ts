@@ -27,38 +27,42 @@ test.each([
 ] as const)("C-TRUST-01 Codex native trust replacing an update holds readiness after ignored numbered writes (%s)", async (autotrust, frame, answer) => {
   installFakes({ supportsHookTrustBypass: false });
   const session = await startCodex({ cwd: tempDir(), autotrust });
-  const attention: string[] = [];
-  const answered: string[] = [];
-  const warnings: string[] = [];
-  session.on("warning", (event) => warnings.push(event.code));
-  session.on("activity", (event) => {
-    if (event.kind === "attention") attention.push(event.label);
-    if (event.kind === "startup_prompt") answered.push(event.label);
-  });
-  const queued = session.sendMessage("hello");
-  vi.useFakeTimers();
-  ptys[0]!.emitData(asScreen("Update available! 0.151.0 -> 0.152.0"));
-  await vi.advanceTimersByTimeAsync(50);
-  expect(session.status).toBe("blocked");
-  attention.length = 0;
-  ptys[0]!.emitData(asScreen(frame));
-  await vi.advanceTimersByTimeAsync(500);
-  // The prior update owns the existing block until native clearance; trust
-  // automation must not create a new human-attention episode meanwhile.
-  expect(attention).toEqual([]);
-  expect(ptys[0]!.writes.every((input) => input === answer)).toBe(true);
-  await vi.advanceTimersByTimeAsync(10_500);
-  expect(ptys[0]!.writes.length).toBeGreaterThan(1);
-  expect(ptys[0]!.writes.every((input) => input === answer)).toBe(true);
-  expect(answered).toEqual([]);
-  expect(warnings).toEqual([]);
-  expect(session.status).not.toBe("ready");
-  expect(session.status).toBe("blocked");
-  expect(attention).toContain(`codex-${autotrust ? "workspace_trust" : "hook_trust"}-prompt`);
-  ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`);
-  await vi.advanceTimersByTimeAsync(500);
-  await queued;
-  expect(ptys[0]!.writes).toContain("\u001b[200~hello\u001b[201~");
-  vi.useRealTimers();
-  await session.teardown();
+  try {
+    const attention: string[] = [];
+    const answered: string[] = [];
+    const warnings: string[] = [];
+    session.on("warning", (event) => warnings.push(event.code));
+    session.on("activity", (event) => {
+      if (event.kind === "attention") attention.push(event.label);
+      if (event.kind === "startup_prompt") answered.push(event.label);
+    });
+    const queued = session.sendMessage("hello");
+    void queued.catch(() => undefined);
+    vi.useFakeTimers();
+    ptys[0]!.emitData(asScreen("Update available! 0.151.0 -> 0.152.0"));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(session.status).toBe("blocked");
+    attention.length = 0;
+    ptys[0]!.emitData(asScreen(frame));
+    await vi.advanceTimersByTimeAsync(500);
+    // The prior update owns the existing block until native clearance; trust
+    // automation must not create a new human-attention episode meanwhile.
+    expect(attention).toEqual([]);
+    expect(ptys[0]!.writes.every((input) => input === answer)).toBe(true);
+    await vi.advanceTimersByTimeAsync(10_500);
+    expect(ptys[0]!.writes.length).toBeGreaterThan(1);
+    expect(ptys[0]!.writes.every((input) => input === answer)).toBe(true);
+    expect(answered).toEqual([]);
+    expect(warnings).toEqual([]);
+    expect(session.status).not.toBe("ready");
+    expect(session.status).toBe("blocked");
+    expect(attention).toContain(`codex-${autotrust ? "workspace_trust" : "hook_trust"}-prompt`);
+    ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`);
+    await vi.advanceTimersByTimeAsync(500);
+    await queued;
+    expect(ptys[0]!.writes).toContain("\u001b[200~hello\u001b[201~");
+  } finally {
+    vi.useRealTimers();
+    await session.teardown();
+  }
 });
