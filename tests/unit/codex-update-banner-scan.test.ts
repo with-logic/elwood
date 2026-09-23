@@ -1,4 +1,4 @@
-/** Every visible update banner participates in contradiction checks (PRD §5.5, C-CODEX-22). */
+/** Every visible update banner participates in contradiction checks (PRD §5.5, C-CODEX-12). */
 import { expect, test } from "vitest";
 import {
   bannerContradictsAppearance,
@@ -15,11 +15,11 @@ test.each([
   `${original}\n${changed}`,
   `${changed}\n${original}`,
   `${original}\n${original}\n${changed}\n${original}`,
-])("C-CODEX-22 every changed banner contradicts retained evidence: %s", (frame) => {
+])("C-CODEX-12 every changed banner contradicts retained evidence: %s", (frame) => {
   expect(bannerContradictsAppearance(evidence, frame)).toBe(true);
 });
 
-test("C-CODEX-22 repeated identical banners remain compatible without phantom options", () => {
+test("C-CODEX-12 repeated identical banners remain compatible without phantom options", () => {
   const frame = `${original}\n${original}\n  1. Update now\n  2. Skip`;
   const retained = withUpdateFrameEvidence(emptyUpdateEvidence(), frame, true);
   expect(bannerContradictsAppearance(retained, frame)).toBe(false);
