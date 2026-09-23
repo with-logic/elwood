@@ -45,6 +45,6 @@ test.each([
     });
     expect(ptys[0]!.writes).toEqual([]);
   } finally {
-    await session.stop();
+    await session.teardown();
   }
 });
