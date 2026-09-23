@@ -27,6 +27,7 @@ describe.each(matrix)("%s unknown gate (autotrust %s)", (agent, autotrust) => {
     for (const gate of [
       rewordedGate,
       newCursorGate,
+      "Trust this new workspace provider?\n› 1. Continue\n  2. Quit\n\nenter continue · esc quit",
       `Accessing workspace:\n/tmp/p\n${newCursorGate}`,
     ])
       expect(blockingRuleIds(agent, autotrust, gate)).toEqual([`${agent}-unknown_gate-prompt`]);

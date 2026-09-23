@@ -282,6 +282,20 @@ select a destructive-rider affirmative, and never answer a specific-affirmative
 prompt (e.g. hook trust) with a generic "Yes". `src/core/trust/responder.ts`,
 `src/core/trust/prompts.ts`, verified by `tests/e2e/trust-prompt-claude.e2e.ts`.
 
+**Codex 0.156.1 uses a new folder-access dialog.** A native PTY capture on
+2026-09-23 showed `Folder access`, the working directory, `Trust this folder?`,
+the explanation beginning `Codex can read, edit, and run files here`, numbered
+`Trust and continue` / `Quit` choices, and `enter continue · esc quit`. The question
+and explanation share a row and wrap together. The previous grammar missed both
+the question and footer, let startup report ready, and sent an image paste into
+the unanswered dialog. Keep this layout as a separate exact-copy allowlist entry:
+`autotrust` may select only `Trust and continue`; partial or changed copy must hold
+input without approving it. The sanitized capture is
+`tests/fixtures/codex-0.156.1/folder-access.txt`; parser and session regressions
+cover both `autotrust` settings. A native rerun with this grammar answered the gate
+and attached the first image; its later cancelled-draft cleanup failed separately,
+so this is trust/attachment evidence, not a passing successor-cleanup run. C-TRUST-01.
+
 ### Where the clearance grammar lives
 
 "This frame is the CLI's own idle composer, so the gate cleared" is a per-CLI layout
@@ -561,7 +575,7 @@ Version-coupled behavior learned here:
   selected only from the current frame. Codex can split the distinctive
   versioned banner and its options across consecutive screen replacements; once
   the banner activates the tracker, a safe-option-only continuation remains the
-  same blocking prompt. A definite non-update frame clears it. Matching the
+  same update appearance. Input remains held until positive native composer clearance. Matching the
   accumulated buffer lets a cleared/reappeared prompt inherit an old option number
   and lets benign later prose re-fire against a stale option. C-CODEX-12.
 - Captured Codex update menus from 0.132 through 0.155 list `Update now` before
@@ -569,6 +583,16 @@ Version-coupled behavior learned here:
   row before the update action is not selected, and the update action itself is
   excluded even if its label also contains a skip phrase. A banner-less continuation
   without the action has no ordering constraint; its generation guard still applies.
+- Update recognition and input blocking have different lifetimes. An unknown
+  replacement is no longer an update. Without a prior recognized update it does
+  not create a retained update hold, so queued paste and Enter remain eligible.
+  Once an update was recognized, the session retains its input hold until native
+  composer and visible cursor in one completed render prove clearance, with no
+  working-title signal. The title may be absent or an ordinary directory name. A
+  partial repaint or bare caret cannot release it. Specific trust rules keep their
+  own labels; otherwise an unowned retained hold reports `codex-unidentified-dialog`.
+  Pending automated trust owns its partial repaints and suppresses that generic
+  label until its input hold ends.
 - Option labels drift by version. Older codex (0.132/0.133) rendered a numbered
   dialog ("1. Update now / 2. Skip / 3. Skip until next version"). In the installed
   0.149.1 binary, the upgrade notice strings extracted from the native binary read
@@ -602,7 +626,8 @@ submission remain suspended until the rendered update frame clears, even after
 the skip key is written. The prompt recognizer accepts the known first-party
 versioned banner before options paint, plus option-only frames when BOTH "Update
 now" and a safe skip/later choice are present. Once active, a safe-option-only
-continuation stays latched until a definite non-update frame. Generic agent prose
+continuation stays eligible until a definite non-update frame; the input hold lasts
+until positive native composer clearance. Generic agent prose
 containing "update available" and the actual 0.149.1 passive installation notice
 do not block.
 
@@ -661,6 +686,11 @@ new CLI version or native capture was verified.
   bracketed-paste markers (`ESC[200~`/`ESC[201~`) and C0/C1 controls except
   tab/nl/cr, so text can't escape bracketed paste and inject a dialog-confirming
   Enter. C-API-40.
+- Codex 0.156.1 renders each pasted tab as one space, regardless of column;
+  consecutive tabs remain consecutive spaces. Pasted CR and LF start new rows.
+  Verified in an isolated native PTY without submitting a model turn (2026-09-23).
+  Recovery checks must use the sanitized payload and its rendered final line,
+  otherwise removed controls or preserved tabs make a still-staged draft look absent.
 - A submission's paste, Enter, and recovery Enters are **held while a blocking
   dialog is visible** (`holdWhileUnsafe` / `writeUnsafe`, `src/core/input/abort.ts`),
   so a dialog appearing in the paste→Enter window can't be auto-confirmed. "Visible"
@@ -883,3 +913,19 @@ clearance accepted it, while the post-model-picker suffix predicate rejected it.
 Cleanup accepts either existing positive Claude clearance path, preserving the
 same completed-render and cursor checks. The suffix path remains useful when
 earlier conversation carets prevent whole-frame clearance.
+
+
+### Capitalized Codex model footer (2026-09-23)
+
+Codex 0.156.1 renders `GPT-6-Astra default` in the native footer, followed by
+its working directory and a right-aligned warning count. A 189×48 capture after
+staged-draft cleanup showed the empty `Ask Codex to do anything` placeholder with
+the input cursor at column 2, row 11 (zero-based), but the lowercase-only `gpt-`
+footer pattern rejected the completed native frame. Cleanup consequently reported
+`Could not clear the staged composer draft` after the CLI had already cleared it.
+The model prefix now accepts the captured `GPT-` spelling alongside `gpt-`;
+placeholder, footer layout, live cursor and blocking-overlay checks remain required.
+The captured nonempty rows are retained in
+`tests/fixtures/codex-0.156.1/cleared-composer.txt`; the regression replays them
+at their original viewport size, with temporary paths replaced by a stable `CAPTURE`
+placeholder. C-API-56, C-TRUST-01, PRD §5.4.

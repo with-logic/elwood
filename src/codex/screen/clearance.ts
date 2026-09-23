@@ -18,7 +18,7 @@ const placeholders = new Set([
   "Use /skills to list available skills",
 ]);
 const modelFooter =
-  /^ {2}gpt-[\w.-]+ (?:minimal|low|medium|high|xhigh|default)(?: · (?:\/|[A-Z]:[\\/])[^\n]*)?$/;
+  /^ {2}(?:gpt|GPT)-[\w.-]+ (?:minimal|low|medium|high|xhigh|default)(?: · (?:\/|[A-Z]:[\\/])[^\n]*)?$/;
 const hintFooter = /^(?: {2})?\? for shortcuts$/;
 
 /** A contiguous startup welcome box and its native tip/warning rows. */
@@ -62,22 +62,25 @@ function hasApprovalEvidence(rows: readonly string[]): boolean {
 
 /** Locate a composer by retained footer evidence or a live-verified welcome region. */
 export function codexComposerRow(frameRows: readonly string[], liveClear: boolean): number {
-  const rows = frameRows.map((row) => row.trimEnd());
-  const at = rows.findLastIndex(
+  const at = frameRows.findLastIndex(
     (row) => /^›(?:\s|$)/.test(row) && placeholders.has(row.slice(1).trim()),
   );
   // Submitted transcript prompts can exactly match a placeholder; native chrome
   // must remain too. Welcome chrome also survives in transcripts, so it requires
   // live cursor verification before it can preserve the composer's provenance.
-  return at >= 0 && nativeComposerRegion(rows, at, liveClear) ? at : -1;
+  return at >= 0 && nativeComposerRegion(frameRows, at, liveClear) ? at : -1;
 }
 
 /** Require the composer's own footer unless the caller permits welcome evidence. */
 function nativeComposerRegion(rows: readonly string[], at: number, allowWelcome: boolean): boolean {
-  const below = rows.slice(at + 1).filter((row) => row !== "");
+  const below = rows
+    .slice(at + 1)
+    .map((row) => row.trimEnd())
+    .filter((row) => row !== "");
   if (!below.every((row) => modelFooter.test(row) || hintFooter.test(row))) return false;
   return (
-    below.some((row) => modelFooter.test(row)) || (allowWelcome && welcomeBox(rows.slice(0, at)))
+    below.some((row) => modelFooter.test(row)) ||
+    (allowWelcome && welcomeBox(rows.slice(0, at).map((row) => row.trimEnd())))
   );
 }
 
