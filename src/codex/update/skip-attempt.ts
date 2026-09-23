@@ -4,7 +4,8 @@ import type { StartupWriteCompletion } from "../../core/startup/write.ts";
 import { trustGateVisible } from "../../core/trust/blocking.ts";
 import type { TrustClearance } from "../../core/trust/clearance.ts";
 import type { TrustWriteResult } from "../../core/trust/responder.ts";
-import { type CodexUpdatePromptTracker, writeCodexUpdateSkip } from "../update-prompt.ts";
+import { writeCodexUpdateSkip } from "../update-prompt.ts";
+import type { CodexUpdatePromptTracker } from "./tracker.ts";
 
 type UpdateSkipRequest = {
   readonly option: string;

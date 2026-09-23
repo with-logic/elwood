@@ -12,7 +12,7 @@ import { codexTrustClearance } from "./screen-table.ts";
 import { type CodexBannerWarning, codexWarningsFromText } from "./startup-warnings.ts";
 import { safeUpdateOption } from "./update/selection.ts";
 import { startCodexUpdateSkip } from "./update/skip-attempt.ts";
-import { CodexUpdatePromptTracker } from "./update-prompt.ts";
+import { CodexUpdatePromptTracker } from "./update/tracker.ts";
 
 export { codexWarningsFromText } from "./startup-warnings.ts";
 

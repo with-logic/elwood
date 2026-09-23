@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
-import { CodexUpdatePromptTracker } from "../../src/codex/update-prompt.ts";
+import { CodexUpdatePromptTracker } from "../../src/codex/update/tracker.ts";
 import { emitSettledStartupOutcomes } from "../../src/core/startup/write.ts";
 
 import { codexSmallComposer } from "../fixtures/trust-composer.ts";

@@ -10,7 +10,8 @@ import type { TrustClearance } from "../core/trust/clearance.ts";
 import { codexComposerClearance } from "./screen/clearance.ts";
 import { CodexRetainedComposerHold } from "./screen/retained-clearance.ts";
 import { codexWorkingScreen, codexWorkingTitle } from "./screen/working.ts";
-import { CodexUpdatePromptTracker, codexUpdatePromptVisible } from "./update-prompt.ts";
+import { codexUpdatePromptVisible } from "./update/recognition.ts";
+import { CodexUpdatePromptTracker } from "./update/tracker.ts";
 
 export { codexComposerClearance as codexTrustClearance } from "./screen/clearance.ts";
 
