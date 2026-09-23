@@ -561,7 +561,7 @@ Version-coupled behavior learned here:
   selected only from the current frame. Codex can split the distinctive
   versioned banner and its options across consecutive screen replacements; once
   the banner activates the tracker, a safe-option-only continuation remains the
-  same blocking prompt. A definite non-update frame clears it. Matching the
+  same update appearance. Input remains held until positive native composer clearance. Matching the
   accumulated buffer lets a cleared/reappeared prompt inherit an old option number
   and lets benign later prose re-fire against a stale option. C-CODEX-12.
 - Captured Codex update menus from 0.132 through 0.155 list `Update now` before
@@ -569,6 +569,16 @@ Version-coupled behavior learned here:
   row before the update action is not selected, and the update action itself is
   excluded even if its label also contains a skip phrase. A banner-less continuation
   without the action has no ordering constraint; its generation guard still applies.
+- Update recognition and input blocking have different lifetimes. An unknown
+  replacement is no longer an update. Without a prior recognized update it does
+  not create a retained update hold, so queued paste and Enter remain eligible.
+  Once an update was recognized, the session retains its input hold until native
+  composer and visible cursor in one completed render prove clearance, with no
+  working-title signal. The title may be absent or an ordinary directory name. A
+  partial repaint or bare caret cannot release it. Specific trust rules keep their
+  own labels; otherwise an unowned retained hold reports `codex-unidentified-dialog`.
+  Pending automated trust owns its partial repaints and suppresses that generic
+  label until its input hold ends.
 - Option labels drift by version. Older codex (0.132/0.133) rendered a numbered
   dialog ("1. Update now / 2. Skip / 3. Skip until next version"). In the installed
   0.149.1 binary, the upgrade notice strings extracted from the native binary read
@@ -602,7 +612,8 @@ submission remain suspended until the rendered update frame clears, even after
 the skip key is written. The prompt recognizer accepts the known first-party
 versioned banner before options paint, plus option-only frames when BOTH "Update
 now" and a safe skip/later choice are present. Once active, a safe-option-only
-continuation stays latched until a definite non-update frame. Generic agent prose
+continuation stays eligible until a definite non-update frame; the input hold lasts
+until positive native composer clearance. Generic agent prose
 containing "update available" and the actual 0.149.1 passive installation notice
 do not block.
 
