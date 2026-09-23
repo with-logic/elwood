@@ -133,25 +133,22 @@ globalThis.cancelAnimationFrame = () => {
 };
 globalThis.fetch = async (input) => {
   try {
-    return new Response(await readFile(fileURLToPath(new URL(String(input), root))), {
-      status: 200,
-    });
+    const response = new Response(await readFile(fileURLToPath(new URL(String(input), root))));
+    const blob = await response.blob();
+    blob.sourceUrl = String(input);
+    return { ok: true, json: () => blob.text().then(JSON.parse), blob: async () => blob };
   } catch {
     return new Response("", { status: 404 });
   }
 };
 const decodedImages = [];
-globalThis.Image = class {
-  closed = 0;
-  close() {
-    this.closed++;
-  }
-  async decode() {
-    const bytes = await readFile(fileURLToPath(this.src));
-    assert.equal(bytes.subarray(0, 4).toString(), "RIFF");
-    assert.equal(bytes.subarray(8, 12).toString(), "WEBP");
-    decodedImages.push(this);
-  }
+globalThis.createImageBitmap = async (blob) => {
+  const bytes = Buffer.from(await blob.arrayBuffer());
+  assert.equal(bytes.subarray(0, 4).toString(), "RIFF");
+  assert.equal(bytes.subarray(8, 12).toString(), "WEBP");
+  const image = { src: blob.sourceUrl, closed: 0, close() { this.closed++; } };
+  decodedImages.push(image);
+  return image;
 };
 function key(type, code, tagName = "CANVAS", shiftKey = false) {
   listeners.get(type)({ code, target: { tagName }, preventDefault() {}, repeat: false, shiftKey });
