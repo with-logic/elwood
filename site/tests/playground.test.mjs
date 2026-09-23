@@ -236,7 +236,7 @@ test("page boot, real asset loads, keyboard directions, pause and reset work tog
   assert.equal(pendingFrame, null);
   assert.equal(element("#pause-overlay").hidden, false);
   element("#reset").onclick();
-  await advance(16);
+  await advanceUntilImage(/\/idle\//);
   assert.equal(element("#pause-overlay").hidden, true);
   assert.match(drawnImage, /\/idle\//);
   document.hidden = true;
