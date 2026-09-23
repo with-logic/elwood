@@ -1,10 +1,10 @@
 /** Bounded first-party option retention (PRD §5.5, C-CODEX-12). */
 import { describe, expect, test } from "vitest";
 import {
-  appearanceBindingsHold,
   bannerContradictsAppearance,
+  continuationOptionsAreBound,
   emptyUpdateEvidence,
-  evidenceAllowsContinuation,
+  retainedOptionLabelsAgree,
   withUpdateFrameEvidence,
 } from "../../src/codex/update/evidence.ts";
 
@@ -20,7 +20,7 @@ describe("C-CODEX-12 appearance evidence is bounded", () => {
         true,
       );
     }
-    expect(evidence.options.size).toBeLessThanOrEqual(32);
+    expect(evidence.boundOptions.size).toBeLessThanOrEqual(32);
     expect(evidence.overflowed).toBe(true);
   });
 
@@ -30,7 +30,7 @@ describe("C-CODEX-12 appearance evidence is bounded", () => {
       `Update available! 0.1.0 -> 0.2.0\n  1. ${"x".repeat(5_000)}`,
       true,
     );
-    expect(evidence.options.has("1")).toBe(false);
+    expect(evidence.boundOptions.has("1")).toBe(false);
     expect(evidence.overflowed).toBe(true);
   });
 
@@ -39,27 +39,27 @@ describe("C-CODEX-12 appearance evidence is bounded", () => {
     for (let row = 1; row <= 100; row += 1) {
       evidence = withUpdateFrameEvidence(evidence, `  ${row}. Option ${row}`, true);
     }
-    expect(appearanceBindingsHold(evidence, "  1. Skip")).toBe(false);
-    expect(evidenceAllowsContinuation(evidence, "  1. Skip")).toBe(false);
+    expect(retainedOptionLabelsAgree(evidence, "  1. Skip")).toBe(false);
+    expect(continuationOptionsAreBound(evidence, "  1. Skip")).toBe(false);
   });
 });
 
 describe("C-CODEX-12 appearance evidence", () => {
   test("C-CODEX-12 a frame without first-party evidence vouches for nothing", () => {
     const evidence = withUpdateFrameEvidence(emptyUpdateEvidence(), "  2. Skip", false);
-    expect(evidenceAllowsContinuation(evidence, "  2. Skip")).toBe(false);
+    expect(continuationOptionsAreBound(evidence, "  2. Skip")).toBe(false);
   });
 
   test("C-CODEX-12 the first label an appearance shows for a number is the one that binds", () => {
     let evidence = withUpdateFrameEvidence(emptyUpdateEvidence(), bannerFrame, true);
     evidence = withUpdateFrameEvidence(evidence, allSkipPrompt, false);
-    expect(evidence.options.get("1")).toBe("Update now");
-    expect(evidenceAllowsContinuation(evidence, allSkipPrompt)).toBe(false);
+    expect(evidence.boundOptions.get("1")).toBe("Update now");
+    expect(continuationOptionsAreBound(evidence, allSkipPrompt)).toBe(false);
   });
 
   test("C-CODEX-12 an unseen option number lacks continuation provenance", () => {
     const evidence = withUpdateFrameEvidence(emptyUpdateEvidence(), bannerFrame, true);
-    expect(evidenceAllowsContinuation(evidence, "  2. Skip\n  3. Skip until next version")).toBe(
+    expect(continuationOptionsAreBound(evidence, "  2. Skip\n  3. Skip until next version")).toBe(
       false,
     );
   });
@@ -69,12 +69,12 @@ test("C-CODEX-12 first-party evidence retains immutable first bindings", () => {
   const original = withUpdateFrameEvidence(emptyUpdateEvidence(), bannerFrame, true);
   const extended = withUpdateFrameEvidence(original, `${bannerFrame}\n  2. Skip`, true);
   const relabeled = withUpdateFrameEvidence(extended, "  2. Skip backup", true);
-  expect(original.options.has("2")).toBe(false);
-  expect(relabeled.options.get("2")).toBe("Skip");
-  expect(appearanceBindingsHold(extended, "  2. Skip")).toBe(true);
-  expect(appearanceBindingsHold(extended, "  3. Skip")).toBe(true);
-  expect(appearanceBindingsHold(extended, "  2. Skip backup")).toBe(false);
-  expect(evidenceAllowsContinuation(extended, "  2. Skip")).toBe(true);
+  expect(original.boundOptions.has("2")).toBe(false);
+  expect(relabeled.boundOptions.get("2")).toBe("Skip");
+  expect(retainedOptionLabelsAgree(extended, "  2. Skip")).toBe(true);
+  expect(retainedOptionLabelsAgree(extended, "  3. Skip")).toBe(true);
+  expect(retainedOptionLabelsAgree(extended, "  2. Skip backup")).toBe(false);
+  expect(continuationOptionsAreBound(extended, "  2. Skip")).toBe(true);
 });
 
 test.each([
