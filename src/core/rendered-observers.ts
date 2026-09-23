@@ -61,7 +61,7 @@ export function readRenderedFrame(
   const reading = readScreenFacts(
     observers.table,
     frame,
-    trustInputBlocking || trustBlock !== undefined ? "codex-unidentified-dialog" : undefined,
+    trustInputBlocking || trustBlock !== undefined ? observers.table.trustOwnedFallback : undefined,
   );
   if (trustBlock === undefined || reading.facts.blocking_prompt_visible) return reading;
   const id = `${observers.agent}-${trustBlock}-prompt`;

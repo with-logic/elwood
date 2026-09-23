@@ -8,7 +8,10 @@ import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
 import type { TrustClearance } from "../core/trust/clearance.ts";
 import { codexComposerClearance } from "./screen/clearance.ts";
-import { CodexRetainedComposerHold } from "./screen/retained-clearance.ts";
+import {
+  CodexRetainedComposerHold,
+  type RetainedFrameReader,
+} from "./screen/retained-clearance.ts";
 import { codexWorkingScreen, codexWorkingTitle } from "./screen/working.ts";
 import { codexUpdatePromptVisible } from "./update/recognition.ts";
 import { CodexUpdatePromptTracker } from "./update/tracker.ts";
@@ -72,9 +75,10 @@ export const codexScreenFactTable: ScreenFactTable = {
 export function codexScreenFactTableForTrustPolicy(
   autotrust: boolean,
   clearsInput?: TrustClearance,
+  readFrame?: RetainedFrameReader,
 ): ScreenFactTable {
   const updatePrompt = new CodexUpdatePromptTracker();
-  const retained = new CodexRetainedComposerHold(clearsInput ?? codexComposerClearance);
+  const retained = new CodexRetainedComposerHold(clearsInput ?? codexComposerClearance, readFrame);
   let holdWithoutAppearance = false;
   const tracked: ScreenFactTable = {
     agent: "codex",
@@ -89,6 +93,7 @@ export function codexScreenFactTableForTrustPolicy(
   const table = withTrustBlockingRules(tracked, "codex", autotrust);
   return {
     ...table,
+    trustOwnedFallback: "codex-unidentified-dialog",
     rules: [
       ...table.rules,
       // Specific approval/trust rules keep their diagnostic identity.

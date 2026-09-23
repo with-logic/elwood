@@ -37,6 +37,7 @@ test.each([
       if (event.kind === "startup_prompt") answered.push(event.label);
     });
     const queued = session.sendMessage("hello");
+    // Observe teardown cancellation after a failed assertion; the later await still propagates errors.
     void queued.catch(() => undefined);
     vi.useFakeTimers();
     ptys[0]!.emitData(asScreen("Update available! 0.151.0 -> 0.152.0"));
