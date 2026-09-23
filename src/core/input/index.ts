@@ -71,8 +71,8 @@ export function sanitizePasteText(text: string): string {
  * dispatched (after the settle delay), so the control queue does not drain the
  * next operation into the composer before this prompt has actually been
  * submitted. Bounded recovery re-Enters continue in the background afterwards
- * and are idempotent. Recovery-owned submissions also await those nudges so cancellation
- * cannot release their turn while a delayed Enter is still writing.
+ * and are idempotent. Turn replays also retain draft ownership and await those
+ * nudges so cancellation cannot release a staged draft to the next operation.
  */
 async function writePastedPrompt(
   terminal: InputTerminal,
@@ -80,7 +80,7 @@ async function writePastedPrompt(
   guard?: PasteGuard,
   signal?: AbortSignal,
   settleDelayMs = pasteSettleDelayMs,
-  recovery = false,
+  turnReplay = false,
   onSubmitted?: () => void,
 ): Promise<void> {
   // Hold the WHOLE submission — paste included — while a blocking dialog is on
@@ -103,15 +103,19 @@ async function writePastedPrompt(
     await holdWhileUnsafe(terminal, guard, signal);
     throwIfInputAborted(signal);
     await terminal.sendInput("\r");
+    if (!turnReplay) submittedComposer(terminal);
+    onSubmitted?.();
+    const nudges = nudgePastedPrompt(terminal, prompt, guard, signal);
+    if (turnReplay) {
+      await nudges;
+      // An abort during the final physical nudge still owns the staged draft.
+      throwIfInputAborted(signal);
+      submittedComposer(terminal);
+    } else ignoreInputFailure(nudges);
   } catch (error) {
     if (signal?.aborted) await requestComposerCleanup(terminal, guard?.blocked);
     throw error;
   }
-  submittedComposer(terminal);
-  onSubmitted?.();
-  const nudges = nudgePastedPrompt(terminal, prompt, guard, signal);
-  if (recovery) await nudges;
-  else ignoreInputFailure(nudges);
 }
 
 export async function writeQueuedInput(
@@ -132,7 +136,7 @@ export async function writeQueuedInput(
     // queued operation cannot write into the composer first (FIFO).
     pasted_input: () =>
       writePastedPrompt(terminal, input, guard, signal, undefined, undefined, onSubmitted),
-    recovery_input: () =>
+    turn_replay_input: () =>
       writePastedPrompt(terminal, input, guard, signal, pasteSettleDelayMs, true, onSubmitted),
     // Slash-command popups (Codex) swallow an Enter that arrives in the same PTY
     // chunk as the command text, so Enter follows as a separate keystroke. The

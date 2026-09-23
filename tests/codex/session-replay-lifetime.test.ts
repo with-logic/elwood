@@ -6,7 +6,7 @@ import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.
 
 afterEach(resetFakes);
 
-test("Private recovery: cancelling a queued replay leaves the real session ready for another message", async () => {
+test("Private replay: cancelling a queued replay leaves the real session ready for another message", async () => {
   installFakes();
   const cwd = tempDir();
   const session = await startCodex({ cwd });
@@ -15,7 +15,7 @@ test("Private recovery: cancelling a queued replay leaves the real session ready
     await expect.poll(() => session.status).toBe("ready");
     const abort = new AbortController();
     const replay = session.sendMessage("replay", cancellableSubmission(undefined, abort.signal));
-    const rejected = expect(replay).rejects.toThrow("Turn recovery cancelled");
+    const rejected = expect(replay).rejects.toThrow("Turn replay cancelled");
     abort.abort();
     await rejected;
     expect(session.status).toBe("ready");
@@ -28,7 +28,7 @@ test("Private recovery: cancelling a queued replay leaves the real session ready
   }
 });
 
-test("Private recovery: a replay reports running when its first Enter dispatches", async () => {
+test("Private replay: a replay reports running when its first Enter dispatches", async () => {
   installFakes();
   const cwd = tempDir();
   const session = await startCodex({ cwd });
@@ -37,7 +37,7 @@ test("Private recovery: a replay reports running when its first Enter dispatches
     await expect.poll(() => session.status).toBe("ready");
     const abort = new AbortController();
     const replay = session.sendMessage("replay", cancellableSubmission({}, abort.signal));
-    const rejected = expect(replay).rejects.toThrow("Turn recovery cancelled");
+    const rejected = expect(replay).rejects.toThrow("Turn replay cancelled");
     expect(session.status).toBe("ready");
     await expect.poll(() => ptys[0]!.writes.includes("\r")).toBe(true);
     expect(session.status).toBe("running");

@@ -1,6 +1,7 @@
 /** Replay and ordinary submission share the first Enter boundary (PRD §5.3/§5.8). */
 import { afterEach, expect, test, vi } from "vitest";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
+import { composerClearKeys } from "../../src/core/input/constants.ts";
 import { queuedInputSubmitter } from "../../src/core/input/index.ts";
 import {
   cancellableSubmission,
@@ -12,7 +13,7 @@ afterEach(() => vi.useRealTimers());
 test.each([
   false,
   true,
-])("C-ATTN-02 recovery=%s publishes once after its first awaited Enter", async (recovery) => {
+])("C-ATTN-02 turnReplay=%s publishes once after its first awaited Enter", async (turnReplay) => {
   vi.useFakeTimers();
   const firstEnter = Promise.withResolvers<void>();
   const writes: string[] = [];
@@ -40,23 +41,27 @@ test.each([
     "prompt",
     "message",
     undefined,
-    recovery ? submissionControlOptions(cancellableSubmission(undefined, abort.signal)) : {},
+    turnReplay ? submissionControlOptions(cancellableSubmission(undefined, abort.signal)) : {},
   );
   const settled = submitted.catch(() => undefined);
   await vi.advanceTimersByTimeAsync(150);
   expect(writes).toEqual(["\u001b[200~prompt\u001b[201~", "\r"]);
-  expect(intent).toHaveBeenCalledTimes(recovery ? 0 : 1);
+  expect(intent).toHaveBeenCalledTimes(turnReplay ? 0 : 1);
   expect(physical).not.toHaveBeenCalled();
   firstEnter.resolve();
   await vi.advanceTimersByTimeAsync(1_000);
   expect(writes).toHaveLength(3);
   expect(intent).toHaveBeenCalledExactlyOnceWith(
-    recovery ? { kind: "caller", recovery: true } : { kind: "caller" },
+    turnReplay ? { kind: "caller", turnReplay: true } : { kind: "caller" },
   );
-  expect(physical).toHaveBeenCalledTimes(recovery ? 0 : 1);
+  expect(physical).toHaveBeenCalledTimes(turnReplay ? 0 : 1);
   abort.abort();
   queue.close();
   await settled;
   await vi.runAllTimersAsync();
-  expect(writes).toHaveLength(3);
+  expect(writes).toEqual(
+    turnReplay
+      ? ["\u001b[200~prompt\u001b[201~", "\r", "\r", composerClearKeys]
+      : ["\u001b[200~prompt\u001b[201~", "\r", "\r"],
+  );
 });
