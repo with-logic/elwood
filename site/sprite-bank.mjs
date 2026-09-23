@@ -31,19 +31,11 @@ export class SpriteBank {
       const clip = await response.json();
       if (this.disposed) throw new Error("Sprite bank is disposed.");
       validateSpriteClip(clip, name);
-      this.loads.failed.delete(name);
+      this.loads.accept(name);
       this.clips.set(name, clip);
       return clip;
     })();
-    this.clipPromises.set(name, promise);
-    try {
-      return await promise;
-    } catch (error) {
-      if (!this.disposed) this.loads.failed.add(name);
-      throw error;
-    } finally {
-      this.clipPromises.delete(name);
-    }
+    return this.loads.track(name, promise, this.clipPromises);
   }
 
   async loadPage(name, index) {
@@ -67,9 +59,9 @@ export class SpriteBank {
         releaseSpriteImage(image);
         throw new Error("Sprite bank is disposed.");
       }
-      this.loads.failed.delete(key);
+      this.loads.accept(key);
       this.pages.set(key, image);
-      // Evicted pages may still belong to the current or outgoing pose.
+      // Poses and active, delivered, or candidate animation owners may retain evicted pages.
       while (this.pages.size > 4) {
         const oldest = this.pages.keys().next().value;
         const evicted = this.pages.get(oldest);
@@ -79,15 +71,7 @@ export class SpriteBank {
       }
       return image;
     })();
-    this.pendingPages.set(key, promise);
-    try {
-      return await promise;
-    } catch (error) {
-      if (!this.disposed) this.loads.failed.add(key);
-      throw error;
-    } finally {
-      this.pendingPages.delete(key);
-    }
+    return this.loads.track(key, promise, this.pendingPages);
   }
 
   async prepare(name) {
@@ -98,15 +82,16 @@ export class SpriteBank {
     return clip;
   }
 
+  /** Resolves the complete clip, null on cancellation/teardown, or rejects an asset failure. */
   prepareAnimation(name) {
     if (this.disposed) return Promise.reject(new Error("Sprite bank is disposed."));
-    this.loads.retry(name);
     return this.animations.prepare(name);
   }
 
   publishAnimation(name) { this.animations.publish(name); }
   activateAnimation(name) { this.animations.activate(name); }
-  cancelAnimation() { this.animations.cancel(); }
+  /** Cancel pending/delivered preparation while active playback keeps its owner. */
+  cancelPreparation() { this.animations.cancel(); }
 
   releaseAnimationPage(image) {
     if (this.animations.owns(image) || [...this.pages.values()].includes(image)) return;

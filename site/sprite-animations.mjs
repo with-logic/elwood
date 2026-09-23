@@ -6,19 +6,23 @@ import { SpriteDecoder } from "./sprite-decoder/index.mjs";
 export class SpriteAnimations {
   constructor(bank) {
     this.bank = bank;
-    this.active = null;
-    this.delivered = null;
-    this.candidate = null;
+    this.activeOwner = null;
+    this.deliveredOwner = null;
+    this.candidateOwner = null;
+  }
+
+  prepares(key) {
+    return !!this.candidateOwner && ["idle", "rotation", this.candidateOwner.name].includes(key.split("/")[0]);
   }
 
   owns(image) {
-    return [this.active, this.delivered, this.candidate].some((owner) => owner && [...owner.pages.values()].includes(image));
+    return [this.activeOwner, this.deliveredOwner, this.candidateOwner].some((owner) => owner && [...owner.pages.values()].includes(image));
   }
 
   page(key) {
-    return this.active?.pages.get(key)
-      ?? this.delivered?.pages.get(key)
-      ?? (this.candidate?.ready ? this.candidate.pages.get(key) : undefined);
+    return this.activeOwner?.pages.get(key)
+      ?? this.deliveredOwner?.pages.get(key)
+      ?? (this.candidateOwner?.ready ? this.candidateOwner.pages.get(key) : undefined);
   }
 
   release(owner) {
@@ -29,45 +33,49 @@ export class SpriteAnimations {
   }
 
   cancel() {
-    const old = this.candidate;
-    this.candidate = null;
+    const old = this.candidateOwner;
+    this.candidateOwner = null;
     this.release(old);
+    const delivered = this.deliveredOwner;
+    this.deliveredOwner = null;
+    this.release(delivered);
   }
 
   publish(name) {
-    if (this.candidate?.ready && this.candidate.name === name) {
-      const old = this.delivered;
-      this.delivered = this.candidate;
-      this.candidate = null;
+    if (this.candidateOwner?.ready && this.candidateOwner.name === name) {
+      const old = this.deliveredOwner;
+      this.deliveredOwner = this.candidateOwner;
+      this.candidateOwner = null;
       this.release(old);
     }
   }
 
   activate(name) {
-    if (this.delivered?.name === name) {
-      const old = this.active;
-      this.active = this.delivered;
-      this.delivered = null;
+    if (this.deliveredOwner?.name === name) {
+      const old = this.activeOwner;
+      this.activeOwner = this.deliveredOwner;
+      this.deliveredOwner = null;
       this.release(old);
-    } else if (this.active && !this.active.clips.has(name)) {
-      const old = this.active;
-      this.active = null;
+    } else if (this.activeOwner && !this.activeOwner.clips.has(name)) {
+      const old = this.activeOwner;
+      this.activeOwner = null;
       this.release(old);
     }
   }
 
   async prepare(name) {
     this.cancel();
-    if (this.active?.name === name) return this.active.clips.get(name);
+    if (this.activeOwner?.name === name) return this.activeOwner.clips.get(name);
     const owner = {
       name, controller: new AbortController(), decoder: new SpriteDecoder(),
       pages: new Map(), clips: new Map(), ready: false,
     };
-    this.candidate = owner;
+    this.candidateOwner = owner;
+    for (const clipName of new Set(["idle", "rotation", name])) this.bank.loads.claimClip(clipName);
     const { signal } = owner.controller;
     const fetchAsset = async (path) => {
       const response = await fetch(gameAssetUrl(path), { signal });
-      if (!response.ok) throw new Error(`Couldn’t load ${name}. Check the local server and try again.`);
+      if (!response.ok) throw new Error(`Couldn’t load ${path}. Check the local server and try again.`);
       return response;
     };
     try {
@@ -95,7 +103,11 @@ export class SpriteAnimations {
       }
       signal.throwIfAborted();
       owner.ready = true;
-      for (const [clipName, clip] of owner.clips) this.bank.clips.set(clipName, clip);
+      for (const [clipName, clip] of owner.clips) {
+        this.bank.clips.set(clipName, clip);
+        this.bank.loads.accept(clipName);
+      }
+      for (const key of owner.pages.keys()) this.bank.loads.accept(key);
       owner.decoder.dispose();
       return owner.clips.get(name);
     } catch (error) {
@@ -107,11 +119,8 @@ export class SpriteAnimations {
 
   dispose() {
     this.cancel();
-    const delivered = this.delivered;
-    this.delivered = null;
-    this.release(delivered);
-    const old = this.active;
-    this.active = null;
+    const old = this.activeOwner;
+    this.activeOwner = null;
     this.release(old);
   }
 }

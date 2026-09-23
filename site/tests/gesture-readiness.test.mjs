@@ -147,16 +147,15 @@ test("lazy entry loading cannot supersede explicit readiness; movement cancels d
 });
 
 
-test("delivered input retains every sheet while its predecessor recovers and another request loads", async (t) => {
+test("delivered input stays ready until activation and later loading preserves active pages", async (t) => {
   const { bank, gates, requested } = fixture(t);
   const scene = sceneFor(bank);
   await scene.request({ gesture: "wave" });
-  scene.interact();
   for (let i = 0; i < 6; i++) assert.equal(bank.frame("wave", i).page.closed, 0);
   gates.set("jump/0.webp", Promise.withResolvers());
+  bank.activateAnimation("wave");
   const replacement = scene.request({ gesture: "jump" });
   await waitFor(requested, "jump/0.webp");
-  bank.activateAnimation("wave");
   assert.equal(bank.frame("wave", 5).page.closed, 0);
   scene.clearInput();
   await replacement;
@@ -167,7 +166,7 @@ test("delivered input retains every sheet while its predecessor recovers and ano
 test("teardown aborts metadata and HTTP failures report instead of becoming readiness", async (t) => {
   const { bank, requested, aborted } = fixture(t);
   globalThis.fetch = async () => new Response("missing", { status: 404 });
-  await assert.rejects(bank.prepareAnimation("wave"), /Couldn’t load wave/);
+  await assert.rejects(bank.prepareAnimation("wave"), /Couldn’t load idle\/clip.json/);
   assert.equal(bank.clips.size, 0);
   globalThis.fetch = async (url, { signal }) => new Promise((_resolve, reject) => {
     requested.push(String(url));
@@ -190,10 +189,11 @@ test("cancellation between worker delivery and its continuation releases the tra
   };
   t.after(() => { globalThis.Worker = original; });
   const pending = bank.prepareAnimation("wave");
-  while (!deliver) await turn();
+  for (let i = 0; i < 100 && !deliver; i++) await turn();
+  assert.equal(typeof deliver, "function", "worker delivery must become available");
   const image = { closed: 0, close() { this.closed++; } };
   deliver(image);
-  bank.cancelAnimation();
+  bank.cancelPreparation();
   assert.equal(await pending, null);
   assert.equal(image.closed, 1);
 });

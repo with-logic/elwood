@@ -1,4 +1,4 @@
-/** Renders the interactive robot and tether described in docs/design/landing.md. */
+/** Renders the interactive robot and tether described in docs/design/landing.md. Implements PRD §13. */
 import { Autonomy, NO_INPUT } from "./autonomy.mjs";
 import { gameAssetUrl } from "./game-assets.mjs";
 import { mirroredPose } from "./rotation.mjs";
@@ -219,9 +219,19 @@ export class LandingScene {
     }
     if (this.ready) this.paint(0);
   }
+  cancelPreparation() {
+    if (this.pressed.gesture || this.pressed.face) {
+      this.pressed = { ...this.pressed };
+      delete this.pressed.gesture;
+      delete this.pressed.face;
+    }
+    const queued = this.world?.player.queuedAction;
+    if (queued?.gesture || queued?.face) this.world.player.queuedAction = null;
+    this.bank.cancelPreparation();
+  }
   interact() {
     this.director.interact();
-    this.bank.cancelAnimation();
+    this.cancelPreparation();
     this.requestVersion++;
     this.pauses.delete("reduced");
     this.start();
@@ -249,7 +259,7 @@ export class LandingScene {
     this.climbHeld = false;
     this.sprint = false;
     this.pressed = NO_INPUT;
-    this.bank.cancelAnimation();
+    this.cancelPreparation();
     this.requestVersion++;
   }
   get dragging() {
@@ -442,6 +452,7 @@ export class LandingScene {
     );
     this.pressed = NO_INPUT;
     const p = this.world.player;
+    this.bank.activateAnimation(p.turn?.target ?? p.animation);
     if (wasAirborne && p.mode === "ground") this.markGround();
     if (this.lastMode !== this.director.mode) {
       this.lastMode = this.director.mode;
