@@ -100,7 +100,9 @@ async function writePastedPrompt(
   // Sanitize: caller/model text is data, so an embedded end sentinel or control
   // byte must not escape paste mode into live keystrokes (§5.3).
   const payload = sanitizePasteText(prompt);
-  stageComposer(terminal);
+  const rawInput = stageComposer(terminal);
+  const nudgeSignal =
+    rawInput && signal ? AbortSignal.any([rawInput, signal]) : (rawInput ?? signal);
   await terminal.sendInput(`\u001b[200~${payload}\u001b[201~`);
   const schedule = (work: () => void, ms: number) => {
     const timer = setTimeout(work, ms);
@@ -109,10 +111,10 @@ async function writePastedPrompt(
   let nudges = 0;
   const nudge = async () => {
     // Decide on the current screen: a dialog may be received but not yet rendered.
-    const unsafe = await writeUnsafe(terminal, guard, signal);
+    const unsafe = await writeUnsafe(terminal, guard, nudgeSignal);
     // Stop once a LATER submission has begun: a stale nudge must never fire an
     // Enter into a newer prompt's paste (the staged chip is not prompt-specific).
-    if (signal?.aborted || !guard || nudges >= pasteNudgeAttempts) return;
+    if (nudgeSignal?.aborted || !guard || nudges >= pasteNudgeAttempts) return;
     // A dialog that appears after the first Enter must not be confirmed by a
     // recovery Enter either; skip this attempt and re-check on the next tick.
     if (unsafe) {
