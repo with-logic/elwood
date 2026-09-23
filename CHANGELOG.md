@@ -13,7 +13,8 @@ back each entry are listed in `prd/14-conformance.md`.
 ## [Unreleased]
 
 - Recognize narrow native Codex update dialogs and withhold choices when numbered
-  scrollback or replacement text makes the current option block ambiguous.
+  scrollback or replacement text makes the current option block ambiguous. Revoked
+  attempts stay cancelled; fresh banner evidence is required before answering again.
 
 - Keep startup persona responses out of ergonomic caller turns, including when
   the persona and caller submit identical text or its transcript arrives after

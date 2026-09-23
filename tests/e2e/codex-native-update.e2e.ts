@@ -7,7 +7,7 @@ import test from "node:test";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { nativeUpdaterSandbox } from "./codex-native-update-sandbox.ts";
-import { observeSession, waitFor } from "./helpers.ts";
+import { cleanup, observeSession, skipIf, waitFor } from "./helpers.ts";
 
 const binary = join(
   homedir(),
@@ -16,15 +16,14 @@ const binary = join(
 const available = existsSync(binary) && existsSync(join(homedir(), ".codex/auth.json"));
 
 test("C-CODEX-12 genuine narrow updater holds queued input without selecting a menu action", {
-  skip: available ? false : "requires local standalone Codex 0.155.1 and Codex auth",
+  skip: skipIf(available ? undefined : "requires local standalone Codex 0.155.1 and Codex auth"),
   timeout: 40_000,
 }, async (t) => {
   const sandbox = await nativeUpdaterSandbox(binary);
   let session: CodexSessionApi | undefined;
   t.after(async () => {
     try {
-      await session?.kill();
-      await session?.teardown();
+      await cleanup(session);
     } finally {
       resetRuntimeSeamsForTests();
       sandbox.dispose();

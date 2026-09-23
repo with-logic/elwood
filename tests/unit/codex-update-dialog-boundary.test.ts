@@ -1,4 +1,4 @@
-/** Current update option blocks exclude stale and replacement rows (PRD §5.5, C-CODEX-12/22). */
+/** Current update option blocks exclude stale and replacement rows (PRD §5.5, C-CODEX-12). */
 import { readFileSync } from "node:fs";
 import { afterEach, expect, test, vi } from "vitest";
 import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
@@ -15,7 +15,7 @@ const banner = "Update available! 0.153.3 -> 0.153.4";
 const options = "  1. Update now\n  2. Skip";
 afterEach(() => vi.useRealTimers());
 
-test("C-CODEX-22 a stale numbered row before the banner cannot authorize a later continuation", () => {
+test("C-CODEX-12 a stale numbered row before the banner cannot authorize a later continuation", () => {
   const frame = `  2. Skip\nOld transcript\n${banner}\n  1. Update now`;
   const tracker = new CodexUpdatePromptTracker();
   tracker.observe(frame);
@@ -29,7 +29,7 @@ test.each([
   "  2. Skip\n\nConfirm archive removal?\n  3. Later",
   `${banner}\n${options}\nConfirm archive removal?`,
   `${banner}\nConfirm archive removal?\n${options}`,
-])("C-CODEX-22 trailing replacement content withholds an active retry: %s", async (replacement) => {
+])("C-CODEX-12 trailing replacement content withholds an active retry: %s", async (replacement) => {
   vi.useFakeTimers();
   const responder = new CodexStartupPromptResponder("s1");
   let frame = `${banner}\n${options}`;
@@ -81,11 +81,11 @@ test.each([
   "2. Skip\nPress enter to continue\n3. Later",
   "2. Skip\n    Confirm archive removal?",
   "2. Skip\nPress enter to continue\nConfirm archive removal?",
-])("C-CODEX-22 unknown rows cannot masquerade as a footer or wrapped safe label: %s", (frame) => {
+])("C-CODEX-12 unknown rows cannot masquerade as a footer or wrapped safe label: %s", (frame) => {
   expect(codexOptionStillSafe(frame, "2")).toBe(false);
 });
 
-test("C-CODEX-22 mixed version banners cannot establish a continuation", () => {
+test("C-CODEX-12 mixed version banners cannot establish a continuation", () => {
   const tracker = new CodexUpdatePromptTracker();
   const frame = `${banner}\nUpdate available! 0.153.4 -> 0.154.0\n${options}`;
   expect(tracker.observe(frame)).toBe(true);
@@ -101,7 +101,7 @@ test("C-CODEX-12 repeated identical banners preserve one contiguous choice block
   ]).toEqual(["1", "2"]);
 });
 
-test("C-CODEX-22 an unindented replacement cannot continue a wrapped update command", () => {
+test("C-CODEX-12 an unindented replacement cannot continue a wrapped update command", () => {
   const frame = `${banner}\n1. Update now (runs \`install |\nConfirm archive removal?\n2. Skip`;
   expect(codexOptionStillSafe(frame, "2")).toBe(false);
 });

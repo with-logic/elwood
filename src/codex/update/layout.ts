@@ -1,4 +1,4 @@
-/** Bound update choices to one current dialog block (PRD §5.5, C-CODEX-12/22). */
+/** Bound update choices to one current dialog block (PRD §5.5, C-CODEX-12). */
 import { type NumberedOption, numberedOptions } from "../../core/terminal-options.ts";
 
 /** The first-party banner; its version pair distinguishes one appearance from the next. */
