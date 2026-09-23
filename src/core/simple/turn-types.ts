@@ -109,6 +109,8 @@ export type TurnOptions = {
 };
 
 export type StreamTurnOptions = {
+  /** Adapter-native prompt identity for correlation only; submission still uses caller text. */
+  readonly submittedPrompt?: string;
   /** Optional whole-turn ceiling; default NONE — a live turn may run for hours. */
   readonly timeoutMs?: number;
   /** Cap on transcript catch-up after `ready` (default 10s); a stalled flush → `wait_timeout`. */

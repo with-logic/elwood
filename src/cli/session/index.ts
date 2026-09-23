@@ -4,6 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { codexSubmittedPrompt } from "../../codex/submitted-prompt.ts";
 import type { ElwoodAgentSession, ElwoodCommonEventMap } from "../../core/agent-session.ts";
 import { elwoodError } from "../../core/errors.ts";
 import type { TurnEvent } from "../../core/simple/events.ts";
@@ -93,6 +94,7 @@ export class HeadlessCliSession
   constructor(request: EffectiveRunRequest, id: string, launch: () => Promise<ElwoodAgentSession>) {
     super();
     this.request = request;
+    if (request.agent === "codex") this.submittedPrompt = codexSubmittedPrompt;
     this.agent = request.agent;
     this.id = id;
     this.resumed = request.resume !== undefined;

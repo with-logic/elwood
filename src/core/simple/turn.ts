@@ -64,6 +64,7 @@ export function runTurn(
   options: StreamTurnOptions = {},
 ): RunningTurn {
   const gate = gateForTurn(options);
+  const submittedPrompt = options.submittedPrompt ?? prompt;
   const sendOptions = options.images === undefined ? undefined : { images: options.images };
   const send = () => session.sendMessage(prompt, sendOptions);
   const acceptance = new TurnAcceptance(options.fallbackQuietMs ?? FALLBACK_QUIET_MS, {
@@ -103,7 +104,8 @@ export function runTurn(
 
   const offActivity = session.on("activity", (event) => {
     const simple = toTurnEvent(event);
-    if (simple || (event.kind === "user_message" && event.text === prompt)) acceptance.accept();
+    if (simple || (event.kind === "user_message" && event.text === submittedPrompt))
+      acceptance.accept();
     if (simple) {
       started = true;
       turnId ??= event.turnId; // bind on the FIRST tagged event, not merely the first event
@@ -123,7 +125,7 @@ export function runTurn(
     // non-boundary hook, which the gate ignores so a late `Notification` cannot wipe an
     // installed oracle). The core reads only that — never raw hook fields — and uses it as a
     // completeness ORACLE only, never displayed (C-CLAUDE-15).
-    if (defaultAcceptanceSignal(event, prompt)) acceptance.accept();
+    if (defaultAcceptanceSignal(event, submittedPrompt)) acceptance.accept();
     gate.expectText(boundaryExpectation(readBoundarySignal(event)));
   });
   const offStatus = session.on("status", ({ status }) => {

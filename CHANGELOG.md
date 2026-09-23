@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Recognize Codex turn acceptance after paste sanitization and native newline or
+  outer-whitespace normalization, preventing duplicate recovery submissions.
+
 - Keep startup persona responses out of ergonomic caller turns, including when
   the persona and caller submit identical text or its transcript arrives after
   readiness. Closing cancels waiting callers even if process shutdown fails.
