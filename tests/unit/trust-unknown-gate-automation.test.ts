@@ -2,6 +2,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { ClaudeStartupPromptResponder } from "../../src/claude/startup-prompts.ts";
 import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
+import { codexSmallComposer } from "../fixtures/trust-composer.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -48,8 +49,8 @@ test("C-TRUST-01 Codex update-skip never writes into a held trust gate, first wr
 });
 
 test("C-CODEX-12 an update screen that genuinely clears still settles as answered", async () => {
-  // The contrast case: nothing trust-shaped replaces it, so normal clearance is
-  // still success. Without this, "cancelled" could be reached by over-broad matching.
+  // A native idle composer positively confirms clearance. Mere absence of a
+  // trust gate is insufficient evidence that the update prompt was answered.
   vi.useFakeTimers();
   let frame = update;
   const writes: string[] = [];
@@ -58,7 +59,7 @@ test("C-CODEX-12 an update screen that genuinely clears still settles as answere
     frame,
     (input) => {
       writes.push(input);
-      frame = "› \n  (ready)";
+      frame = codexSmallComposer;
     },
     () => frame,
   );
