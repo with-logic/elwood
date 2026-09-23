@@ -21,6 +21,7 @@ export async function nudgePastedPrompt(
     throwIfInputAborted(signal);
     // A dialog holds recovery without consuming its bounded Enter attempts.
     if (unsafe) continue;
+    // Only retry while this prompt is still staged; a consumed draft needs no Enter.
     if (!guard.staged(guard.snapshot(), prompt)) return;
     nudges += 1;
     try {
