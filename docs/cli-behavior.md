@@ -883,3 +883,18 @@ clearance accepted it, while the post-model-picker suffix predicate rejected it.
 Cleanup accepts either existing positive Claude clearance path, preserving the
 same completed-render and cursor checks. The suffix path remains useful when
 earlier conversation carets prevent whole-frame clearance.
+
+
+### Capitalized Codex model footer (2026-09-23)
+
+Codex 0.156.1 renders `GPT-6-Astra default` in the native footer, followed by
+its working directory and a right-aligned warning count. A 189×48 capture after
+staged-draft cleanup showed the empty `Ask Codex to do anything` placeholder with
+the input cursor at column 2, row 11 (zero-based), but the lowercase-only `gpt-`
+footer pattern rejected the completed native frame. Cleanup consequently reported
+`Could not clear the staged composer draft` after the CLI had already cleared it.
+The model prefix now accepts the captured `GPT-` spelling alongside `gpt-`;
+placeholder, footer layout, live cursor and blocking-overlay checks remain required.
+The captured nonempty rows are retained in
+`tests/fixtures/codex-0.156.1/cleared-composer.txt`; the regression replays them
+at their original viewport size. C-API-56, C-TRUST-01, PRD §5.4.
