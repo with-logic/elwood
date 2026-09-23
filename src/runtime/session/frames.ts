@@ -52,7 +52,7 @@ export function createSessionFrameObserver(
     if (active === undefined || active.closing.signal.aborted || frame === undefined) return;
     const state = trust();
     const reading = attentionClearance(
-      readRenderedFrame(observers, frame, state.blockedPrompt),
+      readRenderedFrame(observers, frame, state.blockedPrompt, state.inputBlocking),
       frame.text,
       state.inputBlocking,
     );
