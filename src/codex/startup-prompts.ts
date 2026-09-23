@@ -117,9 +117,8 @@ export class CodexStartupPromptResponder {
     if (onUpdateScreen && this.skipGeneration !== generation && noTrustGate(screenText)) {
       const option = safeUpdateOption(screenText)?.number ?? null;
       if (option) {
-        // Settle OPTIMISTICALLY but keep the skip retryable if the write is
-        // rejected, so a later frame re-attempts it rather than falsely reporting
-        // the update as skipped (C-CODEX-17).
+        // Latch this appearance before writing; rejection can release the latch
+        // for a later frame, while success requires observed clearance (C-CODEX-17).
         this.skipGeneration = generation;
         const settled = startCodexUpdateSkip({
           option,

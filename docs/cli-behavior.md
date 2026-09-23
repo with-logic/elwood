@@ -617,7 +617,9 @@ do not block.
 
 A fulfilled update digit write is not clearance evidence. Update settlement uses
 the same native composer, cursor, title, and completed-render predicate as the
-retained input hold. Missing readers and replacement dialogs cancel quietly.
+retained input hold. It also reads the frame observer's existing hold when old
+composer chrome survives beneath replacement text. Missing readers and replacement
+dialogs cancel quietly.
 
 The preflight adds a second boundary because global installers can also race
 across separate Elwood parent processes. A per-user/per-adapter atomic lease in
