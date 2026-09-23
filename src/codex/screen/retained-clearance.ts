@@ -6,7 +6,8 @@ import { codexComposerRow } from "./clearance.ts";
 export class CodexRetainedComposerHold {
   private holding = false;
   private priorPrelude: readonly string[] | undefined;
-  // null means a composer existed at entry without a prior verified idle snapshot.
+  // undefined: no retained provenance; null: composer evidence at update entry
+  // without a verified idle prelude; array: the verified pre-update prelude.
   private frozenPrelude: readonly string[] | null | undefined;
   private readonly isClear: TrustClearance;
   constructor(isClear: TrustClearance) {
@@ -21,8 +22,9 @@ export class CodexRetainedComposerHold {
       this.frozenPrelude = composer < 0 ? undefined : (this.priorPrelude ?? null);
       this.holding = true;
     }
-    // Once the old composer disappears, a later native composer has new provenance.
-    // This permits startup/resume history that did not exist before the update.
+    // Loss of verified composer evidence expires the old provenance, even if a
+    // welcome-only prompt remains visible with its cursor hidden. Later verified
+    // composer evidence can then clear newly loaded startup/resume history.
     if (composer < 0) {
       this.priorPrelude = undefined;
       this.frozenPrelude = undefined;
