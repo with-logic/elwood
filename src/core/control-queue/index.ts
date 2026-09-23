@@ -51,7 +51,6 @@ export class ControlQueue extends ControlQueueState {
   private readonly onTurnStarted: (origin: ControlSubmissionOrigin) => void;
   private readonly guidanceMayBypass: () => boolean;
   private readonly onCallerInputSubmitted: (() => void) | undefined;
-
   private readonly aroundOperation: AroundOperation | undefined;
 
   constructor(
@@ -155,12 +154,12 @@ export class ControlQueue extends ControlQueueState {
       this.beginSubmission(operation, traits);
     }
     const mode =
-      operation.origin.kind === "caller" && operation.origin.recovery
-        ? "recovery_input"
+      operation.origin.kind === "caller" && operation.origin.turnReplay
+        ? "turn_replay_input"
         : traits.submitMode;
-    // Recovery publishes its delayed turn start at the same physical boundary.
+    // Turn replay publishes its delayed turn start at the same physical boundary.
     const dispatched =
-      mode === "recovery_input"
+      mode === "turn_replay_input"
         ? () => this.onTurnStarted(operation.origin)
         : this.onCallerInputSubmitted;
     const onSubmitted =
@@ -175,7 +174,7 @@ export class ControlQueue extends ControlQueueState {
     if (
       traits.reportsCallerSubmission &&
       operation.origin.kind === "caller" &&
-      !operation.origin.recovery
+      !operation.origin.turnReplay
     ) {
       runContained(() => this.onTurnStarted(operation.origin));
     }
@@ -185,7 +184,8 @@ export class ControlQueue extends ControlQueueState {
     if (traits.reportsCallerSubmission && operation.origin.kind === "loop") {
       runContained(() => this.onTurnStarted(operation.origin));
     }
-    this.settle(operation, () => operation.resolve());
+    const error = this.cancellation.errorFor(operation);
+    this.settle(operation, () => (error ? operation.reject(error) : operation.resolve()));
   }
 
   private rollback(

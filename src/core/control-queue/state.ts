@@ -38,20 +38,21 @@ export abstract class ControlQueueState {
   close(): void {
     this.closed = true;
     const error = this.stoppedError();
-    this.submitAbort?.abort(error);
     const settling = this.inFlight;
-    const retainsCleanup = settling?.origin.kind === "caller" && settling.origin.recovery;
-    // A recovery caller retains ownership until physical cleanup settles.
-    // Closing aborts its work, but only that work's settlement releases its caller.
-    if (!retainsCleanup) {
-      this.inFlight = undefined;
-      if (settling) {
-        this.cancellation.remove(settling);
+    const retainsReplayWrite = settling?.origin.kind === "caller" && settling.origin.turnReplay;
+    this.cancellation.clear();
+    if (settling) {
+      this.cancellation.remove(settling);
+      // Retain replay-write ownership until physical settlement, but close owns
+      // its final error: neither later cancellation nor disposal may replace it.
+      if (retainsReplayWrite) this.cancellation.mark(settling, error);
+      else {
+        this.inFlight = undefined;
         settling.reject(error);
       }
     }
+    this.submitAbort?.abort(error);
     this.bypassable = 0;
-    this.cancellation.clear();
     for (const operation of this.queue.splice(0)) {
       this.cancellation.remove(operation);
       operation.reject(error);

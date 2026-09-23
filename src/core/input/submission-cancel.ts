@@ -1,4 +1,4 @@
-/** Private cancellation for turn recovery submissions (PRD §5.3/§5.8). */
+/** Private cancellation for turn replay submissions (PRD §5.3/§5.8). */
 import type { ControlSendOptions } from "../control-queue/index.ts";
 import type { SendOptions } from "../images/types.ts";
 
@@ -11,8 +11,8 @@ export function cancellableSubmission(
 ): SendOptions {
   const replayOptions = { ...options };
   cancellations.set(replayOptions, {
-    origin: { kind: "caller", recovery: true },
-    cancel: { signal, error: () => new Error("Turn recovery cancelled.") },
+    origin: { kind: "caller", turnReplay: true },
+    cancel: { signal, error: () => new Error("Turn replay cancelled.") },
   });
   return replayOptions;
 }

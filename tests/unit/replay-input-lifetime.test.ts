@@ -1,6 +1,7 @@
 /** Physical replay writes stay owned until cancellation settles (PRD §5.8). */
 import { afterEach, expect, test, vi } from "vitest";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
+import { composerClearKeys } from "../../src/core/input/constants.ts";
 import { writeQueuedInput } from "../../src/core/input/index.ts";
 import {
   cancellableSubmission,
@@ -42,7 +43,7 @@ function setup(blocked: () => boolean = () => false) {
   return { writes, started, queue, abort, send };
 }
 
-test("Private recovery: turn cancellation after first Enter stops every delayed replay Enter", async () => {
+test("Private replay: turn cancellation after first Enter stops every delayed replay Enter", async () => {
   vi.useFakeTimers();
   const h = setup();
   const replay = h.send().catch(() => undefined);
@@ -52,16 +53,16 @@ test("Private recovery: turn cancellation after first Enter stops every delayed 
   h.abort.abort();
   await vi.advanceTimersByTimeAsync(5_000);
   await replay;
-  expect(h.writes).toEqual(["\u001b[200~replay\u001b[201~", "\r"]);
+  expect(h.writes).toEqual(["\u001b[200~replay\u001b[201~", "\r", composerClearKeys]);
   h.queue.close();
 });
 
-test("Private recovery: a replay cancelled behind a dialog preserves readiness for the next message", async () => {
+test("Private replay: a replay cancelled behind a dialog preserves readiness for the next message", async () => {
   vi.useFakeTimers();
   let blocked = true;
   const h = setup(() => blocked);
   const replay = h.send();
-  const cancelled = expect(replay).rejects.toThrow("Turn recovery cancelled");
+  const cancelled = expect(replay).rejects.toThrow("Turn replay cancelled");
   await vi.advanceTimersByTimeAsync(10);
   h.abort.abort();
   await vi.advanceTimersByTimeAsync(50);
@@ -75,7 +76,7 @@ test("Private recovery: a replay cancelled behind a dialog preserves readiness f
   h.queue.close();
 });
 
-test("Private recovery: an in-flight recovery Enter retains its queue slot until the write settles", async () => {
+test("Private replay: an in-flight replay Enter retains its queue slot until the write settles", async () => {
   vi.useFakeTimers();
   const pendingWrite = Promise.withResolvers<void>();
   const writes: string[] = [];
@@ -127,13 +128,14 @@ test("Private recovery: an in-flight recovery Enter retains its queue slot until
     "\u001b[200~replay\u001b[201~",
     "\r",
     "\r",
+    composerClearKeys,
     "\u001b[200~next\u001b[201~",
     "\r",
   ]);
   queue.close();
 });
 
-test("Private recovery: closing the session waits for an active replay write to settle", async () => {
+test("Private replay: closing the session waits for an active replay write to settle", async () => {
   const writing = Promise.withResolvers<void>();
   const queue = new ControlQueue(
     () => writing.promise,
