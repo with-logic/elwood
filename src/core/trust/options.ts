@@ -10,3 +10,5 @@ export const claudeBypassOptions = /^(?:Yes, I accept|No, exit)$/i;
 export const codexWorkspaceOptions = /^(?:Yes(?:, continue)?|No(?:, quit)?)$/i;
 export const codexHooksOptions =
   /^(?:Review hooks|Trust all and continue|Continue without trusting \(hooks won't run\))$/i;
+
+export const codexFolderAccessOptions = /^(?:Trust and continue|Quit)$/;
