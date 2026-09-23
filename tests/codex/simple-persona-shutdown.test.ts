@@ -35,7 +35,15 @@ test("C-API-51 failed stop and kill still cancel the caller waiting on its perso
     vi.spyOn(ptys[0]!, "kill").mockImplementation(() => {
       throw new Error("kill failed");
     });
-    await expect(facade.close()).rejects.toMatchObject({ code: "termination_failed" });
+    const kill = vi.spyOn(live, "kill");
+    await expect(facade.close()).rejects.toMatchObject({
+      code: "termination_failed",
+      details: {
+        cause: "kill failed",
+        killCause: "Could not reap the PTY process group.",
+      },
+    });
+    expect(kill).toHaveBeenCalledOnce();
     await Promise.resolve();
     expect(outcome).toMatchObject({ code: "session_not_running" });
     expect(ptys[0]!.writes.some((write) => write.includes("caller"))).toBe(false);
