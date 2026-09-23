@@ -1,10 +1,10 @@
 /** Tracks native update generations and their choice provenance (PRD §5.5, C-CODEX-12/22). */
 import {
-  appearanceBindingsHold,
   bannerContradictsAppearance,
   type CodexUpdateAppearanceEvidence,
+  continuationOptionsAreBound,
   emptyUpdateEvidence,
-  evidenceAllowsContinuation,
+  retainedOptionLabelsAgree,
   withUpdateFrameEvidence,
 } from "./evidence.ts";
 import { codexUpdatePromptVisible, isSafeUpdateContinuation } from "./recognition.ts";
@@ -31,7 +31,7 @@ export class CodexUpdatePromptTracker {
     if (
       this.active &&
       (bannerContradictsAppearance(this.evidence, frameText) ||
-        !(this.evidence.overflowed || appearanceBindingsHold(this.evidence, frameText)))
+        !(this.evidence.overflowed || retainedOptionLabelsAgree(this.evidence, frameText)))
     ) {
       this.generation += 1;
       this.active = false;
@@ -65,14 +65,14 @@ export class CodexUpdatePromptTracker {
   }
   private frameAgreesWithAppearance(frameText: string): boolean {
     return (
-      appearanceBindingsHold(this.evidence, frameText) &&
+      retainedOptionLabelsAgree(this.evidence, frameText) &&
       !bannerContradictsAppearance(this.evidence, frameText)
     );
   }
 
   private continuesCurrentAppearance(frameText: string): boolean {
     return (
-      isSafeUpdateContinuation(frameText) && evidenceAllowsContinuation(this.evidence, frameText)
+      isSafeUpdateContinuation(frameText) && continuationOptionsAreBound(this.evidence, frameText)
     );
   }
 }
