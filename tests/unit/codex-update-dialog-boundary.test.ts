@@ -89,3 +89,16 @@ test("C-CODEX-22 mixed version banners cannot establish a continuation", () => {
   expect(tracker.currentFramePredicate()(frame)).toBe(false);
   expect(tracker.observe("  2. Skip")).toBe(false);
 });
+
+test("C-CODEX-12 repeated identical banners preserve one contiguous choice block", () => {
+  const frame = `${banner}\n${banner}\n${options}`;
+  expect(codexOptionStillSafe(frame, "2")).toBe(true);
+  expect([
+    ...withUpdateFrameEvidence(emptyUpdateEvidence(), frame, true).boundOptions.keys(),
+  ]).toEqual(["1", "2"]);
+});
+
+test("C-CODEX-22 an unindented replacement cannot continue a wrapped update command", () => {
+  const frame = `${banner}\n1. Update now (runs \`install |\nConfirm archive removal?\n2. Skip`;
+  expect(codexOptionStillSafe(frame, "2")).toBe(false);
+});
