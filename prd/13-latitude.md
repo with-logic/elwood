@@ -13,3 +13,10 @@ above:
 
 The documentation site's sprite-load errors identify the failing relative asset
 path, bounded to 200 characters, and retain the underlying error as their cause.
+
+Sprite requests for the same metadata or atlas key share one fetch/decode operation.
+An explicit consumer may cancel without cancelling remaining consumers or silencing
+their automatic failure report. Only the final consumer cancels the underlying
+operation; an abandoned completion cannot publish into a successor request.
+Explicitly retained pages stay alive through delivery and cache eviction until their
+owner releases them, while current/outgoing pose owners remain protected.
