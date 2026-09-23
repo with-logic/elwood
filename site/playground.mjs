@@ -209,9 +209,8 @@ function settleRope(end, dt) {
 function poseForPlayer() {
   const p = world.player;
   const clip = bank.clips.get(p.animation);
-  const pose = clip && bank.frame(p.animation, world.frameIndex(clip.frames.length, accumulator));
+  const pose = bank.frame(p.animation, clip && world.frameIndex(clip.frames.length, accumulator));
   if (!pose) {
-    if (!clip) bank.prepare(p.animation).catch(handleSpriteError);
     if (!lastPose) return null;
     // Until a new page arrives, retain a ledge-registered image at its ledge.
     if (lastPose.clip.registration === "ledge" && !p.ledge) return lastPose;
