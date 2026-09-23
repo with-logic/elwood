@@ -16,10 +16,6 @@ import { codexUpdatePromptVisible, isSafeUpdateContinuation } from "./update/rec
 import { codexUpdateOptionPattern, safeUpdateOption } from "./update/selection.ts";
 import { codexUpdateChoiceIdentity, settledFrameKeepsChoice } from "./update-identity.ts";
 
-export { codexUpdatePromptVisible, updateScreenBanner } from "./update/recognition.ts";
-export { codexUpdateOptionPattern } from "./update/selection.ts";
-export { CodexUpdatePromptTracker } from "./update/tracker.ts";
-
 const retryIntervalMs = 250;
 const retryTimeoutMs = 5_000;
 
