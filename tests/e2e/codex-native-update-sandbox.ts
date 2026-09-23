@@ -1,4 +1,4 @@
-/** Isolate a real pinned Codex updater; allow terminal replies and reject all menu input. */
+/** Isolate the native updater; record and reject application input (PRD §5.5, C-CODEX-12). */
 import {
   chmodSync,
   copyFileSync,
