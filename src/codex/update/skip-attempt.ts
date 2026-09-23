@@ -20,35 +20,72 @@ type UpdateSkipRequest = {
   readonly releaseLatch: () => void;
 };
 
-export function startCodexUpdateSkip(request: UpdateSkipRequest): Promise<StartupWriteCompletion> {
+type UpdateSkipAttempt = {
+  readonly settled: Promise<StartupWriteCompletion>;
+  readonly observeClearance: (frame: string) => void;
+};
+
+export function startCodexUpdateSkip(request: UpdateSkipRequest): UpdateSkipAttempt {
   const { tracker, generation, readFrame, screenText, signal, releaseLatch } = request;
+  const completion = Promise.withResolvers<StartupWriteCompletion>();
+  const retries = new AbortController();
+  const retrySignal = AbortSignal.any([signal, retries.signal]);
   const sameUpdate = tracker.currentFramePredicate();
   const current = (frame: string) =>
-    !signal.aborted && sameUpdate(frame) && !trustGateVisible(frame, "codex");
-  // Losing update eligibility is not clearance while a replacement still holds input.
+    !retrySignal.aborted && sameUpdate(frame) && !trustGateVisible(frame, "codex");
   const invalidated = (frame: string) => trustGateVisible(frame, "codex") || request.inputHeld();
-  return writeCodexUpdateSkip(
+  const ownsAttempt = () => !(signal.aborted || tracker.hasLaterAppearance(generation));
+  let written = false;
+  let cleared = false;
+  const finish = (result: StartupWriteCompletion) => {
+    completion.resolve(result);
+    retries.abort();
+  };
+  const answerIfCleared = () => {
+    if (!retries.signal.aborted && written && cleared && ownsAttempt()) finish("answered");
+  };
+  void writeCodexUpdateSkip(
     request.option,
     request.writeAutomation,
     readFrame,
     current,
     invalidated,
-    signal,
+    retrySignal,
     request.clearance,
-  ).then(
-    (completion) => {
-      const replaced = tracker.hasLaterAppearance(generation);
-      if (signal.aborted || completion === "exhausted" || replaced) return "cancelled";
-      if (completion === "cancelled") releaseLatch();
-      return completion;
+    () => {
+      written = true;
+      answerIfCleared();
     },
-    (error: unknown): StartupWriteCompletion => {
-      if (signal.aborted) return "cancelled";
+  ).then(
+    (result) => {
+      if (retries.signal.aborted) return;
+      if (!ownsAttempt() || result === "exhausted" || result === "unobserved") {
+        finish("cancelled");
+        return;
+      }
+      if (result === "cancelled") releaseLatch();
+      finish(result);
+    },
+    (error: unknown) => {
+      if (retries.signal.aborted) return;
+      if (signal.aborted) return finish("cancelled");
       const replaced = tracker.hasLaterAppearance(generation);
       if (!replaced) releaseLatch();
       // The live screen can clear before the next responder observation.
-      if (!current(readFrame?.() ?? screenText)) return "cancelled";
-      throw error;
+      if (!current(readFrame?.() ?? screenText)) return finish("cancelled");
+      completion.reject(error);
+      retries.abort();
     },
   );
+  return {
+    settled: completion.promise,
+    observeClearance(frame: string): void {
+      if (retries.signal.aborted || readFrame === undefined || !ownsAttempt()) return;
+      if (invalidated(frame) || !request.clearance(frame)) return;
+      // Keep this attempt's native edge before queued input can repaint it. A
+      // pending write still has to fulfill; withheld/rejected writes never answer.
+      cleared = true;
+      answerIfCleared();
+    },
+  };
 }
