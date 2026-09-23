@@ -1,3 +1,4 @@
+import { resolveObjectURL } from "node:buffer";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -197,7 +198,7 @@ globalThis.fetch = async (url) => {
 };
 globalThis.Image = class {
   async decode() {
-    assert.equal((await readFile(new URL(this.src))).subarray(8, 12).toString(), "WEBP");
+    assert.equal(Buffer.from(await resolveObjectURL(this.src).arrayBuffer()).subarray(8, 12).toString(), "WEBP");
   }
 };
 const configure = LandingScene.prototype.configure;

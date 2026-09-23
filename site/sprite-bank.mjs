@@ -1,8 +1,11 @@
+/** On-demand sprite sheet caching and decoding (PRD §13; site/docs/design/landing.md). */
 import { gameAssetUrl } from "./game-assets.mjs";
+import { SpriteDecoder } from "./sprite-decoder/index.mjs";
 
 export class SpriteBank {
   #onError;
   constructor(onError) {
+    this.decoder = new SpriteDecoder();
     this.clips = new Map();
     this.clipPromises = new Map();
     this.pages = new Map();
@@ -40,9 +43,10 @@ export class SpriteBank {
     if (this.pendingPages.has(key)) return this.pendingPages.get(key);
     const promise = (async () => {
       const clip = await this.load(name);
-      const image = new Image();
-      image.src = gameAssetUrl(`${name}/${clip.pages[index].file}`).href;
-      await image.decode();
+      const response = await fetch(gameAssetUrl(`${name}/${clip.pages[index].file}`));
+      if (!response.ok)
+        throw new Error(`Couldn’t load ${name}. Check the local server and try again.`);
+      const image = await this.decoder.decode(await response.blob());
       this.pages.set(key, image);
       // Only four decoded atlas pages remain resident. All other actions stay
       // compressed in the normal HTTP cache until they are needed again.
