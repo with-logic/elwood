@@ -45,6 +45,7 @@ export type BuildCodexSessionInput = {
 };
 export async function buildCodexSession(input: BuildCodexSessionInput): Promise<CodexSessionImpl> {
   const { record, stateDir, runtime, options, resumed, preflightWarning } = input;
+  const id = record.elwoodSessionId;
   secureMkdir(runtime.sessionDir);
   writeSessionRecord(record, runtime.sessionDir, runtime.stateOwnership.publishFile);
   const loopDefinitions = resumed ? loadLoops(stateDir, record.elwoodSessionId) : [];
@@ -57,11 +58,8 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     () => promptResponder.closingSignal.aborted,
     (deliver) => wired.duringDelivery(deliver),
   );
-  const wired = sessionTranscript.createCodexTranscriptWatcher(
-    record.elwoodSessionId,
-    emitter,
-    () => warnGate, // transcript diagnostics flow through the same startup gate
-  );
+  // Transcript diagnostics flow through the same startup warning gate.
+  const wired = sessionTranscript.createCodexTranscriptWatcher(id, emitter, () => warnGate);
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   const bridge = currentCodexHookBridgeFactory()(
     runtime.socketPath,
@@ -164,7 +162,6 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     transcriptWatcher,
     loopDefinitions,
   );
-  const id = record.elwoodSessionId;
   const activeSession = session;
   bindStartupLifetime(activeSession, promptResponder, readiness);
   frameObserver.refresh();
