@@ -14,6 +14,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Stop delayed paste-recovery Enter keys after raw caller input takes ownership of
   the draft, including direct terminal and xterm input.
+- Preserve cancellation when a queued submission's pending physical write later
+  succeeds, so the cancelled operation cannot report success.
 
 - Keep queued Codex input held when an update screen becomes an unknown or partial
   dialog, until its live native composer returns; a stale visible cursor cannot
