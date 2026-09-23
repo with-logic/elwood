@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Stop delayed paste-recovery Enter keys after raw caller input takes ownership of
+  the draft, including direct terminal and xterm input.
+
 - Report an automated Codex update skip as answered only after verified native
   composer clearance; completed writes without a reader or into replaced dialogs
   settle quietly without false startup success.
