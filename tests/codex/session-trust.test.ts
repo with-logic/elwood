@@ -18,6 +18,36 @@ import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 afterEach(resetFakes);
 
 describe("CodexSessionApi trust prompts", () => {
+  test.each([
+    false,
+    true,
+  ])("C-TRUST-01 Codex 0.156.1 folder access keeps queued input held (autotrust=%s)", async (autotrust) => {
+    const frame = readFileSync(
+      new URL("../fixtures/codex-0.156.1/folder-access.txt", import.meta.url),
+      "utf8",
+    );
+    installFakes();
+    const session = await startCodex({ cwd: tempDir(), autotrust });
+    const queued = session.sendMessage("held until trust clears");
+    const settled = queued.catch(() => undefined);
+    try {
+      ptys[0]!.emitData(tty(frame));
+      if (autotrust) {
+        await expect.poll(() => ptys[0]!.writes).toEqual(["1\r"]);
+        expect(session.status).not.toBe("ready");
+        ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`);
+        await queued;
+        expect(ptys[0]!.writes).toContain("\u001b[200~held until trust clears\u001b[201~");
+      } else {
+        await expect.poll(() => session.status).toBe("blocked");
+        expect(ptys[0]!.writes).toEqual([]);
+      }
+    } finally {
+      await session.kill();
+      await settled;
+    }
+  });
+
   test("C-CODEX-06 C-CODEX-15 trusts hooks via the TUI prompt and does NOT block", async () => {
     // autotrust OFF, but hook trust (Elwood's own integration) is still answered
     // — automatic handling gets its bounded window before human fallback (C-ATTN-03).
