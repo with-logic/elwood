@@ -10,10 +10,10 @@ import {
 } from "../terminal-options.ts";
 
 const headerStart =
-  /^(?:Do you|Quick safety|Is this|Load this|Trust the|New MCP|WARNING:|Claude Code running|Hooks need)/i;
+  /^(?:Do you|Quick safety|Is this|Load this|Trust the|Trust this|New MCP|WARNING:|Claude Code running|Hooks need)/i;
 const numberedRow = /^\s*[❯›>]?\s*\d+[.)]\s*\S/;
 const footerRow =
-  /^\s*(?:(?:Enter to confirm|Esc to cancel)(?:\s*[·•]\s*(?:Enter to confirm|Esc to cancel))*|Press enter to (?:continue|confirm or esc to (?:cancel|go back)))\s*$/i;
+  /^\s*(?:(?:Enter to confirm|Esc to cancel)(?:\s*[·•]\s*(?:Enter to confirm|Esc to cancel))*|Press enter to (?:continue|confirm or esc to (?:cancel|go back))|enter continue · esc quit)\s*$/i;
 // Native Codex's location prelude begins with >; conversation/composer rows do too.
 const conversationRow =
   /^\s*(?:[●•]|[❯›](?!\s*\d+[.)])|>(?!\s+You are in (?:\/|[A-Z]:[\\/]))(?!\s*\d+[.)])|(?:user|assistant)\s*:)/i;

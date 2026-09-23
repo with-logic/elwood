@@ -16,11 +16,11 @@ test("mutable game manifests and images escape old immutable URLs and revalidate
   const Image = globalThis.Image;
   globalThis.fetch = async (url) => {
     requested.push(new URL(url));
-    return new Response(JSON.stringify({ pages: [{ file: "page-000.webp" }] }));
+    return new Response(await readFile(new URL("../assets/game/idle/clip.json", import.meta.url)));
   };
   globalThis.Image = class {
     async decode() {
-      requested.push(new URL(this.src));
+      assert.ok(this.src.startsWith("blob:"));
     }
   };
   try {

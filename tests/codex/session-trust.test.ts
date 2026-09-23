@@ -4,7 +4,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { startCodex } from "../../src/index.ts";
 import {
   codexComposer,
@@ -13,11 +13,47 @@ import {
   codexTty,
   tty,
 } from "../fixtures/trust-composer.ts";
-import { installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(resetFakes);
 
 describe("CodexSessionApi trust prompts", () => {
+  test.each([
+    false,
+    true,
+  ])("C-TRUST-01 Codex 0.156.1 folder access keeps queued input held (autotrust=%s)", async (autotrust) => {
+    const frame = readFileSync(
+      new URL("../fixtures/codex-0.156.1/folder-access.txt", import.meta.url),
+      "utf8",
+    );
+    installFakes();
+    const cwd = tempDir();
+    const session = await startCodex({ cwd, autotrust });
+    let settled: Promise<void> | undefined;
+    try {
+      await becomeReady(session.elwoodSessionId, cwd);
+      expect(session.status).toBe("ready");
+      ptys[0]!.emitData(tty(frame));
+      await session.terminal.settled();
+      if (autotrust) await expect.poll(() => ptys[0]!.writes).toEqual(["1\r"]);
+      else expect(session.status).toBe("blocked");
+      vi.useFakeTimers();
+      const queued = session.sendMessage("held until trust clears");
+      settled = queued.catch(() => undefined);
+      // Give queued submission and input-guard retries time to run while the dialog remains.
+      await vi.advanceTimersByTimeAsync(500);
+      expect(ptys[0]!.writes).toEqual(autotrust ? ["1\r"] : []);
+      ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`);
+      await vi.advanceTimersByTimeAsync(500);
+      await queued;
+      expect(ptys[0]!.writes).toContain("\u001b[200~held until trust clears\u001b[201~");
+    } finally {
+      vi.useRealTimers();
+      await session.kill();
+      await settled;
+    }
+  });
+
   test("C-CODEX-06 C-CODEX-15 trusts hooks via the TUI prompt and does NOT block", async () => {
     // autotrust OFF, but hook trust (Elwood's own integration) is still answered
     // — automatic handling gets its bounded window before human fallback (C-ATTN-03).

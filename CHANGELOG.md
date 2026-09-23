@@ -14,6 +14,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Stop delayed paste-recovery Enter keys after raw caller input takes ownership of
   the draft, including direct terminal and xterm input.
+- Recognize Codex 0.156.1 folder-access trust prompts, keeping queued input held
+  and approving only the known choice when `autotrust` is enabled.
 
 - Keep queued Codex input held when an update screen becomes an unknown or partial
   dialog, until its live native composer returns; a stale visible cursor cannot

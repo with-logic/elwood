@@ -4,7 +4,8 @@ import test from "node:test";
 import { SpriteBank } from "../sprite-bank.mjs";
 
 function fixture(t, { decode = async () => {}, bitmap = false } = {}) {
-  const original = globalThis.Image;
+  const original = { Image: globalThis.Image, fetch: globalThis.fetch };
+  globalThis.fetch = async () => new Response("sheet");
   const images = [];
   globalThis.Image = class {
     src = "";
@@ -22,7 +23,7 @@ function fixture(t, { decode = async () => {}, bitmap = false } = {}) {
     pages: Array.from({ length: 6 }, (_, i) => ({ file: `${i}.webp` })),
     frames: [{ page: 0 }],
   });
-  t.after(() => { bank.dispose(); globalThis.Image = original; });
+  t.after(() => { bank.dispose(); Object.assign(globalThis, original); });
   return { bank, errors, images, page: (index) => bank.loadPage("wave", index) };
 }
 
@@ -58,5 +59,18 @@ test("frame failure after disposal releases its image without reporting a stale 
   gate.reject(new Error("late image failure"));
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(errors, []);
+  assert.equal(images[0].released, 1);
+});
+
+test("an HTML decode completing after disposal releases its source", async (t) => {
+  const gate = Promise.withResolvers();
+  const { bank, images, page } = fixture(t, { decode: () => gate.promise });
+  const pending = page(0);
+  await new Promise((resolve) => setImmediate(resolve));
+  bank.dispose();
+  await assert.rejects(pending, /disposed/);
+  gate.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(images[0].src, "");
   assert.equal(images[0].released, 1);
 });
