@@ -3,16 +3,11 @@
  * Implements PRD §5.3 prompt and command submission semantics (C-API-31).
  */
 
-import type { ControlSubmitMode } from "../control-queue/index.ts";
-import type { ControlSubmitter } from "../control-queue/types.ts";
-import {
-  holdWhileUnsafe,
-  type InputTerminal,
-  throwIfInputAborted,
-  waitForInput,
-  writeUnsafe,
-} from "./abort.ts";
+import type { ControlSubmitMode, ControlSubmitter } from "../control-queue/index.ts";
+import { elwoodError } from "../errors.ts";
+import { holdWhileUnsafe, type InputTerminal, throwIfInputAborted, waitForInput } from "./abort.ts";
 import { requestComposerCleanup, stageComposer, submittedComposer } from "./composer-cleanup.ts";
+import { nudgePastedPrompt } from "./nudge.ts";
 
 /** Adapter view of "the paste is still staged in the composer". */
 export type PasteGuard = {
@@ -30,8 +25,7 @@ export type PasteGuard = {
 
 export const commandEnterDelayMs = 150;
 export const pasteSettleDelayMs = 150;
-export const pasteNudgeDelayMs = 1_000;
-export const pasteNudgeAttempts = 2;
+export { pasteNudgeAttempts, pasteNudgeDelayMs } from "./nudge.ts";
 
 /** Explicitly best-effort input for startup/recovery automation. */
 export function ignoreInputFailure(input: void | Promise<void>): void {
@@ -75,11 +69,10 @@ export function sanitizePasteText(text: string): string {
  * text is sanitized first so an embedded end sentinel or control byte cannot
  * escape paste mode into live keystrokes (§5.3).
  *
- * The returned promise resolves once the first submitting Enter has been
- * dispatched (after the settle delay), so the control queue does not drain the
- * next operation into the composer before this prompt has actually been
- * submitted. Bounded recovery re-Enters continue in the background afterwards
- * and are idempotent.
+ * Ordinary submissions resolve after the first awaited Enter; bounded nudges
+ * continue in the background. Turn replays retain draft ownership until their
+ * nudges settle and the guard observes that the original draft is no longer
+ * staged. Exhausted or cancelled replays retain cleanup for the next operation.
  */
 async function writePastedPrompt(
   terminal: InputTerminal,
@@ -87,7 +80,7 @@ async function writePastedPrompt(
   guard?: PasteGuard,
   signal?: AbortSignal,
   settleDelayMs = pasteSettleDelayMs,
-  nudgeDelayMs = pasteNudgeDelayMs,
+  turnReplay = false,
   onSubmitted?: () => void,
 ): Promise<void> {
   // Hold the WHOLE submission — paste included — while a blocking dialog is on
@@ -104,32 +97,6 @@ async function writePastedPrompt(
   const nudgeSignal =
     rawInput && signal ? AbortSignal.any([rawInput, signal]) : (rawInput ?? signal);
   await terminal.sendInput(`\u001b[200~${payload}\u001b[201~`);
-  const schedule = (work: () => void, ms: number) => {
-    const timer = setTimeout(work, ms);
-    timer.unref?.();
-  };
-  let nudges = 0;
-  const nudge = async () => {
-    // Decide on the current screen: a dialog may be received but not yet rendered.
-    const unsafe = await writeUnsafe(terminal, guard, nudgeSignal);
-    // Stop once a LATER submission has begun: a stale nudge must never fire an
-    // Enter into a newer prompt's paste (the staged chip is not prompt-specific).
-    if (nudgeSignal?.aborted || !guard || nudges >= pasteNudgeAttempts) return;
-    // A dialog that appears after the first Enter must not be confirmed by a
-    // recovery Enter either; skip this attempt and re-check on the next tick.
-    if (unsafe) {
-      schedule(nudge, nudgeDelayMs);
-      return;
-    }
-    nudges += 1;
-    if (!guard.staged(guard.snapshot(), payload)) return;
-    try {
-      await terminal.sendInput("\r");
-    } catch {
-      // Recovery nudges are best-effort after the first Enter already landed.
-    }
-    schedule(nudge, nudgeDelayMs);
-  };
   try {
     await waitForInput(settleDelayMs, signal);
     // Hold the submitting Enter while a blocking dialog is on screen: firing it
@@ -139,13 +106,26 @@ async function writePastedPrompt(
     await holdWhileUnsafe(terminal, guard, signal);
     throwIfInputAborted(signal);
     await terminal.sendInput("\r");
+    if (!turnReplay) submittedComposer(terminal);
+    onSubmitted?.();
+    const nudges = nudgePastedPrompt(terminal, payload, turnReplay, guard, nudgeSignal).catch(
+      (error: unknown) => {
+        // Raw edits revoke automation without borrowing the model picker's error.
+        if (rawInput?.aborted && !signal?.aborted) return false;
+        throw error;
+      },
+    );
+    if (turnReplay) {
+      if (!(await nudges))
+        throw elwoodError("wait_timeout", "Turn replay remained staged after submission attempts.");
+      // An abort during the final physical nudge still owns the staged draft.
+      throwIfInputAborted(signal);
+      submittedComposer(terminal);
+    } else ignoreInputFailure(nudges.then(() => undefined));
   } catch (error) {
-    if (signal?.aborted) await requestComposerCleanup(terminal, guard?.blocked);
+    if (turnReplay || signal?.aborted) await requestComposerCleanup(terminal, guard?.blocked);
     throw error;
   }
-  submittedComposer(terminal);
-  onSubmitted?.();
-  schedule(nudge, nudgeDelayMs);
 }
 
 export async function writeQueuedInput(
@@ -160,12 +140,14 @@ export async function writeQueuedInput(
   // Dispatch through a Record keyed by ControlSubmitMode: a new mode must add an
   // entry here or the object fails to type-check, so it can never silently reuse
   // pasted-input behavior. The map has no unreachable default arm, so 100%
-  // coverage holds (both entries are exercised).
+  // coverage holds (all modes are exercised).
   const submitters: Readonly<Record<ControlSubmitMode, () => Promise<void>>> = {
     // Resolve only after the input's submitting Enter has dispatched, so the next
     // queued operation cannot write into the composer first (FIFO).
     pasted_input: () =>
       writePastedPrompt(terminal, input, guard, signal, undefined, undefined, onSubmitted),
+    turn_replay_input: () =>
+      writePastedPrompt(terminal, input, guard, signal, pasteSettleDelayMs, true, onSubmitted),
     // Slash-command popups (Codex) swallow an Enter that arrives in the same PTY
     // chunk as the command text, so Enter follows as a separate keystroke. The
     // returned promise resolves only after that Enter is dispatched, so a queued
@@ -190,7 +172,7 @@ export async function writeQueuedInput(
   await submitters[mode]();
 }
 
-/** Bind the session terminal while preserving physical-submission evidence (C-ATTN-02). */
+/** Session queue binding preserves physical submission evidence (C-ATTN-02). */
 export function queuedInputSubmitter(terminal: InputTerminal, guard: PasteGuard): ControlSubmitter {
   return (input, mode, signal, onSubmitted) =>
     writeQueuedInput(terminal, input, mode, guard, signal, commandEnterDelayMs, onSubmitted);
