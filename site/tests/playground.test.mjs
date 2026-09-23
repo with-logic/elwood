@@ -212,8 +212,7 @@ test("page boot, real asset loads, keyboard directions, pause and reset work tog
   await advance(25);
   assert.match(drawnImage, /\/idle-left\//);
   key("keydown", "KeyF");
-  await advance(36);
-  assert.match(drawnImage, /\/idle-front\//);
+  await advanceUntilImage(/\/idle-front\//);
   key("keydown", "KeyB");
   await advanceUntilImage(/\/idle-back\//);
   facingButtons[0].onclick();
