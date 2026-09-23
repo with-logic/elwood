@@ -15,8 +15,8 @@ const owners = new WeakMap<InputTerminal, ComposerCleanup>();
 type Draft = { readonly rawInputSignal: AbortSignal; pending: boolean };
 
 /** Register ComposerCleanup before staging; unregistered terminals deliberately record no ownership. */
-export function stageComposer(terminal: InputTerminal): void {
-  owners.get(terminal)?.stage();
+export function stageComposer(terminal: InputTerminal): AbortSignal | undefined {
+  return owners.get(terminal)?.stage();
 }
 /** Mark submission after staging; this is also a no-op without prior registration. */
 export function submittedComposer(terminal: InputTerminal): void {
@@ -71,10 +71,11 @@ export class ComposerCleanup {
     );
   }
 
-  stage(): void {
+  stage(): AbortSignal {
     this.stagedGeneration = this.rawInputSignal();
     if (this.stagedGeneration === this.baseline)
       this.draft ??= { rawInputSignal: this.stagedGeneration, pending: false };
+    return this.stagedGeneration;
   }
   submitted(): void {
     // Only an uninterrupted submission establishes a fresh composer after raw edits.

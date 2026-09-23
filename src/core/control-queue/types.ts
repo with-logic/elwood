@@ -30,11 +30,14 @@ export type ControlSubmissionOrigin =
 /** Optional internal controls for an attributed, cancellable text submission. */
 export type ControlSendOptions = {
   readonly cancel?: Cancel;
+  /** Retain the active queue slot through close; either write outcome rejects with stoppedError. */
+  readonly settleAfterWrite?: true;
   readonly origin?: ControlSubmissionOrigin;
 };
 
 type QueuedOperationBase = {
   readonly input: string;
+  readonly settleAfterWrite?: boolean;
   readonly kind: ControlOperationKind;
   // FROZEN at enqueue: guidance queued before first readiness stays message-like (C-API-37).
   readonly mayBypassReadiness: boolean;

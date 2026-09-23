@@ -1,0 +1,14 @@
+╭────────────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.156.1)                             │
+│                                                        │
+│ model:     GPT-6-Astra   /model to change              │
+│ directory: /tmp/elwood_e2e_codex-CAPTURE               │
+╰────────────────────────────────────────────────────────╯
+
+  Tip: This is GPT-6, a new generation of intelligence. Astra is state-of-the-art in coding, computer use, science, and professional work. Give it a hard problem, a half-formed idea, or
+  anything you've been meaning to build. See where it takes you.
+
+
+› Ask Codex to do anything
+
+  GPT-6-Astra default · /tmp/elwood_e2e_codex-CAPTURE                                                                                                              ⚠ 2 warnings · f2 to view
