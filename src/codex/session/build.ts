@@ -98,7 +98,6 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
     session?.completeInitialReady(); // shared anti-starvation ready boundary (C-API-42)
   }, resumed);
-  const { ready } = readiness;
   const clearance = liveCodexClearance(() => terminal);
   const observers = {
     turn: new TurnStateWatcher(),
@@ -120,6 +119,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     options.autotrust ?? false,
     frameObserver.refresh,
     clearance,
+    () => activeSession.inputBlocking || activeSession.trustInputBlocking,
   );
   const terminal = attachPtyTerminal(
     options.initialSize ?? defaultTerminalSize,
@@ -167,13 +167,13 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
   const activeSession = session;
   bindStartupLifetime(activeSession, promptResponder, readiness);
   frameObserver.refresh();
-  const beforeCleanup = () => activeSession.pauseLoopsForStartupCleanup(ready.cancel);
+  const beforeCleanup = () => activeSession.pauseLoopsForStartupCleanup(readiness.ready.cancel);
   await guardStartupRegion(
     async () => {
       activeSession.startLoops();
       flushPendingWarnings(); // inside the guard: a throwing sink tears down, not leaks (§5.4/§9.4)
-      activeSession.setInitialReadyHook(() => ready.mark());
-      ready.replay();
+      activeSession.setInitialReadyHook(() => readiness.ready.mark());
+      readiness.ready.replay();
       pty.onExit((exit) => {
         if (observedExit) return;
         observedExit = exit;

@@ -1,7 +1,9 @@
 /** Positive continuation provenance and completion (PRD §5.5, C-CODEX-12/22). */
 import { afterEach, expect, test, vi } from "vitest";
+import { codexScreenFactTableForTrustPolicy } from "../../src/codex/screen-table.ts";
 import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
 import { CodexUpdatePromptTracker } from "../../src/codex/update/tracker.ts";
+import { readScreenFacts } from "../../src/core/screen-facts.ts";
 
 const banner = "Update available! 0.151.0 -> 0.152.0\n  1. Update now";
 afterEach(() => vi.useRealTimers());
@@ -24,7 +26,9 @@ test.each([
   const tracker = new CodexUpdatePromptTracker();
   tracker.observe(banner);
   expect(tracker.observe(replacement)).toBe(false);
-  expect(tracker.holdWithoutAppearance).toBe(true);
+  const table = codexScreenFactTableForTrustPolicy(false);
+  readScreenFacts(table, { text: banner });
+  expect(readScreenFacts(table, { text: replacement }).facts.blocking_prompt_visible).toBe(true);
 });
 
 test("C-CODEX-22 a known choice cannot vouch for another previously unseen choice", () => {

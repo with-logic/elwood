@@ -4,7 +4,8 @@ import type { StartupWriteCompletion } from "../../core/startup/write.ts";
 import { trustGateVisible } from "../../core/trust/blocking.ts";
 import type { TrustClearance } from "../../core/trust/clearance.ts";
 import type { TrustWriteResult } from "../../core/trust/responder.ts";
-import { type CodexUpdatePromptTracker, writeCodexUpdateSkip } from "../update-prompt.ts";
+import { writeCodexUpdateSkip } from "../update-prompt.ts";
+import type { CodexUpdatePromptTracker } from "./tracker.ts";
 
 type UpdateSkipRequest = {
   readonly option: string;
@@ -15,6 +16,7 @@ type UpdateSkipRequest = {
   readonly readFrame: (() => string) | undefined;
   readonly signal: AbortSignal;
   readonly clearance: TrustClearance;
+  readonly inputHeld: () => boolean;
   readonly releaseLatch: () => void;
 };
 
@@ -24,8 +26,7 @@ export function startCodexUpdateSkip(request: UpdateSkipRequest): Promise<Startu
   const current = (frame: string) =>
     !signal.aborted && sameUpdate(frame) && !trustGateVisible(frame, "codex");
   // Losing update eligibility is not clearance while a replacement still holds input.
-  const invalidated = (frame: string) =>
-    trustGateVisible(frame, "codex") || tracker.holdWithoutAppearance;
+  const invalidated = (frame: string) => trustGateVisible(frame, "codex") || request.inputHeld();
   return writeCodexUpdateSkip(
     request.option,
     request.writeAutomation,

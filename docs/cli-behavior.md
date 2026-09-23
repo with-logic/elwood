@@ -617,7 +617,9 @@ do not block.
 
 A fulfilled update digit write is not clearance evidence. Update settlement uses
 the same native composer, cursor, title, and completed-render predicate as the
-retained input hold. Missing readers and replacement dialogs cancel quietly.
+retained input hold. It also reads the frame observer's existing hold when old
+composer chrome survives beneath replacement text. Missing readers and replacement
+dialogs cancel quietly.
 
 The preflight adds a second boundary because global installers can also race
 across separate Elwood parent processes. A per-user/per-adapter atomic lease in
@@ -654,6 +656,18 @@ MID-SESSION (a ready session logging out), where only the reauth matcher runs.
 C-CLAUDE-17/18. Verified against the banner text the field reported; there is no
 live-CLI e2e (it would mutate real auth), so the matchers are unit-tested against
 captured strings.
+
+## Claude login picker handshake (2026-09-23)
+
+The `/login` command Enter and the method-picker selection Enter are distinct
+writes in the production login driver. A fixture must await the command Enter
+before painting the picker, then await the picker Enter before painting the auth
+URL/code screen. Advancing on the first Enter can replace the picker before the
+driver observes it. Reproduced through the real driver and fake PTY in
+`tests/claude/session-login.test.ts` with a temporary 250 ms delay before the picker
+stage: the old fixture missed the selection Enter; the corrected handshake passed.
+This was a fixture reproduction, not a fresh native CLI authentication test; no
+new CLI version or native capture was verified.
 
 ## Input / paste
 

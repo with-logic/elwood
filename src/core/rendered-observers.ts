@@ -53,23 +53,18 @@ export function readRenderedFrame(
   observers: RenderedObservers,
   frame: RenderedFrame,
   trustBlock?: string,
+  trustInputBlocking = false,
 ): ScreenFactReading {
   // Classify the frame once; turn and attention watchers share the reading, and the
   // reading is returned so the caller can drive resume-readiness off the same facts.
-  // A retained specific gate outranks generic fallback labels during partial repaints.
-  const table =
-    trustBlock === undefined
-      ? observers.table
-      : {
-          ...observers.table,
-          rules: observers.table.rules.filter(
-            (rule) => rule.fact !== "blocking_prompt_visible" || !rule.fallback,
-          ),
-        };
-  const reading = readScreenFacts(table, frame);
-  if (trustBlock === undefined) return reading;
+  // Pending automation owns partial trust repaints, but current human gates still win.
+  const reading = readScreenFacts(
+    observers.table,
+    frame,
+    trustInputBlocking || trustBlock !== undefined ? "codex-unidentified-dialog" : undefined,
+  );
+  if (trustBlock === undefined || reading.facts.blocking_prompt_visible) return reading;
   const id = `${observers.agent}-${trustBlock}-prompt`;
-  if (reading.matched.some((match) => match.id === id)) return reading;
   return {
     facts: { ...reading.facts, blocking_prompt_visible: true },
     matched: [
