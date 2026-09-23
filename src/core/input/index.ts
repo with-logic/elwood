@@ -13,7 +13,7 @@ import { nudgePastedPrompt } from "./nudge.ts";
 export type PasteGuard = {
   readonly snapshot: () => string;
   /** Receives the sanitized payload that was actually pasted. */
-  readonly staged: (screen: string, prompt: string) => boolean;
+  readonly staged: (screen: string, payload: string) => boolean;
   /**
    * True when a human or automation-owned dialog is on screen. A dialog can
    * appear during the paste-settle window; sending the submitting Enter then

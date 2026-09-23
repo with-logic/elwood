@@ -17,6 +17,7 @@ function canvas() {
       measureText: () => ({ width: 210, actualBoundingBoxAscent: 210 }),
       getTransform: () => ({ e: 0, f: 0 }),
       drawImage(_image, ...coordinates) {
+        assert.ok(!_image.closed, "A rendered sprite must still be owned");
         assert.ok(coordinates.every(Number.isFinite), "Drawing coordinates must stay finite");
       },
     },
@@ -44,6 +45,10 @@ globalThis.fetch = async (input) => {
   }
 };
 globalThis.Image = class {
+  closed = 0;
+  close() {
+    this.closed++;
+  }
   async decode() {
     requests.push(String(this.src));
     const bytes = await readFile(fileURLToPath(this.src));
@@ -353,4 +358,34 @@ test("an unavailable initial pose or failed sprite request keeps the fallback", 
   loading.pose = () => null;
   loading.paint(0);
   assert.equal(paints, 0, "Ready state alone is not a successful canvas paint");
+});
+
+test("scene poses survive eviction, release after blends, and close on teardown", async (t) => {
+  const owned = new LandingScene(canvas());
+  t.after(() => owned.dispose());
+  owned.reduced = false;
+  await owned.boot();
+  const outgoing = owned.lastPose.page;
+  await owned.bank.prepare("wave");
+  owned.world.player.animation = "wave";
+  const incoming = owned.pose().page;
+  assert.equal(owned.transition.pose.page, outgoing);
+  for (const name of ["idle-left", "walk-right", "walk-left", "jump", "land"])
+    await owned.bank.prepare(name);
+  assert.equal(outgoing.closed, 0);
+  assert.equal(incoming.closed, 0);
+  owned.world.time += 1;
+  owned.paint(0);
+  assert.equal(outgoing.closed, 1, "An expired outgoing blend releases its evicted page");
+  assert.equal(incoming.closed, 0);
+  owned.dispose();
+  owned.dispose();
+  assert.equal(incoming.closed, 1);
+  assert.equal(owned.lastPose, null);
+  assert.equal(owned.transition, null);
+  assert.equal(owned.raf, 0);
+  assert.equal(owned.ready, false);
+  const requestCount = requests.length;
+  await owned.boot();
+  assert.equal(requests.length, requestCount, "A disposed scene cannot restart loading");
 });
