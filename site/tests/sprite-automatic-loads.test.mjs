@@ -4,7 +4,7 @@ import test from "node:test";
 import { LandingScene } from "../landing-scene.mjs";
 import { SpriteBank } from "../sprite-bank.mjs";
 
-const clip = { pages: [{ file: "0.webp" }], frames: [{ page: 0, w: 1, h: 1, anchor: { x: 0, y: 0 } }] };
+const clip = { fps: 24, pages: [{ file: "0.webp" }], frames: [{ page: 0, x: 0, y: 0, w: 1, h: 1, anchor: { x: 0, y: 0 }, socket: { x: 0, y: 0 } }] };
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 function fixture(t) {
   const original = { fetch: globalThis.fetch, Image: globalThis.Image, document: globalThis.document, matchMedia: globalThis.matchMedia };

@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { SpriteBank } from "../sprite-bank.mjs";
 
-const clip = { pages: [{ file: "0.webp" }, { file: "1.webp" }], frames: [{ page: 0 }, { page: 1 }] };
+const frame = { x: 0, y: 0, w: 1, h: 1, anchor: { x: 0, y: 0 }, socket: { x: 0, y: 0 } };
+const clip = { fps: 24, pages: [{ file: "0.webp" }, { file: "1.webp" }], frames: [{ ...frame, page: 0 }, { ...frame, page: 1 }] };
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 function fixture(t) {
   const original = { fetch: globalThis.fetch, Image: globalThis.Image };
@@ -129,5 +130,28 @@ test("automatic readiness checks share loading and stop after failure", async (t
   assert.equal(requests, 1);
   globalThis.fetch = async () => new Response(JSON.stringify(clip));
   await bank.prepare("wave");
+  assert.equal(bank.ensureEntryPage("wave"), true);
+});
+
+test("cached metadata entry decoding fails once across automatic readiness ticks and explicit retry recovers", async (t) => {
+  const { bank, errors } = fixture(t);
+  bank.clips.set("wave", clip);
+  const decoding = Promise.withResolvers();
+  let attempts = 0;
+  globalThis.Image = class { decode() { attempts++; return attempts === 1 ? decoding.promise : Promise.resolve(); } };
+  for (let i = 0; i < 1000; i++) assert.equal(bank.ensureEntryPage("wave"), false);
+  await settle();
+  assert.equal(attempts, 1);
+  decoding.reject(new Error("bad entry sheet"));
+  await settle();
+  for (let batch = 0; batch < 3; batch++) {
+    for (let i = 0; i < 1000; i++) assert.equal(bank.ensureEntryPage("wave"), false);
+    await settle();
+  }
+  assert.equal(attempts, 1);
+  assert.equal(errors.length, 1);
+  await bank.prepare("wave");
+  assert.equal(attempts, 2);
+  assert.equal(errors.length, 1);
   assert.equal(bank.ensureEntryPage("wave"), true);
 });

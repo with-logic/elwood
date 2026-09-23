@@ -1,4 +1,5 @@
 /** On-demand sprite ownership and retry control (site/docs/design/landing.md; PRD §13). */
+import { validateSpriteClip } from "./sprite-metadata.mjs";
 import { gameAssetUrl } from "./game-assets.mjs";
 
 export class SpriteBank {
@@ -21,6 +22,7 @@ export class SpriteBank {
       if (!response.ok)
         throw new Error(`Couldn’t load ${name}. Check the local server and try again.`);
       const clip = await response.json();
+      validateSpriteClip(clip, name);
       this.#failed.delete(name);
       this.clips.set(name, clip);
       return clip;
