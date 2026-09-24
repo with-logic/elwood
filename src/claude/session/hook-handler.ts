@@ -41,6 +41,10 @@ export function buildClaudeHookHandler(
   const { record, options, emitter, transcriptWatcher, ready } = deps;
   return async (input: unknown): Promise<BridgeProcessResult> => {
     const event = freezeHookEvent(normalizeClaudeHookEvent(input));
+    const currentSubmission =
+      event.hook_event_name === "Stop"
+        ? deps.getSession()?.stopCompletion.captureCurrentSubmission()
+        : undefined;
     const observation = hookObservationBoundary(emitter, record.elwoodSessionId);
     if (event.hook_event_name === "SessionStart")
       deps.getSession()?.rememberClaudeSessionId(event.session_id);
@@ -80,8 +84,10 @@ export function buildClaudeHookHandler(
       observation.run("lifecycle", () => ready.mark());
     if (event.hook_event_name === "Stop" && !blocked) {
       observation.run("transcript", () => transcriptWatcher.scan());
-      deps.getTurnWatcher().arm();
-      observation.run("lifecycle", () => deps.getSession()?.submitEvidence("hook_turn_ended"));
+      if (currentSubmission?.() !== false) {
+        deps.getTurnWatcher().arm();
+        observation.run("lifecycle", () => deps.getSession()?.submitEvidence("hook_turn_ended"));
+      }
     }
     observation.report();
     return serialized;
