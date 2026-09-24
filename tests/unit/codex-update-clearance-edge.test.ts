@@ -124,6 +124,7 @@ test.each([
       completion = value;
     });
     f.observe(codexSmallComposer);
+    if (mode === "fulfilled") f.observe(codexSmallComposer);
     await vi.advanceTimersByTimeAsync(0);
     expect(completion).toBeUndefined();
     if (mode === "disposed") f.responder.dispose();
