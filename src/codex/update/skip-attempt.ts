@@ -57,7 +57,7 @@ export function startCodexUpdateSkip(request: UpdateSkipRequest): UpdateSkipAtte
       written = true;
       answerIfCleared();
     },
-    (frame) => safeUpdateOption(frame, tracker.classify(frame).options ?? []),
+    (frame) => safeUpdateOption(frame, tracker.classify(frame).options),
   ).then(
     (result) => {
       if (retries.signal.aborted) return;
