@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Stop paste recovery after native acceptance or work, and require fresh staged-input evidence before retrying Enter.
+
 - Recognize Claude 2.1.281's half-circle working title, keeping active turns and
   trust holds from appearing idle while the input composer remains visible.
 

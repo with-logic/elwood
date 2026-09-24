@@ -16,12 +16,18 @@ export function currentRenderedFrame(terminal: ElwoodTerminal): TerminalSnapshot
   return cursor.snapshot(() => terminal.snapshot());
 }
 
+/** A native render generation; local resize/scroll/cursor changes cannot advance it. */
+export function currentRenderGeneration(terminal: ElwoodTerminal): object | undefined {
+  return currentRenderedFrame(terminal) && tracked.get(terminal.xterm)!.generation;
+}
+
 /** Called inside an owned render callback; subsequent trust reads reuse this snapshot. */
 export function renderedSnapshot(terminal: ElwoodTerminal): TerminalSnapshot {
   return tracked.get(terminal.xterm)?.snapshot(() => terminal.snapshot()) ?? terminal.snapshot();
 }
 
 export class RenderCursor {
+  generation: object = {};
   private receivedRevision = 0;
   private renderedRevision = -1;
   private visible = true;
@@ -57,6 +63,7 @@ export class RenderCursor {
   }
   rendered(revision: number): void {
     this.renderedRevision = revision;
+    this.generation = {};
     this.frame = undefined;
   }
   get settled(): boolean {
