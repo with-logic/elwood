@@ -29,6 +29,7 @@ export class TypedEmitter<M extends Record<string, unknown>> {
   private readonly handlers: Map<EventKey<M>, Listeners>;
   private readonly observerErrors = new ObserverErrors();
   private observerError: ((error: unknown) => void) | undefined;
+  private rejectionError: ((error: unknown) => void) | undefined;
 
   constructor() {
     this.handlers = new Map();
@@ -79,13 +80,15 @@ export class TypedEmitter<M extends Record<string, unknown>> {
     // this round; `live` is consulted so one a prior handler removed is skipped.
     const snapshot = entry.list;
     const onError = this.observerError;
+    const onRejection = onError ?? this.rejectionError;
     let firstError: unknown;
     let failed = false;
     for (const { handler } of snapshot) {
       if (!entry.live.has(handler)) continue;
       try {
         const returned = handler(payload);
-        if (onError && types.isPromise(returned)) this.observerErrors.observe(returned, onError);
+        if (onRejection && types.isPromise(returned))
+          this.observerErrors.observe(returned, onRejection);
       } catch (error) {
         if (!failed) {
           failed = true;
@@ -108,6 +111,17 @@ export class TypedEmitter<M extends Record<string, unknown>> {
       return operation();
     } finally {
       this.observerError = previous;
+    }
+  }
+
+  /** Contain returned native Promise rejections while preserving synchronous throws. */
+  observeRejections<T>(onError: (error: unknown) => void, operation: () => T): T {
+    const previous = this.rejectionError;
+    this.rejectionError = onError;
+    try {
+      return operation();
+    } finally {
+      this.rejectionError = previous;
     }
   }
 

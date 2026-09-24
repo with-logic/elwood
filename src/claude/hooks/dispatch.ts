@@ -7,12 +7,10 @@
 import { createHookDispatcher } from "../../core/hook-dispatch.ts";
 import { isClaudeHookResult } from "../validate/result.ts";
 import type { ClaudeHookEvent, ClaudeHookResult } from "./index.ts";
-import { snapshotClaudeResponse } from "./response-snapshot.ts";
 
 export const requestHook = createHookDispatcher<ClaudeHookEvent, ClaudeHookResult>(
   "claude",
   isClaudeHookResult,
-  snapshotClaudeResponse,
 );
 
 export function isBlock(result: ClaudeHookResult): boolean {

@@ -14,8 +14,11 @@ import {
 } from "./activity/index.ts";
 import { raceHookTimeout } from "./hook-timeout.ts";
 import { inertRecord } from "./inert-record.ts";
+import { snapshotJsonData } from "./json-snapshot.ts";
 import { isRecord } from "./predicates.ts";
 import type { HookErrorEvent } from "./types.ts";
+
+const invalidResponse = Symbol("invalid hook response");
 
 /** A hook event as dispatch sees it: its name is one the `hookError` event can carry. */
 export type DispatchableHookEvent = {
@@ -57,7 +60,6 @@ export type HookDispatcher<Event extends DispatchableHookEvent, Result> = (
 export function createHookDispatcher<Event extends DispatchableHookEvent, Result>(
   agent: ElwoodAgentKind,
   isValidResult: (event: Event, value: unknown) => value is Result,
-  prepareResult: (value: unknown) => unknown = (value) => value,
 ): HookDispatcher<Event, Result> {
   return async (emitter, event, timeoutMs, elwoodSessionId) => {
     const failOpen = (error: Omit<HookErrorEvent, "elwoodSessionId" | "hookEventName">) => {
@@ -82,7 +84,8 @@ export function createHookDispatcher<Event extends DispatchableHookEvent, Result
       }
       if (!hasListener) return inertRecord({ result: undefined, failedOpen: false });
       const response = outcome.value;
-      const result = prepareResult(response?.value);
+      const snapshot = snapshotJsonData(response?.value);
+      const result = snapshot.valid ? snapshot.value : invalidResponse;
       const forbiddenRewrite =
         response?.provenance !== "tool-keyed" && isRecord(result) && "updatedInput" in result;
       if (forbiddenRewrite || !isValidResult(event, result)) {
