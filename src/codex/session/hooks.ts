@@ -76,7 +76,7 @@ export async function dispatchHook(
     // message here, not on the boot-time composer placeholder (C-API-28).
     // The actual ready transition can be deferred by a startup hold; its own
     // boundary retains C-API-42's synchronous fallback and catches rejections.
-    session?.markInitialReadyFromHook();
+    session?.markInitialReadyFromHook(observation);
   }
   observation.run("hook", () => emitter.emit("hook", event));
   observation.run("activity", () =>

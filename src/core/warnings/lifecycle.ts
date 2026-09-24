@@ -35,3 +35,17 @@ export type HookObserverFailedWarning = {
   readonly phase: "hook" | "activity" | "hook_error" | "transcript" | "lifecycle";
   readonly raw: string;
 };
+
+/** One content-free diagnostic for a Codex readiness observer outside a hook (C-API-42). */
+export type InitialReadyObserverFailedWarning = {
+  readonly elwoodSessionId: string;
+  readonly agent: "codex";
+  readonly source: "lifecycle";
+  readonly code: "initial_ready_observer_failed";
+  readonly severity: "warning";
+  readonly message: string;
+  readonly phase: "lifecycle";
+  readonly raw: string;
+};
+
+export type ObserverFailureWarning = HookObserverFailedWarning | InitialReadyObserverFailedWarning;

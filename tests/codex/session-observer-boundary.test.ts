@@ -7,7 +7,11 @@ import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.
 
 afterEach(resetFakes);
 
-test("C-HOOK-22 a throwing observer cannot skip unblocked Codex Stop transcript or readiness", async () => {
+test.each([
+  "hook",
+  "transcript",
+  "lifecycle",
+] as const)("C-HOOK-22 a throwing %s observer cannot skip unblocked Codex Stop transcript or readiness", async (phase) => {
   installFakes();
   const cwd = tempDir();
   const transcript = join(cwd, "codex.jsonl");
@@ -20,12 +24,21 @@ test("C-HOOK-22 a throwing observer cannot skip unblocked Codex Stop transcript 
       warnings.push(`${event.code}:${"phase" in event ? event.phase : ""}`),
     );
     session.on("codex:transcript", (event) => summaries.push(event.summary.kind));
-    session.on("hook", (event) => {
-      if (event.hook_event_name === "Stop") throw new Error("private Stop observer");
-    });
     await becomeReady(session.elwoodSessionId, cwd, { transcript_path: transcript });
     await session.sendPrompt("busy");
     expect(session.status).toBe("running");
+    if (phase === "hook")
+      session.on("hook", (event) => {
+        if (event.hook_event_name === "Stop") throw new Error("private Stop observer");
+      });
+    if (phase === "transcript")
+      session.on("codex:transcript", () => {
+        throw new Error("private transcript observer");
+      });
+    if (phase === "lifecycle")
+      session.on("status", (event) => {
+        if (event.status === "ready") throw new Error("private lifecycle observer");
+      });
     appendFileSync(
       transcript,
       `${JSON.stringify({ type: "response_item", payload: { type: "reasoning" } })}\n`,
@@ -40,7 +53,7 @@ test("C-HOOK-22 a throwing observer cannot skip unblocked Codex Stop transcript 
     expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
     expect(summaries).toEqual(["reasoning"]);
     expect(session.status).toBe("ready");
-    expect(warnings).toEqual(["hook_observer_failed:hook"]);
+    expect(warnings).toEqual([`hook_observer_failed:${phase}`]);
   } finally {
     await session.teardown();
   }

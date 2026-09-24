@@ -67,8 +67,10 @@ are consumed without delaying the hook reply; warning delivery failures do not
 recurse (C-HOOK-22). The same boundary covers bridge error notifications.
 The one-shot initial-ready transition retains its separate C-API-42 fallback
 warning and queue-release guarantee for synchronous listener throws. Returned
-status/activity observer Promise rejections use the bounded lifecycle warning
-sink without delaying readiness or the hook reply.
+status/activity observer Promise rejections share the enclosing hook boundary
+when readiness fires within `SessionStart`; standalone resume-composer or deadline
+readiness instead reports `initial_ready_observer_failed`. Neither delays
+readiness or the hook reply.
 
 Decision note: Codex `PreToolUse` and `PermissionRequest` both produce
 event-specific JSON under `hookSpecificOutput`, but they do not use the same
