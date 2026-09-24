@@ -114,7 +114,7 @@ export class ControlQueue extends ControlQueueState {
       this.drain();
       return;
     }
-    this.queue.splice(index, 1);
+    this.removeQueued(index);
     const around = this.admissions.takeWrapper(operation, this.aroundOperation);
     if (overtakesReadiness(operation)) this.bypassable -= 1;
     this.inFlight = operation;

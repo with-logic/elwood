@@ -26,12 +26,16 @@ export abstract class ControlQueueState {
   protected readonly stoppedError: ControlQueueError;
   protected readonly admissions: ControlAdmissions;
   private readonly loopHolds = new Set<object>();
+  private blockedThrough = 0;
 
   protected constructor(stoppedError: ControlQueueError, admit?: AdmitOperation) {
     this.stoppedError = stoppedError;
     this.admissions = new ControlAdmissions(
       admit,
-      () => this.drain(),
+      () => {
+        this.blockedThrough = 0;
+        this.drain();
+      },
       (op, error) => this.cancelOperation(op, error),
     );
   }
@@ -40,8 +44,12 @@ export abstract class ControlQueueState {
   holdLoops(): () => void {
     const hold = {};
     this.loopHolds.add(hold);
+    this.blockedThrough = 0;
     return () => {
-      if (this.loopHolds.delete(hold)) this.drain();
+      if (this.loopHolds.delete(hold)) {
+        this.blockedThrough = 0;
+        this.drain();
+      }
     };
   }
 
@@ -52,29 +60,37 @@ export abstract class ControlQueueState {
         : nextDispatchIndex(this.queue, this.ready, this.bypassable);
     // A parked reservation blocks later turn input, but independent controls may
     // pass it. An admitted loop also keeps its place ahead of a later caller hold.
-    let reservedBefore = false;
-    return this.queue.findIndex((operation) => {
+    // Appending cannot unblock the already scanned prefix. Eligibility changes
+    // and removals invalidate it; each blocked append is otherwise checked once.
+    let reservedBefore = this.blockedThrough > 0;
+    for (let index = this.blockedThrough; index < this.queue.length; index += 1) {
+      const operation = this.queue[index] as QueuedOperation;
       const admitted = this.admissions.has(operation);
       reservedBefore ||= admitted;
-      return (
+      if (
         !this.admissions.waiting(operation) &&
         (!reservedBefore ||
           admitted ||
           !controlOperationTraits[operation.kind].reportsCallerSubmission) &&
         (!this.loopHolds.size || operation.origin.kind !== "loop" || admitted) &&
         (this.ready || overtakesReadiness(operation))
-      );
-    });
+      )
+        return index;
+    }
+    this.blockedThrough = this.queue.length;
+    return -1;
   }
 
   markReady(): void {
     if (this.closed) return;
+    this.blockedThrough = 0;
     this.everReady = this.ready = true;
     this.readinessEpoch += 1;
     this.drain();
   }
 
   suspendReadiness(): void {
+    this.blockedThrough = 0;
     this.ready = false;
     this.readinessEpoch += 1;
   }
@@ -115,6 +131,11 @@ export abstract class ControlQueueState {
     });
   }
 
+  protected removeQueued(index: number): void {
+    this.blockedThrough = 0;
+    this.queue.splice(index, 1);
+  }
+
   protected settle(operation: QueuedOperation, finish: () => void): void {
     if (this.inFlight !== operation) return;
     this.inFlight = undefined;
@@ -148,7 +169,7 @@ export abstract class ControlQueueState {
   private cancelOperation(operation: QueuedOperation, error: Error): void {
     const index = this.queue.indexOf(operation);
     if (index >= 0) {
-      this.queue.splice(index, 1);
+      this.removeQueued(index);
       if (overtakesReadiness(operation)) this.bypassable -= 1;
       this.cancellation.remove(operation);
       this.admissions.cancel(operation, error);

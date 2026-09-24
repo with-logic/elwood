@@ -85,17 +85,32 @@ test.each([
   "close",
 ])("C-LOOP-08 admission %s rejects only its queued operation", async (kind) => {
   const gate = Promise.withResolvers<void>();
-  const { queue, writes } = fixture(() => {
-    if (kind === "throw") throw new Error("admission failed");
+  const failure = new Error("admission failed");
+  let signal: AbortSignal | undefined;
+  const { queue, writes } = fixture((origin, lifetime) => {
+    if (origin.kind !== "loop") return undefined;
+    signal = lifetime;
+    if (kind === "throw") throw failure;
     return { ready: gate.promise, run: (work) => work() };
   });
   const pending = queue.send("loop", "message", undefined, loop);
+  const follower = queue.send("follower", "message");
   void pending.catch(() => undefined);
+  void follower.catch(() => undefined);
   if (kind === "close") queue.close();
-  gate.reject(new Error("admission failed"));
+  gate.reject(failure);
   void gate.promise.catch(() => undefined);
-  await expect(pending).rejects.toThrow(kind === "close" ? "closed" : "admission failed");
-  expect(writes).toEqual([]);
+  if (kind === "close") {
+    await expect(pending).rejects.toThrow("closed");
+    await expect(follower).rejects.toBe(signal?.reason);
+    expect(writes).toEqual([]);
+  } else {
+    await expect(pending).rejects.toBe(failure);
+    expect(signal?.reason).toBe(failure);
+    await follower;
+    expect(writes).toEqual(["follower"]);
+  }
+  expect(signal?.aborted).toBe(true);
   queue.close();
 });
 
