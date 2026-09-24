@@ -61,6 +61,7 @@ test.each([
   expect(admissions.prepare(op)).toBe("waiting");
   expect(admissions.prepare(op)).toBe("waiting");
   expect(admit).toHaveBeenCalledTimes(1);
+  expect(admit).toHaveBeenCalledWith(op.origin, queued, op.kind);
   expect(admissions.size).toBe(1);
   expect(admissions.has(op)).toBe(true);
   expect(admissions.waiting(op)).toBe(true);

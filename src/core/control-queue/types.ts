@@ -80,8 +80,10 @@ export type ControlAdmission = {
 /**
  * The signal owns queued admission and aborts on cancellation, close, or setup failure.
  * Once run starts, its operation signal takes over; admission readiness is not completion.
+ * Kind distinguishes turn input from independent controls when reserving order.
  */
 export type AdmitOperation = (
   origin: ControlSubmissionOrigin,
   signal: AbortSignal,
+  kind: ControlOperationKind,
 ) => ControlAdmission | undefined;
