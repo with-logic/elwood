@@ -22,8 +22,10 @@ Explicitly retained pages stay alive through delivery and cache eviction until t
 owner releases them, while current/outgoing pose owners remain protected.
 
 Sprite decoder requests may carry an abort signal. Cancellation rejects the
-request promptly, skips worker requests that have not started decoding, and
+request promptly, skips requests that have not started decoding, and
 never falls back to another decoder. The internal worker protocol pairs decode
-request IDs with cancellation messages. In-flight browser bitmap decoding cannot
-be interrupted; its eventual image is released, without terminating the worker
-or cancelling other requests. Settled requests remove their abort listeners.
+request IDs with cancellation messages and completion acknowledgements. The page
+owns the waiting queue and sends one request at a time; aborting the active
+request does not release that physical slot until the worker replies. In-flight
+browser bitmap decoding cannot be interrupted; its eventual image is released,
+without terminating the worker or cancelling other requests. Settled requests remove their abort listeners.
