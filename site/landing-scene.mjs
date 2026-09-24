@@ -1,4 +1,5 @@
 /** Renders the interactive robot and tether (PRD §13; docs/design/landing.md). */
+import { AutomaticPreparation } from "./autonomy/preparation.mjs";
 import { Autonomy, NO_INPUT } from "./autonomy.mjs";
 import { gameAssetUrl } from "./game-assets.mjs";
 import { mirroredPose } from "./rotation.mjs";
@@ -23,9 +24,11 @@ export class LandingScene {
     this.world = new World();
     this.bank = new SpriteBank((error) => onError?.(error));
     this.world.canRender = (name, index) => !!this.bank.frame(name, index);
+    this.automaticPreparation = new AutomaticPreparation(this);
     this.director = new Autonomy({
-      ready: (name) => this.bank.ensureEntryPage(name),
-      fits: (name) => this.performanceFits(name),
+      ensureDeliveryReady: (name, task) => this.automaticPreparation.ensureDeliveryReady(name, task),
+      fits: (name, _world, task) => this.performanceFits(name, task),
+      onTaskEnd: (task) => this.automaticPreparation.cancel(task),
     });
     this.onReady = onReady;
     this.onPaint = onPaint;
@@ -144,12 +147,13 @@ export class LandingScene {
     }
     return false;
   }
-  performanceFits(name) {
+  performanceFits(name, task) {
     const clip = this.bank.clips.get(name);
     const p = this.world.player;
     const cfg = this.config;
     if (!clip) {
-      this.bank.ensureMetadata(name);
+      if (task) this.automaticPreparation.requestMetadata(name, task);
+      else this.bank.ensureMetadata(name);
       return null;
     }
     const unit = HEIGHT / 384;
@@ -270,6 +274,7 @@ export class LandingScene {
     if (this.ready) this.bank.cancelPreparation();
   }
   cancelRequest() {
+    this.director.task = null;
     this.pressed = NO_INPUT;
     this.invalidateRequest();
   }

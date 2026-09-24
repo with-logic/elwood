@@ -74,6 +74,14 @@ export class SpriteBank {
     } finally { preparationLease?.abort(); }
   }
 
+  /** Automatic preparation waits until explicit retry clears each actual failed asset. */
+  hasAnimationFailure(name) {
+    const dependencies = ["idle", "rotation", name];
+    return [...this.loads.failed].some((key) =>
+      dependencies.some((dependency) => key === dependency || key.startsWith(`${dependency}/`)),
+    );
+  }
+
   /** Resolves the complete clip, null on cancellation/teardown, or rejects an asset failure. */
   prepareAnimation(name) {
     if (this.disposed) return Promise.reject(new Error("Sprite bank is disposed."));
