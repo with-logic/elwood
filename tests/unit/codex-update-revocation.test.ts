@@ -21,7 +21,7 @@ test("C-CODEX-12 ambiguity permanently revokes a captured predicate until fresh 
   expect(tracker.currentGeneration).toBe(revoked);
   expect(original(options)).toBe(false);
   expect(tracker.currentFramePredicate()(options)).toBe(false);
-  expect(tracker.hasLaterAppearance(generation)).toBe(true);
+  expect(tracker.hasSupersedingGeneration(generation)).toBe(true);
   tracker.observe(update);
   expect(original(update)).toBe(false);
   expect(tracker.currentFramePredicate()(options)).toBe(true);

@@ -15,6 +15,7 @@ back each entry are listed in `prd/14-conformance.md`.
 - Recognize narrow native Codex update dialogs and withhold choices when numbered
   scrollback or replacement text makes the current option block ambiguous. Revoked
   attempts stay cancelled; fresh banner evidence is required before answering again.
+- Keep Codex update retries revoked after unknown or blank replacement frames until fresh banner evidence appears; late writes cannot report an answer for a superseded dialog.
 
 - Recognize Claude 2.1.281's half-circle working title, keeping active turns and
   trust holds from appearing idle while the input composer remains visible.

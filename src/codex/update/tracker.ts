@@ -1,4 +1,5 @@
 /** Tracks native update generations for bounded automation (PRD §5.5, C-CODEX-12). */
+import { codexComposerClearance } from "../screen/clearance.ts";
 import { updateDialogOptions, updateScreenBanner } from "./layout.ts";
 import { codexUpdatePromptVisible, isSafeUpdateContinuation } from "./recognition.ts";
 
@@ -15,7 +16,7 @@ export class CodexUpdatePromptTracker {
   }
 
   /** A replacement or ambiguity retires the attempt; its own clear is only `generation + 1`. */
-  hasLaterAppearance(generation: number): boolean {
+  hasSupersedingGeneration(generation: number): boolean {
     return this.generation > generation + 1;
   }
 
@@ -39,7 +40,11 @@ export class CodexUpdatePromptTracker {
       if (!validLayout) this.requiresBanner = true;
       this.continuationEligible = validLayout && !this.requiresBanner;
     } else if (!(this.active && this.continuationEligible && isSafeUpdateContinuation(frameText))) {
-      if (this.active) this.generation += 1;
+      if (this.active) {
+        const cleared = codexComposerClearance(frameText);
+        this.generation += cleared ? 1 : 2;
+        if (!cleared) this.requiresBanner = true;
+      }
       this.active = false;
     }
     return this.active;
