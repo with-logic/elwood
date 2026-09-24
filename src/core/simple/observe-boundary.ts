@@ -21,10 +21,21 @@ export type BoundarySession = {
   on(event: "hook", handler: (event: TurnBoundaryHook) => void): Unsubscribe;
 };
 
+export type BoundaryOwnership = {
+  readonly accepted: () => boolean;
+  readonly ownsHook: (event: TurnBoundaryHook) => boolean;
+  readonly ownsActivity: (event: ElwoodActivityEvent) => boolean;
+};
+
 /** Passive observation: the caller owns submission; this never sends or replays input. */
-export function observeTurnBoundary(session: BoundarySession, closing: AbortSignal) {
+export function observeTurnBoundary(
+  session: BoundarySession,
+  closing: AbortSignal,
+  ownership?: BoundaryOwnership,
+) {
   const gate = gateForTurn({});
   let started = false;
+  let ownedStop = false;
   let sawReady = false;
   const boundary = new TurnBoundary(() => {
     gate.dispose();
@@ -34,7 +45,7 @@ export function observeTurnBoundary(session: BoundarySession, closing: AbortSign
     closing.removeEventListener("abort", onClosing);
   });
   const ready = () => {
-    if (!started) return;
+    if (!started || (ownership && !ownedStop)) return;
     sawReady = true;
     gate.observeReady();
     boundary.armDrain();
@@ -44,6 +55,7 @@ export function observeTurnBoundary(session: BoundarySession, closing: AbortSign
     boundary.reach();
   };
   const offActivity = session.on("activity", (event) => {
+    if (ownership && !(ownership.accepted() && ownership.ownsActivity(event))) return;
     const content = toTurnEvent(event);
     if (content) {
       started = true;
@@ -53,11 +65,13 @@ export function observeTurnBoundary(session: BoundarySession, closing: AbortSign
     if (boundary.draining) boundary.armDrain();
   });
   const offHook = session.on("hook", (event) => {
+    if (ownership && !(ownership.accepted() && ownership.ownsHook(event))) return;
+    ownedStop = true;
     const signal = defaultBoundarySignal(event);
     gate.expectText(boundaryExpectation(signal));
     if (signal !== undefined) {
       started = true;
-      if (session.status === "ready") ready();
+      if (!ownership && session.status === "ready") ready();
     }
   });
   const offStatus = session.on("status", ({ status }) => {
@@ -84,5 +98,7 @@ export function observeTurnBoundary(session: BoundarySession, closing: AbortSign
       if (closing.aborted) throw elwoodError("session_not_running", "Session is closing.");
     }),
     discard,
+    /** Fresh classifier confirmation; owned mode still requires its assigned Stop first. */
+    confirmIdle: ready,
   };
 }
