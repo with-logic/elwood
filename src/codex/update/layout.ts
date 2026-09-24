@@ -44,7 +44,14 @@ function parseOptionBody(body: readonly string[], hasBanner: boolean) {
 }
 
 function wrappedUpdateAction(previous: string, row: string): boolean {
-  return /Update now \(runs `[^`]*$/i.test(previous) && /^ {4,}\S/.test(row);
+  const action = previous.match(/Update now \(runs `[^`]*$/)?.[0];
+  const nativeAction =
+    "Update now (runs `sh -c 'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh'`)";
+  return (
+    action !== undefined &&
+    /^ {4,}\S/.test(row) &&
+    nativeAction.startsWith(`${action} ${row.trim()}`)
+  );
 }
 
 function updateHeaderRow(row: string): boolean {

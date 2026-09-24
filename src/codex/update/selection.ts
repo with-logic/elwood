@@ -6,8 +6,10 @@ export const codexUpdateOptionPattern = /continue\s*without\s*updat|skip|not\s*n
 export const codexUpdateActionPattern = /update\s+now/i;
 
 /** Initial dispatch and retries must never select a skip-shaped row before the action. */
-export function safeUpdateOption(frameText: string): NumberedOption | undefined {
-  const options = updateDialogOptions(frameText) ?? [];
+export function safeUpdateOption(
+  frameText: string,
+  options: readonly NumberedOption[] = updateDialogOptions(frameText) ?? [],
+): NumberedOption | undefined {
   const actionIndex = options.findIndex((option) => codexUpdateActionPattern.test(option.label));
   const candidates = actionIndex < 0 ? options : options.slice(actionIndex + 1);
   return candidates.find(

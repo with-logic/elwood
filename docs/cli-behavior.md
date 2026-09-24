@@ -960,8 +960,9 @@ The banner begins with `✨` and a thin space. A release-notes link precedes the
 options. The `Update now` install command wraps onto an indented continuation
 row; `Press enter to continue` follows the option block. The parser accepts those
 observed rows while rejecting numbered scrollback before the banner and unknown
-text after the choices. Arbitrary indented replacement text is not a wrapped
-safe choice.
+text after the choices. Wrapped command fragments must form a prefix of the
+captured `sh -c 'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh'`
+action. Arbitrary indented replacement text is not a command continuation or safe choice.
 
 These captures prove native renderer layout under controlled cached metadata,
 not an update execution or a genuine bannerless repaint. The banner remained
@@ -970,8 +971,7 @@ proofs are separate constructed evidence; these fixtures alone do not prove
 queued-input suppression through a live Elwood session.
 
 
-The accompanying real-session proof (`tests/e2e/codex-native-update.e2e.ts`)
-passed on 2026-09-23: one test, one pass, no skips. It verified the pinned binary's
+A controlled real-session probe passed on 2026-09-23: one test, one pass, no skips. It verified the pinned binary's
 version and login status, then started Elwood with normal automatic skip handling
 and a queued caller message. At 100×6 and 100×3, Elwood stayed `blocked` and emitted
 `codex-update-prompt` attention. Neither automation nor the queued message attempted

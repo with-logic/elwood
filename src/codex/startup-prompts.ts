@@ -120,7 +120,8 @@ export class CodexStartupPromptResponder {
     // update appearance, so generation latching and re-arming are unaffected.
     const noTrustGate = (frame: string) => !trustGateVisible(frame, "codex");
     if (onUpdateScreen && this.skipGeneration !== generation && noTrustGate(screenText)) {
-      const option = safeUpdateOption(screenText)?.number ?? null;
+      const parsed = this.updatePrompt.classify(screenText);
+      const option = safeUpdateOption(screenText, parsed.options ?? [])?.number ?? null;
       if (option && this.updatePrompt.currentFramePredicate()(screenText)) {
         // Latch this appearance before writing; rejection can release the latch
         // for a later frame, while success requires observed clearance (C-CODEX-17).

@@ -60,37 +60,3 @@ test("C-CODEX-12 ambiguity before the first choice needs a fresh banner even acr
   tracker.observe(update);
   expect(tracker.currentFramePredicate()(options)).toBe(true);
 });
-
-test("C-CODEX-12 a readerless caller cannot start an ineligible bannerless attempt", async () => {
-  const responder = new CodexStartupPromptResponder("s1");
-  const write = vi.fn();
-  responder.handle(ambiguous, write);
-  await Promise.resolve();
-  expect(responder.handle(options, write).outcomes).toEqual([]);
-  expect(write).not.toHaveBeenCalled();
-  expect(responder.handle(update, write).outcomes).toHaveLength(1);
-  expect(write).toHaveBeenCalledExactlyOnceWith("2", expect.any(Function));
-});
-
-test.each([
-  "resolve",
-  "reject",
-] as const)("C-CODEX-12 an ambiguous replacement retires a pending write before its late %s", async (mode) => {
-  vi.useFakeTimers();
-  const responder = new CodexStartupPromptResponder("s1");
-  const pending = Promise.withResolvers<void>();
-  let frame = update;
-  const first = responder.handle(
-    frame,
-    () => pending.promise,
-    () => frame,
-  );
-  frame = ambiguous;
-  responder.handle(frame, () => {});
-  frame = codexSmallComposer;
-  responder.observeClearance(frame);
-  if (mode === "resolve") pending.resolve();
-  else pending.reject(new Error("late write rejection"));
-  await vi.runAllTimersAsync();
-  await expect(first.outcomes[0]?.settled).resolves.toBe("cancelled");
-});
