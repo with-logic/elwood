@@ -988,3 +988,10 @@ counted before interception, so preventing delivery cannot hide a duplicate.
 This establishes native acceptance/work and physical write counts, not successful
 model output or prompt-to-hook correlation. The copied Codex credentials and
 both native processes were cleaned up after the run.
+
+After startup/resume working-frame suppression was added, the same version-pinned
+test passed again: 2 tests, 2 passes, 0 failures, 0 skips. Each adapter again
+attempted and delivered one Enter and emitted one submission hook; observed
+working frames were 4 for Claude and 62 for Codex. This cold-start native run
+checks physical writes and native evidence. Startup/resume replay exclusion is
+covered separately by real-session fake-PTY regressions, not a native resume run.
