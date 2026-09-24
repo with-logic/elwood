@@ -10,6 +10,7 @@ import type { BridgeProcessResult } from "../../bridge/types.ts";
 import * as activity from "../../core/activity/index.ts";
 import { freezeHookEvent } from "../../core/freeze-hook-event.ts";
 import { hookObservationBoundary } from "../../core/hook-observation.ts";
+import { withStopInput } from "../../core/stop-input.ts";
 import type { TurnStateWatcher } from "../../core/turn-state.ts";
 import type { ClaudeEventMap, HookErrorEvent, StartClaudeOptions } from "../../core/types.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
@@ -42,49 +43,57 @@ export function buildClaudeHookHandler(
   return async (input: unknown): Promise<BridgeProcessResult> => {
     const event = freezeHookEvent(normalizeClaudeHookEvent(input));
     const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "claude");
-    if (event.hook_event_name === "SessionStart")
-      deps.getSession()?.rememberClaudeSessionId(event.session_id);
-    observation.run("transcript", () => deps.observeHookTranscript(event));
-    observation.run("hook", () => emitter.emit("hook", event));
-    observation.run("activity", () =>
-      emitter.emit("activity", activity.activityFromClaudeHook(record.elwoodSessionId, event)),
-    );
-    const outcome = await requestHook(
+    return await withStopInput(
       {
-        hasListeners: (name) => emitter.hasListeners(name),
-        requestWithProvenance: (name, payload) => emitter.requestWithProvenance(name, payload),
-        emit: (name, payload) =>
-          observation.run(name === "hookError" ? "hook_error" : "activity", () =>
-            emitter.emit(name, payload),
-          ),
+        hookName: event.hook_event_name,
+        session: deps.getSession() ?? record,
       },
-      event,
-      options.hookTimeoutMs ?? 25_000,
-      record.elwoodSessionId,
-    );
-    const serialized = serializeHookResult(event.hook_event_name, outcome.result);
-    const blocked = isBlock(outcome.result);
-    observation.run("activity", () =>
-      emitter.emit(
-        "activity",
-        activity.activityFromHookResult(
-          "claude",
+      async () => {
+        if (event.hook_event_name === "SessionStart")
+          deps.getSession()?.rememberClaudeSessionId(event.session_id);
+        observation.run("transcript", () => deps.observeHookTranscript(event));
+        observation.run("hook", () => emitter.emit("hook", event));
+        observation.run("activity", () =>
+          emitter.emit("activity", activity.activityFromClaudeHook(record.elwoodSessionId, event)),
+        );
+        const outcome = await requestHook(
+          {
+            hasListeners: (name) => emitter.hasListeners(name),
+            requestWithProvenance: (name, payload) => emitter.requestWithProvenance(name, payload),
+            emit: (name, payload) =>
+              observation.run(name === "hookError" ? "hook_error" : "activity", () =>
+                emitter.emit(name, payload),
+              ),
+          },
+          event,
+          options.hookTimeoutMs ?? 25_000,
           record.elwoodSessionId,
-          event.hook_event_name,
-          outcome.result,
-          outcome.failedOpen,
-        ),
-      ),
+        );
+        const serialized = serializeHookResult(event.hook_event_name, outcome.result);
+        const blocked = isBlock(outcome.result);
+        observation.run("activity", () =>
+          emitter.emit(
+            "activity",
+            activity.activityFromHookResult(
+              "claude",
+              record.elwoodSessionId,
+              event.hook_event_name,
+              outcome.result,
+              outcome.failedOpen,
+            ),
+          ),
+        );
+        if (event.hook_event_name === "InstructionsLoaded")
+          observation.run("lifecycle", () => ready.mark());
+        if (event.hook_event_name === "Stop" && !blocked) {
+          observation.run("transcript", () => transcriptWatcher.scan());
+          deps.getTurnWatcher().arm();
+          observation.run("lifecycle", () => deps.getSession()?.submitEvidence("hook_turn_ended"));
+        }
+        observation.report();
+        return serialized;
+      },
     );
-    if (event.hook_event_name === "InstructionsLoaded")
-      observation.run("lifecycle", () => ready.mark());
-    if (event.hook_event_name === "Stop" && !blocked) {
-      observation.run("transcript", () => transcriptWatcher.scan());
-      deps.getTurnWatcher().arm();
-      observation.run("lifecycle", () => deps.getSession()?.submitEvidence("hook_turn_ended"));
-    }
-    observation.report();
-    return serialized;
   };
 }
 

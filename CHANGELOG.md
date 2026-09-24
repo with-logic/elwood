@@ -15,6 +15,8 @@ back each entry are listed in `prd/14-conformance.md`.
 - Bound each session’s queued input to 1,024 outstanding operations and 8 MiB of text; excess submissions reject with `input_queue_full` without writing to the terminal, and oversized personas reject before session startup.
 - Preserve Codex hook input, decisions, and turn bookkeeping when observers mutate, throw, or reject, with one bounded `hook_observer_failed` warning per hook and a distinct lifecycle warning for standalone initial-ready observer rejections.
 
+- Reject late queue-backed input from completed or timed-out Stop callbacks and observers, so it cannot overtake a successor released by that Stop.
+
 - Recover swallowed prompt Enters only from the live idle composer, without mistaking transcript text or working frames for staged input. Fresh empty input ends recovery; unverifiable frames get bounded observation retries.
 
 - Prepare complete automatic landing-page gestures and facing actions before playback, releasing obsolete task loads without interrupting manual input.

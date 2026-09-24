@@ -193,7 +193,7 @@ Each criterion has:
 | C-HOOK-01 | §6.1 | Generated Claude settings include bridge handlers for every supported Claude hook event. |
 | C-HOOK-02 | §6.2 | Hook bridge invocations route to the correct Elwood session using session-scoped identity. |
 | C-HOOK-03 | §6.3 | A hook event with no registered parent handler returns no decision to Claude. |
-| C-HOOK-04 | §6.3 | A timed-out hook handler returns no decision to Claude and emits `hookError`. |
+| C-HOOK-04 | §6.3 §7A.2 | A timed-out hook handler returns no decision and emits `hookError`. Finalizing Stop expires same-runtime-instance queue-backed input admission from its registered handler and hook-scoped observers of `hook`, `activity`, `hookError`/`hook_error`, and `hook_observer_failed`; late raw-session or lazy-facade queue-backed calls reject with `wait_timeout` before image capture, while prior admissions, unrelated callers/sessions (even with a reused Elwood ID), non-Stop hooks, raw keys, and persistent transcript polling remain unaffected. |
 | C-HOOK-05 | §6.3 | A throwing/rejecting hook handler returns no decision to Claude and emits `hookError`. |
 | C-HOOK-06 | §6.3 | An invalid handler result returns no decision to Claude and emits `hookError`. |
 | C-HOOK-07 | §6.4 | Hook IPC input is runtime-validated before dispatch to parent handlers. |

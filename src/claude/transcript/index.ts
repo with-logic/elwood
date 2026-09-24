@@ -5,6 +5,7 @@
  * reads are bounded, per-path, no replay.
  */
 
+import { outsideStopInput } from "../../core/stop-input.ts";
 import { TranscriptCursor } from "./cursor.ts";
 import type { ChunkBudget, DrainContext } from "./drain.ts";
 import { drainToBudget, newTerminalBudget } from "./drain.ts";
@@ -162,9 +163,11 @@ export class ClaudeTranscriptWatcher {
     // scanCursor can throw a listener error after the poll's await, which on the
     // timer path would become an unhandled rejection; the catch stops the watcher
     // and routes the failure (non-throwing recovery).
-    this.interval = setInterval(() => {
-      void this.poll().catch((error) => this.recoverFromPollError(error));
-    }, this.pollIntervalMs);
+    this.interval = outsideStopInput(() =>
+      setInterval(() => {
+        void this.poll().catch((error) => this.recoverFromPollError(error));
+      }, this.pollIntervalMs),
+    );
     this.interval.unref?.();
   }
 

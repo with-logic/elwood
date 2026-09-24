@@ -82,6 +82,19 @@ If a handler times out, throws, rejects, disconnects, or returns an invalid
 runtime value, Elwood returns no decision to Claude and emits `hookError` to the
 parent app.
 
+When a `Stop` result is finalized (normal completion, timeout, or other fail-open),
+its registered handler and hook-scoped observers of `hook`, `activity`,
+`hookError`/`hook_error`, and `hook_observer_failed` diagnostics lose authority
+in their async continuations to admit new queue-backed input to that same live session.
+Later `sendPrompt`, `sendMessage`, or `sendGuidance` calls from that context reject with
+`wait_timeout` before image capture, attachment, or queue admission, including the
+lazy session facade. The boundary identifies the live runtime instance, so another
+adapter or state directory may reuse the same Elwood ID without sharing authority.
+Already admitted input remains valid; the bridge does not wait for unawaited observers
+or timed-out user code. Unrelated caller contexts, other sessions, non-Stop hooks,
+raw keys, and independent non-turn controls are unaffected. Internal queue
+notifications and persistent transcript polling do not inherit this authority.
+
 Fail-open does not mean silent. `hookError` must include:
 
 - `elwoodSessionId`
