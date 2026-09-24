@@ -28,7 +28,7 @@ export function emptyUpdateEvidence(): CodexUpdateAppearanceEvidence {
 }
 
 export function bannerContradictsAppearance(
-  evidence: CodexUpdateAppearanceEvidence,
+  evidence: Pick<CodexUpdateAppearanceEvidence, "observedBanner">,
   frameText: string,
 ): boolean {
   return (
