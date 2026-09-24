@@ -12,6 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Keep scheduled loop hooks and trailing transcript output out of later ergonomic
+  caller turns, including callers arriving during loop staging. Successive loops
+  wait for predecessor drain without blocking model controls; cancelling a waiting
+  successor promptly releases its queued submission.
+
 - Discard expired automatic landing-page actions before readiness checks, preventing late assets from triggering an obsolete gesture or facing change.
 - Reuse decoded idle sheets across landing-page actions instead of repeatedly fetching and decoding them after playback changes.
 
