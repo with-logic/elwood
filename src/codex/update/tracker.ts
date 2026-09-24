@@ -1,6 +1,7 @@
 /** Tracks native update generations for bounded automation (PRD §5.5, C-CODEX-12). */
 import type { TrustClearance } from "../../core/trust/clearance.ts";
 import { codexComposerClearance } from "../screen/clearance.ts";
+import { bannerContradictsAppearance } from "./evidence.ts";
 import {
   codexUpdatePromptVisible,
   isSafeUpdateContinuation,
@@ -9,6 +10,7 @@ import {
 
 /** Tracks update eligibility separately from the session’s retained input hold. */
 export class CodexUpdatePromptTracker {
+  private banner = { observedBanner: "" };
   private active = false;
   private generation = 0;
   private requiresBanner = false;
@@ -40,8 +42,14 @@ export class CodexUpdatePromptTracker {
   observe(frameText: string): boolean {
     // Missing classification cannot lend a provisional clear to another frame.
     if (this.pendingClearance) this.observeClearance(false);
+    if (this.active && bannerContradictsAppearance(this.banner, frameText)) {
+      this.generation += 1;
+      this.active = false;
+      this.banner = { observedBanner: "" };
+    }
     if (codexUpdatePromptVisible(frameText)) {
       if (!this.active) this.generation += 1;
+      this.banner.observedBanner ||= updateScreenBanner.exec(frameText)?.[0]?.trim() ?? "";
       if (this.requiresBanner && updateScreenBanner.test(frameText)) {
         this.generation += 1;
         this.requiresBanner = false;
@@ -54,6 +62,7 @@ export class CodexUpdatePromptTracker {
         this.pendingClearance = true;
       }
       this.active = false;
+      this.banner = { observedBanner: "" };
       if (!this.deferClearance && this.needsClearance)
         this.observeClearance(this.clearance(frameText));
     }
@@ -76,6 +85,7 @@ export class CodexUpdatePromptTracker {
       this.active &&
       !this.requiresBanner &&
       this.generation === generation &&
+      !bannerContradictsAppearance(this.banner, frameText) &&
       (codexUpdatePromptVisible(frameText) || isSafeUpdateContinuation(frameText));
   }
 }

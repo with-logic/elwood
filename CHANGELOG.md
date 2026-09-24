@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Treat a changed Codex update version banner as a new appearance, cancelling old retries and allowing a fresh bounded skip attempt.
+
 - Keep Codex update retries revoked after unknown or blank replacement frames until authoritative native composer clearance or fresh banner evidence appears; late writes cannot report an answer for a superseded dialog.
 - Hold scheduled loop delivery through ergonomic caller turns, preventing a due
   loop from accepting or completing a caller prompt that needs recovery.
