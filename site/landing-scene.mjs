@@ -266,6 +266,7 @@ export class LandingScene {
     }
     const queued = this.world.player.queuedAction;
     if (queued?.gesture || queued?.face) this.world.player.queuedAction = null;
+    // Before readiness, boot owns preparation; teardown cancels it through bank.dispose().
     if (this.ready) this.bank.cancelPreparation();
   }
   cancelRequest() {
