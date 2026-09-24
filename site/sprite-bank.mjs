@@ -31,7 +31,7 @@ export class SpriteBank {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const value = await response.json();
         if (this.disposed) throw new Error("Sprite bank is disposed.");
-        validateSpriteClip(value, name);
+        validateSpriteClip(value);
         return value;
       });
       signal.throwIfAborted();

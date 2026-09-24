@@ -3,6 +3,7 @@ import { Autonomy, NO_INPUT } from "./autonomy.mjs";
 import { gameAssetUrl } from "./game-assets.mjs";
 import { mirroredPose } from "./rotation.mjs";
 import { SpriteBank } from "./sprite-bank.mjs";
+import { withSpriteAssetErrorContext } from "./sprite-asset-error.mjs";
 import {
   blendAtSocket,
   positionPose,
@@ -90,9 +91,11 @@ export class LandingScene {
   async boot() {
     if (this.bank.disposed) return;
     try {
-      const response = await fetch(gameAssetUrl("manifest.json"));
-      if (!response.ok) throw new Error("The robot is taking a moment. Refresh to try again.");
-      const manifest = await response.json();
+      const manifest = await withSpriteAssetErrorContext("manifest.json", async () => {
+        const response = await fetch(gameAssetUrl("manifest.json"));
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      });
       const w = this.world;
       Object.assign(w, {
         clips: manifest.clips,
