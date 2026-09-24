@@ -17,8 +17,8 @@ export function readStagedComposer(
   const buffer = terminal.xterm.buffer.active;
   const viewportCursorRow = frame.cursorY + buffer.baseY - buffer.viewportY;
   if (viewportCursorRow >= frame.lines.length) return undefined;
-  // Native placeholders are empty at column two, even if they echo the payload.
-  if (frame.cursorX === 2 && matchesEmptyInput(frame.lines, viewportCursorRow)) return undefined;
+  // Placeholder-shaped input remains ambiguous even with a stale advanced cursor.
+  if (matchesEmptyInput(frame.lines, viewportCursorRow)) return undefined;
   const rows = frame.lines.slice(0, viewportCursorRow + 1);
   const start = rows.findLastIndex(
     (row) => row.startsWith(emptyRow.charAt(0)) && /^[ \u00a0]$/.test(row.charAt(1)),

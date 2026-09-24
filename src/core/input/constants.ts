@@ -7,3 +7,6 @@ export const unsafeWriteRetryMs = 50;
 
 /** Maximum physical recovery Enters after the initial submitting Enter. */
 export const pasteNudgeAttempts = 2;
+
+/** Unknown/unsafe observations share one bounded recovery budget. */
+export const pasteObservationLimit = 4;

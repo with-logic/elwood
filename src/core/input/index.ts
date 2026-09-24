@@ -6,18 +6,22 @@
 import type { ControlSubmitMode } from "../control-queue/index.ts";
 import type { ControlSubmitter } from "../control-queue/types.ts";
 import { holdWhileUnsafe, type InputTerminal, throwIfInputAborted, waitForInput } from "./abort.ts";
+import type { EmptyComposerObserver } from "./clear-ack.ts";
 import { requestComposerCleanup, stageComposer, submittedComposer } from "./composer-cleanup.ts";
 import { schedulePasteNudges } from "./paste-nudge.ts";
+
+/** Native adapters prepare one staged-input predicate for each recovery sequence. */
+export type RecoveryComposer = {
+  readonly prepareStaged: (payload: string) => () => boolean;
+  readonly emptyFrame: EmptyComposerObserver;
+};
 
 /** Adapter view of "the paste is still staged in the composer". */
 export type PasteGuard = {
   /** Capture before paste/Enter: watches later native submission activity. */
   readonly captureRecovery?: () => { readonly revoked: () => boolean };
-  readonly snapshot: () => string;
-  /** Receives the sanitized payload that was actually pasted. */
-  readonly staged: (screen: string, payload: string) => boolean;
-  /** Positive completed empty-input token; other observations remain unverifiable. */
-  readonly emptyFrame?: () => object | undefined;
+  /** Reuse a token per completed empty frame; only a later frame gets a new identity. */
+  readonly emptyFrame?: EmptyComposerObserver;
   /**
    * True when a human or automation-owned dialog is on screen. A dialog can
    * appear during the paste-settle window; sending the submitting Enter then
@@ -25,7 +29,14 @@ export type PasteGuard = {
    * Enter is therefore held while this is true and retried once it clears.
    */
   readonly blocked?: () => boolean;
-};
+} & (
+  | Pick<RecoveryComposer, "prepareStaged">
+  | {
+      readonly snapshot: () => string;
+      /** Legacy write-only guards receive the sanitized payload on each observation. */
+      readonly staged: (screen: string, payload: string) => boolean;
+    }
+);
 
 export const commandEnterDelayMs = 150;
 export const pasteSettleDelayMs = 150;

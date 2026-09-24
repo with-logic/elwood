@@ -1,7 +1,8 @@
 /** Session lifetime, input blocking, persistence and cleanup (PRD §5/§8/§9). */
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
 import { ControlQueue } from "../../core/control-queue/index.ts";
-import { type PasteGuard, queuedInputSubmitter } from "../../core/input/index.ts";
+import type { PasteGuard, RecoveryComposer } from "../../core/input/index.ts";
+import { queuedInputSubmitter } from "../../core/input/index.ts";
 import { registerPrivateOutputSecrets } from "../../core/private-output-secrets.ts";
 import { registerTurnLoopHold } from "../../core/simple/loop-hold.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
@@ -43,8 +44,7 @@ export abstract class SessionLifecycle {
   private readonly recovery: PasteRecoveryRevocation;
   protected readonly pasteGuard: PasteGuard = {
     captureRecovery: () => this.recovery.captureRevocationGuard(),
-    snapshot: () => this.terminal.snapshot().text,
-    staged: (screen, payload) => this.recoveryComposer.staged(screen, payload),
+    prepareStaged: (payload) => this.recoveryComposer.prepareStaged(payload),
     emptyFrame: () => this.recoveryComposer.emptyFrame(),
     blocked: () => this.queuedInputBlocked(),
   };
@@ -172,7 +172,7 @@ export abstract class SessionLifecycle {
   readonly beginExitFinalization = () => this.shutdown.beginExitFinalization();
   readonly statusDecisions = (): readonly StatusDecision[] => this.statusEngine.decisions();
   protected abstract emptyComposerFrame(): object | undefined;
-  protected abstract readonly recoveryComposer: Required<Pick<PasteGuard, "staged" | "emptyFrame">>;
+  protected abstract readonly recoveryComposer: RecoveryComposer;
   protected abstract queuedInputBlocked(): boolean;
   protected abstract stopRuntime(): Promise<void>;
   protected abstract emitWarnings(warnings: readonly ElwoodWarningEvent[]): void;

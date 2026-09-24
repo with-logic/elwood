@@ -80,17 +80,22 @@ for (const agent of ["claude", "codex"] as const) {
       const sent = session.sendPrompt("probe prompt");
       await vi.advanceTimersByTimeAsync(200);
       await sent;
+      const frames: Record<typeof state, string> = {
+        hidden: draft,
+        unknown: `${draft}\nUnknown overlay`,
+        consumed: idle,
+        bounded: draft,
+        "bounded-dialog": dialog,
+        raw: draft,
+        working: draft,
+        "pre-ready-working": draft,
+        history: `${caret} ${text}\nPrior answer\n${draft.replace(text, "other draft")}`,
+        "old-empty": idle,
+        "consumed-working": idle,
+      };
       if (state !== "old-empty")
         paint(
-          state.endsWith("dialog")
-            ? dialog
-            : state.startsWith("consumed")
-              ? idle
-              : state === "history"
-                ? `${caret} ${text}\nPrior answer\n${draft.replace(text, "other draft")}`
-                : state === "unknown"
-                  ? `${draft}\nUnknown overlay`
-                  : draft,
+          frames[state],
           state === "hidden" || state === "bounded" || state === "raw",
           state.endsWith("working") ? "⠋ Working" : "Ready",
         );

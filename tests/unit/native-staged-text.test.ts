@@ -93,6 +93,8 @@ for (const agent of ["claude", "codex"] as const) {
         await paint(idle);
         expect(codexTextStaged(terminal, "anything")).toBe(false);
         await paint(idle, "\u001b[28G");
+        expect(codexTextStaged(terminal, "anything")).toBe(false);
+        await paint(idle.replace("› Ask Codex to do anything", "› anything"), "\u001b[11G");
         expect(codexTextStaged(terminal, "anything")).toBe(true);
         expect(codexTextStaged(terminal, " \t\n")).toBe(false);
         const malformed = draft.replace(`${caret} draft`, `${caret} first\nnot indented`);

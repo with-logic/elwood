@@ -19,7 +19,7 @@ export function claudeTextStaged(terminal: ElwoodTerminal): boolean {
 
 export function createClaudeRecoveryComposer(terminal: ElwoodTerminal) {
   return {
-    staged: () => claudeTextStaged(terminal),
+    prepareStaged: () => () => claudeTextStaged(terminal),
     emptyFrame: () => claudeEmptyInputFrame(terminal),
   };
 }
