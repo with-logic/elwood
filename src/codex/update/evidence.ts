@@ -4,7 +4,7 @@
  * choices: disjoint numbering is absence of contradiction, not provenance.
  */
 
-import { numberedOptions } from "../../core/terminal-options.ts";
+import { updateDialogOptions } from "./layout.ts";
 import { updateScreenBanner } from "./recognition.ts";
 
 export type CodexUpdateAppearanceEvidence = {
@@ -92,5 +92,5 @@ export function continuationOptionsAreBound(
 
 /** Version fragments in the recognized banner are not selectable option rows. */
 function updateFrameOptions(frameText: string) {
-  return numberedOptions(frameText.replace(everyUpdateBanner, ""));
+  return updateDialogOptions(frameText) ?? [];
 }

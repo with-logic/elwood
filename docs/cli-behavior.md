@@ -949,6 +949,42 @@ The captured nonempty rows are retained in
 at their original viewport size, with temporary paths replaced by a stable `CAPTURE`
 placeholder. C-API-56, C-TRUST-01, PRD §5.4.
 
+### Native Codex updater layout (2026-09-23)
+
+An authenticated Codex 0.155.1 binary, copied into an isolated `CODEX_HOME`
+standalone-release layout with fresh cached update metadata naming 0.156.1,
+rendered the actual updater without selecting any menu item. Native PTY resize
+captured the full menu at 100×30, banner plus the clipped first action at 100×6,
+banner only at 100×3, and the first safe choice at 100×8. The fixtures in
+`tests/fixtures/codex-0.155.1/update-*.txt` preserve the rendered text.
+
+The banner begins with `✨` and a thin space. A release-notes link precedes the
+options. The `Update now` install command wraps onto an indented continuation
+row; `Press enter to continue` follows the option block. The parser accepts those
+observed rows while rejecting numbered scrollback before the banner and unknown
+text after the choices. Wrapped command fragments must form a prefix of the
+captured `sh -c 'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh'`
+action. Arbitrary indented replacement text is not a command continuation or safe choice.
+
+These captures prove native renderer layout under controlled cached metadata,
+not an update execution or a genuine bannerless repaint. The banner remained
+visible in every captured resize. Adversarial replacement frames and shell-PTY
+proofs are separate constructed evidence; these fixtures alone do not prove
+queued-input suppression through a live Elwood session.
+
+
+A controlled real-session probe passed on 2026-09-23: one test, one pass, no skips. It verified the pinned binary's
+version and login status, then started Elwood with normal automatic skip handling
+and a queued caller message. At 100×6 and 100×3, Elwood stayed `blocked` and emitted
+`codex-update-prompt` attention. Neither automation nor the queued message attempted
+an application write; the queue rejected on shutdown. The PTY interceptor recorded
+attempts before rejecting them, so it could not hide an incorrect selection. Only
+exact native terminal protocol replies were forwarded. `autoupdate: false`
+disabled installation, not startup-menu skipping. The temporary binary, config,
+version metadata, and credential copy were removed after teardown. This proves
+these narrow native layouts under controlled version metadata; it does not prove
+a bannerless continuation, run an updater, or submit a model turn.
+
 ### Empty input while a turn is active (2026-09-23)
 
 Native captures show that empty input and idle-turn clearance are different facts.

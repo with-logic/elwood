@@ -126,7 +126,8 @@ describe("Codex startup prompt retry on rejected write", () => {
 
   test("C-CODEX-17 a REJECTED update-skip write stays retryable and never resolves as answered", async () => {
     const responder = new CodexStartupPromptResponder("s1");
-    const frame = "Update available\n  1. Update now\n  2. Continue without updating";
+    const frame =
+      "Update available! 0.153.3 -> 0.153.4\n  1. Update now\n  2. Continue without updating";
     // The write is rejected: the skip must NOT settle, and its `settled` promise
     // must reject (so the caller warns rather than reporting a false "answered"),
     // leaving the update prompt for a later frame to re-attempt.
