@@ -48,7 +48,7 @@ test.each([
       pty.emitData("\u001b[2J\u001b[H1. Update now\r\n2. Skip");
       await vi.advanceTimersByTimeAsync(300);
       expect(session.status).toBe("blocked");
-      expect(pty.writes).toEqual(["2"]);
+      expect(pty.writes).toEqual([]);
     }
   } finally {
     vi.useRealTimers();
