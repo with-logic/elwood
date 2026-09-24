@@ -75,7 +75,7 @@ test("C-API-56 observation that never completes fails CLOSED once the budget exp
 test("C-CODEX-12 a stale option number is withheld once the settled frame renumbers it", async () => {
   // The key was chosen from a pre-settle frame. A replacement update screen moved the
   // safe choice to 3, so the old "2" now points at a destructive option: withhold it.
-  const renumbered =
+  let renumbered =
     "Update available! 0.149.0 -> 0.150.0\n\u203a 1. Update now\n  2. Reset settings\n  3. Skip";
   const writes: string[] = [];
   let frame = "Update available! 0.148.0 -> 0.149.1\n\u203a 1. Update now\n  2. Skip";
@@ -98,7 +98,11 @@ test("C-CODEX-12 a stale option number is withheld once the settled frame renumb
   );
   expect(await guarded("2")).toBe("withheld");
   expect(writes).toEqual([]);
-  // The number that IS safe on the settled frame still goes out.
+  // Unknown replacement labels withhold every number, including a safe-looking one.
+  expect(await guarded("3")).toBe("withheld");
+  renumbered = "Update available! 0.149.0 -> 0.150.0\n  2. Update now\n  3. Skip";
+  // A complete native replacement still uses its current safe number.
+  expect(await guarded("2")).toBe("withheld");
   expect(await guarded("3")).toBe("written");
   expect(writes).toEqual(["3"]);
 });

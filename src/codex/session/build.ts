@@ -35,7 +35,7 @@ import { writeCodexRuntimeFiles } from "./runtime.ts";
 import { createCodexStartupWarningGate, preflightEvent } from "./startup-warnings.ts";
 import * as transcript from "./transcript.ts";
 import type { CodexEventMap, StartCodexOptions } from "./types.ts";
-import { emitChangedUpdateAttention } from "./update-attention.ts";
+import { emitUpdateAttention } from "./update-attention.ts";
 export type BuildCodexSessionInput = {
   readonly record: SessionRecord;
   readonly stateDir: string;
@@ -145,7 +145,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       warnGate.emitWarnings(result.warnings);
       emitSettledStartup(emitter, "codex", record.elwoodSessionId, result.outcomes, warnGate);
       frameObserver.observe(frame);
-      emitChangedUpdateAttention(emitter, record.elwoodSessionId, result.updateGeneration);
+      emitUpdateAttention(emitter, record.elwoodSessionId, result.updateGeneration);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
     startupOutput.push,

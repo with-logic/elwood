@@ -1,7 +1,7 @@
-/** Changed update banners renew CLI grace without claiming success (PRD §5.4/§5.5). */
+/** Fresh update evidence renews CLI grace without claiming success (PRD §5.4/§5.5). */
 import type { StartupActivityEmitter } from "../../core/startup/automation.ts";
 
-export function emitChangedUpdateAttention(
+export function emitUpdateAttention(
   emitter: StartupActivityEmitter,
   elwoodSessionId: string,
   promptGeneration: number | undefined,

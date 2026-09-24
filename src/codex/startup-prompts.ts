@@ -110,7 +110,7 @@ export class CodexStartupPromptResponder {
     // reauthorization immediately; fresh banner evidence or authoritative native
     // clearance can rearm it. The live observer confirms clearance only after this
     // frame's retained input hold is classified, before queued input can repaint it.
-    const changedBanner = this.updatePrompt.bannerChanged(screenText);
+    const renewUpdateAttention = this.updatePrompt.renewsAttention(screenText);
     const onUpdateScreen = this.updatePrompt.observe(screenText);
     const generation = this.updatePrompt.currentGeneration;
     // A trust gate (held allowlisted candidate or off-allowlist) is never ELIGIBLE for
@@ -119,7 +119,8 @@ export class CodexStartupPromptResponder {
     // update appearance, so generation latching and re-arming are unaffected.
     const noTrustGate = (frame: string) => !trustGateVisible(frame, "codex");
     if (onUpdateScreen && this.skipGeneration !== generation && noTrustGate(screenText)) {
-      const option = safeUpdateOption(screenText)?.number ?? null;
+      const parsed = this.updatePrompt.classify(screenText);
+      const option = safeUpdateOption(screenText, parsed.options ?? [])?.number ?? null;
       if (option && this.updatePrompt.currentFramePredicate()(screenText)) {
         // Latch this appearance before writing; rejection can release the latch
         // for a later frame, while success requires observed clearance (C-CODEX-17).
@@ -147,7 +148,7 @@ export class CodexStartupPromptResponder {
     return {
       warnings: this.newWarnings(screenText),
       outcomes,
-      ...(changedBanner ? { updateGeneration: generation } : {}),
+      ...(renewUpdateAttention ? { updateGeneration: generation } : {}),
     };
   }
 

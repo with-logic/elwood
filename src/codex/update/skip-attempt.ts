@@ -5,6 +5,7 @@ import { trustGateVisible } from "../../core/trust/blocking.ts";
 import type { TrustClearance } from "../../core/trust/clearance.ts";
 import type { TrustWriteResult } from "../../core/trust/responder.ts";
 import { writeCodexUpdateSkip } from "../update-prompt.ts";
+import { safeUpdateOption } from "./selection.ts";
 import type { CodexUpdatePromptTracker } from "./tracker.ts";
 
 type UpdateSkipRequest = {
@@ -56,6 +57,7 @@ export function startCodexUpdateSkip(request: UpdateSkipRequest): UpdateSkipAtte
       written = true;
       answerIfCleared();
     },
+    (frame) => safeUpdateOption(frame, tracker.classify(frame).options),
   ).then(
     (result) => {
       if (retries.signal.aborted) return;

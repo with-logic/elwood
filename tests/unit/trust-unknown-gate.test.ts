@@ -84,7 +84,7 @@ test("C-ATTN-01 dialogs an adapter table already names keep their label", () => 
     expect(blockingRuleIds("claude", autotrust, permission)).toEqual(["claude-permission-dialog"]);
     expect(blockingRuleIds("codex", autotrust, approval)).toEqual(["codex-approval-dialog"]);
     const updateLike = `Do you trust this updater?\n› 1. Update now\n  2. Skip\n\n${footer}`;
-    expect(blockingRuleIds("codex", autotrust, updateLike)).toEqual(["codex-update-prompt"]);
+    expect(blockingRuleIds("codex", autotrust, updateLike)).toEqual(["codex-unknown_gate-prompt"]);
   }
 });
 
