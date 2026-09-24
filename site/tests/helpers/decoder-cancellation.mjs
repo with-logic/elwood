@@ -11,9 +11,11 @@ else delete globalThis.addEventListener;
 
 export const flush = () => new Promise((resolve) => setImmediate(resolve));
 
-export function fixture(t, decode, { local = false, ignoreCancel = false, cancelThrows = false } = {}) {
+export function fixture(t, decode, { local = false, ignoreCancel = false, cancelThrows = false, delayed = false } = {}) {
   const processing = [];
   const sent = [];
+  const requests = [];
+  const replies = [];
   let worker;
   const globals = {
     createImageBitmap: decode,
@@ -28,11 +30,17 @@ export function fixture(t, decode, { local = false, ignoreCancel = false, cancel
           if (cancelThrows) throw new Error("cancellation transport failed");
           if (ignoreCancel) return;
         }
-        processing.push(Promise.resolve(receive({ data })));
+        const deliver = () => processing.push(Promise.resolve(receive({ data })));
+        if (delayed) requests.push(deliver);
+        else deliver();
       }
       terminate() { this.terminated = true; }
     },
-    postMessage: (data) => worker.listeners.get("message")({ data }),
+    postMessage: (data) => {
+      const deliver = () => worker.listeners.get("message")({ data });
+      if (delayed) replies.push(deliver);
+      else deliver();
+    },
   };
   for (const [name, value] of Object.entries(globals)) {
     const original = Object.getOwnPropertyDescriptor(globalThis, name);
@@ -40,7 +48,20 @@ export function fixture(t, decode, { local = false, ignoreCancel = false, cancel
     t.after(() => original ? Object.defineProperty(globalThis, name, original) : delete globalThis[name]);
   }
   const decoder = new SpriteDecoder();
-  return { decoder, worker, sent, drain: () => Promise.all(processing) };
+  const deliver = async (tasks) => {
+    while (tasks.length) { tasks.shift()(); await flush(); }
+  };
+  const transport = async () => {
+    do {
+      await deliver(requests);
+      await flush();
+      await deliver(replies);
+    } while (requests.length || replies.length);
+  };
+  return {
+    decoder, worker, sent, drain: () => Promise.all(processing), transport,
+    requests: () => deliver(requests), replies: () => deliver(replies),
+  };
 }
 
 export function rejection(promise, signal) {

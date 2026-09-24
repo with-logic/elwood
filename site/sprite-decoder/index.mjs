@@ -29,6 +29,8 @@ async function decodeLocally(blob) {
 export class SpriteDecoder {
   #nextId = 0;
   #pending = new Map();
+  #queued = new Set();
+  #active;
   #worker;
   #disposed = false;
 
@@ -38,7 +40,11 @@ export class SpriteDecoder {
       this.#worker = new Worker(new URL("./worker.mjs", import.meta.url), {
         type: "module",
       });
-      this.#worker.addEventListener("message", (event) => this.#receive(event.data));
+      this.#worker.addEventListener("message", (event) => {
+        if (this.#active === event.data.id) this.#active = undefined;
+        this.#receive(event.data);
+        this.#dispatch();
+      });
       this.#worker.addEventListener("error", () => this.#fallbackAll());
       this.#worker.addEventListener("messageerror", () => this.#fallbackAll());
     } catch {
@@ -54,7 +60,7 @@ export class SpriteDecoder {
       const abort = () => {
         this.#take(id)?.reject(signal.reason);
         try {
-          this.#worker?.postMessage({ cancel: id });
+          if (this.#active === id) this.#worker.postMessage({ cancel: id });
         } catch {
           // A broken transport cannot delay cancellation; late images are still closed.
         }
@@ -63,12 +69,23 @@ export class SpriteDecoder {
       this.#pending.set(id, { blob, resolve, reject, local: false, removeAbort });
       signal?.addEventListener("abort", abort, { once: true });
       if (!this.#worker) return this.#decodeLocally(id);
-      try {
-        this.#worker.postMessage({ id, blob });
-      } catch {
-        this.#decodeLocally(id);
-      }
+      this.#queued.add(id);
+      this.#dispatch();
     });
+  }
+
+  #dispatch() {
+    if (!this.#worker || this.#active !== undefined || !this.#queued.size) return;
+    const id = this.#queued.values().next().value;
+    this.#queued.delete(id);
+    this.#active = id;
+    try {
+      this.#worker.postMessage({ id, blob: this.#pending.get(id).blob });
+    } catch {
+      this.#active = undefined;
+      this.#decodeLocally(id);
+      this.#dispatch();
+    }
   }
 
   #receive({ id, image, error, unsupported }) {
@@ -111,6 +128,7 @@ export class SpriteDecoder {
   #take(id) {
     const pending = this.#pending.get(id);
     this.#pending.delete(id);
+    this.#queued.delete(id);
     pending?.removeAbort();
     return pending;
   }
@@ -118,5 +136,7 @@ export class SpriteDecoder {
   #disableWorker() {
     this.#worker?.terminate();
     this.#worker = undefined;
+    this.#active = undefined;
+    this.#queued.clear();
   }
 }
