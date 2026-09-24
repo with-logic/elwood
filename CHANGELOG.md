@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Keep scheduled loop hooks and transcript output out of a later ergonomic caller
+  turn, including when the caller arrives while the loop input is still being written.
+
 - Hold scheduled loop delivery through ergonomic caller turns, preventing a due
   loop from accepting or completing a caller prompt that needs recovery.
 

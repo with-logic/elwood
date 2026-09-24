@@ -12,6 +12,7 @@ import {
 } from "./traits.ts";
 import type {
   AbortableQueueTask,
+  AroundOperation,
   Cancel,
   ControlSendOptions,
   ControlSubmissionOrigin,
@@ -34,12 +35,6 @@ export type {
   ControlSubmissionOrigin,
   ControlSubmitter,
 } from "./types.ts";
-
-/**
- * Await preparation before invoking work once. Its signal cannot revoke work already
- * started: exclusive work owns its dialog until the separate closing lifetime ends.
- */
-type AroundOperation = (work: () => Promise<void>, preparationSignal: AbortSignal) => Promise<void>;
 
 const callerOrigin: ControlSubmissionOrigin = { kind: "caller" };
 
@@ -128,7 +123,7 @@ export class ControlQueue extends ControlQueueState {
           : this.submitWithAttach(operation, traits, workSignal);
       };
       dispatched = this.aroundOperation
-        ? this.aroundOperation(work, this.prepareSignal(workSignal))
+        ? this.aroundOperation(work, this.prepareSignal(workSignal), operation.origin)
         : work();
     } catch (error) {
       this.rollback(operation, priorReady, epoch, toError(error));
