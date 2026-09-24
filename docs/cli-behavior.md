@@ -1036,11 +1036,13 @@ The same `paste-recovery.e2e.ts` proof, extended with the native-working observe
 passed 2 tests with 0 failures and 0 skips on Claude Code 2.1.281 and
 codex-cli 0.156.1. All four cold/resumed phases attempted and delivered exactly
 one Enter and emitted one submission hook over six further seconds. Fresh working
-frames after the physical Enter numbered 3/5 for Claude and 59/53 for Codex.
-Codex resume delivered Enter at 151 ms and reported `user_message` at 1365 ms;
+frames after the physical Enter numbered 7/6 for Claude and 53/40 for Codex.
+Codex resume delivered Enter at 151 ms and reported `user_message` at 2193 ms;
 no recovery attempt occurred before that hook or afterward.
 
 The invalid-model, launch-seam, interception, and cleanup conditions above still
 apply. Hook and working signals coexist in this native proof; deterministic
 regressions separately isolate working revocation, startup/resume exclusion, and
-Stop-before-idle successor recovery.
+Stop-before-idle/repaint successor recovery. The latter requires five consecutive
+quiet composer observations before working evidence can revoke a successor again;
+the deterministic matrix includes a stale working repaint after a brief quiet gap.
