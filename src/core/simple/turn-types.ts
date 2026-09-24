@@ -20,6 +20,7 @@ export type TurnBoundaryHook = {
   readonly hook_event_name?: string;
   readonly last_assistant_message?: string | null;
   readonly prompt?: string;
+  readonly turn_id?: string;
 };
 
 /**
