@@ -1,10 +1,11 @@
 /** Queue lifecycle and cancellation bookkeeping (PRD §5.3/§5.9). */
 
 import { toError } from "../errors.ts";
-import { QueueScanCursor } from "./scan.ts";
+import { ControlAdmissions } from "./admission.ts";
+import { AdmissionScan } from "./admission-scan.ts";
 import type { ControlQueueError } from "./traits.ts";
 import { ControlCancellation, overtakesReadiness } from "./traits.ts";
-import type { Cancel, PendingOperation, QueuedOperation } from "./types.ts";
+import type { AdmitOperation, Cancel, PendingOperation, QueuedOperation } from "./types.ts";
 
 /** Shared mutable state for the serialized control queue. */
 export abstract class ControlQueueState {
@@ -20,10 +21,19 @@ export abstract class ControlQueueState {
   protected readonly cancellation = new ControlCancellation();
   protected readonly stoppedError: ControlQueueError;
   private readonly loopHolds = new Set<object>();
-  protected readonly scan = new QueueScanCursor();
+  protected readonly scan = new AdmissionScan();
+  protected readonly admissions: ControlAdmissions;
 
-  protected constructor(stoppedError: ControlQueueError) {
+  protected constructor(stoppedError: ControlQueueError, admit?: AdmitOperation) {
     this.stoppedError = stoppedError;
+    this.admissions = new ControlAdmissions(
+      admit,
+      () => {
+        this.scan.reset();
+        this.drain();
+      },
+      (operation, error) => this.cancelOperation(operation, error),
+    );
   }
 
   /** Keep due loops behind the ergonomic owner without blocking its own recovery. */
@@ -40,6 +50,8 @@ export abstract class ControlQueueState {
   }
 
   protected nextDispatchIndex(): number {
+    if (this.admissions.size > 0)
+      return this.scan.select(this.queue, this.admissions, this.ready, this.loopHolds.size > 0);
     if (this.ready)
       return this.loopHolds.size > 0
         ? this.scan.findIndex(this.queue, (operation) => operation.origin.kind !== "loop")
@@ -89,6 +101,7 @@ export abstract class ControlQueueState {
     this.submitAbort?.abort(error);
     this.bypassable = 0;
     for (const operation of this.queue.splice(0)) {
+      this.admissions.cancel(operation, error);
       this.cancellation.remove(operation);
       operation.reject(error);
     }
@@ -139,9 +152,12 @@ export abstract class ControlQueueState {
     const index = this.queue.indexOf(operation);
     if (index >= 0) {
       this.takeQueued(index);
+      this.admissions.cancel(operation, error);
       if (overtakesReadiness(operation)) this.bypassable -= 1;
       this.cancellation.remove(operation);
       operation.reject(error);
+      // Admission may fail synchronously while selecting: never recurse through a backlog.
+      queueMicrotask(() => this.drain());
     } else if (operation.run) this.preparationAbort?.abort(error);
     else {
       // Settled operations have no listener; an operation absent from the queue is active.
