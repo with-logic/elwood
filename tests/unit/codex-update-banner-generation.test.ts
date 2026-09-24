@@ -77,10 +77,10 @@ test.each([
     () => pending.promise,
     () => frame,
   );
-  let oldSettlement: string | void;
+  let oldSettlement: string | undefined;
   void old.outcomes[0]?.settled?.then(
     (value) => {
-      oldSettlement = value;
+      oldSettlement = value ?? undefined;
     },
     () => {
       oldSettlement = "rejected";
