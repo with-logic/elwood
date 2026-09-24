@@ -12,6 +12,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Discard expired automatic landing-page actions before readiness checks, preventing late assets from triggering an obsolete gesture or facing change.
 - Reuse decoded idle sheets across landing-page actions instead of repeatedly fetching and decoding them after playback changes.
 
 - Prepare and retain the complete initial idle animation before replacing the landing-page fallback.
