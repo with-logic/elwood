@@ -1,4 +1,4 @@
-/** Accepted input cannot be re-Entered from its cached staged frame (C-API-31). */
+/** Recovery retries without native evidence and stops after a submission hook (C-API-31). */
 import { afterEach, expect, test, vi } from "vitest";
 import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import { startClaude, startCodex } from "../../src/index.ts";

@@ -1,4 +1,4 @@
-/** Native evidence captured before Enter survives asynchronous dispatch (C-API-31). */
+/** Native evidence during a pending first Enter revokes later recovery (C-API-31). */
 import { afterEach, expect, test, vi } from "vitest";
 import { writeQueuedInput } from "../../src/core/input/index.ts";
 import type { ElwoodCommonEventMap } from "../../src/core/types.ts";

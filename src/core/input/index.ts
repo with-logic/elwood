@@ -78,8 +78,8 @@ export function sanitizePasteText(text: string): string {
  * The returned promise resolves once the first submitting Enter has been
  * dispatched (after the settle delay), so the control queue does not drain the
  * next operation into the composer before this prompt has actually been
- * submitted. Bounded recovery re-Enters continue in the background afterwards
- * until queued/raw input or native submission activity revokes recovery ownership.
+ * submitted. Native submission activity ends background recovery without changing
+ * composer cleanup ownership; queued/raw input also revokes recovery authority.
  */
 async function writePastedPrompt(
   terminal: InputTerminal,
@@ -114,7 +114,7 @@ async function writePastedPrompt(
   const nudge = async () => {
     // Decide on the current screen: a dialog may be received but not yet rendered.
     const unsafe = await writeUnsafe(terminal, guard, nudgeSignal);
-    // Queued/raw input and native submission activity revoke recovery ownership.
+    // Queued/raw input and native submission activity revoke recovery authority.
     // Stale nudges must not submit their drafts; staged chips are not prompt-specific.
     if (nudgeSignal?.aborted || recovery?.revoked() || !guard || nudges >= pasteNudgeAttempts)
       return;
