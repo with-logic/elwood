@@ -1,14 +1,22 @@
 /** Contains hook notifications without changing wire decisions or lifecycle (C-HOOK-22). */
-import { activityFromWarning } from "../../core/activity/index.ts";
-import type { ClaudeEventMap } from "../../core/types.ts";
-import type { HookObserverFailedWarning } from "../../core/warnings/lifecycle.ts";
-import type { TypedEmitter } from "../../events/emitter.ts";
+import {
+  activityFromWarning,
+  type ElwoodActivityEvent,
+  type ElwoodAgentKind,
+} from "./activity/index.ts";
+import type { HookObserverFailedWarning } from "./warnings/lifecycle.ts";
 
 type Phase = HookObserverFailedWarning["phase"];
+type ObservationEmitter = {
+  observeErrors<T>(onError: (error: unknown) => void, operation: () => T): T;
+  emit(event: "warning", payload: HookObserverFailedWarning): void;
+  emit(event: "activity", payload: ElwoodActivityEvent): void;
+};
 
 export function hookObservationBoundary(
-  emitter: TypedEmitter<ClaudeEventMap>,
+  emitter: ObservationEmitter,
   elwoodSessionId: string,
+  agent: ElwoodAgentKind,
 ) {
   let failedPhase: Phase | undefined;
   let finished = false;
@@ -31,11 +39,11 @@ export function hookObservationBoundary(
       reported = true;
       const warning: HookObserverFailedWarning = Object.freeze({
         elwoodSessionId,
-        agent: "claude",
+        agent,
         source: "lifecycle",
         code: "hook_observer_failed",
         severity: "warning",
-        message: "A Claude hook notification failed; hook decisions and lifecycle were preserved.",
+        message: `A ${agent === "claude" ? "Claude" : "Codex"} hook notification failed; hook decisions and lifecycle were preserved.`,
         phase: failedPhase,
         raw: `hook_observer_failed phase=${failedPhase}`,
       });

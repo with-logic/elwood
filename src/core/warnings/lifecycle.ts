@@ -24,10 +24,10 @@ export type AgentUpdateFailedWarning = {
   readonly raw: string;
 };
 
-/** One bounded diagnostic for contained notification failures in a Claude hook (C-HOOK-22). */
+/** One bounded diagnostic for contained notification failures in either hook adapter (C-HOOK-22). */
 export type HookObserverFailedWarning = {
   readonly elwoodSessionId: string;
-  readonly agent: "claude";
+  readonly agent: ElwoodAgentKind;
   readonly source: "lifecycle";
   readonly code: "hook_observer_failed";
   readonly severity: "warning";

@@ -59,6 +59,15 @@ activity observers run. Observer mutation cannot change policy input, the native
 reply, or Stop readiness. Invalid response data fails open with `hookError`
 (C-HOOK-23).
 
+Observational hook, activity, hook-error, transcript, and lifecycle listener
+failures must not replace Codex hook decisions or skip turn bookkeeping. Each
+hook invocation reports at most one bounded, content-free `hook_observer_failed`
+warning for its first failed phase. Returned native observer Promise rejections
+are consumed without delaying the hook reply; warning delivery failures do not
+recurse (C-HOOK-22). The same boundary covers bridge error notifications.
+The one-shot initial-ready transition retains its separate C-API-42 fallback
+warning and queue-release guarantee outside this notification boundary.
+
 Decision note: Codex `PreToolUse` and `PermissionRequest` both produce
 event-specific JSON under `hookSpecificOutput`, but they do not use the same
 inner shape. `PreToolUse` uses fields such as `permissionDecision` directly

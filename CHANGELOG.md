@@ -12,7 +12,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Keep Codex hook observations from rewriting tool policy input, native decisions, or Stop readiness.
+- Preserve Codex hook input, decisions, and turn bookkeeping when observers mutate, throw, or reject, with one bounded `hook_observer_failed` warning per hook.
 
 - Recover swallowed prompt Enters only from the live idle composer, without mistaking transcript text or working frames for staged input. Fresh empty input ends recovery; unverifiable frames get bounded observation retries.
 

@@ -9,6 +9,7 @@
 import type { BridgeProcessResult } from "../../bridge/types.ts";
 import * as activity from "../../core/activity/index.ts";
 import { freezeHookEvent } from "../../core/freeze-hook-event.ts";
+import { hookObservationBoundary } from "../../core/hook-observation.ts";
 import type { TurnStateWatcher } from "../../core/turn-state.ts";
 import type { ClaudeEventMap, HookErrorEvent, StartClaudeOptions } from "../../core/types.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
@@ -18,7 +19,6 @@ import { isBlock, requestHook } from "../hooks/dispatch.ts";
 import type { ClaudeHookEvent } from "../hooks/index.ts";
 import { normalizeClaudeHookEvent } from "../normalize.ts";
 import { serializeHookResult } from "../serialize.ts";
-import { hookObservationBoundary } from "./hook-observation.ts";
 import type { ClaudeSessionImpl } from "./instance.ts";
 
 /** The live pieces the Claude hook handler drives; `session`/`turnWatcher` are read
@@ -41,7 +41,7 @@ export function buildClaudeHookHandler(
   const { record, options, emitter, transcriptWatcher, ready } = deps;
   return async (input: unknown): Promise<BridgeProcessResult> => {
     const event = freezeHookEvent(normalizeClaudeHookEvent(input));
-    const observation = hookObservationBoundary(emitter, record.elwoodSessionId);
+    const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "claude");
     if (event.hook_event_name === "SessionStart")
       deps.getSession()?.rememberClaudeSessionId(event.session_id);
     observation.run("transcript", () => deps.observeHookTranscript(event));
@@ -95,7 +95,7 @@ export function buildClaudeHookErrorHandler(
 ): (event: Omit<HookErrorEvent, "elwoodSessionId">) => void {
   return (event) => {
     const hookError = { elwoodSessionId: record.elwoodSessionId, ...event };
-    const observation = hookObservationBoundary(emitter, record.elwoodSessionId);
+    const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "claude");
     observation.run("hook_error", () => emitter.emit("hookError", hookError));
     observation.run("activity", () =>
       emitter.emit("activity", activity.activityFromHookError("claude", hookError)),
