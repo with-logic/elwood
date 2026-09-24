@@ -49,6 +49,24 @@ test("C-HOOK-23 Codex observer cannot rewrite nested tool input before policy ro
   expect(result.stdout).toContain('"permissionDecision":"deny"');
 });
 
+test("C-HOOK-22 C-HOOK-23 a frozen-event mutation throw cannot abort Codex policy routing", async () => {
+  const emitter = new TypedEmitter<CodexEventMap>();
+  const warnings: string[] = [];
+  emitter.on("hook", (event) => {
+    (event as { hook_event_name: string }).hook_event_name = "Stop";
+  });
+  emitter.on("hook:PreToolUse", () => ({
+    permissionDecision: "deny",
+    permissionDecisionReason: "blocked",
+  }));
+  emitter.on("warning", (event) =>
+    warnings.push(`${event.code}:${"phase" in event ? event.phase : ""}`),
+  );
+  const result = await dispatchHook(structuredClone(tool), emitter, { cwd: "/tmp" }, record);
+  expect(result.stdout).toContain('"permissionDecision":"deny"');
+  expect(warnings).toEqual(["hook_observer_failed:hook"]);
+});
+
 test("C-HOOK-23 Codex result activity cannot rewrite validated wire decision", async () => {
   const emitter = new TypedEmitter<CodexEventMap>();
   emitter.on("hook:Stop", () => ({ decision: "block", reason: "stay" }));

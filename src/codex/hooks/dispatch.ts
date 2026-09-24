@@ -5,22 +5,13 @@
  */
 
 import { createHookDispatcher } from "../../core/hook-dispatch.ts";
-import { snapshotJsonData } from "../../core/json-snapshot.ts";
 import type { CodexHookEvent, CodexHookResult } from "./index.ts";
 import { isCodexHookResult } from "./validate.ts";
 
 export const requestCodexHook = createHookDispatcher<CodexHookEvent, CodexHookResult>(
   "codex",
   isCodexHookResult,
-  snapshotCodexResponse,
 );
-
-const invalidResponse = Symbol("invalid Codex hook response");
-
-function snapshotCodexResponse(value: unknown): unknown {
-  const snapshot = snapshotJsonData(value);
-  return snapshot.valid ? snapshot.value : invalidResponse;
-}
 
 export function isCodexBlock(result: CodexHookResult): boolean {
   return Boolean(
