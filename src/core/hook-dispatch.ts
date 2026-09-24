@@ -57,7 +57,7 @@ export type HookDispatcher<Event extends DispatchableHookEvent, Result> = (
 export function createHookDispatcher<Event extends DispatchableHookEvent, Result>(
   agent: ElwoodAgentKind,
   isValidResult: (event: Event, value: unknown) => value is Result,
-  prepareResult: (value: unknown) => unknown = (value) => value,
+  prepareResult: (value: unknown) => unknown,
 ): HookDispatcher<Event, Result> {
   return async (emitter, event, timeoutMs, elwoodSessionId) => {
     const failOpen = (error: Omit<HookErrorEvent, "elwoodSessionId" | "hookEventName">) => {

@@ -8,6 +8,7 @@
 
 import type { BridgeProcessResult } from "../../bridge/types.ts";
 import * as activity from "../../core/activity/index.ts";
+import { freezeHookEvent } from "../../core/freeze-hook-event.ts";
 import type { TurnStateWatcher } from "../../core/turn-state.ts";
 import type { ClaudeEventMap, HookErrorEvent, StartClaudeOptions } from "../../core/types.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
@@ -17,7 +18,6 @@ import { isBlock, requestHook } from "../hooks/dispatch.ts";
 import type { ClaudeHookEvent } from "../hooks/index.ts";
 import { normalizeClaudeHookEvent } from "../normalize.ts";
 import { serializeHookResult } from "../serialize.ts";
-import { freezeHookEvent } from "./freeze-hook-event.ts";
 import { hookObservationBoundary } from "./hook-observation.ts";
 import type { ClaudeSessionImpl } from "./instance.ts";
 

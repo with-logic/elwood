@@ -6,6 +6,7 @@
  */
 
 import * as activity from "../../core/activity/index.ts";
+import { freezeHookEvent } from "../../core/freeze-hook-event.ts";
 import { isRecord } from "../../core/predicates.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import type { SessionRecord } from "../../state/store.ts";
@@ -64,7 +65,7 @@ export async function dispatchHook(
   record: SessionRecord,
   session?: CodexSessionImpl,
 ) {
-  const event = normalizeCodexHookEvent(input as CodexHookEvent);
+  const event = freezeHookEvent(normalizeCodexHookEvent(input as CodexHookEvent));
   session?.observeTranscript(event.transcript_path);
   if (event.hook_event_name === "SessionStart") {
     session?.rememberCodexSessionId(event.session_id);
@@ -80,6 +81,8 @@ export async function dispatchHook(
     options.hookTimeoutMs ?? 25_000,
     record.elwoodSessionId,
   );
+  const serialized = serializeCodexHookResult(event.hook_event_name, outcome.result);
+  const blocked = isCodexBlock(outcome.result);
   emitter.emit(
     "activity",
     activity.activityFromHookResult(
@@ -90,11 +93,11 @@ export async function dispatchHook(
       outcome.failedOpen,
     ),
   );
-  if (event.hook_event_name === "Stop" && !isCodexBlock(outcome.result)) {
+  if (event.hook_event_name === "Stop" && !blocked) {
     // A bounded per-pass scan (like Claude's): the terminal drain budget is reserved
     // for finish(), so hundreds of turns never exhaust it into false backlog drops.
     session?.scanTranscript();
     session?.submitEvidence("hook_turn_ended");
   }
-  return serializeCodexHookResult(event.hook_event_name, outcome.result);
+  return serialized;
 }
