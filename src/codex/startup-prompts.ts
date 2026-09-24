@@ -29,7 +29,7 @@ export class CodexStartupPromptResponder {
   private readonly trust: TrustPromptResponder<"codex">;
   private readonly clearance: TrustClearance;
   private readonly sessionInputHeld: () => boolean;
-  private readonly updatePrompt = new CodexUpdatePromptTracker();
+  private readonly updatePrompt: CodexUpdatePromptTracker;
   private readonly lifetime = new AbortController();
   // The update-screen generation that owns the skip latch (0 = none). Only that
   // generation's own completion may release it; a stale completion is a no-op.
@@ -44,15 +44,19 @@ export class CodexStartupPromptResponder {
     autotrust = false,
     onStateChange?: () => void,
     clearance: TrustClearance = codexTrustClearance,
-    sessionInputHeld: () => boolean = () => false,
+    sessionInputHeld?: () => boolean,
   ) {
     this.elwoodSessionId = elwoodSessionId;
     this.clearance = clearance;
-    this.sessionInputHeld = sessionInputHeld;
+    this.sessionInputHeld = sessionInputHeld ?? (() => false);
+    this.updatePrompt = new CodexUpdatePromptTracker(clearance, sessionInputHeld !== undefined);
     this.trust = new TrustPromptResponder("codex", clearance, autotrust, onStateChange);
   }
 
   observeClearance(frame: string): void {
+    if (this.updatePrompt.needsClearance) {
+      this.updatePrompt.observeClearance(!this.sessionInputHeld() && this.clearance(frame));
+    }
     this.updateAttempt?.observeClearance(frame);
   }
 
@@ -101,17 +105,10 @@ export class CodexStartupPromptResponder {
     } else if (trust?.kind === "option_pending") {
       outcomes.push({ outcome: { kind: "option_pending", prompt: trust.prompt } });
     }
-    // The skip is EDGE-triggered and scoped to the CURRENT frame's update screen:
-    // `skipGeneration` latches one bounded attempt per appearance so a persistent screen is
-    // not re-answered every frame, but it RE-ARMS the moment the update screen leaves
-    // the frame. That breaks the observed restart loop — Codex restarts itself, the
-    // update does not take, and the SAME update screen reappears; a cleared frame
-    // between the two appearances (Codex's restart draws a normal composer) re-arms us
-    // to skip the reappearance. Gating the attempt on the CURRENT frame (not just the
-    // accumulated buffer) also means a re-armed benign frame that merely mentions
-    // "update" never re-fires a skip against a stale buffered option — only a frame
-    // actually showing the update screen does. Select only from this frame; the tracker
-    // retains split-banner provenance without retaining obsolete option numbers.
+    // One bounded skip belongs to one appearance. Unknown replacements disable
+    // reauthorization immediately; fresh banner evidence or authoritative native
+    // clearance can rearm it. The live observer confirms clearance only after this
+    // frame's retained input hold is classified, before queued input can repaint it.
     const onUpdateScreen = this.updatePrompt.observe(screenText);
     const generation = this.updatePrompt.currentGeneration;
     // A trust gate (held allowlisted candidate or off-allowlist) is never ELIGIBLE for
@@ -121,7 +118,7 @@ export class CodexStartupPromptResponder {
     const noTrustGate = (frame: string) => !trustGateVisible(frame, "codex");
     if (onUpdateScreen && this.skipGeneration !== generation && noTrustGate(screenText)) {
       const option = safeUpdateOption(screenText)?.number ?? null;
-      if (option) {
+      if (option && this.updatePrompt.currentFramePredicate()(screenText)) {
         // Latch this appearance before writing; rejection can release the latch
         // for a later frame, while success requires observed clearance (C-CODEX-17).
         this.skipGeneration = generation;
