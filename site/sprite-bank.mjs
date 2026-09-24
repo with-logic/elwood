@@ -63,14 +63,15 @@ export class SpriteBank {
 
   async prepare(name, options = {}) {
     options.signal?.throwIfAborted();
-    const owner = options.signal ? null : new AbortController();
-    const signal = options.signal ?? owner.signal;
+    // Keep the entry page pinned until preparation delivers it; then release the temporary lease.
+    const preparationLease = options.signal ? null : new AbortController();
+    const signal = options.signal ?? preparationLease.signal;
     this.loads.retry(name);
     try {
       const clip = await this.load(name, { signal });
       await this.loadPage(name, clip.frames[0].page, { signal });
       return clip;
-    } finally { owner?.abort(); }
+    } finally { preparationLease?.abort(); }
   }
 
   /** Resolves the complete clip, null on cancellation/teardown, or rejects an asset failure. */
