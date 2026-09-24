@@ -81,8 +81,12 @@ export class SpriteBank {
   }
   /** Transfer a ready candidate to delivered input; unmatched or pending names are no-ops. */
   publishAnimation(name) { this.animations.publish(name); }
-  /** Consume delivered input with its actual animation and optional opening-turn target. */
-  activateAnimation(name, target = name) { this.animations.activate(name, target); }
+  /** Call after prepareAnimation → publishAnimation when input is consumed.
+   * currentName is playing now; nextName is the requested/next transition clip.
+   */
+  activateAnimation(currentName, nextName = currentName) {
+    this.animations.activate(currentName, nextName);
+  }
   /** Cancel pending/delivered preparation while active playback keeps its owner. */
   cancelPreparation() { this.animations.cancel(); }
 
