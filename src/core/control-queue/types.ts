@@ -59,3 +59,29 @@ export type QueuedOperation = QueuedOperationBase & RunOrAttach;
 // A queued op before its resolve/reject are attached — the SAME run/attach XOR, so a
 // pending op can no more carry both fields than a queued one can.
 export type PendingOperation = Omit<QueuedOperationBase, "resolve" | "reject"> & RunOrAttach;
+
+/**
+ * Wrap preparation and one physical operation. The signal cancels pre-operation
+ * cleanup; active exclusive work keeps its own lifetime. Origin identifies its owner.
+ */
+export type AdmissionWrapper = (
+  work: () => Promise<void>,
+  preparationSignal: AbortSignal,
+  origin: ControlSubmissionOrigin,
+) => Promise<void>;
+
+/** Reserve queue order without occupying the physical input slot. */
+export type ControlAdmission = {
+  /** Fulfillment permits physical dispatch; rejection rejects and cancels the reservation. */
+  readonly ready: Promise<void>;
+  /** Wrap the queue's usual preparation and physical operation after admission is ready. */
+  readonly run: AdmissionWrapper;
+};
+/**
+ * The signal owns queued admission and aborts on cancellation, close, or setup failure.
+ * Once run starts, its operation signal takes over; admission readiness is not completion.
+ */
+export type AdmitOperation = (
+  origin: ControlSubmissionOrigin,
+  signal: AbortSignal,
+) => ControlAdmission | undefined;
