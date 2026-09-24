@@ -46,5 +46,10 @@ when dependency leases are released.
 Repeating a static request after dependency release prepares the complete idle,
 rotation and requested clip set again before reporting readiness.
 Cancellation releases candidate and delivered owners, preserving active playback.
-These APIs are internal preparation infrastructure; landing controls adopt them
-separately.
+Landing gesture and front/back controls wait for every requested, idle and rotation
+page before publishing input. Known dropped states (airborne, hanging, climbing,
+landing, settling, pending jump/wind-up, dragging or held movement) avoid preparation. Supersession and
+reflow cancel pending/delivered ownership; recovery queues retain delivery until
+consumed or replaced, including when held movement clears the queue. Current and
+outgoing poses remain protected. Automatic tasks and pickup retain their existing
+on-demand loading behavior.

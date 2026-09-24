@@ -29,3 +29,20 @@ owns the waiting queue and sends one request at a time; aborting the active
 request does not release that physical slot until the worker replies. In-flight
 browser bitmap decoding cannot be interrupted; its eventual image is released,
 without terminating the worker or cancelling other requests. Settled requests remove their abort listeners.
+
+### 13.1 Landing-page explicit animation controls
+
+Landing gesture and front/back requests wait for every page of the requested clip,
+idle and rotation before delivering input. Pending explicit loading suppresses
+automatic actions. Requests are ineligible while dragging, holding movement,
+airborne, hanging, climbing, landing, settling, or committed to a pending jump or
+jump wind-up. Eligibility is checked before loading and again before delivery.
+
+A request accepted into an existing gesture's recovery queue retains its delivered
+pages until playback activation or replacement. Activation owns the requested clip
+before the opening turn paints. Held movement that clears the recovery queue also
+releases its delivered request. Reset, responsive reflow and supersession cancel
+pending/delivered work while preserving active/outgoing poses; reflow preserves
+held movement. Superseding a gesture/facing request preserves unrelated pending
+input such as a jump press. Workshop controls and automatic/pickup paths retain
+their separate on-demand loading behavior.
