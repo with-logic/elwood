@@ -43,7 +43,7 @@ export abstract class SessionLifecycle {
   private readonly statusEngine: ReturnType<typeof createSessionStatusEngine>;
   private readonly recovery: NativePasteRecovery;
   protected readonly pasteGuard: PasteGuard = {
-    recovery: () => this.recovery.capture(),
+    captureRecovery: () => this.recovery.capture(),
     snapshot: () => this.terminal.snapshot().text,
     staged: (screen, payload) => this.stagedPaste(screen, payload),
     blocked: () => this.queuedInputBlocked(),

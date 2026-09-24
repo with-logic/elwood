@@ -4,13 +4,11 @@ import { writeQueuedInput } from "../../src/core/input/index.ts";
 import type { ElwoodCommonEventMap } from "../../src/core/types.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
 import { NativePasteRecovery } from "../../src/runtime/session/paste-recovery.ts";
-import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 
 afterEach(() => vi.useRealTimers());
 
 test("C-API-31 accepted hook during pending Enter permanently revokes recovery", async () => {
   vi.useFakeTimers();
-  const terminal = createHeadlessTerminal({ cols: 80, rows: 24 }, () => undefined);
   const events = new TypedEmitter<ElwoodCommonEventMap>();
   const closing = new AbortController();
   const recovery = new NativePasteRecovery(events, closing.signal);
@@ -27,7 +25,7 @@ test("C-API-31 accepted hook during pending Enter permanently revokes recovery",
     const sent = writeQueuedInput(input, "draft", "pasted_input", {
       snapshot: () => "draft",
       staged: () => true,
-      recovery: () => recovery.capture(),
+      captureRecovery: () => recovery.capture(),
     });
     await vi.advanceTimersByTimeAsync(150);
     events.emit("activity", {
@@ -39,9 +37,6 @@ test("C-API-31 accepted hook during pending Enter permanently revokes recovery",
     });
     dispatched.resolve();
     await sent;
-    const painted = terminal.writeOutput("new idle draft frame");
-    await vi.advanceTimersByTimeAsync(1);
-    await painted;
     await vi.advanceTimersByTimeAsync(3_000);
     expect(writes).toEqual(["\u001b[200~draft\u001b[201~", "\r"]);
     recovery.observeWorking(true);
@@ -51,6 +46,5 @@ test("C-API-31 accepted hook during pending Enter permanently revokes recovery",
   } finally {
     closing.abort();
     dispatched.resolve();
-    terminal.dispose();
   }
 });
