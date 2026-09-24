@@ -94,7 +94,7 @@ Each criterion has:
 | C-LOOP-05 | §5.9 | A fixed loop first becomes due after its full interval plus delay-only jitter and submits only through the ordinary readiness-safe path. |
 | C-LOOP-06 | §5.9 | Idle loops use five continuous non-loop-activity-free minutes plus jitter; non-loop activity resets all, while a completed loop turn rearms only its origin and leaves peers eligible. |
 | C-LOOP-07 | §5.9 | Stable jitter is derived from ID at creation, falls in `0..min(10% cadence, 30s)`, never advances a due time, and is persisted as restore authority. |
-| C-LOOP-08 | §5.9 | A due loop blocked by liveness/readiness submits at most once at the next ready transition; missed occurrences do not accumulate and stop/exit discards transient due state. |
+| C-LOOP-08 | §5.9 | A due loop blocked by liveness/readiness submits at most once at the next eligible ready transition; ergonomic turns hold loop delivery from before initial submission through their real boundary without blocking caller recovery. Nested holds release independently; missed occurrences do not accumulate and stop/exit discards transient due state. |
 | C-LOOP-09 | §5.9 | Due loops commit serially, one per ready transition, ordered by due time then ID; fixed clocks restart from submission and idle origin clocks from completing readiness. |
 | C-LOOP-10 | §5.9 | Live scheduling/submission failure emits redacted failure evidence and rearms fresh unless the session is non-live, when the persisted definition waits for resume. |
 | C-LOOP-11 | §8.2 | The loop sidecar stores stable identity, cadence, exact prompt, jitter, creation, and expiry but no live timer or transient scheduling state. |
