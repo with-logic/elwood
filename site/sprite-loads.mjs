@@ -19,19 +19,14 @@ export class SpriteLoads {
       if (this.automatic.get(key) === token) this.automatic.delete(key);
     });
   }
-  run(key, pending, load, { signal, automatic = false } = {}) {
+  run(key, pending, load, { signal, automatic = false } = {}, delivery = {}) {
     signal?.throwIfAborted();
     let task = this.tasks.get(key);
     if (!task) {
-      task = { controller: new AbortController(), consumers: new Set(), pending };
+      task = { controller: new AbortController(), consumers: new Set(), pending, delivery };
       this.tasks.set(key, task);
       const current = task;
-      const pin = (image) => {
-        current.controller.signal.throwIfAborted();
-        for (const consumer of current.consumers)
-          if (consumer.signal) this.bank.pinLoadPage(key, image, consumer.signal);
-      };
-      task.promise = Promise.resolve().then(() => load(current.controller.signal, pin));
+      task.promise = Promise.resolve().then(() => load(current.controller.signal));
       pending.set(key, task.promise);
       task.promise.then(
         (value) => this.finish(key, current, true, value),
@@ -63,17 +58,36 @@ export class SpriteLoads {
     task.pending.delete(key);
   }
   finish(key, task, success, value) {
+    const current = this.tasks.get(key) === task && !task.controller.signal.aborted;
     this.remove(key, task);
-    if (!success && !this.bank.disposed && !task.controller.signal.aborted) {
-      this.failed.add(key);
-      const consumers = [...task.consumers];
-      if (consumers.some((owner) => owner.automatic) && consumers.every((owner) => owner.automatic))
-        this.onError(value);
-    } else if (success && !task.controller.signal.aborted) this.failed.delete(key);
-    for (const consumer of task.consumers) {
-      consumer.release();
-      if (success) consumer.resolve(value);
-      else consumer.reject(value);
+    if (success && !current) {
+      task.delivery.discard?.(value);
+      return;
+    }
+    try {
+      if (success) {
+        const pin = (image) => {
+          for (const consumer of task.consumers)
+            if (consumer.signal) this.bank.pinLoadPage(key, image, consumer.signal);
+        };
+        // Publication and promise settlement share one synchronous ownership commit.
+        task.delivery.publish?.(value, pin);
+        this.failed.delete(key);
+      } else if (current && !this.bank.disposed) {
+        this.failed.add(key);
+        const owners = [...task.consumers];
+        const automaticOnly = owners.length > 0 && owners.every((owner) => owner.automatic);
+        // Explicit callers own their rejected promise's UI error; report here only
+        // when every remaining consumer is automatic, avoiding duplicate diagnostics.
+        if (automaticOnly) this.onError(value);
+      }
+    } finally {
+      // Observer exceptions remain visible without stranding consumers or retry latches.
+      for (const consumer of task.consumers) {
+        consumer.release();
+        if (success) consumer.resolve(value);
+        else consumer.reject(value);
+      }
     }
   }
   dispose() {
