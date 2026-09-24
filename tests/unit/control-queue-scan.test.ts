@@ -24,6 +24,7 @@ const loop = { origin: { kind: "loop", loopId: "loop" } } as const;
 test.each([
   "unready",
   "held",
+  "admitted",
 ])("C-LOOP-08 %s backlog is scanned once across controls queued during an active picker", async (phase) => {
   const active = Promise.withResolvers<void>();
   const writes: string[] = [];
@@ -34,15 +35,23 @@ test.each([
     },
     () => new Error("closed"),
     () => undefined,
+    undefined,
+    undefined,
+    undefined,
+    (origin) =>
+      phase === "admitted" && origin.kind === "loop"
+        ? { ready: new Promise(() => undefined), run: (work) => work() }
+        : undefined,
   );
   if (phase === "held") {
     queue.markReady();
     queue.holdLoops();
   }
+  if (phase === "admitted") queue.markReady();
   const first = queue.runExclusive("list_models", () => active.promise);
   const blocked = Array.from({ length: 10_000 }, () =>
     queue
-      .send("blocked", "message", undefined, phase === "held" ? loop : {})
+      .send("blocked", "message", undefined, phase === "unready" ? {} : loop)
       .catch(() => undefined),
   );
   const reads = queue.measureBacklog();
@@ -56,7 +65,7 @@ test.each([
   queue.close();
   await Promise.all(blocked);
   expect(writes).toEqual(Array.from({ length: 1000 }, (_, index) => String(index)));
-  expect(inspected).toBeLessThanOrEqual(10_000);
+  expect(inspected).toBeLessThanOrEqual(phase === "admitted" ? 10_002 : 10_000);
 });
 
 test("C-API-19 cancelling inside a scanned prefix preserves following input order", async () => {
