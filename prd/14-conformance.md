@@ -36,6 +36,7 @@ Each criterion has:
 | C-API-16 | §5.1 | Omitted `initialSize` defaults to a 189 column by 48 row terminal. |
 | C-API-17 | §5.4 | Hook dispatch emits adapter-neutral hook-result activity, and hook failures also appear in the activity stream. |
 | C-API-18 | §5.1 | Claude and Codex start/resume options expose `autotrust` for opt-in workspace trust prompt automation. |
+| C-API-58 | §5.3 | The session control queue bounds outstanding work, including in-flight input, to 1,024 operations and 8 MiB UTF-8 text. Excess admissions reject with `input_queue_full` without attachment or input; cancellation and physical settlement release capacity, while closed sessions retain `session_not_running` precedence. Loop rejection keeps the existing failed-submission retry policy. |
 | C-API-19 | §5.3 | Calling `sendMessage` while the session is alive but not ready queues the message until the next ready transition and rejects only if the session terminates first. |
 | C-API-20 | §5.3 §5.7 §8.1 §9.4 | Claude and Codex transcript activity is flushed before terminal exit and terminal lifecycle status are emitted; reentrant shutdown joins observed natural-exit finalization. Within the same process, a validated successor resume revokes the old launch's shared-state mutation authority, including deferred and repeated teardown. |
 | C-API-21 | §5.1 §5.5 | A caller-provided `persona` is submitted as the session's first user message on the first ready transition, ahead of caller-queued messages; it is not persisted and not re-sent on resume. |
