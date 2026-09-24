@@ -4,7 +4,7 @@ import { activityFromTerminalExit as terminalExitActivity } from "../../core/act
 import { AttentionWatcher } from "../../core/attention.ts";
 import { defaultTerminalSize } from "../../core/defaults.ts";
 import { causeDetails, elwoodError } from "../../core/errors.ts";
-import { emitSettledStartupOutcomes } from "../../core/startup/write.ts";
+import { emitSettledStartupOutcomes as emitSettledStartup } from "../../core/startup/write.ts";
 import { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import { TurnStateWatcher } from "../../core/turn-state.ts";
 import { TypedEmitter } from "../../events/emitter.ts";
@@ -35,6 +35,7 @@ import { writeCodexRuntimeFiles } from "./runtime.ts";
 import { createCodexStartupWarningGate, preflightEvent } from "./startup-warnings.ts";
 import * as transcript from "./transcript.ts";
 import type { CodexEventMap, StartCodexOptions } from "./types.ts";
+import { emitChangedUpdateAttention } from "./update-attention.ts";
 export type BuildCodexSessionInput = {
   readonly record: SessionRecord;
   readonly stateDir: string;
@@ -142,10 +143,9 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
       const trustRead = () => currentRenderedFrame(renderedTerminal)?.text;
       const result = promptResponder.handle(frame.text, send, read, guarded, trustRead);
       warnGate.emitWarnings(result.warnings);
-      emitSettledStartupOutcomes(emitter, "codex", record.elwoodSessionId, result.outcomes, {
-        emitWarnings: (w) => warnGate.emitWarnings(w),
-      });
+      emitSettledStartup(emitter, "codex", record.elwoodSessionId, result.outcomes, warnGate);
       frameObserver.observe(frame);
+      emitChangedUpdateAttention(emitter, record.elwoodSessionId, result.updateGeneration);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
     startupOutput.push,
