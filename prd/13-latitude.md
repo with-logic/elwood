@@ -58,8 +58,8 @@ before the opening turn paints. Held movement that clears the recovery queue als
 releases its delivered request. Reset, responsive reflow and supersession cancel
 pending/delivered work while preserving active/outgoing poses; reflow preserves
 held movement. Superseding a gesture/facing request preserves unrelated pending
-input such as a jump press. Workshop controls and automatic/pickup paths retain
-their separate on-demand loading behavior.
+input such as a jump press. Workshop and pickup paths retain their separate
+on-demand loading behavior; automatic moments and facing follow §13.3.
 
 ### 13.2 Landing-page initial animation readiness
 
@@ -72,3 +72,20 @@ An asset failure reports the existing contextual error and preserves the fallbac
 a later explicit boot attempt may retry. Idle pages remain available through cache
 eviction and later playback changes through the shared idle lease, with
 current/outgoing pose ownership preserved.
+
+### 13.3 Automatic gesture and facing readiness
+
+Automatic moments and facing actions wait for all requested, idle and rotation
+pages before delivering input. Their post-delivery clock starts only when complete
+preparation succeeds. The existing eight-second pre-delivery wait bounds loading;
+expiry cancels that task without reporting an asset failure. Geometry probes remain
+metadata-only and share existing loads. Publication requires the exact prepared
+candidate, or the same complete active owner with no newer candidate/delivery.
+Task replacement, manual takeover, reset/reflow and teardown release obsolete
+metadata/preparation consumers. Cancellation removes a matching queued delivery,
+but cannot release a newer manual request or active/current/outgoing playback.
+An automatic asset failure reports once. Failed requested or shared idle/rotation
+assets suppress later automatic attempts that need them, including other actions,
+until explicit preparation clears the relevant failure state. Unchanged paint ticks
+cannot retry or republish a failed or superseded task. Walking and pickup remain on
+demand.
