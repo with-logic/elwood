@@ -31,10 +31,9 @@ for (const agent of ["claude", "codex"] as const) {
     try {
       expect(observe(terminal)).toBeUndefined();
       // Reject oversized capture offsets before allocating replay input.
-      expect(fixture.baseY).toBeLessThanOrEqual(10_000);
-      await terminal.writeOutput(
-        `\u001b[${fixture.rows};1H${"\r\n".repeat(Math.min(fixture.baseY, 10_000))}`,
-      );
+      const baseY = fixture.baseY;
+      if (baseY > 10_000) throw new Error("Native fixture scrollback exceeds replay limit");
+      await terminal.writeOutput(`\u001b[${fixture.rows};1H${"\r\n".repeat(baseY)}`);
       await paint(fixture.text);
       terminal.xterm.scrollToLine(fixture.viewportY);
       expect(terminal.xterm.buffer.active.baseY).toBe(fixture.baseY);
