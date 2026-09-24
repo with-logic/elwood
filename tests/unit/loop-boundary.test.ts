@@ -79,6 +79,31 @@ test("C-API-50 successive untagged loops wait for each trailing transcript", asy
   expect(session.listenerCount()).toBe(0);
 });
 
+test("C-API-50 closing a predecessor rejects queued loops before their submission", async () => {
+  const session = new FakeTurnSession();
+  const owner = {};
+  const closing = new AbortController();
+  await observeLoopSubmission(owner, session, closing.signal, () => Promise.resolve());
+  const first = activeLoopBoundary(owner);
+  let submitted = false;
+  const second = observeLoopSubmission(owner, session, closing.signal, () => {
+    submitted = true;
+    return Promise.resolve();
+  });
+  const waiting = activeLoopBoundary(owner);
+  void second.catch(() => undefined);
+  void waiting?.catch(() => undefined);
+  expect(submitted).toBe(false);
+  expect(session.listenerCount()).toBe(3);
+  closing.abort();
+  await expect(first).rejects.toMatchObject({ code: "session_not_running" });
+  await expect(second).rejects.toMatchObject({ code: "session_not_running" });
+  await expect(waiting).rejects.toMatchObject({ code: "session_not_running" });
+  expect(submitted).toBe(false);
+  expect(session.listenerCount()).toBe(0);
+  expect(activeLoopBoundary(owner)).toBeUndefined();
+});
+
 test("C-API-48 a failed successor cannot clear a predecessor or later wait", async () => {
   const session = new FakeTurnSession();
   const owner = {};
