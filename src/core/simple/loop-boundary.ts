@@ -2,26 +2,25 @@
 import { elwoodError, toError } from "../errors.ts";
 import { type BoundarySession, observeTurnBoundary } from "./observe-boundary.ts";
 
-const activeLoops = new WeakMap<object, Promise<void>>();
+const loopBoundaryTails = new WeakMap<object, Promise<void>>();
 
-export function activeLoopBoundary(session: object): Promise<void> | undefined {
-  return activeLoops.get(session);
+export function loopBoundaryTail(owner: object): Promise<void> | undefined {
+  return loopBoundaryTails.get(owner);
 }
 
 export function reserveLoopSubmission(
   owner: object,
   session: BoundarySession,
-  closing: AbortSignal,
-  admission: AbortSignal,
+  { closing, admission }: { readonly closing: AbortSignal; readonly admission: AbortSignal },
 ) {
-  const predecessor = activeLoops.get(owner);
+  const predecessor = loopBoundaryTails.get(owner);
   const completion = Promise.withResolvers<void>();
-  const boundary = Promise.all([predecessor, completion.promise]).then(() => undefined);
-  activeLoops.set(owner, boundary);
+  const tail = Promise.all([predecessor, completion.promise]).then(() => undefined);
+  loopBoundaryTails.set(owner, tail);
   const forget = () => {
-    if (activeLoops.get(owner) === boundary) activeLoops.delete(owner);
+    if (loopBoundaryTails.get(owner) === tail) loopBoundaryTails.delete(owner);
   };
-  void boundary.then(forget, forget);
+  void tail.then(forget, forget);
   const signal = AbortSignal.any([closing, admission]);
   const abortError = () =>
     closing.aborted
@@ -50,7 +49,9 @@ export function reserveLoopSubmission(
   });
   return {
     ready,
-    async run(submit: () => Promise<void>): Promise<void> {
+    /** Wait for admission, then resolve after physical submission, not transcript drain. */
+    async submit(write: () => Promise<void>): Promise<void> {
+      await ready;
       removeAbort();
       if (signal.aborted) {
         completion.resolve();
@@ -64,7 +65,7 @@ export function reserveLoopSubmission(
         completion.reject,
       );
       try {
-        await submit();
+        await write();
       } catch (error) {
         observer.discard();
         throw error;
