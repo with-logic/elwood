@@ -1,4 +1,4 @@
-/** Common idle sheets survive complete-animation churn within a two-page lease (PRD §13). */
+/** Common idle sheets survive complete-animation churn (PRD §13, C-SITE-02). */
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fixture, waitFor } from "./animation-fixture.mjs";
@@ -14,7 +14,7 @@ async function evict(bank) {
   assert.equal(bank.pages.size, 4);
 }
 
-test("idle sheets survive playback trim and cache eviction with immediate keyed frames", async (t) => {
+test("C-SITE-02 idle sheets survive playback trim and cache eviction with immediate keyed frames", async (t) => {
   const { bank, images, requested } = fixture(t);
   await complete(bank, "wave");
   const idle = images.filter((image) => image.path.startsWith("idle/"));
@@ -54,7 +54,7 @@ test("idle sheets survive playback trim and cache eviction with immediate keyed 
 });
 
 for (const outcome of ["failure", "cancel", "dispose"]) {
-  test(`${outcome} before complete preparation never retains partial idle sheets`, async (t) => {
+  test(`C-SITE-02 ${outcome} before complete preparation never retains partial idle sheets`, async (t) => {
     const { bank, images, gates, requested } = fixture(t);
     const gate = Promise.withResolvers();
     gates.set("wave/5.webp", gate);
@@ -79,7 +79,7 @@ for (const outcome of ["failure", "cancel", "dispose"]) {
   });
 }
 
-test("larger idle manifests fall back to ordinary ownership instead of growing the shared lease", async (t) => {
+test("C-SITE-02 larger idle manifests use ordinary ownership instead of a larger shared lease", async (t) => {
   const { bank, images } = fixture(t);
   const fetchAsset = globalThis.fetch;
   globalThis.fetch = async (url, options) => {
