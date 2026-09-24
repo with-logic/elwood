@@ -20,8 +20,8 @@ import { restoreCodexConfig, snapshotCodexConfig } from "../config/restore.ts";
 import { runCodexModelSwitch } from "../config/transaction.ts";
 import { attachCodexImages } from "../images/attach.ts";
 import { codexModelPicker } from "../model-picker.ts";
-import { codexEmptyInputFrame } from "../screen/empty-input.ts";
 import { liveCodexClearance } from "../screen/live-clearance.ts";
+import { createCodexRecoveryComposer } from "../screen/staged-text.ts";
 import type { CodexTranscriptWatcher } from "../transcript/index.ts";
 import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";
@@ -140,17 +140,8 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     return sessionWaitForActivity(this, match, timeoutMs);
   }
   // Codex has no staged chip; the composer still shows the paste's last line.
-  protected stagedPaste(screen: string, payload: string): boolean {
-    if (codexEmptyInputFrame(this.terminal)) return false;
-    // Native pasted tabs render as one space; CR and LF each start a new row.
-    const lastLine = payload
-      .replaceAll("\t", " ")
-      .trim()
-      .split(/[\r\n]/)
-      .at(-1)
-      ?.trim();
-    return lastLine !== undefined && lastLine.length > 0 && screen.includes(lastLine);
-  }
+  protected readonly recoveryComposer = createCodexRecoveryComposer(this.terminal);
+
   // Codex ingests an interactive image only from the OS clipboard; the Ctrl+V is
   // held while a dialog is on screen so it never confirms one (C-API-46/37).
   protected attachImages = (paths: readonly string[], signal: AbortSignal): Promise<void> =>

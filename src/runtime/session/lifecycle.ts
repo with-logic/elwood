@@ -1,5 +1,5 @@
 /** Session lifetime, input blocking, persistence and cleanup (PRD §5/§8/§9). */
-import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../core/activity/index.ts";
+import type { ElwoodAgentKind } from "../../core/activity/index.ts";
 import { ControlQueue } from "../../core/control-queue/index.ts";
 import { type PasteGuard, queuedInputSubmitter } from "../../core/input/index.ts";
 import { registerPrivateOutputSecrets } from "../../core/private-output-secrets.ts";
@@ -22,8 +22,6 @@ import { SessionReapPolicy } from "./reap.ts";
 import { SessionShutdownBinding } from "./shutdown-binding.ts";
 import { createSessionStatusEngine, type SessionStatusEmitter } from "./status-wiring.ts";
 
-type TerminalDataListener = Parameters<TerminalReplayBuffer["replay"]>[0];
-type AttentionListener = (event: ElwoodActivityEvent) => unknown;
 export abstract class SessionLifecycle {
   protected record: SessionRecord;
   readonly terminal: ElwoodTerminal;
@@ -46,7 +44,8 @@ export abstract class SessionLifecycle {
   protected readonly pasteGuard: PasteGuard = {
     captureRecovery: () => this.recovery.captureRevocationGuard(),
     snapshot: () => this.terminal.snapshot().text,
-    staged: (screen, payload) => this.stagedPaste(screen, payload),
+    staged: (screen, payload) => this.recoveryComposer.staged(screen, payload),
+    emptyFrame: () => this.recoveryComposer.emptyFrame(),
     blocked: () => this.queuedInputBlocked(),
   };
   protected constructor(
@@ -173,13 +172,12 @@ export abstract class SessionLifecycle {
   readonly beginExitFinalization = () => this.shutdown.beginExitFinalization();
   readonly statusDecisions = (): readonly StatusDecision[] => this.statusEngine.decisions();
   protected abstract emptyComposerFrame(): object | undefined;
-  protected abstract stagedPaste(screen: string, payload: string): boolean;
+  protected abstract readonly recoveryComposer: Required<Pick<PasteGuard, "staged" | "emptyFrame">>;
   protected abstract queuedInputBlocked(): boolean;
   protected abstract stopRuntime(): Promise<void>;
   protected abstract emitWarnings(warnings: readonly ElwoodWarningEvent[]): void;
   protected replayFor(event: string, handler: (event: never) => unknown): void {
-    if (event === "terminal:data") this.terminalReplay.replay(handler as TerminalDataListener);
-    if (event === "activity") this.terminalReplay.replayAttention(handler as AttentionListener);
+    this.terminalReplay.replayFor(event, handler);
   }
   protected inSession<T>(work: () => Promise<T> | T, allowTerminal = false): Promise<T> {
     return runSessionOperation(this.record.adapter, this.status, work, allowTerminal);

@@ -22,7 +22,7 @@ import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { attachClaudeImages } from "../attach-images.ts";
-import { claudeEmptyInputFrame } from "../composer/empty-input.ts";
+import { createClaudeRecoveryComposer } from "../composer/staged-text.ts";
 import { runSessionLogin } from "../login/session-login.ts";
 import type { ClaudeLoginOptions } from "../login/types.ts";
 import { LoginExpiredWatcher, loginExpiredWarning } from "../login-expired.ts";
@@ -102,9 +102,8 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   waitForActivity(match: (event: ElwoodActivityEvent) => boolean, timeoutMs?: number) {
     return sessionWaitForActivity(this, match, timeoutMs);
   }
-  protected stagedPaste(screen: string): boolean {
-    return !claudeEmptyInputFrame(this.terminal) && /\[Pasted text/.test(screen);
-  }
+  protected readonly recoveryComposer = createClaudeRecoveryComposer(this.terminal);
+
   // Claude reads a pasted absolute path; the paste is held while a dialog shows (C-API-45/37).
   protected attachImages = (paths: readonly string[], signal: AbortSignal): Promise<void> =>
     attachClaudeImages(this.automatedTerminal, paths, signal, () => this.queuedInputBlocked());
