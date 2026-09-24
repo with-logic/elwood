@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { SpriteBank } from "../sprite-bank.mjs";
+import { fixture as decoderFixture, flush } from "./helpers/decoder-cancellation.mjs";
 
 const clip = { fps: 24, pages: [{ file: "0.webp" }], frames: [{ page: 0, x: 0, y: 0,
   w: 1, h: 1, anchor: { x: 0, y: 0 }, socket: { x: 0, y: 0 } }] };
@@ -60,4 +61,46 @@ test("a throwing automatic error observer still releases the task and allows ret
   const child = spawnSync(process.execPath, ["--input-type=module", "--eval", script], { encoding: "utf8", timeout: 5000 });
   assert.equal(child.status, 0, child.stderr);
   assert.deepEqual(JSON.parse(child.stdout), { error: "observer failed", pending: 0, calls: 2, loaded: true });
+});
+
+
+test("last bank consumer cancellation skips queued decode without disturbing other pages", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const bank = new SpriteBank(() => {});
+  bank.decoder.dispose();
+  const gate = Promise.withResolvers();
+  const decoded = [];
+  const { decoder, worker, drain } = decoderFixture(t, async (blob) => {
+    const name = await blob.text();
+    decoded.push(name);
+    if (name === "0.webp") await gate.promise;
+    return { name, close() {} };
+  });
+  bank.decoder = decoder;
+  t.after(() => { bank.dispose(); globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (url) => new Response(new URL(url).pathname.split("/").at(-1));
+  bank.clips.set("wave", { ...clip, pages: [0, 1, 2].map((index) => ({ file: `${index}.webp` })) });
+  const first = bank.loadPage("wave", 0);
+  const controller = new AbortController();
+  let cancelledBeforeDecode = false;
+  const abandoned = bank.loadPage("wave", 1, { signal: controller.signal }).catch((error) => {
+    cancelledBeforeDecode = true;
+    return error;
+  });
+  const survivor = bank.loadPage("wave", 2);
+  try {
+    await flush();
+    controller.abort();
+    await flush();
+    assert.equal(cancelledBeforeDecode, true);
+    assert.equal(worker.terminated, false);
+  } finally {
+    gate.resolve();
+    await Promise.allSettled([first, abandoned, survivor]);
+    await drain();
+  }
+  assert.deepEqual(decoded, ["0.webp", "2.webp"]);
+  assert.equal(await abandoned, controller.signal.reason);
+  assert.equal(bank.pages.has("wave/1"), false);
+  assert.equal(bank.pages.get("wave/2"), await survivor);
 });
