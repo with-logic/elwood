@@ -1,10 +1,9 @@
 /** Recognizes native update appearances and continuation rows (PRD §5.5, C-CODEX-12). */
 import { nonOptionText, numberedOptions } from "../../core/terminal-options.ts";
+import { updateScreenBanner } from "./layout.ts";
 import { codexUpdateActionPattern, codexUpdateOptionPattern } from "./selection.ts";
 
-/** The first-party banner; its version pair distinguishes one appearance from the next. */
-export const updateScreenBanner =
-  /^[^\S\r\n]*(?:Update available!\s+\d+\.\d+\.\d+\s*(?:->|→)\s*\d+\.\d+\.\d+|A new version of Codex is available[.!]?)[^\S\r\n]*$/im;
+export { updateScreenBanner } from "./layout.ts";
 
 /**
  * A captured first-party banner alone counts so a partial layout fails safe

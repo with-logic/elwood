@@ -5,6 +5,16 @@ import { codexUpdateActionPattern, codexUpdateOptionPattern } from "./selection.
 
 export { updateScreenBanner } from "./layout.ts";
 
+/** Syntactic states, not authorization to write:
+ * Frame                    hasBanner options        visible       continuation
+ * Banner before choices    true      []             true          false
+ * Valid banner and choices true      parsed choices true          false
+ * Ambiguous bannered frame true      undefined      true          false
+ * Valid bannerless choices false     parsed choices action + safe skip/continue
+ * Other/empty frame        false     undefined/[]   false         false
+ * A bannerless continuation cannot reauthorize a revoked generation. Consumers
+ * must also verify retained first-party provenance and current attempt ownership.
+ */
 export type CodexUpdateFrame = {
   readonly options: readonly NumberedOption[] | undefined;
   readonly hasBanner: boolean;

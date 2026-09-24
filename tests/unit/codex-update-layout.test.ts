@@ -79,3 +79,22 @@ test.each([
     continuation,
   });
 });
+
+test("C-CODEX-12 the alternate native banner has the same classification states", () => {
+  const alternate = "A new version of Codex is available.";
+  expect(classifyCodexUpdateFrame(alternate)).toEqual({
+    hasBanner: true,
+    options: [],
+    visible: true,
+    continuation: false,
+  });
+  expect(classifyCodexUpdateFrame(`${alternate}\n${choices}`)).toMatchObject({
+    hasBanner: true,
+    visible: true,
+    continuation: false,
+    options: [
+      { number: "1", label: "Update now" },
+      { number: "2", label: "Skip" },
+    ],
+  });
+});

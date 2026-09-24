@@ -1,7 +1,7 @@
 /** Bound update choices to one current dialog block (PRD §5.5, C-CODEX-12). */
 import { type NumberedOption, numberedOptions } from "../../core/terminal-options.ts";
 
-/** The first-party banner; its version pair distinguishes one appearance from the next. */
+/** Versioned and alternate native banners; a version pair, when present, identifies an appearance. */
 export const updateScreenBanner =
   /^[^\S\r\n]*(?:✨[^\S\r\n]*)?(?:Update available!\s+\d+\.\d+\.\d+\s*(?:->|→)\s*\d+\.\d+\.\d+|A new version of Codex is available[.!]?)[^\S\r\n]*$/im;
 
