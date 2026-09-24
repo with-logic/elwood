@@ -13,3 +13,10 @@ above:
 
 The documentation site's sprite-load errors identify the failing relative asset
 path, bounded to 200 characters, and retain the underlying error as their cause.
+
+Sprite decoder requests may carry an abort signal. Cancellation rejects the
+request promptly, skips worker requests that have not started decoding, and
+never falls back to another decoder. The internal worker protocol pairs decode
+request IDs with cancellation messages. In-flight browser bitmap decoding cannot
+be interrupted; its eventual image is released, without terminating the worker
+or cancelling other requests. Settled requests remove their abort listeners.
