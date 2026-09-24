@@ -6,7 +6,3 @@ export { updateScreenBanner } from "./layout.ts";
 export function codexUpdatePromptVisible(frameText: string): boolean {
   return classifyCodexUpdateFrame(frameText).visible;
 }
-
-export function isSafeUpdateContinuation(frameText: string): boolean {
-  return classifyCodexUpdateFrame(frameText).continuation;
-}

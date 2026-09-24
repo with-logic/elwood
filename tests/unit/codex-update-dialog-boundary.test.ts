@@ -31,3 +31,10 @@ test.each([
   await expect(first.outcomes[0]?.settled).resolves.toBe("cancelled");
   expect(writes).toEqual(["2"]);
 });
+
+test.each(["Later", "Not now", "Update now"])(
+  "C-CODEX-12 bannerless %s alone is not an update continuation",
+  (label) => {
+    expect(codexOptionStillSafe(`2. ${label}`, "2")).toBe(false);
+  },
+);
