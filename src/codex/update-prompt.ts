@@ -1,6 +1,7 @@
 /**
  * Orchestrates guarded Codex update-skip writes and bounded retries (PRD §5.5, C-CODEX-12).
- * Native screen recognition lives in update/recognition.ts.
+ * Active classification lives in update/classification.ts and update/layout.ts;
+ * update/recognition.ts is the visibility facade.
  */
 
 import { type InputTerminal, waitForInput } from "../core/input/abort.ts";
