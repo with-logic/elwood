@@ -112,7 +112,7 @@ export class ControlQueue extends ControlQueueState {
     if (this.inFlight || this.queue.length === 0) return;
     const index = this.nextDispatchIndex();
     if (index < 0) return;
-    const operation = this.queue.splice(index, 1)[0] as QueuedOperation;
+    const operation = this.takeQueued(index);
     if (overtakesReadiness(operation)) this.bypassable -= 1;
     this.inFlight = operation;
     const traits = controlOperationTraits[operation.kind];
@@ -162,7 +162,7 @@ export class ControlQueue extends ControlQueueState {
   }
 
   private beginSubmission(operation: QueuedOperation, traits: ControlOperationTraits): void {
-    if (traits.consumesReadiness) this.ready = false;
+    if (traits.consumesReadiness) this.setReady(false);
     if (traits.reportsCallerSubmission && operation.origin.kind === "caller") {
       runContained(() => this.onTurnStarted(operation.origin));
     }
@@ -191,7 +191,7 @@ export class ControlQueue extends ControlQueueState {
     epoch: number,
     error: Error,
   ): void {
-    if (!this.closed && this.readinessEpoch === epoch) this.ready = priorReady;
+    if (!this.closed && this.readinessEpoch === epoch) this.setReady(priorReady);
     this.settle(operation, () => operation.reject(error));
   }
 }
