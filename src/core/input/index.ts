@@ -16,6 +16,8 @@ import { requestComposerCleanup, stageComposer, submittedComposer } from "./comp
 
 /** Adapter view of "the paste is still staged in the composer". */
 export type PasteGuard = {
+  /** Capture before paste/Enter: watches later native submission activity. */
+  readonly captureRecovery?: () => { readonly revoked: () => boolean };
   readonly snapshot: () => string;
   /** Receives the sanitized payload that was actually pasted. */
   readonly staged: (screen: string, payload: string) => boolean;
@@ -63,10 +65,8 @@ export function sanitizePasteText(text: string): string {
  * The TUIs ingest bracketed pastes asynchronously; an Enter concatenated into
  * the same PTY write races that ingestion and can be dropped, leaving the prompt
  * staged but never submitted (long personas hit this reliably). The Enter
- * therefore follows as a separate keystroke after a settle delay, and bounded
- * re-Enters fire while the screen still shows staged content — a lone Enter from
- * the staged state submits, and a surplus Enter on an empty composer is a no-op,
- * so the recovery is safe on both adapters.
+ * follows after a settle delay; bounded re-Enters require staged content.
+ * Native submission activity permanently revokes recovery.
  *
  * While a human or automation-owned dialog is on screen, the WHOLE submission is
  * held: neither the paste nor any Enter reaches the terminal until the dialog
@@ -78,8 +78,8 @@ export function sanitizePasteText(text: string): string {
  * The returned promise resolves once the first submitting Enter has been
  * dispatched (after the settle delay), so the control queue does not drain the
  * next operation into the composer before this prompt has actually been
- * submitted. Bounded recovery re-Enters continue in the background afterwards
- * until a later queued submission or raw caller input revokes recovery ownership.
+ * submitted. Native submission activity ends background recovery without changing
+ * composer cleanup ownership; queued/raw input also revokes recovery authority.
  */
 async function writePastedPrompt(
   terminal: InputTerminal,
@@ -97,9 +97,9 @@ async function writePastedPrompt(
   // terminal with nothing blocking has nothing to wait for and writes synchronously.
   if (terminal.settled || guard?.blocked?.()) await holdWhileUnsafe(terminal, guard, signal);
   throwIfInputAborted(signal);
-  // Sanitize: caller/model text is data, so an embedded end sentinel or control
-  // byte must not escape paste mode into live keystrokes (§5.3).
+  // Keep caller text inside bracketed paste, including embedded end sentinels (§5.3).
   const payload = sanitizePasteText(prompt);
+  const recovery = guard?.captureRecovery?.();
   const rawInputSignal = stageComposer(terminal);
   const nudgeSignal =
     rawInputSignal && signal
@@ -114,9 +114,10 @@ async function writePastedPrompt(
   const nudge = async () => {
     // Decide on the current screen: a dialog may be received but not yet rendered.
     const unsafe = await writeUnsafe(terminal, guard, nudgeSignal);
-    // Later queued submissions and raw caller input revoke recovery ownership.
+    // Queued/raw input and native submission activity revoke recovery authority.
     // Stale nudges must not submit their drafts; staged chips are not prompt-specific.
-    if (nudgeSignal?.aborted || !guard || nudges >= pasteNudgeAttempts) return;
+    if (nudgeSignal?.aborted || recovery?.revoked() || !guard || nudges >= pasteNudgeAttempts)
+      return;
     // A dialog that appears after the first Enter must not be confirmed by a
     // recovery Enter either; skip this attempt and re-check on the next tick.
     if (unsafe) {
