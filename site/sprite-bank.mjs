@@ -148,13 +148,11 @@ export class SpriteBank {
     const key = `${name}/${frame.page}`;
     const owned = this.animations.page(key);
     if (owned) return { clip, frame, page: owned };
-    const page = this.pages.get(key);
+    const page = this.resources.acquirePage(key);
     if (!page) {
       this.#requestPage(name, frame.page);
       return null;
     }
-    this.pages.delete(key);
-    this.pages.set(key, page);
     const nextPage = clip.frames[Math.min(index + 16, clip.frames.length - 1)].page;
     const nextKey = `${name}/${nextPage}`;
     if (nextPage !== frame.page && !this.pages.has(nextKey) && !this.pendingPages.has(nextKey))
