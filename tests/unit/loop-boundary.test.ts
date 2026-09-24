@@ -1,7 +1,7 @@
 /** Active loop completion belongs to its own observer (PRD §5.8/§5.9, C-API-48). */
 import { expect, test } from "vitest";
 import { activeLoopBoundary, observeLoopSubmission } from "../../src/core/simple/loop-boundary.ts";
-import { FakeTurnSession } from "./simple-turn-fakes.ts";
+import { activity, FakeTurnSession } from "./simple-turn-fakes.ts";
 
 test("C-API-48 an older loop cannot clear a newer loop's boundary", async () => {
   const owner = {};
@@ -10,14 +10,99 @@ test("C-API-48 an older loop cannot clear a newer loop's boundary", async () => 
   const closing = new AbortController();
   await observeLoopSubmission(owner, first, closing.signal, () => Promise.resolve());
   const prior = activeLoopBoundary(owner);
-  await observeLoopSubmission(owner, second, closing.signal, () => Promise.resolve());
+  const submitted = observeLoopSubmission(owner, second, closing.signal, () => Promise.resolve());
   const current = activeLoopBoundary(owner);
+  expect(second.listenerCount()).toBe(0);
   first.emit("status", { status: "stopped" });
   await prior;
+  await submitted;
   expect(activeLoopBoundary(owner)).toBe(current);
   second.emit("status", { status: "stopped" });
   await current;
   expect(activeLoopBoundary(owner)).toBeUndefined();
+});
+
+test("C-API-48 a second loop waits for the first observer's trailing boundary", async () => {
+  const session = new FakeTurnSession();
+  const owner = {};
+  const closing = new AbortController();
+  await observeLoopSubmission(owner, session, closing.signal, () => Promise.resolve());
+  const first = activeLoopBoundary(owner);
+  const writes: string[] = [];
+  const second = observeLoopSubmission(owner, session, closing.signal, () => {
+    writes.push("second");
+    return Promise.resolve();
+  });
+  const waiting = activeLoopBoundary(owner);
+  expect(waiting).not.toBe(first);
+  expect(writes).toEqual([]);
+  expect(session.listenerCount()).toBe(3);
+  session.emit("status", { status: "stopped" });
+  await first;
+  await second;
+  expect(writes).toEqual(["second"]);
+  expect(session.listenerCount()).toBe(3);
+  session.emit("status", { status: "stopped" });
+  await waiting;
+  expect(activeLoopBoundary(owner)).toBeUndefined();
+  expect(session.listenerCount()).toBe(0);
+});
+
+test("C-API-50 successive untagged loops wait for each trailing transcript", async () => {
+  const session = new FakeTurnSession();
+  const owner = {};
+  const closing = new AbortController();
+  const writes: string[] = [];
+  await observeLoopSubmission(owner, session, closing.signal, () => {
+    writes.push("first");
+    return Promise.resolve();
+  });
+  const first = activeLoopBoundary(owner);
+  session.emit("hook", { hook_event_name: "Stop", last_assistant_message: "FIRST" });
+  session.emit("status", { status: "ready" });
+  const second = observeLoopSubmission(owner, session, closing.signal, () => {
+    writes.push("second");
+    return Promise.resolve();
+  });
+  const last = activeLoopBoundary(owner);
+  expect(writes).toEqual(["first"]);
+  expect(session.listenerCount()).toBe(3);
+  session.emit("activity", activity({ text: "FIRST" }));
+  await first;
+  await second;
+  expect(writes).toEqual(["first", "second"]);
+  expect(session.listenerCount()).toBe(3);
+  session.emit("hook", { hook_event_name: "Stop", last_assistant_message: "SECOND" });
+  session.emit("status", { status: "ready" });
+  session.emit("activity", activity({ text: "SECOND" }));
+  await last;
+  expect(session.listenerCount()).toBe(0);
+});
+
+test("C-API-48 a failed successor cannot clear a predecessor or later wait", async () => {
+  const session = new FakeTurnSession();
+  const owner = {};
+  const closing = new AbortController();
+  await observeLoopSubmission(owner, session, closing.signal, () => Promise.resolve());
+  const first = activeLoopBoundary(owner);
+  const failure = new Error("second failed");
+  const second = observeLoopSubmission(owner, session, closing.signal, () =>
+    Promise.reject(failure),
+  );
+  void second.catch(() => undefined);
+  const third = observeLoopSubmission(owner, session, closing.signal, () => Promise.resolve());
+  void third.catch(() => undefined);
+  const waiting = activeLoopBoundary(owner);
+  expect(session.listenerCount()).toBe(3);
+  session.emit("status", { status: "stopped" });
+  await first;
+  await expect(second).rejects.toBe(failure);
+  await Promise.resolve();
+  expect(session.listenerCount()).toBe(3);
+  session.emit("status", { status: "stopped" });
+  await expect(third).resolves.toBeUndefined();
+  await expect(waiting).resolves.toBeUndefined();
+  expect(session.listenerCount()).toBe(0);
 });
 
 test("C-API-48 closing rejects a caller's active-loop wait and removes the observer", async () => {

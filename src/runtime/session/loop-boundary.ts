@@ -25,7 +25,7 @@ export function observeLoopSubmissions(
 }
 
 /** Keep the committed loop's fired notification ahead of its running evidence. */
-export function sessionTurnStarted(
+export function recordSubmission(
   session: SessionLifecycle,
   loops: SessionLoops,
   origin: ControlSubmissionOrigin,

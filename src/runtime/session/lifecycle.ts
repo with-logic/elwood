@@ -18,7 +18,7 @@ import type {
   StatusDecision,
   StatusEvidenceKind,
 } from "../status-evidence.ts";
-import { observeLoopSubmissions, sessionTurnStarted } from "./loop-boundary.ts";
+import { observeLoopSubmissions, recordSubmission } from "./loop-boundary.ts";
 import { SessionLoops } from "./loops.ts";
 import { closingController, notRunningError, runSessionOperation } from "./not-running.ts";
 import type { PickerInputOwnership } from "./picker-input.ts";
@@ -79,7 +79,7 @@ export abstract class SessionLifecycle {
     this.controlQueue = new ControlQueue(
       queuedInputSubmitter(this.automatedTerminal, this.pasteGuard),
       () => notRunningError(agent),
-      (origin) => sessionTurnStarted(this, this.loops, origin),
+      (origin) => recordSubmission(this, this.loops, origin),
       () => this.status === "running",
       () => void (this.status === "ready" && this.submitEvidence("caller_submitted")),
       observeLoopSubmissions(this, statusEvents, cleanup),

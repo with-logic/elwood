@@ -13,21 +13,35 @@ export async function observeLoopSubmission(
   closing: AbortSignal,
   submit: () => Promise<void>,
 ): Promise<void> {
-  const observer = observeTurnBoundary(session, closing);
-  const submitted = Promise.withResolvers<void>();
-  const boundary = Promise.all([submitted.promise, observer.promise]).then(() => undefined);
+  const predecessor = activeLoops.get(owner);
+  const completion = Promise.withResolvers<void>();
+  const boundary = completion.promise;
   activeLoops.set(owner, boundary);
   const forget = () => {
     if (activeLoops.get(owner) === boundary) activeLoops.delete(owner);
   };
   // A loop can finish or close without an ergonomic caller waiting for it.
   void boundary.then(forget, forget);
+  // Passive observers have no turn identity for untagged activity. Install the
+  // next observer only after its predecessor has drained, before its own write.
+  try {
+    if (predecessor) await predecessor;
+  } catch (error) {
+    completion.reject(error);
+    throw error;
+  }
+  const observer = observeTurnBoundary(session, closing);
+  const submissionSettled = Promise.withResolvers<void>();
+  void Promise.all([submissionSettled.promise, observer.promise]).then(
+    () => completion.resolve(),
+    completion.reject,
+  );
   try {
     await submit();
   } catch (error) {
     observer.discard();
     throw error;
   } finally {
-    submitted.resolve();
+    submissionSettled.resolve();
   }
 }
