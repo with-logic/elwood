@@ -1,14 +1,28 @@
 /** Observe an internal turn through completeness and trailing drain (PRD §5.8, C-API-48/50). */
+
+import type { ElwoodActivityEvent } from "../activity/index.ts";
 import { elwoodError } from "../errors.ts";
 import { terminalStatuses } from "../status-categories.ts";
+import type { ElwoodSessionStatus, Unsubscribe } from "../types.ts";
 import { boundaryExpectation } from "./boundary-signal.ts";
 import { toTurnEvent } from "./events.ts";
 import { gateForTurn } from "./turn/defaults.ts";
 import { TurnBoundary } from "./turn-boundary.ts";
-import { defaultBoundarySignal, type TurnSession } from "./turn-types.ts";
+import { defaultBoundarySignal, type TurnBoundaryHook } from "./turn-types.ts";
+
+/** Only the events and current status used by passive observation. */
+export type BoundarySession = {
+  readonly status: ElwoodSessionStatus;
+  on(event: "activity", handler: (event: ElwoodActivityEvent) => void): Unsubscribe;
+  on(
+    event: "status",
+    handler: (event: { readonly status: ElwoodSessionStatus }) => void,
+  ): Unsubscribe;
+  on(event: "hook", handler: (event: TurnBoundaryHook) => void): Unsubscribe;
+};
 
 /** Passive observation: the caller owns submission; this never sends or replays input. */
-export function observeTurnBoundary(session: TurnSession, closing: AbortSignal) {
+export function observeTurnBoundary(session: BoundarySession, closing: AbortSignal) {
   const gate = gateForTurn({});
   let started = false;
   let sawReady = false;
@@ -61,7 +75,7 @@ export function observeTurnBoundary(session: TurnSession, closing: AbortSignal) 
       if (sawReady) boundary.armDrain();
     },
   );
-  // Internal persona output still flows through public activity; discard only this collector's copy.
+  // Internal turn output still flows through public activity; discard only this collector's copy.
   void (async () => {
     for await (const event of gate.drain()) void event;
   })().catch(() => undefined);
