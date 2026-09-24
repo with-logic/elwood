@@ -17,7 +17,12 @@ for (const agent of ["claude", "codex"] as const) {
       "hook",
       "activity",
       "observer-timeout",
+      "hook-error",
+      "error-activity",
     ] as const)(`C-HOOK-04 ${agent} finalized %s rejects late ${method} before admission`, async (mode) => {
+      const timedOut = ["handler", "observer-timeout", "hook-error", "error-activity"].includes(
+        mode,
+      );
       const helper = agent === "claude" ? claude : codex;
       helper.installFakes();
       const cwd = helper.tempDir();
@@ -49,7 +54,7 @@ for (const agent of ["claude", "codex"] as const) {
         hooks: {
           Stop: async () => {
             if (mode === "handler") await callback();
-            else if (mode === "observer-timeout") await delayed;
+            else if (timedOut) await delayed;
           },
         },
       });
@@ -68,14 +73,21 @@ for (const agent of ["claude", "codex"] as const) {
         events.on("hook", (event) => {
           return event.hook_event_name === "Stop" ? callback() : undefined;
         });
-      if (mode === "activity")
+      if (mode === "activity" || mode === "error-activity")
         events.on("activity", (event) => {
-          return event.kind === "hook" && event.hookEventName === "Stop" ? callback() : undefined;
+          return event.kind === (mode === "activity" ? "hook" : "hook_error") &&
+            event.hookEventName === "Stop"
+            ? callback()
+            : undefined;
         });
       const pty = helper.ptys[0]!;
       let timeouts = 0;
       events.on("hookError", (event) => {
-        if (event.category === "timeout") timeouts++;
+        if (event.category === "timeout") {
+          timeouts++;
+          if (mode === "hook-error") return callback();
+        }
+        return undefined;
       });
       try {
         vi.useFakeTimers();
@@ -95,7 +107,7 @@ for (const agent of ["claude", "codex"] as const) {
         await vi.advanceTimersByTimeAsync(250);
         expect(await stop).toEqual({ exitCode: 0, stdout: "", stderr: "" });
         await queued;
-        expect(timeouts).toBe(mode === "handler" || mode === "observer-timeout" ? 1 : 0);
+        expect(timeouts).toBe(timedOut ? 1 : 0);
         expect(pty.writes.filter((value) => value === "\r")).toHaveLength(2);
         release();
         await vi.advanceTimersByTimeAsync(200);

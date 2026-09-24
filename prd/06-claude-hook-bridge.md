@@ -83,9 +83,10 @@ runtime value, Elwood returns no decision to Claude and emits `hookError` to the
 parent app.
 
 When a `Stop` result is finalized (normal completion, timeout, or other fail-open),
-its registered handler and initial `hook`/`activity` observer async continuations
-lose authority to admit new queue-backed input to that same session. Later
-`sendPrompt`, `sendMessage`, or `sendGuidance` calls from that context reject with
+its registered handler and initial `hook`/`activity` observers, including
+`hookError`/`hook_error` diagnostics emitted during that request, lose authority
+in their async continuations to admit new queue-backed input to that same live session.
+Later `sendPrompt`, `sendMessage`, or `sendGuidance` calls from that context reject with
 `wait_timeout` before image attachment or queue admission. Already admitted input
 remains valid; the bridge does not wait for unawaited observers or timed-out user
 code. Unrelated caller contexts, other sessions, non-Stop hooks, and explicit raw

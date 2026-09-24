@@ -17,6 +17,7 @@ for (const agent of ["claude", "codex"] as const)
     "other-session",
     "non-stop",
     "raw",
+    "diagnostic-admitted",
   ] as const)(`C-HOOK-04 ${agent} preserves %s input`, async (mode) => {
     const helper = agent === "claude" ? claude : codex;
     helper.installFakes();
@@ -39,6 +40,10 @@ for (const agent of ["claude", "codex"] as const)
           if (mode === "pre-admitted") await pending;
         } else {
           await delayed;
+          if (mode === "diagnostic-admitted") {
+            finished = true;
+            return;
+          }
           if (mode === "raw") await session.sendKeys("allowed later");
           else await (mode === "other-session" ? other : session).sendPrompt("allowed later");
         }
@@ -63,6 +68,17 @@ for (const agent of ["claude", "codex"] as const)
     const statusEvents: {
       on(name: "status", listener: (event: { readonly status: string }) => unknown): unknown;
     } = session;
+    const errorEvents: {
+      on(name: "hookError", listener: (event: { readonly category: string }) => unknown): unknown;
+    } = session;
+    if (mode === "diagnostic-admitted")
+      errorEvents.on("hookError", (event) => {
+        if (event.category !== "timeout") return;
+        pending = session.sendPrompt("admitted");
+        void pending.catch((caught) => {
+          error = caught;
+        });
+      });
     const pty = helper.ptys[0]!;
     let listenerEntered = false;
     let listenerFinished = false;
@@ -103,7 +119,11 @@ for (const agent of ["claude", "codex"] as const)
       expect(
         target.writes.some((value) =>
           value.includes(
-            mode === "pre-admitted" || mode === "internal-listener" ? "admitted" : "allowed later",
+            mode === "pre-admitted" ||
+              mode === "internal-listener" ||
+              mode === "diagnostic-admitted"
+              ? "admitted"
+              : "allowed later",
           ),
         ),
       ).toBe(true);
