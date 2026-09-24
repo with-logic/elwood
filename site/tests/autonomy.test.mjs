@@ -102,7 +102,7 @@ test("an automatic gesture awaiting its image cannot start after a manual takeov
   const { world, director, advance } = setup();
   let ready = false;
   director.ready = () => ready;
-  director.task = { kind: "moment", name: "wave", sent: false, seen: false, elapsed: 0, hold: 3 };
+  director.task = { kind: "moment", name: "wave", sent: false, seen: false, elapsedSeconds: 0, hold: 3 };
   advance(1);
   assert.equal(world.player.gesture, null);
   director.interact();
@@ -152,7 +152,7 @@ test("an oversized automatic trick is rejected before loading its image page", (
     imageRequests++;
     return true;
   };
-  director.task = { kind: "moment", name: "cartwheel", sent: false, elapsed: 0, hold: 3 };
+  director.task = { kind: "moment", name: "cartwheel", sent: false, elapsedSeconds: 0, hold: 3 };
   advance(1 / 120);
   assert.equal(imageRequests, 0);
   assert.equal(world.player.gesture, null);
