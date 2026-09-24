@@ -47,18 +47,20 @@ for (const event of ["unsupported", "error", "messageerror"]) {
     pending.push(decoder.decode(blobs[2]));
     assert.deepEqual(await Promise.all(pending), blobs);
     assert.deepEqual(local, blobs);
-    assert.equal(worker.sent.length, 2);
+    assert.equal(worker.sent.length, 1);
   });
 }
 
-test("worker replies correlate out of order and failed processing falls back only its request", async (t) => {
+test("worker dispatch stays serial and failed processing falls back only its request", async (t) => {
   const { decoder, worker, local } = fixture(t);
   const blob = new Blob(["one"]);
   const first = decoder.decode(blob);
   const second = decoder.decode(new Blob(["two"]));
-  worker.emit("message", { id: 2, image: "decoded" });
+  assert.equal(worker.sent.length, 1);
   worker.emit("message", { id: 999, error: "irrelevant" });
   worker.emit("message", { id: 1, error: "bad sheet" });
+  assert.equal(worker.sent.length, 2);
+  worker.emit("message", { id: 2, image: "decoded" });
   assert.equal(await second, "decoded");
   assert.equal(await first, blob);
   assert.equal(worker.terminated, false);

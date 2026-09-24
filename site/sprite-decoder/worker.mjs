@@ -18,6 +18,7 @@ async function decode({ id, blob }) {
     if (pending.has(id)) globalThis.postMessage({ id, error });
   } finally {
     image?.close();
+    if (!pending.has(id)) globalThis.postMessage({ id, cancelled: true });
   }
 }
 
@@ -32,7 +33,7 @@ globalThis.addEventListener("message", ({ data }) => {
   pending.set(id, data);
   const request = tail.then(async () => {
     const queued = pending.get(id);
-    if (!queued) return;
+    if (!queued) return globalThis.postMessage({ id, cancelled: true });
     try {
       await decode(queued);
     } finally {
