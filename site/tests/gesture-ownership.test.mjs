@@ -1,8 +1,7 @@
 /** Explicit readiness shares failure authority and releases canceled delivery (PRD §13). */
 import assert from "node:assert/strict";
-import { resolveObjectURL } from "node:buffer";
 import test from "node:test";
-import { SpriteBank } from "../sprite-bank.mjs";
+import { fixture as bankFixture } from "./animation-fixture.mjs";
 import { LandingScene } from "../landing-scene.mjs";
 import { World } from "../world.mjs";
 
@@ -16,25 +15,12 @@ const clip = (name) => ({ name, fps: 24,
   frames: Array.from({ length: name === "wave" ? 6 : 2 }, (_, page) => ({ page, x: 0, y: 0, w: 1, h: 1, anchor: { x: 0, y: 0 }, socket: { x: 0, y: 0 } })),
 });
 function fixture(t) {
-  const original = { fetch: globalThis.fetch, Image: globalThis.Image };
-  const requests = [], images = [], errors = [];
-  globalThis.fetch = async (url) => {
-    const path = new URL(url).pathname.split("/game/").at(-1);
-    requests.push(path);
-    return path.endsWith("clip.json") ? Response.json(clip(path.split("/")[0])) : new Response(path);
-  };
-  globalThis.Image = class {
-    closed = 0;
-    async decode() { this.path = await resolveObjectURL(this.src).text(); images.push(this); }
-    close() { this.closed++; }
-  };
-  const bank = new SpriteBank((error) => errors.push(error));
+  const { bank, requested: requests, images, errors } = bankFixture(t);
   const scene = Object.create(LandingScene.prototype);
   Object.assign(scene, { bank, ready: true, requestVersion: 0, pressed: {}, pauses: new Set(),
     world: { player: { queuedAction: null } }, director: { interact() {} }, start() {},
     onError(error) { errors.push(error); },
   });
-  t.after(() => { bank.dispose(); Object.assign(globalThis, original); });
   return { bank, scene, requests, images, errors };
 }
 

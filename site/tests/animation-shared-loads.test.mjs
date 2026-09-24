@@ -22,9 +22,10 @@ function fixture(t, stage) {
   else { bank.clips.set("rotation", clip); bank.frame("rotation", 0); }
   return { bank, errors, decoded, gate, calls: () => calls };
 }
-async function idlePrepared(bank) {
-  for (let i = 0; i < 100 && !bank.animations.candidateOwner?.pages.has("idle/0"); i++) await turn();
-  assert.ok(bank.animations.candidateOwner?.pages.has("idle/0"));
+async function joined(bank, stage) {
+  const key = stage === "metadata" ? "rotation" : "rotation/0";
+  for (let i = 0; i < 100 && bank.loads.tasks.get(key)?.consumers.size !== 2; i++) await turn();
+  assert.equal(bank.loads.tasks.get(key)?.consumers.size, 2, "automatic and explicit callers share the stalled task");
 }
 
 for (const stage of ["metadata", "page"]) {
@@ -32,7 +33,7 @@ for (const stage of ["metadata", "page"]) {
     const { bank, errors, gate, calls } = fixture(t, stage);
     let cancelled = false;
     const preparing = bank.prepareAnimation("wave").then((result) => { cancelled = result === null; });
-    await idlePrepared(bank);
+    await joined(bank, stage);
     bank.cancelPreparation();
     await turn();
     const promptCancellation = cancelled;
@@ -50,7 +51,7 @@ for (const stage of ["metadata", "page"]) {
     const { bank, errors, decoded, gate, calls } = fixture(t, stage);
     let delivered = false;
     const preparing = bank.prepareAnimation("wave").then((result) => { delivered = true; return result; });
-    await idlePrepared(bank);
+    await joined(bank, stage);
     assert.equal(delivered, false);
     gate.resolve();
     await preparing;

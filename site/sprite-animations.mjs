@@ -28,6 +28,7 @@ export class SpriteAnimations {
     this.release(delivered);
   }
 
+  /** Publish only a ready matching candidate; mismatches preserve every owner. */
   publish(name) {
     if (this.candidateOwner?.ready && this.candidateOwner.name === name) {
       const old = this.deliveredOwner;
@@ -37,40 +38,71 @@ export class SpriteAnimations {
     }
   }
 
-  activate(name) {
-    if (this.deliveredOwner?.name === name) {
+  /** Activate a delivered request before cancellation can drop it. Opening turns pass their target. */
+  activate(name, target = name) {
+    if (this.deliveredOwner?.name === target) {
       const old = this.activeOwner;
       this.activeOwner = this.deliveredOwner;
       this.deliveredOwner = null;
       this.release(old);
-    } else if (this.activeOwner && !this.activeOwner.clips.has(name)) {
-      const old = this.activeOwner;
+    }
+    const owner = this.activeOwner;
+    if (!owner || name === owner.name || target === owner.name) return;
+    // Playback has left the requested clip. Keep only the current/next dependency;
+    // SpritePages independently protects the rendered current and outgoing poses.
+    for (const clipName of owner.clips.keys()) {
+      if (clipName === name || clipName === target) continue;
+      owner.leases.get(clipName).abort();
+      owner.leases.delete(clipName);
+      owner.clips.delete(clipName);
+      for (const key of owner.pages.keys()) if (key.startsWith(`${clipName}/`)) owner.pages.delete(key);
+    }
+    if (!owner.clips.size) {
       this.activeOwner = null;
-      this.release(old);
+      this.release(owner);
     }
   }
 
   async prepare(name) {
     this.cancel();
-    if (this.activeOwner?.name === name) return this.activeOwner.clips.get(name);
+    if (this.activeOwner?.name === name && this.activeOwner.clips.has(name))
+      return this.activeOwner.clips.get(name);
     const owner = {
       name, controller: new AbortController(),
-      pages: new Map(), clips: new Map(), ready: false,
+      pages: new Map(), clips: new Map(), leases: new Map(), ready: false,
     };
     this.candidateOwner = owner;
-    for (const clipName of new Set(["idle", "rotation", name])) this.bank.loads.retry(clipName);
+    const names = [...new Set(["idle", "rotation", name])];
+    for (const clipName of names) {
+      this.bank.loads.retry(clipName);
+      owner.leases.set(clipName, new AbortController());
+    }
     const { signal } = owner.controller;
+    signal.addEventListener("abort", () => {
+      for (const lease of owner.leases.values()) lease.abort();
+    }, { once: true });
     try {
-      for (const clipName of new Set(["idle", "rotation", name])) {
-        const clip = await this.bank.load(clipName, { signal });
+      // Metadata is bounded by the three requested/dependency clips. Fetch up to
+      // four pages concurrently; SpriteDecoder still serializes worker decoding.
+      await Promise.all(names.map(async (clipName) => {
+        const clip = await this.bank.load(clipName, { signal: owner.leases.get(clipName).signal });
         signal.throwIfAborted();
         owner.clips.set(clipName, clip);
-        for (const index of clip.pages.keys()) {
-          const image = await this.bank.loadPage(clipName, index, { signal });
+      }));
+      const pages = names.flatMap((clipName) => [...owner.clips.get(clipName).pages.keys()]
+        .map((index) => ({ clipName, index })));
+      let next = 0;
+      await Promise.all(Array.from({ length: Math.min(4, pages.length) }, async () => {
+        while (next < pages.length) {
+          signal.throwIfAborted();
+          const { clipName, index } = pages[next++];
+          const image = await this.bank.loadPage(clipName, index, {
+            signal: owner.leases.get(clipName).signal,
+          });
           signal.throwIfAborted();
           owner.pages.set(`${clipName}/${index}`, image);
         }
-      }
+      }));
       signal.throwIfAborted();
       owner.ready = true;
       return owner.clips.get(name);

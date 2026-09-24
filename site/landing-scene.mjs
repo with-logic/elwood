@@ -190,6 +190,7 @@ export class LandingScene {
     const homeX = config.robotX / config.scale;
     this.homeSpot = { x: homeX, y: this.standingTop(homeX) };
     if (reset) {
+      this.clearInput();
       this.drag = null;
       w.reset();
       w.player.x = homeX;
@@ -208,6 +209,7 @@ export class LandingScene {
       Math.abs(old.scale - config.scale) > 0.01
     ) {
       // A responsive reflow starts from a valid floor, never from a vanished ledge.
+      this.clearInput();
       const x = (w.player.x * widthRatio * old.scale) / config.scale;
       this.drag = null;
       w.reset();
@@ -457,7 +459,7 @@ export class LandingScene {
     this.pressed = NO_INPUT;
     const p = this.world.player;
     const playing = p.turn?.target ?? p.animation;
-    this.bank.activateAnimation(playing);
+    this.bank.activateAnimation(p.animation, p.turn?.target ?? p.animation);
     const queued = p.queuedAction?.gesture ?? (p.queuedAction?.face ? `idle-${p.queuedAction.face}` : null);
     if (requested && requested !== playing && requested !== queued) this.bank.cancelPreparation();
     if (wasAirborne && p.mode === "ground") this.markGround();
@@ -522,7 +524,7 @@ export class LandingScene {
           : null,
       );
     }
-    this.bank.activateAnimation(p.animation);
+    this.bank.activateAnimation(p.animation, p.turn?.target ?? p.animation);
     const positioned = this.alignDrag(positionPose(pose, p));
     const seam =
       p.animation === "rotation" &&

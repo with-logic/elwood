@@ -79,8 +79,10 @@ export class SpriteBank {
     if (this.disposed) return Promise.reject(new Error("Sprite bank is disposed."));
     return this.animations.prepare(name);
   }
+  /** Transfer a ready candidate to delivered input; unmatched or pending names are no-ops. */
   publishAnimation(name) { this.animations.publish(name); }
-  activateAnimation(name) { this.animations.activate(name); }
+  /** Consume delivered input with its actual animation and optional opening-turn target. */
+  activateAnimation(name, target = name) { this.animations.activate(name, target); }
   /** Cancel pending/delivered preparation while active playback keeps its owner. */
   cancelPreparation() { this.animations.cancel(); }
 
