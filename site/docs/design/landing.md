@@ -39,7 +39,13 @@ supplies `currentName` (playing now) and `nextName` (requested or next transitio
 clip). This consumes delivered ownership even before an opening turn, so cancellation
 cannot drop the request before its first pose. Unmatched activation cannot promote
 a candidate; it only releases obsolete active clip leases. Once playback leaves the request, only current/next dependency
-clips remain leased; cache and current/outgoing pose ownership remain independent.
+clips remain leased by that animation owner; cache and current/outgoing pose ownership
+remain independent. Successful complete preparation also pins the idle clip (two
+shipped pages) through one shared bank-lifetime lease. Later preparations reuse
+these pages even after animation ownership changes and cache eviction. Failed or
+cancelled candidates do not establish that lease; disposal releases it. Idle clips
+larger than two pages use ordinary animation/cache ownership instead. Rotation
+and requested action pages never gain a bank-lifetime lease.
 The pose handoff receives the actual current pose first and outgoing blend second,
 and retains both before releasing any dependency leases. After the requested
 one-frame clip is retained for painting, its idle and rotation dependency leases

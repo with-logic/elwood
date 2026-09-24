@@ -6,7 +6,7 @@ import { automaticScene, moment } from "./automatic-scene-fixture.mjs";
 for (const [path, task, name] of [
   ["wave/5.webp", moment(), "wave"],
   ["rotation/1.webp", moment(), "wave"],
-  ["idle-back/1.webp", { kind: "face", direction: "back", sent: false, elapsed: 0 }, "idle-back"],
+  ["idle-back/1.webp", { kind: "face", direction: "back", sent: false, elapsedSeconds: 0 }, "idle-back"],
 ]) {
   test(`C-SITE-03 automatic ${name} waits for ${path} and resets its delivery clock`, async (t) => {
     const { scene, bank, gates, requested, tick } = await automaticScene(t);
@@ -21,7 +21,7 @@ for (const [path, task, name] of [
     gate.resolve();
     for (let i = 0; i < 30 && !current.sent; i++) await tick();
     assert.equal(current.sent, true);
-    assert.equal(current.elapsed, 0);
+    assert.equal(current.elapsedSeconds, 0);
     assert.equal(bank.animations.activeOwner.name, name);
     for (const clipName of ["idle", "rotation", name])
       for (const [index] of bank.clips.get(clipName).frames.entries())

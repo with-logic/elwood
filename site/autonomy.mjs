@@ -1,4 +1,5 @@
 /** Automatic movement and complete action delivery timing (PRD §13.3, C-SITE-03). */
+const AUTOMATIC_ACTION_DEADLINE_SECONDS = 8;
 const MOMENTS = [
   "thinking",
   "shrug",
@@ -87,7 +88,7 @@ export class Autonomy {
         kind: "walk",
         x: Math.max(bounds.left, Math.min(bounds.right, platform.x + platform.width * 0.7)),
         platform,
-        elapsed: 0,
+        elapsedSeconds: 0,
         stuck: 0,
         lastX: p.x,
         jumpIn: 0,
@@ -96,12 +97,12 @@ export class Autonomy {
       let target = this.between(bounds.left, bounds.right);
       if (Math.abs(target - p.x) < 35)
         target = p.x < (bounds.left + bounds.right) / 2 ? bounds.right : bounds.left;
-      this.task = { kind: "walk", x: target, elapsed: 0, stuck: 0, lastX: p.x, jumpIn: 0 };
+      this.task = { kind: "walk", x: target, elapsedSeconds: 0, stuck: 0, lastX: p.x, jumpIn: 0 };
     } else if (choice > 0.9) {
       this.task = {
         kind: "face",
         direction: this.random() < 0.5 ? "front" : "back",
-        elapsed: 0,
+        elapsedSeconds: 0,
         sent: false,
       };
     } else {
@@ -125,7 +126,7 @@ export class Autonomy {
         name,
         sent: false,
         seen: false,
-        elapsed: 0,
+        elapsedSeconds: 0,
         hold: this.between(2.5, 9),
       };
     }
@@ -160,7 +161,7 @@ export class Autonomy {
       if (task.remaining <= 0 && p.mode === "ground" && !p.turn && !p.gesture) this.task = null;
       return NO_INPUT;
     }
-    task.elapsed += dt;
+    task.elapsedSeconds += dt;
     if (task.kind === "walk") {
       task.jumpIn = Math.max(0, task.jumpIn - dt);
       if (p.mode === "hang") return { climbPressed: true };
@@ -168,7 +169,7 @@ export class Autonomy {
       const distance = task.x - p.x;
       const arrived =
         Math.abs(distance) < 5 && (!task.platform || p.support?.id === task.platform.id);
-      if (arrived || task.elapsed > 12) {
+      if (arrived || task.elapsedSeconds > 12) {
         this.rest();
         return NO_INPUT;
       }
@@ -184,14 +185,18 @@ export class Autonomy {
         jumpPressed: jump,
       };
     }
+    // Check expiry before readiness/fit work so late assets cannot revive the task.
+    if (!task.sent && task.elapsedSeconds > AUTOMATIC_ACTION_DEADLINE_SECONDS) {
+      this.rest();
+      return NO_INPUT;
+    }
     if (task.kind === "face") {
       if (!task.sent && this.ready(`idle-${task.direction}`, task)) {
         task.sent = true;
-        task.elapsed = 0;
+        task.elapsedSeconds = 0;
         return { face: task.direction };
       }
-      if (task.sent && !p.turn && task.elapsed > 1.4) this.rest();
-      if (!task.sent && task.elapsed > 8) this.rest();
+      if (task.sent && !p.turn && task.elapsedSeconds > 1.4) this.rest();
       return NO_INPUT;
     }
     if (!task.sent) {
@@ -205,11 +210,10 @@ export class Autonomy {
         }
         if (task.fits && this.ready(task.name, task)) {
           task.sent = true;
-          task.elapsed = 0;
+          task.elapsedSeconds = 0;
           return { gesture: task.name };
         }
       }
-      if (task.elapsed > 8) this.rest();
       return NO_INPUT;
     }
     if (p.gesture === task.name) {
@@ -218,7 +222,7 @@ export class Autonomy {
         task.hold -= dt;
         if (task.hold <= 0) return { releaseGesture: true };
       }
-    } else if (task.seen || task.elapsed > 15) this.rest();
+    } else if (task.seen || task.elapsedSeconds > 15) this.rest();
     return NO_INPUT;
   }
 }

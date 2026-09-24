@@ -13,12 +13,16 @@ back each entry are listed in `prd/14-conformance.md`.
 ## [Unreleased]
 
 - Prepare complete automatic landing-page gestures and facing actions before playback, releasing obsolete task loads without interrupting manual input.
+- Discard expired automatic landing-page actions before readiness checks, preventing late assets from triggering an obsolete gesture or facing change.
+- Reuse decoded idle sheets across landing-page actions instead of repeatedly fetching and decoding them after playback changes.
 
 - Prepare and retain the complete initial idle animation before replacing the landing-page fallback.
 
 - Prepare complete landing-page gesture and facing animations before delivery, cancel obsolete requests, and avoid loading input that cannot play in the current state.
 
 - Stop background recovery Enter presses when the native composer is positively empty, even if submitted text remains in the transcript.
+
+- Avoid repeatedly scanning blocked turn input when model and login controls cross a queued backlog.
 
 - Stop background paste-recovery Enter presses after native submission activity, including while the first physical Enter is pending.
 

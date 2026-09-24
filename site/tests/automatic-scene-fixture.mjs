@@ -23,4 +23,4 @@ export async function automaticScene(t) {
   };
   return { ...assets, scene, tick };
 }
-export const moment = (name = "wave") => ({ kind: "moment", name, sent: false, seen: false, elapsed: 0, hold: 3 });
+export const moment = (name = "wave") => ({ kind: "moment", name, sent: false, seen: false, elapsedSeconds: 0, hold: 3 });

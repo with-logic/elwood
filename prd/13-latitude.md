@@ -20,6 +20,14 @@ their automatic failure report. Only the final consumer cancels the underlying
 operation; an abandoned completion cannot publish into a successor request.
 Explicitly retained pages stay alive through delivery and cache eviction until their
 owner releases them, while current/outgoing pose owners remain protected.
+After successful complete animation preparation, the shared idle clip's two shipped
+pages remain leased for that sprite bank's lifetime, so later actions reuse them
+without repeated fetching or decoding. Failed or cancelled preparations do not
+establish this lease. The shared lease is capped at two pages: an idle manifest
+with more pages falls back to ordinary animation/cache ownership.
+The ordinary cache remains capped at four pages; rotation and action pages receive
+no bank-lifetime lease. Disposal releases the shared idle lease together with all
+other resource owners.
 
 Sprite decoder requests may carry an abort signal. Cancellation rejects the
 request promptly, skips requests that have not started decoding, and
@@ -29,6 +37,12 @@ owns the waiting queue and sends one request at a time; aborting the active
 request does not release that physical slot until the worker replies. In-flight
 browser bitmap decoding cannot be interrupted; its eventual image is released,
 without terminating the worker or cancelling other requests. Settled requests remove their abort listeners.
+
+Automatic gesture and facing tasks may wait at most eight seconds before delivery.
+Once elapsed time exceeds eight seconds, the next simulation update cancels the
+task before checking asset readiness or silhouette fit. Assets becoming ready
+between updates cannot revive that expired task; delivery at exactly eight seconds
+remains eligible. This limit does not shorten an action already delivered.
 
 ### 13.1 Landing-page explicit animation controls
 
@@ -56,7 +70,8 @@ only after complete idle preparation. Input and visibility changes before readin
 do not cancel initial preparation. Teardown cancels it and prevents a late handoff.
 An asset failure reports the existing contextual error and preserves the fallback;
 a later explicit boot attempt may retry. Idle pages remain available through cache
-eviction until playback leaves idle, with current/outgoing pose ownership preserved.
+eviction and later playback changes through the shared idle lease, with
+current/outgoing pose ownership preserved.
 
 ### 13.3 Automatic gesture and facing readiness
 
@@ -72,3 +87,4 @@ but cannot release a newer manual request or active/current/outgoing playback.
 An automatic asset failure reports once and prevents automatic retries of that
 action until explicit preparation retries it. Unchanged paint ticks cannot retry
 or republish a failed or superseded task. Walking and pickup remain on demand.
+
