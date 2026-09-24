@@ -1,3 +1,4 @@
+/** Automatic movement and complete action delivery timing (PRD §13.3, C-SITE-03). */
 const MOMENTS = [
   "thinking",
   "shrug",
@@ -32,7 +33,8 @@ const MOMENTS = [
 export const NO_INPUT = Object.freeze({});
 
 export class Autonomy {
-  constructor({ random = Math.random, ready = () => true, fits = () => true } = {}) {
+  constructor({ random = Math.random, ready = () => true, fits = () => true, onTaskEnd = () => {} } = {}) {
+    this.onTaskEnd = onTaskEnd;
     this.random = random;
     this.ready = ready;
     this.fits = fits;
@@ -42,6 +44,12 @@ export class Autonomy {
     this.lastMoment = null;
     this.settling = false;
     this.restingFor = 0;
+  }
+  get task() { return this.currentTask; }
+  set task(next) {
+    const old = this.currentTask;
+    this.currentTask = next;
+    if (old && old !== next) this.onTaskEnd(old);
   }
   between(low, high) {
     return low + this.random() * (high - low);
@@ -177,8 +185,9 @@ export class Autonomy {
       };
     }
     if (task.kind === "face") {
-      if (!task.sent && this.ready(`idle-${task.direction}`)) {
+      if (!task.sent && this.ready(`idle-${task.direction}`, task)) {
         task.sent = true;
+        task.elapsed = 0;
         return { face: task.direction };
       }
       if (task.sent && !p.turn && task.elapsed > 1.4) this.rest();
@@ -189,13 +198,14 @@ export class Autonomy {
       if (p.mode === "ground") {
         // null means the geometry metadata is still loading. Reject a trick
         // before requesting its much larger image page when it will not fit.
-        task.fits ??= this.fits(task.name, world);
+        task.fits ??= this.fits(task.name, world, task);
         if (task.fits === false) {
           this.rest();
           return NO_INPUT;
         }
-        if (task.fits && this.ready(task.name)) {
+        if (task.fits && this.ready(task.name, task)) {
           task.sent = true;
+          task.elapsed = 0;
           return { gesture: task.name };
         }
       }
