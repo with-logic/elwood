@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Hold scheduled loop delivery through ergonomic caller turns, preventing a due
+  loop from accepting or completing a caller prompt that needs recovery.
+
 - Recognize Claude 2.1.281's half-circle working title, keeping active turns and
   trust holds from appearing idle while the input composer remains visible.
 

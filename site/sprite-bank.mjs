@@ -35,18 +35,17 @@ export class SpriteBank {
         return value;
       });
       signal.throwIfAborted();
-      this.clips.set(name, clip);
       return clip;
-    }, options);
+    }, options, { publish: (clip) => this.clips.set(name, clip) });
   }
 
   async loadPage(name, index, options = {}) {
     options.signal?.throwIfAborted();
     if (this.disposed) throw new Error("Sprite bank is disposed.");
     const key = `${name}/${index}`;
-    const cached = this.resources.get(key, options.signal);
+    const cached = this.resources.acquirePage(key, options.signal);
     if (cached) return cached;
-    return this.loads.run(key, this.pendingPages, async (signal, pin) => {
+    return this.loads.run(key, this.pendingPages, async (signal) => {
       const clip = await this.load(name, { signal });
       signal.throwIfAborted();
       const path = `${name}/${clip.pages[index].file}`;
@@ -55,14 +54,11 @@ export class SpriteBank {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return this.decoder.decode(await response.blob());
       });
-      if (signal.aborted) {
-        releaseSpriteImage(image);
-        signal.throwIfAborted();
-      }
-      pin(image);
-      this.resources.store(key, image);
       return image;
-    }, options);
+    }, options, {
+      publish: (image, pin) => { pin(image); this.resources.store(key, image); },
+      discard: releaseSpriteImage,
+    });
   }
 
   async prepare(name, options = {}) {

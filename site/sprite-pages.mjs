@@ -7,7 +7,7 @@ export class SpritePages {
   #leased = new Map();
   constructor() { this.cached = new Map(); }
 
-  get(key, signal) {
+  acquirePage(key, signal) {
     const image = this.cached.get(key)
       ?? [...this.#leased.values()].map((owner) => owner.pages.get(key)).find(Boolean);
     if (!image) return undefined;
