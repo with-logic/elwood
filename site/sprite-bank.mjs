@@ -116,7 +116,9 @@ export class SpriteBank {
 
   /** Replace both pose owners atomically; rendering borrows their pages synchronously. */
   retainPoses(...poses) {
-    if (!this.disposed) this.resources.retainPoses(...poses);
+    if (this.disposed) return;
+    this.resources.retainPoses(...poses);
+    this.animations.retainPose(poses[0]);
   }
 
   dispose() {

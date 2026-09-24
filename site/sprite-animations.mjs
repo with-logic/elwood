@@ -51,8 +51,19 @@ export class SpriteAnimations {
     }
     const owner = this.activeOwner;
     if (!owner || currentName === owner.name || nextName === owner.name) return;
-    // Playback has left the requested clip. Keep only the current/next dependency;
-    // SpritePages independently protects the rendered current and outgoing poses.
+    // Playback has left the requested clip. Keep only the current/next dependency.
+    this.trim(owner, currentName, nextName);
+  }
+
+  /** Called after current/outgoing pose retention, never for a future turn target. */
+  retainPose(pose) {
+    const owner = this.activeOwner;
+    if (owner && pose?.clip?.name === owner.name && pose.clip.frames.length === 1)
+      this.trim(owner, owner.name, owner.name);
+  }
+
+  trim(owner, currentName, nextName) {
+    // Pose ownership protects outgoing images; leases preserve keyed frame lookup.
     for (const clipName of owner.clips.keys()) {
       if (clipName === currentName || clipName === nextName) continue;
       owner.leases.get(clipName).abort();
