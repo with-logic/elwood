@@ -29,20 +29,28 @@ for (const [path, task, name] of [
   });
 }
 
-test("C-SITE-03 obsolete geometry probes release their shared metadata consumer", async (t) => {
-  const { scene, gates, requested, aborted, errors, tick } = await automaticScene(t);
-  const gate = Promise.withResolvers();
-  gates.set("wave/clip.json", gate);
-  scene.director.task = moment();
-  await tick(10);
-  assert.equal(requested.filter(path => path === "wave/clip.json").length, 1);
-  scene.director.task = moment("bow");
-  assert.deepEqual(aborted, ["wave/clip.json"]);
-  gate.resolve();
-  await tick(30);
-  assert.equal(scene.world.player.gesture, "bow");
-  assert.deepEqual(errors, []);
-});
+for (const shared of [false, true]) {
+  test(`C-SITE-03 obsolete geometry probes release only their metadata consumer (shared=${shared})`, async (t) => {
+    const { scene, bank, gates, requested, aborted, errors, tick } = await automaticScene(t);
+    const gate = Promise.withResolvers();
+    gates.set("wave/clip.json", gate);
+    scene.director.task = moment();
+    await tick(10);
+    const survivor = shared ? bank.load("wave") : null;
+    survivor?.catch(() => {}); // Keep a premature rejection observable at the awaited assertion.
+    const obsolete = scene.automaticPreparation.preparationOwner;
+    assert.equal(requested.filter(path => path === "wave/clip.json").length, 1);
+    scene.director.task = moment("bow");
+    assert.equal(obsolete.controller.signal.aborted, true);
+    assert.deepEqual(aborted, shared ? [] : ["wave/clip.json"]);
+    if (shared) assert.equal(bank.loads.tasks.get("wave").consumers.size, 1);
+    gate.resolve();
+    if (shared) assert.equal((await survivor).name, "wave");
+    await tick(30);
+    assert.equal(scene.world.player.gesture, "bow");
+    assert.deepEqual(errors, []);
+  });
+}
 
 test("C-SITE-03 manual takeover replaces pending automatic pages without stale delivery", async (t) => {
   const { scene, bank, gates, errors, tick } = await automaticScene(t);

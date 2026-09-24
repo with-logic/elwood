@@ -15,30 +15,35 @@ test("C-SITE-03 an automatic cancellation continuation cannot cancel a newer ban
   assert.equal(owner.controller.signal.aborted, false);
 });
 
-test("C-SITE-03 ending queued delivery clears only its matching World action", async (t) => {
-  const { scene, bank, tick } = await automaticScene(t);
-  await bank.prepareAnimation("cartwheel");
-  bank.publishAnimation("cartwheel"); bank.activateAnimation("cartwheel");
-  const active = bank.animations.activeOwner;
-  scene.world.clips.cartwheel.finish_before_next = true;
-  scene.world.gestureDurations.cartwheel = 6;
-  Object.assign(scene.world.player, { gesture: "cartwheel", gestureStage: "enter", animation: "cartwheel" });
-  scene.director.task = moment();
-  await tick(30);
-  assert.deepEqual(scene.world.player.queuedAction, { gesture: "wave" });
-  assert.equal(bank.animations.deliveredOwner.name, "wave");
-  scene.director.rest();
-  assert.equal(scene.world.player.queuedAction, null);
-  assert.equal(bank.animations.deliveredOwner, null);
-  assert.equal(bank.animations.activeOwner, active);
-  assert.equal(active.pages.get("cartwheel/0").closed, 0);
-  scene.director.task = moment();
-  await tick(20);
-  assert.equal(bank.animations.deliveredOwner.name, "wave");
-  scene.world.player.queuedAction = { jumpPressed: true };
-  scene.director.rest();
-  assert.deepEqual(scene.world.player.queuedAction, { jumpPressed: true });
-});
+for (const [name, input, makeTask] of [
+  ["wave", { gesture: "wave" }, () => moment()],
+  ["idle-back", { face: "back" }, () => ({ kind: "face", direction: "back", sent: false, elapsedSeconds: 0 })],
+]) {
+  test(`C-SITE-03 ending queued ${name} delivery clears only its matching World action`, async (t) => {
+    const { scene, bank, tick } = await automaticScene(t);
+    await bank.prepareAnimation("cartwheel");
+    bank.publishAnimation("cartwheel"); bank.activateAnimation("cartwheel");
+    const active = bank.animations.activeOwner;
+    scene.world.clips.cartwheel.finish_before_next = true;
+    scene.world.gestureDurations.cartwheel = 6;
+    Object.assign(scene.world.player, { gesture: "cartwheel", gestureStage: "enter", animation: "cartwheel" });
+    scene.director.task = makeTask();
+    await tick(30);
+    assert.deepEqual(scene.world.player.queuedAction, input);
+    assert.equal(bank.animations.deliveredOwner.name, name);
+    scene.director.rest();
+    assert.equal(scene.world.player.queuedAction, null);
+    assert.equal(bank.animations.deliveredOwner, null);
+    assert.equal(bank.animations.activeOwner, active);
+    assert.equal(active.pages.get("cartwheel/0").closed, 0);
+    scene.director.task = makeTask();
+    await tick(20);
+    assert.equal(bank.animations.deliveredOwner.name, name);
+    scene.world.player.queuedAction = { jumpPressed: true };
+    scene.director.rest();
+    assert.deepEqual(scene.world.player.queuedAction, { jumpPressed: true });
+  });
+}
 
 test("C-SITE-03 a ready automatic owner cannot publish a newer same-name manual candidate", async (t) => {
   const { scene, bank, tick } = await automaticScene(t);

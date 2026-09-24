@@ -1,3 +1,4 @@
+/** Autonomy timing, readiness and cancellation regressions (PRD §13.3, C-SITE-03). */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
