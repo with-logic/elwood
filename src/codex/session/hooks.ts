@@ -65,6 +65,10 @@ export async function dispatchHook(
   session?: CodexSessionImpl,
 ) {
   const event = normalizeCodexHookEvent(input as CodexHookEvent);
+  const currentSubmission =
+    event.hook_event_name === "Stop"
+      ? session?.stopCompletion.captureCurrentSubmission()
+      : undefined;
   session?.observeTranscript(event.transcript_path);
   if (event.hook_event_name === "SessionStart") {
     session?.rememberCodexSessionId(event.session_id);
@@ -94,7 +98,7 @@ export async function dispatchHook(
     // A bounded per-pass scan (like Claude's): the terminal drain budget is reserved
     // for finish(), so hundreds of turns never exhaust it into false backlog drops.
     session?.scanTranscript();
-    session?.submitEvidence("hook_turn_ended");
+    if (currentSubmission?.() !== false) session?.submitEvidence("hook_turn_ended");
   }
   return serializeCodexHookResult(event.hook_event_name, outcome.result);
 }

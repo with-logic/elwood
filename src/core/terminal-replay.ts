@@ -38,6 +38,12 @@ export class TerminalReplayBuffer {
     }
   }
 
+  replayFor(event: string, handler: (event: never) => unknown): void {
+    if (event === "terminal:data") this.replay(handler as (event: TerminalDataEvent) => unknown);
+    if (event === "activity")
+      this.replayAttention(handler as (event: ElwoodActivityEvent) => unknown);
+  }
+
   replay(handler: (event: TerminalDataEvent) => unknown): void {
     if (this.chunks.length === 0) return;
     handler({ elwoodSessionId: this.elwoodSessionId, data: this.chunks.join("") });
