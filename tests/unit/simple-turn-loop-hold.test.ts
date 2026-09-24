@@ -92,3 +92,41 @@ test("C-API-50 a queued startup rejection is contained until its slot releases",
   await expect(collect(second)).rejects.toThrow("launch failed");
   expect(release).toHaveBeenCalledOnce();
 });
+
+test("C-API-50 a live reservation acquires synchronously and releases once at its boundary", async () => {
+  vi.useFakeTimers();
+  const { facade, session, acquire, release } = heldSession();
+  await facade.start();
+  const result = facade.send("go").catch((error: unknown) => error);
+  expect(acquire).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(acquire).toHaveBeenCalledOnce();
+  session.emitter.emit("status", { elwoodSessionId: "s1", status: "stopped" });
+  await result;
+  expect(release).toHaveBeenCalledOnce();
+});
+
+test.each([
+  false,
+  true,
+])("C-API-50 startup failure releases a live hold (async=%s)", async (async) => {
+  const { session, acquire, release } = heldSession();
+  const facade = {
+    status: "ready" as const,
+    session,
+    start: () => {
+      if (async) return Promise.reject(new Error("launch failed"));
+      throw new Error("launch failed");
+    },
+  };
+  const turn = capturedTurn(
+    new ImageCaptures(),
+    new TurnQueue(),
+    facade,
+    defaultBoundarySignal,
+    "go",
+  );
+  expect(acquire).toHaveBeenCalledOnce();
+  await expect(collect(turn)).rejects.toThrow("launch failed");
+  expect(release).toHaveBeenCalledOnce();
+});

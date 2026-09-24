@@ -12,7 +12,11 @@ import { runTurn } from "./turn.ts";
 import type { TurnQueue } from "./turn-queue.ts";
 import type { BoundarySignalReader, TurnOptions } from "./turn-types.ts";
 
-type Facade = { readonly status: ElwoodSessionStatus; start(): Promise<ElwoodAgentSession> };
+type Facade = {
+  readonly status: ElwoodSessionStatus;
+  readonly session?: ElwoodAgentSession | undefined;
+  start(): Promise<ElwoodAgentSession>;
+};
 
 function capture<T extends SendOptions>(
   captures: ImageCaptures,
@@ -40,22 +44,25 @@ export function capturedTurn(
   }
   // Start and reserve the slot at the call, so close joins this same launch.
   let starting: Promise<ElwoodAgentSession>;
-  let releaseLoops: () => void = () => undefined;
+  const live = facade.session;
+  // A ready listener can reserve a turn before the same transition drains due loops.
+  // Install its hold synchronously when startup has already supplied a live session.
+  let releaseLoopHold: () => void = live ? holdTurnLoops(live) : () => undefined;
+  const release = () => {
+    captured.release();
+    releaseLoopHold();
+  };
   try {
     starting = facade.start().then((session) => {
-      releaseLoops = holdTurnLoops(session);
+      if (!live) releaseLoopHold = holdTurnLoops(session);
       return session;
     });
     // Startup may reject while this reserved turn still awaits its predecessor.
     void starting.catch(() => undefined);
   } catch (error) {
-    captured.release();
+    release();
     return failedTurn(error);
   }
-  const release = () => {
-    captured.release();
-    releaseLoops();
-  };
   return queue.enqueue(async () => {
     try {
       const session = await starting;
