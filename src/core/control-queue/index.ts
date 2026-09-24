@@ -8,7 +8,6 @@ import {
   type ControlOperationTraits,
   type ControlQueueError,
   controlOperationTraits,
-  nextDispatchIndex,
   overtakesReadiness,
 } from "./traits.ts";
 import type {
@@ -111,7 +110,7 @@ export class ControlQueue extends ControlQueueState {
 
   protected drain(): void {
     if (this.inFlight || this.queue.length === 0) return;
-    const index = nextDispatchIndex(this.queue, this.ready, this.bypassable);
+    const index = this.nextDispatchIndex();
     if (index < 0) return;
     const operation = this.queue.splice(index, 1)[0] as QueuedOperation;
     if (overtakesReadiness(operation)) this.bypassable -= 1;
