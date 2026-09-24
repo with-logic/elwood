@@ -974,3 +974,17 @@ submission; an old empty frame does not prove acceptance.
 The Claude observer also preserves the existing version-banner/fenced-input
 alternative and the documented 2.1.268 non-Vim bypass-permissions footer.
 Those compatibility cases are constructed regressions, not new working captures.
+
+## Native acceptance revokes recovery (2026-09-24)
+
+The standalone recovery-revocation change passed
+`tests/e2e/paste-recovery.e2e.ts` against Claude Code 2.1.281 and codex-cli 0.156.1:
+2 tests, 2 passes, 0 failures, 0 skips. Each isolated session used a nonexistent
+model, rejected before model quota is consumed. Each attempted and physically
+delivered exactly one Enter, emitted one `UserPromptSubmit` hook, and rendered
+native working evidence (4 observed Claude frames, 83 Codex frames). No further
+Enter was attempted during the six-second observation window. Extra attempts are
+counted before interception, so preventing delivery cannot hide a duplicate.
+This establishes native acceptance/work and physical write counts, not successful
+model output or prompt-to-hook correlation. The copied Codex credentials and
+both native processes were cleaned up after the run.

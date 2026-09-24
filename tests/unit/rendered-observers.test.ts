@@ -137,3 +137,20 @@ test("C-ATTN-03 adapters own the fallback suppressed by pending trust", () => {
     { id: "claude-workspace_trust-prompt", fact: "blocking_prompt_visible", region: "screen" },
   ]);
 });
+
+test("C-API-31 native work revokes recovery before reentrant status observers", () => {
+  const { observers, session } = harness(true);
+  let working = false;
+  const target = {
+    ...session,
+    observeNativeWork(value: boolean) {
+      working = value;
+    },
+    submitEvidence(kind: StatusEvidenceKind) {
+      expect(working).toBe(kind === "rendered_turn_started");
+      return { to: "running" as const };
+    },
+  };
+  observeRenderedFrame(observers, screen(claudeWorking), target);
+  observeRenderedFrame(observers, screen(claudeIdle), target);
+});

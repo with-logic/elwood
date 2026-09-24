@@ -13,7 +13,12 @@ import type { ReadinessGate } from "./readiness.ts";
 
 type FrameSession = Pick<
   SessionLifecycle,
-  "closing" | "inputBlocking" | "trustInputBlocking" | "submitEvidence" | "status"
+  | "closing"
+  | "inputBlocking"
+  | "trustInputBlocking"
+  | "submitEvidence"
+  | "status"
+  | "observeNativeWork"
 >;
 
 type TrustState = {

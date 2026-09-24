@@ -1,10 +1,10 @@
 /** Session lifetime, input blocking, persistence and cleanup (PRD §5/§8/§9). */
-import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../core/activity/index.ts";
+import type { ElwoodAgentKind } from "../../core/activity/index.ts";
 import { ControlQueue } from "../../core/control-queue/index.ts";
 import { type PasteGuard, queuedInputSubmitter } from "../../core/input/index.ts";
 import { registerPrivateOutputSecrets } from "../../core/private-output-secrets.ts";
 import { registerTurnLoopHold } from "../../core/simple/loop-hold.ts";
-import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
+import type { AttentionListener, TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent } from "../../core/types.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
@@ -13,20 +13,16 @@ import { type SessionRecord, writeSessionRecord } from "../../state/store.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { advanceInitialReady } from "../readiness/advance.ts";
 import { CleanupLatch } from "../shutdown/cleanup-latch.ts";
-import type {
-  SessionStatusEngine,
-  StatusDecision,
-  StatusEvidenceKind,
-} from "../status-evidence.ts";
+import type { StatusDecision, StatusEvidenceKind } from "../status-evidence.ts";
 import { SessionLoops } from "./loops.ts";
 import { closingController, notRunningError, runSessionOperation } from "./not-running.ts";
+import { NativePasteRecovery } from "./paste-recovery.ts";
 import type { PickerInputOwnership } from "./picker-input.ts";
 import { SessionReapPolicy } from "./reap.ts";
 import { SessionShutdownBinding } from "./shutdown-binding.ts";
 import { createSessionStatusEngine, type SessionStatusEmitter } from "./status-wiring.ts";
 
 type TerminalDataListener = Parameters<TerminalReplayBuffer["replay"]>[0];
-type AttentionListener = (event: ElwoodActivityEvent) => unknown;
 export abstract class SessionLifecycle {
   protected record: SessionRecord;
   readonly terminal: ElwoodTerminal;
@@ -44,8 +40,10 @@ export abstract class SessionLifecycle {
   private readonly terminalReplay: TerminalReplayBuffer;
   private readonly cleanupLatch = new CleanupLatch(() => this.stopRuntime());
   private readonly shutdown: SessionShutdownBinding;
-  private readonly statusEngine: SessionStatusEngine;
+  private readonly statusEngine: ReturnType<typeof createSessionStatusEngine>;
+  private readonly recovery: NativePasteRecovery;
   protected readonly pasteGuard: PasteGuard = {
+    recovery: () => this.recovery.capture(),
     snapshot: () => this.terminal.snapshot().text,
     staged: (screen, payload) => this.stagedPaste(screen, payload),
     blocked: () => this.queuedInputBlocked(),
@@ -70,6 +68,7 @@ export abstract class SessionLifecycle {
     this.pty = pty;
     this.terminal = ownership.caller;
     this.automatedTerminal = ownership.automated;
+    this.recovery = new NativePasteRecovery(statusEvents, this.closing.signal);
     this.terminalReplay = terminalReplay;
     this.reapPolicy = new SessionReapPolicy(agent, record.elwoodSessionId, pty.pid);
     const readEmpty = () => this.emptyComposerFrame();
@@ -152,6 +151,7 @@ export abstract class SessionLifecycle {
   bindInitialReadinessHold(isHeld: () => boolean): void {
     this.initialReadinessHeld = isHeld;
   }
+  readonly observeNativeWork = (working: boolean): void => this.recovery.observeWorking(working);
   submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
     const held =
       this.trustInputBlocking ||

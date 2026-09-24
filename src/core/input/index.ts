@@ -16,6 +16,7 @@ import { requestComposerCleanup, stageComposer, submittedComposer } from "./comp
 
 /** Adapter view of "the paste is still staged in the composer". */
 export type PasteGuard = {
+  readonly recovery?: () => { readonly revoked: () => boolean };
   readonly snapshot: () => string;
   /** Receives the sanitized payload that was actually pasted. */
   readonly staged: (screen: string, payload: string) => boolean;
@@ -63,10 +64,8 @@ export function sanitizePasteText(text: string): string {
  * The TUIs ingest bracketed pastes asynchronously; an Enter concatenated into
  * the same PTY write races that ingestion and can be dropped, leaving the prompt
  * staged but never submitted (long personas hit this reliably). The Enter
- * therefore follows as a separate keystroke after a settle delay, and bounded
- * re-Enters fire while the screen still shows staged content — a lone Enter from
- * the staged state submits, and a surplus Enter on an empty composer is a no-op,
- * so the recovery is safe on both adapters.
+ * follows after a settle delay; bounded re-Enters require staged content.
+ * Native acceptance/work permanently revokes recovery.
  *
  * While a human or automation-owned dialog is on screen, the WHOLE submission is
  * held: neither the paste nor any Enter reaches the terminal until the dialog
@@ -100,6 +99,7 @@ async function writePastedPrompt(
   // Sanitize: caller/model text is data, so an embedded end sentinel or control
   // byte must not escape paste mode into live keystrokes (§5.3).
   const payload = sanitizePasteText(prompt);
+  const recovery = guard?.recovery?.();
   const rawInputSignal = stageComposer(terminal);
   const nudgeSignal =
     rawInputSignal && signal
@@ -116,7 +116,8 @@ async function writePastedPrompt(
     const unsafe = await writeUnsafe(terminal, guard, nudgeSignal);
     // Later queued submissions and raw caller input revoke recovery ownership.
     // Stale nudges must not submit their drafts; staged chips are not prompt-specific.
-    if (nudgeSignal?.aborted || !guard || nudges >= pasteNudgeAttempts) return;
+    if (nudgeSignal?.aborted || recovery?.revoked() || !guard || nudges >= pasteNudgeAttempts)
+      return;
     // A dialog that appears after the first Enter must not be confirmed by a
     // recovery Enter either; skip this attempt and re-check on the next tick.
     if (unsafe) {
