@@ -12,7 +12,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Keep Codex update retries revoked after unknown or blank replacement frames until fresh banner evidence appears; late writes cannot report an answer for a superseded dialog.
+- Keep Codex update retries revoked after unknown or blank replacement frames until authoritative native composer clearance or fresh banner evidence appears; late writes cannot report an answer for a superseded dialog.
 - Hold scheduled loop delivery through ergonomic caller turns, preventing a due
   loop from accepting or completing a caller prompt that needs recovery.
 

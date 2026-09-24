@@ -8,6 +8,7 @@
 
 import { describe, expect, test } from "vitest";
 import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
+import { codexSmallComposer } from "../fixtures/trust-composer.ts";
 
 /** A void-returning write callback that records each input into `sink`. */
 function writer<T>(sink: T[]): (input: T) => void {
@@ -26,14 +27,14 @@ describe("Codex in-TUI update-skip is edge-triggered (C-CODEX-12)", () => {
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder();
     // A normal composer frame Codex draws while restarting — clears the update screen.
-    const composer = "› \n  (ready)";
+    const composer = codexSmallComposer;
 
     responder.handle(updateScreen, writer(writes)); // first appearance → skip
     responder.handle(updateScreen, writer(writes)); // persistent: answered once, not re-stormed
     expect(writes).toEqual(["2"]);
 
     responder.handle(composer, writer(writes)); // native composer clearance permits a new appearance
-    responder.handle(updateScreen, writer(writes)); // reappears after restart → skip AGAIN
+    responder.handle("1. Update now\n2. Skip", writer(writes)); // reappearance requires verified clearance
     expect(writes).toEqual(["2", "2"]);
   });
 

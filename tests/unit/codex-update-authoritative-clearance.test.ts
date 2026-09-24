@@ -1,5 +1,6 @@
 /** Update generations wait for current-frame authoritative clearance (PRD §5.5, C-CODEX-12/17). */
 import { expect, test, vi } from "vitest";
+import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
 import { CodexUpdatePromptTracker } from "../../src/codex/update/tracker.ts";
 import { codexSmallComposer } from "../fixtures/trust-composer.ts";
 
@@ -49,4 +50,44 @@ test.each([
   expect(tracker.hasSupersedingGeneration(generation)).toBe(!cleared);
   tracker.observe(options);
   expect(tracker.currentFramePredicate()(options)).toBe(cleared);
+});
+
+test("C-CODEX-12 standalone clearance parsing stops after the revoked generation clears", () => {
+  const clearance = vi.fn(() => false);
+  const tracker = new CodexUpdatePromptTracker(clearance);
+  for (let i = 0; i < 20; i++) tracker.observe("ordinary response");
+  expect(clearance).not.toHaveBeenCalled();
+  tracker.observe(update);
+  tracker.observe("unknown replacement");
+  expect(clearance).toHaveBeenCalledTimes(1);
+  tracker.observe("still unknown");
+  expect(clearance).toHaveBeenCalledTimes(2);
+  clearance.mockReturnValue(true);
+  tracker.observe(codexSmallComposer);
+  for (let i = 0; i < 20; i++) tracker.observe("ordinary response");
+  expect(clearance).toHaveBeenCalledTimes(3);
+});
+
+test("C-CODEX-12 live observer parses clearance only while an update needs it", () => {
+  const clearance = vi.fn(() => false);
+  const responder = new CodexStartupPromptResponder(
+    "lazy",
+    false,
+    undefined,
+    clearance,
+    () => false,
+  );
+  for (let i = 0; i < 20; i++) responder.observeClearance("ordinary response");
+  expect(clearance).not.toHaveBeenCalled();
+  responder.handle(update, () => {});
+  responder.handle("unknown replacement", () => {});
+  clearance.mockClear();
+  responder.observeClearance("unknown replacement");
+  responder.observeClearance("still unknown");
+  expect(clearance).toHaveBeenCalledTimes(2);
+  clearance.mockReturnValue(true);
+  responder.observeClearance(codexSmallComposer);
+  for (let i = 0; i < 20; i++) responder.observeClearance(codexSmallComposer);
+  expect(clearance).toHaveBeenCalledTimes(3);
+  responder.dispose();
 });
