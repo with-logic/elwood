@@ -70,7 +70,14 @@ for (const agent of ["claude", "codex"] as const) {
       if (frameKind === "unknown") pty.emitData("\u001b[?25l");
       if (frameKind === "working-empty") pty.emitData("\u001b]0;⠋ Working\u0007");
       await vi.advanceTimersByTimeAsync(1_000);
-      expect(pty.writes.filter((value) => value === "\r")).toHaveLength(consumed ? 1 : 2);
+      expect(pty.writes.filter((value) => value === "\r")).toHaveLength(
+        consumed || frameKind === "unknown" ? 1 : 2,
+      );
+      if (frameKind === "unknown") {
+        paint(draft, true);
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(pty.writes.filter((value) => value === "\r")).toHaveLength(2);
+      }
     } finally {
       vi.useRealTimers();
       await session.teardown();

@@ -1029,3 +1029,32 @@ resume options omit model, the test appended that same invalid native `--model`
 at the PTY launch seam. Native hooks, readiness, and input queues remained real.
 All processes and temporary credential copies were cleaned up. These observations
 do not establish successful model output or correlation of a hook to a prompt.
+
+## Live staged text and ambiguous working frames (2026-09-24)
+
+The 2026-09-24 no-submission captures of Claude Code 2.1.281 and
+Codex 0.156.1 show the actual cursor inside collapsed or wrapped drafts. Codex
+continuations use two-space indentation and may cross a nonzero buffer base.
+Claude collapsed text uses the exact “paste again to expand” footer, with the
+separate `◐ medium · /effort` row observed again in the fresh recovery probe; Ctrl+Y
+can remain visible from an earlier draft. Those captures did not establish that
+Ctrl-U/K removed all earlier text, and are not a model-turn acceptance proof.
+Committed fixtures preserve geometry while replacing account/quota details and
+temporary workspace names.
+
+Actual session/PTY tests distinguish the current cursor-owned composer from
+identical transcript text. Startup or resume replay and accepted native work can
+produce indistinguishable working frames before readiness. Recovery therefore
+withholds Enter during work without permanently inferring acceptance. A fresh
+positive empty input frame or native user-message activity ends that submission’s
+recovery; otherwise a later verified idle draft remains eligible within the
+four-observation/two-Enter bound. This is a conservative policy tested with
+controlled frames, not a newly observed native correlation guarantee.
+
+A fresh bounded recovery probe on these same CLI versions passed for both
+adapters: an 18-line prompt remained staged, and the actual PTY writer attempted
+exactly the first Enter plus two recovery Enters, near 150/1150/2150 ms. All three
+Enters were intercepted before delivery; neither CLI emitted UserPromptSubmit,
+and neither ran a model turn. This proves native staged geometry and retry
+bounds, not acceptance or post-acceptance behavior. The temporary Codex auth
+copy was removed after teardown.

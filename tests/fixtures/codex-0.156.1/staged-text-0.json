@@ -1,0 +1,12 @@
+{
+  "text": "╭────────────────────────────────────────────────────────╮\n│ >_ OpenAI Codex (v0.156.1)                             │\n│                                                        │\n│ model:     GPT-6-Astra   /model to change              │\n│ directory: /tmp/ELWOOD_STAGED/project                  │\n╰────────────────────────────────────────────────────────╯\n\n  Tip: This is GPT-6, a new generation of intelligence. Astra is state-of-the-art in coding,\n  computer use, science, and professional work. Give it a hard problem, a half-formed idea, or\n  anything you've been meaning to build. See where it takes you.\n\n\n \n \n› first\n  last word\n \n  GPT-6-Astra default                                                     ⚠ 3 warnings · f2 to view\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+  "title": "ELWOOD_STAGED",
+  "cursorX": 11,
+  "cursorY": 15,
+  "cols": 100,
+  "rows": 35,
+  "baseY": 1,
+  "viewportY": 1,
+  "visible": true,
+  "sanitization": "Temporary directory and account labels replaced; account/quota warning rows blanked without removing rows. Earlier draft lines remain after line-local Ctrl-U/K."
+}
