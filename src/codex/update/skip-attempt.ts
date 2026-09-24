@@ -34,7 +34,7 @@ export function startCodexUpdateSkip(request: UpdateSkipRequest): UpdateSkipAtte
   const current = (frame: string) =>
     !retrySignal.aborted && sameUpdate(frame) && !trustGateVisible(frame, "codex");
   const invalidated = (frame: string) => trustGateVisible(frame, "codex") || request.inputHeld();
-  const ownsAttempt = () => !(signal.aborted || tracker.hasLaterAppearance(generation));
+  const ownsAttempt = () => !(signal.aborted || tracker.hasSupersedingGeneration(generation));
   let written = false;
   let cleared = false;
   const finish = (result: StartupWriteCompletion) => {
@@ -69,7 +69,7 @@ export function startCodexUpdateSkip(request: UpdateSkipRequest): UpdateSkipAtte
     (error: unknown) => {
       if (retries.signal.aborted) return;
       if (signal.aborted) return finish("cancelled");
-      const replaced = tracker.hasLaterAppearance(generation);
+      const replaced = tracker.hasSupersedingGeneration(generation);
       if (!replaced) releaseLatch();
       // The live screen can clear before the next responder observation.
       if (!current(readFrame?.() ?? screenText)) return finish("cancelled");
