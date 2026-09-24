@@ -1,8 +1,8 @@
 /**
  * Edge-triggered Codex in-TUI update-skip (PRD §5.5, C-CODEX-12): Elwood always
  * skips the interactive update prompt (never selects "Update now"), and the skip
- * RE-ARMS when the update screen leaves the frame, so an update prompt that
- * reappears after a restart is skipped again instead of trapping the session in a
+ * re-arms after authoritative native clearance or a fresh first-party banner, so
+ * an update prompt after a restart is skipped again instead of trapping the session in a
  * loop. The real update is the preflight `codex update`, not this in-TUI prompt.
  */
 
@@ -32,7 +32,7 @@ describe("Codex in-TUI update-skip is edge-triggered (C-CODEX-12)", () => {
     responder.handle(updateScreen, writer(writes)); // persistent: answered once, not re-stormed
     expect(writes).toEqual(["2"]);
 
-    responder.handle(composer, writer(writes)); // update screen leaves the frame → re-arm
+    responder.handle(composer, writer(writes)); // native composer clearance permits a new appearance
     responder.handle(updateScreen, writer(writes)); // reappears after restart → skip AGAIN
     expect(writes).toEqual(["2", "2"]);
   });
@@ -47,14 +47,12 @@ describe("Codex in-TUI update-skip is edge-triggered (C-CODEX-12)", () => {
   });
 
   test("ordinary agent output mentioning 'update' does not re-storm a held skip", () => {
-    // The re-arm is narrow: only the update SCREEN (its banner or a skip option)
-    // holds the latch, so a normal frame whose text merely says "update" re-arms —
-    // but with no update option present, re-arming writes nothing. The guard is that
-    // a persistent screen is still answered once; a stray mention never double-skips.
+    // Ordinary prose retires the appearance but does not authorize another skip.
+    // Fresh banner evidence or positive native clearance is needed to rearm it.
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder();
     responder.handle(updateScreen, writer(writes)); // skip
-    responder.handle("Running `npm update` in the workspace…", writer(writes)); // re-arms, no option
+    responder.handle("Running `npm update` in the workspace…", writer(writes)); // revoked, no option
     expect(writes).toEqual(["2"]); // nothing new written: no skip option on that frame
   });
 });

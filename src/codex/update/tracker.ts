@@ -1,4 +1,5 @@
 /** Tracks native update generations for bounded automation (PRD §5.5, C-CODEX-12). */
+import type { TrustClearance } from "../../core/trust/clearance.ts";
 import { codexComposerClearance } from "../screen/clearance.ts";
 import {
   codexUpdatePromptVisible,
@@ -6,11 +7,20 @@ import {
   updateScreenBanner,
 } from "./recognition.ts";
 
-/** Keeps a split prompt blocking until a frame with no update evidence clears it. */
+/** Tracks update eligibility separately from the session’s retained input hold. */
 export class CodexUpdatePromptTracker {
   private active = false;
   private generation = 0;
   private requiresBanner = false;
+  private pendingClearance = false;
+
+  private readonly clearance: TrustClearance;
+  private readonly deferClearance: boolean;
+  /** Live responders confirm after classification; standalone callers use the supplied clearance. */
+  constructor(clearance: TrustClearance = codexComposerClearance, deferClearance = false) {
+    this.clearance = clearance;
+    this.deferClearance = deferClearance;
+  }
 
   /** Identifies the current appearance; it changes when the screen clears, appears, or revokes an attempt. */
   get currentGeneration(): number {
@@ -23,6 +33,8 @@ export class CodexUpdatePromptTracker {
   }
 
   observe(frameText: string): boolean {
+    // Missing classification cannot lend a provisional clear to another frame.
+    if (this.pendingClearance) this.observeClearance(false);
     if (codexUpdatePromptVisible(frameText)) {
       if (!this.active) this.generation += 1;
       if (this.requiresBanner && updateScreenBanner.test(frameText)) {
@@ -32,13 +44,23 @@ export class CodexUpdatePromptTracker {
       this.active = true;
     } else if (!(this.active && !this.requiresBanner && isSafeUpdateContinuation(frameText))) {
       if (this.active) {
-        const cleared = codexComposerClearance(frameText);
-        this.generation += cleared ? 1 : 2;
-        if (!cleared) this.requiresBanner = true;
+        this.generation += 1;
+        this.requiresBanner = true;
+        this.pendingClearance = true;
       }
       this.active = false;
+      if (!this.deferClearance) this.observeClearance(this.clearance(frameText));
     }
     return this.active;
+  }
+
+  /** Called after the current frame's live clearance and retained input hold are known. */
+  observeClearance(cleared: boolean): void {
+    if (this.pendingClearance) {
+      if (!cleared) this.generation += 1;
+      this.pendingClearance = false;
+    }
+    if (cleared && !this.active) this.requiresBanner = false;
   }
 
   /** Captures the current prompt generation so an async retry cannot enter a later dialog. */
