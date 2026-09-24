@@ -28,10 +28,10 @@ function fixture(t, { decode = async () => {}, bitmap = false } = {}) {
 }
 
 for (const bitmap of [false, true]) {
-  test(`failed ${bitmap ? "bitmap" : "HTML image"} decoding releases the resource and preserves its error`, async (t) => {
+  test(`failed ${bitmap ? "bitmap" : "HTML image"} decoding releases the resource and preserves its cause`, async (t) => {
     const cause = new Error("decoder failed");
     const { bank, images, page } = fixture(t, { bitmap, decode: async () => { throw cause; } });
-    await assert.rejects(page(0), (error) => error === cause);
+    await assert.rejects(page(0), (error) => error.cause === cause && error.message.includes("wave/0.webp"));
     assert.equal(images[0].released, 1);
     assert.equal(bank.pages.size, 0);
   });
