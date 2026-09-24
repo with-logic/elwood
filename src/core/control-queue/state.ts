@@ -29,11 +29,11 @@ export abstract class ControlQueueState {
   /** Keep due loops behind the ergonomic owner without blocking its own recovery. */
   holdLoops(): () => void {
     const hold = {};
+    if (this.ready && this.loopHolds.size === 0) this.scan.reset();
     this.loopHolds.add(hold);
-    this.scan.reset();
     return () => {
       if (this.loopHolds.delete(hold)) {
-        this.scan.reset();
+        if (this.ready && this.loopHolds.size === 0) this.scan.reset();
         this.drain();
       }
     };

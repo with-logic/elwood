@@ -90,3 +90,40 @@ test("C-API-19 cancelling inside a scanned prefix preserves following input orde
   expect(writes).toEqual(["caller", "remaining"]);
   queue.close();
 });
+
+test.each([
+  "held",
+  "unready",
+])("C-LOOP-08 %s backlog keeps its scan across holds that do not change eligibility", async (phase) => {
+  const active = Promise.withResolvers<void>();
+  const writes: string[] = [];
+  const queue = new MeasuredQueue(
+    (text) => {
+      writes.push(text);
+      return Promise.resolve();
+    },
+    () => new Error("closed"),
+    () => undefined,
+  );
+  if (phase === "held") {
+    queue.markReady();
+    queue.holdLoops();
+  }
+  const first = queue.runExclusive("list_models", () => active.promise);
+  const blocked = Array.from({ length: 10_000 }, () =>
+    queue.send("blocked", "message", undefined, loop).catch(() => undefined),
+  );
+  const reads = queue.measureBacklog();
+  active.resolve();
+  await first;
+  for (let index = 0; index < 1000; index += 1) {
+    const release = queue.holdLoops();
+    await queue.send(String(index), "list_models");
+    release();
+  }
+  const inspected = reads();
+  queue.close();
+  await Promise.all(blocked);
+  expect(writes).toEqual(Array.from({ length: 1000 }, (_, index) => String(index)));
+  expect(inspected).toBeLessThanOrEqual(10_000);
+});
