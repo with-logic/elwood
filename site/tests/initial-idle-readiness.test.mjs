@@ -62,8 +62,7 @@ test("C-SITE-02 all idle pages precede handoff and survive cache churn without r
   }
   assert.deepEqual(errors, []);
   bank.activateAnimation("walk");
-  assert.equal(pages[0].closed, 1);
-  assert.equal(pages[1].closed, 0, "The last painted pose still owns its image");
+  assert.ok(pages.every((page) => page.closed === 0), "Shared idle survives departure until teardown");
   scene.dispose();
   assert.ok(pages.every((page) => page.closed === 1));
 });

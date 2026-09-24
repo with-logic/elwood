@@ -367,9 +367,11 @@ test("scene poses survive eviction, release after blends, and close on teardown"
   t.after(() => owned.dispose());
   owned.reduced = false;
   await owned.boot();
-  const outgoing = owned.lastPose.page;
   await owned.bank.prepare("wave");
   owned.world.player.animation = "wave";
+  const outgoing = owned.pose().page;
+  await owned.bank.prepare("bow");
+  owned.world.player.animation = "bow";
   const incoming = owned.pose().page;
   assert.equal(owned.transition.pose.page, outgoing);
   for (const name of ["idle-left", "walk-right", "walk-left", "jump", "land"])

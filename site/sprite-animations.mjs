@@ -6,6 +6,7 @@ export class SpriteAnimations {
     this.activeOwner = null;
     this.deliveredOwner = null;
     this.candidateOwner = null;
+    this.sharedIdleLease = new AbortController();
   }
 
   page(key) {
@@ -121,6 +122,14 @@ export class SpriteAnimations {
         }
       }));
       signal.throwIfAborted();
+      // Keep only the bounded common idle set; larger manifests use ordinary owners.
+      const idle = owner.clips.get("idle");
+      if (idle.pages.length <= 2) {
+        for (const index of idle.pages.keys()) {
+          const key = `idle/${index}`;
+          this.bank.pinLoadPage(key, owner.pages.get(key), this.sharedIdleLease.signal);
+        }
+      }
       owner.ready = true;
       return owner.clips.get(name);
     } catch (error) {
@@ -131,6 +140,7 @@ export class SpriteAnimations {
   }
 
   dispose() {
+    this.sharedIdleLease.abort();
     this.cancel();
     const old = this.activeOwner;
     this.activeOwner = null;

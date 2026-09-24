@@ -13,15 +13,20 @@ for (const [input, name] of [[{ gesture: "wave" }, "wave"], [{ face: "back" }, "
     await scene.request(input);
     scene.step(1 / 120);
     assert.deepEqual(scene.world.player.queuedAction, input);
-    assert.equal(bank.animations.deliveredOwner?.name, name);
+    const delivered = bank.animations.deliveredOwner;
+    assert.equal(delivered?.name, name);
     assert.equal(scene.pressed, NO_INPUT);
     scene.axis = 1;
     scene.step(1 / 120);
     assert.equal(scene.world.player.queuedAction, null);
     assert.equal(bank.animations.deliveredOwner, null);
+    assert.equal(delivered.controller.signal.aborted, true);
+    for (let i = 0; i < 6; i++) await bank.loadPage("wave", i);
     assert.ok(images.some((image) => image.closed === 1));
-    for (const image of images)
-      assert.equal(image.closed, [...bank.pages.values()].includes(image) ? 0 : 1);
+    for (const image of images) {
+      const retained = image.path.startsWith("idle/") || [...bank.pages.values()].includes(image);
+      assert.equal(image.closed, retained ? 0 : 1);
+    }
   });
 }
 
