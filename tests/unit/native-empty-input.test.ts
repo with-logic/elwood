@@ -30,7 +30,11 @@ for (const agent of ["claude", "codex"] as const) {
     };
     try {
       expect(observe(terminal)).toBeUndefined();
-      await terminal.writeOutput(`\u001b[${fixture.rows};1H${"\r\n".repeat(fixture.baseY)}`);
+      // Reject oversized capture offsets before allocating replay input.
+      expect(fixture.baseY).toBeLessThanOrEqual(10_000);
+      await terminal.writeOutput(
+        `\u001b[${fixture.rows};1H${"\r\n".repeat(Math.min(fixture.baseY, 10_000))}`,
+      );
       await paint(fixture.text);
       terminal.xterm.scrollToLine(fixture.viewportY);
       expect(terminal.xterm.buffer.active.baseY).toBe(fixture.baseY);
