@@ -252,7 +252,7 @@ export class LandingScene {
   }
   acceptsAnimationInput() {
     const p = this.world.player;
-    return !this.drag && !this.axis && p.mode === "ground" && !p.landing && !p.settle;
+    return !this.drag && !this.axis && p.mode === "ground" && !p.landing && !p.settle && !p.pendingJump && !p.prepare;
   }
   invalidateRequest() {
     this.requestVersion++;
