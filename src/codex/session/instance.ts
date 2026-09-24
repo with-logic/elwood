@@ -26,6 +26,7 @@ import type { CodexTranscriptWatcher } from "../transcript/index.ts";
 import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";
 import { CliExitBarrier } from "./cli-exit.ts";
+import { observeCodexInitialReady } from "./initial-ready.ts";
 import type { CodexEventHandler, CodexEventMap, CodexEventName, CodexSessionApi } from "./types.ts";
 import {
   clipboardRestoreFailedWarning,
@@ -131,7 +132,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   // failed persist/listener releases the queue directly and warns (C-API-42). Codex
   // has no narrow-bootstrap resize to restore, so this is just the base advance.
   completeInitialReady(): void {
-    this.advanceInitialReady();
+    observeCodexInitialReady(this.emitter, this.elwoodSessionId, () => this.advanceInitialReady());
   }
   waitForStatus(match: (status: ElwoodSessionStatus) => boolean, timeoutMs?: number) {
     return sessionWaitForStatus(this, match, timeoutMs);

@@ -74,8 +74,8 @@ export async function dispatchHook(
     session?.rememberCodexSessionId(event.session_id);
     // Codex's authoritative pre-input readiness signal: release the first queued
     // message here, not on the boot-time composer placeholder (C-API-28).
-    // C-API-42 owns its own fallback warning and queue release; its ready-status
-    // notification is deliberately outside the hook observer boundary.
+    // The actual ready transition can be deferred by a startup hold; its own
+    // boundary retains C-API-42's synchronous fallback and catches rejections.
     session?.markInitialReadyFromHook();
   }
   observation.run("hook", () => emitter.emit("hook", event));

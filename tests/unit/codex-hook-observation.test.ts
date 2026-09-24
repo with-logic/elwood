@@ -40,11 +40,15 @@ for (const phase of ["hook", "activity", "hook_error"] as const) {
 test("C-HOOK-22 Codex async observer rejection is consumed without delaying reply", async () => {
   const emitter = new TypedEmitter<CodexEventMap>();
   const warnings: CodexEventMap["warning"][] = [];
+  const deferred = Promise.withResolvers<void>();
+  void deferred.promise.catch(() => undefined);
   emitter.on("warning", (warning) => warnings.push(warning));
-  emitter.on("hook", () => Promise.reject(new Error("private async observer")));
+  emitter.on("hook", () => deferred.promise);
   emitter.on("hook:Stop", () => ({ decision: "block", reason: "retained" }));
   const result = await dispatchHook(stop, emitter, { cwd: "/tmp" }, record);
   expect(result.stdout).toContain("retained");
+  expect(warnings).toEqual([]);
+  deferred.reject(new Error("private async observer"));
   await vi.waitFor(() => expect(warnings).toHaveLength(1));
   expect(warnings[0]).toMatchObject({ phase: "hook", agent: "codex" });
 });

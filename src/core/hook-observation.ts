@@ -9,6 +9,7 @@ import type { HookObserverFailedWarning } from "./warnings/lifecycle.ts";
 type Phase = HookObserverFailedWarning["phase"];
 type ObservationEmitter = {
   observeErrors<T>(onError: (error: unknown) => void, operation: () => T): T;
+  observeRejections<T>(onError: (error: unknown) => void, operation: () => T): T;
   emit(event: "warning", payload: HookObserverFailedWarning): void;
   emit(event: "activity", payload: ElwoodActivityEvent): void;
 };
@@ -32,6 +33,9 @@ export function hookObservationBoundary(
       } catch {
         fail(phase);
       }
+    },
+    runRejections(phase: Phase, operation: () => void): void {
+      emitter.observeRejections(() => fail(phase), operation);
     },
     report(): void {
       finished = true;
