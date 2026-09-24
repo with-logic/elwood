@@ -26,8 +26,12 @@ remaining consumers keep the task and its error reporting. A signal-owned decode
 page is retained before delivery and remains alive through cache eviction until
 that signal is cancelled. Releasing it preserves cached and pose-owned images.
 
+Initial landing handoff waits for every retained idle page, keeping the fallback
+on failure and allowing explicit boot retry. Pre-ready input cannot cancel boot;
+teardown can. Idle-only preparation does not fetch rotation.
+
 The internal complete-animation preparation API loads the requested clip plus
-idle and rotation. It starts at most three metadata requests, then at most four
+idle and rotation (idle itself needs no rotation dependency). It starts at most three metadata requests, then at most four
 page fetch/decode operations concurrently; worker decoding remains serial.
 Preparation owns per-clip leases through candidate, delivered and active phases.
 Only a ready matching candidate can publish. After prepare → publish, activation

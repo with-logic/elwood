@@ -14,6 +14,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Stop background recovery after current native working evidence, preserving recovery through startup/resume replay and for the next queued prompt after Stop.
 
+- Prepare and retain the complete initial idle animation before replacing the landing-page fallback.
+
 - Prepare complete landing-page gesture and facing animations before delivery, cancel obsolete requests, and avoid loading input that cannot play in the current state.
 
 - Stop background recovery Enter presses when the native composer is positively empty, even if submitted text remains in the transcript.

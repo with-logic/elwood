@@ -109,8 +109,10 @@ export class LandingScene {
         w.gestureDurations[name] = clip.frames / clip.fps;
       if (manifest.climb_exit)
         w.climbExit = { x: manifest.climb_exit.x * HEIGHT, y: manifest.climb_exit.y * HEIGHT };
-      await this.bank.prepare("idle");
-      if (this.bank.disposed) return;
+      const idle = await this.bank.prepareAnimation("idle");
+      if (!idle || this.bank.disposed) return;
+      this.bank.publishAnimation("idle");
+      this.bank.activateAnimation("idle");
       this.ready = true;
       this.configure(this.config, true);
       this.onReady?.();
@@ -264,7 +266,8 @@ export class LandingScene {
     }
     const queued = this.world.player.queuedAction;
     if (queued?.gesture || queued?.face) this.world.player.queuedAction = null;
-    this.bank.cancelPreparation();
+    // Before readiness, boot owns preparation; teardown cancels it through bank.dispose().
+    if (this.ready) this.bank.cancelPreparation();
   }
   cancelRequest() {
     this.pressed = NO_INPUT;
