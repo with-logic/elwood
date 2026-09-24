@@ -77,10 +77,11 @@ async function advance(seconds) {
   }
 }
 
-test("landing starts with only the idle sprite page and never fetches videos", async () => {
+test("landing starts with complete retained idle and never fetches videos", async () => {
   await scene.boot();
   assert.equal(scene.ready, true);
-  assert.equal(scene.bank.pages.size, 1);
+  for (const [index] of scene.bank.clips.get("idle").frames.entries())
+    assert.ok(scene.bank.frame("idle", index));
   assert.deepEqual([...scene.bank.clips.keys()], ["idle"]);
   assert.ok(requests.every((url) => !url.endsWith(".mp4")));
   assert.deepEqual(errors, []);
@@ -348,7 +349,7 @@ test("an unavailable initial pose or failed sprite request keeps the fallback", 
       failures.push(error.message);
     },
   });
-  loading.bank.prepare = async () => {
+  loading.bank.prepareAnimation = async () => {
     throw new Error("offline");
   };
   await loading.boot();
