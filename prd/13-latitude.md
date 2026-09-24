@@ -88,4 +88,3 @@ An automatic asset failure reports once. Failed requested or shared idle/rotatio
 assets suppress later automatic attempts that need them, including other actions,
 until explicit preparation clears the relevant failure state. Unchanged paint ticks cannot retry
 or republish a failed or superseded task. Walking and pickup remain on demand.
-
