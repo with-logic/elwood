@@ -145,3 +145,26 @@ test("C-LOOP-08 an earlier caller hold delays admission and a later hold cannot 
   later();
   queue.close();
 });
+
+test("C-LOOP-08 admission waking during a picker dispatches after that picker settles", async () => {
+  const gate = Promise.withResolvers<void>();
+  const pickerGate = Promise.withResolvers<void>();
+  const { queue, writes } = fixture((origin) =>
+    origin.kind === "loop" ? { ready: gate.promise, run: (work) => work() } : undefined,
+  );
+  const pending = queue.send("loop", "message", undefined, loop);
+  const picker = queue.runExclusive("list_models", async () => {
+    writes.push("picker");
+    await pickerGate.promise;
+    writes.push("picker settled");
+  });
+  gate.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(writes).toEqual(["picker"]);
+  pickerGate.resolve();
+  await picker;
+  await pending;
+  expect(writes).toEqual(["picker", "picker settled", "loop"]);
+  queue.close();
+});

@@ -8,7 +8,7 @@ const loop = { origin: { kind: "loop", loopId: "loop" } } as const;
 test.each([
   "ready",
   "suspended",
-])("C-LOOP-08 10,000 %s parked turn followers are checked once and a later control passes", async (readiness) => {
+])("C-LOOP-08 10,000 %s parked turn followers are checked once across 1,000 controls", async (readiness) => {
   let visits = 0;
   const has = ControlAdmissions.prototype.has;
   ControlAdmissions.prototype.has = function (operation) {
@@ -38,12 +38,20 @@ test.each([
       pending.push(queue.send("follower", "message").catch(() => undefined));
     }
     const blockedVisits = visits;
-    await queue.send("picker", "list_models");
-    expect(writes).toEqual(["picker"]);
+    const controls =
+      readiness === "ready"
+        ? (["list_models", "set_model", "login", "compact"] as const)
+        : (["list_models", "set_model", "login"] as const);
+    for (let index = 0; index < 1000; index += 1) {
+      await queue.send("picker", controls[index % controls.length]!);
+    }
+    const crossingVisits = visits - blockedVisits;
+    expect(writes).toEqual(new Array<string>(1000).fill("picker"));
     queue.close();
     await Promise.all(pending);
     // Suspending readiness invalidates the initial one-entry prefix once.
     expect(blockedVisits).toBeLessThanOrEqual(10_002);
+    expect(crossingVisits).toBe(1000);
   } finally {
     queue.close();
     ControlAdmissions.prototype.has = has;

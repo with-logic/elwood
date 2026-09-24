@@ -61,7 +61,7 @@ export abstract class ControlQueueState {
     // A parked reservation blocks later turn input, but independent controls may
     // pass it. An admitted loop also keeps its place ahead of a later caller hold.
     // Appending cannot unblock the already scanned prefix. Eligibility changes
-    // and removals invalidate it; each blocked append is otherwise checked once.
+    // and removals within it invalidate it; crossing controls retain that work.
     let reservedBefore = this.blockedThrough > 0;
     for (let index = this.blockedThrough; index < this.queue.length; index += 1) {
       const operation = this.queue[index] as QueuedOperation;
@@ -132,7 +132,7 @@ export abstract class ControlQueueState {
   }
 
   protected removeQueued(index: number): void {
-    this.blockedThrough = 0;
+    if (index < this.blockedThrough) this.blockedThrough = 0;
     this.queue.splice(index, 1);
   }
 
