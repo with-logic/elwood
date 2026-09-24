@@ -46,8 +46,12 @@ export abstract class ControlQueueState {
   }
 
   protected nextDispatchIndex(): number {
-    if (!(this.loopHolds.size || this.admissions.size))
-      return nextDispatchIndex(this.queue, this.ready, this.bypassable);
+    if (!this.admissions.size)
+      return this.ready && this.loopHolds.size > 0
+        ? this.queue.findIndex((operation) => operation.origin.kind !== "loop")
+        : nextDispatchIndex(this.queue, this.ready, this.bypassable);
+    // A parked reservation blocks later turn input, but independent controls may
+    // pass it. An admitted loop also keeps its place ahead of a later caller hold.
     let reservedBefore = false;
     return this.queue.findIndex((operation) => {
       const admitted = this.admissions.has(operation);

@@ -61,8 +61,8 @@ export type QueuedOperation = QueuedOperationBase & RunOrAttach;
 export type PendingOperation = Omit<QueuedOperationBase, "resolve" | "reject"> & RunOrAttach;
 
 /**
- * Preparation precedes one operation. Its signal cannot revoke work already started:
- * exclusive work owns its dialog until closing. Origin permits internal loop observation.
+ * Wrap preparation and one physical operation. The signal cancels pre-operation
+ * cleanup; active exclusive work keeps its own lifetime. Origin identifies its owner.
  */
 export type AroundOperation = (
   work: () => Promise<void>,
@@ -70,11 +70,17 @@ export type AroundOperation = (
   origin: ControlSubmissionOrigin,
 ) => Promise<void>;
 
-/** A selected operation can reserve ordering without occupying the physical input slot. */
+/** Reserve queue order without occupying the physical input slot. */
 export type ControlAdmission = {
+  /** Fulfillment permits physical dispatch; rejection rejects and cancels the reservation. */
   readonly ready: Promise<void>;
+  /** Wrap the queue's usual preparation and physical operation after admission is ready. */
   readonly run: AroundOperation;
 };
+/**
+ * The signal owns queued admission and aborts on cancellation, close, or setup failure.
+ * Once run starts, its operation signal takes over; admission readiness is not completion.
+ */
 export type AdmitOperation = (
   origin: ControlSubmissionOrigin,
   signal: AbortSignal,

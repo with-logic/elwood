@@ -1,6 +1,11 @@
 /** Park selected operations outside physical input while retaining ordering (PRD §5.9). */
 import { toError } from "../errors.ts";
-import type { AdmitOperation, ControlAdmission, QueuedOperation } from "./types.ts";
+import type {
+  AdmitOperation,
+  AroundOperation,
+  ControlAdmission,
+  QueuedOperation,
+} from "./types.ts";
 
 type Reservation = {
   readonly ticket: ControlAdmission;
@@ -40,7 +45,9 @@ export class ControlAdmissions {
     try {
       ticket = this.admit(operation.origin, abort.signal);
     } catch (error) {
-      this.fail(operation, toError(error));
+      const failure = toError(error);
+      abort.abort(failure);
+      this.fail(operation, failure);
       return false;
     }
     if (!ticket) return true;
@@ -59,10 +66,15 @@ export class ControlAdmissions {
     return false;
   }
 
-  take(operation: QueuedOperation): ControlAdmission | undefined {
+  takeWrapper(
+    operation: QueuedOperation,
+    around: AroundOperation | undefined,
+  ): AroundOperation | undefined {
     const ticket = this.pending.get(operation)?.ticket;
     this.pending.delete(operation);
-    return ticket;
+    if (!ticket) return around;
+    return (work, signal, origin) =>
+      ticket.run(() => (around ? around(work, signal, origin) : work()), signal, origin);
   }
 
   cancel(operation: QueuedOperation, error: Error): void {

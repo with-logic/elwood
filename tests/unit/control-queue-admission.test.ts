@@ -113,7 +113,17 @@ test("C-LOOP-08 an earlier caller hold delays admission and a later hold cannot 
   await queue.send("caller", "message");
   queue.markReady();
   release();
+  expect(admit).toHaveBeenCalledTimes(2); // caller, then the eligible loop
+  expect(admit.mock.calls[1]![0]).toEqual(loop.origin);
+  let settled = false;
+  void pending.then(() => {
+    settled = true;
+  });
   const later = queue.holdLoops();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(settled).toBe(false);
+  expect(writes).toEqual(["caller"]);
   gate.resolve();
   await pending;
   expect(writes).toEqual(["caller", "loop"]);
