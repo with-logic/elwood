@@ -16,7 +16,7 @@ import { CleanupLatch } from "../shutdown/cleanup-latch.ts";
 import type { StatusDecision, StatusEvidenceKind } from "../status-evidence.ts";
 import { SessionLoops } from "./loops.ts";
 import { closingController, notRunningError, runSessionOperation } from "./not-running.ts";
-import { NativePasteRecovery } from "./paste-recovery.ts";
+import { PasteRecoveryRevocation } from "./paste-recovery.ts";
 import type { PickerInputOwnership } from "./picker-input.ts";
 import { SessionReapPolicy } from "./reap.ts";
 import { SessionShutdownBinding } from "./shutdown-binding.ts";
@@ -41,9 +41,9 @@ export abstract class SessionLifecycle {
   private readonly cleanupLatch = new CleanupLatch(() => this.stopRuntime());
   private readonly shutdown: SessionShutdownBinding;
   private readonly statusEngine: ReturnType<typeof createSessionStatusEngine>;
-  private readonly recovery: NativePasteRecovery;
+  private readonly recovery: PasteRecoveryRevocation;
   protected readonly pasteGuard: PasteGuard = {
-    captureRecovery: () => this.recovery.capture(),
+    captureRecovery: () => this.recovery.captureRevocationGuard(),
     snapshot: () => this.terminal.snapshot().text,
     staged: (screen, payload) => this.stagedPaste(screen, payload),
     blocked: () => this.queuedInputBlocked(),
@@ -68,7 +68,7 @@ export abstract class SessionLifecycle {
     this.pty = pty;
     this.terminal = ownership.caller;
     this.automatedTerminal = ownership.automated;
-    this.recovery = new NativePasteRecovery(statusEvents, this.closing.signal);
+    this.recovery = new PasteRecoveryRevocation(statusEvents, this.closing.signal);
     this.terminalReplay = terminalReplay;
     this.reapPolicy = new SessionReapPolicy(agent, record.elwoodSessionId, pty.pid);
     const readEmpty = () => this.emptyComposerFrame();

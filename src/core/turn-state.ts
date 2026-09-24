@@ -23,6 +23,14 @@ export class TurnStateWatcher {
   private bannerSeen = false;
   private armed = false;
   private replaySettling = false;
+  private nativeReplaySettling = false;
+  private nativeQuietStreak = 0;
+  private observedNativeWork = false;
+
+  /** Recovery cannot treat optimistic caller-running status as native acceptance. */
+  get nativeWorkingVisible(): boolean {
+    return this.observedNativeWork;
+  }
   // Consecutive quiet, non-blocking composer frames seen while settling. The resume
   // transcript replay repaints working-token footers in BURSTS with brief quiet gaps
   // between them, so a SINGLE quiet composer frame is not proof the replay finished —
@@ -41,14 +49,17 @@ export class TurnStateWatcher {
    * history, not work: emitting a started/ended pair for them fabricates a phantom turn
    * on EVERY resume (observed as one false unread per resumed conversation downstream).
    * So `arm(true)` enters a settling state that swallows rendered turn edges until the
-   * first QUIET composer frame (composer visible, no working marker) — the replay has
-   * finished painting and the screen is genuinely idle; detection then behaves exactly
+   * required run of QUIET composer frames (composer visible, no working marker) —
+   * the replay has settled; detection then behaves exactly
    * like a cold start's post-ready watcher. Evidence-based turns (`caller_submitted`,
    * hooks) are unaffected throughout.
    */
   arm(resumed = false): void {
     this.armed = true;
     this.replaySettling = resumed;
+    this.nativeReplaySettling = resumed;
+    this.nativeQuietStreak = 0;
+    this.observedNativeWork = false;
     this.quietStreak = 0;
   }
 
@@ -56,6 +67,8 @@ export class TurnStateWatcher {
   adoptWorkingClearance(facts: ScreenFacts): void {
     if (!this.armed) return;
     this.replaySettling = false;
+    this.nativeReplaySettling = false;
+    this.observedNativeWork = true;
     this.running = true;
     this.bannerSeen = facts.interrupt_complete_visible;
   }
@@ -69,6 +82,7 @@ export class TurnStateWatcher {
    * quiet composer frame ever paints). */
   observe(facts: ScreenFacts, evidenceRunning = false): TurnEdge | undefined {
     if (!this.armed) return undefined;
+    const quiet = this.observeNativeWork(facts);
     if (this.replaySettling) {
       if (evidenceRunning) {
         // A real turn is ALREADY running from evidence — release settling and
@@ -86,8 +100,6 @@ export class TurnStateWatcher {
         // fire a phantom `started`. A blocking dialog's option caret is byte-identical
         // to the composer marker, so a blocking frame is NOT quiet and resets the run
         // (matches the end-edge gate, so queued sends never drain into a dialog).
-        const quiet =
-          facts.composer_visible && !facts.working_visible && !facts.blocking_prompt_visible;
         this.quietStreak = quiet ? this.quietStreak + 1 : 0;
         if (this.quietStreak >= quietFramesToSettle) this.replaySettling = false;
         return undefined;
@@ -119,5 +131,18 @@ export class TurnStateWatcher {
       return "ended";
     }
     return undefined;
+  }
+
+  private observeNativeWork(facts: ScreenFacts): boolean {
+    const quiet =
+      facts.composer_visible && !facts.working_visible && !facts.blocking_prompt_visible;
+    // Lifecycle settling may end on caller_submitted, whose Enter can be swallowed.
+    // Native recovery keeps the same quiet-frame replay gate independently of it.
+    if (this.nativeReplaySettling) {
+      this.nativeQuietStreak = quiet ? this.nativeQuietStreak + 1 : 0;
+      if (this.nativeQuietStreak >= quietFramesToSettle) this.nativeReplaySettling = false;
+    }
+    this.observedNativeWork = !this.nativeReplaySettling && facts.working_visible;
+    return quiet;
   }
 }

@@ -12,7 +12,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Stop background paste-recovery Enter presses after native submission or working evidence, including while the first Enter is still pending.
+- Stop background paste-recovery Enter presses after native submission or working evidence, including while the first Enter is still pending. Startup spinners and resume transcript replay do not revoke recovery.
 
 - Keep Codex update retries revoked after unknown or blank replacement frames until authoritative native composer clearance or fresh banner evidence appears; late writes cannot report an answer for a superseded dialog.
 - Hold scheduled loop delivery through ergonomic caller turns, preventing a due

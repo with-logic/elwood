@@ -1,7 +1,7 @@
 /** Native observations revoke recovery independently of cleanup ownership (PRD §5.3). */
 import type { SessionStatusEmitter } from "./status-wiring.ts";
 
-export class NativePasteRecovery {
+export class PasteRecoveryRevocation {
   private generation = 0;
   private working = false;
 
@@ -18,7 +18,7 @@ export class NativePasteRecovery {
     this.working = working;
   }
 
-  capture() {
+  captureRevocationGuard() {
     const generation = this.generation;
     const working = this.working;
     return {
