@@ -12,6 +12,8 @@ import {
 } from "./traits.ts";
 import type {
   AbortableQueueTask,
+  AdmitOperation,
+  AroundOperation,
   Cancel,
   ControlSendOptions,
   ControlSubmissionOrigin,
@@ -35,12 +37,6 @@ export type {
   ControlSubmitter,
 } from "./types.ts";
 
-/**
- * Await preparation before invoking work once. Its signal cannot revoke work already
- * started: exclusive work owns its dialog until the separate closing lifetime ends.
- */
-type AroundOperation = (work: () => Promise<void>, preparationSignal: AbortSignal) => Promise<void>;
-
 const callerOrigin: ControlSubmissionOrigin = { kind: "caller" };
 
 export class ControlQueue extends ControlQueueState {
@@ -58,8 +54,9 @@ export class ControlQueue extends ControlQueueState {
     guidanceMayBypass: () => boolean = () => false,
     onCallerInputSubmitted?: () => void,
     aroundOperation?: AroundOperation,
+    admitOperation?: AdmitOperation,
   ) {
-    super(stoppedError);
+    super(stoppedError, admitOperation);
     this.submit = submit;
     this.aroundOperation = aroundOperation;
     this.onTurnStarted = onTurnStarted;
@@ -112,7 +109,13 @@ export class ControlQueue extends ControlQueueState {
     if (this.inFlight || this.queue.length === 0) return;
     const index = this.nextDispatchIndex();
     if (index < 0) return;
-    const operation = this.queue.splice(index, 1)[0] as QueuedOperation;
+    const operation = this.queue[index] as QueuedOperation;
+    if (!this.admissions.prepare(operation)) {
+      this.drain();
+      return;
+    }
+    this.queue.splice(index, 1);
+    const around = this.admissions.take(operation)?.run ?? this.aroundOperation;
     if (overtakesReadiness(operation)) this.bypassable -= 1;
     this.inFlight = operation;
     const traits = controlOperationTraits[operation.kind];
@@ -127,9 +130,7 @@ export class ControlQueue extends ControlQueueState {
           ? operation.run(workSignal)
           : this.submitWithAttach(operation, traits, workSignal);
       };
-      dispatched = this.aroundOperation
-        ? this.aroundOperation(work, this.prepareSignal(workSignal))
-        : work();
+      dispatched = around ? around(work, this.prepareSignal(workSignal), operation.origin) : work();
     } catch (error) {
       this.rollback(operation, priorReady, epoch, toError(error));
       return;

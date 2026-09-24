@@ -1,9 +1,15 @@
 /** Queue lifecycle and cancellation bookkeeping (PRD §5.3/§5.9). */
 
 import { toError } from "../errors.ts";
+import { ControlAdmissions } from "./admission.ts";
 import type { ControlQueueError } from "./traits.ts";
-import { ControlCancellation, nextDispatchIndex, overtakesReadiness } from "./traits.ts";
-import type { Cancel, PendingOperation, QueuedOperation } from "./types.ts";
+import {
+  ControlCancellation,
+  controlOperationTraits,
+  nextDispatchIndex,
+  overtakesReadiness,
+} from "./traits.ts";
+import type { AdmitOperation, Cancel, PendingOperation, QueuedOperation } from "./types.ts";
 
 /** Shared mutable state for the serialized control queue. */
 export abstract class ControlQueueState {
@@ -18,10 +24,16 @@ export abstract class ControlQueueState {
   private preparationAbort: AbortController | undefined;
   protected readonly cancellation = new ControlCancellation();
   protected readonly stoppedError: ControlQueueError;
+  protected readonly admissions: ControlAdmissions;
   private readonly loopHolds = new Set<object>();
 
-  protected constructor(stoppedError: ControlQueueError) {
+  protected constructor(stoppedError: ControlQueueError, admit?: AdmitOperation) {
     this.stoppedError = stoppedError;
+    this.admissions = new ControlAdmissions(
+      admit,
+      () => this.drain(),
+      (op, error) => this.cancelOperation(op, error),
+    );
   }
 
   /** Keep due loops behind the ergonomic owner without blocking its own recovery. */
@@ -34,9 +46,21 @@ export abstract class ControlQueueState {
   }
 
   protected nextDispatchIndex(): number {
-    return this.ready && this.loopHolds.size > 0
-      ? this.queue.findIndex((operation) => operation.origin.kind !== "loop")
-      : nextDispatchIndex(this.queue, this.ready, this.bypassable);
+    if (!(this.loopHolds.size || this.admissions.size))
+      return nextDispatchIndex(this.queue, this.ready, this.bypassable);
+    let reservedBefore = false;
+    return this.queue.findIndex((operation) => {
+      const admitted = this.admissions.has(operation);
+      reservedBefore ||= admitted;
+      return (
+        !this.admissions.waiting(operation) &&
+        (!reservedBefore ||
+          admitted ||
+          !controlOperationTraits[operation.kind].reportsCallerSubmission) &&
+        (!this.loopHolds.size || operation.origin.kind !== "loop" || admitted) &&
+        (this.ready || overtakesReadiness(operation))
+      );
+    });
   }
 
   markReady(): void {
@@ -71,6 +95,7 @@ export abstract class ControlQueueState {
     this.bypassable = 0;
     for (const operation of this.queue.splice(0)) {
       this.cancellation.remove(operation);
+      this.admissions.cancel(operation, error);
       operation.reject(error);
     }
   }
@@ -122,7 +147,9 @@ export abstract class ControlQueueState {
       this.queue.splice(index, 1);
       if (overtakesReadiness(operation)) this.bypassable -= 1;
       this.cancellation.remove(operation);
+      this.admissions.cancel(operation, error);
       operation.reject(error);
+      this.drain();
     } else if (operation.run) this.preparationAbort?.abort(error);
     else {
       // Settled operations have no listener; an operation absent from the queue is active.

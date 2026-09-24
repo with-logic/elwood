@@ -59,3 +59,23 @@ export type QueuedOperation = QueuedOperationBase & RunOrAttach;
 // A queued op before its resolve/reject are attached — the SAME run/attach XOR, so a
 // pending op can no more carry both fields than a queued one can.
 export type PendingOperation = Omit<QueuedOperationBase, "resolve" | "reject"> & RunOrAttach;
+
+/**
+ * Preparation precedes one operation. Its signal cannot revoke work already started:
+ * exclusive work owns its dialog until closing. Origin permits internal loop observation.
+ */
+export type AroundOperation = (
+  work: () => Promise<void>,
+  preparationSignal: AbortSignal,
+  origin: ControlSubmissionOrigin,
+) => Promise<void>;
+
+/** A selected operation can reserve ordering without occupying the physical input slot. */
+export type ControlAdmission = {
+  readonly ready: Promise<void>;
+  readonly run: AroundOperation;
+};
+export type AdmitOperation = (
+  origin: ControlSubmissionOrigin,
+  signal: AbortSignal,
+) => ControlAdmission | undefined;
