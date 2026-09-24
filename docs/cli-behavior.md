@@ -972,3 +972,24 @@ submission; an old empty frame does not prove acceptance.
 The Claude observer also preserves the existing version-banner/fenced-input
 alternative and the documented 2.1.268 non-Vim bypass-permissions footer.
 Those compatibility cases are constructed regressions, not new working captures.
+
+## Live staged text and continuation rows (2026-09-23)
+
+A staging-only capture through real Elwood sessions verified Claude Code 2.1.281
+and codex-cli 0.156.1 with multiline, wrapped, and 18-line payloads. No submitting
+Enter was attempted and no `UserPromptSubmit` hook appeared. Both adapters put the
+cursor on an indented continuation row for multiline input. Codex wraps long
+lines at word boundaries; comparing an entire payload line against one physical
+screen row misses that draft. Claude collapses the long paste to a `[Pasted text
+#1 +17 lines]` chip and replaces the usual mode footer with `paste again to
+expand`, optional token count, and an exact `Ctrl+Y to paste deleted text` hint.
+The captured short multiline editor hint is `ctrl+g to edit in Nvim`.
+
+Recovery must verify the live cursor-owned composer and its native footer before
+matching text: the same text in submitted history is insufficient. Staged-only
+Claude hints extend that matcher, not empty-input or trust clearance. Fixture
+account/quota warning rows are blanked, and temporary paths/account labels are
+replaced without changing row count or cursor geometry. Earlier draft lines
+remain in the captures: Ctrl-U/K cleared the current line, not the entire
+multiline composer. This capture does not prove multiline cleanup or native
+acceptance ordering.

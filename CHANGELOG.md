@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Scope paste recovery to the live native composer so submitted transcript text cannot trigger an extra Enter.
+
 - Hold scheduled loop delivery through ergonomic caller turns, preventing a due
   loop from accepting or completing a caller prompt that needs recovery.
 
