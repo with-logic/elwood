@@ -2,17 +2,22 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { ElwoodError } from "./errors.ts";
 
-type StopInput = { readonly sessionId: string; closed: boolean };
+type StopInputSession = { readonly elwoodSessionId: string };
+type StopInput = { readonly session: StopInputSession; closed: boolean };
 const inputContext = new AsyncLocalStorage<StopInput>();
 
-/** Observers and registered handlers share a lifetime; readiness runs after it closes. */
+/** Persistent internal work must not inherit a short-lived Stop callback's authority. */
+export function outsideStopInput<T>(work: () => T): T {
+  return inputContext.exit(work);
+}
+
+/** Observers, handlers, and reply diagnostics share one lifetime until the reply settles. */
 export async function withStopInput<T>(
-  hookName: string,
-  sessionId: string,
+  { hookName, session }: { readonly hookName: string; readonly session: StopInputSession },
   observeAndRequest: () => Promise<T>,
 ): Promise<T> {
   if (hookName !== "Stop") return observeAndRequest();
-  const context: StopInput = { sessionId, closed: false };
+  const context: StopInput = { session, closed: false };
   try {
     return await inputContext.run(context, observeAndRequest);
   } finally {
@@ -20,10 +25,15 @@ export async function withStopInput<T>(
   }
 }
 
-/** Check admission, then detach internal queue work from the caller's async context. */
-export function admitHookInput<T>(sessionId: string, enqueue: () => T): T {
+/** The live session object is the full identity, even if another state directory reuses its ID. */
+export function assertStopInput(session: StopInputSession): void {
   const context = inputContext.getStore();
-  if (context?.sessionId === sessionId && context.closed)
+  if (context?.session === session && context.closed)
     throw new ElwoodError("wait_timeout", "The Stop input boundary has already completed.");
+}
+
+/** Check admission, then detach internal queue work from the caller's async context. */
+export function admitHookInput<T>(session: StopInputSession, enqueue: () => T): T {
+  assertStopInput(session);
   return inputContext.exit(enqueue);
 }

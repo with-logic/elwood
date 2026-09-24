@@ -9,6 +9,7 @@ import * as activity from "../../core/activity/index.ts";
 import { freezeHookEvent } from "../../core/freeze-hook-event.ts";
 import { hookObservationBoundary } from "../../core/hook-observation.ts";
 import { isRecord } from "../../core/predicates.ts";
+import { withStopInput } from "../../core/stop-input.ts";
 import type { HookErrorEvent } from "../../core/types.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import type { SessionRecord } from "../../state/store.ts";
@@ -69,54 +70,59 @@ export async function dispatchHook(
 ) {
   const event = freezeHookEvent(normalizeCodexHookEvent(input as CodexHookEvent));
   const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "codex");
-  observation.run("transcript", () => session?.observeTranscript(event.transcript_path));
-  if (event.hook_event_name === "SessionStart") {
-    session?.rememberCodexSessionId(event.session_id);
-    // Codex's authoritative pre-input readiness signal: release the first queued
-    // message here, not on the boot-time composer placeholder (C-API-28).
-    // The actual ready transition can be deferred by a startup hold; its own
-    // boundary retains C-API-42's synchronous fallback and catches rejections.
-    session?.markInitialReadyFromHook(observation);
-  }
-  observation.run("hook", () => emitter.emit("hook", event));
-  observation.run("activity", () =>
-    emitter.emit("activity", activity.activityFromCodexHook(record.elwoodSessionId, event)),
-  );
-  const outcome = await requestCodexHook(
-    {
-      hasListeners: (name) => emitter.hasListeners(name),
-      requestWithProvenance: (name, payload) => emitter.requestWithProvenance(name, payload),
-      emit: (name, payload) =>
-        observation.run(name === "hookError" ? "hook_error" : "activity", () =>
-          emitter.emit(name, payload),
-        ),
-    },
-    event,
-    options.hookTimeoutMs ?? 25_000,
-    record.elwoodSessionId,
-  );
-  const serialized = serializeCodexHookResult(event.hook_event_name, outcome.result);
-  const blocked = isCodexBlock(outcome.result);
-  observation.run("activity", () =>
-    emitter.emit(
-      "activity",
-      activity.activityFromHookResult(
-        "codex",
+  return await withStopInput(
+    { hookName: event.hook_event_name, session: session ?? record },
+    async () => {
+      observation.run("transcript", () => session?.observeTranscript(event.transcript_path));
+      if (event.hook_event_name === "SessionStart") {
+        session?.rememberCodexSessionId(event.session_id);
+        // Codex's authoritative pre-input readiness signal: release the first queued
+        // message here, not on the boot-time composer placeholder (C-API-28).
+        // The actual ready transition can be deferred by a startup hold; its own
+        // boundary retains C-API-42's synchronous fallback and catches rejections.
+        session?.markInitialReadyFromHook(observation);
+      }
+      observation.run("hook", () => emitter.emit("hook", event));
+      observation.run("activity", () =>
+        emitter.emit("activity", activity.activityFromCodexHook(record.elwoodSessionId, event)),
+      );
+      const outcome = await requestCodexHook(
+        {
+          hasListeners: (name) => emitter.hasListeners(name),
+          requestWithProvenance: (name, payload) => emitter.requestWithProvenance(name, payload),
+          emit: (name, payload) =>
+            observation.run(name === "hookError" ? "hook_error" : "activity", () =>
+              emitter.emit(name, payload),
+            ),
+        },
+        event,
+        options.hookTimeoutMs ?? 25_000,
         record.elwoodSessionId,
-        event.hook_event_name,
-        outcome.result,
-        outcome.failedOpen,
-      ),
-    ),
+      );
+      const serialized = serializeCodexHookResult(event.hook_event_name, outcome.result);
+      const blocked = isCodexBlock(outcome.result);
+      observation.run("activity", () =>
+        emitter.emit(
+          "activity",
+          activity.activityFromHookResult(
+            "codex",
+            record.elwoodSessionId,
+            event.hook_event_name,
+            outcome.result,
+            outcome.failedOpen,
+          ),
+        ),
+      );
+      if (event.hook_event_name === "Stop" && !blocked) {
+        // A bounded per-pass scan (like Claude's): the terminal drain budget is reserved
+        // for finish(), so hundreds of turns never exhaust it into false backlog drops.
+        observation.run("transcript", () => session?.scanTranscript());
+        observation.run("lifecycle", () => session?.submitEvidence("hook_turn_ended"));
+      }
+      observation.report();
+      return serialized;
+    },
   );
-  if (event.hook_event_name === "Stop" && !blocked) {
-    // A bounded per-pass scan (like Claude's): the terminal drain budget is reserved
-    // for finish(), so hundreds of turns never exhaust it into false backlog drops.
-    observation.run("transcript", () => session?.scanTranscript());
-    observation.run("lifecycle", () => session?.submitEvidence("hook_turn_ended"));
-  }
-  observation.report();
-  return serialized;
 }
 
 /** Contains bridge diagnostics under the same hook notification policy. */

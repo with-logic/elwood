@@ -176,9 +176,7 @@ export abstract class AgentSessionBase extends SessionLifecycle {
     // Looked up per call: a facade that launched this session shares ITS budget (C-API-44).
     const budget = sessionImageBudget(this);
     return this.inSession(() =>
-      admitHookInput(this.elwoodSessionId, () =>
-        enqueueSubmission(options?.images, driver, send, budget),
-      ),
+      admitHookInput(this, () => enqueueSubmission(options?.images, driver, send, budget)),
     );
   }
 }
