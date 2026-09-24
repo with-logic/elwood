@@ -34,10 +34,13 @@ const MOMENTS = [
 export const NO_INPUT = Object.freeze({});
 
 export class Autonomy {
-  constructor({ random = Math.random, ready = () => true, fits = () => true, onTaskEnd = () => {} } = {}) {
+  constructor({
+    random = Math.random, ensureDeliveryReady = () => true, fits = () => true,
+    onTaskEnd = () => { /* Standalone directors have no task-owned resources. */ },
+  } = {}) {
     this.onTaskEnd = onTaskEnd;
     this.random = random;
-    this.ready = ready;
+    this.ensureDeliveryReady = ensureDeliveryReady;
     this.fits = fits;
     this.mode = "auto";
     this.quiet = 0;
@@ -191,7 +194,7 @@ export class Autonomy {
       return NO_INPUT;
     }
     if (task.kind === "face") {
-      if (!task.sent && this.ready(`idle-${task.direction}`, task)) {
+      if (!task.sent && this.ensureDeliveryReady(`idle-${task.direction}`, task)) {
         task.sent = true;
         task.elapsedSeconds = 0;
         return { face: task.direction };
@@ -208,7 +211,7 @@ export class Autonomy {
           this.rest();
           return NO_INPUT;
         }
-        if (task.fits && this.ready(task.name, task)) {
+        if (task.fits && this.ensureDeliveryReady(task.name, task)) {
           task.sent = true;
           task.elapsedSeconds = 0;
           return { gesture: task.name };

@@ -101,7 +101,7 @@ test("a manual held pose recovers and shows a full idle pause before autonomy re
 test("an automatic gesture awaiting its image cannot start after a manual takeover", () => {
   const { world, director, advance } = setup();
   let ready = false;
-  director.ready = () => ready;
+  director.ensureDeliveryReady = () => ready;
   director.task = { kind: "moment", name: "wave", sent: false, seen: false, elapsedSeconds: 0, hold: 3 };
   advance(1);
   assert.equal(world.player.gesture, null);
@@ -148,7 +148,7 @@ test("an oversized automatic trick is rejected before loading its image page", (
   const { world, director, advance } = setup();
   let imageRequests = 0;
   director.fits = () => false;
-  director.ready = () => {
+  director.ensureDeliveryReady = () => {
     imageRequests++;
     return true;
   };

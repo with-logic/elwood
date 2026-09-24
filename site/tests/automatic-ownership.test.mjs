@@ -46,8 +46,8 @@ test("C-SITE-03 a ready automatic owner cannot publish over a newer manual candi
   const task = scene.director.task;
   await tick();
   scene.step(1 / 120);
-  for (let i = 0; i < 100 && !scene.automaticPreparation.owner?.ready; i++) await turn();
-  assert.equal(scene.automaticPreparation.owner.ready, true);
+  for (let i = 0; i < 100 && !scene.automaticPreparation.preparationOwner?.ready; i++) await turn();
+  assert.equal(scene.automaticPreparation.preparationOwner.ready, true);
   const manual = bank.prepareAnimation("bow");
   const replacement = bank.animations.candidateOwner;
   scene.step(1 / 120);
@@ -100,9 +100,9 @@ test("C-SITE-03 a stale readiness callback cannot acquire a replacement or dispo
   scene.director.task = obsolete;
   scene.interact();
   const before = requested.length;
-  assert.equal(scene.director.ready("wave", obsolete), false);
+  assert.equal(scene.director.ensureDeliveryReady("wave", obsolete), false);
   assert.equal(bank.animations.candidateOwner, null);
   scene.dispose();
-  assert.equal(scene.director.ready("wave", scene.director.task), false);
+  assert.equal(scene.director.ensureDeliveryReady("wave", scene.director.task), false);
   assert.equal(requested.length, before);
 });

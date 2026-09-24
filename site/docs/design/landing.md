@@ -63,7 +63,8 @@ preparation. Supersession and reflow cancel pending/delivered ownership; recover
 consumed or replaced, including when held movement clears the queue. Current and
 outgoing poses remain protected. Automatic moments and facing actions also wait
 for complete readiness; each task owns its cancellable geometry probe and prepared
-delivery. Replacement removes
-only its matching queued input. Failed actions report once and wait for explicit
-retry; successful delivery starts a fresh task clock. Walking and pickup remain
+delivery. Replacement removes only its matching queued input. Requested and shared
+idle/rotation asset failures report once and suppress automatic retries across
+actions until explicit preparation clears them. Successful delivery starts a fresh
+task clock. Walking and pickup remain
 on demand.

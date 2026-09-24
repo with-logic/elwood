@@ -2,7 +2,7 @@
 
 `World.update(dt, input)` is the action interface used by the keyboard controller. It accepts one-shot requests (`gesture`, `face`, `jumpPressed`, `climbPressed`, `dropPressed`, `releaseGesture`) and continuous movement (`axis`, from -1 to 1). A future scheduler can supply the same inputs and choose its own delays; the playground currently remains under manual control.
 
-The landing scene prepares complete gesture/facing clips plus idle and rotation before publishing explicit input. This preparation does not apply to the workshop, automatic tasks or pickup.
+The landing scene prepares complete gesture/facing clips plus idle and rotation before publishing explicit or automatic input. Automatic tasks cancel obsolete preparation and wait for explicit retry after a requested or shared dependency fails. Workshop and pickup paths retain on-demand loading.
 
 Each gesture has a source frame clock, independent of render refresh. The loaded manifest describes frame counts, source cadence, orientation, and optional `hold_frame`, `hold_loop`, `hold_loop_seconds`, `finish_before_next` and `travel_speed` data. The controller exposes `player.gesture`, `player.gestureStage`, `player.gestureElapsed`, `player.gestureDirection`, `player.queuedAction`, and the ordinary movement state.
 

@@ -84,7 +84,8 @@ candidate, or the same complete active owner with no newer candidate/delivery.
 Task replacement, manual takeover, reset/reflow and teardown release obsolete
 metadata/preparation consumers. Cancellation removes a matching queued delivery,
 but cannot release a newer manual request or active/current/outgoing playback.
-An automatic asset failure reports once and prevents automatic retries of that
-action until explicit preparation retries it. Unchanged paint ticks cannot retry
+An automatic asset failure reports once. Failed requested or shared idle/rotation
+assets suppress later automatic attempts that need them, including other actions,
+until explicit preparation clears the relevant failure state. Unchanged paint ticks cannot retry
 or republish a failed or superseded task. Walking and pickup remain on demand.
 

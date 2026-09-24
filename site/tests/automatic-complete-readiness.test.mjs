@@ -103,7 +103,7 @@ test("C-SITE-03 a rejected geometry probe never requests animation pages", async
   await tick(10);
   assert.ok(requested.includes("wave/clip.json"));
   assert.equal(requested.some(path => path.startsWith("wave/") && path.endsWith(".webp")), false);
-  assert.equal(scene.automaticPreparation.owner, null);
+  assert.equal(scene.automaticPreparation.preparationOwner, null);
   assert.equal(bank.animations.candidateOwner, null);
 });
 

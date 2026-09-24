@@ -26,7 +26,7 @@ export class LandingScene {
     this.world.canRender = (name, index) => !!this.bank.frame(name, index);
     this.automaticPreparation = new AutomaticPreparation(this);
     this.director = new Autonomy({
-      ready: (name, task) => this.automaticPreparation.ready(name, task),
+      ensureDeliveryReady: (name, task) => this.automaticPreparation.ensureDeliveryReady(name, task),
       fits: (name, _world, task) => this.performanceFits(name, task),
       onTaskEnd: (task) => this.automaticPreparation.cancel(task),
     });
@@ -152,7 +152,7 @@ export class LandingScene {
     const p = this.world.player;
     const cfg = this.config;
     if (!clip) {
-      if (task) this.automaticPreparation.metadata(name, task);
+      if (task) this.automaticPreparation.requestMetadata(name, task);
       else this.bank.ensureMetadata(name);
       return null;
     }

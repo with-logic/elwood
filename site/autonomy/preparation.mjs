@@ -2,92 +2,100 @@
 export class AutomaticPreparation {
   constructor(scene) {
     this.scene = scene;
-    this.owner = null;
+    this.preparationOwner = null;
   }
-  current(owner) {
+  current(preparationOwner) {
     return (
-      this.owner === owner &&
-      this.scene.director.task === owner.task &&
+      this.preparationOwner === preparationOwner &&
+      this.scene.director.task === preparationOwner.task &&
       !this.scene.bank.disposed
     );
   }
-  state(task, name) {
+  ensureOwner(task, name) {
     if (task !== this.scene.director.task || this.scene.bank.disposed) return null;
-    if (this.scene.bank.loads.failed.has(name)) {
+    const dependencies = ["idle", "rotation", name];
+    const failed = [...this.scene.bank.loads.failed].some((key) =>
+      dependencies.some((dependency) => key === dependency || key.startsWith(`${dependency}/`)),
+    );
+    if (failed) {
       this.scene.director.rest();
       return null;
     }
-    return this.owner ??= { task, name, controller: new AbortController() };
+    this.preparationOwner ??= { task, name, controller: new AbortController() };
+    return this.preparationOwner;
   }
   cancel(task) {
-    const owner = this.owner;
-    if (!owner || owner.task !== task) return;
-    this.owner = null;
-    owner.controller.abort();
+    const preparationOwner = this.preparationOwner;
+    if (!preparationOwner || preparationOwner.task !== task) return;
+    this.preparationOwner = null;
+    preparationOwner.controller.abort();
     const { bank, world } = this.scene;
     const animations = bank.animations;
-    if (!owner.animation) return;
-    if (animations.deliveredOwner === owner.animation) {
+    if (!preparationOwner.animationOwner) return;
+    if (animations.deliveredOwner === preparationOwner.animationOwner) {
       const queued = world.player.queuedAction;
       const name = queued?.gesture ?? (queued?.face ? `idle-${queued.face}` : null);
-      if (name === owner.name) world.player.queuedAction = null;
+      if (name === preparationOwner.name) world.player.queuedAction = null;
     }
     if (
-      animations.candidateOwner === owner.animation ||
-      animations.deliveredOwner === owner.animation
+      animations.candidateOwner === preparationOwner.animationOwner ||
+      animations.deliveredOwner === preparationOwner.animationOwner
     ) {
       bank.cancelPreparation();
     }
   }
-  fail(owner, error) {
-    if (!this.current(owner)) return;
-    this.scene.bank.loads.failed.add(owner.name);
+  fail(preparationOwner, error) {
+    if (!this.current(preparationOwner)) return;
+    this.scene.bank.loads.failed.add(preparationOwner.name);
     this.scene.director.rest();
     this.scene.onError?.(error);
   }
-  metadata(name, task) {
-    const owner = this.state(task, name);
-    if (!owner || owner.metadataRequested) return;
-    owner.metadataRequested = true;
+  requestMetadata(name, task) {
+    const preparationOwner = this.ensureOwner(task, name);
+    if (!preparationOwner || preparationOwner.metadataRequested) return;
+    preparationOwner.metadataRequested = true;
     this.scene.bank
-      .load(name, { signal: owner.controller.signal })
-      .catch((error) => this.fail(owner, error));
+      .load(name, { signal: preparationOwner.controller.signal })
+      .catch((error) => this.fail(preparationOwner, error));
   }
-  publish(owner) {
+  publish(preparationOwner) {
     const { bank } = this.scene;
     const animations = bank.animations;
-    if (animations.candidateOwner === owner.animation && owner.animation.ready) {
-      bank.publishAnimation(owner.name);
-      return animations.deliveredOwner === owner.animation;
-    }
-    const active = animations.activeOwner;
     if (
-      active === owner.animation &&
+      animations.candidateOwner === preparationOwner.animationOwner &&
+      preparationOwner.animationOwner.ready
+    ) {
+      bank.publishAnimation(preparationOwner.name);
+      return animations.deliveredOwner === preparationOwner.animationOwner;
+    }
+    const activeOwner = animations.activeOwner;
+    if (
+      activeOwner === preparationOwner.animationOwner &&
       !animations.candidateOwner &&
       !animations.deliveredOwner &&
-      ["idle", "rotation", owner.name].every((name) => active.clips.has(name))
+      ["idle", "rotation", preparationOwner.name].every((name) => activeOwner.clips.has(name))
     ) {
       return true;
     }
     this.scene.director.rest();
     return false;
   }
-  ready(name, task) {
-    const owner = this.state(task, name);
-    if (!owner) return false;
-    if (owner.ready) return this.publish(owner);
-    if (!owner.pending) {
-      owner.pending = true;
+  ensureDeliveryReady(name, task) {
+    const preparationOwner = this.ensureOwner(task, name);
+    if (!preparationOwner) return false;
+    if (preparationOwner.ready) return this.publish(preparationOwner);
+    if (!preparationOwner.pending) {
+      preparationOwner.pending = true;
       const pending = this.scene.bank.prepareAnimation(name);
-      owner.animation =
+      preparationOwner.animationOwner =
         this.scene.bank.animations.candidateOwner ?? this.scene.bank.animations.activeOwner;
       pending
         .then((clip) => {
-          if (!this.current(owner)) return;
-          if (clip) owner.ready = true;
+          if (!this.current(preparationOwner)) return;
+          if (clip) preparationOwner.ready = true;
           else this.scene.director.rest();
         })
-        .catch((error) => this.fail(owner, error));
+        .catch((error) => this.fail(preparationOwner, error));
     }
     return false;
   }
