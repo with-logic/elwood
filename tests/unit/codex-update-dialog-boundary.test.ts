@@ -114,4 +114,5 @@ test("C-CODEX-12 a banner is not an option-only continuation, and Later alone la
 test("C-CODEX-12 an indented replacement cannot continue a clipped update command", () => {
   const frame = `${banner}\n1. Update now (runs \`sh -c 'curl -fsSL https://chatgpt.com/codex/install.sh |\n    Confirm archive removal?\n2. Skip`;
   expect(codexOptionStillSafe(frame, "2")).toBe(false);
+  expect(safeUpdateOption(frame)).toBeUndefined();
 });
