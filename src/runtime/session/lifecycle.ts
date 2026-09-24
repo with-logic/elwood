@@ -1,5 +1,5 @@
 /** Session lifetime, input blocking, persistence and cleanup (PRD §5/§8/§9). */
-import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../core/activity/index.ts";
+import type { ElwoodAgentKind } from "../../core/activity/index.ts";
 import { ControlQueue } from "../../core/control-queue/index.ts";
 import { type PasteGuard, queuedInputSubmitter } from "../../core/input/index.ts";
 import { registerPrivateOutputSecrets } from "../../core/private-output-secrets.ts";
@@ -22,8 +22,6 @@ import { SessionReapPolicy } from "./reap.ts";
 import { SessionShutdownBinding } from "./shutdown-binding.ts";
 import { createSessionStatusEngine, type SessionStatusEmitter } from "./status-wiring.ts";
 
-type TerminalDataListener = Parameters<TerminalReplayBuffer["replay"]>[0];
-type AttentionListener = (event: ElwoodActivityEvent) => unknown;
 export abstract class SessionLifecycle {
   protected record: SessionRecord;
   readonly terminal: ElwoodTerminal;
@@ -152,7 +150,10 @@ export abstract class SessionLifecycle {
   bindInitialReadinessHold(isHeld: () => boolean): void {
     this.initialReadinessHeld = isHeld;
   }
+  readonly observeNativeWork = (working: boolean, quiet: boolean): void =>
+    this.recovery.observeWorking(working, quiet);
   submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
+    if (kind === "hook_turn_ended") this.recovery.completeTurn();
     const held =
       this.trustInputBlocking ||
       this.closing.signal.aborted ||
@@ -178,8 +179,7 @@ export abstract class SessionLifecycle {
   protected abstract stopRuntime(): Promise<void>;
   protected abstract emitWarnings(warnings: readonly ElwoodWarningEvent[]): void;
   protected replayFor(event: string, handler: (event: never) => unknown): void {
-    if (event === "terminal:data") this.terminalReplay.replay(handler as TerminalDataListener);
-    if (event === "activity") this.terminalReplay.replayAttention(handler as AttentionListener);
+    this.terminalReplay.replayFor(event, handler);
   }
   protected inSession<T>(work: () => Promise<T> | T, allowTerminal = false): Promise<T> {
     return runSessionOperation(this.record.adapter, this.status, work, allowTerminal);

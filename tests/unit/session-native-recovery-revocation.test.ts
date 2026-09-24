@@ -1,4 +1,4 @@
-/** Recovery retries without native evidence and stops after a submission hook (C-API-31). */
+/** Recovery retries without native evidence and stops after submission/work (C-API-31). */
 import { afterEach, expect, test, vi } from "vitest";
 import type { ElwoodActivityEvent } from "../../src/core/activity/index.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
@@ -21,6 +21,8 @@ for (const agent of ["claude", "codex"] as const) {
   test.each([
     "fresh",
     "hook",
+    "working",
+    "working-idle",
   ] as const)(`C-API-31 ${agent} recovery evidence=%s`, async (acceptance) => {
     const helper = agent === "claude" ? claude : codex;
     helper.installFakes();
@@ -78,6 +80,12 @@ for (const agent of ["claude", "codex"] as const) {
           turn_id: "turn-1",
           prompt: payload,
         });
+      if (acceptance === "working" || acceptance === "working-idle") {
+        pty.emitData("\u001b]0;⠋ Working\u0007");
+        await vi.advanceTimersByTimeAsync(50);
+        await session.terminal.settled();
+      }
+      if (acceptance === "working-idle") pty.emitData("\u001b]0;✳ Ready\u0007");
       expect(userMessages).toHaveLength(acceptance === "hook" ? 1 : 0);
       expect(session.terminal.snapshot().text).toBe(before);
       paint();

@@ -7,6 +7,8 @@
 
 import type { ElwoodActivityEvent } from "./activity/index.ts";
 
+export type AttentionListener = (event: ElwoodActivityEvent) => unknown;
+
 type TerminalDataEvent = {
   readonly elwoodSessionId: string;
   readonly data: string;
@@ -43,6 +45,11 @@ export class TerminalReplayBuffer {
     handler({ elwoodSessionId: this.elwoodSessionId, data: this.chunks.join("") });
   }
 
+  replayFor(event: string, handler: (event: never) => unknown): void {
+    if (event === "terminal:data") this.replay(handler as (event: TerminalDataEvent) => unknown);
+    if (event === "activity") this.replayAttention(handler as AttentionListener);
+  }
+
   /** Capture stable attention activities until the eager start promise has returned. */
   captureStartupAttention(source: {
     on(event: "activity", handler: (event: ElwoodActivityEvent) => void): () => void;
@@ -53,7 +60,7 @@ export class TerminalReplayBuffer {
   }
 
   /** Replay pre-return attention to a synchronously attached lazy-facade subscriber. */
-  replayAttention(handler: (event: ElwoodActivityEvent) => unknown): void {
+  replayAttention(handler: AttentionListener): void {
     for (const event of this.startupAttention) handler(event);
   }
 

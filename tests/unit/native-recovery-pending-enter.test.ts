@@ -7,7 +7,10 @@ import { PasteRecoveryRevocation } from "../../src/runtime/session/paste-recover
 
 afterEach(() => vi.useRealTimers());
 
-test("C-API-31 native submission during pending Enter permanently revokes recovery", async () => {
+test.each([
+  "hook",
+  "working",
+])("C-API-31 %s during pending Enter revokes recovery", async (evidence) => {
   vi.useFakeTimers();
   const events = new TypedEmitter<ElwoodCommonEventMap>();
   const closing = new AbortController();
@@ -29,14 +32,19 @@ test("C-API-31 native submission during pending Enter permanently revokes recove
     });
     await vi.advanceTimersByTimeAsync(150);
     expect(writes).toEqual(["\u001b[200~draft\u001b[201~", "\r"]);
-    events.emit("activity", {
-      agent: "claude",
-      elwoodSessionId: "s",
-      source: "hook",
-      kind: "user_message",
-      label: "user",
-    });
-    expect(recovery.captureRevocationGuard().revoked()).toBe(false);
+    if (evidence === "working") recovery.observeWorking(true, false);
+    else
+      events.emit("activity", {
+        agent: "claude",
+        elwoodSessionId: "s",
+        source: "hook",
+        kind: "user_message",
+        label: "user",
+      });
+    const active = recovery.captureRevocationGuard();
+    recovery.completeTurn(); // Completion must not restore the earlier submission's authority.
+    recovery.observeWorking(false, true);
+    expect(active.revoked()).toBe(evidence === "working");
     dispatched.resolve();
     await sent;
     await vi.advanceTimersByTimeAsync(3_000);

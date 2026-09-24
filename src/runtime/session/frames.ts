@@ -13,7 +13,12 @@ import type { ReadinessGate } from "./readiness.ts";
 
 type FrameSession = Pick<
   SessionLifecycle,
-  "closing" | "inputBlocking" | "trustInputBlocking" | "submitEvidence" | "status"
+  | "closing"
+  | "inputBlocking"
+  | "trustInputBlocking"
+  | "submitEvidence"
+  | "status"
+  | "observeNativeWork"
 >;
 
 type TrustState = {
@@ -43,7 +48,13 @@ export function createSessionFrameObserver(
       !active.inputBlocking &&
       (facts.working_visible || facts.composer_visible)
     ) {
-      if (facts.working_visible) observers.turn.adoptWorkingClearance(facts);
+      if (facts.working_visible) {
+        observers.turn.adoptWorkingClearance(facts);
+        active.observeNativeWork(
+          observers.turn.nativeWorkingVisible,
+          observers.turn.nativeComposerQuiet,
+        );
+      }
       active.submitEvidence("blocking_prompt_cleared", facts.working_visible);
     }
     if (active.status !== "blocked") pendingAutomationClearance = false;
