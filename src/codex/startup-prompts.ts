@@ -22,6 +22,7 @@ export type SettledCodexStartupOutcome = SettledStartupOutcome<"codex">;
 type CodexStartupPromptResult = {
   readonly warnings: readonly ElwoodWarningEvent[];
   readonly outcomes: readonly SettledCodexStartupOutcome[];
+  readonly updateGeneration?: number;
 };
 
 export class CodexStartupPromptResponder {
@@ -109,6 +110,7 @@ export class CodexStartupPromptResponder {
     // reauthorization immediately; fresh banner evidence or authoritative native
     // clearance can rearm it. The live observer confirms clearance only after this
     // frame's retained input hold is classified, before queued input can repaint it.
+    const changedBanner = this.updatePrompt.bannerChanged(screenText);
     const onUpdateScreen = this.updatePrompt.observe(screenText);
     const generation = this.updatePrompt.currentGeneration;
     // A trust gate (held allowlisted candidate or off-allowlist) is never ELIGIBLE for
@@ -142,7 +144,11 @@ export class CodexStartupPromptResponder {
         });
       }
     }
-    return { warnings: this.newWarnings(screenText), outcomes };
+    return {
+      warnings: this.newWarnings(screenText),
+      outcomes,
+      ...(changedBanner ? { updateGeneration: generation } : {}),
+    };
   }
 
   // Emit warnings only for banners NEWLY appearing on THIS frame, matched against the
