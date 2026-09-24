@@ -29,6 +29,8 @@ async function decodeLocally(blob) {
 export class SpriteDecoder {
   #nextId = 0;
   #pending = new Map();
+  #queued = new Set();
+  #active;
   #worker;
   #disposed = false;
 
@@ -38,7 +40,11 @@ export class SpriteDecoder {
       this.#worker = new Worker(new URL("./worker.mjs", import.meta.url), {
         type: "module",
       });
-      this.#worker.addEventListener("message", (event) => this.#receive(event.data));
+      this.#worker.addEventListener("message", (event) => {
+        if (this.#active === event.data.id) this.#active = undefined;
+        this.#receive(event.data);
+        this.#dispatch();
+      });
       this.#worker.addEventListener("error", () => this.#fallbackAll());
       this.#worker.addEventListener("messageerror", () => this.#fallbackAll());
     } catch {
@@ -46,18 +52,40 @@ export class SpriteDecoder {
     }
   }
 
-  decode(blob) {
+  decode(blob, signal) {
     if (this.#disposed) return Promise.reject(new Error("Sprite decoder is disposed."));
+    if (signal?.aborted) return Promise.reject(signal.reason);
     const id = ++this.#nextId;
     return new Promise((resolve, reject) => {
-      this.#pending.set(id, { blob, resolve, reject, local: false });
+      const abort = () => {
+        this.#take(id)?.reject(signal.reason);
+        try {
+          if (this.#active === id) this.#worker.postMessage({ cancel: id });
+        } catch {
+          // A broken transport cannot delay cancellation; late images are still closed.
+        }
+      };
+      const removeAbort = () => signal?.removeEventListener("abort", abort);
+      this.#pending.set(id, { blob, resolve, reject, local: false, removeAbort });
+      signal?.addEventListener("abort", abort, { once: true });
       if (!this.#worker) return this.#decodeLocally(id);
-      try {
-        this.#worker.postMessage({ id, blob });
-      } catch {
-        this.#decodeLocally(id);
-      }
+      this.#queued.add(id);
+      this.#dispatch();
     });
+  }
+
+  #dispatch() {
+    if (!this.#worker || this.#active !== undefined || !this.#queued.size) return;
+    const id = this.#queued.values().next().value;
+    this.#queued.delete(id);
+    this.#active = id;
+    try {
+      this.#worker.postMessage({ id, blob: this.#pending.get(id).blob });
+    } catch {
+      this.#active = undefined;
+      this.#decodeLocally(id);
+      this.#dispatch();
+    }
   }
 
   #receive({ id, image, error, unsupported }) {
@@ -69,8 +97,7 @@ export class SpriteDecoder {
     if (unsupported) this.#fallbackAll();
     else if (error !== undefined) this.#decodeLocally(id);
     else {
-      this.#pending.delete(id);
-      pending.resolve(image);
+      this.#take(id).resolve(image);
     }
   }
 
@@ -81,8 +108,7 @@ export class SpriteDecoder {
     decodeLocally(pending.blob).then(
       (image) => this.#receive({ id, image }),
       (error) => {
-        this.#pending.delete(id);
-        pending.reject(error);
+        this.#take(id)?.reject(error);
       },
     );
   }
@@ -95,13 +121,22 @@ export class SpriteDecoder {
   dispose() {
     this.#disposed = true;
     this.#disableWorker();
-    for (const pending of this.#pending.values())
-      pending.reject(new Error("Sprite decoder is disposed."));
-    this.#pending.clear();
+    for (const id of this.#pending.keys())
+      this.#take(id).reject(new Error("Sprite decoder is disposed."));
+  }
+
+  #take(id) {
+    const pending = this.#pending.get(id);
+    this.#pending.delete(id);
+    this.#queued.delete(id);
+    pending?.removeAbort();
+    return pending;
   }
 
   #disableWorker() {
     this.#worker?.terminate();
     this.#worker = undefined;
+    this.#active = undefined;
+    this.#queued.clear();
   }
 }

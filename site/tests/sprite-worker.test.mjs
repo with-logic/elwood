@@ -143,3 +143,22 @@ test("a failed response does not leave later worker requests behind a rejected q
   await run({ id: 2, blob: new Blob() });
   assert.deepEqual(sent, [[{ id: 2, unsupported: true }]]);
 });
+
+test("worker acknowledges a cancelled queued request without decoding it", async (t) => {
+  const gate = Promise.withResolvers();
+  const entered = [];
+  const { run, sent } = await worker(t, {
+    createImageBitmap: async (blob) => {
+      entered.push(await blob.text());
+      await gate.promise;
+      return { close() {} };
+    },
+  });
+  const first = run({ id: 201, blob: new Blob(["first"]) });
+  const skipped = run({ id: 202, blob: new Blob(["skipped"]) });
+  await run({ cancel: 202 });
+  gate.resolve();
+  await Promise.all([first, skipped]);
+  assert.deepEqual(entered, ["first"]);
+  assert.deepEqual(sent[1], [{ id: 202, cancelled: true }]);
+});
