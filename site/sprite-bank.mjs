@@ -52,7 +52,7 @@ export class SpriteBank {
       const image = await withSpriteAssetErrorContext(path, async () => {
         const response = await fetch(gameAssetUrl(path), { signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return this.decoder.decode(await response.blob());
+        return this.decoder.decode(await response.blob(), signal);
       });
       return image;
     }, options, {

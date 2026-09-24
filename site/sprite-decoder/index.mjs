@@ -46,11 +46,22 @@ export class SpriteDecoder {
     }
   }
 
-  decode(blob) {
+  decode(blob, signal) {
     if (this.#disposed) return Promise.reject(new Error("Sprite decoder is disposed."));
+    if (signal?.aborted) return Promise.reject(signal.reason);
     const id = ++this.#nextId;
     return new Promise((resolve, reject) => {
-      this.#pending.set(id, { blob, resolve, reject, local: false });
+      const abort = () => {
+        this.#take(id)?.reject(signal.reason);
+        try {
+          this.#worker?.postMessage({ cancel: id });
+        } catch {
+          // A broken transport cannot delay cancellation; late images are still closed.
+        }
+      };
+      const removeAbort = () => signal?.removeEventListener("abort", abort);
+      this.#pending.set(id, { blob, resolve, reject, local: false, removeAbort });
+      signal?.addEventListener("abort", abort, { once: true });
       if (!this.#worker) return this.#decodeLocally(id);
       try {
         this.#worker.postMessage({ id, blob });
@@ -69,8 +80,7 @@ export class SpriteDecoder {
     if (unsupported) this.#fallbackAll();
     else if (error !== undefined) this.#decodeLocally(id);
     else {
-      this.#pending.delete(id);
-      pending.resolve(image);
+      this.#take(id).resolve(image);
     }
   }
 
@@ -81,8 +91,7 @@ export class SpriteDecoder {
     decodeLocally(pending.blob).then(
       (image) => this.#receive({ id, image }),
       (error) => {
-        this.#pending.delete(id);
-        pending.reject(error);
+        this.#take(id)?.reject(error);
       },
     );
   }
@@ -95,9 +104,15 @@ export class SpriteDecoder {
   dispose() {
     this.#disposed = true;
     this.#disableWorker();
-    for (const pending of this.#pending.values())
-      pending.reject(new Error("Sprite decoder is disposed."));
-    this.#pending.clear();
+    for (const id of this.#pending.keys())
+      this.#take(id).reject(new Error("Sprite decoder is disposed."));
+  }
+
+  #take(id) {
+    const pending = this.#pending.get(id);
+    this.#pending.delete(id);
+    pending?.removeAbort();
+    return pending;
   }
 
   #disableWorker() {

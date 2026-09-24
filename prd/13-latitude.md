@@ -20,3 +20,10 @@ their automatic failure report. Only the final consumer cancels the underlying
 operation; an abandoned completion cannot publish into a successor request.
 Explicitly retained pages stay alive through delivery and cache eviction until their
 owner releases them, while current/outgoing pose owners remain protected.
+
+Sprite decoder requests may carry an abort signal. Cancellation rejects the
+request promptly, skips worker requests that have not started decoding, and
+never falls back to another decoder. The internal worker protocol pairs decode
+request IDs with cancellation messages. In-flight browser bitmap decoding cannot
+be interrupted; its eventual image is released, without terminating the worker
+or cancelling other requests. Settled requests remove their abort listeners.
