@@ -12,7 +12,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
-- Bound each session’s queued input to 1,024 outstanding operations and 8 MiB of text; excess submissions reject with `input_queue_full` without writing to the terminal.
+- Bound each session’s queued input to 1,024 outstanding operations and 8 MiB of text; excess submissions reject with `input_queue_full` without writing to the terminal, and oversized personas reject before session startup.
 
 - Recover swallowed prompt Enters only from the live idle composer, without mistaking transcript text or working frames for staged input. Fresh empty input ends recovery; unverifiable frames get bounded observation retries.
 

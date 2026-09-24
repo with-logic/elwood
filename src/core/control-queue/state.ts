@@ -18,7 +18,7 @@ export abstract class ControlQueueState {
   protected bypassable = 0;
   protected inFlight: QueuedOperation | undefined;
   protected submitAbort: AbortController | undefined;
-  private readonly budget = new InputQueueBudget();
+  protected readonly budget = new InputQueueBudget();
   private preparationAbort: AbortController | undefined;
   protected readonly cancellation = new ControlCancellation();
   protected readonly stoppedError: ControlQueueError;
