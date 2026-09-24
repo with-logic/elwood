@@ -18,6 +18,7 @@ import type {
   StatusDecision,
   StatusEvidenceKind,
 } from "../status-evidence.ts";
+import { observeLoopSubmissions, recordSubmission } from "./loop-boundary.ts";
 import { SessionLoops } from "./loops.ts";
 import { closingController, notRunningError, runSessionOperation } from "./not-running.ts";
 import type { PickerInputOwnership } from "./picker-input.ts";
@@ -73,16 +74,15 @@ export abstract class SessionLifecycle {
     this.terminalReplay = terminalReplay;
     this.reapPolicy = new SessionReapPolicy(agent, record.elwoodSessionId, pty.pid);
     const readEmpty = () => this.emptyComposerFrame();
+    const blocked = () => this.queuedInputBlocked();
+    const cleanup = ownership.composerCleanup(blocked, this.closing.signal, readEmpty);
     this.controlQueue = new ControlQueue(
       queuedInputSubmitter(this.automatedTerminal, this.pasteGuard),
       () => notRunningError(agent),
-      (origin) => {
-        this.loops.turnStarted(origin);
-        this.submitEvidence("caller_submitted");
-      },
+      (origin) => recordSubmission(this, this.loops, origin),
       () => this.status === "running",
       () => void (this.status === "ready" && this.submitEvidence("caller_submitted")),
-      ownership.composerCleanup(() => this.queuedInputBlocked(), this.closing.signal, readEmpty),
+      observeLoopSubmissions(this, statusEvents, cleanup),
     );
     registerTurnLoopHold(this, () => this.controlQueue.holdLoops());
     this.loops = new SessionLoops({

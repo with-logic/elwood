@@ -6,6 +6,7 @@ import type { SendOptions } from "../images/types.ts";
 import { personaBoundary } from "../persona.ts";
 import { type ElwoodSessionStatus, terminalStatuses } from "../status-categories.ts";
 import type { TurnEvent } from "./events.ts";
+import { activeLoopBoundary } from "./loop-boundary.ts";
 import { holdTurnLoops } from "./loop-hold.ts";
 import { runTurn } from "./turn.ts";
 import type { TurnQueue } from "./turn-queue.ts";
@@ -66,6 +67,7 @@ export function capturedTurn(
     try {
       const session = await starting;
       await personaBoundary(session);
+      await activeLoopBoundary(session);
       const turn = runTurn(session, prompt, { ...captured.options, readBoundarySignal });
       void turn.boundary.then(release);
       return turn;

@@ -12,7 +12,11 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Keep scheduled loop hooks and transcript output out of a later ergonomic caller
+  turn, including successive loops and callers arriving while loop input is written.
+
 - Keep Codex update retries revoked after unknown or blank replacement frames until authoritative native composer clearance or fresh banner evidence appears; late writes cannot report an answer for a superseded dialog.
+
 - Hold scheduled loop delivery through ergonomic caller turns, preventing a due
   loop from accepting or completing a caller prompt that needs recovery.
 
