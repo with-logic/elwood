@@ -82,3 +82,35 @@ test("C-LOOP-08 a not-ready held backlog without admissions keeps constant-time 
   await Promise.all(pending);
   expect(checked).toBe(0);
 });
+
+test("C-LOOP-08 parked admission still respects lost readiness while controls can pass", async () => {
+  const gate = Promise.withResolvers<void>();
+  const writes: string[] = [];
+  const queue = new ControlQueue(
+    (text) => {
+      writes.push(text);
+      return Promise.resolve();
+    },
+    () => new Error("closed"),
+    () => undefined,
+    undefined,
+    undefined,
+    undefined,
+    (origin) =>
+      origin.kind === "loop" ? { ready: gate.promise, run: (work) => work() } : undefined,
+  );
+  queue.markReady();
+  const pending = queue.send("loop", "message", undefined, loop);
+  queue.suspendReadiness();
+  const caller = queue.send("caller", "prompt");
+  await queue.send("picker", "list_models");
+  gate.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(writes).toEqual(["picker"]);
+  queue.markReady();
+  await pending;
+  await caller;
+  expect(writes).toEqual(["picker", "loop", "caller"]);
+  queue.close();
+});
