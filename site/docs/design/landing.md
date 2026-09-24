@@ -34,6 +34,15 @@ clip). This consumes delivered ownership even before an opening turn, so cancell
 cannot drop the request before its first pose. Unmatched activation cannot promote
 a candidate; it only releases obsolete active clip leases. Once playback leaves the request, only current/next dependency
 clips remain leased; cache and current/outgoing pose ownership remain independent.
+The pose handoff receives the actual current pose first and outgoing blend second,
+and retains both before releasing any dependency leases. After the requested
+one-frame clip is retained for painting, its idle and rotation dependency leases
+are released. Its requested page remains keyed and
+leased so cache eviction cannot trigger a reload on the next paint. An opening
+turn does not complete that handoff; current and outgoing poses remain protected
+when dependency leases are released.
+Repeating a static request after dependency release prepares the complete idle,
+rotation and requested clip set again before reporting readiness.
 Cancellation releases candidate and delivered owners, preserving active playback.
 These APIs are internal preparation infrastructure; landing controls adopt them
 separately.
