@@ -38,20 +38,23 @@ export class SpriteAnimations {
     }
   }
 
-  /** Activate a delivered request before cancellation can drop it. Opening turns pass their target. */
-  activate(name, target = name) {
-    if (this.deliveredOwner?.name === target) {
+  /** After prepare → publish, activate with the current and next playback clips.
+   * A matching next clip consumes delivered input, including before its opening turn.
+   * Unmatched calls cannot promote a candidate; they release only obsolete active clips.
+   */
+  activate(currentName, nextName = currentName) {
+    if (this.deliveredOwner?.name === nextName) {
       const old = this.activeOwner;
       this.activeOwner = this.deliveredOwner;
       this.deliveredOwner = null;
       this.release(old);
     }
     const owner = this.activeOwner;
-    if (!owner || name === owner.name || target === owner.name) return;
+    if (!owner || currentName === owner.name || nextName === owner.name) return;
     // Playback has left the requested clip. Keep only the current/next dependency;
     // SpritePages independently protects the rendered current and outgoing poses.
     for (const clipName of owner.clips.keys()) {
-      if (clipName === name || clipName === target) continue;
+      if (clipName === currentName || clipName === nextName) continue;
       owner.leases.get(clipName).abort();
       owner.leases.delete(clipName);
       owner.clips.delete(clipName);

@@ -34,7 +34,6 @@ test("explicit readiness waits for every sheet and retains them through playback
   for (let page = 0; page < 6; page++) assert.equal(bank.frame("wave", page).page.closed, 0);
   assert.equal(requested.filter((path) => path.startsWith("wave/") && path.endsWith("webp")).length, 6);
   assert.equal((await bank.prepareAnimation("wave")).name, "wave");
-  bank.publishAnimation("missing");
   bank.activateAnimation("jump");
   assert.ok(images.filter((image) => image !== shared && image.path.startsWith("wave/")).every((image) => image.closed === 1));
   bank.dispose();
@@ -119,4 +118,23 @@ test("cancellation between worker delivery and its continuation releases the tra
   // Caller cancellation is prompt; late worker resources release when their task settles.
   await pendingPage;
   assert.equal(image.closed, 1);
+});
+
+
+test("publishing a wrong name preserves a distinct ready candidate and all other owners", async (t) => {
+  const { bank } = fixture(t);
+  await bank.prepareAnimation("wave");
+  bank.publishAnimation("wave");
+  bank.activateAnimation("wave");
+  const active = bank.animations.activeOwner;
+  await bank.prepareAnimation("jump");
+  const candidate = bank.animations.candidateOwner;
+  const delivered = bank.animations.deliveredOwner;
+  assert.equal(candidate.ready, true);
+  bank.publishAnimation("missing");
+  assert.equal(bank.animations.candidateOwner, candidate);
+  assert.equal(bank.animations.deliveredOwner, delivered);
+  assert.equal(bank.animations.activeOwner, active);
+  for (const owner of [active, candidate])
+    for (const image of owner.pages.values()) assert.equal(image.closed, 0);
 });

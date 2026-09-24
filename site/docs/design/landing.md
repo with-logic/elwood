@@ -30,9 +30,11 @@ The internal complete-animation preparation API loads the requested clip plus
 idle and rotation. It starts at most three metadata requests, then at most four
 page fetch/decode operations concurrently; worker decoding remains serial.
 Preparation owns per-clip leases through candidate, delivered and active phases.
-Only a ready matching candidate can publish. Activation supplies the actual clip
-and an opening-turn target, so cancellation cannot drop a consumed request before
-its first pose. Once playback leaves the request, only current/next dependency
+Only a ready matching candidate can publish. After prepare → publish, activation
+supplies `currentName` (playing now) and `nextName` (requested or next transition
+clip). This consumes delivered ownership even before an opening turn, so cancellation
+cannot drop the request before its first pose. Unmatched activation cannot promote
+a candidate; it only releases obsolete active clip leases. Once playback leaves the request, only current/next dependency
 clips remain leased; cache and current/outgoing pose ownership remain independent.
 Cancellation releases candidate and delivered owners, preserving active playback.
 The landing controller supplies actual playback and opening-turn targets to this
