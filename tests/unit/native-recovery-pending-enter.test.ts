@@ -7,7 +7,10 @@ import { PasteRecoveryRevocation } from "../../src/runtime/session/paste-recover
 
 afterEach(() => vi.useRealTimers());
 
-test("C-API-31 accepted hook during pending Enter permanently revokes recovery", async () => {
+test.each([
+  "hook",
+  "working",
+])("C-API-31 %s during pending Enter permanently revokes recovery", async (evidence) => {
   vi.useFakeTimers();
   const events = new TypedEmitter<ElwoodCommonEventMap>();
   const closing = new AbortController();
@@ -28,13 +31,15 @@ test("C-API-31 accepted hook during pending Enter permanently revokes recovery",
       captureRecovery: () => recovery.captureRevocationGuard(),
     });
     await vi.advanceTimersByTimeAsync(150);
-    events.emit("activity", {
-      agent: "claude",
-      elwoodSessionId: "s",
-      source: "hook",
-      kind: "user_message",
-      label: "user",
-    });
+    if (evidence === "working") recovery.observeWorking(true);
+    else
+      events.emit("activity", {
+        agent: "claude",
+        elwoodSessionId: "s",
+        source: "hook",
+        kind: "user_message",
+        label: "user",
+      });
     dispatched.resolve();
     await sent;
     await vi.advanceTimersByTimeAsync(3_000);

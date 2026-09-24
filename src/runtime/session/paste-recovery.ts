@@ -18,6 +18,8 @@ export class PasteRecoveryRevocation {
     this.working = working;
   }
 
+  /** Capture before paste/Enter: active work stays revoked even after idle; later
+   * native evidence is detected through the live generation comparison. */
   captureRevocationGuard() {
     const generation = this.generation;
     const working = this.working;

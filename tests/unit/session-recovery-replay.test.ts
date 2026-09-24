@@ -74,24 +74,29 @@ for (const agent of ["claude", "codex"] as const) {
         await vi.advanceTimersByTimeAsync(50);
         await session.terminal.settled();
       }
-      await pty.dispatchHook(
-        session.elwoodSessionId,
-        agent === "claude"
-          ? {
-              hook_event_name: "InstructionsLoaded",
-              session_id: "claude-1",
-              cwd,
-              file_path: "/tmp/CLAUDE.md",
-              memory_type: "Project",
-              load_reason: "session_start",
-            }
-          : {
-              hook_event_name: "SessionStart",
-              session_id: "codex-1",
-              cwd,
-              source: resumed ? "resume" : "startup",
-            },
-      );
+      if (agent === "codex" && resumed) {
+        paint(idle); // Native Codex does not emit SessionStart on resume.
+        await vi.advanceTimersByTimeAsync(50);
+        expect(session.status).toBe("ready");
+      } else
+        await pty.dispatchHook(
+          session.elwoodSessionId,
+          agent === "claude"
+            ? {
+                hook_event_name: "InstructionsLoaded",
+                session_id: "claude-1",
+                cwd,
+                file_path: "/tmp/CLAUDE.md",
+                memory_type: "Project",
+                load_reason: "session_start",
+              }
+            : {
+                hook_event_name: "SessionStart",
+                session_id: "codex-1",
+                cwd,
+                source: resumed ? "resume" : "startup",
+              },
+        );
       if (mode === "settled-resume") {
         for (let count = 0; count < 6; count += 1) {
           paint(idle);

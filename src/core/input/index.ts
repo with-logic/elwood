@@ -16,6 +16,7 @@ import { requestComposerCleanup, stageComposer, submittedComposer } from "./comp
 
 /** Adapter view of "the paste is still staged in the composer". */
 export type PasteGuard = {
+  /** Capture before paste/Enter: snapshots active work and watches later native evidence. */
   readonly captureRecovery?: () => { readonly revoked: () => boolean };
   readonly snapshot: () => string;
   /** Receives the sanitized payload that was actually pasted. */
@@ -96,8 +97,7 @@ async function writePastedPrompt(
   // terminal with nothing blocking has nothing to wait for and writes synchronously.
   if (terminal.settled || guard?.blocked?.()) await holdWhileUnsafe(terminal, guard, signal);
   throwIfInputAborted(signal);
-  // Sanitize: caller/model text is data, so an embedded end sentinel or control
-  // byte must not escape paste mode into live keystrokes (§5.3).
+  // Keep caller text inside bracketed paste, including embedded end sentinels (§5.3).
   const payload = sanitizePasteText(prompt);
   const recovery = guard?.captureRecovery?.();
   const rawInputSignal = stageComposer(terminal);
