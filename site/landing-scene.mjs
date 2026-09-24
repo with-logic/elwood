@@ -1,4 +1,4 @@
-/** Renders the interactive robot and tether described in docs/design/landing.md. */
+/** Renders the interactive robot and tether described in docs/design/landing.md. Implements PRD §13. */
 import { Autonomy, NO_INPUT } from "./autonomy.mjs";
 import { gameAssetUrl } from "./game-assets.mjs";
 import { mirroredPose } from "./rotation.mjs";
@@ -190,6 +190,7 @@ export class LandingScene {
     const homeX = config.robotX / config.scale;
     this.homeSpot = { x: homeX, y: this.standingTop(homeX) };
     if (reset) {
+      this.clearInput();
       this.drag = null;
       w.reset();
       w.player.x = homeX;
@@ -208,6 +209,7 @@ export class LandingScene {
       Math.abs(old.scale - config.scale) > 0.01
     ) {
       // A responsive reflow starts from a valid floor, never from a vanished ledge.
+      this.clearInput();
       const x = (w.player.x * widthRatio * old.scale) / config.scale;
       this.drag = null;
       w.reset();
@@ -222,8 +224,19 @@ export class LandingScene {
     }
     if (this.ready) this.paint(0);
   }
+  cancelPreparation() {
+    if (this.pressed.gesture || this.pressed.face) {
+      this.pressed = { ...this.pressed };
+      delete this.pressed.gesture;
+      delete this.pressed.face;
+    }
+    const queued = this.world?.player.queuedAction;
+    if (queued?.gesture || queued?.face) this.world.player.queuedAction = null;
+    this.bank.cancelPreparation();
+  }
   interact() {
     this.director.interact();
+    this.cancelPreparation();
     this.requestVersion++;
     this.pauses.delete("reduced");
     this.start();
@@ -234,10 +247,16 @@ export class LandingScene {
     const version = this.requestVersion;
     const name = input.gesture ?? (input.face ? `idle-${input.face}` : null);
     try {
-      if (name) await this.bank.prepare(name);
-      if (version === this.requestVersion) this.pressed = { ...this.pressed, ...input };
+      this.preparingRequestVersion = version;
+      if (name && !await this.bank.prepareAnimation(name)) return;
+      if (version === this.requestVersion) {
+        if (name) this.bank.publishAnimation(name);
+        this.pressed = { ...this.pressed, ...input };
+      }
     } catch (error) {
-      this.onError?.(error);
+      if (version === this.requestVersion) this.onError?.(error);
+    } finally {
+      if (this.preparingRequestVersion === version) this.preparingRequestVersion = null;
     }
   }
   clearInput() {
@@ -245,6 +264,7 @@ export class LandingScene {
     this.climbHeld = false;
     this.sprint = false;
     this.pressed = NO_INPUT;
+    this.cancelPreparation();
     this.requestVersion++;
   }
   get dragging() {
@@ -425,7 +445,8 @@ export class LandingScene {
       this.world.player.animationTime += dt;
       return;
     }
-    const active = this.axis !== 0 || this.climbHeld || this.pressed !== NO_INPUT;
+    const active = this.axis !== 0 || this.climbHeld || this.pressed !== NO_INPUT
+      || this.preparingRequestVersion === this.requestVersion;
     const automatic = this.director.update(dt, this.world, this.visibleBounds, active);
     const wasAirborne = this.world.player.mode !== "ground";
     this.world.update(
@@ -434,8 +455,13 @@ export class LandingScene {
         ? { axis: this.axis, climbHeld: this.climbHeld, sprint: this.sprint, ...this.pressed }
         : automatic,
     );
+    const requested = this.pressed.gesture ?? (this.pressed.face ? `idle-${this.pressed.face}` : null);
     this.pressed = NO_INPUT;
     const p = this.world.player;
+    const playing = p.turn?.target ?? p.animation;
+    this.bank.activateAnimation(p.animation, p.turn?.target ?? p.animation);
+    const queued = p.queuedAction?.gesture ?? (p.queuedAction?.face ? `idle-${p.queuedAction.face}` : null);
+    if (requested && requested !== playing && requested !== queued) this.bank.cancelPreparation();
     if (wasAirborne && p.mode === "ground") this.markGround();
     if (this.lastMode !== this.director.mode) {
       this.lastMode = this.director.mode;
@@ -498,6 +524,7 @@ export class LandingScene {
           : null,
       );
     }
+    this.bank.activateAnimation(p.animation, p.turn?.target ?? p.animation);
     const positioned = this.alignDrag(positionPose(pose, p));
     const seam =
       p.animation === "rotation" &&
