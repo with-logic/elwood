@@ -2,6 +2,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
 import { writeCodexUpdateSkip } from "../../src/codex/update-prompt.ts";
+import { codexSmallComposer } from "../fixtures/trust-composer.ts";
 
 const banner = "Update available! 0.153.3 -> 0.153.4";
 afterEach(() => vi.useRealTimers());
@@ -9,9 +10,10 @@ afterEach(() => vi.useRealTimers());
 test.each([
   ["1. Update now\n2. Skip\n3. Skip until next version", "2"],
   ["1. Skip backup\n2. Update now", undefined],
-  ["1. Skip backup\n2. Update now\n3. Later", "3"],
+  ["1. Skip backup\n2. Update now\n3. Later", undefined],
+  ["1. Skip\n2. Update now\n3. Later", "3"],
   ["1. Update now and skip setup", undefined],
-  ["1. Update now\n2. Update now and skip setup\n3. Skip", "3"],
+  ["1. Update now\n2. Update now and skip setup\n3. Skip", undefined],
   ["1. Update now", undefined],
 ])("C-CODEX-12 initial dispatch selects only a safe post-action option: %s", async (rows, expected) => {
   const responder = new CodexStartupPromptResponder("selection");
@@ -43,7 +45,8 @@ test("C-CODEX-12 a banner-less continuation still selects its safe option", asyn
 
 test.each([
   ["1. Skip backup\n2. Update now", ["2"]],
-  ["1. Skip backup\n2. Update now\n3. Later", ["2", "3"]],
+  ["1. Skip backup\n2. Update now\n3. Later", ["2"]],
+  ["1. Skip\n2. Update now\n3. Later", ["2", "3"]],
   ["1. Update now and skip setup", ["2"]],
 ])("C-CODEX-12 retry applies the ordering rule to its current frame: %s", async (replacement, expected) => {
   vi.useFakeTimers();
@@ -74,7 +77,7 @@ test.each([
   try {
     const first = responder.handle(`${banner}\n1. Update now\n2. Skip`, write);
     await first.outcomes[0]?.settled;
-    responder.handle("› Ready", write);
+    responder.handle(codexSmallComposer, write);
     if (split) expect(responder.handle(banner, write).outcomes).toEqual([]);
     const rows = "2. Update now\n3. Skip";
     const second = responder.handle(split ? rows : `${banner}\n${rows}`, write);

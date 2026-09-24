@@ -102,9 +102,11 @@ describe("screen fact tables", () => {
     // A first-party banner blocks before its options paint, so a new layout fails safe.
     expect(blocked("Update available! 0.151.0 -> 0.152.0")).toBe(true);
     // Cursor-addressed rendering can leave only the complete option set in the viewport.
-    expect(blocked("› 1. Update now (runs `npm install`)\n  2. Skip until next version")).toBe(
-      true,
-    );
+    expect(
+      blocked(
+        "› 1. Update now (runs `npm install -g @openai/codex`)\n  2. Skip until next version",
+      ),
+    ).toBe(true);
     // Neither half alone is enough to reinterpret ordinary agent text as a dialog.
     expect(blocked("Please update now after the tests pass.")).toBe(false);
     expect(blocked("The release notes say update available for all users.")).toBe(false);

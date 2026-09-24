@@ -10,11 +10,11 @@ import {
   type NonTrustAutomationWriter,
 } from "../core/startup/barrier.ts";
 import type { StartupWriteCompletion } from "../core/startup/write.ts";
-import { numberedOptions } from "../core/terminal-options.ts";
 import type { TrustClearance } from "../core/trust/clearance.ts";
 import type { TrustWriteResult } from "../core/trust/responder.ts";
 import { codexComposerClearance } from "./screen/clearance.ts";
-import { codexUpdatePromptVisible, isSafeUpdateContinuation } from "./update/recognition.ts";
+import { classifyCodexUpdateFrame } from "./update/classification.ts";
+import { codexUpdatePromptVisible } from "./update/recognition.ts";
 import { codexUpdateOptionPattern, safeUpdateOption } from "./update/selection.ts";
 import { codexUpdateChoiceIdentity, settledFrameKeepsChoice } from "./update-identity.ts";
 
@@ -49,17 +49,18 @@ export function guardedCodexAutomationWrite(
  */
 export function codexOptionStillSafe(frameText: string, input: string): boolean {
   if (!/^\d+$/.test(input)) return true;
-  const options = numberedOptions(frameText);
+  const frame = classifyCodexUpdateFrame(frameText);
+  const options = frame.options ?? [];
   // Codex can repaint the safe choices WITHOUT the banner, so requiring a full update
   // screen here would withhold a correct key (C-CODEX-12). The question is narrower:
   // on the settled frame, does this number still name a safe option? If the frame shows
-  // no numbered options at all it has moved on entirely, and the key is stale.
+  // no unambiguous current update option block, the key is withheld.
   if (options.length === 0) return false;
   // The number must name a safe option AND the frame must still be update-shaped: either
   // the first-party screen, or the safe-choice-only repaint Codex draws mid-flow. An
   // unrelated human prompt that merely happens to carry a "Skip"/"Later" option is NOT
   // this dialog, and must stay for the human (#42 round 3, C-CODEX-12).
-  if (!(codexUpdatePromptVisible(frameText) || isSafeUpdateContinuation(frameText))) return false;
+  if (!(frame.visible || frame.continuation)) return false;
   return options.some(
     (option) => option.number === input && codexUpdateOptionPattern.test(option.label),
   );
@@ -88,6 +89,7 @@ export async function writeCodexUpdateSkip(
   signal?: AbortSignal,
   clearance: TrustClearance = codexComposerClearance,
   onWritten?: () => void,
+  selectOption: typeof safeUpdateOption = safeUpdateOption,
 ): Promise<CodexUpdateSkipCompletion> {
   if (readFrame === undefined) {
     // A fulfilled write alone cannot prove the dialog cleared.
@@ -101,7 +103,7 @@ export async function writeCodexUpdateSkip(
       const cleared = wrote && clearance(frame) && !invalidated(frame);
       return cleared ? "answered" : "cancelled";
     }
-    const safeOption = safeUpdateOption(frame);
+    const safeOption = selectOption(frame);
     if (safeOption === undefined) return "cancelled";
     // A guarded writer settles rendering before the key goes out, so it may report the
     // key WITHHELD (a trust gate, or this option number no longer the safe one on the
