@@ -2,7 +2,7 @@
 
 import { toError } from "../errors.ts";
 import type { ControlQueueError } from "./traits.ts";
-import { ControlCancellation, overtakesReadiness } from "./traits.ts";
+import { ControlCancellation, nextDispatchIndex, overtakesReadiness } from "./traits.ts";
 import type { Cancel, PendingOperation, QueuedOperation } from "./types.ts";
 
 /** Shared mutable state for the serialized control queue. */
@@ -18,9 +18,25 @@ export abstract class ControlQueueState {
   private preparationAbort: AbortController | undefined;
   protected readonly cancellation = new ControlCancellation();
   protected readonly stoppedError: ControlQueueError;
+  private readonly loopHolds = new Set<object>();
 
   protected constructor(stoppedError: ControlQueueError) {
     this.stoppedError = stoppedError;
+  }
+
+  /** Keep due loops behind the ergonomic owner without blocking its own recovery. */
+  holdLoops(): () => void {
+    const hold = {};
+    this.loopHolds.add(hold);
+    return () => {
+      if (this.loopHolds.delete(hold)) this.drain();
+    };
+  }
+
+  protected nextDispatchIndex(): number {
+    return this.ready && this.loopHolds.size > 0
+      ? this.queue.findIndex((operation) => operation.origin.kind !== "loop")
+      : nextDispatchIndex(this.queue, this.ready, this.bypassable);
   }
 
   markReady(): void {
@@ -37,6 +53,7 @@ export abstract class ControlQueueState {
 
   close(): void {
     this.closed = true;
+    this.loopHolds.clear();
     const error = this.stoppedError();
     const settling = this.inFlight;
     this.cancellation.clear();
