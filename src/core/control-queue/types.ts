@@ -64,7 +64,7 @@ export type PendingOperation = Omit<QueuedOperationBase, "resolve" | "reject"> &
  * Wrap preparation and one physical operation. The signal cancels pre-operation
  * cleanup; active exclusive work keeps its own lifetime. Origin identifies its owner.
  */
-export type AroundOperation = (
+export type AdmissionWrapper = (
   work: () => Promise<void>,
   preparationSignal: AbortSignal,
   origin: ControlSubmissionOrigin,
@@ -75,7 +75,7 @@ export type ControlAdmission = {
   /** Fulfillment permits physical dispatch; rejection rejects and cancels the reservation. */
   readonly ready: Promise<void>;
   /** Wrap the queue's usual preparation and physical operation after admission is ready. */
-  readonly run: AroundOperation;
+  readonly run: AdmissionWrapper;
 };
 /**
  * The signal owns queued admission and aborts on cancellation, close, or setup failure.

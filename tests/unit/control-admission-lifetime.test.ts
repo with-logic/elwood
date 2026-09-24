@@ -2,8 +2,8 @@
 import { expect, test, vi } from "vitest";
 import { ControlAdmissions } from "../../src/core/control-queue/admission.ts";
 import type {
+  AdmissionWrapper,
   AdmitOperation,
-  AroundOperation,
   QueuedOperation,
 } from "../../src/core/control-queue/types.ts";
 
@@ -20,15 +20,15 @@ function operation(): QueuedOperation {
 
 test("C-LOOP-08 operations without admission keep their original preparation wrapper", () => {
   const op = operation();
-  const wrapper: AroundOperation = (work) => work();
+  const wrapper: AdmissionWrapper = (work) => work();
   const admissions = new ControlAdmissions(undefined, vi.fn(), vi.fn());
-  expect(admissions.prepare(op)).toBe(true);
+  expect(admissions.prepare(op)).toBe("ready");
   expect(admissions.waiting(op)).toBe(false);
   expect(admissions.takeWrapper(op, wrapper)).toBe(wrapper);
   expect(admissions.takeWrapper(op, undefined)).toBeUndefined();
   admissions.cancel(op, new Error("unused"));
   const declined = new ControlAdmissions(() => undefined, vi.fn(), vi.fn());
-  expect(declined.prepare(op)).toBe(true);
+  expect(declined.prepare(op)).toBe("ready");
   expect(declined.size).toBe(0);
 });
 
@@ -58,8 +58,8 @@ test.each([
     };
   });
   const admissions = new ControlAdmissions(admit, wake, vi.fn());
-  expect(admissions.prepare(op)).toBe(false);
-  expect(admissions.prepare(op)).toBe(true);
+  expect(admissions.prepare(op)).toBe("waiting");
+  expect(admissions.prepare(op)).toBe("waiting");
   expect(admit).toHaveBeenCalledTimes(1);
   expect(admissions.size).toBe(1);
   expect(admissions.has(op)).toBe(true);
@@ -68,7 +68,8 @@ test.each([
   await gate.promise;
   expect(wake).toHaveBeenCalledOnce();
   expect(admissions.waiting(op)).toBe(false);
-  const before: AroundOperation = async (work, signal, origin) => {
+  expect(admissions.prepare(op)).toBe("ready");
+  const before: AdmissionWrapper = async (work, signal, origin) => {
     expect(signal).toBe(active.signal);
     expect(origin).toBe(op.origin);
     signals.push(signal);
@@ -143,18 +144,17 @@ test.each([
     },
     vi.fn(),
     (op, reason) => {
-      failures.push([op, reason]);
-      admissions.cancel(op, reason);
+      failures.push([op, reason, signal?.aborted, signal?.reason, admissions.size]);
     },
   );
-  expect(admissions.prepare(failed)).toBe(false);
+  expect(admissions.prepare(failed)).toBe(mode === "throw" ? "failed" : "waiting");
   if (mode === "reject") {
     gate.reject(error);
     await gate.promise.catch(() => undefined);
   }
   expect(signal?.aborted).toBe(true);
   expect(signal?.reason).toBe(error);
-  expect(failures).toEqual([[failed, error]]);
+  expect(failures).toEqual([[failed, error, true, error, 0]]);
   expect(admissions.size).toBe(0);
-  expect(admissions.prepare(next)).toBe(true);
+  expect(admissions.prepare(next)).toBe("ready");
 });

@@ -1,8 +1,8 @@
 /** Park selected operations outside physical input while retaining ordering (PRD §5.9). */
 import { toError } from "../errors.ts";
 import type {
+  AdmissionWrapper,
   AdmitOperation,
-  AroundOperation,
   ControlAdmission,
   QueuedOperation,
 } from "./types.ts";
@@ -38,8 +38,10 @@ export class ControlAdmissions {
     return this.pending.get(operation)?.ready === false;
   }
 
-  prepare(operation: QueuedOperation): boolean {
-    if (!this.admit || this.pending.has(operation)) return true;
+  prepare(operation: QueuedOperation): "ready" | "waiting" | "failed" {
+    if (!this.admit) return "ready";
+    const existing = this.pending.get(operation);
+    if (existing) return existing.ready ? "ready" : "waiting";
     const abort = new AbortController();
     let ticket: ControlAdmission | undefined;
     try {
@@ -48,9 +50,9 @@ export class ControlAdmissions {
       const failure = toError(error);
       abort.abort(failure);
       this.fail(operation, failure);
-      return false;
+      return "failed";
     }
-    if (!ticket) return true;
+    if (!ticket) return "ready";
     const reservation = { ticket, abort, ready: false };
     this.pending.set(operation, reservation);
     void ticket.ready.then(
@@ -60,16 +62,19 @@ export class ControlAdmissions {
         this.wake();
       },
       (error: unknown) => {
-        if (this.pending.has(operation)) this.fail(operation, toError(error));
+        if (!this.pending.has(operation)) return;
+        const failure = toError(error);
+        this.cancel(operation, failure);
+        this.fail(operation, failure);
       },
     );
-    return false;
+    return "waiting";
   }
 
   takeWrapper(
     operation: QueuedOperation,
-    around: AroundOperation | undefined,
-  ): AroundOperation | undefined {
+    around: AdmissionWrapper | undefined,
+  ): AdmissionWrapper | undefined {
     const ticket = this.pending.get(operation)?.ticket;
     this.pending.delete(operation);
     if (!ticket) return around;
