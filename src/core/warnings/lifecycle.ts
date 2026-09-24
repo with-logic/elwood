@@ -24,10 +24,10 @@ export type AgentUpdateFailedWarning = {
   readonly raw: string;
 };
 
-/** One bounded diagnostic for contained notification failures in a Claude hook (C-HOOK-22). */
+/** One bounded diagnostic for contained notification failures in either hook adapter (C-HOOK-22). */
 export type HookObserverFailedWarning = {
   readonly elwoodSessionId: string;
-  readonly agent: "claude";
+  readonly agent: ElwoodAgentKind;
   readonly source: "lifecycle";
   readonly code: "hook_observer_failed";
   readonly severity: "warning";
@@ -35,3 +35,17 @@ export type HookObserverFailedWarning = {
   readonly phase: "hook" | "activity" | "hook_error" | "transcript" | "lifecycle";
   readonly raw: string;
 };
+
+/** One content-free diagnostic for a Codex readiness observer outside a hook (C-API-42). */
+export type InitialReadyObserverFailedWarning = {
+  readonly elwoodSessionId: string;
+  readonly agent: "codex";
+  readonly source: "lifecycle";
+  readonly code: "initial_ready_observer_failed";
+  readonly severity: "warning";
+  readonly message: string;
+  readonly phase: "lifecycle";
+  readonly raw: string;
+};
+
+export type ObserverFailureWarning = HookObserverFailedWarning | InitialReadyObserverFailedWarning;

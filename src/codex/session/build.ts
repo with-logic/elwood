@@ -1,5 +1,5 @@
 /** Builds a live CodexSessionApi from a record + runtime. Implements PRD §5.5, §5.6, §5.7, §7A, §8, §9. */
-import * as activity from "../../core/activity/index.ts";
+import type * as activity from "../../core/activity/index.ts";
 import { activityFromTerminalExit as terminalExitActivity } from "../../core/activity/index.ts";
 import { AttentionWatcher } from "../../core/attention.ts";
 import { defaultTerminalSize } from "../../core/defaults.ts";
@@ -29,7 +29,7 @@ import { CodexStartupPromptResponder } from "../startup-prompts.ts";
 import { guardedCodexAutomationWrite } from "../update-prompt.ts";
 import { currentCodexHookBridgeFactory } from "./bridge.ts";
 import { reportCallerInput } from "./caller-input.ts";
-import { dispatchHook, registerInitialHooks } from "./hooks.ts";
+import { buildCodexHookErrorHandler, dispatchHook, registerInitialHooks } from "./hooks.ts";
 import { CodexSessionImpl } from "./instance.ts";
 import { writeCodexRuntimeFiles } from "./runtime.ts";
 import { createCodexStartupWarningGate, preflightEvent } from "./startup-warnings.ts";
@@ -68,11 +68,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     runtime.bridgeToken,
     record.elwoodSessionId,
     async (hook) => dispatchHook(hook, emitter, options, record, session),
-    (event) => {
-      const hookError = { elwoodSessionId: record.elwoodSessionId, ...event };
-      emitter.emit("hookError", hookError);
-      emitter.emit("activity", activity.activityFromHookError("codex", hookError));
-    },
+    buildCodexHookErrorHandler(record, emitter),
   );
   try {
     await bridge.start();

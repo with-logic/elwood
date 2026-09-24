@@ -4,6 +4,7 @@
  */
 
 import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
+import type { HookObservation } from "../../core/hook-observation.ts";
 import { isPickerIntervention } from "../../core/models/intervention.ts";
 import { sessionWaitForActivity, sessionWaitForStatus } from "../../core/session-wait.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
@@ -26,6 +27,7 @@ import type { CodexTranscriptWatcher } from "../transcript/index.ts";
 import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";
 import { CliExitBarrier } from "./cli-exit.ts";
+import { observeCodexInitialReady } from "./initial-ready.ts";
 import type { CodexEventHandler, CodexEventMap, CodexEventName, CodexSessionApi } from "./types.ts";
 import {
   clipboardRestoreFailedWarning,
@@ -42,6 +44,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   private readonly emitter: TypedEmitter<CodexEventMap>;
   private readonly transcriptWatcher: CodexTranscriptWatcher | undefined;
   private onInitialReady: (() => void) | undefined;
+  private hookReadyObservation: HookObservation | undefined;
   private readonly cliExit: CliExitBarrier;
 
   constructor(
@@ -127,11 +130,14 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   off<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): void {
     this.emitter.off(event, handler);
   }
-  // One-shot initial-ready transition via the shared anti-starvation boundary: a
-  // failed persist/listener releases the queue directly and warns (C-API-42). Codex
-  // has no narrow-bootstrap resize to restore, so this is just the base advance.
+  // C-API-42 releases the queue and warns if initial-ready recording throws.
   completeInitialReady(): void {
-    this.advanceInitialReady();
+    observeCodexInitialReady(
+      this.emitter,
+      this.elwoodSessionId,
+      () => this.advanceInitialReady(),
+      this.hookReadyObservation,
+    );
   }
   waitForStatus(match: (status: ElwoodSessionStatus) => boolean, timeoutMs?: number) {
     return sessionWaitForStatus(this, match, timeoutMs);
@@ -164,8 +170,14 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
   /** Fires initial readiness from the `SessionStart` hook so the first queued
    * message is released only once Codex is actually accepting input, not on the
    * boot-time composer placeholder that would swallow it (C-API-28). */
-  markInitialReadyFromHook(): void {
-    this.onInitialReady?.();
+  markInitialReadyFromHook(observation: HookObservation): void {
+    const previous = this.hookReadyObservation;
+    this.hookReadyObservation = observation;
+    try {
+      this.onInitialReady?.();
+    } finally {
+      this.hookReadyObservation = previous;
+    }
   }
   observeTranscript(path?: string | null): void {
     if (path) this.transcriptWatcher?.observe(path);

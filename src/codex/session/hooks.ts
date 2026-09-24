@@ -6,7 +6,10 @@
  */
 
 import * as activity from "../../core/activity/index.ts";
+import { freezeHookEvent } from "../../core/freeze-hook-event.ts";
+import { hookObservationBoundary } from "../../core/hook-observation.ts";
 import { isRecord } from "../../core/predicates.ts";
+import type { HookErrorEvent } from "../../core/types.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { isCodexBlock, requestCodexHook } from "../hooks/dispatch.ts";
@@ -64,37 +67,70 @@ export async function dispatchHook(
   record: SessionRecord,
   session?: CodexSessionImpl,
 ) {
-  const event = normalizeCodexHookEvent(input as CodexHookEvent);
-  session?.observeTranscript(event.transcript_path);
+  const event = freezeHookEvent(normalizeCodexHookEvent(input as CodexHookEvent));
+  const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "codex");
+  observation.run("transcript", () => session?.observeTranscript(event.transcript_path));
   if (event.hook_event_name === "SessionStart") {
     session?.rememberCodexSessionId(event.session_id);
     // Codex's authoritative pre-input readiness signal: release the first queued
     // message here, not on the boot-time composer placeholder (C-API-28).
-    session?.markInitialReadyFromHook();
+    // The actual ready transition can be deferred by a startup hold; its own
+    // boundary retains C-API-42's synchronous fallback and catches rejections.
+    session?.markInitialReadyFromHook(observation);
   }
-  emitter.emit("hook", event);
-  emitter.emit("activity", activity.activityFromCodexHook(record.elwoodSessionId, event));
+  observation.run("hook", () => emitter.emit("hook", event));
+  observation.run("activity", () =>
+    emitter.emit("activity", activity.activityFromCodexHook(record.elwoodSessionId, event)),
+  );
   const outcome = await requestCodexHook(
-    emitter,
+    {
+      hasListeners: (name) => emitter.hasListeners(name),
+      requestWithProvenance: (name, payload) => emitter.requestWithProvenance(name, payload),
+      emit: (name, payload) =>
+        observation.run(name === "hookError" ? "hook_error" : "activity", () =>
+          emitter.emit(name, payload),
+        ),
+    },
     event,
     options.hookTimeoutMs ?? 25_000,
     record.elwoodSessionId,
   );
-  emitter.emit(
-    "activity",
-    activity.activityFromHookResult(
-      "codex",
-      record.elwoodSessionId,
-      event.hook_event_name,
-      outcome.result,
-      outcome.failedOpen,
+  const serialized = serializeCodexHookResult(event.hook_event_name, outcome.result);
+  const blocked = isCodexBlock(outcome.result);
+  observation.run("activity", () =>
+    emitter.emit(
+      "activity",
+      activity.activityFromHookResult(
+        "codex",
+        record.elwoodSessionId,
+        event.hook_event_name,
+        outcome.result,
+        outcome.failedOpen,
+      ),
     ),
   );
-  if (event.hook_event_name === "Stop" && !isCodexBlock(outcome.result)) {
+  if (event.hook_event_name === "Stop" && !blocked) {
     // A bounded per-pass scan (like Claude's): the terminal drain budget is reserved
     // for finish(), so hundreds of turns never exhaust it into false backlog drops.
-    session?.scanTranscript();
-    session?.submitEvidence("hook_turn_ended");
+    observation.run("transcript", () => session?.scanTranscript());
+    observation.run("lifecycle", () => session?.submitEvidence("hook_turn_ended"));
   }
-  return serializeCodexHookResult(event.hook_event_name, outcome.result);
+  observation.report();
+  return serialized;
+}
+
+/** Contains bridge diagnostics under the same hook notification policy. */
+export function buildCodexHookErrorHandler(
+  record: SessionRecord,
+  emitter: TypedEmitter<CodexEventMap>,
+): (event: Omit<HookErrorEvent, "elwoodSessionId">) => void {
+  return (event) => {
+    const hookError = { elwoodSessionId: record.elwoodSessionId, ...event };
+    const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "codex");
+    observation.run("hook_error", () => emitter.emit("hookError", hookError));
+    observation.run("activity", () =>
+      emitter.emit("activity", activity.activityFromHookError("codex", hookError)),
+    );
+    observation.report();
+  };
 }

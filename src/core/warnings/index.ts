@@ -32,7 +32,7 @@ export type ElwoodWarningEvent =
       readonly raw: string;
     }
   | lifecycle.AgentUpdateFailedWarning
-  | lifecycle.HookObserverFailedWarning
+  | lifecycle.ObserverFailureWarning
   | {
       readonly elwoodSessionId: string;
       readonly agent: "codex";

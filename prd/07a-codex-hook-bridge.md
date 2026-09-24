@@ -51,6 +51,27 @@ unions.
   inherited member resolves to no handler, so a CLI-supplied name cannot reach a
   function the caller never registered for it.
 
+The validated Codex hook event, including nested tool input, is frozen before
+parent observation or handler routing. A handler response is detached before
+validation, so later mutation of the handler-owned value cannot change it.
+Elwood fixes the validated wire reply and Stop blocking decision before result
+activity observers run. Observer mutation cannot change policy input, the native
+reply, or Stop readiness. Invalid response data fails open with `hookError`
+(C-HOOK-23).
+
+Observational hook, activity, hook-error, transcript, and lifecycle listener
+failures must not replace Codex hook decisions or skip turn bookkeeping. Each
+hook invocation reports at most one bounded, content-free `hook_observer_failed`
+warning for its first failed phase. Returned native observer Promise rejections
+are consumed without delaying the hook reply; warning delivery failures do not
+recurse (C-HOOK-22). The same boundary covers bridge error notifications.
+The one-shot initial-ready transition retains its separate C-API-42 fallback
+warning and queue-release guarantee for synchronous listener throws. Returned
+status/activity observer Promise rejections share the enclosing hook boundary
+when readiness fires within `SessionStart`; standalone resume-composer or deadline
+readiness instead reports `initial_ready_observer_failed`. Neither delays
+readiness or the hook reply.
+
 Decision note: Codex `PreToolUse` and `PermissionRequest` both produce
 event-specific JSON under `hookSpecificOutput`, but they do not use the same
 inner shape. `PreToolUse` uses fields such as `permissionDecision` directly
