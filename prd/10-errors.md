@@ -28,6 +28,7 @@ Initial required error names:
 | `resume_unavailable` | A resume request cannot be completed from available session metadata. |
 | `pty_start_failed` | PTY or shell startup failed. |
 | `hook_bridge_failed` | The hook bridge or IPC endpoint could not be initialized. |
+| `input_queue_full` | A live session control queue would exceed 1,024 outstanding operations or 8 MiB aggregate UTF-8 input text; no input or attachment is performed for the rejected operation. |
 | `session_not_running` | Operation requires a running process but the session is stopped. |
 | `termination_failed` | A stop/kill request did not observe process exit after escalation, or the PTY exited but its process group could not be confirmed reaped. |
 | `teardown_failed` | Elwood could not remove all owned session files. |

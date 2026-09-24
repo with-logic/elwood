@@ -101,7 +101,7 @@ test("C-LOOP-08 a burst of synchronously rejected admissions cannot overflow que
     },
   );
   const active = queue.runExclusive("list_models", () => picker.promise);
-  const rejected = Array.from({ length: 10_000 }, () =>
+  const rejected = Array.from({ length: 1_022 }, () =>
     queue
       .send("loop", "prompt", undefined, { origin: { kind: "loop", loopId: "failed" } })
       .catch((failure: unknown) => failure),
@@ -110,7 +110,7 @@ test("C-LOOP-08 a burst of synchronously rejected admissions cannot overflow que
   picker.resolve();
   await active;
   const failures = await Promise.all(rejected);
-  expect(failures).toHaveLength(10_000);
+  expect(failures).toHaveLength(1_022);
   expect(failures.every((failure) => failure === error)).toBe(true);
   await expect(follower).resolves.toBeUndefined();
   queue.close();

@@ -3,6 +3,7 @@
 import { toError } from "../errors.ts";
 import { ControlAdmissions } from "./admission.ts";
 import { AdmissionScan } from "./admission-scan.ts";
+import { InputQueueBudget } from "./budget.ts";
 import type { ControlQueueError } from "./traits.ts";
 import { ControlCancellation, overtakesReadiness } from "./traits.ts";
 import type { AdmitOperation, Cancel, PendingOperation, QueuedOperation } from "./types.ts";
@@ -17,6 +18,7 @@ export abstract class ControlQueueState {
   protected bypassable = 0;
   protected inFlight: QueuedOperation | undefined;
   protected submitAbort: AbortController | undefined;
+  protected readonly budget = new InputQueueBudget();
   private preparationAbort: AbortController | undefined;
   protected readonly cancellation = new ControlCancellation();
   protected readonly stoppedError: ControlQueueError;
@@ -95,12 +97,14 @@ export abstract class ControlQueueState {
       if (settling.settleAfterWrite) this.cancellation.mark(settling, error);
       else {
         this.inFlight = undefined;
+        this.budget.release(settling);
         settling.reject(error);
       }
     }
     this.submitAbort?.abort(error);
     this.bypassable = 0;
     for (const operation of this.queue.splice(0)) {
+      this.budget.release(operation);
       this.admissions.cancel(operation, error);
       this.cancellation.remove(operation);
       operation.reject(error);
@@ -111,6 +115,7 @@ export abstract class ControlQueueState {
     if (this.closed) return Promise.reject(this.stoppedError());
     return new Promise((resolve, reject) => {
       const operation: QueuedOperation = { ...op, resolve, reject };
+      this.budget.reserve(operation);
       this.queue.push(operation);
       if (overtakesReadiness(operation)) this.bypassable += 1;
       if (cancel) this.listenForCancel(operation, cancel);
@@ -121,6 +126,7 @@ export abstract class ControlQueueState {
   protected settle(operation: QueuedOperation, finish: () => void): void {
     if (this.inFlight !== operation) return;
     this.inFlight = undefined;
+    this.budget.release(operation);
     this.cancellation.remove(operation);
     finish();
     this.drain();
@@ -152,6 +158,7 @@ export abstract class ControlQueueState {
     const index = this.queue.indexOf(operation);
     if (index >= 0) {
       this.takeQueued(index);
+      this.budget.release(operation);
       this.admissions.cancel(operation, error);
       if (overtakesReadiness(operation)) this.bypassable -= 1;
       this.cancellation.remove(operation);

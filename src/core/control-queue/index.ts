@@ -176,8 +176,9 @@ export class ControlQueue extends ControlQueueState {
       return;
     }
     // Commit before observers can cancel. Let LoopDelivery report fired first,
-    // retaining the queue slot until the running notification has been delivered.
+    // releasing capacity now but retaining ordering through the running notification.
     this.cancellation.remove(operation);
+    this.budget.release(operation);
     operation.resolve();
     queueMicrotask(() =>
       this.settle(operation, () => {

@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
+import { checkedInputBytes } from "../../core/control-queue/budget.ts";
 import { applyClaudeHighTrust } from "../../core/high-trust.ts";
 import { queuePersonaMessage } from "../../core/persona.ts";
 import { claudeReasoningEfforts, validateReasoningEffort } from "../../core/reasoning-effort.ts";
@@ -50,6 +51,7 @@ export async function startClaudeWithId(
   // conflicting explicit one) HERE, before preflight, so the persisted record and the
   // launch command both carry the expanded posture (C-API-54).
   const options = applyClaudeHighTrust({ ...rawOptions, cwd: resolve(rawOptions.cwd) });
+  checkedInputBytes(options.persona ?? "");
   const stateDir = canonicalStatePath(options.stateDir ?? defaultStateDir(options.cwd));
   const strict = options.strictVersionCheck ?? false;
   const warning = await preflightClaude(strict, options.autoupdate ?? false);

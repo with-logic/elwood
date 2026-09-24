@@ -26,6 +26,7 @@ export type ElwoodErrorName =
   | "pty_start_failed"
   | "hook_bridge_failed"
   | "session_not_running"
+  | "input_queue_full"
   | "termination_failed"
   | "teardown_failed"
   | "compact_failed"

@@ -49,13 +49,13 @@ test.each([
   }
   if (phase === "admitted") queue.markReady();
   const first = queue.runExclusive("list_models", () => active.promise);
-  const blocked = Array.from({ length: 10_000 }, () =>
+  const blocked = Array.from({ length: 512 }, () =>
     queue
       .send("blocked", "message", undefined, phase === "unready" ? {} : loop)
       .catch(() => undefined),
   );
   const reads = queue.measureBacklog();
-  const controls = Array.from({ length: 1000 }, (_, index) =>
+  const controls = Array.from({ length: 500 }, (_, index) =>
     queue.send(String(index), "list_models"),
   );
   active.resolve();
@@ -64,8 +64,8 @@ test.each([
   const inspected = reads();
   queue.close();
   await Promise.all(blocked);
-  expect(writes).toEqual(Array.from({ length: 1000 }, (_, index) => String(index)));
-  expect(inspected).toBeLessThanOrEqual(phase === "admitted" ? 10_002 : 10_000);
+  expect(writes).toEqual(Array.from({ length: 500 }, (_, index) => String(index)));
+  expect(inspected).toBeLessThanOrEqual(phase === "admitted" ? 514 : 512);
 });
 
 test("C-API-19 cancelling inside a scanned prefix preserves following input order", async () => {
@@ -119,13 +119,13 @@ test.each([
     queue.holdLoops();
   }
   const first = queue.runExclusive("list_models", () => active.promise);
-  const blocked = Array.from({ length: 10_000 }, () =>
+  const blocked = Array.from({ length: 512 }, () =>
     queue.send("blocked", "message", undefined, loop).catch(() => undefined),
   );
   const reads = queue.measureBacklog();
   active.resolve();
   await first;
-  for (let index = 0; index < 1000; index += 1) {
+  for (let index = 0; index < 500; index += 1) {
     const release = queue.holdLoops();
     await queue.send(String(index), "list_models");
     release();
@@ -133,6 +133,6 @@ test.each([
   const inspected = reads();
   queue.close();
   await Promise.all(blocked);
-  expect(writes).toEqual(Array.from({ length: 1000 }, (_, index) => String(index)));
-  expect(inspected).toBeLessThanOrEqual(10_000);
+  expect(writes).toEqual(Array.from({ length: 500 }, (_, index) => String(index)));
+  expect(inspected).toBeLessThanOrEqual(512);
 });
