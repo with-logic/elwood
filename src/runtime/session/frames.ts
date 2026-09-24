@@ -50,7 +50,10 @@ export function createSessionFrameObserver(
     ) {
       if (facts.working_visible) {
         observers.turn.adoptWorkingClearance(facts);
-        active.observeNativeWork(observers.turn.nativeWorkingVisible);
+        active.observeNativeWork(
+          observers.turn.nativeWorkingVisible,
+          observers.turn.nativeComposerQuiet,
+        );
       }
       active.submitEvidence("blocking_prompt_cleared", facts.working_visible);
     }

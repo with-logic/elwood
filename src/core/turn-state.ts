@@ -16,7 +16,7 @@ export type TurnEdge = "started" | "ended";
 // clears those gaps before detection resumes, so a post-replay burst can't fire a
 // phantom turn. A real post-resume turn is EVIDENCE-driven and bypasses settling, so
 // this only delays RENDERED detection by a few poll frames (C-TURN-03).
-const quietFramesToSettle = 5;
+export const quietFramesToSettle = 5;
 
 export class TurnStateWatcher {
   private running = false;
@@ -26,10 +26,14 @@ export class TurnStateWatcher {
   private nativeWorkSettling = false;
   private nativeQuietStreak = 0;
   private observedNativeWork = false;
+  private observedQuietComposer = false;
 
   /** Recovery cannot treat optimistic caller-running status as native acceptance. */
   get nativeWorkingVisible(): boolean {
     return this.observedNativeWork;
+  }
+  get nativeComposerQuiet(): boolean {
+    return this.observedQuietComposer;
   }
   // Consecutive quiet, non-blocking composer frames seen while settling. The resume
   // transcript replay repaints working-token footers in BURSTS with brief quiet gaps
@@ -69,6 +73,7 @@ export class TurnStateWatcher {
     this.replaySettling = false;
     this.nativeWorkSettling = false;
     this.observedNativeWork = true;
+    this.observedQuietComposer = false;
     this.running = true;
     this.bannerSeen = facts.interrupt_complete_visible;
   }
@@ -83,6 +88,7 @@ export class TurnStateWatcher {
   observe(facts: ScreenFacts, evidenceRunning = false): TurnEdge | undefined {
     const quiet =
       facts.composer_visible && !facts.working_visible && !facts.blocking_prompt_visible;
+    this.observedQuietComposer = quiet;
     this.updateNativeWorkingEvidence(facts, quiet);
     if (!this.armed) return undefined;
     if (this.replaySettling) {

@@ -32,7 +32,7 @@ test.each([
     });
     await vi.advanceTimersByTimeAsync(150);
     expect(writes).toEqual(["\u001b[200~draft\u001b[201~", "\r"]);
-    if (evidence === "working") recovery.observeWorking(true);
+    if (evidence === "working") recovery.observeWorking(true, false);
     else
       events.emit("activity", {
         agent: "claude",
@@ -42,7 +42,8 @@ test.each([
         label: "user",
       });
     const active = recovery.captureRevocationGuard();
-    recovery.observeWorking(false);
+    recovery.completeTurn(); // Completion must not restore the earlier submission's authority.
+    recovery.observeWorking(false, true);
     expect(active.revoked()).toBe(evidence === "working");
     dispatched.resolve();
     await sent;

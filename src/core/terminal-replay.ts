@@ -45,6 +45,11 @@ export class TerminalReplayBuffer {
     handler({ elwoodSessionId: this.elwoodSessionId, data: this.chunks.join("") });
   }
 
+  replayFor(event: string, handler: (event: never) => unknown): void {
+    if (event === "terminal:data") this.replay(handler as (event: TerminalDataEvent) => unknown);
+    if (event === "activity") this.replayAttention(handler as AttentionListener);
+  }
+
   /** Capture stable attention activities until the eager start promise has returned. */
   captureStartupAttention(source: {
     on(event: "activity", handler: (event: ElwoodActivityEvent) => void): () => void;

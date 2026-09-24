@@ -17,7 +17,7 @@ import type { TurnStateWatcher } from "./turn-state.ts";
 import type { ElwoodSessionStatus, ElwoodStatusDecision, ElwoodStatusEvidence } from "./types.ts";
 
 export type RenderedObserverTarget = {
-  observeNativeWork?(working: boolean): void;
+  observeNativeWork?(working: boolean, quiet: boolean): void;
   submitEvidence(
     kind: ElwoodStatusEvidence,
     workingVisible?: boolean,
@@ -87,7 +87,10 @@ export function observeRenderedReading(
 ): void {
   const turnEdge = observers.turn.observe(reading.facts, session?.status === "running");
   // Only post-readiness, non-replay work can revoke recovery, before status listeners.
-  session?.observeNativeWork?.(observers.turn.nativeWorkingVisible);
+  session?.observeNativeWork?.(
+    observers.turn.nativeWorkingVisible,
+    observers.turn.nativeComposerQuiet,
+  );
   if (turnEdge === "started") session?.submitEvidence("rendered_turn_started");
   if (turnEdge === "ended") session?.submitEvidence("rendered_turn_ended");
   const attention = observers.attention.observe(reading);
@@ -106,7 +109,10 @@ export function observeRenderedReading(
     // Resume replay settling must not swallow its next idle end edge.
     if (reading.facts.working_visible && session?.status === "blocked") {
       observers.turn.adoptWorkingClearance(reading.facts);
-      session.observeNativeWork?.(observers.turn.nativeWorkingVisible);
+      session.observeNativeWork?.(
+        observers.turn.nativeWorkingVisible,
+        observers.turn.nativeComposerQuiet,
+      );
     }
     session?.submitEvidence("blocking_prompt_cleared", reading.facts.working_visible);
   }

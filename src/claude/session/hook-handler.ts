@@ -81,8 +81,6 @@ export function buildClaudeHookHandler(
     if (event.hook_event_name === "Stop" && !blocked) {
       observation.run("transcript", () => transcriptWatcher.scan());
       deps.getTurnWatcher().arm();
-      // Stop can precede the idle repaint; clear the latch before ready drains input.
-      deps.getSession()?.observeNativeWork(false);
       observation.run("lifecycle", () => deps.getSession()?.submitEvidence("hook_turn_ended"));
     }
     observation.report();
