@@ -1,4 +1,5 @@
 /** On-demand sprite ownership and retry control (site/docs/design/landing.md; PRD §13). */
+import { SpriteAnimations } from "./sprite-animations.mjs";
 import { SpritePages } from "./sprite-pages.mjs";
 import { SpriteLoads } from "./sprite-loads.mjs";
 import { validateSpriteClip } from "./sprite-metadata.mjs";
@@ -10,6 +11,7 @@ import { withSpriteAssetErrorContext } from "./sprite-asset-error.mjs";
 export class SpriteBank {
   constructor(onError) {
     this.decoder = new SpriteDecoder();
+    this.animations = new SpriteAnimations(this);
     this.clips = new Map();
     this.clipPromises = new Map();
     this.resources = new SpritePages();
@@ -72,6 +74,22 @@ export class SpriteBank {
     } finally { preparationLease?.abort(); }
   }
 
+  /** Resolves the complete clip, null on cancellation/teardown, or rejects an asset failure. */
+  prepareAnimation(name) {
+    if (this.disposed) return Promise.reject(new Error("Sprite bank is disposed."));
+    return this.animations.prepare(name);
+  }
+  /** Transfer a ready candidate to delivered input; unmatched or pending names are no-ops. */
+  publishAnimation(name) { this.animations.publish(name); }
+  /** Call after prepareAnimation → publishAnimation when input is consumed.
+   * currentName is playing now; nextName is the requested/next transition clip.
+   */
+  activateAnimation(currentName, nextName = currentName) {
+    this.animations.activate(currentName, nextName);
+  }
+  /** Cancel pending/delivered preparation while active playback keeps its owner. */
+  cancelPreparation() { this.animations.cancel(); }
+
   pinLoadPage(key, image, signal) { this.resources.pin(key, image, signal); }
 
   ensureMetadata(name) {
@@ -91,6 +109,7 @@ export class SpriteBank {
       }));
       return false;
     }
+    if (this.animations.page(`${name}/${clip.frames[0].page}`)) return true;
     this.#requestPage(name, clip.frames[0].page);
     return this.pages.has(`${name}/${clip.frames[0].page}`);
   }
@@ -103,6 +122,7 @@ export class SpriteBank {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.animations.dispose();
     this.resources.dispose();
     this.loads.dispose();
     this.clips.clear();
@@ -120,6 +140,8 @@ export class SpriteBank {
     }
     const frame = clip.frames[Math.min(index, clip.frames.length - 1)];
     const key = `${name}/${frame.page}`;
+    const owned = this.animations.page(key);
+    if (owned) return { clip, frame, page: owned };
     const page = this.pages.get(key);
     if (!page) {
       this.#requestPage(name, frame.page);
