@@ -54,6 +54,7 @@ test("C-LOOP-08 cancelling the cached reservation lets a caller cross held unadm
   const gate = Promise.withResolvers<void>();
   const cancel = new AbortController();
   const writes: string[] = [];
+  let reserved = false;
   const queue = new ControlQueue(
     (text) => {
       writes.push(text);
@@ -64,7 +65,11 @@ test("C-LOOP-08 cancelling the cached reservation lets a caller cross held unadm
     undefined,
     undefined,
     undefined,
-    () => ({ ready: gate.promise, run: (work) => work() }),
+    () => {
+      if (reserved) return undefined;
+      reserved = true;
+      return { ready: gate.promise, run: (work) => work() };
+    },
   );
   queue.markReady();
   const parked = queue.send("parked", "message", undefined, {
@@ -78,8 +83,8 @@ test("C-LOOP-08 cancelling the cached reservation lets a caller cross held unadm
   await expect(parked).rejects.toThrow("cancelled");
   // No reservation remains; the held loop must not become a barrier to the caller.
   const caller = queue.send("caller", "prompt");
-  gate.resolve();
   await caller;
+  gate.resolve();
   expect(writes).toEqual(["caller"]);
   queue.close();
   await held;
