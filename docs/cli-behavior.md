@@ -977,21 +977,19 @@ Those compatibility cases are constructed regressions, not new working captures.
 
 ## Native acceptance revokes recovery (2026-09-24)
 
-The standalone recovery-revocation change passed
-`tests/e2e/paste-recovery.e2e.ts` against Claude Code 2.1.281 and codex-cli 0.156.1:
-2 tests, 2 passes, 0 failures, 0 skips. Each isolated session used a nonexistent
-model, rejected before model quota is consumed. Each attempted and physically
-delivered exactly one Enter, emitted one `UserPromptSubmit` hook, and rendered
-native working evidence (4 observed Claude frames, 83 Codex frames). No further
-Enter was attempted during the six-second observation window. Extra attempts are
-counted before interception, so preventing delivery cannot hide a duplicate.
-This establishes native acceptance/work and physical write counts, not successful
-model output or prompt-to-hook correlation. The copied Codex credentials and
-both native processes were cleaned up after the run.
+`tests/e2e/paste-recovery.e2e.ts` passed against Claude Code 2.1.281 and
+codex-cli 0.156.1: 2 tests, 2 passes, 0 failures, 0 skips. Each test exercised
+both a cold start and a real resumed session. Every phase attempted and physically
+delivered exactly one Enter and emitted one `UserPromptSubmit` hook. New working
+frames after that physical Enter numbered 3/5 for Claude cold/resumed and 63/86
+for Codex cold/resumed. No extra Enter was attempted over six seconds per phase.
+The frame baseline is captured at the first physical Enter; startup frames cannot
+satisfy the working-frame assertion. Extra attempts are counted before interception.
 
-After startup/resume working-frame suppression was added, the same version-pinned
-test passed again: 2 tests, 2 passes, 0 failures, 0 skips. Each adapter again
-attempted and delivered one Enter and emitted one submission hook; observed
-working frames were 4 for Claude and 62 for Codex. This cold-start native run
-checks physical writes and native evidence. Startup/resume replay exclusion is
-covered separately by real-session fake-PTY regressions, not a native resume run.
+Both CLIs used a nonexistent model, rejected before quota consumption. Public
+resume options omit model, so the test appends the same invalid native `--model`
+flag at the PTY launch seam on resume. The native renderer, hooks, Elwood readiness,
+and input queue remain real. This proves physical write counts and native evidence,
+not successful output or prompt-to-hook correlation. Copied Codex credentials and
+all native processes were cleaned up. Deterministic fake-PTY cases separately
+cover swallowed Enter during replay and Stop arriving before the idle repaint.
