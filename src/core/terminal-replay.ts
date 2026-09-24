@@ -7,6 +7,8 @@
 
 import type { ElwoodActivityEvent } from "./activity/index.ts";
 
+export type AttentionListener = (event: ElwoodActivityEvent) => unknown;
+
 type TerminalDataEvent = {
   readonly elwoodSessionId: string;
   readonly data: string;
@@ -53,7 +55,7 @@ export class TerminalReplayBuffer {
   }
 
   /** Replay pre-return attention to a synchronously attached lazy-facade subscriber. */
-  replayAttention(handler: (event: ElwoodActivityEvent) => unknown): void {
+  replayAttention(handler: AttentionListener): void {
     for (const event of this.startupAttention) handler(event);
   }
 

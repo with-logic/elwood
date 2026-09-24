@@ -37,6 +37,7 @@ test("C-TRUST-01 a timer block is observable without a frame, with guards latche
     get status() {
       return engine.status;
     },
+    observeNativeWork: () => undefined,
     submitEvidence: (kind: Parameters<typeof engine.submit>[0], workingVisible = false) =>
       engine.submit(kind, { workingVisible }),
   };
@@ -108,6 +109,7 @@ test("C-TRUST-01 replays a consumed human clear edge when automation finally rel
     get status() {
       return engine.status;
     },
+    observeNativeWork: () => undefined,
     submitEvidence(kind: ElwoodStatusEvidence, workingVisible = false) {
       return engine.submit(kind, { inputBlocked: active.trustInputBlocking, workingVisible });
     },

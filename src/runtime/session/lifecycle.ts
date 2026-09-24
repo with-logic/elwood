@@ -1,10 +1,10 @@
 /** Session lifetime, input blocking, persistence and cleanup (PRD §5/§8/§9). */
-import type { ElwoodActivityEvent, ElwoodAgentKind } from "../../core/activity/index.ts";
+import type { ElwoodAgentKind } from "../../core/activity/index.ts";
 import { ControlQueue } from "../../core/control-queue/index.ts";
 import { type PasteGuard, queuedInputSubmitter } from "../../core/input/index.ts";
 import { registerPrivateOutputSecrets } from "../../core/private-output-secrets.ts";
 import { registerTurnLoopHold } from "../../core/simple/loop-hold.ts";
-import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
+import type { AttentionListener, TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent } from "../../core/types.ts";
 import type { PtyProcess } from "../../pty/types.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
@@ -23,7 +23,6 @@ import { SessionShutdownBinding } from "./shutdown-binding.ts";
 import { createSessionStatusEngine, type SessionStatusEmitter } from "./status-wiring.ts";
 
 type TerminalDataListener = Parameters<TerminalReplayBuffer["replay"]>[0];
-type AttentionListener = (event: ElwoodActivityEvent) => unknown;
 export abstract class SessionLifecycle {
   protected record: SessionRecord;
   readonly terminal: ElwoodTerminal;
@@ -152,6 +151,7 @@ export abstract class SessionLifecycle {
   bindInitialReadinessHold(isHeld: () => boolean): void {
     this.initialReadinessHeld = isHeld;
   }
+  readonly observeNativeWork = (working: boolean): void => this.recovery.observeWorking(working);
   submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
     const held =
       this.trustInputBlocking ||

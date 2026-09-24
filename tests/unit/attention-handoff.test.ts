@@ -36,6 +36,7 @@ function harness(started = true) {
     get status() {
       return engine.status;
     },
+    observeNativeWork: () => undefined,
     submitEvidence: (kind: Parameters<typeof engine.submit>[0], workingVisible = false) =>
       engine.submit(kind, { inputBlocked: active.trustInputBlocking, workingVisible }),
   };

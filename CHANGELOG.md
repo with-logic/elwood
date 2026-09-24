@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Stop background recovery after current native working evidence, preserving recovery through startup/resume replay and for the next queued prompt after Stop.
+
 - Stop background paste-recovery Enter presses after native submission activity, including while the first physical Enter is pending.
 
 - Recognize Codex’s native ✨ update banner when its options are clipped, keeping the partial updater input-blocking.

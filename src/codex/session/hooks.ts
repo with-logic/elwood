@@ -94,6 +94,8 @@ export async function dispatchHook(
     // A bounded per-pass scan (like Claude's): the terminal drain budget is reserved
     // for finish(), so hundreds of turns never exhaust it into false backlog drops.
     session?.scanTranscript();
+    // Stop can precede idle repaint; clear the latch before ready drains input.
+    session?.observeNativeWork(false);
     session?.submitEvidence("hook_turn_ended");
   }
   return serializeCodexHookResult(event.hook_event_name, outcome.result);
