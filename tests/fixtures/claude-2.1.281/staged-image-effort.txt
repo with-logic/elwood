@@ -1,0 +1,13 @@
+ ▐▛███▛█   Claude Code v2.1.281
+▝▜██████▀  Opus 5.5 (1M context) · Claude Max
+  ▝▝ ▝▝    <temporary-workspace>
+
+⚠ Your login expires in 1 day · run /login to renew
+
+⏺ agents-md: no CLAUDE.md found; AGENTS.md loaded: <temporary-workspace>/AGENTS.md
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ [Image #1]ELWOOD_CANCELLED_DRAFT
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle)                                                                                                                                0 tokens
+                                                                                                                                                                         ◐ medium · /effort

@@ -995,3 +995,11 @@ submission; an old empty frame does not prove acceptance.
 The Claude observer also preserves the existing version-banner/fenced-input
 alternative and the documented 2.1.268 non-Vim bypass-permissions footer.
 Those compatibility cases are constructed regressions, not new working captures.
+
+A fresh 2.1.281 staged-image capture also placed a separate right-aligned
+`◐ medium · /effort` row below the mode/tokens footer. The cursor remained on
+the image/text input and the title was idle (`✳ Claude Code`). The image guard
+shares recognition of this exact footer with the empty-input observer; unknown
+footer text and working/dialog evidence still reject recovery.
+`staged-image-effort.txt` retains the native viewport with workspace paths
+sanitized. The capture submitted no model turn.
