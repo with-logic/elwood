@@ -1,4 +1,4 @@
-/** Explicit requests cannot outlive a reset or report superseded failures (landing design). */
+/** Explicit requests cannot outlive reset or report superseded failures (PRD §13; site/docs/design/landing.md). */
 import assert from "node:assert/strict";
 import test from "node:test";
 import { NO_INPUT } from "../autonomy.mjs";
@@ -12,13 +12,14 @@ function sceneFixture(t) {
   const deviceRatio = globalThis.devicePixelRatio;
   globalThis.devicePixelRatio = 1;
   t.after(() => { globalThis.devicePixelRatio = deviceRatio; });
-  const gates = [], errors = [];
+  const gates = [], errors = [], signals = [];
   const scene = Object.create(LandingScene.prototype);
   Object.assign(scene, {
     bank: {
-      prepare() {
+      prepare(_name, { signal } = {}) {
         const gate = Promise.withResolvers();
         gates.push(gate);
+        signals.push(signal);
         return gate.promise;
       },
       retainPoses() {},
@@ -30,16 +31,17 @@ function sceneFixture(t) {
     start() {}, paint() {}, settle() {}, markGround() {}, standingTop() { return 0; },
     onError(error) { errors.push(error.message); },
   });
-  return { scene, gates, errors };
+  return { scene, gates, errors, signals };
 }
 
 for (const reset of [false, true]) {
   test(`${reset ? "reset" : "responsive reflow"} drops pending explicit input`, async (t) => {
-    const { scene, gates } = sceneFixture(t);
+    const { scene, gates, signals } = sceneFixture(t);
     const pending = scene.request({ gesture: "wave" });
     scene.world.player.queuedAction = { gesture: "wave" };
     scene.configure({ ...scene.config, width: reset ? 1000 : 800 }, reset);
     assert.equal(scene.world.player.queuedAction, null);
+    assert.equal(signals[0].aborted, true, "reconfiguration releases the explicit sprite load");
     gates[0].resolve();
     await pending;
     assert.equal(scene.pressed, NO_INPUT, "late delivery cannot replay into the reset World");
