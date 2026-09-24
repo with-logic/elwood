@@ -18,6 +18,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Stop background recovery Enter presses when the native composer is positively empty, even if submitted text remains in the transcript.
 
+- Avoid repeatedly scanning blocked turn input when model and login controls cross a queued backlog.
+
 - Stop background paste-recovery Enter presses after native submission activity, including while the first physical Enter is pending.
 
 - Require one current native update-option block before sending a skip key. Ambiguous repaints revoke the attempt; only fresh unambiguous banner evidence with a current safe choice can reauthorize it and renew its bounded CLI grace, including the same version pair.

@@ -1,8 +1,9 @@
 /** Queue lifecycle and cancellation bookkeeping (PRD §5.3/§5.9). */
 
 import { toError } from "../errors.ts";
+import { QueueScanCursor } from "./scan.ts";
 import type { ControlQueueError } from "./traits.ts";
-import { ControlCancellation, nextDispatchIndex, overtakesReadiness } from "./traits.ts";
+import { ControlCancellation, overtakesReadiness } from "./traits.ts";
 import type { Cancel, PendingOperation, QueuedOperation } from "./types.ts";
 
 /** Shared mutable state for the serialized control queue. */
@@ -19,6 +20,7 @@ export abstract class ControlQueueState {
   protected readonly cancellation = new ControlCancellation();
   protected readonly stoppedError: ControlQueueError;
   private readonly loopHolds = new Set<object>();
+  protected readonly scan = new QueueScanCursor();
 
   protected constructor(stoppedError: ControlQueueError) {
     this.stoppedError = stoppedError;
@@ -28,26 +30,43 @@ export abstract class ControlQueueState {
   holdLoops(): () => void {
     const hold = {};
     this.loopHolds.add(hold);
+    this.scan.reset();
     return () => {
-      if (this.loopHolds.delete(hold)) this.drain();
+      if (this.loopHolds.delete(hold)) {
+        this.scan.reset();
+        this.drain();
+      }
     };
   }
 
   protected nextDispatchIndex(): number {
-    return this.ready && this.loopHolds.size > 0
-      ? this.queue.findIndex((operation) => operation.origin.kind !== "loop")
-      : nextDispatchIndex(this.queue, this.ready, this.bypassable);
+    if (this.ready)
+      return this.loopHolds.size > 0
+        ? this.scan.findIndex(this.queue, (operation) => operation.origin.kind !== "loop")
+        : 0;
+    return this.bypassable > 0 ? this.scan.findIndex(this.queue, overtakesReadiness) : -1;
+  }
+
+  protected setReady(ready: boolean): void {
+    if (this.ready !== ready) this.scan.reset();
+    this.ready = ready;
+  }
+
+  protected takeQueued(index: number): QueuedOperation {
+    this.scan.removed(index);
+    return this.queue.splice(index, 1)[0] as QueuedOperation;
   }
 
   markReady(): void {
     if (this.closed) return;
-    this.everReady = this.ready = true;
+    this.everReady = true;
+    this.setReady(true);
     this.readinessEpoch += 1;
     this.drain();
   }
 
   suspendReadiness(): void {
-    this.ready = false;
+    this.setReady(false);
     this.readinessEpoch += 1;
   }
 
@@ -119,7 +138,7 @@ export abstract class ControlQueueState {
   private cancelOperation(operation: QueuedOperation, error: Error): void {
     const index = this.queue.indexOf(operation);
     if (index >= 0) {
-      this.queue.splice(index, 1);
+      this.takeQueued(index);
       if (overtakesReadiness(operation)) this.bypassable -= 1;
       this.cancellation.remove(operation);
       operation.reject(error);
