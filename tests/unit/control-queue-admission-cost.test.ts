@@ -5,7 +5,10 @@ import { ControlQueue } from "../../src/core/control-queue/index.ts";
 
 const loop = { origin: { kind: "loop", loopId: "loop" } } as const;
 
-test("C-LOOP-08 10,000 parked turn followers are checked once and a later control passes", async () => {
+test.each([
+  "ready",
+  "suspended",
+])("C-LOOP-08 10,000 %s parked turn followers are checked once and a later control passes", async (readiness) => {
   let visits = 0;
   const has = ControlAdmissions.prototype.has;
   ControlAdmissions.prototype.has = function (operation) {
@@ -30,6 +33,7 @@ test("C-LOOP-08 10,000 parked turn followers are checked once and a later contro
   try {
     queue.markReady();
     const pending = [queue.send("loop", "message", undefined, loop).catch(() => undefined)];
+    if (readiness === "suspended") queue.suspendReadiness();
     for (let index = 0; index < 10_000; index += 1) {
       pending.push(queue.send("follower", "message").catch(() => undefined));
     }
@@ -38,9 +42,45 @@ test("C-LOOP-08 10,000 parked turn followers are checked once and a later contro
     expect(writes).toEqual(["picker"]);
     queue.close();
     await Promise.all(pending);
-    expect(blockedVisits).toBeLessThanOrEqual(10_001);
+    // Suspending readiness invalidates the initial one-entry prefix once.
+    expect(blockedVisits).toBeLessThanOrEqual(10_002);
   } finally {
     queue.close();
     ControlAdmissions.prototype.has = has;
   }
+});
+
+test("C-LOOP-08 cancelling the cached reservation lets a caller cross held unadmitted loops", async () => {
+  const gate = Promise.withResolvers<void>();
+  const cancel = new AbortController();
+  const writes: string[] = [];
+  const queue = new ControlQueue(
+    (text) => {
+      writes.push(text);
+      return Promise.resolve();
+    },
+    () => new Error("closed"),
+    () => undefined,
+    undefined,
+    undefined,
+    undefined,
+    () => ({ ready: gate.promise, run: (work) => work() }),
+  );
+  queue.markReady();
+  const parked = queue.send("parked", "message", undefined, {
+    ...loop,
+    cancel: { signal: cancel.signal, error: () => new Error("cancelled") },
+  });
+  void parked.catch(() => undefined);
+  queue.holdLoops();
+  const held = queue.send("held", "message", undefined, loop).catch(() => undefined);
+  cancel.abort();
+  await expect(parked).rejects.toThrow("cancelled");
+  // No reservation remains; the held loop must not become a barrier to the caller.
+  const caller = queue.send("caller", "prompt");
+  gate.resolve();
+  await caller;
+  expect(writes).toEqual(["caller"]);
+  queue.close();
+  await held;
 });
