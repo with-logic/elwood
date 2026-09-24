@@ -72,10 +72,10 @@ export function fixture() {
   };
 }
 
-export async function report(t) {
+export async function report(t, content = reportFixture()) {
   const dir = await mkdtemp(join(tmpdir(), "elwood-review-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const path = join(dir, "REVIEW.md");
-  await writeFile(path, reportFixture());
+  await writeFile(path, content);
   return path;
 }

@@ -24,7 +24,12 @@ may replace an active review of the same PR.
 
 Every run evaluates the current PR head and base. Automatic approval requires
 all eleven review dimensions, consistent validated evidence, no blocker or
-major findings, and revalidation of eligibility and both commits at publication.
+major findings, and revalidation of eligibility and both commits before publication.
+Once GitHub accepts an approval, the publisher preserves it unconditionally: it
+does not revalidate or dismiss that approval after publication, including when
+the head, base, eligibility, or GitHub API availability changes. Post-publication
+checks still apply to unapproved verdicts; a stale request for changes is
+dismissed, and cleanup failures remain visible.
 Review automation never merges a PR or bypasses repository protections.
 If the PR is already approved when publication checks its review decision,
 new findings that would request changes are posted as a comment, preserving

@@ -46,6 +46,11 @@ export async function post({
     event,
     body,
   });
+  // An accepted approval is durable, including across concurrent pushes or API failures.
+  if (event === "APPROVE") {
+    core.info(`Submitted ${event} for ${head}`);
+    return;
+  }
   const dismiss = async () => {
     if (event !== "COMMENT")
       await github.rest.pulls.dismissReview({

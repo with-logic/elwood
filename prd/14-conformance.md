@@ -349,7 +349,7 @@ Each criterion has:
 | C-REVIEW-01 | §16 | Opening a ready PR or marking it ready can produce its first automatic report; existing automated reports suppress subsequent automatic reviews, and pushes do not trigger reviews. |
 | C-REVIEW-02 | §16 | Authorized explicit requests can repeat without a round limit or current-approval skip. |
 | C-REVIEW-03 | §16 | Only exact newly-created `/elwood review` PR comments and workflow dispatches from current human writers qualify; unauthorized requests cannot execute or cancel model reviews. |
-| C-REVIEW-04 | §16 | Publication preserves an existing approval by commenting on new non-approving findings, includes a run link and rerun command, and reports failed/canceled authorized runs without granting approval or posting on a superseded/ineligible PR. |
+| C-REVIEW-04 | §16 | Publication preserves an existing approval by commenting on new non-approving findings; once GitHub accepts a new approval, the publisher never revalidates or dismisses it, including after head/base changes or API failures. Publication includes a run link and rerun command, and reports failed/canceled authorized runs without granting approval or posting on a superseded/ineligible PR. |
 | C-REVIEW-05 | §16 | Eligibility admits any base branch in the same repository, and the automatic trigger does not filter by base branch, so a stacked PR based on a not-yet-merged parent is reviewed rather than silently skipped; a head or base in another repository remains ineligible. |
 
 ### Launch hardening
