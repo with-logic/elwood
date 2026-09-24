@@ -14,6 +14,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Stop background paste-recovery Enter presses after native submission activity, including while the first physical Enter is pending.
 
+- Recognize Codex’s native ✨ update banner when its options are clipped, keeping the partial updater input-blocking.
+
 - Renew the CLI update grace period once for a changed Codex version banner, using generation-tagged attention without reporting a successful skip.
 
 - Treat a changed Codex update version banner as a new appearance, cancelling old retries and allowing a fresh bounded skip attempt.
