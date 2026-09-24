@@ -25,6 +25,11 @@ export class CodexUpdatePromptTracker {
     return this.generation;
   }
 
+  /** Ordinary frames need no clearance parsing without a pending or revoked update. */
+  get needsClearance(): boolean {
+    return this.pendingClearance || this.requiresBanner;
+  }
+
   /** A replacement or ambiguity retires the attempt; its own clear is only `generation + 1`. */
   hasSupersedingGeneration(generation: number): boolean {
     return this.generation > generation + 1;
@@ -73,7 +78,8 @@ export class CodexUpdatePromptTracker {
       this.pendingClearance = true;
     }
     this.active = false;
-    if (!this.deferClearance) this.observeClearance(this.clearance(frameText));
+    if (!this.deferClearance && this.needsClearance)
+      this.observeClearance(this.clearance(frameText));
   }
 
   /** Called after the current frame's live clearance and retained input hold are known. */

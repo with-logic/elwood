@@ -576,9 +576,11 @@ preflight; the in-TUI prompt is a nuisance to dismiss.
 "accepts" (or that Elwood used to leave latched) restarts Codex, the update does
 **not** take (a partial download, a managed install, contention), and the SAME
 update screen returns — an infinite loop stuck on the update screen. The fix is an
-**edge-triggered** skip: skip once per appearance, and RE-ARM the moment the update
-screen leaves the frame, so a reappearance after the restart is skipped again
-rather than sitting latched forever. Edge-detection mirrors the login watcher.
+**edge-triggered** skip: skip once per appearance. Unknown or blank replacements
+keep automation revoked until authoritative native composer clearance or fresh
+first-party banner evidence permits a new appearance. A verified clear can re-arm
+a bannerless reappearance after the restart; retained composer text beneath a
+replacement cannot. The old attempt stays revoked even when a new one is authorized.
 
 Version-coupled behavior learned here:
 

@@ -14,8 +14,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Recognize narrow native Codex update dialogs and withhold choices when numbered
   scrollback or replacement text makes the current option block ambiguous. Revoked
-  attempts stay cancelled; fresh banner evidence is required before answering again.
-- Keep Codex update retries revoked after unknown or blank replacement frames until fresh banner evidence appears; late writes cannot report an answer for a superseded dialog.
+  attempts stay cancelled; authoritative native clearance or fresh banner evidence is required before answering again.
+- Keep Codex update retries revoked after unknown or blank replacement frames until authoritative native composer clearance or fresh banner evidence appears; late writes cannot report an answer for a superseded dialog.
 - Hold scheduled loop delivery through ergonomic caller turns, preventing a due
   loop from accepting or completing a caller prompt that needs recovery.
 

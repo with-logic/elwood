@@ -54,7 +54,9 @@ export class CodexStartupPromptResponder {
   }
 
   observeClearance(frame: string): void {
-    this.updatePrompt.observeClearance(!this.sessionInputHeld() && this.clearance(frame));
+    if (this.updatePrompt.needsClearance) {
+      this.updatePrompt.observeClearance(!this.sessionInputHeld() && this.clearance(frame));
+    }
     this.updateAttempt?.observeClearance(frame);
   }
 
