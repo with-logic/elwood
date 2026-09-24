@@ -12,6 +12,8 @@ import {
 } from "./traits.ts";
 import type {
   AbortableQueueTask,
+  AdmissionWrapper,
+  AdmitOperation,
   Cancel,
   ControlSendOptions,
   ControlSubmissionOrigin,
@@ -35,12 +37,6 @@ export type {
   ControlSubmitter,
 } from "./types.ts";
 
-/**
- * Await preparation before invoking work once. Its signal cannot revoke work already
- * started: exclusive work owns its dialog until the separate closing lifetime ends.
- */
-type AroundOperation = (work: () => Promise<void>, preparationSignal: AbortSignal) => Promise<void>;
-
 const callerOrigin: ControlSubmissionOrigin = { kind: "caller" };
 
 export class ControlQueue extends ControlQueueState {
@@ -48,8 +44,7 @@ export class ControlQueue extends ControlQueueState {
   private readonly onTurnStarted: (origin: ControlSubmissionOrigin) => void;
   private readonly guidanceMayBypass: () => boolean;
   private readonly onCallerInputSubmitted: (() => void) | undefined;
-
-  private readonly aroundOperation: AroundOperation | undefined;
+  private readonly aroundOperation: AdmissionWrapper | undefined;
 
   constructor(
     submit: ControlSubmitter,
@@ -57,9 +52,10 @@ export class ControlQueue extends ControlQueueState {
     onTurnStarted: (origin: ControlSubmissionOrigin) => void,
     guidanceMayBypass: () => boolean = () => false,
     onCallerInputSubmitted?: () => void,
-    aroundOperation?: AroundOperation,
+    aroundOperation?: AdmissionWrapper,
+    admit?: AdmitOperation,
   ) {
-    super(stoppedError);
+    super(stoppedError, admit);
     this.submit = submit;
     this.aroundOperation = aroundOperation;
     this.onTurnStarted = onTurnStarted;
@@ -112,7 +108,14 @@ export class ControlQueue extends ControlQueueState {
     if (this.inFlight || this.queue.length === 0) return;
     const index = this.nextDispatchIndex();
     if (index < 0) return;
-    const operation = this.takeQueued(index);
+    const operation = this.queue[index] as QueuedOperation;
+    const state = this.admissions.prepare(operation);
+    if (state !== "ready") {
+      if (state === "waiting") queueMicrotask(() => this.drain());
+      return;
+    }
+    this.takeQueued(index);
+    const around = this.admissions.takeWrapper(operation, this.aroundOperation);
     if (overtakesReadiness(operation)) this.bypassable -= 1;
     this.inFlight = operation;
     const traits = controlOperationTraits[operation.kind];
@@ -127,9 +130,7 @@ export class ControlQueue extends ControlQueueState {
           ? operation.run(workSignal)
           : this.submitWithAttach(operation, traits, workSignal);
       };
-      dispatched = this.aroundOperation
-        ? this.aroundOperation(work, this.prepareSignal(workSignal))
-        : work();
+      dispatched = around ? around(work, this.prepareSignal(workSignal), operation.origin) : work();
     } catch (error) {
       this.rollback(operation, priorReady, epoch, toError(error));
       return;
