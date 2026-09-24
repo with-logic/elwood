@@ -5,7 +5,10 @@
 
 import { HookBridgeServer } from "../../bridge/server.ts";
 import { isClaudeHookInput } from "../validate/input.ts";
-import type { HookBridge } from "./instance.ts";
+export type HookBridge = {
+  readonly start: () => Promise<void>;
+  readonly stop: () => Promise<void>;
+};
 
 export type ClaudeHookBridgeFactory = (
   socketPath: string,

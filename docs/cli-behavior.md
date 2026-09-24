@@ -947,6 +947,29 @@ The captured nonempty rows are retained in
 at their original viewport size, with temporary paths replaced by a stable `CAPTURE`
 placeholder. C-API-56, C-TRUST-01, PRD §5.4.
 
+### Image-only recovery chips (2026-09-23)
+
+Claude Code 2.1.281 and Codex 0.156.1 both kept a single `[Image #1]` on the
+last composer prompt row while a staged image/text draft awaited submission.
+The serial native composer cleanup proof passed both adapters (two passes, no
+skips) with an assertion that the recovery chip recognizer saw that exact image.
+Both submitting Enter paths were intercepted; cancellation cleared the drafts
+without a model turn. The regression suite separately verifies recovery for
+image-only and whitespace messages and excludes image chips above a newer empty
+composer. This native run confirms chip placement, not model acceptance.
+
+The follow-up live-guard proof on the same versions also passed both adapters
+(two passes, zero skips): the rendered cursor was visible on the staged chip row,
+and the surrounding native chrome satisfied the adapter's idle-composer grammar.
+The guard now requires that completed live frame and rejects working evidence;
+a retained submitted chip by itself cannot trigger recovery. Constructed session
+regressions cover a working frame with chip history and no newer empty composer.
+The native proof still intercepts submission and cancels the draft without a turn.
+The final guard shares the cursor-local empty-input geometry used by acceptance,
+so an earlier submitted prompt does not hide a new staged image. It applies its
+own working and blocking veto before testing that geometry. The history-prefix
+and unknown-overlay checks are constructed regressions, not extra native turns.
+
 ### Empty input while a turn is active (2026-09-23)
 
 Native captures show that empty input and idle-turn clearance are different facts.
@@ -972,3 +995,11 @@ submission; an old empty frame does not prove acceptance.
 The Claude observer also preserves the existing version-banner/fenced-input
 alternative and the documented 2.1.268 non-Vim bypass-permissions footer.
 Those compatibility cases are constructed regressions, not new working captures.
+
+A fresh 2.1.281 staged-image capture also placed a separate right-aligned
+`◐ medium · /effort` row below the mode/tokens footer. The cursor remained on
+the image/text input and the title was idle (`✳ Claude Code`). The image guard
+shares recognition of this exact footer with the empty-input observer; unknown
+footer text and working/dialog evidence still reject recovery.
+`staged-image-effort.txt` retains the native viewport with workspace paths
+sanitized. The capture submitted no model turn.

@@ -5,8 +5,10 @@ import { copyFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { attachClaudeImages } from "../../src/claude/attach-images.ts";
+import { claudeImageStaged } from "../../src/claude/composer/image-staged.ts";
 import { liveClaudeClearance } from "../../src/claude/screen-table.ts";
 import { attachCodexImages } from "../../src/codex/images/attach.ts";
+import { codexImageStaged } from "../../src/codex/screen/image-staged.ts";
 import { liveCodexClearance } from "../../src/codex/screen/live-clearance.ts";
 import { ControlQueue } from "../../src/core/control-queue/index.ts";
 import { ComposerCleanup } from "../../src/core/input/composer-cleanup.ts";
@@ -94,6 +96,10 @@ for (const agent of ["claude", "codex"] as const) {
               },
               `${agent} rendered image and text draft`,
               10_000,
+            );
+            assert.equal(
+              (agent === "claude" ? claudeImageStaged : codexImageStaged)(session.terminal),
+              true,
             );
             abort.abort(cancelled);
           }
