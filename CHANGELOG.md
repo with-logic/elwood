@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Discard expired automatic landing-page actions before readiness checks, preventing late assets from triggering an obsolete gesture or facing change.
+
 - Prepare and retain the complete initial idle animation before replacing the landing-page fallback.
 
 - Prepare complete landing-page gesture and facing animations before delivery, cancel obsolete requests, and avoid loading input that cannot play in the current state.

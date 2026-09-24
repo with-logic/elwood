@@ -1,3 +1,4 @@
+/** Automatic movement and action delivery deadlines (PRD §13). */
 const MOMENTS = [
   "thinking",
   "shrug",
@@ -176,13 +177,16 @@ export class Autonomy {
         jumpPressed: jump,
       };
     }
+    if (!task.sent && task.elapsed > 8) {
+      this.rest();
+      return NO_INPUT;
+    }
     if (task.kind === "face") {
       if (!task.sent && this.ready(`idle-${task.direction}`)) {
         task.sent = true;
         return { face: task.direction };
       }
       if (task.sent && !p.turn && task.elapsed > 1.4) this.rest();
-      if (!task.sent && task.elapsed > 8) this.rest();
       return NO_INPUT;
     }
     if (!task.sent) {
@@ -199,7 +203,6 @@ export class Autonomy {
           return { gesture: task.name };
         }
       }
-      if (task.elapsed > 8) this.rest();
       return NO_INPUT;
     }
     if (p.gesture === task.name) {

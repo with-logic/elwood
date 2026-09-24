@@ -30,6 +30,12 @@ request does not release that physical slot until the worker replies. In-flight
 browser bitmap decoding cannot be interrupted; its eventual image is released,
 without terminating the worker or cancelling other requests. Settled requests remove their abort listeners.
 
+Automatic gesture and facing tasks may wait at most eight seconds before delivery.
+Once elapsed time exceeds eight seconds, the next simulation update cancels the
+task before checking asset readiness or silhouette fit. Assets becoming ready
+between updates cannot revive that expired task; delivery at exactly eight seconds
+remains eligible. This limit does not shorten an action already delivered.
+
 ### 13.1 Landing-page explicit animation controls
 
 Landing gesture and front/back requests wait for every page of the requested clip,
