@@ -79,7 +79,7 @@ for (const cause of [new Error(""), ""]) {
     await new Promise((resolve) => setImmediate(resolve));
     setup.worker.emit("message", { id: 1, error: "" });
     await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(messages, ["Sprite sheet decoding failed. Try again."]);
+    assert.deepEqual(messages, ["Couldn’t load wave/0.webp. Sprite sheet decoding failed. Try again."]);
   });
 
 }
