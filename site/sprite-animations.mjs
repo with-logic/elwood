@@ -55,10 +55,13 @@ export class SpriteAnimations {
     this.trim(owner, currentName, nextName);
   }
 
-  /** Called after current/outgoing pose retention, never for a future turn target. */
-  retainPose(pose) {
+  /** Release dependency leases only after the actual current/outgoing poses are retained.
+   * The current clip must be the prepared static clip, never an opening turn target.
+   */
+  releaseStaticDependencies(pose) {
     const owner = this.activeOwner;
-    if (owner && pose?.clip?.name === owner.name && pose.clip.frames.length === 1)
+    const clip = owner?.clips.get(owner.name);
+    if (clip?.frames.length === 1 && pose?.clip === clip)
       this.trim(owner, owner.name, owner.name);
   }
 
@@ -79,14 +82,14 @@ export class SpriteAnimations {
 
   async prepare(name) {
     this.cancel();
-    if (this.activeOwner?.name === name && this.activeOwner.clips.has(name))
+    const names = [...new Set(["idle", "rotation", name])];
+    if (this.activeOwner?.name === name && names.every((clipName) => this.activeOwner.clips.has(clipName)))
       return this.activeOwner.clips.get(name);
     const owner = {
       name, controller: new AbortController(),
       pages: new Map(), clips: new Map(), leases: new Map(), ready: false,
     };
     this.candidateOwner = owner;
-    const names = [...new Set(["idle", "rotation", name])];
     for (const clipName of names) {
       this.bank.loads.retry(clipName);
       owner.leases.set(clipName, new AbortController());
