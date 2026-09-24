@@ -40,7 +40,7 @@ test("C-SITE-03 ending queued delivery clears only its matching World action", a
   assert.deepEqual(scene.world.player.queuedAction, { jumpPressed: true });
 });
 
-test("C-SITE-03 a ready automatic owner cannot publish over a newer manual candidate", async (t) => {
+test("C-SITE-03 a ready automatic owner cannot publish a newer same-name manual candidate", async (t) => {
   const { scene, bank, tick } = await automaticScene(t);
   scene.director.task = moment();
   const task = scene.director.task;
@@ -48,14 +48,18 @@ test("C-SITE-03 a ready automatic owner cannot publish over a newer manual candi
   scene.step(1 / 120);
   for (let i = 0; i < 100 && !scene.automaticPreparation.preparationOwner?.ready; i++) await turn();
   assert.equal(scene.automaticPreparation.preparationOwner.ready, true);
-  const manual = bank.prepareAnimation("bow");
+  const oldOwner = scene.automaticPreparation.preparationOwner.animationOwner;
+  const manual = bank.prepareAnimation("wave");
   const replacement = bank.animations.candidateOwner;
+  assert.ok(await manual);
+  assert.notEqual(replacement, oldOwner);
+  assert.equal(replacement.ready, true);
   scene.step(1 / 120);
   assert.equal(task.sent, false);
   assert.equal(scene.world.player.gesture, null);
   assert.equal(replacement.controller.signal.aborted, false);
-  assert.ok(await manual);
   assert.equal(bank.animations.candidateOwner, replacement);
+  assert.equal(bank.animations.deliveredOwner, null);
 });
 
 test("C-SITE-03 an unchanged complete active owner can serve the same automatic action", async (t) => {

@@ -29,11 +29,12 @@ for (const path of ["idle/1.webp", "rotation/1.webp", "rotation/clip.json"]) {
     await scene.request({ gesture: "bow" });
     await tick();
     assert.equal(bank.loads.failed.has(failureKey), false);
+    assert.equal(bank.loads.failed.has("wave"), false, "Recovered dependencies must not poison wave");
     assert.equal(scene.world.player.gesture, "bow");
     scene.director.mode = "auto";
-    scene.director.task = moment("bow");
+    scene.director.task = moment("wave");
     const retry = scene.director.task;
-    await tick(3);
+    for (let i = 0; i < 30 && !retry.sent; i++) await tick();
     assert.equal(retry.sent, true);
     assert.equal(errors.length, 1);
   });

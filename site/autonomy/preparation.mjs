@@ -13,11 +13,7 @@ export class AutomaticPreparation {
   }
   ensureOwner(task, name) {
     if (task !== this.scene.director.task || this.scene.bank.disposed) return null;
-    const dependencies = ["idle", "rotation", name];
-    const failed = [...this.scene.bank.loads.failed].some((key) =>
-      dependencies.some((dependency) => key === dependency || key.startsWith(`${dependency}/`)),
-    );
-    if (failed) {
+    if (this.scene.bank.hasAnimationFailure(name)) {
       this.scene.director.rest();
       return null;
     }
@@ -46,7 +42,6 @@ export class AutomaticPreparation {
   }
   fail(preparationOwner, error) {
     if (!this.current(preparationOwner)) return;
-    this.scene.bank.loads.failed.add(preparationOwner.name);
     this.scene.director.rest();
     this.scene.onError?.(error);
   }

@@ -15,7 +15,7 @@ for (const [path, task, name] of [
     scene.director.task = { ...task };
     const current = scene.director.task;
     await tick(40, 0.05);
-    assert.equal(current.sent, false, "Entry-page readiness must not deliver the task");
+    assert.equal(current.sent, false, "Partial preparation must not deliver the task");
     assert.ok(requested.includes(path));
     assert.equal(scene.world.player.gesture, null);
     gate.resolve();

@@ -205,7 +205,7 @@ export class Autonomy {
     if (!task.sent) {
       if (p.mode === "ground") {
         // null means the geometry metadata is still loading. Reject a trick
-        // before requesting its much larger image page when it will not fit.
+        // before preparing its complete image pages when it will not fit.
         task.fits ??= this.fits(task.name, world, task);
         if (task.fits === false) {
           this.rest();
