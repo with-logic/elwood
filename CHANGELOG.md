@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Preserve Codex hook decisions and turn bookkeeping when observational listeners
+  throw or reject, reporting one bounded `hook_observer_failed` warning per hook.
+
 - Prepare complete automatic landing-page gestures and facing actions before playback, releasing obsolete task loads without interrupting manual input.
 - Discard expired automatic landing-page actions before readiness checks, preventing late assets from triggering an obsolete gesture or facing change.
 - Reuse decoded idle sheets across landing-page actions instead of repeatedly fetching and decoding them after playback changes.
