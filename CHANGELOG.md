@@ -18,6 +18,9 @@ back each entry are listed in `prd/14-conformance.md`.
 - Hold scheduled loop delivery through ergonomic caller turns, preventing a due
   loop from accepting or completing a caller prompt that needs recovery.
 
+- Recognize Claude 2.1.281's half-circle working title, keeping active turns and
+  trust holds from appearing idle while the input composer remains visible.
+
 - Keep startup persona responses out of ergonomic caller turns, including when
   the persona and caller submit identical text or its transcript arrives after
   readiness. Closing cancels waiting callers even if process shutdown fails.
