@@ -1,15 +1,14 @@
 /** Tracks native update generations for bounded automation (PRD §5.5, C-CODEX-12). */
 import type { TrustClearance } from "../../core/trust/clearance.ts";
 import { codexComposerClearance } from "../screen/clearance.ts";
+import { type CodexUpdateFrame, CodexUpdateFrameClassifier } from "./classification.ts";
 import { bannerContradictsAppearance } from "./evidence.ts";
-import {
-  codexUpdatePromptVisible,
-  isSafeUpdateContinuation,
-  updateScreenBanner,
-} from "./recognition.ts";
+import { updateScreenBanner } from "./layout.ts";
+import { safeUpdateOption } from "./selection.ts";
 
 /** Tracks update eligibility separately from the session’s retained input hold. */
 export class CodexUpdatePromptTracker {
+  private readonly frames = new CodexUpdateFrameClassifier();
   private banner = { observedBanner: "" };
   private active = false;
   private generation = 0;
@@ -49,6 +48,21 @@ export class CodexUpdatePromptTracker {
     );
   }
 
+  /** Fresh unambiguous evidence gives a revoked generation its own bounded grace. */
+  renewsAttention(frameText: string): boolean {
+    const frame = this.classify(frameText);
+    return (
+      frame.options !== undefined &&
+      (!this.requiresBanner || safeUpdateOption(frameText, frame.options) !== undefined) &&
+      (this.bannerChanged(frameText) || (this.requiresBanner && frame.hasBanner))
+    );
+  }
+
+  /** Cache only this instance’s most recent exact viewport classification. */
+  classify(frameText: string): CodexUpdateFrame {
+    return this.frames.read(frameText);
+  }
+
   observe(frameText: string): boolean {
     // Missing classification cannot lend a provisional clear to another frame.
     if (this.pendingClearance) this.observeClearance(false);
@@ -57,15 +71,28 @@ export class CodexUpdatePromptTracker {
       this.active = false;
       this.banner = { observedBanner: "" };
     }
-    if (codexUpdatePromptVisible(frameText)) {
+    const frame = this.classify(frameText);
+    const validLayout = frame.options !== undefined;
+    if (frame.visible && this.active && !this.requiresBanner && !validLayout) {
+      // Retire the attempt and its positive-clear edge; ambiguity is not success.
+      this.generation += 2;
+      this.requiresBanner = true;
+    }
+    if (frame.visible) {
       if (!this.active) this.generation += 1;
       this.banner.observedBanner ||= updateScreenBanner.exec(frameText)?.[0]?.trim() ?? "";
-      if (this.requiresBanner && updateScreenBanner.test(frameText)) {
+      if (
+        validLayout &&
+        this.requiresBanner &&
+        frame.hasBanner &&
+        safeUpdateOption(frameText, frame.options)
+      ) {
         this.generation += 1;
         this.requiresBanner = false;
       }
       this.active = true;
-    } else if (!(this.active && !this.requiresBanner && isSafeUpdateContinuation(frameText))) {
+      if (!validLayout) this.requiresBanner = true;
+    } else if (!(this.active && !this.requiresBanner && frame.continuation)) {
       if (this.active) {
         this.generation += 1;
         this.requiresBanner = true;
@@ -91,11 +118,11 @@ export class CodexUpdatePromptTracker {
   /** Captures the current prompt generation so an async retry cannot enter a later dialog. */
   currentFramePredicate(): (frameText: string) => boolean {
     const generation = this.generation;
-    return (frameText) =>
-      this.active &&
-      !this.requiresBanner &&
-      this.generation === generation &&
-      !bannerContradictsAppearance(this.banner, frameText) &&
-      (codexUpdatePromptVisible(frameText) || isSafeUpdateContinuation(frameText));
+    return (frameText) => {
+      if (!(this.active && !this.requiresBanner && this.generation === generation)) return false;
+      if (bannerContradictsAppearance(this.banner, frameText)) return false;
+      const frame = this.classify(frameText);
+      return frame.options !== undefined && (frame.visible || frame.continuation);
+    };
   }
 }
