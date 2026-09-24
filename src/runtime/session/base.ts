@@ -13,6 +13,7 @@ import type { ElwoodLoopRequest, ElwoodLoopSnapshot } from "../../core/loops/typ
 import { isPickerIntervention } from "../../core/models/intervention.ts";
 import type { ModelPickerSpec } from "../../core/models/picker.ts";
 import type { AgentModelOption } from "../../core/models/rows.ts";
+import { admitHookInput } from "../../core/stop-input.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { TerminalSize } from "../../core/types.ts";
 import type { PtyProcess } from "../../pty/types.ts";
@@ -174,6 +175,10 @@ export abstract class AgentSessionBase extends SessionLifecycle {
     const send = (attach?: AttachTask) => this.controlQueue.send(input, kind, attach);
     // Looked up per call: a facade that launched this session shares ITS budget (C-API-44).
     const budget = sessionImageBudget(this);
-    return this.inSession(() => enqueueSubmission(options?.images, driver, send, budget));
+    return this.inSession(() =>
+      admitHookInput(this.elwoodSessionId, () =>
+        enqueueSubmission(options?.images, driver, send, budget),
+      ),
+    );
   }
 }
