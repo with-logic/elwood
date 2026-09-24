@@ -23,3 +23,15 @@ explicit preparation. Cancelled subscribers release their claim immediately;
 remaining consumers keep the task and its error reporting. A signal-owned decoded
 page is retained before delivery and remains alive through cache eviction until
 that signal is cancelled. Releasing it preserves cached and pose-owned images.
+
+The internal complete-animation preparation API loads the requested clip plus
+idle and rotation. It starts at most three metadata requests, then at most four
+page fetch/decode operations concurrently; worker decoding remains serial.
+Preparation owns per-clip leases through candidate, delivered and active phases.
+Only a ready matching candidate can publish. Activation supplies the actual clip
+and an opening-turn target, so cancellation cannot drop a consumed request before
+its first pose. Once playback leaves the request, only current/next dependency
+clips remain leased; cache and current/outgoing pose ownership remain independent.
+Cancellation releases candidate and delivered owners, preserving active playback.
+These APIs are internal preparation infrastructure; landing controls adopt them
+separately.
