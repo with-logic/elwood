@@ -1,26 +1,52 @@
 /** Real facade and loop scheduling share one caller boundary (PRD §5.8/§5.9, C-API-48). */
 import { afterEach, expect, test, vi } from "vitest";
-import { CodexSession } from "../../src/index.ts";
-import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
+import { ClaudeSession, CodexSession } from "../../src/index.ts";
+import * as claude from "../claude/helpers.ts";
+import * as codex from "../codex/helpers.ts";
 
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
-  resetFakes();
+  claude.resetFakes();
+  codex.resetFakes();
 });
 
 test.each([
-  false,
-  true,
-])("C-API-48 due loops wait through caller recovery and queued successor=%s", async (queued) => {
-  installFakes();
-  const cwd = tempDir();
-  const facade = new CodexSession({ cwd });
+  { agent: "codex", queued: false },
+  { agent: "codex", queued: true },
+  { agent: "claude", queued: false },
+  { agent: "claude", queued: true },
+] as const)("C-API-48 $agent loops wait through caller recovery and queued successor=$queued", async ({
+  agent,
+  queued,
+}) => {
+  const harness = agent === "claude" ? claude : codex;
+  harness.installFakes();
+  const cwd = harness.tempDir();
+  const { ptys } = harness;
+  const facade = agent === "claude" ? new ClaudeSession({ cwd }) : new CodexSession({ cwd });
   let pending: Promise<unknown> | undefined;
   let successor: Promise<unknown> | undefined;
   try {
-    const live = await facade.start();
-    await becomeReady(live.elwoodSessionId, cwd);
+    const live: ElwoodAgentSession = await facade.start();
+    if (agent === "codex") await codex.becomeReady(live.elwoodSessionId, cwd);
+    else {
+      await ptys[0]!.dispatchHook(live.elwoodSessionId, {
+        hook_event_name: "SessionStart",
+        session_id: "claude-1",
+        cwd,
+        source: "startup",
+      });
+      await ptys[0]!.dispatchHook(live.elwoodSessionId, {
+        hook_event_name: "InstructionsLoaded",
+        session_id: "claude-1",
+        cwd,
+        file_path: "/tmp/CLAUDE.md",
+        memory_type: "Project",
+        load_reason: "session_start",
+      });
+    }
     await expect.poll(() => live.status).toBe("ready");
     const send = vi.spyOn(live, "sendMessage");
     vi.useFakeTimers();
@@ -34,7 +60,11 @@ test.each([
     await vi.advanceTimersByTimeAsync(70_000);
     expect(send).toHaveBeenCalledOnce();
     const paint = async (text: string) => {
-      ptys[0]!.emitData(`\u001b[2J\u001b[H${text}\r\n› `);
+      const screen =
+        agent === "codex"
+          ? `${text}\r\n› `
+          : `❯ \r\n  ⏵⏵ bypass permissions · ${text.startsWith("• Working") ? "esc to interrupt · " : ""}← for agents`;
+      ptys[0]!.emitData(`\u001b[2J\u001b[H${screen}`);
       await vi.advanceTimersByTimeAsync(100);
     };
     await paint("• Working (3s • esc to interrupt)");
@@ -48,7 +78,7 @@ test.each([
     await vi.waitFor(() => expect(replaySubmitted).toBe(true));
     await ptys[0]!.dispatchHook(live.elwoodSessionId, {
       hook_event_name: "UserPromptSubmit",
-      session_id: "codex-1",
+      session_id: `${agent}-1`,
       cwd,
       prompt: "check",
       turn_id: "caller-turn",
@@ -68,7 +98,7 @@ test.each([
       await vi.waitFor(() => expect(submitted).toBe(true));
       await ptys[0]!.dispatchHook(live.elwoodSessionId, {
         hook_event_name: "UserPromptSubmit",
-        session_id: "codex-1",
+        session_id: `${agent}-1`,
         cwd,
         prompt: "successor",
         turn_id: "successor-turn",
