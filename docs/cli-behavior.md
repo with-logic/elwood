@@ -1029,3 +1029,18 @@ resume options omit model, the test appended that same invalid native `--model`
 at the PTY launch seam. Native hooks, readiness, and input queues remained real.
 All processes and temporary credential copies were cleaned up. These observations
 do not establish successful model output or correlation of a hook to a prompt.
+
+## Recovery with current native working evidence (2026-09-24)
+
+The same `paste-recovery.e2e.ts` proof, extended with the native-working observer,
+passed 2 tests with 0 failures and 0 skips on Claude Code 2.1.281 and
+codex-cli 0.156.1. All four cold/resumed phases attempted and delivered exactly
+one Enter and emitted one submission hook over six further seconds. Fresh working
+frames after the physical Enter numbered 3/5 for Claude and 59/53 for Codex.
+Codex resume delivered Enter at 151 ms and reported `user_message` at 1365 ms;
+no recovery attempt occurred before that hook or afterward.
+
+The invalid-model, launch-seam, interception, and cleanup conditions above still
+apply. Hook and working signals coexist in this native proof; deterministic
+regressions separately isolate working revocation, startup/resume exclusion, and
+Stop-before-idle successor recovery.
