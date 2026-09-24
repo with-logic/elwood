@@ -99,6 +99,11 @@ export function codexComposerRowsClearance(
   cursorRow?: number,
 ): boolean {
   if (frameRows.some((row) => codexWorkingScreen.test(row))) return false;
+  return codexComposerRowsEmpty(frameRows, cursorRow);
+}
+
+/** Empty input does not imply an idle turn; callers choose the activity contract. */
+export function codexComposerRowsEmpty(frameRows: readonly string[], cursorRow?: number): boolean {
   const rows = frameRows.map((row) => row.trimEnd());
   const at = cursorRow ?? rows.findLastIndex((row) => caretRow.test(row));
   const composer = rows[at];
