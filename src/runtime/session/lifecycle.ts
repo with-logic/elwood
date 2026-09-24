@@ -12,13 +12,10 @@ import { type SessionRecord, writeSessionRecord } from "../../state/store.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { advanceInitialReady } from "../readiness/advance.ts";
 import { CleanupLatch } from "../shutdown/cleanup-latch.ts";
-import type {
-  SessionStatusEngine,
-  StatusDecision,
-  StatusEvidenceKind,
-} from "../status-evidence.ts";
+import type { StatusDecision, StatusEvidenceKind } from "../status-evidence.ts";
 import { SessionLoops } from "./loops.ts";
 import { closingController, notRunningError, runSessionOperation } from "./not-running.ts";
+import { NativePasteRecovery } from "./paste-recovery.ts";
 import type { PickerInputOwnership } from "./picker-input.ts";
 import { SessionReapPolicy } from "./reap.ts";
 import { SessionShutdownBinding } from "./shutdown-binding.ts";
@@ -43,8 +40,10 @@ export abstract class SessionLifecycle {
   private readonly terminalReplay: TerminalReplayBuffer;
   private readonly cleanupLatch = new CleanupLatch(() => this.stopRuntime());
   private readonly shutdown: SessionShutdownBinding;
-  private readonly statusEngine: SessionStatusEngine;
+  private readonly statusEngine: ReturnType<typeof createSessionStatusEngine>;
+  private readonly recovery: NativePasteRecovery;
   protected readonly pasteGuard: PasteGuard = {
+    recovery: () => this.recovery.capture(),
     snapshot: () => this.terminal.snapshot().text,
     staged: (screen, payload) => this.stagedPaste(screen, payload),
     blocked: () => this.queuedInputBlocked(),
@@ -69,6 +68,7 @@ export abstract class SessionLifecycle {
     this.pty = pty;
     this.terminal = ownership.caller;
     this.automatedTerminal = ownership.automated;
+    this.recovery = new NativePasteRecovery(this.terminal, statusEvents, this.closing.signal);
     this.terminalReplay = terminalReplay;
     this.reapPolicy = new SessionReapPolicy(agent, record.elwoodSessionId, pty.pid);
     const readEmpty = () => this.emptyComposerFrame();
@@ -150,6 +150,7 @@ export abstract class SessionLifecycle {
   bindInitialReadinessHold(isHeld: () => boolean): void {
     this.initialReadinessHeld = isHeld;
   }
+  readonly observeInputWorking = (working: boolean): void => this.recovery.observeWorking(working);
   submitEvidence(kind: StatusEvidenceKind, workingVisible = false): StatusDecision {
     const held =
       this.trustInputBlocking ||

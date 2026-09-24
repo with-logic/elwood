@@ -17,6 +17,7 @@ import type { TurnStateWatcher } from "./turn-state.ts";
 import type { ElwoodSessionStatus, ElwoodStatusDecision, ElwoodStatusEvidence } from "./types.ts";
 
 export type RenderedObserverTarget = {
+  observeInputWorking?(working: boolean): void;
   submitEvidence(
     kind: ElwoodStatusEvidence,
     workingVisible?: boolean,
@@ -84,6 +85,7 @@ export function observeRenderedReading(
   reading: ScreenFactReading,
   session: RenderedObserverTarget | undefined,
 ): void {
+  session?.observeInputWorking?.(reading.facts.working_visible);
   const turnEdge = observers.turn.observe(reading.facts, session?.status === "running");
   if (turnEdge === "started") session?.submitEvidence("rendered_turn_started");
   if (turnEdge === "ended") session?.submitEvidence("rendered_turn_ended");

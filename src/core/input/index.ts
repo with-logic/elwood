@@ -5,18 +5,15 @@
 
 import type { ControlSubmitMode } from "../control-queue/index.ts";
 import type { ControlSubmitter } from "../control-queue/types.ts";
-import {
-  holdWhileUnsafe,
-  type InputTerminal,
-  throwIfInputAborted,
-  waitForInput,
-  writeUnsafe,
-} from "./abort.ts";
+import { holdWhileUnsafe, type InputTerminal, throwIfInputAborted, waitForInput } from "./abort.ts";
 import { requestComposerCleanup, stageComposer, submittedComposer } from "./composer-cleanup.ts";
+import { pasteRecovery, type RecoveryObservation } from "./recovery.ts";
 
 /** Adapter view of "the paste is still staged in the composer". */
 export type PasteGuard = {
   readonly snapshot: () => string;
+  /** Capture native acceptance and render evidence before staging this submission. */
+  readonly recovery?: () => RecoveryObservation;
   /** Receives the sanitized payload that was actually pasted. */
   readonly staged: (screen: string, payload: string) => boolean;
   /**
@@ -64,9 +61,8 @@ export function sanitizePasteText(text: string): string {
  * the same PTY write races that ingestion and can be dropped, leaving the prompt
  * staged but never submitted (long personas hit this reliably). The Enter
  * therefore follows as a separate keystroke after a settle delay, and bounded
- * re-Enters fire while the screen still shows staged content — a lone Enter from
- * the staged state submits, and a surplus Enter on an empty composer is a no-op,
- * so the recovery is safe on both adapters.
+ * re-Enters require fresh staged-input evidence. Native acceptance or work
+ * revokes recovery, including while the first Enter is still settling.
  *
  * While a human or automation-owned dialog is on screen, the WHOLE submission is
  * held: neither the paste nor any Enter reaches the terminal until the dialog
@@ -105,33 +101,8 @@ async function writePastedPrompt(
     rawInputSignal && signal
       ? AbortSignal.any([rawInputSignal, signal])
       : (rawInputSignal ?? signal);
+  const recovery = pasteRecovery(terminal, guard, payload, nudgeSignal, nudgeDelayMs);
   await terminal.sendInput(`\u001b[200~${payload}\u001b[201~`);
-  const schedule = (work: () => void, ms: number) => {
-    const timer = setTimeout(work, ms);
-    timer.unref?.();
-  };
-  let nudges = 0;
-  const nudge = async () => {
-    // Decide on the current screen: a dialog may be received but not yet rendered.
-    const unsafe = await writeUnsafe(terminal, guard, nudgeSignal);
-    // Later queued submissions and raw caller input revoke recovery ownership.
-    // Stale nudges must not submit their drafts; staged chips are not prompt-specific.
-    if (nudgeSignal?.aborted || !guard || nudges >= pasteNudgeAttempts) return;
-    // A dialog that appears after the first Enter must not be confirmed by a
-    // recovery Enter either; skip this attempt and re-check on the next tick.
-    if (unsafe) {
-      schedule(nudge, nudgeDelayMs);
-      return;
-    }
-    nudges += 1;
-    if (!guard.staged(guard.snapshot(), payload)) return;
-    try {
-      await terminal.sendInput("\r");
-    } catch {
-      // Recovery nudges are best-effort after the first Enter already landed.
-    }
-    schedule(nudge, nudgeDelayMs);
-  };
   try {
     await waitForInput(settleDelayMs, signal);
     // Hold the submitting Enter while a blocking dialog is on screen: firing it
@@ -140,6 +111,7 @@ async function writePastedPrompt(
     // dialog and submits once it clears.
     await holdWhileUnsafe(terminal, guard, signal);
     throwIfInputAborted(signal);
+    recovery.beforeEnter();
     await terminal.sendInput("\r");
   } catch (error) {
     if (signal?.aborted) await requestComposerCleanup(terminal, guard?.blocked);
@@ -147,7 +119,7 @@ async function writePastedPrompt(
   }
   submittedComposer(terminal);
   onSubmitted?.();
-  schedule(nudge, nudgeDelayMs);
+  recovery.start();
 }
 
 export async function writeQueuedInput(
