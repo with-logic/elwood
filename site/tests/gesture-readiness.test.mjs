@@ -4,7 +4,6 @@ import { resolveObjectURL } from "node:buffer";
 import test from "node:test";
 import { SpriteBank } from "../sprite-bank.mjs";
 import { LandingScene } from "../landing-scene.mjs";
-
 const turn = () => new Promise((resolve) => setImmediate(resolve));
 async function waitFor(requested, path) {
   for (let i = 0; i < 100 && !requested.includes(path); i++) await turn();
@@ -44,7 +43,6 @@ function fixture(t) {
   t.after(() => { bank.dispose(); Object.assign(globalThis, original); });
   return { bank, gates, requested, images, errors, aborted };
 }
-
 test("explicit readiness waits for every sheet and retains them through playback and cache churn", async (t) => {
   const { bank, gates, requested, images } = fixture(t);
   const metadata = Promise.withResolvers();
@@ -80,7 +78,6 @@ test("explicit readiness waits for every sheet and retains them through playback
   await assert.rejects(bank.prepareAnimation("wave"), /disposed/);
   assert.ok(images.every((image) => image.closed === 1));
 });
-
 test("replacement cancels a stalled request without publishing it or closing the current pose", async (t) => {
   const { bank, gates, requested, aborted } = fixture(t);
   await bank.prepareAnimation("wave");
@@ -102,7 +99,6 @@ test("replacement cancels a stalled request without publishing it or closing the
   bank.retainPoses();
   assert.equal(pose.page.closed, 1);
 });
-
 test("failed preparation releases partial sheets and leaves the displayed animation usable", async (t) => {
   const { bank, gates, requested, images } = fixture(t);
   await bank.prepareAnimation("wave");
@@ -193,8 +189,12 @@ test("cancellation between worker delivery and its continuation releases the tra
   for (let i = 0; i < 100 && !deliver; i++) await turn();
   assert.equal(typeof deliver, "function", "worker delivery must become available");
   const image = { closed: 0, close() { this.closed++; } };
+  const pendingPage = bank.pendingPages.values().next().value;
+  assert.ok(pendingPage, "page decode must still have a pending ownership task");
   deliver(image);
   bank.cancelPreparation();
   assert.equal(await pending, null);
+  // Caller cancellation is prompt; late worker resources release when their task settles.
+  await pendingPage;
   assert.equal(image.closed, 1);
 });
