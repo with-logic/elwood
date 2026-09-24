@@ -44,6 +44,12 @@ test.each([
     expect(liveCodexClearance(() => session.terminal)(frame.text)).toBe(true);
     expect(answered).toEqual([]);
     expect(session.status).toBe(replacement ? "blocked" : "ready");
+    if (replacement) {
+      pty.emitData("\u001b[2J\u001b[H1. Update now\r\n2. Skip");
+      await vi.advanceTimersByTimeAsync(300);
+      expect(session.status).toBe("blocked");
+      expect(pty.writes).toEqual(["2"]);
+    }
   } finally {
     vi.useRealTimers();
     await session.stop();
