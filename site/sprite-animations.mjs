@@ -1,4 +1,4 @@
-/** Own complete explicit animations until playback switches (PRD §13; docs/design/landing.md). */
+/** Own complete sprite animations until playback switches (PRD §13; docs/design/landing.md). */
 
 export class SpriteAnimations {
   constructor(bank) {
@@ -82,7 +82,7 @@ export class SpriteAnimations {
 
   async prepare(name) {
     this.cancel();
-    const names = [...new Set(["idle", "rotation", name])];
+    const names = name === "idle" ? [name] : [...new Set(["idle", "rotation", name])];
     if (this.activeOwner?.name === name && names.every((clipName) => this.activeOwner.clips.has(clipName)))
       return this.activeOwner.clips.get(name);
     const owner = {

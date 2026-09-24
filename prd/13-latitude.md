@@ -46,3 +46,14 @@ pending/delivered work while preserving active/outgoing poses; reflow preserves
 held movement. Superseding a gesture/facing request preserves unrelated pending
 input such as a jump press. Workshop controls and automatic/pickup paths retain
 their separate on-demand loading behavior.
+
+### 13.2 Landing-page initial animation readiness
+
+The landing page keeps its static fallback until every initial idle page is decoded
+and retained for playback. Initial preparation fetches idle only; rotation and other
+clips remain on demand. The live readiness callback and first painted handoff occur
+only after complete idle preparation. Input and visibility changes before readiness
+do not cancel initial preparation. Teardown cancels it and prevents a late handoff.
+An asset failure reports the existing contextual error and preserves the fallback;
+a later explicit boot attempt may retry. Idle pages remain available through cache
+eviction until playback leaves idle, with current/outgoing pose ownership preserved.
