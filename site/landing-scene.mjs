@@ -47,6 +47,7 @@ export class LandingScene {
     this.transition = null;
     this.animationName = "";
     this.requestVersion = 0;
+    this.requestController = null;
     this.camera = 0;
     this.tether = new Tether();
     this.ready = false;
@@ -123,7 +124,7 @@ export class LandingScene {
     this.ready = false;
     cancelAnimationFrame(this.raf);
     this.raf = 0;
-    this.requestVersion++;
+    this.cancelRequest();
     this.lastPose = null;
     this.transition = null;
     this.bank.dispose();
@@ -190,6 +191,7 @@ export class LandingScene {
     const homeX = config.robotX / config.scale;
     this.homeSpot = { x: homeX, y: this.standingTop(homeX) };
     if (reset) {
+      this.cancelRequest();
       this.drag = null;
       w.reset();
       w.player.x = homeX;
@@ -208,6 +210,7 @@ export class LandingScene {
       Math.abs(old.scale - config.scale) > 0.01
     ) {
       // A responsive reflow starts from a valid floor, never from a vanished ledge.
+      this.cancelRequest();
       const x = (w.player.x * widthRatio * old.scale) / config.scale;
       this.drag = null;
       w.reset();
@@ -224,7 +227,7 @@ export class LandingScene {
   }
   interact() {
     this.director.interact();
-    this.requestVersion++;
+    this.invalidateRequest();
     this.pauses.delete("reduced");
     this.start();
   }
@@ -233,19 +236,32 @@ export class LandingScene {
     this.interact();
     const version = this.requestVersion;
     const name = input.gesture ?? (input.face ? `idle-${input.face}` : null);
+    const controller = name ? new AbortController() : null;
+    this.requestController = controller;
     try {
-      if (name) await this.bank.prepare(name);
+      if (name) await this.bank.prepare(name, { signal: controller.signal });
       if (version === this.requestVersion) this.pressed = { ...this.pressed, ...input };
     } catch (error) {
-      this.onError?.(error);
+      if (version === this.requestVersion) this.onError?.(error);
+    } finally {
+      if (this.requestController === controller) this.requestController = null;
+      controller?.abort();
     }
+  }
+  invalidateRequest() {
+    this.requestVersion++;
+    this.requestController?.abort();
+    this.requestController = null;
+  }
+  cancelRequest() {
+    this.pressed = NO_INPUT;
+    this.invalidateRequest();
   }
   clearInput() {
     this.axis = 0;
     this.climbHeld = false;
     this.sprint = false;
-    this.pressed = NO_INPUT;
-    this.requestVersion++;
+    this.cancelRequest();
   }
   get dragging() {
     return this.drag !== null;

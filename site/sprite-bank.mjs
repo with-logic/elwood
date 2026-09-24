@@ -114,9 +114,13 @@ export class SpriteBank {
     return this.pages.has(`${name}/${clip.frames[0].page}`);
   }
 
-  /** Replace both pose owners atomically; rendering borrows their pages synchronously. */
+  /** Replace pose owners atomically: current painted pose first, outgoing blend second.
+   * Rendering borrows synchronously; retain both before releasing dependency leases.
+   */
   retainPoses(...poses) {
-    if (!this.disposed) this.resources.retainPoses(...poses);
+    if (this.disposed) return;
+    this.resources.retainPoses(...poses);
+    this.animations.releaseStaticDependencies(poses[0]);
   }
 
   dispose() {

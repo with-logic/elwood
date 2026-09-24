@@ -22,6 +22,7 @@ import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { attachClaudeImages } from "../attach-images.ts";
+import { claudeEmptyInputFrame } from "../composer/empty-input.ts";
 import { runSessionLogin } from "../login/session-login.ts";
 import type { ClaudeLoginOptions } from "../login/types.ts";
 import { LoginExpiredWatcher, loginExpiredWarning } from "../login-expired.ts";
@@ -101,9 +102,8 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   waitForActivity(match: (event: ElwoodActivityEvent) => boolean, timeoutMs?: number) {
     return sessionWaitForActivity(this, match, timeoutMs);
   }
-  // Captured staged chip: "❯ [Pasted text #1 +15 lines]" (claude 2.1.201).
   protected stagedPaste(screen: string): boolean {
-    return /\[Pasted text/.test(screen);
+    return !claudeEmptyInputFrame(this.terminal) && /\[Pasted text/.test(screen);
   }
   // Claude reads a pasted absolute path; the paste is held while a dialog shows (C-API-45/37).
   protected attachImages = (paths: readonly string[], signal: AbortSignal): Promise<void> =>
