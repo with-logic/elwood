@@ -33,16 +33,19 @@ test("C-TRUST-01 live Claude clearance requires the current visible cursor on it
   }
 });
 
-test("C-TRUST-01 a title-only working update vetoes the unchanged visible Claude composer", async () => {
+test.each([
+  "⠋ Working",
+  "◐ Claude Code",
+])("C-TRUST-01 title %s vetoes the unchanged visible Claude composer", async (title) => {
   const terminal = createHeadlessTerminal({ cols: 173, rows: 35 }, () => undefined);
   const clear = liveClaudeClearance(() => terminal);
   try {
     await terminal.writeOutput(`${claudeNativeIdlePaint}\u001b[?25h`);
     const idle = terminal.snapshot();
     expect(clear(idle.text)).toBe(true);
-    await terminal.writeOutput("\u001b]0;⠋ Working\u0007");
+    await terminal.writeOutput(`\u001b]0;${title}\u0007`);
     expect(terminal.snapshot()).toEqual(idle);
-    expect(terminal.title).toBe("⠋ Working");
+    expect(terminal.title).toBe(title);
     expect(clear(idle.text)).toBe(false);
     await terminal.writeOutput("\u001b]0;✳ Ready\u0007");
     expect(terminal.snapshot()).toEqual(idle);

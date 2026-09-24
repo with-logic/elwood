@@ -1,5 +1,5 @@
 /**
- * Real agents emit a braille-spinner OSC window title while a turn runs and a
+ * Real agents emit a working-spinner OSC window title while a turn runs and a
  * non-spinner title when idle; Elwood exposes it on the terminal handle.
  * Implements C-TURN-05, C-E2E-02, and C-E2E-03.
  */
@@ -13,18 +13,19 @@ const brailleSpinner = /^[⠀-⣿]\s/;
 
 async function titleFlow(
   session: ElwoodAgentSession,
+  spinner: RegExp = brailleSpinner,
 ): Promise<{ working: boolean; idle: boolean }> {
   await waitFor(() => (session.status === "ready" ? true : undefined), "initial ready", 60_000);
   await session.sendMessage("Count slowly from 1 to 20, one per line. Do not use tools.");
-  // While the turn runs, the OSC title carries a braille spinner.
+  // Claude 2.1.281 also uses the captured half-circle working prefix.
   const working = await waitFor(
-    () => (brailleSpinner.test(session.terminal.title) ? true : undefined),
+    () => (spinner.test(session.terminal.title) ? true : undefined),
     "spinner title while working",
   );
   await waitFor(() => (session.status === "ready" ? true : undefined), "turn complete");
   // Once idle, the title is no longer a spinner.
   const idle = await waitFor(
-    () => (brailleSpinner.test(session.terminal.title) ? undefined : true),
+    () => (spinner.test(session.terminal.title) ? undefined : true),
     "non-spinner title when idle",
   );
   return { working, idle };
@@ -42,7 +43,7 @@ test("C-TURN-05 real Claude emits a working spinner in the OSC title", {
     autotrust: true,
   });
   try {
-    const outcome = await titleFlow(session);
+    const outcome = await titleFlow(session, /^[⠀-⣿◐]\s/);
     assert.ok(outcome.working, "spinner title observed while working");
     assert.ok(outcome.idle, "non-spinner title observed when idle");
   } finally {

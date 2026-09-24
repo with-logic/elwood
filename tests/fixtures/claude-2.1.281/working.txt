@@ -1,0 +1,19 @@
+ ▐▛███▛█   Claude Code v2.1.281
+▝▜██████▀  Haiku 4.5 · Claude Max
+  ▝▝ ▝▝    /private/tmp/ELWOOD_CAPTURE/project
+
+⚠ Your login expires in 1 day · run /login to renew
+
+▎ ※ Claim a one-time $250 credit for cloud sessions · /claim-credit
+
+⏺ agents-md: no CLAUDE.md found; AGENTS.md loaded: /private/tmp/ELWOOD_CAPTURE/project/AGENTS.md
+
+❯ Reply exactly OK. Do not use tools.
+
+✻ Wandering… (0s)
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  -- INSERT -- ⏸ manual mode on · ← for agents                                                                                                                     0 tokens
+                                                                                                                          Your login expires in 1 day · run /login to renew

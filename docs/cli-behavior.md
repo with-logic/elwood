@@ -115,6 +115,17 @@ misattributed to a CLI regression.)
 
 ## Turn boundaries (rendered TUI)
 
+- **Claude 2.1.281 can use `◐ Claude Code` as its OSC working title.** A native
+  173×35 capture on 2026-09-23 showed `✻ Wandering… (0s)` above a fenced empty
+  composer, with a visible cursor at column 2, row 15 (zero-based), and no
+  `esc to interrupt` footer. The preceding frame showed a running
+  `UserPromptSubmit` hook with the same title. The session later reached a usage
+  limit; this capture proves working-title geometry, not a successful answer.
+  `tests/fixtures/claude-2.1.281/working.txt` retains the nonempty captured rows
+  with the temporary directory normalized. The title matcher accepts the
+  observed `◐ ` prefix alongside the existing braille range; both screen facts
+  and live trust clearance share it. No other new spinner glyph is inferred.
+  C-TURN-05, C-TRUST-01.
 - Both CLIs render the literal `esc to interrupt` only while a turn is running
   (Claude footer, Codex "Working" spinner). Elwood's `TurnStateWatcher` keys off
   this, and **arms only after initial readiness** because the Codex MCP boot
@@ -935,3 +946,29 @@ The captured nonempty rows are retained in
 `tests/fixtures/codex-0.156.1/cleared-composer.txt`; the regression replays them
 at their original viewport size, with temporary paths replaced by a stable `CAPTURE`
 placeholder. C-API-56, C-TRUST-01, PRD §5.4.
+
+### Empty input while a turn is active (2026-09-23)
+
+Native captures show that empty input and idle-turn clearance are different facts.
+Codex 0.156.1 kept its visible cursor at column 2 on `Ask Codex to do anything`
+while its working title and interrupt status were active. The bounded probe used
+an invalid model and reached rejection without model quota. Its model-only status
+line also carried a right-aligned `⚠ 3 warnings · f2 to view` badge.
+
+Claude Code 2.1.281 kept a visible column-2 cursor on its empty fenced input while
+`Wandering… (0s)` and the `◐ Claude Code` title were active. A single synthetic
+`Reply exactly OK. Do not use tools.` request in an isolated workspace supplied
+this capture; the request later reached a usage limit, so it proves active input
+geometry, not a successful answer. The native manual-mode footer included the
+token count and a login-expiry notice. No further valid-model requests were made.
+
+The sanitized `working-empty-input.json` fixtures retain these actual completed
+frames and cursor coordinates. Empty-input observers may use this geometry to
+confirm a consumed draft during work. They do not release trust, model-picker, or
+cleanup holds: those retain their stricter idle contract. Replay callers must
+also retain their existing dialog-blocking check and require a fresh frame after
+submission; an old empty frame does not prove acceptance.
+
+The Claude observer also preserves the existing version-banner/fenced-input
+alternative and the documented 2.1.268 non-Vim bypass-permissions footer.
+Those compatibility cases are constructed regressions, not new working captures.
