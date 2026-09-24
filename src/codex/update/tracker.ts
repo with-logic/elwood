@@ -39,10 +39,20 @@ export class CodexUpdatePromptTracker {
     return this.generation > generation + 1;
   }
 
+  bannerChanged(frameText: string): boolean {
+    const banner = updateScreenBanner.exec(frameText)?.[0].trim();
+    return (
+      this.active &&
+      banner !== undefined &&
+      bannerContradictsAppearance(this.banner, frameText) &&
+      !bannerContradictsAppearance({ observedBanner: banner }, frameText)
+    );
+  }
+
   observe(frameText: string): boolean {
     // Missing classification cannot lend a provisional clear to another frame.
     if (this.pendingClearance) this.observeClearance(false);
-    if (this.active && bannerContradictsAppearance(this.banner, frameText)) {
+    if (this.bannerChanged(frameText)) {
       this.generation += 1;
       this.active = false;
       this.banner = { observedBanner: "" };

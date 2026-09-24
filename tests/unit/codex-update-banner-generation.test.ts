@@ -72,9 +72,13 @@ test.each([
   const pending = Promise.withResolvers<void>();
   let frame = first;
   const responder = new CodexStartupPromptResponder();
+  let oldWrites = 0;
   const old = responder.handle(
     frame,
-    () => pending.promise,
+    () => {
+      oldWrites += 1;
+      return pending.promise;
+    },
     () => frame,
   );
   let oldSettlement: string | undefined;
@@ -96,6 +100,7 @@ test.each([
   if (result === "fulfilled") pending.resolve();
   else pending.reject(new Error("old write failed"));
   await vi.advanceTimersByTimeAsync(250);
+  expect(oldWrites).toBe(1);
   expect(oldSettlement).toBe("cancelled");
   expect(writes.length).toBeGreaterThan(0);
   responder.dispose();

@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Renew the CLI update grace period once for a changed Codex version banner, using generation-tagged attention without reporting a successful skip.
+
 - Treat a changed Codex update version banner as a new appearance, cancelling old retries and allowing a fresh bounded skip attempt.
 
 - Keep Codex update retries revoked after unknown or blank replacement frames until authoritative native composer clearance or fresh banner evidence appears; late writes cannot report an answer for a superseded dialog.

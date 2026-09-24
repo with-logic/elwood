@@ -28,6 +28,7 @@ export class CodexUpdateAttentionGuard {
   private readonly clock: UpdateAttentionClock;
   private timer: unknown;
   private disposed = false;
+  private generation = 0;
 
   constructor(
     session: UpdateAttentionSession,
@@ -39,8 +40,14 @@ export class CodexUpdateAttentionGuard {
     this.clock = clock;
   }
 
-  attention(): void {
-    if (this.disposed || this.timer !== undefined || this.session.status !== "blocked") return;
+  attention(generation?: number): void {
+    if (this.disposed || this.session.status !== "blocked") return;
+    if (generation !== undefined) {
+      if (generation <= this.generation) return;
+      this.generation = generation;
+      this.cancel();
+    }
+    if (this.timer !== undefined) return;
     this.timer = this.clock.setTimer(() => this.expire(), codexUpdateAttentionGraceMs);
   }
 
