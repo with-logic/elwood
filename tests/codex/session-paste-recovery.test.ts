@@ -41,6 +41,8 @@ test.each([
     await sent;
     expect(pty.writes).toEqual([`\u001b[200~${payload}\u001b[201~`, "\r"]);
     expect(session.terminal.snapshot().text).toContain(rendered);
+    // A fresh native repaint, not the cached pre-Enter draft, authorizes recovery.
+    pty.emitData(paint(draft));
     await vi.advanceTimersByTimeAsync(1_000);
     expect(pty.writes).toEqual([`\u001b[200~${payload}\u001b[201~`, "\r", "\r"]);
     pty.emitData(paint(codexSmallComposer));
