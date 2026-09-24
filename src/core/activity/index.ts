@@ -36,6 +36,7 @@ export type ElwoodActivityEvent = {
   readonly kind: ElwoodActivityKind;
   readonly label: string;
   readonly text?: string;
+  readonly promptGeneration?: number;
   readonly hookEventName?: string;
   readonly turnId?: string;
   readonly toolName?: string;

@@ -31,7 +31,7 @@ export function subscribeRunEvents(
     session.on("activity", (event) => {
       if (event.kind === "attention" && event.label === "codex-update-prompt") {
         if (updateAttention === undefined) lifecycle.block(event.label);
-        else updateAttention.attention();
+        else updateAttention.attention(event.promptGeneration);
       } else if (event.kind === "attention" && attentionNeedsHuman(request, event.label)) {
         lifecycle.block(event.label);
       }
