@@ -121,7 +121,7 @@ export class CodexStartupPromptResponder {
     const noTrustGate = (frame: string) => !trustGateVisible(frame, "codex");
     if (onUpdateScreen && this.skipGeneration !== generation && noTrustGate(screenText)) {
       const option = safeUpdateOption(screenText)?.number ?? null;
-      if (option) {
+      if (option && this.updatePrompt.currentFramePredicate()(screenText)) {
         // Latch this appearance before writing; rejection can release the latch
         // for a later frame, while success requires observed clearance (C-CODEX-17).
         this.skipGeneration = generation;

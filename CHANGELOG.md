@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Keep Codex update retries revoked after unknown or blank replacement frames until fresh banner evidence appears; late writes cannot report an answer for a superseded dialog.
+
 - Recognize Claude 2.1.281's half-circle working title, keeping active turns and
   trust holds from appearing idle while the input composer remains visible.
 
