@@ -13,15 +13,19 @@ function sceneFixture(t) {
   globalThis.devicePixelRatio = 1;
   t.after(() => { globalThis.devicePixelRatio = deviceRatio; });
   const gates = [], errors = [], signals = [];
+  let preparation;
   const scene = Object.create(LandingScene.prototype);
   Object.assign(scene, {
     bank: {
-      prepare(_name, { signal } = {}) {
+      prepareAnimation() {
+        preparation = new AbortController();
         const gate = Promise.withResolvers();
         gates.push(gate);
-        signals.push(signal);
+        signals.push(preparation.signal);
         return gate.promise;
       },
+      cancelPreparation() { preparation?.abort(); },
+      publishAnimation() {},
       retainPoses() {},
     },
     world: new World(), ready: true, requestVersion: 0, pressed: NO_INPUT,
@@ -73,7 +77,10 @@ test("superseding a shared explicit load restores the automatic failure reporter
   const originalFetch = globalThis.fetch;
   const gate = Promise.withResolvers();
   let calls = 0;
-  globalThis.fetch = () => { calls++; return gate.promise; };
+  globalThis.fetch = (url) => {
+    if (new URL(url).pathname.endsWith("/wave/clip.json")) calls++;
+    return gate.promise;
+  };
   const bank = new SpriteBank((error) => errors.push(error.message));
   t.after(() => { bank.dispose(); globalThis.fetch = originalFetch; });
   scene.bank = bank;
@@ -85,7 +92,7 @@ test("superseding a shared explicit load restores the automatic failure reporter
   gate.reject(new Error("automatic asset failed"));
   await pending;
   await turn();
-  assert.equal(calls, 1, "both consumers joined one sprite task");
+  assert.equal(calls, 1, "both wave consumers joined one metadata task");
   assert.equal(errors.length, 1);
   assert.match(errors[0], /wave\/clip.json/);
   bank.frame("wave", 0);

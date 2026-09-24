@@ -87,6 +87,8 @@ export class SpriteBank {
   activateAnimation(currentName, nextName = currentName) {
     this.animations.activate(currentName, nextName);
   }
+  /** Requested input still waiting for World to consume it. */
+  get deliveredAnimation() { return this.animations.deliveredOwner?.name; }
   /** Cancel pending/delivered preparation while active playback keeps its owner. */
   cancelPreparation() { this.animations.cancel(); }
 

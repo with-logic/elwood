@@ -1,4 +1,4 @@
-/** Renders the interactive robot and tether described in docs/design/landing.md. */
+/** Renders the interactive robot and tether (PRD §13; docs/design/landing.md). */
 import { Autonomy, NO_INPUT } from "./autonomy.mjs";
 import { gameAssetUrl } from "./game-assets.mjs";
 import { mirroredPose } from "./rotation.mjs";
@@ -47,7 +47,7 @@ export class LandingScene {
     this.transition = null;
     this.animationName = "";
     this.requestVersion = 0;
-    this.requestController = null;
+    this.preparingRequestVersion = null;
     this.camera = 0;
     this.tether = new Tether();
     this.ready = false;
@@ -236,22 +236,35 @@ export class LandingScene {
     this.interact();
     const version = this.requestVersion;
     const name = input.gesture ?? (input.face ? `idle-${input.face}` : null);
-    const controller = name ? new AbortController() : null;
-    this.requestController = controller;
+    if (name && !this.acceptsAnimationInput()) return;
+    this.preparingRequestVersion = version;
     try {
-      if (name) await this.bank.prepare(name, { signal: controller.signal });
-      if (version === this.requestVersion) this.pressed = { ...this.pressed, ...input };
+      if (name && !await this.bank.prepareAnimation(name)) return;
+      if (version !== this.requestVersion) return;
+      if (name && !this.acceptsAnimationInput()) { this.bank.cancelPreparation(); return; }
+      if (name) this.bank.publishAnimation(name);
+      this.pressed = { ...this.pressed, ...input };
     } catch (error) {
       if (version === this.requestVersion) this.onError?.(error);
     } finally {
-      if (this.requestController === controller) this.requestController = null;
-      controller?.abort();
+      if (this.preparingRequestVersion === version) this.preparingRequestVersion = null;
     }
+  }
+  acceptsAnimationInput() {
+    const p = this.world.player;
+    return !this.drag && !this.axis && p.mode === "ground" && !p.landing && !p.settle;
   }
   invalidateRequest() {
     this.requestVersion++;
-    this.requestController?.abort();
-    this.requestController = null;
+    if (this.pressed.gesture || this.pressed.face) {
+      this.pressed = { ...this.pressed };
+      delete this.pressed.gesture;
+      delete this.pressed.face;
+      if (!Object.keys(this.pressed).length) this.pressed = NO_INPUT;
+    }
+    const queued = this.world.player.queuedAction;
+    if (queued?.gesture || queued?.face) this.world.player.queuedAction = null;
+    this.bank.cancelPreparation();
   }
   cancelRequest() {
     this.pressed = NO_INPUT;
@@ -441,7 +454,8 @@ export class LandingScene {
       this.world.player.animationTime += dt;
       return;
     }
-    const active = this.axis !== 0 || this.climbHeld || this.pressed !== NO_INPUT;
+    const active = this.axis !== 0 || this.climbHeld || this.pressed !== NO_INPUT
+      || this.preparingRequestVersion === this.requestVersion;
     const automatic = this.director.update(dt, this.world, this.visibleBounds, active);
     const wasAirborne = this.world.player.mode !== "ground";
     this.world.update(
@@ -452,6 +466,12 @@ export class LandingScene {
     );
     this.pressed = NO_INPUT;
     const p = this.world.player;
+    const nextName = p.turn?.target ?? p.animation;
+    this.bank.activateAnimation(p.animation, nextName);
+    const queuedName = p.queuedAction?.gesture ?? (p.queuedAction?.face ? `idle-${p.queuedAction.face}` : null);
+    // Reconcile every tick: held movement can drop a queued request after its one-shot input.
+    if (this.bank.deliveredAnimation && this.bank.deliveredAnimation !== queuedName)
+      this.bank.cancelPreparation();
     if (wasAirborne && p.mode === "ground") this.markGround();
     if (this.lastMode !== this.director.mode) {
       this.lastMode = this.director.mode;
@@ -514,6 +534,7 @@ export class LandingScene {
           : null,
       );
     }
+    this.bank.activateAnimation(p.animation, p.turn?.target ?? p.animation);
     const positioned = this.alignDrag(positionPose(pose, p));
     const seam =
       p.animation === "rotation" &&
