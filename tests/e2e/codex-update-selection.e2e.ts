@@ -33,7 +33,7 @@ for (const scenario of [
     rows: "1. Update now\n2. Skip\n3. Skip until next version",
     key: "2",
   },
-  { name: "adversarial pre-action skip", rows: "1. Skip backup\n2. Update now\n3. Skip", key: "3" },
+  { name: "adversarial pre-action skip", rows: "1. Skip\n2. Update now\n3. Skip", key: "3" },
 ]) {
   test(`C-CODEX-12 ${scenario.name} sends the safe digit across the PTY`, {
     timeout: 15_000,

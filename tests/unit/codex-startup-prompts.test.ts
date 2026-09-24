@@ -125,9 +125,9 @@ describe("Codex startup prompt responder", () => {
   test("C-CODEX-12 skips recognized update prompts", () => {
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder();
-    responder.handle("Update available\n  1. Update now", writer(writes));
+    responder.handle("Update available! 0.153.3 -> 0.153.4\n  1. Update now", writer(writes));
     responder.handle(
-      "Update available\n  1. Update now\n  2. Continue without updating",
+      "Update available! 0.153.3 -> 0.153.4\n  1. Update now\n  2. Continue without updating",
       writer(writes),
     );
     expect(writes).toEqual(["2"]);
@@ -157,14 +157,14 @@ describe("Codex startup prompt responder", () => {
     expect(writes).toEqual(["2"]);
   });
 
-  test("C-CODEX-12 skips concatenated Codex release update prompts", () => {
+  test("C-CODEX-12 does not automate flattened text without a native dialog boundary", () => {
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder();
     responder.handle(
       "Update available! 0.132.0 -> 0.133.0 Release notes: url › 1. Update now  2. Skip  3. Skip until next version",
       writer(writes),
     );
-    expect(writes).toEqual(["2"]);
+    expect(writes).toEqual([]);
   });
 
   test("numbered option matching ignores unknown prompts", () => {
