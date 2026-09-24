@@ -974,3 +974,23 @@ submission; an old empty frame does not prove acceptance.
 The Claude observer also preserves the existing version-banner/fenced-input
 alternative and the documented 2.1.268 non-Vim bypass-permissions footer.
 Those compatibility cases are constructed regressions, not new working captures.
+
+## Native submission hooks end recovery (2026-09-24)
+
+`tests/e2e/paste-recovery.e2e.ts` passed against Claude Code 2.1.281 and
+codex-cli 0.156.1: 2 tests, 2 passes, 0 failures, 0 skips, covering cold and
+resumed sessions for each adapter. Every phase physically delivered one Enter,
+emitted one `UserPromptSubmit`, and attempted no recovery Enter after native
+`user_message` activity during a further six-second observation.
+
+Codex resume did attempt a recovery Enter before its hook arrived: first Enter
+at 151 ms, retry at 1155 ms, native activity at 1317 ms. The test counted that
+retry and intercepted it before delivery. This proves the hook-only guarantee;
+it does not prove safety in the interval before the hook, or isolate native
+working evidence. The other three phases each attempted only the first Enter.
+
+Both CLIs rejected a nonexistent model before quota consumption. Since public
+resume options omit model, the test appended that same invalid native `--model`
+at the PTY launch seam. Native hooks, readiness, and input queues remained real.
+All processes and temporary credential copies were cleaned up. These observations
+do not establish successful model output or correlation of a hook to a prompt.
