@@ -20,6 +20,14 @@ their automatic failure report. Only the final consumer cancels the underlying
 operation; an abandoned completion cannot publish into a successor request.
 Explicitly retained pages stay alive through delivery and cache eviction until their
 owner releases them, while current/outgoing pose owners remain protected.
+After successful complete animation preparation, the shared idle clip's two shipped
+pages remain leased for that sprite bank's lifetime, so later actions reuse them
+without repeated fetching or decoding. Failed or cancelled preparations do not
+establish this lease. The shared lease is capped at two pages: an idle manifest
+with more pages falls back to ordinary animation/cache ownership.
+The ordinary cache remains capped at four pages; rotation and action pages receive
+no bank-lifetime lease. Disposal releases the shared idle lease together with all
+other resource owners.
 
 Sprite decoder requests may carry an abort signal. Cancellation rejects the
 request promptly, skips requests that have not started decoding, and
@@ -56,4 +64,5 @@ only after complete idle preparation. Input and visibility changes before readin
 do not cancel initial preparation. Teardown cancels it and prevents a late handoff.
 An asset failure reports the existing contextual error and preserves the fallback;
 a later explicit boot attempt may retry. Idle pages remain available through cache
-eviction until playback leaves idle, with current/outgoing pose ownership preserved.
+eviction and later playback changes through the shared idle lease, with
+current/outgoing pose ownership preserved.
