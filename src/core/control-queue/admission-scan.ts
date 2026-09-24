@@ -5,6 +5,7 @@ import { controlOperationTraits, overtakesReadiness } from "./traits.ts";
 import type { QueuedOperation } from "./types.ts";
 
 export class AdmissionScan extends QueueScanCursor {
+  // Describes only the cursor's skipped prefix, never its selected candidate.
   private reservedPrefix = false;
 
   override reset(): void {
@@ -19,17 +20,20 @@ export class AdmissionScan extends QueueScanCursor {
     held: boolean,
   ): number {
     return this.findIndex(queue, (operation) => {
-      const before = this.reservedPrefix;
-      const admitted = admissions.has(operation);
-      this.reservedPrefix ||= admitted;
-      const eligible =
+      const reservedBefore = this.reservedPrefix;
+      const hasReservation = admissions.has(operation);
+      this.reservedPrefix ||= hasReservation;
+      const mayCrossReservation =
         !admissions.waiting(operation) &&
-        (!before || admitted || !controlOperationTraits[operation.kind].reportsCallerSubmission) &&
-        (!held || operation.origin.kind !== "loop" || admitted) &&
-        (ready || overtakesReadiness(operation));
+        (!reservedBefore ||
+          hasReservation ||
+          !controlOperationTraits[operation.kind].reportsCallerSubmission);
+      const mayCrossHold =
+        mayCrossReservation && (!held || operation.origin.kind !== "loop" || hasReservation);
+      const mayDispatch = mayCrossHold && (ready || overtakesReadiness(operation));
       // The selected operation is excluded from the cursor's cached prefix.
-      if (eligible) this.reservedPrefix = before;
-      return eligible;
+      if (mayDispatch) this.reservedPrefix = reservedBefore;
+      return mayDispatch;
     });
   }
 }
