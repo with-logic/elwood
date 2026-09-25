@@ -4,7 +4,6 @@ import { ControlQueue } from "../../core/control-queue/index.ts";
 import type { PasteGuard, RecoveryComposer } from "../../core/input/index.ts";
 import { queuedInputSubmitter } from "../../core/input/index.ts";
 import { registerPrivateOutputSecrets } from "../../core/private-output-secrets.ts";
-import { registerTurnLoopHold } from "../../core/simple/loop-hold.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent } from "../../core/types.ts";
 import type { PtyProcess } from "../../pty/types.ts";
@@ -15,6 +14,7 @@ import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { advanceInitialReady } from "../readiness/advance.ts";
 import { CleanupLatch } from "../shutdown/cleanup-latch.ts";
 import type { StatusDecision, StatusEvidenceKind } from "../status-evidence.ts";
+import { bindLoopAdmission } from "./loop-boundary.ts";
 import { SessionLoops } from "./loops.ts";
 import { closingController, notRunningError, runSessionOperation } from "./not-running.ts";
 import { PasteRecoveryRevocation } from "./paste-recovery.ts";
@@ -82,8 +82,8 @@ export abstract class SessionLifecycle {
       () => this.status === "running",
       () => void (this.status === "ready" && this.submitEvidence("caller_submitted")),
       ownership.composerCleanup(() => this.queuedInputBlocked(), this.closing.signal, readEmpty),
+      bindLoopAdmission(this, statusEvents, () => this.controlQueue.holdLoops()),
     );
-    registerTurnLoopHold(this, () => this.controlQueue.holdLoops());
     this.loops = new SessionLoops({
       stateDir,
       elwoodSessionId: record.elwoodSessionId,

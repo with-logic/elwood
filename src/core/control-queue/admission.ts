@@ -45,7 +45,7 @@ export class ControlAdmissions {
     const abort = new AbortController();
     let ticket: ControlAdmission | undefined;
     try {
-      ticket = this.admit(operation.origin, abort.signal);
+      ticket = this.admit(operation.origin, abort.signal, operation.kind);
     } catch (error) {
       const failure = toError(error);
       abort.abort(failure);

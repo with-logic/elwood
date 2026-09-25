@@ -18,6 +18,8 @@ back each entry are listed in `prd/14-conformance.md`.
 - Recover swallowed prompt Enters only from the live idle composer, without mistaking transcript text or working frames for staged input. Fresh empty input ends recovery; unverifiable frames get bounded observation retries.
 
 - Prepare complete automatic landing-page gestures and facing actions before playback, releasing obsolete task loads without interrupting manual input.
+- Keep raw messages, prompts, and guidance behind a selected loop’s completion and trailing transcript while leaving model controls available.
+
 - Discard expired automatic landing-page actions before readiness checks, preventing late assets from triggering an obsolete gesture or facing change.
 - Reuse decoded idle sheets across landing-page actions instead of repeatedly fetching and decoding them after playback changes.
 
