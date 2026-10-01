@@ -22,7 +22,7 @@ import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { attachClaudeImages } from "../attach-images.ts";
-import { createClaudeRecoveryComposer } from "../composer/staged-text.ts";
+import { createClaudeRecoveryComposer } from "../composer/staged-input.ts";
 import { runSessionLogin } from "../login/session-login.ts";
 import type { ClaudeLoginOptions } from "../login/types.ts";
 import { LoginExpiredWatcher, loginExpiredWarning } from "../login-expired.ts";

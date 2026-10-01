@@ -16,6 +16,12 @@ export function currentRenderedFrame(terminal: ElwoodTerminal): TerminalSnapshot
   return cursor.snapshot(() => terminal.snapshot());
 }
 
+/** A recovery Enter requires output received after its own physical attempt (C-API-31). */
+export function captureRenderProgress(terminal: ElwoodTerminal): () => boolean {
+  const progressed = tracked.get(terminal.xterm)?.captureProgress();
+  return () => progressed?.() === true && currentRenderedFrame(terminal) !== undefined;
+}
+
 /** Called inside an owned render callback; subsequent trust reads reuse this snapshot. */
 export function renderedSnapshot(terminal: ElwoodTerminal): TerminalSnapshot {
   return tracked.get(terminal.xterm)?.snapshot(() => terminal.snapshot()) ?? terminal.snapshot();
@@ -24,6 +30,8 @@ export function renderedSnapshot(terminal: ElwoodTerminal): TerminalSnapshot {
 export class RenderCursor {
   private receivedRevision = 0;
   private renderedRevision = -1;
+  private arrivals = 0;
+  private renderedArrivals = 0;
   private visible = true;
   private readonly handlers: readonly { dispose(): void }[];
 
@@ -53,11 +61,24 @@ export class RenderCursor {
   }
 
   received(): number {
+    this.arrivals += 1;
+    return this.queued();
+  }
+  /** Split/coalesced rendering advances settlement, not native arrival progress. */
+  queued(): number {
     return ++this.receivedRevision;
   }
-  rendered(revision: number): void {
+  get arrival(): number {
+    return this.arrivals;
+  }
+  rendered(revision: number, arrival: number): void {
     this.renderedRevision = revision;
+    this.renderedArrivals = arrival;
     this.frame = undefined;
+  }
+  captureProgress(): () => boolean {
+    const before = this.arrivals;
+    return () => this.renderedArrivals > before;
   }
   get settled(): boolean {
     return this.receivedRevision === this.renderedRevision && !this.hasStagedOutput();

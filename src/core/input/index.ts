@@ -8,7 +8,7 @@ import type { ControlSubmitter } from "../control-queue/types.ts";
 import { holdWhileUnsafe, type InputTerminal, throwIfInputAborted, waitForInput } from "./abort.ts";
 import type { EmptyComposerObserver } from "./clear-ack.ts";
 import { requestComposerCleanup, stageComposer, submittedComposer } from "./composer-cleanup.ts";
-import { schedulePasteNudges } from "./paste-nudge.ts";
+import { preparePasteNudges } from "./paste-nudge.ts";
 
 /** Native adapters prepare one staged-input predicate for each recovery sequence. */
 export type RecoveryComposer = {
@@ -18,6 +18,8 @@ export type RecoveryComposer = {
 
 /** Adapter view of "the paste is still staged in the composer". */
 export type PasteGuard = {
+  /** Capture immediately before each attempted Enter; only later completed output qualifies. */
+  readonly captureRenderProgress?: () => () => boolean;
   /** Capture before paste/Enter: watches later native submission activity. */
   readonly captureRecovery?: () => { readonly revoked: () => boolean };
   /** Reuse a token per completed empty frame; only a later frame gets a new identity. */
@@ -114,6 +116,15 @@ async function writePastedPrompt(
     rawInputSignal && signal
       ? AbortSignal.any([rawInputSignal, signal])
       : (rawInputSignal ?? signal);
+  const nudges = preparePasteNudges(
+    terminal,
+    guard,
+    payload,
+    nudgeSignal,
+    nudgeDelayMs,
+    priorEmptyFrame,
+    recovery?.revoked,
+  );
   await terminal.sendInput(`\u001b[200~${payload}\u001b[201~`);
   try {
     await waitForInput(settleDelayMs, signal);
@@ -123,6 +134,7 @@ async function writePastedPrompt(
     // dialog and submits once it clears.
     await holdWhileUnsafe(terminal, guard, signal);
     throwIfInputAborted(signal);
+    nudges?.beforeEnter();
     await terminal.sendInput("\r");
   } catch (error) {
     if (signal?.aborted) await requestComposerCleanup(terminal, guard?.blocked);
@@ -130,15 +142,7 @@ async function writePastedPrompt(
   }
   submittedComposer(terminal);
   onSubmitted?.();
-  schedulePasteNudges(
-    terminal,
-    guard,
-    payload,
-    nudgeSignal,
-    nudgeDelayMs,
-    priorEmptyFrame,
-    recovery?.revoked,
-  );
+  nudges?.start();
 }
 
 export async function writeQueuedInput(

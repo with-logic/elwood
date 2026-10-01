@@ -52,7 +52,7 @@ export function attachPtyTerminal(
 ): ElwoodTerminal {
   const terminal = new HeadlessTerminal(size, (input) => pty.write(input));
   const output = new PtyOutput(
-    (data) => terminal.writeOutput(data, () => onRendered(data, terminal)),
+    (data) => terminal.writeOutput(data, () => onRendered(data, terminal), true),
     pty.flowControl,
   );
   terminal.attachOutput(output);
@@ -106,25 +106,28 @@ class HeadlessTerminal implements ElwoodTerminal {
       this.currentTitle = title;
     });
   }
-
   get size(): TerminalSize {
     return this.currentSize;
   }
-
   get title(): string {
     return this.currentTitle;
   }
-
   get renderFailed(): boolean {
     return this.renders.renderFailed;
   }
 
-  writeOutput(data: string | Uint8Array, onRendered?: () => void): Promise<void> {
+  // PTY batches were counted on arrival; direct writes introduce their own output.
+  writeOutput(
+    data: string | Uint8Array,
+    onRendered?: () => void,
+    alreadyReceived = false,
+  ): Promise<void> {
     if (this.disposed) return Promise.resolve();
     this.ptyOutput?.flush(); // keep a direct write ordered after PTY output already received
-    const revision = this.cursor.received();
+    const revision = alreadyReceived ? this.cursor.queued() : this.cursor.received();
+    const arrival = this.cursor.arrival;
     return this.renders.enqueue(data, () => {
-      this.cursor.rendered(revision);
+      this.cursor.rendered(revision, arrival);
       onRendered?.();
     });
   }

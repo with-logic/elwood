@@ -13,6 +13,7 @@ back each entry are listed in `prd/14-conformance.md`.
 ## [Unreleased]
 
 - Preserve asynchronous hook decisions after the generated bridge child finishes sending its request, instead of closing the reply stream early.
+- Recover image-only and whitespace submissions only from a fresh live composer render after each Enter attempt; cached text or image drafts cannot trigger an extra Enter.
 
 - Preserve each observer registration’s async context when listeners reuse a pending Promise.
 

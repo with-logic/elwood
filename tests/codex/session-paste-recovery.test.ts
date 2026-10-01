@@ -41,6 +41,8 @@ test.each([
     await sent;
     expect(pty.writes).toEqual([`\u001b[200~${payload}\u001b[201~`, "\r"]);
     expect(session.terminal.snapshot().text).toContain(rendered);
+    // The native redraw confirms the first Enter left this payload staged.
+    pty.emitData(paint(draft));
     await vi.advanceTimersByTimeAsync(1_000);
     expect(pty.writes).toEqual([`\u001b[200~${payload}\u001b[201~`, "\r", "\r"]);
     pty.emitData(paint(codexSmallComposer));

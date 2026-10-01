@@ -10,11 +10,12 @@ export function readStagedComposer(
   emptyRow: string,
 ): string | undefined {
   const frame = currentRenderedFrame(terminal);
-  // The native caret prefix occupies two cells; content advances the actual cursor.
+  // The native caret prefix occupies two cells; staged text/chips advance beyond them.
   if (!(frame && settledCursorVisible(terminal.xterm)) || frame.cursorX < 2) return undefined;
   const { facts } = readScreenFacts(table, { text: frame.text, title: terminal.title });
   if (facts.working_visible || facts.blocking_prompt_visible) return undefined;
   const buffer = terminal.xterm.buffer.active;
+  // xterm cursorY is buffer-relative; translate to the snapshot viewport row.
   const viewportCursorRow = frame.cursorY + buffer.baseY - buffer.viewportY;
   if (viewportCursorRow >= frame.lines.length) return undefined;
   // Placeholder-shaped input remains ambiguous even with a stale advanced cursor.
