@@ -2,7 +2,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { reportFixture } from "./report-fixture.mjs";
+import { findingFixture, reportFixture } from "./report-fixture.mjs";
 
 export function fixture() {
   const outputs = {};
@@ -77,5 +77,17 @@ export async function report(t) {
   t.after(() => rm(dir, { recursive: true, force: true }));
   const path = join(dir, "REVIEW.md");
   await writeFile(path, reportFixture());
+  return path;
+}
+
+export async function changeRequest(t) {
+  const path = await report(t);
+  await writeFile(
+    path,
+    reportFixture(
+      { "review-security": findingFixture("major") },
+      "Verdict: not ready - 0 blocker(s), 1 major(s), 0 minor(s), 0 nit(s)",
+    ),
+  );
   return path;
 }

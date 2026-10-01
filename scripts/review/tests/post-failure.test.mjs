@@ -2,12 +2,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { post } from "../post.mjs";
-import { fixture, report } from "./github-fixture.mjs";
+import { changeRequest, fixture, report } from "./github-fixture.mjs";
 
-test("a revalidation API failure dismisses an actionable review and preserves the error", async (t) => {
+test("a revalidation API failure dismisses a change request and preserves the error", async (t) => {
   for (const complete of [true, false]) {
     const f = fixture();
-    const reportPath = await report(t);
+    const reportPath = complete ? await changeRequest(t) : await report(t);
     const original = new Error("GitHub temporarily unavailable");
     let gets = 0;
     const dismissed = [];
@@ -24,7 +24,7 @@ test("a revalidation API failure dismisses an actionable review and preserves th
 
 test("a failed cleanup reports both errors with the revalidation error as its cause", async (t) => {
   const f = fixture();
-  const reportPath = await report(t);
+  const reportPath = await changeRequest(t);
   const original = new Error("GitHub temporarily unavailable");
   const cleanup = new Error("Dismissal refused");
   let gets = 0;

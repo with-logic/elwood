@@ -26,6 +26,12 @@ Every run evaluates the current PR head and base. Automatic approval requires
 all eleven review dimensions, consistent validated evidence, no blocker or
 major findings, and revalidation of eligibility and both commits at publication.
 Review automation never merges a PR or bypasses repository protections.
+A successfully submitted approval remains attached to its reviewed commit and is
+never dismissed by automation. Publication still revalidates eligibility and both
+commits afterward. A mismatch or API failure fails publication visibly while
+preserving that historical approval; it does not confirm coverage of the current
+diff. This observation is not a merge freshness gate. Substantially changed scope
+requires maintainer assessment under the contributor review policy.
 If the PR is already approved when publication checks its review decision,
 new findings that would request changes are posted as a comment, preserving
 that approval. Reports link to the workflow run and the rerun command. Failed

@@ -36,8 +36,11 @@ maintainers may select their same-repository workflow branch for validation.
    raw model output.
 3. Transfer the report to a separate posting job. That job rechecks eligibility
    and both commit SHAs. A changed head or base discards the result. After posting,
-   it checks again and dismisses its own actionable review if the PR changed
-   during publication; a failed dismissal fails the job visibly. GitHub offers
+   it checks again. An accepted approval is never dismissed: a mismatch or failed
+   revalidation fails publication while retaining the approval for the reviewed
+   commit. This observation does not enforce merge freshness or confirm that a
+   changed diff is covered. Stale change requests are dismissed; failed dismissal
+   fails the job visibly. GitHub offers
    no atomic compare-and-post API.
 4. Submit an approval only when the review job succeeded and the report is
    complete and consistent, with zero blockers and zero majors. Minor-only

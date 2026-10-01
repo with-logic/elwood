@@ -47,7 +47,7 @@ export async function post({
     body,
   });
   const dismiss = async () => {
-    if (event !== "COMMENT")
+    if (event === "REQUEST_CHANGES")
       await github.rest.pulls.dismissReview({
         ...context.repo,
         pull_number: pr.number,
@@ -59,6 +59,10 @@ export async function post({
   try {
     latest = await currentPr(github, context, pr.number);
   } catch (error) {
+    if (event === "APPROVE") {
+      core.notice(`Approval for ${head} remains recorded; current PR validation failed.`);
+      throw error;
+    }
     try {
       await dismiss();
     } catch (cleanupError) {
@@ -75,6 +79,10 @@ export async function post({
     latest.pr.head.sha !== head ||
     latest.pr.base.sha !== base
   ) {
+    if (event === "APPROVE")
+      throw new Error(
+        `Approval for ${head} remains recorded; PR eligibility or reviewed commits changed during publication.`,
+      );
     await dismiss();
     core.notice("Review superseded during publication; no actionable verdict remains.");
     return;
