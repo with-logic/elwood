@@ -107,9 +107,9 @@ export class CodexStartupPromptResponder {
       outcomes.push({ outcome: { kind: "option_pending", prompt: trust.prompt } });
     }
     // One bounded skip belongs to one appearance. Unknown replacements disable
-    // reauthorization immediately; fresh banner evidence or authoritative native
-    // clearance can rearm it. The live observer confirms clearance only after this
-    // frame's retained input hold is classified, before queued input can repaint it.
+    // reauthorization immediately; a fresh banner with a valid current safe-option
+    // block or authoritative native clearance can rearm it. The live observer confirms
+    // clearance after this frame's retained hold is classified, before queued input can repaint it.
     const renewUpdateAttention = this.updatePrompt.renewsAttention(screenText);
     const onUpdateScreen = this.updatePrompt.observe(screenText);
     const generation = this.updatePrompt.currentGeneration;

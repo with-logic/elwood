@@ -1,7 +1,7 @@
 /** Exact retained-evidence limits and versioned layouts (PRD §5.5, C-CODEX-12). */
 import { expect, test } from "vitest";
 import {
-  continuationOptionsAreBound,
+  currentOptionBindingsMatch,
   emptyUpdateEvidence,
   retainedOptionLabelsAgree,
   withUpdateFrameEvidence,
@@ -22,8 +22,8 @@ test.each([
     ["3", "Skip until next version"],
   ]);
   expect(retainedOptionLabelsAgree(evidence, frame)).toBe(true);
-  expect(continuationOptionsAreBound(evidence, frame)).toBe(true);
-  expect(continuationOptionsAreBound(evidence, "  2. Skip\n  3. Skip until next version")).toBe(
+  expect(currentOptionBindingsMatch(evidence, frame)).toBe(true);
+  expect(currentOptionBindingsMatch(evidence, "  2. Skip\n  3. Skip until next version")).toBe(
     true,
   );
   expect(evidence.overflowed).toBe(false);
@@ -36,7 +36,7 @@ test.each([32, 33])("C-CODEX-12 retains at most 32 options from a %i-option fram
   expect(evidence.boundOptions.get("32")).toBe("Choice");
   expect(evidence.boundOptions.has("33")).toBe(false);
   expect(evidence.overflowed).toBe(count === 33);
-  expect(continuationOptionsAreBound(evidence, "  32. Choice")).toBe(count === 32);
+  expect(currentOptionBindingsMatch(evidence, "  32. Choice")).toBe(count === 32);
 });
 
 test.each([200, 201])("C-CODEX-12 bounds a %i-character option label", (length) => {
@@ -44,7 +44,7 @@ test.each([200, 201])("C-CODEX-12 bounds a %i-character option label", (length) 
   const evidence = withUpdateFrameEvidence(emptyUpdateEvidence(), `  1. ${label}`, true);
   expect(evidence.boundOptions.get("1")).toBe(length === 200 ? label : undefined);
   expect(evidence.overflowed).toBe(length === 201);
-  expect(continuationOptionsAreBound(evidence, `  1. ${label}`)).toBe(length === 200);
+  expect(currentOptionBindingsMatch(evidence, `  1. ${label}`)).toBe(length === 200);
 });
 
 test("C-CODEX-12 an untrusted new number never becomes later continuation evidence", () => {
@@ -53,5 +53,5 @@ test("C-CODEX-12 an untrusted new number never becomes later continuation eviden
   expect(untrusted.boundOptions.has("4")).toBe(false);
   const later = withUpdateFrameEvidence(untrusted, `${banner}\n${choices}`, true);
   expect(later.boundOptions.has("4")).toBe(false);
-  expect(continuationOptionsAreBound(later, "  4. Skip backup")).toBe(false);
+  expect(currentOptionBindingsMatch(later, "  4. Skip backup")).toBe(false);
 });

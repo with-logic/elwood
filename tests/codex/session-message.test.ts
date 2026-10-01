@@ -1,6 +1,6 @@
 /**
  * Conformance tests for Codex adapter-neutral queued messages.
- * Covers PRD §5.3, C-API-19, and C-API-21.
+ * Covers PRD §5.3/§5.5, C-API-19, C-API-21, and C-CODEX-12.
  */
 
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
@@ -17,14 +17,17 @@ describe("CodexSessionApi message submission", () => {
     const cwd = tempDir();
     installFakes();
     const session = await startCodex({ cwd, persona: "Never update from the live TUI." });
-    ptys[0]!.emitData("Update available! 0.151.0 -> 0.152.0\r\n  1. Update now");
+    ptys[0]!.emitData(
+      "Update available! 0.151.0 -> 0.152.0\r\n  1. Update now\r\n  2. Skip\r\n  3. Skip until next version",
+    );
     await session.terminal.settled();
-    // Current Codex releases can repaint only the safe continuation choices.
+    // A constructed bannerless continuation retains the input hold, not selection authority.
     ptys[0]!.emitData("\u001b[2J\u001b[H  2. Skip\r\n  3. Skip until next version");
     await session.terminal.settled();
     await becomeReady(session.elwoodSessionId, cwd);
-    await expect.poll(() => ptys[0]!.writes.length).toBeGreaterThan(1);
-    // Retries may repeat Skip; no persona paste/Enter may reach the rendered dialog.
+    await expect.poll(() => ptys[0]!.writes).toEqual(["2"]);
+    expect(session.status).toBe("blocked");
+    // No bannerless retry, persona paste, or Enter may reach the rendered dialog.
     expect(new Set(ptys[0]!.writes)).toEqual(new Set(["2"]));
     const beforeClear = ptys[0]!.writes.length;
     ptys[0]!.emitData(`\u001b[2J\u001b[H${codexTty(codexComposer)}`);

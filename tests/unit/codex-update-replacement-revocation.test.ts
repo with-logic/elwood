@@ -54,7 +54,8 @@ test("C-CODEX-12 fresh banner evidence cannot revive either captured revoked pre
   tracker.observe(update);
   expect(original(update)).toBe(false);
   expect(revoked(update)).toBe(false);
-  expect(tracker.currentFramePredicate()(options)).toBe(true);
+  expect(tracker.currentFramePredicate()(update)).toBe(true);
+  expect(tracker.currentFramePredicate()(options)).toBe(false);
 });
 
 test("C-CODEX-12 a readerless caller cannot rearm a revoked bannerless prompt", () => {

@@ -22,8 +22,9 @@ test("C-CODEX-12 changed banners supersede captured authority before and after o
   const fresh = tracker.currentGeneration;
   tracker.observe(options);
   tracker.observe(next);
-  expect(tracker.currentGeneration).toBe(fresh);
-  expect(tracker.currentFramePredicate()("2. Skip")).toBe(true);
+  expect(tracker.currentGeneration).toBeGreaterThan(fresh);
+  expect(tracker.currentFramePredicate()("2. Skip")).toBe(false);
+  expect(tracker.currentFramePredicate()(next)).toBe(true);
 });
 
 test("C-CODEX-12 an unobserved banner replacement stops the pending retry", async () => {

@@ -1,7 +1,8 @@
 /**
  * Edge-triggered Codex in-TUI update-skip (PRD §5.5, C-CODEX-12): Elwood always
  * skips the interactive update prompt (never selects "Update now"), and the skip
- * re-arms after authoritative native clearance or a fresh first-party banner, so
+ * re-arms after authoritative native clearance or a fresh first-party banner with
+ * a valid current safe-option block, so
  * an update prompt after a restart is skipped again instead of trapping the session in a
  * loop. The real update is the preflight `codex update`, not this in-TUI prompt.
  */
@@ -34,7 +35,7 @@ describe("Codex in-TUI update-skip is edge-triggered (C-CODEX-12)", () => {
     expect(writes).toEqual(["2"]);
 
     responder.handle(composer, writer(writes)); // native composer clearance permits a new appearance
-    responder.handle("1. Update now\n2. Skip", writer(writes)); // reappearance requires verified clearance
+    responder.handle(updateScreen, writer(writes)); // A current banner is required again.
     expect(writes).toEqual(["2", "2"]);
   });
 

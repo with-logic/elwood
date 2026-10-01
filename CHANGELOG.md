@@ -16,6 +16,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Preserve each observer registration’s async context when listeners reuse a pending Promise.
 
+- Require a current first-party banner for every automated Codex update-menu selection, withholding all bannerless choices while retaining the input hold; renumbered or removed safe options revoke the old retry, and a fresh bounded bannered block can recover from overflow.
 - Keep landing-page pickup responsive while preparing every suspended-animation sheet, cancelling obsolete pickup work on drop, reset or teardown.
 - Clear completed Codex trust gates when the native idle composer displays its warning-count footer, so queued input can reach readiness.
 
@@ -103,9 +104,9 @@ back each entry are listed in `prd/14-conformance.md`.
 - Release cancelled config-lock and clipboard-lock waiters immediately, including
   captured session state, while active holders retain ownership through cleanup.
 
-- Select Codex update-skip choices after the action when an update action is visible;
-  action-less continuation frames may still select a safe option. Selection uses the
-  current frame’s numbering and never selects an update action whose label also
+- Select Codex update-skip choices only from a current validated first-party
+  banner and safe-option block, after the update action when present. Selection
+  uses the current numbering and never selects an update action whose label also
   contains a skip phrase.
 
 - Keep an acquired Codex config or clipboard lock operation pending until its task

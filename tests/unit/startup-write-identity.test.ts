@@ -99,6 +99,8 @@ test("C-CODEX-12 every way a settled frame can stop being the captured choice", 
       "Update available! 0.149.0 -> 0.150.0\n\u203a 1. Update now\n  2. Reset settings\n  3. Skip",
     ),
   ).toBe(false);
+  // Even a permissive generation predicate cannot equate a bannerless replacement.
+  expect(keeps("1. Update now\n2. Skip", () => true)).toBe(false);
   // A later appearance: same option text, different version pair.
   expect(keeps("Update available! 0.150.0 -> 0.151.0\n\u203a 1. Update now\n  2. Skip")).toBe(
     false,

@@ -24,7 +24,9 @@ test("C-CODEX-12 live clearance waits for classification and repeated refresh ca
   tracker.observeClearance(true);
   expect(tracker.currentGeneration).toBe(revoked);
   tracker.observe(options);
-  expect(tracker.currentFramePredicate()(options)).toBe(true);
+  expect(tracker.currentFramePredicate()(options)).toBe(false);
+  tracker.observe(update);
+  expect(tracker.currentFramePredicate()(update)).toBe(true);
   expect(original(options)).toBe(false);
 });
 
@@ -49,7 +51,7 @@ test.each([
   tracker.observe("custom clearance surface");
   expect(tracker.hasSupersedingGeneration(generation)).toBe(!cleared);
   tracker.observe(options);
-  expect(tracker.currentFramePredicate()(options)).toBe(cleared);
+  expect(tracker.currentFramePredicate()(options)).toBe(false);
 });
 
 test("C-CODEX-12 standalone clearance parsing stops after the revoked generation clears", () => {

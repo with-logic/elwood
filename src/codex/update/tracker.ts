@@ -2,14 +2,21 @@
 import type { TrustClearance } from "../../core/trust/clearance.ts";
 import { codexComposerClearance } from "../screen/clearance.ts";
 import { type CodexUpdateFrame, CodexUpdateFrameClassifier } from "./classification.ts";
-import { bannerContradictsAppearance } from "./evidence.ts";
+import {
+  bannerContradictsAppearance,
+  currentOptionBindingsMatch,
+  emptyUpdateEvidence,
+  retainedOptionLabelsAgree,
+  retainedSafeOptionsPresent,
+  withUpdateFrameEvidence,
+} from "./evidence.ts";
 import { updateScreenBanner } from "./layout.ts";
 import { safeUpdateOption } from "./selection.ts";
 
 /** Tracks update eligibility separately from the session’s retained input hold. */
 export class CodexUpdatePromptTracker {
   private readonly frames = new CodexUpdateFrameClassifier();
-  private banner = { observedBanner: "" };
+  private evidence = emptyUpdateEvidence();
   private active = false;
   private generation = 0;
   private requiresBanner = false;
@@ -38,13 +45,21 @@ export class CodexUpdatePromptTracker {
     return this.generation > generation + 1;
   }
 
-  bannerChanged(frameText: string): boolean {
+  appearanceChanged(frameText: string): boolean {
     const banner = updateScreenBanner.exec(frameText)?.[0].trim();
+    const options = this.classify(frameText).options;
     return (
       this.active &&
       banner !== undefined &&
-      bannerContradictsAppearance(this.banner, frameText) &&
-      !bannerContradictsAppearance({ observedBanner: banner }, frameText)
+      !bannerContradictsAppearance({ observedBanner: banner }, frameText) &&
+      (bannerContradictsAppearance(this.evidence, frameText) ||
+        (options !== undefined &&
+          safeUpdateOption(frameText, options) !== undefined &&
+          !this.evidence.overflowed &&
+          !(
+            retainedOptionLabelsAgree(this.evidence, frameText, options) &&
+            retainedSafeOptionsPresent(this.evidence, options)
+          )))
     );
   }
 
@@ -53,8 +68,11 @@ export class CodexUpdatePromptTracker {
     const frame = this.classify(frameText);
     return (
       frame.options !== undefined &&
+      (!this.evidence.overflowed ||
+        this.appearanceChanged(frameText) ||
+        this.freshBoundedEvidence(frameText, frame)) &&
       (!this.requiresBanner || safeUpdateOption(frameText, frame.options) !== undefined) &&
-      (this.bannerChanged(frameText) || (this.requiresBanner && frame.hasBanner))
+      (this.appearanceChanged(frameText) || (this.requiresBanner && frame.hasBanner))
     );
   }
 
@@ -66,23 +84,22 @@ export class CodexUpdatePromptTracker {
   observe(frameText: string): boolean {
     // Missing classification cannot lend a provisional clear to another frame.
     if (this.pendingClearance) this.observeClearance(false);
-    if (this.bannerChanged(frameText)) {
+    if (this.appearanceChanged(frameText)) {
       this.generation += 1;
       this.active = false;
-      this.banner = { observedBanner: "" };
+      this.evidence = emptyUpdateEvidence();
     }
     const frame = this.classify(frameText);
-    const validLayout = frame.options !== undefined;
-    if (frame.visible && this.active && !this.requiresBanner && !validLayout) {
+    const validEvidence = this.observeEvidence(frameText, frame);
+    if (frame.visible && this.active && !this.requiresBanner && !validEvidence) {
       // Retire the attempt and its positive-clear edge; ambiguity is not success.
       this.generation += 2;
       this.requiresBanner = true;
     }
     if (frame.visible) {
       if (!this.active) this.generation += 1;
-      this.banner.observedBanner ||= updateScreenBanner.exec(frameText)?.[0]?.trim() ?? "";
       if (
-        validLayout &&
+        validEvidence &&
         this.requiresBanner &&
         frame.hasBanner &&
         safeUpdateOption(frameText, frame.options)
@@ -91,19 +108,53 @@ export class CodexUpdatePromptTracker {
         this.requiresBanner = false;
       }
       this.active = true;
-      if (!validLayout) this.requiresBanner = true;
-    } else if (!(this.active && !this.requiresBanner && frame.continuation)) {
+      if (!validEvidence) this.requiresBanner = true;
+    } else {
       if (this.active) {
         this.generation += 1;
         this.requiresBanner = true;
         this.pendingClearance = true;
       }
       this.active = false;
-      this.banner = { observedBanner: "" };
+      this.evidence = emptyUpdateEvidence();
       if (!this.deferClearance && this.needsClearance)
         this.observeClearance(this.clearance(frameText));
     }
     return this.active;
+  }
+
+  /** Only a current banner and validated block may authorize a write. */
+  private observeEvidence(frameText: string, frame: CodexUpdateFrame): boolean {
+    const firstParty = frame.hasBanner;
+    if (this.freshBoundedEvidence(frameText, frame)) this.evidence = emptyUpdateEvidence();
+    const priorBindingsAgree =
+      frame.options !== undefined &&
+      retainedOptionLabelsAgree(this.evidence, frameText, frame.options) &&
+      retainedSafeOptionsPresent(this.evidence, frame.options);
+    if (firstParty && frame.options !== undefined) {
+      this.evidence = withUpdateFrameEvidence(this.evidence, frameText, true, frame.options);
+    }
+    if (frame.visible) {
+      this.evidence = {
+        ...this.evidence,
+        observedBanner:
+          this.evidence.observedBanner || (updateScreenBanner.exec(frameText)?.[0]?.trim() ?? ""),
+      };
+    }
+    return (
+      firstParty && frame.options !== undefined && !this.evidence.overflowed && priorBindingsAgree
+    );
+  }
+
+  /** Only a fresh complete bounded block may retire an overflowed appearance. */
+  private freshBoundedEvidence(frameText: string, frame: CodexUpdateFrame): boolean {
+    return (
+      this.requiresBanner &&
+      frame.hasBanner &&
+      frame.options !== undefined &&
+      safeUpdateOption(frameText, frame.options) !== undefined &&
+      !withUpdateFrameEvidence(emptyUpdateEvidence(), frameText, true, frame.options).overflowed
+    );
   }
 
   /** Called after the current frame's live clearance and retained input hold are known. */
@@ -120,9 +171,14 @@ export class CodexUpdatePromptTracker {
     const generation = this.generation;
     return (frameText) => {
       if (!(this.active && !this.requiresBanner && this.generation === generation)) return false;
-      if (bannerContradictsAppearance(this.banner, frameText)) return false;
+      if (bannerContradictsAppearance(this.evidence, frameText)) return false;
       const frame = this.classify(frameText);
-      return frame.options !== undefined && (frame.visible || frame.continuation);
+      return (
+        frame.hasBanner &&
+        frame.options !== undefined &&
+        retainedSafeOptionsPresent(this.evidence, frame.options) &&
+        currentOptionBindingsMatch(this.evidence, frameText, frame.options)
+      );
     };
   }
 }

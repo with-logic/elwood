@@ -24,7 +24,8 @@ test("C-CODEX-12 ambiguity permanently revokes a captured predicate until fresh 
   expect(tracker.hasSupersedingGeneration(generation)).toBe(true);
   tracker.observe(update);
   expect(original(update)).toBe(false);
-  expect(tracker.currentFramePredicate()(options)).toBe(true);
+  expect(tracker.currentFramePredicate()(update)).toBe(true);
+  expect(tracker.currentFramePredicate()(options)).toBe(false);
 });
 
 test("C-CODEX-12 a queued retry cannot revive after an ambiguous repaint and bannerless options", async () => {
@@ -61,7 +62,8 @@ test.each([
   tracker.observe(options);
   expect(tracker.currentFramePredicate()(options)).toBe(false);
   tracker.observe(update);
-  expect(tracker.currentFramePredicate()(options)).toBe(true);
+  expect(tracker.currentFramePredicate()(update)).toBe(true);
+  expect(tracker.currentFramePredicate()(options)).toBe(false);
 });
 
 test.each([
@@ -80,5 +82,6 @@ test.each([
   expect(tracker.currentFramePredicate()(options)).toBe(false);
   expect(tracker.renewsAttention(update)).toBe(true);
   tracker.observe(update);
-  expect(tracker.currentFramePredicate()(options)).toBe(true);
+  expect(tracker.currentFramePredicate()(update)).toBe(true);
+  expect(tracker.currentFramePredicate()(options)).toBe(false);
 });
