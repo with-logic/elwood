@@ -14,8 +14,14 @@ import {
   resumeCodex,
 } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
+import { sessionSocketHome } from "../../src/state/socket-home.ts";
 import { readSessionRecord } from "../../src/state/store.ts";
-import { nativeResponseSandbox, responseBinary, responseModel } from "./codex-response-sandbox.ts";
+import {
+  assertParentEnvironmentUnchanged,
+  nativeResponseSandbox,
+  responseBinary,
+  responseModel,
+} from "./codex-response-sandbox.ts";
 
 const available = existsSync(responseBinary) && existsSync(join(homedir(), ".codex/auth.json"));
 const coldToken = "ELWOOD_COLD_7F29";
@@ -35,6 +41,7 @@ test("C-API-48 native Codex resume stream excludes the prior cold response", {
   assert.equal(process.version, "v24.7.0");
   const env = { ...process.env };
   const sandbox = await nativeResponseSandbox();
+  const socketHomes = new Set<string>();
   let session: CodexSessionApi | undefined;
   let toolAttempts = 0;
   let acceptanceCount = 0;
@@ -55,6 +62,13 @@ test("C-API-48 native Codex resume stream excludes the prior cold response", {
   };
   const attach = (active: CodexSessionApi) => {
     session = active;
+    socketHomes.add(
+      sessionSocketHome({
+        stateDir: sandbox.stateDir,
+        elwoodSessionId: active.elwoodSessionId,
+        adapter: "codex",
+      }),
+    );
     off.push(
       active.on("hook", (event) => {
         if (event.hook_event_name !== "UserPromptSubmit") return;
@@ -156,13 +170,14 @@ test("C-API-48 native Codex resume stream excludes the prior cold response", {
     sandbox.end();
     for (const unsubscribe of off) unsubscribe();
     try {
-      await session?.kill();
+      await session?.teardown();
     } finally {
       resetRuntimeSeamsForTests();
       sandbox.dispose();
       t.signal.removeEventListener("abort", abort);
       assert.equal(existsSync(sandbox.root), false);
-      assert.deepEqual({ ...process.env }, env);
+      for (const home of socketHomes) assert.equal(existsSync(home), false);
+      assertParentEnvironmentUnchanged(env, process.env);
     }
   }
 });

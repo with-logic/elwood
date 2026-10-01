@@ -19,7 +19,7 @@ afterEach(() => {
 test.each([
   "facade",
   "headless CLI",
-])("C-API-48 %s ignores pre-Enter acceptance and prior Stop oracle replacement", async (surface) => {
+])("C-API-48 %s ignores prior acceptance before/after Enter and prior Stop oracle replacement", async (surface) => {
   installFakes();
   const cwd = tempDir();
   const transcript = join(cwd, "rollout.jsonl");
@@ -91,6 +91,12 @@ test.each([
     await stop("prior", "STALE");
     await vi.advanceTimersByTimeAsync(200);
     expect(pty.writes).toContain("\r");
+    expect(settled).toBe(false);
+    await accepted("prior"); // The owned Enter cannot claim a delayed prior acceptance.
+    text("prior", "LATE-STALE");
+    await stop("prior", "LATE-STALE");
+    pty.emitData(codexIdle);
+    await vi.advanceTimersByTimeAsync(100);
     expect(settled).toBe(false);
     await accepted(""); // A string field alone is not a usable native generation.
     text("", "EMPTY-ID");

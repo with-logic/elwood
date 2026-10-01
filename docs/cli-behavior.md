@@ -348,9 +348,10 @@ Assistant quotations require a native non-working assistant row and contiguous
 indentation; blank/column-zero rows end them. Wrapped user history requires a
 column-zero prompt, indented/blank continuation, then a non-working assistant
 reply as its next column-zero row. Unknown rows and native numbered-choice blocks
-cannot establish provenance. Completed standalone `› 1. Yes` user history remains
-valid; other selected numbered rows hold even without siblings. Generic quoted
-menus and caret prompts retain live-cursor history treatment; unquoted option
+cannot establish provenance. Bounded completed numbered user history remains
+valid regardless of its number or label. Selected numbered rows outside that
+completed history or an assistant quotation hold even without siblings. Generic
+quoted menus and caret prompts retain live-cursor history treatment; unquoted option
 blocks hold regardless of labels. Arbitrary identical dialog/transcript text is
 not claimed distinguishable from one frame.
 Native working rows and the live OSC working title retain the hold; prose that
@@ -1196,3 +1197,9 @@ record/native resume ID. Each returned its distinct exact synthetic token; resum
 excluded the old token. Each had one paste/Enter/UPS/Stop and zero tools. Private
 home removal and unchanged parent environment passed. This pinned-version response
 isolation proof is separate from bogus-model ACK ordering.
+
+The pinned response fixture isolates both probe and PTY shell startup with a
+child-only `ZDOTDIR` pointing at its private home. An inherited interactive zsh
+profile timed out before `codex --version` at 15 seconds; the same pinned binary
+with an empty private profile directory returned its version in 52 ms. This
+preflight failure submitted no model turn. Parent environment values stay intact.

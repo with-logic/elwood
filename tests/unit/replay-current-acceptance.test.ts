@@ -50,7 +50,6 @@ test("C-API-56 replay observes fresh output after the final Enter and holds succ
 test.each([
   "revoked",
   "blocked",
-  "renderFailed",
 ] as const)("C-API-56 %s retains replay until a safe fresh empty observation", async (hold) => {
   vi.useFakeTimers();
   const h = replayFixture();
@@ -67,12 +66,52 @@ test.each([
     expect(accepted).toBe(false);
     expect(h.writes.filter((value) => value === "\r")).toHaveLength(1);
     h.state.blocked = false;
-    h.state.renderFailed = false;
     h.paint(true);
     await vi.advanceTimersByTimeAsync(1_000);
     await replay;
   } finally {
     h.close();
+  }
+});
+
+test.each([
+  "cancel",
+  "close",
+] as const)("C-API-56 permanent render failure holds replay and successor until %s", async (reason) => {
+  vi.useFakeTimers();
+  const h = replayFixture();
+  let accepted = false;
+  const replay = h.replay().then(() => {
+    accepted = true;
+  });
+  const failure = expect(replay).rejects.toThrow(reason === "close" ? "closed" : "cancelled");
+  let next: Promise<void> | undefined;
+  try {
+    await vi.advanceTimersByTimeAsync(150);
+    next = h.queue.send("next", "prompt");
+    const stopped = expect(next).rejects.toThrow("closed");
+    h.state.renderFailed = true;
+    for (const empty of [false, true]) {
+      h.paint(empty);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(h.state.renderFailed).toBe(true);
+      expect(accepted).toBe(false);
+      expect(h.writes).toEqual(["\u001b[200~replay\u001b[201~", "\r"]);
+    }
+    if (reason === "close") h.close();
+    else h.cancel.abort(new Error("cancelled"));
+    await vi.advanceTimersByTimeAsync(0);
+    await failure;
+    h.paint(true);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(h.state.renderFailed).toBe(true);
+    expect(accepted).toBe(false);
+    expect(h.writes).toEqual(["\u001b[200~replay\u001b[201~", "\r"]);
+    h.close();
+    await stopped;
+  } finally {
+    h.close();
+    await Promise.allSettled([replay, ...(next ? [next] : [])]);
   }
 });
 
