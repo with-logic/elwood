@@ -14,6 +14,7 @@ import { finishSessionExit } from "../../runtime/session/exit.ts";
 import { bindStartupLifetime, createSessionFrameObserver } from "../../runtime/session/frames.ts";
 import { withAutomatedInput } from "../../runtime/session/picker-input.ts";
 import { createReadinessGate } from "../../runtime/session/readiness.ts";
+import { bindTurnSubmission } from "../../runtime/session/turn-submission.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../../runtime/startup/buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../../runtime/startup/cleanup.ts";
 import { secureMkdir } from "../../state/files.ts";
@@ -159,7 +160,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     transcriptWatcher,
     loopDefinitions,
   );
-  const activeSession = session;
+  const activeSession = bindTurnSubmission(session, observers);
   bindStartupLifetime(activeSession, promptResponder, readiness);
   frameObserver.refresh();
   const beforeCleanup = () => activeSession.pauseLoopsForStartupCleanup(readiness.ready.cancel);

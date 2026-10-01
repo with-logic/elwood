@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Prevent retained working and interrupt frames from releasing input physically submitted inside Stop callbacks; expired raw Stop input retains its timeout error after teardown.
+
 - Preserve asynchronous hook decisions after the generated bridge child finishes sending its request, instead of closing the reply stream early.
 - Recover image-only and whitespace submissions only from a fresh live composer render after each Enter attempt; cached text or image drafts cannot trigger an extra Enter.
 

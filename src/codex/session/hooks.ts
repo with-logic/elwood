@@ -130,7 +130,9 @@ async function observeAndRequest(
     // A bounded per-pass scan (like Claude's): the terminal drain budget is reserved
     // for finish(), so hundreds of turns never exhaust it into false backlog drops.
     observation.run("transcript", () => session?.scanTranscript());
-    // A physical Enter from sendPrompt, sendMessage or sendGuidance starts a newer turn.
+    // Diagnostic callbacks may submit input; report before comparing physical generations.
+    observation.report();
+    // Guidance may steer the current turn; every physical submission supersedes this Stop.
     const sameSubmissionGeneration = submissionGenerationUnchanged?.() ?? true;
     if (sameSubmissionGeneration)
       observation.run("lifecycle", () => session?.submitEvidence("hook_turn_ended"));

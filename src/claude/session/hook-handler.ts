@@ -91,7 +91,9 @@ export function buildClaudeHookHandler(
       observation.run("lifecycle", () => ready.mark());
     if (event.hook_event_name === "Stop" && !blocked) {
       observation.run("transcript", () => transcriptWatcher.scan());
-      // A physical Enter from sendPrompt, sendMessage or sendGuidance starts a newer turn.
+      // Diagnostic callbacks may submit input; report before comparing physical generations.
+      observation.report();
+      // Guidance may steer the current turn; every physical submission supersedes this Stop.
       const sameSubmissionGeneration = submissionGenerationUnchanged?.() ?? true;
       if (sameSubmissionGeneration) {
         deps.getTurnWatcher().arm();

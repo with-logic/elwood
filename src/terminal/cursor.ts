@@ -16,6 +16,11 @@ export function currentRenderedFrame(terminal: ElwoodTerminal): TerminalSnapshot
   return cursor.snapshot(() => terminal.snapshot());
 }
 
+/** Only a tracked terminal with no received output has a known blank initial baseline. */
+export function hasReceivedOutput(terminal: ElwoodTerminal): boolean {
+  return tracked.get(terminal.xterm)?.arrival !== 0;
+}
+
 /** A recovery Enter requires output received after its own physical attempt (C-API-31). */
 export function captureRenderProgress(terminal: ElwoodTerminal): () => boolean {
   const progressed = tracked.get(terminal.xterm)?.captureProgress();

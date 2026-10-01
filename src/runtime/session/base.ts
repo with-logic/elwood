@@ -6,6 +6,7 @@
  */
 
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
+import { toError } from "../../core/errors.ts";
 import { sessionImageBudget } from "../../core/images/queued-budget.ts";
 import type { SendOptions } from "../../core/images/types.ts";
 import { writeQueuedInput } from "../../core/input/index.ts";
@@ -171,13 +172,15 @@ export abstract class AgentSessionBase extends SessionLifecycle {
   }
 
   private enqueue(input: string, kind: SubmitKind, options?: SendOptions): Promise<void> {
+    try {
+      assertStopInput(this);
+    } catch (error) {
+      return Promise.reject(toError(error));
+    }
     const driver: AttachDriver = (paths, signal) => this.attachImages(paths, signal);
     const send = (attach?: AttachTask) => this.controlQueue.send(input, kind, attach);
     // Looked up per call: a facade that launched this session shares ITS budget (C-API-44).
     const budget = sessionImageBudget(this);
-    return this.inSession(() => {
-      assertStopInput(this);
-      return enqueueSubmission(options?.images, driver, send, budget);
-    });
+    return this.inSession(() => enqueueSubmission(options?.images, driver, send, budget));
   }
 }

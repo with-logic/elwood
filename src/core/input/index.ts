@@ -18,6 +18,8 @@ export type RecoveryComposer = {
 
 /** Adapter view of "the paste is still staged in the composer". */
 export type PasteGuard = {
+  /** Capture caller ownership before the initial Enter, never recovery retries. */
+  readonly beforeEnter?: () => void;
   /** Capture immediately before each attempted Enter; only later completed output qualifies. */
   readonly captureRenderProgress?: () => () => boolean;
   /** Capture before paste/Enter: watches later native submission activity. */
@@ -135,6 +137,7 @@ async function writePastedPrompt(
     await holdWhileUnsafe(terminal, guard, signal);
     throwIfInputAborted(signal);
     nudges?.beforeEnter();
+    guard?.beforeEnter?.();
     await terminal.sendInput("\r");
   } catch (error) {
     if (signal?.aborted) await requestComposerCleanup(terminal, guard?.blocked);
