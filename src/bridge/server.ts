@@ -43,7 +43,8 @@ export class HookBridgeServer {
 
   async start(): Promise<void> {
     if (existsSync(this.socketPath)) unlinkSync(this.socketPath);
-    const server = createServer((socket) => {
+    // The child FIN ends its request, not its wait for our asynchronous reply.
+    const server = createServer({ allowHalfOpen: true }, (socket) => {
       this.sockets.add(socket);
       // Accumulate RAW bytes, not per-chunk strings: decoding each chunk on its own
       // would insert replacement chars whenever a multibyte code point straddles two
