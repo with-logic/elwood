@@ -1,8 +1,7 @@
 /** Session lifetime, input blocking, persistence and cleanup (PRD §5/§8/§9). */
 import type { ElwoodAgentKind } from "../../core/activity/index.ts";
 import { ControlQueue } from "../../core/control-queue/index.ts";
-import type { PasteGuard, RecoveryComposer } from "../../core/input/index.ts";
-import { queuedInputSubmitter } from "../../core/input/index.ts";
+import { queuedInputSubmitter, type RecoveryComposer } from "../../core/input/index.ts";
 import { registerPrivateOutputSecrets } from "../../core/private-output-secrets.ts";
 import { registerTurnLoopHold } from "../../core/simple/loop-hold.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
@@ -11,7 +10,6 @@ import type { PtyProcess } from "../../pty/types.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, writeSessionRecord } from "../../state/store.ts";
-import { captureRenderProgress } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { advanceInitialReady } from "../readiness/advance.ts";
 import { CleanupLatch } from "../shutdown/cleanup-latch.ts";
@@ -23,7 +21,7 @@ import type { PickerInputOwnership } from "./picker-input.ts";
 import { SessionReapPolicy } from "./reap.ts";
 import { SessionShutdownBinding } from "./shutdown-binding.ts";
 import { createSessionStatusEngine, type SessionStatusEmitter } from "./status-wiring.ts";
-
+import { StopCompletion } from "./stop-completion.ts";
 export abstract class SessionLifecycle {
   protected record: SessionRecord;
   readonly terminal: ElwoodTerminal;
@@ -31,6 +29,7 @@ export abstract class SessionLifecycle {
   protected readonly pty: PtyProcess;
   protected readonly loops: SessionLoops;
   protected readonly controlQueue: ControlQueue;
+  readonly stopCompletion = new StopCompletion(this);
   protected everReady = false;
   private initialReadinessHeld: (() => boolean) | undefined;
   inputBlocking = false;
@@ -42,14 +41,7 @@ export abstract class SessionLifecycle {
   private readonly cleanupLatch = new CleanupLatch(() => this.stopRuntime());
   private readonly shutdown: SessionShutdownBinding;
   private readonly statusEngine: ReturnType<typeof createSessionStatusEngine>;
-  private readonly recovery: PasteRecoveryRevocation;
-  protected readonly pasteGuard: PasteGuard = {
-    captureRecovery: () => this.recovery.captureRevocationGuard(),
-    captureRenderProgress: () => captureRenderProgress(this.terminal),
-    prepareStaged: (payload) => this.recoveryComposer.prepareStaged(payload),
-    emptyFrame: () => this.recoveryComposer.emptyFrame(),
-    blocked: () => this.queuedInputBlocked(),
-  };
+  protected readonly pasteGuard: ReturnType<PasteRecoveryRevocation["createGuard"]>;
   protected constructor(
     agent: ElwoodAgentKind,
     record: SessionRecord,
@@ -70,7 +62,12 @@ export abstract class SessionLifecycle {
     this.pty = pty;
     this.terminal = ownership.caller;
     this.automatedTerminal = ownership.automated;
-    this.recovery = new PasteRecoveryRevocation(statusEvents, this.closing.signal);
+    this.pasteGuard = new PasteRecoveryRevocation(statusEvents, this.closing.signal).createGuard(
+      this.terminal,
+      () => this.recoveryComposer,
+      () => this.queuedInputBlocked(),
+      this.stopCompletion.prepareRenderedReset,
+    );
     this.terminalReplay = terminalReplay;
     this.reapPolicy = new SessionReapPolicy(agent, record.elwoodSessionId, pty.pid);
     const readEmpty = () => this.emptyComposerFrame();
@@ -82,7 +79,7 @@ export abstract class SessionLifecycle {
         this.submitEvidence("caller_submitted");
       },
       () => this.status === "running",
-      () => void (this.status === "ready" && this.submitEvidence("caller_submitted")),
+      this.stopCompletion.submitted,
       ownership.composerCleanup(() => this.queuedInputBlocked(), this.closing.signal, readEmpty),
     );
     registerTurnLoopHold(this, () => this.controlQueue.holdLoops());

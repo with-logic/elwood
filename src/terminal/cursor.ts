@@ -16,6 +16,11 @@ export function currentRenderedFrame(terminal: ElwoodTerminal): TerminalSnapshot
   return cursor.snapshot(() => terminal.snapshot());
 }
 
+/** True for unknown tracking or received output; this does not attest banner visibility. */
+export function hasUnknownOrNonPristineOutput(terminal: ElwoodTerminal): boolean {
+  return tracked.get(terminal.xterm)?.arrival !== 0;
+}
+
 /** A recovery Enter requires output received after its own physical attempt (C-API-31). */
 export function captureRenderProgress(terminal: ElwoodTerminal): () => boolean {
   const progressed = tracked.get(terminal.xterm)?.captureProgress();

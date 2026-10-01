@@ -5,6 +5,7 @@ import type { ImageCaptures } from "../images/capture.ts";
 import type { SendOptions } from "../images/types.ts";
 import { personaBoundary } from "../persona.ts";
 import { type ElwoodSessionStatus, terminalStatuses } from "../status-categories.ts";
+import { assertStopInput } from "../stop-input.ts";
 import type { TurnEvent } from "./events.ts";
 import { holdTurnLoops } from "./loop-hold.ts";
 import { runTurn } from "./turn.ts";
@@ -22,6 +23,7 @@ function capture<T extends SendOptions>(
   facade: Facade,
   options: T | undefined,
 ) {
+  if (facade.session) assertStopInput(facade.session);
   if (terminalStatuses.has(facade.status))
     throw elwoodError("session_not_running", "Session is not running.");
   return captures.capture(options);

@@ -20,6 +20,7 @@ const quietFramesToSettle = 5;
 
 export class TurnStateWatcher {
   private running = false;
+  private hasFreshRenderedFrame: (() => boolean) | undefined;
   private bannerSeen = false;
   private armed = false;
   private replaySettling = false;
@@ -52,9 +53,29 @@ export class TurnStateWatcher {
     this.quietStreak = 0;
   }
 
+  /** Retire earlier rendered work when a queue-backed physical input is submitted. */
+  submitted(hasFreshFrame: () => boolean, ignoreRetainedInterrupt: boolean): void {
+    this.running = false;
+    // True means a prior banner was visible OR its absence could not be proved.
+    this.bannerSeen = ignoreRetainedInterrupt;
+    this.replaySettling = false;
+    this.hasFreshRenderedFrame = hasFreshFrame;
+  }
+
+  private canObserve(facts: ScreenFacts): boolean {
+    if (!this.armed) return false;
+    if (this.hasFreshRenderedFrame?.() === false) return false;
+    if (this.hasFreshRenderedFrame && facts.working_visible) {
+      // A banner retained alongside new work belongs to the prior rendered turn.
+      this.bannerSeen = facts.interrupt_complete_visible;
+      this.hasFreshRenderedFrame = undefined;
+    }
+    return true;
+  }
+
   /** Adopt verified working clearance without consuming a second edge from its frame. */
   adoptWorkingClearance(facts: ScreenFacts): void {
-    if (!this.armed) return;
+    if (!this.canObserve(facts)) return;
     this.replaySettling = false;
     this.running = true;
     this.bannerSeen = facts.interrupt_complete_visible;
@@ -68,7 +89,7 @@ export class TurnStateWatcher {
    * (a message drained at resume-readiness can start its spinner before any
    * quiet composer frame ever paints). */
   observe(facts: ScreenFacts, evidenceRunning = false): TurnEdge | undefined {
-    if (!this.armed) return undefined;
+    if (!this.canObserve(facts)) return undefined;
     if (this.replaySettling) {
       if (evidenceRunning) {
         // A real turn is ALREADY running from evidence — release settling and
@@ -101,6 +122,7 @@ export class TurnStateWatcher {
     // screens where the elided footer means "started" was never observed.
     if (facts.interrupt_complete_visible && !this.bannerSeen) {
       this.bannerSeen = true;
+      this.hasFreshRenderedFrame = undefined;
       this.running = false;
       return "ended";
     }

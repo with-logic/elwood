@@ -1,4 +1,7 @@
 /** Native submission activity revokes background recovery (PRD §5.3/C-API-31). */
+import type { PasteGuard, RecoveryComposer } from "../../core/input/index.ts";
+import { captureRenderProgress } from "../../terminal/cursor.ts";
+import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import type { SessionStatusEmitter } from "./status-wiring.ts";
 
 export class PasteRecoveryRevocation {
@@ -10,6 +13,23 @@ export class PasteRecoveryRevocation {
       if (event.kind === "user_message") this.generation += 1;
     });
     closing.addEventListener("abort", unsubscribe, { once: true });
+  }
+
+  /** Share native-frame and ownership captures with every queued paste. */
+  createGuard(
+    terminal: ElwoodTerminal,
+    composer: () => RecoveryComposer,
+    blocked: () => boolean,
+    beforeEnter: () => void,
+  ): PasteGuard {
+    return {
+      beforeEnter,
+      captureRecovery: () => this.captureRevocationGuard(),
+      captureRenderProgress: () => captureRenderProgress(terminal),
+      prepareStaged: (payload) => composer().prepareStaged(payload),
+      emptyFrame: () => composer().emptyFrame(),
+      blocked,
+    };
   }
 
   /** Capture before paste so a hook during the physical Enter cannot be missed. */

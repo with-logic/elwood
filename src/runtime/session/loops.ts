@@ -10,6 +10,7 @@ import type {
   ElwoodLoopRequest,
   ElwoodLoopSnapshot,
 } from "../../core/loops/types.ts";
+import { outsideStopInput } from "../../core/stop-input.ts";
 import type { LaunchOwnership } from "../../state/launch-ownership.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import { writeLoopDefinitions } from "../../state/loop-store.ts";
@@ -114,24 +115,27 @@ function createScheduler(input: SessionLoopsInput): LoopScheduler {
   return new LoopScheduler({
     definitions: input.definitions,
     now: Date.now,
-    schedule: scheduleLoopTimer,
+    // Timer lifetimes and delivery callbacks belong to the scheduler, not its caller.
+    schedule: (run, delayMs) => outsideStopInput(() => scheduleLoopTimer(run, delayMs)),
     createId: randomUUID,
     persist: (definitions) => {
       if (input.ownership.canPersist())
         writeLoopDefinitions(input.stateDir, input.elwoodSessionId, definitions);
     },
     submit: (message, loopId, signal) =>
-      input.queue.send(message, "message", undefined, {
-        origin: { kind: "loop", loopId },
-        cancel: {
-          signal,
-          // §10: loop_submission_failed details identify only the loop id.
-          error: () =>
-            elwoodError("loop_submission_failed", "Loop was cancelled before submission.", {
-              loopId,
-            }),
-        },
-      }),
-    emit: (event) => input.emitter.emit("loop", event),
+      outsideStopInput(() =>
+        input.queue.send(message, "message", undefined, {
+          origin: { kind: "loop", loopId },
+          cancel: {
+            signal,
+            // §10: loop_submission_failed details identify only the loop id.
+            error: () =>
+              elwoodError("loop_submission_failed", "Loop was cancelled before submission.", {
+                loopId,
+              }),
+          },
+        }),
+      ),
+    emit: (event) => outsideStopInput(() => input.emitter.emit("loop", event)),
   });
 }

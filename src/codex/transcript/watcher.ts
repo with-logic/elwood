@@ -7,6 +7,7 @@
  * bounded, content-free drop notices.
  */
 
+import { outsideStopInput } from "../../core/stop-input.ts";
 import { BoundedTranscriptCursor } from "../../core/transcript/cursor.ts";
 import { DropReporter, ReadErrorReporter } from "../../core/transcript/drops.ts";
 import type { ChunkBudget, DrainContext } from "./drain.ts";
@@ -66,7 +67,9 @@ export class CodexTranscriptWatcher {
     // A scan() throw (a throwing drop/activity/warning listener) must not escape the
     // timer as an uncaught exception — contain it, stop, and route a bounded live
     // diagnostic (non-throwing recovery), mirroring Claude's poll recovery.
-    this.interval = setInterval(() => this.runScan(), this.scanIntervalMs ?? defaultScanIntervalMs);
+    this.interval = outsideStopInput(() =>
+      setInterval(() => this.runScan(), this.scanIntervalMs ?? defaultScanIntervalMs),
+    );
     this.interval.unref?.();
   }
 

@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Prevent retained working and interrupt frames from releasing input physically submitted inside Stop callbacks; expired raw Stop input retains its timeout error after teardown.
+
 - Preserve asynchronous hook decisions after the generated bridge child finishes sending its request, instead of closing the reply stream early.
 - Recover image-only and whitespace submissions only from a fresh live composer render after each Enter attempt; cached text or image drafts cannot trigger an extra Enter.
 
@@ -23,6 +25,10 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Bound each session’s queued input to 1,024 outstanding operations and 8 MiB of text; excess submissions reject with `input_queue_full` without writing to the terminal, and oversized personas reject before session startup.
 - Preserve Codex hook input, decisions, and turn bookkeeping when observers mutate, throw, or reject, with one bounded `hook_observer_failed` warning per hook and a distinct lifecycle warning for standalone initial-ready observer rejections.
+
+- Reject late queue-backed input from context-preserving continuations of completed or timed-out Stop callbacks and observers, so it cannot overtake a successor released by that Stop.
+
+- Keep a prompt submitted from a Stop callback running when the older Stop completes, without blocking immediate callback input.
 
 - Recover swallowed prompt Enters only from the live idle composer, without mistaking transcript text or working frames for staged input. Fresh empty input ends recovery; unverifiable frames get bounded observation retries.
 

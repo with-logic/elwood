@@ -10,6 +10,7 @@ import { loadRuntimeLoopDefinitions as loadLoops } from "../../runtime/loop-rest
 import { bindStartupLifetime, createSessionFrameObserver } from "../../runtime/session/frames.ts";
 import { withAutomatedInput } from "../../runtime/session/picker-input.ts";
 import { createReadinessGate } from "../../runtime/session/readiness.ts";
+import { bindTurnSubmission } from "../../runtime/session/turn-submission.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../../runtime/startup/buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../../runtime/startup/cleanup.ts";
 import { secureMkdir } from "../../state/files.ts";
@@ -62,9 +63,8 @@ export async function buildClaudeSession(
   const { watcher: transcriptWatcher, flushPendingWarnings, finishSafely } = wired;
   const autotrust = options.autotrust ?? false;
   const observers = buildClaudeObservers(record.elwoodSessionId, autotrust, emitter);
-  const turnWatcher = observers.turn;
   const readiness = createReadinessGate(() => {
-    turnWatcher.arm(resumed); // resume arms in settling mode (no phantom replay turn)
+    observers.turn.arm(resumed); // resume arms in settling mode (no phantom replay turn)
     void session?.completeInitialReady();
   }, resumed);
   const { ready } = readiness;
@@ -79,7 +79,7 @@ export async function buildClaudeSession(
       transcriptWatcher,
       ready,
       getSession: () => session,
-      getTurnWatcher: () => turnWatcher,
+      getTurnWatcher: () => observers.turn,
       observeHookTranscript: (event) => observeTranscript(transcriptWatcher, event),
     }),
     buildClaudeHookErrorHandler(record, emitter, () => session),
@@ -162,7 +162,7 @@ export async function buildClaudeSession(
     requestedSize,
     loopDefinitions,
   );
-  const active = session;
+  const active = bindTurnSubmission(session, observers);
   bindStartupLifetime(active, promptResponder, readiness);
   frameObserver.refresh();
   const beforeCleanup = () => active.pauseLoopsForStartupCleanup(ready.cancel);

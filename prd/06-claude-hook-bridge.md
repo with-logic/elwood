@@ -82,6 +82,31 @@ If a handler times out, throws, rejects, disconnects, or returns an invalid
 runtime value, Elwood returns no decision to Claude and emits `hookError` to the
 parent app.
 
+When a `Stop` result is finalized (normal completion, timeout, or other fail-open),
+its registered handler and hook-scoped observers of `hook`, `activity`,
+`hookError`/`hook_error`, and `hook_observer_failed` diagnostics lose authority
+in continuations that preserve their asynchronous execution context to admit new
+queue-backed input to that same live session. Promise continuations and async work
+created within the callback carry this boundary. Registering a callback on a
+pre-existing event source does not bind that source to the Stop context; input
+from its later independently dispatched callbacks is treated as unrelated caller
+input.
+Later `sendPrompt`, `sendMessage`, or `sendGuidance` calls from that context reject with
+`wait_timeout` before image capture, attachment, or queue admission, including the
+lazy session facade. The boundary identifies the live runtime instance, so another
+adapter or state directory may reuse the same Elwood ID without sharing authority.
+Already admitted input remains valid; the bridge does not wait for unawaited observers
+or timed-out user code. Unrelated caller contexts, other sessions, non-Stop hooks,
+raw keys, and independent non-turn controls are unaffected. Internal queue
+notifications, loop scheduling and settlement, and persistent transcript polling
+do not inherit this authority. This includes queue admission, cancellation, wakeup,
+dispatch, and settlement for non-turn controls such as compaction and model
+selection. A caller registering a Promise continuation on one of these controls
+inside Stop still carries the original Stop boundary; internal detachment does
+not renew that caller’s authority. Recognized malformed Stop bridge diagnostics
+use the same exact live-instance boundary and close when synchronous diagnostic
+delivery returns; asynchronous diagnostic continuations cannot admit late input.
+
 Fail-open does not mean silent. `hookError` must include:
 
 - `elwoodSessionId`

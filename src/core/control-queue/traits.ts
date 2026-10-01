@@ -4,6 +4,7 @@
  * repo convention of separating static tables from behavior (PRD §5.3).
  */
 
+import { outsideStopInput } from "../stop-input.ts";
 import type { Cancel, QueuedOperation } from "./types.ts";
 
 export type ControlQueueError = () => Error;
@@ -126,7 +127,7 @@ export class ControlCancellation {
   private cancelled: { operation: QueuedOperation; error: Error } | undefined;
 
   listen(operation: QueuedOperation, cancel: Cancel, drop: (error: Error) => void): void {
-    const listener = () => drop(cancel.error());
+    const listener = () => outsideStopInput(() => drop(cancel.error()));
     cancel.signal.addEventListener("abort", listener, { once: true });
     this.hooks.set(operation, () => cancel.signal.removeEventListener("abort", listener));
     if (cancel.signal.aborted) listener();

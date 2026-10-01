@@ -2,7 +2,9 @@
 
 import { runContained } from "../contained.ts";
 import { toError } from "../errors.ts";
+import { outsideStopInput } from "../stop-input.ts";
 import { ControlQueueState } from "./state.ts";
+import { submitControl } from "./submission.ts";
 import {
   type ControlOperationKind,
   type ControlOperationTraits,
@@ -104,7 +106,12 @@ export class ControlQueue extends ControlQueueState {
     );
   }
 
+  /** Queue work outlives the caller; only caller-registered Promise reactions retain its Stop scope. */
   protected drain(): void {
+    outsideStopInput(() => this.dispatchNext());
+  }
+
+  private dispatchNext(): void {
     if (this.inFlight || this.queue.length === 0) return;
     const index = this.nextDispatchIndex();
     if (index < 0) return;
@@ -128,7 +135,14 @@ export class ControlQueue extends ControlQueueState {
         if (!operation.attach) this.beginSubmission(operation, traits);
         return operation.run
           ? operation.run(workSignal)
-          : this.submitWithAttach(operation, traits, workSignal);
+          : submitControl(
+              operation,
+              traits,
+              workSignal,
+              this.submit,
+              () => this.beginSubmission(operation, traits),
+              this.onCallerInputSubmitted,
+            );
       };
       dispatched = around ? around(work, this.prepareSignal(workSignal), operation.origin) : work();
     } catch (error) {
@@ -142,24 +156,6 @@ export class ControlQueue extends ControlQueueState {
         this.rollback(operation, priorReady, epoch, cancellation ?? toError(error));
       },
     );
-  }
-
-  private async submitWithAttach(
-    operation: QueuedOperation,
-    traits: ControlOperationTraits,
-    signal: AbortSignal,
-  ): Promise<void> {
-    if (operation.attach) {
-      await operation.attach(signal);
-      if (signal.aborted) throw this.abortError(signal);
-      this.beginSubmission(operation, traits);
-    }
-    const dispatched = this.onCallerInputSubmitted;
-    const onSubmitted =
-      dispatched && traits.reportsCallerSubmission && operation.origin.kind === "caller"
-        ? () => runContained(dispatched)
-        : undefined;
-    await this.submit(operation.input, traits.submitMode, signal, onSubmitted);
   }
 
   private beginSubmission(operation: QueuedOperation, traits: ControlOperationTraits): void {
