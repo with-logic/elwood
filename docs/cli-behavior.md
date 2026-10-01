@@ -737,6 +737,21 @@ new CLI version or native capture was verified.
   stripped by an editor/pipeline (this once neutered an interrupt e2e). Always
   write the escape sequence form (``), never a raw ESC character.
 
+## Hook bridge request FIN and delayed decisions
+
+The generated bridge child calls `client.end(request)` after connecting. That FIN
+ends the request stream while the child still awaits the parent's decision. A
+local real-socket reproduction with a handler held for 100 ms showed the default
+Node server closing its reply side first: the child received empty EOF and exited
+fail-open before the blocking decision existed. `allowHalfOpen: true` keeps the
+reply side available until the handler settles. The server still ends and destroys
+the socket after flushing its reply; shutdown still destroys pending sockets.
+
+The regression runs the actual generated child against `HookBridgeServer`, checking
+both the delayed blocking output/exit code and delayed handler-failure diagnostics.
+This is a local bridge/process proof, not a new Claude or Codex CLI capture. PRD
+§6.2/§6.3, C-HOOK-16.
+
 ## Hook bridge socket path length (macOS ~104-byte cap)
 
 macOS caps a Unix domain socket path near 104 bytes (`sockaddr_un.sun_path`); binding

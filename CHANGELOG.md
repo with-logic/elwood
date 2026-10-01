@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Preserve asynchronous hook decisions after the generated bridge child finishes sending its request, instead of closing the reply stream early.
+
 - Preserve each observer registration’s async context when listeners reuse a pending Promise.
 
 - Keep landing-page pickup responsive while preparing every suspended-animation sheet, cancelling obsolete pickup work on drop, reset or teardown.
