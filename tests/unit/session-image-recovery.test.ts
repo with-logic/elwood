@@ -140,7 +140,8 @@ for (const agent of ["claude", "codex"] as const) {
         // A successful or failed attempt consumes the same fresh-frame authority.
         await vi.advanceTimersByTimeAsync(1_000);
         expect(enters).toBe(retry ? 2 : 1);
-        paint();
+        // Keep the final history observation empty at the live cursor as well.
+        paint(mode === "history" ? `${caret} ${chip}\nPrior answer\n${idle}` : draft);
         await vi.advanceTimersByTimeAsync(1_000);
         // A staged draft is not authoritative clearance for a retained native dialog hold.
         if (mode === "dialog") expect(session.status).toBe("blocked");
