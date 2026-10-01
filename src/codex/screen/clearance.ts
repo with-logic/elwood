@@ -51,12 +51,12 @@ function hasApprovalEvidence(rows: readonly string[]): boolean {
     rows.some((row) => /^\s*(?:[›❯>]\s*\d+[.)]\s*\S|(?:\d+[.)]\s*|[›❯]\s+)(?:Yes|No)\b)/i.test(row))
   )
     return true;
-  let remaining = rows;
+  let startRow = 0;
   for (;;) {
-    const cursor = cursorOptionRows(remaining);
+    const cursor = cursorOptionRows(rows, startRow);
     if (cursor === undefined) return false;
     if (cursor.lastRow > cursor.firstRow) return true;
-    remaining = remaining.slice(cursor.lastRow + 1);
+    startRow = cursor.lastRow + 1;
   }
 }
 
