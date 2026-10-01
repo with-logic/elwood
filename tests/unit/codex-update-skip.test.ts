@@ -1,7 +1,8 @@
 /**
  * Edge-triggered Codex in-TUI update-skip (PRD §5.5, C-CODEX-12): Elwood always
  * skips the interactive update prompt (never selects "Update now"), and the skip
- * re-arms after authoritative native clearance or a fresh first-party banner, so
+ * re-arms after authoritative native clearance or a fresh first-party banner with
+ * a valid current safe-option block, so
  * an update prompt after a restart is skipped again instead of trapping the session in a
  * loop. The real update is the preflight `codex update`, not this in-TUI prompt.
  */

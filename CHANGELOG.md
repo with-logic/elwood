@@ -104,9 +104,9 @@ back each entry are listed in `prd/14-conformance.md`.
 - Release cancelled config-lock and clipboard-lock waiters immediately, including
   captured session state, while active holders retain ownership through cleanup.
 
-- Select Codex update-skip choices after the action when an update action is visible;
-  action-less continuation frames may still select a safe option. Selection uses the
-  current frame’s numbering and never selects an update action whose label also
+- Select Codex update-skip choices only from a current validated first-party
+  banner and safe-option block, after the update action when present. Selection
+  uses the current numbering and never selects an update action whose label also
   contains a skip phrase.
 
 - Keep an acquired Codex config or clipboard lock operation pending until its task

@@ -1,4 +1,4 @@
-/** Isolate the native updater; record and reject application input (PRD §5.5, C-CODEX-12). */
+/** Isolate the native updater; record input and permit only a live-validated safe selection (PRD §5.5, C-CODEX-12). */
 import {
   chmodSync,
   copyFileSync,
@@ -58,6 +58,7 @@ export async function nativeUpdaterSandbox(sourceBinary: string) {
     setCommandRunnerForTests((command, args) => runProbe(command, pin(args)));
     const applicationAttempts: string[] = [];
     const protocolReplies: string[] = [];
+    let permitSelection: (input: string) => boolean = () => false;
     setPtyFactoryForTests((options) => {
       const pty = nodePtyFactory({
         ...options,
@@ -74,6 +75,10 @@ export async function nativeUpdaterSandbox(sourceBinary: string) {
             pty.write(data);
           } else {
             applicationAttempts.push(input);
+            if (permitSelection(input)) {
+              pty.write(data);
+              return;
+            }
             throw new Error("Unexpected application input during native updater proof");
           }
         },
@@ -84,6 +89,9 @@ export async function nativeUpdaterSandbox(sourceBinary: string) {
       version: version.stdout.trim(),
       applicationAttempts,
       protocolReplies,
+      permitSafeSelection(check: (input: string) => boolean) {
+        permitSelection = check;
+      },
       dispose,
     };
   } catch (error) {

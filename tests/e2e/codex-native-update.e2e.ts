@@ -1,10 +1,12 @@
-/** Opt-in pinned native resize proof; empty/bannered frames hold caller input (C-CODEX-12). */
+/** Opt-in pinned native resize proof; narrow frames hold input; a full native menu permits only Skip (C-CODEX-12). */
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
+import { classifyCodexUpdateFrame } from "../../src/codex/update/classification.ts";
+import { safeUpdateOption } from "../../src/codex/update/selection.ts";
 import { type CodexSessionApi, startCodex } from "../../src/index.ts";
 import { resetRuntimeSeamsForTests } from "../../src/runtime/seams.ts";
 import { nativeUpdaterSandbox } from "./codex-native-update-sandbox.ts";
@@ -16,7 +18,7 @@ const binary = join(
 );
 const available = existsSync(binary) && existsSync(join(homedir(), ".codex/auth.json"));
 
-test("C-CODEX-12 genuine narrow updater holds queued input without selecting a menu action", {
+test("C-CODEX-12 genuine updater holds narrow input and selects only the full-menu safe digit", {
   skip: skipIf(
     process.env["ELWOOD_NATIVE_UPDATE_PROOF"] === "1"
       ? available
@@ -108,6 +110,40 @@ test("C-CODEX-12 genuine narrow updater holds queued input without selecting a m
   await active.kill();
   assert.notEqual(await queued, "fulfilled");
   assert.deepEqual(sandbox.applicationAttempts, []);
+  // The held caller belongs to the closed session. The positive phase has no prompt.
+  session = await startCodex({
+    cwd: sandbox.project,
+    stateDir: join(sandbox.project, ".positive-state"),
+    initialSize: { cols: 100, rows: 6 },
+    autoupdate: false,
+    sandbox: "read-only",
+    approvalPolicy: "never",
+  });
+  const positive = session;
+  await waitFor(
+    () => (positive.terminal.snapshot().text.includes("0.155.1 -> 0.156.1") ? true : undefined),
+    "second native updater banner",
+    10_000,
+  );
+  const safeFrames: string[] = [];
+  sandbox.permitSafeSelection((input) => {
+    const text = positive.terminal.snapshot().text;
+    const frame = classifyCodexUpdateFrame(text);
+    const choice = safeUpdateOption(text, frame.options ?? []);
+    if (input !== "2" || !frame.hasBanner || choice?.number !== "2" || choice.label !== "Skip")
+      return false;
+    safeFrames.push(text);
+    return true;
+  });
+  await positive.resize({ cols: 100, rows: 30 });
+  await waitFor(
+    () => (positive.status === "ready" ? true : undefined),
+    "native ready after Skip",
+    15_000,
+  );
+  assert.deepEqual(sandbox.applicationAttempts, ["2"]);
+  assert.equal(safeFrames.length, 1);
+  await positive.kill();
   t.diagnostic(
     JSON.stringify({
       version: sandbox.version,
@@ -115,10 +151,11 @@ test("C-CODEX-12 genuine narrow updater holds queued input without selecting a m
       attention: observed.activities
         .filter((event) => event.kind === "attention")
         .map((event) => event.label),
-      applicationAttempts: sandbox.applicationAttempts.length,
+      applicationAttempts: sandbox.applicationAttempts,
+      safeFrames,
     }),
   );
   t.diagnostic(
-    "Real pinned Codex updater resized 100x6→2→1→3→6; recorded actual frames, blocked status and zero application attempts; no menu action or model prompt delivered.",
+    "Real pinned Codex updater narrow sequence held caller input with zero attempts. A second prompt-free session resized100x6→30, sent only current native2.Skip and reached ready; no update or model prompt delivered.",
   );
 });

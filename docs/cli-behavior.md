@@ -606,8 +606,8 @@ Version-coupled behavior learned here:
   blocker before choices paint, and retained input remains held until positive
   native composer clearance. Historical accumulated-buffer matching and later
   safe-option-only continuation inference are no longer authorization rules.
-  The 0.155.1 captures below preserve the banner at every observed size; they do
-  not establish a genuine bannerless repaint. C-CODEX-12.
+  The earlier 0.155.1 full-menu fixture captures preserve the banner at every
+  observed size; those fixtures do not establish a genuine bannerless repaint. C-CODEX-12.
 - Captured Codex menus list `Update now` before safe choices. Selection respects
   that ordering, excludes the update action, and compares the current bounded
   option snapshot before each write. Removal or renumbering of a safe choice
@@ -1029,8 +1029,17 @@ being rejected by the interceptor; only exact terminal protocol replies reached
 the PTY. No updater action or model prompt was delivered, and the private binary,
 metadata and credential copy were removed afterward. This proves a genuine
 bannerless **empty** repaint, not a bannerless numbered-choice layout. The initial
-six-row layout had only the clipped update action, so this run does not claim a
-live safe-choice selection; existing native full-menu fixtures cover that grammar.
+six-row layout had only the clipped update action, so that narrow phase alone
+establishes no live safe-choice selection.
+
+The final proof also launches a second isolated session without a queued caller,
+then resizes its real updater from 100×6 to 100×30. Before every application write,
+the interceptor checks the current rendered first-party banner and parsed `2. Skip`
+choice; only the exact digit `2` is permitted. The measured run attempted and
+delivered exactly one `2`, reached `ready`, then closed without a model prompt.
+The combined test passed 1/1 with no skips (8.28 seconds); the narrow phase still
+had zero application attempts. The negative session is killed before this phase,
+so its held caller cannot become a model submission when the menu clears.
 
 `tests/fixtures/codex-0.155.1/update-resize-100x1.json` preserves the actual frames.
 The opt-in `codex-native-update.e2e.ts` proof is repeatable with
