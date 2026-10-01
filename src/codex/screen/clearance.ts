@@ -19,7 +19,7 @@ const placeholders = new Set([
 ]);
 const modelFooter =
   /^ {2}(?:gpt|GPT)-[\w.-]+ (?:minimal|low|medium|high|xhigh|default)(?: · (?:\/|[A-Z]:[\\/])[^\n]*)?$/;
-const hintFooter = /^(?: {2})?\? for shortcuts$/;
+const hintFooter = /^(?: {2})?\? for shortcuts(?: +⚠ [1-9]\d* warnings? · f2 to view)?$/;
 
 /** A contiguous startup welcome box and its native tip/warning rows. */
 function welcomeBox(rows: readonly string[]): boolean {

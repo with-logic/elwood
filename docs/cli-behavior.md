@@ -31,6 +31,23 @@ working-dialog clearance. Verified from the installed CLI's argument error on
 
 ## Readiness
 
+**Codex 0.159.2 adds a warning counter to its shortcuts footer.** A bounded
+invalid-model cold-start probe on 2026-10-01 captured `? for shortcuts` followed
+on the same row by `⚠ 3 warnings · f2 to view`, below the model footer and empty
+`› Ask Codex to do anything` composer. Its animated welcome said “Follow the
+white cursor.” The existing footer grammar rejects this captured row. The trace separately
+showed a retained trust episode and a held 10-second readiness deadline; it did
+not capture each observed frame, so it cannot attribute the original gate or
+prove that this final snapshot was the frame at that deadline. No submission Enter or UserPromptSubmit occurred,
+so the probe establishes startup layout/readiness evidence, not hook/transcript
+ordering. Clearance accepts the bounded native warning-count suffix while still
+requiring current settled frame, visible input cursor, native model chrome, and
+absence of active dialogs or work. A follow-up probe with this grammar recorded
+folder trust followed by the warning-bearing composer: the trust hold cleared,
+and both cold and resumed sessions reached ready and delivered exactly one
+invalid-model submission with one `UserPromptSubmit` each. No valid model was
+used. C-API-28, C-TRUST-01.
+
 **Codex fires its `SessionStart` hook lazily — on the first turn, not at boot.**
 Any experiment that waits for a boot-time Codex hook *without running a turn* is
 invalid and will conclude the hook "never fires". (This once produced a false
