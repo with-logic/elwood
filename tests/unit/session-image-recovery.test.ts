@@ -102,7 +102,9 @@ for (const agent of ["claude", "codex"] as const) {
             submitted = true;
           },
         );
-        await vi.waitFor(() => expect(submitted).toBe(true));
+        // Real path/clipboard work precedes the fake-clock recovery assertions.
+        // Observe its existing 10s attachment budget, not vi.waitFor’s 1s default.
+        await vi.waitFor(() => expect(submitted).toBe(true), { timeout: 10_000 });
         await sent;
         expect(enters).toBe(1);
         expect(pty.writes).toContain(`\u001b[200~${text}\u001b[201~`);

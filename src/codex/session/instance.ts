@@ -7,6 +7,7 @@ import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
 import type { HookObservation } from "../../core/hook-observation.ts";
 import { isPickerIntervention } from "../../core/models/intervention.ts";
 import { sessionWaitForActivity, sessionWaitForStatus } from "../../core/session-wait.ts";
+import { registerNativeTurnReader } from "../../core/simple/submission-context.ts";
 import type { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent } from "../../core/types.ts";
 import { emitSessionWarnings } from "../../core/warnings/session.ts";
@@ -17,6 +18,7 @@ import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, updateSessionResumeId } from "../../state/store.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
+import { codexTurnIdentity } from "../accepted-turn.ts";
 import { restoreCodexConfig, snapshotCodexConfig } from "../config/restore.ts";
 import { runCodexModelSwitch } from "../config/transaction.ts";
 import { attachCodexImages } from "../images/attach.ts";
@@ -70,6 +72,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
       terminalReplay,
       loopDefinitions,
     );
+    registerNativeTurnReader(this, codexTurnIdentity);
     this.bridge = bridge;
     this.emitter = emitter;
     this.transcriptWatcher = transcriptWatcher;
@@ -83,16 +86,9 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
     this.replayFor(event as string, handler);
     return unsubscribe;
   }
-  // The Codex CLI persists picker selections into user config.toml; restore
-  // the user's prior default after the switch (C-CODEX-14). The live session
-  // keeps the switched model because Codex reads its config at launch.
-  //
-  // The whole transaction runs under a PROCESS-WIDE config lock (see
-  // config/transaction.ts) so two sessions switching at once cannot interleave
-  // snapshot/restore on the shared file and persist the wrong model, and the
-  // restore still fires when the picker automation rejects AFTER Codex wrote
-  // config.toml — otherwise a late `waitForScreen` timeout would leave the
-  // user's global default changed (C-CODEX-14).
+  // Restore the user's config default after picker changes; the live CLI retains
+  // its selection. The process-wide transaction lock prevents interleaved snapshots
+  // and restores even when automation rejects after Codex writes (C-CODEX-14).
   override setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void> {
     // The queue slot is claimed FIRST (by `super.setModel`), and the config transaction
     // runs inside it via `around`. Reversing that let a following `sendMessage` dispatch

@@ -13,6 +13,7 @@ import {
   type ScreenFactReading,
   type ScreenFactTable,
 } from "./screen-facts.ts";
+import { confirmNativeBoundary } from "./simple/native-boundary.ts";
 import type { TurnStateWatcher } from "./turn-state.ts";
 import type { ElwoodSessionStatus, ElwoodStatusDecision, ElwoodStatusEvidence } from "./types.ts";
 
@@ -86,7 +87,10 @@ export function observeRenderedReading(
 ): void {
   const turnEdge = observers.turn.observe(reading.facts, session?.status === "running");
   if (turnEdge === "started") session?.submitEvidence("rendered_turn_started");
-  if (turnEdge === "ended") session?.submitEvidence("rendered_turn_ended");
+  if (turnEdge === "ended" && session) {
+    session.submitEvidence("rendered_turn_ended");
+    confirmNativeBoundary(session, { kind: "rendered" });
+  }
   const attention = observers.attention.observe(reading);
   if (attention?.edge === "raised" || attention?.edge === "updated") {
     const decision =

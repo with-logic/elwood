@@ -11,7 +11,15 @@ export function loopBoundaryTail(owner: object): Promise<void> | undefined {
 export function reserveLoopSubmission(
   owner: object,
   session: BoundarySession,
-  { closing, admission }: { readonly closing: AbortSignal; readonly admission: AbortSignal },
+  {
+    closing,
+    admission,
+    observe,
+  }: {
+    readonly closing: AbortSignal;
+    readonly admission: AbortSignal;
+    readonly observe?: () => Pick<ReturnType<typeof observeTurnBoundary>, "promise" | "discard">;
+  },
 ) {
   const predecessor = loopBoundaryTails.get(owner);
   const completion = Promise.withResolvers<void>();
@@ -58,7 +66,7 @@ export function reserveLoopSubmission(
         throw abortError();
       }
       // Only one untagged collector exists; admission waited outside the input slot.
-      const observer = observeTurnBoundary(session, closing);
+      const observer = observe ? observe() : observeTurnBoundary(session, closing);
       const submissionSettled = Promise.withResolvers<void>();
       void Promise.all([submissionSettled.promise, observer.promise]).then(
         () => completion.resolve(),

@@ -1,6 +1,10 @@
 /** Codex recovery matches sanitized text or images only within the live idle composer (PRD §5.3). */
 import { imageChipCount } from "../../core/images/chip-wait.ts";
-import { readStagedComposer } from "../../core/input/staged-composer.ts";
+import {
+  readIdleComposerFrame,
+  readStagedComposerFrame,
+  readStagedWhitespace,
+} from "../../core/input/staged-composer.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { codexScreenFactTable } from "../screen-table.ts";
 import { codexEmptyInputFrame, codexEmptyInputRows } from "./empty-input.ts";
@@ -11,14 +15,20 @@ export function codexInputStaged(terminal: ElwoodTerminal, payload: string): boo
 
 function prepareCodexStaged(terminal: ElwoodTerminal, payload: string): () => boolean {
   let lastLine: string | undefined;
+  let whitespaceOnly: boolean | undefined;
   return () => {
-    const draft = readStagedComposer(
-      terminal,
+    const current = readIdleComposerFrame(terminal, codexScreenFactTable);
+    const draft = readStagedComposerFrame(
+      current,
       codexEmptyInputRows,
-      codexScreenFactTable,
       "› Ask Codex to do anything",
     );
-    if (draft === undefined) return false;
+    if (draft === undefined) {
+      if (!readStagedWhitespace(current, codexEmptyInputRows, "› Ask Codex to do anything"))
+        return false;
+      whitespaceOnly ??= payload.length > 0 && payload.trim().length === 0;
+      return whitespaceOnly;
+    }
     if (imageChipCount(draft) > 0) return true;
     // Derive only after a live draft exists; retain only for this recovery sequence.
     lastLine ??= normalizedLastLine(payload);

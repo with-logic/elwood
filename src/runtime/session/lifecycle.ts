@@ -15,6 +15,7 @@ import { advanceInitialReady } from "../readiness/advance.ts";
 import { CleanupLatch } from "../shutdown/cleanup-latch.ts";
 import type { StatusDecision, StatusEvidenceKind } from "../status-evidence.ts";
 import { SessionLoops } from "./loops.ts";
+import { bindNativeInput } from "./native-submission.ts";
 import { closingController, notRunningError, runSessionOperation } from "./not-running.ts";
 import { PasteRecoveryRevocation } from "./paste-recovery.ts";
 import type { PickerInputOwnership } from "./picker-input.ts";
@@ -48,7 +49,7 @@ export abstract class SessionLifecycle {
     stateDir: string,
     runtime: SessionRuntime,
     pty: PtyProcess,
-    ownership: PickerInputOwnership,
+    input: PickerInputOwnership,
     statusEvents: SessionStatusEmitter,
     terminalReplay: TerminalReplayBuffer,
     loopDefinitions: readonly PersistedLoopDefinition[],
@@ -60,8 +61,8 @@ export abstract class SessionLifecycle {
       this.record = next; // Expose metadata only after durable persistence succeeds.
     };
     this.pty = pty;
-    this.terminal = ownership.caller;
-    this.automatedTerminal = ownership.automated;
+    this.terminal = input.caller;
+    this.automatedTerminal = input.automated;
     this.pasteGuard = new PasteRecoveryRevocation(statusEvents, this.closing.signal).createGuard(
       this.terminal,
       () => this.recoveryComposer,
@@ -70,9 +71,10 @@ export abstract class SessionLifecycle {
     );
     this.terminalReplay = terminalReplay;
     this.reapPolicy = new SessionReapPolicy(agent, record.elwoodSessionId, pty.pid);
-    const readEmpty = () => this.emptyComposerFrame();
+    const submit = queuedInputSubmitter(this.automatedTerminal, this.pasteGuard);
+    const native = bindNativeInput(this, statusEvents, () => this.emptyComposerFrame(), submit);
     this.controlQueue = new ControlQueue(
-      queuedInputSubmitter(this.automatedTerminal, this.pasteGuard),
+      native.submit,
       () => notRunningError(agent),
       (origin) => {
         this.loops.turnStarted(origin);
@@ -80,7 +82,8 @@ export abstract class SessionLifecycle {
       },
       () => this.status === "running",
       this.stopCompletion.submitted,
-      ownership.composerCleanup(() => this.queuedInputBlocked(), this.closing.signal, readEmpty),
+      input.composerCleanup(() => this.queuedInputBlocked(), this.closing.signal, native.readEmpty),
+      native.admit,
     );
     registerTurnLoopHold(this, () => this.controlQueue.holdLoops());
     this.loops = new SessionLoops({

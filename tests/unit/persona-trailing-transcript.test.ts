@@ -6,6 +6,7 @@ import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
 import { ClaudeSession, CodexSession } from "../../src/index.ts";
 import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
+import { codexSmallComposer, codexTty } from "../fixtures/trust-composer.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -25,7 +26,7 @@ test.each([
   const facade =
     agent === "claude"
       ? new ClaudeSession({ cwd, persona: "persona" })
-      : new CodexSession({ cwd, persona: "persona" });
+      : new CodexSession({ cwd, persona: "persona", initialSize: { cols: 200, rows: 35 } });
   const result = facade.send("caller").catch((error: unknown) => error);
   try {
     const live: ElwoodAgentSession = await facade.start();
@@ -104,6 +105,11 @@ test.each([
       },
       { timeout: 5_000 },
     );
+    await hook({ hook_event_name: "UserPromptSubmit", turn_id: "caller", prompt: "caller" });
+    if (agent === "codex") {
+      pty.emitData(`\u001b[2J\u001b[H${codexTty(codexSmallComposer)}`);
+      await vi.advanceTimersByTimeAsync(100);
+    }
     append("CALLER");
     await hook({
       hook_event_name: "Stop",

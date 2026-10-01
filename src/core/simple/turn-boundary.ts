@@ -24,10 +24,18 @@ export class TurnBoundary {
   private drainTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly onReach: () => void;
   private readonly drainMs: number;
+  private readonly beforeRelease: (() => Promise<void> | undefined) | undefined;
 
   /** `onReach` runs once the boundary lands (e.g. to attempt listener cleanup). `drainMs` is the
-   *  post-failure `ready` drain window (default `DRAIN_MS`; overridable for tests). */
-  constructor(onReach: () => void, drainMs = DRAIN_MS) {
+   *  post-failure `ready` drain window. `beforeRelease` returns non-rejecting physical
+   *  immediate cleanup, if needed, before the serializer and images release. Deferred
+   *  dialog-blocked cleanup remains queue-owned; this boundary does not attest empty input. */
+  constructor(
+    onReach: () => void,
+    drainMs = DRAIN_MS,
+    beforeRelease?: () => Promise<void> | undefined,
+  ) {
+    this.beforeRelease = beforeRelease;
     this.onReach = onReach;
     this.drainMs = drainMs;
     this.promise = new Promise<void>((resolve) => {
@@ -39,10 +47,17 @@ export class TurnBoundary {
   reach(): void {
     if (this.reached) return;
     this.reached = true;
-    if (this.drainTimer) clearTimeout(this.drainTimer);
-    this.drainTimer = undefined; // so `draining` reports the truth once the boundary has landed
-    this.resolve();
+    this.cancelDrain();
+    const pending = this.beforeRelease?.();
+    if (pending) void pending.then(this.resolve);
+    else this.resolve();
     this.onReach();
+  }
+
+  /** New running evidence invalidates any earlier ready/drain window. */
+  cancelDrain(): void {
+    if (this.drainTimer) clearTimeout(this.drainTimer);
+    this.drainTimer = undefined;
   }
 
   /** Mark that the consumer turn failed: the boundary now waits for a real `ready`/terminal, not quiet. */

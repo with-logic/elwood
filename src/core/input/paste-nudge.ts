@@ -1,8 +1,18 @@
-/** Bound recovery observations separately from physical Enter attempts (PRD §5.3). */
-import { type InputTerminal, writeUnsafe } from "./abort.ts";
+/** Shared native observation/retry engine with background or awaited ownership (PRD §5.3). */
+import { type InputTerminal, throwIfInputAborted, writeUnsafe } from "./abort.ts";
 import type { EmptyComposerObserver } from "./clear-ack.ts";
 import { pasteNudgeAttempts, pasteObservationLimit } from "./constants.ts";
 import type { PasteGuard } from "./index.ts";
+import { RenderWakeup } from "./render-wakeup.ts";
+
+type Observation =
+  | "pending"
+  | "accepted"
+  | "exhausted"
+  | "revoked"
+  | "cancelled"
+  | "legacy_done"
+  | "paced";
 
 export function preparePasteNudges(
   terminal: InputTerminal,
@@ -18,40 +28,68 @@ export function preparePasteNudges(
     "prepareStaged" in guard
       ? guard.prepareStaged(payload)
       : () => guard.staged(guard.snapshot(), payload);
+  let retryAt = 0;
   let hasFreshFrame: (() => boolean) | undefined;
   const beforeEnter = () => {
     hasFreshFrame = guard.captureRenderProgress?.();
+    retryAt = Date.now() + delayMs;
   };
+  const hasRenderedAfterEnter = (requireProof: boolean) => hasFreshFrame?.() ?? !requireProof;
   let attempts = 0;
   let observations = 0;
+  const retry = async (awaitNativeAcceptance: boolean): Promise<Observation> => {
+    if (awaitNativeAcceptance && Date.now() < retryAt) return "paced";
+    if (attempts === pasteNudgeAttempts) return "exhausted";
+    attempts += 1;
+    beforeEnter();
+    await tryRecoveryEnter(terminal);
+    return "pending";
+  };
+  const observe = async (awaitNativeAcceptance: boolean): Promise<Observation> => {
+    const unsafe = await writeUnsafe(terminal, guard, signal, awaitNativeAcceptance);
+    if (signal?.aborted) return "cancelled";
+    // Hook evidence stops retries, but cannot itself release an awaited image draft.
+    const recoveryRevoked = revoked?.();
+    if (!awaitNativeAcceptance && recoveryRevoked) return "revoked";
+    if (unsafe) return "pending";
+    const fresh = hasRenderedAfterEnter(awaitNativeAcceptance);
+    const empty = guard.emptyFrame?.();
+    // A geometry-only token change cannot replace post-Enter rendered output.
+    if (fresh && empty && empty !== priorEmptyFrame) return "accepted";
+    if (recoveryRevoked) return "revoked";
+    if (!(fresh && staged())) return guard.emptyFrame ? "pending" : "legacy_done";
+    return retry(awaitNativeAcceptance);
+  };
   const schedule = () => {
     const timer = setTimeout(nudge, delayMs);
     timer.unref?.();
   };
   const nudge = async () => {
-    const unsafe = await writeUnsafe(terminal, guard, signal);
-    // Later queued/raw input and native user_message revoke recovery authority.
-    if (signal?.aborted || revoked?.()) return;
+    const result = await observe(false);
     observations += 1;
-    if (unsafe) {
-      if (observations < pasteObservationLimit) schedule();
-      return;
-    }
-    const fresh = hasFreshFrame?.() !== false;
-    const empty = guard.emptyFrame?.();
-    // Geometry can replace an empty token without output; only post-Enter output retires input.
-    if (fresh && empty && empty !== priorEmptyFrame) return;
-    if (fresh && staged()) {
-      attempts += 1;
-      beforeEnter();
-      await tryRecoveryEnter(terminal);
-    } else if (!guard.emptyFrame) {
-      // Write-only internal guards retain their boolean stopping contract.
-      return;
-    }
-    if (attempts < pasteNudgeAttempts && observations < pasteObservationLimit) schedule();
+    if (
+      result === "pending" &&
+      attempts < pasteNudgeAttempts &&
+      observations < pasteObservationLimit
+    )
+      schedule();
   };
-  return { beforeEnter, start: schedule };
+  const awaitAcceptance = async (): Promise<boolean> => {
+    const wakeup = new RenderWakeup(guard.subscribeRender);
+    try {
+      for (;;) {
+        wakeup.consume();
+        const result = await observe(true);
+        throwIfInputAborted(signal);
+        if (result === "accepted") return true;
+        if (result === "exhausted") return false;
+        await wakeup.wait(signal, result === "paced" ? retryAt - Date.now() : undefined);
+      }
+    } finally {
+      wakeup.dispose();
+    }
+  };
+  return { beforeEnter, start: schedule, awaitAcceptance };
 }
 
 async function tryRecoveryEnter(terminal: InputTerminal): Promise<void> {

@@ -27,6 +27,15 @@ test.each([
     await becomeReady(session.elwoodSessionId, cwd, { transcript_path: transcript });
     await session.sendPrompt("busy");
     expect(session.status).toBe("running");
+    // Publish during Stop so its synchronous scan, not the independent poll, owns the record.
+    session.on("hook", (event) => {
+      if (event.hook_event_name === "Stop") {
+        appendFileSync(
+          transcript,
+          `${JSON.stringify({ type: "response_item", payload: { type: "reasoning" } })}\n`,
+        );
+      }
+    });
     if (phase === "hook")
       session.on("hook", (event) => {
         if (event.hook_event_name === "Stop") throw new Error("private Stop observer");
@@ -39,10 +48,6 @@ test.each([
       session.on("status", (event) => {
         if (event.status === "ready") throw new Error("private lifecycle observer");
       });
-    appendFileSync(
-      transcript,
-      `${JSON.stringify({ type: "response_item", payload: { type: "reasoning" } })}\n`,
-    );
     const result = await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       hook_event_name: "Stop",
       session_id: "codex-1",

@@ -14,6 +14,7 @@ export type ControlSubmitter = (
   mode: ControlSubmitMode,
   signal: AbortSignal,
   onSubmitted?: () => void,
+  beforeEnter?: (payload: string) => void,
 ) => Promise<void>;
 
 /** An abortable task run while its queue op holds the queue; aborts on close. */
@@ -24,24 +25,29 @@ export type Cancel = { readonly signal: AbortSignal; readonly error: () => Error
 
 /** Internal provenance for activity and recurring-loop scheduling decisions. */
 export type ControlSubmissionOrigin =
-  | { readonly kind: "caller" }
+  | { readonly kind: "caller"; readonly awaitNativeAcceptance?: true }
   | { readonly kind: "loop"; readonly loopId: string };
 
 /** Optional internal controls for an attributed, cancellable text submission. */
 export type ControlSendOptions = {
   readonly cancel?: Cancel;
+  /** Private one-submission callback after its first physical Enter. */
+  readonly onSubmitted?: () => void;
   /** Retain the active queue slot through close; either write outcome rejects with stoppedError. */
   readonly settleAfterWrite?: true;
   readonly origin?: ControlSubmissionOrigin;
+  readonly beforeEnter?: (payload: string) => void;
 };
 
 type QueuedOperationBase = {
   readonly input: string;
+  readonly onSubmitted?: () => void;
   readonly settleAfterWrite?: boolean;
   readonly kind: ControlOperationKind;
   // FROZEN at enqueue: guidance queued before first readiness stays message-like (C-API-37).
   readonly mayBypassReadiness: boolean;
   readonly origin: ControlSubmissionOrigin;
+  readonly beforeEnter?: (payload: string) => void;
   readonly resolve: () => void;
   readonly reject: (error: Error) => void;
 };

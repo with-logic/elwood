@@ -1,37 +1,22 @@
 /**
- * One ergonomic turn: submit a prompt and drive the agent turn to its REAL boundary,
- * feeding a gate the consumer reads (PRD §5.8, C-API-48/49/50).
- *
- * The turn boundary is a COMPLETENESS ORACLE, not a timer. A turn's assistant text is
- * transcript-sourced (C-CLAUDE-15) and the transcript is written ASYNCHRONOUSLY, arriving
- * shortly AFTER the `ready` status. The turn-boundary `Stop` hook carries
- * `last_assistant_message` — the final assistant text of the just-completed turn — used
- * ONLY as a completeness signal (never displayed — it can be ghost text): the turn ends
- * once the transcript-collected assistant text CONTAINS it. With no such signal (a
- * pure-tool turn, or an empty/`null` `last_assistant_message`) the turn ends after a
- * bounded quiet window with no new content.
- *
- * The runner is decoupled from its consumer. `completion` always resolves when the consumer
- * settles; its error travels through `events`. The serializer instead holds `boundary`, which
- * resolves on a successful oracle/quiet settle or terminal status. After consumer failure it
- * waits for real `ready`/terminal evidence plus transcript drain, so abandoned streams cannot
- * release their slot while the agent is still producing.
- *
- * Timeouts: a turn may run for HOURS (a test suite, a PR poll), so there is NO whole-turn
- * timeout by default; callers may pass an opt-in `timeoutMs`, armed only AFTER submission (a
- * turn begins on submission — the timer must never reject a caller for a prompt still queued
- * behind readiness that then submits anyway). The tight cap is `catchUpMs` (default 10s),
- * armed only ONCE `ready` fires — the flush should be near-instant, so a longer stall rejects
- * with `wait_timeout`. A terminal status ends the turn at once.
+ * Collect one ergonomic turn through native completion and transcript drain (PRD §5.8).
+ * Consumer failure settles events but retains the serializer boundary until actual completion
+ * or terminal status. Codex acceptance and Stop identity come from private adapter evidence;
+ * public running/ready alone cannot bind or finish its turn. Untagged adapters retain the
+ * serialized passive oracle. The Stop oracle checks completeness; it never supplies output.
+ * Whole-turn deadlines start after physical submission; catch-up deadlines start after idle.
  */
 
 import { toError } from "../errors.ts";
+import { cancellableSubmission } from "../input/submission-cancel.ts";
 import { terminalStatuses } from "../status-categories.ts";
 import { boundaryExpectation } from "./boundary-signal.ts";
 import { toTurnEvent } from "./events.ts";
+import { withSubmissionAttempt } from "./submission-context.ts";
 import { armTurnTimeout, FALLBACK_QUIET_MS, gateForTurn } from "./turn/defaults.ts";
 import { TurnAcceptance } from "./turn-acceptance.ts";
 import { TurnBoundary } from "./turn-boundary.ts";
+import { TurnIdentity } from "./turn-identity.ts";
 import {
   defaultAcceptanceSignal,
   defaultBoundarySignal,
@@ -52,12 +37,7 @@ export type {
 } from "./turn-types.ts";
 export { defaultAcceptanceSignal, defaultBoundarySignal } from "./turn-types.ts";
 
-/**
- * Start a turn: attach listeners, submit the prompt, and drive the gate to the turn's real
- * boundary. Returns the consumer `events` generator, an always-resolving `completion` signal,
- * and the `boundary` promise the serializer holds its slot on (so the next turn never starts
- * before the AGENT settles — see `RunningTurn` and the file docstring).
- */
+/** Attach before owned submission; retain the native boundary after consumer failure. */
 export function runTurn(
   session: TurnSession,
   prompt: string,
@@ -65,20 +45,26 @@ export function runTurn(
 ): RunningTurn {
   const gate = gateForTurn(options);
   const sendOptions = options.images === undefined ? undefined : { images: options.images };
-  const send = () => session.sendMessage(prompt, sendOptions);
+  const identity = options.readNativeTurn && new TurnIdentity(session, options.readNativeTurn);
+  let submitted = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const onSubmitted = () => {
+    if (submitted) return;
+    submitted = true;
+    timer = armTurnTimeout(options.timeoutMs, (error) => gate.fail(error));
+  };
   const acceptance = new TurnAcceptance(options.fallbackQuietMs ?? FALLBACK_QUIET_MS, {
-    replay: send,
-    acceptReady: () => gate.observeReady(),
+    write: (signal) => {
+      const send = () =>
+        session.sendMessage(prompt, cancellableSubmission(sendOptions, signal, onSubmitted));
+      return identity ? withSubmissionAttempt(session, identity, send) : send();
+    },
+    acceptReady: () => {
+      if (!identity) gate.observeReady();
+    },
     fail: (error) => gate.fail(toError(error)),
   });
-  // Bound to the first content event that CARRIES a `turnId` (Codex tags; Claude never does);
-  // untagged events always belong to this turn, a differently tagged one is a prior turn's.
   let turnId: string | undefined;
-  // The turn only ENDS on a settle once it has demonstrably STARTED — a `running` status or
-  // the first content event — so the idle `ready` the session sits at when the prompt is
-  // submitted does not end the turn before any work runs. This (with the serializer holding
-  // the prior turn to its real boundary before this one starts) is why no explicit
-  // "is this my submission" gate is needed: there are no prior-turn events left to mis-collect.
   let started = false;
   let sawReady = false; // a `ready` after the turn started was observed (agent turn is idle/done)
   let consumerSettled = false;
@@ -92,18 +78,18 @@ export function runTurn(
     offActivity();
     offHook();
     offStatus();
+    offNativeBoundary();
   };
-  const boundary = new TurnBoundary(maybeCleanup, options.drainMs);
+  const boundary = new TurnBoundary(maybeCleanup, options.drainMs, () => acceptance.quiesce());
   // The gate's SUCCESSFUL settle means the transcript drained — the real boundary. Its rejection
   // (a consumer failure) does NOT reach it here; a post-failure `ready`/terminal does.
-  gate.done().then(
-    () => boundary.reach(),
-    () => undefined,
-  );
+  acceptance.disarmOnSettle(gate.done(), () => boundary.reach());
 
   const offActivity = session.on("activity", (event) => {
     const simple = toTurnEvent(event);
-    if (simple || (event.kind === "user_message" && event.text === prompt)) acceptance.accept();
+    if (identity && !identity.acceptsContent(event.turnId)) return;
+    if (simple || (!identity && event.kind === "user_message" && event.text === prompt))
+      acceptance.accept();
     if (simple) {
       started = true;
       turnId ??= event.turnId; // bind on the FIRST tagged event, not merely the first event
@@ -117,18 +103,35 @@ export function runTurn(
     }
     if (boundary.draining) boundary.armDrain(); // trailing post-failure flush re-arms the drain
   });
+  const nativeIdle = () => {
+    if (!identity?.ready()) return;
+    sawReady = true;
+    gate.observeReady();
+    boundary.armDrain();
+  };
+  const offNativeBoundary =
+    identity?.observeBoundary((signal) => {
+      gate.expectText(boundaryExpectation(signal));
+      nativeIdle();
+    }, nativeIdle) ?? (() => undefined);
   const readBoundarySignal = options.readBoundarySignal ?? defaultBoundarySignal;
   const offHook = session.on("hook", (event) => {
     // The adapter NORMALIZES its raw hook into the completeness signal (`undefined` for any
     // non-boundary hook, which the gate ignores so a late `Notification` cannot wipe an
     // installed oracle). The core reads only that — never raw hook fields — and uses it as a
     // completeness ORACLE only, never displayed (C-CLAUDE-15).
+    if (identity) {
+      if (identity.observe(event)) acceptance.accept();
+      return; // Public Stop precedes its callback outcome; only private confirmation owns the oracle.
+    }
     if (defaultAcceptanceSignal(event, prompt)) acceptance.accept();
     gate.expectText(boundaryExpectation(readBoundarySignal(event)));
   });
   const offStatus = session.on("status", ({ status }) => {
     if (status === "running") {
       started = true;
+      sawReady = false;
+      boundary.cancelDrain();
       acceptance.running();
     }
     if (terminalStatuses.has(status)) {
@@ -137,8 +140,10 @@ export function runTurn(
       return boundary.reach(); // agent is gone — the real boundary, regardless of consumer state
     }
     if (status === "ready" && started) {
+      const accepted = acceptance.ready();
+      if (identity && !identity.ready()) return;
       sawReady = true;
-      if (acceptance.ready()) gate.observeReady();
+      if (accepted) gate.observeReady();
       boundary.armDrain(); // failure path: agent reached ready → drain then release the slot
     }
   });
@@ -146,23 +151,21 @@ export function runTurn(
   // Drive the consumer lifecycle EAGERLY and independently of iteration: submit, then wait for
   // the gate to settle. Always resolves — the turn error reaches the consumer via `events`.
   const completion = (async () => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      // A turn BEGINS on submission (PRD §5.8), so the opt-in ceiling is armed only AFTER
-      // `sendMessage` resolves — never rejecting a prompt still queued behind readiness.
-      await send(); // listeners attached — no early event lost
+      // Native submission arms its ceiling at physical Enter; this await also retains
+      // ownership through fresh-empty confirmation or cancellation cleanup.
+      await acceptance.submit(); // listeners attached — no early event lost
+      onSubmitted(); // fallback for custom TurnSession implementations without private metadata
     } catch (error) {
-      // The SUBMISSION failed → no agent turn is in flight and no status transition is coming:
-      // fail the consumer with the typed error AND reach the boundary at once (else the
-      // serializer waits forever). A terminal-status race is a benign idempotent no-op; otherwise
-      // a submit-on-a-dead-session `session_not_running` propagates to the consumer (C-API-25).
       gate.fail(toError(error));
-      boundary.reach();
-      consumerSettled = true;
-      maybeCleanup();
-      return;
+      if (!(submitted || identity?.attempted)) {
+        // No physical Enter: no native turn or future status needs draining.
+        boundary.reach();
+        consumerSettled = true;
+        maybeCleanup();
+        return;
+      }
     }
-    timer = armTurnTimeout(options.timeoutMs, (error) => gate.fail(error));
     try {
       await gate.done(); // resolves on genuine settle (→ boundary); rejects on consumer failure
     } catch {
@@ -173,7 +176,6 @@ export function runTurn(
       if (sawReady) boundary.armDrain();
     } finally {
       if (timer) clearTimeout(timer);
-      acceptance.dispose();
       consumerSettled = true;
       maybeCleanup();
     }

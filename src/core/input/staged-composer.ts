@@ -9,15 +9,21 @@ export function readStagedComposer(
   table: ScreenFactTable,
   emptyRow: string,
 ): string | undefined {
-  const frame = currentRenderedFrame(terminal);
-  // The native caret prefix occupies two cells; staged text/chips advance beyond them.
-  if (!(frame && settledCursorVisible(terminal.xterm)) || frame.cursorX < 2) return undefined;
-  const { facts } = readScreenFacts(table, { text: frame.text, title: terminal.title });
-  if (facts.working_visible || facts.blocking_prompt_visible) return undefined;
-  const buffer = terminal.xterm.buffer.active;
-  // xterm cursorY is buffer-relative; translate to the snapshot viewport row.
-  const viewportCursorRow = frame.cursorY + buffer.baseY - buffer.viewportY;
-  if (viewportCursorRow >= frame.lines.length) return undefined;
+  return readStagedComposerFrame(
+    readIdleComposerFrame(terminal, table),
+    matchesEmptyInput,
+    emptyRow,
+  );
+}
+
+/** Reuse one completed idle-frame classification for normal and whitespace drafts. */
+export function readStagedComposerFrame(
+  current: ReturnType<typeof readIdleComposerFrame>,
+  matchesEmptyInput: (rows: readonly string[], viewportCursorRow: number) => boolean,
+  emptyRow: string,
+): string | undefined {
+  if (!current) return undefined;
+  const { frame, viewportCursorRow } = current;
   // Placeholder-shaped input remains ambiguous even with a stale advanced cursor.
   if (matchesEmptyInput(frame.lines, viewportCursorRow)) return undefined;
   const rows = frame.lines.slice(0, viewportCursorRow + 1);
@@ -33,4 +39,32 @@ export function readStagedComposer(
     ...frame.lines.slice(viewportCursorRow + 1),
   ];
   return matchesEmptyInput(normalized, start) ? rows.slice(start).join("\n") : undefined;
+}
+
+/** A whitespace draft is visible only through its advanced caret on the live prompt row. */
+export function readStagedWhitespace(
+  current: ReturnType<typeof readIdleComposerFrame>,
+  matchesEmptyInput: (rows: readonly string[], viewportCursorRow: number) => boolean,
+  emptyRow: string,
+): boolean {
+  if (!current || current.frame.cursorX <= 2) return false;
+  const { frame, viewportCursorRow } = current;
+  const row = frame.lines[viewportCursorRow]!;
+  if (row.charAt(0) !== emptyRow.charAt(0) || !/^[ \u00a0]*$/.test(row.slice(1))) return false;
+  const normalized = [...frame.lines];
+  normalized[viewportCursorRow] = emptyRow;
+  return matchesEmptyInput(normalized, viewportCursorRow);
+}
+
+export function readIdleComposerFrame(terminal: ElwoodTerminal, table: ScreenFactTable) {
+  const frame = currentRenderedFrame(terminal);
+  // The native caret prefix occupies two cells; staged text/chips advance beyond them.
+  if (!(frame && settledCursorVisible(terminal.xterm)) || frame.cursorX < 2) return undefined;
+  const { facts } = readScreenFacts(table, { text: frame.text, title: terminal.title });
+  if (facts.working_visible || facts.blocking_prompt_visible) return undefined;
+  const buffer = terminal.xterm.buffer.active;
+  // xterm cursorY is buffer-relative; translate to the snapshot viewport row.
+  const viewportCursorRow = frame.cursorY + buffer.baseY - buffer.viewportY;
+  if (viewportCursorRow >= frame.lines.length) return undefined;
+  return { frame, viewportCursorRow };
 }

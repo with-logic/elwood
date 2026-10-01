@@ -29,7 +29,7 @@ describe("C-API-48 positive turn acceptance", () => {
     vi.useFakeTimers();
     const replay = vi.fn(() => Promise.resolve());
     const acceptReady = vi.fn();
-    const acceptance = new TurnAcceptance(10, { replay, acceptReady, fail: vi.fn() });
+    const acceptance = new TurnAcceptance(10, { write: replay, acceptReady, fail: vi.fn() });
     expect(acceptance.ready()).toBe(false);
     acceptance.accept();
     acceptance.accept(); // idempotent
@@ -46,7 +46,7 @@ describe("C-API-48 positive turn acceptance", () => {
     const error = new Error("replay failed");
     const fail = vi.fn();
     const acceptance = new TurnAcceptance(10, {
-      replay: () => Promise.reject(error),
+      write: () => Promise.reject(error),
       acceptReady: vi.fn(),
       fail,
     });
@@ -86,7 +86,7 @@ describe("C-API-48 positive turn acceptance", () => {
     vi.useFakeTimers();
     const fail = vi.fn();
     const replay = vi.fn(() => Promise.resolve());
-    const acceptance = new TurnAcceptance(10, { replay, acceptReady: vi.fn(), fail });
+    const acceptance = new TurnAcceptance(10, { write: replay, acceptReady: vi.fn(), fail });
     acceptance.ready();
     await vi.advanceTimersByTimeAsync(10);
     expect(replay).toHaveBeenCalledOnce();

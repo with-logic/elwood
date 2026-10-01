@@ -8,8 +8,11 @@ import { outsideStopInput } from "../stop-input.ts";
 import type { Cancel, QueuedOperation } from "./types.ts";
 
 export type ControlQueueError = () => Error;
-/** How an operation's text is written to the terminal (not a domain name). */
-export type ControlSubmitMode = "pasted_input" | "command";
+/**
+ * Ordinary pasted input and commands settle after physical Enter. Awaited ergonomic
+ * input retains the queue and composer until fresh positive native empty-input evidence.
+ */
+export type ControlSubmitMode = "pasted_input" | "awaited_input" | "command";
 export type ControlOperationKind =
   | "message"
   | "guidance"

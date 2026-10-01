@@ -99,6 +99,10 @@ test.each(["go", "  go  "])("C-API-48 persona cannot settle caller %j", async (p
         },
       })}\n`,
     );
+    ptys[0]!.emitData(
+      "\u001b[2J\u001b[H› Ask Codex to do anything\r\n  gpt-5.3-codex high\u001b[1;3H",
+    );
+    await vi.advanceTimersByTimeAsync(50);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       hook_event_name: "Stop",
       session_id: "codex-1",
@@ -109,6 +113,7 @@ test.each(["go", "  go  "])("C-API-48 persona cannot settle caller %j", async (p
       last_assistant_message: "CALLER",
     });
     await vi.advanceTimersByTimeAsync(6_000);
+    expect(settled).toBe(true);
     expect(await result).toBe("CALLER");
   } finally {
     vi.useRealTimers();

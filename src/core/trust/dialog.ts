@@ -54,13 +54,18 @@ export function parseTrustCandidates(frame: string): readonly Candidate[] {
       continue;
     if (numberedRow.test(line)) insideNumberedOption = true;
     else if (isSeparator(line)) insideNumberedOption = false;
-    else if (!insideNumberedOption && headerStart.test(line.trim())) starts.unshift(row);
+    else if (!insideNumberedOption && isTrustDialogHeader(line)) starts.unshift(row);
   }
   return starts.flatMap((start, index) => {
     const candidate = candidateAt(lines, start);
     if (candidate === undefined) return [];
     return [index === 0 ? candidate : { ...candidate, validTail: false }];
   });
+}
+
+/** Native candidate copy, shared with positive composer safety; not an automation allowlist. */
+export function isTrustDialogHeader(line: string): boolean {
+  return headerStart.test(line.trim());
 }
 
 function candidateAt(lines: readonly string[], start: number): Candidate | undefined {
