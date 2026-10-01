@@ -5,6 +5,9 @@
  */
 import { rmSync } from "node:fs";
 import { defaultCliLaunchDependencies } from "../../../dist/cli/session/launch.js";
+import { confirmNativeBoundary } from "../../../dist/core/simple/native-boundary.js";
+import { registerNativeIdle } from "../../../dist/core/simple/native-idle.js";
+import { submissionAttempt } from "../../../dist/core/simple/submission-context.js";
 import {
   createSessionRecord,
   prepareStateDir,
@@ -29,7 +32,22 @@ function launch(agent, options, id, resumed) {
     );
   }
   const session = Object.assign(new FakeUnderlying(), { elwoodSessionId: id, cwd });
-  session.script = (emitter) => {
+  let rendered = 0;
+  registerNativeIdle(session, {
+    capture: () => {
+      const before = rendered;
+      return { isIdle: () => rendered > before, isReady: () => rendered > before };
+    },
+    subscribe: () => () => undefined,
+  });
+  session.script = (emitter, turnId) => {
+    // Launch is the only stub: provide the private dispatch/acceptance/completion contract.
+    submissionAttempt(session)?.beforeEnter(session.args["sendMessage"][0]);
+    emitter.emit("hook", {
+      hook_event_name: "UserPromptSubmit",
+      prompt: session.args["sendMessage"][0],
+      turn_id: turnId,
+    });
     const text = `${agent} ${resumed ? "resumed" : "new"} answer`;
     emitter.emit("status", { elwoodSessionId: id, status: "running" });
     emitter.emit("activity", {
@@ -39,8 +57,15 @@ function launch(agent, options, id, resumed) {
       kind: "assistant_message",
       label: "assistant",
       text,
+      turnId,
     });
-    emitter.emit("hook", { hook_event_name: "Stop", last_assistant_message: text });
+    emitter.emit("hook", {
+      hook_event_name: "Stop",
+      turn_id: turnId,
+      last_assistant_message: text,
+    });
+    rendered += 1;
+    if (agent === "codex") confirmNativeBoundary(session, { kind: "stop", turnId, signal: text });
     emitter.emit("status", { elwoodSessionId: id, status: "ready" });
   };
   session.teardown = async () => rmSync(sessionDir(stateDir, id), { recursive: true, force: true });

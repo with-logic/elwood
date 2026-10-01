@@ -9,6 +9,8 @@ import * as activity from "../../core/activity/index.ts";
 import { freezeHookEvent } from "../../core/freeze-hook-event.ts";
 import { hookObservationBoundary } from "../../core/hook-observation.ts";
 import { isRecord } from "../../core/predicates.ts";
+import { confirmNativeBoundary } from "../../core/simple/native-boundary.ts";
+import { recordNativeTurn } from "../../core/simple/submission-context.ts";
 import { withStopInput, withStopInputNotification } from "../../core/stop-input.ts";
 import type { HookErrorEvent } from "../../core/types.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
@@ -95,6 +97,8 @@ async function observeAndRequest(
     // boundary retains C-API-42's synchronous fallback and catches rejections.
     session?.markInitialReadyFromHook(observation);
   }
+  if (session && event.hook_event_name === "UserPromptSubmit")
+    recordNativeTurn(session, event.turn_id);
   observation.run("hook", () => emitter.emit("hook", event));
   observation.run("activity", () =>
     emitter.emit("activity", activity.activityFromCodexHook(record.elwoodSessionId, event)),
@@ -135,7 +139,15 @@ async function observeAndRequest(
     // Guidance may steer the current turn; every physical submission supersedes this Stop.
     const sameSubmissionGeneration = submissionGenerationUnchanged?.() ?? true;
     if (sameSubmissionGeneration)
-      observation.run("lifecycle", () => session?.submitEvidence("hook_turn_ended"));
+      observation.run("lifecycle", () => {
+        if (session)
+          confirmNativeBoundary(session, {
+            kind: "stop",
+            turnId: event.turn_id,
+            signal: event.last_assistant_message ?? "",
+          });
+        session?.submitEvidence("hook_turn_ended");
+      });
   }
   observation.report();
   return serialized;

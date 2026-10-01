@@ -9,6 +9,7 @@ import type { BoundarySignal } from "./boundary-signal.ts";
 import type { ElwoodAgentSession, ElwoodCommonEventMap } from "../agent-session.ts";
 import type { ImageInput } from "../images/types.ts";
 import type { TurnEvent } from "./events.ts";
+import type { NativeTurnReader } from "./turn-identity.ts";
 
 /**
  * The MINIMAL turn-boundary `hook` fields the completeness oracle reads. Deliberately
@@ -129,6 +130,8 @@ export type StreamTurnOptions = {
    * pass their own so the runner never reads raw adapter hook fields.
    */
   readonly readBoundarySignal?: BoundarySignalReader;
+  /** Adapter-native identity, bound only after its physical submitting Enter. */
+  readonly readNativeTurn?: NativeTurnReader | undefined;
 };
 
 /** A running turn: `events`/`completion` are the consumer view; `boundary` gates the serializer. */

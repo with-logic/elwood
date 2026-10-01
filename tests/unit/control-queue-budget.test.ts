@@ -35,6 +35,7 @@ test("C-API-58 rejects a single oversized input without retaining capacity", asy
       "pasted_input",
       expect.any(AbortSignal),
       undefined,
+      undefined,
     );
   } finally {
     queue.close();

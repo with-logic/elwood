@@ -1,15 +1,14 @@
 /** Real facade and loop scheduling share one caller boundary (PRD §5.8/§5.9, C-API-48). */
+
 import { afterEach, expect, test, vi } from "vitest";
 import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
-import { ClaudeSession, CodexSession } from "../../src/index.ts";
-import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
+import { emptyComposer } from "../fixtures/owned-turn/composer.ts";
+import { createFacadeFixture, resetAdapters } from "../fixtures/owned-turn/session.ts";
 
 afterEach(() => {
   vi.useRealTimers();
-  vi.restoreAllMocks();
-  claude.resetFakes();
-  codex.resetFakes();
+  resetAdapters();
 });
 
 test.each([
@@ -21,12 +20,22 @@ test.each([
   agent,
   queued,
 }) => {
-  const harness = agent === "claude" ? claude : codex;
-  harness.installFakes();
-  const cwd = harness.tempDir();
+  const {
+    helper: harness,
+    cwd,
+    facade,
+  } = createFacadeFixture(agent, { initialSize: { cols: 200, rows: 32 } });
   const { ptys } = harness;
-  const facade = agent === "claude" ? new ClaudeSession({ cwd }) : new CodexSession({ cwd });
+  const confirmInput = async (enters: number) => {
+    await vi.waitFor(() =>
+      expect(ptys[0]!.writes.filter((write) => write === "\r")).toHaveLength(enters),
+    );
+    // Awaited ergonomic writes need actual post-Enter empty-input evidence.
+    ptys[0]!.emitData(emptyComposer(agent));
+    await vi.advanceTimersByTimeAsync(1_000);
+  };
   let pending: Promise<unknown> | undefined;
+  let firstSettled = false;
   let successor: Promise<unknown> | undefined;
   try {
     const live: ElwoodAgentSession = await facade.start();
@@ -55,10 +64,25 @@ test.each([
     live.on("loop", (event) => {
       if (event.kind === "fired") fired = true;
     });
-    pending = facade.send("check").catch((error: unknown) => error);
+    pending = facade
+      .send("check")
+      .catch((error: unknown) => error)
+      .finally(() => {
+        firstSettled = true;
+      });
     if (queued) successor = facade.send("successor").catch((error: unknown) => error);
+    await confirmInput(1);
     await vi.advanceTimersByTimeAsync(70_000);
     expect(send).toHaveBeenCalledOnce();
+    // A method call does not prove the initial Enter completed before native output.
+    let initialSubmitted = false;
+    void send.mock.results[0]!.value.then(
+      () => {
+        initialSubmitted = true;
+      },
+      () => undefined,
+    );
+    await vi.waitFor(() => expect(initialSubmitted).toBe(true), { timeout: 3000 });
     const paint = async (text: string) => {
       const screen =
         agent === "codex"
@@ -72,9 +96,13 @@ test.each([
     await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2), { timeout: 3000 });
     expect(fired).toBe(false);
     let replaySubmitted = false;
-    void send.mock.results[1]!.value.then(() => {
-      replaySubmitted = true;
-    });
+    void send.mock.results[1]!.value.then(
+      () => {
+        replaySubmitted = true;
+      },
+      () => undefined,
+    );
+    await confirmInput(2);
     await vi.waitFor(() => expect(replaySubmitted).toBe(true));
     await ptys[0]!.dispatchHook(live.elwoodSessionId, {
       hook_event_name: "UserPromptSubmit",
@@ -87,14 +115,19 @@ test.each([
     await paint("■ Conversation interrupted");
     expect(fired).toBe(false);
     await vi.advanceTimersByTimeAsync(2100);
+    expect(firstSettled).toBe(true);
     await expect(pending).resolves.toBe("");
     if (queued) {
       await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(3));
       expect(fired).toBe(false);
       let submitted = false;
-      void send.mock.results[2]!.value.then(() => {
-        submitted = true;
-      });
+      void send.mock.results[2]!.value.then(
+        () => {
+          submitted = true;
+        },
+        () => undefined,
+      );
+      await confirmInput(3);
       await vi.waitFor(() => expect(submitted).toBe(true));
       await ptys[0]!.dispatchHook(live.elwoodSessionId, {
         hook_event_name: "UserPromptSubmit",

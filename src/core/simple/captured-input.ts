@@ -7,8 +7,10 @@ import { personaBoundary } from "../persona.ts";
 import { type ElwoodSessionStatus, terminalStatuses } from "../status-categories.ts";
 import { assertStopInput } from "../stop-input.ts";
 import type { TurnEvent } from "./events.ts";
+import { loopBoundaryTail } from "./loop-boundary.ts";
 import { holdTurnLoops } from "./loop-hold.ts";
 import { runTurn } from "./turn.ts";
+import type { NativeTurnReader } from "./turn-identity.ts";
 import type { TurnQueue } from "./turn-queue.ts";
 import type { BoundarySignalReader, TurnOptions } from "./turn-types.ts";
 
@@ -36,6 +38,7 @@ export function capturedTurn(
   readBoundarySignal: BoundarySignalReader,
   prompt: string,
   options?: TurnOptions,
+  readNativeTurn?: NativeTurnReader,
 ): AsyncGenerator<TurnEvent> {
   let captured: { readonly options: TurnOptions | undefined; readonly release: () => void };
   try {
@@ -68,7 +71,12 @@ export function capturedTurn(
     try {
       const session = await starting;
       await personaBoundary(session);
-      const turn = runTurn(session, prompt, { ...captured.options, readBoundarySignal });
+      await loopBoundaryTail(session);
+      const turn = runTurn(session, prompt, {
+        ...captured.options,
+        readBoundarySignal,
+        readNativeTurn,
+      });
       void turn.boundary.then(release);
       return turn;
     } catch (error) {

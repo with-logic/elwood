@@ -1,0 +1,19 @@
+{
+  "version": "0.159.2",
+  "payload": "  \t ",
+  "source": "native bracket-paste, no Enter",
+  "beforeCursor": {
+    "x": 2,
+    "y": 31
+  },
+  "cols": 140,
+  "rows": 35,
+  "cursorX": 6,
+  "cursorY": 31,
+  "text": " \n  >_ OpenAI Codex (v0.159.2)\n     /tmp/elwood-whitespace-workspace\n\n  What are we building in this episode?\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\u203a\n\n  gpt-elwood-nonexistent-whitespace-probe default\n                                                                                                                  \u26a0 3 warnings \u00b7 f2 to view",
+  "title": "project",
+  "visible": true,
+  "baseY": 0,
+  "viewportY": 0,
+  "sanitization": "Private temporary project path replaced with /tmp/elwood-whitespace-workspace; rows and native cursor preserved."
+}

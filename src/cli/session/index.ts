@@ -4,6 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { codexTurnIdentity } from "../../codex/accepted-turn.ts";
 import type { ElwoodAgentSession, ElwoodCommonEventMap } from "../../core/agent-session.ts";
 import { elwoodError } from "../../core/errors.ts";
 import type { TurnEvent } from "../../core/simple/events.ts";
@@ -94,12 +95,14 @@ export class HeadlessCliSession
     super();
     this.request = request;
     this.agent = request.agent;
+    this.readNativeTurn = request.agent === "codex" ? codexTurnIdentity : undefined;
     this.id = id;
     this.resumed = request.resume !== undefined;
     this.launchSession = launch;
   }
 
   protected readonly readBoundarySignal = defaultBoundarySignal;
+  protected override readonly readNativeTurn: typeof codexTurnIdentity | undefined;
 
   protected launch(): Promise<ElwoodAgentSession> {
     const pending = this.validatedLaunch();

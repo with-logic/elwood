@@ -12,7 +12,14 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Report a submission-specific `wait_timeout` when raw input replaces ergonomic input awaiting empty-composer confirmation, preserving model-picker diagnostics for picker operations.
+- Codex recovery now withholds retry Enter and empty-input acknowledgement when partial native approval rows remain above a retained composer.
+- Keep ergonomic response collection behind selected loop and persona completion; bind Codex transcript content and Stop completeness to the native acceptance of the caller's own submitted turn, including headless CLI sessions.
+
 - Prevent retained working and interrupt frames from releasing input physically submitted inside Stop callbacks; expired raw Stop input retains its timeout error after teardown.
+- Stop ergonomic turn recovery when its consumer settles, retaining captured images and the next turn’s slot until input cleanup and the current native boundary finish.
+
+- Retain staged text and images for initial and replay ergonomic submissions until fresh native empty-input evidence, preserving cancellation cleanup and the ordinary first-Enter send contract.
 
 - Preserve asynchronous hook decisions after the generated bridge child finishes sending its request, instead of closing the reply stream early.
 - Recover image-only and whitespace submissions only from a fresh live composer render after each Enter attempt; cached text or image drafts cannot trigger an extra Enter.

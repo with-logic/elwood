@@ -4,7 +4,7 @@ import { runContained } from "../contained.ts";
 import { toError } from "../errors.ts";
 import { outsideStopInput } from "../stop-input.ts";
 import { ControlQueueState } from "./state.ts";
-import { submitControl } from "./submission.ts";
+import { notifySubmissionStart, submitControl } from "./submission.ts";
 import {
   type ControlOperationKind,
   type ControlOperationTraits,
@@ -82,7 +82,9 @@ export class ControlQueue extends ControlQueueState {
         settleAfterWrite: options.settleAfterWrite === true,
         mayBypassReadiness,
         origin: options.origin ?? callerOrigin,
+        ...(options.onSubmitted ? { onSubmitted: options.onSubmitted } : {}),
         ...(attach ? { attach } : {}),
+        ...(options.beforeEnter ? { beforeEnter: options.beforeEnter } : {}),
       },
       options.cancel,
     );
@@ -142,6 +144,7 @@ export class ControlQueue extends ControlQueueState {
               this.submit,
               () => this.beginSubmission(operation, traits),
               this.onCallerInputSubmitted,
+              this.onTurnStarted,
             );
       };
       dispatched = around ? around(work, this.prepareSignal(workSignal), operation.origin) : work();
@@ -160,9 +163,7 @@ export class ControlQueue extends ControlQueueState {
 
   private beginSubmission(operation: QueuedOperation, traits: ControlOperationTraits): void {
     if (traits.consumesReadiness) this.setReady(false);
-    if (traits.reportsCallerSubmission && operation.origin.kind === "caller") {
-      runContained(() => this.onTurnStarted(operation.origin));
-    }
+    notifySubmissionStart(operation, traits, this.onTurnStarted);
   }
 
   private commit(operation: QueuedOperation, traits: ControlOperationTraits): void {

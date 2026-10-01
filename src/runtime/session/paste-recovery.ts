@@ -1,6 +1,6 @@
 /** Native submission activity revokes background recovery (PRD §5.3/C-API-31). */
 import type { PasteGuard, RecoveryComposer } from "../../core/input/index.ts";
-import { captureRenderProgress } from "../../terminal/cursor.ts";
+import { captureRenderProgress, subscribeRender } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import type { SessionStatusEmitter } from "./status-wiring.ts";
 
@@ -24,6 +24,7 @@ export class PasteRecoveryRevocation {
   ): PasteGuard {
     return {
       beforeEnter,
+      subscribeRender: (listener) => subscribeRender(terminal, listener),
       captureRecovery: () => this.captureRevocationGuard(),
       captureRenderProgress: () => captureRenderProgress(terminal),
       prepareStaged: (payload) => composer().prepareStaged(payload),

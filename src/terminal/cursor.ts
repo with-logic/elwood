@@ -27,12 +27,24 @@ export function captureRenderProgress(terminal: ElwoodTerminal): () => boolean {
   return () => progressed?.() === true && currentRenderedFrame(terminal) !== undefined;
 }
 
+/** Private queued-input notification; terminal wrappers share the tracked xterm identity. */
+export function subscribeRender(terminal: ElwoodTerminal, listener: () => void): () => void {
+  return tracked.get(terminal.xterm)?.subscribe(listener) ?? (() => undefined);
+}
+
 /** Called inside an owned render callback; subsequent trust reads reuse this snapshot. */
 export function renderedSnapshot(terminal: ElwoodTerminal): TerminalSnapshot {
   return tracked.get(terminal.xterm)?.snapshot(() => terminal.snapshot()) ?? terminal.snapshot();
 }
 
 export class RenderCursor {
+  private readonly listeners = new Set<() => void>();
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
   private receivedRevision = 0;
   private renderedRevision = -1;
   private arrivals = 0;
@@ -80,6 +92,7 @@ export class RenderCursor {
     this.renderedRevision = revision;
     this.renderedArrivals = arrival;
     this.frame = undefined;
+    for (const listener of this.listeners) listener();
   }
   captureProgress(): () => boolean {
     const before = this.arrivals;
@@ -109,6 +122,7 @@ export class RenderCursor {
   }
   dispose(): void {
     tracked.delete(this.terminal);
+    this.listeners.clear();
     for (const handler of this.handlers) handler.dispose();
   }
 }

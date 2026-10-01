@@ -20,6 +20,7 @@ import type {
 import { capturedSend, capturedTurn } from "./captured-input.ts";
 import type { TurnEvent } from "./events.ts";
 import { SubscriptionRegistry } from "./subscriptions.ts";
+import type { NativeTurnReader } from "./turn-identity.ts";
 import { TurnQueue } from "./turn-queue.ts";
 import type { BoundarySignalReader, TurnOptions } from "./turn-types.ts";
 
@@ -39,13 +40,9 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
    */
   protected abstract launch(): Promise<S>;
 
-  /**
-   * Normalizes this adapter's raw `hook` event into the turn completeness signal (the expected
-   * final assistant text, or `undefined` when it is not a turn boundary). Abstract so a new adapter
-   * MUST supply one — keeping the runner decoupled from adapter hook fields. Adapters assign
-   * `defaultBoundarySignal` unless they differ. (Signal-only; never displayed — C-CLAUDE-15.)
-   */
+  /** Adapter-owned hook normalization: completeness signal plus optional native identity. */
   protected abstract readonly readBoundarySignal: BoundarySignalReader;
+  protected readonly readNativeTurn: NativeTurnReader | undefined = undefined;
 
   /** The started underlying session, or `undefined` before the first start. */
   get session(): S | undefined {
@@ -83,7 +80,15 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
 
   /** Stream one turn's simplified content events; ends when the turn settles (C-API-48). */
   stream(prompt: string, options?: TurnOptions): AsyncGenerator<TurnEvent> {
-    return capturedTurn(this.images, this.turns, this, this.readBoundarySignal, prompt, options);
+    return capturedTurn(
+      this.images,
+      this.turns,
+      this,
+      this.readBoundarySignal,
+      prompt,
+      options,
+      this.readNativeTurn,
+    );
   }
 
   /** Send one turn and resolve with its assistant text, `\n\n`-joined (C-API-49). */

@@ -13,6 +13,11 @@ import {
   prepareCliSession,
 } from "../../src/cli/session/index.ts";
 import type { CliAgent, EffectiveRunRequest, ResolvedRunRequest } from "../../src/cli/types.ts";
+import type { ElwoodCommonEventMap } from "../../src/core/agent-session.ts";
+import { confirmNativeBoundary } from "../../src/core/simple/native-boundary.ts";
+import { registerNativeIdle } from "../../src/core/simple/native-idle.ts";
+import { submissionAttempt } from "../../src/core/simple/submission-context.ts";
+import { TypedEmitter } from "../../src/events/emitter.ts";
 import { readPrivateSessionRecord } from "../../src/state/private-session.ts";
 import {
   createSessionRecord,
@@ -83,12 +88,34 @@ describe("headless CLI session", () => {
   test("C-CLI-08 persona is one discarded setup turn and setup is single-flight", async () => {
     vi.useFakeTimers();
     const root = mkdtempSync(join(tmpdir(), "elwood-cli-session-"));
-    const live = new FakeUnderlying();
+    const live = Object.assign(new FakeUnderlying(), {
+      emitter: new TypedEmitter<
+        ElwoodCommonEventMap & {
+          hook: { hook_event_name: string; prompt: string; turn_id: string };
+        }
+      >(),
+    });
     const session = new HeadlessCliSession(
       effective(root, { persona: "be concise" }),
       "s1",
       async () => live,
     );
+    let rendered = false;
+    registerNativeIdle(live, {
+      capture: () => ({ isIdle: () => rendered, isReady: () => rendered }),
+      subscribe: () => () => undefined,
+    });
+    live.script = (emitter, turnId) => {
+      submissionAttempt(live)?.beforeEnter("be concise");
+      live.emitter.emit("hook", {
+        hook_event_name: "UserPromptSubmit",
+        prompt: "be concise",
+        turn_id: turnId,
+      });
+      rendered = true;
+      confirmNativeBoundary(live, { kind: "stop", turnId, signal: "" });
+      emitter.emit("status", { elwoodSessionId: "s1", status: "ready" });
+    };
     const first = session.setup();
     const second = session.setup();
     await vi.advanceTimersByTimeAsync(2_001);

@@ -1,6 +1,9 @@
 /** Abort-aware timing, dialog holds, and composer cleanup for queued input (PRD §5.3/§5.9, C-API-56). */
 
+import { elwoodError } from "../errors.ts";
+import { isPickerIntervention } from "../models/intervention.ts";
 import { composerClearKeys, unsafeWriteRetryMs } from "./constants.ts";
+import { observeRender } from "./render-observation.ts";
 
 /**
  * The narrow terminal surface the queued-input helpers drive. `settled` resolves once
@@ -66,30 +69,22 @@ export async function holdWhileUnsafe(
  * be done — observation does not complete within the budget, a render has failed,
  * or the wait was cancelled — the screen cannot be
  * vouched for and the answer is `true`: fail closed, never write through.
+ * Awaited ownership uses `waitForRender` to wait cancellably for the shared pass,
+ * rather than repeatedly timing out and retrying an unchanged render backlog.
  */
 export async function writeUnsafe(
   terminal: InputTerminal,
   guard?: { readonly blocked?: () => boolean },
   signal?: AbortSignal,
+  waitForRender = false,
 ): Promise<boolean> {
   if (signal?.aborted) return true; // an abort listener added now would never fire
-  if (terminal.settled && !(await observedWithinBudget(terminal.settled(), signal))) return true;
+  if (
+    terminal.settled &&
+    !(await observeRender(terminal.settled(), signal, waitForRender ? undefined : observeBudgetMs))
+  )
+    return true;
   return terminal.renderFailed === true || guard?.blocked?.() === true;
-}
-
-function observedWithinBudget(settled: Promise<void>, signal?: AbortSignal): Promise<boolean> {
-  return new Promise((resolve) => {
-    const finish = (observed: boolean) => {
-      clearTimeout(budget);
-      signal?.removeEventListener("abort", giveUp);
-      resolve(observed);
-    };
-    const giveUp = () => finish(false);
-    const budget = setTimeout(giveUp, observeBudgetMs);
-    budget.unref?.();
-    signal?.addEventListener("abort", giveUp, { once: true });
-    void settled.then(() => finish(true));
-  });
 }
 
 export function throwIfInputAborted(signal?: AbortSignal): void {
@@ -98,6 +93,13 @@ export function throwIfInputAborted(signal?: AbortSignal): void {
 
 export function inputAbortError(signal: AbortSignal): Error {
   return signal.reason instanceof Error ? signal.reason : new Error("Submission aborted.");
+}
+
+/** Raw takeover of awaited turn input reports submission failure, preserving other errors (§5.3). */
+export function submissionError(error: unknown): unknown {
+  return isPickerIntervention(error)
+    ? elwoodError("wait_timeout", "Raw input replaced the staged turn input.")
+    : error;
 }
 
 export async function clearStagedComposer(terminal: InputTerminal): Promise<void> {
