@@ -91,8 +91,9 @@ export function buildClaudeHookHandler(
       observation.run("lifecycle", () => ready.mark());
     if (event.hook_event_name === "Stop" && !blocked) {
       observation.run("transcript", () => transcriptWatcher.scan());
-      // Physical caller submission during this Stop belongs to a newer turn.
-      if (submissionGenerationUnchanged?.() ?? true) {
+      // A physical Enter from sendPrompt, sendMessage or sendGuidance starts a newer turn.
+      const sameSubmissionGeneration = submissionGenerationUnchanged?.() ?? true;
+      if (sameSubmissionGeneration) {
         deps.getTurnWatcher().arm();
         observation.run("lifecycle", () => deps.getSession()?.submitEvidence("hook_turn_ended"));
       }
