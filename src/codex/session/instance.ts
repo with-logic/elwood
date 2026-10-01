@@ -22,7 +22,7 @@ import { runCodexModelSwitch } from "../config/transaction.ts";
 import { attachCodexImages } from "../images/attach.ts";
 import { codexModelPicker } from "../model-picker.ts";
 import { liveCodexClearance } from "../screen/live-clearance.ts";
-import { createCodexRecoveryComposer } from "../screen/staged-text.ts";
+import { createCodexRecoveryComposer } from "../screen/staged-input.ts";
 import type { CodexTranscriptWatcher } from "../transcript/index.ts";
 import type { CodexHookBridge } from "./bridge.ts";
 import { stopCodexRuntime } from "./cleanup.ts";

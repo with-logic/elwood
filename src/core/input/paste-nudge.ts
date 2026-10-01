@@ -37,10 +37,11 @@ export function preparePasteNudges(
       if (observations < pasteObservationLimit) schedule();
       return;
     }
+    const fresh = hasFreshFrame?.() !== false;
     const empty = guard.emptyFrame?.();
-    // Token identity is stable within a frame; the pre-paste frame cannot retire this input.
-    if (empty && empty !== priorEmptyFrame) return;
-    if (hasFreshFrame?.() !== false && staged()) {
+    // Geometry can replace an empty token without output; only post-Enter output retires input.
+    if (fresh && empty && empty !== priorEmptyFrame) return;
+    if (fresh && staged()) {
       attempts += 1;
       beforeEnter();
       await tryRecoveryEnter(terminal);

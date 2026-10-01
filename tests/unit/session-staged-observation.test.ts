@@ -1,5 +1,7 @@
 /** Unverifiable native input does not prove consumption (C-API-31). */
 import { afterEach, expect, test, vi } from "vitest";
+import { claudeEmptyInputFrame } from "../../src/claude/composer/empty-input.ts";
+import { codexEmptyInputFrame } from "../../src/codex/screen/empty-input.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
 import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
@@ -30,6 +32,7 @@ for (const agent of ["claude", "codex"] as const) {
     "pre-ready-working",
     "history",
     "old-empty",
+    "resized-empty",
     "consumed-working",
   ] as const)(`C-API-31 ${agent} recovery distinguishes %s input observation`, async (state) => {
     const helper = agent === "claude" ? claude : codex;
@@ -57,7 +60,7 @@ for (const agent of ["claude", "codex"] as const) {
     const write = pty.write.bind(pty);
     vi.spyOn(pty, "write").mockImplementation((value) => {
       write(value);
-      if (String(value).startsWith("\u001b[200~") && state !== "old-empty") paint();
+      if (String(value).startsWith("\u001b[200~") && !state.endsWith("empty")) paint();
     });
     try {
       if (state !== "pre-ready-working") {
@@ -74,13 +77,22 @@ for (const agent of ["claude", "codex"] as const) {
         await expect.poll(() => session.status).toBe("ready");
       }
       vi.useFakeTimers();
-      if (state === "old-empty") {
+      if (state.endsWith("empty")) {
         paint(idle);
         await vi.advanceTimersByTimeAsync(50);
       }
       const sent = session.sendPrompt("probe prompt");
       await vi.advanceTimersByTimeAsync(200);
       await sent;
+      if (state === "resized-empty") {
+        const emptyFrame = agent === "claude" ? claudeEmptyInputFrame : codexEmptyInputFrame;
+        const before = emptyFrame(session.terminal);
+        expect(before).toBeDefined();
+        session.terminal.resize({ cols: 199, rows: 35 });
+        const after = emptyFrame(session.terminal);
+        expect(after).toBeDefined();
+        expect(after).not.toBe(before);
+      }
       const frames: Record<typeof state, string> = {
         hidden: draft,
         cached: draft,
@@ -93,9 +105,10 @@ for (const agent of ["claude", "codex"] as const) {
         "pre-ready-working": draft,
         history: `${caret} ${text}\nPrior answer\n${draft.replace(text, "other draft")}`,
         "old-empty": idle,
+        "resized-empty": idle,
         "consumed-working": idle,
       };
-      if (state !== "old-empty" && state !== "cached")
+      if (!state.endsWith("empty") && state !== "cached")
         paint(
           frames[state],
           state === "hidden" || state === "bounded" || state === "raw",

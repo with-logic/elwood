@@ -1,7 +1,7 @@
 /** Captured idle draft geometry remains eligible; active/history/unknown frames do not (C-API-31). */
 import { expect, test } from "vitest";
-import { claudeInputStaged } from "../../src/claude/composer/staged-text.ts";
-import { codexInputStaged } from "../../src/codex/screen/staged-text.ts";
+import { claudeInputStaged } from "../../src/claude/composer/staged-input.ts";
+import { codexInputStaged } from "../../src/codex/screen/staged-input.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 import { readNativeInputFrame } from "../fixtures/native-input-frame.ts";
 import {
