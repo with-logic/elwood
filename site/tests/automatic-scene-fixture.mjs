@@ -2,8 +2,8 @@
 import { LandingScene } from "../landing-scene.mjs";
 import { fixture, turn } from "./animation-fixture.mjs";
 export { turn };
-export async function automaticScene(t) {
-  const assets = fixture(t);
+export async function automaticScene(t, pageCount) {
+  const assets = fixture(t, pageCount);
   const keys = ["document", "matchMedia", "devicePixelRatio", "requestAnimationFrame", "cancelAnimationFrame"];
   const original = Object.fromEntries(keys.map((key) => [key, globalThis[key]]));
   const context = new Proxy({}, { get: () => () => {} });

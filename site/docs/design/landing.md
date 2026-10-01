@@ -67,4 +67,4 @@ for complete readiness; each task owns its cancellable geometry probe and prepar
 delivery. Replacement removes only its matching queued input. Requested and shared
 idle/rotation asset failures report once and suppress automatic retries across
 actions until explicit preparation clears them. Successful delivery starts a fresh
-task clock. Walking and pickup remain on demand.
+task clock. Walking and fall/landing transitions remain on demand. Suspended pickup prepares all wriggle (or zero-gravity) sheets while the current clip keeps playing and pointer movement stays responsive. Drop, pause, reset, reflow and disposal cancel pending pickup; only the current drag may start its prepared clip at time zero. Failed preparation reports once and retries only on a new drag.
