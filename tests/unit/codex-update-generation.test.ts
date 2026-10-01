@@ -16,20 +16,19 @@ describe("Codex update prompt generations", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  test("C-CODEX-12 accepts a safe option-only continuation of the current prompt", async () => {
+  test("C-CODEX-12 withholds even known safe option-only continuations", async () => {
     const responder = new CodexStartupPromptResponder("s1");
-    let frame = "Update available! 0.153.3 -> 0.153.4\n  1. Update now";
-    responder.handle(frame, () => {});
-    frame = "  2. Skip\n  3. Skip until next version";
+    let frame = `${update}\n  3. Skip until next version`;
     const writes: string[] = [];
     const handled = responder.handle(
       frame,
       (input) => {
         writes.push(input);
-        frame = codexSmallComposer;
+        if (writes.length > 1) frame = codexSmallComposer;
       },
       () => frame,
     );
+    frame = "  2. Skip\n  3. Skip until next version";
     await vi.runAllTimersAsync();
     await handled.outcomes[0]?.settled;
     expect(writes).toEqual(["2"]);

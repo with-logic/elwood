@@ -584,8 +584,7 @@ every attention event as fatal produces a false `blocked_prompt`.
 ## Codex in-TUI update prompt (and the restart loop)
 
 Independent of the `autoupdate` preflight (`codex update` run before spawn), the
-Codex TUI can show its OWN "update available" prompt at launch. Elwood **always
-skips it** — it never selects "Update now" — because letting the live TUI update
+Codex TUI can show its OWN "update available" prompt at launch. Elwood **only selects a verified safe skip choice** — it never selects "Update now" — because letting the live TUI update
 itself restarts Codex out from under the PTY session. The real update is the
 preflight; the in-TUI prompt is a nuisance to dismiss.
 
@@ -596,23 +595,24 @@ update screen returns — an infinite loop stuck on the update screen. The fix i
 **edge-triggered** skip: skip once per appearance. Unknown or blank replacements
 keep automation revoked until authoritative native composer clearance or fresh
 first-party banner evidence permits a new appearance. A verified clear can re-arm
-a bannerless reappearance after the restart; retained composer text beneath a
+a new bannered appearance after the restart; retained composer text beneath a
 replacement cannot. The old attempt stays revoked even when a new one is authorized.
 
 Version-coupled behavior learned here:
 
-- The skip-attempt is gated by a per-session prompt tracker, while the option is
-  selected only from the current frame. Codex can split the distinctive
-  versioned banner and its options across consecutive screen replacements; once
-  the banner activates the tracker, a safe-option-only continuation remains the
-  same update appearance. Input remains held until positive native composer clearance. Matching the
-  accumulated buffer lets a cleared/reappeared prompt inherit an old option number
-  and lets benign later prose re-fire against a stale option. C-CODEX-12.
-- Captured Codex update menus from 0.132 through 0.155 list `Update now` before
-  the safe choices. Initial selection and retries use that ordering: a skip-shaped
-  row before the update action is not selected, and the update action itself is
-  excluded even if its label also contains a skip phrase. A banner-less continuation
-  without the action has no ordering constraint; its generation guard still applies.
+- Every automated selection requires the current validated first-party banner and
+  its current safe numbered choice. All bannerless continuations are withheld,
+  including previously observed number/label bindings. The banner activates the
+  blocker before choices paint, and retained input remains held until positive
+  native composer clearance. Historical accumulated-buffer matching and later
+  safe-option-only continuation inference are no longer authorization rules.
+  The 0.155.1 captures below preserve the banner at every observed size; they do
+  not establish a genuine bannerless repaint. C-CODEX-12.
+- Captured Codex menus list `Update now` before safe choices. Selection respects
+  that ordering, excludes the update action, and compares the current bounded
+  option snapshot before each write. Removal or renumbering of a safe choice
+  invalidates the prior retry; a fresh bannered safe block gets a new appearance.
+  Old and new numbers are never accumulated into one authorized set.
 - Update recognition and input blocking have different lifetimes. An unknown
   replacement is no longer an update. Without a prior recognized update it does
   not create a retained update hold, so queued paste and Enter remain eligible.
@@ -634,14 +634,12 @@ Version-coupled behavior learned here:
   If the only skip-shaped choice precedes the update action, the helper also returns
   `undefined` and no key is written.
   Every retry revalidates that the frame still belongs to the captured first-party
-  update-prompt generation and uses the safe option's current number. This preserves
-  the known safe-option-only continuation layout without letting a cleared/reappeared
-  prompt or replacement dialog inherit a stale digit. A prompt that remains blocking
+  update-prompt generation and uses the safe option's current number. The current banner must remain visible; a bannerless repaint cannot inherit a
+  digit from a cleared/reappeared prompt. A prompt that remains blocking
   but cannot be safely answered becomes `blocked_prompt` after the bounded
   responder/grace window, including runs without a whole-invocation timeout.
-  The match set (`src/codex/update/recognition.ts`) is unit-tested against captured
-  layouts, NOT against a live update event (which requires an actually-stale binary
-  to trigger). `codex-update-selection.e2e.ts` also replays the documented option
+  The match set is unit-tested against captured
+  layouts; the pinned 0.155.1 native experiment below used controlled update metadata. `codex-update-selection.e2e.ts` also replays the documented option
   layout and an adversarial reordered variant through a real PTY and emulator;
   its child acknowledges the physical skip digit it received. If Codex changes the dialog wording, this is the first thing to
   re-capture.
@@ -655,9 +653,8 @@ therefore input-blocking facts, not only responder hints: readiness and paste
 submission remain suspended until the rendered update frame clears, even after
 the skip key is written. The prompt recognizer accepts the known first-party
 versioned banner before options paint, plus option-only frames when BOTH "Update
-now" and a safe skip/later choice are present. Once active, a safe-option-only
-continuation stays eligible until a definite non-update frame; the input hold lasts
-until positive native composer clearance. Generic agent prose
+now" and a safe skip/later choice are present. Those bannerless blocks remain recognition evidence only. No bannerless frame
+authorizes automation; the input hold lasts until positive native composer clearance. Generic agent prose
 containing "update available" and the actual 0.149.1 passive installation notice
 do not block.
 

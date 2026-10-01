@@ -34,7 +34,7 @@ describe("Codex in-TUI update-skip is edge-triggered (C-CODEX-12)", () => {
     expect(writes).toEqual(["2"]);
 
     responder.handle(composer, writer(writes)); // native composer clearance permits a new appearance
-    responder.handle("1. Update now\n2. Skip", writer(writes)); // reappearance requires verified clearance
+    responder.handle(updateScreen, writer(writes)); // A current banner is required again.
     expect(writes).toEqual(["2", "2"]);
   });
 

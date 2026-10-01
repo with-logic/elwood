@@ -111,8 +111,8 @@ test("C-CODEX-12 revalidation only judges option-number keys, and a cleared fram
   const skipScreen = "Update available! 0.148.0 -> 0.149.1\n\u203a 1. Update now\n  2. Skip";
   // A non-numeric key (the Claude decline's Escape) is not an option number: untouched.
   expect(codexOptionStillSafe(composer, "\u001b")).toBe(true);
-  // Codex may repaint the safe choices WITHOUT the banner; that key is still good.
-  expect(codexOptionStillSafe("  2. Skip\n  3. Skip until next version", "2")).toBe(true);
+  // A bannerless repaint cannot authorize the key, even if its labels match.
+  expect(codexOptionStillSafe("  2. Skip\n  3. Skip until next version", "2")).toBe(false);
   expect(codexOptionStillSafe(skipScreen, "2")).toBe(true);
   // A frame with no numbered options has moved on entirely: the key is stale.
   expect(codexOptionStillSafe(composer, "2")).toBe(false);
@@ -161,15 +161,14 @@ test("C-CODEX-12 an unrelated human prompt carrying a Skip option is not this di
   // to offer "Skip" must stay human-controlled, so the frame must still be update-shaped.
   const unrelated = "Delete this project's saved settings?\n  1. Yes, delete\n  2. Skip";
   expect(codexOptionStillSafe(unrelated, "2")).toBe(false);
-  // Both legitimate shapes still pass: the first-party screen, and the mid-flow repaint
-  // Codex draws with only the safe choices and no banner.
+  // The current first-party screen passes; bannerless rows remain withheld.
   expect(
     codexOptionStillSafe(
       "Update available! 0.148.0 -> 0.149.1\n\u203a 1. Update now\n  2. Skip",
       "2",
     ),
   ).toBe(true);
-  expect(codexOptionStillSafe("  2. Skip\n  3. Skip until next version", "2")).toBe(true);
+  expect(codexOptionStillSafe("  2. Skip\n  3. Skip until next version", "2")).toBe(false);
 });
 
 test("C-TRUST-01 an off-allowlist gate vetoes the write, not just an allowlisted one", async () => {

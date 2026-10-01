@@ -31,7 +31,7 @@ test.each([
   responder.dispose();
 });
 
-test("C-CODEX-12 a banner-less continuation still selects its safe option", async () => {
+test("C-CODEX-12 a banner-only frame cannot authorize unseen safe choices", async () => {
   const responder = new CodexStartupPromptResponder("selection");
   responder.handle(banner, () => {});
   const writes: string[] = [];
@@ -39,7 +39,7 @@ test("C-CODEX-12 a banner-less continuation still selects its safe option", asyn
     writes.push(key);
   });
   await Promise.all(result.outcomes.map((outcome) => outcome.settled));
-  expect(writes).toEqual(["2"]);
+  expect(writes).toEqual([]);
   responder.dispose();
 });
 
@@ -68,7 +68,7 @@ test.each([
 test.each([
   false,
   true,
-])("C-CODEX-12 reappearing options use their current number (split: %s)", async (split) => {
+])("C-CODEX-12 reappearing options need current binding evidence (clipped banner: %s)", async (split) => {
   const responder = new CodexStartupPromptResponder("selection");
   const writes: string[] = [];
   const write = (key: string) => {
@@ -82,8 +82,10 @@ test.each([
     const rows = "2. Update now\n3. Skip";
     const second = responder.handle(split ? rows : `${banner}\n${rows}`, write);
     await second.outcomes[0]?.settled;
-    expect(writes).toEqual(["2", "3"]);
-    expect(second.outcomes[0]?.outcome).toMatchObject({ input: "3" });
+    expect(writes).toEqual(split ? ["2"] : ["2", "3"]);
+    expect(second.outcomes.map(({ outcome }) => outcome)).toEqual(
+      split ? [] : [{ kind: "attempted", prompt: "update", input: "3" }],
+    );
   } finally {
     responder.dispose();
   }

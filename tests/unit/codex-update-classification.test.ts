@@ -3,7 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { CodexStartupPromptResponder } from "../../src/codex/startup-prompts.ts";
 import * as layout from "../../src/codex/update/layout.ts";
 
-const options = "  1. Update now\n  2. Skip";
+const options = "Update available! 0.155.1 -> 0.156.1\n  1. Update now\n  2. Skip";
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();

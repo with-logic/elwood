@@ -136,7 +136,10 @@ describe("Codex startup prompt responder", () => {
   test("C-CODEX-12 skips current Codex release update prompts", () => {
     const writes: string[] = [];
     const responder = new CodexStartupPromptResponder();
-    responder.handle("Update available! 0.132.0 -> 0.133.0\n\n› 1. Update now", writer(writes));
+    responder.handle(
+      "Update available! 0.132.0 -> 0.133.0\n\n› 1. Update now\n  2. Skip\n  3. Skip until next version",
+      writer(writes),
+    );
     responder.handle("\n  2. Skip\n  3. Skip until next version", writer(writes));
     expect(writes).toEqual(["2"]);
   });

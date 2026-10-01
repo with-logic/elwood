@@ -2,7 +2,7 @@
 import { expect, test } from "vitest";
 import {
   bannerContradictsAppearance,
-  continuationOptionsAreBound,
+  currentOptionBindingsMatch,
   emptyUpdateEvidence,
   withUpdateFrameEvidence,
 } from "../../src/codex/update/evidence.ts";
@@ -27,5 +27,5 @@ test("C-CODEX-12 repeated identical banners remain compatible without phantom op
     ["1", "Update now"],
     ["2", "Skip"],
   ]);
-  expect(continuationOptionsAreBound(retained, "  2. Skip")).toBe(true);
+  expect(currentOptionBindingsMatch(retained, "  2. Skip")).toBe(true);
 });

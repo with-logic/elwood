@@ -12,8 +12,8 @@ export { updateScreenBanner } from "./layout.ts";
  * | Ambiguous bannered frame | true | undefined | true | false |
  * | Valid bannerless choices | false | parsed choices | contains both action and safe choice | contains Skip or Continue without updating |
  * | Other/empty frame | false | undefined/[] | false | false |
- * A bannerless continuation cannot reauthorize a revoked generation. Consumers
- * must also verify retained first-party provenance and current attempt ownership.
+ * Bannerless choices can identify blocking content, never authorize automation.
+ * Consumers require a current first-party banner and current attempt ownership.
  */
 export type CodexUpdateFrame = {
   readonly options: readonly NumberedOption[] | undefined;
