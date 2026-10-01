@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Preserve each observer registration’s async context when listeners reuse a pending Promise.
+
 - Keep landing-page pickup responsive while preparing every suspended-animation sheet, cancelling obsolete pickup work on drop, reset or teardown.
 - Clear completed Codex trust gates when the native idle composer displays its warning-count footer, so queued input can reach readiness.
 

@@ -1,4 +1,4 @@
-/** Internal Stop callback lifetimes for hook dispatch (PRD §6.3/§7A.4); no admission policy. */
+/** Internal Stop callback lifetimes for hook dispatch (C-HOOK-04/22); no admission policy. */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { ElwoodError } from "./errors.ts";
 

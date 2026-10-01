@@ -11,6 +11,69 @@ afterEach(() => {
 });
 
 for (const agent of ["claude", "codex"] as const) {
+  test(`C-HOOK-04 ${agent} Stop context stays open through an awaited handler`, async () => {
+    const helper = agent === "claude" ? claude : codex;
+    helper.installFakes();
+    const cwd = helper.tempDir();
+    const entered = Promise.withResolvers<void>();
+    const checkBeforeReturn = Promise.withResolvers<void>();
+    const beforeResult = Promise.withResolvers<unknown>();
+    const returnFromHandler = Promise.withResolvers<void>();
+    const checkAfterReturn = Promise.withResolvers<void>();
+    let afterResult: Promise<unknown> | undefined;
+    const check = () => {
+      try {
+        assertStopInput(session);
+        return "open";
+      } catch (error) {
+        return error;
+      }
+    };
+    const session = await (agent === "claude" ? startClaude : startCodex)({
+      cwd,
+      hooks: {
+        Stop: async () => {
+          afterResult = checkAfterReturn.promise.then(check);
+          entered.resolve();
+          await checkBeforeReturn.promise;
+          beforeResult.resolve(check());
+          await returnFromHandler.promise;
+          return undefined;
+        },
+      },
+    });
+    let settled = false;
+    const dispatch = helper.ptys[0]!.dispatchHook(session.elwoodSessionId, {
+      hook_event_name: "Stop",
+      session_id: `${agent}-1`,
+      cwd,
+      turn_id: "held-turn",
+      stop_hook_active: false,
+    }).then((result) => {
+      settled = true;
+      return result;
+    });
+    try {
+      await entered.promise;
+      checkBeforeReturn.resolve();
+      expect(await beforeResult.promise).toBe("open");
+      expect(settled).toBe(false);
+      returnFromHandler.resolve();
+      expect((await dispatch).exitCode).toBe(0);
+      checkAfterReturn.resolve();
+      expect(await afterResult).toMatchObject({ code: "wait_timeout" });
+    } finally {
+      checkBeforeReturn.resolve();
+      returnFromHandler.resolve();
+      checkAfterReturn.resolve();
+      try {
+        await dispatch;
+      } finally {
+        await session.teardown();
+      }
+    }
+  });
+
   test.each([
     "normal",
     "blocked",
