@@ -26,6 +26,7 @@ afterEach(() => {
 test("C-TRUST-01 captured warning footer requires native chrome and an exact suffix", () => {
   expect(codexComposerClearance(captured)).toBe(true);
   expect(codexComposerClearance(captured.replace("3 warnings", "1 warning"))).toBe(true);
+  expect(codexComposerClearance(captured.replace("3 warnings", "10 warnings"))).toBe(true);
   for (const suffix of ["0 warnings", "three warnings", "3 warnings · press Enter", "3 alerts"])
     expect(codexComposerClearance(captured.replace("3 warnings", suffix))).toBe(false);
   expect(codexComposerClearance(`${captured}\n1. Yes\n2. No`)).toBe(false);
