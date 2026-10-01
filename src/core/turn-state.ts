@@ -20,7 +20,7 @@ const quietFramesToSettle = 5;
 
 export class TurnStateWatcher {
   private running = false;
-  private submissionFrame: (() => boolean) | undefined;
+  private hasFreshRenderedFrame: (() => boolean) | undefined;
   private bannerSeen = false;
   private armed = false;
   private replaySettling = false;
@@ -54,20 +54,21 @@ export class TurnStateWatcher {
   }
 
   /** Retire earlier rendered work when a queue-backed physical input is submitted. */
-  submitted(hasFreshFrame: () => boolean, interruptVisible: boolean): void {
+  submitted(hasFreshFrame: () => boolean, ignoreRetainedInterrupt: boolean): void {
     this.running = false;
-    this.bannerSeen = interruptVisible;
+    // True means a prior banner was visible OR its absence could not be proved.
+    this.bannerSeen = ignoreRetainedInterrupt;
     this.replaySettling = false;
-    this.submissionFrame = hasFreshFrame;
+    this.hasFreshRenderedFrame = hasFreshFrame;
   }
 
   private canObserve(facts: ScreenFacts): boolean {
     if (!this.armed) return false;
-    if (this.submissionFrame?.() === false) return false;
-    if (this.submissionFrame && facts.working_visible) {
+    if (this.hasFreshRenderedFrame?.() === false) return false;
+    if (this.hasFreshRenderedFrame && facts.working_visible) {
       // A banner retained alongside new work belongs to the prior rendered turn.
       this.bannerSeen = facts.interrupt_complete_visible;
-      this.submissionFrame = undefined;
+      this.hasFreshRenderedFrame = undefined;
     }
     return true;
   }
@@ -121,7 +122,7 @@ export class TurnStateWatcher {
     // screens where the elided footer means "started" was never observed.
     if (facts.interrupt_complete_visible && !this.bannerSeen) {
       this.bannerSeen = true;
-      this.submissionFrame = undefined;
+      this.hasFreshRenderedFrame = undefined;
       this.running = false;
       return "ended";
     }

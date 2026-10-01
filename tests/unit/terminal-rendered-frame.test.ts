@@ -2,7 +2,7 @@
 import { expect, test, vi } from "vitest";
 import {
   currentRenderedFrame,
-  hasReceivedOutput,
+  hasUnknownOrNonPristineOutput,
   renderedSnapshot,
 } from "../../src/terminal/cursor.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
@@ -12,9 +12,9 @@ test("C-TRUST-01 current frame reuses a completed snapshot and invalidates on ou
   const capture = vi.spyOn(terminal, "snapshot");
   try {
     expect(currentRenderedFrame(terminal)).toBeUndefined();
-    expect(hasReceivedOutput(terminal)).toBe(false);
+    expect(hasUnknownOrNonPristineOutput(terminal)).toBe(false);
     await terminal.writeOutput("first");
-    expect(hasReceivedOutput(terminal)).toBe(true);
+    expect(hasUnknownOrNonPristineOutput(terminal)).toBe(true);
     const first = renderedSnapshot(terminal);
     expect(currentRenderedFrame(terminal)).toBe(first);
     expect(renderedSnapshot(terminal)).toBe(first);
@@ -43,7 +43,7 @@ test("C-TRUST-01 current frame reuses a completed snapshot and invalidates on ou
     terminal.dispose();
   }
   expect(currentRenderedFrame(terminal)).toBeUndefined();
-  expect(hasReceivedOutput(terminal)).toBe(true);
+  expect(hasUnknownOrNonPristineOutput(terminal)).toBe(true);
   const snapshot = { cols: 1, rows: 1, cursorX: 0, cursorY: 0, lines: [""], text: "" };
   capture.mockReturnValue(snapshot);
   expect(renderedSnapshot(terminal)).toBe(snapshot);

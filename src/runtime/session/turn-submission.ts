@@ -4,7 +4,7 @@ import { readScreenFacts } from "../../core/screen-facts.ts";
 import {
   captureRenderProgress,
   currentRenderedFrame,
-  hasReceivedOutput,
+  hasUnknownOrNonPristineOutput,
 } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import type { StopCompletion } from "./stop-completion.ts";
@@ -15,13 +15,14 @@ export function bindTurnSubmission<
   session.stopCompletion.bindRenderedReset(() => {
     const hasFreshFrame = captureRenderProgress(session.terminal);
     const frame = currentRenderedFrame(session.terminal);
-    // Only a pristine terminal proves absence without a completed baseline.
-    const interruptVisible = frame
+    // A missing baseline is conservative uncertainty, not observed banner visibility.
+    // Only a pristine terminal proves absence without a completed frame.
+    const ignoreRetainedInterrupt = frame
       ? readScreenFacts(observers.table, { text: frame.text, title: session.terminal.title }).facts
           .interrupt_complete_visible
-      : hasReceivedOutput(session.terminal);
+      : hasUnknownOrNonPristineOutput(session.terminal);
     return () => {
-      observers.turn.submitted(hasFreshFrame, interruptVisible);
+      observers.turn.submitted(hasFreshFrame, ignoreRetainedInterrupt);
     };
   });
   return session;
