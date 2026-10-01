@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { post } from "../post.mjs";
-import { fixture, report } from "./github-fixture.mjs";
+import { changeRequest, fixture, report } from "./github-fixture.mjs";
 
 test("posting rechecks permissions, state, and both commits", async (t) => {
   const reportPath = await report(t);
@@ -40,7 +40,7 @@ test("only completed clean reviews approve, attached to the reviewed commit", as
   assert.equal(f.posted[1].event, "COMMENT");
 });
 
-test("publication dismisses its own stale verdict after a concurrent push", async (t) => {
+test("publication dismisses its own stale change request after a concurrent push", async (t) => {
   for (const alter of [
     (f) => {
       f.pr.head.sha = "new";
@@ -68,7 +68,7 @@ test("publication dismisses its own stale verdict after a concurrent push", asyn
     },
   ]) {
     const f = fixture();
-    const reportPath = await report(t);
+    const reportPath = await changeRequest(t);
     const dismissed = [];
     f.github.rest.pulls.createReview = (review) => {
       f.posted.push(review);
@@ -84,7 +84,7 @@ test("publication dismisses its own stale verdict after a concurrent push", asyn
 
 test("dismissal failure surfaces rather than claiming a stale verdict was neutralized", async (t) => {
   const f = fixture();
-  const reportPath = await report(t);
+  const reportPath = await changeRequest(t);
   f.github.rest.pulls.createReview = () => {
     f.pr.head.sha = "new-head";
     return { data: { id: 123 } };
