@@ -113,15 +113,20 @@ test("owned observer closure rejects and disposes once without completion eviden
 test.each([
   "Stop",
   "Notification",
-] as const)("owned boundary ignores public %s before confirmed outcome", async (hook_event_name) => {
+] as const)("owned boundary ignores public %s before and after its confirmed outcome", async (hook_event_name) => {
   const { observer, completed } = setup();
   observer.observeActivity(activity({ text: "tail" }));
   observer.observeHook({ hook_event_name, last_assistant_message: "tail" }, "ready");
   observer.observeStatus({ status: "ready" });
   await vi.advanceTimersByTimeAsync(3_000);
   expect(completed()).toBe(false);
-  observer.confirmStop("tail", false);
+  observer.confirmStop("private tail", false);
   observer.confirmIdle({});
+  observer.observeHook({ hook_event_name, last_assistant_message: "foreign tail" }, "ready");
+  observer.observeActivity(activity({ text: "foreign tail" }));
+  await vi.advanceTimersByTimeAsync(3_000);
+  expect(completed()).toBe(false);
+  observer.observeActivity(activity({ text: "private tail" }));
   await observer.promise;
   expect(completed()).toBe(true);
 });

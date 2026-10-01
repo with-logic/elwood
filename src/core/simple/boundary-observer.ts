@@ -30,7 +30,7 @@ export function createBoundaryObserver(
   let started = false;
   let ownedStop = false;
   let sawReady = false;
-  let readyBeforeStop = false;
+  let requiresFreshPostStopIdle = false;
   const boundary = new TurnBoundary(() => {
     gate.dispose();
     onDispose();
@@ -40,10 +40,10 @@ export function createBoundaryObserver(
     if (ownership) {
       if (!ownership.accepted()) return;
       if (!(ownedStop || interrupted)) {
-        readyBeforeStop = true;
+        requiresFreshPostStopIdle = true;
         return;
       }
-      if (readyBeforeStop && !confirmed) return;
+      if (requiresFreshPostStopIdle && !confirmed) return;
       started = true;
     }
     if (!started) return;
@@ -105,7 +105,7 @@ export function createBoundaryObserver(
     confirmStop: (text: string, requireFreshIdle: boolean) => {
       if (!ownership?.accepted()) return;
       ownedStop = true;
-      readyBeforeStop ||= requireFreshIdle;
+      requiresFreshPostStopIdle ||= requireFreshIdle;
       gate.expectText(text);
       started = true;
     },
