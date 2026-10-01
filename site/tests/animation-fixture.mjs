@@ -7,7 +7,7 @@ export async function waitFor(requested, path) {
   for (let i = 0; i < 100 && !requested.includes(path); i++) await turn();
   assert.ok(requested.includes(path), `Expected request: ${path}`);
 }
-export function fixture(t, pageCount = (name) => name === "wave" ? 6 : 2) {
+export function fixture(t, pageCountFor = (name) => name === "wave" ? 6 : 2) {
   const original = { fetch: globalThis.fetch, Image: globalThis.Image };
   const gates = new Map(), requested = [], images = [], aborted = [];
   globalThis.fetch = async (url, { signal } = {}) => {
@@ -23,8 +23,8 @@ export function fixture(t, pageCount = (name) => name === "wave" ? 6 : 2) {
     });
     const name = path.split("/")[0];
     if (path.endsWith("clip.json")) return Response.json({
-      name, fps: 24, loop: name === "pickup-wriggle", pages: Array.from({ length: pageCount(name) }, (_, i) => ({ file: `${i}.webp` })),
-      frames: Array.from({ length: pageCount(name) }, (_, i) => ({ page: i, x: 0, y: 0, w: 1, h: 1, anchor: { x: 0, y: 0 }, socket: { x: 0, y: 0 } })),
+      name, fps: 24, loop: name === "pickup-wriggle", pages: Array.from({ length: pageCountFor(name) }, (_, i) => ({ file: `${i}.webp` })),
+      frames: Array.from({ length: pageCountFor(name) }, (_, i) => ({ page: i, x: 0, y: 0, w: 1, h: 1, anchor: { x: 0, y: 0 }, socket: { x: 0, y: 0 } })),
     });
     return new Response(path);
   };

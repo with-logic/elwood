@@ -368,6 +368,7 @@ export class LandingScene {
     p.y += y - this.drag.socket.y;
     this.drag.point = point;
     this.drag.socket = { x, y };
+    // scene.interact() cancels pickup preparation; movement must preserve its generation.
     if (userInput) this.director.interact();
   }
   nudgeDrag(dx, dy) {
