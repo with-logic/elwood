@@ -30,6 +30,8 @@ export function renderedSnapshot(terminal: ElwoodTerminal): TerminalSnapshot {
 export class RenderCursor {
   private receivedRevision = 0;
   private renderedRevision = -1;
+  private arrivals = 0;
+  private renderedArrivals = 0;
   private visible = true;
   private readonly handlers: readonly { dispose(): void }[];
 
@@ -59,15 +61,24 @@ export class RenderCursor {
   }
 
   received(): number {
+    this.arrivals += 1;
+    return this.queued();
+  }
+  /** Split/coalesced rendering advances settlement, not native arrival progress. */
+  queued(): number {
     return ++this.receivedRevision;
   }
-  rendered(revision: number): void {
+  get arrival(): number {
+    return this.arrivals;
+  }
+  rendered(revision: number, arrival: number): void {
     this.renderedRevision = revision;
+    this.renderedArrivals = arrival;
     this.frame = undefined;
   }
   captureProgress(): () => boolean {
-    const before = this.receivedRevision;
-    return () => this.renderedRevision > before;
+    const before = this.arrivals;
+    return () => this.renderedArrivals > before;
   }
   get settled(): boolean {
     return this.receivedRevision === this.renderedRevision && !this.hasStagedOutput();
