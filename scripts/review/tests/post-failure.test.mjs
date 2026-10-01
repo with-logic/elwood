@@ -4,7 +4,7 @@ import test from "node:test";
 import { post } from "../post.mjs";
 import { changeRequest, fixture, report } from "./github-fixture.mjs";
 
-test("a revalidation API failure dismisses a change request and preserves the error", async (t) => {
+test("revalidation failures preserve the error and dismiss only change requests", async (t) => {
   for (const complete of [true, false]) {
     const f = fixture();
     const reportPath = complete ? await changeRequest(t) : await report(t);
