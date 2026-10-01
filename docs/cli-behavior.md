@@ -338,31 +338,21 @@ callers conservatively reject approval-like rows; the live session additionally
 uses the actual visible input cursor to identify the composer, so transcript
 caret/numbered rows above that input remain legitimate history. Dialogs hide the
 cursor or leave it outside the composer. A bare caret never proves clearance.
-A controlled partial-paint regression showed that an indented native approval
-header, recognized trust-header candidate, or cursor-option block can remain above
-a retained composer while its cursor is still visible. Positive clearance shares
-the trust parser’s native header classification; it does not broaden the separate
-C-ATTN-03 reported blocking grammar. The captured Codex 0.156.1 `Folder access`
-prelude also withholds positive clearance before its explanatory copy or complete
-choice block paints. A selected numbered choice that remains after the prelude
-erases also withholds clearance unless bounded completed history explains it;
-fresh composer replacement clears the gate.
-Those native dialog fragments override the cursor for
-clearance and recovery, including empty-input acknowledgement. A contiguous
-indented quotation immediately following a native assistant row retains its
-existing history treatment; a blank or column-zero row ends that quotation, and a
-working-status row cannot introduce one. Generic quoted menus and caret-prefixed
-user prompts also retain their live-cursor history treatment. A wrapped user span
-requires a column-zero prompt, contiguous indented/blank continuation rows, and
-a non-working native assistant reply as its next column-zero row. Unknown rows or
-native numbered-choice blocks cannot establish that provenance. A standalone numbered
-user prompt (`› 1. Yes`) remains history when a non-working native assistant reply
-completes its bounded span. Selected numbered rows outside completed user history
-or assistant quotations remain possible native choices even without siblings.
-An unquoted cursor-option block is held
-regardless of whether its labels say Yes/No;
-this is not a claim that arbitrary identical dialog/transcript text can be
-classified from a single frame.
+Controlled post-settlement fixtures show that indented approval/trust headers or
+cursor-option blocks can coexist with a stale visible composer cursor. Clearance
+shares native trust-header classification without expanding C-ATTN-03 reporting.
+The captured 0.156.1 `Folder access` prelude holds before copy/choices finish;
+a selected numbered choice still holds after the prelude erases. Fresh composer
+replacement clears the gate. These fragments veto staged recovery and empty ACK.
+Assistant quotations require a native non-working assistant row and contiguous
+indentation; blank/column-zero rows end them. Wrapped user history requires a
+column-zero prompt, indented/blank continuation, then a non-working assistant
+reply as its next column-zero row. Unknown rows and native numbered-choice blocks
+cannot establish provenance. Completed standalone `› 1. Yes` user history remains
+valid; other selected numbered rows hold even without siblings. Generic quoted
+menus and caret prompts retain live-cursor history treatment; unquoted option
+blocks hold regardless of labels. Arbitrary identical dialog/transcript text is
+not claimed distinguishable from one frame.
 Native working rows and the live OSC working title retain the hold; prose that
 merely quotes `esc to interrupt` is not a native working row. The title, cursor,
 and text are read synchronously from the same completed render, including during
@@ -1165,60 +1155,44 @@ evidence, not a new native CLI acceptance measurement.
 
 ## Codex whitespace-only staged input (2026-10-01)
 
-Pinned Codex 0.159.2, launched with a private copied binary, authentication and
-configuration, rendered a bracketed paste of two spaces, one tab and one space as
-an apparently empty `›` row. The completed 140×35 frame kept a visible cursor at
-column 6, row 31 (zero-based), while the session remained ready. Trimming viewport
-text therefore cannot prove that this draft was consumed. The preserved fixture
-is `tests/fixtures/codex-0.159.2/whitespace-only-input.json`.
-
-The isolated probe disabled updates and used a nonexistent model as an additional
-guard. Its physical ledger contained exactly one whitespace paste and two terminal
-protocol replies: no submitting Enter, UserPromptSubmit, clipboard operation or
-model turn. Teardown removed the private home, and parent environment values were
-unchanged. This proves staged geometry, not native acceptance. The replay test
-combines this frame with a previously captured empty-input frame in a controlled
-PTY; the image-ownership tests use actual adapter attachment options with the
-existing stubbed platform clipboard. No native Claude whitespace capture is claimed.
+Private copied Codex 0.159.2, auth and config rendered a bracketed paste of two
+spaces, a tab and a space as an apparently empty `›`. The completed 140×35 frame
+was ready with visible cursor at zero-based (6,31): trimming text cannot prove
+consumption. Fixture: `tests/fixtures/codex-0.159.2/whitespace-only-input.json`.
+Updates were disabled and the model nonexistent. Exactly one paste and two
+protocol replies occurred, with no Enter, UPS, clipboard operation or model turn.
+Private home cleanup and unchanged parent environment passed. This proves geometry,
+not acceptance. Controlled replay combines it with an older captured empty frame;
+image tests exercise adapter options with stubbed clipboard. No native Claude
+whitespace capture is claimed.
 
 ## Codex 0.159.2 native acceptance ordering
 
-A controlled private-home cold/resume probe on Node 24.7.0 used only
-`gpt-elwood-nonexistent-acceptance-probe`. Each phase delivered one Enter and
-observed one UserPromptSubmit. The handler was held for one second. The real
-generated hook bridge received its nonempty 38-byte response after the handler
-returned (cold 1.353 ms; resume 1.391 ms), with no response before release. This
-verifies the corrected half-close transport; it is not a successful model-response
-or quota-consuming test. No parent environment or global CLI configuration changed.
+A private-home Node 24.7.0 cold/resume probe used
+`gpt-elwood-nonexistent-acceptance-probe`, one Enter/UPS per phase and a one-second
+handler hold. The real generated bridge received its 38-byte response only after
+return (cold 1.353ms, resume 1.391ms), verifying half-close transport without a
+successful model/quota turn. Parent environment and global config were unchanged.
+Bounded pre-Enter discovery found no cold candidate, not proof no file existed.
+Resume used the persisted native ID with cold path memory cleared. Both UPS events
+had native task/turn-context metadata, but the new user record appeared only after
+ACK, absent at ingress and during the hold. Waiting for that record before ACK
+would deadlock the work ACK unblocks. This is ordering evidence, not a filesystem
+authority requirement for the authenticated per-launch hook channel.
 
-Before Enter, independent bounded discovery found no matching cold transcript
-candidate; that is not evidence that no file existed. Resume discovery used the
-persisted native resume ID, with cold transcript-path memory cleared. At UPS
-ingress both phases had native task/turn-context metadata for the hook's turn ID,
-but their new user prompt record was absent both at ingress and while the handler
-was held. The user record appeared after acknowledgement. Waiting for that record
-before acknowledging UPS would therefore wait for work the acknowledgement itself
-unblocks. This observation establishes ordering, not a new filesystem authority
-requirement for Elwood's authenticated per-launch hook channel.
+Official `rust-v0.159.2` commit `ff6aec96948b70d94983af2641a6b67c94faeff5` explains it:
+`core/src/hook_runtime.rs::inspect_pending_input` supplies active
+`turn_context.sub_id` and awaits UPS; `core/src/session/turn.rs::run_hooks_and_record_inputs`
+records afterward. SessionStart hooks run earlier. Steering shares the active
+context, so Enter need not create a new turn ID. `core/src/tasks/regular.rs` runs
+input hooks on cancelled startup too: cancellation cannot rule out delayed prior
+UPS. Successors must retain predecessor boundaries, not claim unfamiliar IDs from
+matching text alone.
 
-The pinned official source (`rust-v0.159.2`, commit
-`ff6aec96948b70d94983af2641a6b67c94faeff5`) explains the ordering:
-`core/src/hook_runtime.rs::inspect_pending_input` supplies the active
-`turn_context.sub_id`, awaits UPS, and
-`core/src/session/turn.rs::run_hooks_and_record_inputs` records the input afterward.
-Pending SessionStart hooks are awaited earlier in the turn. Steering input uses
-that same active turn context; each Enter is not necessarily a distinct turn ID.
-`core/src/tasks/regular.rs` also runs input hooks on its cancelled-startup path,
-so cancelling before acceptance is not proof that a delayed prior UPS cannot
-arrive. An ergonomic successor must retain the predecessor boundary rather than
-claim the next unfamiliar ID merely because its text matches.
-
-The durable opt-in `tests/e2e/codex-native-response.e2e.ts` also passed against
-Codex 0.159.2 / Node 24.7.0 with `gpt-6-luna` at low effort. Its two valid model
-turns use an isolated home and empty workspace: a cold `CodexSession.send`, then
-`HeadlessCliSession.stream` resumed from the persisted Elwood record and native
-resume ID. Each returned its exact distinct synthetic response token, with the
-old token absent from the resumed result. Each phase delivered one paste/Enter
-and observed one UPS/Stop, with zero tools. The private home was removed and the
-parent environment was unchanged. This is response-isolation evidence for those
-pinned versions, separate from the bogus-model acknowledgement-ordering probe.
+Opt-in `tests/e2e/codex-native-response.e2e.ts` passed on Codex 0.159.2 / Node 24.7.0,
+`gpt-6-luna`, low effort: two valid model turns in private home/empty workspace,
+cold `CodexSession.send` then `HeadlessCliSession.stream` using persisted Elwood
+record/native resume ID. Each returned its distinct exact synthetic token; resume
+excluded the old token. Each had one paste/Enter/UPS/Stop and zero tools. Private
+home removal and unchanged parent environment passed. This pinned-version response
+isolation proof is separate from bogus-model ACK ordering.
