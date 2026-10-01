@@ -1,4 +1,5 @@
 /** Cursor-owned whitespace consumes bounded recovery without releasing a dirty draft (C-API-31/56). */
+
 import { afterEach, expect, test, vi } from "vitest";
 import { codexInputStaged } from "../../src/codex/screen/staged-input.ts";
 import { composerClearKeys } from "../../src/core/input/constants.ts";
@@ -7,6 +8,7 @@ import { startCodex } from "../../src/index.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 import * as codex from "../codex/helpers.ts";
 import { readNativeInputFrame } from "../fixtures/native-input-frame.ts";
+import { cursorFrame } from "../fixtures/owned-turn/composer.ts";
 import { codexSmallComposer, codexTty } from "../fixtures/trust-composer.ts";
 
 const frame = readNativeInputFrame(
@@ -19,8 +21,7 @@ const encoded = (
   y = frame.cursorY,
   visible = true,
   title = frame.title,
-) =>
-  `\u001b[2J\u001b[H${text.replaceAll("\n", "\r\n")}\u001b[${y + 1};${x + 1}H\u001b[?25${visible ? "h" : "l"}\u001b]0;${title}\u0007`;
+) => cursorFrame(text, x, y, visible, title);
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();

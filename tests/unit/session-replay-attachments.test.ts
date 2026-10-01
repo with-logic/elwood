@@ -1,13 +1,14 @@
 /** Real adapter attachment ownership through awaited replay acceptance (C-API-44/56). */
-import { existsSync, readFileSync } from "node:fs";
+
+import { existsSync } from "node:fs";
 import { setTimeout as realDelay } from "node:timers/promises";
 import { afterEach, expect, test, vi } from "vitest";
 import { QueuedImageBudget, shareImageBudget } from "../../src/core/images/queued-budget.ts";
 import { cancellableSubmission } from "../../src/core/input/submission-cancel.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
-import * as claude from "../claude/helpers.ts";
-import * as codex from "../codex/helpers.ts";
-import { claudeComposer, codexSmallComposer, tty } from "../fixtures/trust-composer.ts";
+import { attachedImage, png } from "../fixtures/owned-turn/attachments.ts";
+import { imageComposer } from "../fixtures/owned-turn/composer.ts";
+import { nativeHooks, prepareAdapter, resetAdapters } from "../fixtures/owned-turn/session.ts";
 
 const clipboard = vi.hoisted(() => ({ paths: [] as string[], restored: [] as string[] }));
 vi.mock("../../src/codex/images/clipboard.ts", async (original) => ({
@@ -25,9 +26,7 @@ vi.mock("../../src/codex/images/clipboard.ts", async (original) => ({
 }));
 afterEach(() => {
   vi.useRealTimers();
-  vi.restoreAllMocks();
-  claude.resetFakes();
-  codex.resetFakes();
+  resetAdapters();
   clipboard.paths = [];
   clipboard.restored = [];
 });
@@ -44,16 +43,13 @@ async function realDeadline<T>(work: Promise<T>): Promise<T> {
     cancel.abort();
   }
 }
-const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 for (const agent of ["claude", "codex"] as const) {
   test.each([
     "",
     "  \t ",
   ])(`C-API-56 ${agent} owns attached bytes with payload %j until fresh acceptance`, async (text) => {
-    const helper = agent === "claude" ? claude : codex;
-    helper.installFakes();
-    const cwd = helper.tempDir();
+    const { helper, cwd } = prepareAdapter(agent);
     const session = await (agent === "claude" ? startClaude : startCodex)({
       cwd,
       initialSize: { cols: 200, rows: 35 },
@@ -61,19 +57,9 @@ for (const agent of ["claude", "codex"] as const) {
     const pty = helper.ptys[0]!;
     const abort = new AbortController();
     shareImageBudget(session, new QueuedImageBudget(png.length * 2));
-    const caret = agent === "claude" ? "❯" : "›";
-    const idle =
-      (agent === "claude" ? claudeComposer : codexSmallComposer) +
-      (agent === "claude" ? "\n◐ medium · /effort" : "");
     const attached: { path: string; bytes: Buffer }[] = [];
     const paint = (chip: boolean) => {
-      const frame = chip
-        ? idle.replace(new RegExp(`^${caret}.*$`, "m"), `${caret} [Image #1]`)
-        : idle;
-      const row = frame.split("\n").findLastIndex((line) => line.startsWith(caret));
-      pty.emitData(
-        `\u001b[2J\u001b[H${tty(frame)}\u001b[${row + 1};${chip ? 13 : 3}H\u001b[?25h\u001b]0;Ready\u0007`,
-      );
+      pty.emitData(imageComposer(agent, chip ? "[Image #1]" : "", true, "\u001b]0;Ready\u0007"));
       return session.terminal.settled();
     };
     const paintCompleted = async (chip: boolean) => {
@@ -84,28 +70,14 @@ for (const agent of ["claude", "codex"] as const) {
     const write = pty.write.bind(pty);
     vi.spyOn(pty, "write").mockImplementation((value) => {
       write(value);
-      const path =
-        value === "\u0016"
-          ? clipboard.paths.at(-1)
-          : String(value)
-              .slice(6, -6)
-              .match(/^(.+elwood-image-.+\.png)$/)?.[1];
-      if (path) {
-        attached.push({ path, bytes: readFileSync(path) });
+      const attachment = attachedImage(value, clipboard.paths.at(-1));
+      if (attachment) {
+        attached.push(attachment);
         void paint(true); // acknowledge only an actual adapter attachment
       }
     });
     try {
-      if (agent === "claude")
-        await pty.dispatchHook(session.elwoodSessionId, {
-          hook_event_name: "InstructionsLoaded",
-          session_id: "claude-1",
-          cwd,
-          file_path: "/tmp/CLAUDE.md",
-          memory_type: "Project",
-          load_reason: "session_start",
-        });
-      else await codex.becomeReady(session.elwoodSessionId, cwd);
+      await nativeHooks(agent, session, cwd, pty).ready();
       await expect.poll(() => session.status).toBe("ready");
       const firstSubmitted = Promise.withResolvers<void>();
       const bytes = png.slice();

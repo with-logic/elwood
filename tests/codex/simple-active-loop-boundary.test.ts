@@ -1,7 +1,9 @@
 /** Accepted loop hooks cannot bind a later caller (PRD §5.8/§5.9). */
+
 import { afterEach, expect, test, vi } from "vitest";
-import { CodexSession } from "../../src/index.ts";
-import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { codexIdle } from "../fixtures/owned-turn/composer.ts";
+import { createFacadeFixture } from "../fixtures/owned-turn/session.ts";
+import { becomeReady, ptys, resetFakes } from "./helpers.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -13,9 +15,7 @@ test.each([
   "staging",
   "committed",
 ])("C-API-48 close cancels a caller waiting on a %s loop", async (phase) => {
-  installFakes();
-  const cwd = tempDir();
-  const facade = new CodexSession({ cwd });
+  const { cwd, facade } = createFacadeFixture("codex");
   let pending: Promise<unknown> | undefined;
   try {
     const live = await facade.start();
@@ -47,9 +47,7 @@ test.each([
 });
 
 test("C-API-48 cancelling a staged loop releases its waiting caller", async () => {
-  installFakes();
-  const cwd = tempDir();
-  const facade = new CodexSession({ cwd });
+  const { cwd, facade } = createFacadeFixture("codex");
   let pending: Promise<unknown> | undefined;
   try {
     const live = await facade.start();
@@ -65,9 +63,7 @@ test("C-API-48 cancelling a staged loop releases its waiting caller", async () =
     expect(send).not.toHaveBeenCalled();
     await facade.cancelLoop(loop.id);
     await vi.waitFor(() => expect(ptys[0]!.writes).toContain("\u0015\u000b"));
-    ptys[0]!.emitData(
-      "\u001b[2J\u001b[H› Ask Codex to do anything\r\n  gpt-5.3-codex high\u001b[1;3H",
-    );
+    ptys[0]!.emitData(codexIdle);
     await vi.advanceTimersByTimeAsync(100);
     await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
     await expect(facade.listLoops()).resolves.toEqual([]);

@@ -1,11 +1,10 @@
 /** Whole-prompt replay reattaches captured image bytes through real adapters (C-API-44/48). */
-import { readFileSync } from "node:fs";
+
 import { afterEach, expect, test, vi } from "vitest";
-import { ClaudeSession, CodexSession } from "../../src/index.ts";
 import { AgentSessionBase } from "../../src/runtime/session/base.ts";
-import * as claude from "../claude/helpers.ts";
-import * as codex from "../codex/helpers.ts";
-import { claudeComposer, codexSmallComposer, tty } from "../fixtures/trust-composer.ts";
+import { attachedImage } from "../fixtures/owned-turn/attachments.ts";
+import { imageComposer } from "../fixtures/owned-turn/composer.ts";
+import { createFacadeFixture, nativeHooks, resetAdapters } from "../fixtures/owned-turn/session.ts";
 
 const clipboard = vi.hoisted(() => ({ path: "" }));
 vi.mock("../../src/codex/images/clipboard.ts", async (original) => ({
@@ -19,9 +18,7 @@ vi.mock("../../src/codex/images/clipboard.ts", async (original) => ({
   restoreClipboardText: () => Promise.resolve(true),
 }));
 afterEach(() => {
-  vi.restoreAllMocks();
-  claude.resetFakes();
-  codex.resetFakes();
+  resetAdapters();
   clipboard.path = "";
 });
 const image = (tag: number) =>
@@ -29,42 +26,26 @@ const image = (tag: number) =>
 
 for (const agent of ["claude", "codex"] as const) {
   test(`C-API-48 ${agent} public image replay repeats attachment bytes and ordering`, async () => {
-    const helper = agent === "claude" ? claude : codex;
-    helper.installFakes();
-    const cwd = helper.tempDir();
-    const options = { cwd, initialSize: { cols: 200, rows: 35 } };
-    const facade = agent === "claude" ? new ClaudeSession(options) : new CodexSession(options);
+    const { helper, cwd, facade } = createFacadeFixture(agent, {
+      initialSize: { cols: 200, rows: 35 },
+    });
     const raw = await facade.start();
     if (!(raw instanceof AgentSessionBase)) throw new Error("Expected actual adapter");
     const pty = helper.ptys[0]!;
+    const native = nativeHooks(agent, raw, cwd, pty);
     const attached: Buffer[] = [];
     const order: string[] = [];
-    const caret = agent === "claude" ? "❯" : "›";
-    const idle =
-      (agent === "claude" ? claudeComposer : codexSmallComposer) +
-      (agent === "claude" ? "\n◐ medium · /effort" : "");
     const paint = (count: number) => {
       const chips = Array.from({ length: count }, (_, i) => `[Image #${i + 1}]`).join(" ");
-      const frame = count
-        ? idle.replace(new RegExp(`^${caret}.*$`, "m"), `${caret} ${chips}`)
-        : idle;
-      const row = frame.split("\n").findLastIndex((line) => line.startsWith(caret));
-      pty.emitData(
-        `\u001b[2J\u001b[H${tty(frame)}\u001b[${row + 1};${count ? chips.length + 3 : 3}H\u001b[?25h`,
-      );
+      pty.emitData(imageComposer(agent, chips, true, ""));
       return raw.terminal.settled();
     };
     const write = pty.write.bind(pty);
     vi.spyOn(pty, "write").mockImplementation((value) => {
       write(value);
-      const path =
-        value === "\u0016"
-          ? clipboard.path
-          : String(value)
-              .slice(6, -6)
-              .match(/^(.+elwood-image-.+\.png)$/)?.[1];
-      if (path) {
-        attached.push(readFileSync(path));
+      const attachment = attachedImage(value, clipboard.path);
+      if (attachment) {
+        attached.push(attachment.bytes);
         order.push(`image${((attached.length - 1) % 2) + 1}`);
         void paint(((attached.length - 1) % 2) + 1);
       } else if (value === "\u001b[200~replay these images\u001b[201~") order.push("text");
@@ -72,16 +53,7 @@ for (const agent of ["claude", "codex"] as const) {
     });
     let result: Promise<string> | undefined;
     try {
-      if (agent === "claude")
-        await pty.dispatchHook(raw.elwoodSessionId, {
-          hook_event_name: "InstructionsLoaded",
-          session_id: "claude-1",
-          cwd,
-          file_path: "/tmp/CLAUDE.md",
-          memory_type: "Project",
-          load_reason: "session_start",
-        });
-      else await codex.becomeReady(raw.elwoodSessionId, cwd);
+      await native.ready();
       await raw.waitForStatus((status) => status === "ready", 5_000);
       const first = image(1);
       const second = image(2);
@@ -108,22 +80,9 @@ for (const agent of ["claude", "codex"] as const) {
       expect(attached).toEqual(
         [image(1), image(2), image(1), image(2)].map((bytes) => Buffer.from(bytes)),
       );
-      await pty.dispatchHook(raw.elwoodSessionId, {
-        hook_event_name: "UserPromptSubmit",
-        session_id: `${agent}-1`,
-        cwd,
-        prompt: "replay these images",
-        turn_id: "replayed-image-turn",
-      });
+      await native.submit("replayed-image-turn", "replay these images");
       await paint(0);
-      await pty.dispatchHook(raw.elwoodSessionId, {
-        hook_event_name: "Stop",
-        session_id: `${agent}-1`,
-        cwd,
-        stop_hook_active: false,
-        last_assistant_message: "",
-        turn_id: "replayed-image-turn",
-      });
+      await native.stop("replayed-image-turn");
       await expect(result).resolves.toBe("");
       expect(order).toHaveLength(8);
     } finally {

@@ -1,21 +1,14 @@
 /** Real facade and loop scheduling share one caller boundary (PRD §5.8/§5.9, C-API-48). */
+
 import { afterEach, expect, test, vi } from "vitest";
 import type { ElwoodAgentSession } from "../../src/core/agent-session.ts";
-import { ClaudeSession, CodexSession } from "../../src/index.ts";
-import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
-import {
-  claudeComposer,
-  claudeTty,
-  codexSmallComposer,
-  codexTty,
-} from "../fixtures/trust-composer.ts";
+import { emptyComposer } from "../fixtures/owned-turn/composer.ts";
+import { createFacadeFixture, resetAdapters } from "../fixtures/owned-turn/session.ts";
 
 afterEach(() => {
   vi.useRealTimers();
-  vi.restoreAllMocks();
-  claude.resetFakes();
-  codex.resetFakes();
+  resetAdapters();
 });
 
 test.each([
@@ -27,20 +20,18 @@ test.each([
   agent,
   queued,
 }) => {
-  const harness = agent === "claude" ? claude : codex;
-  harness.installFakes();
-  const cwd = harness.tempDir();
+  const {
+    helper: harness,
+    cwd,
+    facade,
+  } = createFacadeFixture(agent, { initialSize: { cols: 200, rows: 32 } });
   const { ptys } = harness;
-  const options = { cwd, initialSize: { cols: 200, rows: 32 } };
-  const facade = agent === "claude" ? new ClaudeSession(options) : new CodexSession(options);
   const confirmInput = async (enters: number) => {
     await vi.waitFor(() =>
       expect(ptys[0]!.writes.filter((write) => write === "\r")).toHaveLength(enters),
     );
     // Awaited ergonomic writes need actual post-Enter empty-input evidence.
-    ptys[0]!.emitData(
-      `\u001b[2J\u001b[H${agent === "claude" ? claudeTty(claudeComposer) : codexTty(codexSmallComposer)}`,
-    );
+    ptys[0]!.emitData(emptyComposer(agent));
     await vi.advanceTimersByTimeAsync(1_000);
   };
   let pending: Promise<unknown> | undefined;

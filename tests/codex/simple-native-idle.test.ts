@@ -1,8 +1,10 @@
 /** Owned Stop combines with post-Enter idle, never cached readiness (C-API-48). */
+
 import { afterEach, expect, test, vi } from "vitest";
 import { composerClearKeys } from "../../src/core/input/constants.ts";
-import { CodexSession } from "../../src/index.ts";
-import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
+import { codexIdle } from "../fixtures/owned-turn/composer.ts";
+import { createFacadeFixture, nativeHooks } from "../fixtures/owned-turn/session.ts";
+import { becomeReady, ptys, resetFakes } from "./helpers.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -18,9 +20,7 @@ test.each([
   priorStop,
   idleBeforeStop,
 }) => {
-  installFakes();
-  const cwd = tempDir();
-  const facade = new CodexSession({ cwd });
+  const { cwd, facade } = createFacadeFixture("codex");
   let result: Promise<unknown> | undefined;
   let settled = false;
   try {
@@ -28,25 +28,10 @@ test.each([
     await becomeReady(live.elwoodSessionId, cwd);
     await expect.poll(() => live.status).toBe("ready");
     const pty = ptys[0]!;
-    const paintIdle = () =>
-      pty.emitData(
-        "\u001b[2J\u001b[H› Ask Codex to do anything\r\n  gpt-5.3-codex high\u001b[1;3H",
-      );
+    const paintIdle = () => pty.emitData(codexIdle);
     paintIdle();
     await live.terminal.settled();
-    const hook = (input: Record<string, unknown>) =>
-      pty.dispatchHook(live.elwoodSessionId, {
-        session_id: "codex-1",
-        cwd,
-        ...input,
-      });
-    const stop = (turn_id: string) =>
-      hook({
-        hook_event_name: "Stop",
-        turn_id,
-        stop_hook_active: false,
-        last_assistant_message: "",
-      });
+    const { hook, stop } = nativeHooks("codex", live, cwd, pty);
     vi.useFakeTimers();
     result = facade.send("own").then(
       (value) => {
@@ -94,9 +79,7 @@ test.each([
 });
 
 test("C-API-48 timeout and a no-op raw interrupt retain the unresolved current owner", async () => {
-  installFakes();
-  const cwd = tempDir();
-  const facade = new CodexSession({ cwd });
+  const { cwd, facade } = createFacadeFixture("codex");
   let first: Promise<unknown> | undefined;
   let successor: Promise<unknown> | undefined;
   try {
@@ -104,19 +87,7 @@ test("C-API-48 timeout and a no-op raw interrupt retain the unresolved current o
     await becomeReady(live.elwoodSessionId, cwd);
     await expect.poll(() => live.status).toBe("ready");
     const pty = ptys[0]!;
-    const hook = (input: Record<string, unknown>) =>
-      pty.dispatchHook(live.elwoodSessionId, {
-        session_id: "codex-1",
-        cwd,
-        ...input,
-      });
-    const stop = (turn_id: string) =>
-      hook({
-        hook_event_name: "Stop",
-        turn_id,
-        stop_hook_active: false,
-        last_assistant_message: "",
-      });
+    const { hook, stop } = nativeHooks("codex", live, cwd, pty);
     const pastes = () => pty.writes.filter((write) => write.startsWith("\u001b[200~"));
     vi.useFakeTimers();
     first = facade.send("same", { timeoutMs: 100 }).catch((error: unknown) => error);
@@ -134,11 +105,11 @@ test("C-API-48 timeout and a no-op raw interrupt retain the unresolved current o
     const clears = () => pty.writes.filter((write) => write === composerClearKeys).length;
     const priorClears = clears();
     await stop("owned");
-    pty.emitData("\u001b[2J\u001b[H› Ask Codex to do anything\r\n  gpt-5.3-codex high\u001b[1;3H");
+    pty.emitData(codexIdle);
     // Cancellation retains physical cleanup too: its clear must be acknowledged by later output.
     await vi.waitFor(() => expect(clears()).toBeGreaterThan(priorClears));
     expect(pastes()).toHaveLength(1);
-    pty.emitData("\u001b[2J\u001b[H› Ask Codex to do anything\r\n  gpt-5.3-codex high\u001b[1;3H");
+    pty.emitData(codexIdle);
     await vi.advanceTimersByTimeAsync(3_000);
     expect(pastes()).toHaveLength(2);
   } finally {

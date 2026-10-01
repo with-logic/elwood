@@ -1,10 +1,13 @@
 /** Both session adapters retain replay until a fresh native input frame (C-API-56). */
+
 import { afterEach, expect, test, vi } from "vitest";
 import { cancellableSubmission } from "../../src/core/input/submission-cancel.ts";
 import { startClaude, startCodex } from "../../src/index.ts";
 import * as claude from "../claude/helpers.ts";
 import * as codex from "../codex/helpers.ts";
 import { readNativeInputFrame } from "../fixtures/native-input-frame.ts";
+import { cursorFrame } from "../fixtures/owned-turn/composer.ts";
+import { nativeHooks, resetAdapters } from "../fixtures/owned-turn/session.ts";
 import {
   claudeComposer,
   claudeTty,
@@ -14,9 +17,7 @@ import {
 
 afterEach(() => {
   vi.useRealTimers();
-  vi.restoreAllMocks();
-  claude.resetFakes();
-  codex.resetFakes();
+  resetAdapters();
 });
 
 test.each([
@@ -41,24 +42,14 @@ test.each([
     initialSize: { cols: 200, rows: frame.rows },
   });
   const pty = helper.ptys[0]!;
+  const native = nativeHooks(agent, session, cwd, pty);
   const abort = new AbortController();
   const paint = async (text: string) => {
-    pty.emitData(
-      `\u001b[2J\u001b[H${text.replaceAll("\n", "\r\n")}\u001b[${frame.cursorY + 1};${frame.cursorX + 1}H\u001b[?25${frame.visible ? "h" : "l"}\u001b]0;${frame.title}\u0007`,
-    );
+    pty.emitData(cursorFrame(text, frame.cursorX, frame.cursorY, frame.visible, frame.title));
     await vi.advanceTimersByTimeAsync(1);
   };
   try {
-    if (agent === "claude")
-      await pty.dispatchHook(session.elwoodSessionId, {
-        hook_event_name: "InstructionsLoaded",
-        session_id: "claude-1",
-        cwd,
-        file_path: "/tmp/CLAUDE.md",
-        memory_type: "Project",
-        load_reason: "session_start",
-      });
-    else await codex.becomeReady(session.elwoodSessionId, cwd);
+    await native.ready();
     await expect.poll(() => session.status).toBe("ready");
     vi.useFakeTimers();
     let accepted = false;
@@ -79,10 +70,8 @@ test.each([
     await vi.advanceTimersByTimeAsync(1);
     if (nativeHook) {
       const stagedFrame = session.terminal.snapshot().text;
-      await pty.dispatchHook(session.elwoodSessionId, {
+      await native.hook({
         hook_event_name: "UserPromptSubmit",
-        session_id: `${agent}-1`,
-        cwd,
         model: "gpt-5.3-codex",
         turn_id: "turn-1",
         prompt: "",
@@ -125,9 +114,7 @@ test("C-API-56 captured Codex whitespace-only input cannot release awaited repla
   const abort = new AbortController();
   const paint = (value: typeof frame) => {
     session.terminal.resize({ cols: value.cols, rows: value.rows });
-    pty.emitData(
-      `\u001b[2J\u001b[H${value.text.replaceAll("\n", "\r\n")}\u001b[${value.cursorY + 1};${value.cursorX + 1}H\u001b[?25${value.visible ? "h" : "l"}\u001b]0;${value.title}\u0007`,
-    );
+    pty.emitData(cursorFrame(value.text, value.cursorX, value.cursorY, value.visible, value.title));
   };
   try {
     await codex.becomeReady(session.elwoodSessionId, cwd);

@@ -70,35 +70,12 @@ describe("C-API-48 acceptance recovery is bounded by its turn", () => {
     expect(order).toEqual(["send#1"]);
   });
 
-  test("the slot is not released while a replay WRITE is still in flight", async () => {
-    // A cancelled write can still be finishing asynchronous cleanup. Releasing the
-    // boundary before its promise settles would free the captured images and let
-    // the next turn start while that cleanup is outstanding.
-    vi.useFakeTimers();
-    const order: string[] = [];
-    const s = armedSession(order);
-    const replayWrite = deferred();
-    const script = s.script;
-    s.script = () => {
-      script();
-      if (s.submissions === 2) s.sendResult = replayWrite.promise; // the write hangs in the queue
-    };
-    const run = runTurnFake(s, { fallbackQuietMs: 10, drainMs: 1 });
-    const events = collect(run.events);
-    events.catch(() => undefined);
-    void run.boundary.then(() => order.push("BOUNDARY"));
-    await vi.advanceTimersByTimeAsync(11); // the quiet window fires replay #2; its write hangs
-    s.emit("status", { status: "stopped" }); // the turn settles UNDER the pending write
-    await vi.advanceTimersByTimeAsync(20);
-    expect(order).toEqual(["send#1", "send#2"]); // the slot is still held
-    replayWrite.resolve();
-    await vi.advanceTimersByTimeAsync(20);
-    expect(order).toEqual(["send#1", "send#2", "BOUNDARY"]); // released only once quiesced
-  });
-
-  test("a replay write that REJECTS still releases the slot", async () => {
-    // A failed write is settled: nothing is outstanding, so quiescing must not hang the
-    // serializer forever on it.
+  test.each([
+    ["the slot is not released while a replay WRITE is still in flight", "resolve"],
+    ["a replay write that REJECTS still releases the slot", "reject"],
+  ] as const)("%s", async (_title, outcome) => {
+    // A pending replay owns the slot until physical cleanup settles, even after
+    // the turn stops. Both resolved and rejected writers release that ownership.
     vi.useFakeTimers();
     const order: string[] = [];
     const s = armedSession(order);
@@ -112,13 +89,14 @@ describe("C-API-48 acceptance recovery is bounded by its turn", () => {
     const events = collect(run.events);
     events.catch(() => undefined);
     void run.boundary.then(() => order.push("BOUNDARY"));
-    await vi.advanceTimersByTimeAsync(11); // replay #2 fires; its write hangs
-    s.emit("status", { status: "stopped" }); // the turn settles under the pending write
+    await vi.advanceTimersByTimeAsync(11);
+    s.emit("status", { status: "stopped" });
     await vi.advanceTimersByTimeAsync(20);
-    expect(order).toEqual(["send#1", "send#2"]); // still held by the outstanding write
-    replayWrite.reject(new Error("write failed"));
+    expect(order).toEqual(["send#1", "send#2"]);
+    if (outcome === "resolve") replayWrite.resolve();
+    else replayWrite.reject(new Error("write failed"));
     await vi.advanceTimersByTimeAsync(20);
-    expect(order).toEqual(["send#1", "send#2", "BOUNDARY"]); // a rejected write is settled too
+    expect(order).toEqual(["send#1", "send#2", "BOUNDARY"]);
   });
 });
 

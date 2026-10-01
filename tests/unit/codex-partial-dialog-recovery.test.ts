@@ -4,9 +4,8 @@ import { afterEach, expect, test, vi } from "vitest";
 import { codexEmptyInputFrame } from "../../src/codex/screen/empty-input.ts";
 import { codexInputStaged } from "../../src/codex/screen/staged-input.ts";
 import { codexTrustClearance } from "../../src/codex/screen-table.ts";
-import { startCodex } from "../../src/index.ts";
 import * as codex from "../codex/helpers.ts";
-import { codexSmallComposer, codexTty } from "../fixtures/trust-composer.ts";
+import { composerFrame, withComposerSession } from "./codex-composer/session-fixture.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -54,59 +53,34 @@ test.each([
   dialog,
   synchronized,
 }) => {
-  codex.installFakes();
-  const cwd = codex.tempDir();
-  const session = await startCodex({ cwd, initialSize: { cols: 200, rows: 32 }, autotrust: false });
-  const pty = codex.ptys[0]!;
-  try {
-    await codex.becomeReady(session.elwoodSessionId, cwd);
-    vi.useFakeTimers();
-    const sent = session.sendPrompt(payload);
-    await vi.advanceTimersByTimeAsync(200);
-    await sent;
-    expect(pty.writes.filter((v) => v === "\r")).toHaveLength(1);
-    const draft = codexSmallComposer.replace("› Ask Codex to do anything", `› ${payload}`);
-    const frame = `${dialog}\n${draft}`;
-    const row = frame.split("\n").findLastIndex((line) => line.startsWith("›"));
-    // Two prompt-prefix columns (`› `), plus one for terminal coordinates.
-    const column = payload.length + 3;
-    pty.emitData(
-      `${synchronized ? "\u001b[?2026h" : ""}\u001b[2J\u001b[H${codexTty(frame)}\u001b[${row + 1};${column}H`,
-    );
-    const rendered = session.terminal.settled();
-    await vi.advanceTimersByTimeAsync(1);
-    await rendered;
-    const staged = codexInputStaged(session.terminal, payload);
-    // Raw recovery observes at most four times, paced by its default 1s interval.
-    await vi.advanceTimersByTimeAsync(4_100);
-    const enters = pty.writes.filter((v) => v === "\r").length;
-    expect({ staged, enters }).toEqual({ staged: false, enters: 1 });
-    await vi.advanceTimersByTimeAsync(1_000);
-    expect(pty.writes.filter((value) => value === "\r")).toHaveLength(1);
-  } finally {
-    vi.useRealTimers();
-    await session.teardown();
-  }
+  await withComposerSession(
+    { autotrust: false, fakeTimers: true, submit: payload },
+    async ({ session, pty, emit, settle }) => {
+      expect(pty.writes.filter((v) => v === "\r")).toHaveLength(1);
+      emit(composerFrame(dialog, payload), payload, synchronized);
+      await settle(1);
+      const staged = codexInputStaged(session.terminal, payload);
+      // Raw recovery observes at most four times, paced by its default 1s interval.
+      await vi.advanceTimersByTimeAsync(4_100);
+      const enters = pty.writes.filter((v) => v === "\r").length;
+      expect({ staged, enters }).toEqual({ staged: false, enters: 1 });
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(pty.writes.filter((value) => value === "\r")).toHaveLength(1);
+    },
+  );
 });
 
 test.each(
   fragments,
 )("C-TRUST-01 empty-input observer rejects partial approval %s", async (partial) => {
-  codex.installFakes();
-  const cwd = codex.tempDir();
-  const session = await startCodex({ cwd, initialSize: { cols: 200, rows: 32 }, autotrust: false });
-  const pty = codex.ptys[0]!;
-  try {
-    await codex.becomeReady(session.elwoodSessionId, cwd);
-    const frame = `${partial}\n${codexSmallComposer}`;
-    pty.emitData(`\u001b[2J\u001b[H${codexTty(frame)}`);
-    await session.terminal.settled();
+  await withComposerSession({ autotrust: false }, async ({ session, emit, settle }) => {
+    const frame = composerFrame(partial);
+    emit(frame);
+    await settle();
     expect(codexTrustClearance(frame)).toBe(false);
 
     expect(codexEmptyInputFrame(session.terminal)).toBeUndefined();
-  } finally {
-    await session.teardown();
-  }
+  });
 });
 
 test.each([
@@ -125,29 +99,16 @@ test.each([
     .join("\n")}`,
   "• Quoted native menu:\n  Is this plugin source one you trust?\n  ❯ Run plugins\n    Cancel",
 ])("C-API-31 live composer below ordinary history still permits recovery: %s", async (history) => {
-  codex.installFakes();
-  const cwd = codex.tempDir();
-  const session = await startCodex({ cwd, initialSize: { cols: 200, rows: 32 } });
-  const pty = codex.ptys[0]!;
-  try {
-    await codex.becomeReady(session.elwoodSessionId, cwd);
-    vi.useFakeTimers();
-    const sent = session.sendPrompt("probe");
-    await vi.advanceTimersByTimeAsync(200);
-    await sent;
-    const frame = `${history}\n${codexSmallComposer.replace("› Ask Codex to do anything", "› probe")}`;
-    const row = frame.split("\n").findLastIndex((line) => line.startsWith("›"));
-    pty.emitData(`\u001b[2J\u001b[H${codexTty(frame)}\u001b[${row + 1};8H`);
-    await vi.advanceTimersByTimeAsync(1_100);
-    expect(codexInputStaged(session.terminal, "probe")).toBe(true);
-    expect(pty.writes.filter((v) => v === "\r")).toHaveLength(2);
-    pty.emitData(`\u001b[2J\u001b[H${codexTty(`${history}\n${codexSmallComposer}`)}`);
-    const rendered = session.terminal.settled();
-    await vi.advanceTimersByTimeAsync(1);
-    await rendered;
-    expect(codexEmptyInputFrame(session.terminal)).toBeDefined();
-  } finally {
-    vi.useRealTimers();
-    await session.teardown();
-  }
+  await withComposerSession(
+    { fakeTimers: true, submit: "probe" },
+    async ({ session, pty, emit, settle }) => {
+      emit(composerFrame(history, "probe"), "probe");
+      await vi.advanceTimersByTimeAsync(1_100);
+      expect(codexInputStaged(session.terminal, "probe")).toBe(true);
+      expect(pty.writes.filter((v) => v === "\r")).toHaveLength(2);
+      emit(composerFrame(history));
+      await settle(1);
+      expect(codexEmptyInputFrame(session.terminal)).toBeDefined();
+    },
+  );
 });

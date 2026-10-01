@@ -1,10 +1,13 @@
 /** Native UPS, content and resolved Stop retain one collection identity (C-API-48). */
+
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { HeadlessCliSession } from "../../src/cli/session/index.ts";
 import { CodexSession } from "../../src/index.ts";
 import { effectiveRequest } from "../cli/main-fakes.ts";
+import { codexIdle } from "../fixtures/owned-turn/composer.ts";
+import { nativeHooks } from "../fixtures/owned-turn/session.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(() => {
@@ -38,9 +41,7 @@ test.each([
           );
     const pty = ptys[0]!;
     const hook = (input: Record<string, unknown>) =>
-      pty.dispatchHook(live.elwoodSessionId, {
-        session_id: "codex-1",
-        cwd,
+      nativeHooks("codex", live, cwd, pty).hook({
         transcript_path: transcript,
         ...input,
       });
@@ -98,7 +99,7 @@ test.each([
     await accepted("owned");
     text("prior", "WRONG");
     text("owned", "PART ");
-    pty.emitData("\u001b[2J\u001b[H› Ask Codex to do anything\r\n  gpt-5.3-codex high\u001b[1;3H");
+    pty.emitData(codexIdle);
     await vi.advanceTimersByTimeAsync(50);
     await stop("owned", "PART FINAL");
     await stop("prior", "PART ");

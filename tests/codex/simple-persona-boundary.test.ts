@@ -1,8 +1,10 @@
 /** Persona completion cannot settle an ergonomic caller turn (PRD §5.8, C-API-21/48). */
+
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { CodexSession } from "../../src/index.ts";
+import { codexIdle } from "../fixtures/owned-turn/composer.ts";
 import { becomeReady, installFakes, ptys, resetFakes, tempDir } from "./helpers.ts";
 
 afterEach(() => {
@@ -99,9 +101,7 @@ test.each(["go", "  go  "])("C-API-48 persona cannot settle caller %j", async (p
         },
       })}\n`,
     );
-    ptys[0]!.emitData(
-      "\u001b[2J\u001b[H› Ask Codex to do anything\r\n  gpt-5.3-codex high\u001b[1;3H",
-    );
+    ptys[0]!.emitData(codexIdle);
     await vi.advanceTimersByTimeAsync(50);
     await ptys[0]!.dispatchHook(session.elwoodSessionId, {
       hook_event_name: "Stop",

@@ -1,23 +1,17 @@
 /** Ergonomic initial input owns timeout and cancellation through physical Enter (C-API-48). */
+
 import { afterEach, expect, test, vi } from "vitest";
-import { ClaudeSession, CodexSession } from "../../src/index.ts";
 import { AgentSessionBase } from "../../src/runtime/session/base.ts";
-import * as claude from "../claude/helpers.ts";
-import * as codex from "../codex/helpers.ts";
+import { createFacadeFixture, resetAdapters } from "../fixtures/owned-turn/session.ts";
 
 afterEach(() => {
   vi.useRealTimers();
-  vi.restoreAllMocks();
-  claude.resetFakes();
-  codex.resetFakes();
+  resetAdapters();
 });
 
 for (const agent of ["claude", "codex"] as const) {
   test(`C-API-48 ${agent} initial timeout starts at Enter and failure retains native boundary`, async () => {
-    const helper = agent === "claude" ? claude : codex;
-    helper.installFakes();
-    const cwd = helper.tempDir();
-    const facade = agent === "claude" ? new ClaudeSession({ cwd }) : new CodexSession({ cwd });
+    const { helper, facade } = createFacadeFixture(agent);
     const raw = await facade.start();
     if (!(raw instanceof AgentSessionBase)) throw new Error("Expected real adapter session");
     let first: Promise<string> | undefined;
