@@ -1,6 +1,7 @@
 /** Renders the interactive robot and tether (PRD §13; docs/design/landing.md). */
 import { AutomaticPreparation } from "./autonomy/preparation.mjs";
 import { Autonomy, NO_INPUT } from "./autonomy.mjs";
+import { prepareDrag } from "./drag/preparation.mjs";
 import { gameAssetUrl } from "./game-assets.mjs";
 import { mirroredPose } from "./rotation.mjs";
 import { SpriteBank } from "./sprite-bank.mjs";
@@ -322,10 +323,9 @@ export class LandingScene {
       pendingJump: false,
       restAnimation: null,
     });
-    this.prepare(name);
+    prepareDrag(this, this.drag);
     for (const clip of this.world.clips["hero-land"] ? ["hero-land", "pickup-fall"] : ["land"])
       this.prepare(clip);
-    this.world.animate(name, true);
     this.moveDrag(point);
     return true;
   }
@@ -368,7 +368,8 @@ export class LandingScene {
     p.y += y - this.drag.socket.y;
     this.drag.point = point;
     this.drag.socket = { x, y };
-    if (userInput) this.interact();
+    // scene.interact() cancels pickup preparation; movement must preserve its generation.
+    if (userInput) this.director.interact();
   }
   nudgeDrag(dx, dy) {
     if (this.drag) this.moveDrag({ x: this.drag.point.x + dx, y: this.drag.point.y + dy });
@@ -520,7 +521,7 @@ export class LandingScene {
     // the animation scheduler or counting a network response as human input.
     if (this.drag && clip && this.drag.boundsClip !== clip) this.moveDrag(this.drag.point, false);
     let index = clip && this.world.frameIndex(clip.frames.length, this.accumulator);
-    if (this.drag && clip) {
+    if (this.drag && clip && p.animation === this.drag.name) {
       if (clip.loop) index = Math.floor(p.animationTime * clip.fps) % clip.frames.length;
       else {
         const [first, last] = clip.hold_loop ?? [60, 80];

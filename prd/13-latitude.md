@@ -58,8 +58,8 @@ before the opening turn paints. Held movement that clears the recovery queue als
 releases its delivered request. Reset, responsive reflow and supersession cancel
 pending/delivered work while preserving active/outgoing poses; reflow preserves
 held movement. Superseding a gesture/facing request preserves unrelated pending
-input such as a jump press. Workshop and pickup paths retain their separate
-on-demand loading behavior; automatic moments and facing follow §13.3.
+input such as a jump press. Workshop paths retain on-demand loading; automatic moments and facing follow
+§13.3, and suspended pickup follows §13.4.
 
 ### 13.2 Landing-page initial animation readiness
 
@@ -87,5 +87,15 @@ but cannot release a newer manual request or active/current/outgoing playback.
 An automatic asset failure reports once. Failed requested or shared idle/rotation
 assets suppress later automatic attempts that need them, including other actions,
 until explicit preparation clears the relevant failure state. Unchanged paint ticks
-cannot retry or republish a failed or superseded task. Walking and pickup remain on
-demand.
+cannot retry or republish a failed or superseded task. Walking remains on demand.
+
+### 13.4 Landing-page pickup readiness
+
+Pickup takes pointer/keyboard control immediately while the current drawable clip
+continues playing. Suspended wriggle (or zero-gravity fallback) starts at time zero
+only after all its sheets and idle/rotation dependencies are ready and owned by
+that drag. Pointer movement preserves preparation. Drop, pause, reset, reflow and
+teardown cancel pending pickup; a late completion cannot start obsolete playback.
+Current/outgoing poses remain retained. Failure reports once for the current drag;
+movement and painting do not retry, but a new drag may retry. Falling and landing
+transitions retain their existing on-demand behavior.
