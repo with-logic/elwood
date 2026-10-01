@@ -10,6 +10,7 @@ import type { BridgeProcessResult } from "../../bridge/types.ts";
 import * as activity from "../../core/activity/index.ts";
 import { freezeHookEvent } from "../../core/freeze-hook-event.ts";
 import { hookObservationBoundary } from "../../core/hook-observation.ts";
+import { withStopInput, withStopInputNotification } from "../../core/stop-input.ts";
 import type { TurnStateWatcher } from "../../core/turn-state.ts";
 import type { ClaudeEventMap, HookErrorEvent, StartClaudeOptions } from "../../core/types.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
@@ -41,6 +42,12 @@ export function buildClaudeHookHandler(
   const { record, options, emitter, transcriptWatcher, ready } = deps;
   return async (input: unknown): Promise<BridgeProcessResult> => {
     const event = freezeHookEvent(normalizeClaudeHookEvent(input));
+    return await withStopInput(
+      { hookName: event.hook_event_name, session: deps.getSession() ?? record },
+      () => observeAndRequest(event),
+    );
+  };
+  async function observeAndRequest(event: ClaudeHookEvent): Promise<BridgeProcessResult> {
     const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "claude");
     if (event.hook_event_name === "SessionStart")
       deps.getSession()?.rememberClaudeSessionId(event.session_id);
@@ -85,21 +92,26 @@ export function buildClaudeHookHandler(
     }
     observation.report();
     return serialized;
-  };
+  }
 }
 
 /** Builds the hook-error handler passed to the Claude hook bridge factory. */
 export function buildClaudeHookErrorHandler(
   record: SessionRecord,
   emitter: TypedEmitter<ClaudeEventMap>,
+  getSession?: () => ClaudeSessionImpl | undefined,
 ): (event: Omit<HookErrorEvent, "elwoodSessionId">) => void {
-  return (event) => {
-    const hookError = { elwoodSessionId: record.elwoodSessionId, ...event };
-    const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "claude");
-    observation.run("hook_error", () => emitter.emit("hookError", hookError));
-    observation.run("activity", () =>
-      emitter.emit("activity", activity.activityFromHookError("claude", hookError)),
+  return (event) =>
+    withStopInputNotification(
+      { hookName: event.hookEventName, session: getSession?.() ?? record },
+      () => {
+        const hookError = { elwoodSessionId: record.elwoodSessionId, ...event };
+        const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "claude");
+        observation.run("hook_error", () => emitter.emit("hookError", hookError));
+        observation.run("activity", () =>
+          emitter.emit("activity", activity.activityFromHookError("claude", hookError)),
+        );
+        observation.report();
+      },
     );
-    observation.report();
-  };
 }

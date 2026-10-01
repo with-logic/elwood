@@ -9,6 +9,7 @@ import * as activity from "../../core/activity/index.ts";
 import { freezeHookEvent } from "../../core/freeze-hook-event.ts";
 import { hookObservationBoundary } from "../../core/hook-observation.ts";
 import { isRecord } from "../../core/predicates.ts";
+import { withStopInput, withStopInputNotification } from "../../core/stop-input.ts";
 import type { HookErrorEvent } from "../../core/types.ts";
 import type { TypedEmitter } from "../../events/emitter.ts";
 import type { SessionRecord } from "../../state/store.ts";
@@ -68,6 +69,18 @@ export async function dispatchHook(
   session?: CodexSessionImpl,
 ) {
   const event = freezeHookEvent(normalizeCodexHookEvent(input as CodexHookEvent));
+  return await withStopInput({ hookName: event.hook_event_name, session: session ?? record }, () =>
+    observeAndRequest(event, emitter, options, record, session),
+  );
+}
+
+async function observeAndRequest(
+  event: CodexHookEvent,
+  emitter: TypedEmitter<CodexEventMap>,
+  options: StartCodexOptions,
+  record: SessionRecord,
+  session?: CodexSessionImpl,
+) {
   const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "codex");
   observation.run("transcript", () => session?.observeTranscript(event.transcript_path));
   if (event.hook_event_name === "SessionStart") {
@@ -123,14 +136,19 @@ export async function dispatchHook(
 export function buildCodexHookErrorHandler(
   record: SessionRecord,
   emitter: TypedEmitter<CodexEventMap>,
+  getSession?: () => CodexSessionImpl | undefined,
 ): (event: Omit<HookErrorEvent, "elwoodSessionId">) => void {
-  return (event) => {
-    const hookError = { elwoodSessionId: record.elwoodSessionId, ...event };
-    const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "codex");
-    observation.run("hook_error", () => emitter.emit("hookError", hookError));
-    observation.run("activity", () =>
-      emitter.emit("activity", activity.activityFromHookError("codex", hookError)),
+  return (event) =>
+    withStopInputNotification(
+      { hookName: event.hookEventName, session: getSession?.() ?? record },
+      () => {
+        const hookError = { elwoodSessionId: record.elwoodSessionId, ...event };
+        const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "codex");
+        observation.run("hook_error", () => emitter.emit("hookError", hookError));
+        observation.run("activity", () =>
+          emitter.emit("activity", activity.activityFromHookError("codex", hookError)),
+        );
+        observation.report();
+      },
     );
-    observation.report();
-  };
 }
