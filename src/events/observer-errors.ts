@@ -1,4 +1,6 @@
 /** Bounds pending notification diagnostics while consuming late rejections (C-HOOK-22). */
+import { AsyncLocalStorage } from "node:async_hooks";
+
 type Sink = (error: unknown) => void;
 type Pending = { settled: boolean; readonly entries: Set<Registration> };
 type Registration = {
@@ -50,7 +52,8 @@ export class ObserverErrors {
     const registrations = this.registrations;
     const entry: Registration = {
       pending,
-      sink,
+      // A shared Promise reaction inherits only the first registration's context.
+      sink: AsyncLocalStorage.bind(sink),
       release: () => {
         registrations.delete(entry);
       },

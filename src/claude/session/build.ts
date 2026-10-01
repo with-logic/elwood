@@ -82,7 +82,7 @@ export async function buildClaudeSession(
       getTurnWatcher: () => turnWatcher,
       observeHookTranscript: (event) => observeTranscript(transcriptWatcher, event),
     }),
-    buildClaudeHookErrorHandler(record, emitter),
+    buildClaudeHookErrorHandler(record, emitter, () => session),
   );
   try {
     await bridge.start();

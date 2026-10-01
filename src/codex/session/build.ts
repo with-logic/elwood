@@ -68,7 +68,7 @@ export async function buildCodexSession(input: BuildCodexSessionInput): Promise<
     runtime.bridgeToken,
     record.elwoodSessionId,
     async (hook) => dispatchHook(hook, emitter, options, record, session),
-    buildCodexHookErrorHandler(record, emitter),
+    buildCodexHookErrorHandler(record, emitter, () => session),
   );
   try {
     await bridge.start();

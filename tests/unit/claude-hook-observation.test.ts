@@ -1,6 +1,10 @@
 /** Hook bookkeeping continues after notification failures (PRD §6.4, C-HOOK-22). */
 import { expect, test, vi } from "vitest";
-import { buildClaudeHookHandler } from "../../src/claude/session/hook-handler.ts";
+import {
+  buildClaudeHookErrorHandler,
+  buildClaudeHookHandler,
+} from "../../src/claude/session/hook-handler.ts";
+import { assertStopInput } from "../../src/core/stop-input.ts";
 import { TurnStateWatcher } from "../../src/core/turn-state.ts";
 import type { ClaudeEventMap } from "../../src/core/types.ts";
 import { TypedEmitter } from "../../src/events/emitter.ts";
@@ -71,4 +75,21 @@ test.each([
     }),
   ]);
   expect(JSON.stringify(warnings)).not.toContain("private");
+});
+
+test("C-HOOK-04 malformed Stop arriving before the live instance uses the startup record", async () => {
+  const record = createSessionRecord({ id: "starting", cwd: "/tmp" });
+  const emitter = new TypedEmitter<ClaudeEventMap>();
+  let late: Promise<void> | undefined;
+  emitter.on("hookError", () => {
+    assertStopInput(record);
+    late = Promise.resolve().then(() => {
+      expect(() => assertStopInput(record)).toThrow("already completed");
+      assertStopInput({ elwoodSessionId: record.elwoodSessionId });
+    });
+  });
+  const onError = buildClaudeHookErrorHandler(record, emitter, () => undefined);
+  onError({ hookEventName: "Stop", category: "invalid_input", message: "Invalid hook input" });
+  expect(late).toBeDefined();
+  await late;
 });
