@@ -1,9 +1,9 @@
 /**
  * Parses numbered and cursor-selected options from rendered terminal prompts,
  * and exposes the option/non-option split that trust HEADER matching anchors on.
- * Implements PRD §5.1/§5.5: the single option-parsing rule shared by trust-prompt
- * automation and Codex update-prompt skipping, so a CLI format change updates
- * both at once instead of letting them diverge. `nonOptionText` is shared by the
+ * Implements PRD §5.1/§5.3/§5.5: shared option parsing for trust automation,
+ * Codex composer clearance, and update-prompt skipping. One grammar keeps those
+ * consumers consistent across CLI layout changes. `nonOptionText` is shared by the
  * responder and screen-fact blocking rules, so option text cannot spoof a header.
  */
 
@@ -88,12 +88,14 @@ function firstNumberedRow(lines: readonly string[]): number | undefined {
 /**
  * Inclusive row span of the frame's cursor-option block, or `undefined` when it has
  * none. Header scanning excludes these rows so an option label that reads like a
- * header cannot register as its own candidate region.
+ * header cannot register as its own candidate region. `startRow` bounds a resumed
+ * scan without copying or revisiting an already classified prefix.
  */
 export function cursorOptionRows(
   lines: readonly string[],
+  startRow = 0,
 ): { readonly firstRow: number; readonly lastRow: number } | undefined {
-  const bounds = cursorOptionBounds(lines);
+  const bounds = cursorOptionBounds(lines, startRow);
   return bounds && { firstRow: bounds.firstRow, lastRow: bounds.lastRow };
 }
 
@@ -112,12 +114,12 @@ function positionedCursorOptions(lines: readonly string[]): readonly PositionedC
   });
 }
 
-function cursorOptionBounds(lines: readonly string[]) {
+function cursorOptionBounds(lines: readonly string[], startRow = 0) {
   const cursorPattern = /^(\s*)[❯›](\s+)(?!\d+[.)]\s)(\S.*)$/;
   let selected: RegExpExecArray | undefined;
   let selectedRow = -1;
-  for (const [row, line] of lines.entries()) {
-    const match = cursorPattern.exec(line);
+  for (let row = startRow; row < lines.length; row++) {
+    const match = cursorPattern.exec(lines[row] as string);
     if (match === null) continue;
     selected = match;
     selectedRow = row;
@@ -126,7 +128,8 @@ function cursorOptionBounds(lines: readonly string[]) {
   if (selected === undefined) return undefined;
   const labelColumn = (selected[1] as string).length + 1 + (selected[2] as string).length;
   let firstRow = selectedRow;
-  while (firstRow > 0 && cursorSiblingLabel(lines[firstRow - 1] as string, labelColumn)) firstRow--;
+  while (firstRow > startRow && cursorSiblingLabel(lines[firstRow - 1] as string, labelColumn))
+    firstRow--;
   let lastRow = selectedRow;
   while (
     lastRow + 1 < lines.length &&
