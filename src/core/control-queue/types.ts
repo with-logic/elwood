@@ -25,7 +25,7 @@ export type Cancel = { readonly signal: AbortSignal; readonly error: () => Error
 
 /** Internal provenance for activity and recurring-loop scheduling decisions. */
 export type ControlSubmissionOrigin =
-  | { readonly kind: "caller"; readonly awaitNativeAcceptance?: true }
+  | { readonly kind: "caller"; readonly awaitInputConsumption?: true }
   | { readonly kind: "loop"; readonly loopId: string };
 
 /** Optional internal controls for an attributed, cancellable text submission. */

@@ -87,7 +87,7 @@ test("C-API-56 replay turn notification waits for Enter without a physical obser
     await replay;
     expect(started).toHaveBeenCalledExactlyOnceWith({
       kind: "caller",
-      awaitNativeAcceptance: true,
+      awaitInputConsumption: true,
     });
   } finally {
     entered.resolve();

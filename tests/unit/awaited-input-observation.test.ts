@@ -32,7 +32,7 @@ function observation() {
     undefined,
   );
   nudges?.beforeEnter();
-  const result = nudges?.awaitAcceptance();
+  const result = nudges?.awaitEmptyInput();
   const paint = (isEmpty: boolean) => {
     revision += 1;
     empty = isEmpty ? {} : undefined;

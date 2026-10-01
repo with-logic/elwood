@@ -37,28 +37,28 @@ export function preparePasteNudges(
   const hasRenderedAfterEnter = (requireProof: boolean) => hasFreshFrame?.() ?? !requireProof;
   let attempts = 0;
   let observations = 0;
-  const retry = async (awaitNativeAcceptance: boolean): Promise<Observation> => {
-    if (awaitNativeAcceptance && Date.now() < retryAt) return "paced";
+  const retry = async (awaitInputConsumption: boolean): Promise<Observation> => {
+    if (awaitInputConsumption && Date.now() < retryAt) return "paced";
     if (attempts === pasteNudgeAttempts) return "exhausted";
     attempts += 1;
     beforeEnter();
     await tryRecoveryEnter(terminal);
     return "pending";
   };
-  const observe = async (awaitNativeAcceptance: boolean): Promise<Observation> => {
-    const unsafe = await writeUnsafe(terminal, guard, signal, awaitNativeAcceptance);
+  const observe = async (awaitInputConsumption: boolean): Promise<Observation> => {
+    const unsafe = await writeUnsafe(terminal, guard, signal, awaitInputConsumption);
     if (signal?.aborted) return "cancelled";
     // Hook evidence stops retries, but cannot itself release an awaited image draft.
     const recoveryRevoked = revoked?.();
-    if (!awaitNativeAcceptance && recoveryRevoked) return "revoked";
+    if (!awaitInputConsumption && recoveryRevoked) return "revoked";
     if (unsafe) return "pending";
-    const fresh = hasRenderedAfterEnter(awaitNativeAcceptance);
+    const fresh = hasRenderedAfterEnter(awaitInputConsumption);
     const empty = guard.emptyFrame?.();
     // A geometry-only token change cannot replace post-Enter rendered output.
     if (fresh && empty && empty !== priorEmptyFrame) return "accepted";
     if (recoveryRevoked) return "revoked";
     if (!(fresh && staged())) return guard.emptyFrame ? "pending" : "legacy_done";
-    return retry(awaitNativeAcceptance);
+    return retry(awaitInputConsumption);
   };
   const schedule = () => {
     const timer = setTimeout(nudge, delayMs);
@@ -74,7 +74,7 @@ export function preparePasteNudges(
     )
       schedule();
   };
-  const awaitAcceptance = async (): Promise<boolean> => {
+  const awaitEmptyInput = async (): Promise<boolean> => {
     const wakeup = new RenderWakeup(guard.subscribeRender);
     try {
       for (;;) {
@@ -89,7 +89,7 @@ export function preparePasteNudges(
       wakeup.dispose();
     }
   };
-  return { beforeEnter, start: schedule, awaitAcceptance };
+  return { beforeEnter, start: schedule, awaitEmptyInput };
 }
 
 async function tryRecoveryEnter(terminal: InputTerminal): Promise<void> {

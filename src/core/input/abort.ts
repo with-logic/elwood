@@ -1,5 +1,7 @@
 /** Abort-aware timing, dialog holds, and composer cleanup for queued input (PRD §5.3/§5.9, C-API-56). */
 
+import { elwoodError } from "../errors.ts";
+import { isPickerIntervention } from "../models/intervention.ts";
 import { composerClearKeys, unsafeWriteRetryMs } from "./constants.ts";
 import { observeRender } from "./render-observation.ts";
 
@@ -91,6 +93,13 @@ export function throwIfInputAborted(signal?: AbortSignal): void {
 
 export function inputAbortError(signal: AbortSignal): Error {
   return signal.reason instanceof Error ? signal.reason : new Error("Submission aborted.");
+}
+
+/** Raw takeover of awaited turn input reports submission failure, preserving other errors (§5.3). */
+export function submissionError(error: unknown): unknown {
+  return isPickerIntervention(error)
+    ? elwoodError("wait_timeout", "Raw input replaced the staged turn input.")
+    : error;
 }
 
 export async function clearStagedComposer(terminal: InputTerminal): Promise<void> {

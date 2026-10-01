@@ -11,7 +11,7 @@ export function cancellableSubmission(
 ): SendOptions {
   const submissionOptions = { ...options };
   awaitedControls.set(submissionOptions, {
-    origin: { kind: "caller", awaitNativeAcceptance: true },
+    origin: { kind: "caller", awaitInputConsumption: true },
     settleAfterWrite: true,
     ...(onSubmitted ? { onSubmitted } : {}),
     cancel: {

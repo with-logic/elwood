@@ -6,7 +6,13 @@
 import type { ControlSubmitMode } from "../control-queue/index.ts";
 import type { ControlSubmitter } from "../control-queue/types.ts";
 import { elwoodError } from "../errors.ts";
-import { holdWhileUnsafe, type InputTerminal, throwIfInputAborted, waitForInput } from "./abort.ts";
+import {
+  holdWhileUnsafe,
+  type InputTerminal,
+  submissionError,
+  throwIfInputAborted,
+  waitForInput,
+} from "./abort.ts";
 import { requestComposerCleanup, stageComposer, submittedComposer } from "./composer-cleanup.ts";
 import type { PasteGuard } from "./paste-guard.ts";
 import { sanitizePasteText } from "./sanitize.ts";
@@ -53,7 +59,7 @@ export function ignoreInputFailure(input: void | Promise<void>): void {
 async function writePastedPrompt(
   terminal: InputTerminal,
   prompt: string,
-  awaitNativeAcceptance: boolean,
+  awaitInputConsumption: boolean,
   guard?: PasteGuard,
   signal?: AbortSignal,
   settleDelayMs = pasteSettleDelayMs,
@@ -61,11 +67,7 @@ async function writePastedPrompt(
   onSubmitted?: () => void,
   beforeEnter?: (payload: string) => void,
 ): Promise<void> {
-  // Hold the WHOLE submission — paste included — while a blocking dialog is on
-  // screen. A dialog can appear before an overtaking guidance's paste dispatches;
-  // pasting caller/model text into it risks the TUI interpreting shortcuts, so no
-  // bytes may reach a dialog until it clears (C-API-37 dialog safety). A write-only
-  // terminal with nothing blocking has nothing to wait for and writes synchronously.
+  // Hold paste and Enter until observed dialog clearance (C-API-37).
   if (terminal.settled || guard?.blocked?.()) await holdWhileUnsafe(terminal, guard, signal);
   throwIfInputAborted(signal);
   // Keep caller text inside bracketed paste, including embedded end sentinels (§5.3).
@@ -100,20 +102,20 @@ async function writePastedPrompt(
     beforeEnter?.(payload);
     await terminal.sendInput("\r");
     // Physical submission is observable in both modes; only ordinary sends release here.
-    if (!awaitNativeAcceptance) submittedComposer(terminal);
+    if (!awaitInputConsumption) submittedComposer(terminal);
     onSubmitted?.();
-    if (awaitNativeAcceptance) {
-      if (!(await nudges?.awaitAcceptance()))
+    if (awaitInputConsumption) {
+      if (!(await nudges?.awaitEmptyInput()))
         throw elwoodError("wait_timeout", "Turn input remained staged after submission attempts.");
       throwIfInputAborted(nudgeSignal);
     }
-    // The awaited queue operation and composer now share the verified acceptance boundary.
-    if (awaitNativeAcceptance) submittedComposer(terminal);
+    // The awaited queue operation and composer share the verified input-consumption boundary.
+    if (awaitInputConsumption) submittedComposer(terminal);
     else nudges?.start();
   } catch (error) {
-    if (awaitNativeAcceptance || signal?.aborted)
+    if (awaitInputConsumption || signal?.aborted)
       await requestComposerCleanup(terminal, guard?.blocked);
-    throw error;
+    throw awaitInputConsumption ? submissionError(error) : error;
   }
 }
 

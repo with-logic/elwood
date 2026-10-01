@@ -8,7 +8,7 @@ export function submissionMode(
   operation: QueuedOperation,
   traits: ControlOperationTraits,
 ): ControlSubmitMode {
-  return operation.origin.kind === "caller" && operation.origin.awaitNativeAcceptance
+  return operation.origin.kind === "caller" && operation.origin.awaitInputConsumption
     ? "awaited_input"
     : traits.submitMode;
 }
@@ -21,12 +21,12 @@ export function submissionCallback(
 ): (() => void) | undefined {
   const origin = operation.origin;
   if (!traits.reportsCallerSubmission || origin.kind !== "caller") return undefined;
-  if (!(physicalSubmitted || origin.awaitNativeAcceptance || operation.onSubmitted))
+  if (!(physicalSubmitted || origin.awaitInputConsumption || operation.onSubmitted))
     return undefined;
   return () => {
     if (physicalSubmitted) runContained(physicalSubmitted);
     if (operation.onSubmitted) runContained(operation.onSubmitted);
-    if (origin.awaitNativeAcceptance) runContained(() => turnStarted(origin));
+    if (origin.awaitInputConsumption) runContained(() => turnStarted(origin));
   };
 }
 
@@ -38,7 +38,7 @@ export function notifySubmissionStart(
   if (
     traits.reportsCallerSubmission &&
     operation.origin.kind === "caller" &&
-    !operation.origin.awaitNativeAcceptance
+    !operation.origin.awaitInputConsumption
   )
     runContained(() => turnStarted(operation.origin));
 }

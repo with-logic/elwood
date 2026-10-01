@@ -25,7 +25,7 @@ test("C-API-31 completed output immediately releases awaited input and removes i
   const prior = guard.emptyFrame();
   const nudges = preparePasteNudges(terminal, guard, "", cancel.signal, 60_000, prior);
   nudges?.beforeEnter();
-  const accepted = nudges?.awaitAcceptance();
+  const accepted = nudges?.awaitEmptyInput();
   try {
     await terminal.writeOutput("\r\nafter");
     await expect(accepted).resolves.toBe(true);
