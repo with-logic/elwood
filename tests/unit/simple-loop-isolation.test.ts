@@ -13,13 +13,16 @@ afterEach(() => {
 });
 
 test.each([
-  { agent: "codex", queued: false },
-  { agent: "codex", queued: true },
-  { agent: "claude", queued: false },
-  { agent: "claude", queued: true },
-] as const)("C-API-48 $agent loops wait through caller recovery and queued successor=$queued", async ({
+  { agent: "codex", queued: false, prompt: "check" },
+  { agent: "codex", queued: true, prompt: "check" },
+  { agent: "claude", queued: false, prompt: "check" },
+  { agent: "claude", queued: true, prompt: "check" },
+  { agent: "codex", queued: false, prompt: "  check  " },
+  { agent: "codex", queued: true, prompt: "  check  " },
+] as const)("C-API-48 $agent loops wait through caller recovery and queued successor=$queued ($prompt)", async ({
   agent,
   queued,
+  prompt,
 }) => {
   const harness = agent === "claude" ? claude : codex;
   harness.installFakes();
@@ -55,7 +58,7 @@ test.each([
     live.on("loop", (event) => {
       if (event.kind === "fired") fired = true;
     });
-    pending = facade.send("check").catch((error: unknown) => error);
+    pending = facade.send(prompt).catch((error: unknown) => error);
     if (queued) successor = facade.send("successor").catch((error: unknown) => error);
     await vi.advanceTimersByTimeAsync(70_000);
     expect(send).toHaveBeenCalledOnce();

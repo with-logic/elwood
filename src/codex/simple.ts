@@ -19,6 +19,7 @@ import type {
   CodexSessionApi,
   StartCodexOptions,
 } from "./session/types.ts";
+import { codexSubmittedPrompt } from "./submitted-prompt.ts";
 
 // Compile-time TURN-CAPABILITY guard (mirrors Claude): the completeness oracle reads the `Stop`
 // hook's `last_assistant_message`, so the REAL Codex `Stop` payload must carry the oracle's
@@ -51,6 +52,8 @@ export class CodexSession extends SessionBase<CodexSessionApi> {
 
   /** Codex's `Stop` hook carries `last_assistant_message` — the standard completeness signal. */
   protected readBoundarySignal = defaultBoundarySignal;
+
+  protected override submittedPrompt = codexSubmittedPrompt;
 
   /** Typed event subscription over the Codex event map (buffered before start). */
   on<E extends CodexEventName>(event: E, handler: CodexEventHandler<E>): Unsubscribe {

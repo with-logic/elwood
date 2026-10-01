@@ -717,6 +717,16 @@ new CLI version or native capture was verified.
 
 ## Input / paste
 
+Native Codex 0.156.1 `UserPromptSubmit.prompt` preserved pasted tabs, normalized
+CR and CRLF to LF, and trimmed outer whitespace. An isolated bogus-model probe
+on 2026-09-23 submitted `  ELWOOD_HOOK_A\u0001B\u0085C\tD\rE\r\nF\nG  ` through
+Elwood; the hook reported `ELWOOD_HOOK_ABC\tD\nE\nF\nG`. Elwood stripped the control
+bytes before paste and projected the same hook prompt as `user_message.text`;
+that activity is not an independent native witness of a newer generation.
+Correlation follows this hook identity rather than visual tab expansion; raw
+caller text still reaches the submission API unchanged. This is historical
+0.156.1 evidence, not a fresh native verification on later CLI versions.
+
 - Caller and LLM text sent via `sendPrompt`/`sendMessage`/`sendGuidance` is
   sanitized (`sanitizePasteText`, `src/core/input/index.ts`): it strips
   bracketed-paste markers (`ESC[200~`/`ESC[201~`) and C0/C1 controls except

@@ -47,6 +47,9 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
    */
   protected abstract readonly readBoundarySignal: BoundarySignalReader;
 
+  /** Adapter-native comparison identity; raw submission remains unchanged. */
+  protected submittedPrompt = (prompt: string): string => prompt;
+
   /** The started underlying session, or `undefined` before the first start. */
   get session(): S | undefined {
     return this.live;
@@ -83,7 +86,9 @@ export abstract class SessionBase<S extends ElwoodAgentSession> {
 
   /** Stream one turn's simplified content events; ends when the turn settles (C-API-48). */
   stream(prompt: string, options?: TurnOptions): AsyncGenerator<TurnEvent> {
-    return capturedTurn(this.images, this.turns, this, this.readBoundarySignal, prompt, options);
+    const boundary = this.readBoundarySignal;
+    const identity = this.submittedPrompt;
+    return capturedTurn(this.images, this.turns, this, boundary, prompt, options, identity);
   }
 
   /** Send one turn and resolve with its assistant text, `\n\n`-joined (C-API-49). */
