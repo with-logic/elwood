@@ -15,6 +15,7 @@ import {
 } from "../../core/activity/index.ts";
 import type { CompactEmitter } from "../../core/compact.ts";
 import type { ControlQueue } from "../../core/control-queue/index.ts";
+import { outsideStopInput } from "../../core/stop-input.ts";
 import type { ElwoodSessionStatus, Unsubscribe } from "../../core/types.ts";
 import { SessionStatusEngine } from "../status-evidence.ts";
 import type { LoopEventEmitter, SessionLoops } from "./loops.ts";
@@ -53,10 +54,12 @@ export function createSessionStatusEngine(input: StatusWiringInput): SessionStat
     emitStatus: (status) =>
       emitStatusEvents(input.emitter, input.agent, input.elwoodSessionId, status),
     queueRunning: suspend,
-    queueReady: () => {
-      input.loops.ready();
-      input.queue.markReady();
-    },
+    // Released internal work outlives Stop; direct status/activity observers do not.
+    queueReady: () =>
+      outsideStopInput(() => {
+        input.loops.ready();
+        input.queue.markReady();
+      }),
     queueBlocked: suspend,
     queueClose: () => {
       input.loops.pause();

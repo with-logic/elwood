@@ -48,6 +48,10 @@ export function buildClaudeHookHandler(
     );
   };
   async function observeAndRequest(event: ClaudeHookEvent): Promise<BridgeProcessResult> {
+    const submissionGenerationUnchanged =
+      event.hook_event_name === "Stop"
+        ? deps.getSession()?.stopCompletion.captureSubmissionGeneration()
+        : undefined;
     const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "claude");
     if (event.hook_event_name === "SessionStart")
       deps.getSession()?.rememberClaudeSessionId(event.session_id);
@@ -87,8 +91,11 @@ export function buildClaudeHookHandler(
       observation.run("lifecycle", () => ready.mark());
     if (event.hook_event_name === "Stop" && !blocked) {
       observation.run("transcript", () => transcriptWatcher.scan());
-      deps.getTurnWatcher().arm();
-      observation.run("lifecycle", () => deps.getSession()?.submitEvidence("hook_turn_ended"));
+      // Physical caller submission during this Stop belongs to a newer turn.
+      if (submissionGenerationUnchanged?.() ?? true) {
+        deps.getTurnWatcher().arm();
+        observation.run("lifecycle", () => deps.getSession()?.submitEvidence("hook_turn_ended"));
+      }
     }
     observation.report();
     return serialized;

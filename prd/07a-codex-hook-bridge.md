@@ -99,3 +99,11 @@ Elwood must document this limitation and provide a live-only transcript
 observation event. The event may summarize transcript item kind, label, and text,
 and may include the raw item for immediate in-memory rendering. Elwood must not
 persist raw transcript items or derived prompt/tool content in Elwood state.
+
+The finalized-Stop input boundary in §6.3 also applies to Codex: late registered
+Stop-handler and hook-scoped observer continuations that preserve their async
+execution context cannot admit new queue-backed input to the same live runtime
+instance after the result is finalized.
+Independent callbacks dispatched by pre-existing event sources, internal queue
+and loop work, and persistent transcript polling remain outside that short-lived
+authority.

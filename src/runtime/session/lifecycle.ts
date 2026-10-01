@@ -23,6 +23,7 @@ import type { PickerInputOwnership } from "./picker-input.ts";
 import { SessionReapPolicy } from "./reap.ts";
 import { SessionShutdownBinding } from "./shutdown-binding.ts";
 import { createSessionStatusEngine, type SessionStatusEmitter } from "./status-wiring.ts";
+import { StopCompletion } from "./stop-completion.ts";
 
 export abstract class SessionLifecycle {
   protected record: SessionRecord;
@@ -31,6 +32,7 @@ export abstract class SessionLifecycle {
   protected readonly pty: PtyProcess;
   protected readonly loops: SessionLoops;
   protected readonly controlQueue: ControlQueue;
+  readonly stopCompletion = new StopCompletion(this);
   protected everReady = false;
   private initialReadinessHeld: (() => boolean) | undefined;
   inputBlocking = false;
@@ -82,7 +84,7 @@ export abstract class SessionLifecycle {
         this.submitEvidence("caller_submitted");
       },
       () => this.status === "running",
-      () => void (this.status === "ready" && this.submitEvidence("caller_submitted")),
+      this.stopCompletion.submitted,
       ownership.composerCleanup(() => this.queuedInputBlocked(), this.closing.signal, readEmpty),
     );
     registerTurnLoopHold(this, () => this.controlQueue.holdLoops());

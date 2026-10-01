@@ -1,6 +1,6 @@
 /** Queue lifecycle and cancellation bookkeeping (PRD §5.3/§5.9). */
 
-import { toError } from "../errors.ts";
+import { outsideStopInput } from "../stop-input.ts";
 import { ControlAdmissions } from "./admission.ts";
 import { AdmissionScan } from "./admission-scan.ts";
 import { InputQueueBudget } from "./budget.ts";
@@ -85,6 +85,10 @@ export abstract class ControlQueueState {
   }
 
   close(): void {
+    outsideStopInput(() => this.closeQueue());
+  }
+
+  private closeQueue(): void {
     this.closed = true;
     this.loopHolds.clear();
     const error = this.stoppedError();
@@ -113,14 +117,16 @@ export abstract class ControlQueueState {
 
   protected enqueue(op: PendingOperation, cancel?: Cancel): Promise<void> {
     if (this.closed) return Promise.reject(this.stoppedError());
-    return new Promise((resolve, reject) => {
-      const operation: QueuedOperation = { ...op, resolve, reject };
-      this.budget.reserve(operation);
-      this.queue.push(operation);
-      if (overtakesReadiness(operation)) this.bypassable += 1;
-      if (cancel) this.listenForCancel(operation, cancel);
-      if (!cancel?.signal.aborted) this.drain();
-    });
+    return new Promise((resolve, reject) =>
+      outsideStopInput(() => {
+        const operation: QueuedOperation = { ...op, resolve, reject };
+        this.budget.reserve(operation);
+        this.queue.push(operation);
+        if (overtakesReadiness(operation)) this.bypassable += 1;
+        if (cancel) this.listenForCancel(operation, cancel);
+        if (!cancel?.signal.aborted) this.drain();
+      }),
+    );
   }
 
   protected settle(operation: QueuedOperation, finish: () => void): void {
@@ -144,10 +150,6 @@ export abstract class ControlQueueState {
     return AbortSignal.any([closed, this.preparationAbort.signal]);
   }
 
-  protected abortError(signal: AbortSignal): Error {
-    return toError(signal.reason);
-  }
-
   protected abstract drain(): void;
 
   private listenForCancel(operation: QueuedOperation, cancel: Cancel): void {
@@ -155,6 +157,10 @@ export abstract class ControlQueueState {
   }
 
   private cancelOperation(operation: QueuedOperation, error: Error): void {
+    outsideStopInput(() => this.cancelOwnedOperation(operation, error));
+  }
+
+  private cancelOwnedOperation(operation: QueuedOperation, error: Error): void {
     const index = this.queue.indexOf(operation);
     if (index >= 0) {
       this.takeQueued(index);

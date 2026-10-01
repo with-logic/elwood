@@ -81,6 +81,10 @@ async function observeAndRequest(
   record: SessionRecord,
   session?: CodexSessionImpl,
 ) {
+  const submissionGenerationUnchanged =
+    event.hook_event_name === "Stop"
+      ? session?.stopCompletion.captureSubmissionGeneration()
+      : undefined;
   const observation = hookObservationBoundary(emitter, record.elwoodSessionId, "codex");
   observation.run("transcript", () => session?.observeTranscript(event.transcript_path));
   if (event.hook_event_name === "SessionStart") {
@@ -126,7 +130,9 @@ async function observeAndRequest(
     // A bounded per-pass scan (like Claude's): the terminal drain budget is reserved
     // for finish(), so hundreds of turns never exhaust it into false backlog drops.
     observation.run("transcript", () => session?.scanTranscript());
-    observation.run("lifecycle", () => session?.submitEvidence("hook_turn_ended"));
+    // Physical caller submission during this Stop belongs to a newer turn.
+    if (submissionGenerationUnchanged?.() ?? true)
+      observation.run("lifecycle", () => session?.submitEvidence("hook_turn_ended"));
   }
   observation.report();
   return serialized;
