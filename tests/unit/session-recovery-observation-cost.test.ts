@@ -78,7 +78,7 @@ test.each(scenarios)("C-API-31 $agent recovery respects $kind", async ({ agent, 
     if (kind === "normalized-payload") paint(draft, text.length + 3, false);
     await vi.advanceTimersByTimeAsync(1_000);
     if (kind === "cached-frame") {
-      expect(pty.writes.filter((value) => value === "\r")).toHaveLength(2);
+      expect(pty.writes.filter((value) => value === "\r")).toHaveLength(1);
       expect(snapshots).not.toHaveBeenCalled();
     } else if (kind === "placeholder") {
       expect(pty.writes.filter((value) => value === "\r")).toHaveLength(1);
@@ -87,6 +87,10 @@ test.each(scenarios)("C-API-31 $agent recovery respects $kind", async ({ agent, 
       paint();
       await vi.advanceTimersByTimeAsync(1_000);
       expect(normalizations).toBe(1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(normalizations).toBe(1);
+      expect(pty.writes.filter((value) => value === "\r")).toHaveLength(2);
+      paint();
       await vi.advanceTimersByTimeAsync(1_000);
       expect(normalizations).toBe(1);
       expect(pty.writes.filter((value) => value === "\r")).toHaveLength(3);

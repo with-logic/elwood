@@ -1,7 +1,7 @@
 /** Captured idle draft geometry remains eligible; active/history/unknown frames do not (C-API-31). */
 import { expect, test } from "vitest";
-import { claudeTextStaged } from "../../src/claude/composer/staged-text.ts";
-import { codexTextStaged } from "../../src/codex/screen/staged-text.ts";
+import { claudeInputStaged } from "../../src/claude/composer/staged-text.ts";
+import { codexInputStaged } from "../../src/codex/screen/staged-text.ts";
 import { createHeadlessTerminal } from "../../src/terminal/headless.ts";
 import { readNativeInputFrame } from "../fixtures/native-input-frame.ts";
 import {
@@ -34,13 +34,13 @@ for (const agent of ["claude", "codex"] as const) {
         expect(terminal.xterm.buffer.active.viewportY).toBe(frame.viewportY);
         expect(terminal.snapshot().cursorY).toBe(frame.cursorY);
         expect(
-          (agent === "claude" ? claudeTextStaged : codexTextStaged)(terminal, payloads[index]!),
+          (agent === "claude" ? claudeInputStaged : codexInputStaged)(terminal, payloads[index]!),
         ).toBe(true);
         if (agent === "claude") {
           // The exact staged footer remains chrome when history has scrolled the version away.
           await terminal.writeOutput("\u001b[1;1H\u001b[2K");
           await terminal.writeOutput(`\u001b[${frame.cursorY + 1};${frame.cursorX + 1}H`);
-          expect(claudeTextStaged(terminal)).toBe(true);
+          expect(claudeInputStaged(terminal)).toBe(true);
         }
       } finally {
         terminal.dispose();
@@ -50,7 +50,7 @@ for (const agent of ["claude", "codex"] as const) {
   test(`C-API-31 ${agent} rejects ineligible native draft frames`, async () => {
     const terminal = createHeadlessTerminal({ cols: 200, rows: 35 }, () => undefined);
     const match = () =>
-      (agent === "claude" ? claudeTextStaged : codexTextStaged)(terminal, "draft");
+      (agent === "claude" ? claudeInputStaged : codexInputStaged)(terminal, "draft");
     const caret = agent === "claude" ? "❯" : "›";
     const payload = agent === "claude" ? "[Pasted text #1 +3 lines]" : "draft";
     const idle = agent === "claude" ? claudeComposer : codexSmallComposer;
@@ -91,12 +91,12 @@ for (const agent of ["claude", "codex"] as const) {
       if (agent === "codex") {
         await terminal.writeOutput("\u001bc");
         await paint(idle);
-        expect(codexTextStaged(terminal, "anything")).toBe(false);
+        expect(codexInputStaged(terminal, "anything")).toBe(false);
         await paint(idle, "\u001b[28G");
-        expect(codexTextStaged(terminal, "anything")).toBe(false);
+        expect(codexInputStaged(terminal, "anything")).toBe(false);
         await paint(idle.replace("› Ask Codex to do anything", "› anything"), "\u001b[11G");
-        expect(codexTextStaged(terminal, "anything")).toBe(true);
-        expect(codexTextStaged(terminal, " \t\n")).toBe(false);
+        expect(codexInputStaged(terminal, "anything")).toBe(true);
+        expect(codexInputStaged(terminal, " \t\n")).toBe(false);
         const malformed = draft.replace(`${caret} draft`, `${caret} first\nnot indented`);
         const row = malformed.split("\n").indexOf("not indented");
         await paint(malformed, `\u001b[${row + 1};3H`);

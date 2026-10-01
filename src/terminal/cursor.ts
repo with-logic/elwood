@@ -16,6 +16,12 @@ export function currentRenderedFrame(terminal: ElwoodTerminal): TerminalSnapshot
   return cursor.snapshot(() => terminal.snapshot());
 }
 
+/** A recovery Enter requires output received after its own physical attempt (C-API-31). */
+export function captureRenderProgress(terminal: ElwoodTerminal): () => boolean {
+  const progressed = tracked.get(terminal.xterm)?.captureProgress();
+  return () => progressed?.() === true && currentRenderedFrame(terminal) !== undefined;
+}
+
 /** Called inside an owned render callback; subsequent trust reads reuse this snapshot. */
 export function renderedSnapshot(terminal: ElwoodTerminal): TerminalSnapshot {
   return tracked.get(terminal.xterm)?.snapshot(() => terminal.snapshot()) ?? terminal.snapshot();
@@ -58,6 +64,10 @@ export class RenderCursor {
   rendered(revision: number): void {
     this.renderedRevision = revision;
     this.frame = undefined;
+  }
+  captureProgress(): () => boolean {
+    const before = this.receivedRevision;
+    return () => this.renderedRevision > before;
   }
   get settled(): boolean {
     return this.receivedRevision === this.renderedRevision && !this.hasStagedOutput();

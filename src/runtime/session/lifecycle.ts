@@ -11,6 +11,7 @@ import type { PtyProcess } from "../../pty/types.ts";
 import type { PersistedLoopDefinition } from "../../state/loop-store.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import { type SessionRecord, writeSessionRecord } from "../../state/store.ts";
+import { captureRenderProgress } from "../../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { advanceInitialReady } from "../readiness/advance.ts";
 import { CleanupLatch } from "../shutdown/cleanup-latch.ts";
@@ -44,6 +45,7 @@ export abstract class SessionLifecycle {
   private readonly recovery: PasteRecoveryRevocation;
   protected readonly pasteGuard: PasteGuard = {
     captureRecovery: () => this.recovery.captureRevocationGuard(),
+    captureRenderProgress: () => captureRenderProgress(this.terminal),
     prepareStaged: (payload) => this.recoveryComposer.prepareStaged(payload),
     emptyFrame: () => this.recoveryComposer.emptyFrame(),
     blocked: () => this.queuedInputBlocked(),

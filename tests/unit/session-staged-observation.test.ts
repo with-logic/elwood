@@ -20,6 +20,7 @@ afterEach(() => {
 for (const agent of ["claude", "codex"] as const) {
   test.each([
     "hidden",
+    "cached",
     "unknown",
     "consumed",
     "bounded",
@@ -82,6 +83,7 @@ for (const agent of ["claude", "codex"] as const) {
       await sent;
       const frames: Record<typeof state, string> = {
         hidden: draft,
+        cached: draft,
         unknown: `${draft}\nUnknown overlay`,
         consumed: idle,
         bounded: draft,
@@ -93,7 +95,7 @@ for (const agent of ["claude", "codex"] as const) {
         "old-empty": idle,
         "consumed-working": idle,
       };
-      if (state !== "old-empty")
+      if (state !== "old-empty" && state !== "cached")
         paint(
           frames[state],
           state === "hidden" || state === "bounded" || state === "raw",
@@ -107,6 +109,8 @@ for (const agent of ["claude", "codex"] as const) {
       expect(pty.writes.filter((value) => value === "\r")).toHaveLength(
         state.startsWith("consumed") || state.startsWith("bounded") || state === "raw" ? 1 : 2,
       );
+      // Every recovery attempt needs a later native render, even when text is unchanged.
+      paint();
       await vi.advanceTimersByTimeAsync(1_000);
       expect(pty.writes.filter((value) => value === "\r")).toHaveLength(
         state.startsWith("consumed") || state.startsWith("bounded") || state === "raw" ? 1 : 3,

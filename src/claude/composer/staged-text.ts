@@ -1,4 +1,4 @@
-/** Claude collapsed text chips count only inside the live idle composer (PRD §5.3). */
+/** Claude staged text and image chips count only inside the live idle composer (PRD §5.3). */
 import { readStagedComposer } from "../../core/input/staged-composer.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { claudeScreenFactTable } from "../screen-table.ts";
@@ -10,8 +10,8 @@ const stagedFooter =
 const matchesEmptyInputWithStagedFooter = (rows: readonly string[], viewportCursorRow: number) =>
   claudeEmptyInputRows(rows, viewportCursorRow, stagedFooter);
 
-export function claudeTextStaged(terminal: ElwoodTerminal): boolean {
-  return /\[Pasted text/.test(
+export function claudeInputStaged(terminal: ElwoodTerminal): boolean {
+  return /\[Pasted text|\[Image #\d+\]/.test(
     readStagedComposer(terminal, matchesEmptyInputWithStagedFooter, claudeScreenFactTable, "❯ ") ??
       "",
   );
@@ -19,7 +19,7 @@ export function claudeTextStaged(terminal: ElwoodTerminal): boolean {
 
 export function createClaudeRecoveryComposer(terminal: ElwoodTerminal) {
   return {
-    prepareStaged: () => () => claudeTextStaged(terminal),
+    prepareStaged: () => () => claudeInputStaged(terminal),
     emptyFrame: () => claudeEmptyInputFrame(terminal),
   };
 }

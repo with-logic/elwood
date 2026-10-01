@@ -1120,3 +1120,21 @@ Enters were intercepted before delivery; neither CLI emitted UserPromptSubmit,
 and neither ran a model turn. This proves native staged geometry and retry
 bounds, not acceptance or post-acceptance behavior. The temporary Codex auth
 copy was removed after teardown.
+
+
+## Cached image recovery frames (2026-10-01)
+
+The existing captured image-chip and staged-text layouts establish live composer
+geometry, not whether an Enter was accepted after the capture. A completed idle
+frame can remain cached until a later native repaint; a second Enter must not be
+authorized from that pre-attempt frame. Recovery now captures the render revision
+before each physical Enter attempt and requires later completed output plus the
+adapter's live idle-composer check. Resizing or scrolling changes snapshot geometry
+without establishing this output ordering. Native user-message activity retains
+its independent, permanent revocation of recovery.
+
+The attachment-to-submission regressions use the real adapters and terminal parser,
+with controlled PTY output and a stubbed Codex platform clipboard. They retain the
+native Claude effort footer and distinguish fresh attached chips from history,
+hidden/working frames, and unchanged pre-Enter chips. This is deterministic ordering
+evidence, not a new native CLI acceptance measurement.

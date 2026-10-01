@@ -4,7 +4,7 @@ import type { EmptyComposerObserver } from "./clear-ack.ts";
 import { pasteNudgeAttempts, pasteObservationLimit } from "./constants.ts";
 import type { PasteGuard } from "./index.ts";
 
-export function schedulePasteNudges(
+export function preparePasteNudges(
   terminal: InputTerminal,
   guard: PasteGuard | undefined,
   payload: string,
@@ -12,12 +12,16 @@ export function schedulePasteNudges(
   delayMs: number,
   priorEmptyFrame: ReturnType<EmptyComposerObserver>,
   revoked?: () => boolean,
-): void {
-  if (!guard) return;
+) {
+  if (!guard) return undefined;
   const staged =
     "prepareStaged" in guard
       ? guard.prepareStaged(payload)
       : () => guard.staged(guard.snapshot(), payload);
+  let hasFreshFrame: (() => boolean) | undefined;
+  const beforeEnter = () => {
+    hasFreshFrame = guard.captureRenderProgress?.();
+  };
   let attempts = 0;
   let observations = 0;
   const schedule = () => {
@@ -36,8 +40,9 @@ export function schedulePasteNudges(
     const empty = guard.emptyFrame?.();
     // Token identity is stable within a frame; the pre-paste frame cannot retire this input.
     if (empty && empty !== priorEmptyFrame) return;
-    if (staged()) {
+    if (hasFreshFrame?.() !== false && staged()) {
       attempts += 1;
+      beforeEnter();
       await tryRecoveryEnter(terminal);
     } else if (!guard.emptyFrame) {
       // Write-only internal guards retain their boolean stopping contract.
@@ -45,7 +50,7 @@ export function schedulePasteNudges(
     }
     if (attempts < pasteNudgeAttempts && observations < pasteObservationLimit) schedule();
   };
-  schedule();
+  return { beforeEnter, start: schedule };
 }
 
 async function tryRecoveryEnter(terminal: InputTerminal): Promise<void> {

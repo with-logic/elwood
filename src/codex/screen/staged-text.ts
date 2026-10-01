@@ -1,10 +1,11 @@
-/** Codex recovery matches sanitized text only within the live idle composer (PRD §5.3). */
+/** Codex recovery matches sanitized text or images only within the live idle composer (PRD §5.3). */
+import { imageChipCount } from "../../core/images/chip-wait.ts";
 import { readStagedComposer } from "../../core/input/staged-composer.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { codexScreenFactTable } from "../screen-table.ts";
 import { codexEmptyInputFrame, codexEmptyInputRows } from "./empty-input.ts";
 
-export function codexTextStaged(terminal: ElwoodTerminal, payload: string): boolean {
+export function codexInputStaged(terminal: ElwoodTerminal, payload: string): boolean {
   return prepareCodexStaged(terminal, payload)();
 }
 
@@ -18,6 +19,7 @@ function prepareCodexStaged(terminal: ElwoodTerminal, payload: string): () => bo
       "› Ask Codex to do anything",
     );
     if (draft === undefined) return false;
+    if (imageChipCount(draft) > 0) return true;
     // Derive only after a live draft exists; retain only for this recovery sequence.
     lastLine ??= normalizedLastLine(payload);
     return lastLine.length > 0 && draft.replace(/\s+/gu, " ").includes(lastLine);
