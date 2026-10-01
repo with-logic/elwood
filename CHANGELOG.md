@@ -16,7 +16,7 @@ back each entry are listed in `prd/14-conformance.md`.
 
 - Preserve each observer registration’s async context when listeners reuse a pending Promise.
 
-- Require a current first-party banner for every automated Codex update-menu selection, withholding all bannerless choices while retaining the input hold; renumbered or removed safe options revoke the old retry.
+- Require a current first-party banner for every automated Codex update-menu selection, withholding all bannerless choices while retaining the input hold; renumbered or removed safe options revoke the old retry, and a fresh bounded bannered block can recover from overflow.
 - Keep landing-page pickup responsive while preparing every suspended-animation sheet, cancelling obsolete pickup work on drop, reset or teardown.
 - Clear completed Codex trust gates when the native idle composer displays its warning-count footer, so queued input can reach readiness.
 

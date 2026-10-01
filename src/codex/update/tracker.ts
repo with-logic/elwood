@@ -68,7 +68,9 @@ export class CodexUpdatePromptTracker {
     const frame = this.classify(frameText);
     return (
       frame.options !== undefined &&
-      (!this.evidence.overflowed || this.appearanceChanged(frameText)) &&
+      (!this.evidence.overflowed ||
+        this.appearanceChanged(frameText) ||
+        this.freshBoundedEvidence(frameText, frame)) &&
       (!this.requiresBanner || safeUpdateOption(frameText, frame.options) !== undefined) &&
       (this.appearanceChanged(frameText) || (this.requiresBanner && frame.hasBanner))
     );
@@ -124,14 +126,7 @@ export class CodexUpdatePromptTracker {
   /** Only a current banner and validated block may authorize a write. */
   private observeEvidence(frameText: string, frame: CodexUpdateFrame): boolean {
     const firstParty = frame.hasBanner;
-    if (
-      this.requiresBanner &&
-      frame.hasBanner &&
-      frame.options !== undefined &&
-      !this.evidence.overflowed &&
-      safeUpdateOption(frameText, frame.options)
-    )
-      this.evidence = emptyUpdateEvidence();
+    if (this.freshBoundedEvidence(frameText, frame)) this.evidence = emptyUpdateEvidence();
     const priorBindingsAgree =
       frame.options !== undefined &&
       retainedOptionLabelsAgree(this.evidence, frameText, frame.options) &&
@@ -148,6 +143,17 @@ export class CodexUpdatePromptTracker {
     }
     return (
       firstParty && frame.options !== undefined && !this.evidence.overflowed && priorBindingsAgree
+    );
+  }
+
+  /** Only a fresh complete bounded block may retire an overflowed appearance. */
+  private freshBoundedEvidence(frameText: string, frame: CodexUpdateFrame): boolean {
+    return (
+      this.requiresBanner &&
+      frame.hasBanner &&
+      frame.options !== undefined &&
+      safeUpdateOption(frameText, frame.options) !== undefined &&
+      !withUpdateFrameEvidence(emptyUpdateEvidence(), frameText, true, frame.options).overflowed
     );
   }
 

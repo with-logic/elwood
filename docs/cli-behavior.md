@@ -1013,6 +1013,30 @@ version metadata, and credential copy were removed after teardown. This proves
 these narrow native layouts under controlled version metadata; it does not prove
 a bannerless continuation, run an updater, or submit a model turn.
 
+### Native updater resize to a bannerless empty viewport (2026-10-01)
+
+A fresh isolated Codex 0.155.1 probe used the actual pinned standalone binary and
+private authenticated `CODEX_HOME`, with cached metadata naming 0.156.1. With
+normal startup-menu skipping enabled and one caller message queued, resizing
+100×6 → 100×2 → 100×1 → 100×3 → 100×6 produced a genuinely empty viewport at one
+row. The two-row frame still contained the banner. The empty repaint remained
+`blocked`, emitted `codex-unidentified-dialog` attention, held the caller, and
+attempted zero application writes. Returning to three and six rows restored the
+banner and retained the hold. Shutdown rejected the queued message.
+
+The run passed one test with no skips. Application writes were counted before
+being rejected by the interceptor; only exact terminal protocol replies reached
+the PTY. No updater action or model prompt was delivered, and the private binary,
+metadata and credential copy were removed afterward. This proves a genuine
+bannerless **empty** repaint, not a bannerless numbered-choice layout. The initial
+six-row layout had only the clipped update action, so this run does not claim a
+live safe-choice selection; existing native full-menu fixtures cover that grammar.
+
+`tests/fixtures/codex-0.155.1/update-resize-100x1.json` preserves the actual frames.
+The opt-in `codex-native-update.e2e.ts` proof is repeatable with
+`ELWOOD_NATIVE_UPDATE_PROOF=1`; it verifies the pinned binary and login state before
+launch and never installs over the user's CLI. C-CODEX-12.
+
 ### Empty input while a turn is active (2026-09-23)
 
 Native captures show that empty input and idle-turn clearance are different facts.
