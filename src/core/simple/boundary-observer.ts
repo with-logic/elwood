@@ -67,7 +67,6 @@ export function createBoundaryObserver(
   };
   const observeHook = (event: TurnBoundaryHook, status: ElwoodSessionStatus) => {
     if (ownership) return;
-    ownedStop = true;
     const signal = defaultBoundarySignal(event);
     gate.expectText(boundaryExpectation(signal));
     if (signal !== undefined) {
@@ -102,8 +101,9 @@ export function createBoundaryObserver(
       if (closing.aborted) throw elwoodError("session_not_running", "Session is closing.");
     }),
     discard,
-    /** Owned mode receives only an unblocked result, after its metadata budget check. */
+    /** Only accepted owned work may record a confirmed outcome. */
     confirmStop: (text: string, requireFreshIdle: boolean) => {
+      if (!ownership?.accepted()) return;
       ownedStop = true;
       readyBeforeStop ||= requireFreshIdle;
       gate.expectText(text);

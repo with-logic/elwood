@@ -125,3 +125,47 @@ test.each([
   await observer.promise;
   expect(completed()).toBe(true);
 });
+
+test.each([
+  "",
+  "rejected output",
+])("unaccepted Stop %j cannot authorize a later accepted turn", async (earlyText) => {
+  const { observer, completed, accept } = setup(false);
+  observer.confirmStop(earlyText, false);
+  observer.observeStatus({ status: "ready" });
+  await vi.advanceTimersByTimeAsync(3_000);
+  expect(completed()).toBe(false);
+  accept();
+  observer.observeActivity(activity({ text: earlyText || "accepted output" }));
+  observer.observeStatus({ status: "ready" });
+  await vi.advanceTimersByTimeAsync(3_000);
+  expect(completed()).toBe(false);
+  observer.confirmStop("fresh tail", false);
+  observer.confirmIdle({});
+  await vi.advanceTimersByTimeAsync(3_000);
+  expect(completed()).toBe(false);
+  observer.observeActivity(activity({ text: "fresh tail" }));
+  await observer.promise;
+  expect(completed()).toBe(true);
+});
+
+test("passive observation does not gain owned Stop authority from private confirmation", async () => {
+  const closing = new AbortController();
+  cleanups.push(() => closing.abort());
+  const observer = createBoundaryObserver(closing.signal, undefined, () => {});
+  let completed = false;
+  void observer.promise.then(
+    () => {
+      completed = true;
+    },
+    () => undefined,
+  );
+  observer.confirmStop("", false);
+  observer.observeStatus({ status: "ready" });
+  await vi.advanceTimersByTimeAsync(3_000);
+  expect(completed).toBe(false);
+  observer.observeHook({ hook_event_name: "Stop", last_assistant_message: "tail" }, "ready");
+  observer.observeActivity(activity({ text: "tail" }));
+  await observer.promise;
+  expect(completed).toBe(true);
+});
