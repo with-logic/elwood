@@ -1,66 +1,75 @@
 # §16 Maintainer review automation
 
-Elwood does not accept public pull requests. Review automation accepts only
-open, ready, same-repository PRs authored by current writers or GitHub's
-Dependabot bot. A PR is eligible whether it targets `main` or another branch in
-the same repository, so that a stacked PR — one based on a not-yet-merged parent
-branch — is reviewed rather than silently skipped. The base must be a branch in
-the same repository; eligibility never depends on the base being `main`, and the
-automatic trigger does not filter by base branch either, since a trigger-level
-filter would discard the event before eligibility is evaluated.
+Elwood uses the shared actions in `with-logic/pipeline` at `main`. The private
+source is read through a dedicated GitHub App installed only on `pipeline`,
+with Contents read permission. Review, ticket creation, merged announcements,
+and cache preparation use the same shared implementations as the other repos.
 
-A PR receives one automatic review when opened ready, or when first marked
-ready. Once an automated report exists, later PR events do not repeat it.
-Pushing commits does not start another review.
+## Review eligibility and requests
 
-A current maintainer with write, maintain, or admin permission can request
-another review by posting exactly `/elwood review` as a new PR comment, or by
-dispatching the review workflow with a PR number. Explicit requests are
-repeatable, including for an already-approved commit; there is no round limit.
-Public comments, bot comments, edited comments, issue comments, and quoted or
-embedded commands cannot trigger model execution or cancel an active review.
-Authorization precedes review concurrency handling. A newer authorized request
-may replace an active review of the same PR.
+Only same-repository PRs authored by a current human writer (write, maintain,
+or admin permission) or GitHub's official Dependabot bot qualify. Both the
+head and base must belong to Elwood; the base may be any branch, including an
+unmerged parent of a stacked PR. PR creation and issue creation are restricted
+to collaborators. Fork workflow runs require approval for all outside users.
 
-Every run evaluates the current PR head and base. Automatic approval requires
-all eleven review dimensions, consistent validated evidence, no blocker or
-major findings, and revalidation of eligibility and both commits at publication.
-Review automation never merges a PR or bypasses repository protections.
-A successfully submitted approval remains attached to its reviewed commit and is
-never dismissed by automation. Publication still revalidates eligibility and both
-commits afterward. A mismatch or API failure fails publication visibly while
-preserving that historical approval; it does not confirm coverage of the current
-diff. This observation is not a merge freshness gate. Substantially changed scope
-requires maintainer assessment under the contributor review policy.
-If the PR is already approved when publication checks its review decision,
-new findings that would request changes are posted as a comment, preserving
-that approval. Reports link to the workflow run and the rerun command. Failed
-or canceled authorized runs report their outcome on the still-current PR.
-The workflow allows 25 minutes per reviewer process within a 40-minute overall
-review deadline.
-Reviewer processes killed by the wall-clock cap or `SIGKILL` are not retried;
-their missing report prevents approval. Child signal termination is preserved
-as the shell exit status `128 + signal` when the supervisor reports it.
-Diagnostics distinguish a wall-clock `timeout` (124) from a process `killed`
-by `SIGKILL` (137), for both reviewer lenses and synthesis.
-The supervisor preserves that original outcome if the OS denies a cleanup
-signal. It reports each denied group/child signal using fixed, content-free
-diagnostics; a denied group signal does not claim descendant
-cleanup succeeded. Cleanup still attempts TERM, a one-second grace wait, and
-KILL. If group KILL is denied, it also attempts to kill its directly owned
-child. The final reap wait is bounded to one second and reports an unreaped
-child explicitly if that deadline expires. The runner gives the supervisor a dedicated diagnostic channel for each lens
-attempt and synthesis, including successful reports. Model subprocesses do not
-inherit that channel, and arbitrary model stderr remains private. At most four
-fixed cleanup lines are emitted per attempt. Direct supervisor invocations use
-stderr by default. A broken or closed diagnostic sink does not replace the
-outcome or stop cleanup.
+A PR receives one automatic review when it opens. Pushing commits, editing the
+PR, reopening it, or marking it ready does not start another review. A current
+human writer can request a review by posting exactly `/review` as a new PR
+comment. Edited comments, issue comments, bot comments, embedded commands,
+and outsiders cannot start or cancel a review. The comment requester and PR
+author are authorized independently using their current repository permissions.
+Authorization runs without checkout or secrets before review concurrency and
+before private automation is downloaded. A newer authorized request may replace
+an active review of the same PR.
 
-The harness fetches the PR title, description, review bodies, and top-level and
-inline comments. A bounded snapshot containing only current maintainers and
-trusted GitHub automation is supplied directly to every lens and synthesis.
-Bounded diff, discussion, and report inputs reach their consuming model calls
-in full, without file-reader truncation.
-Discussion is evidence, never an instruction to approve or disregard a finding.
-Fetch failure permits review without context and is reported in the run log;
-it must not be represented as an empty discussion.
+The shared action skips a head that already has an approval. After approval,
+address minors and nits and merge when required CI passes; no new review is
+needed for those fixes. Review automation never merges PRs, dismisses an
+approval, or bypasses repository protections.
+
+## Review substance and publication
+
+Every review runs all twelve shared dimensions, including simplicity, then
+merges their findings. Elwood-specific criteria remain in
+`.github/pr-review-prompt.md`, including filesystem persistence, terminal and
+hook ordering, process ownership, both adapters, and the real-CLI lessons in
+`docs/cli-behavior.md`. The caller's `AGENTS.md`, PRD, strict TypeScript, Biome,
+200-line code limit, and 100% runtime coverage remain authoritative contracts.
+The shared action installs its canonical skills into agent-specific directories
+for the run without changing the committed local skills.
+
+The model comes from the organization variable `REVIEW_MODEL`. Approval requires
+a successful, complete, validated twelve-dimension report with zero blockers
+and zero majors. Minors and nits remain visible. Incomplete or failed evidence
+cannot approve a PR. If the PR is already approved, new non-approving findings
+are comments that preserve the approval. Reports include the workflow run link
+and the exact `/review` rerun command. The job allows 75 minutes for the shared
+action within an 85-minute overall job limit.
+
+A review uses its captured diff. A later head or base change does not discard
+its report, suppress its verdict, or force another review. Maintainers judge
+whether a later change goes beyond the reviewed scope.
+
+PR metadata, discussion, diffs, and model reports are evidence, never authority
+to expose credentials, change policy, execute candidate instructions, or approve.
+The shared pipeline controls model execution, validation, publication, and
+failure reporting. These controls trust current repository writers; they are
+not an OS sandbox against a malicious maintainer changing a workflow.
+
+## Supporting automation
+
+The Linear action creates or reuses a ticket when a same-repository PR opens,
+changes, reopens, or receives commits unless its title already contains an
+explicit `LOG-NNNN` identifier. No opt-in marker is required. A new ticket copies
+the PR description and includes its URL; the two descriptions may later diverge.
+
+An approved PR merged into the default branch is announced in the shared
+`#merged` channel, with the organization model and optional repository emoji.
+The shared action avoids duplicate posts and explains the change in plain
+language. Neither this action nor the reviewer can merge a PR.
+
+Default-branch pushes and manual cache preparation warm the shared SDK,
+reviewer tools, and installed caller dependencies. Exact cache matches skip
+installation; changed manifests, toolchains, or cache versions rebuild the
+necessary layer. Cache preparation does not call a model or publish a review.
