@@ -31,10 +31,10 @@
         "apiKey": "{env:OPENAI_API_KEY}"
       },
       "models": {
-        "gpt-5.6-luna": {
-          "name": "Luna",
+        "gpt-6.1-sol": {
+          "name": "GPT-6.1 Sol",
           "limit": {
-            "context": 400000,
+            "context": 1050000,
             "output": 128000
           },
           "tool_call": true

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs Slog’s eleven independent review lenses and merges their reports for Elwood. Implements PRD §16; see .github/PIPELINE.md.
+# Runs Elwood’s retained eleven-lens local harness. Hosted reviews use the shared action; see .github/PIPELINE.md.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 # A failed preflight must never leave a previous review looking current.
@@ -7,7 +7,7 @@ rm -f "$root/REVIEW.md"
 
 
 : "${OPENAI_API_KEY:?OPENAI_API_KEY is required}"
-model="${ELWOOD_REVIEW_MODEL:-openai/gpt-5.6-luna}"
+model="${ELWOOD_REVIEW_MODEL:-${REVIEW_MODEL:-openai/gpt-6.1-sol}}"
 . "$root/scripts/review/runtime.sh"
 . "$root/scripts/review/input.sh"
 

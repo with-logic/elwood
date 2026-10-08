@@ -20,6 +20,7 @@ root = pathlib.Path(os.environ['REVIEW_TEST_ROOT'])
 prompt = sys.argv[sys.argv.index('--variant') + 2]
 match = re.search(r'using the /(review-[a-z0-9-]+) skill', prompt)
 name = match[1] if match else 'synthesis'
+(root / ('model-' + name)).write_text(sys.argv[sys.argv.index('--model') + 1])
 marker = root / ('call-' + name)
 count = int(marker.read_text()) + 1 if marker.exists() else 1
 marker.write_text(str(count))

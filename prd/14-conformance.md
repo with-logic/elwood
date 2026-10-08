@@ -348,11 +348,11 @@ Each criterion has:
 
 | ID | Section | Criterion |
 |---|---:|---|
-| C-REVIEW-01 | §16 | Opening a ready PR or marking it ready can produce its first automatic report; existing automated reports suppress subsequent automatic reviews, and pushes do not trigger reviews. |
-| C-REVIEW-02 | §16 | Authorized explicit requests can repeat without a round limit or current-approval skip. |
-| C-REVIEW-03 | §16 | Only exact newly-created `/elwood review` PR comments and workflow dispatches from current human writers qualify; unauthorized requests cannot execute or cancel model reviews. |
-| C-REVIEW-04 | §16 | Publication never dismisses a successfully submitted approval. It revalidates eligibility and both commits after submission, failing visibly on a mismatch or API failure while preserving the exact-commit historical approval; this is not a merge freshness gate. Publication preserves an existing approval by commenting on new non-approving findings, includes a run link and rerun command, and reports failed/canceled authorized runs without granting approval or posting on a superseded/ineligible PR. |
-| C-REVIEW-05 | §16 | Eligibility admits any base branch in the same repository, and the automatic trigger does not filter by base branch, so a stacked PR based on a not-yet-merged parent is reviewed rather than silently skipped; a head or base in another repository remains ineligible. |
+| C-REVIEW-01 | §16 | Opening a same-repository PR produces one automatic review; pushes, edits, reopenings, and ready transitions do not start another review. |
+| C-REVIEW-02 | §16 | An already-approved head is skipped; minors and nits may be fixed without another review. |
+| C-REVIEW-03 | §16 | Only exact newly-created `/review` PR comments from current human writers qualify; authorization checks both author and requester before secrets, checkout, or review cancellation. |
+| C-REVIEW-04 | §16 | A complete validated twelve-dimension report with zero blockers and majors can approve. Publication preserves existing approvals, includes the run link and `/review`, and does not suppress a report or verdict when the head or base changes. |
+| C-REVIEW-05 | §16 | Both head and base must belong to this repository, with no base-branch trigger filter; current human writers and the official Dependabot author qualify, while forks and outside contributors do not. |
 
 ### Launch hardening
 

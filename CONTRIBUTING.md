@@ -3,7 +3,8 @@
 Elwood is open source, but we do not accept outside pull requests. GitHub
 restricts PR creation to repository collaborators with write access or higher.
 You are welcome to use and fork Elwood under its MIT license, and to report
-bugs through issues or security concerns through `SECURITY.md`.
+security concerns through `SECURITY.md`. Issue creation is limited to repository
+collaborators.
 
 The instructions below are for maintainers. This project is spec-first:
 `prd/` is the contract for observable behavior, and `CLAUDE.md` (also linked as
@@ -65,9 +66,9 @@ directories automatically.
 ## Pull requests
 
 - Use branches in this repository. Fork PRs are not reviewed by automation.
-- After the first automatic review, post exactly `/elwood review` as a new PR
+- After the first automatic review, post exactly `/review` as a new PR
   comment to request another. Only current maintainers can trigger it.
-- The eleven-lens AI review can approve a completed review with no blocker or
+- The twelve-lens shared AI review can approve a completed review with no blocker or
   major findings. Required CI checks and branch protections still apply; the
   review workflow does not merge PRs. See [.github/PIPELINE.md](.github/PIPELINE.md).
 - Keep pull requests small and focused on one change.
@@ -98,17 +99,17 @@ like everything else but are excluded from the coverage gate.
 
 ## Repository map
 
-| Path | Purpose |
-|---|---|
-| `prd/` | Source of truth for behavior and conformance criteria (one file per section). |
-| `src/index.ts` | Public package exports. |
-| `src/core/` | Adapter-neutral session machinery: control queue, status detection, turns, loops, images, warnings. |
-| `src/runtime/` | Shared session base class, startup checks, teardown, and test seams. |
-| `src/claude/`, `src/codex/` | The two adapters: launch, hooks, transcripts, validation. |
-| `src/cli/` | The `elwood` executable. |
-| `src/state/` | Session records and private sidecar files. |
-| `src/bridge/` | Local hook bridge server and generated bridge script. |
-| `src/terminal/`, `src/pty/` | Headless xterm.js model and node-pty adapter. |
-| `dev/` | Local terminal and browser dev apps (not published, not coverage-gated). |
-| `tests/` | Unit, conformance, and e2e suites. |
-| `docs/` | Guides and the record of empirically learned CLI behavior. |
+| Path                        | Purpose                                                                                             |
+| --------------------------- | --------------------------------------------------------------------------------------------------- |
+| `prd/`                      | Source of truth for behavior and conformance criteria (one file per section).                       |
+| `src/index.ts`              | Public package exports.                                                                             |
+| `src/core/`                 | Adapter-neutral session machinery: control queue, status detection, turns, loops, images, warnings. |
+| `src/runtime/`              | Shared session base class, startup checks, teardown, and test seams.                                |
+| `src/claude/`, `src/codex/` | The two adapters: launch, hooks, transcripts, validation.                                           |
+| `src/cli/`                  | The `elwood` executable.                                                                            |
+| `src/state/`                | Session records and private sidecar files.                                                          |
+| `src/bridge/`               | Local hook bridge server and generated bridge script.                                               |
+| `src/terminal/`, `src/pty/` | Headless xterm.js model and node-pty adapter.                                                       |
+| `dev/`                      | Local terminal and browser dev apps (not published, not coverage-gated).                            |
+| `tests/`                    | Unit, conformance, and e2e suites.                                                                  |
+| `docs/`                     | Guides and the record of empirically learned CLI behavior.                                          |

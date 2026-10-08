@@ -41,11 +41,13 @@ class RunnerTest(unittest.TestCase):
     def git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.root), *args], text=True)
 
-    def run_review(self, mode='clean', base=None, api_key='fixture-not-a-key'):
+    def run_review(self, mode='clean', base=None, api_key='fixture-not-a-key', settings=None):
         env = {**os.environ, 'PATH': f'{self.bin}:{os.environ["PATH"]}',
                'OPENAI_API_KEY': api_key, 'REVIEW_TEST_ROOT': str(self.root),
                'REVIEW_TEST_MODE': mode, 'ELWOOD_REVIEW_LENS_ATTEMPTS': '2',
                'ELWOOD_REVIEW_PROCESS_TIMEOUT_SECONDS': '3' if mode.endswith('timeout') else '10', 'ELWOOD_REVIEW_DEADLINE_SECONDS': '30'}
+        if settings is not None:
+            env.update(settings)
         return subprocess.run(['bash', str(self.root / 'scripts/review/run.sh'), base or self.base],
                               env=env, capture_output=True, text=True, timeout=40)
 
@@ -61,6 +63,18 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(len(list(self.root.glob('call-review-*'))), 11)
         self.assertEqual((self.root / 'call-synthesis').read_text(), '1')
         self.assertIn('Verdict: clean, no notes', (self.root / 'REVIEW.md').read_text())
+
+    def test_local_model_uses_shared_setting_and_keeps_explicit_local_override(self):
+        for settings, expected in [
+            ({'REVIEW_MODEL': '', 'ELWOOD_REVIEW_MODEL': ''}, 'openai/gpt-6.1-sol'),
+            ({'REVIEW_MODEL': 'openai/shared-fixture', 'ELWOOD_REVIEW_MODEL': ''}, 'openai/shared-fixture'),
+            ({'REVIEW_MODEL': 'openai/shared-fixture', 'ELWOOD_REVIEW_MODEL': 'openai/local-fixture'}, 'openai/local-fixture'),
+        ]:
+            result = self.run_review(settings=settings)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            markers = list(self.root.glob('model-*'))
+            self.assertEqual(len(markers), 12)
+            self.assertEqual({marker.read_text() for marker in markers}, {expected})
 
     def test_large_single_line_evidence_reaches_every_model_call_without_truncation(self):
         (self.root / 'fixture.txt').write_text('bounded fixture diff ' + 'D' * 60000 + 'DIFF_LAST_CANARY\n')
