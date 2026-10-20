@@ -25,8 +25,19 @@ import { userShell } from "../../runtime/shell.ts";
 import type { SessionRuntime } from "../../state/runtime-paths.ts";
 import type { SessionRecord } from "../../state/store.ts";
 import { buildClaudeShellCommand, shellLaunch } from "../command.ts";
+import type { ClaudePreflightWarning } from "../preflight.ts";
 import { claudeScreenFactTableForTrustPolicy } from "../screen-table.ts";
 import { generateClaudeSettings } from "../settings.ts";
+
+export type BuildClaudeSessionInput = {
+  readonly record: SessionRecord;
+  readonly stateDir: string;
+  readonly runtime: SessionRuntime;
+  readonly options: StartClaudeOptions;
+  readonly resumed: boolean;
+  readonly activate: () => void;
+  readonly preflightWarning: ClaudePreflightWarning | undefined;
+};
 
 /** The rendered-frame observers (turn/attention/screen-fact) for a Claude session. */
 export function buildClaudeObservers(

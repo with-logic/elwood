@@ -1063,6 +1063,14 @@ launch and never installs over the user's CLI. C-CODEX-12.
 
 ### Empty input while a turn is active (2026-09-23)
 
+The retained Claude 2.1.281 `working.txt` and `working-empty-input.json` captures
+contain `⚠ Your login expires in 1 day · run /login to renew` in the welcome
+region and the same notice without `⚠` below the native composer. A user report
+on 2.1.305 (2026-10-20) shows the same welcome wording with `3 days`. These
+observations underpin the `login_expiring` warning (C-CLAUDE-23); they are advance
+renewal notices, not the lapsed-authentication screens used by `login_expired`.
+No `/login` was driven to collect this evidence.
+
 Native captures show that empty input and idle-turn clearance are different facts.
 Codex 0.156.1 kept its visible cursor at column 2 on `Ask Codex to do anything`
 while its working title and interrupt status were active. The bounded probe used
