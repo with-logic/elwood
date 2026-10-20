@@ -67,7 +67,8 @@ test.each([
   expect(order).toEqual(started);
   expect(() => captures.capture(options)).toThrow("Too many queued image bytes");
   cleanup.resolve();
-  await vi.waitFor(() => expect(order).toEqual([...started, "second"]), { timeout: 1_000 });
+  await vi.advanceTimersByTimeAsync(750);
+  expect(order).toEqual([...started, "second"]);
   await vi.advanceTimersByTimeAsync(2_000);
   await second;
   expect(order).toEqual([...started, "second"]);

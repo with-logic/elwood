@@ -114,7 +114,7 @@ export class SessionLoops {
 function createScheduler(input: SessionLoopsInput): LoopScheduler {
   return new LoopScheduler({
     definitions: input.definitions,
-    now: Date.now,
+    now: () => Date.now(),
     // Timer lifetimes and delivery callbacks belong to the scheduler, not its caller.
     schedule: (run, delayMs) => outsideStopInput(() => scheduleLoopTimer(run, delayMs)),
     createId: randomUUID,
