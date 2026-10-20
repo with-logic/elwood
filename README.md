@@ -143,6 +143,12 @@ context; they fail open on error.
 assistant messages, reasoning, tool calls and results, web searches, hooks,
 warnings, and lifecycle. Most host UIs render this and nothing else.
 
+Codex commentary arrives as `assistant_progress` with normalized `text`; final
+replies remain `assistant_message`. Render progress while keeping the turn
+working. Progress is available through `on("activity", ...)`, and is excluded
+from ergonomic `send()` results and `stream()` text. See
+[Codex commentary](docs/codex/cli.md#commentary-and-final-replies) for the contract.
+
 **Terminal stream.** `terminal:data` carries the raw PTY bytes so a host can
 mirror the agent in its own xterm. A late subscriber first receives up to
 128 KB of replayed history as one chunk. `sendKeys(Uint8Array)` forwards a

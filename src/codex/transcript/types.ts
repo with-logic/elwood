@@ -14,15 +14,23 @@
 export type CodexTranscriptSummary = {
   /**
    * The kind of activity this item represents. Drives which fields downstream
-   * activity carries: `message` (committed assistant prose), `tool_call` (a shell/exec
+   * activity carries: `message` (assistant replies), `commentary` (user-facing progress),
+   * `tool_call` (a shell/exec
    * or function invocation), `tool_result` (that call's output), `reasoning`
    * (chain-of-thought summary text, when present), `web_search`, or `other` (any
    * item type not specifically surfaced).
    */
-  readonly kind: "message" | "tool_call" | "tool_result" | "reasoning" | "web_search" | "other";
+  readonly kind:
+    | "message"
+    | "commentary"
+    | "tool_call"
+    | "tool_result"
+    | "reasoning"
+    | "web_search"
+    | "other";
   /**
    * A short, human-readable label whose meaning depends on `kind`: the message
-   * role (`assistant`) for `message`, the tool/function name for
+   * role (`assistant`) for `message`/`commentary`, the tool/function name for
    * `tool_call`, the correlating call id for `tool_result`, the web-search action
    * type (e.g. `search`/`open_page`) for `web_search`, the literal `"reasoning"`
    * for `reasoning`, and the raw item `type` (or `"unknown"`) for `other`.

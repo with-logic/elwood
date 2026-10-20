@@ -1,6 +1,6 @@
 /**
  * Projects one committed Codex JSONL transcript item into a bounded summary.
- * Implements PRD §7A.4 (C-API-12, C-CODEX-18, C-CODEX-19): assistant messages,
+ * Implements PRD §7A.4 (C-API-12, C-CODEX-18/19/22): assistant messages and progress,
  * tool calls/results, reasoning summary text, and web searches are surfaced; raw
  * encrypted reasoning is never surfaced.
  */
@@ -115,16 +115,20 @@ function message(payload: Item): CodexTranscriptSummary {
   const value = assistantMessageText(payload, role);
   return value === undefined
     ? { kind: "other", label: role }
-    : { kind: "message", label: role, text: value };
+    : {
+        kind: payload["phase"] === "commentary" ? "commentary" : "message",
+        label: role,
+        text: value,
+      };
 }
 
 function assistantMessageText(payload: Item, role: string): string | undefined {
   if (role !== "assistant") return undefined;
-  const phase = stringValue(payload["phase"]);
-  if (phase !== undefined && phase !== "final_answer") return undefined;
+  const phase = payload["phase"] ?? undefined;
+  if (phase !== undefined && phase !== "final_answer" && phase !== "commentary") return undefined;
   const content = payload["content"];
   if (typeof content === "string") return content;
-  if (phase !== "final_answer" || !Array.isArray(content)) return undefined;
+  if (phase === undefined || !Array.isArray(content)) return undefined;
   const parts = content
     .filter((entry) => stringValue(record(entry)?.["type"]) === "output_text")
     .map((entry) => stringValue(record(entry)?.["text"]))
@@ -133,6 +137,8 @@ function assistantMessageText(payload: Item, role: string): string | undefined {
 }
 
 function agentMessage(payload: Item): CodexTranscriptSummary {
+  const phase = payload["phase"] ?? undefined;
+  if (phase !== undefined && phase !== "final_answer") return { kind: "other", label: "assistant" };
   return { kind: "message", label: "assistant", ...(text(payload["message"]) ?? {}) };
 }
 
