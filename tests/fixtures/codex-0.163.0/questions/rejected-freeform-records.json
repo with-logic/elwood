@@ -1,0 +1,42 @@
+[
+  {
+    "timestamp": "2026-10-20T23:32:16.851Z",
+    "ordinal": 11,
+    "type": "response_item",
+    "payload": {
+      "type": "function_call",
+      "status": "completed",
+      "id": "fc_033b7c0cb15539ca016ad7fa0073c881988b0e1a115c2a4638",
+      "name": "request_user_input",
+      "arguments": "{\"questions\":[{\"id\":\"color\",\"header\":\"Color\",\"question\":\"ELWOOD_MODAL_COLOR: Which color?\",\"options\":[{\"label\":\"Amber\",\"description\":\"Warm\"},{\"label\":\"Blue\",\"description\":\"Cool\"}]},{\"id\":\"note\",\"header\":\"Note\",\"question\":\"ELWOOD_MODAL_NOTE: What note?\",\"options\":[],\"isSecret\":false}]}",
+      "call_id": "call_fe03957ea43246768c142bc94eb6177d",
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15ba8-8c8c-7293-8b03-50513e68e71b",
+        "create_time": 1792539136.4551554
+      }
+    },
+    "metadata": {
+      "client_authored": false,
+      "user_input_order": 1
+    }
+  },
+  {
+    "timestamp": "2026-10-20T23:32:16.937Z",
+    "ordinal": 13,
+    "type": "response_item",
+    "payload": {
+      "type": "function_call_output",
+      "id": "fco_01a15ba8-93a9-7180-a1c6-7d7a8a0dcd08",
+      "call_id": "call_fe03957ea43246768c142bc94eb6177d",
+      "output": "request_user_input requires non-empty options for every question",
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a15ba8-8c8c-7293-8b03-50513e68e71b",
+        "create_time": 1792539136.937096
+      }
+    },
+    "metadata": {
+      "client_authored": false,
+      "fallback_token_limit_override": 12000
+    }
+  }
+]

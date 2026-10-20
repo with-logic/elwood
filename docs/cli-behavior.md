@@ -1233,3 +1233,44 @@ child-only `ZDOTDIR` pointing at its private home. An inherited interactive zsh
 profile timed out before `codex --version` at 15 seconds; the same pinned binary
 with an empty private profile directory returned its version in 52 ms. This
 preflight failure submitted no model turn. Parent environment values stay intact.
+
+## Native interactive questions (2026-10-20)
+
+Claude Code 2.1.305 exposes structured `AskUserQuestion` input in PreToolUse and
+PermissionRequest hooks. PermissionRequest can omit the tool-use ID. Direct hook
+answers may bypass the terminal editor. Native single-question selection accepts
+on Enter; a grouped request advances through tabs and ends on a separate Review
+your answers / Submit answers page. Multi-select uses checkbox rows and a
+per-question Submit row. Space toggled checkboxes in the capture. PostToolUse
+carries the accepted answers for the entire tool request.
+
+Claude's Type something row is already an editor when highlighted: paste text
+before pressing Enter. An empty Enter there declines the request. A two-line
+bracketed paste was accepted with its newline intact. These captures used private
+configuration/authentication copies and synthetic prompts; see
+`tests/fixtures/claude-2.1.305/questions/`.
+
+Codex 0.163.0 has two different acceptance units. Plan-mode
+`request_user_input` groups questions in a modal and returns one function output
+with all answers. Every question needs nonempty options; a free-text-only tool
+call was rejected before any editor appeared. None of the above plus notes
+provides free text. `request_user_input_async` immediately returns accepted:true,
+then exposes independently answerable queued questions while work continues.
+Shift+Left opens the editor. Answering one leaves the others available, with a
+committed `send_user_message_question_reply` envelope identifying the exact
+question. Ordinary composer input is not an equivalent answer route.
+
+Async question AgentMessage records can say phase:final_answer while work is
+still running. They are question metadata, not a final assistant reply. The
+paginated item_completed mirror uses type AgentMessage. Deduplicate these mirrors
+against the stable tool call. The native question ID encodes the call ID and
+question index. Ctrl+] locally skips the focused async question without an answer
+record; Esc from its editor can merely collapse it. Do not treat every Esc as a
+turn interruption.
+
+A real bounded sleep kept the async badge visible past 37 and 41 seconds; it
+cleared when the turn completed at 45 seconds. The native expires_at timestamp is
+not evidence of removal at 30 seconds. Do not invent that expiry. The copied
+Codex executable also needs its sibling codex-code-mode-host for exec tools.
+Sanitized native records and terminal stages are under
+`tests/fixtures/codex-0.163.0/questions/`.
