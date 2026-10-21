@@ -1,0 +1,168 @@
+[
+  {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "AskUserQuestion",
+    "tool_input": {
+      "questions": [
+        {
+          "question": "Which test color?",
+          "header": "Color",
+          "options": [
+            {
+              "label": "Amber",
+              "description": "Warm"
+            },
+            {
+              "label": "Blue",
+              "description": "Cool"
+            }
+          ],
+          "multiSelect": false
+        },
+        {
+          "question": "Which test features?",
+          "header": "Features",
+          "options": [
+            {
+              "label": "Logging",
+              "description": "Logs"
+            },
+            {
+              "label": "Metrics",
+              "description": "Counts"
+            }
+          ],
+          "multiSelect": true
+        }
+      ]
+    },
+    "session_id": "claude-question-session",
+    "cwd": "/tmp/ELWOOD_QUESTION/project",
+    "tool_use_id": "toolu-question"
+  },
+  {
+    "hook_event_name": "PermissionRequest",
+    "tool_name": "AskUserQuestion",
+    "tool_input": {
+      "questions": [
+        {
+          "question": "Which test color?",
+          "header": "Color",
+          "options": [
+            {
+              "label": "Amber",
+              "description": "Warm"
+            },
+            {
+              "label": "Blue",
+              "description": "Cool"
+            }
+          ],
+          "multiSelect": false
+        },
+        {
+          "question": "Which test features?",
+          "header": "Features",
+          "options": [
+            {
+              "label": "Logging",
+              "description": "Logs"
+            },
+            {
+              "label": "Metrics",
+              "description": "Counts"
+            }
+          ],
+          "multiSelect": true
+        }
+      ]
+    },
+    "session_id": "claude-question-session",
+    "cwd": "/tmp/ELWOOD_QUESTION/project"
+  },
+  {
+    "hook_event_name": "PostToolUse",
+    "tool_name": "AskUserQuestion",
+    "tool_input": {
+      "questions": [
+        {
+          "question": "Which test color?",
+          "header": "Color",
+          "options": [
+            {
+              "label": "Amber",
+              "description": "Warm"
+            },
+            {
+              "label": "Blue",
+              "description": "Cool"
+            }
+          ],
+          "multiSelect": false
+        },
+        {
+          "question": "Which test features?",
+          "header": "Features",
+          "options": [
+            {
+              "label": "Logging",
+              "description": "Logs"
+            },
+            {
+              "label": "Metrics",
+              "description": "Counts"
+            }
+          ],
+          "multiSelect": true
+        }
+      ],
+      "answers": {
+        "Which test color?": "Blue",
+        "Which test features?": "Logging, Metrics"
+      },
+      "annotations": {}
+    },
+    "tool_response": {
+      "questions": [
+        {
+          "question": "Which test color?",
+          "header": "Color",
+          "options": [
+            {
+              "label": "Amber",
+              "description": "Warm"
+            },
+            {
+              "label": "Blue",
+              "description": "Cool"
+            }
+          ],
+          "multiSelect": false
+        },
+        {
+          "question": "Which test features?",
+          "header": "Features",
+          "options": [
+            {
+              "label": "Logging",
+              "description": "Logs"
+            },
+            {
+              "label": "Metrics",
+              "description": "Counts"
+            }
+          ],
+          "multiSelect": true
+        }
+      ],
+      "answers": {
+        "Which test color?": "Blue",
+        "Which test features?": "Logging, Metrics"
+      },
+      "annotations": {}
+    },
+    "session_id": "claude-question-session",
+    "cwd": "/tmp/ELWOOD_QUESTION/project",
+    "tool_use_id": "toolu-question"
+  }
+]

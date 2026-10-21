@@ -1,4 +1,7 @@
-/** Shared request definitions for private kernel tests (PRD §4). */
+/** Captured Claude frames and shared request fixtures (C-QUESTION-01/03). */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import type { QuestionFrame } from "../../../src/core/questions/adapter.ts";
 import { QuestionRegistry } from "../../../src/core/questions/registry.ts";
 import type { QuestionDefinition } from "../../../src/core/questions/types.ts";
 export const definitions: readonly QuestionDefinition[] = [
@@ -27,4 +30,70 @@ export const definitions: readonly QuestionDefinition[] = [
 ];
 export function registry() {
   return new QuestionRegistry("claude", "s", { emit: () => {} });
+}
+export function fixture(name: string): QuestionFrame {
+  const text = readFileSync(
+    fileURLToPath(new URL(`../../fixtures/claude-2.1.305/questions/${name}.txt`, import.meta.url)),
+    "utf8",
+  );
+  return frame(text);
+}
+export function frame(text: string): QuestionFrame {
+  const lines = text.split("\n");
+  const cursorRow = lines.findLastIndex((line) => /^❯ /.test(line));
+  return { text, lines, cursorRow, cursorY: cursorRow, cursorX: 0, rows: lines.length, cols: 140 };
+}
+
+export function nativeSnapshot(name: string): QuestionFrame {
+  return parseNativeSnapshot(
+    JSON.parse(
+      readFileSync(
+        fileURLToPath(
+          new URL(`../../fixtures/claude-2.1.305/questions/${name}.json`, import.meta.url),
+        ),
+        "utf8",
+      ),
+    ),
+  );
+}
+
+export function parseNativeSnapshot(value: unknown): QuestionFrame {
+  if (!isSnapshotRecord(value)) throw invalidSnapshot();
+  const text = value["text"];
+  const cursorVisible = value["cursorVisible"];
+  if (typeof text !== "string") throw invalidSnapshot();
+  if (cursorVisible !== undefined && typeof cursorVisible !== "boolean") throw invalidSnapshot();
+  const cursorY = snapshotNumber(value["cursorY"]);
+  const baseY = optionalSnapshotNumber(value["baseY"]);
+  const viewportY = optionalSnapshotNumber(value["viewportY"]);
+  const cursorRow = optionalSnapshotNumber(value["cursorRow"]);
+  return {
+    text,
+    lines: snapshotLines(value["lines"]),
+    cols: snapshotNumber(value["cols"]),
+    rows: snapshotNumber(value["rows"]),
+    cursorX: snapshotNumber(value["cursorX"]),
+    cursorY,
+    cursorRow: cursorRow ?? cursorY + (baseY ?? 0) - (viewportY ?? 0),
+    ...(cursorVisible === undefined ? {} : { cursorVisible }),
+  };
+}
+
+function isSnapshotRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function snapshotNumber(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) throw invalidSnapshot();
+  return value;
+}
+function optionalSnapshotNumber(value: unknown): number | undefined {
+  return value === undefined ? undefined : snapshotNumber(value);
+}
+function snapshotLines(value: unknown): readonly string[] {
+  if (!(Array.isArray(value) && value.every((line: unknown) => typeof line === "string")))
+    throw invalidSnapshot();
+  return value;
+}
+function invalidSnapshot(): Error {
+  return new Error("Invalid native question snapshot");
 }

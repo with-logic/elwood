@@ -1233,3 +1233,23 @@ child-only `ZDOTDIR` pointing at its private home. An inherited interactive zsh
 profile timed out before `codex --version` at 15 seconds; the same pinned binary
 with an empty private profile directory returned its version in 52 ms. This
 preflight failure submitted no model turn. Parent environment values stay intact.
+
+## Claude question editor captures (2026-10-20)
+
+Claude Code 2.1.305 accepts a single question on Enter. Grouped questions advance
+through tabs and end on a separate Review your answers / Submit answers page.
+Multi-select uses checkbox rows, Space to toggle, and a per-question Submit row.
+
+The highlighted Type something row is already an editor: paste before Enter.
+An empty Enter there declines the request. A two-line bracketed paste preserved
+its newline. Choice rows start at column zero with a highlight or space, followed
+by one space. Other continuations are indented five spaces, so their numbered
+lists are text, not additional choices. The checkbox Submit row also uses five
+columns, but occurs only in the multi-select layout.
+
+A native checkbox Submit highlight can have a hidden terminal cursor parked at
+column zero on the viewport's bottom blank row. A multiline Other answer places
+the visible cursor on its indented continuation. Neither necessarily sits on
+the highlighted option glyph. The captures used private configuration and
+authentication copies with synthetic prompts; see
+`tests/fixtures/claude-2.1.305/questions/`.

@@ -1,0 +1,44 @@
+
+ ▐▛███▛█   Claude Code v2.1.305
+▝▜██████▀  Haiku 5.5 · Claude Max
+ ▝▝   ▝▝   /tmp/ELWOOD_QUESTION/project
+
+  Get to finished work sooner with Opus 5.5. Switch anytime with /model.
+  1 more notice hidden
+
+❯ Please call AskUserQuestion now with exactly two questions. First: "Which test color?", header "Color", options "Amber" (warm) and "Blue"
+  (cool), single select. Second: "Which test features?", header "Features", options "Logging" (logs) and "Metrics" (counts), multiSelect
+  true. After receiving answers, reply with exactly the selected values. Do not use any other tool and do not inspect or modify files.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+←  ☐ Color  ☐ Features  ✔ Submit  →
+
+Which test color?
+
+❯ 1. Amber
+     Warm
+  2. Blue
+     Cool
+  3. Type something.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  4. Chat about this
+
+Enter to select · Tab/Arrow keys to navigate · Esc to cancel
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+             
+
+
+
