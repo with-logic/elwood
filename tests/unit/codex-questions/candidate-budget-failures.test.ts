@@ -46,7 +46,9 @@ test("two individually valid large records exhaust the aggregate store budget an
   expect(state.unpublishedCandidates().size).toBe(0);
   expect(state.hasReservation()).toBe(true);
   expect(disabled).toHaveBeenCalledOnce();
-  expect(state.observe(event(call("after-disable", true, true)))).toBe(false);
+  expect(state.observe(event(call({ id: "after-disable", queued: true, accepted: true })))).toBe(
+    false,
+  );
   expect(state.candidates.size).toBe(0);
   expect(disabled).toHaveBeenCalledOnce();
 });
@@ -58,7 +60,7 @@ test("a throwing disable notifier cannot escape a limit-triggered observation or
     notifications++;
     throw new Error("Diagnostic observer failed");
   });
-  state.observe(event(call("first", true, true)));
+  state.observe(event(call({ id: "first", queued: true, accepted: true })));
   const candidate = state.acceptedQueuedCandidates()[0];
   if (!candidate) throw new Error("Initial valid candidate must exist");
   state.publish(candidate);
@@ -73,7 +75,9 @@ test("a throwing disable notifier cannot escape a limit-triggered observation or
   expect(state.candidates.size).toBe(0);
   expect(state.unpublishedCandidates().size).toBe(0);
   expect(state.hasReservation()).toBe(true);
-  expect(state.observe(event(call("after-disable", true, true)))).toBe(false);
+  expect(state.observe(event(call({ id: "after-disable", queued: true, accepted: true })))).toBe(
+    false,
+  );
   expect(state.candidates.size).toBe(0);
   expect(notifications).toBe(1);
 });

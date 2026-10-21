@@ -25,7 +25,8 @@ function publishAll(state: CodexQuestionCandidates): void {
   });
 }
 function twoCandidates(state: CodexQuestionCandidates): void {
-  for (const id of ["first", "second"]) state.observe(event(call(id, true, true)));
+  for (const id of ["first", "second"])
+    state.observe(event(call({ id, queued: true, accepted: true })));
 }
 
 test("publishes every independent candidate and keeps publication before surfacing the first failure", () => {
@@ -89,7 +90,9 @@ test("valid replacement reconciliation survives observer failure without disabli
   registry.onEvent(() => {
     throw new Error("replacement observer");
   });
-  failureOf(() => state.observe(event(call("first", true, true, "Changed"))));
+  failureOf(() =>
+    state.observe(event(call({ id: "first", queued: true, accepted: true, prompt: "Changed" }))),
+  );
   expect(state.candidates.size).toBe(2);
   expect(disabled).not.toHaveBeenCalled();
   expect(

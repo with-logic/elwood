@@ -1,6 +1,7 @@
 /** Native acceptance, retirement, and observer isolation for PRD §4 catalogs. */
 import { describe, expect, test } from "vitest";
 import { queuedKey } from "../../../src/codex/questions/records.ts";
+import { QuestionObserverFailure } from "../../../src/core/questions/notification-errors.ts";
 import { call, event, setup } from "./candidate-helpers.ts";
 import { records } from "./fixtures.ts";
 
@@ -8,6 +9,47 @@ function output(callId: string, value: unknown) {
   return event({ type: "function_call_output", call_id: callId, output: value });
 }
 describe("candidate native lifecycle", () => {
+  test("native output accepts a queued candidate exactly once without publishing prematurely", () => {
+    const { state, registry } = setup();
+    state.observe(event(call()));
+    const before = state.acceptedQueuedCandidates();
+    expect(state.observe(output("call", '{"accepted":true}'))).toBe(true);
+    expect(state.acceptedQueuedCandidates()).not.toBe(before);
+    expect(state.observe(output("call", '{"accepted":true}'))).toBe(false);
+    expect(registry.list()).toEqual([]);
+  });
+  test("replaces changed definitions and closes the old request before republishing", () => {
+    const { state, registry, listener } = setup();
+    state.observe(event(call({ id: "call", queued: true, accepted: true })));
+    const old = state.acceptedQueuedCandidates()[0]!;
+    state.publish(old);
+    const request = registry.list()[0]!;
+    expect(
+      state.observe(event(call({ id: "call", queued: true, accepted: true, prompt: "Changed" }))),
+    ).toBe(true);
+    expect(registry.get(request.id)).toBeUndefined();
+    expect(listener).toHaveBeenCalledWith(
+      "question",
+      expect.objectContaining({ phase: "closed", reason: "unavailable" }),
+    );
+    state.publish(old);
+    state.publish(state.acceptedQueuedCandidates()[0]!);
+    expect(registry.list()).toHaveLength(1);
+    expect(registry.list()[0]!.id).not.toBe(request.id);
+  });
+  test("continues every publication and closure when observers throw", () => {
+    const { state, registry } = setup(true);
+    for (const id of ["a", "b"]) state.observe(event(call({ id, queued: true, accepted: true })));
+    expect(() =>
+      state.batchNotifications(() => {
+        for (const candidate of state.unpublishedCandidates()) state.publish(candidate);
+      }),
+    ).toThrow(QuestionObserverFailure);
+    expect(registry.list()).toHaveLength(2);
+    expect(() => state.observe(event({ type: "turn_aborted" }))).toThrow(QuestionObserverFailure);
+    expect(registry.list()).toEqual([]);
+    expect(state.candidates.size).toBe(0);
+  });
   test.each([
     ['{"answers":{"q":{"answers":["Yes"]}}}', "answered"],
     ['{"answers":{"q":{"answers":[2,""," ","Yes"]}}}', "answered"],
@@ -20,7 +62,7 @@ describe("candidate native lifecycle", () => {
     [null, "unavailable"],
   ])("retires blocking native output %j as %s", (value, reason) => {
     const { state, registry, listener } = setup();
-    state.observe(event(call("call", false)));
+    state.observe(event(call({ id: "call", queued: false })));
     state.publish([...state.candidates.values()][0]!);
     expect(state.observe(output("call", value))).toBe(true);
     expect(registry.list()).toEqual([]);
@@ -30,7 +72,7 @@ describe("candidate native lifecycle", () => {
       "question",
       expect.objectContaining({ phase: "closed", reason }),
     );
-    expect(state.observe(event(call("call", false)))).toBe(false);
+    expect(state.observe(event(call({ id: "call", queued: false })))).toBe(false);
   });
   test("retires queued answers from committed native reply records", () => {
     const { state, registry } = setup();
@@ -94,11 +136,17 @@ test("retires all native units when a close observer also removes another queued
     }),
   );
   const candidates = state.acceptedQueuedCandidates();
+  expect(candidates).toHaveLength(2);
+  const second = candidates[1];
+  expect(second).toBeDefined();
+  if (!second) throw new Error("Expected the second queued candidate");
+  let observerClosedSecond = false;
   for (const candidate of candidates) state.publish(candidate);
   registry.onEvent((edge) => {
     if (edge.phase === "closed" && edge.request.questions[0]!.prompt === "First")
-      state.close(candidates[1]!.nativeKey, "unavailable");
+      observerClosedSecond = state.close(second.nativeKey, "unavailable");
   });
   expect(state.observe(output("call", "cancelled"))).toBe(true);
+  expect(observerClosedSecond).toBe(true);
   expect(registry.list()).toEqual([]);
 });
