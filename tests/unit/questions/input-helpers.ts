@@ -22,8 +22,10 @@ export function inputHarness(assertLive: () => void = () => {}) {
   const signal = AbortSignal.any([closing.signal, operation.signal, input.signal()]);
   const started = vi.fn();
   const failed = vi.fn();
+  const settled = vi.fn();
   const io = questionInput(input.automated, requests, request, signal, assertLive, {
     started,
+    settled,
     failed,
   });
   const pending = new Set<Promise<unknown>>();
@@ -54,6 +56,7 @@ export function inputHarness(assertLive: () => void = () => {}) {
     request,
     io,
     started,
+    settled,
     failed,
     track,
   };

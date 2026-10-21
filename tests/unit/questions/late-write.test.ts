@@ -45,7 +45,7 @@ test("a timed-out real write lane may complete late but cannot duplicate bytes o
     await vi.advanceTimersByTimeAsync(50);
     expect(outcome).toBe("failed");
     await failed;
-    expect(h.transaction.busy()).toBe(false);
+    expect(h.transaction.busy()).toBe(true);
     const retryFailed = expect(
       h.transaction.run(h.adapter, h.request.id, h.answers),
     ).rejects.toMatchObject({
@@ -131,7 +131,7 @@ test.each([
   "terminal",
   "observer",
   "accepted",
-] as const)("raw terminal failures retain safe classification without retaining answer-bearing causes (%s)", async (kind) => {
+] as const)("terminal and post-acceptance adapter failures retain safe, content-free classification (%s)", async (kind) => {
   const secret = "PRIVATE_ANSWER_IN_NATIVE_ERROR";
   const h = setup(async (io) => {
     await io.write("answer", () => true);
@@ -160,7 +160,7 @@ test.each([
     expect(failure.stack).not.toContain(secret);
     expect(failure.cause).toBeUndefined();
   }
-  expect(h.transaction.busy()).toBe(false);
+  expect(h.transaction.busy()).toBe(kind !== "accepted");
   expect(h.requests.get(h.request.id)).toBeUndefined();
   expect(h.requests.list()).toEqual([]);
   if (kind === "accepted") {
@@ -170,5 +170,7 @@ test.each([
     expect(retire).toHaveBeenCalledExactlyOnceWith(h.request.id);
     expect(h.requests.find("native")).toBe(h.request);
     expect(h.requests.hasPending()).toBe(true);
+    h.requests.close(h.request.id, "answered");
+    expect(h.transaction.busy()).toBe(false);
   }
 });

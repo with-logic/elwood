@@ -1,14 +1,12 @@
 /** Keep positive finite answer deadlines within Node's timer range (PRD §4). */
-import { MAX_TIMER_DELAY_MS } from "../timers.ts";
+import { type DeadlineClock, scheduleDeadline } from "../timers.ts";
+
+const clock: DeadlineClock = {
+  now: () => performance.now(),
+  setTimer: (handler, delayMs) => setTimeout(handler, delayMs),
+  clearTimer: (timer) => clearTimeout(timer as ReturnType<typeof setTimeout>),
+};
 
 export function questionDeadline(timeoutMs: number, expire: () => void): () => void {
-  const deadline = performance.now() + timeoutMs;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const schedule = () => {
-    const remaining = deadline - performance.now();
-    if (remaining <= 0) expire();
-    else timer = setTimeout(schedule, Math.min(remaining, MAX_TIMER_DELAY_MS));
-  };
-  schedule();
-  return () => clearTimeout(timer);
+  return scheduleDeadline(clock.now() + timeoutMs, timeoutMs, expire, clock);
 }
