@@ -15,12 +15,13 @@ afterEach(() => {
   resetFakes();
 });
 test.each([
-  { prompt: "check", priorStop: false },
-  { prompt: "  check  ", priorStop: false },
-  { prompt: "  check  ", priorStop: true },
-])("C-API-48 loop retains caller '$prompt' until own completion (prior Stop=$priorStop)", async ({
+  { prompt: "check", priorStop: false, clockOffsetMs: 0 },
+  { prompt: "  check  ", priorStop: false, clockOffsetMs: 0 },
+  { prompt: "  check  ", priorStop: true, clockOffsetMs: -500 },
+])("C-API-48 loop retains caller '$prompt' until own completion (prior Stop=$priorStop, clock offset=$clockOffsetMs ms)", async ({
   prompt,
   priorStop,
+  clockOffsetMs,
 }) => {
   const { cwd, facade } = createFacadeFixture("codex");
   let pending: Promise<unknown> | undefined;
@@ -37,7 +38,8 @@ test.each([
       if (event.kind === "user_message") submissions.push(event.text);
     });
     // The scheduler and its timers must use the clock installed after session startup.
-    vi.useFakeTimers({ now: Date.now() - (priorStop ? 500 : 0) });
+    // A negative offset deliberately skews virtual time before the scheduler is created.
+    vi.useFakeTimers({ now: Date.now() + clockOffsetMs });
     let fired = false;
     live.on("loop", (event) => {
       if (event.kind === "fired") fired = true;
