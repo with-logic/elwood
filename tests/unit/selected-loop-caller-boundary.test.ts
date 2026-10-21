@@ -36,7 +36,8 @@ test.each([
     live.on("activity", (event) => {
       if (event.kind === "user_message") submissions.push(event.text);
     });
-    vi.useFakeTimers();
+    // The scheduler and its timers must use the clock installed after session startup.
+    vi.useFakeTimers({ now: Date.now() - (priorStop ? 500 : 0) });
     let fired = false;
     live.on("loop", (event) => {
       if (event.kind === "fired") fired = true;
