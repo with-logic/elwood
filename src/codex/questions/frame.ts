@@ -2,7 +2,13 @@
 import type { QuestionFrame } from "../../core/questions/adapter.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
 import { codexWorkingScreen } from "../screen/working.ts";
-import { modalFooter, notesFooter, queuedFooter } from "./chrome.ts";
+import {
+  modalFooter,
+  notesFooter,
+  questionHeader,
+  queuedFooter,
+  queuedPanelHeader,
+} from "./chrome.ts";
 import { queuedOtherLabel } from "./labels.ts";
 
 /** Cursor-owned native editor with separate question, option, and body-row coordinates. */
@@ -34,7 +40,7 @@ export type QuestionView = {
 /** Number of collapsed queued questions; undefined without complete native badge/composer chrome. */
 export function queuedBadge(frame: QuestionFrame): number | undefined {
   const lines = frame.lines.map((line) => line.trim());
-  const start = lines.lastIndexOf("• Queued follow-up inputs");
+  const start = lines.lastIndexOf(queuedPanelHeader);
   if (start < 0) return undefined;
   const match = /^\? (\d+) questions?$/.exec(lines[start + 1] ?? "");
   if (
@@ -60,14 +66,14 @@ export function questionView(frame: QuestionFrame): QuestionView | undefined {
   let index: number;
   let kind: QuestionView["kind"];
   if (modalFooter.test(footer) || notesFooter.test(footer)) {
-    start = lines.findLastIndex((line) => /^\s*Question \d+\/\d+ \(\d+ unanswered\)$/.test(line));
-    const match = /^\s*Question (\d+)\/(\d+) \(\d+ unanswered\)$/.exec(lines[start] ?? "");
+    start = lines.findLastIndex((line) => questionHeader.test(line));
+    const match = questionHeader.exec(lines[start] ?? "");
     if (!match) return undefined;
     index = Number(match[1]) - 1;
     count = Number(match[2]);
     kind = "blocking";
   } else if (queuedFooter.test(footer)) {
-    start = lines.lastIndexOf("• Queued follow-up inputs");
+    start = lines.lastIndexOf(queuedPanelHeader);
     if (start < 0) return undefined;
     const position = lines
       .slice(start + 1, end)
