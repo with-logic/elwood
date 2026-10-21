@@ -5,12 +5,14 @@ changed public API, session/lifecycle behavior, activity/event shapes, and bug
 fixes a host application would notice. Internal refactors, test-only changes,
 and doc tweaks are omitted. The format follows
 [Keep a Changelog](https://keepachangelog.com); this project is pre-1.0, so
-everything lands under **Unreleased** until the first tagged release.
+changes land under **Unreleased** until the next tagged release.
 
 Observable behavior is specified in `prd/`; the conformance criteria that
 back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-10-20
 
 - Expose native Claude and Codex questions through typed lifecycle events, normalized `question` activities and `listQuestions()` snapshots; submit choices and text with `answerQuestions()`, including grouped Claude forms and independently answered Codex queued questions, while protecting question editors from ordinary input.
 - Preserve turn completion and follow-up input after native questions: recognize Claude's manual-mode footer, Codex's Plan-mode composer footer, and Codex's alternate working-spinner glyph.

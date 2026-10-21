@@ -84,6 +84,8 @@ Images accept either `{ path: string }` or `{ data: Uint8Array, format }`. Byte 
 | `resize({ cols, rows })` | Change terminal dimensions |
 | `listModels(options?)` | Inspect the agent's model choices |
 | `setModel(id, options?)` | Switch model through the agent |
+| `listQuestions()` | Read an immutable snapshot of pending native question requests |
+| `answerQuestions(requestId, answers, options?)` | Submit one complete native question request |
 | `waitForStatus(predicate, timeoutMs?)` | Wait for a matching lifecycle status |
 | `waitForActivity(predicate, timeoutMs?)` | Wait for matching normalized activity |
 
@@ -91,11 +93,31 @@ Images accept either `{ path: string }` or `{ data: Uint8Array, format }`. Byte 
 
 ## Events and hooks
 
-`on(event, handler)` returns an unsubscribe function; `off(event, handler)` removes the matching subscription. Common events include `activity`, `status`, `warning`, `terminal:data`, `terminal:exit`, `hook` and `hookError`. Event names and payloads are typed per adapter.
+`on(event, handler)` returns an unsubscribe function; `off(event, handler)` removes the matching subscription. Common events include `activity`, `status`, `warning`, `question`, `terminal:data`, `terminal:exit`, `hook` and `hookError`. Event names and payloads are typed per adapter.
 
 Use constructor `hooks` when your application must respond to an agent hook. Use event subscriptions when it only needs to observe. Claude and Codex have different hook vocabularies and result types; do not reuse a handler blindly between agents.
 
 The classes also expose `createLoop()`, `listLoops()` and `cancelLoop()` for recurring prompts, plus raw `sendMessage()`, `sendPrompt()`, `sendGuidance()` and `sendKeys()` for direct control. Raw input bypasses the ergonomic turn queue. Start with `send()` and `stream()` unless you need to own that coordination.
+
+### Commentary and login renewal
+
+Committed Codex commentary produces `activity.kind: "assistant_progress"` with readable `text`. Final answers retain `assistant_message`. Progress does not finish the turn or enter `send()` results or `stream()` text events; a host can display it separately while keeping its working state.
+
+Claude's advance login-renewal notice produces a typed `login_expiring` warning with `expiresInDays` and `recoveryCommand: "/login"`, plus a matching warning activity. A host can offer renewal before the login expires. The notice does not change session status or start login automatically.
+
+## Native questions
+
+Both classes expose native question requests through typed `question` events and normalized activities with `kind: "question"`. A raised event contains the immutable request; a closed event identifies native acceptance, cancellation or unavailability. The host owns rendering and collecting answers.
+
+Each request has opaque live IDs and ordered questions. Render its advertised `selection` and `textMode` capabilities, including choices, checkboxes and supported text. Claude and blocking Codex forms group questions into one request. Codex queued questions are independently answerable requests and can remain available while the agent works.
+
+Subscribe before starting a turn and keep the question handler active while awaiting `send()` or consuming `stream()`. `listQuestions()` supports late subscribers; subscribe first, buffer events during snapshot loading, install the snapshot, then replay those events by request ID.
+
+Pass `answerQuestions()` the request ID and one complete batch of `ElwoodQuestionAnswer` values. Each value uses `questionId`, optional `optionIds`, and optional `text`; include both choices and text only when `textMode` is `additional`. The default answer timeout is 20 seconds; options accept a positive finite `timeoutMs` and an `AbortSignal` as `signal`.
+
+Answering uses a dedicated input lane while the original turn remains open. Pending questions hold ordinary prompts and commands. Invalid or stale answers reject before typing, and an answer call resolves only after native acceptance. Human keyboard intervention revokes automation. Unknown layouts remain visible through the terminal and receive no guessed answer keys.
+
+Requests are live-only and are not added to Elwood's persisted state. Existing raw hooks and transcripts can still contain answers. See the [complete question contract](https://github.com/with-logic/elwood/blob/main/docs/questions.md) for errors, native differences and consumer examples.
 
 ## Errors
 
