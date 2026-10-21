@@ -1,6 +1,7 @@
 /** Read committed native requests and acceptance evidence (PRD §7A.5). */
 import { isRecord } from "../../core/predicates.ts";
 import { type NativeQuestion, parseQuestions } from "./definitions.ts";
+import { checkQuestionArguments, checkQuestionInput } from "./limits.ts";
 
 export type QuestionCall = {
   readonly callId: string;
@@ -24,6 +25,7 @@ export function questionCall(payload: Record<string, unknown>): QuestionCall | u
   if (payload["type"] === "function_call") {
     const name = payload["name"];
     if (name !== "request_user_input" && name !== "request_user_input_async") return undefined;
+    checkQuestionArguments(payload["arguments"], payload["call_id"]);
     const argumentsValue = jsonRecord(payload["arguments"]);
     return parsedCall(
       payload["call_id"],
@@ -49,6 +51,7 @@ function parsedCall(
   accepted: boolean,
   value: unknown,
 ): QuestionCall | undefined {
+  checkQuestionInput(value, typeof id === "string" ? id : "");
   if (typeof id !== "string" || !id) return undefined;
   const questions = parseQuestions(value, queued);
   return questions ? { callId: id, queued, accepted, questions } : undefined;

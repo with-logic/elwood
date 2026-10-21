@@ -124,3 +124,11 @@ flows retain their existing surfaces. Unknown question layouts remain available
 through the terminal view and do not receive guessed answer keys. Native behavior
 was characterized on Claude Code 2.1.305 and Codex 0.163.0; see
 [CLI behavior](cli-behavior.md#native-interactive-questions-2026-10-20) for evidence.
+
+Codex question automation is bounded to 256 pending native requests and 1 MiB
+of candidate metadata; each call is limited to 256 definitions and 1 MiB of
+input metadata. Replay protection retains at most 4,096 retired identities and
+1 MiB of key data. Overflow closes exposed requests as `unavailable` and disables
+question automation until a new session is created. You can continue with raw
+human input; ordinary input is held only while native question UI is visible.
+Unanswered requests have no invented expiry deadline.

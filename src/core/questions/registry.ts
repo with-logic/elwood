@@ -19,6 +19,7 @@ type Entry = {
 };
 export class QuestionRegistry {
   private readonly entries = new Map<string, Entry>();
+  private readonly byKey = new Map<string, Entry>();
   private readonly listeners = new Set<(event: ElwoodQuestionEvent) => void>();
   readonly agent: ElwoodAgentKind;
   private readonly sessionId: string;
@@ -35,7 +36,10 @@ export class QuestionRegistry {
     return this.entries.get(id)?.request;
   }
   find(key: string): ElwoodQuestionRequest | undefined {
-    return [...this.entries.values()].find((entry) => entry.key === key)?.request;
+    return this.byKey.get(key)?.request;
+  }
+  keyFor(id: string): string | undefined {
+    return this.entries.get(id)?.key;
   }
   publish(
     key: string,
@@ -43,7 +47,7 @@ export class QuestionRegistry {
     questions: readonly QuestionDefinition[],
   ): ElwoodQuestionRequest {
     const signature = JSON.stringify([delivery, questions]);
-    const existing = [...this.entries.values()].find((entry) => entry.key === key);
+    const existing = this.byKey.get(key);
     if (existing?.signature === signature) return existing.request;
     let failure: unknown;
     let failed = false;
@@ -71,7 +75,9 @@ export class QuestionRegistry {
         ),
       ),
     });
-    this.entries.set(request.id, { key, signature, request });
+    const entry = { key, signature, request };
+    this.entries.set(request.id, entry);
+    this.byKey.set(key, entry);
     try {
       this.emit({ elwoodSessionId: this.sessionId, agent: this.agent, phase: "raised", request });
     } catch (error) {
@@ -85,6 +91,7 @@ export class QuestionRegistry {
     const entry = this.entries.get(id);
     if (!entry) return;
     this.entries.delete(id);
+    this.byKey.delete(entry.key);
     this.emit({
       elwoodSessionId: this.sessionId,
       agent: this.agent,

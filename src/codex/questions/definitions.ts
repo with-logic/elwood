@@ -1,6 +1,7 @@
 /** Normalize native Codex question capabilities (PRD §7A.5, C-QUESTION-01). */
 import { isRecord } from "../../core/predicates.ts";
 import type { QuestionDefinition } from "../../core/questions/types.ts";
+import { checkQuestionInput } from "./limits.ts";
 
 export type NativeQuestion = {
   readonly nativeId: string;
@@ -15,6 +16,7 @@ export function parseQuestions(
   queued: boolean,
 ): readonly NativeQuestion[] | undefined {
   if (!Array.isArray(value) || value.length === 0) return undefined;
+  checkQuestionInput(value);
   const result: NativeQuestion[] = [];
   for (const [index, item] of value.entries()) {
     const question = parseQuestion(item, index, queued);

@@ -20,7 +20,7 @@ export class CodexQuestionAdapter implements QuestionAdapter {
     this.state = new CodexQuestionCandidates(registry);
   }
   observe(event: ElwoodActivityEvent): void {
-    if (this.state.observe(event)) {
+    if (this.state.observe(event) || this.state.candidates.size === 0) {
       this.focused = undefined;
       this.count = 0;
     }
@@ -48,6 +48,10 @@ export class CodexQuestionAdapter implements QuestionAdapter {
           this.state.publish(candidate);
       }
     }
+    if (this.state.candidates.size === 0) {
+      this.focused = undefined;
+      this.count = 0;
+    }
   }
   blocksInput(): boolean {
     return this.hold;
@@ -57,9 +61,8 @@ export class CodexQuestionAdapter implements QuestionAdapter {
     answers: readonly ValidatedQuestionAnswer[],
     io: QuestionIo,
   ): Promise<void> {
-    const candidate = [...this.state.candidates.values()].find(
-      (item) => this.registry.find(item.key)?.id === request.id,
-    );
+    const key = this.registry.keyFor(request.id);
+    const candidate = key === undefined ? undefined : this.state.candidates.get(key);
     if (!candidate) throw failedQuestion();
     const submitting = () => {
       candidate.submitting = !io.signal.aborted;

@@ -3,6 +3,7 @@ import type { ElwoodActivityEvent } from "../../core/activity/index.ts";
 import { isRecord } from "../../core/predicates.ts";
 import type { QuestionRegistry } from "../../core/questions/registry.ts";
 import type { QuestionCloseReason } from "../../core/questions/types.ts";
+import { QuestionBudget } from "./limits.ts";
 import {
   answeredQuestionIds,
   jsonRecord,
@@ -19,16 +20,19 @@ export type Candidate = {
   readonly questions: QuestionCall["questions"];
   accepted: boolean;
   submitting: boolean;
+  published: boolean;
+  readonly bytes: number;
 };
 export class CodexQuestionCandidates {
   readonly candidates = new Map<string, Candidate>();
-  private readonly retired = new Set<string>();
+  private readonly budget = new QuestionBudget();
+  private disabled = false;
   private readonly registry: QuestionRegistry;
   constructor(registry: QuestionRegistry) {
     this.registry = registry;
   }
   observe(event: ElwoodActivityEvent): boolean {
-    if (event.agent !== "codex" || event.source !== "transcript") return false;
+    if (this.disabled || event.agent !== "codex" || event.source !== "transcript") return false;
     const payload = payloadOf(event.raw);
     if (!payload) return false;
     if (
@@ -39,8 +43,13 @@ export class CodexQuestionCandidates {
       for (const key of [...this.candidates.keys()]) this.close(key, "unavailable");
       return true;
     }
-    const call = questionCall(payload);
-    if (call) this.add(call);
+    try {
+      const call = questionCall(payload);
+      if (call) this.add(call);
+    } catch {
+      this.disable();
+      return false;
+    }
     for (const key of answeredQuestionIds(payload)) this.close(key, "answered");
     if (payload["type"] === "function_call_output" && typeof payload["call_id"] === "string")
       this.output(payload["call_id"], payload["output"]);
@@ -59,12 +68,17 @@ export class CodexQuestionCandidates {
         }))
       : [{ key: call.callId, questions: call.questions }];
     for (const group of groups) {
-      if (this.retired.has(group.key)) continue;
+      if (this.budget.hasRetired(group.key)) continue;
       const existing = this.candidates.get(group.key);
       if (existing && JSON.stringify(existing.questions) === JSON.stringify(group.questions)) {
         existing.accepted ||= call.accepted;
         continue;
       }
+      const bytes = Buffer.byteLength(JSON.stringify([group.key, call.callId, group.questions]));
+      this.budget.replace(
+        this.candidates.size + (existing ? 0 : 1),
+        bytes - (existing?.bytes ?? 0),
+      );
       const previous = this.registry.find(group.key);
       if (previous) this.closeRequest(previous.id, "unavailable");
       this.candidates.set(group.key, {
@@ -73,10 +87,13 @@ export class CodexQuestionCandidates {
         queued: call.queued,
         accepted: call.accepted,
         submitting: false,
+        published: false,
+        bytes,
       });
     }
   }
   publish(candidate: Candidate): void {
+    if (candidate.published || this.disabled) return;
     try {
       this.registry.publish(
         candidate.key,
@@ -85,13 +102,32 @@ export class CodexQuestionCandidates {
       );
     } catch {
       /* A public observer must not prevent publishing the remaining native units. */
+    } finally {
+      candidate.published = this.registry.find(candidate.key) !== undefined;
     }
   }
   close(key: string, reason: QuestionCloseReason): void {
-    this.retired.add(key);
+    if (this.disabled) return;
+    try {
+      this.budget.retire(key);
+    } catch {
+      this.disable();
+      return;
+    }
+    this.budget.replace(this.candidates.size, -(this.candidates.get(key)?.bytes ?? 0));
     this.candidates.delete(key);
     const request = this.registry.find(key);
     if (request) this.closeRequest(request.id, reason);
+  }
+  private disable(): void {
+    this.disabled = true;
+    const keys = [...this.candidates.keys()];
+    this.candidates.clear();
+    this.budget.clear();
+    for (const key of keys) {
+      const request = this.registry.find(key);
+      if (request) this.closeRequest(request.id, "unavailable");
+    }
   }
   private closeRequest(id: string, reason: QuestionCloseReason): void {
     try {

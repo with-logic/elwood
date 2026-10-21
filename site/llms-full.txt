@@ -783,6 +783,8 @@ Pass `answerQuestions()` the request ID and one complete batch of `ElwoodQuestio
 
 Answering uses a dedicated input lane while the original turn remains open. Pending questions hold ordinary prompts and commands. Invalid or stale answers reject before typing, and an answer call resolves only after native acceptance. Human keyboard intervention revokes automation. Unknown layouts remain visible through the terminal and receive no guessed answer keys.
 
+Codex automation retains at most 256 pending native requests and 1 MiB of candidate metadata; each call is limited to 256 question definitions and 1 MiB of input metadata. Replay protection retains at most 4,096 retired identities and 1 MiB of key data. Overflow closes exposed requests as `unavailable` and disables question automation for the rest of that session. Raw human control remains available; ordinary input resumes when the native question surface clears. These limits do not add an expiry deadline.
+
 Requests are live-only and are not added to Elwood's persisted state. Existing raw hooks and transcripts can still contain answers. See the [complete question contract](https://github.com/with-logic/elwood/blob/main/docs/questions.md) for errors, native differences and consumer examples.
 
 ## Errors

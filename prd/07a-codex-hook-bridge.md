@@ -145,3 +145,17 @@ live turn completion/interruption/failure also retires remaining requests. Badge
 redraws and countdowns do not invent an expiry deadline. Availability is live-only
 and independent of whether Codex continues working. A blocking modal contributes
 the existing blocked state; the queued editor does not manufacture a turn boundary.
+
+Question automation retains at most 256 pending native acceptance units and
+1 MiB of aggregate UTF-8 candidate metadata, including native identities and
+serialized question definitions. Each individual call is also limited to 256
+question definitions and 1 MiB of UTF-8 input metadata before normalization.
+Retired native identities are retained for replay suppression up to 4,096 keys
+and 1 MiB of UTF-8 key data. Exceeding any limit closes exposed requests as
+`unavailable`, clears retained candidate/identity state, and disables question
+automation for the remainder of that session; it never evicts a tombstone and
+then republishes an old request. Raw human input remains available. Ordinary
+input is held only while a native question surface is visible and resumes after
+positive native clearance, as in the normal question path. Overflow does not
+invent an answer, expiry deadline, or turn boundary. Unchanged native redraws
+must not republish unchanged candidates or repeatedly copy the request registry.
