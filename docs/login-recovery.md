@@ -13,6 +13,30 @@ surfaces this so a session never wedges silently:
   matching `warning` activity) carrying `recoveryCommand: "/login"`, and leaves
   the session alive so you can recover without restarting.
 
+## Advance renewal notices
+
+Claude can show `Your login expires in 3 days · run /login to renew` while the
+session is still usable. Elwood exposes this separately from `login_expired`:
+
+```ts
+session.on("warning", (warning) => {
+  if (warning.code === "login_expiring") {
+    // Notify a human or schedule renewal according to your application's policy.
+    showRenewalNotice(warning.expiresInDays, warning.recoveryCommand);
+  }
+});
+```
+
+Subscribe immediately after `startClaude` or `resumeClaude` returns to receive
+startup observations. The same payload appears in `activity` with
+`kind: "warning"`, `label: "login_expiring"`, and the typed warning in `raw`.
+The CLI-reported `expiresInDays` is a duration, not an exact expiry timestamp.
+Each distinct countdown value emits once per live session. Warnings are never
+persisted or replayed to later subscribers. Native welcome banners and empty
+composer footers are recognized; arbitrary transcript text is ignored. Elwood
+does not change status or initiate login. A consumer can offer the existing
+`session.login()` flow when the human is ready.
+
 ## Driving `/login`
 
 `ClaudeSession.login(options)` drives the interactive `/login` flow. The

@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Expose Claude's advance login-renewal notices as `login_expiring` warnings and activities with `expiresInDays` and `/login`, including startup and resume, without interrupting the session.
+
 - Report a submission-specific `wait_timeout` when raw input replaces ergonomic input awaiting empty-composer confirmation, preserving model-picker diagnostics for picker operations.
 - Codex recovery now withholds retry Enter and empty-input acknowledgement when partial native approval rows remain above a retained composer.
 - Keep ergonomic response collection behind selected loop and persona completion; bind Codex transcript content and Stop completeness to the native acceptance of the caller's own submitted turn, including headless CLI sessions.

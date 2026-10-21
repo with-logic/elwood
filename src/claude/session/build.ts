@@ -3,7 +3,7 @@ import { defaultTerminalSize } from "../../core/defaults.ts";
 import { causeDetails, elwoodError } from "../../core/errors.ts";
 import { emitSettledStartupOutcomes } from "../../core/startup/write.ts";
 import { TerminalReplayBuffer } from "../../core/terminal-replay.ts";
-import type { ClaudeEventMap, StartClaudeOptions } from "../../core/types.ts";
+import type { ClaudeEventMap } from "../../core/types.ts";
 import { TypedEmitter } from "../../events/emitter.ts";
 import type { PtyExit } from "../../pty/types.ts";
 import { loadRuntimeLoopDefinitions as loadLoops } from "../../runtime/loop-restore.ts";
@@ -14,11 +14,11 @@ import { bindTurnSubmission } from "../../runtime/session/turn-submission.ts";
 import { assertStartupThenRelease, createStartupBuffer } from "../../runtime/startup/buffer.ts";
 import { cleanupStartupResources, guardStartupRegion } from "../../runtime/startup/cleanup.ts";
 import { secureMkdir } from "../../state/files.ts";
-import type { SessionRuntime } from "../../state/runtime-paths.ts";
-import { type SessionRecord, writeSessionRecord } from "../../state/store.ts";
+import { writeSessionRecord } from "../../state/store.ts";
 import { currentRenderedFrame, renderedSnapshot } from "../../terminal/cursor.ts";
 import { attachPtyTerminal } from "../../terminal/headless.ts";
-import { type ClaudePreflightWarning, preflightEvent } from "../preflight.ts";
+import { LoginExpiringWatcher } from "../login/renewal.ts";
+import { preflightEvent } from "../preflight.ts";
 import { liveClaudeClearance } from "../screen-table.ts";
 import { ClaudeStartupPromptResponder, guardedClaudeAutomationWrite } from "../startup-prompts.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
@@ -26,6 +26,7 @@ import { currentClaudeHookBridgeFactory } from "./bridge.ts";
 import { buildClaudeHookErrorHandler, buildClaudeHookHandler } from "./hook-handler.ts";
 import { ClaudeSessionImpl } from "./instance.ts";
 import {
+  type BuildClaudeSessionInput,
   buildClaudeObservers,
   handleClaudeExit,
   registerInitialHooks,
@@ -34,15 +35,6 @@ import {
 } from "./runtime.ts";
 import { createClaudeStartupWarningGate } from "./startup-warnings.ts";
 import { createTranscriptWatcher, observeTranscript } from "./transcript.ts";
-export type BuildClaudeSessionInput = {
-  readonly record: SessionRecord;
-  readonly stateDir: string;
-  readonly runtime: SessionRuntime;
-  readonly options: StartClaudeOptions;
-  readonly resumed: boolean;
-  readonly activate: () => void;
-  readonly preflightWarning: ClaudePreflightWarning | undefined;
-};
 export async function buildClaudeSession(
   input: BuildClaudeSessionInput,
 ): Promise<ClaudeSessionImpl> {
@@ -122,12 +114,14 @@ export async function buildClaudeSession(
     liveClaudeClearance(() => terminal),
   );
   let latestRenderedText = "";
+  const loginExpiring = new LoginExpiringWatcher();
   const terminal = attachPtyTerminal(
     startupSize,
     pty,
     (data, renderedTerminal) => {
       terminalReplay.push(data);
-      latestRenderedText = renderedSnapshot(renderedTerminal).text;
+      const snapshot = renderedSnapshot(renderedTerminal);
+      latestRenderedText = snapshot.text;
       const frame = { text: latestRenderedText, title: renderedTerminal.title };
       const send = (input: string) =>
         withAutomatedInput(renderedTerminal, () => renderedTerminal.sendInput(input));
@@ -145,6 +139,9 @@ export async function buildClaudeSession(
         emitWarnings: (warnings) => warnGate.emitWarnings(warnings),
       });
       frameObserver.observe(frame);
+      warnGate.emitWarnings(
+        loginExpiring.observeFrame(snapshot, record.elwoodSessionId, renderedTerminal),
+      );
       session?.noteLoginExpiry(frame.text);
       emitter.emit("terminal:data", { elwoodSessionId: record.elwoodSessionId, data });
     },
