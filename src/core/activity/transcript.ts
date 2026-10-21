@@ -11,10 +11,22 @@ import type { ElwoodActivityEvent } from "./index.ts";
 import * as meta from "./meta.ts";
 
 export function activityFromCodexTranscript(event: CodexTranscriptEvent): ElwoodActivityEvent {
-  return {
+  const base = {
     elwoodSessionId: event.elwoodSessionId,
     agent: "codex",
     source: "transcript",
+  } as const;
+  if (event.summary.kind === "commentary")
+    return {
+      ...base,
+      kind: transcriptActivityKind(event.summary.kind),
+      label: event.summary.label,
+      text: event.summary.text,
+      ...meta.transcriptActivityMeta(event),
+      raw: event.item,
+    };
+  return {
+    ...base,
     kind: transcriptActivityKind(event.summary.kind),
     label: event.summary.label,
     ...(event.summary.text === undefined ? {} : { text: event.summary.text }),
@@ -32,7 +44,9 @@ export function activityFromCodexTranscript(event: CodexTranscriptEvent): Elwood
  * `tool_result` its correlating `toolUseId`. A future summary variant that omits
  * one fails to typecheck here rather than silently producing a field-less event.
  */
-export function activityFromClaudeTranscript(event: ClaudeTranscriptEvent): ElwoodActivityEvent {
+export function activityFromClaudeTranscript(
+  event: ClaudeTranscriptEvent,
+): ElwoodActivityEvent & ClaudeActivityFields {
   const base = {
     elwoodSessionId: event.elwoodSessionId,
     agent: "claude",
@@ -44,27 +58,27 @@ export function activityFromClaudeTranscript(event: ClaudeTranscriptEvent): Elwo
   return { ...base, ...claudeActivityFields(event.summary) };
 }
 
-// The per-variant fields, typed off the summary discriminant so each guaranteed
-// field is REQUIRED at construction (a widened optional cannot satisfy these).
-function claudeActivityFields(
-  summary: ClaudeTranscriptSummary,
-): Pick<
-  ElwoodActivityEvent,
-  "kind" | "text" | "toolName" | "toolUseId" | "toolInput" | "toolOutput"
-> {
-  if (summary.kind === "assistant_message") return { kind: summary.kind, text: summary.text };
-  if (summary.kind === "reasoning") return { kind: summary.kind, text: summary.text };
-  if (summary.kind === "tool_call") {
-    return {
-      kind: summary.kind,
-      toolName: summary.toolName,
-      ...(summary.toolUseId === undefined ? {} : { toolUseId: summary.toolUseId }),
-      ...(summary.toolInput === undefined ? {} : { toolInput: summary.toolInput }),
-    };
+// Distribute over summaries so required payloads remain required in each variant.
+type ClaudeActivityFields<Summary extends ClaudeTranscriptSummary = ClaudeTranscriptSummary> =
+  Summary extends ClaudeTranscriptSummary ? Omit<Summary, "label"> : never;
+
+function claudeActivityFields(summary: ClaudeTranscriptSummary): ClaudeActivityFields {
+  switch (summary.kind) {
+    case "assistant_message":
+    case "reasoning":
+      return { kind: summary.kind, text: summary.text };
+    case "tool_call":
+      return {
+        kind: summary.kind,
+        toolName: summary.toolName,
+        ...(summary.toolUseId === undefined ? {} : { toolUseId: summary.toolUseId }),
+        ...(summary.toolInput === undefined ? {} : { toolInput: summary.toolInput }),
+      };
+    case "tool_result":
+      return {
+        kind: summary.kind,
+        toolUseId: summary.toolUseId,
+        ...(summary.toolOutput === undefined ? {} : { toolOutput: summary.toolOutput }),
+      };
   }
-  return {
-    kind: summary.kind,
-    toolUseId: summary.toolUseId,
-    ...(summary.toolOutput === undefined ? {} : { toolOutput: summary.toolOutput }),
-  };
 }

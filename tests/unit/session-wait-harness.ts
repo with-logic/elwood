@@ -36,8 +36,9 @@ export function fakeSession(initial: ElwoodSessionStatus = "running") {
 }
 
 /** A terminal-sourced activity of one kind, for wait-predicate matching. */
-export const activity = (kind: ElwoodActivityKind): ElwoodActivityEvent =>
-  anyActivity({ source: "terminal", kind, label: kind });
+export const activity = (
+  kind: Exclude<ElwoodActivityKind, "assistant_progress">,
+): ElwoodActivityEvent => anyActivity({ source: "terminal", kind, label: kind });
 
 /** Awaits a rejected wait and returns its Elwood error for code assertions. */
 export async function rejection(promise: Promise<unknown>): Promise<ElwoodError> {

@@ -29,8 +29,10 @@ const transcriptActivityKinds = {
   reasoning: "reasoning",
   web_search: "web_search",
   other: "other",
-} satisfies Record<CodexTranscriptSummary["kind"], ElwoodActivityKind>;
+} as const satisfies Record<CodexTranscriptSummary["kind"], ElwoodActivityKind>;
 
-export function transcriptActivityKind(kind: CodexTranscriptSummary["kind"]): ElwoodActivityKind {
+export function transcriptActivityKind<Kind extends CodexTranscriptSummary["kind"]>(
+  kind: Kind,
+): (typeof transcriptActivityKinds)[Kind] {
   return transcriptActivityKinds[kind];
 }

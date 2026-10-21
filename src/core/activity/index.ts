@@ -30,11 +30,10 @@ export type ElwoodActivityKind =
   | "hook_result"
   | "hook_error";
 
-export type ElwoodActivityEvent = {
+type ActivityFields = {
   readonly elwoodSessionId: string;
   readonly agent: ElwoodAgentKind;
   readonly source: ElwoodActivitySource;
-  readonly kind: ElwoodActivityKind;
   readonly label: string;
   readonly text?: string;
   readonly promptGeneration?: number;
@@ -50,6 +49,19 @@ export type ElwoodActivityEvent = {
   readonly transcriptPath?: string;
   readonly raw?: unknown;
 };
+
+/** Committed Codex progress always carries readable text and its transcript identity. */
+export type ElwoodActivityEvent = ActivityFields &
+  (
+    | { readonly kind: Exclude<ElwoodActivityKind, "assistant_progress"> }
+    | {
+        readonly kind: "assistant_progress";
+        readonly agent: "codex";
+        readonly source: "transcript";
+        readonly label: "assistant";
+        readonly text: string;
+      }
+  );
 
 export {
   activityFromStatus,
@@ -157,7 +169,7 @@ export {
 
 function withText(
   base: Omit<ElwoodActivityEvent, "kind" | "label" | "text">,
-  kind: ElwoodActivityKind,
+  kind: "user_message" | "notification",
   label: string,
   text: string,
 ): ElwoodActivityEvent {

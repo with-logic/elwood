@@ -113,13 +113,10 @@ export function toolOutputText(output: unknown): string | undefined {
 function message(payload: Item): CodexTranscriptSummary {
   const role = stringValue(payload["role"]) ?? "message";
   const value = assistantMessageText(payload, role);
-  return value === undefined
-    ? { kind: "other", label: role }
-    : {
-        kind: payload["phase"] === "commentary" ? "commentary" : "message",
-        label: role,
-        text: value,
-      };
+  if (value === undefined) return { kind: "other", label: role };
+  return payload["phase"] === "commentary"
+    ? { kind: "commentary", label: "assistant", text: value }
+    : { kind: "message", label: role, text: value };
 }
 
 function assistantMessageText(payload: Item, role: string): string | undefined {

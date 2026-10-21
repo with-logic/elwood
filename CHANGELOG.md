@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Enforce the existing required payloads in transcript activity types: Codex progress carries text and its Codex/transcript identity, and Claude transcript projections retain their per-kind required fields.
+
 - Expose committed Codex commentary as readable `assistant_progress` activity, distinct from final answers; suppress non-final legacy mirrors so progress neither duplicates nor completes replies.
 
 - Expose Claude's advance login-renewal notices as `login_expiring` warnings and activities with `expiresInDays` and `/login`, including startup and resume, without interrupting the session.
