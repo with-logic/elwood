@@ -17,7 +17,6 @@ import { startClaude } from "@with-logic/elwood"; // deprecated; prefer `new Cla
 
 const claude = await startClaude({
   cwd: "/path/to/project",
-  disallowedTools: ["AskUserQuestion"],
   autotrust: true,
   persona: "You are a terse reviewer. Prefer diffs over prose.",
   hooks: {
@@ -95,6 +94,8 @@ interface ElwoodAgentSession {
   compact(options?: { readonly timeoutMs?: number }): Promise<void>;
   listModels(options?: { readonly timeoutMs?: number }): Promise<readonly AgentModelOption[]>;
   setModel(id: string, options?: { readonly timeoutMs?: number }): Promise<void>;
+  listQuestions(): Promise<readonly ElwoodQuestionRequest[]>;
+  answerQuestions(requestId: string, answers: readonly ElwoodQuestionAnswer[], options?: ElwoodQuestionAnswerOptions): Promise<void>;
   createLoop(request: ElwoodLoopRequest): Promise<ElwoodLoopSnapshot>;
   listLoops(): Promise<readonly ElwoodLoopSnapshot[]>;
   cancelLoop(loopId: string): Promise<void>;
@@ -105,6 +106,12 @@ interface ElwoodAgentSession {
 ```
 
 ## Sending input
+
+Native agent questions have a separate control path: subscribe to `question`
+events, recover pending requests with `listQuestions()`, and submit a complete
+request with `answerQuestions()`. These controls work while an ergonomic turn is
+waiting and do not create another user turn. See [questions.md](questions.md) for
+the event, capability, validation and input-ownership contract.
 
 `sendMessage` is the adapter-neutral chat-loop operation. If the session is
 ready it writes through the PTY immediately. If the session is alive but busy,

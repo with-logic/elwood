@@ -13,6 +13,11 @@ import type {
 import type { SendOptions } from "../../src/core/images/types.ts";
 import type { ElwoodLoopRequest, ElwoodLoopSnapshot } from "../../src/core/loops/types.ts";
 import type { AgentModelOption } from "../../src/core/models/rows.ts";
+import type {
+  ElwoodQuestionAnswer,
+  ElwoodQuestionAnswerOptions,
+  ElwoodQuestionRequest,
+} from "../../src/core/questions/types.ts";
 import { SessionBase } from "../../src/core/simple/session.ts";
 import { defaultBoundarySignal } from "../../src/core/simple/turn.ts";
 import type {
@@ -115,6 +120,17 @@ export class FakeUnderlying implements ElwoodAgentSession {
   waitForActivity(match: ActivityMatch, timeoutMs?: number): Promise<ElwoodActivityEvent> {
     void this.record("waitForActivity", timeoutMs === undefined ? [match] : [match, timeoutMs]);
     return Promise.resolve(activity({ text: "x" }));
+  }
+  listQuestions(): Promise<readonly ElwoodQuestionRequest[]> {
+    void this.record("listQuestions", []);
+    return Promise.resolve([]);
+  }
+  answerQuestions(
+    id: string,
+    answers: readonly ElwoodQuestionAnswer[],
+    options?: ElwoodQuestionAnswerOptions,
+  ): Promise<void> {
+    return this.record("answerQuestions", [id, answers, options]);
   }
   createLoop(request: ElwoodLoopRequest): Promise<ElwoodLoopSnapshot> {
     void this.record("createLoop", [request]);

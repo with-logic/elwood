@@ -15,6 +15,7 @@ import {
 } from "../../core/activity/index.ts";
 import type { CompactEmitter } from "../../core/compact.ts";
 import type { ControlQueue } from "../../core/control-queue/index.ts";
+import type { ElwoodQuestionEvent } from "../../core/questions/types.ts";
 import type { TurnBoundaryHook } from "../../core/simple/turn-types.ts";
 import { outsideStopInput } from "../../core/stop-input.ts";
 import type { ElwoodSessionStatus, Unsubscribe } from "../../core/types.ts";
@@ -28,6 +29,7 @@ export type SessionStatusEmitter = CompactEmitter &
   LoopEventEmitter & {
     emit(event: "status", payload: StatusEvent): void;
     emit(event: "activity", payload: ElwoodActivityEvent): void;
+    emit(event: "question", payload: ElwoodQuestionEvent): void;
     on(event: "activity", handler: (event: ElwoodActivityEvent) => void): Unsubscribe;
     on(event: "hook", handler: (event: TurnBoundaryHook) => void): Unsubscribe;
     on(event: "terminal:data", handler: () => void): Unsubscribe;

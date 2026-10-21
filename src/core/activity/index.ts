@@ -6,6 +6,7 @@
 import type { ClaudeHookEvent } from "../../claude/hooks/index.ts";
 import type { CodexHookEvent } from "../../codex/hooks/index.ts";
 import { hookResultLabel } from "../hook-result.ts";
+import type { ElwoodQuestionEvent } from "../questions/types.ts";
 import type { ElwoodSessionStatus, ElwoodWarningEvent, HookErrorEvent } from "../types.ts";
 import * as meta from "./meta.ts";
 
@@ -17,6 +18,7 @@ export type ElwoodActivityKind =
   | "user_message"
   | "assistant_message"
   | "assistant_progress"
+  | "question"
   | "reasoning"
   | "tool_call"
   | "tool_result"
@@ -37,6 +39,7 @@ export type ElwoodActivityEvent = {
   readonly kind: ElwoodActivityKind;
   readonly label: string;
   readonly text?: string;
+  readonly question?: ElwoodQuestionEvent;
   readonly promptGeneration?: number;
   readonly hookEventName?: string;
   readonly turnId?: string;

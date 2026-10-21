@@ -54,3 +54,5 @@ Startup errors MUST NOT swallow their underlying cause: `pty_start_failed`,
 message in `details.cause`, plus `errno`, `syscall`, and `path` fields when
 the underlying error exposes them, so consumers can diagnose environment
 failures without instrumenting Elwood internals.
+
+Native question controls add `question_not_found` (no current request with this live ID), `invalid_question_answer` (invalid complete answer batch or timeout option), and `question_answer_failed` (busy, revoked, unsupported or unacknowledged native input). Messages and details do not echo answer text.

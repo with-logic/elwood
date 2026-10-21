@@ -35,24 +35,25 @@ function credentials(): string {
   return result.stdout.trim();
 }
 
-function parentFingerprint(): string {
+function parentFingerprint(): Readonly<Record<string, string>> {
   const paths = [".claude.json", ".claude/settings.json", ".claude/hooks.json"];
-  return createHash("sha256")
-    .update(credentials())
-    .update(
-      paths
-        .map((name) => {
-          const path = join(homedir(), name);
-          return existsSync(path) ? readFileSync(path).toString("base64") : "absent";
-        })
-        .join(":"),
-    )
-    .digest("hex");
+  return Object.fromEntries([
+    ["keychain", createHash("sha256").update(credentials()).digest("hex")],
+    ...paths.map((name) => {
+      const path = join(homedir(), name);
+      return [
+        name,
+        existsSync(path) ? createHash("sha256").update(readFileSync(path)).digest("hex") : "absent",
+      ];
+    }),
+  ]);
 }
 
 export async function nativeClaudeQuestionSandbox() {
   const environment = { ...process.env };
   const fingerprint = parentFingerprint();
+  const globalPath = join(homedir(), ".claude.json");
+  const globalBefore = JSON.parse(readFileSync(globalPath, "utf8")) as Record<string, unknown>;
   const root = realpathSync(mkdtempSync(join(tmpdir(), "elwood_native_claude_questions-")));
   const home = join(root, "home");
   const cwd = join(root, "project");
@@ -75,21 +76,34 @@ export async function nativeClaudeQuestionSandbox() {
       }),
       { mode: 0o600 },
     );
-    const version = await runProbe(binary, ["--version"]);
+    const version = await runProbe("env", [
+      `HOME=${home}`,
+      `CLAUDE_CONFIG_DIR=${home}`,
+      `ZDOTDIR=${home}`,
+      binary,
+      "--version",
+    ]);
     if (version.stdout.trim() !== "2.1.305 (Claude Code)")
       throw new Error("Pinned Claude question version unavailable");
     const pin = (args: readonly string[]) =>
       args.map((arg, index) =>
         index === args.length - 1
-          ? `export CLAUDE_CONFIG_DIR=${shellQuote(home)} ZDOTDIR=${shellQuote(home)} PATH=${shellQuote(bin)}:"$PATH"; unset CLAUDECODE ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL; ${arg}`
+          ? `export HOME=${shellQuote(home)} CLAUDE_CONFIG_DIR=${shellQuote(home)} ZDOTDIR=${shellQuote(home)} PATH=${shellQuote(bin)}:"$PATH"; unset CLAUDECODE ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL; ${arg}`
           : arg,
       );
     setCommandRunnerForTests((command, args) =>
-      runProbe("env", [`CLAUDE_CONFIG_DIR=${home}`, `ZDOTDIR=${home}`, command, ...pin(args)]),
+      runProbe("env", [
+        `HOME=${home}`,
+        `CLAUDE_CONFIG_DIR=${home}`,
+        `ZDOTDIR=${home}`,
+        command,
+        ...pin(args),
+      ]),
     );
     setPtyFactoryForTests((options) => {
       const env: Record<string, string> = {
         ...options.env,
+        HOME: home,
         CLAUDE_CONFIG_DIR: home,
         ZDOTDIR: home,
       };
@@ -120,8 +134,22 @@ export async function nativeClaudeQuestionSandbox() {
         resetRuntimeSeamsForTests();
         rmSync(root, { recursive: true, force: true });
         assertParentEnvironmentUnchanged(environment, process.env);
-        if (fingerprint !== parentFingerprint())
-          throw new Error("Parent Claude configuration changed");
+        const after = parentFingerprint();
+        const changed = Object.keys(fingerprint).filter(
+          (name) => fingerprint[name] !== after[name],
+        );
+        if (changed.length) {
+          const globalAfter = JSON.parse(readFileSync(globalPath, "utf8")) as Record<
+            string,
+            unknown
+          >;
+          const keys = Object.keys({ ...globalBefore, ...globalAfter }).filter(
+            (key) => JSON.stringify(globalBefore[key]) !== JSON.stringify(globalAfter[key]),
+          );
+          throw new Error(
+            `Parent Claude configuration changed: ${changed.join(", ")} (fields: ${keys.join(", ")})`,
+          );
+        }
       },
     };
   } catch (error) {

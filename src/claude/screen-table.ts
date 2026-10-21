@@ -9,7 +9,9 @@ import { withTrustBlockingRules } from "../core/trust/blocking.ts";
 import { nativeComposerClearance, type TrustClearance } from "../core/trust/clearance.ts";
 import { currentRenderedFrame, settledCursorVisible } from "../terminal/cursor.ts";
 import type { ElwoodTerminal } from "../terminal/headless.ts";
+import { claudeManualModeFooter } from "./composer/footer.ts";
 import { isClaudeSwitchConfirmation } from "./model-switch-confirmation.ts";
+import { claudeQuestionCandidate } from "./questions/screen.ts";
 
 const claudeWorkingTitle = /^[⠀-⣿◐]\s/;
 const claudeComposerInputColumn = 2; // zero-based, after the two-cell "❯ " prefix
@@ -26,6 +28,7 @@ export const claudeTrustClearance: TrustClearance = nativeComposerClearance(
   claudeComposerRow,
   (frame) =>
     (/Claude Code v[\d.]+/.test(frame) ||
+      claudeManualModeFooter.test(frame) ||
       /^\s*-- INSERT -- ⏵⏵ (?:don['’]t ask|auto mode) on \(shift\+tab to cycle\) · ← for agents\s*$/m.test(
         frame,
       )) &&
@@ -78,6 +81,11 @@ export const claudeScreenFactTable: ScreenFactTable = {
   agent: "claude",
   verifiedAgainst: "claude 2.1.258",
   rules: [
+    {
+      id: "claude-question-dialog",
+      fact: "blocking_prompt_visible",
+      match: claudeQuestionCandidate,
+    },
     { id: "claude-composer-marker", fact: "composer_visible", all: [/^\s*❯/m] },
     { id: "claude-working-footer", fact: "working_visible", all: [/esc to interrupt/i] },
     {

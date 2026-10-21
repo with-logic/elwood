@@ -33,7 +33,7 @@ function parentConfiguration(): string {
     .join(":");
 }
 
-export async function nativeCodexQuestionSandbox() {
+export async function nativeCodexQuestionFiles() {
   const environment = { ...process.env };
   const configuration = parentConfiguration();
   const root = realpathSync(mkdtempSync(join(tmpdir(), "elwood_native_questions-")));
@@ -55,9 +55,37 @@ export async function nativeCodexQuestionSandbox() {
       `check_for_update_on_startup = false\n[projects.${JSON.stringify(cwd)}]\ntrust_level = "trusted"\n[tui]\nstatus_line = ["model-with-reasoning"]\n`,
       { mode: 0o600 },
     );
-    const version = await runProbe(binary, ["--version"]);
+    const version = await runProbe("env", [
+      `CODEX_HOME=${home}`,
+      `ZDOTDIR=${home}`,
+      binary,
+      "--version",
+    ]);
     if (version.stdout.trim() !== questionCodexVersion)
       throw new Error("Pinned Codex question version unavailable");
+    return {
+      root,
+      home,
+      cwd,
+      binary,
+      dispose() {
+        rmSync(root, { recursive: true, force: true });
+        if (existsSync(root)) throw new Error("Private Codex question sandbox remains");
+        assertParentEnvironmentUnchanged(environment, process.env);
+        if (configuration !== parentConfiguration())
+          throw new Error("Parent Codex configuration changed");
+      },
+    };
+  } catch (error) {
+    rmSync(root, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+export async function nativeCodexQuestionSandbox() {
+  const files = await nativeCodexQuestionFiles();
+  const { binary, cwd, home } = files;
+  try {
     const pty = nodePtyFactory({
       command: binary,
       args: [
@@ -72,7 +100,7 @@ export async function nativeCodexQuestionSandbox() {
         "--no-alt-screen",
       ],
       cwd,
-      env: { ...environment, CODEX_HOME: home, ZDOTDIR: home },
+      env: { ...process.env, CODEX_HOME: home, ZDOTDIR: home },
       size: { cols: 140, rows: 45 },
     });
     let exited = false;
@@ -84,9 +112,7 @@ export async function nativeCodexQuestionSandbox() {
     });
     const terminal = attachPtyTerminal({ cols: 140, rows: 45 }, pty, () => {});
     return {
-      root,
-      home,
-      cwd,
+      ...files,
       pty,
       terminal,
       async dispose() {
@@ -98,16 +124,12 @@ export async function nativeCodexQuestionSandbox() {
           }
         } finally {
           terminal.dispose();
-          rmSync(root, { recursive: true, force: true });
+          files.dispose();
         }
-        if (existsSync(root)) throw new Error("Private Codex question sandbox remains");
-        assertParentEnvironmentUnchanged(environment, process.env);
-        if (configuration !== parentConfiguration())
-          throw new Error("Parent Codex configuration changed");
       },
     };
   } catch (error) {
-    rmSync(root, { recursive: true, force: true });
+    files.dispose();
     throw error;
   }
 }

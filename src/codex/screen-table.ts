@@ -7,6 +7,7 @@
 import type { ScreenFactRule, ScreenFactTable } from "../core/screen-facts.ts";
 import { withTrustBlockingRules } from "../core/trust/blocking.ts";
 import type { TrustClearance } from "../core/trust/clearance.ts";
+import { blockingQuestionVisible } from "./questions/frame.ts";
 import { codexComposerClearance } from "./screen/clearance.ts";
 import {
   CodexRetainedComposerHold,
@@ -56,6 +57,11 @@ function codexScreenFactRules(updatePromptVisible: (frame: string) => boolean): 
       all: [/Would you like to|Allow command\?/i, /Press enter to confirm or esc to cancel/i],
     },
     { id: "codex-update-prompt", fact: "blocking_prompt_visible", match: updatePromptVisible },
+    {
+      id: "codex-native-question",
+      fact: "blocking_prompt_visible",
+      match: blockingQuestionVisible,
+    },
   ];
 }
 

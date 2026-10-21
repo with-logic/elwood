@@ -14,6 +14,7 @@ import type {
 import type { CodexHookEventName } from "../codex/hooks/names.ts";
 import type { ElwoodActivityEvent } from "./activity/index.ts";
 import type { ElwoodLoopEvent } from "./loops/types.ts";
+import type { ElwoodQuestionEvent } from "./questions/types.ts";
 import type { ClaudeReasoningEffort } from "./reasoning-effort.ts";
 import type { ElwoodSessionStatus } from "./status-categories.ts";
 import type { ElwoodWarningEvent } from "./warnings/index.ts";
@@ -130,6 +131,7 @@ export type ElwoodCommonEventMap = {
   readonly activity: ElwoodActivityEvent;
   readonly warning: ElwoodWarningEvent;
   readonly loop: ElwoodLoopEvent;
+  readonly question: ElwoodQuestionEvent;
   readonly hookError: HookErrorEvent;
 };
 

@@ -23,6 +23,7 @@ import { restoreCodexConfig, snapshotCodexConfig } from "../config/restore.ts";
 import { runCodexModelSwitch } from "../config/transaction.ts";
 import { attachCodexImages } from "../images/attach.ts";
 import { codexModelPicker } from "../model-picker.ts";
+import { CodexQuestionAdapter } from "../questions/adapter.ts";
 import { liveCodexClearance } from "../screen/live-clearance.ts";
 import { createCodexRecoveryComposer } from "../screen/staged-input.ts";
 import type { CodexTranscriptWatcher } from "../transcript/index.ts";
@@ -73,6 +74,7 @@ export class CodexSessionImpl extends AgentSessionBase implements CodexSessionAp
       loopDefinitions,
     );
     registerNativeTurnReader(this, codexTurnIdentity);
+    this.configureQuestions((registry) => new CodexQuestionAdapter(registry));
     this.bridge = bridge;
     this.emitter = emitter;
     this.transcriptWatcher = transcriptWatcher;

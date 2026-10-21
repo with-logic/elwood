@@ -1250,6 +1250,13 @@ bracketed paste was accepted with its newline intact. These captures used privat
 configuration/authentication copies and synthetic prompts; see
 `tests/fixtures/claude-2.1.305/questions/`.
 
+The native checkbox Submit highlight can have a hidden terminal cursor parked at
+column 0 on the viewport's bottom blank row. A multiline Other answer puts the
+visible cursor on its indented continuation row. Neither cursor sits on the
+highlighted option glyph. Exact captured snapshots now accompany the text stages.
+After acceptance, the native `⏸ manual mode on · ? for shortcuts` footer proves
+an empty fenced composer even when earlier user-prompt carets remain in history.
+
 Codex 0.163.0 has two different acceptance units. Plan-mode
 `request_user_input` groups questions in a modal and returns one function output
 with all answers. Every question needs nonempty options; a free-text-only tool
@@ -1268,9 +1275,31 @@ question index. Ctrl+] locally skips the focused async question without an answe
 record; Esc from its editor can merely collapse it. Do not treat every Esc as a
 turn interruption.
 
+Queued editors after the first use `⇧→ prev question`; only the first uses
+`⇧→ main prompt`. Keep this distinction in captured and scripted navigation
+frames. If a local skip and Esc collapse coalesce into one output render, the
+smaller badge does not identify the removed question. Preserve the prior focused
+editor count until a matching remaining editor confirms that removal.
+
+The queued choice list hides its cursor. A working-status redraw can leave the
+stored cursor at the end of the working row above that panel, including after
+answering a later free-text question first. Accept that captured position only
+with completed hidden-cursor evidence, the native working marker, a blank gap
+before the question panel, and the usual exact question/option/footer checks.
+
 A real bounded sleep kept the async badge visible past 37 and 41 seconds; it
 cleared when the turn completed at 45 seconds. The native expires_at timestamp is
 not evidence of removal at 30 seconds. Do not invent that expiry. The copied
 Codex executable also needs its sibling codex-code-mode-host for exec tools.
 Sanitized native records and terminal stages are under
 `tests/fixtures/codex-0.163.0/questions/`.
+
+Codex 0.163.0 also pulses its working marker between `•` and `◦`. Both glyphs
+with the native elapsed-time and interrupt hint mean working; the alternate
+glyph must not expose a false ready transition while queued questions are live.
+
+After a grouped Plan-mode answer, Codex's empty composer retains a right-aligned
+`Plan mode (⇧tab to cycle)` hint on the model/effort footer. A private public-API
+trace received the matching Stop and final reply while ready, but rejected that
+footer as empty-input evidence, leaving the ergonomic call waiting. Recognize
+the exact native suffix while retaining the composer and turn-identity checks.

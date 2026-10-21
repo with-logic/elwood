@@ -6,6 +6,7 @@
  */
 
 import { isRecord } from "../../core/predicates.ts";
+import { isAsyncQuestionMessage } from "../questions/records.ts";
 import type { CodexTranscriptSummary } from "./types.ts";
 
 type Item = Readonly<Record<string, unknown>>;
@@ -16,6 +17,7 @@ export function summarizeTranscriptItem(item: unknown): CodexTranscriptSummary {
     return { kind: "other", label: stringValue(record(item)?.["type"]) ?? "unknown" };
   }
   const type = stringValue(payload?.["type"]);
+  if (isAsyncQuestionMessage(payload)) return { kind: "other", label: "question" };
   if (type === "web_search_end" || type === "web_search_call") return webSearch(payload);
   if (type === "function_call") return toolCall(payload);
   if (type === "custom_tool_call") return toolCall(payload);

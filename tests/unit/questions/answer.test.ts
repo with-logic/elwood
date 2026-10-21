@@ -1,0 +1,188 @@
+/** Native answers traverse captured stages without ordinary submission (C-QUESTION-02/03). */
+import { describe, expect, test } from "vitest";
+import { answerClaudeQuestions } from "../../../src/claude/questions/answer.ts";
+import type { QuestionFrame, QuestionIo } from "../../../src/core/questions/adapter.ts";
+import { definitions, fixture, frame, nativeSnapshot, registry } from "./helpers.ts";
+
+function ioFor(initial: QuestionFrame, successors: readonly QuestionFrame[]) {
+  let current = initial;
+  const writes: string[] = [];
+  const io: QuestionIo = {
+    signal: new AbortController().signal,
+    frame: () => current,
+    wait: (predicate) => {
+      if (!predicate(current)) throw new Error("Unexpected native wait stage");
+      return Promise.resolve(current);
+    },
+    write: (input, expected) => {
+      if (!expected(current)) throw new Error("Native write was not authorized");
+      writes.push(input);
+      current = successors[writes.length - 1]!;
+      return Promise.resolve();
+    },
+  };
+  return { io, writes };
+}
+describe("C-QUESTION-03 Claude native answers", () => {
+  test("answers grouped single choice, both checkboxes and verified final review", async () => {
+    const request = registry().publish("native", "blocking", definitions);
+    const logging = fixture("features-logging");
+    const metricsCursor = frame(
+      logging.text.replace("❯ 1.", "  1.").replace("  2. [ ]", "❯ 2. [ ]"),
+    );
+    const otherCursor = frame(
+      fixture("features-both").text.replace("❯ 2.", "  2.").replace("  3. [ ]", "❯ 3. [ ]"),
+    );
+    const { io, writes } = ioFor(fixture("questions"), [
+      fixture("color-blue-highlight"),
+      fixture("features-initial"),
+      logging,
+      metricsCursor,
+      fixture("features-both"),
+      otherCursor,
+      fixture("features-submit-highlight"),
+      fixture("review"),
+      fixture("answered"),
+    ]);
+    await answerClaudeQuestions(request, [{ optionIndexes: [1] }, { optionIndexes: [0, 1] }], io);
+    expect(writes).toEqual(["\x1b[B", "\r", " ", "\x1b[B", " ", "\x1b[B", "\x1b[B", "\r", "\r"]);
+  });
+  test("pastes multiline Other before a single submitting Enter", async () => {
+    const request = registry().publish("note", "blocking", [
+      {
+        ...definitions[0]!,
+        prompt: "Which test note?",
+        header: "Note",
+        options: [
+          { label: "Brief (short)", description: "A short test note." },
+          { label: "Detailed (long)", description: "A long test note." },
+        ],
+      },
+    ]);
+    const second = frame(
+      fixture("freeform-questions")
+        .text.replace("❯ 1.", "  1.")
+        .replace("  2. Detailed", "❯ 2. Detailed"),
+    );
+    const { io, writes } = ioFor(fixture("freeform-questions"), [
+      second,
+      nativeSnapshot("freeform-other-highlight-native"),
+      nativeSnapshot("freeform-other-typed-native"),
+      fixture("freeform-answered"),
+    ]);
+    await answerClaudeQuestions(
+      request,
+      [{ optionIndexes: [], text: "ELWOOD_NOTE_LINE1\nELWOOD_NOTE_LINE2" }],
+      io,
+    );
+    expect(writes).toEqual([
+      "\x1b[B",
+      "\x1b[B",
+      "\x1b[200~ELWOOD_NOTE_LINE1\nELWOOD_NOTE_LINE2\x1b[201~",
+      "\r",
+    ]);
+  });
+  test("refuses human-navigated unsupported initial stages and mismatched review values", async () => {
+    const request = registry().publish("native", "blocking", definitions);
+    const { io, writes } = ioFor(fixture("features-initial"), []);
+    await expect(
+      answerClaudeQuestions(request, [{ optionIndexes: [1] }, { optionIndexes: [0, 1] }], io),
+    ).rejects.toMatchObject({ code: "question_answer_failed" });
+    expect(writes).toEqual([]);
+  });
+  test("rejects unexpected Other selection and mismatched native review before submission", async () => {
+    const request = registry().publish("native", "blocking", definitions);
+    const unsupported = frame(
+      fixture("features-both").text.replace("3. [ ] Type something", "3. [✔] custom"),
+    );
+    const first = ioFor(fixture("questions"), [fixture("color-blue-highlight"), unsupported]);
+    await expect(
+      answerClaudeQuestions(request, [{ optionIndexes: [1] }, { optionIndexes: [0, 1] }], first.io),
+    ).rejects.toThrow();
+    expect(first.writes).toEqual(["\x1b[B", "\r"]);
+    const logging = fixture("features-logging");
+    const metricsCursor = frame(
+      logging.text.replace("❯ 1.", "  1.").replace("  2. [ ]", "❯ 2. [ ]"),
+    );
+    const otherCursor = frame(
+      fixture("features-both").text.replace("❯ 2.", "  2.").replace("  3. [ ]", "❯ 3. [ ]"),
+    );
+    const mismatch = ioFor(fixture("questions"), [
+      fixture("color-blue-highlight"),
+      fixture("features-initial"),
+      logging,
+      metricsCursor,
+      fixture("features-both"),
+      otherCursor,
+      fixture("features-submit-highlight"),
+      frame(fixture("review").text.replace("→ Blue", "→ Amber")),
+    ]);
+    await expect(
+      answerClaudeQuestions(
+        request,
+        [{ optionIndexes: [1] }, { optionIndexes: [0, 1] }],
+        mismatch.io,
+      ),
+    ).rejects.toThrow();
+    expect(mismatch.writes.filter((key) => key === "\r")).toHaveLength(2);
+  });
+  test("preserves selected choices and safely unchecks an unrequested checkbox", async () => {
+    const request = registry().publish("native", "blocking", definitions);
+    const metricsCursor = frame(
+      fixture("features-logging").text.replace("❯ 1.", "  1.").replace("  2. [ ]", "❯ 2. [ ]"),
+    );
+    const otherCursor = frame(
+      metricsCursor.text.replace("❯ 2.", "  2.").replace("  3. [ ]", "❯ 3. [ ]"),
+    );
+    const submit = frame(fixture("features-submit-highlight").text.replace("2. [✔]", "2. [ ]"));
+    const review = frame(fixture("review").text.replace("→ Logging, Metrics", "→ Logging"));
+    const { io, writes } = ioFor(fixture("questions"), [
+      fixture("color-blue-highlight"),
+      fixture("features-both"),
+      metricsCursor,
+      otherCursor,
+      submit,
+      review,
+      fixture("answered"),
+    ]);
+    await answerClaudeQuestions(request, [{ optionIndexes: [1] }, { optionIndexes: [0] }], io);
+    expect(writes).toEqual(["\x1b[B", "\r", " ", "\x1b[B", "\x1b[B", "\r", "\r"]);
+  });
+  test("a grouped request can combine alternative text with checkbox selections", async () => {
+    const request = registry().publish("native", "blocking", definitions);
+    const colorOther = frame(
+      fixture("questions")
+        .text.replace("❯ 1.", "  1.")
+        .replace("  3. Type something.", "❯ 3. Type something."),
+    );
+    const colorTyped = frame(colorOther.text.replace("Type something.", "custom"));
+    const logging = fixture("features-logging");
+    const metricsCursor = frame(
+      logging.text.replace("❯ 1.", "  1.").replace("  2. [ ]", "❯ 2. [ ]"),
+    );
+    const otherCursor = frame(
+      fixture("features-both").text.replace("❯ 2.", "  2.").replace("  3. [ ]", "❯ 3. [ ]"),
+    );
+    const review = frame(fixture("review").text.replace("→ Blue", "→ custom"));
+    const { io, writes } = ioFor(fixture("questions"), [
+      fixture("color-blue-highlight"),
+      colorOther,
+      colorTyped,
+      fixture("features-initial"),
+      logging,
+      metricsCursor,
+      fixture("features-both"),
+      otherCursor,
+      fixture("features-submit-highlight"),
+      review,
+      fixture("answered"),
+    ]);
+    await answerClaudeQuestions(
+      request,
+      [{ optionIndexes: [], text: "custom" }, { optionIndexes: [0, 1] }],
+      io,
+    );
+    expect(writes).toContain("\x1b[200~custom\x1b[201~");
+    expect(writes.filter((key) => key === "\r")).toHaveLength(3);
+  });
+});

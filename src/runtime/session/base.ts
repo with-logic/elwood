@@ -32,14 +32,14 @@ import {
   enqueueSubmission,
   type SubmitKind,
 } from "./image-attach.ts";
-import { SessionLifecycle } from "./lifecycle.ts";
 import { PickerInputOwnership } from "./picker-input.ts";
+import { QuestionsSession } from "./questions.ts";
 import { applyResize, restoreHeldResize } from "./resize.ts";
 import type { SessionStatusEmitter } from "./status-wiring.ts";
 
 type Timeout = { readonly timeoutMs?: number };
 
-export abstract class AgentSessionBase extends SessionLifecycle {
+export abstract class AgentSessionBase extends QuestionsSession {
   protected abstract readonly picker: ModelPickerSpec;
   private readonly commands: CommandSurface;
 
@@ -133,6 +133,7 @@ export abstract class AgentSessionBase extends SessionLifecycle {
     return this.inSession(() => applyResize(this.pty, this.terminal, size));
   }
   interrupt(options?: Timeout): Promise<void> {
+    this.revokeQuestionAnswer();
     return this.inSession(() => this.commands.interrupt(options));
   }
   compact(options?: Timeout): Promise<void> {

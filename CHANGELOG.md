@@ -12,6 +12,9 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Expose native Claude and Codex questions through typed lifecycle events, normalized `question` activities and `listQuestions()` snapshots; submit choices and text with `answerQuestions()`, including grouped Claude forms and independently answered Codex queued questions, while protecting question editors from ordinary input.
+- Preserve turn completion and follow-up input after native questions: recognize Claude's manual-mode footer, Codex's Plan-mode composer footer, and Codex's alternate working-spinner glyph.
+
 - Expose committed Codex commentary as readable `assistant_progress` activity, distinct from final answers; suppress non-final legacy mirrors so progress neither duplicates nor completes replies.
 
 - Expose Claude's advance login-renewal notices as `login_expiring` warnings and activities with `expiresInDays` and `/login`, including startup and resume, without interrupting the session.

@@ -2,6 +2,7 @@
 import { emptyInputFrame } from "../../core/input/empty-frame.ts";
 import type { ElwoodTerminal } from "../../terminal/headless.ts";
 import { claudeComposerRow } from "../screen-table.ts";
+import { claudeManualModeFooter } from "./footer.ts";
 
 const rule = /^[─━]{3,}\s*$/;
 const mode =
@@ -25,9 +26,16 @@ export function claudeEmptyInputRows(
   const below = rows.slice(cursorRow + 2).filter((row) => row.trim() !== "");
   return (
     (rows.some((row) => /Claude Code v[\d.]+/.test(row)) ||
-      below.some((row) => mode.test(row) || stagedFooter?.test(row))) &&
+      below.some(
+        (row) => mode.test(row) || claudeManualModeFooter.test(row) || stagedFooter?.test(row),
+      )) &&
     below.every(
-      (row) => mode.test(row) || expiry.test(row) || effort.test(row) || stagedFooter?.test(row),
+      (row) =>
+        mode.test(row) ||
+        claudeManualModeFooter.test(row) ||
+        expiry.test(row) ||
+        effort.test(row) ||
+        stagedFooter?.test(row),
     )
   );
 }

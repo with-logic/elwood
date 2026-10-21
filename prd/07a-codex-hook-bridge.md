@@ -113,3 +113,35 @@ instance after the result is finalized.
 Independent callbacks dispatched by pre-existing event sources, internal queue
 and loop work, and persistent transcript polling remain outside that short-lived
 authority.
+
+### 7A.5 Native questions
+
+The shared question controls in §5.10 support current Codex `request_user_input`
+and `request_user_input_async` terminal editors. Committed function-call arguments
+provide complete metadata; a matching native editor or queued-question badge is
+required before publishing an actionable request. Rejected calls and historical
+transcript content never create requests. Mirrors retain the original identities.
+
+`request_user_input` publishes one grouped blocking request with ordered prompts,
+headers, choices and descriptions. The captured native tool requires nonempty
+choices, adds the real selectable `None of the above` option, and accepts optional
+notes alongside a selected choice. Elwood exposes that native option with its own
+opaque option ID; it may be chosen without notes. Text alone selects that native
+alternative and adds the text as notes. Elwood supports these pages through the native
+editor, preserving the group until the matching committed tool result confirms
+acceptance. Unsupported secret or changed layouts receive no speculative input.
+
+Each asynchronous question is an independent queued request, with its own
+acceptance unit. Suggested choices reflect the native first-32/512-byte display
+limits; free text is available instead of a suggestion. Native question-bearing
+async messages remain question metadata even when their phase is `final_answer`;
+they never become final assistant activity. Answering opens the confirmed native
+editor and uses its question-answer route, preserving other pending questions.
+Ordinary composer submission must remain held because it clears queued questions.
+
+Committed native reply envelopes close matching queued requests as answered.
+Conclusive local removal closes them as unavailable when no answer is confirmed;
+live turn completion/interruption/failure also retires remaining requests. Badge
+redraws and countdowns do not invent an expiry deadline. Availability is live-only
+and independent of whether Codex continues working. A blocking modal contributes
+the existing blocked state; the queued editor does not manufacture a turn boundary.

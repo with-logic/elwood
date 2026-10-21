@@ -28,6 +28,7 @@ import type { ClaudeLoginOptions } from "../login/types.ts";
 import { LoginExpiredWatcher, loginExpiredWarning } from "../login-expired.ts";
 import { claudeModelComposerClearance } from "../model-composer.ts";
 import { claudeModelPicker } from "../model-picker.ts";
+import { ClaudeQuestionAdapter } from "../questions/index.ts";
 import { resizeRestoreFailedWarning } from "../resize-restore.ts";
 import { liveClaudeClearance } from "../screen-table.ts";
 import { CLAUDE_STARTUP_MIN_COLS } from "../startup-size.ts";
@@ -53,7 +54,6 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
   // defers its restore to readiness (C-API-36); a 100+ session resizes immediately.
   private awaitingInitialReady: boolean;
   private initialReadyDone = false;
-  // Edge-detects a mid-session login-expiry banner so it warns once per occurrence.
   private readonly loginExpiredWatcher = new LoginExpiredWatcher();
 
   constructor(
@@ -79,6 +79,7 @@ export class ClaudeSessionImpl extends AgentSessionBase implements ClaudeSession
       terminalReplay,
       loopDefinitions,
     );
+    this.configureQuestions((registry) => new ClaudeQuestionAdapter(registry));
     this.bridge = bridge;
     this.emitter = emitter;
     this.requestedSize = requestedSize;
