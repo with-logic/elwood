@@ -12,6 +12,8 @@ back each entry are listed in `prd/14-conformance.md`.
 
 ## [Unreleased]
 
+- Expose committed Codex commentary as readable `assistant_progress` activity, distinct from final answers; suppress non-final legacy mirrors so progress neither duplicates nor completes replies.
+
 - Expose Claude's advance login-renewal notices as `login_expiring` warnings and activities with `expiresInDays` and `/login`, including startup and resume, without interrupting the session.
 
 - Report a submission-specific `wait_timeout` when raw input replaces ergonomic input awaiting empty-composer confirmation, preserving model-picker diagnostics for picker operations.

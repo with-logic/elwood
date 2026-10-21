@@ -40,6 +40,40 @@ Useful CLI capabilities for Elwood:
   terminal output and also project recognized warnings into typed `warning`
   events with remediation commands.
 
+## Commentary and final replies
+
+Subscribe to `activity` to display Codex's committed user-facing progress:
+
+```ts
+session.on("activity", (event) => {
+  if (event.kind === "assistant_progress" && event.text) {
+    appendProgress(event.text);
+  } else if (event.kind === "assistant_message" && event.text) {
+    appendFinalReply(event.text);
+  }
+});
+```
+
+Progress uses `source: "transcript"`, `label: "assistant"`, the session ID,
+transcript path and optional native turn ID. It preserves string content and
+ordered array-form `output_text` blocks from `response_item` messages explicitly
+marked `phase: "commentary"`. Analysis and unknown phases never become progress.
+Readable reasoning retains its separate `reasoning` channel; encrypted reasoning
+is never normalized into text.
+
+Response items are the canonical progress source. Explicit non-final legacy
+`agent_message` mirrors remain raw transcript events with `other` summaries and
+no normalized text, avoiding duplicate publication and false final replies.
+Legacy unphased and final-answer behavior is preserved.
+
+Keep progress separate from final-reply handlers: it must not clear working
+state, consume reply context, finalize a trace, or route mentions to other
+agents. Progress does not end a turn or change session status. Ergonomic
+`send()` and `stream()` keep collecting their existing final-answer content;
+use `on("activity", ...)` for progress. These are live observations, not token
+deltas or replayed history, and their text may contain sensitive conversation
+content just like final replies.
+
 ## Resume Implications
 
 Codex stores transcripts locally under Codex-owned state. Elwood should persist

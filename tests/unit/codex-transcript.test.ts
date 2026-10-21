@@ -159,7 +159,7 @@ describe("Codex transcript observation", () => {
         phase: "commentary",
         content: [{ type: "output_text", text: "Working on it." }],
       }),
-    ).toEqual({ kind: "other", label: "assistant" });
+    ).toEqual({ kind: "commentary", label: "assistant", text: "Working on it." });
     expect(
       summary({
         type: "message",

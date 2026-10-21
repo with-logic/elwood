@@ -21,6 +21,7 @@ export function hookResultLabel(result: unknown, failedOpen: boolean): string {
 }
 
 export function transcriptActivityKind(kind: string): ElwoodActivityKind {
+  if (kind === "commentary") return "assistant_progress";
   if (kind === "message") return "assistant_message";
   if (
     kind === "tool_call" ||

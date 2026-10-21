@@ -16,6 +16,7 @@ export type ElwoodActivityKind =
   | "terminal_exit"
   | "user_message"
   | "assistant_message"
+  | "assistant_progress"
   | "reasoning"
   | "tool_call"
   | "tool_result"
