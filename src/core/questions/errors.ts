@@ -14,3 +14,11 @@ export function questionError(
 } {
   return Object.assign(new Error(message), { code, details });
 }
+
+/** Confirmation failures contain no raw native exception or answer content. */
+export function questionAnswerFailed() {
+  return questionError(
+    "question_answer_failed",
+    "The native question answer could not be confirmed. Refresh pending questions and inspect the terminal before retrying.",
+  );
+}
