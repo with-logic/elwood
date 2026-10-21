@@ -7,6 +7,9 @@ export type QuestionFrame = TerminalSnapshot & {
   /** Live completed frames supply visibility; partial/older captures may omit it.
    * Unknown visibility never proves that a composer is clear. */
   readonly cursorVisible?: boolean;
+  /** Native cursor-cell style and prefix, captured with the completed snapshot. */
+  readonly cursorCellDimmed?: boolean;
+  readonly cursorLineBefore?: string;
 };
 export type QuestionIo = {
   readonly signal: AbortSignal;
