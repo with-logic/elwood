@@ -1,9 +1,9 @@
 /** Native completion survives public observer failures without stale input holds (PRD §4). */
 import { afterEach, expect, test, vi } from "vitest";
-import { controllerHarness, disposeControllers } from "./controller-helpers.ts";
+import { controllerHarness, disposeTerminals } from "./controller-helpers.ts";
 import { definitions } from "./helpers.ts";
 
-afterEach(disposeControllers);
+afterEach(disposeTerminals);
 test.each([
   false,
   true,

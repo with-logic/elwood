@@ -14,11 +14,12 @@ type Events = Omit<ElwoodCommonEventMap, "activity"> & {
   question: ElwoodQuestionEvent;
 };
 const terminals: ReturnType<typeof createHeadlessTerminal>[] = [];
-export function disposeControllers(): void {
+export function disposeTerminals(): void {
   for (const terminal of terminals.splice(0)) terminal.dispose();
 }
-export function controllerHarness(closing = new AbortController()) {
-  const terminal = createHeadlessTerminal({ cols: 140, rows: 45 }, () => {});
+export function controllerHarness(closing = new AbortController(), input = new AbortController()) {
+  const writes: (string | Uint8Array)[] = [];
+  const terminal = createHeadlessTerminal({ cols: 140, rows: 45 }, (data) => writes.push(data));
   terminals.push(terminal);
   const events = new TypedEmitter<Events>();
   const questions = new SessionQuestions(
@@ -26,7 +27,7 @@ export function controllerHarness(closing = new AbortController()) {
     "s",
     events,
     terminal,
-    () => new AbortController().signal,
+    () => input.signal,
     closing.signal,
   );
   const adapter: QuestionAdapter = {
@@ -43,5 +44,5 @@ export function controllerHarness(closing = new AbortController()) {
       kind: "hook",
       label,
     });
-  return { terminal, events, questions, closing, adapter, activity };
+  return { terminal, events, questions, closing, input, writes, adapter, activity };
 }

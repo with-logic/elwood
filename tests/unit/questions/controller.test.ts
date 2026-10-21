@@ -1,16 +1,21 @@
 /** Private discovery follows completed renders and changed activity (PRD §4). */
 import { afterEach, expect, test, vi } from "vitest";
 import type { ElwoodActivityEvent } from "../../../src/core/activity/index.ts";
-import { disposeControllers, controllerHarness as setup } from "./controller-helpers.ts";
+import { disposeTerminals, controllerHarness as setup } from "./controller-helpers.ts";
 import { definitions } from "./helpers.ts";
 
-afterEach(disposeControllers);
+afterEach(disposeTerminals);
 test("completed renders discover questions despite throwing observers", async () => {
   const h = setup();
   expect(h.questions.blocksInput()).toBe(false);
+  const frames: string[] = [];
   h.questions.configure((registry) => ({
     ...h.adapter,
-    render: () => registry.publish("native", "blocking", definitions),
+    render: (frame) => {
+      frames.push(frame.text.trim());
+      if (frame.text.includes("native question"))
+        registry.publish("native", "blocking", definitions);
+    },
   }));
   h.events.on("question", () => {
     throw new Error("consumer");
@@ -18,6 +23,10 @@ test("completed renders discover questions despite throwing observers", async ()
   h.activity();
   await h.terminal.writeOutput("native question");
   expect(h.terminal.renderFailed).toBe(false);
+  expect(frames).toEqual(["native question"]);
+  expect(h.questions.list()).toHaveLength(1);
+  await h.terminal.writeOutput("\r\x1b[2Kupdated native question");
+  expect(frames).toEqual(["native question", "updated native question"]);
   expect(h.questions.list()).toHaveLength(1);
   expect(h.questions.blocksInput()).toBe(true);
   h.questions.revoke();
@@ -33,7 +42,7 @@ test("only changed activity and completed renders refresh the adapter once", asy
   expect(render).not.toHaveBeenCalled();
   await h.terminal.writeOutput("question");
   expect(render).toHaveBeenCalledTimes(1);
-  for (let index = 0; index < 4096; index++) h.activity("unrelated");
+  for (let index = 0; index < 3; index++) h.activity("unrelated");
   h.events.emit("terminal:data", { elwoodSessionId: "s", data: "question" });
   expect(render).toHaveBeenCalledTimes(1);
   h.activity();
@@ -47,6 +56,24 @@ test("only changed activity and completed renders refresh the adapter once", asy
   h.activity();
   await h.terminal.writeOutput(" after shutdown");
   expect(render).toHaveBeenCalledTimes(3);
+});
+test("activity before configuration is ignored, then reaches the configured adapter", async () => {
+  const h = setup();
+  const observe = vi.fn(() => true);
+  const render = vi.fn();
+  await h.terminal.writeOutput("native question");
+  expect(() => h.activity()).not.toThrow();
+  expect(h.adapter.observe).not.toHaveBeenCalled();
+  h.questions.configure(() => ({ ...h.adapter, observe, render }));
+  expect(observe).not.toHaveBeenCalled();
+  expect(render).not.toHaveBeenCalled();
+  h.activity();
+  expect(observe).toHaveBeenCalledOnce();
+  expect(render).toHaveBeenCalledOnce();
+  expect(render.mock.calls[0]?.[0]).toMatchObject({
+    text: expect.stringContaining("native question"),
+  });
+  h.closing.abort();
 });
 test("shutdown during observation prevents a reentrant replacement refresh", async () => {
   const h = setup();
