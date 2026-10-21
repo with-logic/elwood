@@ -97,8 +97,10 @@ export class CandidateStore {
     let changed = this.retireRemoved(call.callId, groups, authority, mutationEpoch);
     for (const group of groups) {
       if (!this.ownsCall(call.callId, authority, mutationEpoch)) return true;
-      if (this.budget.hasRetired(group.nativeKey)) continue;
+      if (this.budget.hasRetired(group.nativeKey) || this.registry.isRetired(group.nativeKey))
+        continue;
       const existing = this.records.get(group.nativeKey);
+      if (existing && (existing.submitting || existing.awaitingNative)) continue;
       if (existing && JSON.stringify(existing.questions) === JSON.stringify(group.questions)) {
         if (existing.queued && accepted) changed = this.accept(existing) || changed;
         continue;

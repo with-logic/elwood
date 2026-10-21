@@ -64,6 +64,12 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     if (matchesCandidateHook(this.candidate, questions, toolUseId, hookEventName)) return false;
     const nativeKey = typeof toolUseId === "string" ? toolUseId : JSON.stringify(questions);
     const previous = this.candidate && this.registry.find(this.candidate.nativeKey);
+    // Metadata mirrors cannot release an uncertain native answer reservation.
+    if (
+      this.candidate?.nativeKey === nativeKey &&
+      (this.candidate.awaitingNativeHookClosure || this.registry.isRetired(nativeKey))
+    )
+      return false;
     this.candidate = {
       nativeKey,
       awaitingNativeHookClosure: false,
