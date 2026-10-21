@@ -150,6 +150,6 @@ export function acknowledgeNative(scenario: OwnedScenario): void {
       return;
     }
     default:
-      return unreachableMode(mode);
+      unreachableMode(mode);
   }
 }
