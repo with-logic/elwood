@@ -1,6 +1,7 @@
 /** Completed-render observation and observer failure containment (PRD §4). */
 import { afterEach, expect, test } from "vitest";
 import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
+import type { ElwoodWarningEvent } from "../../../src/core/types.ts";
 import { controllerHarness, disposeTerminals } from "./controller-helpers.ts";
 import { definitions, fixture } from "./helpers.ts";
 import { preToolUse } from "./hook-fixtures.ts";
@@ -9,6 +10,8 @@ import { nativeHook } from "./lifecycle-helpers.ts";
 afterEach(disposeTerminals);
 test("direct completed renders discover questions despite throwing observers", async () => {
   const { terminal, events, questions, closing } = controllerHarness();
+  const warnings: ElwoodWarningEvent[] = [];
+  events.on("warning", (warning) => warnings.push(warning));
   expect(questions.blocksInput()).toBe(false);
   questions.configure((registry) => new ClaudeQuestionAdapter(registry));
   events.on("question", () => {
@@ -34,7 +37,11 @@ test("direct completed renders discover questions despite throwing observers", a
       })),
   ).toEqual(definitions);
   expect(questions.blocksInput()).toBe(true);
+  expect(warnings).toMatchObject([
+    { agent: "claude", code: "question_observer_failed", phase: "question" },
+  ]);
   questions.revoke();
   closing.abort();
   expect(questions.list()).toEqual([]);
+  expect(warnings).toHaveLength(1);
 });
