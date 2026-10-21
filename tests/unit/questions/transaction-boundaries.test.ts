@@ -68,7 +68,7 @@ test.each([
   if (reason === "caller") await h.input.caller.sendInput("human");
   await vi.advanceTimersByTimeAsync(reason === "timeout" ? 1000 : 20);
   await failed;
-  expect(h.transaction.busy()).toBe(false);
+  expect(h.transaction.busy()).toBe(true);
   expect(h.writes).toEqual(reason === "caller" ? ["first", "human"] : ["first"]);
   const retry = {
     ...h.adapter,
