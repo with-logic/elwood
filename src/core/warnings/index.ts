@@ -1,6 +1,6 @@
 /**
  * Non-fatal adapter warnings (PRD §5.7, §8.2): named variants carrying only
- * diagnostics (cause/phase labels, error codes, recovery hints) — no counts or
+ * diagnostics (cause/phase labels, error codes, recovery hints) — no event counts or
  * byte magnitudes — and never raw prompts, transcripts, or conversation content.
  * Most error-code fields are allowlisted tokens (`reasons.ts`); the one
  * exception is `transcript_read_error.lastErrorCode`, which the PRD types as the
@@ -10,6 +10,7 @@
 
 import type { ElwoodAgentKind } from "../activity/index.ts";
 import type { StartupPromptLabelFor } from "../startup/automation.ts";
+import type { LoginExpiredWarning, LoginExpiringWarning } from "./auth.ts";
 import type * as lifecycle from "./lifecycle.ts";
 import type {
   DropCause,
@@ -21,6 +22,7 @@ import type {
 import type { TranscriptListenerErrorWarning } from "./transcript.ts";
 
 export type ElwoodWarningEvent =
+  | LoginExpiringWarning
   | TranscriptListenerErrorWarning
   | {
       readonly elwoodSessionId: string;
@@ -44,20 +46,7 @@ export type ElwoodWarningEvent =
       readonly recoveryCommand: string;
       readonly raw: string;
     }
-  | {
-      readonly elwoodSessionId: string;
-      readonly agent: "claude";
-      readonly source: "terminal";
-      readonly code: "login_expired";
-      readonly severity: "warning";
-      readonly message: string;
-      // A Claude session's login lapsed/was revoked AFTER it was usable, so it can no longer act
-      // until re-authenticated. Content-free: only the FIXED literal `/login` recovery command,
-      // never a raw banner or session content. The session stays alive so the caller can recover
-      // in place via `session.login()`, tear down, or re-auth out of band (§5.3, C-CLAUDE-18).
-      readonly recoveryCommand: "/login";
-      readonly raw: string;
-    }
+  | LoginExpiredWarning
   | {
       readonly elwoodSessionId: string;
       readonly agent: "codex";

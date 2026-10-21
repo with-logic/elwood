@@ -428,7 +428,7 @@ session.on("activity", (event) => {
 | `hook` | Every parsed and validated adapter hook event. |
 | `hook:<Name>` | Hook-specific handler registration with typed response guidance. |
 | `hookError` | Handler timeout, thrown handler, invalid input, invalid response, or bridge error. Hooks fail open. |
-| `warning` | Non-fatal environment issue, such as an unparseable version or a failed autoupdate. |
+| `warning` | Non-fatal environment issue, such as an unparseable version, a failed autoupdate, or Claude's `login_expiring` notice with `expiresInDays` and `/login` ([renewal and recovery](docs/login-recovery.md)). |
 | `loop` | Redacted lifecycle for persisted recurring prompts. |
 | `terminal:data` | Raw PTY output for a visual terminal renderer. |
 | `terminal:exit` | PTY process exit, emitted exactly once. |
