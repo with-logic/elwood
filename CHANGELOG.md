@@ -24,9 +24,10 @@ back each entry are listed in `prd/14-conformance.md`.
   live session with a content-free `question_observer_failed` warning.
 
 - Expose live Claude and Codex questionnaires through typed `question` events,
-  structured normalized activity and immutable `listQuestions()` snapshots;
-  preserve native input holds and report budget disablement with a content-free
-  `question_automation_disabled` warning.
+  structured normalized activity, `listQuestions()` and `answerQuestions()`;
+  submit grouped forms and independent queued answers while preserving running
+  turns, guarding native editors and verifying native acceptance. Budget
+  disablement emits a content-free `question_automation_disabled` warning.
 
 - Enforce the existing required payloads in transcript activity types: Codex progress carries text and its Codex/transcript identity, and Claude transcript projections retain their per-kind required fields.
 

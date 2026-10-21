@@ -1,4 +1,5 @@
-/** Private question failures for provider-independent control code (PRD §4). */
+/** Public question failures for provider-independent control code (PRD §10). */
+import { type ElwoodError, elwoodError } from "../errors.ts";
 export type QuestionErrorCode =
   | "question_not_found"
   | "invalid_question_answer"
@@ -8,11 +9,8 @@ export function questionError(
   code: QuestionErrorCode,
   message: string,
   details: Readonly<Record<string, unknown>> = {},
-): Error & {
-  readonly code: QuestionErrorCode;
-  readonly details: Readonly<Record<string, unknown>>;
-} {
-  return Object.assign(new Error(message), { code, details });
+): ElwoodError {
+  return elwoodError(code, message, details);
 }
 
 export type QuestionFailureCategory =

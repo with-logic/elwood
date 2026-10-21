@@ -58,6 +58,11 @@ export interface QuestionControls {
   /** Discovery-ordered, deeply immutable point-in-time snapshot; retained snapshots do not update.
    * Listing bypasses an active ergonomic turn. IDs expire with this live process. */
   listQuestions(): Promise<readonly ElwoodQuestionRequest[]>;
+  answerQuestions(
+    requestId: string,
+    answers: readonly ElwoodQuestionAnswer[],
+    options?: ElwoodQuestionAnswerOptions,
+  ): Promise<void>;
 }
 /** Adapters supply native content; the registry generates request, question, and option IDs. */
 export type QuestionDefinition = Omit<ElwoodQuestion, "id" | "options"> & {
