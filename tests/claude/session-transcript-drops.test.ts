@@ -6,11 +6,18 @@
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { startClaude } from "../../src/index.ts";
 import { installFakes, ptys, reapedGroups, resetFakes, tempDir } from "./helpers.ts";
 
-afterEach(resetFakes);
+// These cases require a flush; transcript-drain.test.ts covers deadline exhaustion.
+beforeEach(() => {
+  vi.spyOn(Date, "now").mockReturnValue(0);
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  resetFakes();
+});
 
 describe("C-CLAUDE-15 Claude transcript drop wiring", () => {
   test("a malformed committed record surfaces a live drop warning", async () => {

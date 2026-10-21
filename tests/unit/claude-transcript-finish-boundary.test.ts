@@ -6,10 +6,18 @@
  */
 
 import { writeFileSync } from "node:fs";
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createTranscriptWatcher, type WarningSink } from "../../src/claude/session/transcript.ts";
 import type { ElwoodWarningEvent } from "../../src/core/types.ts";
 import { assistant, fakeEmitter, tmpFile } from "./claude-transcript-helpers.ts";
+
+// These tests require a flush; budget-exhaustion behavior is covered separately.
+beforeEach(() => {
+  vi.spyOn(Date, "now").mockReturnValue(0);
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("C-CLAUDE-15 / C-LIFE-10 finishSafely error boundary", () => {
   test("contains a throwing final flush and routes a bounded diagnostic", () => {
