@@ -51,8 +51,8 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
     const hook = record(event.raw);
     if (hook["tool_name"] !== "AskUserQuestion") return false;
     const input = record(hook["tool_input"]);
-    if (!isQuestions(input["questions"])) return false;
-    const questions = (input as AskUserQuestionInput).questions;
+    const questions = input["questions"];
+    if (!isQuestions(questions)) return false;
     const hookEventName = hook["hook_event_name"];
     if (
       hookEventName === "PostToolUse" ||
@@ -157,7 +157,9 @@ export class ClaudeQuestionAdapter implements QuestionAdapter {
       if (current) this.registry.close(current.id, "unavailable");
       return;
     }
-    if (!this.held || current || !candidate.publishable || candidate.questions.length === 0) return;
+    const canPublishCandidate =
+      this.held && !current && candidate.publishable && candidate.questions.length > 0;
+    if (!canPublishCandidate) return;
     if (screen?.kind === "question")
       this.registry.publish(candidate.nativeKey, "blocking", candidate.questions);
   }

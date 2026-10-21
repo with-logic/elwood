@@ -16,31 +16,30 @@ export class ClaudeQuestionHookGate implements QuestionAdapter {
 
   observe(event: ElwoodActivityEvent): boolean {
     const hook = record(event.raw);
-    if (
+    const isQuestionRequestHook =
       event.source === "hook" &&
       event.kind === "hook" &&
       hook["tool_name"] === "AskUserQuestion" &&
-      (hook["hook_event_name"] === "PreToolUse" || hook["hook_event_name"] === "PermissionRequest")
-    ) {
+      (hook["hook_event_name"] === "PreToolUse" || hook["hook_event_name"] === "PermissionRequest");
+    if (isQuestionRequestHook) {
       this.pending = event;
       return false;
     }
-    if (
+    const isUnblockedStopResult =
       event.source === "hook" &&
       event.kind === "hook_result" &&
       event.hookEventName === "Stop" &&
-      record(hook["result"])["decision"] !== "block"
-    )
-      this.pending = undefined;
+      record(hook["result"])["decision"] !== "block";
+    if (isUnblockedStopResult) this.pending = undefined;
     return this.adapter.observe(event);
   }
 
-  /** Identity belongs to the frozen original hook, never an uncorrelated result activity. */
-  resolve(original: unknown, result: ClaudeHookResult): void {
+  /** Use the exact frozen original hook passed to onHookOutcome, never a clone or activity wrapper. */
+  resolveHookResult(originalHookEvent: unknown, hookResult: ClaudeHookResult): void {
     const pending = this.pending;
-    if (!pending || pending.raw !== original) return;
+    if (!pending || pending.raw !== originalHookEvent) return;
     this.pending = undefined;
-    const decision = record(result);
+    const decision = record(hookResult);
     const answered = Object.keys(record(record(decision["updatedInput"])["answers"])).length > 0;
     const denied = decision["permissionDecision"] === "deny" || decision["behavior"] === "deny";
     if (answered || denied) this.adapter.withdraw(pending);

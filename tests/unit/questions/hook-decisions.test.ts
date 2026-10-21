@@ -21,6 +21,8 @@ test.each([
   for (const result of [
     { permissionDecision: "allow", updatedInput: { answers: { Color: "Amber" } } },
     { behavior: "allow", updatedInput: { answers: { Color: "Amber" } } },
+    { permissionDecision: "allow", updatedInput: { answers: { Color: "" } } },
+    { behavior: "allow", updatedInput: { answers: { Color: "" } } },
     { permissionDecision: "deny" },
     { behavior: "deny" },
   ] as const) {
@@ -30,7 +32,7 @@ test.each([
     expect(gate.blocksInput()).toBe(true);
     gate.render(fixture("questions"));
     expect(requests.list()).toEqual([]);
-    gate.resolve(hook.raw, result);
+    gate.resolveHookResult(hook.raw, result);
     gate.render(fixture("questions"));
     expect(requests.list()).toEqual([]);
   }
@@ -40,7 +42,7 @@ test("only the newest correlated unanswered hook can publish on a fresh complete
   const { gate, requests } = setup();
   const old = nativeHook();
   const current = nativeHook("PermissionRequest", { tool_use_id: "new" });
-  gate.resolve(old.raw, undefined);
+  gate.resolveHookResult(old.raw, undefined);
   expect(gate.blocksInput()).toBe(false);
   gate.observe({ ...old, source: "transcript", kind: "hook" });
   gate.observe({ ...old, kind: "hook_result", hookEventName: "PreToolUse" });
@@ -48,13 +50,16 @@ test("only the newest correlated unanswered hook can publish on a fresh complete
   gate.observe(old);
   gate.observe(current);
   gate.observe(nativeHook("PreToolUse", { tool_name: "Bash" }));
-  gate.resolve(old.raw, { permissionDecision: "deny" });
+  gate.resolveHookResult(structuredClone(current.raw), undefined);
+  gate.resolveHookResult(old.raw, { permissionDecision: "deny" });
   gate.render(fixture("questions"));
   expect(requests.list()).toEqual([]);
-  gate.resolve(current.raw, { behavior: "allow", updatedInput: { answers: {} } });
+  gate.resolveHookResult(current.raw, { behavior: "allow", updatedInput: { answers: {} } });
   expect(requests.list()).toEqual([]);
   gate.render(fixture("questions"));
   expect(requests.list()).toHaveLength(1);
+  expect(requests.keyFor(requests.list()[0]!.id)).toBe("new");
+  expect(requests.find("native")).toBeUndefined();
   expect(gate.blocksInput()).toBe(true);
 });
 
@@ -67,7 +72,7 @@ test("blocked Stop retains pending authority; unblocked Stop invalidates its lat
   expect(gate.blocksInput()).toBe(true);
   gate.observe({ ...stop, raw: { result: undefined } });
   expect(gate.blocksInput()).toBe(false);
-  gate.resolve(hook.raw, undefined);
+  gate.resolveHookResult(hook.raw, undefined);
   gate.render(fixture("questions"));
   expect(requests.list()).toEqual([]);
 });
@@ -90,12 +95,12 @@ test.each([
   requests.onEvent((event) => events.push(event));
   const pre = nativeHook();
   gate.observe(pre);
-  gate.resolve(pre.raw, undefined);
+  gate.resolveHookResult(pre.raw, undefined);
   if (exposed) gate.render(fixture("questions"));
   const request = requests.list()[0];
   const permission = nativeHook("PermissionRequest");
   gate.observe(permission);
-  gate.resolve(permission.raw, {
+  gate.resolveHookResult(permission.raw, {
     behavior: "allow",
     updatedInput: { answers: { Color: "Amber" } },
   });
@@ -129,10 +134,10 @@ test.each([
   const { gate, requests } = setup();
   const pre = nativeHook();
   gate.observe(pre);
-  gate.resolve(pre.raw, undefined);
+  gate.resolveHookResult(pre.raw, undefined);
   const foreign = nativeHook("PermissionRequest", extra);
   gate.observe(foreign);
-  gate.resolve(foreign.raw, { behavior: "deny" });
+  gate.resolveHookResult(foreign.raw, { behavior: "deny" });
   gate.render(fixture("questions"));
   expect(requests.list()).toHaveLength(1);
 });
@@ -140,10 +145,10 @@ test("an ID-less matching permission decision withdraws the native candidate", (
   const { gate, requests } = setup();
   const pre = nativeHook();
   gate.observe(pre);
-  gate.resolve(pre.raw, undefined);
+  gate.resolveHookResult(pre.raw, undefined);
   const permission = nativeHook("PermissionRequest", { tool_use_id: undefined });
   gate.observe(permission);
-  gate.resolve(permission.raw, { behavior: "deny" });
+  gate.resolveHookResult(permission.raw, { behavior: "deny" });
   gate.render(fixture("questions"));
   expect(requests.list()).toEqual([]);
 });
