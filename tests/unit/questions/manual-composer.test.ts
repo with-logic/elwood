@@ -8,11 +8,14 @@ import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
 import { fixture, nativeSnapshot } from "./helpers.ts";
 
 test("C-API-56 actual manual-mode frame with earlier question prompts proves empty native input", async () => {
-  const native = nativeSnapshot("accepted-manual-composer");
-  const terminal = createHeadlessTerminal({ cols: native.cols, rows: native.rows }, () => {});
+  const manualComposerSnapshot = nativeSnapshot("accepted-manual-composer");
+  const terminal = createHeadlessTerminal(
+    { cols: manualComposerSnapshot.cols, rows: manualComposerSnapshot.rows },
+    () => {},
+  );
   try {
     await terminal.writeOutput(
-      `\x1b[2J\x1b[H${native.lines.join("\r\n")}\x1b[?25h\x1b]0;✳ Claude Code\x07\x1b[${native.cursorY + 1};${native.cursorX + 1}H`,
+      `\x1b[2J\x1b[H${manualComposerSnapshot.lines.join("\r\n")}\x1b[?25h\x1b]0;✳ Claude Code\x07\x1b[${manualComposerSnapshot.cursorY + 1};${manualComposerSnapshot.cursorX + 1}H`,
     );
     expect(claudeModelComposerClearance(terminal.snapshot().text)).toBe(true);
     expect(
@@ -25,7 +28,10 @@ test("C-API-56 actual manual-mode frame with earlier question prompts proves emp
     ).toBe(false);
     expect(
       claudeModelComposerClearance(
-        native.text.replace("⏸ manual mode on · ? for shortcuts", "arbitrary footer"),
+        manualComposerSnapshot.text.replace(
+          "⏸ manual mode on · ? for shortcuts",
+          "arbitrary footer",
+        ),
       ),
     ).toBe(false);
   } finally {

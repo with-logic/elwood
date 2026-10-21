@@ -84,12 +84,22 @@ test("equivalent ID-less definitions match regardless of object field order", ()
     header: q.header,
     question: q.question,
   }));
-  h.adapter.observe(hook("PostToolUse", reordered));
+  h.adapter.observe(
+    nativeHook("PostToolUse", {
+      tool_input: { questions: reordered } satisfies AskUserQuestionInput,
+      tool_use_id: undefined,
+    }),
+  );
   expect(h.requests.list()).toEqual([]);
 });
 test("a completion without an active candidate cannot create authority", () => {
   const requests = registry();
   const adapter = new ClaudeQuestionAdapter(requests);
-  adapter.observe(hook("PostToolUse", questions));
+  adapter.observe(
+    nativeHook("PostToolUse", {
+      tool_input: { questions } satisfies AskUserQuestionInput,
+      tool_use_id: undefined,
+    }),
+  );
   expect(requests.list()).toEqual([]);
 });

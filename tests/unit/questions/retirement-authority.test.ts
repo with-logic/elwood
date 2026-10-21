@@ -46,19 +46,19 @@ test.each([
   expect(requests.list()).toEqual([]);
   adapter.render(composer());
   expect(adapter.blocksInput()).toBe(true);
-  let successor = fixture("questions").text;
+  let successorScreenText = fixture("questions").text;
   for (const [index, question] of nativeQuestions.entries()) {
-    successor = successor.replace(
+    successorScreenText = successorScreenText.replace(
       `\n${question.question}\n`,
       `\n${successorQuestions[index]!.question}\n`,
     );
     if (difference !== "prompts only")
-      successor = successor.replace(
+      successorScreenText = successorScreenText.replace(
         `☐ ${question.header}`,
         `☐ ${successorQuestions[index]!.header}`,
       );
   }
-  adapter.render(frame(successor));
+  adapter.render(frame(successorScreenText));
   expect(requests.list()).toHaveLength(1);
   expect(requests.keyFor(requests.list()[0]!.id)).toBe("successor");
   adapter.render(composer());
@@ -69,8 +69,8 @@ test.each([
 test("a partial panel without options cannot arm retirement", () => {
   const adapter = new ClaudeQuestionAdapter(registry());
   adapter.observe(nativeHook());
-  const native = fixture("questions").text;
-  adapter.render(frame(native.slice(0, native.indexOf("❯ 1. Amber"))));
+  const questionScreenText = fixture("questions").text;
+  adapter.render(frame(questionScreenText.slice(0, questionScreenText.indexOf("❯ 1. Amber"))));
   adapter.render(composer());
   expect(adapter.blocksInput()).toBe(true);
 });
@@ -106,11 +106,11 @@ test("predecessor choices cannot retire an unseen successor with equal prompts",
   expect(requests.list()).toEqual([]);
   adapter.render(composer());
   expect(adapter.blocksInput()).toBe(true);
-  let successor = fixture("questions").text;
+  let successorScreenText = fixture("questions").text;
   for (const question of nativeQuestions)
     for (const option of question.options)
-      successor = successor.replaceAll(option.label, `Next ${option.label}`);
-  adapter.render(frame(successor));
+      successorScreenText = successorScreenText.replaceAll(option.label, `Next ${option.label}`);
+  adapter.render(frame(successorScreenText));
   expect(requests.list()).toHaveLength(1);
   expect(requests.keyFor(requests.list()[0]!.id)).toBe("successor");
 });

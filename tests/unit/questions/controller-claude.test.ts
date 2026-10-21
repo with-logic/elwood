@@ -1,68 +1,38 @@
-/** Completed-render observation and observer failure containment (C-QUESTION-01/02). */
+/** Completed-render observation and observer failure containment (PRD §4). */
 import { afterEach, expect, test } from "vitest";
 import { ClaudeQuestionAdapter } from "../../../src/claude/questions/index.ts";
-import type { QuestionActivityEvent } from "../../../src/core/questions/activity.ts";
-import { SessionQuestions } from "../../../src/core/questions/controller.ts";
-import type { ElwoodQuestionEvent } from "../../../src/core/questions/types.ts";
-import type { ElwoodCommonEventMap } from "../../../src/core/types.ts";
-
-type Events = Omit<ElwoodCommonEventMap, "activity"> & {
-  question: ElwoodQuestionEvent;
-  activity: ElwoodCommonEventMap["activity"] | QuestionActivityEvent;
-};
-
-import { TypedEmitter } from "../../../src/events/emitter.ts";
-import { createHeadlessTerminal } from "../../../src/terminal/headless.ts";
+import { controllerHarness, disposeTerminals } from "./controller-helpers.ts";
 import { definitions, fixture } from "./helpers.ts";
+import { preToolUse } from "./hook-fixtures.ts";
+import { nativeHook } from "./lifecycle-helpers.ts";
 
-const terminals: ReturnType<typeof createHeadlessTerminal>[] = [];
-afterEach(() => {
-  for (const terminal of terminals.splice(0)) terminal.dispose();
-});
-test("C-QUESTION-01 direct completed renders discover questions despite throwing observers", async () => {
-  const terminal = createHeadlessTerminal({ cols: 140, rows: 45 }, () => {});
-  terminals.push(terminal);
-  const events = new TypedEmitter<Events>();
-  const closing = new AbortController();
-  const questions = new SessionQuestions(
-    "claude",
-    "s",
-    events,
-    terminal,
-    () => new AbortController().signal,
-    closing.signal,
-  );
+afterEach(disposeTerminals);
+test("direct completed renders discover questions despite throwing observers", async () => {
+  const { terminal, events, questions, closing } = controllerHarness();
   expect(questions.blocksInput()).toBe(false);
   questions.configure((registry) => new ClaudeQuestionAdapter(registry));
   events.on("question", () => {
     throw new Error("consumer");
   });
-  events.emit("activity", {
-    elwoodSessionId: "s",
-    agent: "claude",
-    source: "hook",
-    kind: "hook",
-    label: "PreToolUse",
-    raw: {
-      hook_event_name: "PreToolUse",
-      tool_name: "AskUserQuestion",
-      tool_use_id: "native",
-      tool_input: {
-        questions: definitions.map((question) => ({
-          question: question.prompt,
-          header: question.header,
-          options: question.options,
-          multiSelect: question.selection === "multiple",
-        })),
-      },
-    },
-  });
-  const native = fixture("questions");
+  events.emit("activity", nativeHook(preToolUse.hook_event_name, preToolUse));
+  const questionFrame = fixture("questions");
   await terminal.writeOutput(
-    `\x1b[H\x1b[2J${native.lines.join("\r\n")}\x1b[${native.cursorRow + 1};1H`,
+    `\x1b[H\x1b[2J${questionFrame.lines.join("\r\n")}\x1b[${questionFrame.cursorRow + 1};1H`,
   );
   expect(terminal.renderFailed).toBe(false);
   expect(questions.list()).toHaveLength(1);
+  expect(
+    questions
+      .list()[0]
+      ?.questions.map(({ prompt, header, options, selection, textMode, secret }) => ({
+        prompt,
+        header,
+        options: options.map(({ label, description }) => ({ label, description })),
+        selection,
+        textMode,
+        secret,
+      })),
+  ).toEqual(definitions);
   expect(questions.blocksInput()).toBe(true);
   questions.revoke();
   closing.abort();
