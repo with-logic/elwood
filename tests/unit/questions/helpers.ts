@@ -1,4 +1,5 @@
 /** Shared request definitions for private kernel tests (PRD §4). */
+import { QuestionRegistry } from "../../../src/core/questions/registry.ts";
 import type { QuestionDefinition } from "../../../src/core/questions/types.ts";
 export const definitions: readonly QuestionDefinition[] = [
   {
@@ -24,3 +25,6 @@ export const definitions: readonly QuestionDefinition[] = [
     secret: false,
   },
 ];
+export function registry() {
+  return new QuestionRegistry("claude", "s", { emit: () => {} });
+}
