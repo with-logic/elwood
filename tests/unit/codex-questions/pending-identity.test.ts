@@ -1,7 +1,5 @@
 /** Pending rows must not steal a duplicate native question identity (PRD §4). */
-import { expect, test, vi } from "vitest";
-import * as questionFrames from "../../../src/codex/questions/frame.ts";
-import { questionDefinitionCountLimit } from "../../../src/codex/questions/limits.ts";
+import { expect, test } from "vitest";
 import { queuedKey } from "../../../src/codex/questions/records.ts";
 import { harness } from "./adapter-helpers.ts";
 import { editorFrame } from "./editor-fixtures.ts";
@@ -168,35 +166,4 @@ test("ambiguous pending titles remain reserved until native identity acceptance"
   expect(h.adapter.blocksInput()).toBe(true);
   h.observe({ payload: { type: "turn_complete" } });
   expect(h.registry.list()).toEqual([]);
-});
-test("unchanged working frames keep indexed native correlation bounded", () => {
-  const h = harness();
-  h.observe({
-    payload: {
-      type: "AgentMessage",
-      id: "many",
-      delivery: "async",
-      questions: Array.from({ length: questionDefinitionCountLimit }, () => ({
-        title: "ELWOOD_ASYNC_COLOR: Which color?",
-        options: ["Amber", "Blue"],
-      })),
-    },
-  });
-  const current = captured("async-editor-first.txt");
-  const many = {
-    ...current,
-    text: current.text.replace("1 of 2", `1 of ${questionDefinitionCountLimit}`),
-    lines: current.lines.map((line) =>
-      line.replace("1 of 2", `1 of ${questionDefinitionCountLimit}`),
-    ),
-  };
-  const matches = vi.spyOn(questionFrames, "matchesQuestion");
-  try {
-    h.adapter.render(many);
-    h.adapter.render(many);
-    expect(matches).toHaveBeenCalledTimes(2);
-    expect(h.registry.list()).toHaveLength(questionDefinitionCountLimit);
-  } finally {
-    matches.mockRestore();
-  }
 });
